@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/editor/scene/ResourceStatus.hpp>
-#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/views/ViewContent.hpp>
 #include <lux/engine/ui/Pane.hpp>
 
 namespace lux::editor::scene

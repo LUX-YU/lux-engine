@@ -2,7 +2,7 @@
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
-#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/views/ViewContent.hpp>
 #include <lux/engine/ui/Pane.hpp>
 
 namespace lux::editor::scene

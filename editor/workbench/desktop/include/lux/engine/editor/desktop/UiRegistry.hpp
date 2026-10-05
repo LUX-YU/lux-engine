@@ -2,7 +2,7 @@
 
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/desktop/UiError.hpp>
-#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/views/ViewContent.hpp>
 #include <lux/engine/editor/workspace/DockLayout.hpp>
 #include <lux/engine/editor/workspace/WorkspaceValues.hpp>
 #include <lux/engine/services/ServiceRegistry.hpp>

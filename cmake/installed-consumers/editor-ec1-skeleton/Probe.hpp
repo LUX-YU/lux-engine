@@ -1,7 +1,7 @@
 #pragma once
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/description/Skeleton.hpp>
-#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/views/ViewContent.hpp>
 #include <atomic>
 namespace lux::ui
 {

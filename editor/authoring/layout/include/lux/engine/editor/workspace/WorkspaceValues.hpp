@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/views/ViewContent.hpp>
 #include <optional>
 #include <span>
 #include <vector>

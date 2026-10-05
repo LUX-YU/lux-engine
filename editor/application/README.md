@@ -4,8 +4,8 @@
 lifetimes, explicit provider wiring, content presentation and close review. Actual activities own project
 source saving/registration, workspace changes, recovery opening, recent projects and plugin selection.
 SessionStore owns author content; SaveService/WriteCoordinator own accepted saves/publications;
-RunStore/SceneRuntime own execution. Product window migration from ViewHost to Root-owned factory
-outputs is still in progress; it is not a completed EC4 product qualification.
+RunStore/SceneRuntime own execution. Factory outputs transfer to the LuxObject relation through Root; the old Host owner is removed.
+Domain-service and product-close policy migration still remain in EC4; this is not final qualification.
 
 `EditorApplication::create` publishes only a fully assembled desktop, including its command receiver.
 `execute` is an owner-thread API: another thread receives `WRONG_THREAD` before command lookup or

@@ -1,7 +1,8 @@
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstdio>
-#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/views/ViewContent.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/object/ObjectOwnership.hpp>
 #include <lux/engine/ui/Controls.hpp>
@@ -82,6 +83,7 @@ namespace
             ++facts_.panes;
         }
         Content content;
+        object::Connection connection;
 
     private:
         Facts& facts_;
@@ -101,6 +103,139 @@ namespace
     private:
         void draw() noexcept override {}
     };
+    void completeConnections(object::ObjectDispatcherRef dispatcher)
+    {
+        struct Sender final : object::LuxObject
+        {
+            using LuxObject::LuxObject;
+            object::TSignal<> changed{*this};
+            void send() noexcept
+            {
+                assert(emit(changed).complete());
+            }
+        } sender(dispatcher);
+        Facts first, second;
+        unsigned received{};
+        auto owner = candidate(dispatcher, first, "connected-first");
+        static_cast<Window&>(*owner).connection = take(object::LuxObject::connect(
+            &sender,
+            &Sender::changed,
+            [&]() noexcept
+            {
+                assert(first.code_alive && !first.panes);
+                ++received;
+            }
+        ));
+        auto transferred = std::move(owner);
+        sender.send();
+        assert(received == 1 && !owner);
+        transferred = candidate(dispatcher, second, "connected-second");
+        assert(first.panes == 1 && first.elements == 1 && first.code == 1);
+        sender.send();
+        assert(received == 1); // The complete Pane owns its connections, not a parallel UI wrapper.
+        {
+            auto releasing = std::move(transferred);
+            releasing.reset();
+            assert(second.panes == 1 && second.elements == 1 && second.code_alive);
+            // A standard unique_ptr retains its deleter after reset. Its code pin ends with that owner.
+        }
+        assert(second.panes == 1 && second.elements == 1 && second.code == 1);
+    }
+    void reuseCapacity(object::ObjectMessageQueue& messages)
+    {
+        auto root = take(ui::Root::create(messages.dispatcherRef(), {.docking = false, .attachment_capacity = 2}));
+        ui::PaneHandle previous;
+        for (unsigned turn{}; turn < 64; ++turn)
+        {
+            Facts facts;
+            auto owner = candidate(messages.dispatcherRef(), facts, "reused");
+            auto* pane = owner.get();
+            assert(root->addSubPane(std::move(owner)) && !owner);
+            const auto id = take(root->identify(*pane));
+            assert(id != previous);
+            if (turn)
+            {
+                assert(root->panes().size() == 1); // One reusable index; the opaque identity still changes.
+                assert(!root->findPane(previous));
+            }
+            pane->setVisible(false);
+            pane->setVisible(true);
+            assert(root->requestFocus(*pane));
+            pane->requestClose();
+            pane->requestClose(); // Native intent is coalesced and does not depend on a request queue slot.
+            assert(pane->hasCloseRequest() && !facts.panes);
+            pane->dismissCloseRequest();
+            assert(!pane->hasCloseRequest() && root->findPane(id));
+            pane->requestClose();
+            auto removal = take(root->prepareDetach(*pane));
+            assert(root->commit(removal));
+            assert(!root->commit(removal) && !root->findPane(id) && !facts.panes);
+            assert(messages.collectRetired() == 1);
+            assert(facts.panes == 1 && facts.elements == 1 && facts.code == 1);
+            assert(std::ranges::all_of(root->panes(), [](auto* value) { return value == nullptr; }));
+            previous = id;
+        }
+        Facts remaining;
+        auto owner = candidate(messages.dispatcherRef(), remaining, "root-owned");
+        assert(root->addSubPane(std::move(owner)));
+        root.reset();
+        assert(remaining.panes == 1 && remaining.elements == 1 && remaining.code == 1);
+    }
+    void batchVisibility(object::ObjectMessageQueue& messages)
+    {
+        auto root = take(ui::Root::create(messages.dispatcherRef(), {.docking = false}));
+        Facts existing, first, second, rejected;
+        auto initial = candidate(messages.dispatcherRef(), existing, "batch-existing");
+        auto* window = initial.get();
+        assert(root->addSubPane(std::move(initial)));
+        window->setVisible(false);
+        std::vector<PaneOwner> owners;
+        owners.push_back(candidate(messages.dispatcherRef(), first, "batch-first"));
+        owners.push_back(candidate(messages.dispatcherRef(), second, "batch-second"));
+        const std::array candidates{owners[0].get(), owners[1].get()};
+        const std::array states{ui::WindowVisibility{window, true}};
+        auto prepared = take(root->prepareMount(candidates, states));
+        assert(owners[0] && owners[1] && !window->visible());
+        unsigned notices{};
+        auto connected = take(object::LuxObject::connect(
+            root.get(),
+            &ui::Root::attachmentChanged,
+            [&](const ui::AttachmentChanged& change) noexcept
+            {
+                if (!change.mounted)
+                {
+                    return;
+                }
+                ++notices;
+                assert(root->findPane(ui::PaneIdView{"batch-first"}));
+                assert(root->findPane(ui::PaneIdView{"batch-second"}));
+                assert(window->visible() && !owners[0] && !owners[1]);
+                root->deferChange(
+                    *window,
+                    [](object::LuxObject& target) noexcept { static_cast<ui::Pane&>(target).setVisible(false); }
+                );
+            }
+        ));
+        auto adopt = []() noexcept {};
+        assert(root->commit(prepared, owners, adopt));
+        assert(notices == 2 && window->visible() && !root->commit(prepared));
+        root->applyPendingChanges();
+        assert(!window->visible());
+        connected.disconnect();
+        {
+            auto next = candidate(messages.dispatcherRef(), rejected, "abandoned");
+            const std::array pending_panes{next.get()};
+            auto pending = take(root->prepareMount(pending_panes, states));
+            window->setVisible(true);
+            window->setVisible(false);
+            const auto failed = root->commit(pending);
+            assert(!failed && failed.error() == ui::EAttachmentError::STALE_PREPARATION);
+            assert(!next->attachedRoot() && !rejected.panes && !window->visible());
+        }
+        assert(rejected.panes == 1 && rejected.elements == 1 && rejected.code == 1);
+        root.reset();
+        assert(existing.code == 1 && first.code == 1 && second.code == 1);
+    }
     void protocol(object::ObjectMessageQueue& messages)
     {
         const auto dispatcher = messages.dispatcherRef();
@@ -369,5 +504,8 @@ int main()
     preparation(messages.dispatcherRef());
     construction(messages.dispatcherRef());
     notifications(messages);
+    completeConnections(messages.dispatcherRef());
+    reuseCapacity(messages);
+    batchVisibility(messages);
     std::puts("PASS X08-03..06 real detached tree, preparation, callback close, IDs, code lifetime and remount");
 }

@@ -16,7 +16,8 @@ ProjectBuilder creates a ProjectBuildConfig; only project activities perform fil
 
 History has one shared algorithm. SessionStore owns author sessions; each model owns its source and
 SessionState. SaveService and WriteCoordinator keep accepted work and publication facts. SceneRuntime
-owns runtime instances and retirement. RunStore owns run records; ViewHost alone owns top-level Panes.
+owns runtime instances and retirement. RunStore owns run records; the LuxObject parent relation owns adopted Panes. Root maintains non-owning
+window/routing indices, and UiRegistry retains only weak output metadata.
 Views retain explicit bindings, gestures and local presentation. Closing a View does not close a session,
 cancel another owner's task or release its unfinished GPU responsibility.
 
@@ -27,7 +28,7 @@ and viewport do not depend on author models. Tests spanning layers are configure
 ## Product assembly
 
 `lux_editor` is the sole installed Editor executable. It constructs EditorApplication, loads the project's
-V9 contributions, and combines the existing content, save, compilation, Run and desktop providers.
+V10 contributions, and combines the existing content, save, compilation, Run and desktop providers.
 With no project it displays the same Launcher composition used by `lux_launcher`; project creation uses
 ProjectCreationView and the existing asynchronous project IO. No old/new product fallback is built.
 The nine old roots and their registration/save bridges have been removed. The formal scene execution

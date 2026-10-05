@@ -26,6 +26,9 @@ def main():
     repo = args.source.resolve()
     base_rules = json.loads((repo / "editor/tests/architecture/rules.json").read_text())
     classification = base_rules["editor_layering"]["targets"]
+    # Removed production provider remains an explicitly classified negative fixture only.
+    classification["view_host"] = {"layer": "E3", "role": "UI", "capabilities": ["CPU", "GUI"],
+                                   "path": "fixture/retired_view_host"}
     cases = [
         ("N01", "material_model", "material_ui", "authoring_outer_dependency", "include"),
         ("N02", "edit_sessions", "material_model", "editing_domain_dependency", "link"),

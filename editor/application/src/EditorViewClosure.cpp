@@ -223,6 +223,15 @@ namespace lux::editor::application
             auto closed = closeView(info.handle);
             if (!closed)
             {
+                if (closed.error().code != EEditorError::BUSY)
+                {
+                    // A refusal ends this intent. Retain its diagnostic; only a new close request
+                    // retries it. Preparation may invoke extension code, so revalidate the identity.
+                    if (auto current = desktop_->root().findPane(info.handle); current)
+                    {
+                        (*current)->dismissCloseRequest();
+                    }
+                }
                 return closed;
             }
             if (last_view_)

@@ -24,6 +24,7 @@ def main():
     locations.update(editor_storage="editor/activities/project", editor_context="editor/context", ui_fixture="modules/function/ui", process_execution="engine/process/execution")
     locations.update(scene_composition="engine/scene/composition", render_runtime="modules/function/render/runtime")
     locations["view_api"] = "fixture/retired_view_api"
+    locations["view_host"] = "fixture/retired_view_host"
     cases = [
         ("scene-author-interaction", "scene_model", None, "scene_interaction", ""),
         ("material-author-interaction", "material_model", None, "material_interaction", ""),
@@ -50,9 +51,9 @@ def main():
     ]
     if args.stage in ("P10", "P10Q"):
         cases = [
-            ("host-scene-owner", "view_host", None, "scene_model", ""),
-            ("host-run-owner", "view_host", None, "scene_execution", ""),
-            ("host-old-editor", "view_host", None, "editor_context", ""),
+            ("host-scene-owner", "editor_composition", None, "scene_model", ""),
+            ("host-run-owner", "editor_composition", None, "scene_execution", ""),
+            ("host-old-editor", "editor_composition", None, "editor_context", ""),
             ("widgets-runtime", "editor_widgets", None, "scene_composition", ""),
             ("widgets-model", "editor_widgets", None, "material_model", ""),
             ("scene-old-ui", "scene_ui", None, "editor_ui", ""),
@@ -64,13 +65,13 @@ def main():
             ("model-new-ui", "scene_model", None, "scene_ui", ""),
             ("view-api-desktop", "editor_composition", None, "desktop_shell", ""),
             ("project-storage", "project_ui", None, "editor_storage", ""),
-            ("host-model-header", "view_host", None, None, "lux/engine/editor/scene/SceneSession.hpp"),
+            ("host-model-header", "editor_composition", None, None, "lux/engine/editor/scene/SceneSession.hpp"),
             ("scene-old-header", "scene_ui", None, None, "lux/engine/editor/scene/SceneEditor.hpp"),
             ("widgets-private-header", "editor_widgets", None, None, "../../tools/scene/pinclude/SceneEditorData.hpp"),
             ("scene-rooted-factory", "scene_ui", None, None, "ROOTED_FACTORY"),
             ("scene-rooted-base", "scene_ui", None, None, "ROOTED_BASE"),
             ("scene-root-reader-legal", "scene_ui", None, None, "ROOT_READER"),
-            ("host-legal", "view_host", "editor_contracts", None, ""),
+            ("host-legal", "editor_composition", "editor_contracts", None, ""),
             ("desktop-legal", "desktop_shell", "editor_composition", None, ""),
             ("widgets-legal", "editor_widgets", None, None, ""),
             ("scene-legal", "scene_ui", "scene_interaction", None, ""),

@@ -27,7 +27,7 @@ find_package(lux-engine-project-plugin-rendering REQUIRED COMPONENTS project_plu
 find_package(lux-engine-editor-scene-persistence REQUIRED COMPONENTS scene_persistence)
 find_package(lux-engine-editor-material-persistence REQUIRED COMPONENTS material_persistence)
 find_package(lux-engine-editor-flowforge-persistence REQUIRED COMPONENTS flowforge_persistence)
-find_package(lux-engine-editor-desktop REQUIRED COMPONENTS desktop_shell view_host)
+find_package(lux-engine-editor-desktop REQUIRED COMPONENTS desktop_shell)
 find_package(lux-engine-editor-tasks-ui REQUIRED COMPONENTS tasks_ui)
 find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)
 find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
@@ -81,7 +81,7 @@ foreach(helper NativeDesktop AuxiliaryViews DraftSources)
 endforeach()
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../common/ControlsTestAccess.hpp"
     "${CMAKE_CURRENT_BINARY_DIR}/ControlsTestAccess.hpp" COPYONLY)
-configure_file("${engine_source}/editor/workbench/desktop/test/host.cpp" "${CMAKE_CURRENT_BINARY_DIR}/host.cpp" COPYONLY)
+configure_file("${engine_source}/editor/workbench/desktop/test/lifecycle.cpp" "${CMAKE_CURRENT_BINARY_DIR}/lifecycle.cpp" COPYONLY)
 add_executable(desktop_views "${CMAKE_CURRENT_BINARY_DIR}/views.cpp")
 target_link_libraries(desktop_views PRIVATE lux::engine::editor::editor_storage lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
     lux::engine::editor::material_ui lux::engine::editor::flow_ui lux::engine::editor::scene_execution
@@ -89,8 +89,8 @@ target_link_libraries(desktop_views PRIVATE lux::engine::editor::editor_storage 
     lux::engine::editor::tasks_ui lux::engine::editor::editor_persistence_execution lux::engine::editor::editor_file_publication lux::engine::editor::material_persistence
     lux::engine::scene::scene_transform lux::engine::function::render_features
     lux::engine::function::ui_rendering imgui::core)
-add_executable(view_host "${CMAKE_CURRENT_BINARY_DIR}/host.cpp")
-target_link_libraries(view_host PRIVATE lux::engine::editor::view_host lux::engine::editor::editor_composition)
+add_executable(root_lifecycle "${CMAKE_CURRENT_BINARY_DIR}/lifecycle.cpp")
+target_link_libraries(root_lifecycle PRIVATE lux::engine::function::ui lux::engine::editor::editor_contracts)
 file(READ "${engine_source}/editor/tests/integration/project/panels.cpp" panels)
 string(REPLACE "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
     "UiTestContent.hpp" panels "${panels}")
@@ -109,7 +109,7 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/scene_configuration.cpp" "${scene_config
 add_executable(scene_configuration "${CMAKE_CURRENT_BINARY_DIR}/scene_configuration.cpp")
 target_link_libraries(scene_configuration PRIVATE lux::engine::editor::scene_ui
     lux::engine::editor::editor_extensions lux::engine::project::project_plugin_rendering)
-foreach(target desktop_views view_host inspector_fields project_panels scene_configuration)
+foreach(target desktop_views root_lifecycle inspector_fields project_panels scene_configuration)
     if(MSVC)
         target_compile_options(${target} PRIVATE /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor)
     else()
@@ -130,7 +130,7 @@ if(NOT EXISTS "${sdk_prefix}/share/lux-engine/plugins/catalog.json")
     message(FATAL_ERROR "The installed SDK must include its plugin catalog: ${sdk_prefix}")
 endif()
 enable_testing()
-add_test(NAME installed.desktop.host COMMAND view_host)
+add_test(NAME installed.desktop.host COMMAND root_lifecycle)
 add_test(NAME installed.desktop.scene_configuration COMMAND scene_configuration "${sdk_prefix}")
 add_test(NAME installed.desktop.project_tools COMMAND project_panels "${CMAKE_BINARY_DIR}/project-tools")
 set_tests_properties(installed.desktop.project_tools PROPERTIES TIMEOUT 60)

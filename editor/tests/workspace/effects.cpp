@@ -299,9 +299,9 @@ int main()
     layout.dock.nodes = {{1, w::EDockSplit::LEAF, 0, 0, .5, {{1}, {2}, {3}}}};
     layout.dock.roots = {{1}};
     const std::array existing{
-        v::ViewInfo{{7, 0, 1}, v::ViewTypeId{"material"}, v::ViewRestoreKey{"other"}, "extra"},
-        v::ViewInfo{{7, 1, 1}, v::ViewTypeId{"material"}, v::ViewRestoreKey{"exact"}, "dirty"},
-        v::ViewInfo{{7, 2, 1}, v::ViewTypeId{"material"}, v::ViewRestoreKey{"same-key"}, "wrong type"}
+        w::LayoutTarget{v::ViewRestoreKey{"other"}, v::ViewTypeId{"material"}},
+        w::LayoutTarget{v::ViewRestoreKey{"exact"}, v::ViewTypeId{"material"}},
+        w::LayoutTarget{v::ViewRestoreKey{"same-key"}, v::ViewTypeId{"material"}}
     };
     const std::array providers{
         w::ViewProviderInfo{v::ViewTypeId{"material"}},
@@ -317,7 +317,7 @@ int main()
     ambiguous.push_back(targets.front());
     assert(!w::LayoutPlanner::resolve(take(w::ValidatedLayout::validate(layout)), ambiguous, providers));
     auto plan = take(w::LayoutPlanner::resolve(take(w::ValidatedLayout::validate(layout)), targets, providers));
-    assert(plan.views[0].existing && existing[*plan.views[0].existing].id == existing[1].id);
+    assert(plan.views[0].existing && *plan.views[0].existing == 1);
     assert(plan.views[1].resolution == w::ELayoutResolution::CREATE_UNBOUND);
     assert(plan.views[2].resolution == w::ELayoutResolution::CREATE_UNBOUND);
     assert(plan.retained.size() == 2);

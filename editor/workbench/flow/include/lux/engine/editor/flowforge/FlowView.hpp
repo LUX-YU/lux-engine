@@ -4,7 +4,7 @@
 #include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
 #include <lux/engine/editor/flowforge/FlowInteraction.hpp>
 #include <lux/engine/editor/persistence/DerivedArtifact.hpp>
-#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/views/ViewContent.hpp>
 #include <lux/engine/editor/workspace/WorkspaceValues.hpp>
 #include <lux/engine/ui/Pane.hpp>
 

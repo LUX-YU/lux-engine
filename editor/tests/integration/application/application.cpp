@@ -42,6 +42,159 @@ namespace lux::editor::application
 } // namespace lux::editor::application
 namespace
 {
+    struct CloseFacts final
+    {
+        unsigned attempts{}, panes{}, elements{}, code{};
+        bool code_alive{true};
+        std::optional<lux::editor::desktop::UiFailure> refusal;
+    };
+    struct CloseCode final
+    {
+        CloseFacts& facts;
+        explicit CloseCode(CloseFacts& value) : facts(value) {}
+        ~CloseCode()
+        {
+            assert(facts.panes == 1 && facts.elements == 1);
+            facts.code_alive = false;
+            ++facts.code;
+        }
+    };
+    class CloseElement final : public lux::ui::Element
+    {
+    public:
+        CloseElement(lux::ui::Pane& pane, CloseFacts& facts)
+            : Element(pane, lux::ui::ElementId{"content"}), facts_(facts)
+        {
+        }
+        ~CloseElement() override
+        {
+            assert(facts_.code_alive);
+            ++facts_.elements;
+        }
+
+    private:
+        void draw() noexcept override {}
+        CloseFacts& facts_;
+    };
+    class RefusingPane final : public lux::ui::Pane
+    {
+    public:
+        RefusingPane(const lux::editor::desktop::UiCreateInfo& input, CloseFacts& facts)
+            : Pane(input.dispatcher, input.instance, lux::ui::PaneTypeId{"test.close.refusal"}, "Close refusal"),
+              facts_(facts), content_(*this, facts)
+        {
+            assert(setContent(content_));
+        }
+        ~RefusingPane() override
+        {
+            assert(facts_.code_alive);
+            ++facts_.panes;
+        }
+        lux::editor::desktop::UiResult<void> prepareClose()
+        {
+            ++facts_.attempts;
+            if (facts_.refusal)
+            {
+                return lux::cxx::unexpected(*facts_.refusal);
+            }
+            return {};
+        }
+
+    private:
+        CloseFacts& facts_;
+        CloseElement content_;
+    };
+    void closeRefusal(lux::editor::application::EditorApplication& application)
+    {
+        using namespace lux;
+        using namespace lux::editor;
+        auto& owner = application::ApplicationTestAccess::implementation(application);
+        auto& root = owner.desktop_->root();
+        auto& registry = owner.editor_context_.ui();
+        const auto original = registry.snapshot();
+        CloseFacts facts;
+        auto scope = owner.editor_context_.services().createScope(&owner.editor_context_.scope());
+        assert(scope && scope->provide(services::ServiceNameView{"test.close.facts"}, facts));
+        ui::PaneHandle identity;
+        {
+            const services::ServiceDependency dependencies[]{
+                {services::ServiceNameView{"test.close.facts"},
+                 1,
+                 cxx::typeToken<CloseFacts>(),
+                 services::EDependencyKind::BORROWED}
+            };
+            desktop::UiDescriptor descriptor{
+                views::ViewTypeIdView{"test.close.refusal"},
+                "Close refusal",
+                dependencies
+            };
+            descriptor.create = [](services::ServiceResolver& resolver,
+                                   const desktop::UiCreateInfo& input) -> desktop::UiResult<std::unique_ptr<ui::Pane>>
+            {
+                auto facts = resolver.require<CloseFacts>(0);
+                assert(facts);
+                return std::make_unique<RefusingPane>(input, facts->get());
+            };
+            descriptor.prepare_close = [](ui::Pane& pane) { return static_cast<RefusingPane&>(pane).prepareClose(); };
+            std::vector<std::shared_ptr<const desktop::UiEntry>> entries(
+                original.entries().begin(),
+                original.entries().end()
+            );
+            entries.push_back(
+                desktop::UiEntry::create(object::CodeLease::plugin(std::make_shared<CloseCode>(facts)), descriptor)
+            );
+            auto catalog = desktop::UiCatalog::prepare(std::move(entries));
+            assert(catalog && registry.publish(*catalog));
+            auto factory = catalog->find(views::ViewTypeIdView{"test.close.refusal"});
+            assert(factory);
+            auto candidate =
+                registry.create(*factory, *scope, {owner.messages_.dispatcherRef(), ui::PaneId{"close-refusal"}});
+            assert(candidate);
+            auto* pane = candidate->get();
+            assert(root.addSubPane(std::move(*candidate)));
+            identity = *root.identify(*pane);
+            assert(registry.publish(original));
+        }
+        // The creating declaration is now retained only by the live output, not the replacement catalog.
+        facts.refusal =
+            desktop::UiFailure{desktop::EUiError::OPERATION_FAILURE, "test.permission", 37, "Explicit refusal"};
+        (*root.findPane(identity))->requestClose();
+        auto refused = application.update();
+        assert(!refused && refused.error().code == EEditorError::SOURCE_FAILURE);
+        const auto* cause = std::any_cast<desktop::UiFailure>(&refused.error().cause);
+        assert(
+            cause && cause->domain == "test.permission" && cause->domain_code == 37 &&
+            cause->detail == "Explicit refusal"
+        );
+        assert(facts.attempts == 1 && facts.code_alive && facts.panes == 0);
+        unsigned failures{};
+        for (unsigned frame{}; frame < 10; ++frame)
+        {
+            failures += !application.update();
+        }
+        std::cout << "EC4 actual close refusal: attempts=" << facts.attempts << " repeated_failures=" << failures
+                  << std::endl;
+        assert(facts.attempts == 1 && failures == 0);
+        assert(root.findPane(identity) && facts.code_alive && facts.panes == 0);
+        assert(owner.maintenance_failure_ && owner.maintenance_failure_->domain == "close.view.prepare");
+        facts.refusal = desktop::UiFailure{desktop::EUiError::BUSY, "session", 9, "Temporarily reading"};
+        (*root.findPane(identity))->requestClose();
+        for (unsigned attempt{2}; attempt <= 3; ++attempt)
+        {
+            auto busy = application.update();
+            assert(!busy && busy.error().code == EEditorError::BUSY && facts.attempts == attempt);
+            assert(root.findPane(identity) && facts.code_alive && facts.panes == 0);
+        }
+        facts.refusal.reset();
+        assert(application.update());
+        assert(!root.findPane(identity));
+        assert(facts.attempts == 4 && facts.panes == 1 && facts.elements == 1 && facts.code == 1 && !facts.code_alive);
+        const auto* retained = std::any_cast<desktop::UiFailure>(&owner.maintenance_failure_->cause);
+        assert(retained && retained->domain == "test.permission" && retained->domain_code == 37);
+        owner.maintenance_failure_.reset();
+        assert(scope->release() && scope->drained());
+        std::cout << "EC4 permanent refusal, explicit retry, BUSY and code-after-node retirement passed" << std::endl;
+    }
     template <class App> auto windowRecords(App& app)
     {
         return app.editor_context_.ui().describe(app.desktop_->root());
@@ -399,6 +552,7 @@ int main(int argc, char** argv)
             }
         );
         assert(direct);
+        closeRefusal(**direct);
         if (const auto* failure = ApplicationTestAccess::implementation(**direct).workspace_changes_.migrationFailure())
         {
             std::cerr << "Initial migration: " << failure->domain << '\n';

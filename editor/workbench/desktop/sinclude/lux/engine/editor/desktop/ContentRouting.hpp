@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/views/ViewContent.hpp>
 #include <span>
 
 namespace lux::editor::desktop::detail

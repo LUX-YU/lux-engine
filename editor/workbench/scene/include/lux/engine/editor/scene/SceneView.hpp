@@ -7,7 +7,7 @@
 #include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/views/CameraNavigation.hpp>
-#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/views/ViewContent.hpp>
 #include <lux/engine/editor/workspace/WorkspaceValues.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
 #include <lux/engine/ui/Pane.hpp>

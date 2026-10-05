@@ -5,7 +5,7 @@
 #include <lux/engine/editor/extensions/EditorModule.hpp>
 #include <lux/engine/editor/project/AssetCatalog.hpp>
 #include <lux/engine/editor/sessions/SessionOpening.hpp>
-#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/views/ViewContent.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/window/WindowPlacement.hpp>
 #include <span>

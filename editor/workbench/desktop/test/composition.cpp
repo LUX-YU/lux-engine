@@ -8,6 +8,7 @@
 #include <lux/engine/editor/desktop/EditorContext.hpp>
 #include <lux/engine/editor/desktop/ReviewView.hpp>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/workspace/LayoutPlan.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <optional>
@@ -474,6 +475,21 @@ namespace
         assert(registry.prepareClose(**root, std::span{&*handle, 1}));
         assert(registry.captureState(**root, *handle)->bytes == std::vector{std::byte{7}});
         assert(counts.rebound == 3 && counts.closes == 2 && counts.captures == 3);
+        const sessions::SessionId other{5, 1, 3};
+        const views::ViewContent comparison{{session, other}, other};
+        assert(registry.rebind(**root, *handle, comparison));
+        assert(*registry.content(**root, *handle) == comparison);
+        const auto changes = counts.rebound;
+        assert(!registry.rebind(**root, *handle, {{session, session}, session}));
+        assert(!registry.rebind(**root, *handle, {{session}, other}));
+        assert(counts.rebound == changes && *registry.content(**root, *handle) == comparison);
+        counts.deny_rebind = true;
+        auto retained = registry.rebind(**root, *handle, original);
+        assert(!retained && retained.error().domain_code == 81);
+        assert(*registry.content(**root, *handle) == comparison);
+        counts.deny_rebind = false;
+        assert(registry.rebind(**root, *handle, original));
+
         ui::Pane external{messages.dispatcherRef(), ui::PaneId{"foreign"}, ui::PaneTypeId{"ec4.window"}, "Foreign"};
         assert((*root)->addSubPane(external));
         const auto foreign = (*root)->identify(external);
@@ -582,6 +598,7 @@ namespace
         assert(connection);
         auto commit_content = [&]() noexcept { content_committed = true; };
         assert((*root)->commit(*prepared, commit_content));
+        assert(!(*root)->commit(*prepared, commit_content));
         assert(notifications == 2 && counts.windows_destroyed == 0);
         assert(!a->attachedRoot() && !b->attachedRoot() && !b->parent());
         assert(!a->hasCloseRequest() && !b->hasCloseRequest());
@@ -1494,15 +1511,121 @@ namespace
         assert(view.answer(EReviewChoice::CANCEL));
         assert(view.response()->request == question.request && view.response()->text == "captured");
         assert(view.response()->choice == EReviewChoice::CANCEL);
+        auto root = ui::Root::create(messages.dispatcherRef());
+        assert(root);
+        auto native = ReviewView::create(messages.dispatcherRef(), ui::PaneId{"native-review"}, question);
+        assert(native && (*native)->modal());
+        auto* pane = native->get();
+        assert((*root)->addSubPane(std::move(*native)));
+        const auto identity = *(*root)->identify(*pane);
+        bool visited{};
+        auto borrow = [&](ui::Pane& target)
+        {
+            visited = true;
+            auto& review = static_cast<ReviewView&>(target);
+            assert(!review.response());
+            target.requestClose();
+            assert(review.response()->choice == EReviewChoice::CANCEL);
+            assert(review.response()->request == question.request && !review.answer(EReviewChoice::SAVE));
+            auto removed = (*root)->prepareDetach(target);
+            assert(!removed && removed.error() == ui::EAttachmentError::BUSY);
+            auto nested = [](ui::Pane&) {};
+            assert(!(*root)->withPane(identity, nested));
+        };
+        assert((*root)->withPane(identity, borrow) && visited && (*root)->findPane(identity));
+        assert((*root)->removeSubPane(*pane));
+        visited = false;
+        assert(!(*root)->withPane(identity, borrow) && !visited);
+        (void)messages.collectRetired();
+        auto invalid_question = question;
+        invalid_question.choices = {EReviewChoice::SAVE};
+        assert(!ReviewView::create(messages.dispatcherRef(), ui::PaneId{"invalid"}, invalid_question));
+        invalid_question.choices = {EReviewChoice::CANCEL, EReviewChoice::CANCEL};
+        assert(!ReviewView::create(messages.dispatcherRef(), ui::PaneId{"invalid"}, invalid_question));
         std::cout << "Review retains exact request, draft and first answer without ViewHost PASS\n";
     }
 } // namespace
 
+template <class T> auto take(T value)
+{
+    assert(value);
+    return std::move(*value);
+}
+void toolCommandFactory(object::ObjectDispatcherRef dispatcher)
+{
+    auto root = take(ui::Root::create(dispatcher));
+    unsigned constructions{};
+    services::ServiceRegistry services(dispatcher);
+    auto scope = take(services.createScope());
+    assert(scope.provide(services::ServiceNameView{"test.constructions"}, constructions));
+    desktop::UiRegistry windows(dispatcher, services);
+    std::string type{"p10.test"}, label{"External tool"};
+    const services::ServiceDependency dependencies[]{
+        {services::ServiceNameView{"test.constructions"},
+         1,
+         cxx::typeToken<unsigned>(),
+         services::EDependencyKind::BORROWED}
+    };
+    desktop::UiDescriptor descriptor{views::ViewTypeIdView{type}, label, dependencies};
+    descriptor.create = [](services::ServiceResolver& resolver,
+                           const desktop::UiCreateInfo& input) -> desktop::UiResult<std::unique_ptr<ui::Pane>>
+    {
+        auto count = resolver.require<unsigned>(0);
+        assert(count);
+        ++count->get();
+        return std::make_unique<ui::Pane>(input.dispatcher, input.instance, ui::PaneTypeId{"p10.test"}, "Tool");
+    };
+    auto factory = desktop::UiEntry::create(object::CodeLease::builtin(), descriptor);
+    type.clear();
+    label.assign(1000, 'x');
+    const auto factories = take(desktop::UiCatalog::prepare({factory}));
+    assert(windows.publish(factories));
+    auto query = [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+    { return commands::CommandState{true}; };
+    auto open = [&](views::ViewTypeId id)
+    { return desktop::showTool(*root, windows, scope, factories, std::move(id)); };
+    auto entries = take(desktop::makeToolCommands(std::array{factory}, query, open));
+    assert(entries.size() == 1 && entries.front()->descriptor().label == "External tool");
+    commands::CommandRegistry registry;
+    auto snapshot = take(commands::CommandRegistrySnapshot::create(std::move(entries)));
+    assert(registry.publish(snapshot));
+    const auto handle = take(snapshot.find(commands::CommandIdView{"lux.editor.tool/p10.test"}));
+    commands::CommandInvocation input;
+    assert(registry.execute(handle, input));
+    const auto first = take(windows.describe(*root));
+    assert(first.size() == 1 && constructions == 1);
+    assert(registry.execute(handle, input));
+    const auto second = take(windows.describe(*root));
+    assert(second.size() == 1 && constructions == 1 && second.front().handle == first.front().handle);
+    assert(!desktop::showTool(*root, windows, scope, factories, views::ViewTypeId{"absent"}));
+    assert(!desktop::makeToolCommands(std::array<std::shared_ptr<const desktop::UiEntry>, 1>{}, query, open));
+    auto close = desktop::makeCloseViewCommand(
+        query,
+        [&](ui::PaneHandle id) -> commands::CommandResult<void>
+        {
+            auto batch = windows.prepareClose(*root, std::span{&id, 1});
+            if (!batch)
+            {
+                return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET});
+            }
+            auto committed = root->commit(*batch);
+            assert(committed);
+            return {};
+        }
+    );
+    const auto closing = take(commands::CommandRegistrySnapshot::create({close}));
+    auto target = commands::CommandInvocation::forView(first.front().handle, lux::object::CodeLease::builtin());
+    assert(registry.execute(take(closing.at(0)), target));
+    assert(take(windows.describe(*root)).empty());
+    assert(!registry.execute(take(closing.at(0)), target));
+    std::puts("PASS module tool command, frozen dynamic text, actual Root reuse/adoption, close and stale target");
+}
 int main()
 {
     auto created = object::ObjectMessageQueue::create(128);
     assert(created);
     auto messages = std::move(*created);
+    toolCommandFactory(messages.dispatcherRef());
     reviewWithoutHost(messages);
     originalWindowCommand(messages);
     recoveryDeclaration();

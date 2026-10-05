@@ -97,7 +97,7 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/EditorError.hpp
     DESTINATION include/lux/engine/editor COMPONENT lux_engine_editor_contracts)
 install(FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/views/ViewInfo.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/views/ViewContent.hpp
     DESTINATION include/lux/engine/editor/views COMPONENT lux_engine_editor_contracts)
 install(FILES ${LUX_GENERATE_HEADER_DIR}/lux/engine/editor/editing/history_visibility.h
     DESTINATION include/lux/engine/editor/editing COMPONENT lux_engine_edit_history)

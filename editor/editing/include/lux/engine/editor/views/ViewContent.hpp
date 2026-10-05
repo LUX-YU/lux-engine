@@ -3,9 +3,6 @@
 #include <lux/engine/editor/sessions/SessionId.hpp>
 #include <vector>
 #include <optional>
-#include <cstdint>
-#include <limits>
-#include <string>
 
 namespace lux::ui
 {
@@ -14,17 +11,6 @@ namespace lux::ui
 
 namespace lux::editor::views
 {
-    struct ViewId final
-    {
-        std::uint64_t domain{};
-        std::uint32_t slot{std::numeric_limits<std::uint32_t>::max()};
-        std::uint64_t generation{};
-        [[nodiscard]] bool valid() const noexcept
-        {
-            return domain && generation;
-        }
-        friend bool operator==(ViewId, ViewId) = default;
-    };
     using ViewTypeIdView = lux::cxx::StableNameIdView<lux::ui::PaneTypeIdTag>;
     using ViewTypeId = lux::cxx::StableNameId<lux::ui::PaneTypeIdTag>;
     struct ViewRestoreKeyTag final
@@ -54,14 +40,5 @@ namespace lux::editor::views
             return has_primary;
         }
         friend bool operator==(const ViewContent&, const ViewContent&) = default;
-    };
-    struct ViewInfo final
-    {
-        ViewId id;
-        ViewTypeId type;
-        ViewRestoreKey restore_key;
-        std::string title;
-        bool visible{}, focused{};
-        ViewContent content;
     };
 } // namespace lux::editor::views

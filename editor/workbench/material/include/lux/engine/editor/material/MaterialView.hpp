@@ -6,7 +6,7 @@
 #include <lux/engine/editor/material/MaterialPreview.hpp>
 #include <lux/engine/editor/persistence/DerivedArtifact.hpp>
 #include <lux/engine/editor/views/CameraNavigation.hpp>
-#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/views/ViewContent.hpp>
 #include <lux/engine/editor/workspace/WorkspaceValues.hpp>
 #include <lux/engine/ui/Pane.hpp>
 

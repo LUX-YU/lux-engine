@@ -36,18 +36,18 @@ manifest. Catalog replacement does not replace a live window's codec. The old Ho
 Holding a shared allocation does not restore a closed SessionId. Services and views keep their original
 completion, source-stamp, publication and retirement duties.
 
-## Remaining M6 lifecycle regression migration
+## Window ownership and close preparation
 
-No production tool or lux_editor link closure imports view_host. The remaining view_host target provides
-only the old lifecycle protocol and its dedicated regression consumer until those assertions are migrated.
-It owns its IViewHost/ViewError headers directly; the ViewFactory definitions and view_api target/package
-are removed. No replacement alias or forwarding package is provided.
+ViewHost, IViewHost, DetachedView, their second identity table and request queue are removed, together
+with their headers, target and installation entries. A complete Pane owns its connections. A standard
+unique owner carries the original code pin; successful Root composition transfers exactly that owner
+into the LuxObject relation. Callback and draw-time intents use the existing Root safe-point protocol.
 
-The remaining tests cover prepared batch ownership, callback deferral, content associations, permanent
-close refusal and explicit retry. These tests are not an alternative product path. Their deletion requires
-matching behavior on the actual replacement owners. The original layout preflight, failed second factory,
-unchanged visibility/docking, extra-window retention and capture assertions now run in composition.cpp
-through UiRegistry and Root, including the installed composition consumer.
+Lifecycle, batch failure, stale identity, content association, modal and code-lifetime assertions now
+exercise Root, UiRegistry and their installed consumers. The actual Application regression also verifies
+permanent close refusal: it retains the owning diagnostic and stops the current intent; an explicit new
+request retries. BUSY keeps the intent pending. Reclamation still uses Object's owner safe point.
+This does not certify the remaining EC4 domain-service and product-close policy migration.
 
 desktop_shell supplies platform input, Root, DrawData and the existing UI rendering path. It does not own
 author content or drive a second SceneRuntime. DrawData resource uses are fixed before view maintenance

@@ -1076,13 +1076,6 @@
       "actual_cmake_target": "lux_editor"
     },
     {
-      "name": "view_host",
-      "path": "editor/workbench/desktop",
-      "first_phase": "P10",
-      "dependencies": [],
-      "actual_cmake_target": "view_host"
-    },
-    {
       "name": "flow_ui",
       "path": "editor/workbench/flow",
       "first_phase": "P10",
@@ -1147,12 +1140,12 @@
         "lux/engine/editor/contracts/"
       ],
       "public_headers": [
-        "lux/engine/editor/views/ViewInfo.hpp",
+        "lux/engine/editor/views/ViewContent.hpp",
         "lux/engine/editor/EditorError.hpp",
         "lux/engine/editor/sessions/SessionId.hpp"
       ],
       "files": [
-        "editor/editing/include/lux/engine/editor/views/ViewInfo.hpp",
+        "editor/editing/include/lux/engine/editor/views/ViewContent.hpp",
         "editor/editing/include/lux/engine/editor/EditorError.hpp",
         "editor/editing/include/lux/engine/editor/sessions/SessionId.hpp"
       ]
@@ -5210,7 +5203,7 @@
       "cstdint",
       "string",
       "utility",
-      "lux/engine/editor/views/ViewInfo.hpp",
+      "lux/engine/editor/views/ViewContent.hpp",
       "lux/engine/editor/workspace/WorkspaceValues.hpp",
       "lux/engine/editor/workspace/DockLayout.hpp",
       "lux/engine/editor/workspace/LayoutPlan.hpp",
@@ -5303,7 +5296,7 @@
       "cstdint",
       "string",
       "utility",
-      "lux/engine/editor/views/ViewInfo.hpp",
+      "lux/engine/editor/views/ViewContent.hpp",
       "filesystem",
       "charconv",
       "lux/engine/editor/storage/FilePublication.hpp",
@@ -5332,214 +5325,11 @@
       "shell32"
     ]
   },
-  "view_host": {
-    "direct": [
-      "layout_model",
-      "editor_commands",
-      "ui",
-      "editor_contracts"
-    ],
-    "closure": {
-      "Eigen3::Eigen": {
-        "path": "."
-      },
-      "Vulkan::Headers": {
-        "path": "."
-      },
-      "description": {
-        "path": "modules/resource/description"
-      },
-      "editor_contracts": {
-        "path": "editor/editing"
-      },
-      "glfw": {
-        "path": "."
-      },
-      "identity": {
-        "path": "modules/resource/identity"
-      },
-      "imgui::core": {
-        "path": "modules/function/ui"
-      },
-      "layout_model": {
-        "path": "editor/authoring/layout"
-      },
-      "lux::cxx::binary": {
-        "path": "."
-      },
-      "lux::cxx::compile_time": {
-        "path": "."
-      },
-      "lux::cxx::concurrent": {
-        "path": "modules/function/render/client"
-      },
-      "lux::cxx::container": {
-        "imported": true
-      },
-      "lux::cxx::core": {
-        "path": "."
-      },
-      "lux::cxx::memory": {
-        "imported": true
-      },
-      "math": {
-        "path": "modules/core/math"
-      },
-      "nfd::nfd": {
-        "path": "."
-      },
-      "object": {
-        "path": "modules/core/object"
-      },
-      "render_client": {
-        "path": "modules/function/render/client"
-      },
-      "script_core": {
-        "path": "modules/function/script/core"
-      },
-      "semantic": {
-        "path": "modules/core/semantic"
-      },
-      "serialization": {
-        "path": "modules/core/serialization"
-      },
-      "stduuid": {
-        "path": "."
-      },
-      "type_info": {
-        "path": "modules/core/type_info"
-      },
-      "ui": {
-        "path": "modules/function/ui"
-      },
-      "ui_imgui_backend": {
-        "path": "modules/function/ui"
-      },
-      "window": {
-        "path": "modules/platform/window"
-      },
-      "ui_input": {
-        "path": "modules/function/ui"
-      },
-      "editor_commands": {
-        "path": "editor/activities/commands"
-      },
-      "edit_sessions": {
-        "path": "editor/editing"
-      },
-      "edit_history": {
-        "path": "editor/editing"
-      },
-      "services": {
-        "path": "modules/core/services"
-      }
-    },
-    "native_libraries": [
-      "comctl32"
-    ],
-    "headers": [
-      "algorithm",
-      "any",
-      "atomic",
-      "chrono",
-      "lux/cxx/compile_time/expected.hpp",
-      "lux/engine/editor/desktop/DesktopError.hpp",
-      "lux/engine/editor/desktop/DesktopShell.hpp",
-      "lux/engine/editor/desktop/Presentation.hpp",
-      "lux/engine/editor/desktop/ViewHost.hpp",
-      "lux/engine/editor/desktop/WindowInput.hpp",
-      "lux/engine/editor/desktop/WindowOutput.hpp",
-      "lux/engine/editor/desktop/detail/UiFrame.hpp",
-      "lux/engine/editor/desktop/detail/UiRenderSyncStage.hpp",
-      "lux/engine/editor/views/IViewHost.hpp",
-      "lux/engine/input/InputSnapshot.hpp",
-      "lux/engine/process/CompletionWork.hpp",
-      "lux/engine/scene/RenderFeatureSceneBinding.hpp",
-      "lux/engine/scene/RenderResources.hpp",
-      "lux/engine/scene/RenderSyncStage.hpp",
-      "lux/engine/scene/RenderSystem.hpp",
-      "lux/engine/scene/RenderSystemConfiguration.hpp",
-      "lux/engine/scene/SceneDescriptionBuilder.hpp",
-      "lux/engine/scene/SceneInstanceId.hpp",
-      "lux/engine/scene/SceneRuntime.hpp",
-      "lux/engine/ui/DrawData.hpp",
-      "lux/engine/ui/Root.hpp",
-      "lux/engine/ui/rendering/RenderFeature.hpp",
-      "lux/engine/window/LuxWindow.hpp",
-      "optional",
-      "string_view",
-      "lux/engine/editor/desktop/CommandMenu.hpp",
-      "lux/engine/editor/commands/CommandRegistry.hpp",
-      "lux/engine/ui/Menu.hpp",
-      "lux/engine/object/ObjectEvent.hpp",
-      "lux/cxx/core/move_only_function.hpp",
-      "lux/cxx/compile_time/TypeToken.hpp",
-      "span",
-      "map",
-      "lux/cxx/core/function_ref.hpp",
-      "lux/engine/editor/workspace/LayoutPlan.hpp",
-      "lux/engine/ui/Docking.hpp",
-      "lux/engine/editor/desktop/ReviewView.hpp",
-      "lux/engine/ui/Controls.hpp",
-      "lux/engine/ui/Layout.hpp",
-      "unordered_map",
-      "unordered_set",
-      "lux/engine/editor/sessions/SessionId.hpp",
-      "lux/engine/editor/desktop/ViewCommands.hpp",
-      "lux/engine/editor/workbench/CommandSupport.hpp",
-      "lux/engine/object/CodeLease.hpp",
-      "exception",
-      "lux/engine/editor/desktop/ContentRouting.hpp",
-      "lux/engine/editor/workbench/DockLayoutMapping.hpp",
-      "lux/engine/editor/views/ViewError.hpp",
-      "lux/engine/ui/Pane.hpp",
-      "memory",
-      "utility",
-      "lux/engine/editor/views/ViewInfo.hpp"
-    ],
-    "prefixes": [],
-    "test_headers": {
-      "editor/workbench/desktop/test/host.cpp": [
-        "algorithm",
-        "cassert",
-        "cstdio",
-        "lux/engine/editor/desktop/ViewHost.hpp",
-        "lux/engine/ui/Element.hpp",
-        "array",
-        "source_location",
-        "lux/engine/editor/desktop/ReviewView.hpp"
-      ]
-    },
-    "files": [
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/DesktopError.hpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/DesktopShell.hpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/Presentation.hpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/ViewHost.hpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/WindowInput.hpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/WindowOutput.hpp",
-      "editor/workbench/desktop/pinclude/lux/engine/editor/desktop/detail/UiFrame.hpp",
-      "editor/workbench/desktop/pinclude/lux/engine/editor/desktop/detail/UiRenderSyncStage.hpp",
-      "editor/workbench/desktop/src/DesktopShell.cpp",
-      "editor/workbench/desktop/src/Presentation.cpp",
-      "editor/workbench/desktop/src/UiRenderSyncStage.cpp",
-      "editor/workbench/desktop/src/ViewHost.cpp",
-      "editor/workbench/desktop/src/WindowInput.cpp",
-      "editor/workbench/desktop/src/WindowOutput.cpp",
-      "editor/workbench/desktop/test/host.cpp",
-      "editor/workbench/desktop/include/lux/engine/editor/views/IViewHost.hpp",
-      "editor/workbench/desktop/include/lux/engine/editor/views/ViewError.hpp"
-    ],
-    "project_include_dirs": [
-      "editor/workbench/sinclude",
-      "editor/workbench/desktop/sinclude"
-    ]
-  },
   "desktop_shell": {
     "direct": [
       "input",
       "scene_render",
       "ui_rendering",
-      "view_host",
       "window",
       "editor_composition",
       "workspace_store"
@@ -5842,9 +5632,6 @@
       "ui_rendering": {
         "path": "modules/function/ui/rendering"
       },
-      "view_host": {
-        "path": "editor/workbench/desktop"
-      },
       "visual": {
         "path": "engine/domain/simulation/ecs/visual"
       },
@@ -5908,12 +5695,10 @@
       "lux/engine/editor/desktop/DesktopError.hpp",
       "lux/engine/editor/desktop/DesktopShell.hpp",
       "lux/engine/editor/desktop/Presentation.hpp",
-      "lux/engine/editor/desktop/ViewHost.hpp",
       "lux/engine/editor/desktop/WindowInput.hpp",
       "lux/engine/editor/desktop/WindowOutput.hpp",
       "lux/engine/editor/desktop/detail/UiFrame.hpp",
       "lux/engine/editor/desktop/detail/UiRenderSyncStage.hpp",
-      "lux/engine/editor/views/IViewHost.hpp",
       "lux/engine/input/InputSnapshot.hpp",
       "lux/engine/process/CompletionWork.hpp",
       "lux/engine/scene/RenderFeatureSceneBinding.hpp",
@@ -5960,28 +5745,15 @@
       "lux/engine/object/CodeLease.hpp",
       "exception",
       "lux/engine/editor/workbench/DockLayoutMapping.hpp",
-      "lux/engine/editor/views/ViewError.hpp",
       "lux/engine/ui/Pane.hpp",
       "lux/engine/editor/desktop/UiRegistry.hpp"
     ],
     "prefixes": [],
-    "test_headers": {
-      "editor/workbench/desktop/test/host.cpp": [
-        "algorithm",
-        "cassert",
-        "cstdio",
-        "lux/engine/editor/desktop/ViewHost.hpp",
-        "lux/engine/ui/Element.hpp",
-        "array",
-        "source_location",
-        "lux/engine/editor/desktop/ReviewView.hpp"
-      ]
-    },
+    "test_headers": {},
     "files": [
       "editor/workbench/desktop/include/lux/engine/editor/desktop/DesktopError.hpp",
       "editor/workbench/desktop/include/lux/engine/editor/desktop/DesktopShell.hpp",
       "editor/workbench/desktop/include/lux/engine/editor/desktop/Presentation.hpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/ViewHost.hpp",
       "editor/workbench/desktop/include/lux/engine/editor/desktop/WindowInput.hpp",
       "editor/workbench/desktop/include/lux/engine/editor/desktop/WindowOutput.hpp",
       "editor/workbench/desktop/pinclude/lux/engine/editor/desktop/detail/UiFrame.hpp",
@@ -5989,10 +5761,8 @@
       "editor/workbench/desktop/src/DesktopShell.cpp",
       "editor/workbench/desktop/src/Presentation.cpp",
       "editor/workbench/desktop/src/UiRenderSyncStage.cpp",
-      "editor/workbench/desktop/src/ViewHost.cpp",
       "editor/workbench/desktop/src/WindowInput.cpp",
       "editor/workbench/desktop/src/WindowOutput.cpp",
-      "editor/workbench/desktop/test/host.cpp",
       "editor/workbench/desktop/include/lux/engine/editor/desktop/WorkspaceActions.hpp",
       "editor/workbench/desktop/src/WorkspaceActions.cpp"
     ]
@@ -6732,7 +6502,7 @@
       "lux/engine/object/CodeLease.hpp",
       "lux/engine/editor/desktop/UiRegistry.hpp",
       "lux/engine/ui/Attachment.hpp",
-      "lux/engine/editor/views/ViewInfo.hpp",
+      "lux/engine/editor/views/ViewContent.hpp",
       "lux/engine/editor/desktop/UiError.hpp",
       "lux/engine/editor/workspace/WorkspaceValues.hpp"
     ],
@@ -7342,7 +7112,7 @@
       "lux/engine/object/CodeLease.hpp",
       "lux/engine/editor/desktop/UiRegistry.hpp",
       "lux/engine/editor/desktop/UiError.hpp",
-      "lux/engine/editor/views/ViewInfo.hpp",
+      "lux/engine/editor/views/ViewContent.hpp",
       "lux/engine/editor/workspace/WorkspaceValues.hpp",
       "lux/engine/ui/Pane.hpp",
       "lux/cxx/core/move_only_function.hpp"
@@ -7956,7 +7726,7 @@
       "lux/engine/object/CodeLease.hpp",
       "lux/engine/editor/desktop/UiRegistry.hpp",
       "lux/engine/editor/desktop/UiError.hpp",
-      "lux/engine/editor/views/ViewInfo.hpp",
+      "lux/engine/editor/views/ViewContent.hpp",
       "lux/engine/editor/workspace/WorkspaceValues.hpp",
       "lux/engine/ui/Pane.hpp",
       "lux/cxx/core/move_only_function.hpp"
@@ -8387,8 +8157,7 @@
       "flow_module",
       "editor_storage",
       "material_module",
-      "scene_module",
-      "view_host"
+      "scene_module"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -9309,9 +9078,6 @@
       "ui_rendering": {
         "path": "modules/function/ui/rendering"
       },
-      "view_host": {
-        "path": "editor/workbench/desktop"
-      },
       "visual": {
         "path": "engine/domain/simulation/ecs/visual"
       },
@@ -9478,8 +9244,7 @@
       "lux/engine/editor/extensions/EditorExtension.hpp",
       "lux/engine/editor/flowforge/FlowModule.hpp",
       "lux/engine/editor/material/MaterialModule.hpp",
-      "lux/engine/editor/scene/SceneModule.hpp",
-      "lux/engine/editor/desktop/ViewHost.hpp"
+      "lux/engine/editor/scene/SceneModule.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -9571,7 +9336,6 @@
     ]
   },
   "p10_targets": [
-    "view_host",
     "desktop_shell",
     "editor_widgets",
     "scene_ui",
@@ -12755,15 +12519,6 @@
         "role": "TEST",
         "capabilities": [
           "CPU"
-        ],
-        "path": "editor/workbench/desktop"
-      },
-      "view_host": {
-        "layer": "E3",
-        "role": "UI",
-        "capabilities": [
-          "CPU",
-          "GUI"
         ],
         "path": "editor/workbench/desktop"
       },
@@ -16970,7 +16725,7 @@
       "editor/editing/include/lux/engine/editor/sessions/SessionStore.hpp": [
         "edit_sessions"
       ],
-      "editor/editing/include/lux/engine/editor/views/ViewInfo.hpp": [
+      "editor/editing/include/lux/engine/editor/views/ViewContent.hpp": [
         "editor_contracts"
       ],
       "editor/editing/src/history/EditHistory.cpp": [
@@ -17036,20 +16791,11 @@
       "editor/workbench/desktop/include/lux/engine/editor/desktop/Presentation.hpp": [
         "desktop_shell"
       ],
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/ViewHost.hpp": [
-        "view_host"
-      ],
       "editor/workbench/desktop/include/lux/engine/editor/desktop/WindowInput.hpp": [
         "desktop_shell"
       ],
       "editor/workbench/desktop/include/lux/engine/editor/desktop/WindowOutput.hpp": [
         "desktop_shell"
-      ],
-      "editor/workbench/desktop/include/lux/engine/editor/views/IViewHost.hpp": [
-        "view_host"
-      ],
-      "editor/workbench/desktop/include/lux/engine/editor/views/ViewError.hpp": [
-        "view_host"
       ],
       "editor/workbench/desktop/pinclude/lux/engine/editor/desktop/detail/UiFrame.hpp": [
         "desktop_shell"
@@ -17066,17 +16812,11 @@
       "editor/workbench/desktop/src/UiRenderSyncStage.cpp": [
         "desktop_shell"
       ],
-      "editor/workbench/desktop/src/ViewHost.cpp": [
-        "view_host"
-      ],
       "editor/workbench/desktop/src/WindowInput.cpp": [
         "desktop_shell"
       ],
       "editor/workbench/desktop/src/WindowOutput.cpp": [
         "desktop_shell"
-      ],
-      "editor/workbench/desktop/test/host.cpp": [
-        "editor_view_host_test"
       ],
       "editor/workbench/desktop/test/lifecycle.cpp": [
         "editor_detached_views_test"
@@ -18948,7 +18688,6 @@
         "editor_composition"
       ],
       "editor/workbench/sinclude/lux/engine/editor/workbench/CommandSupport.hpp": [
-        "view_host",
         "project_ui",
         "project_tools_ui",
         "tasks_ui",
@@ -19821,7 +19560,7 @@
       "lux/engine/editor/desktop/UiError.hpp",
       "lux/engine/editor/desktop/UiRegistry.hpp",
       "lux/engine/editor/desktop/ViewCommands.hpp",
-      "lux/engine/editor/views/ViewInfo.hpp",
+      "lux/engine/editor/views/ViewContent.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/editor/workbench/DockLayoutMapping.hpp",
       "lux/engine/editor/workspace/DockLayout.hpp",

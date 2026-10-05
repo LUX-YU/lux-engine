@@ -25,8 +25,8 @@ encoded input inside the Session gate without rebuilding controls in Root's call
 restores the form in ordinary maintenance. Physical Pane reclamation uses the Object dispatcher safe point
 before the borrowed infrastructure can be destroyed.
 
-These formal factories do not invoke the legacy DetachedView constructors. Their remaining Application and
-legacy test consumers are still scheduled for removal at EC4 M6; the product Host cutover is not complete.
+All factories and production consumers now use standard unique Pane owners and Root composition.
+The old DetachedView/ViewHost protocols and their installation entries are removed.
 
 ProjectCreation, Settings, Results and Workspace also expose real UiDescriptor factories. They borrow the
 existing typed query/request providers (and ProjectStorage/PluginManager where needed), validate the complete
@@ -46,5 +46,5 @@ The receiver must remain callable for the lifetime of its borrowing window. No n
 asset IO is executed during construction. Import browse carries the current Root PaneHandle, including
 its generation; a receiver must retain that identity when delivering a later result. `requestBrowse` and
 `requestOpen` report intent delivery, not acceptance or completion of an asynchronous business operation.
-Application still uses legacy factories pending the joint M5/M6 product cutover. This construction closure
-is not evidence that ViewHost, the legacy settings protocol or the product close workflow has been removed.
+Application uses these same factories. The legacy settings protocol and remaining domain-specific
+product lifecycle policy still require their designated EC4 migration.

@@ -36,7 +36,7 @@ extern "C" PROBE_EXPORT const extensions::EditorExtensionExports* lux_editor_exp
 #elif PROBE_REJECT == 9
         value.editor_sdk_abi = "incompatible";
 #else
-        value.counts.views = 257;
+        value.counts.ui = 257;
 #endif
         return value;
     }();

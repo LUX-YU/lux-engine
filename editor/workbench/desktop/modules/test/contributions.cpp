@@ -18,6 +18,38 @@ namespace
         assert(value);
         return std::move(*value);
     }
+    using CreateWindow =
+        cxx::move_only_function<desktop::UiResult<std::unique_ptr<ui::Pane>>(const desktop::UiCreateInfo&)>;
+    constexpr std::array factory_dependencies{services::ServiceDependency{
+        services::ServiceNameView{"test.window.factory"},
+        1,
+        cxx::typeToken<CreateWindow>(),
+        services::EDependencyKind::BORROWED
+    }};
+    desktop::UiResult<std::unique_ptr<ui::Pane>> createWindow(
+        services::ServiceResolver& resolver,
+        const desktop::UiCreateInfo& input
+    )
+    {
+        auto callback = resolver.require<CreateWindow>(0);
+        assert(
+            callback && input.configuration.schema == 1 &&
+            input.configuration.bytes == std::vector<std::byte>{std::byte{9}}
+        );
+        return callback->get()(input);
+    }
+    constexpr desktop::UiDescriptor kWindow{
+        .type = views::ViewTypeIdView{"extension.window"},
+        .label = "Window",
+        .dependencies = factory_dependencies,
+        .create = createWindow
+    };
+    constexpr desktop::UiDescriptor kBatchWindow{
+        .type = views::ViewTypeIdView{"test.batch"},
+        .label = "Batch",
+        .dependencies = factory_dependencies,
+        .create = createWindow
+    };
     struct Binding final
     {
         unsigned value;
@@ -68,43 +100,36 @@ int originalCases()
     auto pending = empty;
     ContributionDraft draft;
     bool replace{};
-    draft.views.push_back(views::ViewFactoryEntry::create(
-        code,
-        views::ViewFactoryDescriptor{views::ViewTypeIdView{"extension.window"}, "Window", cxx::typeToken<Binding>()},
-        [&, code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+    CreateWindow factory = [&](const desktop::UiCreateInfo& input) -> desktop::UiResult<std::unique_ptr<ui::Pane>>
+    {
+        ++facts.old_calls;
+        if (!replace)
         {
-            ++facts.old_calls;
-            if (!replace)
-            {
-                replace = true;
-                assert(registry.enqueue(later));
-                const auto refused = registry.applyPending();
-                assert(!refused && refused.error().code == EContributionError::BUSY);
-                assert(registry.revision() == 1);
-            }
-            return views::DetachedView{code, std::make_unique<Window>(input.dispatcher(), input.paneId(), facts)};
+            replace = true;
+            assert(registry.enqueue(later));
+            const auto refused = registry.applyPending();
+            assert(!refused && refused.error().code == EContributionError::BUSY);
+            assert(registry.revision() == 1);
         }
-    ));
+        return std::make_unique<Window>(input.dispatcher, input.instance, facts);
+    };
+    assert(editor_context.scope().provide(services::ServiceNameView{"test.window.factory"}, factory));
+    draft.ui.push_back(desktop::UiEntry::bind<kWindow>(code));
     auto prepared = take(ContributionSnapshot::prepare(std::move(draft)));
     assert(registry.enqueue(prepared));
     assert(!prepared.valid());
     assert(registry.applyPending());
-    std::vector<views::DetachedView> views;
+    std::vector<std::unique_ptr<ui::Pane, object::ObjectDeleter>> views;
     auto batch = [&](const ContributionSnapshot& snapshot) -> ContributionResult<void>
     {
         for (const auto id : {"one", "two"})
         {
-            views::ViewFactoryInput input{
-                messages.dispatcherRef(),
-                ui::PaneId{id},
-                lux::object::CodeLease::builtin(),
-                cxx::typeToken<Binding>(),
-                std::make_shared<const Binding>(Binding{9})
-            };
-            views.push_back(take(snapshot.views().prepare(views::ViewTypeId{"extension.window"}, input)));
-            assert(!views.back().pane()->attachedRoot());
+            desktop::UiCreateInfo input{messages.dispatcherRef(), ui::PaneId{id}, {}, {1, {std::byte{9}}}};
+            auto handle = take(snapshot.ui().find(views::ViewTypeIdView{"extension.window"}));
+            views.push_back(take(editor_context.ui().create(handle, editor_context.scope(), input)));
+            assert(!views.back()->attachedRoot());
         }
-        assert(snapshot.views().entries().size() == 1 && facts.old_calls == 2);
+        assert(snapshot.ui().entries().size() == 1 && facts.old_calls == 2);
         return {};
     };
     assert(registry.withSnapshot(batch));
@@ -119,7 +144,7 @@ int originalCases()
     // The external pin retires under the publication guard, after all catalogs have changed.
     assert(registry.applyPending());
     assert(!facts.code_alive);
-    assert(registry.snapshot().views().entries().empty() && commands.snapshot().entries().empty());
+    assert(registry.snapshot().ui().entries().empty() && commands.snapshot().entries().empty());
     assert(registry.applyPending());
 
     // Notification runs only after publication. A nested request is retained for the next outer turn.
@@ -226,33 +251,23 @@ namespace
         attempt.context = &editor_context;
         ContributionDraft first;
         first.commands.push_back(command("A"));
+        CreateWindow factory = [&](const desktop::UiCreateInfo& input) -> desktop::UiResult<std::unique_ptr<ui::Pane>>
+        {
+            auto pinned_command = take(commands.snapshot().find(CommandIdView{"A"}));
+            attempt.run();
+            auto recursive = registry.applyPending();
+            assert(!recursive && recursive.error().code == EContributionError::BUSY);
+            // Only participating publication is held; independent publication and pinned queries work.
+            CommandRegistry independent;
+            assert(independent.publish(attempt.candidate));
+            CommandInvocation invocation;
+            assert(commands.query(pinned_command, invocation.query()));
+            return std::make_unique<ui::Pane>(input.dispatcher, input.instance, ui::PaneTypeId{"test.batch"}, "Batch");
+        };
+        assert(editor_context.scope().provide(services::ServiceNameView{"test.window.factory"}, factory));
         if (mode == "factory")
         {
-            first.views.push_back(views::ViewFactoryEntry::create(
-                lux::object::CodeLease::builtin(),
-                views::ViewFactoryDescriptor{views::ViewTypeIdView{"test.batch"}, "Batch", cxx::typeToken<Binding>()},
-                [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
-                {
-                    auto pinned_command = take(commands.snapshot().find(CommandIdView{"A"}));
-                    attempt.run();
-                    auto recursive = registry.applyPending();
-                    assert(!recursive && recursive.error().code == EContributionError::BUSY);
-                    // An independent registry and pinned query remain usable; only participating publication is held.
-                    CommandRegistry independent;
-                    assert(independent.publish(attempt.candidate));
-                    CommandInvocation invocation;
-                    assert(commands.query(pinned_command, invocation.query()));
-                    return views::DetachedView{
-                        lux::object::CodeLease::builtin(),
-                        std::make_unique<ui::Pane>(
-                            input.dispatcher(),
-                            input.paneId(),
-                            ui::PaneTypeId{"test.batch"},
-                            "Batch"
-                        )
-                    };
-                }
-            ));
+            first.ui.push_back(desktop::UiEntry::bind<kBatchWindow>(object::CodeLease::builtin()));
         }
         if (mode == "cleanup")
         {
@@ -278,15 +293,10 @@ namespace
             assert(registry.enqueue(next));
             auto batch = [&](const ContributionSnapshot& snapshot) -> ContributionResult<void>
             {
-                views::ViewFactoryInput input{
-                    messages.dispatcherRef(),
-                    ui::PaneId{"one"},
-                    lux::object::CodeLease::builtin(),
-                    cxx::typeToken<Binding>(),
-                    std::make_shared<const Binding>(Binding{9})
-                };
-                auto view = take(snapshot.views().prepare(views::ViewTypeId{"test.batch"}, input));
-                assert(!view.pane()->attachedRoot());
+                desktop::UiCreateInfo input{messages.dispatcherRef(), ui::PaneId{"one"}, {}, {1, {std::byte{9}}}};
+                auto handle = take(snapshot.ui().find(views::ViewTypeIdView{"test.batch"}));
+                auto view = take(editor_context.ui().create(handle, editor_context.scope(), input));
+                assert(!view->attachedRoot());
                 facts_correct = commands.revision() == 1 && registry.revision() == 1 &&
                                 bool(commands.snapshot().find(CommandIdView{"A"}));
                 return {};

@@ -1,10 +1,10 @@
 #include "ObjectQueue.hpp"
 #include "Probe.hpp"
+#include <array>
 #include <cassert>
 #include <fstream>
 #include <iostream>
 #include <lux/engine/dynamic_library/DynamicLibrary.hpp>
-#include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
@@ -126,7 +126,6 @@ int main(int argc, char** argv)
     std::weak_ptr<commands::CommandEntry> retired_entry;
     auto messages = take(object::ObjectMessageQueue::create(32));
     auto ui_root = take(ui::Root::create(messages.dispatcherRef()));
-    desktop::ViewHost host{*ui_root};
     lux::test::ObjectQueue store_messages;
     sessions::SessionStore store{store_messages.dispatcherRef(), 4};
     facts.sessions = &store;
@@ -144,7 +143,7 @@ int main(int argc, char** argv)
     auto& commands = editor_context.commands();
     extensions::ContributionRegistry catalog{messages.dispatcherRef(), editor_context};
     std::optional<sessions::InstalledSession> installed;
-    views::ViewId view_id;
+    ui::PaneHandle view_id;
     persistence::SaveId save_id;
     ui::Pane configuration_window{
         messages.dispatcherRef(),
@@ -194,7 +193,7 @@ int main(int argc, char** argv)
         foreign.join();
         assert(facts.activations == 0);
         auto activated = take(extension.activate({&session_activities, {}, &workbench}));
-        assert(facts.activations == 1 && activated.commands.size() == 1 && activated.views.size() == 1);
+        assert(facts.activations == 1 && activated.commands.size() == 1 && activated.ui.size() == 1);
         for (auto& pin : activated.code)
         {
             draft.code.push_back(std::move(pin));
@@ -203,9 +202,9 @@ int main(int argc, char** argv)
         {
             draft.commands.push_back(std::move(entry));
         }
-        for (auto& entry : activated.views)
+        for (auto& entry : activated.ui)
         {
-            draft.views.push_back(std::move(entry));
+            draft.ui.push_back(std::move(entry));
         }
         if (!with_configuration)
         {
@@ -295,42 +294,43 @@ int main(int argc, char** argv)
         auto active_command = take(current.commands().find(commands::CommandIdView{"qualification.activated"}));
         assert(commands.execute(active_command, invocation));
         assert(facts.activation_queries == 1 && facts.activation_executions == 1);
-        views::ViewFactoryInput free_input{
-            messages.dispatcherRef(),
-            ui::PaneId{"free"},
-            lux::object::CodeLease::builtin(),
-            cxx::typeToken<std::monostate>(),
-            std::make_shared<const std::monostate>()
-        };
-        auto free_window = take(current.views().prepare(views::ViewTypeId{"qualification.free"}, free_input));
-        assert(!free_window.pane()->attachedRoot());
-        const auto free_id = take(host.adopt(free_window, views::ViewRestoreKey{"free"})).id;
-        assert(take(host.describe(free_id)).type == views::ViewTypeId{"qualification.free"});
-        assert(host.focus(free_id) && host.close(free_id));
-        take(host.drain());
+        auto& windows = editor_context.ui();
+        auto free_handle = take(current.ui().find(views::ViewTypeIdView{"qualification.free"}));
+        auto free_window = take(
+            windows.create(free_handle, editor_context.scope(), {messages.dispatcherRef(), ui::PaneId{"free"}, {}, {}})
+        );
+        assert(!free_window->attachedRoot());
+        auto* free_pane = free_window.get();
+        assert(ui_root->addSubPane(std::move(free_window)));
+        const auto free_id = take(ui_root->identify(*free_pane));
+        assert(take(windows.describe(*ui_root)).front().type == views::ViewTypeId{"qualification.free"});
+        assert(ui_root->requestFocus(*free_pane));
+        auto close_free = take(windows.prepareClose(*ui_root, std::array{free_id}));
+        assert(ui_root->commit(close_free) && messages.collectRetired() == 1);
+        assert(!ui_root->findPane(free_id));
         assert(store.describe(installed->id()));
         facts.fail_query = true;
         auto contained = commands.query(handle, invocation.query());
         assert(!contained && contained.error().domain == "plugin.command.query");
         facts.fail_query = false;
-        views::ViewFactoryInput view_input{
-            messages.dispatcherRef(),
-            ui::PaneId{"external"},
-            lux::object::CodeLease::builtin(),
-            cxx::typeToken<probe::Binding>(),
-            std::make_shared<const probe::Binding>(probe::Binding{&facts})
-        };
-        auto detached = take(current.views().prepare(views::ViewTypeId{"qualification.window"}, view_input));
-        assert(!detached.pane()->attachedRoot());
-        view_id = take(host.adopt(detached, views::ViewRestoreKey{"external"})).id;
+        auto window_handle = take(current.ui().find(views::ViewTypeIdView{"qualification.window"}));
+        auto detached = take(windows.create(
+            window_handle,
+            editor_context.scope(),
+            {messages.dispatcherRef(), ui::PaneId{"external"}, {}, {}}
+        ));
+        assert(!detached->attachedRoot());
+        auto* pane = detached.get();
+        assert(ui_root->addSubPane(std::move(detached)));
+        view_id = take(ui_root->identify(*pane));
         save_id = take(saves.requestSave({installed->id()}));
         auto empty = take(extensions::ContributionSnapshot::prepare({}));
         assert(catalog.enqueue(empty) && catalog.applyPending());
     }
     assert(!weak_library.expired() && facts.unloaded == 0);
     assert(facts.activations_destroyed == 1);
-    assert(host.close(view_id));
-    take(host.drain());
+    auto close = take(editor_context.ui().prepareClose(*ui_root, std::array{view_id}));
+    assert(ui_root->commit(close) && messages.collectRetired() == 1);
     assert(facts.panes_destroyed == 1);
     assert(store.describe(installed->id())); // Closing a window never closes its content.
     assert(installed->close(take(store.describe(installed->id())).current));

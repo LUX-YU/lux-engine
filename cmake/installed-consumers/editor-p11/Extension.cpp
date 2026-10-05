@@ -75,8 +75,8 @@ namespace
     class Window final : public ui::Pane
     {
     public:
-        explicit Window(const views::ViewFactoryInput& input)
-            : Pane(input.dispatcher(), input.paneId(), ui::PaneTypeId{"qualification.window"}, "Extension")
+        explicit Window(const desktop::UiCreateInfo& input)
+            : Pane(input.dispatcher, input.instance, ui::PaneTypeId{"qualification.window"}, "Extension")
         {
         }
         ~Window() override
@@ -123,16 +123,13 @@ namespace
                 return DispatchReceipt{ImmediateCompletion{}};
             }
         ));
-        draft.views.push_back(views::ViewFactoryEntry::create(
-            code,
-            views::ViewFactoryDescriptor{
-                views::ViewTypeIdView{"qualification.window"},
-                "Extension",
-                cxx::typeToken<probe::Binding>()
-            },
-            [code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
-            { return views::DetachedView{code, std::make_unique<Window>(input)}; }
-        ));
+        static constexpr desktop::UiDescriptor window{
+            .type = views::ViewTypeIdView{"qualification.window"},
+            .label = "Extension",
+            .create = [](services::ServiceResolver&, const desktop::UiCreateInfo& input
+                      ) -> desktop::UiResult<std::unique_ptr<ui::Pane>> { return std::make_unique<Window>(input); }
+        };
+        draft.ui.push_back(desktop::UiEntry::bind<window>(code));
         return {};
     }
     struct Activation final
@@ -176,26 +173,21 @@ namespace
                 return commands::DispatchReceipt{commands::ImmediateCompletion{}};
             }
         ));
-        draft.views.push_back(views::ViewFactoryEntry::create(
-            code,
-            views::ViewFactoryDescriptor{
-                views::ViewTypeIdView{"qualification.free"},
-                "Free window",
-                cxx::typeToken<std::monostate>()
-            },
-            [state, code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+        static constexpr desktop::UiDescriptor free_window{
+            .type = views::ViewTypeIdView{"qualification.free"},
+            .label = "Free window",
+            .create = [](services::ServiceResolver&,
+                         const desktop::UiCreateInfo& input) -> desktop::UiResult<std::unique_ptr<ui::Pane>>
             {
-                return views::DetachedView{
-                    code,
-                    std::make_unique<ui::Pane>(
-                        input.dispatcher(),
-                        input.paneId(),
-                        ui::PaneTypeId{"qualification.free"},
-                        "Free window"
-                    )
-                };
+                return std::make_unique<ui::Pane>(
+                    input.dispatcher,
+                    input.instance,
+                    ui::PaneTypeId{"qualification.free"},
+                    "Free window"
+                );
             }
-        ));
+        };
+        draft.ui.push_back(desktop::UiEntry::bind<free_window>(code));
         return {};
     }
 } // namespace
@@ -209,9 +201,9 @@ extern "C" PROBE_EXPORT const extensions::EditorExtensionExports* lux_editor_exp
         sizeof(exports),
         extensions::kEditorExtensionVersion,
         extensions::kEditorExtensionAbi,
-        {.commands = 1, .sessions = 1, .views = 1, .reflection = 1, .services = 1},
+        {.commands = 1, .sessions = 1, .reflection = 1, .services = 1, .ui = 1},
         &contribute,
-        {.commands = 1, .views = 1},
+        {.commands = 1, .ui = 1},
         {.sessions = true, .workbench = true},
         &activate
     };

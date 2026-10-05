@@ -6,7 +6,6 @@
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/sessions/SessionFactory.hpp>
 #include <lux/engine/editor/settings/SettingsPage.hpp>
-#include <lux/engine/editor/views/ViewFactory.hpp>
 #include <lux/engine/object/LuxObject.hpp>
 
 namespace lux::editor::extensions
@@ -58,7 +57,6 @@ namespace lux::editor::extensions
         std::vector<std::shared_ptr<const desktop::UiEntry>> ui;
         std::vector<std::shared_ptr<commands::CommandEntry>> commands;
         std::vector<std::shared_ptr<sessions::SessionFactoryEntry>> sessions;
-        std::vector<std::shared_ptr<views::ViewFactoryEntry>> views;
         std::vector<settings::SettingsPage> settings;
     };
     class ContributionSnapshot final
@@ -72,7 +70,6 @@ namespace lux::editor::extensions
         [[nodiscard]] std::span<const std::shared_ptr<const services::ServiceEntry>> services() const noexcept;
         [[nodiscard]] const desktop::UiCatalog& ui() const noexcept;
         [[nodiscard]] const sessions::SessionFactorySnapshot& sessions() const noexcept;
-        [[nodiscard]] const views::ViewFactorySnapshot& views() const noexcept;
         [[nodiscard]] std::span<const settings::SettingsPage> settings() const noexcept;
         // Cold external-name boundary. Drafts and pages retain the resulting entry, not its name.
         [[nodiscard]] const settings::SettingsPage* findSetting(settings::SettingsIdView) const noexcept;

@@ -8,8 +8,7 @@ namespace lux::editor::extensions
     {
         bool validCounts(ContributionCounts counts) noexcept
         {
-            return counts.commands <= 256 && counts.sessions <= 256 && counts.views <= 256 &&
-                   counts.reflection <= 256 &&
+            return counts.commands <= 256 && counts.sessions <= 256 && counts.reflection <= 256 &&
                    counts.settings <= 256 && counts.services <= 256 && counts.ui <= 256;
         }
         lux::project::PluginResult<void> validateTable(
@@ -51,9 +50,8 @@ namespace lux::editor::extensions
             auto draft = std::move(incoming);
             const bool mismatch =
                 counts.commands != draft.commands.size() || counts.sessions != draft.sessions.size() ||
-                counts.reflection != draft.reflection.size() || counts.views != draft.views.size() ||
-                counts.settings != draft.settings.size() || counts.services != draft.services.size() ||
-                counts.ui != draft.ui.size();
+                counts.reflection != draft.reflection.size() || counts.settings != draft.settings.size() ||
+                counts.services != draft.services.size() || counts.ui != draft.ui.size();
             if (mismatch)
             {
                 return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "extension.counts"});
@@ -93,13 +91,6 @@ namespace lux::editor::extensions
                 if (!entry || !entry->usesCode(lease))
                 {
                     return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "session.code"});
-                }
-            }
-            for (const auto& entry : draft.views)
-            {
-                if (!entry || !entry->usesCode(lease))
-                {
-                    return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "view.code"});
                 }
             }
             for (const auto& item : draft.settings)

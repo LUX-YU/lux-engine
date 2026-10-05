@@ -10,8 +10,4 @@ namespace probe
         bool fail_query{};
         lux::editor::sessions::SessionStore* sessions{};
     };
-    struct Binding final
-    {
-        Facts* facts;
-    };
 }

@@ -24,14 +24,13 @@ component_include_directories(editor_extensions BUILD_TIME_EXPORT
 target_link_libraries(editor_extensions PUBLIC lux::engine::editor::editor_commands
     lux::engine::editor::editor_configuration
     lux::engine::editor::editor_composition
-    lux::engine::editor::session_factories lux::engine::editor::view_api
+    lux::engine::editor::session_factories
     lux::engine::project::project_plugins)
 component_add_transitive_commands(editor_extensions
     "find_package(lux-engine-editor-configuration REQUIRED COMPONENTS editor_configuration)"
     "find_package(lux-engine-editor-composition REQUIRED COMPONENTS editor_composition)"
     "find_package(lux-engine-editor-commands REQUIRED COMPONENTS editor_commands)"
     "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)"
-    "find_package(lux-engine-editor-view-api REQUIRED COMPONENTS view_api)"
     "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)")
 lux_classify_target(TARGET editor_extensions LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 

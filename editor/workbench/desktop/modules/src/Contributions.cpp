@@ -15,7 +15,6 @@ namespace lux::editor::extensions
         desktop::UiCatalog ui;
         commands::CommandRegistrySnapshot commands;
         sessions::SessionFactorySnapshot sessions;
-        views::ViewFactorySnapshot views;
         std::vector<settings::SettingsPage> settings;
         std::vector<std::pair<std::uint64_t, std::size_t>> setting_index;
         std::size_t capacity;
@@ -95,16 +94,6 @@ namespace lux::editor::extensions
                 sessions.error().detail
             });
         }
-        auto views = views::ViewFactorySnapshot::create(std::move(draft.views), capacity);
-        if (!views)
-        {
-            return cxx::unexpected(ContributionFailure{
-                EContributionError::INVALID_ARGUMENT,
-                "views",
-                static_cast<std::uint64_t>(views.error().code),
-                views.error().detail
-            });
-        }
         for (const auto& entry : draft.reflection)
         {
             const bool is_invalid_entry = !entry.code.valid() || (!entry.register_types && !entry.validate);
@@ -124,7 +113,6 @@ namespace lux::editor::extensions
             std::move(*ui),
             std::move(*commands),
             std::move(*sessions),
-            std::move(*views),
             std::move(draft.settings),
             std::move(setting_index),
             capacity
@@ -146,10 +134,6 @@ namespace lux::editor::extensions
     const sessions::SessionFactorySnapshot& ContributionSnapshot::sessions() const noexcept
     {
         return data_->sessions;
-    }
-    const views::ViewFactorySnapshot& ContributionSnapshot::views() const noexcept
-    {
-        return data_->views;
     }
     std::span<const settings::SettingsPage> ContributionSnapshot::settings() const noexcept
     {

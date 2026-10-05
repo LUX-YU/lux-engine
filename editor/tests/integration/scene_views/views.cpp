@@ -731,7 +731,7 @@ namespace
         auto scope = take(services.createScope());
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
-        assert(declared.ui.size() == 7 && declared.views.empty());
+        assert(declared.ui.size() == 7);
         assert(services.publish(std::move(declared.services)));
         assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
         assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, f.environment.components));
@@ -1395,7 +1395,6 @@ namespace
         auto declarations = take(module.contributions());
         assert(declarations.services.size() == 2 && declarations.ui.size() == 1);
         assert(declarations.sessions.size() == 1 && declarations.commands.size() == 1);
-        assert(declarations.views.empty()); // No legacy factory or activation is hidden in the module.
         declarations.services.push_back(ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin()));
         assert(services.publish(declarations.services));
         auto& scope = publication.scope;
@@ -1615,7 +1614,7 @@ namespace
         auto scope = take(services.createScope());
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
-        assert(declared.views.empty() && declared.sessions.size() == 1 && declared.commands.empty());
+        assert(declared.sessions.size() == 1 && declared.commands.empty());
         assert(declared.services.size() == 2 && declared.ui.size() == 7);
         assert(services.publish(std::move(declared.services)));
         assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
@@ -1800,7 +1799,7 @@ namespace
         auto& scope = publication.scope;
         auto module = take(extensions::EditorExtension::fromStatic(em::materialModule()));
         auto declared = take(module.contributions());
-        assert(declared.views.empty() && declared.sessions.size() == 1 && declared.commands.size() == 1);
+        assert(declared.sessions.size() == 1 && declared.commands.size() == 1);
         assert(declared.services.size() == 1 && declared.ui.size() == 1);
         declared.services.push_back(
             services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())

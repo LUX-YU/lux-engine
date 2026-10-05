@@ -43,6 +43,23 @@ namespace lux::editor::application
 } // namespace lux::editor::application
 namespace
 {
+    void checkUpdate(lux::editor::application::EditorApplication& app)
+    {
+        const auto updated = app.update();
+        if (!updated)
+        {
+            std::cerr << "Application update: " << updated.error().domain
+                      << " code=" << static_cast<unsigned>(updated.error().code) << " " << updated.error().message
+                      << '\n';
+            if (const auto* cause = std::any_cast<lux::services::ServiceFailure>(&updated.error().cause))
+            {
+                std::cerr << "Service: " << cause->domain << " code=" << static_cast<unsigned>(cause->code)
+                          << " domain_code=" << cause->domain_code << " " << cause->detail << '\n';
+            }
+        }
+        assert(updated);
+    }
+
     struct CloseFacts final
     {
         unsigned attempts{}, panes{}, elements{}, code{};
@@ -421,6 +438,7 @@ namespace
 } // namespace
 int main(int argc, char** argv)
 {
+    std::cout << std::unitbuf;
     using namespace lux;
     using namespace lux::editor;
     using namespace lux::editor::application;
@@ -554,7 +572,8 @@ int main(int argc, char** argv)
         );
         assert(direct);
         closeRefusal(**direct);
-        if (const auto* failure = ApplicationTestAccess::implementation(**direct).workspace_changes_.migrationFailure())
+        if (const auto* failure =
+                ApplicationTestAccess::implementation(**direct).workspace_changes_->migrationFailure())
         {
             std::cerr << "Initial migration: " << failure->domain << '\n';
             if (const auto* cause = std::any_cast<workspace::WorkspaceFailure>(&failure->cause))
@@ -576,12 +595,12 @@ int main(int argc, char** argv)
             assert(updated);
         }
         auto& owned = ApplicationTestAccess::implementation(**direct);
-        assert(owned.sessions_.size() == 2 && windowRecords(owned)->size() >= 5);
-        const auto session_ids = *owned.sessions_.snapshotIds();
+        assert(owned.sessions_->size() == 2 && windowRecords(owned)->size() >= 5);
+        const auto session_ids = *owned.sessions_->snapshotIds();
         std::vector<sessions::SessionInfo> content_before;
         for (const auto session : session_ids)
         {
-            content_before.push_back(*owned.sessions_.describe(session));
+            content_before.push_back(*owned.sessions_->describe(session));
         }
         const auto views_before = *windowRecords(owned);
         const auto revision_before = owned.commands_.revision();
@@ -616,7 +635,7 @@ int main(int argc, char** argv)
         }
         assert(!owned.dispatching_ && (*direct)->phase() == EApplicationPhase::RUNNING);
         assert(owned.commands_.revision() == revision_before);
-        assert(*owned.sessions_.snapshotIds() == session_ids);
+        assert(*owned.sessions_->snapshotIds() == session_ids);
         const auto views_after = *windowRecords(owned);
         assert(views_after.size() == views_before.size());
         for (std::size_t i{}; i < views_before.size(); ++i)
@@ -625,7 +644,7 @@ int main(int argc, char** argv)
         }
         for (const auto& before : content_before)
         {
-            const auto after = owned.sessions_.describe(before.id);
+            const auto after = owned.sessions_->describe(before.id);
             assert(after && after->current == before.current && after->observed == before.observed);
             assert(after->binding == before.binding && after->dirty == before.dirty);
             assert(after->admission == before.admission);
@@ -659,16 +678,16 @@ int main(int argc, char** argv)
         assert(shortcuts->descriptor().configuration->codec.encode(&shortcut_value, shortcut_bytes.bytes));
         personal.values.push_back(std::move(appearance_bytes));
         personal.values.push_back(std::move(shortcut_bytes));
-        auto accepted_settings = owned.user_settings_changes_.saveSettings("settings.toml", personal);
+        auto accepted_settings = owned.user_settings_changes_->saveSettings("settings.toml", personal);
         assert(accepted_settings);
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-        while (!owned.user_settings_changes_.settled())
+        while (!owned.user_settings_changes_->settled())
         {
             assert(std::chrono::steady_clock::now() < deadline);
             assert((*direct)->update());
             std::this_thread::yield();
         }
-        const auto& saved = owned.user_settings_changes_.publications().back();
+        const auto& saved = owned.user_settings_changes_->publications().back();
         assert(
             saved.ticket == *accepted_settings && saved.result &&
             std::holds_alternative<persistence::CommitReceipt>(*saved.result)
@@ -745,7 +764,7 @@ int main(int argc, char** argv)
     const auto recent_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (!impl.recent_projects_->publication())
     {
-        assert(app->update());
+        checkUpdate(*app);
         assert(std::chrono::steady_clock::now() < recent_deadline);
         std::this_thread::yield();
     }
@@ -762,7 +781,7 @@ int main(int argc, char** argv)
     assert(impl.recent_projects_->refresh());
     while (!impl.recent_projects_->failure())
     {
-        assert(app->update());
+        checkUpdate(*app);
         assert(std::chrono::steady_clock::now() < recent_deadline);
     }
     assert(impl.recent_projects_->failure()->domain == "recent.format" && impl.recent_projects_->entries().size() == 1);
@@ -772,21 +791,20 @@ int main(int argc, char** argv)
     assert(impl.recent_projects_->refresh());
     do
     {
-        assert(app->update());
+        checkUpdate(*app);
         assert(std::chrono::steady_clock::now() < recent_deadline);
     } while (impl.recent_projects_->failure() || !impl.recent_projects_->settled());
     // This fixture lives below the installation root. That root is readable, but cannot publish;
     // previously a case-sensitive dispatch mistake made this read look like an out-of-root rejection.
     const auto installation_probe =
-        impl.files_.resolve((root.parent_path() / "outside-user-root.txt").generic_string());
+        impl.files_->resolve((root.parent_path() / "outside-user-root.txt").generic_string());
     assert(installation_probe);
-    const auto rejected_write = impl.files_.publish({{1}, *installation_probe, {}});
+    const auto rejected_write = impl.files_->publish({{1}, *installation_probe, {}});
     assert(std::get<persistence::NotPublished>(rejected_write).failure.code ==
            persistence::EPersistenceError::UNSUPPORTED_TARGET);
     const auto outside_all_roots = config.installation.parent_path() /
                                    ("outside-publication-" + root.filename().string()) / "payload";
-    assert(impl.recent_projects_->entries().size() == 1 &&
-           !impl.files_.resolve(outside_all_roots.generic_string()));
+    assert(impl.recent_projects_->entries().size() == 1 && !impl.files_->resolve(outside_all_roots.generic_string()));
     std::cout << "Recent projects: real legacy-format read, one coordinator publication, malformed input preserves "
                  "file/list, explicit retry\n";
 
@@ -800,9 +818,9 @@ int main(int argc, char** argv)
     assert(close_recent && impl.desktop_->root().commit(*close_recent));
     for (int frame = 0; frame < 8; ++frame)
     {
-        assert(app->update());
+        checkUpdate(*app);
     }
-    assert(impl.sessions_.size() == 0);
+    assert(impl.sessions_->size() == 0);
     auto views = windowRecords(impl);
     assert(views && views->size() == 2);
     const auto hidden = views->front().handle;
@@ -829,36 +847,36 @@ int main(int argc, char** argv)
     {
         const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(15);
         while (
-            std::ranges::any_of(impl.workspace_changes_.publications(), [](const auto& item) { return !item.result; })
+            std::ranges::any_of(impl.workspace_changes_->publications(), [](const auto& item) { return !item.result; })
         )
         {
             assert(std::chrono::steady_clock::now() < limit);
-            assert(app->update());
+            checkUpdate(*app);
             std::this_thread::yield();
         }
-        for (const auto& report : impl.workspace_changes_.publications())
+        for (const auto& report : impl.workspace_changes_->publications())
         {
             assert(report.result && std::holds_alternative<persistence::CommitReceipt>(*report.result));
         }
     };
     assert(app->execute(commands::CommandId{"lux.editor.workspace"}));
-    assert(app->update());
+    checkUpdate(*app);
     assert(impl.executeWorkspaceIntent(lux::editor::project::SaveLayout{"Quality workspace"}));
     settle_workspace();
-    assert(impl.workspace_changes_.catalog().layouts.size() == 1);
-    const auto stored_id = impl.workspace_changes_.catalog().layouts.front().id;
-    auto stored = impl.workspace_.readLayout(stored_id);
+    assert(impl.workspace_changes_->catalog().layouts.size() == 1);
+    const auto stored_id = impl.workspace_changes_->catalog().layouts.front().id;
+    auto stored = impl.workspace_->readLayout(stored_id);
     assert(stored && stored->value.label == "Quality workspace");
     assert(impl.executeWorkspaceIntent(lux::editor::project::RenameLayout{stored_id, "Renamed"}));
     settle_workspace();
-    auto renamed = impl.workspace_.readLayout(stored_id);
+    auto renamed = impl.workspace_->readLayout(stored_id);
     assert(renamed && renamed->value.id == stored_id && renamed->value.label == "Renamed");
     assert(renamed->target.key == stored->target.key);
     assert(visibility(impl, views->front().handle, true));
     assert(impl.executeWorkspaceIntent(lux::editor::project::ApplyLayout{stored_id}));
     assert(!windowRecord(impl, views->front().handle)->visible);
     settle_workspace();
-    assert(impl.workspace_.readPreferences()->value.selected_layout == stored_id);
+    assert(impl.workspace_->readPreferences()->value.selected_layout == stored_id);
     const auto preferences_file = *config.user_directory / "lux/editor/projects" / uuids::to_string(id.uuid()) /
                                   ".lux/workspace/preferences.toml";
     const auto preferences_before = storage::readPublicationFile(preferences_file, 65536);
@@ -880,12 +898,12 @@ int main(int argc, char** argv)
     }
     assert(impl.executeWorkspaceIntent(lux::editor::project::RemoveLayout{stored_id}));
     settle_workspace();
-    assert(impl.workspace_changes_.catalog().layouts.empty());
+    assert(impl.workspace_changes_->catalog().layouts.empty());
     for (auto ticket :
          [&]
          {
              std::vector<persistence::WriteTicket> ids;
-             for (const auto& report : impl.workspace_changes_.publications())
+             for (const auto& report : impl.workspace_changes_->publications())
              {
                  ids.push_back(report.ticket);
              }
@@ -894,7 +912,7 @@ int main(int argc, char** argv)
     {
         assert(impl.executeWorkspaceIntent(lux::editor::project::AcknowledgeWorkspace{ticket}));
     }
-    assert(impl.workspace_changes_.publications().empty());
+    assert(impl.workspace_changes_->publications().empty());
     std::cout << "Workspace UI uses stable layout IDs and one publication coordinator; preference failure preserves UI "
                  "commit\n";
     const auto create_content = [&](const char* command)
@@ -908,13 +926,13 @@ int main(int argc, char** argv)
         while (true)
         {
             assert(std::chrono::steady_clock::now() < limit);
-            assert(app->update());
+            checkUpdate(*app);
             const auto status = app->openStatus(open);
             assert(status && !status->presentation_failure);
             if (status->view)
             {
                 const auto id = status->content.session;
-                assert(impl.sessions_.describe(id)->dirty);
+                assert(impl.sessions_->describe(id)->dirty);
                 assert(app->acknowledgeOpen(open));
                 return id;
             }
@@ -940,7 +958,7 @@ int main(int argc, char** argv)
             assert(view.previewEdit(edits) && view.commitEdit());
         }
     );
-    const auto save_material_stamp = impl.sessions_.describe(material_id)->current;
+    const auto save_material_stamp = impl.sessions_->describe(material_id)->current;
     assert(app->execute(
         commands::CommandId{"lux.editor.save-as"},
         commands::CommandInvocation{commands::SessionTarget{material_id, save_material_stamp}}
@@ -975,7 +993,7 @@ int main(int argc, char** argv)
         assert(question.answer(desktop::EReviewChoice::SAVE));
     };
     assert(impl.desktop_->root().withPane(impl.save_question_->view, choose_source));
-    assert(app->update());
+    checkUpdate(*app);
     assert(!impl.save_question_ && !impl.desktop_->root().findPane(save_window));
 
     const auto save_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
@@ -994,13 +1012,13 @@ int main(int argc, char** argv)
         !impl.content_saving_->reports().empty() && !impl.content_saving_->reports().back().failure &&
         impl.content_saving_->reports().back().result
     );
-    const auto saved_material = impl.sessions_.describe(material_id);
+    const auto saved_material = impl.sessions_->describe(material_id);
     assert(saved_material && !saved_material->dirty && saved_material->current == save_material_stamp);
     assert(saved_material->binding && impl.project_->asset(saved_material->binding->asset));
     assert(std::filesystem::exists(impl.project_->root() / "Content/Beginner/Material.source"));
     const auto reopened = app->open(impl.project_->reference(saved_material->binding->asset));
     assert(reopened);
-    assert(app->update());
+    checkUpdate(*app);
     const auto reopened_status = app->openStatus(*reopened);
     assert(reopened_status && reopened_status->content.session == material_id);
     assert(app->acknowledgeOpen(*reopened));
@@ -1008,7 +1026,7 @@ int main(int argc, char** argv)
     // Layouts prepare unbound windows. Only the independent recovery manifest opens author content.
     auto unbound_capture = impl.executeWorkspaceIntent(lux::editor::project::CaptureRecovery{});
     assert(!unbound_capture && unbound_capture.error().domain == "recovery.unbound");
-    assert(!impl.workspace_.readRecovery()); // Unsaved Flow prevented any partial manifest publication.
+    assert(!impl.workspace_->readRecovery()); // Unsaved Flow prevented any partial manifest publication.
     const auto material_window = *windowRecord(impl, material_view);
     auto current_layout =
         impl.editor_context_.ui().captureLayout(impl.desktop_->root(), layout_id, "Recovery qualification");
@@ -1050,9 +1068,9 @@ int main(int argc, char** argv)
         {views::ViewRestoreKey{"future-window"}, views::ViewTypeId{"future.provider"}, {{"future:opaque", false}}, 0}
     };
     recovery_manifest.opaque.push_back({"future-data", 4, {std::byte{5}, std::byte{9}}});
-    assert(impl.workspace_changes_.recordRecovery(recovery_manifest, "missing"));
+    assert(impl.workspace_changes_->recordRecovery(recovery_manifest, "missing"));
     settle_workspace();
-    auto recovery_before = workspace::encodeRecovery(impl.workspace_.readRecovery()->value);
+    auto recovery_before = workspace::encodeRecovery(impl.workspace_->readRecovery()->value);
     assert(recovery_before);
     assert(impl.executeWorkspaceIntent(lux::editor::project::RestoreRecovery{}));
     auto while_catalog_busy = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void>
@@ -1066,7 +1084,7 @@ int main(int argc, char** argv)
     while (std::ranges::any_of(impl.restoration_->items(), [](const auto& entry) { return !entry.result; }))
     {
         assert(std::chrono::steady_clock::now() < recovery_deadline);
-        assert(app->update());
+        checkUpdate(*app);
     }
     assert(
         impl.restoration_->items()[0].result->has_value() && **impl.restoration_->items()[0].result == material_view
@@ -1075,7 +1093,7 @@ int main(int argc, char** argv)
         impl.restoration_->items()[1].result->has_value() && **impl.restoration_->items()[1].result == recovered_view
     );
     assert(impl.restoration_->items()[2].result && !*impl.restoration_->items()[2].result);
-    assert(impl.sessions_.size() == 2 && impl.sessions_.describe(material_id)->current == saved_material->current);
+    assert(impl.sessions_->size() == 2 && impl.sessions_->describe(material_id)->current == saved_material->current);
     assert(windowRecords(impl)->size() == recovery_windows->size());
     auto check_recovery = [&](ui::Pane& pane)
     {
@@ -1084,11 +1102,11 @@ int main(int argc, char** argv)
         assert(material.state().camera.transform.translation.isApprox(camera_before.camera.transform.translation));
     };
     assert(impl.desktop_->root().withPane(recovered_view, check_recovery));
-    assert(*workspace::encodeRecovery(impl.workspace_.readRecovery()->value) == *recovery_before);
+    assert(*workspace::encodeRecovery(impl.workspace_->readRecovery()->value) == *recovery_before);
     assert(app->closeView(recovered_view));
     for (int i = 0; i < 10 && windowRecord(impl, recovered_view); ++i)
     {
-        assert(app->update());
+        checkUpdate(*app);
     }
     assert(!windowRecord(impl, recovered_view));
     std::cout << "Recovery uses an independent immutable manifest, keeps BUSY input, reuses exact windows and "
@@ -1110,7 +1128,7 @@ int main(int argc, char** argv)
     while (!(*material_compilation)->operation(compilation)->get().ready())
     {
         assert(std::chrono::steady_clock::now() < compile_deadline);
-        assert(app->update());
+        checkUpdate(*app);
     }
     assert((*material_compilation)->operation(compilation)->get().result());
     auto rename_material = [&]
@@ -1127,7 +1145,7 @@ int main(int argc, char** argv)
     };
     material_action([&](lux::editor::material::MaterialView& view) { assert(view.requestPublication()); });
     rename_material();
-    assert(app->update());
+    checkUpdate(*app);
     const auto publicationReports = [&]
     {
         auto reports = impl.content_saving_->artifactReports();
@@ -1143,11 +1161,11 @@ int main(int argc, char** argv)
     );
     assert(app->update() && publicationReports().back().admitted);
     rename_material(); // Already admitted work owns the older capture, not this live source.
-    const auto newer_material = impl.sessions_.describe(material_id);
+    const auto newer_material = impl.sessions_->describe(material_id);
     while (!publicationReports().back().terminal)
     {
         assert(std::chrono::steady_clock::now() < compile_deadline);
-        assert(app->update());
+        checkUpdate(*app);
     }
     const auto published_material = publicationReports().back();
     if (const auto* failure = std::get_if<EditorFailure>(&published_material.status))
@@ -1161,10 +1179,10 @@ int main(int argc, char** argv)
     assert(compiled_entry->compiled_source_digest == compiled_entry->source_digest);
     assert(impl.project_->catalogAsset(compiled_entry->id));
     assert(std::filesystem::exists(root / compiled_entry->cooked_path));
-    auto current_material = impl.sessions_.describe(material_id);
+    auto current_material = impl.sessions_->describe(material_id);
     assert(current_material->current == newer_material->current && current_material->dirty == newer_material->dirty);
     material_action([&](lux::editor::material::MaterialView& view) { assert(view.undo()); });
-    assert(impl.sessions_.describe(material_id)->current == saved_material->current);
+    assert(impl.sessions_->describe(material_id)->current == saved_material->current);
     std::cout
         << "Real compile intent publishes a readable versioned package; stale intent rejected and baseline unchanged\n";
 
@@ -1179,11 +1197,11 @@ int main(int argc, char** argv)
         assert(question.answer(desktop::EReviewChoice::SAVE));
     };
     assert(impl.desktop_->root().withPane(impl.save_question_->view, export_path));
-    assert(app->update());
+    checkUpdate(*app);
     while (!impl.content_saving_->pending().empty())
     {
         assert(std::chrono::steady_clock::now() < save_deadline);
-        assert(app->update());
+        checkUpdate(*app);
         std::this_thread::yield();
     }
     bool preview_visible{};
@@ -1202,10 +1220,10 @@ int main(int argc, char** argv)
             );
             assert(false && "Actual material preview did not become visible");
         }
-        assert(app->update());
+        checkUpdate(*app);
         material_action([&](lux::editor::material::MaterialView& view) { preview_visible = view.image().isValid(); });
     }
-    const auto after_copy = impl.sessions_.describe(material_id);
+    const auto after_copy = impl.sessions_->describe(material_id);
     assert(
         after_copy && after_copy->binding == saved_material->binding && after_copy->current == saved_material->current
     );
@@ -1217,26 +1235,27 @@ int main(int argc, char** argv)
     while (!impl.reloads_.back().result)
     {
         assert(std::chrono::steady_clock::now() < save_deadline);
-        assert(app->update());
+        checkUpdate(*app);
         std::this_thread::yield();
     }
     assert(*impl.reloads_.back().result);
-    const auto reloaded_material = impl.sessions_.describe(material_id);
+    const auto reloaded_material = impl.sessions_->describe(material_id);
     assert(reloaded_material && reloaded_material->current != after_copy->current && !reloaded_material->dirty);
     assert(reloaded_material->binding == after_copy->binding);
     std::cout << "Export Copy leaves the baseline intact; actual Reload keeps SessionId and replaces history\n";
     assert(app->execute(commands::CommandId{"lux.editor.content.results"}));
-    assert(app->update()); // Draw the installed result view, including save/reload and unbound content rows.
+    checkUpdate(*app); // Draw the installed result view, including save/reload and unbound content rows.
 
-    assert(impl.sessions_.size() == 2);
+    assert(impl.sessions_->size() == 2);
     assert(app->execute(
         commands::CommandId{"lux.editor.another-view"},
-        commands::CommandInvocation{commands::SessionTarget{material_id, impl.sessions_.describe(material_id)->current}}
+        commands::CommandInvocation{commands::SessionTarget{material_id, impl.sessions_->describe(material_id)->current}
+        }
     ));
     // The real command creates a second view under its existing dispatch protection, not a working copy.
-    assert(impl.sessions_.size() == 2);
-    const auto material_before = impl.sessions_.describe(material_id)->current;
-    const auto flow_before = impl.sessions_.describe(flow_id)->current;
+    assert(impl.sessions_->size() == 2);
+    const auto material_before = impl.sessions_->describe(material_id)->current;
+    const auto flow_before = impl.sessions_->describe(flow_id)->current;
     const auto answer = [&](desktop::EReviewChoice choice)
     {
         assert(impl.review_);
@@ -1252,17 +1271,17 @@ int main(int argc, char** argv)
     const auto first_review = *impl.review_;
     answer(desktop::EReviewChoice::CANCEL);
     assert(app->update() && app->phase() == EApplicationPhase::RUNNING);
-    assert(impl.sessions_.describe(material_id)->current == material_before);
-    assert(impl.sessions_.describe(flow_id)->current == flow_before);
-    assert(impl.sessions_.size() == 2);
+    assert(impl.sessions_->describe(material_id)->current == material_before);
+    assert(impl.sessions_->describe(flow_id)->current == flow_before);
+    assert(impl.sessions_->size() == 2);
     assert(!impl.desktop_->root().findPane(first_review));
     assert(app->requestExit() && app->update() && impl.review_);
     assert(*impl.review_ != first_review && !impl.desktop_->root().findPane(first_review));
     answer(desktop::EReviewChoice::CANCEL);
     assert(app->update() && app->phase() == EApplicationPhase::RUNNING);
-    assert(impl.sessions_.describe(material_id)->current == material_before);
-    assert(impl.sessions_.describe(flow_id)->current == flow_before);
-    assert(impl.sessions_.size() == 2);
+    assert(impl.sessions_->describe(material_id)->current == material_before);
+    assert(impl.sessions_->describe(flow_id)->current == flow_before);
+    assert(impl.sessions_->size() == 2);
     std::cout << "Root owns actual review windows; old handles stay invalid after same PaneId reuse\n";
     std::cout << "Actual new commands, shared content views and cancel exit preserve all author state\n";
     const auto choose_last = [&](desktop::EReviewChoice choice)
@@ -1270,7 +1289,7 @@ int main(int argc, char** argv)
         assert(impl.last_view_);
         auto choose = [&](ui::Pane& pane) { assert(static_cast<desktop::ReviewView&>(pane).answer(choice)); };
         assert(impl.desktop_->root().withPane(impl.last_view_->question, choose));
-        assert(app->update());
+        checkUpdate(*app);
     };
     std::vector<ui::PaneHandle> material_views;
     for (const auto& view : contentViews(impl, material_id))
@@ -1279,14 +1298,14 @@ int main(int argc, char** argv)
     }
     assert(material_views.size() == 2);
     assert(app->closeView(material_views.back()));
-    assert(!impl.last_view_ && impl.sessions_.describe(material_id)->current == material_before);
+    assert(!impl.last_view_ && impl.sessions_->describe(material_id)->current == material_before);
     assert(app->closeView(material_views.front()) && impl.last_view_);
     choose_last(desktop::EReviewChoice::CANCEL);
     assert(windowRecord(impl, material_views.front()));
     assert(app->closeView(material_views.front()));
     choose_last(desktop::EReviewChoice::KEEP_CONTENT);
     assert(!windowRecord(impl, material_views.front()));
-    assert(impl.sessions_.describe(material_id)->current == material_before);
+    assert(impl.sessions_->describe(material_id)->current == material_before);
     const auto shown_again = app->show(material_id);
     assert(shown_again && *shown_again != material_views.front());
     const auto flow_views = contentViews(impl, flow_id);
@@ -1294,7 +1313,7 @@ int main(int argc, char** argv)
     const auto flow_view_id = flow_views.front().handle;
     assert(app->closeView(flow_view_id));
     choose_last(desktop::EReviewChoice::CLOSE_CONTENT);
-    assert(impl.review_ && impl.sessions_.size() == 2);
+    assert(impl.review_ && impl.sessions_->size() == 2);
     auto choose_flow_source = [&](ui::Pane& pane)
     { assert(static_cast<desktop::ReviewView&>(pane).setText("Content/Beginner/Flow.source")); };
     assert(impl.desktop_->root().withPane(*impl.review_, choose_flow_source));
@@ -1303,13 +1322,13 @@ int main(int argc, char** argv)
     do
     {
         assert(std::chrono::steady_clock::now() < close_deadline);
-        assert(app->update());
+        checkUpdate(*app);
         assert(!impl.exit_failure_);
         std::this_thread::yield();
     } while (app->phase() != EApplicationPhase::RUNNING || !impl.content_saving_->pending().empty());
     assert(std::filesystem::exists(impl.project_->root() / "Content/Beginner/Flow.source"));
-    assert(!impl.sessions_.describe(flow_id) && !windowRecord(impl, flow_view_id));
-    assert(impl.sessions_.describe(material_id)->current == material_before);
+    assert(!impl.sessions_->describe(flow_id) && !windowRecord(impl, flow_view_id));
+    assert(impl.sessions_->describe(material_id)->current == material_before);
     std::cout << "Last-view Cancel/Keep/Close use real modals; closing one content preserves another\n";
 
     // Composite recovery reads two real, previously saved author sources. The window factory only
@@ -1335,7 +1354,7 @@ int main(int argc, char** argv)
             {lux::services::ServiceNameView{"lux.editor.sessions"},
              1,
              cxx::typeToken<sessions::SessionStore>(),
-             lux::services::EDependencyKind::BORROWED}
+             lux::services::EDependencyKind::SHARED}
         };
         const sessions::SessionKindIdView kinds[]{
             sessions::SessionKindIdView{"lux.editor.material"},
@@ -1354,11 +1373,11 @@ int main(int argc, char** argv)
         {
             assert(input.content.sessions.size() == 2 && input.content.primary == input.content.sessions[1]);
             auto refusing = resolver.require<bool>(0);
-            auto sessions = resolver.require<sessions::SessionStore>(1);
+            auto sessions = resolver.get<sessions::SessionStore>(1);
             assert(refusing && sessions);
             for (auto id : input.content.sessions)
             {
-                assert(sessions->get().describe(id));
+                assert((*sessions)->describe(id));
             }
             if (refusing->get())
             {
@@ -1398,9 +1417,9 @@ int main(int argc, char** argv)
         );
         const auto publish = [&]
         {
-            const auto stored = impl.workspace_.readRecovery();
+            const auto stored = impl.workspace_->readRecovery();
             assert(stored);
-            assert(impl.workspace_changes_.recordRecovery(composite, stored->target.expected_version));
+            assert(impl.workspace_changes_->recordRecovery(composite, stored->target.expected_version));
             settle_workspace();
         };
         publish();
@@ -1411,7 +1430,7 @@ int main(int argc, char** argv)
             while (!impl.restoration_->items().front().result)
             {
                 assert(std::chrono::steady_clock::now() < deadline);
-                assert(app->update());
+                checkUpdate(*app);
             }
         };
         recover();
@@ -1419,7 +1438,7 @@ int main(int argc, char** argv)
         assert(first_result.sources.size() == 2 && *first_result.result);
         const auto comparison = **first_result.result;
         const auto restored_flow = first_result.sources[1].session;
-        assert(restored_flow != flow_id && impl.sessions_.describe(restored_flow));
+        assert(restored_flow != flow_id && impl.sessions_->describe(restored_flow));
         const auto associated = windowRecord(impl, comparison);
         assert(
             associated && associated->content.sessions == (std::vector<sessions::SessionId>{material_id, restored_flow})
@@ -1427,7 +1446,7 @@ int main(int argc, char** argv)
         assert(associated->content.primary == restored_flow);
         assert(impl.captureRecovery());
         settle_workspace();
-        const auto captured = impl.workspace_.readRecovery();
+        const auto captured = impl.workspace_->readRecovery();
         const auto saved = std::ranges::find(
             captured->value.entries,
             views::ViewRestoreKey{"comparison"},
@@ -1442,7 +1461,7 @@ int main(int argc, char** argv)
             impl.editor_context_.ui().prepareClose(impl.desktop_->root(), std::span{&comparison, 1});
         assert(close_comparison && impl.desktop_->root().commit(*close_comparison));
         assert(!windowRecord(impl, comparison));
-        assert(impl.sessions_.describe(material_id) && impl.sessions_.describe(restored_flow));
+        assert(impl.sessions_->describe(material_id) && impl.sessions_->describe(restored_flow));
         publish();
         refuse_view = true;
         recover();
@@ -1450,15 +1469,15 @@ int main(int argc, char** argv)
         assert(rejected.sources.size() == 2 && rejected.result && !*rejected.result);
         for (const auto& source : rejected.sources)
         {
-            assert(source.stage == sessions::EOpenAssetStage::PUBLISHED && impl.sessions_.describe(source.session));
+            assert(source.stage == sessions::EOpenAssetStage::PUBLISHED && impl.sessions_->describe(source.session));
         }
         assert(impl.contributions_.enqueue(previous_catalog) && impl.contributions_.applyPending());
-        assert(impl.requestClose(impl.sessions_.describe(restored_flow)->current));
+        assert(impl.requestClose(impl.sessions_->describe(restored_flow)->current));
         while (app->phase() != EApplicationPhase::RUNNING)
         {
-            assert(app->update());
+            checkUpdate(*app);
         }
-        assert(!impl.sessions_.describe(restored_flow) && impl.sessions_.describe(material_id));
+        assert(!impl.sessions_->describe(restored_flow) && impl.sessions_->describe(material_id));
         std::cout << "EC1 composite recovery: all sources/primary retained, real IO, failed view preserves content\n";
     }
 
@@ -1512,10 +1531,10 @@ int main(int argc, char** argv)
     const auto scene_records = contentViews(impl, scene_id);
     assert(!scene_records.empty());
     const auto scene_view = scene_records.front().handle;
-    const auto model_source = impl.sessions_.describe(scene_id)->current;
+    const auto model_source = impl.sessions_->describe(scene_id)->current;
     for (int frame = 0; frame < 32; ++frame)
     {
-        assert(app->update());
+        checkUpdate(*app);
     }
     const auto windowHandle = [&](ui::PaneHandle source)
     {
@@ -1550,7 +1569,7 @@ int main(int argc, char** argv)
             }
             assert(is_pending_output);
             assert((!impl.model_placements_ || impl.model_placements_->reports().empty()));
-            assert(impl.sessions_.describe(scene_id)->current == model_source);
+            assert(impl.sessions_->describe(scene_id)->current == model_source);
             return;
         }
         model_drop_ready = true;
@@ -1564,7 +1583,7 @@ int main(int argc, char** argv)
         assert(impl.desktop_->root().withPane(scene_view, drop_model));
         if (!model_drop_ready)
         {
-            assert(app->update());
+            checkUpdate(*app);
             std::this_thread::yield();
         }
     }
@@ -1574,7 +1593,7 @@ int main(int argc, char** argv)
     while (!impl.model_placements_->reports().front().result)
     {
         assert(std::chrono::steady_clock::now() < model_deadline);
-        assert(app->update());
+        checkUpdate(*app);
         assert(!impl.model_placements_->reports().front().failure);
         std::this_thread::yield();
     }
@@ -1584,11 +1603,11 @@ int main(int argc, char** argv)
         std::cerr << "Model insertion failed, variant " << model_result.error().cause.index() << '\n';
     }
     assert(model_result && !impl.model_placements_->reports().front().active());
-    assert(impl.sessions_.describe(scene_id)->current != model_source);
-    auto author_key = impl.sessions_.key<lux::editor::scene::SceneSession>(scene_id);
+    assert(impl.sessions_->describe(scene_id)->current != model_source);
+    auto author_key = impl.sessions_->key<lux::editor::scene::SceneSession>(scene_id);
     assert(author_key);
     {
-        auto author = impl.sessions_.access<lux::editor::scene::SceneSession>().edit(*author_key);
+        auto author = impl.sessions_->access<lux::editor::scene::SceneSession>().edit(*author_key);
         assert(author);
         assert(author->get().capture()->objects().size() == 2);
         assert(author->get().undo());
@@ -1600,7 +1619,7 @@ int main(int argc, char** argv)
     std::cout << "Actual SceneView drop reads project pak through Process and commits one undoable model batch\n";
     for (int frame = 0; frame < 8; ++frame)
     {
-        assert(app->update());
+        checkUpdate(*app);
     }
     lux::scene::SceneInstanceId presented;
     auto read_instance = [&](ui::Pane& pane)
@@ -1633,10 +1652,11 @@ int main(int argc, char** argv)
         lux::editor::scene::shareSceneInteraction(impl.desktop_->root(), windowHandle(scene_view));
     assert(shared_interaction);
     auto interaction = *shared_interaction;
-    assert(interaction->select(
-        {{lux::editor::scene::SceneObjectRef{scene_id, impl.sessions_.describe(scene_id)->current.state.history, object}
-        }}
-    ));
+    assert(interaction->select({{lux::editor::scene::SceneObjectRef{
+        scene_id,
+        impl.sessions_->describe(scene_id)->current.state.history,
+        object
+    }}}));
     assert(app->execute(
         commands::CommandId{"lux.editor.scene.inspector"},
         commands::CommandInvocation::forView(windowHandle(scene_view), lux::object::CodeLease::builtin())
@@ -1648,20 +1668,21 @@ int main(int argc, char** argv)
     );
     assert(inspector_info != inspector_views->end());
     assert(interaction->select({}));
-    assert(app->update());
+    checkUpdate(*app);
     auto no_target = [&](ui::Pane& pane) { assert(!static_cast<lux::editor::scene::InspectorView&>(pane).target()); };
     assert(impl.desktop_->root().withPane(inspector_info->handle, no_target));
 
     // An unrelated real SceneSystem failure must not bypass the accepted source-save/catalog handoff.
-    auto saving = impl.save({material_id, impl.sessions_.describe(material_id)->current}, persistence::ESaveMode::SAVE);
+    auto saving =
+        impl.save({material_id, impl.sessions_->describe(material_id)->current}, persistence::ESaveMode::SAVE);
     assert(saving);
     const auto saving_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-    while (impl.saves_.status(*saving)->stage != persistence::ESaveStage::TERMINAL)
+    while (impl.saves_->status(*saving)->stage != persistence::ESaveStage::TERMINAL)
     {
         assert(std::chrono::steady_clock::now() < saving_deadline);
         assert(impl.engine_->execution().collectCompletions());
-        impl.saves_.adoptCompletions();
-        assert(impl.save_execution_.submitReady());
+        impl.saves_->adoptCompletions();
+        assert(impl.save_execution_->submitReady());
         std::this_thread::yield();
     }
     auto registration = failureRegistration();
@@ -1669,7 +1690,7 @@ int main(int argc, char** argv)
     assert(failure_builder.addSystem({1}, "failure", registration.type, 1, {}, 0));
     auto failure_description = std::move(failure_builder).buildResolved();
     assert(failure_description);
-    auto snapshot = impl.sessions_.access<lux::editor::scene::SceneSession>().read(*author_key)->get().capture();
+    auto snapshot = impl.sessions_->access<lux::editor::scene::SceneSession>().read(*author_key)->get().capture();
     assert(snapshot);
     auto failing =
         impl.engine_->sceneRuntime()
@@ -1722,7 +1743,7 @@ int main(int argc, char** argv)
     assert(app->update() && !impl.maintenance_failure_);
     std::cout << "Scene failure keeps an owning diagnostic and independent save completion; empty selection clears "
                  "Inspector\n";
-    const auto run_source = impl.sessions_.describe(scene_id)->current;
+    const auto run_source = impl.sessions_->describe(scene_id)->current;
     assert(app->execute(
         commands::CommandId{"lux.editor.play"},
         commands::CommandInvocation{commands::SessionTarget{scene_id, run_source}}
@@ -1747,7 +1768,7 @@ int main(int argc, char** argv)
     ));
     while (impl.runs_->info(run)->pause_pending)
     {
-        assert(app->update());
+        checkUpdate(*app);
     }
     assert(app->execute(
         commands::CommandId{"lux.editor.scene.step"},
@@ -1758,18 +1779,18 @@ int main(int argc, char** argv)
     while (impl.runs_->info(run)->pause_pending)
     {
         assert(std::chrono::steady_clock::now() < step_deadline);
-        assert(app->update());
+        checkUpdate(*app);
         std::this_thread::yield();
     }
     assert(impl.runs_->stepStatus(step)); // Completion has not been silently acknowledged by an update.
     assert(impl.runs_->stepStatus(step)->state == lux::scene::ESceneStepState::COMPLETED);
-    assert(impl.requestClose(impl.sessions_.describe(scene_id)->current));
+    assert(impl.requestClose(impl.sessions_->describe(scene_id)->current));
     assert(app->update() && impl.review_);
     answer(desktop::EReviewChoice::DISCARD);
     assert(app->update() && impl.review_ && impl.review_run_ == run);
     answer(desktop::EReviewChoice::KEEP_RUN);
     assert(app->update() && app->phase() == EApplicationPhase::RUNNING);
-    assert(!impl.sessions_.describe(scene_id) && impl.runs_->info(run));
+    assert(!impl.sessions_->describe(scene_id) && impl.runs_->info(run));
     assert(windowRecord(impl, run_view));
     auto running_interaction = lux::editor::scene::shareSceneInteraction(impl.desktop_->root(), windowHandle(run_view));
     assert(running_interaction && (*running_interaction)->synchronize());
@@ -1783,7 +1804,7 @@ int main(int argc, char** argv)
     ));
     for (int frame = 0; frame < 4; ++frame)
     {
-        assert(app->update());
+        checkUpdate(*app);
     }
     assert(impl.runs_->info(run)->provenance.content == run_source);
     std::cout << "Formal scene form, Outliner, frozen Play/Pause/Step/Resume and Keep Run after author close\n";
@@ -1815,7 +1836,7 @@ int main(int argc, char** argv)
     while (!std::holds_alternative<assets::ModelImportSucceeded>(*impl.importer_->status(*importing)))
     {
         assert(std::chrono::steady_clock::now() < import_deadline);
-        assert(app->update());
+        checkUpdate(*app);
         auto status = impl.importer_->status(*importing);
         if (const auto* error = std::get_if<EditorFailure>(&*status))
         {
@@ -1834,7 +1855,7 @@ int main(int argc, char** argv)
         while (activity.progress().pending)
         {
             assert(std::chrono::steady_clock::now() < creation_deadline);
-            assert(app->update());
+            checkUpdate(*app);
             activity.update();
             std::this_thread::yield();
         }
@@ -1932,7 +1953,7 @@ int main(int argc, char** argv)
     while (!impl.plugin_saving_->settled())
     {
         assert(std::chrono::steady_clock::now() < import_deadline);
-        assert(app->update());
+        checkUpdate(*app);
         assert(!std::holds_alternative<EditorFailure>(*impl.plugin_saving_->status()));
         std::this_thread::yield();
     }
@@ -1942,9 +1963,9 @@ int main(int argc, char** argv)
                  "code stays pinned\n";
 
     // Accepted source encoding and real material compilation remain owned while the Run/GPU are live.
-    const auto exit_content = impl.sessions_.describe(material_id)->current;
+    const auto exit_content = impl.sessions_->describe(material_id)->current;
     auto exit_save = impl.save({material_id, exit_content}, persistence::ESaveMode::SAVE);
-    assert(exit_save && impl.saves_.status(*exit_save)->stage != persistence::ESaveStage::TERMINAL);
+    assert(exit_save && impl.saves_->status(*exit_save)->stage != persistence::ESaveStage::TERMINAL);
     lux::editor::material::MaterialCompileId exit_compile;
     auto compile_at_exit = [&](ui::Pane& pane)
     {
@@ -1975,13 +1996,13 @@ int main(int argc, char** argv)
         {
             answer(desktop::EReviewChoice::DISCARD);
         }
-        assert(app->update());
+        checkUpdate(*app);
     }
     // The accepted worker is still blocked. Only the service knows this operation, not Application.
     const auto pending_until = std::chrono::steady_clock::now() + std::chrono::seconds(1);
     while (app->phase() != EApplicationPhase::RELEASED && std::chrono::steady_clock::now() < pending_until)
     {
-        assert(app->update());
+        checkUpdate(*app);
         std::this_thread::yield();
     }
     const bool retained_desktop = impl.desktop_ && app->phase() == EApplicationPhase::DRAINING;
@@ -2054,7 +2075,7 @@ int main(int argc, char** argv)
     const auto exit_saved = std::ranges::find(impl.content_saving_->reports(), *exit_save, &ProjectSaveReport::id);
     assert(exit_saved != impl.content_saving_->reports().end() && exit_saved->result);
     assert(std::holds_alternative<persistence::CommitReceipt>(exit_saved->result->publication));
-    assert(impl.content_saving_->pending().empty() && impl.sessions_.size() == 0);
+    assert(impl.content_saving_->pending().empty() && impl.sessions_->size() == 0);
     std::cout << "X12-09: accepted encode/compile, independent Run and GPU drain; source publication retained\n";
     std::cout << "Application: formal service assembly, frames, and asynchronous exit drain complete\n";
     // Reopen the actual Builder-created project rather than inventing a catalog entry.
@@ -2074,21 +2095,21 @@ int main(int argc, char** argv)
     assert(initial);
     auto& initial_owner = ApplicationTestAccess::implementation(**initial);
     const auto initial_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    while (initial_owner.sessions_.size() == 0 || !std::ranges::any_of(
-                                                      *windowRecords(initial_owner),
-                                                      [](const auto& view) { return !view.content.sessions.empty(); }
-                                                  ))
+    while (initial_owner.sessions_->size() == 0 || !std::ranges::any_of(
+                                                       *windowRecords(initial_owner),
+                                                       [](const auto& view) { return !view.content.sessions.empty(); }
+                                                   ))
     {
         assert((*initial)->update());
         assert(std::chrono::steady_clock::now() < initial_deadline);
     }
-    assert(initial_owner.sessions_.size() == 1);
+    assert(initial_owner.sessions_->size() == 1);
     assert((*initial)->execute(commands::CommandId{"lux.editor.initial-scene"}));
     for (int frame{}; frame < 12; ++frame)
     {
         assert((*initial)->update());
     }
-    assert(initial_owner.sessions_.size() == 1);
+    assert(initial_owner.sessions_->size() == 1);
     std::cout << "Initial scene: installed project description opens one shared content; explicit menu reuses it\n";
     // A real installed factory refusal happens after content publication, not during fake model construction.
     auto original_factories = initial_owner.contributions_.snapshot();
@@ -2134,17 +2155,18 @@ int main(int argc, char** argv)
     }
     const auto partial = (*initial)->openStatus(partial_id);
     assert(partial && partial->content.stage == sessions::EOpenAssetStage::PUBLISHED && !partial->view);
-    const auto retained_content = initial_owner.sessions_.describe(partial->content.session);
+    const auto retained_content = initial_owner.sessions_->describe(partial->content.session);
     assert(
-        retained_content && retained_content->dirty && !retained_content->binding && initial_owner.sessions_.size() == 2
+        retained_content && retained_content->dirty && !retained_content->binding &&
+        initial_owner.sessions_->size() == 2
     );
-    assert(initial_owner.opening_.find(partial->content.session));
+    assert(initial_owner.opening_->find(partial->content.session));
     assert(windowRecords(initial_owner)->size() == view_count);
     assert(initial_owner.contributions_.enqueue(original_factories) && initial_owner.contributions_.applyPending());
     assert((*initial)->show(partial->content.session));
-    const auto recovered = initial_owner.sessions_.describe(partial->content.session);
+    const auto recovered = initial_owner.sessions_->describe(partial->content.session);
     assert(recovered && recovered->current == retained_content->current && recovered->dirty == retained_content->dirty);
-    assert(initial_owner.sessions_.size() == 2 && windowRecords(initial_owner)->size() == view_count + 1);
+    assert(initial_owner.sessions_->size() == 2 && windowRecords(initial_owner)->size() == view_count + 1);
     assert((*initial)->acknowledgeOpen(partial_id));
     std::cout
         << "X12-01: real factory failure preserves published unbound content; explicit show recovers same Session\n";

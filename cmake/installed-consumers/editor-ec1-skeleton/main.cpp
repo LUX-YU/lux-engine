@@ -1,4 +1,3 @@
-#include <lux/engine/editor/project/ProjectModule.hpp>
 #include "ObjectQueue.hpp"
 #include "Probe.hpp"
 #include "Settings.hpp"
@@ -10,6 +9,8 @@
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
+#include <lux/engine/editor/project/ProjectModule.hpp>
+#include <lux/engine/editor/sessions/SessionServices.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
@@ -195,8 +196,12 @@ int main(int argc, char** argv)
             take(ProjectStorage::open(project_data, vfs, take(runtime.blocking()), tasks, messages.dispatcherRef()));
         auto catalog = take(project->catalogModel().snapshot());
         assert(project->manifest().assets.front().sourceType() == asset::SkeletonAsset::asset_type);
-        lux::test::ObjectQueue store_messages;
-        sessions::SessionStore store{store_messages.dispatcherRef(), 4};
+        lux::editor::desktop::EditorContext editor_context{messages.dispatcherRef()};
+        const auto session_service =
+            services::ServiceEntry::bind<sessions::kSessionStoreService>(object::CodeLease::builtin());
+        take(editor_context.services().publish({session_service}));
+        auto store_owner = take(editor_context.services().get<sessions::SessionStore>(editor_context.scope()));
+        auto& store = *store_owner;
         persistence::WriteCoordinator writes;
         persistence::SaveService saves{writes};
         storage::FileArtifactStore disk{root};
@@ -208,10 +213,10 @@ int main(int argc, char** argv)
         auto draft = take(extension->contributions());
         const extensions::SessionActivities capabilities{store, saves};
         auto active = take(extension->activate({&capabilities}));
-        lux::editor::desktop::EditorContext editor_context{messages.dispatcherRef()};
         auto& settings_commands = editor_context.commands();
         extensions::ContributionRegistry settings_registry{messages.dispatcherRef(), editor_context};
         extensions::ContributionDraft settings_draft;
+        settings_draft.services.push_back(session_service);
         settings_draft.reflection = draft.reflection;
         settings_draft.settings = draft.settings;
         auto settings_candidate = take(extensions::ContributionSnapshot::prepare(std::move(settings_draft)));
@@ -396,7 +401,6 @@ int main(int argc, char** argv)
         verifyFile(root / copied_path, copyId(), "pelvis", 3);
         auto snapshot = take(desktop::UiCatalog::prepare(active.ui));
         take(editor_context.ui().publish(snapshot));
-        take(editor_context.scope().provide(services::ServiceNameView{"lux.editor.sessions"}, store));
         if (mode == "WINDOW")
         {
             auto ui_root = take(ui::Root::create(messages.dispatcherRef()));
@@ -445,6 +449,13 @@ int main(int argc, char** argv)
         take(installed.close(final_stamp));
         assert(!inspect(id) && inspect(id).error() == sessions::ESessionError::STALE_SESSION);
         take(execution.tasks().join());
+        store_owner.reset();
+        take(editor_context.scope().release());
+        for (unsigned batch{}; batch != 16 && !editor_context.scope().drained(); ++batch)
+        {
+            (void)messages.collectRetired();
+        }
+        assert(editor_context.scope().drained());
         project->requestClose();
         assert(take(project->advanceClose()));
         std::cout << "PASS actual Skeleton DLL " << mode << " codec/edit/history/save-as/identity/read-gate/code-pin\n";

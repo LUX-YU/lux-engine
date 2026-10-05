@@ -79,6 +79,17 @@ namespace lux::editor
             process::ExecutionRuntime&,
             persistence::SaveExecution&
         );
+        // All shared providers must be non-null; final release follows operation/result cleanup.
+        ProjectContentSaving(
+            std::shared_ptr<sessions::SessionStore> sessions,
+            std::shared_ptr<sessions::SessionOpening> opening,
+            std::shared_ptr<persistence::SaveService> saves,
+            ProjectStorage& project,
+            std::shared_ptr<persistence::WriteCoordinator> writes,
+            std::shared_ptr<persistence::IArtifactStore> files,
+            process::ExecutionRuntime& runtime,
+            std::shared_ptr<persistence::SaveExecution> execution
+        );
         ~ProjectContentSaving() override;
         ProjectContentSaving(const ProjectContentSaving&) = delete;
         ProjectContentSaving& operator=(const ProjectContentSaving&) = delete;

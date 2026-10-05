@@ -217,7 +217,7 @@ namespace draft_test
         auto permit = take(f.store.prepareClose(session.describe().current));
         assert(f.store.close(permit));
         // Destruction probes borrow this case's local state, which still exists at this safe point.
-        assert(f.store_messages.collect() == 1);
+        assert(f.messages.collectRetired() == 1);
     }
     template <class Session, class Fn> void underRead(Session& session, Fn&& fn)
     {
@@ -486,7 +486,7 @@ namespace draft_test
             auto closed = take(f.store.prepareClose(s0.current));
             assert(f.store.close(closed));
             assert(!f.store.access<ef::FlowSession>().share(key) && !session->read());
-            assert(!old_model.expired() && f.store_messages.collect() == 0);
+            assert(!old_model.expired() && f.messages.collectRetired() == 0);
             // Logical invalidation is immediate; the visible view retains only the old allocation.
 
             auto next_reservation =
@@ -514,7 +514,7 @@ namespace draft_test
             assert(!view->status() && view->binding() == binding);
             assert(unchanged(new_info, replacement->describe()) && bytes(*replacement) == new_bytes);
             assert(view->rebind(ef::FlowViewBinding{next_key, &next_interaction}));
-            assert(old_model.expired() && f.store_messages.collect() == 1);
+            assert(old_model.expired() && f.messages.collectRetired() == 1);
 
             CanvasInput::select(*graph, id.value);
             f.frame(false);

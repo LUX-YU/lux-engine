@@ -113,7 +113,7 @@ namespace lux::editor::flowforge
             {services::ServiceNameView{"lux.editor.sessions"},
              1,
              cxx::typeToken<sessions::SessionStore>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.editor.flow.compilation"}, 1, cxx::typeToken<FlowCompilationService>()},
             {services::ServiceNameView{"lux.editor.flow.environment"}, 1, cxx::typeToken<FlowEnvironment>()},
@@ -138,7 +138,7 @@ namespace lux::editor::flowforge
                     failure.detail
                 });
             };
-            auto store = resolver.require<sessions::SessionStore>(0);
+            auto store = resolver.get<sessions::SessionStore>(0);
             if (!store)
             {
                 return dependencyFailure(store.error());
@@ -167,7 +167,10 @@ namespace lux::editor::flowforge
             auto view = FlowView::create(
                 input.dispatcher,
                 input.instance,
-                {store->get().access<FlowSession>(), std::move(*compiler), **environment, std::move(*publication)},
+                {*sessions::TSessionAccess<FlowSession>::create(*store),
+                 std::move(*compiler),
+                 **environment,
+                 std::move(*publication)},
                 {},
                 state->value_or(FlowViewState{})
             );

@@ -14,7 +14,7 @@ namespace lux::editor::application
         {
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "content.create"});
         }
-        auto installed = opening_.create(
+        auto installed = opening_->create(
             project_->catalogModel().reference({}).project_instance,
             std::move(data),
             contributions_.snapshot().sessions()

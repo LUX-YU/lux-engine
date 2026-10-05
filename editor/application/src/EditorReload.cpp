@@ -7,7 +7,7 @@ namespace lux::editor::application
     {
         if (reloads_.size() >= 64)
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "reload.results"});
-        auto current = sessions_.describe(target.id);
+        auto current = sessions_->describe(target.id);
         if (!current)
             return applicationFailure("reload.session", current.error());
         if (!target.based_on || current->current != *target.based_on)
@@ -22,14 +22,14 @@ namespace lux::editor::application
         const auto* asset = project_->asset(current->binding->asset);
         if (!asset)
             return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "reload.asset"});
-        auto destination = files_.resolve(asset->source_path);
+        auto destination = files_->resolve(asset->source_path);
         if (!destination)
             return applicationFailure("reload.target", destination.error());
         auto bytes = project_->captureSource(asset->id, 64 * 1024 * 1024, destination->expected_version);
         if (!bytes)
             return cxx::unexpected(bytes.error());
         // Reload uses the same admitted format/code owner as the existing content, not a replacement registry.
-        auto factory = opening_.factory(target.id);
+        auto factory = opening_->factory(target.id);
         if (!factory)
             return applicationFailure("reload.factory", factory.error());
         const auto& format = (*factory)->descriptor().source;
@@ -47,8 +47,8 @@ namespace lux::editor::application
         };
         auto operation = sessions::ReloadSessionOperation::start(
             engine_->execution(),
-            sessions_,
-            writes_,
+            *sessions_,
+            *writes_,
             editor_context_.services(),
             editor_context_.scope(),
             std::move(*factory),
@@ -63,7 +63,7 @@ namespace lux::editor::application
     {
         if (phase_ != EApplicationPhase::RUNNING || reload_question_ || save_question_ || last_view_)
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "reload.question"});
-        auto current = sessions_.describe(target.id);
+        auto current = sessions_->describe(target.id);
         if (!current)
             return applicationFailure("reload.question.source", current.error());
         if (!target.based_on || current->current != *target.based_on)

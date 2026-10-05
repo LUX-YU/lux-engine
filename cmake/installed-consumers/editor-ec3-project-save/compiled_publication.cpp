@@ -5,10 +5,13 @@
 #include <iostream>
 #include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
 #include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
+#include <lux/engine/editor/persistence/PersistenceServices.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/sessions/SessionOpening.hpp>
+#include <lux/engine/editor/sessions/SessionServices.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
+#include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
@@ -61,6 +64,34 @@ namespace
     private:
         storage::FileArtifactStore file_;
     };
+
+    constexpr services::ServiceContract file_contracts[]{
+        services::ServiceContract::forType<Files, p::IArtifactStore>(
+            services::ServiceNameView{"lux.editor.persistence.files"}
+        ),
+        services::ServiceContract::forType<Files, Files>(services::ServiceNameView{"test.files"})
+    };
+    services::ServiceResult<std::unique_ptr<Files>>
+    createFiles(services::ServiceResolver& resolver, const services::ServiceConfiguration&) noexcept
+    {
+        auto path = resolver.definition<std::filesystem::path>();
+        if (!path)
+        {
+            return cxx::unexpected(std::move(path.error()));
+        }
+        return std::make_unique<Files>(**path);
+    }
+    const services::ServiceDescriptor file_service = []
+    {
+        auto descriptor = services::ServiceDescriptor::forType<Files, createFiles>(
+            services::ServiceNameView{"test.files"},
+            file_contracts
+        );
+        descriptor.definition_type = cxx::typeToken<std::filesystem::path>();
+        descriptor.retention = services::EServiceRetention::SCOPED;
+        descriptor.affinity = services::EServiceAffinity::OWNER;
+        return descriptor;
+    }();
     class Cleanup final : public p::IArtifactSource
     {
     public:
@@ -98,31 +129,43 @@ int main(int argc, char** argv)
     asset::AssetVfs vfs;
     auto opened = take(prepareProjectOpen(path));
     auto project = take(ProjectStorage::open(opened, vfs, *execution.blocking(), tasks, messages.dispatcherRef()));
-    Files files{root};
-    p::WriteCoordinator writes;
-    p::SaveService saves{writes};
-    s::SessionStore authors{messages.dispatcherRef(), 8};
     services::ServiceRegistry dependencies{messages.dispatcherRef()};
     assert(dependencies.publish(
         {services::ServiceEntry::bind<f::kFlowEnvironmentService>(object::CodeLease::builtin()),
-         services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())}
+         services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<kProjectPluginSelectionService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<s::kSessionStoreService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<s::kSessionOpeningService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<p::kWriteCoordinatorService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<p::kSaveService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<p::kSaveExecutionService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<file_service>(
+             object::CodeLease::builtin(),
+             std::make_shared<const std::filesystem::path>(root)
+         )}
     ));
     auto scope = take(dependencies.createScope());
-    s::SessionOpening opening{execution, authors, saves, dependencies, scope};
-    p::SaveExecution io{execution, saves, writes, files};
-    assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, authors));
-    assert(scope.provide(services::ServiceNameView{"lux.editor.sessions.opening"}, opening));
-    assert(scope.provide(services::ServiceNameView{"lux.editor.persistence.saves"}, saves));
-    assert(scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project));
-    assert(scope.provide(services::ServiceNameView{"lux.editor.persistence.writes"}, writes));
-    assert(
-        scope.provide(services::ServiceNameView{"lux.editor.persistence.files"}, static_cast<p::IArtifactStore&>(files))
-    );
     assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, execution));
-    assert(scope.provide(services::ServiceNameView{"lux.editor.persistence.execution"}, io));
-    assert(dependencies.drained()); // Declarations did not construct the publication owner.
+    assert(scope.provide(services::ServiceNameView{"lux.services.registry"}, dependencies));
+    assert(scope.provide(services::ServiceNameView{"lux.services.scope"}, scope));
+    assert(dependencies.drained() && take(scope.settled()));
+    const auto missing = dependencies.get<ProjectPluginSelection>(scope);
+    assert(!missing && dependencies.drained()); // Failed admission creates no activity or write provider.
+    assert(scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project));
     auto saving_owner = take(dependencies.get<ProjectContentSaving>(scope));
-    assert(take(dependencies.get<ProjectContentSaving>(scope)).get() == saving_owner.get());
+    assert(take(dependencies.get<ProjectContentSaving>(scope)) == saving_owner);
+    auto files_owner = take(dependencies.get<Files>(scope));
+    auto writes_owner = take(dependencies.get<p::WriteCoordinator>(scope));
+    auto saves_owner = take(dependencies.get<p::SaveService>(scope));
+    auto store_owner = take(dependencies.get<s::SessionStore>(scope));
+    auto opening_owner = take(dependencies.get<s::SessionOpening>(scope));
+    auto execution_owner = take(dependencies.get<p::SaveExecution>(scope));
+    auto& files = *files_owner;
+    auto& writes = *writes_owner;
+    auto& saves = *saves_owner;
+    auto& authors = *store_owner;
+    auto& opening = *opening_owner;
+    auto& io = *execution_owner;
     auto& saving = *saving_owner;
     auto submission = take(dependencies.get<p::IArtifactSubmission>(scope));
     assert(submission.get() == static_cast<p::IArtifactSubmission*>(saving_owner.get()));
@@ -291,8 +334,18 @@ int main(int argc, char** argv)
     assert(!saving.acknowledgeArtifact(published) && writes.size() == 0);
     submission.reset();
     saving_owner.reset();
+    saving_owner.reset();
+    opening_owner.reset();
+    execution_owner.reset();
+    saves_owner.reset();
+    writes_owner.reset();
+    files_owner.reset();
+    store_owner.reset();
     assert(scope.release());
-    (void)messages.collectRetired();
+    for (unsigned batch{}; batch != 32 && !dependencies.drained(); ++batch)
+    {
+        (void)messages.collectRetired();
+    }
     assert(scope.drained() && dependencies.drained());
     project->requestClose();
     assert(take(project->advanceClose()));

@@ -76,7 +76,7 @@ namespace lux::editor::scene
             {services::ServiceNameView{"lux.editor.sessions"},
              1,
              cxx::typeToken<sessions::SessionStore>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.scene.runtime"},
              1,
@@ -159,7 +159,7 @@ namespace lux::editor::scene
                 error.detail
             });
         };
-        auto store = resolver.require<sessions::SessionStore>(0);
+        auto store = resolver.get<sessions::SessionStore>(0);
         if (!store)
         {
             return rejectedDependency(store.error());
@@ -208,7 +208,7 @@ namespace lux::editor::scene
         }
         auto view = SceneView::create(
             input.dispatcher,
-            {store->get().access<SceneSession>(),
+            {*sessions::TSessionAccess<SceneSession>::create(*store),
              std::move(*projections),
              runtime->get(),
              *(*environment)->resources,

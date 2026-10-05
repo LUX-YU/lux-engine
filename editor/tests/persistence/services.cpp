@@ -84,19 +84,21 @@ namespace
         lux::services::ServiceRegistry registry{messages.dispatcherRef()};
         auto scope = take(registry.createScope());
         const auto code = object::CodeLease::builtin();
-        const auto roots = std::make_shared<const storage::PublicationRoots>(
-            root / "project", root / "personal", root / "installation"
+        auto roots = std::make_shared<const storage::PublicationRoots>(
+            root / "project",
+            root / "personal",
+            root / "installation"
         );
         for (const auto& path : {roots->project, roots->user, roots->installation})
             std::filesystem::create_directories(path);
-        assert(registry.publish({
-            lux::services::ServiceEntry::bind<p::kWriteCoordinatorService>(code),
-            lux::services::ServiceEntry::bind<p::kSaveService>(code),
-            lux::services::ServiceEntry::bind<p::kSaveExecutionService>(code),
-            lux::services::ServiceEntry::bind<sessions::kSessionStoreService>(code),
-            lux::services::ServiceEntry::bind<sessions::kSessionOpeningService>(code),
-            lux::services::ServiceEntry::bind<storage::kPublicationFileStoreService>(code, roots)
-        }));
+        assert(registry.publish(
+            {lux::services::ServiceEntry::bind<p::kWriteCoordinatorService>(code),
+             lux::services::ServiceEntry::bind<p::kSaveService>(code),
+             lux::services::ServiceEntry::bind<p::kSaveExecutionService>(code),
+             lux::services::ServiceEntry::bind<sessions::kSessionStoreService>(code),
+             lux::services::ServiceEntry::bind<sessions::kSessionOpeningService>(code),
+             lux::services::ServiceEntry::bind<storage::kPublicationFileStoreService>(code)}
+        ));
         assert(scope.drained()); // Descriptors and file roots do not eagerly create providers.
         const auto missing = registry.get<p::SaveExecution>(scope);
         assert(!missing && missing.error().code == lux::services::EServiceError::NOT_FOUND);
@@ -105,6 +107,7 @@ namespace
         assert(scope.provide(lux::services::ServiceNameView{"lux.services.registry"}, registry));
         assert(scope.provide(lux::services::ServiceNameView{"lux.services.scope"}, scope));
 
+        assert(scope.provide(lux::services::ServiceNameView{"lux.editor.publication.roots"}, roots));
         auto execution = take(registry.get<p::SaveExecution>(scope));
         auto saves = take(registry.get<p::SaveService>(scope));
         auto writes = take(registry.get<p::WriteCoordinator>(scope));
@@ -160,6 +163,10 @@ namespace
         // Real asynchronous file opening through the public declaration, with no UI or project owner.
         auto opening = take(registry.get<sessions::SessionOpening>(scope));
         auto store = take(registry.get<sessions::SessionStore>(scope));
+        using MaterialAccess = sessions::TSessionAccess<em::MaterialSession>;
+        const auto absent_store = MaterialAccess::create({});
+        assert(!absent_store && absent_store.error() == sessions::ESessionError::INVALID_ARGUMENT);
+        std::optional<MaterialAccess> retained_access{take(MaterialAccess::create(store))};
         assert(take(registry.get<sessions::SessionOpening>(scope)) == opening);
         assert(take(registry.get<sessions::SessionStore>(scope)) == store);
         {
@@ -202,6 +209,8 @@ namespace
             assert(saves->acknowledge(saved));
             assert(opening->find(loaded.session)->close(model->describe().current));
             assert(!store->describe(loaded.session) && store->size() == 0);
+            const auto stale = retained_access->key(loaded.session);
+            assert(!stale && stale.error() == sessions::ESessionError::STALE_SESSION);
             assert(opening->acknowledge(cancelled) && opening->acknowledge(wanted) && opening->acknowledge(reused));
             assert(scope.maintain());
             opening->requestStop();
@@ -247,13 +256,18 @@ namespace
         for (unsigned turn = 0; turn < 16 && !registry.drained(); ++turn)
             (void)messages.collectRetired();
         assert(weak_saves.expired() && weak_writes.expired() && weak_files.expired());
+        // A typed window/role access retains only this exact Store allocation, not a closed SessionId.
+        assert(!weak_store.expired() && !scope.drained());
+        retained_access.reset();
+        for (unsigned turn = 0; turn < 16 && !registry.drained(); ++turn)
+            (void)messages.collectRetired();
         assert(weak_store.expired());
         assert(scope.drained() && registry.drained());
-        // Invalid definition input is rejected on demand without constructing a fallback backend.
-        assert(registry.publish({lux::services::ServiceEntry::bind<storage::kPublicationFileStoreService>(
-            code, std::make_shared<const storage::PublicationRoots>()
-        )}));
+        // Invalid root input is rejected on demand without constructing a fallback backend.
+        assert(registry.publish({lux::services::ServiceEntry::bind<storage::kPublicationFileStoreService>(code)}));
         auto invalid_scope = take(registry.createScope());
+        auto invalid_roots = std::make_shared<const storage::PublicationRoots>();
+        assert(invalid_scope.provide(lux::services::ServiceNameView{"lux.editor.publication.roots"}, invalid_roots));
         assert(invalid_scope.drained());
         const auto invalid = registry.get<p::IArtifactStore>(invalid_scope);
         assert(!invalid && invalid.error().code == lux::services::EServiceError::INVALID_CONFIGURATION);

@@ -28,17 +28,17 @@ namespace lux::editor
             {services::ServiceNameView{"lux.editor.persistence.writes"},
              1,
              cxx::typeToken<persistence::WriteCoordinator>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.editor.persistence.files"},
              1,
              cxx::typeToken<persistence::IArtifactStore>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.editor.persistence.execution"},
              1,
              cxx::typeToken<persistence::SaveExecution>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT}
         };
         services::ServiceResult<std::unique_ptr<ProjectPluginSelection>>
@@ -54,23 +54,27 @@ namespace lux::editor
             {
                 return cxx::unexpected(std::move(runtime.error()));
             }
-            auto writes = resolver.require<persistence::WriteCoordinator>(2);
+            auto writes = resolver.get<persistence::WriteCoordinator>(2);
             if (!writes)
             {
                 return cxx::unexpected(std::move(writes.error()));
             }
-            auto files = resolver.require<persistence::IArtifactStore>(3);
+            auto files = resolver.get<persistence::IArtifactStore>(3);
             if (!files)
             {
                 return cxx::unexpected(std::move(files.error()));
             }
-            auto execution = resolver.require<persistence::SaveExecution>(4);
+            auto execution = resolver.get<persistence::SaveExecution>(4);
             if (!execution)
             {
                 return cxx::unexpected(std::move(execution.error()));
             }
             return std::make_unique<ProjectPluginSelection>(
-                project->get(), runtime->get(), writes->get(), files->get(), execution->get()
+                project->get(),
+                runtime->get(),
+                std::move(*writes),
+                std::move(*files),
+                std::move(*execution)
             );
         }
     } // namespace
@@ -104,6 +108,9 @@ namespace lux::editor
 
     struct ProjectPluginSelection::Impl final
     {
+        std::shared_ptr<persistence::WriteCoordinator> writes_owner_;
+        std::shared_ptr<persistence::IArtifactStore> files_owner_;
+        std::shared_ptr<persistence::SaveExecution> execution_owner_;
         ProjectStorage& project_;
         process::ExecutionRuntime& runtime_;
         persistence::WriteCoordinator& writes_;
@@ -128,6 +135,16 @@ namespace lux::editor
             Dispatch& operator=(const Dispatch&) = delete;
         };
 
+        Impl(
+            ProjectStorage& project,
+            process::ExecutionRuntime& runtime,
+            persistence::WriteCoordinator& writes,
+            persistence::IArtifactStore& files,
+            persistence::SaveExecution& execution
+        )
+            : project_(project), runtime_(runtime), writes_(writes), files_(files), execution_(execution)
+        {
+        }
         ~Impl()
         {
             dispatching_ = true;
@@ -222,6 +239,19 @@ namespace lux::editor
     )
         : impl_(std::make_unique<Impl>(project, runtime, writes, files, execution))
     {
+    }
+    ProjectPluginSelection::ProjectPluginSelection(
+        ProjectStorage& project,
+        process::ExecutionRuntime& runtime,
+        std::shared_ptr<persistence::WriteCoordinator> writes,
+        std::shared_ptr<persistence::IArtifactStore> files,
+        std::shared_ptr<persistence::SaveExecution> execution
+    )
+        : impl_(std::make_unique<Impl>(project, runtime, *writes, *files, *execution))
+    {
+        impl_->writes_owner_ = std::move(writes);
+        impl_->files_owner_ = std::move(files);
+        impl_->execution_owner_ = std::move(execution);
     }
     ProjectPluginSelection::~ProjectPluginSelection() = default;
     EditorResult<void> ProjectPluginSelection::request(

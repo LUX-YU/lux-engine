@@ -20,7 +20,7 @@ namespace lux::editor::application
         {
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "run.admission"});
         }
-        auto information = sessions_.describe(target.id);
+        auto information = sessions_->describe(target.id);
         if (!information)
         {
             return applicationFailure("run.source", information.error());
@@ -29,12 +29,12 @@ namespace lux::editor::application
         {
             return applicationFailure("run.source", sessions::ESessionError::STALE_CONTENT);
         }
-        auto key = sessions_.key<scene::SceneSession>(target.id);
+        auto key = sessions_->key<scene::SceneSession>(target.id);
         if (!key)
         {
             return applicationFailure("run.source.kind", key.error());
         }
-        auto author = sessions_.access<scene::SceneSession>().read(*key);
+        auto author = sessions_->access<scene::SceneSession>().read(*key);
         if (!author)
         {
             return applicationFailure("run.source.read", author.error());
@@ -190,6 +190,14 @@ namespace lux::editor::application
                 auto acknowledged = runs_->acknowledgeStop(*record.run);
                 if (!acknowledged)
                 {
+                    // Retirement may finish after this frame's RunStore maintenance. Keep the
+                    // result until that owner has adopted it; never drive the Runtime again here.
+                    const auto* control = std::get_if<scene::ERunError>(&acknowledged.error().cause);
+                    if (control && *control == scene::ERunError::BUSY)
+                    {
+                        ++iterator;
+                        continue;
+                    }
                     return applicationFailure("run.stop.acknowledge", acknowledged.error());
                 }
                 iterator = run_presentations_.erase(iterator);

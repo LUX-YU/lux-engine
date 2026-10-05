@@ -26,6 +26,14 @@ namespace lux::editor
     {
     public:
         ProjectPluginSelection(ProjectStorage&, process::ExecutionRuntime&, persistence::WriteCoordinator&, persistence::IArtifactStore&, persistence::SaveExecution&);
+        // All shared providers must be non-null; final release follows operation/result cleanup.
+        ProjectPluginSelection(
+            ProjectStorage& project,
+            process::ExecutionRuntime& runtime,
+            std::shared_ptr<persistence::WriteCoordinator> writes,
+            std::shared_ptr<persistence::IArtifactStore> files,
+            std::shared_ptr<persistence::SaveExecution> execution
+        );
         ~ProjectPluginSelection();
         ProjectPluginSelection(const ProjectPluginSelection&) = delete;
         ProjectPluginSelection& operator=(const ProjectPluginSelection&) = delete;

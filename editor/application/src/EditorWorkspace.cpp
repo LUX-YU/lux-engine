@@ -40,15 +40,15 @@ namespace lux::editor::application
                 using Intent = std::decay_t<decltype(intent)>;
                 if constexpr (std::same_as<Intent, RefreshWorkspace>)
                 {
-                    return workspace_changes_.refresh();
+                    return workspace_changes_->refresh();
                 }
                 else if constexpr (std::same_as<Intent, AcknowledgeWorkspace>)
                 {
-                    return workspace_changes_.acknowledge(intent.ticket);
+                    return workspace_changes_->acknowledge(intent.ticket);
                 }
                 else if constexpr (std::same_as<Intent, ReconcileWorkspace>)
                 {
-                    return workspace_changes_.reconcile(intent.ticket);
+                    return workspace_changes_->reconcile(intent.ticket);
                 }
                 else
                 {
@@ -66,7 +66,7 @@ namespace lux::editor::application
                     }
                     else if constexpr (std::same_as<Intent, MigrateWorkspace>)
                     {
-                        return workspace_changes_.migrate();
+                        return workspace_changes_->migrate();
                     }
                     else if constexpr (std::same_as<Intent, SaveLayout>)
                     {
@@ -74,11 +74,11 @@ namespace lux::editor::application
                     }
                     else if constexpr (std::same_as<Intent, RenameLayout>)
                     {
-                        return workspace_changes_.rename(intent.layout, intent.label);
+                        return workspace_changes_->rename(intent.layout, intent.label);
                     }
                     else if constexpr (std::same_as<Intent, RemoveLayout>)
                     {
-                        return workspace_changes_.remove(intent.layout);
+                        return workspace_changes_->remove(intent.layout);
                     }
                     else if constexpr (std::same_as<Intent, ApplyLayout>)
                     {
@@ -117,7 +117,7 @@ namespace lux::editor::application
                 workspace_failure_.reset();
             }
         }
-        auto updated = workspace_changes_.update(phase_ == EApplicationPhase::RUNNING);
+        auto updated = workspace_changes_->update(phase_ == EApplicationPhase::RUNNING);
         if (!updated)
         {
             return updated;
@@ -127,25 +127,25 @@ namespace lux::editor::application
     EditorResult<project::WorkspaceSnapshot> EditorApplication::Impl::observeWorkspace()
     {
         project::WorkspaceSnapshot snapshot;
-        snapshot.catalog = workspace_changes_.catalog();
+        snapshot.catalog = workspace_changes_->catalog();
         if (workspace_failure_)
         {
             snapshot.diagnostics.push_back(workspace_failure_->domain + ": " + workspace_failure_->message);
         }
-        if (const auto* migration = workspace_changes_.migration())
+        if (const auto* migration = workspace_changes_->migration())
         {
             snapshot.diagnostics
                 .insert(snapshot.diagnostics.end(), migration->diagnostics().begin(), migration->diagnostics().end());
-            if (workspace_changes_.migrationComplete())
+            if (workspace_changes_->migrationComplete())
             {
                 snapshot.diagnostics.emplace_back("Migration verified complete");
             }
         }
-        if (workspace_changes_.migrationPending())
+        if (workspace_changes_->migrationPending())
         {
             snapshot.diagnostics.emplace_back("Personal workspace migration pending; source files are read only.");
         }
-        if (const auto* error = workspace_changes_.migrationFailure())
+        if (const auto* error = workspace_changes_->migrationFailure())
         {
             snapshot.diagnostics.push_back(error->domain + ": " + error->message);
         }
@@ -189,7 +189,7 @@ namespace lux::editor::application
                 }
             }
         }
-        for (const auto& report : workspace_changes_.publications())
+        for (const auto& report : workspace_changes_->publications())
         {
             project::WorkspacePublicationInfo row{report.label, report.ticket, report.result};
             if (report.catalog_failure)
@@ -198,7 +198,7 @@ namespace lux::editor::application
             }
             if (!report.result)
             {
-                auto status = writes_.status(report.ticket);
+                auto status = writes_->status(report.ticket);
                 if (!status)
                 {
                     return applicationFailure("workspace.observation", status.error());

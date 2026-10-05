@@ -32,7 +32,7 @@ namespace lux::editor::sessions
         SessionId id_;
     };
     template <class T> class TSessionAccess;
-    // Owner-thread collection. Destroy accesses/reservations/permits before their Store.
+    // Owner-thread collection. Destroy borrowed accesses/reservations/permits before their Store.
     class LUX_EDIT_SESSIONS_PUBLIC SessionStore final
     {
     public:
@@ -121,6 +121,23 @@ namespace lux::editor::sessions
     template <class T> class TSessionAccess final
     {
     public:
+        // Registered consumers retain the exact Store allocation. Logical close still invalidates
+        // its slot and the original Session gate; retaining this access cannot revive an identity.
+        [[nodiscard]] static SessionResult<TSessionAccess> create(std::shared_ptr<SessionStore> store) noexcept
+        {
+            if (!store)
+            {
+                return cxx::unexpected(ESessionError::INVALID_ARGUMENT);
+            }
+            TSessionAccess access{*store};
+            access.owner_ = std::move(store);
+            return access;
+        }
+        TSessionAccess(const TSessionAccess&) = default;
+        TSessionAccess(TSessionAccess&&) noexcept = default;
+        TSessionAccess& operator=(const TSessionAccess&) = delete;
+        TSessionAccess& operator=(TSessionAccess&&) = delete;
+
         // Retains the real allocation, never the validity of an old logical identity. Callers still
         // enter read/edit for every access; closing the Store slot closes the shared domain gate.
         [[nodiscard]] SessionResult<std::shared_ptr<T>> share(TSessionKey<T> key) const noexcept
@@ -157,6 +174,7 @@ namespace lux::editor::sessions
     private:
         friend class SessionStore;
         explicit TSessionAccess(SessionStore& store) noexcept : store_(store) {}
+        std::shared_ptr<SessionStore> owner_;
         SessionStore& store_;
     };
 }

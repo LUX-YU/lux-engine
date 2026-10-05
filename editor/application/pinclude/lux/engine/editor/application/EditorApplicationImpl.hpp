@@ -151,6 +151,13 @@ namespace lux::editor::application
         };
         const std::thread::id owner_{std::this_thread::get_id()};
         EditorApplicationConfig config_;
+        std::shared_ptr<const storage::PublicationRoots> publication_roots_{
+            std::make_shared<const storage::PublicationRoots>(
+                config_.project_file.parent_path(),
+                *config_.user_directory / "lux/editor",
+                config_.installation
+            )
+        };
         // Platform/surface survives EngineContext's final GPU and execution drainage.
         std::unique_ptr<window::GlfwRuntime> platform_;
         std::unique_ptr<window::LuxWindow> window_;
@@ -161,18 +168,12 @@ namespace lux::editor::application
         lux::project::PluginManager plugins_;
         lux::project::SceneRegistrations registrations_;
         std::vector<extensions::EditorExtension> extensions_;
+        std::vector<extensions::ContributionDraft> module_declarations_;
         std::unique_ptr<ProjectStorage> project_;
-        storage::PublicationFileStore files_;
-        persistence::WriteCoordinator writes_;
-        persistence::SaveService saves_{writes_};
-        sessions::SessionStore sessions_{messages_.dispatcherRef(), 128};
-        persistence::SaveExecution save_execution_;
-        std::unique_ptr<assets::ModelImporter> importer_;
         std::unique_ptr<ProjectCreation> project_creation_;
         std::optional<lux::ui::PaneHandle> import_browse_;
         bool project_open_requested_{};
         std::optional<std::filesystem::path> project_launch_intent_;
-        std::unique_ptr<RecentProjects> recent_projects_;
         std::optional<process::TaskId> project_launch_;
         std::optional<EditorResult<void>> project_launch_result_;
         struct PluginSelection final
@@ -195,7 +196,6 @@ namespace lux::editor::application
             { return commands::CommandState{phase_ == EApplicationPhase::RUNNING && opens_.size() < 64}; }
         };
         desktop::EditorContext editor_context_{messages_.dispatcherRef()};
-        sessions::SessionOpening opening_;
         // Runs after all window/factory/service references, before any borrowed foundation dies.
         struct ServiceRetirement final
         {
@@ -211,18 +211,26 @@ namespace lux::editor::application
             ServiceRetirement(ServiceRetirement&&) = delete;
             ServiceRetirement& operator=(ServiceRetirement&&) = delete;
         } service_retirement_{editor_context_, messages_};
+        std::shared_ptr<persistence::IArtifactStore> files_;
+        std::shared_ptr<persistence::WriteCoordinator> writes_;
+        std::shared_ptr<persistence::SaveService> saves_;
+        std::shared_ptr<sessions::SessionStore> sessions_;
+        std::shared_ptr<persistence::SaveExecution> save_execution_;
+        std::shared_ptr<sessions::SessionOpening> opening_;
+        std::unique_ptr<RecentProjects> recent_projects_;
+        std::unique_ptr<assets::ModelImporter> importer_;
         std::shared_ptr<ProjectContentSaving> content_saving_;
         std::shared_ptr<ProjectPluginSelection> plugin_saving_;
         std::shared_ptr<scene::RunStore> runs_;
         commands::CommandRegistry& commands_{editor_context_.commands()};
         commands::CommandDispatcher command_dispatcher_{commands_};
         extensions::ContributionRegistry contributions_;
-        workspace::WorkspaceStore workspace_;
-        workspace::WorkspaceStore project_workspace_, installation_settings_, user_settings_;
-        workspace::WorkspaceChanges user_settings_changes_, project_settings_changes_;
+        std::unique_ptr<workspace::WorkspaceStore> workspace_;
+        std::unique_ptr<workspace::WorkspaceStore> project_workspace_, installation_settings_, user_settings_;
+        std::unique_ptr<workspace::WorkspaceChanges> user_settings_changes_, project_settings_changes_;
         std::vector<settings::SettingsPage> builtin_settings_;
         std::shared_ptr<project::SettingsContentInput> settings_content_;
-        workspace::WorkspaceChanges workspace_changes_;
+        std::unique_ptr<workspace::WorkspaceChanges> workspace_changes_;
         std::unique_ptr<project::WindowSettingsBinding> window_settings_;
         std::unique_ptr<desktop::WorkspaceActions> workspace_actions_;
         std::optional<EditorFailure> workspace_failure_;
@@ -273,12 +281,12 @@ namespace lux::editor::application
             std::unique_ptr<engine::EngineContext>,
             object::ObjectMessageQueue,
             lux::project::PluginManager,
-            lux::project::SceneRegistrations,
-            std::filesystem::path profile
+            lux::project::SceneRegistrations
         );
         ~Impl();
         [[nodiscard]] EditorResult<void> admission() const noexcept;
         [[nodiscard]] EditorResult<void> applyLayout(workspace::DockLayout);
+        [[nodiscard]] EditorResult<void> prepareActivities(const std::filesystem::path& profile);
         [[nodiscard]] EditorResult<void> assemble(PreparedProjectOpen&);
         [[nodiscard]] EditorResult<project::DesktopSettingsValues> prepareDesktopSettings();
         [[nodiscard]] EditorResult<void> activateSettings();

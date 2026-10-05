@@ -45,17 +45,17 @@ namespace lux::editor
             {services::ServiceNameView{"lux.editor.sessions"},
              1,
              cxx::typeToken<sessions::SessionStore>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.editor.sessions.opening"},
              1,
              cxx::typeToken<sessions::SessionOpening>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.editor.persistence.saves"},
              1,
              cxx::typeToken<persistence::SaveService>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.editor.project.storage"},
              1,
@@ -65,12 +65,12 @@ namespace lux::editor
             {services::ServiceNameView{"lux.editor.persistence.writes"},
              1,
              cxx::typeToken<persistence::WriteCoordinator>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.editor.persistence.files"},
              1,
              cxx::typeToken<persistence::IArtifactStore>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.process.execution"},
              1,
@@ -80,23 +80,23 @@ namespace lux::editor
             {services::ServiceNameView{"lux.editor.persistence.execution"},
              1,
              cxx::typeToken<persistence::SaveExecution>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT}
         };
         services::ServiceResult<std::unique_ptr<ProjectContentSaving>>
         createSaving(services::ServiceResolver& resolver, const services::ServiceConfiguration&) noexcept
         {
-            auto sessions = resolver.require<sessions::SessionStore>(0);
+            auto sessions = resolver.get<sessions::SessionStore>(0);
             if (!sessions)
             {
                 return cxx::unexpected(std::move(sessions.error()));
             }
-            auto opening = resolver.require<sessions::SessionOpening>(1);
+            auto opening = resolver.get<sessions::SessionOpening>(1);
             if (!opening)
             {
                 return cxx::unexpected(std::move(opening.error()));
             }
-            auto saves = resolver.require<persistence::SaveService>(2);
+            auto saves = resolver.get<persistence::SaveService>(2);
             if (!saves)
             {
                 return cxx::unexpected(std::move(saves.error()));
@@ -106,12 +106,12 @@ namespace lux::editor
             {
                 return cxx::unexpected(std::move(project.error()));
             }
-            auto writes = resolver.require<persistence::WriteCoordinator>(4);
+            auto writes = resolver.get<persistence::WriteCoordinator>(4);
             if (!writes)
             {
                 return cxx::unexpected(std::move(writes.error()));
             }
-            auto files = resolver.require<persistence::IArtifactStore>(5);
+            auto files = resolver.get<persistence::IArtifactStore>(5);
             if (!files)
             {
                 return cxx::unexpected(std::move(files.error()));
@@ -121,20 +121,20 @@ namespace lux::editor
             {
                 return cxx::unexpected(std::move(runtime.error()));
             }
-            auto execution = resolver.require<persistence::SaveExecution>(7);
+            auto execution = resolver.get<persistence::SaveExecution>(7);
             if (!execution)
             {
                 return cxx::unexpected(std::move(execution.error()));
             }
             return std::make_unique<ProjectContentSaving>(
-                sessions->get(),
-                opening->get(),
-                saves->get(),
+                std::move(*sessions),
+                std::move(*opening),
+                std::move(*saves),
                 project->get(),
-                writes->get(),
-                files->get(),
+                std::move(*writes),
+                std::move(*files),
                 runtime->get(),
-                execution->get()
+                std::move(*execution)
             );
         }
     } // namespace
@@ -158,6 +158,12 @@ namespace lux::editor
     }
     struct ProjectContentSaving::Impl final
     {
+        std::shared_ptr<sessions::SessionStore> sessions_owner_;
+        std::shared_ptr<sessions::SessionOpening> opening_owner_;
+        std::shared_ptr<persistence::SaveService> saves_owner_;
+        std::shared_ptr<persistence::WriteCoordinator> writes_owner_;
+        std::shared_ptr<persistence::IArtifactStore> files_owner_;
+        std::shared_ptr<persistence::SaveExecution> execution_owner_;
         static constexpr std::size_t capacity_ = 128;
         sessions::SessionStore& sessions_;
         sessions::SessionOpening& opening_;
@@ -599,6 +605,25 @@ namespace lux::editor
     )
         : impl_(std::make_unique<Impl>(sessions, opening, saves, project, writes, files, runtime, execution))
     {
+    }
+    ProjectContentSaving::ProjectContentSaving(
+        std::shared_ptr<sessions::SessionStore> sessions,
+        std::shared_ptr<sessions::SessionOpening> opening,
+        std::shared_ptr<persistence::SaveService> saves,
+        ProjectStorage& project,
+        std::shared_ptr<persistence::WriteCoordinator> writes,
+        std::shared_ptr<persistence::IArtifactStore> files,
+        process::ExecutionRuntime& runtime,
+        std::shared_ptr<persistence::SaveExecution> execution
+    )
+        : impl_(std::make_unique<Impl>(*sessions, *opening, *saves, project, *writes, *files, runtime, *execution))
+    {
+        impl_->sessions_owner_ = std::move(sessions);
+        impl_->opening_owner_ = std::move(opening);
+        impl_->saves_owner_ = std::move(saves);
+        impl_->writes_owner_ = std::move(writes);
+        impl_->files_owner_ = std::move(files);
+        impl_->execution_owner_ = std::move(execution);
     }
     ProjectContentSaving::~ProjectContentSaving() = default;
     EditorResult<PreparedProjectSave> ProjectContentSaving::prepare(

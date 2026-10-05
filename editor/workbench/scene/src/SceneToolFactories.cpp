@@ -71,7 +71,7 @@ namespace lux::editor::scene
             {services::ServiceNameView{"lux.editor.sessions"},
              1,
              cxx::typeToken<sessions::SessionStore>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.simulation.components"},
              1,
@@ -129,7 +129,7 @@ namespace lux::editor::scene
             {
                 return cxx::unexpected(std::move(valid.error()));
             }
-            auto store = resolver.require<sessions::SessionStore>(0);
+            auto store = resolver.get<sessions::SessionStore>(0);
             if (!store)
             {
                 return failure(store.error());
@@ -150,7 +150,7 @@ namespace lux::editor::scene
                 return failure(runs.error());
             }
             InspectionInput result{
-                store->get().access<SceneSession>(),
+                *sessions::TSessionAccess<SceneSession>::create(*store),
                 schemas->get(),
                 selected ? selected->get() : nullptr,
                 runs ? *runs : nullptr
@@ -367,7 +367,7 @@ namespace lux::editor::scene
             {
                 return cxx::unexpected(std::move(valid.error()));
             }
-            auto store = resolver.require<sessions::SessionStore>(0);
+            auto store = resolver.get<sessions::SessionStore>(0);
             if (!store)
             {
                 return failure(store.error());
@@ -377,7 +377,7 @@ namespace lux::editor::scene
             {
                 return failure(configuration.error());
             }
-            auto access = store->get().access<SceneSession>();
+            auto access = *sessions::TSessionAccess<SceneSession>::create(*store);
             auto view = std::make_unique<SceneConfigurationView>(
                 input.dispatcher,
                 input.instance,

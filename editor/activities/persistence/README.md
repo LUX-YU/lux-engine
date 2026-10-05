@@ -15,7 +15,8 @@ retains the root coordinator; SaveExecution retains that same coordinator, SaveS
 ExecutionRuntime is an explicit application-lifetime borrow. These are real shared owners, not no-op
 deleters or a second operation store. Direct stack composition still uses the reference constructors.
 
-The file provider freezes `PublicationRoots` as its definition input and normalizes them when requested.
+The file provider declares an immutable `shared_ptr<const PublicationRoots>` bootstrap input and
+normalizes its copied paths on first construction. The descriptor itself is independent of host paths.
 Publishing declarations creates no instances. Scope maintenance adopts settled save facts and submits
 ready work through the original adapter; Process completion collection remains separate. A caller must
 finish its domain close protocol before releasing the scope. These declarations do not grant permission
@@ -24,13 +25,13 @@ to discard unconfirmed results, perform a user decision, or infer drainage from 
 
 ## Frozen saves and ordered publication (P05)
 
-The application owns one `WriteCoordinator`. SaveService and other migrated producers borrow it;
+The root service scope retains one `WriteCoordinator`. SaveService and migrated producers retain or borrow it;
 there is no per-window, per-model or per-producer coordinator. A producer resolves an address through
 its store, reserves a ticket before encoding, and supplies owned bytes. Encoding order is independent
 of publication order. An anonymous producer does not inherit another writer's file precondition.
 
 `SaveService` owns stable operation records (`Impl::Operation` is the SaveOperation role), not Sessions.
-`SessionStore` remains the sole Session owner. `SessionState` remains the sole checkpoint, binding,
+`SessionStore` remains the sole logical Session and close authority; shared allocations do not extend old IDs. `SessionState` remains the sole checkpoint, binding,
 observation and admission owner. Registration is an owner-thread RAII borrow: destroy/revoke its token
 before the adapter. Pending records pin its code, never its Session. A revoked role cannot receive
 baseline adoption, but its physical publication result remains queryable.

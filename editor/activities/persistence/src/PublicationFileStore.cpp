@@ -20,15 +20,30 @@ namespace lux::editor::storage
                 services::ServiceNameView{"lux.editor.persistence.files"}
             )
         };
+        constexpr services::ServiceDependency dependencies[]{
+            {services::ServiceNameView{"lux.editor.publication.roots"},
+             1,
+             cxx::typeToken<std::shared_ptr<const PublicationRoots>>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
         services::ServiceResult<std::unique_ptr<PublicationFileStore>>
         createFiles(services::ServiceResolver& resolver, const services::ServiceConfiguration&) noexcept
         {
-            auto roots = resolver.definition<PublicationRoots>();
+            auto roots = resolver.require<std::shared_ptr<const PublicationRoots>>(0);
             if (!roots)
             {
                 return cxx::unexpected(std::move(roots.error()));
             }
-            auto normalized = **roots;
+            if (!roots->get())
+            {
+                return cxx::unexpected(services::ServiceFailure{
+                    services::EServiceError::INVALID_CONFIGURATION,
+                    "Missing publication roots",
+                    "publication.roots"
+                });
+            }
+            auto normalized = *roots->get();
             for (auto* path : {&normalized.project, &normalized.user, &normalized.installation})
             {
                 if (path->empty())
@@ -59,10 +74,11 @@ namespace lux::editor::storage
     constinit const services::ServiceDescriptor kPublicationFileStoreService = []
     {
         auto descriptor = services::ServiceDescriptor::forType<PublicationFileStore, createFiles>(
-            services::ServiceNameView{"lux.editor.persistence.files"}, contracts
+            services::ServiceNameView{"lux.editor.persistence.files"},
+            contracts,
+            dependencies
         );
         descriptor.retention = services::EServiceRetention::SCOPED;
-        descriptor.definition_type = cxx::typeToken<PublicationRoots>();
         return descriptor;
     }();
 

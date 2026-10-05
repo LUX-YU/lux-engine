@@ -16,6 +16,7 @@ set(EC1_MODE "HEADLESS" CACHE STRING "HEADLESS, WINDOW or APP")
 include("${SDK_PREFIX}/share/lux-engine/plugins/LuxPlugins.cmake")
 find_package(lux-engine-editor-extensions REQUIRED COMPONENTS editor_extensions)
 find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)
+find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_execution)
 find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)
 find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
 find_package(lux-engine-editor-workspace-store REQUIRED COMPONENTS workspace_store)
@@ -29,7 +30,7 @@ lux_add_plugin_exports(TARGET skeleton_runtime EDITOR_TARGET skeleton_extension 
         "${CMAKE_CURRENT_SOURCE_DIR}/Model.hpp" "${CMAKE_CURRENT_SOURCE_DIR}/Extension.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/Probe.hpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/Settings.hpp")
 add_executable(skeleton_consumer main.cpp)
-target_link_libraries(skeleton_consumer PRIVATE lux::engine::editor::editor_extensions
+target_link_libraries(skeleton_consumer PRIVATE lux::engine::editor::session_execution lux::engine::editor::editor_extensions
     lux::engine::editor::editor_storage lux::engine::editor::editor_persistence_execution
     lux::engine::editor::editor_file_publication lux::engine::editor::workspace_store
     lux::engine::editor::editor_composition)

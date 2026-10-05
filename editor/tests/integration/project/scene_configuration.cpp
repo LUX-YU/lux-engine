@@ -9,10 +9,11 @@
 #include <lux/engine/editor/scene/ConfigurationEditor.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
-#include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
+#include <lux/engine/editor/scene/SceneTools.hpp>
+#include <lux/engine/editor/sessions/SessionServices.hpp>
 #include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/project/PluginRendering.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
@@ -277,7 +278,14 @@ int main(int argc, char** argv)
         namespace author = editor::scene;
         namespace sessions = editor::sessions;
         namespace desktop = editor::desktop;
-        sessions::SessionStore store{queue->dispatcherRef(), 4};
+        auto& scope = editor_context.scope();
+        auto entries = contributions.snapshot().services();
+        std::vector<std::shared_ptr<const services::ServiceEntry>> services(entries.begin(), entries.end());
+        services.push_back(services::ServiceEntry::bind<sessions::kSessionStoreService>(object::CodeLease::builtin()));
+        assert(editor_context.services().publish(std::move(services)));
+        auto store_owner = editor_context.services().get<sessions::SessionStore>(scope);
+        assert(store_owner);
+        auto& store = **store_owner;
         editor::persistence::WriteCoordinator writes;
         editor::persistence::SaveService saves{writes};
         std::vector<sessions::InstalledSession> installed;
@@ -299,7 +307,6 @@ int main(int argc, char** argv)
             installed.push_back(std::move(*published));
             return editor::commands::DispatchReceipt{editor::commands::ImmediateCompletion{}};
         };
-        auto& scope = editor_context.scope();
         assert(scope.provide(services::ServiceNameView{"lux.project.plugins"}, *manager));
         assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, registrations->components));
         assert(scope.provide(services::ServiceNameView{"lux.simulation.systems"}, registrations->simulation_systems));
@@ -307,7 +314,6 @@ int main(int argc, char** argv)
         assert(scope.provide(services::ServiceNameView{"lux.render.features"}, registrations->features));
         assert(scope.provide(services::ServiceNameView{"lux.render.scene.bindings"}, registrations->render_bindings));
         assert(scope.provide(sessions::kSessionCreation, receive));
-        assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, store));
         auto catalog = desktop::UiCatalog::prepare(
             {desktop::UiEntry::bind<author::kSceneCreationView>(object::CodeLease::builtin()),
              desktop::UiEntry::bind<author::kSceneConfigurationView>(object::CodeLease::builtin())}
@@ -408,5 +414,13 @@ int main(int argc, char** argv)
             assert(info && session.close(info->current));
         }
         assert(store.size() == 0);
+        installed.clear();
+        store_owner->reset();
+        assert(scope.release());
+        for (int batch{}; batch != 16 && !scope.drained(); ++batch)
+        {
+            static_cast<void>(queue->collectRetired());
+        }
+        assert(scope.drained());
     }
 }

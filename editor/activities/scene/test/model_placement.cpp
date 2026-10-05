@@ -2,12 +2,13 @@
 #include <chrono>
 #include <fstream>
 #include <iostream>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/scene/ModelPlacementService.hpp>
 #include <lux/engine/editor/scene/ProjectSceneEnvironment.hpp>
 #include <lux/engine/editor/scene/SceneProjection.hpp>
+#include <lux/engine/editor/sessions/SessionServices.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
-#include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/material/Cooker.hpp>
 #include <lux/engine/process/TaskScope.hpp>
@@ -111,7 +112,14 @@ int main(int argc, char** argv)
     asset::AssetVfs assets;
     auto source = take(prepareProjectOpen(root / "Project.luxproject"));
     auto project = take(ProjectStorage::open(source, assets, *execution.blocking(), tasks, messages.dispatcherRef()));
-    sessions::SessionStore sessions{messages.dispatcherRef(), 4};
+    services::ServiceRegistry registry{messages.dispatcherRef()};
+    auto scope = take(registry.createScope());
+    assert(registry.publish(
+        {services::ServiceEntry::bind<sessions::kSessionStoreService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<kModelPlacementService>(object::CodeLease::builtin())}
+    ));
+    auto sessions_owner = take(registry.get<sessions::SessionStore>(scope));
+    auto& sessions = *sessions_owner;
     std::vector<ecs::ComponentSchema> types;
     for (auto group :
          {ecs::transformComponentSchemas(), ecs::hierarchyComponentSchemas(), ecs::visualComponentSchemas()})
@@ -149,13 +157,9 @@ int main(int argc, char** argv)
     assert(sessions.prepare(reservation, author));
     const auto key = take(sessions.key<SceneSession>(take(sessions.publish(reservation))));
 
-    services::ServiceRegistry registry{messages.dispatcherRef()};
-    auto scope = take(registry.createScope());
     assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, execution));
-    assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, sessions));
     assert(scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project));
     assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, schemas));
-    assert(registry.publish({services::ServiceEntry::bind<kModelPlacementService>(object::CodeLease::builtin())}));
     assert(scope.maintain() && take(scope.settled())); // Registration does not start a task.
     auto service = take(registry.get<ModelPlacementService>(scope));
     auto other_window = take(registry.get<ModelPlacementService>(scope));
@@ -316,6 +320,7 @@ int main(int argc, char** argv)
     }
     assert(scope.beginClose() && scope.release());
     service.reset();
+    sessions_owner.reset();
     while (!scope.drained())
     {
         assert(messages.collectRetired());

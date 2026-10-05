@@ -376,7 +376,7 @@ namespace skeleton
                 {services::ServiceNameView{"lux.editor.sessions"},
                  1,
                  cxx::typeToken<SessionStore>(),
-                 services::EDependencyKind::BORROWED,
+                 services::EDependencyKind::SHARED,
                  services::EDependencyScope::ROOT}
             };
             static constexpr sessions::SessionKindIdView kinds[]{sessions::SessionKindIdView{"example.skeleton"}};
@@ -388,12 +388,12 @@ namespace skeleton
                 value.create = [](services::ServiceResolver& resolver,
                                   const desktop::UiCreateInfo& input) -> desktop::UiResult<std::unique_ptr<ui::Pane>>
                 {
-                    auto store = resolver.require<SessionStore>(0);
+                    auto store = resolver.get<SessionStore>(0);
                     if (!store)
                     {
                         return cxx::unexpected(desktop::UiFailure{desktop::EUiError::DEPENDENCY, "skeleton.store"});
                     }
-                    auto access = store->get().access<Session>();
+                    auto access = *sessions::TSessionAccess<Session>::create(*store);
                     for (const auto id : input.content.sessions)
                     {
                         auto key = access.key(id);

@@ -11,7 +11,7 @@ namespace lux::editor::application
         {
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "exit.phase"});
         }
-        auto ids = sessions_.snapshotIds();
+        auto ids = sessions_->snapshotIds();
         if (!ids)
         {
             return applicationFailure("exit.sessions", ids.error());
@@ -24,7 +24,7 @@ namespace lux::editor::application
         decisions.reserve(ids->size());
         for (auto id : *ids)
         {
-            auto info = sessions_.describe(id);
+            auto info = sessions_->describe(id);
             if (!info)
             {
                 return applicationFailure("exit.content", info.error());
@@ -97,7 +97,7 @@ namespace lux::editor::application
             }
             if (response->choice == desktop::EReviewChoice::SAVE && review_content_)
             {
-                auto info = sessions_.describe(review_content_->session);
+                auto info = sessions_->describe(review_content_->session);
                 if (!info)
                 {
                     return applicationFailure("close.save.source", info.error());
@@ -206,7 +206,7 @@ namespace lux::editor::application
         {
             if (decision.choice == sessions::ECloseChoice::CANCEL)
             {
-                auto info = sessions_.describe(decision.content.session);
+                auto info = sessions_->describe(decision.content.session);
                 if (!info)
                 {
                     return applicationFailure("close.review.source", info.error());
@@ -280,7 +280,7 @@ namespace lux::editor::application
         }
         if (!closing_)
         {
-            auto close = sessions::CloseSessionsOperation::begin(sessions_, saves_, close_decisions_);
+            auto close = sessions::CloseSessionsOperation::begin(*sessions_, *saves_, close_decisions_);
             if (!close)
             {
                 return applicationFailure("exit.prepare", close.error());
@@ -333,14 +333,14 @@ namespace lux::editor::application
             {
                 return true;
             }
-            auto status = saves_.status(id);
+            auto status = saves_->status(id);
             if (!status)
             {
                 return applicationFailure("close.save.status", status.error());
             }
             const bool has_catalog_ticket = report != content_saving_->reports().end() && report->catalog_ticket;
             const auto ticket = has_catalog_ticket ? *report->catalog_ticket : status->ticket;
-            auto written = writes_.status(ticket);
+            auto written = writes_->status(ticket);
             if (!written)
             {
                 return applicationFailure("close.publication.status", written.error());
@@ -371,7 +371,7 @@ namespace lux::editor::application
             auto ticket = artifact.ticket;
             if (ticket)
             {
-                auto status = writes_.status(*ticket);
+                auto status = writes_->status(*ticket);
                 if (!status)
                 {
                     return applicationFailure("close.artifact.status", status.error());
@@ -417,13 +417,14 @@ namespace lux::editor::application
         }
         if (close_application_)
         {
-            for (const auto* changes : {&workspace_changes_, &user_settings_changes_, &project_settings_changes_})
+            for (const auto* changes :
+                 {workspace_changes_.get(), user_settings_changes_.get(), project_settings_changes_.get()})
             {
                 for (const auto& publication : changes->publications())
                 {
                     if (!publication.result)
                     {
-                        auto status = writes_.status(publication.ticket);
+                        auto status = writes_->status(publication.ticket);
                         if (!status)
                         {
                             return applicationFailure("exit.workspace.status", status.error());
@@ -519,7 +520,7 @@ namespace lux::editor::application
         auto close_content = [&]
         {
             // No intervening business callback: Store validates the entire permit set, then reclaims.
-            const auto closed = sessions_.close(*permits);
+            const auto closed = sessions_->close(*permits);
             if (!closed)
             {
                 std::terminate(); // A violated prepared-owner contract cannot be reported as a successful exit.
@@ -563,7 +564,7 @@ namespace lux::editor::application
                 return closing;
             }
         }
-        opening_.requestStop();
+        opening_->requestStop();
         importer_->requestClose();
         desktop_->presentation().stopFrames();
         return {};
@@ -586,7 +587,7 @@ namespace lux::editor::application
                 {
                     reload.operation->cancel();
                 }
-                reload.operation->update(opening_.find(reload.source.session));
+                reload.operation->update(opening_->find(reload.source.session));
                 if (reload.operation->outcome())
                 {
                     reload.result = *reload.operation->outcome();
@@ -613,10 +614,10 @@ namespace lux::editor::application
         }
         const bool operations_settled =
             importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED &&
-            user_settings_changes_.settled() && project_settings_changes_.settled() && content_saving_->settled() &&
-            opening_.settled() && recent_projects_->settled() && !project_launch_ &&
+            user_settings_changes_->settled() && project_settings_changes_->settled() && content_saving_->settled() &&
+            opening_->settled() && recent_projects_->settled() && !project_launch_ &&
             std::ranges::all_of(
-                workspace_changes_.publications(),
+                workspace_changes_->publications(),
                 [](const auto& value) { return value.result.has_value(); }
             ) &&
             std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
@@ -678,6 +679,10 @@ namespace lux::editor::application
         {
             receive(applicationFailure("execution.events", events.error()));
         }
+        if (auto maintained = editor_context_.scope().maintain(); !maintained)
+        {
+            receive(applicationFailure("services.maintain", maintained.error()));
+        }
         (void)task_monitor_.dispatchChanges();
         project_->dispatchEvents();
         (void)messages_.dispatchPending();
@@ -692,16 +697,11 @@ namespace lux::editor::application
             project_creation_->update();
         }
         receive(maintainProjectSettings());
-        receive(user_settings_changes_.update(false));
-        receive(project_settings_changes_.update(false));
+        receive(user_settings_changes_->update(false));
+        receive(project_settings_changes_->update(false));
         if (window_settings_)
         {
             window_settings_->update(phase_ == EApplicationPhase::RUNNING);
-        }
-        saves_.adoptCompletions();
-        if (auto submitted = save_execution_.submitReady(); !submitted)
-        {
-            receive(applicationFailure("save.submit", submitted.error()));
         }
         if (phase_ == EApplicationPhase::RUNNING)
         {
@@ -715,13 +715,6 @@ namespace lux::editor::application
                 }
             }
             receive(receiveOpenResults());
-        }
-        else if (phase_ == EApplicationPhase::DRAINING)
-        {
-            if (auto received = opening_.update(); !received)
-            {
-                receive(applicationFailure("open.drain", received.error()));
-            }
         }
         if (desktop_)
         {
@@ -789,10 +782,6 @@ namespace lux::editor::application
                 failure->values.assign(driven->begin(), driven->end());
             }
             receive(applicationFailure("scene.execution", std::shared_ptr<const SceneFailures>{std::move(failure)}));
-        }
-        if (auto maintained = editor_context_.scope().maintain(); !maintained)
-        {
-            receive(applicationFailure("services.maintain", maintained.error()));
         }
         receive(maintainRuns());
         receive(settleOperations());

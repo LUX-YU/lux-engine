@@ -50,7 +50,7 @@ namespace lux::editor::application
         {
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "application.open"});
         }
-        auto opened = openProjectContent(*project_, files_, opening_, reference, snapshot.sessions());
+        auto opened = openProjectContent(*project_, *files_, *opening_, reference, snapshot.sessions());
         if (!opened)
         {
             return cxx::unexpected(opened.error());
@@ -66,7 +66,7 @@ namespace lux::editor::application
         {
             return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "open.status"});
         }
-        auto status = impl_->opening_.status(id);
+        auto status = impl_->opening_->status(id);
         if (!status)
         {
             return applicationFailure("open.status", status.error());
@@ -85,7 +85,7 @@ namespace lux::editor::application
         {
             return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "open.cancel"});
         }
-        auto cancelled = impl_->opening_.cancel(id);
+        auto cancelled = impl_->opening_->cancel(id);
         if (!cancelled)
         {
             return applicationFailure("open.cancel", cancelled.error());
@@ -100,7 +100,7 @@ namespace lux::editor::application
             return cxx::unexpected(ready.error());
         }
         Impl::Dispatch scope{impl_->dispatching_};
-        auto acknowledged = impl_->opening_.acknowledge(id);
+        auto acknowledged = impl_->opening_->acknowledge(id);
         if (!acknowledged)
         {
             return applicationFailure("open.acknowledge", acknowledged.error());
@@ -110,18 +110,13 @@ namespace lux::editor::application
     }
     EditorResult<void> EditorApplication::Impl::receiveOpenResults()
     {
-        auto received = opening_.update();
-        if (!received)
-        {
-            return applicationFailure("open.receive", received.error());
-        }
         for (auto& entry : opens_)
         {
             if (entry.view || entry.failure || entry.cancelled)
             {
                 continue;
             }
-            const auto status = opening_.status(entry.operation);
+            const auto status = opening_->status(entry.operation);
             if (!status)
             {
                 return applicationFailure("open.status", status.error());
@@ -173,7 +168,7 @@ namespace lux::editor::application
         std::string title;
         for (const auto id : association.sessions)
         {
-            auto info = sessions_.describe(id);
+            auto info = sessions_->describe(id);
             if (!info)
             {
                 return applicationFailure("show.session", info.error());

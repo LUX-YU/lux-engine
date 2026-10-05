@@ -987,20 +987,18 @@ namespace
         lux::test::ObjectQueue store_messages;
         services::ServiceRegistry dependencies{store_messages.dispatcherRef()};
         const auto code = object::CodeLease::builtin();
-        const auto roots = std::make_shared<const storage::PublicationRoots>(
-            root, root / "personal", root / "installation"
-        );
+        auto roots = std::make_shared<const storage::PublicationRoots>(root, root / "personal", root / "installation");
         std::filesystem::create_directories(roots->user);
         std::filesystem::create_directories(roots->installation);
-        assert(dependencies.publish({
-            services::ServiceEntry::bind<lux::editor::flowforge::kFlowEnvironmentService>(code),
-            services::ServiceEntry::bind<kSessionStoreService>(code),
-            services::ServiceEntry::bind<kSessionOpeningService>(code),
-            services::ServiceEntry::bind<kWriteCoordinatorService>(code),
-            services::ServiceEntry::bind<kSaveService>(code),
-            services::ServiceEntry::bind<kSaveExecutionService>(code),
-            services::ServiceEntry::bind<storage::kPublicationFileStoreService>(code, roots)
-        }));
+        assert(dependencies.publish(
+            {services::ServiceEntry::bind<lux::editor::flowforge::kFlowEnvironmentService>(code),
+             services::ServiceEntry::bind<kSessionStoreService>(code),
+             services::ServiceEntry::bind<kSessionOpeningService>(code),
+             services::ServiceEntry::bind<kWriteCoordinatorService>(code),
+             services::ServiceEntry::bind<kSaveService>(code),
+             services::ServiceEntry::bind<kSaveExecutionService>(code),
+             services::ServiceEntry::bind<storage::kPublicationFileStoreService>(code)}
+        ));
         auto scope = take(dependencies.createScope());
         simulation::ecs::ComponentSchemaSet schemas;
         assert(scope.drained());
@@ -1009,6 +1007,7 @@ namespace
         assert(scope.provide(services::ServiceNameView{"lux.services.registry"}, dependencies));
         assert(scope.provide(services::ServiceNameView{"lux.services.scope"}, scope));
         auto opening_owner = take(dependencies.get<SessionOpening>(scope));
+        assert(scope.provide(services::ServiceNameView{"lux.editor.publication.roots"}, roots));
         auto store_owner = take(dependencies.get<SessionStore>(scope));
         auto saves_owner = take(dependencies.get<SaveService>(scope));
         auto writes_owner = take(dependencies.get<WriteCoordinator>(scope));

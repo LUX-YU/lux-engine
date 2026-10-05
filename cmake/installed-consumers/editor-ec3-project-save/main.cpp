@@ -6,16 +6,18 @@
 #include <iostream>
 #include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
+#include <lux/engine/editor/persistence/PersistenceServices.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <lux/engine/editor/sessions/SessionOpening.hpp>
 #include <lux/engine/editor/sessions/SessionOperations.hpp>
-#include <lux/engine/editor/storage/PublicationFileStore.hpp>
+#include <lux/engine/editor/sessions/SessionServices.hpp>
 #include <lux/engine/editor/storage/ProjectCommands.hpp>
 #include <lux/engine/editor/storage/ProjectContentOpening.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
 #include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/storage/PublicationFileStore.hpp>
 #include <lux/engine/editor/storage/RecentProjects.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
@@ -103,6 +105,34 @@ namespace
         storage::PublicationFileStore real_;
         p::WriteTargetKey manifest_key_;
     };
+
+    constexpr services::ServiceContract file_contracts[]{
+        services::ServiceContract::forType<Files, p::IArtifactStore>(
+            services::ServiceNameView{"lux.editor.persistence.files"}
+        ),
+        services::ServiceContract::forType<Files, Files>(services::ServiceNameView{"test.files"})
+    };
+    services::ServiceResult<std::unique_ptr<Files>>
+    createFiles(services::ServiceResolver& resolver, const services::ServiceConfiguration&) noexcept
+    {
+        auto path = resolver.definition<std::filesystem::path>();
+        if (!path)
+        {
+            return cxx::unexpected(std::move(path.error()));
+        }
+        return std::make_unique<Files>(**path);
+    }
+    const services::ServiceDescriptor file_service = []
+    {
+        auto descriptor = services::ServiceDescriptor::forType<Files, createFiles>(
+            services::ServiceNameView{"test.files"},
+            file_contracts
+        );
+        descriptor.definition_type = cxx::typeToken<std::filesystem::path>();
+        descriptor.retention = services::EServiceRetention::SCOPED;
+        descriptor.affinity = services::EServiceAffinity::OWNER;
+        return descriptor;
+    }();
 } // namespace
 int main(int argc, char** argv)
 {
@@ -124,18 +154,44 @@ int main(int argc, char** argv)
     auto prepared_project = take(prepareProjectOpen(project_file));
     auto project =
         take(ProjectStorage::open(prepared_project, vfs, *runtime.blocking(), tasks, messages.dispatcherRef()));
-    Files files{root};
-    p::WriteCoordinator writes;
-    p::SaveService saves{writes};
-    lux::test::ObjectQueue store_messages;
-    s::SessionStore store{store_messages.dispatcherRef(), 8};
-    services::ServiceRegistry dependencies{store_messages.dispatcherRef()};
-    assert(dependencies.publish({services::ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin())
-    }));
+    services::ServiceRegistry dependencies{messages.dispatcherRef()};
+    assert(dependencies.publish(
+        {services::ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<kProjectPluginSelectionService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<s::kSessionStoreService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<s::kSessionOpeningService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<p::kWriteCoordinatorService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<p::kSaveService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<p::kSaveExecutionService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<file_service>(
+             object::CodeLease::builtin(),
+             std::make_shared<const std::filesystem::path>(root)
+         )}
+    ));
     auto scope = take(dependencies.createScope());
-    s::SessionOpening opening{runtime, store, saves, dependencies, scope};
-    p::SaveExecution execution{runtime, saves, writes, files};
-    ProjectContentSaving saving{store, opening, saves, *project, writes, files, runtime, execution};
+    assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, runtime));
+    assert(scope.provide(services::ServiceNameView{"lux.services.registry"}, dependencies));
+    assert(scope.provide(services::ServiceNameView{"lux.services.scope"}, scope));
+    assert(dependencies.drained() && take(scope.settled()));
+    const auto missing = dependencies.get<ProjectPluginSelection>(scope);
+    assert(!missing && dependencies.drained()); // Failed admission creates no activity or write provider.
+    assert(scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project));
+    auto saving_owner = take(dependencies.get<ProjectContentSaving>(scope));
+    assert(take(dependencies.get<ProjectContentSaving>(scope)) == saving_owner);
+    auto files_owner = take(dependencies.get<Files>(scope));
+    auto writes_owner = take(dependencies.get<p::WriteCoordinator>(scope));
+    auto saves_owner = take(dependencies.get<p::SaveService>(scope));
+    auto store_owner = take(dependencies.get<s::SessionStore>(scope));
+    auto opening_owner = take(dependencies.get<s::SessionOpening>(scope));
+    auto execution_owner = take(dependencies.get<p::SaveExecution>(scope));
+    auto& files = *files_owner;
+    auto& writes = *writes_owner;
+    auto& saves = *saves_owner;
+    auto& store = *store_owner;
+    auto& opening = *opening_owner;
+    auto& execution = *execution_owner;
+    auto& saving = *saving_owner;
     auto schemas = take(simulation::ecs::ComponentSchemaSet::build({}));
     assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, schemas));
     auto factories = take(s::SessionFactorySnapshot::create(
@@ -306,22 +362,9 @@ int main(int argc, char** argv)
     opening.requestStop();
     assert(opening.settled() && writes.size() == 0);
     {
-        services::ServiceRegistry plugin_services{store_messages.dispatcherRef()};
-        auto plugin_scope = take(plugin_services.createScope());
-        assert(plugin_services.publish(
-            {services::ServiceEntry::bind<kProjectPluginSelectionService>(object::CodeLease::builtin())}
-        ));
-        // Publishing a definition does not construct this activity or create a file request.
-        assert(plugin_services.drained() && take(plugin_scope.settled()) && writes.size() == 0);
-        const auto missing = plugin_services.get<ProjectPluginSelection>(plugin_scope);
-        assert(!missing && plugin_services.drained() && writes.size() == 0);
-        assert(plugin_scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project));
-        assert(plugin_scope.provide(services::ServiceNameView{"lux.process.execution"}, runtime));
-        assert(plugin_scope.provide(services::ServiceNameView{"lux.editor.persistence.writes"}, writes));
-        assert(plugin_scope.provide(
-            services::ServiceNameView{"lux.editor.persistence.files"}, static_cast<p::IArtifactStore&>(files)
-        ));
-        assert(plugin_scope.provide(services::ServiceNameView{"lux.editor.persistence.execution"}, execution));
+        auto& plugin_services = dependencies;
+        auto plugin_scope = take(dependencies.createScope(&scope));
+        assert(take(plugin_scope.settled()) && writes.size() == 0);
         auto owned_plugins = take(plugin_services.get<ProjectPluginSelection>(plugin_scope));
         auto& plugins = *owned_plugins;
         std::weak_ptr<ProjectPluginSelection> plugin_lifetime = owned_plugins;
@@ -385,8 +428,8 @@ int main(int argc, char** argv)
         const auto closed = plugin_services.get<ProjectPluginSelection>(plugin_scope);
         assert(!closed && closed.error().code == services::EServiceError::CLOSED);
         assert(plugin_scope.release());
-        (void)store_messages.collect();
-        assert(plugin_scope.drained() && plugin_services.drained() && plugin_lifetime.expired());
+        (void)messages.collectRetired();
+        assert(plugin_scope.drained() && plugin_lifetime.expired());
     }
     {
         const auto user_root = root.parent_path() / (root.filename().string() + "-user");
@@ -452,9 +495,19 @@ int main(int argc, char** argv)
         }
         assert(user_writes.size() == 0 && read(path) == saved);
     }
+    saving_owner.reset();
+    opening_owner.reset();
+    execution_owner.reset();
+    saves_owner.reset();
+    writes_owner.reset();
+    files_owner.reset();
+    store_owner.reset();
     assert(scope.release());
-    (void)store_messages.collect();
-    assert(dependencies.drained());
+    for (unsigned batch{}; batch != 32 && !dependencies.drained(); ++batch)
+    {
+        (void)messages.collectRetired();
+    }
+    assert(scope.drained() && dependencies.drained());
     project->requestClose();
     assert(take(project->advanceClose()));
     std::cout

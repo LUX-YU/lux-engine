@@ -75,44 +75,7 @@ namespace lux::editor::application
         {
             return applicationFailure("content.creation-availability", availability.error());
         }
-        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.sessions"}, sessions_); !provided)
-        {
-            return applicationFailure("service.infrastructure", provided.error());
-        }
-        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.sessions.opening"}, opening_);
-            !provided)
-        {
-            return applicationFailure("service.infrastructure", provided.error());
-        }
-        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.persistence.saves"}, saves_); !provided)
-        {
-            return applicationFailure("service.infrastructure", provided.error());
-        }
         if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project_);
-            !provided)
-        {
-            return applicationFailure("service.infrastructure", provided.error());
-        }
-        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.persistence.writes"}, writes_);
-            !provided)
-        {
-            return applicationFailure("service.infrastructure", provided.error());
-        }
-        if (auto provided = scope.provide(
-                services::ServiceNameView{"lux.editor.persistence.files"},
-                static_cast<persistence::IArtifactStore&>(files_)
-            );
-            !provided)
-        {
-            return applicationFailure("service.infrastructure", provided.error());
-        }
-        if (auto provided = scope.provide(services::ServiceNameView{"lux.process.execution"}, engine_->execution());
-            !provided)
-        {
-            return applicationFailure("service.infrastructure", provided.error());
-        }
-        if (auto provided =
-                scope.provide(services::ServiceNameView{"lux.editor.persistence.execution"}, save_execution_);
             !provided)
         {
             return applicationFailure("service.infrastructure", provided.error());
@@ -121,7 +84,7 @@ namespace lux::editor::application
 
         draft.reflection.push_back({lux::object::CodeLease::builtin(), project::registerDesktopSettings});
         draft.settings = builtin_settings_;
-        draft.commands = sessions::makeHistoryCommands(sessions_, [this](auto id) { return opening_.find(id); });
+        draft.commands = sessions::makeHistoryCommands(*sessions_, [this](auto id) { return opening_->find(id); });
 
         auto exit = commands::CommandEntry::bind<command_lux_editor_exit>(
             lux::object::CodeLease::builtin(),
@@ -156,16 +119,15 @@ namespace lux::editor::application
             }
         };
         draft.ui.push_back(desktop::UiEntry::bind<tasks::kTaskView>(object::CodeLease::builtin()));
-        const extensions::SessionActivities session_activities{sessions_, saves_};
-        const extensions::ProjectActivities project_activities{*project_, writes_, engine_->execution()};
+        const extensions::SessionActivities session_activities{*sessions_, *saves_};
+        const extensions::ProjectActivities project_activities{*project_, *writes_, engine_->execution()};
         const extensions::WorkbenchAccess workbench{messages_.dispatcherRef(), desktop_->root(), commands_};
-        for (const auto& extension : extensions_)
+        for (std::size_t index = 0; index < extensions_.size(); ++index)
         {
-            auto contributed = extension.contributions();
-            if (!contributed)
-            {
-                return applicationFailure("extension.contribute", contributed.error());
-            }
+            const auto& extension = extensions_[index];
+            extensions::ContributionResult<extensions::ContributionDraft> contributed{
+                std::move(module_declarations_[index])
+            };
             auto activated = extension.activate({&session_activities, &project_activities, &workbench});
             if (!activated)
             {
@@ -401,7 +363,7 @@ namespace lux::editor::application
         {
             return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET, "menu.content"});
         }
-        const auto content = sessions_.describe(*association->primary);
+        const auto content = sessions_->describe(*association->primary);
         if (!content)
         {
             return cxx::unexpected(commands::CommandFailure{

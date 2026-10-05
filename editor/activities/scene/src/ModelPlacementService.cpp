@@ -64,7 +64,7 @@ namespace lux::editor::scene
             {services::ServiceNameView{"lux.editor.sessions"},
              1,
              cxx::typeToken<sessions::SessionStore>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.editor.project.storage"},
              1,
@@ -85,7 +85,7 @@ namespace lux::editor::scene
             {
                 return cxx::unexpected(std::move(execution.error()));
             }
-            auto sessions = resolver.require<sessions::SessionStore>(1);
+            auto sessions = resolver.get<sessions::SessionStore>(1);
             if (!sessions)
             {
                 return cxx::unexpected(std::move(sessions.error()));
@@ -102,7 +102,7 @@ namespace lux::editor::scene
             }
             return std::make_unique<ModelPlacementService>(
                 execution->get(),
-                sessions->get().access<SceneSession>(),
+                *sessions::TSessionAccess<SceneSession>::create(*sessions),
                 project->get(),
                 schemas->get()
             );

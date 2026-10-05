@@ -56,7 +56,7 @@ namespace lux::editor::application
         {
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "save.question"});
         }
-        auto info = sessions_.describe(target.id);
+        auto info = sessions_->describe(target.id);
         if (!info)
         {
             return applicationFailure("save.question.source", info.error());
@@ -65,7 +65,7 @@ namespace lux::editor::application
         {
             return applicationFailure("save.question.source", sessions::ESessionError::STALE_CONTENT);
         }
-        const auto factory = opening_.factory(target.id);
+        const auto factory = opening_->factory(target.id);
         if (!factory || !(*factory)->descriptor().source)
         {
             return cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "save.naming"});
@@ -193,7 +193,7 @@ namespace lux::editor::application
                 ) -> commands::CommandResult<commands::DispatchReceipt>
                 {
                     const auto target = std::get<commands::SessionTarget>(invocation.target());
-                    auto info = sessions_.describe(target.id);
+                    auto info = sessions_->describe(target.id);
                     if (!info)
                     {
                         return cxx::unexpected(saveFailure(applicationFailure("save.session", info.error()).value()));
@@ -228,7 +228,7 @@ namespace lux::editor::application
             { return commands::CommandState{phase_ == EApplicationPhase::RUNNING}; },
             [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt>
             {
-                auto ids = sessions_.snapshotIds();
+                auto ids = sessions_->snapshotIds();
                 if (!ids)
                 {
                     return cxx::unexpected(saveFailure(applicationFailure("save-all.contents", ids.error()).value()));

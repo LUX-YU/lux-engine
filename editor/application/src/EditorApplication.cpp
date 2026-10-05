@@ -17,23 +17,12 @@ namespace lux::editor::application
         std::unique_ptr<engine::EngineContext> engine,
         object::ObjectMessageQueue messages,
         lux::project::PluginManager plugins,
-        lux::project::SceneRegistrations registrations,
-        std::filesystem::path profile
+        lux::project::SceneRegistrations registrations
     )
         : config_(std::move(config)), platform_(std::move(platform)), window_(std::move(window)),
           engine_(std::move(engine)), messages_(std::move(messages)), project_tasks_(engine_->execution()),
           task_monitor_(messages_.dispatcherRef(), engine_->execution()), plugins_(std::move(plugins)),
-          registrations_(std::move(registrations)),
-          files_(config_.project_file.parent_path(), *config_.user_directory / "lux/editor", config_.installation),
-          save_execution_(engine_->execution(), saves_, writes_, files_),
-          opening_(engine_->execution(), sessions_, saves_, editor_context_.services(), editor_context_.scope()),
-          contributions_(messages_.dispatcherRef(), editor_context_), workspace_(std::move(profile), writes_, files_),
-          project_workspace_(config_.project_file.parent_path(), writes_, files_),
-          installation_settings_(config_.installation, writes_, files_),
-          user_settings_(*config_.user_directory / "lux/editor", writes_, files_),
-          user_settings_changes_(user_settings_, writes_, files_),
-          project_settings_changes_(project_workspace_, writes_, files_),
-          workspace_changes_(workspace_, writes_, files_, &project_workspace_)
+          registrations_(std::move(registrations)), contributions_(messages_.dispatcherRef(), editor_context_)
     {
         opens_.reserve(64);
         open_intents_.reserve(64);
@@ -160,8 +149,7 @@ namespace lux::editor::application
             std::move(*engine),
             std::move(*messages),
             std::move(*plugins),
-            std::move(*registrations),
-            profile
+            std::move(*registrations)
         );
         auto selected = extensions::loadStaticEditorModules(modules);
         if (!selected)
@@ -169,6 +157,11 @@ namespace lux::editor::application
             return applicationFailure("editor.modules", selected.error());
         }
         impl->extensions_ = std::move(*selected);
+        auto activities = impl->prepareActivities(profile);
+        if (!activities)
+        {
+            return cxx::unexpected(activities.error());
+        }
         auto assembled = impl->assemble(*source);
         if (!assembled)
         {
@@ -253,22 +246,17 @@ namespace lux::editor::application
             *config_.user_directory,
             config_.project_file,
             engine_->execution(),
-            writes_,
-            files_,
-            save_execution_
+            *writes_,
+            *files_,
+            *save_execution_
         );
-        importer_ =
-            std::make_unique<assets::ModelImporter>(*project_, engine_->execution(), writes_, files_, save_execution_);
-        for (const auto& runtime : plugins_.libraries())
-        {
-            const auto* description = plugins_.catalog().find(runtime->identity().id);
-            auto extension = extensions::EditorExtension::load(*description, *runtime, extensions_);
-            if (!extension)
-            {
-                return applicationFailure("editor.extension", extension.error());
-            }
-            extensions_.push_back(std::move(*extension));
-        }
+        importer_ = std::make_unique<assets::ModelImporter>(
+            *project_,
+            engine_->execution(),
+            *writes_,
+            *files_,
+            *save_execution_
+        );
         if (config_.font)
         {
             std::optional<EditorResult<lux::ui::FontSource>> loaded;
@@ -354,15 +342,21 @@ namespace lux::editor::application
             desktop_->root(),
             editor_context_.ui(),
             editor_context_.scope(),
-            workspace_,
-            workspace_changes_
+            *workspace_,
+            *workspace_changes_
         );
         restoration_ = std::make_unique<project::RestoreWorkbench>(
-            *project_, files_, sessions_, opening_, workspace_, workspace_changes_, contributions_
+            *project_,
+            *files_,
+            *sessions_,
+            *opening_,
+            *workspace_,
+            *workspace_changes_,
+            contributions_
         );
         // Migration owns no worker or publisher: the existing changes/execution pair retains accepted
         // records. Failure is shown in Workspace; it does not masquerade as an empty personal catalog.
-        if (auto migrated = workspace_changes_.migrateProfile(project_workspace_, project_->manifest().id); !migrated)
+        if (auto migrated = workspace_changes_->migrateProfile(*project_workspace_, project_->manifest().id); !migrated)
         {
             workspace_failure_ = migrated.error();
         }

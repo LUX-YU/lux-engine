@@ -8168,7 +8168,8 @@
       "flow_module",
       "editor_storage",
       "material_module",
-      "scene_module"
+      "scene_module",
+      "session_execution"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -9262,7 +9263,10 @@
       "lux/engine/editor/flowforge/FlowModule.hpp",
       "lux/engine/editor/material/MaterialModule.hpp",
       "lux/engine/editor/scene/SceneModule.hpp",
-      "lux/engine/project/PluginManager.hpp"
+      "lux/engine/project/PluginManager.hpp",
+      "lux/engine/editor/sessions/SessionServices.hpp",
+      "lux/engine/editor/persistence/PersistenceServices.hpp",
+      "lux/engine/editor/storage/PublicationFileStore.hpp"
     ],
     "prefixes": [],
     "test_headers": {

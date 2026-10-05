@@ -1,9 +1,12 @@
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
+#include <lux/engine/editor/persistence/PersistenceServices.hpp>
 #include <lux/engine/editor/project/ProjectModule.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/scene/ProjectSceneEnvironment.hpp>
+#include <lux/engine/editor/sessions/SessionServices.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
 #include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
+#include <lux/engine/editor/storage/PublicationFileStore.hpp>
 
 namespace lux::editor::project
 {
@@ -15,10 +18,22 @@ namespace lux::editor::project
             +[]() noexcept -> const extensions::EditorExtensionExports*
             {
                 static const extensions::EditorExtensionExports exports{
-                    .counts = {.services = 3, .ui = 1},
+                    .counts = {.services = 9, .ui = 1},
                     .contribute = +[](extensions::ContributionDraft& draft,
                                       object::CodeLease code) -> extensions::ContributionResult<void>
                     {
+                        draft.services.push_back(services::ServiceEntry::bind<sessions::kSessionStoreService>(code));
+                        draft.services.push_back(services::ServiceEntry::bind<sessions::kSessionOpeningService>(code));
+                        draft.services.push_back(
+                            services::ServiceEntry::bind<persistence::kWriteCoordinatorService>(code)
+                        );
+                        draft.services.push_back(services::ServiceEntry::bind<persistence::kSaveService>(code));
+                        draft.services.push_back(
+                            services::ServiceEntry::bind<persistence::kSaveExecutionService>(code)
+                        );
+                        draft.services.push_back(
+                            services::ServiceEntry::bind<storage::kPublicationFileStoreService>(code)
+                        );
                         draft.services.push_back(services::ServiceEntry::bind<kProjectContentSavingService>(code));
                         draft.services.push_back(services::ServiceEntry::bind<kProjectPluginSelectionService>(code));
                         draft.services.push_back(services::ServiceEntry::bind<scene::kProjectSceneEnvironment>(code));

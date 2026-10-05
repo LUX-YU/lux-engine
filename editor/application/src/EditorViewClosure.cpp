@@ -22,7 +22,7 @@ namespace lux::editor::application
         {
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "close.save-results"});
         }
-        auto current = sessions_.describe(expected.session);
+        auto current = sessions_->describe(expected.session);
         if (!current)
         {
             return applicationFailure("close.content", current.error());
@@ -73,7 +73,7 @@ namespace lux::editor::application
             );
             if (count == 1)
             {
-                auto author = sessions_.describe(primary);
+                auto author = sessions_->describe(primary);
                 if (!author)
                 {
                     return applicationFailure("close.view.content", author.error());

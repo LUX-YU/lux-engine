@@ -37,7 +37,7 @@ namespace lux::editor::application
                 }
                 else if constexpr (std::same_as<Action, CancelSave>)
                 {
-                    auto cancelled = saves_.requestCancel(action.target);
+                    auto cancelled = saves_->requestCancel(action.target);
                     if (!cancelled)
                     {
                         return applicationFailure("save.cancel", cancelled.error());
@@ -45,7 +45,7 @@ namespace lux::editor::application
                 }
                 else if constexpr (std::same_as<Action, ReconcilePublication>)
                 {
-                    auto reconciled = writes_.reconcile(action.target, files_);
+                    auto reconciled = writes_->reconcile(action.target, *files_);
                     if (!reconciled)
                     {
                         return applicationFailure("publication.reconcile", reconciled.error());
@@ -108,7 +108,7 @@ namespace lux::editor::application
                 else if constexpr (std::same_as<Action, ShowContent>)
                 {
                     const auto target = action.target;
-                    auto current = sessions_.describe(target.session);
+                    auto current = sessions_->describe(target.session);
                     if (!current)
                     {
                         return applicationFailure("content.show", current.error());
@@ -152,7 +152,7 @@ namespace lux::editor::application
         { to.messages.push_back(error.domain + ": " + error.message); };
         const auto publication = [&](project::ResultRow& to, persistence::WriteTicket ticket) -> EditorResult<void>
         {
-            auto status = writes_.status(ticket);
+            auto status = writes_->status(ticket);
             if (!status)
             {
                 return applicationFailure("results.publication", status.error());
@@ -176,14 +176,14 @@ namespace lux::editor::application
             to.actions.push_back({"Acknowledge maintenance error", AcknowledgeMaintenance{}});
         }
         snapshot.sections.push_back({"Open content (including content without a window)"});
-        auto ids = sessions_.snapshotIds();
+        auto ids = sessions_->snapshotIds();
         if (!ids)
         {
             return applicationFailure("results.contents", ids.error());
         }
         for (auto id : *ids)
         {
-            auto info = sessions_.describe(id);
+            auto info = sessions_->describe(id);
             if (!info)
             {
                 return applicationFailure("results.content", info.error());
@@ -293,7 +293,7 @@ namespace lux::editor::application
             }
             else
             {
-                auto status = saves_.status(report.id);
+                auto status = saves_->status(report.id);
                 if (!status)
                 {
                     return applicationFailure("results.save", status.error());

@@ -1,4 +1,3 @@
-#include <lux/engine/project/PluginManager.hpp>
 #include "../../../../../cmake/installed-consumers/common/ControlsTestAccess.hpp"
 #include "ObjectQueue.hpp"
 #include <fstream>
@@ -15,28 +14,32 @@
 #include <lux/engine/editor/material/MaterialModule.hpp>
 #include <lux/engine/editor/material/MaterialSaveSource.hpp>
 #include <lux/engine/editor/material/PublishCompiledMaterial.hpp>
+#include <lux/engine/editor/persistence/PersistenceServices.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/project/AssetPickerElement.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/scene/InspectorView.hpp>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
 #include <lux/engine/editor/scene/ResourceView.hpp>
-#include <lux/engine/editor/scene/RunStore.hpp>
 #include <lux/engine/editor/scene/RunInspectorView.hpp>
+#include <lux/engine/editor/scene/RunStore.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
 #include <lux/engine/editor/scene/SceneModule.hpp>
 #include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
 #include <lux/engine/editor/sessions/SessionOpening.hpp>
+#include <lux/engine/editor/sessions/SessionServices.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/storage/PublicationFileStore.hpp>
 #include <lux/engine/editor/tasks/TaskView.hpp>
 #include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/editor/widgets/GraphCanvas.hpp>
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
+#include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <source_location>
 #ifdef LUX_P10_R1_NATIVE
@@ -200,9 +203,86 @@ namespace
         std::unique_ptr<lux::scene::RenderResources> resources;
         std::unique_ptr<lux::scene::SceneRuntime> runtime;
         std::shared_ptr<author::ScenePresentationHub> hub;
-        lux::test::ObjectQueue store_messages;
-        sessions::SessionStore store{store_messages.dispatcherRef(), 4};
         object::ObjectMessageQueue messages{take(object::ObjectMessageQueue::create(256))};
+        std::filesystem::path files{[]
+        {
+            auto directory = std::filesystem::temp_directory_path() /
+                             ("lux-p10-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+            std::filesystem::create_directories(directory / "user");
+            std::filesystem::create_directories(directory / "install");
+            return directory;
+        }()};
+        std::shared_ptr<const storage::PublicationRoots> publication_roots{
+            std::make_shared<const storage::PublicationRoots>(files, files / "user", files / "install")
+        };
+        services::ServiceRegistry providers{messages.dispatcherRef()};
+        services::ServiceScope provider_scope{take(providers.createScope())};
+        std::vector<std::shared_ptr<const services::ServiceEntry>> foundations{
+            services::ServiceEntry::bind<sessions::kSessionStoreService>(object::CodeLease::builtin()),
+            services::ServiceEntry::bind<sessions::kSessionOpeningService>(object::CodeLease::builtin()),
+            services::ServiceEntry::bind<persistence::kWriteCoordinatorService>(object::CodeLease::builtin()),
+            services::ServiceEntry::bind<persistence::kSaveService>(object::CodeLease::builtin()),
+            services::ServiceEntry::bind<persistence::kSaveExecutionService>(object::CodeLease::builtin()),
+            services::ServiceEntry::bind<storage::kPublicationFileStoreService>(object::CodeLease::builtin())
+        };
+        bool providers_closed{};
+        std::shared_ptr<sessions::SessionStore> store_owner{
+            [&]
+            {
+                assert(providers.publish(foundations));
+                assert(provider_scope.provide(services::ServiceNameView{"lux.process.execution"}, execution));
+                assert(provider_scope.provide(services::ServiceNameView{"lux.services.registry"}, providers));
+                assert(provider_scope.provide(services::ServiceNameView{"lux.services.scope"}, provider_scope));
+                assert(
+                    provider_scope.provide(services::ServiceNameView{"lux.editor.publication.roots"}, publication_roots)
+                );
+                return take(providers.get<sessions::SessionStore>(provider_scope));
+            }()
+        };
+        sessions::SessionStore& store{*store_owner};
+        std::shared_ptr<persistence::IArtifactStore> disk_owner{
+            take(providers.get<persistence::IArtifactStore>(provider_scope))
+        };
+        persistence::IArtifactStore& disk{*disk_owner};
+        std::shared_ptr<persistence::WriteCoordinator> writes_owner{
+            take(providers.get<persistence::WriteCoordinator>(provider_scope))
+        };
+        persistence::WriteCoordinator& writes{*writes_owner};
+        std::shared_ptr<persistence::SaveService> saves_owner{
+            take(providers.get<persistence::SaveService>(provider_scope))
+        };
+        persistence::SaveService& saves{*saves_owner};
+        std::shared_ptr<persistence::SaveExecution> transfer_owner{
+            take(providers.get<persistence::SaveExecution>(provider_scope))
+        };
+        persistence::SaveExecution& transfer{*transfer_owner};
+        bool publish(std::vector<std::shared_ptr<const services::ServiceEntry>> entries)
+        {
+            entries.insert(entries.end(), foundations.begin(), foundations.end());
+            return bool(providers.publish(std::move(entries)));
+        }
+        void closeProviders()
+        {
+            if (providers_closed)
+            {
+                return;
+            }
+            assert(transfer.tasks().join());
+            saves.adoptCompletions();
+            assert(provider_scope.release());
+            transfer_owner.reset();
+            saves_owner.reset();
+            writes_owner.reset();
+            disk_owner.reset();
+            store_owner.reset();
+            providers_closed = true;
+            // The same full drain assertion now includes the real shared foundation allocations.
+            for (unsigned turn = 0; turn < 32 && !providers.drained(); ++turn)
+            {
+                (void)messages.collectRetired();
+            }
+            assert(provider_scope.drained() && providers.drained());
+        }
         editor::commands::CommandRegistry commands;
         editor::commands::CommandDispatcher dispatcher{commands};
         std::unique_ptr<desktop::DesktopShell> desktop;
@@ -216,14 +296,6 @@ namespace
         std::uint64_t frames{};
         editor::material::MaterialPreview* material_preview{};
         author::RunStore* runs{};
-        std::filesystem::path files{
-            std::filesystem::temp_directory_path() /
-            ("lux-p10-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))
-        };
-        storage::FileArtifactStore disk{files};
-        persistence::WriteCoordinator writes;
-        persistence::SaveService saves{writes};
-        persistence::SaveExecution transfer{execution, saves, writes, disk};
         ProjectContentSaving* publication{};
 
         window::LuxWindow* window_{};
@@ -386,10 +458,16 @@ namespace
             assert(renderer->collectCompletions(128));
             std::size_t controls = 128, programs = 32;
             assert(renderer->submitPending(controls, programs));
-            assert(transfer.submitReady());
+            if (!providers_closed)
+            {
+                assert(transfer.submitReady());
+            }
             assert(execution.collectCompletions());
             assert(execution.dispatchTaskEvents());
-            saves.adoptCompletions();
+            if (!providers_closed)
+            {
+                saves.adoptCompletions();
+            }
             if (publication)
             {
                 assert(publication->update());
@@ -463,10 +541,9 @@ namespace
         }
         ~Fixture()
         {
-            assert(transfer.tasks().join());
-            saves.adoptCompletions();
             desktop.reset();
             hub.reset();
+            closeProviders();
             wait([&] { return resources->empty(); }, false);
             assert(tasks.join());
             assert(renderer->statistics().validation_errors == 0);
@@ -568,16 +645,14 @@ namespace
     {
         const auto before = f.session->describe();
         const author::SceneObjectRef target{f.key->id(), before.current.state.history, f.object};
-        services::ServiceRegistry services(f.messages.dispatcherRef());
-        auto scope = take(services.createScope());
+        auto& services = f.providers;
+        auto& scope = f.provider_scope;
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
         useFixedEnvironment(declared, f.environment);
-        assert(services.publish(std::move(declared.services)));
-        assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
+        assert(f.publish(std::move(declared.services)));
         assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, f.environment.components));
         assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
-        assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
         desktop::UiRegistry windows(f.messages.dispatcherRef(), services);
         auto catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
         assert(windows.publish(catalog));
@@ -666,10 +741,10 @@ namespace
         auto hub = take(services.get<author::ScenePresentationHub>(scope));
         f.wait([&] { hub->collectReleased(); return hub->size() == 0; });
         hub.reset();
-        assert(scope.release());
+        assert(f.session->describe().current == before.current && f.session->describe().dirty == before.dirty);
+        f.closeProviders();
         (void)f.messages.collectRetired();
         assert(scope.drained() && services.drained());
-        assert(f.session->describe().current == before.current && f.session->describe().dirty == before.dirty);
         std::puts("EC1 complete Scene tools: owner lifetime, no-target association, BUSY retry and release");
     }
     void declaredSceneTools(Fixture& f)
@@ -677,17 +752,15 @@ namespace
         author::SceneView::ModelDrop model_drop;
         std::optional<author::ModelPlacement> received_drop;
         unsigned model_drops{};
-        services::ServiceRegistry services(f.messages.dispatcherRef());
-        auto scope = take(services.createScope());
+        auto& services = f.providers;
+        auto& scope = f.provider_scope;
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
         useFixedEnvironment(declared, f.environment);
         assert(declared.ui.size() == 7);
-        assert(services.publish(std::move(declared.services)));
-        assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
+        assert(f.publish(std::move(declared.services)));
         assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, f.environment.components));
         assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
-        assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
         desktop::UiRegistry windows(f.messages.dispatcherRef(), services);
         auto catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
         assert(windows.publish(catalog));
@@ -875,10 +948,10 @@ namespace
             }
         );
         hub.reset();
-        assert(scope.release());
+        assert(f.session->describe().current == before.current && f.session->describe().dirty == before.dirty);
+        f.closeProviders();
         (void)f.messages.collectRetired();
         assert(scope.drained() && services.drained());
-        assert(f.session->describe().current == before.current && f.session->describe().dirty == before.dirty);
         std::puts("EC4 declared Scene auxiliaries: off-tree factories, lexical input, shared selection, original gate, "
                   "undo, viewport close and independent content lifetime PASS");
     }
@@ -902,9 +975,8 @@ namespace
         const auto before = source->describe();
         const author::SceneObjectRef target{key.id(), before.current.state.history, f.object};
         assert(group->select({{target}}));
-        services::ServiceRegistry services(f.messages.dispatcherRef());
-        auto scope = take(services.createScope());
-        assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
+        auto& services = f.providers;
+        auto& scope = f.provider_scope;
         assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, f.environment.components));
         assert(scope.provide(services::ServiceNameView{"lux.editor.scene.interaction"}, group));
         class BlockingPane final : public ui::Pane
@@ -982,33 +1054,17 @@ namespace
         assert(notified && f.store.close(permits));
         assert(!f.store.describe(key.id()) && !root.findPane(view) && !root.findPane(other_id));
         (void)f.messages.collectRetired();
-        assert(scope.release() && scope.drained());
         assert(f.store.describe(f.key->id()));
+        f.closeProviders();
         std::puts("PASS P12 real Inspector abandonable close preparation and guarded content retirement handoff");
     }
     void runningView(Fixture& f)
     {
-        services::ServiceRegistry run_services(f.messages.dispatcherRef());
-        auto run_scope = take(run_services.createScope());
-        // Declared before every UI/client reference: drain their actual owner after their destructors.
-        struct Retirement final
-        {
-            services::ServiceRegistry& registry;
-            services::ServiceScope& scope;
-            object::ObjectMessageQueue& messages;
-            ~Retirement()
-            {
-                assert(take(scope.settled()));
-                assert(scope.release());
-                (void)messages.collectRetired();
-                assert(scope.drained() && registry.drained());
-            }
-        } retirement{run_services, run_scope, f.messages};
+        auto& run_services = f.providers;
+        auto& run_scope = f.provider_scope;
         assert(run_scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
-        assert(run_scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
-        assert(run_scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
         assert(run_scope.provide(services::ServiceNameView{"lux.simulation.components"}, f.environment.components));
-        assert(run_services.publish({services::ServiceEntry::bind<author::kRunStoreService>(object::CodeLease::builtin())}));
+        assert(f.publish({services::ServiceEntry::bind<author::kRunStoreService>(object::CodeLease::builtin())}));
         auto run_owner = take(run_services.get<author::RunStore>(run_scope));
         auto& runs = *run_owner;
         f.runs = &runs;
@@ -1363,13 +1419,13 @@ namespace
         Fixture& fixture;
         asset::AssetVfs assets;
         std::unique_ptr<ProjectStorage> project;
-        services::ServiceRegistry dependencies;
-        services::ServiceScope scope;
-        sessions::SessionOpening opening;
+        services::ServiceRegistry& dependencies;
+        services::ServiceScope& scope;
+        std::shared_ptr<sessions::SessionOpening> opening;
         std::shared_ptr<ProjectContentSaving> saving;
         explicit ArtifactPublication(Fixture& f)
-            : fixture(f), dependencies(f.messages.dispatcherRef()), scope(take(dependencies.createScope())),
-              opening(f.execution, f.store, f.saves, dependencies, scope)
+            : fixture(f), dependencies(f.providers), scope(f.provider_scope),
+              opening(take(dependencies.get<sessions::SessionOpening>(scope)))
         {
             ProjectManifest manifest{asset::AssetId{uuid("flow-project")}, "Flow publication", {}, {}};
             for (const auto name : {"flow", "ec4-flow"})
@@ -1392,17 +1448,7 @@ namespace
             project = take(
                 ProjectStorage::open(prepared, assets, *f.execution.blocking(), f.tasks, f.messages.dispatcherRef())
             );
-            assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
-            assert(scope.provide(services::ServiceNameView{"lux.editor.sessions.opening"}, opening));
-            assert(scope.provide(services::ServiceNameView{"lux.editor.persistence.saves"}, f.saves));
             assert(scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project));
-            assert(scope.provide(services::ServiceNameView{"lux.editor.persistence.writes"}, f.writes));
-            assert(scope.provide(
-                services::ServiceNameView{"lux.editor.persistence.files"},
-                static_cast<persistence::IArtifactStore&>(f.disk)
-            ));
-            assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
-            assert(scope.provide(services::ServiceNameView{"lux.editor.persistence.execution"}, f.transfer));
         }
         void observe()
         {
@@ -1414,7 +1460,8 @@ namespace
             assert(!saving || saving->settled());
             fixture.publication = nullptr;
             saving.reset();
-            assert(scope.release());
+            opening.reset();
+            fixture.closeProviders();
             (void)fixture.messages.collectRetired();
             assert(scope.drained() && dependencies.drained());
             project->requestClose();
@@ -1451,17 +1498,17 @@ namespace
         assert(declarations.services.size() == 2 && declarations.ui.size() == 1);
         assert(declarations.sessions.size() == 1 && declarations.commands.size() == 1);
         declarations.services.push_back(ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin()));
-        assert(services.publish(declarations.services));
+        assert(f.publish(declarations.services));
         auto& scope = publication.scope;
         desktop::UiRegistry ui(f.messages.dispatcherRef(), services);
         auto catalog = take(desktop::UiCatalog::prepare(std::move(declarations.ui)));
-        assert(ui.publish(catalog) && services.drained());
+        assert(ui.publish(catalog));
         const auto factory = take(catalog.selectContent({"lux.editor.flowforge"}));
         desktop::UiCreateInfo
             input{f.messages.dispatcherRef(), lux::ui::PaneId{"ec4-flow-a"}, {{key.id()}, key.id()}, {}};
         input.configuration.schema = 99;
         auto invalid = ui.create(factory, scope, input);
-        assert(!invalid && invalid.error().code == desktop::EUiError::INVALID_CONFIGURATION && services.drained());
+        assert(!invalid && invalid.error().code == desktop::EUiError::INVALID_CONFIGURATION);
         input.configuration.schema = 1;
         {
             serialization::BinaryWriter writer(input.configuration.bytes);
@@ -1643,7 +1690,7 @@ namespace
         assert(view->cancelEdit() && root.removeSubPane(*view));
         (void)f.messages.collectRetired();
         assert(weak_model.expired());
-        (void)f.store_messages.collect();
+        (void)f.messages.collectRetired();
         f.wait([&] { return publication.saving->settled(); });
         const auto report = take(publication.saving->artifactReports()).front();
         assert(
@@ -1656,7 +1703,8 @@ namespace
         compiler.reset();
         publication.saving.reset();
         f.publication = nullptr;
-        assert(scope.release());
+        publication.opening.reset();
+        f.closeProviders();
         (void)f.messages.collectRetired();
         assert(scope.drained() && services.drained() && !result->bytes().empty());
         std::printf("EC4 Flow: actual lazy UiRegistry factory, two local interactions/shared model, Root ownership, "
@@ -1665,20 +1713,19 @@ namespace
 
     void sceneComposition(Fixture& f)
     {
-        services::ServiceRegistry services(f.messages.dispatcherRef());
-        auto scope = take(services.createScope());
+        auto& services = f.providers;
+        auto& scope = f.provider_scope;
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
         assert(declared.sessions.size() == 1 && declared.commands.empty());
         assert(declared.services.size() == 3 && declared.ui.size() == 7);
         useFixedEnvironment(declared, f.environment);
-        assert(services.publish(std::move(declared.services)));
-        assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
+        const auto cold_services = declared.services;
+        assert(f.publish(std::move(declared.services)));
         assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
-        assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
         desktop::UiRegistry windows(f.messages.dispatcherRef(), services);
         auto catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
-        assert(windows.publish(catalog) && services.drained());
+        assert(windows.publish(catalog));
         auto factory = take(catalog.selectContent({"lux.editor.scene"}));
         const auto package = take(author::buildSceneSnapshotPackage(take(f.session->capture())));
         auto reserved = take(f.store.reserve<author::SceneSession>({"lux.editor.scene"}, object::CodeLease::builtin()));
@@ -1702,8 +1749,20 @@ namespace
         std::weak_ptr<author::SceneSession> weak_model = take(f.store.access<author::SceneSession>().share(key));
         desktop::UiCreateInfo input{f.messages.dispatcherRef(), ui::PaneId{"ec4-scene-a"}, {{key.id()}, key.id()}, {}};
         input.configuration.schema = 77;
+        {
+            services::ServiceRegistry cold(f.messages.dispatcherRef());
+            auto cold_scope = take(cold.createScope());
+            auto entries = cold_services;
+            entries.insert(entries.end(), f.foundations.begin(), f.foundations.end());
+            assert(cold.publish(std::move(entries)));
+            desktop::UiRegistry cold_windows(f.messages.dispatcherRef(), cold);
+            assert(cold_windows.publish(catalog));
+            const auto refused = cold_windows.create(factory, cold_scope, input);
+            assert(!refused && refused.error().code == desktop::EUiError::INVALID_CONFIGURATION);
+            assert(cold.drained() && cold_scope.drained());
+        }
         const auto invalid = windows.create(factory, scope, input);
-        assert(!invalid && invalid.error().code == desktop::EUiError::INVALID_CONFIGURATION && services.drained());
+        assert(!invalid && invalid.error().code == desktop::EUiError::INVALID_CONFIGURATION);
         input.configuration.schema = 1;
         auto first = take(windows.create(factory, scope, input));
         input.instance = ui::PaneId{"ec4-scene-b"};
@@ -1827,7 +1886,7 @@ namespace
         );
         assert(root.removeSubPane(reused) && root.removeSubPane(diagnostics));
         (void)f.messages.collectRetired();
-        (void)f.store_messages.collect();
+        (void)f.messages.collectRetired();
         assert(weak_model.expired());
         f.wait(
             [&]
@@ -1839,7 +1898,7 @@ namespace
         f.wait([&] { return receipt.status().status.state == lux::scene::EViewState::CLOSED; });
         assert(!f.runtime->borrowInstance(instance));
         hub.reset();
-        assert(scope.release());
+        f.closeProviders();
         (void)f.messages.collectRetired();
         assert(scope.drained() && services.drained());
         std::printf("EC4 Scene: declared factories, actual shared author/projection, independent GPU viewports, "
@@ -1863,7 +1922,8 @@ namespace
         auto& environment = *environment_owner;
         environment.assets = {{29, 1}, 1, take(process::asset_loading::makeAssetReadOverlay({}, {})), {}};
         useFixedEnvironment(declared, environment);
-        assert(dependencies.publish(std::move(declared.services)));
+        const auto cold_services = declared.services;
+        assert(f.publish(std::move(declared.services)));
         std::vector<render::RenderFeatureRegistration> features;
         for (const auto& feature : render::builtinRenderFeatureRegistrations())
         {
@@ -1873,7 +1933,7 @@ namespace
         assert(scope.provide(services::ServiceNameView{"lux.render.features"}, features));
         desktop::UiRegistry windows(f.messages.dispatcherRef(), dependencies);
         auto catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
-        assert(windows.publish(catalog) && dependencies.drained());
+        assert(windows.publish(catalog));
         const auto factory = take(catalog.selectContent({"lux.editor.material"}));
         auto slot = take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, object::CodeLease::builtin()));
         lux::material::MaterialSource source{asset::AssetId{uuid("material")}, "EC4 material", {}};
@@ -1893,8 +1953,20 @@ namespace
         desktop::UiCreateInfo
             input{f.messages.dispatcherRef(), ui::PaneId{"ec4-material-a"}, {{key.id()}, key.id()}, {}};
         input.configuration.schema = 99;
+        {
+            services::ServiceRegistry cold(f.messages.dispatcherRef());
+            auto cold_scope = take(cold.createScope());
+            auto entries = cold_services;
+            entries.insert(entries.end(), f.foundations.begin(), f.foundations.end());
+            assert(cold.publish(std::move(entries)));
+            desktop::UiRegistry cold_windows(f.messages.dispatcherRef(), cold);
+            assert(cold_windows.publish(catalog));
+            const auto refused = cold_windows.create(factory, cold_scope, input);
+            assert(!refused && refused.error().code == desktop::EUiError::INVALID_CONFIGURATION);
+            assert(cold.drained() && cold_scope.drained());
+        }
         auto invalid = windows.create(factory, scope, input);
-        assert(!invalid && invalid.error().code == desktop::EUiError::INVALID_CONFIGURATION && dependencies.drained());
+        assert(!invalid && invalid.error().code == desktop::EUiError::INVALID_CONFIGURATION);
         input.configuration.schema = 1;
         auto first = take(windows.create(factory, scope, input));
         input.instance = ui::PaneId{"ec4-material-b"};
@@ -1980,12 +2052,13 @@ namespace
         auto closed = take(windows.prepareClose(root, std::span{&reopened_id, 1}));
         assert(root.commit(closed));
         (void)f.messages.collectRetired();
-        (void)f.store_messages.collect();
+        (void)f.messages.collectRetired();
         assert(weak_model.expired());
         assert(compiler->acknowledge(a_compile) && compiler->acknowledge(b_compile) && compiler->acknowledge(pending));
         assert(compiler->empty());
         compiler.reset();
-        assert(scope.release());
+        publication.opening.reset();
+        f.closeProviders();
         (void)f.messages.collectRetired();
         assert(scope.drained() && dependencies.drained() && !result->bytes().empty());
         std::printf("EC4 Material: declared complete factories, shared model/compiler, local GPU targets, "
@@ -1996,9 +2069,7 @@ namespace
     {
         namespace ef = editor::flowforge;
         ArtifactPublication publication_owner(f);
-        assert(publication_owner.dependencies.publish(
-            {services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())}
-        ));
+        assert(f.publish({services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())}));
         publication_owner.observe();
         const asset::AssetId asset{uuid("flow")};
         ef::FlowAuthoringSource source{asset, "P10 Flow", {}};
@@ -2201,9 +2272,7 @@ namespace
     {
         namespace em = editor::material;
         ArtifactPublication publication_owner(f);
-        assert(publication_owner.dependencies.publish(
-            {services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())}
-        ));
+        assert(f.publish({services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())}));
         publication_owner.observe();
         const asset::AssetId asset{uuid("material")};
         lux::material::MaterialSource source{asset, "P10 material", {}};
@@ -2867,9 +2936,8 @@ namespace
         const auto builtin_bindings = lux::scene::builtinRenderFeatureSceneBindings();
         std::vector<render::RenderFeatureRegistration> features(builtin_features.begin(), builtin_features.end());
         std::vector<lux::scene::RenderFeatureSceneBinding> bindings(builtin_bindings.begin(), builtin_bindings.end());
-        services::ServiceRegistry services(f.messages.dispatcherRef());
-        auto scope = take(services.createScope());
-        assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
+        auto& services = f.providers;
+        auto& scope = f.provider_scope;
         assert(scope.provide(services::ServiceNameView{"lux.project.plugins"}, plugins));
         assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, components));
         assert(scope.provide(services::ServiceNameView{"lux.simulation.systems"}, simulation_systems));
@@ -3001,7 +3069,7 @@ namespace
         const auto current = take(f.store.describe(*created)).current;
         assert(installed->close(current));
         installed.reset();
-        assert(scope.release() && scope.drained());
+        f.closeProviders();
         std::puts("EC4 scene configuration/creation: declared factories, BUSY retention, actual session roles and close PASS");
     }
 
@@ -3145,17 +3213,49 @@ int main(int argc, char** argv)
     assert(!root.findPane(id_a) && !root.findPane(id_b) && !root.findPane(id_c));
     assert(std::ranges::none_of(root.panes(), [](const auto* pane) { return pane != nullptr; }));
     inspectorView(f);
-    ownedSceneTools(f);
-    declaredSceneTools(f);
-    closeInspectorContent(f);
-    creationView(f, argv[2]);
-    runningView(f);
-    const auto compiled = materialView(f);
-    sceneComposition(f);
-    materialComposition(f);
-    flowView(f, argv[1]);
-    flowComposition(f, argv[1]);
-    auxiliaryViews(f);
+    {
+        Fixture isolated;
+        ownedSceneTools(isolated);
+    }
+    {
+        Fixture isolated;
+        declaredSceneTools(isolated);
+    }
+    {
+        Fixture isolated;
+        closeInspectorContent(isolated);
+    }
+    {
+        Fixture isolated;
+        creationView(isolated, argv[2]);
+    }
+    {
+        Fixture isolated;
+        runningView(isolated);
+    }
+    const auto compiled = []
+    {
+        Fixture isolated;
+        auto material = materialView(isolated);
+        auxiliaryViews(isolated); // Reopen the actual file published by this material fixture.
+        return material;
+    }();
+    {
+        Fixture isolated;
+        sceneComposition(isolated);
+    }
+    {
+        Fixture isolated;
+        materialComposition(isolated);
+    }
+    {
+        Fixture isolated;
+        flowView(isolated, argv[1]);
+    }
+    {
+        Fixture isolated;
+        flowComposition(isolated, argv[1]);
+    }
     meshViews(f, *compiled);
     std::printf(
         "P10 DEV SceneView GPU: shared author edit/undo, independent cameras, failed rebind gesture, close/reopen; "

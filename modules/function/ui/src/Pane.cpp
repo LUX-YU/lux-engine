@@ -102,6 +102,21 @@ namespace lux::ui
         return Root::compose(*this, element, replace, attach);
     }
 
+    void Pane::requestClose() noexcept
+    {
+        if (!isOnAffinityThread())
+            detail::failContract();
+        close_requested_ = true;
+        static_cast<void>(emit(closeRequested));
+    }
+
+    void Pane::dismissCloseRequest() noexcept
+    {
+        if (!isOnAffinityThread())
+            detail::failContract();
+        close_requested_ = false;
+    }
+
     void Pane::setTitle(std::string title)
     {
         if (title_ == title)

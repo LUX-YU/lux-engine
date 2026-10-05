@@ -49,7 +49,6 @@ namespace lux::editor::desktop
         std::uint64_t domain{}, revision{};
         std::vector<views::ViewId> ids;
         std::vector<ViewCandidate> candidates;
-        std::vector<object::Connection> connections;
         std::vector<views::DetachedView> retiring;
         bool detach{};
         std::optional<lux::ui::PreparedDockTree> docking;
@@ -83,8 +82,7 @@ namespace lux::editor::desktop
             std::uint64_t generation{};
             views::ViewRestoreKey restore_key;
             std::optional<views::DetachedView> owner;
-            object::Connection close_connection;
-            bool close_requested{}, close_intent{};
+            bool close_requested{};
             std::optional<views::ViewPreparationFailure> close_failure;
         };
         struct Request final
@@ -125,7 +123,6 @@ namespace lux::editor::desktop
                     auto prepared = root_.prepareDetach(*slot.owner->pane());
                     if (!prepared || !root_.commit(*prepared))
                         std::terminate();
-                    slot.close_connection.disconnect();
                     slot.owner.reset();
                 }
         }
@@ -182,7 +179,6 @@ namespace lux::editor::desktop
             data->revision = revision_;
             data->ids.reserve(candidates.size());
             data->candidates.reserve(candidates.size());
-            data->connections.reserve(candidates.size());
             std::vector<lux::ui::Pane*> panes;
             std::vector<lux::ui::WindowVisibility> states;
             panes.reserve(candidates.size());
@@ -212,20 +208,8 @@ namespace lux::editor::desktop
                     ++next_slot;
                 if (next_slot == slots_.size())
                     return cxx::unexpected(views::EViewError::CAPACITY);
-                auto& slot = slots_[next_slot];
+                const auto& slot = slots_[next_slot];
                 const views::ViewId id{domain_, static_cast<std::uint32_t>(next_slot++), slot.generation + 1};
-                auto connected = object::LuxObject::connect(
-                    candidate.owner.pane(),
-                    &lux::ui::Pane::closeRequested,
-                    [&slot, id]() noexcept
-                    {
-                        if (slot.owner && slot.generation == id.generation)
-                            slot.close_intent = true;
-                    }
-                );
-                if (!connected)
-                    return cxx::unexpected(views::EViewError::CAPACITY);
-                data->connections.push_back(std::move(*connected));
                 data->ids.push_back(id);
                 panes.push_back(candidate.owner.pane());
                 if (candidate.visible)
@@ -267,17 +251,14 @@ namespace lux::editor::desktop
                     {
                         data->retiring.push_back(std::move(*slot.owner));
                         slot.owner.reset();
-                        slot.close_connection.disconnect();
                     }
                     else
                     {
                         slot.generation = data->ids[i].generation;
                         slot.restore_key = std::move(data->candidates[i].restore_key);
                         slot.owner.emplace(std::move(data->candidates[i].owner));
-                        slot.close_connection = std::move(data->connections[i]);
                     }
                     slot.close_requested = false;
-                    slot.close_intent = false;
                     slot.close_failure.reset();
                 }
                 for (auto& state : data->states)
@@ -587,7 +568,7 @@ namespace lux::editor::desktop
             return cxx::unexpected(views::EViewError::BUSY);
         std::vector<views::ViewId> result;
         for (const auto& slot : impl_->slots_)
-            if (slot.owner && slot.close_intent)
+            if (slot.owner && slot.owner->pane()->hasCloseRequest())
                 result.push_back(impl_->identity(slot));
         return result;
     }
@@ -598,7 +579,7 @@ namespace lux::editor::desktop
         auto* slot = impl_->find(id);
         if (!slot)
             return cxx::unexpected(views::EViewError::INVALID_ID);
-        slot->close_intent = false;
+        slot->owner->pane()->dismissCloseRequest();
         return {};
     }
     cxx::expected<PreparedViewBatch, views::ViewPreparationFailure> ViewHost::prepareLayout(

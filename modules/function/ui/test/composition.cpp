@@ -83,6 +83,58 @@ namespace
     static_assert(!PublicChildren<ui::Button>);
     static_assert(!std::derived_from<ui::Pane, ui::Element>);
 
+    void closeIntent(object::ObjectMessageQueue& messages)
+    {
+        Counts counts;
+        auto root = ui::Root::create(messages.dispatcherRef());
+        assert(root);
+        Window pane(messages.dispatcherRef(), "close-intent", counts);
+        assert((*root)->addSubPane(pane));
+        const auto initial = *(*root)->identify(pane);
+        unsigned direct{};
+        auto connection = object::LuxObject::connect(&pane, &ui::Pane::closeRequested, [&]() noexcept
+        {
+            assert(pane.hasCloseRequest() && pane.visible());
+            ++direct;
+        });
+        assert(connection);
+        pane.requestClose();
+        pane.requestClose();
+        assert(direct == 2 && pane.hasCloseRequest());
+        assert((*root)->update({}, nullptr));
+        assert(pane.hasCloseRequest() && pane.visible() && (*root)->findPane(initial));
+        pane.dismissCloseRequest();
+        assert(!pane.hasCloseRequest() && pane.visible());
+        pane.requestClose();
+        assert((*root)->removeSubPane(pane));
+        assert(!pane.hasCloseRequest() && !(*root)->findPane(initial));
+        assert((*root)->addSubPane(pane));
+        assert(!pane.hasCloseRequest() && *(*root)->identify(pane) != initial);
+        pane.requestClose();
+        root->reset();
+        assert(!pane.hasCloseRequest() && !pane.attachedRoot() && !pane.parent());
+        assert(counts.destroyed == 0);
+
+        // A dropped queued hint cannot consume the Pane's original request.
+        auto receiving = object::ObjectMessageQueue::create(1);
+        assert(receiving);
+        object::LuxObject receiver(receiving->dispatcherRef());
+        unsigned queued{};
+        auto hint = object::LuxObject::connect(&pane, &ui::Pane::closeRequested, &receiver,
+            [&]() noexcept { ++queued; }, object::EDelivery::QUEUED);
+        assert(hint);
+        pane.requestClose();
+        pane.dismissCloseRequest();
+        pane.requestClose();
+        assert(pane.hasCloseRequest() && receiving->statistics().pending == 1);
+        assert(receiving->dispatchPending() == 1 && queued == 1 && pane.hasCloseRequest());
+        receiving->close();
+        pane.dismissCloseRequest();
+        pane.requestClose();
+        assert(pane.hasCloseRequest() && queued == 1);
+        std::cout << "Pane close intent survives maintenance and FULL/CLOSED hints, detach clears original intent PASS\n";
+    }
+
     void externalRoot(object::ObjectMessageQueue& messages)
     {
         Counts counts;
@@ -468,6 +520,7 @@ int main()
     auto created = lux::object::ObjectMessageQueue::create(128);
     assert(created);
     auto messages = std::move(*created);
+    closeIntent(messages);
     externalRoot(messages);
     ownership(messages);
     rejection(messages);

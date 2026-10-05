@@ -75,10 +75,13 @@ namespace lux::ui
             return hovered_;
         }
 
-        void requestClose() noexcept
+        // The owner decides whether to close, hide or cancel. Notifications do not consume the intent.
+        void requestClose() noexcept;
+        [[nodiscard]] bool hasCloseRequest() const noexcept
         {
-            static_cast<void>(emit(closeRequested));
+            return close_requested_;
         }
+        void dismissCloseRequest() noexcept;
         void setTitle(std::string title);
         void setVisible(bool visible);
         // A modal is still one window, but cannot join the shared dock space.
@@ -190,6 +193,7 @@ namespace lux::ui
         bool focused_{false};
         bool hovered_{false};
         bool modal_{};
+        bool close_requested_{};
         Element* content_{};
         Root* root_{};
     };

@@ -1732,6 +1732,7 @@ namespace lux::ui
             impl_->pointer_capture = {};
         pane.registration_slot_ = pane.window_slot_ = SIZE_MAX;
         pane.focused_ = pane.hovered_ = false;
+        pane.close_requested_ = false;
         if (notify)
             static_cast<void>(emit(objectRemoved, static_cast<object::LuxObject*>(&pane)));
     }

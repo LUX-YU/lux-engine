@@ -445,11 +445,14 @@ namespace
         auto* b = right->get();
         assert((*root)->addSubPane(std::move(*left)) && (*root)->addSubPane(*b));
         const std::array handles{*(*root)->identify(*a), *(*root)->identify(*b)};
+        a->requestClose();
+        b->requestClose();
         const auto windows = (*root)->windowRevision();
         const auto unchanged = [&]
         {
             assert((*root)->findPane(handles[0]) && (*root)->findPane(handles[1]));
             assert((*root)->windowRevision() == windows && counts.windows_destroyed == 0);
+            assert(a->hasCloseRequest() && b->hasCloseRequest());
             assert(a->ownership() == object::EObjectOwnership::PARENT_OWNED);
             assert(b->ownership() == object::EObjectOwnership::EXTERNAL && right->get() == b);
         };
@@ -503,6 +506,7 @@ namespace
         assert((*root)->commit(*prepared, commit_content));
         assert(notifications == 2 && counts.windows_destroyed == 0);
         assert(!a->attachedRoot() && !b->attachedRoot() && !b->parent());
+        assert(!a->hasCloseRequest() && !b->hasCloseRequest());
         assert(messages.collectRetired() == 1 && counts.windows_destroyed == 1);
         right->reset();
         assert(counts.windows_destroyed == 2 && counts.models_destroyed == 1);

@@ -27,7 +27,8 @@ namespace
         std::function<void()> operating;
         unsigned captures{}, closes{}, rebound{};
         bool deny_close{}, deny_rebind{}, deny_capture{};
-        unsigned state_prepared{}, state_applied{};
+        unsigned state_prepared{}, state_applied{}, cancelled{};
+        bool deny_cancel{};
     };
     struct Model final
     {
@@ -100,6 +101,14 @@ namespace
             if (counts_.deny_rebind)
                 return cxx::unexpected(UiFailure{EUiError::OPERATION_FAILURE, "window.binding", 81, "Rejected"});
             content_ = content;
+            return {};
+        }
+        UiResult<void> cancelPreview()
+        {
+            if (counts_.operating) counts_.operating();
+            if (counts_.deny_cancel)
+                return cxx::unexpected(UiFailure{EUiError::OPERATION_FAILURE, "window.preview", 83, "Rejected"});
+            ++counts_.cancelled;
             return {};
         }
         UiResult<void> prepareClose()
@@ -348,6 +357,11 @@ namespace
         definition.rebind = [](ui::Pane& pane, const views::ViewContent& content)
         { return static_cast<Window&>(pane).rebind(content); };
         definition.prepare_close = [](ui::Pane& pane) { return static_cast<Window&>(pane).prepareClose(); };
+        definition.cancel_preview = [](ui::Pane& pane) -> UiResult<void>
+        {
+            auto& window = static_cast<Window&>(pane);
+            return window.cancelPreview();
+        };
         definition.capture_state = [](const ui::Pane& pane) { return static_cast<const Window&>(pane).capture(); };
         auto entries = UiCatalog::prepare({UiEntry::create(object::CodeLease::builtin(), definition)});
         assert(entries && registry.publish(std::move(*entries)));
@@ -365,6 +379,8 @@ namespace
         assert(handle && *registry.content(**root, *handle) == original);
         counts.operating = [&]
         {
+            auto cancellation = registry.cancelPreview(**root, *handle);
+            assert(!cancellation && cancellation.error().code == EUiError::BUSY);
             auto nested = registry.prepareClose(**root, std::span{&*handle, 1});
             assert(!nested && nested.error().code == EUiError::BUSY);
             auto publication = registry.publish(catalog());
@@ -372,6 +388,13 @@ namespace
             auto removal = (*root)->removeSubPane(*pane);
             assert(!removal && removal.error() == ui::EAttachmentError::BUSY);
         };
+        counts.deny_cancel = true;
+        auto denied_cancel = registry.cancelPreview(**root, *handle);
+        assert(!denied_cancel && denied_cancel.error().domain == "window.preview");
+        assert(denied_cancel.error().domain_code == 83 && counts.cancelled == 0);
+        assert(*registry.content(**root, *handle) == original && (*root)->findPane(*handle));
+        counts.deny_cancel = false;
+        assert(registry.cancelPreview(**root, *handle) && counts.cancelled == 1);
         counts.deny_rebind = true;
         auto rejected = registry.rebind(**root, *handle, {});
         assert(!rejected && rejected.error().domain == "window.binding" && rejected.error().domain_code == 81);
@@ -393,6 +416,7 @@ namespace
         counts.deny_close = false;
         // Replacing the catalog with a same-name factory must not change this object's concrete operations.
         assert(registry.publish(catalog()));
+        assert(registry.cancelPreview(**root, *handle) && counts.cancelled == 2);
         assert(registry.rebind(**root, *handle, original));
         assert(*registry.content(**root, *handle) == original);
         assert(registry.prepareClose(**root, std::span{&*handle, 1}));
@@ -413,6 +437,7 @@ namespace
         assert(wrong_thread);
         assert((*root)->removeSubPane(*pane));
         assert(!registry.content(**root, *handle));
+        assert(!registry.cancelPreview(**root, *handle) && counts.cancelled == 2);
         (void)messages.collectRetired();
         root->reset();
         assert(counts.windows_destroyed == 1 && counts.models_destroyed == 1);

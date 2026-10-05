@@ -222,6 +222,9 @@ namespace lux::editor::desktop
         [[nodiscard]] UiResult<lux::ui::AttachmentCommit>
         applyLayout(lux::ui::Root&, services::ServiceScope&, workspace::DockLayout) noexcept;
         [[nodiscard]] UiResult<views::ViewContent> content(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
+        // End only this window's temporary overlay through its original factory/domain gate.
+        // BUSY and other failures are returned unchanged; content and window ownership are untouched.
+        [[nodiscard]] UiResult<void> cancelPreview(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
         [[nodiscard]] UiResult<void> rebind(
             lux::ui::Root&, const lux::ui::PaneHandle&, const views::ViewContent&
         ) noexcept;
@@ -242,6 +245,7 @@ namespace lux::editor::desktop
         ) noexcept;
 
     private:
+        [[nodiscard]] UiResult<void> cancelPreviewAdmitted(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
         [[nodiscard]] UiResult<std::vector<WindowInfo>> describeAdmitted(lux::ui::Root&) noexcept;
         [[nodiscard]] UiResult<lux::ui::AttachmentCommit> mountAdmitted(
             lux::ui::Root&,

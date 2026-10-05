@@ -1165,6 +1165,22 @@ namespace
         assert(take(ui.captureState(root, b_handle)).bytes == b_state.bytes);
         assert(ui.rebind(root, b_handle, {}) && !b->binding());
         assert(ui.rebind(root, b_handle, binding) && b->binding()->session == key);
+        assert(take(model->read()).withRead([&]() -> ef::FlowEditResult<void>
+        {
+            auto busy_cancel = ui.cancelPreview(root, a_handle);
+            assert(!busy_cancel && busy_cancel.error().code == desktop::EUiError::BUSY);
+            assert(a->binding()->interaction->overlay() && a->binding()->session == key);
+            assert(!b->binding()->interaction->overlay() && b->binding()->session == key);
+            return {};
+        }));
+        assert(model->describe().current == initial.current && model->describe().observed == initial.observed);
+        assert(model->describe().dirty == initial.dirty && take(take(model->read()).encode()) == bytes);
+        assert(ui.cancelPreview(root, a_handle) && !a->binding()->interaction->overlay());
+        assert(root.findPane(a_handle) && a->binding()->session == key);
+        assert(a->beginEdit("local draft"));
+        edits.clear();
+        edits.emplace_back(ef::FlowRename{"uncommitted"});
+        assert(a->previewEdit(edits) && a->binding()->interaction->overlay());
         const std::array closing{a_handle, b_handle};
         const auto observed_before_close = model->describe().observed;
         assert(take(model->read()).withRead([&]() -> ef::FlowEditResult<void>

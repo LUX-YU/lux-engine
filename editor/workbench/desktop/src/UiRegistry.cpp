@@ -799,6 +799,26 @@ namespace lux::editor::desktop
         }
         return result;
     }
+    UiResult<void> UiRegistry::cancelPreview(lux::ui::Root& root, const lux::ui::PaneHandle& handle) noexcept
+    {
+        if (auto admitted = impl_->admission(); !admitted)
+            return cxx::unexpected(std::move(admitted.error()));
+        Impl::Guard guard{impl_->active};
+        return cancelPreviewAdmitted(root, handle);
+    }
+    UiResult<void> UiRegistry::cancelPreviewAdmitted(lux::ui::Root& root, const lux::ui::PaneHandle& handle) noexcept
+    {
+        UiResult<void> result;
+        auto cancel = [&](const std::shared_ptr<const UiEntry>& entry, lux::ui::Pane& pane)
+        {
+            if (entry->descriptor().cancel_preview)
+                result = entry->descriptor().cancel_preview(pane);
+        };
+        auto visited = visitAdmitted(root, handle, cancel);
+        if (!visited)
+            return cxx::unexpected(std::move(visited.error()));
+        return result;
+    }
     UiResult<void> UiRegistry::rebind(
         lux::ui::Root& root, const lux::ui::PaneHandle& handle, const views::ViewContent& content
     ) noexcept
@@ -1097,19 +1117,7 @@ namespace lux::editor::desktop
         // original domain gates; no source, binding, or persisted configuration is applied here.
         for (const auto& request : state_requests)
         {
-            UiResult<void> result;
-            auto cancel = [&](const std::shared_ptr<const UiEntry>& entry, lux::ui::Pane& pane)
-            {
-                if (entry->descriptor().cancel_preview)
-                {
-                    result = entry->descriptor().cancel_preview(pane);
-                }
-            };
-            auto visited = visitAdmitted(root, request.target, cancel);
-            if (!visited)
-            {
-                return cxx::unexpected(std::move(visited.error()));
-            }
+            auto result = cancelPreviewAdmitted(root, request.target);
             if (!result)
             {
                 return cxx::unexpected(std::move(result.error()));

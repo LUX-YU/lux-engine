@@ -251,7 +251,52 @@ namespace lux::editor::flowforge
         1,
         nullptr,
         createView,
-        kContentKinds
+        kContentKinds,
+        true,
+        +[](const lux::ui::Pane& pane) noexcept -> views::ViewContent
+        {
+            const auto& binding = static_cast<const FlowView&>(pane).binding();
+            return binding ? views::ViewContent{{binding->session.id()}, binding->session.id()} : views::ViewContent{};
+        },
+        +[](lux::ui::Pane& pane, const views::ViewContent& content) -> desktop::UiResult<void>
+        {
+            auto result = static_cast<FlowView&>(pane).rebindContent(content);
+            if (!result)
+            {
+                auto failure = workbench::detail::viewPreparationFailure(result.error(), temporary(result.error()));
+                return cxx::unexpected(desktop::UiFailure{
+                    failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
+                    std::move(failure.domain), failure.code, std::move(failure.message)
+                });
+            }
+            return {};
+        },
+        +[](lux::ui::Pane& pane) -> desktop::UiResult<void>
+        {
+            auto result = static_cast<FlowView&>(pane).cancelEdit();
+            if (!result)
+            {
+                auto failure = workbench::detail::viewPreparationFailure(result.error(), temporary(result.error()));
+                return cxx::unexpected(desktop::UiFailure{
+                    failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
+                    std::move(failure.domain), failure.code, std::move(failure.message)
+                });
+            }
+            return {};
+        },
+        +[](const lux::ui::Pane& pane) -> desktop::UiResult<workspace::VersionedViewState>
+        {
+            auto captured = static_cast<const FlowView&>(pane).captureState();
+            if (!captured)
+            {
+                auto failure = std::move(captured.error());
+                return cxx::unexpected(desktop::UiFailure{
+                    failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
+                    std::move(failure.domain), failure.code, std::move(failure.message)
+                });
+            }
+            return std::move(*captured);
+        }
     };
 
     struct FlowView::Impl final

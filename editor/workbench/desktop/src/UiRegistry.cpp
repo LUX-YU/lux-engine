@@ -241,6 +241,14 @@ namespace lux::editor::desktop
         object::ObjectDispatcherRef dispatcher;
         services::ServiceRegistry& services;
         UiCatalog current;
+        struct Output final
+        {
+            std::shared_ptr<const UiEntry> declaration;
+            object::ObjectIdentity identity;
+        };
+        // Only the standard candidate deleter retains this metadata. The registry observes it weakly;
+        // it never owns a Pane, retains a model, or creates another instance ID/retirement queue.
+        std::vector<std::weak_ptr<const Output>> outputs;
         std::uint64_t revision{};
         bool active{};
         bool catalog_reading{};
@@ -494,8 +502,11 @@ namespace lux::editor::desktop
                 result = reject(EUiError::INVALID_OUTPUT);
                 return {};
             }
-            auto deleter =
-                object::ObjectDeleter::create<lux::ui::Pane>(std::default_delete<lux::ui::Pane>{}, entry->code());
+            std::erase_if(impl_->outputs, [](const auto& output) { return output.expired(); });
+            auto output = std::make_shared<const Impl::Output>(entry, pane.identity());
+            auto destroy = [output](lux::ui::Pane* pane) noexcept { delete pane; };
+            auto deleter = object::ObjectDeleter::create<lux::ui::Pane>(std::move(destroy), entry->code());
+            impl_->outputs.push_back(output);
             result = Owner{created->release(), std::move(deleter)};
             return {};
         };
@@ -520,6 +531,141 @@ namespace lux::editor::desktop
         if (!resolved)
         {
             return cxx::unexpected(serviceFailure(std::move(resolved.error())));
+        }
+        return result;
+    }
+    UiResult<void> UiRegistry::visit(
+        lux::ui::Root& root,
+        const lux::ui::PaneHandle& handle,
+        cxx::function_ref<void(const UiDescriptor&, lux::ui::Pane&)> callback
+    ) noexcept
+    {
+        if (auto admitted = impl_->admission(); !admitted)
+        {
+            return cxx::unexpected(std::move(admitted.error()));
+        }
+        Impl::Guard guard{impl_->active};
+        UiResult<void> result = reject(EUiError::NOT_FOUND, "Pane was not created by this registry");
+        auto borrow = [&](lux::ui::Pane& pane)
+        {
+            const auto identity = pane.identity();
+            for (const auto& weak : impl_->outputs)
+            {
+                auto output = weak.lock();
+                if (output && output->identity == identity)
+                {
+                    // Registered extension callbacks are a foreign boundary, never the draw/update hot path.
+                    try
+                    {
+                        callback(output->declaration->descriptor(), pane);
+                        result = {};
+                    }
+                    catch (const std::bad_alloc&)
+                    {
+                        std::terminate();
+                    }
+                    catch (...)
+                    {
+                        result = reject(EUiError::FACTORY_FAILURE, "UI operation threw");
+                    }
+                    return;
+                }
+            }
+        };
+        auto visited = root.withPane(handle, borrow);
+        if (!visited)
+        {
+            const auto cause = visited.error();
+            const auto code = cause == lux::ui::EAttachmentError::BUSY           ? EUiError::BUSY
+                              : cause == lux::ui::EAttachmentError::WRONG_THREAD ? EUiError::WRONG_THREAD
+                                                                                : EUiError::ATTACHMENT;
+            return cxx::unexpected(UiFailure{code, "ui.attachment", static_cast<std::uint64_t>(cause), {}});
+        }
+        return result;
+    }
+    UiResult<views::ViewContent> UiRegistry::content(lux::ui::Root& root, const lux::ui::PaneHandle& handle) noexcept
+    {
+        views::ViewContent result;
+        auto capture = [&](const UiDescriptor& descriptor, lux::ui::Pane& pane)
+        {
+            if (descriptor.content)
+            {
+                result = descriptor.content(pane);
+            }
+        };
+        auto visited = visit(root, handle, capture);
+        if (!visited)
+        {
+            return cxx::unexpected(std::move(visited.error()));
+        }
+        return result;
+    }
+    UiResult<void> UiRegistry::rebind(
+        lux::ui::Root& root, const lux::ui::PaneHandle& handle, const views::ViewContent& content
+    ) noexcept
+    {
+        // Capture before an extension callback; a caller may mutate its own input in that callback.
+        const auto candidate = content;
+        UiResult<void> result;
+        auto bind = [&](const UiDescriptor& descriptor, lux::ui::Pane& pane)
+        {
+            if (!candidate.valid())
+            {
+                result = reject(EUiError::INVALID_CONFIGURATION, "Invalid content association");
+                return;
+            }
+            if (descriptor.rebind)
+            {
+                result = descriptor.rebind(pane, candidate);
+            }
+            else
+            {
+                const auto current = descriptor.content ? descriptor.content(pane) : views::ViewContent{};
+                if (candidate != current)
+                {
+                    result = reject(EUiError::OPERATION_FAILURE, "This factory does not support content binding");
+                }
+            }
+        };
+        auto visited = visit(root, handle, bind);
+        if (!visited)
+        {
+            return cxx::unexpected(std::move(visited.error()));
+        }
+        return result;
+    }
+    UiResult<void> UiRegistry::prepareClose(lux::ui::Root& root, const lux::ui::PaneHandle& handle) noexcept
+    {
+        UiResult<void> result;
+        auto prepare = [&](const UiDescriptor& descriptor, lux::ui::Pane& pane)
+        {
+            if (descriptor.prepare_close)
+            {
+                result = descriptor.prepare_close(pane);
+            }
+        };
+        auto visited = visit(root, handle, prepare);
+        if (!visited)
+        {
+            return cxx::unexpected(std::move(visited.error()));
+        }
+        return result;
+    }
+    UiResult<workspace::VersionedViewState>
+    UiRegistry::captureState(lux::ui::Root& root, const lux::ui::PaneHandle& handle) noexcept
+    {
+        UiResult<workspace::VersionedViewState> result{workspace::VersionedViewState{}};
+        auto capture = [&](const UiDescriptor& descriptor, lux::ui::Pane& pane)
+        {
+            if (descriptor.capture_state)
+            {
+                result = descriptor.capture_state(pane);
+            }
+        };
+        auto visited = visit(root, handle, capture);
+        if (!visited)
+        {
+            return cxx::unexpected(std::move(visited.error()));
         }
         return result;
     }

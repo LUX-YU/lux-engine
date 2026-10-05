@@ -90,6 +90,14 @@ int main(int argc, char** argv)
         catalog = UiCatalog{};
         auto empty = UiCatalog::prepare({});
         assert(empty && context.ui().publish(std::move(*empty)) && context.services().publish({}));
+        for (auto* pane : (*root)->panes())
+        {
+            auto handle = (*root)->identify(*pane);
+            assert(handle);
+            auto state = context.ui().captureState(**root, *handle);
+            assert(state && state->bytes == std::vector{std::byte{73}});
+        }
+        assert(trace.operations == 2 && trace.unloaded == 0);
         root->reset();
         assert(trace.windows_destroyed == 4);
         assert(scope->release() && !scope->drained());

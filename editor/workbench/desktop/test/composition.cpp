@@ -8,6 +8,7 @@
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <optional>
+#include <stdexcept>
 #include <thread>
 
 using namespace lux;
@@ -22,6 +23,9 @@ namespace
         unsigned models{}, models_destroyed{}, windows{}, windows_destroyed{};
         std::function<void()> creating;
         std::function<void()> destroying;
+        std::function<void()> operating;
+        unsigned captures{}, closes{}, rebound{};
+        bool deny_close{}, deny_rebind{};
     };
     struct Model final
     {
@@ -63,7 +67,7 @@ namespace
     public:
         Window(const UiCreateInfo& input, std::shared_ptr<Model> model, Counts& counts)
             : Pane(input.dispatcher, input.instance, ui::PaneTypeId{"ec4.window"}, "EC4"), model_(std::move(model)),
-              counts_(counts)
+              counts_(counts), content_(input.content)
         {
             ++counts_.windows;
             if (counts_.creating)
@@ -84,9 +88,35 @@ namespace
             return model_.get();
         }
 
+        views::ViewContent content() const noexcept { return content_; }
+        UiResult<void> rebind(const views::ViewContent& content)
+        {
+            ++counts_.rebound;
+            if (counts_.operating) counts_.operating();
+            if (counts_.deny_rebind)
+                return cxx::unexpected(UiFailure{EUiError::OPERATION_FAILURE, "window.binding", 81, "Rejected"});
+            content_ = content;
+            return {};
+        }
+        UiResult<void> prepareClose()
+        {
+            ++counts_.closes;
+            if (counts_.operating) counts_.operating();
+            if (counts_.deny_close)
+                return cxx::unexpected(UiFailure{EUiError::BUSY, "window.close", 82, "In flight"});
+            return {};
+        }
+        UiResult<workspace::VersionedViewState> capture() const
+        {
+            ++counts_.captures;
+            if (counts_.operating) counts_.operating();
+            return workspace::VersionedViewState{1, {std::byte{7}}};
+        }
+
     private:
         std::shared_ptr<Model> model_;
         Counts& counts_;
+        views::ViewContent content_;
     };
     UiResult<std::unique_ptr<ui::Pane>> createWindow(ServiceResolver& resolver, const UiCreateInfo& input)
     {
@@ -283,6 +313,93 @@ namespace
         assert(scope->release() && scope->drained() && services.drained());
         std::cout
             << "Captured configuration batch: Nth failure, guards, source, Root version and atomic docking PASS\n";
+    }
+
+    void windowOperations(object::ObjectMessageQueue& messages)
+    {
+        Counts counts;
+        EditorContext context{messages.dispatcherRef()};
+        auto& registry = context.ui();
+        auto& services = context.services();
+        assert(services.publish({ServiceEntry::bind<model_descriptor>(object::CodeLease::builtin())}));
+        auto scope = services.createScope();
+        assert(scope && scope->provide(ServiceNameView{"ec4.counts"}, counts));
+        auto definition = descriptor;
+        definition.content = [](const ui::Pane& pane) noexcept { return static_cast<const Window&>(pane).content(); };
+        definition.rebind = [](ui::Pane& pane, const views::ViewContent& content)
+        { return static_cast<Window&>(pane).rebind(content); };
+        definition.prepare_close = [](ui::Pane& pane) { return static_cast<Window&>(pane).prepareClose(); };
+        definition.capture_state = [](const ui::Pane& pane) { return static_cast<const Window&>(pane).capture(); };
+        auto entries = UiCatalog::prepare({UiEntry::create(object::CodeLease::builtin(), definition)});
+        assert(entries && registry.publish(std::move(*entries)));
+        auto factory = registry.snapshot().at(0);
+        assert(factory);
+        const sessions::SessionId session{5, 0, 2};
+        const views::ViewContent original{{session}, session};
+        UiCreateInfo input{messages.dispatcherRef(), ui::PaneId{"binding"}, original, {}};
+        auto owner = registry.create(*factory, *scope, input);
+        auto root = ui::Root::create(messages.dispatcherRef());
+        assert(owner && root);
+        auto* pane = owner->get();
+        assert((*root)->addSubPane(std::move(*owner)));
+        auto handle = (*root)->identify(*pane);
+        assert(handle && *registry.content(**root, *handle) == original);
+        counts.operating = [&]
+        {
+            auto nested = registry.prepareClose(**root, *handle);
+            assert(!nested && nested.error().code == EUiError::BUSY);
+            auto publication = registry.publish(catalog());
+            assert(!publication && publication.error().code == EUiError::BUSY);
+            auto removal = (*root)->removeSubPane(*pane);
+            assert(!removal && removal.error() == ui::EAttachmentError::BUSY);
+        };
+        counts.deny_rebind = true;
+        auto rejected = registry.rebind(**root, *handle, {});
+        assert(!rejected && rejected.error().domain == "window.binding" && rejected.error().domain_code == 81);
+        assert(*registry.content(**root, *handle) == original);
+        counts.deny_rebind = false;
+        assert(registry.rebind(**root, *handle, {}));
+        assert(registry.content(**root, *handle)->sessions.empty());
+        counts.deny_close = true;
+        auto pending = registry.prepareClose(**root, *handle);
+        assert(!pending && pending.error().code == EUiError::BUSY && pending.error().domain_code == 82);
+        assert((*root)->findPane(*handle));
+        auto state = registry.captureState(**root, *handle);
+        assert(state && state->bytes == std::vector{std::byte{7}});
+        counts.operating = [] { throw std::runtime_error("Foreign operation failure"); };
+        auto failed_capture = registry.captureState(**root, *handle);
+        assert(!failed_capture && failed_capture.error().code == EUiError::FACTORY_FAILURE);
+        assert(failed_capture.error().code != EUiError::BUSY && *registry.content(**root, *handle) == views::ViewContent{});
+        counts.operating = {};
+        counts.deny_close = false;
+        // Replacing the catalog with a same-name factory must not change this object's concrete operations.
+        assert(registry.publish(catalog()));
+        assert(registry.rebind(**root, *handle, original));
+        assert(*registry.content(**root, *handle) == original);
+        assert(registry.prepareClose(**root, *handle));
+        assert(registry.captureState(**root, *handle)->bytes == std::vector{std::byte{7}});
+        assert(counts.rebound == 3 && counts.closes == 2 && counts.captures == 3);
+        ui::Pane external{messages.dispatcherRef(), ui::PaneId{"foreign"}, ui::PaneTypeId{"ec4.window"}, "Foreign"};
+        assert((*root)->addSubPane(external));
+        const auto foreign = (*root)->identify(external);
+        auto unknown = registry.content(**root, *foreign);
+        assert(!unknown && unknown.error().code == EUiError::NOT_FOUND);
+        bool wrong_thread{};
+        std::jthread worker([&]
+        {
+            auto result = registry.content(**root, *handle);
+            wrong_thread = !result && result.error().code == EUiError::WRONG_THREAD;
+        });
+        worker.join();
+        assert(wrong_thread);
+        assert((*root)->removeSubPane(*pane));
+        assert(!registry.content(**root, *handle));
+        (void)messages.collectRetired();
+        root->reset();
+        assert(counts.windows_destroyed == 1 && counts.models_destroyed == 1);
+        assert(scope->release() && scope->drained());
+        std::cout << "Original factory operations: content, failed binding, close retry, catalog replacement, "
+                     "callback protection and real handle invalidation PASS\n";
     }
 
     void publication(object::ObjectMessageQueue& messages)
@@ -732,6 +849,7 @@ int main()
     auto messages = std::move(*created);
     sharing(messages);
     configuredMount(messages);
+    windowOperations(messages);
     publication(messages);
     rejection(messages);
     rejectedMountCleanup(messages);

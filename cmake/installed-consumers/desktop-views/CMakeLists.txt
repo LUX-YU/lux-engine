@@ -33,6 +33,8 @@ foreach(forbidden editor_ui editor_scene editor_material editor_flowforge editor
         message(FATAL_ERROR "New desktop SDK imported legacy target ${forbidden}")
     endif()
 endforeach()
+# The real publication fixture explicitly supplies its file backend after validating the UI closure.
+find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)
 get_filename_component(engine_source "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 set(LUX_GENERATE_HEADER_DIR "${CMAKE_BINARY_DIR}/generated")
 include_component_cmake_scripts(lux::engine::core::meta)
@@ -63,7 +65,7 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../common/ControlsTestAccess.hpp"
     "${CMAKE_CURRENT_BINARY_DIR}/ControlsTestAccess.hpp" COPYONLY)
 configure_file("${engine_source}/editor/workbench/desktop/test/host.cpp" "${CMAKE_CURRENT_BINARY_DIR}/host.cpp" COPYONLY)
 add_executable(desktop_views "${CMAKE_CURRENT_BINARY_DIR}/views.cpp")
-target_link_libraries(desktop_views PRIVATE lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
+target_link_libraries(desktop_views PRIVATE lux::engine::editor::editor_storage lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
     lux::engine::editor::material_ui lux::engine::editor::flow_ui lux::engine::editor::scene_execution
     lux::engine::editor::flowforge_persistence lux::engine::editor::flow_module lux::engine::editor::editor_extensions
     lux::engine::editor::tasks_ui lux::engine::editor::editor_persistence_execution lux::engine::editor::editor_file_publication lux::engine::editor::material_persistence

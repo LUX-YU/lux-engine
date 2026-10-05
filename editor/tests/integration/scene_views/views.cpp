@@ -1157,25 +1157,22 @@ namespace
         assert(a->previewEdit(edits) && a->binding()->interaction->overlay());
         assert(!b->binding()->interaction->overlay());
         assert(model->describe().current == initial.current && take(take(model->read()).encode()) == bytes);
-        auto rebind = [&](lux::ui::Pane& pane)
-        {
-            auto& target = static_cast<ef::FlowView&>(pane);
-            auto failed_binding = target.rebindContent({{sessions::SessionId{}}, sessions::SessionId{}});
-            assert(!failed_binding && target.binding()->session == key && a->binding()->interaction->overlay());
-            assert(target.rebindContent({}));
-            assert(!target.binding());
-            assert(target.rebindContent({{key.id()}, key.id()}));
-            assert(target.binding()->session == key);
-        };
-        assert(root.withPane(b_handle, rebind));
+        const views::ViewContent binding{{key.id()}, key.id()};
+        assert(take(ui.content(root, a_handle)) == binding && take(ui.content(root, b_handle)) == binding);
+        const auto b_state = take(ui.captureState(root, b_handle));
+        auto failed_binding = ui.rebind(root, b_handle, {{sessions::SessionId{}}, sessions::SessionId{}});
+        assert(!failed_binding && b->binding()->session == key && a->binding()->interaction->overlay());
+        assert(take(ui.captureState(root, b_handle)).bytes == b_state.bytes);
+        assert(ui.rebind(root, b_handle, {}) && !b->binding());
+        assert(ui.rebind(root, b_handle, binding) && b->binding()->session == key);
         assert(a->cancelEdit());
         const auto operation = take(a->compile());
         auto compiler = take(services.get<ef::FlowCompilationService>(scope));
         const auto& compiled = take(compiler->operation(operation)).get();
         f.frame();
         assert(a->compilation() == operation && b->compilation() == operation);
-        assert(a->cancelEdit() && root.removeSubPane(*a));
-        assert(b->cancelEdit() && root.removeSubPane(*b));
+        assert(ui.prepareClose(root, a_handle) && root.removeSubPane(*a));
+        assert(ui.prepareClose(root, b_handle) && root.removeSubPane(*b));
         assert(!root.findPane(a_handle) && !root.findPane(b_handle));
         assert(activeWindows() == before);
         (void)f.messages.collectRetired();

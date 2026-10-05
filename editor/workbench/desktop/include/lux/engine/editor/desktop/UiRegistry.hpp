@@ -26,7 +26,8 @@ namespace lux::editor::desktop
         CLOSED,
         DEPENDENCY,
         FACTORY_FAILURE,
-        AMBIGUOUS
+        AMBIGUOUS,
+        OPERATION_FAILURE
     };
     struct UiFailure final
     {
@@ -54,6 +55,11 @@ namespace lux::editor::desktop
         UiResult<std::unique_ptr<lux::ui::Pane>> (*create)(services::ServiceResolver&, const UiCreateInfo&){};
         std::span<const sessions::SessionKindIdView> content_kinds;
         bool default_content_view{true};
+        // Exact operations of the factory's concrete output. No window ownership or content policy.
+        views::ViewContent (*content)(const lux::ui::Pane&) noexcept {};
+        UiResult<void> (*rebind)(lux::ui::Pane&, const views::ViewContent&){};
+        UiResult<void> (*prepare_close)(lux::ui::Pane&){};
+        UiResult<workspace::VersionedViewState> (*capture_state)(const lux::ui::Pane&){};
     };
     class UiEntry final
     {
@@ -130,8 +136,8 @@ namespace lux::editor::desktop
         UiCreateInfo input;
         bool visible{true};
     };
-    // Owns immutable factory metadata only. A successful creation is a standard unique owner;
-    // Root's Object ownership relation takes over when the caller mounts the complete candidate.
+    // Keeps immutable declarations and weak output metadata, never a Pane owner. A successful creation
+    // is a standard unique owner; Root's Object relation takes over when the caller mounts the candidate.
     class UiRegistry final
     {
     public:
@@ -181,6 +187,14 @@ namespace lux::editor::desktop
         [[nodiscard]] std::uint64_t revision() const noexcept;
         [[nodiscard]] UiResult<std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>>
         create(const UiHandle&, services::ServiceScope&, const UiCreateInfo&) noexcept;
+        // Existing windows keep their creating descriptor after catalog replacement. These calls use
+        // Root's original handle/borrow and never reinterpret a type name as a concrete C++ object.
+        [[nodiscard]] UiResult<views::ViewContent> content(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
+        [[nodiscard]] UiResult<void> rebind(
+            lux::ui::Root&, const lux::ui::PaneHandle&, const views::ViewContent&
+        ) noexcept;
+        [[nodiscard]] UiResult<void> prepareClose(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
+        [[nodiscard]] UiResult<workspace::VersionedViewState> captureState(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
         // One synchronous construction/commit boundary shared by configuration, menu and recovery.
         // No retained window table: successful owners transfer directly to Root's Object relation.
         [[nodiscard]] UiResult<lux::ui::AttachmentCommit> mount(
@@ -193,6 +207,11 @@ namespace lux::editor::desktop
     private:
         [[nodiscard]] UiResult<std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>>
         createImpl(const UiHandle&, services::ServiceScope&, const UiCreateInfo&) noexcept;
+        [[nodiscard]] UiResult<void> visit(
+            lux::ui::Root&,
+            const lux::ui::PaneHandle&,
+            cxx::function_ref<void(const UiDescriptor&, lux::ui::Pane&)>
+        ) noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

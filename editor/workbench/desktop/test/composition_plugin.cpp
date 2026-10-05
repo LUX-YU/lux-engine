@@ -144,6 +144,12 @@ namespace
             ++trace_.windows_destroyed;
         }
 
+        UiResult<lux::editor::workspace::VersionedViewState> captureState() const
+        {
+            assert(trace_.unloaded == 0);
+            ++trace_.operations;
+            return lux::editor::workspace::VersionedViewState{1, {std::byte{73}}};
+        }
     private:
         std::shared_ptr<fixture::Job> job_;
         fixture::Trace& trace_;
@@ -164,23 +170,21 @@ namespace
         }
         return std::make_unique<Panel>(input, type, std::move(*job), trace->get());
     }
-    constexpr UiDescriptor left{
-        lux::editor::views::ViewTypeIdView{"ec4.external.left"},
-        "Left",
-        ui_dependencies,
-        1,
-        nullptr,
+    constexpr auto panelDescriptor(const char* type, const char* label, decltype(UiDescriptor::create) create)
+    {
+        UiDescriptor descriptor{lux::editor::views::ViewTypeIdView{type}, label, ui_dependencies, 1, nullptr, create};
+        descriptor.capture_state = [](const ui::Pane& pane) { return static_cast<const Panel&>(pane).captureState(); };
+        return descriptor;
+    }
+    constexpr auto left = panelDescriptor(
+        "ec4.external.left", "Left",
         [](ServiceResolver& resolver, const UiCreateInfo& input) { return panel(resolver, input, "ec4.external.left"); }
-    };
-    constexpr UiDescriptor right{
-        lux::editor::views::ViewTypeIdView{"ec4.external.right"},
-        "Right",
-        ui_dependencies,
-        1,
-        nullptr,
-        [](ServiceResolver& resolver, const UiCreateInfo& input)
-        { return panel(resolver, input, "ec4.external.right"); }
-    };
+    );
+    constexpr auto right = panelDescriptor(
+        "ec4.external.right", "Right",
+        [](ServiceResolver& resolver, const UiCreateInfo& input) { return panel(resolver, input, "ec4.external.right"); }
+    );
+
 } // namespace
 #if defined(_WIN32)
 #define FIXTURE_EXPORT __declspec(dllexport)

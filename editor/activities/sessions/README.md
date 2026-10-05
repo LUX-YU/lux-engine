@@ -22,3 +22,10 @@ At its existing dynamic factory boundary, Opening borrows the composition regist
 each content descriptor still resolves only its declared dependencies, after admission and deduplication.
 The worker never receives the registry, scope, resolver or a live session. Scope maintenance calls the
 same update algorithm. Domain close remains explicit; releasing references is not a discard decision.
+
+The product module declares history commands through `session_execution`. At first use, their factory
+retains the same shared SessionStore and SessionOpening allocations; Application supplies no role lookup
+callback. The pure `session_factories` consumer can still bind explicit installed roles without Process.
+Both paths call the single private history binding algorithm: original content-stamp and gate checks,
+domain undo/redo, and pinned target semantics remain identical. Directory replacement does not retarget
+an admitted command or construct a second history owner.

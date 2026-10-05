@@ -98,7 +98,6 @@ namespace lux::editor::application
 
         draft.reflection.push_back({lux::object::CodeLease::builtin(), project::registerDesktopSettings});
         draft.settings = builtin_settings_;
-        draft.commands = sessions::makeHistoryCommands(*sessions_, [this](auto id) { return opening_->find(id); });
 
         auto exit = commands::CommandEntry::bind<command_lux_editor_exit>(
             lux::object::CodeLease::builtin(),

@@ -9,6 +9,7 @@
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/scene/ProjectSceneEnvironment.hpp>
 #include <lux/engine/editor/sessions/SessionServices.hpp>
+#include <lux/engine/editor/sessions/SessionOpening.hpp>
 #include <lux/engine/editor/storage/ProjectContentReloading.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
 #include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
@@ -25,10 +26,12 @@ namespace lux::editor::project
             +[]() noexcept -> const extensions::EditorExtensionExports*
             {
                 static const extensions::EditorExtensionExports exports{
-                    .counts = {.services = 16, .ui = 2},
+                    .counts = {.commands = 2, .services = 16, .ui = 2},
                     .contribute = +[](extensions::ContributionDraft& draft,
                                       object::CodeLease code) -> extensions::ContributionResult<void>
                     {
+                        auto history = sessions::makeHistoryCommands(code);
+                        draft.commands.insert(draft.commands.end(), history.begin(), history.end());
                         draft.services.push_back(services::ServiceEntry::bind<sessions::kSessionStoreService>(code));
                         draft.services.push_back(services::ServiceEntry::bind<sessions::kSessionOpeningService>(code));
                         draft.services.push_back(

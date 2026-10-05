@@ -1,4 +1,4 @@
-#include <lux/engine/editor/sessions/SessionCommands.hpp>
+#include <lux/engine/editor/detail/HistoryCommandBinding.hpp>
 
 namespace lux::editor::sessions
 {
@@ -72,6 +72,49 @@ namespace lux::editor::sessions
             }
         );
     }
+    std::unique_ptr<commands::CommandBinding> detail::makeHistoryBinding(
+        SessionStore& store,
+        std::shared_ptr<HistoryActionLookup> roles,
+        bool forward
+    )
+    {
+        using namespace commands;
+        return std::make_unique<CommandBinding>(
+            [&store, roles, forward](const CommandQuery& input) -> CommandResult<CommandState>
+            {
+                auto info = targetInfo(store, input.target);
+                if (!info)
+                {
+                    return cxx::unexpected(info.error());
+                }
+                auto* role = (*roles) ? (*roles)(info->id) : nullptr;
+                if (!role)
+                {
+                    return CommandState{false, false, "No history role"};
+                }
+                auto history = role->queryHistory();
+                if (!history)
+                {
+                    return cxx::unexpected(commandFailure(history.error()));
+                }
+                return CommandState{forward ? history->can_redo : history->can_undo};
+            },
+            [roles, forward](const CommandInvocation& input) -> CommandResult<DispatchReceipt>
+            {
+                auto* role = (*roles) ? (*roles)(std::get<SessionTarget>(input.target()).id) : nullptr;
+                if (!role)
+                {
+                    return cxx::unexpected(CommandFailure{ECommandError::STALE_TARGET, "session.role"});
+                }
+                auto result = forward ? role->redo() : role->undo();
+                if (!result)
+                {
+                    return cxx::unexpected(commandFailure(result.error()));
+                }
+                return DispatchReceipt{ImmediateCompletion{}};
+            }
+        );
+    }
     std::vector<std::shared_ptr<commands::CommandEntry>> makeHistoryCommands(
         SessionStore& store,
         HistoryActionLookup lookup
@@ -80,41 +123,15 @@ namespace lux::editor::sessions
         using namespace commands;
         auto roles = std::make_shared<HistoryActionLookup>(std::move(lookup));
         std::vector<std::shared_ptr<CommandEntry>> entries;
-        for (bool forward : {false, true})
+        const auto bind = [&]<const CommandDescriptor& Descriptor>(bool forward)
         {
-            const auto bind = [&]<const CommandDescriptor & Descriptor>()
-            {
-                return CommandEntry::bind<Descriptor>(
-                    lux::object::CodeLease::builtin(),
-                    [&store, roles, forward](const CommandQuery& input) -> CommandResult<CommandState>
-                    {
-                        auto info = targetInfo(store, input.target);
-                        if (!info)
-                            return cxx::unexpected(info.error());
-                        auto* role = (*roles) ? (*roles)(info->id) : nullptr;
-                        if (!role)
-                            return CommandState{false, false, "No history role"};
-                        auto history = role->queryHistory();
-                        if (!history)
-                            return cxx::unexpected(commandFailure(history.error()));
-                        return CommandState{forward ? history->can_redo : history->can_undo};
-                    },
-                    [roles, forward](const CommandInvocation& input) -> CommandResult<DispatchReceipt>
-                    {
-                        auto* role = (*roles) ? (*roles)(std::get<SessionTarget>(input.target()).id) : nullptr;
-                        if (!role)
-                            return cxx::unexpected(CommandFailure{ECommandError::STALE_TARGET, "session.role"});
-                        auto result = forward ? role->redo() : role->undo();
-                        if (!result)
-                            return cxx::unexpected(commandFailure(result.error()));
-                        return DispatchReceipt{ImmediateCompletion{}};
-                    }
-                );
-            };
-            entries.push_back(
-                forward ? bind.template operator()<kRedoCommand>() : bind.template operator()<kUndoCommand>()
+            auto binding = detail::makeHistoryBinding(store, roles, forward);
+            return CommandEntry::bind<Descriptor>(
+                object::CodeLease::builtin(), std::move(binding->query), std::move(binding->execute)
             );
-        }
+        };
+        entries.push_back(bind.template operator()<kUndoCommand>(false));
+        entries.push_back(bind.template operator()<kRedoCommand>(true));
         return entries;
     }
 } // namespace lux::editor::sessions

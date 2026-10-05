@@ -1,6 +1,12 @@
 #pragma once
 #include <lux/engine/editor/sessions/SessionFactory.hpp>
+#include <memory>
+#include <vector>
 
+namespace lux::editor::commands
+{
+    class CommandEntry;
+}
 namespace lux::process
 {
     class ExecutionRuntime;
@@ -85,4 +91,10 @@ namespace lux::editor::sessions
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
+    // Declares lazy history commands backed by the same shared content and installed-role owners.
+    // Pure callers can instead supply explicit roles through SessionCommands.hpp.
+    [[nodiscard]] std::vector<std::shared_ptr<commands::CommandEntry>> makeHistoryCommands(
+        object::CodeLease code = object::CodeLease::builtin()
+    );
+
 }

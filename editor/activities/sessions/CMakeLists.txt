@@ -16,7 +16,7 @@ lux_classify_target(TARGET session_factories LAYER EDITOR PRODUCT EDITOR ROLE LI
 # Factory/installation and fixed-set operations remain independent of execution. These two concrete
 # asynchronous activities form the single Process-facing boundary in the same installed package.
 add_component(COMPONENT_NAME session_execution NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/SessionOpening.cpp src/ReloadSessionOperation.cpp src/SessionServices.cpp)
+    SOURCE_FILES src/SessionOpening.cpp src/ReloadSessionOperation.cpp src/SessionServices.cpp src/SessionHistoryCommands.cpp)
 component_include_directories(session_execution BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
     INSTALL_TIME include)
 target_link_libraries(session_execution PUBLIC lux::engine::editor::session_factories
@@ -27,3 +27,7 @@ component_add_transitive_commands(session_execution
 lux_classify_target(TARGET session_execution LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-session-factories VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS session_factories session_execution)
+
+# One pure binding algorithm serves both explicit roles and declared async owners; never installed.
+target_include_directories(session_factories PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude)
+target_include_directories(session_execution PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude)

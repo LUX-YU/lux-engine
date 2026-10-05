@@ -1062,6 +1062,43 @@ namespace
                 assert(opening.acknowledge(again));
                 turn();
             }
+            {
+                // The product declares commands; their first dispatch binds the real shared providers.
+                commands::CommandRegistry registry{dependencies, scope};
+                auto catalog = take(commands::CommandRegistrySnapshot::create(makeHistoryCommands(code)));
+                assert(registry.publish(catalog));
+                const auto undo = take(catalog.find(commands::CommandIdView{"lux.editor.undo"}));
+                const auto redo = take(catalog.find(commands::CommandIdView{"lux.editor.redo"}));
+                auto& model =
+                    take(store.access<em::MaterialSession>().edit(take(store.key<em::MaterialSession>(ids[1])))).get();
+                const auto before = model.describe();
+                const auto scene_before = take(store.describe(ids[0])).current;
+                const auto flow_before = take(store.describe(ids[2])).current;
+                em::MaterialEditBatch edit{before.current, "Declared history", {}};
+                edit.edits.emplace_back(em::MaterialRename{"Declared history rename"});
+                assert(model.apply(std::move(edit)));
+                const auto edited = model.describe();
+                const commands::CommandInvocation captured{commands::SessionTarget{ids[1], edited.current}};
+                assert(take(registry.query(undo, captured.query())).enabled);
+                assert(registry.execute(undo, captured));
+                assert(model.describe().current == before.current && model.describe().dirty == before.dirty);
+                const auto stale = registry.execute(undo, captured);
+                assert(!stale && stale.error().code == commands::ECommandError::STALE_CONTENT);
+                assert(model.describe().current == before.current);
+                const commands::CommandInvocation restored{commands::SessionTarget{ids[1], before.current}};
+                assert(take(registry.query(redo, restored.query())).enabled);
+                assert(registry.execute(redo, restored));
+                assert(model.describe().current == edited.current && model.describe().dirty == edited.dirty);
+                // Pinned bindings retain their exact providers across directory replacement.
+                assert(registry.publish({}));
+                assert(registry.execute(undo, captured));
+                assert(model.describe().current == before.current);
+                assert(take(store.describe(ids[0])).current == scene_before);
+                assert(take(store.describe(ids[2])).current == flow_before);
+                assert(take(dependencies.get<SessionStore>(scope)) == store_owner);
+                assert(take(dependencies.get<SessionOpening>(scope)) == opening_owner);
+                std::cout << "PASS declared history commands use shared installed roles, fixed source and unique history\n";
+            }
             auto frozen_set = take(SaveAllOperation::begin(store, saves));
             assert(frozen_set.entries().size() == 3);
             const auto copy = take(opening.open({17, kinds[1], input(1), 42}, factories));

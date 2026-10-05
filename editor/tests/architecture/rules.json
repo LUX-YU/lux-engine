@@ -18433,6 +18433,12 @@
       "editor/activities/sessions/src/SessionOpening.cpp": [
         "session_execution"
       ],
+      "editor/activities/sessions/src/SessionHistoryCommands.cpp": [
+        "session_execution"
+      ],
+      "editor/activities/sessions/sinclude/lux/engine/editor/detail/HistoryCommandBinding.hpp": [
+        "session_factories"
+      ],
       "editor/activities/sessions/include/lux/engine/editor/sessions/ReloadSessionOperation.hpp": [
         "session_execution"
       ],

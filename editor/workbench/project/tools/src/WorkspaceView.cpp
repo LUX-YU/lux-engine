@@ -1,10 +1,11 @@
 #include <exception>
-#include <lux/engine/editor/workbench/CommandSupport.hpp>
-#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
-#include <lux/engine/editor/project/WorkspaceView.hpp>
-#include <lux/engine/ui/Element.hpp>
 #include <imgui.h>
 #include <imgui_stdlib.h>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/project/WorkspaceView.hpp>
+#include <lux/engine/editor/workbench/CommandSupport.hpp>
+#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
+#include <lux/engine/ui/Element.hpp>
 
 namespace lux::editor::project
 {
@@ -30,7 +31,69 @@ namespace lux::editor::project
             "Workspace",
             cxx::typeToken<std::monostate>()
         };
+        constexpr services::ServiceDependency kDependencies[]{
+            {services::ServiceNameView{"lux.editor.workspace.observe"},
+             1,
+             cxx::typeToken<WorkspaceView::Observe>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.workspace.request"},
+             1,
+             cxx::typeToken<WorkspaceView::Request>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
+        desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
+            services::ServiceResolver& resolver,
+            const desktop::UiCreateInfo& input
+        )
+        {
+            const bool has_content = !input.content.sessions.empty();
+            const bool has_configuration = !input.configuration.bytes.empty();
+            const bool is_invalid_input = has_content || has_configuration;
+            if (is_invalid_input)
+            {
+                return cxx::unexpected(desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "workspace.input"});
+            }
+            auto observe = resolver.require<WorkspaceView::Observe>(0);
+            auto request = resolver.require<WorkspaceView::Request>(1);
+            const bool is_missing_observer = !observe;
+            const bool is_missing_receiver = !request;
+            const bool has_missing_dependency = is_missing_observer || is_missing_receiver;
+            if (has_missing_dependency)
+            {
+                const auto& error = !observe ? observe.error() : request.error();
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::DEPENDENCY,
+                    "workspace.receiver",
+                    static_cast<std::uint64_t>(error.code),
+                    error.detail
+                });
+            }
+            const bool is_empty_observer = !observe->get();
+            const bool is_empty_receiver = !request->get();
+            const bool is_invalid_receiver = is_empty_observer || is_empty_receiver;
+            if (is_invalid_receiver)
+            {
+                return cxx::unexpected(
+                    desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "workspace.receiver"}
+                );
+            }
+            // Exact synchronous borrows. The declared providers outlive every window in this scope.
+            return std::make_unique<WorkspaceView>(
+                input.dispatcher,
+                input.instance,
+                [observer = &observe->get()] { return (*observer)(); },
+                [receiver = &request->get()](VWorkspaceIntent value) { return (*receiver)(std::move(value)); }
+            );
+        }
     } // namespace
+    constinit const desktop::UiDescriptor kWorkspaceView{
+        .type = kFactoryDescriptor.type,
+        .label = kFactoryDescriptor.label,
+        .dependencies = kDependencies,
+        .create = createView
+    };
     struct WorkspaceView::Impl final : lux::ui::Element
     {
         Observe observe_;
@@ -44,7 +107,9 @@ namespace lux::editor::project
         {
             setStretch({1, 1});
             if (!view.setContent(*this))
+            {
                 std::terminate(); // Fixed content in a detached Pane.
+            }
         }
         EditorResult<void> request(VWorkspaceIntent intent)
         {
@@ -55,7 +120,9 @@ namespace lux::editor::project
         void observe()
         {
             if (!initialized_)
+            {
                 initialized_ = request(RefreshWorkspace{}).has_value();
+            }
             auto result = observe_();
             if (result)
             {
@@ -63,26 +130,38 @@ namespace lux::editor::project
                 observation_failure_.reset();
             }
             else
+            {
                 observation_failure_ = result.error();
+            }
         }
         void draw() noexcept override
         {
             const auto button = [&](const char* label, VWorkspaceIntent intent)
             {
                 if (ImGui::Button(label))
+                {
                     (void)request(std::move(intent));
+                }
             };
             ImGui::InputText("Layout label", &label_);
             button("Save current layout as new", SaveLayout{label_});
             ImGui::SameLine();
             button("Refresh directory", RefreshWorkspace{});
             for (const auto* failure : {&observation_failure_, &request_failure_})
+            {
                 if (*failure)
+                {
                     ImGui::TextWrapped("%s: %s", (*failure)->domain.c_str(), (*failure)->message.c_str());
+                }
+            }
             for (const auto& message : snapshot_.diagnostics)
+            {
                 ImGui::TextWrapped("%s", message.c_str());
+            }
             for (const auto& diagnostic : snapshot_.catalog.diagnostics)
+            {
                 ImGui::TextWrapped("%s: %s", diagnostic.file.c_str(), diagnostic.failure.detail.c_str());
+            }
             for (const auto& layout : snapshot_.catalog.layouts)
             {
                 ImGui::PushID(layout.id.value.c_str());
@@ -99,7 +178,9 @@ namespace lux::editor::project
             button("Restore recorded content", RestoreRecovery{});
             button("Import old workspace data", MigrateWorkspace{});
             for (const auto& message : snapshot_.recovery)
+            {
                 ImGui::TextWrapped("%s", message.c_str());
+            }
             ImGui::SeparatorText("Publication results");
             for (const auto& report : snapshot_.publications)
             {
@@ -112,14 +193,20 @@ namespace lux::editor::project
                         [](const auto& result)
                         {
                             if constexpr (std::same_as<std::decay_t<decltype(result)>, persistence::CommitReceipt>)
+                            {
                                 ImGui::TextUnformatted("Published");
+                            }
                             else
+                            {
                                 ImGui::TextWrapped("%s", result.failure.detail.c_str());
+                            }
                         },
                         *report.result
                     );
                     if (report.catalog_failure)
+                    {
                         ImGui::TextWrapped("Directory refresh failed: %s", report.catalog_failure->c_str());
+                    }
                     button("Acknowledge", AcknowledgeWorkspace{report.ticket});
                 }
                 else if (report.unknown)
@@ -128,7 +215,9 @@ namespace lux::editor::project
                     button("Reconcile", ReconcileWorkspace{report.ticket});
                 }
                 else
+                {
                     ImGui::TextUnformatted("Publication pending");
+                }
                 ImGui::PopID();
             }
         }
@@ -206,7 +295,7 @@ namespace lux::editor::project
     {
         auto check = std::make_shared<commands::CommandEntry::Query>(std::move(query));
         auto receiver = std::make_shared<WorkspaceView::Request>(std::move(request));
-        const auto bind = [&]<const commands::CommandDescriptor & Descriptor>(VWorkspaceIntent intent)
+        const auto bind = [&] < const commands::CommandDescriptor & Descriptor > (VWorkspaceIntent intent)
         {
             return workbench::detail::bindCommand<Descriptor>(
                 [check](const commands::CommandQuery& input) { return (*check)(input); },
@@ -215,7 +304,9 @@ namespace lux::editor::project
                 {
                     auto result = (*receiver)(intent);
                     if (!result)
+                    {
                         return workbench::detail::commandFailure(result.error());
+                    }
                     return {};
                 }
             );

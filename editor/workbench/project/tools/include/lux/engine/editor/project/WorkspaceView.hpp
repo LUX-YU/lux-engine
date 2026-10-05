@@ -1,12 +1,15 @@
 #pragma once
-#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/EditorError.hpp>
-#include <lux/engine/ui/Pane.hpp>
-#include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/persistence/ArtifactStore.hpp>
 #include <lux/engine/editor/workspace/LayoutCatalog.hpp>
+#include <lux/engine/ui/Pane.hpp>
 
+namespace lux::editor::desktop
+{
+    struct UiDescriptor;
+}
 namespace lux::editor::views
 {
     class ViewFactoryEntry;
@@ -14,6 +17,7 @@ namespace lux::editor::views
 
 namespace lux::editor::project
 {
+    extern const desktop::UiDescriptor kWorkspaceView;
     struct RefreshWorkspace final
     {
     };

@@ -27,3 +27,11 @@ before the borrowed infrastructure can be destroyed.
 
 These formal factories do not invoke the legacy DetachedView constructors. Their remaining Application and
 legacy test consumers are still scheduled for removal at EC4 M6; the product Host cutover is not complete.
+
+ProjectCreation, Settings, Results and Workspace also expose real UiDescriptor factories. They borrow the
+existing typed query/request providers (and ProjectStorage/PluginManager where needed), validate the complete
+input before constructing controls, and return standard unique Pane owners. Project creation is lazy at the
+request-provider boundary and construction does not submit IO. Settings user-intent signals remain on the
+actual Pane; their business receiver owns its connections. No factory creates a Host or a parallel task owner.
+Results' current builtin action protocol and Settings' saved-value policy still require the EC4 M7 migration;
+these construction declarations do not certify that later business work as complete.

@@ -1,9 +1,10 @@
 #include <exception>
+#include <imgui.h>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/project/ResultsView.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
-#include <lux/engine/editor/project/ResultsView.hpp>
 #include <lux/engine/ui/Element.hpp>
-#include <imgui.h>
 
 namespace lux::editor::project
 {
@@ -19,7 +20,68 @@ namespace lux::editor::project
             "Content and Operations",
             cxx::typeToken<std::monostate>()
         };
+        constexpr services::ServiceDependency kDependencies[]{
+            {services::ServiceNameView{"lux.editor.results.observe"},
+             1,
+             cxx::typeToken<ResultsView::Observe>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.results.request"},
+             1,
+             cxx::typeToken<ResultsView::Request>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
+        desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
+            services::ServiceResolver& resolver,
+            const desktop::UiCreateInfo& input
+        )
+        {
+            const bool has_content = !input.content.sessions.empty();
+            const bool has_configuration = !input.configuration.bytes.empty();
+            const bool is_invalid_input = has_content || has_configuration;
+            if (is_invalid_input)
+            {
+                return cxx::unexpected(desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "results.input"});
+            }
+            auto observe = resolver.require<ResultsView::Observe>(0);
+            auto request = resolver.require<ResultsView::Request>(1);
+            const bool is_missing_observer = !observe;
+            const bool is_missing_receiver = !request;
+            const bool has_missing_dependency = is_missing_observer || is_missing_receiver;
+            if (has_missing_dependency)
+            {
+                const auto& error = !observe ? observe.error() : request.error();
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::DEPENDENCY,
+                    "results.receiver",
+                    static_cast<std::uint64_t>(error.code),
+                    error.detail
+                });
+            }
+            const bool is_empty_observer = !observe->get();
+            const bool is_empty_receiver = !request->get();
+            const bool is_invalid_receiver = is_empty_observer || is_empty_receiver;
+            if (is_invalid_receiver)
+            {
+                return cxx::unexpected(desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "results.receiver"}
+                );
+            }
+            // Exact synchronous borrows. The declared providers outlive every window in this scope.
+            return std::make_unique<ResultsView>(
+                input.dispatcher,
+                input.instance,
+                [observer = &observe->get()] { return (*observer)(); },
+                [receiver = &request->get()](VResultIntent value) { return (*receiver)(std::move(value)); }
+            );
+        }
     } // namespace
+    constinit const desktop::UiDescriptor kResultsView{
+        .type = kFactoryDescriptor.type,
+        .label = kFactoryDescriptor.label,
+        .dependencies = kDependencies,
+        .create = createView
+    };
     struct ResultsView::Impl final : lux::ui::Element
     {
         Observe observe_;
@@ -31,7 +93,9 @@ namespace lux::editor::project
         {
             setStretch({1, 1});
             if (!view.setContent(*this))
+            {
                 std::terminate(); // Fixed content in a detached Pane.
+            }
         }
         EditorResult<void> request(VResultIntent intent)
         {
@@ -48,13 +112,19 @@ namespace lux::editor::project
                 observation_failure_.reset();
             }
             else
+            {
                 observation_failure_ = result.error(); // Keep the last whole display, never infer empty.
+            }
         }
         void draw() noexcept override
         {
             for (const auto* failure : {&observation_failure_, &request_failure_})
+            {
                 if (*failure)
+                {
                     ImGui::TextWrapped("%s: %s", (*failure)->domain.c_str(), (*failure)->message.c_str());
+                }
+            }
             for (const auto& section : snapshot_.sections)
             {
                 ImGui::PushID(section.title.c_str());
@@ -63,10 +133,16 @@ namespace lux::editor::project
                 {
                     ImGui::PushID(row.key.c_str());
                     for (const auto& message : row.messages)
+                    {
                         ImGui::TextWrapped("%s", message.c_str());
+                    }
                     for (const auto& action : row.actions)
+                    {
                         if (ImGui::Button(action.label.c_str()))
+                        {
                             (void)request(action.intent);
+                        }
+                    }
                     ImGui::PopID();
                 }
                 ImGui::PopID();

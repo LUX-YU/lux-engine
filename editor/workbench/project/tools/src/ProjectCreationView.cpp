@@ -1,10 +1,11 @@
 #include <exception>
+#include <imgui.h>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/project/ProjectCreationView.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
-#include <lux/engine/editor/project/ProjectCreationView.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
-#include <imgui.h>
 
 namespace lux::editor::project
 {
@@ -21,6 +22,79 @@ namespace lux::editor::project
             cxx::typeToken<std::monostate>()
         };
     } // namespace
+    namespace
+    {
+        using CreateRequests = cxx::move_only_function<ProjectCreationRequests()>;
+        constexpr services::ServiceDependency kDependencies[]{
+            {services::ServiceNameView{"lux.editor.project.creation.requests"},
+             1,
+             cxx::typeToken<CreateRequests>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
+        desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
+            services::ServiceResolver& resolver,
+            const desktop::UiCreateInfo& input
+        )
+        {
+            const bool has_content = !input.content.sessions.empty();
+            const bool has_configuration = !input.configuration.bytes.empty();
+            const bool is_invalid_input = has_content || has_configuration;
+            if (is_invalid_input)
+            {
+                return cxx::unexpected(
+                    desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "project.creation.input"}
+                );
+            }
+            auto requests = resolver.require<CreateRequests>(0);
+            if (!requests)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::DEPENDENCY,
+                    "project.creation.requests",
+                    static_cast<std::uint64_t>(requests.error().code),
+                    requests.error().detail
+                });
+            }
+            if (!requests->get())
+            {
+                return cxx::unexpected(
+                    desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "project.creation.requests"}
+                );
+            }
+            auto callbacks = requests->get()();
+            const bool has_queries = callbacks.catalog && callbacks.progress && callbacks.configuration;
+            const bool has_actions =
+                callbacks.select && callbacks.create && callbacks.launch && callbacks.cancel && callbacks.beginNew;
+            const bool is_invalid_requests = !has_queries || !has_actions;
+            if (is_invalid_requests)
+            {
+                return cxx::unexpected(
+                    desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "project.creation.requests"}
+                );
+            }
+            EditorResult<void> ready;
+            auto pane =
+                std::make_unique<ProjectCreationView>(input.dispatcher, input.instance, std::move(callbacks), ready);
+            if (!ready)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    ready.error().code == EEditorError::BUSY ? desktop::EUiError::BUSY
+                                                             : desktop::EUiError::FACTORY_FAILURE,
+                    ready.error().domain,
+                    ready.error().reason,
+                    ready.error().message
+                });
+            }
+            return std::unique_ptr<lux::ui::Pane>(std::move(pane));
+        }
+    } // namespace
+    constinit const desktop::UiDescriptor kProjectCreationView{
+        .type = kFactoryDescriptor.type,
+        .label = kFactoryDescriptor.label,
+        .dependencies = kDependencies,
+        .create = createView
+    };
     struct ProjectCreationView::Impl final
     {
         enum class EAction
@@ -88,7 +162,9 @@ namespace lux::editor::project
               new_(actions_, lux::ui::ElementId{"new"}, "Create another project")
         {
             if (!view.setContent(layout_))
+            {
                 std::terminate(); // Fixed content in a detached Pane.
+            }
             view.setModal(true);
             fields_.setStretch({1, 1});
             fields_.setScrollable(false, true);
@@ -153,16 +229,20 @@ namespace lux::editor::project
             heading_.setText(headings[step_]);
             confirmation_.setVisible(step_ == 6 || progress.committed.has_value());
             if (progress.committed)
+            {
                 confirmation_.setText(
                     "Project published: " + progress.committed->project_file.string() +
                     (progress.launched ? "\nEditor launched." : "\nReady to open in a new Editor process.")
                 );
+            }
             else
+            {
                 confirmation_.setText(
                     "Create " + name_.value() + " in " + directory_.value() +
                     (beginner_.value() ? "\nContent/" + package_.value() + "/Main.scene"
                                        : "\nOnly Project.luxproject is required; no Content directory is created.")
                 );
+            }
             if (form_)
             {
                 form_->setVisible(step_ >= 1 && step_ <= 5);
@@ -175,15 +255,19 @@ namespace lux::editor::project
                     scene::ESceneConfigurationStage::RELATIONSHIPS
                 };
                 if (step_ < 6)
+                {
                     form_->setStage(stages[step_]);
+                }
             }
         }
         void update()
         {
             if (!catalog_loaded_)
+            {
                 if (const auto* catalog = requests_.catalog())
                 {
                     for (const auto& plugin : catalog->plugins())
+                    {
                         selections_.emplace_back(
                             plugin.identity,
                             std::make_unique<lux::ui::CheckBox>(
@@ -194,32 +278,44 @@ namespace lux::editor::project
                                 plugin.identity.id == "lux.builtin.scene_render"
                             )
                         );
+                    }
                     catalog_loaded_ = true;
                 }
+            }
             const auto& progress = requests_.progress();
             if (progress.failure)
+            {
                 report(*progress.failure);
+            }
             if (selecting_ && !progress.pending)
             {
                 selecting_ = false;
                 auto inputs = requests_.configuration();
                 if (!inputs)
+                {
                     report(inputs.error());
+                }
                 else
                 {
                     configured_plugins_ = inputs->plugins;
                     scene::SceneConfigurationResult<void> result;
                     if (beginner_.value())
+                    {
                         form_ = std::make_unique<scene::SceneConfigurationElement>(
                             fields_,
                             lux::ui::ElementId{"scene"},
                             std::move(inputs->scene),
                             result
                         );
+                    }
                     if (!result)
+                    {
                         error_.setText(result.error().domain);
+                    }
                     else
+                    {
                         step_ = beginner_.value() ? 1 : 6;
+                    }
                 }
             }
             if (step_ == 1 && form_ && preset_applied_ != preset_.value())
@@ -229,7 +325,9 @@ namespace lux::editor::project
                                          : scene::ESceneContentPreset::THREE_DIMENSIONAL
                 );
                 if (!applied)
+                {
                     error_.setText(applied.error().domain);
+                }
                 else
                 {
                     preset_applied_ = preset_.value();
@@ -240,21 +338,29 @@ namespace lux::editor::project
             {
                 EditorResult<void> result;
                 if (*action == EAction::CANCEL)
+                {
                     requests_.cancel();
+                }
                 else if (*action == EAction::RESET)
                 {
                     form_.reset();
                     preset_applied_.reset();
                     result = requests_.beginNew();
                     if (result)
+                    {
                         step_ = 0;
+                    }
                 }
                 else if (*action == EAction::LAUNCH)
+                {
                     result = requests_.launch();
+                }
                 else if (!progress.pending && !progress.committed)
                 {
                     if (*action == EAction::BACK && step_)
+                    {
                         step_ = step_ == 6 && !beginner_.value() ? 0 : step_ - 1;
+                    }
                     if (*action == EAction::NEXT)
                     {
                         if (step_ == 0)
@@ -266,8 +372,10 @@ namespace lux::editor::project
                                                  !std::filesystem::u8path(directory_.value()).is_absolute() ||
                                                  (beginner_.value() && !validProjectPath(package_.value()));
                             if (invalid)
+                            {
                                 result =
                                     cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "creation.location"});
+                            }
                             else
                             {
                                 // Destroy controls before their selected plugin environment can be replaced.
@@ -275,14 +383,20 @@ namespace lux::editor::project
                                 preset_applied_.reset();
                                 std::vector<ProjectPluginEntry> selected;
                                 for (const auto& [identity, control] : selections_)
+                                {
                                     if (control->value())
+                                    {
                                         selected.push_back({identity.id, identity.version});
+                                    }
+                                }
                                 result = requests_.select(std::move(selected));
                                 selecting_ = result.has_value();
                             }
                         }
                         else if (step_ != 1 || preset_applied_ == preset_.value())
+                        {
                             ++step_;
+                        }
                     }
                     if (*action == EAction::CREATE && step_ == 6)
                     {
@@ -307,7 +421,9 @@ namespace lux::editor::project
                     }
                 }
                 if (!result)
+                {
                     report(result.error());
+                }
             }
             showStep();
         }
@@ -344,7 +460,9 @@ namespace lux::editor::project
                 auto pane =
                     std::make_unique<ProjectCreationView>(input.dispatcher(), input.paneId(), requests(), ready);
                 if (!ready)
+                {
                     return cxx::unexpected(workbench::detail::viewFailure(ready.error()));
+                }
                 return views::DetachedView{lux::object::CodeLease::builtin(), std::move(pane)};
             }
         );
@@ -362,7 +480,9 @@ namespace lux::editor::project
             {
                 auto shown = open(views::ViewTypeId{kFactoryDescriptor.type.name()});
                 if (!shown)
+                {
                     return cxx::unexpected(shown.error());
+                }
                 // Construction and Host adoption precede work which needs the new view's maintenance.
                 return start();
             }

@@ -2,12 +2,17 @@
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/storage/ProjectPublication.hpp>
 #include <lux/engine/ui/Pane.hpp>
+namespace lux::editor::desktop
+{
+    struct UiDescriptor;
+}
 namespace lux::project
 {
     class PluginManager;
 }
 namespace lux::editor::project
 {
+    extern const desktop::UiDescriptor kSettingsView;
     struct SettingsContentInput;
     struct PluginSelectionDraft final
     {

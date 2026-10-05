@@ -1165,14 +1165,27 @@ namespace
         assert(take(ui.captureState(root, b_handle)).bytes == b_state.bytes);
         assert(ui.rebind(root, b_handle, {}) && !b->binding());
         assert(ui.rebind(root, b_handle, binding) && b->binding()->session == key);
+        const std::array closing{a_handle, b_handle};
+        const auto observed_before_close = model->describe().observed;
+        assert(take(model->read()).withRead([&]() -> ef::FlowEditResult<void>
+        {
+            auto busy_close = ui.prepareClose(root, closing);
+            assert(!busy_close && busy_close.error().code == desktop::EUiError::BUSY);
+            assert(root.findPane(a_handle) && root.findPane(b_handle));
+            assert(a->binding()->interaction->overlay() && !b->binding()->interaction->overlay());
+            return {};
+        }));
+        assert(model->describe().current == initial.current && model->describe().observed == observed_before_close);
+        assert(model->describe().dirty == initial.dirty && take(take(model->read()).encode()) == bytes);
         assert(a->cancelEdit());
         const auto operation = take(a->compile());
         auto compiler = take(services.get<ef::FlowCompilationService>(scope));
         const auto& compiled = take(compiler->operation(operation)).get();
         f.frame();
         assert(a->compilation() == operation && b->compilation() == operation);
-        assert(ui.prepareClose(root, a_handle) && root.removeSubPane(*a));
-        assert(ui.prepareClose(root, b_handle) && root.removeSubPane(*b));
+        auto prepared_close = take(ui.prepareClose(root, closing));
+        assert(root.findPane(a_handle) && root.findPane(b_handle));
+        assert(root.commit(prepared_close));
         assert(!root.findPane(a_handle) && !root.findPane(b_handle));
         assert(activeWindows() == before);
         (void)f.messages.collectRetired();

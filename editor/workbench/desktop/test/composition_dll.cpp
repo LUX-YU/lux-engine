@@ -63,11 +63,16 @@ int main(int argc, char** argv)
         weak = *job;
         auto task = (*job)->start(*job);
         assert(task);
-        std::vector<ui::Pane*> closing{(*root)->panes().begin(), (*root)->panes().end()};
-        for (auto* pane : closing)
+        std::vector<ui::PaneHandle> closing;
+        for (auto* pane : (*root)->panes())
         {
-            assert((*root)->removeSubPane(*pane));
+            auto handle = (*root)->identify(*pane);
+            assert(handle);
+            closing.push_back(*handle);
         }
+        auto prepared = context.ui().prepareClose(**root, closing);
+        assert(prepared && trace.windows_destroyed == 0);
+        assert((*root)->commit(*prepared) && trace.windows_destroyed == 0);
         assert(messages->collectRetired() == 2 && trace.windows_destroyed == 2);
         job->reset();
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);

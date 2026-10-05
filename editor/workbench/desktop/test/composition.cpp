@@ -346,7 +346,7 @@ namespace
         assert(handle && *registry.content(**root, *handle) == original);
         counts.operating = [&]
         {
-            auto nested = registry.prepareClose(**root, *handle);
+            auto nested = registry.prepareClose(**root, std::span{&*handle, 1});
             assert(!nested && nested.error().code == EUiError::BUSY);
             auto publication = registry.publish(catalog());
             assert(!publication && publication.error().code == EUiError::BUSY);
@@ -361,7 +361,7 @@ namespace
         assert(registry.rebind(**root, *handle, {}));
         assert(registry.content(**root, *handle)->sessions.empty());
         counts.deny_close = true;
-        auto pending = registry.prepareClose(**root, *handle);
+        auto pending = registry.prepareClose(**root, std::span{&*handle, 1});
         assert(!pending && pending.error().code == EUiError::BUSY && pending.error().domain_code == 82);
         assert((*root)->findPane(*handle));
         auto state = registry.captureState(**root, *handle);
@@ -376,7 +376,7 @@ namespace
         assert(registry.publish(catalog()));
         assert(registry.rebind(**root, *handle, original));
         assert(*registry.content(**root, *handle) == original);
-        assert(registry.prepareClose(**root, *handle));
+        assert(registry.prepareClose(**root, std::span{&*handle, 1}));
         assert(registry.captureState(**root, *handle)->bytes == std::vector{std::byte{7}});
         assert(counts.rebound == 3 && counts.closes == 2 && counts.captures == 3);
         ui::Pane external{messages.dispatcherRef(), ui::PaneId{"foreign"}, ui::PaneTypeId{"ec4.window"}, "Foreign"};
@@ -400,6 +400,111 @@ namespace
         assert(scope->release() && scope->drained());
         std::cout << "Original factory operations: content, failed binding, close retry, catalog replacement, "
                      "callback protection and real handle invalidation PASS\n";
+    }
+
+    void batchClose(object::ObjectMessageQueue& messages)
+    {
+        Counts counts;
+        EditorContext context{messages.dispatcherRef()};
+        auto& registry = context.ui();
+        auto& services = context.services();
+        assert(services.publish({ServiceEntry::bind<model_descriptor>(object::CodeLease::builtin())}));
+        auto scope = services.createScope();
+        auto root = ui::Root::create(messages.dispatcherRef());
+        assert(scope && root && scope->provide(ServiceNameView{"ec4.counts"}, counts));
+        auto definition = descriptor;
+        definition.prepare_close = [](ui::Pane& pane) { return static_cast<Window&>(pane).prepareClose(); };
+        auto entries = UiCatalog::prepare({UiEntry::create(object::CodeLease::builtin(), definition)});
+        assert(entries && registry.publish(std::move(*entries)));
+        const auto factory = *registry.snapshot().at(0);
+        auto left = registry.create(factory, *scope,
+            {messages.dispatcherRef(), ui::PaneId{"close-left"}, {}, {}});
+        auto right = registry.create(factory, *scope,
+            {messages.dispatcherRef(), ui::PaneId{"close-right"}, {}, {}});
+        assert(left && right);
+        auto* a = left->get();
+        auto* b = right->get();
+        assert((*root)->addSubPane(std::move(*left)) && (*root)->addSubPane(*b));
+        const std::array handles{*(*root)->identify(*a), *(*root)->identify(*b)};
+        const auto windows = (*root)->windowRevision();
+        const auto unchanged = [&]
+        {
+            assert((*root)->findPane(handles[0]) && (*root)->findPane(handles[1]));
+            assert((*root)->windowRevision() == windows && counts.windows_destroyed == 0);
+            assert(a->ownership() == object::EObjectOwnership::PARENT_OWNED);
+            assert(b->ownership() == object::EObjectOwnership::EXTERNAL && right->get() == b);
+        };
+        const std::array duplicate{handles[0], handles[0]};
+        auto repeated = registry.prepareClose(**root, duplicate);
+        assert(!repeated && repeated.error().domain_code == static_cast<unsigned>(ui::EAttachmentError::INVALID_TREE));
+        assert(counts.closes == 0);
+        unchanged();
+        counts.operating = [&] { counts.deny_close = counts.closes == 2; };
+        auto refused = registry.prepareClose(**root, handles);
+        assert(!refused && refused.error().code == EUiError::BUSY && refused.error().domain_code == 82);
+        assert(counts.closes == 2);
+        unchanged();
+        counts.deny_close = false;
+        counts.operating = [] { throw std::runtime_error("Foreign close failure"); };
+        auto failure = registry.prepareClose(**root, handles);
+        assert(!failure && failure.error().code == EUiError::FACTORY_FAILURE);
+        unchanged();
+        auto input = std::vector(handles.begin(), handles.end());
+        counts.operating = [&]
+        {
+            input.clear(); // The original admitted batch must still close both windows.
+            auto nested = registry.prepareClose(**root, handles);
+            assert(!nested && nested.error().code == EUiError::BUSY);
+            auto removal = (*root)->removeSubPane(*b);
+            assert(!removal && removal.error() == ui::EAttachmentError::BUSY);
+            assert(!registry.publish(catalog()));
+        };
+        {
+            auto abandoned = registry.prepareClose(**root, input);
+            assert(abandoned && input.empty());
+            unchanged();
+        }
+        unchanged();
+        counts.operating = {};
+        auto prepared = registry.prepareClose(**root, handles);
+        assert(prepared);
+        bool content_committed{};
+        unsigned notifications{};
+        auto connection = object::LuxObject::connect(
+            root->get(), &ui::Root::attachmentChanged,
+            [&](const ui::AttachmentChanged& change) noexcept
+            {
+                assert(!change.mounted && content_committed && counts.windows_destroyed == 0);
+                assert(!(*root)->findPane(handles[0]) && !(*root)->findPane(handles[1]));
+                ++notifications;
+            }
+        );
+        assert(connection);
+        auto commit_content = [&]() noexcept { content_committed = true; };
+        assert((*root)->commit(*prepared, commit_content));
+        assert(notifications == 2 && counts.windows_destroyed == 0);
+        assert(!a->attachedRoot() && !b->attachedRoot() && !b->parent());
+        assert(messages.collectRetired() == 1 && counts.windows_destroyed == 1);
+        right->reset();
+        assert(counts.windows_destroyed == 2 && counts.models_destroyed == 1);
+        connection->disconnect();
+
+        // External destruction during another target's callback invalidates the original batch.
+        left = registry.create(factory, *scope, {messages.dispatcherRef(), ui::PaneId{"late-left"}, {}, {}});
+        right = registry.create(factory, *scope, {messages.dispatcherRef(), ui::PaneId{"late-right"}, {}, {}});
+        assert(left && right && (*root)->addSubPane(**left) && (*root)->addSubPane(**right));
+        const std::array late{*(*root)->identify(**left), *(*root)->identify(**right)};
+        const auto closes = counts.closes;
+        counts.operating = [&] { right->reset(); };
+        auto stale = registry.prepareClose(**root, late);
+        assert(!stale && stale.error().domain_code == static_cast<unsigned>(ui::EAttachmentError::STALE_PREPARATION));
+        assert(counts.closes == closes + 1 && (*root)->findPane(late[0]) && !(*root)->findPane(late[1]));
+        counts.operating = {};
+        assert((*root)->removeSubPane(**left));
+        left->reset();
+        assert(scope->release() && scope->drained() && services.drained());
+        std::cout << "Factory batch close: refusal and abandon preserve ownership; all content commits before "
+                     "notifications; external callback destruction invalidates the exact batch PASS\n";
     }
 
     void publication(object::ObjectMessageQueue& messages)
@@ -850,6 +955,7 @@ int main()
     sharing(messages);
     configuredMount(messages);
     windowOperations(messages);
+    batchClose(messages);
     publication(messages);
     rejection(messages);
     rejectedMountCleanup(messages);

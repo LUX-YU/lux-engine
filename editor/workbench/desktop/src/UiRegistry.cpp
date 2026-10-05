@@ -14,6 +14,13 @@ namespace lux::editor::desktop
         {
             return cxx::unexpected(UiFailure{code, "ui", 0, std::move(detail)});
         }
+        auto attachmentFailure(lux::ui::EAttachmentError cause) noexcept
+        {
+            const auto code = cause == lux::ui::EAttachmentError::BUSY           ? EUiError::BUSY
+                              : cause == lux::ui::EAttachmentError::WRONG_THREAD ? EUiError::WRONG_THREAD
+                                                                                : EUiError::ATTACHMENT;
+            return cxx::unexpected(UiFailure{code, "ui.attachment", static_cast<std::uint64_t>(cause), {}});
+        }
         UiFailure serviceFailure(services::ServiceFailure failure)
         {
             using enum services::EServiceError;
@@ -545,6 +552,14 @@ namespace lux::editor::desktop
             return cxx::unexpected(std::move(admitted.error()));
         }
         Impl::Guard guard{impl_->active};
+        return visitAdmitted(root, handle, callback);
+    }
+    UiResult<void> UiRegistry::visitAdmitted(
+        lux::ui::Root& root,
+        const lux::ui::PaneHandle& handle,
+        cxx::function_ref<void(const UiDescriptor&, lux::ui::Pane&)> callback
+    ) noexcept
+    {
         UiResult<void> result = reject(EUiError::NOT_FOUND, "Pane was not created by this registry");
         auto borrow = [&](lux::ui::Pane& pane)
         {
@@ -575,11 +590,7 @@ namespace lux::editor::desktop
         auto visited = root.withPane(handle, borrow);
         if (!visited)
         {
-            const auto cause = visited.error();
-            const auto code = cause == lux::ui::EAttachmentError::BUSY           ? EUiError::BUSY
-                              : cause == lux::ui::EAttachmentError::WRONG_THREAD ? EUiError::WRONG_THREAD
-                                                                                : EUiError::ATTACHMENT;
-            return cxx::unexpected(UiFailure{code, "ui.attachment", static_cast<std::uint64_t>(cause), {}});
+            return attachmentFailure(visited.error());
         }
         return result;
     }
@@ -634,8 +645,44 @@ namespace lux::editor::desktop
         }
         return result;
     }
-    UiResult<void> UiRegistry::prepareClose(lux::ui::Root& root, const lux::ui::PaneHandle& handle) noexcept
+    UiResult<lux::ui::PreparedAttachment>
+    UiRegistry::prepareClose(lux::ui::Root& root, std::span<const lux::ui::PaneHandle> input) noexcept
     {
+        if (auto admitted = impl_->admission(); !admitted)
+        {
+            return cxx::unexpected(std::move(admitted.error()));
+        }
+        Impl::Guard guard{impl_->active};
+        // Callback code can modify the caller's container. Keep the original identities, not raw
+        // pointers across callbacks. Root prepares all topology/capacity checks before domain cleanup.
+        const std::vector handles(input.begin(), input.end());
+        std::vector<lux::ui::Pane*> panes;
+        panes.reserve(handles.size());
+        for (const auto& handle : handles)
+        {
+            auto pane = root.findPane(handle);
+            if (!pane)
+            {
+                return attachmentFailure(pane.error());
+            }
+            const auto identity = (*pane)->identity();
+            const bool is_known = std::ranges::any_of(impl_->outputs, [&](const auto& weak)
+            {
+                const auto output = weak.lock();
+                return output && output->identity == identity;
+            });
+            if (!is_known)
+            {
+                return reject(EUiError::NOT_FOUND, "Pane was not created by this registry");
+            }
+            panes.push_back(*pane);
+        }
+        auto prepared = root.prepareDetach(panes);
+        if (!prepared)
+        {
+            return attachmentFailure(prepared.error());
+        }
+        const auto revision = root.windowRevision();
         UiResult<void> result;
         auto prepare = [&](const UiDescriptor& descriptor, lux::ui::Pane& pane)
         {
@@ -644,12 +691,25 @@ namespace lux::editor::desktop
                 result = descriptor.prepare_close(pane);
             }
         };
-        auto visited = visit(root, handle, prepare);
-        if (!visited)
+        for (const auto& handle : handles)
         {
-            return cxx::unexpected(std::move(visited.error()));
+            auto visited = visitAdmitted(root, handle, prepare);
+            if (!visited)
+            {
+                return cxx::unexpected(std::move(visited.error()));
+            }
+            if (!result)
+            {
+                return cxx::unexpected(std::move(result.error()));
+            }
+            // An external owner can disappear in another window's callback. Do not pass its raw
+            // address to a later callback or report a valid preparation after that structural change.
+            if (root.windowRevision() != revision)
+            {
+                return attachmentFailure(lux::ui::EAttachmentError::STALE_PREPARATION);
+            }
         }
-        return result;
+        return std::move(*prepared);
     }
     UiResult<workspace::VersionedViewState>
     UiRegistry::captureState(lux::ui::Root& root, const lux::ui::PaneHandle& handle) noexcept

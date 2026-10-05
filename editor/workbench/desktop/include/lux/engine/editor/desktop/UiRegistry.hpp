@@ -193,7 +193,10 @@ namespace lux::editor::desktop
         [[nodiscard]] UiResult<void> rebind(
             lux::ui::Root&, const lux::ui::PaneHandle&, const views::ViewContent&
         ) noexcept;
-        [[nodiscard]] UiResult<void> prepareClose(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
+        // Prepare the entire removal using Root's existing attachment token. A domain refusal leaves
+        // every window mounted. The caller commits at its content/UI safe point; no model is closed here.
+        [[nodiscard]] UiResult<lux::ui::PreparedAttachment>
+        prepareClose(lux::ui::Root&, std::span<const lux::ui::PaneHandle>) noexcept;
         [[nodiscard]] UiResult<workspace::VersionedViewState> captureState(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
         // One synchronous construction/commit boundary shared by configuration, menu and recovery.
         // No retained window table: successful owners transfer directly to Root's Object relation.
@@ -208,6 +211,11 @@ namespace lux::editor::desktop
         [[nodiscard]] UiResult<std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>>
         createImpl(const UiHandle&, services::ServiceScope&, const UiCreateInfo&) noexcept;
         [[nodiscard]] UiResult<void> visit(
+            lux::ui::Root&,
+            const lux::ui::PaneHandle&,
+            cxx::function_ref<void(const UiDescriptor&, lux::ui::Pane&)>
+        ) noexcept;
+        [[nodiscard]] UiResult<void> visitAdmitted(
             lux::ui::Root&,
             const lux::ui::PaneHandle&,
             cxx::function_ref<void(const UiDescriptor&, lux::ui::Pane&)>

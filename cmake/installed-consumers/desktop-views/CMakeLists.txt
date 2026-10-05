@@ -108,7 +108,8 @@ string(REPLACE "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/scene_configuration.cpp" "${scene_configuration}")
 add_executable(scene_configuration "${CMAKE_CURRENT_BINARY_DIR}/scene_configuration.cpp")
 target_link_libraries(scene_configuration PRIVATE lux::engine::editor::scene_ui
-    lux::engine::editor::editor_extensions lux::engine::project::project_plugin_rendering)
+    lux::engine::editor::editor_extensions lux::engine::editor::session_execution
+    lux::engine::project::project_plugin_rendering)
 foreach(target desktop_views root_lifecycle inspector_fields project_panels scene_configuration)
     if(MSVC)
         target_compile_options(${target} PRIVATE /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor)

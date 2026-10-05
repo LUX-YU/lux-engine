@@ -59,16 +59,21 @@ namespace lux::editor::application
                 configuration.viewport = system.instanceId();
             }
         }
+        auto environment = editor_context_.services().get<scene::ProjectionEnvironment>(editor_context_.scope());
+        if (!environment)
+        {
+            return applicationFailure("run.environment", environment.error());
+        }
         // The preparation owns the frozen author data and this exact environment, never a live Session.
         auto prepared = run_controller_.prepare(
             std::move(*captured),
-            {environment_.components,
-             environment_.simulation_systems,
-             environment_.scene_systems,
-             environment_.render_bindings,
-             environment_.renderer,
-             environment_.resources,
-             environment_.assets},
+            {(*environment)->components,
+             (*environment)->simulation_systems,
+             (*environment)->scene_systems,
+             (*environment)->render_bindings,
+             (*environment)->renderer,
+             (*environment)->resources,
+             (*environment)->assets},
             configuration
         );
         if (!prepared)

@@ -86,7 +86,7 @@ namespace lux::editor::scene
             {services::ServiceNameView{"lux.editor.scene.projection.environment"},
              1,
              cxx::typeToken<ProjectionEnvironment>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.editor.scene.run.inspect"},
              1,
@@ -173,12 +173,12 @@ namespace lux::editor::scene
         {
             return rejectedDependency(projections.error());
         }
-        auto environment = resolver.require<ProjectionEnvironment>(3);
+        auto environment = resolver.get<ProjectionEnvironment>(3);
         if (!environment)
         {
             return rejectedDependency(environment.error());
         }
-        const bool is_invalid_environment = !environment->get().resources || !environment->get().renderer;
+        const bool is_invalid_environment = !(*environment)->resources || !(*environment)->renderer;
         if (is_invalid_environment)
         {
             return cxx::unexpected(uiFailure(SceneViewFailure{desktop::EUiError::ATTACHMENT}));
@@ -200,9 +200,9 @@ namespace lux::editor::scene
             {store->get().access<SceneSession>(),
              std::move(*projections),
              runtime->get(),
-             *environment->get().resources,
-             *environment->get().renderer,
-             environment->get(),
+             *(*environment)->resources,
+             *(*environment)->renderer,
+             std::move(*environment),
              runs ? std::optional{runs->get()} : std::nullopt},
             std::move(info)
         );
@@ -506,7 +506,7 @@ namespace lux::editor::scene
                     return rejected(SceneEditError{shared.error()});
                 }
                 model = std::move(*shared);
-                auto acquired = services_.projections->acquire(session->get(), services_.environment);
+                auto acquired = services_.projections->acquire(session->get(), *services_.environment);
                 if (!acquired)
                 {
                     return rejected(acquired.error());
@@ -792,9 +792,9 @@ namespace lux::editor::scene
                 {
                     return rejected(SceneEditError{session.error()});
                 }
-                if (projection_->version().environment != services_.environment.version)
+                if (projection_->version().environment != services_.environment->version)
                 {
-                    auto next = services_.projections->acquire(session->get(), services_.environment);
+                    auto next = services_.projections->acquire(session->get(), *services_.environment);
                     if (!next)
                     {
                         return rejected(next.error());
@@ -964,7 +964,8 @@ namespace lux::editor::scene
         SceneViewCreateInfo info
     )
     {
-        if (!services.projections)
+        const bool is_invalid_services = !services.projections || !services.environment;
+        if (is_invalid_services)
         {
             return rejected(desktop::EUiError::ATTACHMENT);
         }

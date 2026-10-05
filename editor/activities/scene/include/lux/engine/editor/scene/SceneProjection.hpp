@@ -45,7 +45,7 @@ namespace lux::editor::scene
         std::uint64_t configuration{}, environment{}, serial{};
         friend bool operator==(const ProjectionVersion&, const ProjectionVersion&) = default;
     };
-    // Complete, frozen package assembly is shared with the temporary old-window adapter.
+    // Complete, frozen package assembly is shared by author projection consumers.
     [[nodiscard]] ProjectionResult<lux::scene::SceneInstanceLease>
     instantiateAuthorProjection(lux::scene::SceneRuntime&, const lux::scene::ScenePackage&, const ProjectionEnvironment&, std::shared_ptr<process::TaskScope>);
     class ScenePresentationHub;

@@ -18837,6 +18837,12 @@
       ],
       "editor/activities/scene/test/model_placement.cpp": [
         "editor_model_placement_test"
+      ],
+      "editor/activities/scene/src/ProjectSceneEnvironment.cpp": [
+        "scene_project"
+      ],
+      "editor/activities/scene/include/lux/engine/editor/scene/ProjectSceneEnvironment.hpp": [
+        "scene_project"
       ]
     },
     "native_libraries": [

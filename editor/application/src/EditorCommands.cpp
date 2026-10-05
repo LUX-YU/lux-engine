@@ -253,7 +253,30 @@ namespace lux::editor::application
             return applicationFailure("service.infrastructure", provided.error());
         }
         if (auto provided =
-                scope.provide(services::ServiceNameView{"lux.editor.scene.projection.environment"}, environment_);
+                scope.provide(services::ServiceNameView{"lux.simulation.systems"}, registrations_.simulation_systems);
+            !provided)
+        {
+            return applicationFailure("service.infrastructure", provided.error());
+        }
+        if (auto provided = scope.provide(services::ServiceNameView{"lux.scene.systems"}, registrations_.scene_systems);
+            !provided)
+        {
+            return applicationFailure("service.infrastructure", provided.error());
+        }
+        if (auto provided =
+                scope.provide(services::ServiceNameView{"lux.render.scene.bindings"}, registrations_.render_bindings);
+            !provided)
+        {
+            return applicationFailure("service.infrastructure", provided.error());
+        }
+        if (auto provided =
+                scope.provide(services::ServiceNameView{"lux.render.runtime"}, engine_->renderContext()->runtime());
+            !provided)
+        {
+            return applicationFailure("service.infrastructure", provided.error());
+        }
+        if (auto provided =
+                scope.provide(services::ServiceNameView{"lux.render.resources"}, engine_->renderContext()->resources());
             !provided)
         {
             return applicationFailure("service.infrastructure", provided.error());

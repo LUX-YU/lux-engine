@@ -56,7 +56,7 @@ namespace lux::editor::scene
         lux::scene::SceneRuntime& runtime;
         lux::scene::RenderResources& resources;
         render::RenderRuntime& renderer;
-        const ProjectionEnvironment& environment;
+        std::shared_ptr<const ProjectionEnvironment> environment;
         std::optional<RunInspectAccess> runs;
     };
     struct SceneViewFailure final

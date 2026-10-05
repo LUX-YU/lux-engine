@@ -119,7 +119,7 @@ namespace lux::editor::material
             {services::ServiceNameView{"lux.editor.scene.projection.environment"},
              1,
              cxx::typeToken<scene::ProjectionEnvironment>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.render.features"},
              1,
@@ -170,7 +170,7 @@ namespace lux::editor::material
             {
                 return dependencyFailure(compilation.error());
             }
-            auto environment = resolver.require<scene::ProjectionEnvironment>(3);
+            auto environment = resolver.get<scene::ProjectionEnvironment>(3);
             if (!environment)
             {
                 return dependencyFailure(environment.error());
@@ -196,7 +196,7 @@ namespace lux::editor::material
                 store->get().access<MaterialSession>(),
                 runtime->get(),
                 std::move(*compilation),
-                environment->get(),
+                std::move(*environment),
                 features->get(),
                 catalog ? &catalog->get() : nullptr,
                 input.content,
@@ -1320,7 +1320,8 @@ namespace lux::editor::material
         MaterialViewState state
     )
     {
-        if (!services.compilation)
+        const bool is_invalid_services = !services.compilation || !services.environment;
+        if (is_invalid_services)
         {
             return rejected(desktop::EUiError::ATTACHMENT);
         }
@@ -1508,8 +1509,8 @@ namespace lux::editor::material
         auto started = impl_->services_.compilation->start(
             std::move(*snapshot),
             {},
-            impl_->services_.environment.version,
-            impl_->services_.environment.assets
+            impl_->services_.environment->version,
+            impl_->services_.environment->assets
         );
         if (!started)
         {
@@ -1604,7 +1605,7 @@ namespace lux::editor::material
         sessions::TSessionAccess<MaterialSession> sessions,
         lux::scene::SceneRuntime& runtime,
         std::shared_ptr<MaterialCompilationService> compilation,
-        const scene::ProjectionEnvironment& environment,
+        std::shared_ptr<const scene::ProjectionEnvironment> environment,
         std::span<const render::RenderFeatureRegistration> features,
         project::ProjectCatalogModel* assets,
         const views::ViewContent& content,
@@ -1612,13 +1613,14 @@ namespace lux::editor::material
         std::optional<MaterialViewState> configured
     )
     {
-        if (!environment.renderer || !environment.resources)
+        const bool is_invalid_environment = !environment || !environment->renderer || !environment->resources;
+        if (is_invalid_environment)
         {
             return rejected(desktop::EUiError::ATTACHMENT);
         }
         auto preview = std::make_unique<MaterialPreview>(
             runtime,
-            MaterialPreviewEnvironment{environment, {features.begin(), features.end()}}
+            MaterialPreviewEnvironment{*environment, {features.begin(), features.end()}}
         );
         MaterialViewState state;
         state.camera.transform.translation = {0, 0, 3.5F};
@@ -1631,8 +1633,8 @@ namespace lux::editor::material
             std::move(id),
             {sessions,
              runtime,
-             *environment.resources,
-             *environment.renderer,
+             *environment->resources,
+             *environment->renderer,
              *preview,
              std::move(compilation),
              environment,

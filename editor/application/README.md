@@ -24,7 +24,7 @@ formal ProjectCreationView and ProjectCreation; a completed project launches the
 Project creation and native file picking use existing Process schedulers, not UI-owned threads.
 
 V10 contributions provide immutable commands, content factories, service and UI declarations.
-The remaining product view-factory consumers are scheduled for removal in EC4 M6.
+The obsolete Host/factory protocol has been removed; remaining domain ownership migration is still EC4 M6 work.
 Standalone extension tools bind `std::monostate` and appear in Window through their exact ViewTypeId.
 The runtime plugin loader remains in engine/project; this layer supplies Editor contribution assembly.
 

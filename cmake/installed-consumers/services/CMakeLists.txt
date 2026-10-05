@@ -51,12 +51,13 @@ elseif(CONSUMER_MODE STREQUAL "AUTHORS")
 elseif(CONSUMER_MODE STREQUAL "MODEL_PLACEMENT")
     find_package(lux-engine-toolchain-material REQUIRED COMPONENTS toolchain_material_cooker)
     find_package(lux-engine-editor-scene-execution REQUIRED COMPONENTS scene_project)
+    find_package(lux-engine-editor-scene-projection REQUIRED COMPONENTS scene_projection)
     find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)
     find_package(lux-engine-core REQUIRED COMPONENTS services)
     configure_file("${engine_source}/editor/activities/scene/test/model_placement.cpp"
         "${CMAKE_BINARY_DIR}/model_placement.cpp" COPYONLY)
     add_executable(services_consumer "${CMAKE_BINARY_DIR}/model_placement.cpp")
-    target_link_libraries(services_consumer PRIVATE lux::engine::editor::scene_project
+    target_link_libraries(services_consumer PRIVATE lux::engine::editor::scene_project lux::engine::editor::scene_projection
         lux::engine::editor::editor_storage lux::engine::core::services lux::engine::toolchain::toolchain_material_cooker)
     set(consumers services_consumer)
     add_test(NAME installed.model_placement COMMAND services_consumer "${CMAKE_BINARY_DIR}/placements")

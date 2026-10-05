@@ -715,7 +715,7 @@ namespace draft_test
              *f.renderer,
              preview,
              compilation,
-             f.environment,
+             f.environment_owner,
              {},
              {3}},
             em::MaterialViewBinding{key, &interaction}

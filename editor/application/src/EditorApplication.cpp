@@ -272,21 +272,6 @@ namespace lux::editor::application
             }
             extensions_.push_back(std::move(*extension));
         }
-        auto reads = project_->captureAssetReads();
-        if (!reads)
-        {
-            return cxx::unexpected(reads.error());
-        }
-        auto& rendering = *engine_->renderContext();
-        environment_ = {
-            registrations_.components,
-            registrations_.simulation_systems,
-            registrations_.scene_systems,
-            registrations_.render_bindings,
-            &rendering.runtime(),
-            &rendering.resources(),
-            {{project_->catalogModel().reference({}).project_instance, 0}, project_->catalogRevision(), *reads, {}}
-        };
         if (config_.font)
         {
             std::optional<EditorResult<lux::ui::FontSource>> loaded;
@@ -353,6 +338,7 @@ namespace lux::editor::application
         lux::ui::RootConfig ui_config;
         ui_config.font = config_.font ? &font_ : nullptr;
         ui_config.scale = scale;
+        auto& rendering = *engine_->renderContext();
         auto desktop = desktop::DesktopShell::create(
             messages_.dispatcherRef(),
             engine_->execution(),

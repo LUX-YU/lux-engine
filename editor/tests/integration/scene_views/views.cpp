@@ -151,6 +151,44 @@ namespace
     {
         return uuids::uuid_name_generator(*uuids::uuid::from_string("01234567-89ab-cdef-0123-456789abcdef"))(name);
     }
+    // A standalone UI consumer declares its fixed environment through the same public service
+    // protocol. The real project provider is exercised by model-placement and Application tests.
+    constexpr services::ServiceContract fixed_environment_contracts[]{
+        services::ServiceContract::forType<author::ProjectionEnvironment, author::ProjectionEnvironment>(
+            services::ServiceNameView{"lux.editor.scene.projection.environment"}
+        )
+    };
+    services::ServiceResult<std::unique_ptr<author::ProjectionEnvironment>>
+    createFixedEnvironment(services::ServiceResolver& resolver, const services::ServiceConfiguration&) noexcept
+    {
+        auto input = resolver.definition<author::ProjectionEnvironment>();
+        if (!input)
+        {
+            return cxx::unexpected(std::move(input.error()));
+        }
+        return std::make_unique<author::ProjectionEnvironment>(**input);
+    }
+    const services::ServiceDescriptor fixed_environment = []
+    {
+        auto result = services::ServiceDescriptor::forType<author::ProjectionEnvironment, createFixedEnvironment>(
+            services::ServiceNameView{"test.scene.fixed-environment"}, fixed_environment_contracts
+        );
+        result.definition_type = cxx::typeToken<author::ProjectionEnvironment>();
+        result.retention = services::EServiceRetention::SCOPED;
+        result.affinity = services::EServiceAffinity::OWNER;
+        return result;
+    }();
+    void useFixedEnvironment(extensions::ContributionDraft& draft, const author::ProjectionEnvironment& input)
+    {
+        std::erase_if(draft.services, [](const auto& entry)
+        {
+            return entry->descriptor().implementation ==
+                   services::ServiceNameView{"lux.editor.scene.project-environment"};
+        });
+        draft.services.push_back(services::ServiceEntry::bind<fixed_environment>(
+            object::CodeLease::builtin(), std::make_shared<const author::ProjectionEnvironment>(input)
+        ));
+    }
     struct Fixture final
     {
         process::ExecutionRuntime execution{
@@ -167,7 +205,10 @@ namespace
         editor::commands::CommandRegistry commands;
         editor::commands::CommandDispatcher dispatcher{commands};
         std::unique_ptr<desktop::DesktopShell> desktop;
-        author::ProjectionEnvironment environment;
+        std::shared_ptr<author::ProjectionEnvironment> environment_owner{
+            std::make_shared<author::ProjectionEnvironment>()
+        };
+        author::ProjectionEnvironment& environment{*environment_owner};
         std::optional<sessions::TSessionKey<author::SceneSession>> key;
         author::SceneSession* session{};
         world::WorldObjectId object{uuid("object")};
@@ -410,7 +451,7 @@ namespace
         }
         author::SceneViewServices services()
         {
-            return {store.access<author::SceneSession>(), hub, *runtime, *resources, *renderer, environment, {}};
+            return {store.access<author::SceneSession>(), hub, *runtime, *resources, *renderer, environment_owner, {}};
         }
         author::SceneViewCreateInfo info(const char* name, author::SceneInteractionGroup& interaction)
         {
@@ -530,12 +571,12 @@ namespace
         auto scope = take(services.createScope());
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
+        useFixedEnvironment(declared, f.environment);
         assert(services.publish(std::move(declared.services)));
         assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
         assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, f.environment.components));
         assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
         assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
-        assert(scope.provide(services::ServiceNameView{"lux.editor.scene.projection.environment"}, f.environment));
         desktop::UiRegistry windows(f.messages.dispatcherRef(), services);
         auto catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
         assert(windows.publish(catalog));
@@ -639,13 +680,13 @@ namespace
         auto scope = take(services.createScope());
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
+        useFixedEnvironment(declared, f.environment);
         assert(declared.ui.size() == 7);
         assert(services.publish(std::move(declared.services)));
         assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
         assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, f.environment.components));
         assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
         assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
-        assert(scope.provide(services::ServiceNameView{"lux.editor.scene.projection.environment"}, f.environment));
         desktop::UiRegistry windows(f.messages.dispatcherRef(), services);
         auto catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
         assert(windows.publish(catalog));
@@ -1560,13 +1601,13 @@ namespace
         auto scope = take(services.createScope());
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
+        useFixedEnvironment(declared, f.environment);
         assert(declared.sessions.size() == 1 && declared.commands.empty());
-        assert(declared.services.size() == 2 && declared.ui.size() == 7);
+        assert(declared.services.size() == 3 && declared.ui.size() == 7);
         assert(services.publish(std::move(declared.services)));
         assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
         assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
         assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
-        assert(scope.provide(services::ServiceNameView{"lux.editor.scene.projection.environment"}, f.environment));
         desktop::UiRegistry windows(f.messages.dispatcherRef(), services);
         auto catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
         assert(windows.publish(catalog) && services.drained());
@@ -1750,16 +1791,17 @@ namespace
         declared.services.push_back(
             services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())
         );
-        assert(dependencies.publish(std::move(declared.services)));
-        auto environment = f.environment;
+        auto environment_owner = std::make_shared<author::ProjectionEnvironment>(f.environment);
+        auto& environment = *environment_owner;
         environment.assets = {{29, 1}, 1, take(process::asset_loading::makeAssetReadOverlay({}, {})), {}};
+        useFixedEnvironment(declared, environment);
+        assert(dependencies.publish(std::move(declared.services)));
         std::vector<render::RenderFeatureRegistration> features;
         for (const auto& feature : render::builtinRenderFeatureRegistrations())
         {
             features.push_back(feature);
         }
         assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
-        assert(scope.provide(services::ServiceNameView{"lux.editor.scene.projection.environment"}, environment));
         assert(scope.provide(services::ServiceNameView{"lux.render.features"}, features));
         desktop::UiRegistry windows(f.messages.dispatcherRef(), dependencies);
         auto catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
@@ -1848,7 +1890,11 @@ namespace
         assert(
             captured_assets.source == environment.assets.source && captured_assets.version == environment.assets.version
         );
-        ++environment.assets.version; // Reopening must not silently use the current project asset version.
+        // Mutate the actual resolved environment, not the frozen factory definition.
+        auto current_environment = take(dependencies.get<author::ProjectionEnvironment>(scope));
+        ++current_environment->assets.version;
+        assert(current_environment->assets.version != captured_assets.version);
+        current_environment.reset();
         assert(model->describe().current == initial.current && model->describe().observed == initial.observed);
         assert(model->describe().dirty == initial.dirty && take(take(model->read()).encode()) == bytes);
         input.instance = ui::PaneId{"ec4-material-reopened"};
@@ -2137,7 +2183,7 @@ namespace
              *f.renderer,
              preview,
              compilation,
-             f.environment,
+             f.environment_owner,
              {},
              {2},
              publication_owner.saving},
@@ -2460,7 +2506,8 @@ namespace
         auto failing = std::make_shared<FailingRead>();
         failing->source = std::move(assets);
         failing->material = material.artifact()->id();
-        auto environment = f.environment;
+        auto environment_owner = std::make_shared<author::ProjectionEnvironment>(f.environment);
+        auto& environment = *environment_owner;
         environment.version = 2;
         environment.assets = {{30, 1}, 1, process::asset_loading::AssetReadPort{failing}, {}};
         std::vector<ecs::ComponentSchema> schemas(
@@ -2590,7 +2637,7 @@ namespace
             *f.runtime,
             *f.resources,
             *f.renderer,
-            environment,
+            environment_owner,
             {}
         };
         auto info = f.info("mesh-left", left);
@@ -2767,6 +2814,7 @@ namespace
         assert(scope.provide(services::ServiceNameView{"lux.editor.scene.configuration"}, inputs));
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
+        useFixedEnvironment(declared, f.environment);
         desktop::UiRegistry windows(f.messages.dispatcherRef(), services);
         auto ui_catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
         assert(windows.publish(ui_catalog));

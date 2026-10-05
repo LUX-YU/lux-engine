@@ -42,7 +42,7 @@ namespace lux::editor::material
         render::RenderRuntime& renderer;
         MaterialPreview& preview;
         std::shared_ptr<MaterialCompilationService> compilation;
-        const scene::ProjectionEnvironment& environment;
+        std::shared_ptr<const scene::ProjectionEnvironment> environment;
         project::ProjectCatalogModel* assets{};
         system::SystemInstanceId render_system;
         std::shared_ptr<persistence::IArtifactSubmission> publication;
@@ -79,7 +79,7 @@ namespace lux::editor::material
             sessions::TSessionAccess<MaterialSession>,
             lux::scene::SceneRuntime&,
             std::shared_ptr<MaterialCompilationService>,
-            const scene::ProjectionEnvironment&,
+            std::shared_ptr<const scene::ProjectionEnvironment>,
             std::span<const render::RenderFeatureRegistration>,
             project::ProjectCatalogModel*,
             const views::ViewContent&,

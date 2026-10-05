@@ -3,6 +3,11 @@
 #include <fstream>
 #include <iostream>
 #include <lux/engine/editor/scene/ModelPlacementService.hpp>
+#include <lux/engine/editor/scene/ProjectSceneEnvironment.hpp>
+#include <lux/engine/editor/scene/SceneProjection.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/material/Cooker.hpp>
 #include <lux/engine/process/TaskScope.hpp>
@@ -240,6 +245,75 @@ int main(int argc, char** argv)
         assert(service->acknowledge(service->reports().front().id));
     }
     assert(session->describe().current == unmodified.current && session->describe().observed == unmodified.observed);
+    {
+        services::ServiceRegistry environments{messages.dispatcherRef()};
+        auto environment_scope = take(environments.createScope());
+        assert(environments.publish({
+            services::ServiceEntry::bind<kProjectSceneEnvironment>(object::CodeLease::builtin())
+        }));
+        assert(environment_scope.maintain() && environments.drained()); // Declarations do not capture project assets.
+        const auto missing = environments.get<ProjectionEnvironment>(environment_scope);
+        assert(!missing && missing.error().code == services::EServiceError::NOT_FOUND);
+        assert(environments.drained());
+        std::shared_ptr<const simulation::SimulationSystemRegistry> simulations =
+            std::make_shared<simulation::SimulationSystemRegistry>();
+        std::vector<lux::scene::SceneSystemRegistration> systems;
+        std::vector<lux::scene::RenderFeatureSceneBinding> bindings;
+        assert(environment_scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project));
+        assert(environment_scope.provide(services::ServiceNameView{"lux.simulation.components"}, schemas));
+        assert(environment_scope.provide(services::ServiceNameView{"lux.simulation.systems"}, simulations));
+        assert(environment_scope.provide(services::ServiceNameView{"lux.scene.systems"}, systems));
+        assert(environment_scope.provide(services::ServiceNameView{"lux.render.scene.bindings"}, bindings));
+        auto first = take(environments.get<ProjectionEnvironment>(environment_scope));
+        auto second = take(environments.get<ProjectionEnvironment>(environment_scope));
+        assert(first == second && !first->renderer && !first->resources);
+        assert(first->assets.source[0] == project->catalogModel().reference({}).project_instance);
+        assert(first->version == project->catalogRevision() && first->assets.version == first->version);
+        auto fixed = *first; // A Run/compilation captures values, never a live mutable environment.
+        for (unsigned i{}; i != 1000; ++i)
+        {
+            assert(environment_scope.maintain());
+            assert(first == second && first->version == fixed.version);
+        }
+        persistence::WriteCoordinator writes;
+        persistence::SaveService saves{writes};
+        storage::FileArtifactStore files{root};
+        persistence::SaveExecution delivery{execution, saves, writes, files};
+        ProjectUpdate update;
+        auto prepared = take(project->preparePublication(update));
+        ProjectPublicationOperation publication(*project, execution, writes, files, delivery, std::move(prepared));
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        while (!publication.terminal())
+        {
+            assert(std::chrono::steady_clock::now() < deadline);
+            assert(execution.collectCompletions());
+            publication.update();
+            assert(delivery.submitReady());
+            std::this_thread::yield();
+        }
+        assert(std::holds_alternative<PublicationSucceeded>(publication.status()));
+        assert(project->catalogRevision() != fixed.version);
+        assert(environment_scope.maintain());
+        assert(first == second && first->version == project->catalogRevision());
+        assert(first->assets.version == first->version && fixed.assets.version == fixed.version);
+        assert(first->version != fixed.version && writes.size() == 0);
+        std::thread foreign([&]
+        {
+            const auto refused = environment_scope.maintain();
+            assert(!refused && refused.error().code == services::EServiceError::WRONG_THREAD);
+        });
+        foreign.join();
+        assert(first->version == project->catalogRevision());
+        assert(environment_scope.beginClose() && environment_scope.release());
+        assert(!environment_scope.drained()); // Both views still retain the genuine allocation.
+        first.reset();
+        assert(second->version == project->catalogRevision());
+        second.reset();
+        while (!environment_scope.drained())
+        {
+            assert(messages.collectRetired());
+        }
+    }
     assert(scope.beginClose() && scope.release());
     service.reset();
     while (!scope.drained())

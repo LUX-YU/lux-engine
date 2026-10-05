@@ -112,3 +112,19 @@ The selected `scene_module` archive declares this source factory, the existing p
 formal Scene UI factory. It uses the same module declaration as a dynamic extension and introduces no
 second projection or Runtime. The product's remaining legacy window factory is a tracked M6 consumer;
 its removal and the Application cutover are not certified by this declaration closure.
+
+## Project environment ownership (EC4 M6)
+
+`kProjectSceneEnvironment` is declared by the Scene module and implemented in the existing
+`scene_project` activity. Registration does not capture assets. On first use it copies the fixed
+registration inputs and captures the original ProjectStorage asset version. Scene and Material
+views retain the same genuine shared allocation; there is no Application environment member or
+second asset cache. Renderer/resources remain borrowed infrastructure.
+
+The original scope maintenance point refreshes already-created environments when the project
+catalog revision changes. This may become visible to a view on the next UI update. Until then the
+previous complete version remains a valid frozen input, never a mixture with current files. Failed
+capture preserves the complete previous environment and reports the original error domain; stable
+revision maintenance performs no capture. Run preparation and compilation copy that fixed input,
+so a later refresh does not change an already accepted task. Pure projection/Run consumers can still
+construct the existing ProjectionEnvironment value without ProjectStorage or UI.

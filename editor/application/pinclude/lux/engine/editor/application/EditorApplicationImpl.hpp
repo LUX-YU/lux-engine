@@ -281,7 +281,6 @@ namespace lux::editor::application
         std::shared_ptr<ProjectContentSaving> content_saving_;
         scene::RunStore runs_;
         scene::RunController run_controller_{runs_};
-        scene::ProjectionEnvironment environment_;
         commands::CommandRegistry& commands_{editor_context_.commands()};
         commands::CommandDispatcher command_dispatcher_{commands_};
         extensions::ContributionRegistry contributions_;

@@ -679,22 +679,6 @@ namespace lux::editor::application
             receive(applicationFailure("execution.events", events.error()));
         }
         (void)task_monitor_.dispatchChanges();
-        if (environment_.assets.version != project_->catalogRevision())
-        {
-            auto reads = project_->captureAssetReads();
-            if (!reads)
-            {
-                receive(cxx::unexpected(reads.error()));
-            }
-            else
-            {
-                auto next = environment_.assets;
-                next.reads = std::move(*reads);
-                next.version = project_->catalogRevision();
-                environment_.assets = std::move(next);
-                environment_.version = project_->catalogRevision();
-            }
-        }
         project_->dispatchEvents();
         (void)messages_.dispatchPending();
         if (auto result = std::exchange(project_launch_result_, {}))

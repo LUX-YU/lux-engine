@@ -1,12 +1,16 @@
 #pragma once
+#include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/editor/desktop/UiError.hpp>
 #include <lux/engine/editor/scene/ModelPlacement.hpp>
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
 #include <lux/engine/editor/scene/SceneProjection.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/views/CameraNavigation.hpp>
-#include <lux/engine/editor/views/IViewHost.hpp>
+#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/workspace/WorkspaceValues.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
+#include <lux/engine/ui/Pane.hpp>
 
 namespace lux::editor::desktop
 {
@@ -63,7 +67,7 @@ namespace lux::editor::scene
             RunFailure,
             lux::scene::MeshQueryFailure,
             render::RendererFailure,
-            views::EViewError,
+            desktop::EUiError,
             lux::ui::EAttachmentError,
             std::string_view>;
         VCause cause;
@@ -105,8 +109,9 @@ namespace lux::editor::scene
         [[nodiscard]] const std::shared_ptr<SceneInteractionGroup>& interactionOwner() const noexcept;
         [[nodiscard]] const VSceneViewBinding& binding() const noexcept;
         [[nodiscard]] const SceneViewState& state() const noexcept;
-        [[nodiscard]] views::ViewCaptureResult captureState() const;
-        [[nodiscard]] views::ViewStateResult prepareState(std::uint32_t, std::span<const std::byte>);
+        [[nodiscard]] desktop::UiResult<workspace::VersionedViewState> captureState() const;
+        [[nodiscard]] desktop::UiResult<cxx::move_only_function<void()>>
+        prepareState(std::uint32_t, std::span<const std::byte>);
         [[nodiscard]] SceneViewResult<void> navigate(const lux::editor::views::CameraMotion&);
         [[nodiscard]] SceneViewResult<void> pick(Eigen::Vector2d position, Eigen::Vector2d extent);
         [[nodiscard]] SceneViewResult<void> dropModel(AssetReference, Eigen::Vector2d position, Eigen::Vector2d extent);

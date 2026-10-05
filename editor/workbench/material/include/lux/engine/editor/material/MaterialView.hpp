@@ -1,10 +1,14 @@
 #pragma once
+#include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/editor/desktop/UiError.hpp>
 #include <lux/engine/editor/material/MaterialCompilationService.hpp>
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
 #include <lux/engine/editor/material/MaterialPreview.hpp>
 #include <lux/engine/editor/persistence/DerivedArtifact.hpp>
 #include <lux/engine/editor/views/CameraNavigation.hpp>
-#include <lux/engine/editor/views/IViewHost.hpp>
+#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/workspace/WorkspaceValues.hpp>
+#include <lux/engine/ui/Pane.hpp>
 
 namespace lux::editor::project
 {
@@ -55,7 +59,7 @@ namespace lux::editor::material
         persistence::PersistenceFailure,
         scene::ProjectionFailure,
         render::RendererFailure,
-        views::EViewError,
+        desktop::EUiError,
         lux::ui::EAttachmentError,
         std::string_view>;
     template <class T> using MaterialViewResult = cxx::expected<T, VMaterialViewFailure>;
@@ -102,8 +106,9 @@ namespace lux::editor::material
         [[nodiscard]] MaterialViewResult<void> navigate(const lux::editor::views::CameraMotion&);
         [[nodiscard]] const std::optional<MaterialViewBinding>& binding() const noexcept;
         [[nodiscard]] const MaterialViewState& state() const noexcept;
-        [[nodiscard]] views::ViewCaptureResult captureState() const;
-        [[nodiscard]] views::ViewStateResult prepareState(std::uint32_t, std::span<const std::byte>);
+        [[nodiscard]] desktop::UiResult<workspace::VersionedViewState> captureState() const;
+        [[nodiscard]] desktop::UiResult<cxx::move_only_function<void()>>
+        prepareState(std::uint32_t, std::span<const std::byte>);
         [[nodiscard]] const MaterialViewResult<void>& status() const noexcept;
         [[nodiscard]] render::RTextureHandle image() const noexcept;
         [[nodiscard]] MaterialPreviewStatus previewStatus() const;

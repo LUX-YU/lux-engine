@@ -10,7 +10,7 @@
 #include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/editor/widgets/GraphCanvas.hpp>
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
-#include <lux/engine/editor/workbench/ViewPreparation.hpp>
+#include <lux/engine/editor/workbench/UiFailure.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 #include <lux/engine/ui/Layout.hpp>
 
@@ -42,9 +42,9 @@ namespace lux::editor::material
                         return error.code == EMaterialEditError::SESSION &&
                                error.session == sessions::ESessionError::BUSY;
                     }
-                    else if constexpr (std::same_as<T, views::EViewError>)
+                    else if constexpr (std::same_as<T, desktop::EUiError>)
                     {
-                        return error == views::EViewError::BUSY;
+                        return error == desktop::EUiError::BUSY;
                     }
                     else if constexpr (std::same_as<T, VMaterialCompileFailure>)
                     {
@@ -63,16 +63,19 @@ namespace lux::editor::material
                 failure
             );
         }
-        cxx::expected<std::optional<MaterialViewState>, views::ViewPreparationFailure> decodeState(
+        desktop::UiResult<std::optional<MaterialViewState>> decodeState(
             std::uint32_t schema,
             std::span<const std::byte> bytes
         )
         {
             if (schema != 1)
             {
-                return cxx::unexpected(
-                    views::ViewPreparationFailure{"material.view.state", schema, "Unknown schema", false}
-                );
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::INVALID_CONFIGURATION,
+                    "material.view.state",
+                    schema,
+                    "Unknown schema"
+                });
             }
             if (bytes.empty())
             {
@@ -86,21 +89,18 @@ namespace lux::editor::material
             const bool is_invalid_state = is_invalid_camera || has_trailing_data;
             if (is_invalid_state)
             {
-                return cxx::unexpected(
-                    views::ViewPreparationFailure{"material.view.state", schema, "Invalid camera state", false}
-                );
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::INVALID_CONFIGURATION,
+                    "material.view.state",
+                    schema,
+                    "Invalid camera state"
+                });
             }
             return std::optional{candidate};
         }
         desktop::UiFailure uiFailure(const VMaterialViewFailure& failure)
         {
-            auto error = workbench::detail::viewPreparationFailure(failure, temporary(failure));
-            return {
-                error.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
-                std::move(error.domain),
-                error.code,
-                std::move(error.message)
-            };
+            return workbench::detail::uiFailure(failure, temporary(failure));
         }
         constexpr services::ServiceDependency ui_dependencies[]{
             {services::ServiceNameView{"lux.editor.sessions"},
@@ -144,12 +144,7 @@ namespace lux::editor::material
             auto state = decodeState(input.configuration.schema, input.configuration.bytes);
             if (!state)
             {
-                return cxx::unexpected(desktop::UiFailure{
-                    desktop::EUiError::INVALID_CONFIGURATION,
-                    state.error().domain,
-                    state.error().code,
-                    state.error().message
-                });
+                return cxx::unexpected(std::move(state.error()));
             }
             const auto dependencyFailure = [](const services::ServiceFailure& error)
             {
@@ -312,37 +307,11 @@ namespace lux::editor::material
                 return {};
             },
             +[](const lux::ui::Pane& pane) -> desktop::UiResult<workspace::VersionedViewState>
-            {
-                auto result = static_cast<const MaterialView&>(pane).captureState();
-                if (!result)
-                {
-                    auto error = std::move(result.error());
-                    return cxx::unexpected(desktop::UiFailure{
-                        error.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
-                        std::move(error.domain),
-                        error.code,
-                        std::move(error.message)
-                    });
-                }
-                return std::move(*result);
-            }
+            { return static_cast<const MaterialView&>(pane).captureState(); }
         };
         value.prepare_state =
             +[](lux::ui::Pane& pane, const workspace::VersionedViewState& state) -> desktop::UiStateResult
-        {
-            auto result = static_cast<MaterialView&>(pane).prepareState(state.schema, state.bytes);
-            if (!result)
-            {
-                auto error = std::move(result.error());
-                return cxx::unexpected(desktop::UiFailure{
-                    error.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
-                    std::move(error.domain),
-                    error.code,
-                    std::move(error.message)
-                });
-            }
-            return std::move(*result);
-        };
+        { return static_cast<MaterialView&>(pane).prepareState(state.schema, state.bytes); };
         value.cancel_preview = value.prepare_close;
         value.restore_content = true;
         return value;
@@ -398,7 +367,7 @@ namespace lux::editor::material
         {
             if (canvas_request_.size() >= 64)
             {
-                return rejected(views::EViewError::CAPACITY);
+                return rejected(desktop::EUiError::CAPACITY);
             }
             canvas_request_.push_back({based_on, widgets::CanvasEdit{{}, true, true, false}, {}, ECanvasStage::BEGIN});
             canvas_request_.back().edits.emplace_back(make_edit());
@@ -513,7 +482,7 @@ namespace lux::editor::material
                     );
                     if (!connected)
                     {
-                        state_.status_ = rejected(views::EViewError::CAPACITY);
+                        state_.status_ = rejected(desktop::EUiError::CAPACITY);
                         return;
                     }
                     if (auto attached = addSubElement(*picker); !attached)
@@ -793,7 +762,7 @@ namespace lux::editor::material
                 {
                     if (canvas_request_.size() >= 64)
                     {
-                        status_ = rejected(views::EViewError::CAPACITY);
+                        status_ = rejected(desktop::EUiError::CAPACITY);
                         return;
                     }
                     const auto stage = edit.cancelled ? ECanvasStage::CANCEL
@@ -827,7 +796,7 @@ namespace lux::editor::material
             }
             if (!changed || !selected || !navigation)
             {
-                status_ = rejected(views::EViewError::CAPACITY);
+                status_ = rejected(desktop::EUiError::CAPACITY);
             }
             else
             {
@@ -846,7 +815,7 @@ namespace lux::editor::material
         {
             if (!graph_.setGraph(std::move(candidate.nodes), std::move(candidate.links), canvas_request_.empty()))
             {
-                return rejected(views::EViewError::BUSY);
+                return rejected(desktop::EUiError::BUSY);
             }
             display_ = std::move(candidate);
             properties_.synchronize();
@@ -895,7 +864,7 @@ namespace lux::editor::material
         {
             if (!view_.isOnAffinityThread() || object::LuxObject::isDispatching())
             {
-                return rejected(views::EViewError::BUSY);
+                return rejected(desktop::EUiError::BUSY);
             }
             if (binding == binding_)
             {
@@ -908,7 +877,7 @@ namespace lux::editor::material
             {
                 if (!binding->interaction || binding->interaction->session() != binding->session)
                 {
-                    return rejected(views::EViewError::INVALID_ID);
+                    return rejected(desktop::EUiError::NOT_FOUND);
                 }
                 auto session = services_.sessions.read(binding->session);
                 if (!session)
@@ -964,7 +933,7 @@ namespace lux::editor::material
         {
             if (!binding_)
             {
-                return rejected(views::EViewError::INVALID_ID);
+                return rejected(desktop::EUiError::NOT_FOUND);
             }
             auto session = services_.sessions.read(binding_->session);
             if (!session)
@@ -1220,7 +1189,7 @@ namespace lux::editor::material
                     }
                     if (canvas_request_.size() >= 64)
                     {
-                        return rejected(views::EViewError::CAPACITY);
+                        return rejected(desktop::EUiError::CAPACITY);
                     }
                     command_result = accepted(read->withRead(
                         [&](const lux::material::MaterialSource&) -> MaterialEditResult<void>
@@ -1353,7 +1322,7 @@ namespace lux::editor::material
     {
         if (!services.compilation)
         {
-            return rejected(views::EViewError::NOT_ATTACHED);
+            return rejected(desktop::EUiError::ATTACHMENT);
         }
         auto result =
             std::unique_ptr<MaterialView>(new MaterialView(dispatcher, std::move(id), std::move(services), state));
@@ -1380,14 +1349,17 @@ namespace lux::editor::material
     {
         return impl_->state_;
     }
-    views::ViewCaptureResult MaterialView::captureState() const
+    desktop::UiResult<workspace::VersionedViewState> MaterialView::captureState() const
     {
         workspace::VersionedViewState result;
         serialization::BinaryWriter writer(result.bytes);
         views::detail::writeViewportState(writer, impl_->state_.camera, impl_->state_.extent);
         return result;
     }
-    views::ViewStateResult MaterialView::prepareState(std::uint32_t schema, std::span<const std::byte> bytes)
+    desktop::UiResult<cxx::move_only_function<void()>> MaterialView::prepareState(
+        std::uint32_t schema,
+        std::span<const std::byte> bytes
+    )
     {
         auto decoded = decodeState(schema, bytes);
         if (!decoded)
@@ -1419,7 +1391,7 @@ namespace lux::editor::material
         const bool is_invalid = !content.valid() || (!content.sessions.empty() && !is_single);
         if (is_invalid)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         if (impl_->binding_ && is_single && impl_->binding_->session.id() == *content.primary)
         {
@@ -1449,7 +1421,7 @@ namespace lux::editor::material
     {
         if (!impl_->binding_)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         return accepted(impl_->binding_->interaction->begin(std::move(label)));
     }
@@ -1457,7 +1429,7 @@ namespace lux::editor::material
     {
         if (!impl_->binding_)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         return accepted(impl_->binding_->interaction->preview(edits));
     }
@@ -1465,7 +1437,7 @@ namespace lux::editor::material
     {
         if (!impl_->binding_)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         return accepted(impl_->binding_->interaction->commit());
     }
@@ -1490,7 +1462,7 @@ namespace lux::editor::material
         }
         if (!impl_->binding_)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         auto owner = impl_->services_.sessions.edit(impl_->binding_->session);
         if (!owner)
@@ -1508,7 +1480,7 @@ namespace lux::editor::material
         }
         if (!impl_->binding_)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         auto owner = impl_->services_.sessions.edit(impl_->binding_->session);
         if (!owner)
@@ -1521,7 +1493,7 @@ namespace lux::editor::material
     {
         if (!impl_->binding_)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         auto owner = impl_->services_.sessions.read(impl_->binding_->session);
         if (!owner)
@@ -1642,7 +1614,7 @@ namespace lux::editor::material
     {
         if (!environment.renderer || !environment.resources)
         {
-            return rejected(views::EViewError::NOT_ATTACHED);
+            return rejected(desktop::EUiError::ATTACHMENT);
         }
         auto preview = std::make_unique<MaterialPreview>(
             runtime,

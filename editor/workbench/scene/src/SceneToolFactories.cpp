@@ -3,7 +3,7 @@
 #include <lux/engine/editor/scene/ResourceView.hpp>
 #include <lux/engine/editor/scene/RunInspectorView.hpp>
 #include <lux/engine/editor/scene/SceneTools.hpp>
-#include <lux/engine/editor/workbench/ViewPreparation.hpp>
+#include <lux/engine/editor/workbench/UiFailure.hpp>
 #include <lux/engine/ui/Root.hpp>
 
 namespace lux::editor::scene
@@ -13,24 +13,18 @@ namespace lux::editor::scene
         using PaneResult = desktop::UiResult<std::unique_ptr<lux::ui::Pane>>;
         template <class Error> auto failure(const Error& error)
         {
-            bool is_retryable = workbench::detail::isRetryableViewFailure(error);
+            bool is_retryable = workbench::detail::isRetryableUiFailure(error);
             if constexpr (std::same_as<Error, RunFailure>)
             {
                 const auto* run = std::get_if<ERunError>(&error.cause);
                 is_retryable = is_retryable || (run && *run == ERunError::NOT_READY);
             }
-            const auto detail = workbench::detail::viewPreparationFailure(error, is_retryable);
-            return cxx::unexpected(desktop::UiFailure{
-                detail.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
-                detail.domain,
-                detail.code,
-                detail.message
-            });
+            return cxx::unexpected(workbench::detail::uiFailure(error, is_retryable));
         }
         auto failure(const SceneConfigurationFailure& error)
         {
             const bool is_busy =
-                error.code == ESceneConfigurationError::BUSY || workbench::detail::isRetryableViewFailure(error.cause);
+                error.code == ESceneConfigurationError::BUSY || workbench::detail::isRetryableUiFailure(error.cause);
             return cxx::unexpected(desktop::UiFailure{
                 is_busy ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
                 error.domain,

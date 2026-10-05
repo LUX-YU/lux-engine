@@ -81,6 +81,15 @@ def main():
                          scene_execution="editor/activities/scene", p10_imported_bridge="external/p10")
     if args.stage == "P10Q":
         cases.extend([
+            ("scene-retired-host", "scene_ui", None, "view_host", ""),
+            ("material-retired-host", "material_ui", None, "view_host", ""),
+            ("flow-retired-api", "flow_ui", None, "view_api", ""),
+            ("scene-retired-header", "scene_ui", None, None, "lux/engine/editor/views/IViewHost.hpp"),
+            ("material-retired-header", "material_ui", None, None, "lux/engine/editor/desktop/ViewHost.hpp"),
+            ("flow-retired-header", "flow_ui", None, None, "lux/engine/editor/views/ViewFactory.hpp"),
+            ("scene-ui-error-legal", "scene_ui", None, None, "lux/engine/editor/desktop/UiError.hpp"),
+            ("material-ui-error-legal", "material_ui", None, None, "lux/engine/editor/desktop/UiError.hpp"),
+            ("flow-ui-error-legal", "flow_ui", None, None, "lux/engine/editor/desktop/UiError.hpp"),
             ("viewport-model", "editor_viewport", None, "scene_model", ""),
             ("viewport-inspector", "editor_viewport", None, "scene_ui", ""),
             ("viewport-context", "editor_viewport", None, "editor_context", ""),

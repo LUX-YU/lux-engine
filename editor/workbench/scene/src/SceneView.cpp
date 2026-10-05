@@ -6,7 +6,7 @@
 #include <lux/engine/editor/scene/SceneCreationPoint.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
 #include <lux/engine/editor/views/ViewportElement.hpp>
-#include <lux/engine/editor/workbench/ViewPreparation.hpp>
+#include <lux/engine/editor/workbench/UiFailure.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/WorldResidency.hpp>
@@ -31,16 +31,19 @@ namespace lux::editor::scene
             }
             return {};
         }
-        cxx::expected<std::optional<SceneViewState>, views::ViewPreparationFailure> decodeState(
+        desktop::UiResult<std::optional<SceneViewState>> decodeState(
             std::uint32_t schema,
             std::span<const std::byte> bytes
         )
         {
             if (schema != 1)
             {
-                return cxx::unexpected(
-                    views::ViewPreparationFailure{"scene.view.state", schema, "Unknown schema", false}
-                );
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::INVALID_CONFIGURATION,
+                    "scene.view.state",
+                    schema,
+                    "Unknown schema"
+                });
             }
             if (bytes.empty())
             {
@@ -54,27 +57,19 @@ namespace lux::editor::scene
             const bool is_invalid_state = !is_valid_viewport || is_invalid_plane || reader.remaining() != 0;
             if (is_invalid_state)
             {
-                return cxx::unexpected(
-                    views::ViewPreparationFailure{"scene.view.state", schema, "Invalid camera state", false}
-                );
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::INVALID_CONFIGURATION,
+                    "scene.view.state",
+                    schema,
+                    "Invalid camera state"
+                });
             }
             candidate.work_plane_height = *plane;
             return std::optional{candidate};
         }
-        desktop::UiFailure uiFailure(const views::ViewPreparationFailure& error)
-        {
-            return {
-                error.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
-                error.domain,
-                error.code,
-                error.message
-            };
-        }
         desktop::UiFailure uiFailure(const SceneViewFailure& error)
         {
-            return uiFailure(
-                workbench::detail::viewPreparationFailure(error, workbench::detail::isRetryableViewFailure(error))
-            );
+            return workbench::detail::uiFailure(error, workbench::detail::isRetryableUiFailure(error));
         }
         constexpr services::ServiceDependency ui_dependencies[]{
             {services::ServiceNameView{"lux.editor.sessions"},
@@ -152,12 +147,7 @@ namespace lux::editor::scene
         auto state = decodeState(input.configuration.schema, input.configuration.bytes);
         if (!state)
         {
-            return cxx::unexpected(desktop::UiFailure{
-                desktop::EUiError::INVALID_CONFIGURATION,
-                state.error().domain,
-                state.error().code,
-                state.error().message
-            });
+            return cxx::unexpected(std::move(state.error()));
         }
         const auto rejectedDependency = [](const services::ServiceFailure& error)
         {
@@ -191,7 +181,7 @@ namespace lux::editor::scene
         const bool is_invalid_environment = !environment->get().resources || !environment->get().renderer;
         if (is_invalid_environment)
         {
-            return cxx::unexpected(uiFailure(SceneViewFailure{views::EViewError::NOT_ATTACHED}));
+            return cxx::unexpected(uiFailure(SceneViewFailure{desktop::EUiError::ATTACHMENT}));
         }
         auto runs = resolver.require<RunInspectAccess>(4);
         if (!runs && runs.error().code != services::EServiceError::NOT_FOUND)
@@ -279,25 +269,11 @@ namespace lux::editor::scene
                 return {};
             },
             +[](const lux::ui::Pane& pane) -> desktop::UiResult<workspace::VersionedViewState>
-            {
-                auto result = static_cast<const SceneView&>(pane).captureState();
-                if (!result)
-                {
-                    return cxx::unexpected(uiFailure(result.error()));
-                }
-                return std::move(*result);
-            }
+            { return static_cast<const SceneView&>(pane).captureState(); }
         };
         descriptor.prepare_state =
             +[](lux::ui::Pane& pane, const workspace::VersionedViewState& state) -> desktop::UiStateResult
-        {
-            auto result = static_cast<SceneView&>(pane).prepareState(state.schema, state.bytes);
-            if (!result)
-            {
-                return cxx::unexpected(uiFailure(result.error()));
-            }
-            return std::move(*result);
-        };
+        { return static_cast<SceneView&>(pane).prepareState(state.schema, state.bytes); };
         descriptor.cancel_preview = descriptor.prepare_close;
         descriptor.restore_content = true;
         return descriptor;
@@ -433,7 +409,7 @@ namespace lux::editor::scene
                 }
                 else
                 {
-                    status_ = rejected(views::EViewError::CAPACITY);
+                    status_ = rejected(desktop::EUiError::CAPACITY);
                 }
             };
             connect(undo_, EControl::UNDO, 0);
@@ -452,7 +428,7 @@ namespace lux::editor::scene
             );
             if (!navigation)
             {
-                status_ = rejected(views::EViewError::CAPACITY);
+                status_ = rejected(desktop::EUiError::CAPACITY);
             }
             else
             {
@@ -469,7 +445,7 @@ namespace lux::editor::scene
             );
             if (!picked)
             {
-                status_ = rejected(views::EViewError::CAPACITY);
+                status_ = rejected(desktop::EUiError::CAPACITY);
             }
             else
             {
@@ -503,7 +479,7 @@ namespace lux::editor::scene
         {
             if (!view_.isOnAffinityThread() || object::LuxObject::isDispatching())
             {
-                return rejected(views::EViewError::BUSY);
+                return rejected(desktop::EUiError::BUSY);
             }
             if (binding == binding_)
             {
@@ -517,7 +493,7 @@ namespace lux::editor::scene
                 const bool is_wrong_group = !author->interaction || author->interaction->session() != author->session;
                 if (is_wrong_group)
                 {
-                    return rejected(views::EViewError::INVALID_ID);
+                    return rejected(desktop::EUiError::NOT_FOUND);
                 }
                 auto session = services_.sessions.read(author->session);
                 if (!session)
@@ -542,7 +518,7 @@ namespace lux::editor::scene
             {
                 if (!services_.runs || !running->interaction)
                 {
-                    return rejected(views::EViewError::INVALID_ID);
+                    return rejected(desktop::EUiError::NOT_FOUND);
                 }
                 auto run = services_.runs->describe(running->run);
                 if (!run)
@@ -555,7 +531,7 @@ namespace lux::editor::scene
                                                                                run->provenance.content.session;
                 if (wrong_group)
                 {
-                    return rejected(views::EViewError::INVALID_ID);
+                    return rejected(desktop::EUiError::NOT_FOUND);
                 }
                 if (run->state == ERunState::STOPPED || run->state == ERunState::STOPPING)
                 {
@@ -603,11 +579,11 @@ namespace lux::editor::scene
             auto* author = std::get_if<EditedSceneBinding>(&binding_);
             if (!author)
             {
-                return rejected(views::EViewError::NOT_ATTACHED);
+                return rejected(desktop::EUiError::ATTACHMENT);
             }
             if (author->interaction->overlay())
             {
-                return rejected(views::EViewError::BUSY);
+                return rejected(desktop::EUiError::BUSY);
             }
             auto session = services_.sessions.edit(author->session);
             if (!session)
@@ -670,7 +646,7 @@ namespace lux::editor::scene
             auto* selected = interaction(binding_);
             if (!selected || !presented_.valid())
             {
-                return rejected(views::EViewError::NOT_ATTACHED);
+                return rejected(desktop::EUiError::ATTACHMENT);
             }
             const auto* author = std::get_if<EditedSceneBinding>(&binding_);
             if (author)
@@ -747,7 +723,7 @@ namespace lux::editor::scene
             const auto* author = std::get_if<EditedSceneBinding>(&binding_);
             if (!author || !projection_ || !presented_.valid())
             {
-                return rejected(views::EViewError::NOT_ATTACHED);
+                return rejected(desktop::EUiError::ATTACHMENT);
             }
             const auto based_on = projection_->version().content;
             auto session = services_.sessions.read(author->session);
@@ -960,7 +936,7 @@ namespace lux::editor::scene
                 const auto point = *std::exchange(pick_, {});
                 status_ = pick_instance_ == presented_
                               ? pick({point.position.x, point.position.y}, {point.extent.width, point.extent.height})
-                              : SceneViewResult<void>{rejected(views::EViewError::INVALID_ID)};
+                              : SceneViewResult<void>{rejected(desktop::EUiError::NOT_FOUND)};
             }
             if (std::holds_alternative<UnboundSceneBinding>(binding_))
             {
@@ -990,7 +966,7 @@ namespace lux::editor::scene
     {
         if (!services.projections)
         {
-            return rejected(views::EViewError::NOT_ATTACHED);
+            return rejected(desktop::EUiError::ATTACHMENT);
         }
         auto binding = info.binding;
         auto view = std::unique_ptr<SceneView>(new SceneView(dispatcher, services, std::move(info)));
@@ -1013,7 +989,7 @@ namespace lux::editor::scene
     {
         return impl_->state_;
     }
-    views::ViewCaptureResult SceneView::captureState() const
+    desktop::UiResult<workspace::VersionedViewState> SceneView::captureState() const
     {
         workspace::VersionedViewState result;
         serialization::BinaryWriter writer(result.bytes);
@@ -1021,7 +997,10 @@ namespace lux::editor::scene
         (void)writer.writeFloat(impl_->state_.work_plane_height);
         return result;
     }
-    views::ViewStateResult SceneView::prepareState(std::uint32_t schema, std::span<const std::byte> bytes)
+    desktop::UiResult<cxx::move_only_function<void()>> SceneView::prepareState(
+        std::uint32_t schema,
+        std::span<const std::byte> bytes
+    )
     {
         auto candidate = decodeState(schema, bytes);
         if (!candidate)
@@ -1060,7 +1039,7 @@ namespace lux::editor::scene
         const auto delivery = emit(modelDropped, *request);
         if (!delivery.complete())
         {
-            return rejected(views::EViewError::CAPACITY);
+            return rejected(desktop::EUiError::CAPACITY);
         }
         return {};
     }
@@ -1084,7 +1063,7 @@ namespace lux::editor::scene
     {
         if (!impl_->services_.runs)
         {
-            return rejected(views::EViewError::NOT_ATTACHED);
+            return rejected(desktop::EUiError::ATTACHMENT);
         }
         auto group =
             std::make_shared<SceneInteractionGroup>(*impl_->services_.runs, run, InteractionGroupId{id().hash()});
@@ -1102,7 +1081,7 @@ namespace lux::editor::scene
         const bool is_invalid = !content.valid() || (!content.sessions.empty() && !is_single);
         if (is_invalid)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         if (const auto* current = std::get_if<EditedSceneBinding>(&impl_->binding_);
             current && is_single && current->session.id() == *content.primary)
@@ -1172,19 +1151,19 @@ namespace lux::editor::scene
     {
         auto* author = std::get_if<EditedSceneBinding>(&impl_->binding_);
         return author ? adopted(author->interaction->begin(std::move(label)))
-                      : SceneViewResult<void>{rejected(views::EViewError::NOT_ATTACHED)};
+                      : SceneViewResult<void>{rejected(desktop::EUiError::ATTACHMENT)};
     }
     SceneViewResult<void> SceneView::previewEdit(std::vector<VSceneEdit>& edits)
     {
         auto* author = std::get_if<EditedSceneBinding>(&impl_->binding_);
         return author ? adopted(author->interaction->preview(edits))
-                      : SceneViewResult<void>{rejected(views::EViewError::NOT_ATTACHED)};
+                      : SceneViewResult<void>{rejected(desktop::EUiError::ATTACHMENT)};
     }
     SceneViewResult<void> SceneView::commitEdit()
     {
         auto* author = std::get_if<EditedSceneBinding>(&impl_->binding_);
         return author ? adopted(author->interaction->commit())
-                      : SceneViewResult<void>{rejected(views::EViewError::NOT_ATTACHED)};
+                      : SceneViewResult<void>{rejected(desktop::EUiError::ATTACHMENT)};
     }
     SceneViewResult<void> SceneView::cancelEdit()
     {

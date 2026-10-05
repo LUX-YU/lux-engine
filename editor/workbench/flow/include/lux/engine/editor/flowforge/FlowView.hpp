@@ -1,8 +1,12 @@
 #pragma once
+#include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/editor/desktop/UiError.hpp>
 #include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
 #include <lux/engine/editor/flowforge/FlowInteraction.hpp>
 #include <lux/engine/editor/persistence/DerivedArtifact.hpp>
-#include <lux/engine/editor/views/IViewHost.hpp>
+#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/workspace/WorkspaceValues.hpp>
+#include <lux/engine/ui/Pane.hpp>
 
 namespace lux::editor::persistence
 {
@@ -39,7 +43,7 @@ namespace lux::editor::flowforge
         FlowEditError,
         VFlowCompilationFailure,
         persistence::PersistenceFailure,
-        views::EViewError,
+        desktop::EUiError,
         lux::ui::EAttachmentError>;
     template <class T> using FlowViewResult = cxx::expected<T, VFlowViewFailure>;
     class FlowView final : public lux::ui::Pane
@@ -73,8 +77,9 @@ namespace lux::editor::flowforge
         [[nodiscard]] const std::optional<FlowViewBinding>& binding() const noexcept;
         [[nodiscard]] const FlowViewResult<void>& status() const noexcept;
         [[nodiscard]] FlowCompileId compilation() const noexcept;
-        [[nodiscard]] views::ViewCaptureResult captureState() const;
-        [[nodiscard]] views::ViewStateResult prepareState(std::uint32_t, std::span<const std::byte>);
+        [[nodiscard]] desktop::UiResult<workspace::VersionedViewState> captureState() const;
+        [[nodiscard]] desktop::UiResult<cxx::move_only_function<void()>>
+        prepareState(std::uint32_t, std::span<const std::byte>);
 
     private:
         FlowView(object::ObjectDispatcherRef, lux::ui::PaneId, FlowViewServices, FlowViewState);

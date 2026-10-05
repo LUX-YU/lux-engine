@@ -8,7 +8,7 @@
 #include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
 #include <lux/engine/editor/widgets/GraphCanvas.hpp>
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
-#include <lux/engine/editor/workbench/ViewPreparation.hpp>
+#include <lux/engine/editor/workbench/UiFailure.hpp>
 #include <lux/engine/flowforge/graph/ObjectNode.hpp>
 #include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
 #include <lux/engine/flowforge/script/ScriptEventAwaitNode.hpp>
@@ -42,9 +42,9 @@ namespace lux::editor::flowforge
                     {
                         return error.code == EFlowEditError::SESSION && error.session == sessions::ESessionError::BUSY;
                     }
-                    else if constexpr (std::same_as<T, views::EViewError>)
+                    else if constexpr (std::same_as<T, desktop::EUiError>)
                     {
-                        return error == views::EViewError::BUSY;
+                        return error == desktop::EUiError::BUSY;
                     }
                     else if constexpr (std::same_as<T, persistence::PersistenceFailure>)
                     {
@@ -63,16 +63,19 @@ namespace lux::editor::flowforge
                 failure
             );
         }
-        cxx::expected<std::optional<FlowViewState>, views::ViewPreparationFailure> decodeState(
+        desktop::UiResult<std::optional<FlowViewState>> decodeState(
             std::uint32_t schema,
             std::span<const std::byte> bytes
         )
         {
             const auto invalid = [&]
             {
-                return cxx::unexpected(
-                    views::ViewPreparationFailure{"flow.view.state", schema, "Invalid linker settings", false}
-                );
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::INVALID_CONFIGURATION,
+                    "flow.view.state",
+                    schema,
+                    "Invalid linker settings"
+                });
             };
             if (schema != 1)
             {
@@ -124,12 +127,7 @@ namespace lux::editor::flowforge
             auto state = decodeState(input.configuration.schema, input.configuration.bytes);
             if (!state)
             {
-                return cxx::unexpected(desktop::UiFailure{
-                    desktop::EUiError::INVALID_CONFIGURATION,
-                    state.error().domain,
-                    state.error().code,
-                    state.error().message
-                });
+                return cxx::unexpected(std::move(state.error()));
             }
             const auto dependencyFailure = [](const services::ServiceFailure& failure)
             {
@@ -162,13 +160,9 @@ namespace lux::editor::flowforge
             }
             const auto viewFailure = [](const VFlowViewFailure& failure)
             {
-                auto error = workbench::detail::viewPreparationFailure(failure, temporary(failure));
-                return cxx::unexpected(desktop::UiFailure{
-                    error.retryable ? desktop::EUiError::BUSY : desktop::EUiError::FACTORY_FAILURE,
-                    std::move(error.domain),
-                    error.code,
-                    std::move(error.message)
-                });
+                return cxx::unexpected(
+                    workbench::detail::uiFailure(failure, temporary(failure), desktop::EUiError::FACTORY_FAILURE)
+                );
             };
             auto view = FlowView::create(
                 input.dispatcher,
@@ -268,13 +262,7 @@ namespace lux::editor::flowforge
                 auto result = static_cast<FlowView&>(pane).rebindContent(content);
                 if (!result)
                 {
-                    auto failure = workbench::detail::viewPreparationFailure(result.error(), temporary(result.error()));
-                    return cxx::unexpected(desktop::UiFailure{
-                        failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
-                        std::move(failure.domain),
-                        failure.code,
-                        std::move(failure.message)
-                    });
+                    return cxx::unexpected(workbench::detail::uiFailure(result.error(), temporary(result.error())));
                 }
                 return {};
             },
@@ -283,48 +271,16 @@ namespace lux::editor::flowforge
                 auto result = static_cast<FlowView&>(pane).cancelEdit();
                 if (!result)
                 {
-                    auto failure = workbench::detail::viewPreparationFailure(result.error(), temporary(result.error()));
-                    return cxx::unexpected(desktop::UiFailure{
-                        failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
-                        std::move(failure.domain),
-                        failure.code,
-                        std::move(failure.message)
-                    });
+                    return cxx::unexpected(workbench::detail::uiFailure(result.error(), temporary(result.error())));
                 }
                 return {};
             },
             +[](const lux::ui::Pane& pane) -> desktop::UiResult<workspace::VersionedViewState>
-            {
-                auto captured = static_cast<const FlowView&>(pane).captureState();
-                if (!captured)
-                {
-                    auto failure = std::move(captured.error());
-                    return cxx::unexpected(desktop::UiFailure{
-                        failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
-                        std::move(failure.domain),
-                        failure.code,
-                        std::move(failure.message)
-                    });
-                }
-                return std::move(*captured);
-            }
+            { return static_cast<const FlowView&>(pane).captureState(); }
         };
         value.prepare_state =
             +[](lux::ui::Pane& pane, const workspace::VersionedViewState& state) -> desktop::UiStateResult
-        {
-            auto prepared = static_cast<FlowView&>(pane).prepareState(state.schema, state.bytes);
-            if (!prepared)
-            {
-                auto failure = std::move(prepared.error());
-                return cxx::unexpected(desktop::UiFailure{
-                    failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
-                    std::move(failure.domain),
-                    failure.code,
-                    std::move(failure.message)
-                });
-            }
-            return std::move(*prepared);
-        };
+        { return static_cast<FlowView&>(pane).prepareState(state.schema, state.bytes); };
         value.cancel_preview = value.prepare_close;
         value.restore_content = true;
         return value;
@@ -377,7 +333,7 @@ namespace lux::editor::flowforge
         {
             if (canvas_edit_.size() >= 64)
             {
-                return rejected(views::EViewError::CAPACITY);
+                return rejected(desktop::EUiError::CAPACITY);
             }
             canvas_edit_.push_back({based_on, widgets::CanvasEdit{{}, true, true, false}, {}, ECanvasStage::BEGIN});
             canvas_edit_.back().edits.emplace_back(make_edit());
@@ -754,7 +710,7 @@ namespace lux::editor::flowforge
                 {
                     if (canvas_edit_.size() >= 64)
                     {
-                        status_ = rejected(views::EViewError::CAPACITY);
+                        status_ = rejected(desktop::EUiError::CAPACITY);
                         return;
                     }
                     const auto stage = value.cancelled ? ECanvasStage::CANCEL
@@ -771,7 +727,7 @@ namespace lux::editor::flowforge
             );
             if (!edit || !select)
             {
-                status_ = rejected(views::EViewError::CAPACITY);
+                status_ = rejected(desktop::EUiError::CAPACITY);
             }
             else
             {
@@ -790,7 +746,7 @@ namespace lux::editor::flowforge
         {
             if (!graph_.setGraph(std::move(value.nodes), std::move(value.links), canvas_edit_.empty()))
             {
-                return rejected(views::EViewError::BUSY);
+                return rejected(desktop::EUiError::BUSY);
             }
             display_ = std::move(value);
             return {};
@@ -837,7 +793,7 @@ namespace lux::editor::flowforge
         {
             if (!view_.isOnAffinityThread() || object::LuxObject::isDispatching())
             {
-                return rejected(views::EViewError::BUSY);
+                return rejected(desktop::EUiError::BUSY);
             }
             if (binding == binding_)
             {
@@ -850,7 +806,7 @@ namespace lux::editor::flowforge
             {
                 if (!binding->interaction || binding->interaction->session() != binding->session)
                 {
-                    return rejected(views::EViewError::INVALID_ID);
+                    return rejected(desktop::EUiError::NOT_FOUND);
                 }
                 auto shared = services_.sessions.share(binding->session);
                 if (!shared)
@@ -905,7 +861,7 @@ namespace lux::editor::flowforge
         {
             if (!binding_)
             {
-                return rejected(views::EViewError::INVALID_ID);
+                return rejected(desktop::EUiError::NOT_FOUND);
             }
             std::optional<NodePropertiesDraft> candidate;
             auto owner = services_.sessions.read(binding_->session);
@@ -1197,7 +1153,7 @@ namespace lux::editor::flowforge
     {
         if (!services.compilation)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         auto view = std::unique_ptr<FlowView>(new FlowView(dispatcher, std::move(id), services, std::move(state)));
         if (!view->status())
@@ -1233,7 +1189,7 @@ namespace lux::editor::flowforge
         const bool is_invalid = !content.valid() || (!content.sessions.empty() && !is_single);
         if (is_invalid)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         if (impl_->binding_ && is_single && impl_->binding_->session.id() == *content.primary)
         {
@@ -1263,7 +1219,7 @@ namespace lux::editor::flowforge
     {
         if (!impl_->binding_)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         return accepted(impl_->binding_->interaction->begin(std::move(label)));
     }
@@ -1271,7 +1227,7 @@ namespace lux::editor::flowforge
     {
         if (!impl_->binding_)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         return accepted(impl_->binding_->interaction->preview(edits));
     }
@@ -1279,25 +1235,33 @@ namespace lux::editor::flowforge
     {
         if (!impl_->binding_)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         return accepted(impl_->binding_->interaction->commit());
     }
-    views::ViewCaptureResult FlowView::captureState() const
+    desktop::UiResult<workspace::VersionedViewState> FlowView::captureState() const
     {
         workspace::VersionedViewState result;
         serialization::BinaryWriter writer(result.bytes);
         const auto path = impl_->state_.linker.executable.u8string();
         if (path.size() > 32768)
         {
-            return cxx::unexpected(views::ViewPreparationFailure{"flow.view.state", 1, "Linker path too long", false});
+            return cxx::unexpected(desktop::UiFailure{
+                desktop::EUiError::INVALID_CONFIGURATION,
+                "flow.view.state",
+                1,
+                "Linker path too long"
+            });
         }
         (void)writer.writeUnsigned(impl_->state_.linker.version);
         (void)writer.writeUnsigned(static_cast<std::uint32_t>(path.size()));
         (void)writer.writeBytes(std::as_bytes(std::span(path)));
         return result;
     }
-    views::ViewStateResult FlowView::prepareState(std::uint32_t schema, std::span<const std::byte> bytes)
+    desktop::UiResult<cxx::move_only_function<void()>> FlowView::prepareState(
+        std::uint32_t schema,
+        std::span<const std::byte> bytes
+    )
     {
         auto decoded = decodeState(schema, bytes);
         if (!decoded)
@@ -1339,7 +1303,7 @@ namespace lux::editor::flowforge
         }
         if (!impl_->binding_)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         auto owner = impl_->services_.sessions.edit(impl_->binding_->session);
         if (!owner)
@@ -1357,7 +1321,7 @@ namespace lux::editor::flowforge
         }
         if (!impl_->binding_)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         auto owner = impl_->services_.sessions.edit(impl_->binding_->session);
         if (!owner)
@@ -1370,7 +1334,7 @@ namespace lux::editor::flowforge
     {
         if (!impl_->binding_)
         {
-            return rejected(views::EViewError::INVALID_ID);
+            return rejected(desktop::EUiError::NOT_FOUND);
         }
         auto owner = impl_->services_.sessions.read(impl_->binding_->session);
         if (!owner)

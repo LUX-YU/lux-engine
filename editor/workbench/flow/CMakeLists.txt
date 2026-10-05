@@ -3,11 +3,10 @@ add_component(COMPONENT_NAME flow_ui NAMESPACE lux::engine::editor STATIC
     SOURCE_FILES src/FlowNodeControls.cpp src/FlowView.cpp)
 component_include_directories(flow_ui BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(flow_ui PUBLIC lux::engine::editor::flowforge_interaction lux::engine::editor::flowforge_compilation
-    lux::engine::editor::view_api lux::engine::editor::editor_widgets PRIVATE lux::engine::editor::editor_composition imgui::core)
+    lux::engine::editor::editor_widgets lux::engine::editor::editor_composition PRIVATE imgui::core)
 component_add_transitive_commands(flow_ui
     "find_package(lux-engine-editor-flowforge-interaction REQUIRED COMPONENTS flowforge_interaction)"
     "find_package(lux-engine-editor-flowforge-compilation REQUIRED COMPONENTS flowforge_compilation)"
-    "find_package(lux-engine-editor-view-api REQUIRED COMPONENTS view_api)"
     "find_package(lux-engine-editor-widgets REQUIRED COMPONENTS editor_widgets)"
     "find_package(lux-engine-editor-composition REQUIRED COMPONENTS editor_composition)"
     "find_package(imgui REQUIRED COMPONENTS core)")

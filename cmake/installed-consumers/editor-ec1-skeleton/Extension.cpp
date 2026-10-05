@@ -164,20 +164,28 @@ namespace skeleton
             {
                 return content_;
             }
-            views::ViewCloseResult bind(const views::ViewContent& content)
+            desktop::UiResult<void> bind(const views::ViewContent& content)
             {
                 if (pending_)
                 {
-                    return cxx::unexpected(views::ViewPreparationFailure{"skeleton.draft", 0, "Apply pending", true});
+                    return cxx::unexpected(
+                        desktop::UiFailure{desktop::EUiError::BUSY, "skeleton.draft", 0, "Apply pending"}
+                    );
                 }
                 if (!content.primary)
                 {
-                    return cxx::unexpected(views::ViewPreparationFailure{"skeleton.binding", 0, "No content", false});
+                    return cxx::unexpected(desktop::UiFailure{
+                        desktop::EUiError::INVALID_CONFIGURATION,
+                        "skeleton.binding",
+                        0,
+                        "No content"
+                    });
                 }
                 auto key = access_.key(*content.primary);
                 if (!key)
                 {
-                    return cxx::unexpected(views::ViewPreparationFailure{"skeleton.binding", 0, "Stale content", false}
+                    return cxx::unexpected(
+                        desktop::UiFailure{desktop::EUiError::NOT_FOUND, "skeleton.binding", 0, "Stale content"}
                     );
                 }
                 content_ = content;
@@ -403,20 +411,7 @@ namespace skeleton
                 value.content = [](const ui::Pane& pane) noexcept
                 { return static_cast<const Window&>(pane).content(); };
                 value.rebind = [](ui::Pane& pane, const views::ViewContent& content) -> desktop::UiResult<void>
-                {
-                    auto bound = static_cast<Window&>(pane).bind(content);
-                    if (!bound)
-                    {
-                        auto failure = std::move(bound.error());
-                        return cxx::unexpected(desktop::UiFailure{
-                            failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
-                            std::move(failure.domain),
-                            failure.code,
-                            std::move(failure.message)
-                        });
-                    }
-                    return {};
-                };
+                { return static_cast<Window&>(pane).bind(content); };
                 return value;
             }();
             draft.ui.push_back(desktop::UiEntry::bind<descriptor>(std::move(code)));

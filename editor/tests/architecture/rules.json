@@ -6297,12 +6297,10 @@
       "scene_mesh_query",
       "scene_projection",
       "scene_transform",
-      "view_api",
       "editor_viewport",
       "editor_configuration",
       "scene_execution",
       "scene_control_api",
-      "view_host",
       "session_factories",
       "scene_persistence",
       "editor_composition"
@@ -6662,9 +6660,6 @@
       "ui_imgui_backend": {
         "path": "modules/function/ui"
       },
-      "view_api": {
-        "path": "editor/workbench/desktop"
-      },
       "visual": {
         "path": "engine/domain/simulation/ecs/visual"
       },
@@ -6718,9 +6713,6 @@
       },
       "scene_control_api": {
         "path": "editor/workbench/scene/api"
-      },
-      "view_host": {
-        "path": "editor/workbench/desktop"
       },
       "scene_script_assets": {
         "path": "engine/scene/scripting/assets"
@@ -6801,7 +6793,6 @@
       "lux/engine/editor/scene/SceneView.hpp",
       "lux/engine/editor/sessions/SessionStore.hpp",
       "lux/engine/editor/views/CameraNavigation.hpp",
-      "lux/engine/editor/views/IViewHost.hpp",
       "lux/engine/editor/views/ViewportElement.hpp",
       "lux/engine/editor/views/ViewportPresentation.hpp",
       "lux/engine/editor/widgets/TreeRows.hpp",
@@ -6874,9 +6865,7 @@
       "lux/engine/editor/editing/scene/FieldEdit.hpp",
       "lux/engine/editor/scene/ModelPlacement.hpp",
       "lux/engine/editor/scene/InspectorComponent.hpp",
-      "lux/engine/editor/workbench/ViewPreparation.hpp",
-      "lux/engine/editor/desktop/ViewHost.hpp",
-      "lux/engine/editor/views/ViewFactory.hpp",
+      "lux/engine/editor/workbench/UiFailure.hpp",
       "lux/engine/editor/scene/SceneTools.hpp",
       "lux/engine/editor/scene/AuthoringFacts.hpp",
       "lux/engine/scene/RenderFeatureSceneBinding.hpp",
@@ -6889,7 +6878,9 @@
       "lux/engine/object/CodeLease.hpp",
       "lux/engine/editor/desktop/UiRegistry.hpp",
       "lux/engine/ui/Attachment.hpp",
-      "lux/engine/editor/views/ViewInfo.hpp"
+      "lux/engine/editor/views/ViewInfo.hpp",
+      "lux/engine/editor/desktop/UiError.hpp",
+      "lux/engine/editor/workspace/WorkspaceValues.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -7020,7 +7011,6 @@
       "material_preview",
       "project_ui",
       "editor_viewport",
-      "view_host",
       "editor_composition"
     ],
     "closure": {
@@ -7408,9 +7398,6 @@
       "ui_imgui_backend": {
         "path": "modules/function/ui"
       },
-      "view_api": {
-        "path": "editor/workbench/desktop"
-      },
       "visual": {
         "path": "engine/domain/simulation/ecs/visual"
       },
@@ -7450,9 +7437,6 @@
       "layout_model": {
         "path": "editor/authoring/layout"
       },
-      "view_host": {
-        "path": "editor/workbench/desktop"
-      },
       "ui_input": {
         "path": "modules/function/ui"
       },
@@ -7485,7 +7469,6 @@
       "lux/engine/editor/project/ProjectCatalogModel.hpp",
       "lux/engine/editor/sessions/SessionStore.hpp",
       "lux/engine/editor/views/CameraNavigation.hpp",
-      "lux/engine/editor/views/IViewHost.hpp",
       "lux/engine/editor/views/ViewportElement.hpp",
       "lux/engine/editor/widgets/GraphCanvas.hpp",
       "lux/engine/material/graph/MaterialGraph.hpp",
@@ -7498,13 +7481,17 @@
       "lux/engine/render/RendererConfig.hpp",
       "lux/engine/serialization/BinaryReader.hpp",
       "cmath",
-      "lux/engine/editor/workbench/ViewPreparation.hpp",
+      "lux/engine/editor/workbench/UiFailure.hpp",
       "lux/engine/editor/persistence/DerivedArtifact.hpp",
-      "lux/engine/editor/views/ViewFactory.hpp",
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/object/CodeLease.hpp",
-      "lux/engine/editor/desktop/UiRegistry.hpp"
+      "lux/engine/editor/desktop/UiRegistry.hpp",
+      "lux/engine/editor/desktop/UiError.hpp",
+      "lux/engine/editor/views/ViewInfo.hpp",
+      "lux/engine/editor/workspace/WorkspaceValues.hpp",
+      "lux/engine/ui/Pane.hpp",
+      "lux/cxx/core/move_only_function.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -7529,8 +7516,7 @@
       "editor_widgets",
       "flowforge_compilation",
       "flowforge_interaction",
-      "imgui::core",
-      "view_api"
+      "imgui::core"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -8043,9 +8029,6 @@
       "ui_imgui_backend": {
         "path": "modules/function/ui"
       },
-      "view_api": {
-        "path": "editor/workbench/desktop"
-      },
       "window": {
         "path": "modules/platform/window"
       },
@@ -8100,7 +8083,6 @@
       "lux/engine/editor/persistence/ArtifactStore.hpp",
       "lux/engine/editor/persistence/WriteCoordinator.hpp",
       "lux/engine/editor/sessions/SessionStore.hpp",
-      "lux/engine/editor/views/IViewHost.hpp",
       "lux/engine/editor/widgets/GraphCanvas.hpp",
       "lux/engine/flowforge/graph/ArithmeticNode.hpp",
       "lux/engine/flowforge/graph/ControlNode.hpp",
@@ -8112,14 +8094,18 @@
       "lux/engine/editor/workbench/InteractionDelivery.hpp",
       "lux/engine/editor/persistence/WriteLane.hpp",
       "lux/engine/serialization/BinaryReader.hpp",
-      "lux/engine/editor/workbench/ViewPreparation.hpp",
+      "lux/engine/editor/workbench/UiFailure.hpp",
       "lux/engine/editor/persistence/DerivedArtifact.hpp",
       "lux/engine/flowforge/graph/FlowSource.hpp",
-      "lux/engine/editor/views/ViewFactory.hpp",
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/object/CodeLease.hpp",
-      "lux/engine/editor/desktop/UiRegistry.hpp"
+      "lux/engine/editor/desktop/UiRegistry.hpp",
+      "lux/engine/editor/desktop/UiError.hpp",
+      "lux/engine/editor/views/ViewInfo.hpp",
+      "lux/engine/editor/workspace/WorkspaceValues.hpp",
+      "lux/engine/ui/Pane.hpp",
+      "lux/cxx/core/move_only_function.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -19364,14 +19350,6 @@
           "material_ui"
         ]
       },
-      "editor/workbench/sinclude/lux/engine/editor/workbench/ViewPreparation.hpp": {
-        "layer": "E3",
-        "consumers": [
-          "scene_ui",
-          "material_ui",
-          "flow_ui"
-        ]
-      },
       "editor/workbench/sinclude/lux/engine/editor/workbench/CommandSupport.hpp": {
         "layer": "E3",
         "consumers": [
@@ -19387,6 +19365,14 @@
         "consumers": [
           "editor_composition",
           "view_api"
+        ]
+      },
+      "editor/workbench/sinclude/lux/engine/editor/workbench/UiFailure.hpp": {
+        "layer": "E3",
+        "consumers": [
+          "scene_ui",
+          "material_ui",
+          "flow_ui"
         ]
       }
     },

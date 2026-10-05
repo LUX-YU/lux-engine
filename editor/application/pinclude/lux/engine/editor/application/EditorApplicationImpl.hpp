@@ -182,7 +182,7 @@ namespace lux::editor::application
         std::shared_ptr<sessions::SessionStore> sessions_;
         std::shared_ptr<persistence::SaveExecution> save_execution_;
         std::shared_ptr<sessions::SessionOpening> opening_;
-        std::unique_ptr<RecentProjects> recent_projects_;
+        std::shared_ptr<RecentProjects> recent_projects_;
         std::shared_ptr<assets::ModelImporter> importer_;
         std::shared_ptr<ProjectContentSaving> content_saving_;
         std::shared_ptr<ProjectPluginSelection> plugin_saving_;

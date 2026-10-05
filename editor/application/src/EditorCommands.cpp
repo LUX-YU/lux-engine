@@ -88,6 +88,12 @@ namespace lux::editor::application
             return applicationFailure("content.views", content_views.error());
         }
         content_views_ = std::move(*content_views);
+        auto recent = editor_context_.services().get<RecentProjects>(scope);
+        if (!recent)
+        {
+            return applicationFailure("project.recent", recent.error());
+        }
+        recent_projects_ = std::move(*recent);
         extensions::ContributionDraft draft;
 
         draft.reflection.push_back({lux::object::CodeLease::builtin(), project::registerDesktopSettings});
@@ -259,11 +265,6 @@ namespace lux::editor::application
             return applicationFailure("service.importer", importer.error());
         }
         importer_ = std::move(*importer);
-        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.project.recent"}, *recent_projects_);
-            !provided)
-        {
-            return applicationFailure("service.infrastructure", provided.error());
-        }
         if (auto provided = scope.provide(services::ServiceNameView{"lux.project.plugins"}, plugins_); !provided)
         {
             return applicationFailure("service.infrastructure", provided.error());

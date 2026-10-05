@@ -4,6 +4,8 @@
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/persistence/DerivedArtifact.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
 #include <toml++/toml.hpp>
 #include <algorithm>
 #include <sstream>
@@ -317,6 +319,20 @@ namespace lux::editor
         : impl_(std::make_unique<Impl>(std::move(directory), std::move(project), runtime, writes, files, execution))
     {
     }
+    RecentProjects::RecentProjects(
+        std::filesystem::path directory,
+        std::filesystem::path project,
+        process::ExecutionRuntime& runtime,
+        std::shared_ptr<persistence::WriteCoordinator> writes,
+        std::shared_ptr<persistence::IArtifactStore> files,
+        std::shared_ptr<persistence::SaveExecution> execution
+    )
+        : writes_owner_(std::move(writes)), files_owner_(std::move(files)), execution_owner_(std::move(execution)),
+          impl_(std::make_unique<Impl>(
+              std::move(directory), std::move(project), runtime, *writes_owner_, *files_owner_, *execution_owner_
+          ))
+    {
+    }
     RecentProjects::~RecentProjects() = default;
     EditorResult<void> RecentProjects::refresh()
     {
@@ -350,4 +366,106 @@ namespace lux::editor
     {
         return impl_->recent_failure_ ? &*impl_->recent_failure_ : nullptr;
     }
+
+    namespace
+    {
+        constexpr services::ServiceContract contracts[]{
+            services::ServiceContract::forType<RecentProjects, RecentProjects>(
+                services::ServiceNameView{"lux.editor.project.recent"}
+            )
+        };
+        constexpr services::ServiceDependency dependencies[]{
+            {services::ServiceNameView{"lux.editor.user-directory"},
+             1,
+             cxx::typeToken<std::filesystem::path>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.project.storage"},
+             1,
+             cxx::typeToken<ProjectStorage>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.process.execution"},
+             1,
+             cxx::typeToken<process::ExecutionRuntime>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.persistence.writes"},
+             1,
+             cxx::typeToken<persistence::WriteCoordinator>(),
+             services::EDependencyKind::SHARED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.persistence.files"},
+             1,
+             cxx::typeToken<persistence::IArtifactStore>(),
+             services::EDependencyKind::SHARED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.persistence.execution"},
+             1,
+             cxx::typeToken<persistence::SaveExecution>(),
+             services::EDependencyKind::SHARED,
+             services::EDependencyScope::ROOT}
+        };
+        services::ServiceResult<std::unique_ptr<RecentProjects>>
+        createRecent(services::ServiceResolver& resolver, const services::ServiceConfiguration&) noexcept
+        {
+            auto directory = resolver.require<std::filesystem::path>(0);
+            if (!directory)
+            {
+                return cxx::unexpected(std::move(directory.error()));
+            }
+            if (!directory->get().is_absolute())
+            {
+                return cxx::unexpected(services::ServiceFailure{
+                    services::EServiceError::INVALID_CONFIGURATION, "Recent projects require an absolute user directory"
+                });
+            }
+            auto project = resolver.require<ProjectStorage>(1);
+            if (!project)
+            {
+                return cxx::unexpected(std::move(project.error()));
+            }
+            auto execution = resolver.require<process::ExecutionRuntime>(2);
+            if (!execution)
+            {
+                return cxx::unexpected(std::move(execution.error()));
+            }
+            auto writes = resolver.get<persistence::WriteCoordinator>(3);
+            if (!writes)
+            {
+                return cxx::unexpected(std::move(writes.error()));
+            }
+            auto files = resolver.get<persistence::IArtifactStore>(4);
+            if (!files)
+            {
+                return cxx::unexpected(std::move(files.error()));
+            }
+            auto publishing = resolver.get<persistence::SaveExecution>(5);
+            if (!publishing)
+            {
+                return cxx::unexpected(std::move(publishing.error()));
+            }
+            return std::make_unique<RecentProjects>(
+                directory->get(),
+                project->get().projectFile(),
+                execution->get(),
+                std::move(*writes),
+                std::move(*files),
+                std::move(*publishing)
+            );
+        }
+    } // namespace
+    constinit const services::ServiceDescriptor kRecentProjectsService = []
+    {
+        auto descriptor = services::ServiceDescriptor::forType<RecentProjects, createRecent>(
+            services::ServiceNameView{"lux.editor.project.recent"}, contracts, dependencies
+        );
+        descriptor.retention = services::EServiceRetention::SCOPED;
+        descriptor.affinity = services::EServiceAffinity::OWNER;
+        descriptor.settled = [](const void* instance) noexcept -> services::ServiceResult<bool>
+        { return static_cast<const RecentProjects*>(instance)->settled(); };
+        // The close use case still supplies permission for new writes to update(bool). Registering
+        // an unconditional maintain callback here would admit a write during a reversible review.
+        return descriptor;
+    }();
 } // namespace lux::editor

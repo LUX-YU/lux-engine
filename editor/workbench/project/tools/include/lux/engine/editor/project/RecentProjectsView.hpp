@@ -48,6 +48,7 @@ namespace lux::editor::project
     private:
         void update() noexcept override;
         struct Impl;
+        std::shared_ptr<RecentProjects> projects_owner_;
         std::unique_ptr<Impl> impl_;
         object::Connection request_connection_;
     };

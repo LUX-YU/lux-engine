@@ -12,6 +12,10 @@ namespace lux::process
 {
     class ExecutionRuntime;
 }
+namespace lux::services
+{
+    struct ServiceDescriptor;
+}
 namespace lux::editor::persistence
 {
     class WriteCoordinator;
@@ -25,7 +29,22 @@ namespace lux::editor
     class RecentProjects final
     {
     public:
-        RecentProjects(std::filesystem::path user_directory, std::filesystem::path current_project, process::ExecutionRuntime&, persistence::WriteCoordinator&, persistence::IArtifactStore&, persistence::SaveExecution&);
+        RecentProjects(
+            std::filesystem::path user_directory,
+            std::filesystem::path current_project,
+            process::ExecutionRuntime&,
+            persistence::WriteCoordinator&,
+            persistence::IArtifactStore&,
+            persistence::SaveExecution&
+        );
+        RecentProjects(
+            std::filesystem::path user_directory,
+            std::filesystem::path current_project,
+            process::ExecutionRuntime&,
+            std::shared_ptr<persistence::WriteCoordinator>,
+            std::shared_ptr<persistence::IArtifactStore>,
+            std::shared_ptr<persistence::SaveExecution>
+        );
         ~RecentProjects();
         RecentProjects(const RecentProjects&) = delete;
         RecentProjects& operator=(const RecentProjects&) = delete;
@@ -44,6 +63,10 @@ namespace lux::editor
 
     private:
         struct Impl;
+        std::shared_ptr<persistence::WriteCoordinator> writes_owner_;
+        std::shared_ptr<persistence::IArtifactStore> files_owner_;
+        std::shared_ptr<persistence::SaveExecution> execution_owner_;
         std::unique_ptr<Impl> impl_;
     };
+    extern const services::ServiceDescriptor kRecentProjectsService;
 } // namespace lux::editor

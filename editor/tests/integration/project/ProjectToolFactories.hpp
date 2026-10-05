@@ -76,6 +76,8 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     lux::editor::project::ProjectCreationOptions creation_options{directory, false};
     services::ServiceRegistry services{messages.dispatcherRef()};
     auto scope = take(services.createScope());
+    auto user_directory = directory / "user";
+    assert(scope.provide(services::ServiceNameView{"lux.editor.user-directory"}, user_directory));
     assert(scope.provide(services::ServiceNameView{"lux.editor.project.catalog"}, project->catalogModel()));
     auto roots =
         std::make_shared<const storage::PublicationRoots>(directory, directory / "user", directory / "installation");
@@ -98,15 +100,6 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     auto files = take(services.get<persistence::IArtifactStore>(scope));
     auto saves = take(services.get<persistence::SaveService>(scope));
     auto publishing = take(services.get<persistence::SaveExecution>(scope));
-    auto recent_owner = std::make_unique<RecentProjects>(
-        directory / "user",
-        directory / "Project.luxproject",
-        execution,
-        *writes,
-        *files,
-        *publishing
-    );
-    auto& recent = *recent_owner;
     desktop::UiRegistry windows{messages.dispatcherRef(), services};
     const auto catalog = take(desktop::UiCatalog::prepare(
         {desktop::UiEntry::bind<lux::editor::project::kProjectView>(object::CodeLease::builtin()),
@@ -131,7 +124,10 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     auto rejected = windows.mount(*root, scope, {{import_factory, import_input}, {recent_factory, recent_input}});
     assert(!rejected && rejected.error().code == desktop::EUiError::DEPENDENCY);
     assert(root->panes().empty() && root->windowRevision() == revision && !importer.currentRequest());
-    assert(scope.provide(services::ServiceNameView{"lux.editor.project.recent"}, recent));
+    service_entries.push_back(services::ServiceEntry::bind<kRecentProjectsService>(object::CodeLease::builtin()));
+    assert(services.publish(service_entries));
+    auto recent_owner = take(services.get<RecentProjects>(scope));
+    assert(recent_owner == take(services.get<RecentProjects>(scope)));
     assert(windows.mount(*root, scope, {{import_factory, import_input}, {recent_factory, recent_input}}));
     auto information = take(windows.describe(*root));
     assert(information.size() == 2);

@@ -31,7 +31,7 @@ namespace lux::editor::project
             {services::ServiceNameView{"lux.editor.project.recent"},
              1,
              cxx::typeToken<RecentProjects>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.editor.project.recent.open"},
              1,
@@ -78,7 +78,7 @@ namespace lux::editor::project
                 desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "lux.editor.project.recent.open"}
             );
         }
-        auto recent = resolver.require<RecentProjects>(0);
+        auto recent = resolver.get<RecentProjects>(0);
         if (!recent)
         {
             return cxx::unexpected(desktop::UiFailure{
@@ -88,7 +88,8 @@ namespace lux::editor::project
                 recent.error().detail
             });
         }
-        auto pane = std::make_unique<RecentProjectsView>(input.dispatcher, input.instance, recent->get());
+        auto pane = std::make_unique<RecentProjectsView>(input.dispatcher, input.instance, **recent);
+        pane->projects_owner_ = std::move(*recent);
         if (receiver)
         {
             auto connection = object::LuxObject::connect(

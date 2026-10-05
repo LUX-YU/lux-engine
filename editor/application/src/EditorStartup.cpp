@@ -64,6 +64,11 @@ namespace lux::editor::application
             return applicationFailure("services.bootstrap.install", installed.error());
         }
         auto& scope = editor_context_.scope();
+        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.user-directory"}, *config_.user_directory);
+            !provided)
+        {
+            return applicationFailure("services.bootstrap.user-directory", provided.error());
+        }
         if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.installation"}, config_.installation); !provided)
         {
             return applicationFailure("services.bootstrap.installation", provided.error());

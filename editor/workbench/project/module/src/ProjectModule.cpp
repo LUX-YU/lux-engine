@@ -13,6 +13,7 @@
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
 #include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
 #include <lux/engine/editor/storage/PublicationFileStore.hpp>
+#include <lux/engine/editor/storage/RecentProjects.hpp>
 
 namespace lux::editor::project
 {
@@ -24,7 +25,7 @@ namespace lux::editor::project
             +[]() noexcept -> const extensions::EditorExtensionExports*
             {
                 static const extensions::EditorExtensionExports exports{
-                    .counts = {.services = 15, .ui = 2},
+                    .counts = {.services = 16, .ui = 2},
                     .contribute = +[](extensions::ContributionDraft& draft,
                                       object::CodeLease code) -> extensions::ContributionResult<void>
                     {
@@ -48,6 +49,7 @@ namespace lux::editor::project
                         draft.services.push_back(services::ServiceEntry::bind<kProjectCreationService>(code));
                         draft.services.push_back(services::ServiceEntry::bind<kProjectLaunchingService>(code));
                         draft.services.push_back(services::ServiceEntry::bind<assets::kModelImporterService>(code));
+                        draft.services.push_back(services::ServiceEntry::bind<kRecentProjectsService>(code));
                         draft.ui.push_back(desktop::UiEntry::bind<kProjectCreationView>(code));
                         draft.ui.push_back(desktop::UiEntry::bind<kProjectView>(std::move(code)));
                         return {};

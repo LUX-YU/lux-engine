@@ -47,3 +47,8 @@ Importer 负责真实读取、cook 和发布，不再内嵌另一份 TOML 配方
 原关闭协议判定未决发布是否结束，不把普通错误当成可回收结果。
 
 `editor_assets` 为 STATIC，无独立资产 DLL；其安装 include 前缀仍为 lux/engine/editor。
+
+`kRecentProjectsService` 同样在项目作用域惰性创建，共享原发布协调器、文件后端和执行接线。
+构造输入仍为用户目录，内部沿用 `lux/editor/recent-projects.toml`，不要求该子目录预先存在。
+窗口共享真实 RecentProjects allocation；原关闭用例继续通过 `update(allow_new_work)` 控制新写入，
+已经接受的读取和发布仍由活动结清。本批不将这个许可改成无条件维护。

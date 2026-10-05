@@ -7,6 +7,7 @@
 #include <lux/engine/editor/persistence/PersistenceServices.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/storage/PublicationFileStore.hpp>
+#include <lux/engine/editor/storage/RecentProjects.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/services/ServiceRegistry.hpp>
@@ -48,6 +49,9 @@ int main(int argc, char** argv)
         std::make_shared<const storage::PublicationRoots>(directory, directory / "user", directory / "installation");
     services::ServiceRegistry registry{messages.dispatcherRef()};
     auto scope = take(registry.createScope());
+    auto user_directory = directory / "user";
+    const auto recent_path = user_directory / "lux/editor/recent-projects.toml";
+    assert(scope.provide(services::ServiceNameView{"lux.editor.user-directory"}, user_directory));
     assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, execution));
     assert(scope.provide(services::ServiceNameView{"lux.editor.publication.roots"}, roots));
     assert(scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project));
@@ -56,8 +60,42 @@ int main(int argc, char** argv)
          services::ServiceEntry::bind<persistence::kWriteCoordinatorService>(object::CodeLease::builtin()),
          services::ServiceEntry::bind<persistence::kSaveService>(object::CodeLease::builtin()),
          services::ServiceEntry::bind<persistence::kSaveExecutionService>(object::CodeLease::builtin()),
-         services::ServiceEntry::bind<assets::kModelImporterService>(object::CodeLease::builtin())}
+         services::ServiceEntry::bind<assets::kModelImporterService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<kRecentProjectsService>(object::CodeLease::builtin())}
     ));
+    // A fresh user directory need not already contain a profile or recent-project file.
+    assert(!std::filesystem::exists(recent_path.parent_path()));
+    auto recent = take(registry.get<RecentProjects>(scope));
+    assert(recent == take(registry.get<RecentProjects>(scope)));
+    assert(!std::filesystem::exists(recent_path) && recent->settled());
+    assert(recent->update());
+    std::weak_ptr<RecentProjects> recent_lifetime = recent;
+    recent.reset();
+    assert(!recent_lifetime.expired());
+    const auto recent_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    for (;;)
+    {
+        assert(std::chrono::steady_clock::now() < recent_deadline);
+        assert(execution.collectCompletions() && scope.maintain());
+        auto retained = recent_lifetime.lock();
+        assert(retained && retained->update());
+        assert(!retained->failure());
+        if (retained->settled())
+        {
+            assert(retained->publication());
+            assert(std::holds_alternative<persistence::CommitReceipt>(*retained->publication()));
+            assert(retained->entries().size() == 1 && retained->entries().front() == project->projectFile());
+            break;
+        }
+        std::this_thread::yield();
+    }
+    assert(std::filesystem::exists(recent_path));
+    recent = take(registry.get<RecentProjects>(scope));
+    assert(recent == recent_lifetime.lock());
+    assert(recent->refresh() && recent->update(false));
+    assert(recent->settled() && !recent->ticket());
+    assert(std::holds_alternative<persistence::CommitReceipt>(*recent->publication()));
+    recent.reset();
     auto importer = take(registry.get<assets::ModelImporter>(scope));
     assert(importer == take(registry.get<assets::ModelImporter>(scope)));
     assert(!importer->currentRequest());
@@ -107,7 +145,8 @@ int main(int argc, char** argv)
     {
         assert(messages.collectRetired() > 0);
     }
-    assert(lifetime.expired() && registry.drained());
+    assert(lifetime.expired() && recent_lifetime.expired() && registry.drained());
+    std::cout << "SDK recent projects: lazy shared owner, absent profile, actual IO, close permission, retirement\n";
     project->requestClose();
     assert(take(project->advanceClose()));
     std::cout

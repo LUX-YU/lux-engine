@@ -5,8 +5,14 @@
 #include <lux/engine/scene/RenderFeatureSceneBinding.hpp>
 #include <lux/engine/process/TaskScope.hpp>
 
+namespace lux::services
+{
+    struct ServiceDescriptor;
+}
+
 namespace lux::editor::scene
 {
+    extern const services::ServiceDescriptor kScenePresentationHub;
     enum class EProjectionError : std::uint8_t
     {
         BUSY,
@@ -65,6 +71,10 @@ namespace lux::editor::scene
     public:
         ScenePresentationHub(lux::scene::SceneRuntime&, process::ExecutionRuntime&, std::size_t capacity = 16);
         ~ScenePresentationHub();
+        ScenePresentationHub(const ScenePresentationHub&) = delete;
+        ScenePresentationHub& operator=(const ScenePresentationHub&) = delete;
+        ScenePresentationHub(ScenePresentationHub&&) = delete;
+        ScenePresentationHub& operator=(ScenePresentationHub&&) = delete;
         [[nodiscard]] ProjectionResult<std::shared_ptr<SceneProjection>> acquire(
             const SceneSession&,
             ProjectionEnvironment,

@@ -27,7 +27,7 @@ namespace lux::editor::application
           files_(config_.project_file.parent_path(), *config_.user_directory, config_.installation),
           save_execution_(engine_->execution(), saves_, writes_, files_),
           opening_(engine_->execution(), sessions_, saves_, editor_context_.services(), editor_context_.scope()),
-          projections_(engine_->sceneRuntime(), engine_->execution()),
+          projections_(std::make_shared<scene::ScenePresentationHub>(engine_->sceneRuntime(), engine_->execution())),
           runs_(engine_->sceneRuntime(), engine_->execution()), material_compilation_(std::make_shared<material::MaterialCompilationService>(engine_->execution())),
           flow_compilation_(std::make_shared<flowforge::FlowCompilationService>(engine_->execution())),
           contributions_(messages_.dispatcherRef(), editor_context_), workspace_(std::move(profile), writes_, files_),

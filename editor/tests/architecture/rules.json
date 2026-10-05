@@ -3311,7 +3311,8 @@
       "scene_composition",
       "scene_render",
       "scene_world_loading",
-      "process_world_loading"
+      "process_world_loading",
+      "services"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -3640,6 +3641,9 @@
       },
       "object": {
         "path": "modules/core/object"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "native_libraries": [
@@ -3676,7 +3680,8 @@
       "vector",
       "any",
       "lux/engine/editor/sessions/SessionStore.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "lux/engine/services/ServiceRegistry.hpp"
     ],
     "prefixes": [
       "lux/cxx/",
@@ -6295,7 +6300,8 @@
       "scene_control_api",
       "view_host",
       "session_factories",
-      "scene_persistence"
+      "scene_persistence",
+      "editor_composition"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -6877,7 +6883,8 @@
       "lux/engine/editor/commands/CommandRegistry.hpp",
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "lux/engine/editor/desktop/UiRegistry.hpp"
     ],
     "prefixes": [],
     "test_headers": {

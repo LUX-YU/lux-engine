@@ -269,7 +269,7 @@ namespace lux::editor::application
             ServiceRetirement& operator=(ServiceRetirement&&) = delete;
         } service_retirement_{editor_context_, messages_};
         std::shared_ptr<ProjectContentSaving> content_saving_;
-        scene::ScenePresentationHub projections_;
+        std::shared_ptr<scene::ScenePresentationHub> projections_;
         scene::RunStore runs_;
         scene::RunController run_controller_{runs_};
         std::shared_ptr<material::MaterialCompilationService> material_compilation_;

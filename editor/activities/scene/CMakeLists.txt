@@ -99,10 +99,11 @@ endif()
 add_component(COMPONENT_NAME scene_projection NAMESPACE lux::engine::editor STATIC
     SOURCE_FILES src/ResourceStatus.cpp src/SceneProjection.cpp)
 component_include_directories(scene_projection BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
-target_link_libraries(scene_projection PUBLIC lux::engine::editor::scene_model
+target_link_libraries(scene_projection PUBLIC lux::engine::core::services lux::engine::editor::scene_model
     lux::engine::scene::scene_composition lux::engine::scene::scene_render
     lux::engine::scene::scene_world_loading lux::engine::process::world_loading)
 component_add_transitive_commands(scene_projection
+    "find_package(lux-engine-core REQUIRED COMPONENTS services)"
     "find_package(lux-engine-editor-scene-model REQUIRED COMPONENTS scene_model)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"

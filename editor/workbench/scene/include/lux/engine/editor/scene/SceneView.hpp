@@ -13,8 +13,14 @@ namespace lux::editor::views
     class ViewFactoryEntry;
 }
 
+namespace lux::editor::desktop
+{
+    struct UiDescriptor;
+}
+
 namespace lux::editor::scene
 {
+    extern const desktop::UiDescriptor kSceneView;
     struct UnboundSceneBinding final
     {
         friend bool operator==(UnboundSceneBinding, UnboundSceneBinding) = default;
@@ -41,7 +47,7 @@ namespace lux::editor::scene
     struct SceneViewServices final
     {
         sessions::TSessionAccess<SceneSession> sessions;
-        ScenePresentationHub& projections;
+        std::shared_ptr<ScenePresentationHub> projections;
         lux::scene::SceneRuntime& runtime;
         lux::scene::RenderResources& resources;
         render::RenderRuntime& renderer;

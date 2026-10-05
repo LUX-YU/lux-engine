@@ -249,7 +249,7 @@ namespace
         std::unique_ptr<render::RenderRuntime> renderer;
         std::unique_ptr<lux::scene::RenderResources> resources;
         std::unique_ptr<lux::scene::SceneRuntime> runtime;
-        std::unique_ptr<author::ScenePresentationHub> hub;
+        std::shared_ptr<author::ScenePresentationHub> hub;
         lux::test::ObjectQueue store_messages;
         sessions::SessionStore store{store_messages.dispatcherRef(), 4};
         object::ObjectMessageQueue messages{take(object::ObjectMessageQueue::create(256))};
@@ -308,7 +308,7 @@ namespace
             assert(renderer->commitFeatureRegistration());
             resources = take(lux::scene::RenderResources::create(*renderer, tasks, execution.cpu()));
             runtime = take(lux::scene::SceneRuntime::create(execution, {0, 2048}));
-            hub = std::make_unique<author::ScenePresentationHub>(*runtime, execution);
+            hub = std::make_shared<author::ScenePresentationHub>(*runtime, execution);
             environment.renderer = renderer.get();
             environment.resources = resources.get();
             environment.simulation_systems = std::make_shared<simulation::SimulationSystemRegistry>();
@@ -469,7 +469,7 @@ namespace
         }
         author::SceneViewServices services()
         {
-            return {store.access<author::SceneSession>(), *hub, *runtime, *resources, *renderer, environment, {}};
+            return {store.access<author::SceneSession>(), hub, *runtime, *resources, *renderer, environment, {}};
         }
         author::SceneViewCreateInfo info(const char* name, author::SceneInteractionGroup& interaction)
         {
@@ -1324,26 +1324,178 @@ namespace
         );
     }
 
+    void sceneComposition(Fixture& f)
+    {
+        services::ServiceRegistry services(f.messages.dispatcherRef());
+        auto scope = take(services.createScope());
+        assert(services.publish({services::ServiceEntry::bind<author::kScenePresentationHub>(object::CodeLease::builtin(
+        ))}));
+        assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
+        assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
+        assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
+        assert(scope.provide(services::ServiceNameView{"lux.editor.scene.projection.environment"}, f.environment));
+        desktop::UiRegistry windows(f.messages.dispatcherRef(), services);
+        auto catalog =
+            take(desktop::UiCatalog::prepare({desktop::UiEntry::bind<author::kSceneView>(object::CodeLease::builtin())})
+            );
+        assert(windows.publish(catalog) && services.drained());
+        auto factory = take(catalog.selectContent({"lux.editor.scene"}));
+        const auto package = take(author::buildSceneSnapshotPackage(take(f.session->capture())));
+        auto reserved = take(f.store.reserve<author::SceneSession>({"lux.editor.scene"}, object::CodeLease::builtin()));
+        auto owner = take(author::SceneSession::create(
+            reserved.id(),
+            {},
+            take(author::SceneSource::create(package, f.environment.components))
+        ));
+        auto* model = owner.get();
+        assert(f.store.prepare(reserved, owner) && f.store.publish(reserved));
+        const auto key = take(f.store.key<author::SceneSession>(reserved.id()));
+        const auto initial = model->describe();
+        const auto encode = [&]
+        {
+            return take(lux::scene::encodeScenePackage(
+                take(author::buildSceneSnapshotPackage(take(model->capture()))),
+                16 * 1024 * 1024
+            ));
+        };
+        const auto bytes = encode();
+        std::weak_ptr<author::SceneSession> weak_model = take(f.store.access<author::SceneSession>().share(key));
+        desktop::UiCreateInfo input{f.messages.dispatcherRef(), ui::PaneId{"ec4-scene-a"}, {{key.id()}, key.id()}, {}};
+        input.configuration.schema = 77;
+        const auto invalid = windows.create(factory, scope, input);
+        assert(!invalid && invalid.error().code == desktop::EUiError::INVALID_CONFIGURATION && services.drained());
+        input.configuration.schema = 1;
+        auto first = take(windows.create(factory, scope, input));
+        input.instance = ui::PaneId{"ec4-scene-b"};
+        auto second = take(windows.create(factory, scope, input));
+        auto* a = static_cast<author::SceneView*>(first.get());
+        auto* b = static_cast<author::SceneView*>(second.get());
+        assert(!a->parent() && !b->parent() && !a->attachedRoot() && !b->attachedRoot());
+        assert(a->interactionOwner() && b->interactionOwner() && a->interactionOwner() != b->interactionOwner());
+        auto hub = take(services.get<author::ScenePresentationHub>(scope));
+        assert(take(services.get<author::ScenePresentationHub>(scope)) == hub && hub->size() == 1);
+        auto& root = f.desktop->root();
+        std::array owners{std::move(first), std::move(second)};
+        assert(root.addSubPanes(owners));
+        const auto aid = take(root.identify(*a)), bid = take(root.identify(*b));
+        const std::array handles{aid, bid};
+        f.wait([&] { return a->image().isValid() && b->image().isValid(); });
+        assert(a->presentedInstance() == b->presentedInstance() && a->viewport() != b->viewport());
+        assert(a->beginEdit("scene factory temporary gesture"));
+        std::vector<author::VSceneEdit> changes;
+        changes.emplace_back(author::SceneSetField::make<ecs::Transform3D>(
+            {{key.id(), initial.current.state.history, f.object},
+             ecs::componentSchemaId("lux.ecs.Transform3D"),
+             "translation"},
+            Eigen::Vector3d{7, 0, 0}
+        ));
+        assert(a->previewEdit(changes) && !b->interactionOwner()->overlay() && encode() == bytes);
+        assert(take(model->read())
+                   .withRead(
+                       [&](const author::SceneReadView&) -> author::SceneEditResult<void>
+                       {
+                           auto busy = windows.prepareClose(root, handles);
+                           assert(!busy && busy.error().code == desktop::EUiError::BUSY);
+                           assert(a->interactionOwner()->overlay() && root.findPane(aid) && root.findPane(bid));
+                           return {};
+                       }
+                   ));
+        const auto before_camera = a->state().camera.transform.translation;
+        auto stale = key.id();
+        ++stale.generation;
+        assert(!windows.rebind(root, aid, {{stale}, stale}));
+        assert(a->interactionOwner()->overlay() && a->state().camera.transform.translation == before_camera);
+        assert(a->commitEdit());
+        const auto committed = model->describe().current;
+        f.wait([&] { return a->projectedContent() == committed && b->projectedContent() == committed; });
+        assert(b->undo());
+        f.wait([&] { return a->projectedContent() == initial.current && b->projectedContent() == initial.current; });
+        assert(encode() == bytes && model->describe().dirty == initial.dirty);
+        const auto other_camera = b->state().camera.transform.translation;
+        views::CameraMotion motion;
+        motion.local_translation.x() = 2;
+        const auto original_pose = a->state().camera.transform.translation;
+        // The shared author version precedes Runtime publication. A writable camera still obeys its gate.
+        f.wait(
+            [&]
+            {
+                auto navigation = a->navigate(motion);
+                if (!navigation)
+                {
+                    const auto* renderer = std::get_if<render::RendererFailure>(&navigation.error().cause);
+                    assert(renderer && renderer->code == render::ERendererError::BUSY);
+                    const auto borrowed = f.runtime->borrowInstance(a->presentedInstance());
+                    assert(!borrowed);
+                    const auto* runtime_error = std::get_if<lux::scene::ESceneRuntimeError>(&borrowed.error().cause);
+                    assert(runtime_error && *runtime_error == lux::scene::ESceneRuntimeError::BUSY);
+                    assert(a->state().camera.transform.translation == original_pose);
+                }
+                assert(b->state().camera.transform.translation == other_camera);
+                return bool(navigation);
+            }
+        );
+        assert(a->state().camera.transform.translation != original_pose);
+        const auto saved_state = take(windows.captureState(root, aid));
+        assert(windows.mount(root, scope, {}, {}, {{bid, saved_state, {}}}));
+        assert(take(windows.captureState(root, bid)).bytes == saved_state.bytes);
+        f.wait(
+            [&]
+            {
+                return a->viewport().isValid() && b->viewport().isValid() && a->image().isValid() &&
+                       b->image().isValid();
+            }
+        );
+        const auto receipt = take(f.resources->viewReceipt(a->viewport()));
+        const auto instance = a->presentedInstance();
+        auto permit = take(f.store.prepareClose(model->describe().current));
+        assert(f.store.close(permit) && !weak_model.expired());
+        assert(!a->beginEdit("logically closed") && !f.store.access<author::SceneSession>().share(key));
+        auto close = take(windows.prepareClose(root, handles));
+        assert(root.commit(close) && !root.findPane(aid) && !root.findPane(bid));
+        (void)f.messages.collectRetired();
+        (void)f.store_messages.collect();
+        assert(weak_model.expired());
+        f.wait(
+            [&]
+            {
+                hub->collectReleased();
+                return hub->size() == 0;
+            }
+        );
+        f.wait([&] { return receipt.status().status.state == lux::scene::EViewState::CLOSED; });
+        assert(!f.runtime->borrowInstance(instance));
+        hub.reset();
+        assert(scope.release());
+        (void)f.messages.collectRetired();
+        assert(scope.drained() && services.drained());
+        std::printf("EC4 Scene: declared factories, actual shared author/projection, independent GPU viewports, "
+                    "BUSY close, failed rebind, undo, state, logical close and retirement PASS\n");
+    }
+
     void materialComposition(Fixture& f)
     {
         namespace em = editor::material;
         ArtifactPublication publication(f);
         auto& dependencies = publication.dependencies;
         auto& scope = publication.scope;
-        assert(dependencies.publish({
-            services::ServiceEntry::bind<em::kMaterialCompilationService>(object::CodeLease::builtin()),
-            services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())
-        }));
+        assert(dependencies.publish(
+            {services::ServiceEntry::bind<em::kMaterialCompilationService>(object::CodeLease::builtin()),
+             services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())}
+        ));
         auto environment = f.environment;
         environment.assets = {{29, 1}, 1, take(process::asset_loading::makeAssetReadOverlay({}, {})), {}};
         std::vector<render::RenderFeatureRegistration> features;
         for (const auto& feature : render::builtinRenderFeatureRegistrations())
+        {
             features.push_back(feature);
+        }
         assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
         assert(scope.provide(services::ServiceNameView{"lux.editor.scene.projection.environment"}, environment));
         assert(scope.provide(services::ServiceNameView{"lux.render.features"}, features));
         desktop::UiRegistry windows(f.messages.dispatcherRef(), dependencies);
-        auto catalog = take(desktop::UiCatalog::prepare({desktop::UiEntry::bind<em::kMaterialView>(object::CodeLease::builtin())}));
+        auto catalog =
+            take(desktop::UiCatalog::prepare({desktop::UiEntry::bind<em::kMaterialView>(object::CodeLease::builtin())})
+            );
         assert(windows.publish(catalog) && dependencies.drained());
         const auto factory = take(catalog.selectContent({"lux.editor.material"}));
         auto slot = take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, object::CodeLease::builtin()));
@@ -1361,7 +1513,8 @@ namespace
         const auto initial = model->describe();
         const auto bytes = take(take(model->read()).encode());
         std::weak_ptr<em::MaterialSession> weak_model = take(f.store.access<em::MaterialSession>().share(key));
-        desktop::UiCreateInfo input{f.messages.dispatcherRef(), ui::PaneId{"ec4-material-a"}, {{key.id()}, key.id()}, {}};
+        desktop::UiCreateInfo
+            input{f.messages.dispatcherRef(), ui::PaneId{"ec4-material-a"}, {{key.id()}, key.id()}, {}};
         input.configuration.schema = 99;
         auto invalid = windows.create(factory, scope, input);
         assert(!invalid && invalid.error().code == desktop::EUiError::INVALID_CONFIGURATION && dependencies.drained());
@@ -1386,13 +1539,16 @@ namespace
         assert(a->previewEdit(edits));
         assert(!b->binding()->interaction->overlay());
         assert(model->describe().current == initial.current && take(take(model->read()).encode()) == bytes);
-        assert(take(model->read()).withRead([&](const lux::material::MaterialSource&) -> em::MaterialEditResult<void>
-        {
-            auto busy = windows.prepareClose(root, closing);
-            assert(!busy && busy.error().code == desktop::EUiError::BUSY);
-            assert(a->binding()->interaction->overlay() && root.findPane(a_id) && root.findPane(b_id));
-            return {};
-        }));
+        assert(take(model->read())
+                   .withRead(
+                       [&](const lux::material::MaterialSource&) -> em::MaterialEditResult<void>
+                       {
+                           auto busy = windows.prepareClose(root, closing);
+                           assert(!busy && busy.error().code == desktop::EUiError::BUSY);
+                           assert(a->binding()->interaction->overlay() && root.findPane(a_id) && root.findPane(b_id));
+                           return {};
+                       }
+                   ));
         assert(a->cancelEdit());
         const auto a_compile = take(a->compile());
         const auto b_compile = take(b->compile());
@@ -2121,7 +2277,7 @@ namespace
         author::SceneInteractionGroup right(f.store.access<author::SceneSession>(), key, {82});
         author::SceneViewServices services{
             f.store.access<author::SceneSession>(),
-            *f.hub,
+            f.hub,
             *f.runtime,
             *f.resources,
             *f.renderer,
@@ -2531,6 +2687,7 @@ int main(int argc, char** argv)
     creationView(f, argv[2]);
     runningView(f);
     const auto compiled = materialView(f);
+    sceneComposition(f);
     materialComposition(f);
     flowView(f, argv[1]);
     flowComposition(f, argv[1]);

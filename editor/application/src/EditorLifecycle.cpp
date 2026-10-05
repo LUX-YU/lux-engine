@@ -591,7 +591,7 @@ namespace lux::editor::application
         if (auto maintained = runs_.update(); !maintained)
             receive(applicationFailure("run.receive", maintained.error()));
         receive(maintainRuns());
-        projections_.collectReleased();
+        projections_->collectReleased();
         receive(settleOperations());
         if (!outcome && !maintenance_failure_)
             maintenance_failure_ = outcome.error();

@@ -1,14 +1,47 @@
+#include <algorithm>
 #include <lux/engine/editor/scene/SceneProjection.hpp>
 #include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
-#include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
-#include <algorithm>
+#include <lux/engine/scene/WorldLoadingSystem.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
 #include <thread>
 
 namespace lux::editor::scene
 {
     namespace
     {
+        constexpr services::ServiceContract contracts[]{
+            services::ServiceContract::forType<ScenePresentationHub, ScenePresentationHub>(
+                services::ServiceNameView{"lux.editor.scene.projections"}
+            )
+        };
+        constexpr services::ServiceDependency dependencies[]{
+            {services::ServiceNameView{"lux.scene.runtime"},
+             1,
+             cxx::typeToken<lux::scene::SceneRuntime>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.process.execution"},
+             1,
+             cxx::typeToken<process::ExecutionRuntime>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
+        services::ServiceResult<std::unique_ptr<ScenePresentationHub>>
+        createHub(services::ServiceResolver& resolver, const services::ServiceConfiguration&) noexcept
+        {
+            auto runtime = resolver.require<lux::scene::SceneRuntime>(0);
+            if (!runtime)
+            {
+                return cxx::unexpected(runtime.error());
+            }
+            auto execution = resolver.require<process::ExecutionRuntime>(1);
+            if (!execution)
+            {
+                return cxx::unexpected(execution.error());
+            }
+            return std::make_unique<ScenePresentationHub>(runtime->get(), execution->get());
+        }
         template <class T> auto rejected(T error)
         {
             return lux::cxx::unexpected(ProjectionFailure{std::move(error)});
@@ -25,7 +58,18 @@ namespace lux::editor::scene
                 active = false;
             }
         };
-    }
+    } // namespace
+    constinit const services::ServiceDescriptor kScenePresentationHub = []
+    {
+        auto descriptor = services::ServiceDescriptor::forType<ScenePresentationHub, createHub>(
+            services::ServiceNameView{"lux.editor.scene.projections"},
+            contracts,
+            dependencies
+        );
+        descriptor.retention = services::EServiceRetention::SCOPED;
+        descriptor.affinity = services::EServiceAffinity::OWNER;
+        return descriptor;
+    }();
     ProjectionResult<lux::scene::SceneInstanceLease> instantiateAuthorProjection(
         lux::scene::SceneRuntime& runtime,
         const lux::scene::ScenePackage& package,
@@ -36,16 +80,22 @@ namespace lux::editor::scene
         const bool is_invalid_package = !package.world || !package.scene || !package.simulation;
         const bool is_invalid_environment = !environment.simulation_systems || !tasks || !environment.version;
         if (is_invalid_package || is_invalid_environment)
+        {
             return rejected(EProjectionError::INVALID_ENVIRONMENT);
+        }
         auto storage = process::world_loading::makeWorldMemoryStorageSource(
             std::shared_ptr<const world::WorldDescription>(package.world, &package.world->data()),
             package.volumes
         );
         if (!storage)
+        {
             return rejected(EProjectionError::INVALID_SOURCE);
+        }
         lux::scene::WorldLoadingServices loading{std::move(*storage), *tasks};
         for (std::uint32_t ordinal{}; ordinal < package.world->data().partitionCount(); ++ordinal)
+        {
             loading.bootstrap.push_back({ordinal});
+        }
         loading.initial_partitions = package.partitions;
         auto bindings = lux::scene::RenderFeatureSceneBindings(environment.render_bindings);
         auto assets = environment.assets;
@@ -73,11 +123,13 @@ namespace lux::editor::scene
                 bindings
             ));
             if (assets)
+            {
                 providers.push_back(lux::scene::makeSceneCapabilityProvider<lux::scene::RenderAssetInput>(
                     "assets",
                     "lux.render.assets",
                     assets
                 ));
+            }
         }
         auto created =
             runtime.builder()
@@ -93,17 +145,25 @@ namespace lux::editor::scene
                 .setProviders(providers)
                 .build();
         if (!created)
+        {
             return rejected(created.error());
+        }
         auto registry = runtime.borrowInstance(created->id());
         if (!registry)
+        {
             return rejected(registry.error());
+        }
         // Task-scope ownership extends through real Runtime retirement, including abandoned projections.
         registry->get().ctx().emplace<std::shared_ptr<process::TaskScope>>(std::move(tasks));
         if (!registry->get().ctx().contains<lux::scene::WorldResidency>())
+        {
             return rejected(EProjectionError::INVALID_ENVIRONMENT);
+        }
         const auto paused = runtime.pauseSimulation(created->id());
         if (!paused)
+        {
             return rejected(paused.error());
+        }
         return std::move(*created);
     }
     struct SceneProjection::Impl final
@@ -133,10 +193,14 @@ namespace lux::editor::scene
         {
             auto package = buildSceneSnapshotPackage(capture);
             if (!package)
+            {
                 return rejected(package.error());
+            }
             auto created = instantiateAuthorProjection(runtime, *package, environment, tasks);
             if (!created)
+            {
                 return rejected(created.error());
+            }
             retiring = instance.retire();
             instance = std::move(*created);
             version.content = capture.content();
@@ -164,22 +228,34 @@ namespace lux::editor::scene
     {
         auto& state = *impl_;
         if (state.owner != std::this_thread::get_id())
+        {
             return rejected(EProjectionError::WRONG_THREAD);
+        }
         if (state.updating || state.closing || !state.retiring.complete())
+        {
             return rejected(EProjectionError::BUSY);
+        }
         Admission admission(state.updating);
         auto changes = session.changesSince(state.cursor);
         if (!changes)
+        {
             return rejected(changes.error());
+        }
         const bool is_different_owner =
             changes->cursor.session != state.cursor.session || changes->cursor.history != state.cursor.history;
         if (is_different_owner)
+        {
             return rejected(EProjectionError::INVALID_SOURCE);
+        }
         if (changes->status == ESceneChanges::DELTA && changes->cursor == state.cursor)
+        {
             return {};
+        }
         auto frozen = session.capture();
         if (!frozen)
+        {
             return rejected(frozen.error());
+        }
         return state.replace(std::move(*frozen));
     }
     struct ScenePresentationHub::Impl final
@@ -202,7 +278,8 @@ namespace lux::editor::scene
         std::size_t capacity
     )
         : impl_(std::make_unique<Impl>(runtime, execution, capacity))
-    {}
+    {
+    }
     ScenePresentationHub::~ScenePresentationHub() = default;
     std::size_t ScenePresentationHub::size() const noexcept
     {
@@ -211,21 +288,31 @@ namespace lux::editor::scene
     void ScenePresentationHub::collectReleased() noexcept
     {
         if (impl_->owner != std::this_thread::get_id() || impl_->acquiring)
+        {
             return;
+        }
         Admission admission(impl_->acquiring);
-        std::erase_if(impl_->records, [](auto& record) {
-            if (record.use_count() != 1)
-                return false;
-            auto& state = *record->impl_;
-            if (!state.retiring.complete())
-                return false;
-            if (!state.closing)
+        std::erase_if(
+            impl_->records,
+            [](auto& record)
             {
-                state.retiring = state.instance.retire();
-                state.closing = true;
+                if (record.use_count() != 1)
+                {
+                    return false;
+                }
+                auto& state = *record->impl_;
+                if (!state.retiring.complete())
+                {
+                    return false;
+                }
+                if (!state.closing)
+                {
+                    state.retiring = state.instance.retire();
+                    state.closing = true;
+                }
+                return state.retiring.complete();
             }
-            return state.retiring.complete();
-        });
+        );
     }
     ProjectionResult<std::shared_ptr<SceneProjection>> ScenePresentationHub::acquire(
         const SceneSession& session,
@@ -234,14 +321,20 @@ namespace lux::editor::scene
     )
     {
         if (impl_->owner != std::this_thread::get_id())
+        {
             return rejected(EProjectionError::WRONG_THREAD);
+        }
         if (impl_->acquiring)
+        {
             return rejected(EProjectionError::BUSY);
+        }
         collectReleased();
         Admission admission(impl_->acquiring);
         auto changes = session.changesSince({});
         if (!changes)
+        {
             return rejected(changes.error());
+        }
         for (const auto& record : impl_->records)
         {
             const auto& state = *record->impl_;
@@ -250,13 +343,19 @@ namespace lux::editor::scene
             const bool is_same_configuration =
                 state.version.configuration == configuration && state.version.environment == environment.version;
             if (!state.closing && is_same_source && is_same_configuration)
+            {
                 return record;
+            }
         }
         if (impl_->records.size() >= impl_->capacity)
+        {
             return rejected(EProjectionError::CAPACITY);
+        }
         auto frozen = session.capture();
         if (!frozen)
+        {
             return rejected(frozen.error());
+        }
         auto state = std::make_unique<SceneProjection::Impl>(
             impl_->runtime,
             impl_->tasks,
@@ -265,9 +364,11 @@ namespace lux::editor::scene
         );
         auto built = state->replace(std::move(*frozen));
         if (!built)
+        {
             return lux::cxx::unexpected(built.error());
+        }
         auto record = std::shared_ptr<SceneProjection>(new SceneProjection(std::move(state)));
         impl_->records.push_back(record);
         return record;
     }
-}
+} // namespace lux::editor::scene

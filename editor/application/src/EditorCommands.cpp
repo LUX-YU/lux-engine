@@ -251,6 +251,17 @@ namespace lux::editor::application
             return commands::CommandInvocation{};
         if (!pane)
             return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET, "menu.focus"});
+        const bool is_root_target = descriptor.scope == commands::ECommandScope::VIEW &&
+                                    descriptor.target_type == cxx::typeToken<lux::ui::PaneHandle>();
+        if (is_root_target)
+        {
+            auto target = desktop_->root().identify(*pane);
+            if (!target)
+            {
+                return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET, "menu.window"});
+            }
+            return commands::CommandInvocation::forView(*target, lux::object::CodeLease::builtin());
+        }
         auto views = desktop_->views().describeAll();
         if (!views)
             return cxx::unexpected(commands::CommandFailure{commands::ECommandError::BUSY, "menu.views"});

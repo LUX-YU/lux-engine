@@ -2,7 +2,6 @@
 #include <lux/engine/editor/scene/OutlinerView.hpp>
 #include <lux/engine/editor/scene/RunInspectorView.hpp>
 #include <lux/engine/editor/scene/ResourceView.hpp>
-#include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <lux/engine/editor/workbench/ViewPreparation.hpp>
 #include <lux/engine/ui/Root.hpp>
 
@@ -56,8 +55,9 @@ namespace lux::editor::scene
             return cxx::unexpected(bound.error());
         return std::move(*candidate);
     }
-    views::ViewResult<std::shared_ptr<SceneInteractionGroup>> shareSceneInteraction(
-        desktop::ViewHost& host, views::ViewId source
+    cxx::expected<std::shared_ptr<SceneInteractionGroup>, lux::ui::EAttachmentError>
+    shareSceneInteraction(
+        lux::ui::Root& root, lux::ui::PaneHandle source
     )
     {
         std::shared_ptr<SceneInteractionGroup> result;
@@ -71,23 +71,23 @@ namespace lux::editor::scene
             else if (auto* view = dynamic_cast<RunInspectorView*>(&pane))
                 result = view->interactionOwner();
         };
-        auto inspected = host.withView(source, read);
+        auto inspected = root.withPane(source, read);
         if (!inspected)
             return cxx::unexpected(inspected.error());
         if (!result)
-            return cxx::unexpected(views::EViewError::INVALID_ID);
+            return cxx::unexpected(lux::ui::EAttachmentError::INVALID_TREE);
         return result;
     }
     views::ViewFactoryResult<views::DetachedView> makeSceneToolView(
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId id,
-        desktop::ViewHost& host,
-        views::ViewId source,
+        lux::ui::Root& root,
+        lux::ui::PaneHandle source,
         ESceneTool tool,
         SceneToolInputs inputs
     )
     {
-        auto shared = shareSceneInteraction(host, source);
+        auto shared = shareSceneInteraction(root, source);
         if (!shared)
             return failure(shared.error());
         auto group = std::move(*shared);
@@ -136,20 +136,7 @@ namespace lux::editor::scene
             auto result = makeResourceView(dispatcher, std::move(id), inputs.scene.runtime);
             if (!result)
                 return failure(result.error());
-            render::RenderResult<void> followed;
-            const auto bind = [&](lux::ui::Pane& pane)
-            {
-                auto handle = pane.root().identify(pane);
-                if (!handle)
-                {
-                    followed = cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
-                    return;
-                }
-                followed = static_cast<ResourceView*>(result->pane())->followViewport(pane.root(), *handle);
-            };
-            auto visited = host.withView(source, bind);
-            if (!visited)
-                return failure(visited.error());
+            auto followed = static_cast<ResourceView*>(result->pane())->followViewport(root, source);
             if (!followed)
                 return failure(followed.error());
             return std::move(*result);

@@ -158,9 +158,9 @@ namespace lux::editor::application
         record->views.clear();
         return {};
     }
-    EditorResult<views::ViewId> EditorApplication::Impl::showSceneTool(views::ViewId source, scene::ESceneTool kind)
+    EditorResult<views::ViewId> EditorApplication::Impl::showSceneTool(lux::ui::PaneHandle source, scene::ESceneTool kind)
     {
-        auto source_group = scene::shareSceneInteraction(desktop_->views(), source);
+        auto source_group = scene::shareSceneInteraction(desktop_->root(), source);
         if (!source_group)
             return applicationFailure("scene.tool.source", source_group.error());
         const auto run = (*source_group)->run();
@@ -175,7 +175,7 @@ namespace lux::editor::application
         auto candidate = scene::makeSceneToolView(
             messages_.dispatcherRef(),
             lux::ui::PaneId{name},
-            desktop_->views(),
+            desktop_->root(),
             source,
             kind,
             {sceneServices(),
@@ -267,7 +267,7 @@ namespace lux::editor::application
         ));
         auto tools = scene::makeSceneToolCommands(
             available,
-            [this](views::ViewId view, scene::ESceneTool kind) -> commands::CommandResult<void>
+            [this](lux::ui::PaneHandle view, scene::ESceneTool kind) -> commands::CommandResult<void>
             {
                 auto shown = showSceneTool(view, kind);
                 if (!shown)
@@ -277,7 +277,7 @@ namespace lux::editor::application
         );
         auto runs = scene::makeRunViewCommands(
             available,
-            desktop_->views(),
+            desktop_->root(),
             runs_,
             [this](scene::RunId id) -> commands::CommandResult<void>
             {

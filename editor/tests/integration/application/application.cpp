@@ -1198,9 +1198,16 @@ int main(int argc, char** argv)
     const auto model_source = impl.sessions_.describe(scene_id)->current;
     for (int frame = 0; frame < 32; ++frame)
         assert(app->update());
+    const auto windowHandle = [&](views::ViewId source)
+    {
+        std::optional<ui::PaneHandle> handle;
+        auto identify = [&](ui::Pane& pane) { handle = *impl.desktop_->root().identify(pane); };
+        assert(impl.desktop_->views().withView(source, identify) && handle);
+        return *handle;
+    };
     assert(app->execute(
         commands::CommandId{"lux.editor.scene.resources"},
-        commands::CommandInvocation::forView(scene_view, lux::object::CodeLease::builtin())
+        commands::CommandInvocation::forView(windowHandle(scene_view), lux::object::CodeLease::builtin())
     ));
     auto resource_views = impl.desktop_->views().describeAll();
     assert(resource_views);
@@ -1281,7 +1288,7 @@ int main(int argc, char** argv)
 
     assert(app->execute(
         commands::CommandId{"lux.editor.scene.outliner"},
-        commands::CommandInvocation::forView(scene_view, lux::object::CodeLease::builtin())
+        commands::CommandInvocation::forView(windowHandle(scene_view), lux::object::CodeLease::builtin())
     ));
     auto all_views = impl.desktop_->views().describeAll();
     assert(all_views);
@@ -1297,7 +1304,7 @@ int main(int argc, char** argv)
                    .createObject(object, {0}, lux::editor::scene::EObjectSpace::SPACE_3D));
     };
     assert(impl.desktop_->views().withView(outliner->id, create_object));
-    auto shared_interaction = lux::editor::scene::shareSceneInteraction(impl.desktop_->views(), scene_view);
+    auto shared_interaction = lux::editor::scene::shareSceneInteraction(impl.desktop_->root(), windowHandle(scene_view));
     assert(shared_interaction);
     auto interaction = *shared_interaction;
     assert(interaction->select(
@@ -1306,7 +1313,7 @@ int main(int argc, char** argv)
     ));
     assert(app->execute(
         commands::CommandId{"lux.editor.scene.inspector"},
-        commands::CommandInvocation::forView(scene_view, lux::object::CodeLease::builtin())
+        commands::CommandInvocation::forView(windowHandle(scene_view), lux::object::CodeLease::builtin())
     ));
     auto inspector_views = impl.desktop_->views().describeAll();
     auto inspector_info = std::ranges::find_if(
@@ -1408,7 +1415,7 @@ int main(int argc, char** argv)
     const auto run_view = impl.run_presentations_.front().views.front();
     assert(app->execute(
         commands::CommandId{"lux.editor.scene.pause"},
-        commands::CommandInvocation::forView(run_view, lux::object::CodeLease::builtin())
+        commands::CommandInvocation::forView(windowHandle(run_view), lux::object::CodeLease::builtin())
     ));
     while (impl.runs_.info(run)->pause_pending)
     {
@@ -1416,7 +1423,7 @@ int main(int argc, char** argv)
     }
     assert(app->execute(
         commands::CommandId{"lux.editor.scene.step"},
-        commands::CommandInvocation::forView(run_view, lux::object::CodeLease::builtin())
+        commands::CommandInvocation::forView(windowHandle(run_view), lux::object::CodeLease::builtin())
     ));
     const auto step = impl.run_presentations_.front().steps.front();
     const auto step_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
@@ -1436,15 +1443,15 @@ int main(int argc, char** argv)
     assert(app->update() && app->phase() == EApplicationPhase::RUNNING);
     assert(!impl.sessions_.describe(scene_id) && impl.runs_.info(run));
     assert(impl.desktop_->views().describe(run_view));
-    auto running_interaction = lux::editor::scene::shareSceneInteraction(impl.desktop_->views(), run_view);
+    auto running_interaction = lux::editor::scene::shareSceneInteraction(impl.desktop_->root(), windowHandle(run_view));
     assert(running_interaction && (*running_interaction)->synchronize());
     assert(app->execute(
         commands::CommandId{"lux.editor.scene.outliner"},
-        commands::CommandInvocation::forView(run_view, lux::object::CodeLease::builtin())
+        commands::CommandInvocation::forView(windowHandle(run_view), lux::object::CodeLease::builtin())
     ));
     assert(app->execute(
         commands::CommandId{"lux.editor.scene.resume"},
-        commands::CommandInvocation::forView(run_view, lux::object::CodeLease::builtin())
+        commands::CommandInvocation::forView(windowHandle(run_view), lux::object::CodeLease::builtin())
     ));
     for (int frame = 0; frame < 4; ++frame)
         assert(app->update());

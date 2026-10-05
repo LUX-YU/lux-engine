@@ -12,7 +12,7 @@ namespace lux::editor::scene
             .group = "Scene",
             .shortcut = "",
             .scope = commands::ECommandScope::VIEW,
-            .target_type = cxx::typeToken<views::ViewId>()
+            .target_type = cxx::typeToken<lux::ui::PaneHandle>()
         };
         constexpr commands::CommandDescriptor kInspector{
             .id = commands::CommandIdView{"lux.editor.scene.inspector"},
@@ -20,7 +20,7 @@ namespace lux::editor::scene
             .group = "Scene",
             .shortcut = "",
             .scope = commands::ECommandScope::VIEW,
-            .target_type = cxx::typeToken<views::ViewId>()
+            .target_type = cxx::typeToken<lux::ui::PaneHandle>()
         };
         constexpr commands::CommandDescriptor kResources{
             .id = commands::CommandIdView{"lux.editor.scene.resources"},
@@ -28,7 +28,7 @@ namespace lux::editor::scene
             .group = "Scene",
             .shortcut = "",
             .scope = commands::ECommandScope::VIEW,
-            .target_type = cxx::typeToken<views::ViewId>()
+            .target_type = cxx::typeToken<lux::ui::PaneHandle>()
         };
         constexpr commands::CommandDescriptor kConfiguration{
             .id = commands::CommandIdView{"lux.editor.scene.configuration"},
@@ -36,7 +36,7 @@ namespace lux::editor::scene
             .group = "Scene",
             .shortcut = "",
             .scope = commands::ECommandScope::VIEW,
-            .target_type = cxx::typeToken<views::ViewId>()
+            .target_type = cxx::typeToken<lux::ui::PaneHandle>()
         };
         constexpr commands::CommandDescriptor kPause{
             .id = commands::CommandIdView{"lux.editor.scene.pause"},
@@ -44,7 +44,7 @@ namespace lux::editor::scene
             .group = "Scene",
             .shortcut = "",
             .scope = commands::ECommandScope::VIEW,
-            .target_type = cxx::typeToken<views::ViewId>()
+            .target_type = cxx::typeToken<lux::ui::PaneHandle>()
         };
         constexpr commands::CommandDescriptor kResume{
             .id = commands::CommandIdView{"lux.editor.scene.resume"},
@@ -52,21 +52,21 @@ namespace lux::editor::scene
             .group = "Scene",
             .shortcut = "",
             .scope = commands::ECommandScope::VIEW,
-            .target_type = cxx::typeToken<views::ViewId>()
+            .target_type = cxx::typeToken<lux::ui::PaneHandle>()
         };
         constexpr commands::CommandDescriptor kStep{
             .id = commands::CommandIdView{"lux.editor.scene.step"},
             .label = "step",
             .group = "Scene",
             .scope = commands::ECommandScope::VIEW,
-            .target_type = cxx::typeToken<views::ViewId>()
+            .target_type = cxx::typeToken<lux::ui::PaneHandle>()
         };
         constexpr commands::CommandDescriptor kStop{
             .id = commands::CommandIdView{"lux.editor.scene.stop"},
             .label = "stop",
             .group = "Scene",
             .scope = commands::ECommandScope::VIEW,
-            .target_type = cxx::typeToken<views::ViewId>()
+            .target_type = cxx::typeToken<lux::ui::PaneHandle>()
         };
         constexpr commands::CommandDescriptor kPlay{
             commands::CommandIdView{"lux.editor.play"},
@@ -99,18 +99,18 @@ namespace lux::editor::scene
                 [action = std::move(action)](const commands::CommandInvocation& input
                 ) mutable -> commands::CommandResult<commands::DispatchReceipt>
                 {
-                    auto result = action(*input.view<views::ViewId>());
+                    auto result = action(*input.view<lux::ui::PaneHandle>());
                     if (!result)
                         return cxx::unexpected(result.error());
                     return commands::DispatchReceipt{commands::ImmediateCompletion{}};
                 }
             );
         }
-        template <class Action> auto forRun(desktop::ViewHost& host, Action action)
+        template <class Action> auto forRun(lux::ui::Root& root, Action action)
         {
-            return [&host, action = std::move(action)](views::ViewId view) mutable -> commands::CommandResult<void>
+            return [&root, action = std::move(action)](lux::ui::PaneHandle view) mutable -> commands::CommandResult<void>
             {
-                auto group = shareSceneInteraction(host, view);
+                auto group = shareSceneInteraction(root, view);
                 if (!group)
                     return commandFailure(group.error());
                 const auto run = (*group)->run();
@@ -122,24 +122,33 @@ namespace lux::editor::scene
     } // namespace
     std::vector<std::shared_ptr<commands::CommandEntry>> makeSceneToolCommands(
         commands::CommandEntry::Query query,
-        cxx::move_only_function<commands::CommandResult<void>(views::ViewId, ESceneTool)> receiver
+        cxx::move_only_function<commands::CommandResult<void>(lux::ui::PaneHandle, ESceneTool)> receiver
     )
     {
         auto check = std::make_shared<commands::CommandEntry::Query>(std::move(query));
         auto show = std::make_shared<decltype(receiver)>(std::move(receiver));
         return {
-            bindViewCommand<kOutliner>(check, [show](views::ViewId id) { return (*show)(id, ESceneTool::OUTLINER); }),
-            bindViewCommand<kInspector>(check, [show](views::ViewId id) { return (*show)(id, ESceneTool::INSPECTOR); }),
-            bindViewCommand<kResources>(check, [show](views::ViewId id) { return (*show)(id, ESceneTool::RESOURCES); }),
+            bindViewCommand<kOutliner>(
+                check,
+                [show](lux::ui::PaneHandle id) { return (*show)(id, ESceneTool::OUTLINER); }
+            ),
+            bindViewCommand<kInspector>(
+                check,
+                [show](lux::ui::PaneHandle id) { return (*show)(id, ESceneTool::INSPECTOR); }
+            ),
+            bindViewCommand<kResources>(
+                check,
+                [show](lux::ui::PaneHandle id) { return (*show)(id, ESceneTool::RESOURCES); }
+            ),
             bindViewCommand<kConfiguration>(
                 check,
-                [show](views::ViewId id) { return (*show)(id, ESceneTool::CONFIGURATION); }
+                [show](lux::ui::PaneHandle id) { return (*show)(id, ESceneTool::CONFIGURATION); }
             )
         };
     }
     std::vector<std::shared_ptr<commands::CommandEntry>> makeRunViewCommands(
         commands::CommandEntry::Query query,
-        desktop::ViewHost& host,
+        lux::ui::Root& root,
         RunStore& runs,
         cxx::move_only_function<commands::CommandResult<void>(RunId)> step,
         cxx::move_only_function<commands::CommandResult<void>(RunId)> stop
@@ -150,7 +159,7 @@ namespace lux::editor::scene
             bindViewCommand<kPause>(
                 check,
                 forRun(
-                    host,
+                    root,
                     [&runs](RunId id) -> commands::CommandResult<void>
                     {
                         auto result = runs.pause(id);
@@ -163,7 +172,7 @@ namespace lux::editor::scene
             bindViewCommand<kResume>(
                 check,
                 forRun(
-                    host,
+                    root,
                     [&runs](RunId id) -> commands::CommandResult<void>
                     {
                         auto result = runs.resume(id);
@@ -173,8 +182,8 @@ namespace lux::editor::scene
                     }
                 )
             ),
-            bindViewCommand<kStep>(check, forRun(host, std::move(step))),
-            bindViewCommand<kStop>(check, forRun(host, std::move(stop)))
+            bindViewCommand<kStep>(check, forRun(root, std::move(step))),
+            bindViewCommand<kStop>(check, forRun(root, std::move(stop)))
         };
     }
     std::shared_ptr<commands::CommandEntry> makePlaySceneCommand(

@@ -379,7 +379,7 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<scene::StartRunId> play(commands::SessionTarget);
         [[nodiscard]] EditorResult<void> maintainRuns();
         [[nodiscard]] EditorResult<void> stopRun(scene::RunId);
-        [[nodiscard]] EditorResult<views::ViewId> showSceneTool(views::ViewId, scene::ESceneTool);
+        [[nodiscard]] EditorResult<views::ViewId> showSceneTool(lux::ui::PaneHandle, scene::ESceneTool);
         [[nodiscard]] EditorResult<void> stepRun(scene::RunId);
         [[nodiscard]] EditorResult<views::ViewId> show(sessions::SessionId, bool another_view);
         [[nodiscard]] EditorResult<views::ViewId> makeContentView(

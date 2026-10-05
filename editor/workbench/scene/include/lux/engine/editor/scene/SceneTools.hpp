@@ -3,10 +3,11 @@
 #include <lux/engine/editor/views/ViewFactory.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
 #include <lux/engine/editor/commands/CommandRegistry.hpp>
+#include <lux/engine/ui/Attachment.hpp>
 
-namespace lux::editor::desktop
+namespace lux::ui
 {
-    class ViewHost;
+    class Root;
 }
 
 namespace lux::editor::scene
@@ -35,25 +36,29 @@ namespace lux::editor::scene
         system::SystemInstanceId
     );
     // Retains only the interaction group, never a Pane pointer or a live Registry borrow.
-    [[nodiscard]] views::ViewResult<std::shared_ptr<SceneInteractionGroup>> shareSceneInteraction(
-        desktop::ViewHost&,
-        views::ViewId
+    [[nodiscard]] cxx::expected<std::shared_ptr<SceneInteractionGroup>, lux::ui::EAttachmentError>
+    shareSceneInteraction(
+        lux::ui::Root&,
+        lux::ui::PaneHandle
     );
     [[nodiscard]] views::ViewFactoryResult<views::DetachedView> makeSceneToolView(
         object::ObjectDispatcherRef,
         lux::ui::PaneId,
-        desktop::ViewHost&,
-        views::ViewId,
+        lux::ui::Root&,
+        lux::ui::PaneHandle,
         ESceneTool,
         SceneToolInputs
     );
-    // Commands retain their receivers; the bound Host and RunStore must outlive the command snapshot.
+    // Commands retain their receivers; the bound Root and RunStore must outlive the command snapshot.
     // Step/stop retain their original ticket and view-close owners at the assembly boundary.
     [[nodiscard]] std::vector<std::shared_ptr<commands::CommandEntry>>
-        makeSceneToolCommands(commands::CommandEntry::Query, cxx::move_only_function<commands::CommandResult<void>(views::ViewId, ESceneTool)>);
+    makeSceneToolCommands(
+        commands::CommandEntry::Query,
+        cxx::move_only_function<commands::CommandResult<void>(lux::ui::PaneHandle, ESceneTool)>
+    );
     [[nodiscard]] std::vector<std::shared_ptr<commands::CommandEntry>> makeRunViewCommands(
         commands::CommandEntry::Query,
-        desktop::ViewHost&,
+        lux::ui::Root&,
         RunStore&,
         cxx::move_only_function<commands::CommandResult<void>(RunId)> step,
         cxx::move_only_function<commands::CommandResult<void>(RunId)> stop

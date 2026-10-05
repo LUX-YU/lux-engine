@@ -589,6 +589,7 @@ namespace
         assert(group && group->select({{target}}));
         const auto primary_id = take(f.desktop->views().adopt(detached, views::ViewRestoreKey{"owned-primary"})).id;
         f.wait([&] { return primary->image().isValid(); });
+        const auto primary_window = take(f.desktop->root().identify(*primary));
         author::RunStore runs(*f.runtime, f.execution);
         lux::project::PluginCatalog catalog;
         author::SceneToolInputs inputs{
@@ -609,8 +610,8 @@ namespace
             auto candidate = take(author::makeSceneToolView(
                 f.messages.dispatcherRef(),
                 ui::PaneId{name},
-                f.desktop->views(),
-                primary_id,
+                f.desktop->root(),
+                primary_window,
                 tool,
                 inputs
             ));
@@ -624,6 +625,7 @@ namespace
         assert(f.desktop->views().close(primary_id));
         f.wait([&] { return !f.desktop->views().describe(primary_id); });
         assert(!lifetime.expired());
+        assert(!author::shareSceneInteraction(f.desktop->root(), primary_window));
         assert(take(f.desktop->views().describe(outline)).content.primary == f.key->id());
         assert(take(f.desktop->views().describe(inspector)).content.primary == f.key->id());
         f.frame(false);
@@ -802,7 +804,7 @@ namespace
         std::optional<author::StopTicket> command_stop;
         auto run_commands = author::makeRunViewCommands(
             available,
-            f.desktop->views(),
+            f.desktop->root(),
             runs,
             [&](author::RunId id) -> commands::CommandResult<void>
             {
@@ -820,23 +822,28 @@ namespace
         std::optional<author::ESceneTool> requested_tool;
         auto tool_commands = author::makeSceneToolCommands(
             available,
-            [&](views::ViewId id, author::ESceneTool tool) -> commands::CommandResult<void>
+            [&](ui::PaneHandle id, author::ESceneTool tool) -> commands::CommandResult<void>
             {
-                assert(id == bid);
+                assert(id == take(f.desktop->root().identify(*b)));
                 requested_tool = tool;
                 return {};
             }
         );
         auto other_tools = author::makeSceneToolCommands(
             available,
-            [](views::ViewId, author::ESceneTool) -> commands::CommandResult<void> { return {}; }
+            [](ui::PaneHandle, author::ESceneTool) -> commands::CommandResult<void> { return {}; }
         );
         for (std::size_t i{}; i < tool_commands.size(); ++i)
             assert(&tool_commands[i]->descriptor() == &other_tools[i]->descriptor());
         run_commands.insert(run_commands.end(), tool_commands.begin(), tool_commands.end());
         commands::CommandRegistry controls;
         assert(controls.publish(take(commands::CommandRegistrySnapshot::create(std::move(run_commands)))));
-        const auto invoke = [&](const char* name, views::ViewId target)
+        const auto author_handle = take(f.desktop->root().identify(*a));
+        const auto running_handle = take(f.desktop->root().identify(*b));
+        std::optional<ui::PaneHandle> command_handle;
+        const auto identify_command = [&](ui::Pane& pane) { command_handle = take(f.desktop->root().identify(pane)); };
+        assert(f.desktop->views().withView(command_view, identify_command) && command_handle);
+        const auto invoke = [&](const char* name, ui::PaneHandle target)
         {
             return controls.execute(
                 take(controls.snapshot().find(commands::CommandIdView{name})),
@@ -851,10 +858,10 @@ namespace
         };
         for (const auto& [name, tool] : tool_cases)
         {
-            assert(invoke(name, bid));
+            assert(invoke(name, running_handle));
             assert(requested_tool == tool);
         }
-        const auto refused_author = invoke("lux.editor.scene.pause", aid);
+        const auto refused_author = invoke("lux.editor.scene.pause", author_handle);
         // This original fixture borrows an external group; tool sharing correctly refuses it.
         assert(!refused_author && refused_author.error().code == commands::ECommandError::DOMAIN_FAILURE);
         f.wait([&] { return a->image().isValid() && b->image().isValid(); });
@@ -916,7 +923,7 @@ namespace
         );
         assert(a->state().camera.transform.translation == camera && f.session->describe().current == stamp.current);
         assert(!b->beginEdit("must not edit author") && !run_group.overlay());
-        assert(invoke("lux.editor.scene.pause", command_view));
+        assert(invoke("lux.editor.scene.pause", *command_handle));
         f.wait([&] { return take(runs.info(run)).state == author::ERunState::PAUSED; });
         const auto registry = take(runs.inspect().borrow(run));
         const auto entity = registry.get().view<const simulation::ecs::Transform3D>().front();
@@ -991,12 +998,12 @@ namespace
                 initial + 4.,
                 {true, true, false, false}
             ));
-            assert(invoke("lux.editor.scene.resume", command_view));
+            assert(invoke("lux.editor.scene.resume", *command_handle));
             assert(!fields.finish() && fields.active());
             assert(fields.cancel());
             f.wait([&] { return fields.refresh().has_value(); });
             assert(!fields.writeRestriction().empty());
-            assert(invoke("lux.editor.scene.pause", command_view));
+            assert(invoke("lux.editor.scene.pause", *command_handle));
             f.wait([&] { return take(runs.info(run)).state == author::ERunState::PAUSED; });
             assert(fields.refresh());
             assert(take(take(runs.debugHistory(run)).get().view()).snapshot.history != paused.history);
@@ -1004,7 +1011,7 @@ namespace
         }
         assert(f.desktop->views().close(inspector_id));
         f.wait([&] { return !f.desktop->views().describe(inspector_id); });
-        assert(invoke("lux.editor.scene.step", command_view) && command_step);
+        assert(invoke("lux.editor.scene.step", *command_handle) && command_step);
         f.wait([&] { return take(runs.stepStatus(*command_step)).state == lux::scene::ESceneStepState::COMPLETED; });
         assert(runs.acknowledgeStep(*command_step));
         const auto clock = take(runs.info(run)).progress.time.elapsed;
@@ -1013,9 +1020,9 @@ namespace
         assert(take(runs.info(run)).progress.time.elapsed == clock);
         assert(f.desktop->views().close(bid));
         f.wait([&] { return !f.desktop->views().describe(bid); });
-        assert(!invoke("lux.editor.scene.resume", bid));
+        assert(!invoke("lux.editor.scene.resume", running_handle));
         assert(take(runs.info(run)).state == author::ERunState::PAUSED && a->image().isValid());
-        assert(invoke("lux.editor.scene.stop", command_view) && command_stop);
+        assert(invoke("lux.editor.scene.stop", *command_handle) && command_stop);
         assert(f.desktop->views().close(command_view));
         f.wait([&] { return !f.desktop->views().describe(command_view); });
         const auto stopped = *command_stop;
@@ -1382,6 +1389,12 @@ namespace
         assert(root.addSubPanes(owners));
         const auto aid = take(root.identify(*a)), bid = take(root.identify(*b));
         const std::array handles{aid, bid};
+        assert(take(author::shareSceneInteraction(root, aid)) == a->interactionOwner());
+        const auto nested_read = [&](ui::Pane&) {
+            auto busy = author::shareSceneInteraction(root, aid);
+            assert(!busy && busy.error() == ui::EAttachmentError::BUSY);
+        };
+        assert(root.withPane(aid, nested_read));
         f.wait([&] { return a->image().isValid() && b->image().isValid(); });
         assert(a->presentedInstance() == b->presentedInstance() && a->viewport() != b->viewport());
         author::ResourceView diagnostics(f.messages.dispatcherRef(), ui::PaneId{"ec4-resources"}, *f.runtime);
@@ -1393,6 +1406,8 @@ namespace
         auto refused = diagnostics.followViewport(*foreign_root, aid);
         assert(!refused && refused.error().code == render::ERendererError::INVALID_ARGUMENT);
         assert(!diagnostics.followViewport(root, {}));
+        auto foreign_group = author::shareSceneInteraction(*foreign_root, aid);
+        assert(!foreign_group && foreign_group.error() == ui::EAttachmentError::NOT_ATTACHED);
         assert(diagnostics.snapshot().instance == diagnosed_instance && diagnostics.content().primary == key.id());
         foreign_root.reset();
         assert(a->beginEdit("scene factory temporary gesture"));
@@ -1474,6 +1489,7 @@ namespace
             "Replacement"
         );
         assert(root.addSubPane(reused));
+        assert(!author::shareSceneInteraction(root, aid));
         f.frame(false);
         assert(
             diagnostics.status() && !diagnostics.snapshot().instance.valid() && diagnostics.content().sessions.empty()

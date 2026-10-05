@@ -7,51 +7,67 @@ namespace lux::editor::scene
     namespace
     {
         constexpr commands::CommandDescriptor kOutliner{
-            commands::CommandIdView{"lux.editor.scene.outliner"},
-            "outliner",
-            "Scene",
-            "",
-            commands::ECommandScope::VIEW
+            .id = commands::CommandIdView{"lux.editor.scene.outliner"},
+            .label = "outliner",
+            .group = "Scene",
+            .shortcut = "",
+            .scope = commands::ECommandScope::VIEW,
+            .target_type = cxx::typeToken<views::ViewId>()
         };
         constexpr commands::CommandDescriptor kInspector{
-            commands::CommandIdView{"lux.editor.scene.inspector"},
-            "inspector",
-            "Scene",
-            "",
-            commands::ECommandScope::VIEW
+            .id = commands::CommandIdView{"lux.editor.scene.inspector"},
+            .label = "inspector",
+            .group = "Scene",
+            .shortcut = "",
+            .scope = commands::ECommandScope::VIEW,
+            .target_type = cxx::typeToken<views::ViewId>()
         };
         constexpr commands::CommandDescriptor kResources{
-            commands::CommandIdView{"lux.editor.scene.resources"},
-            "resources",
-            "Scene",
-            "",
-            commands::ECommandScope::VIEW
+            .id = commands::CommandIdView{"lux.editor.scene.resources"},
+            .label = "resources",
+            .group = "Scene",
+            .shortcut = "",
+            .scope = commands::ECommandScope::VIEW,
+            .target_type = cxx::typeToken<views::ViewId>()
         };
         constexpr commands::CommandDescriptor kConfiguration{
-            commands::CommandIdView{"lux.editor.scene.configuration"},
-            "configuration",
-            "Scene",
-            "",
-            commands::ECommandScope::VIEW
+            .id = commands::CommandIdView{"lux.editor.scene.configuration"},
+            .label = "configuration",
+            .group = "Scene",
+            .shortcut = "",
+            .scope = commands::ECommandScope::VIEW,
+            .target_type = cxx::typeToken<views::ViewId>()
         };
         constexpr commands::CommandDescriptor kPause{
-            commands::CommandIdView{"lux.editor.scene.pause"},
-            "pause",
-            "Scene",
-            "",
-            commands::ECommandScope::VIEW
+            .id = commands::CommandIdView{"lux.editor.scene.pause"},
+            .label = "pause",
+            .group = "Scene",
+            .shortcut = "",
+            .scope = commands::ECommandScope::VIEW,
+            .target_type = cxx::typeToken<views::ViewId>()
         };
         constexpr commands::CommandDescriptor kResume{
-            commands::CommandIdView{"lux.editor.scene.resume"},
-            "resume",
-            "Scene",
-            "",
-            commands::ECommandScope::VIEW
+            .id = commands::CommandIdView{"lux.editor.scene.resume"},
+            .label = "resume",
+            .group = "Scene",
+            .shortcut = "",
+            .scope = commands::ECommandScope::VIEW,
+            .target_type = cxx::typeToken<views::ViewId>()
         };
-        constexpr commands::CommandDescriptor
-            kStep{commands::CommandIdView{"lux.editor.scene.step"}, "step", "Scene", "", commands::ECommandScope::VIEW};
-        constexpr commands::CommandDescriptor
-            kStop{commands::CommandIdView{"lux.editor.scene.stop"}, "stop", "Scene", "", commands::ECommandScope::VIEW};
+        constexpr commands::CommandDescriptor kStep{
+            .id = commands::CommandIdView{"lux.editor.scene.step"},
+            .label = "step",
+            .group = "Scene",
+            .scope = commands::ECommandScope::VIEW,
+            .target_type = cxx::typeToken<views::ViewId>()
+        };
+        constexpr commands::CommandDescriptor kStop{
+            .id = commands::CommandIdView{"lux.editor.scene.stop"},
+            .label = "stop",
+            .group = "Scene",
+            .scope = commands::ECommandScope::VIEW,
+            .target_type = cxx::typeToken<views::ViewId>()
+        };
         constexpr commands::CommandDescriptor kPlay{
             commands::CommandIdView{"lux.editor.play"},
             "Play Frozen Scene",
@@ -83,7 +99,7 @@ namespace lux::editor::scene
                 [action = std::move(action)](const commands::CommandInvocation& input
                 ) mutable -> commands::CommandResult<commands::DispatchReceipt>
                 {
-                    auto result = action(std::get<views::ViewId>(input.target()));
+                    auto result = action(*input.view<views::ViewId>());
                     if (!result)
                         return cxx::unexpected(result.error());
                     return commands::DispatchReceipt{commands::ImmediateCompletion{}};

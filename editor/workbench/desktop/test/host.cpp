@@ -670,7 +670,7 @@ void toolCommandFactory(object::ObjectDispatcherRef dispatcher)
         }
     );
     const auto closing = take(commands::CommandRegistrySnapshot::create({close}));
-    commands::CommandInvocation target{first.front().id};
+    auto target = commands::CommandInvocation::forView(first.front().id, lux::object::CodeLease::builtin());
     assert(registry.execute(take(closing.at(0)), target));
     assert(take(host.describeAll()).empty());
     assert(!registry.execute(take(closing.at(0)), target));

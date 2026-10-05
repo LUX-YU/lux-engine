@@ -7,11 +7,12 @@ namespace lux::editor::desktop
     namespace
     {
         constexpr commands::CommandDescriptor kCloseView{
-            commands::CommandIdView{"lux.editor.close-view"},
-            "Close View",
-            "Window",
-            "Ctrl+W",
-            commands::ECommandScope::VIEW
+            .id = commands::CommandIdView{"lux.editor.close-view"},
+            .label = "Close View",
+            .group = "Window",
+            .shortcut = "Ctrl+W",
+            .scope = commands::ECommandScope::VIEW,
+            .target_type = cxx::typeToken<views::ViewId>()
         };
         constexpr commands::CommandDescriptor kAnotherView{
             commands::CommandIdView{"lux.editor.another-view"},
@@ -105,7 +106,7 @@ namespace lux::editor::desktop
         return workbench::detail::bindCommand<kCloseView>(
             std::move(query),
             [close = std::move(close)](const commands::CommandInvocation& input) mutable
-            { return close(std::get<views::ViewId>(input.target())); }
+            { return close(*input.view<views::ViewId>()); }
         );
     }
     std::shared_ptr<commands::CommandEntry> makeAnotherViewCommand(

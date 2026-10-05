@@ -3,7 +3,6 @@
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/editor/sessions/ContentStamp.hpp>
-#include <lux/engine/editor/views/ViewInfo.hpp>
 #include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/services/ServiceDescriptor.hpp>
 #include <optional>
@@ -70,6 +69,9 @@ namespace lux::editor::commands
         cxx::TypeToken argument_type;
         std::span<const services::ServiceDependency> dependencies;
         CommandResult<std::unique_ptr<CommandBinding>> (*create)(services::ServiceResolver&) noexcept {};
+        // VIEW targets are defined by their workbench provider (for example Root's PaneHandle).
+        // Activities retain the immutable target and code without importing UI or inventing an ID.
+        cxx::TypeToken target_type;
     };
     struct ShortcutOverride final
     {
@@ -85,7 +87,6 @@ namespace lux::editor::commands
         std::optional<sessions::ContentStamp> based_on;
         friend bool operator==(const SessionTarget&, const SessionTarget&) = default;
     };
-    using VCommandTarget = std::variant<std::monostate, SessionTarget, views::ViewId>;
 
     // One owning erased value. Code outlives the payload, including replacement and rejected admission.
     class CommandArguments final
@@ -100,15 +101,25 @@ namespace lux::editor::commands
         [[nodiscard]] cxx::TypeToken type() const noexcept;
         [[nodiscard]] const void* data() const noexcept;
         [[nodiscard]] bool valid() const noexcept;
+        template <class T> [[nodiscard]] const T* getIf() const noexcept
+        {
+            return type() == cxx::typeToken<T>() ? static_cast<const T*>(data()) : nullptr;
+        }
 
     private:
         struct Data;
         std::shared_ptr<const Data> data_;
     };
+    using VCommandTarget = std::variant<std::monostate, SessionTarget, CommandArguments>;
     struct CommandQuery final
     {
         const VCommandTarget& target;
         const CommandArguments& arguments;
+        template <class T> [[nodiscard]] const T* view() const noexcept
+        {
+            const auto* value = std::get_if<CommandArguments>(&target);
+            return value ? value->getIf<T>() : nullptr;
+        }
     };
     struct CommandState final
     {
@@ -124,6 +135,24 @@ namespace lux::editor::commands
             CommandArguments arguments = {},
             ERegistryBinding registration = ERegistryBinding::PINNED
         ) noexcept;
+        // Captured once at input/menu preparation; dispatch copies only the existing shared value.
+        template <class T> [[nodiscard]] static CommandInvocation forView(
+            T target,
+            object::CodeLease code,
+            CommandArguments arguments = {},
+            ERegistryBinding registration = ERegistryBinding::PINNED
+        )
+        {
+            return CommandInvocation{
+                CommandArguments{std::move(code), cxx::typeToken<T>(), std::make_shared<const T>(std::move(target))},
+                std::move(arguments),
+                registration
+            };
+        }
+        template <class T> [[nodiscard]] const T* view() const noexcept
+        {
+            return query().view<T>();
+        }
         [[nodiscard]] const VCommandTarget& target() const noexcept;
         [[nodiscard]] const CommandArguments& arguments() const noexcept;
         [[nodiscard]] ERegistryBinding registration() const noexcept;

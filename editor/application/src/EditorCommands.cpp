@@ -264,7 +264,7 @@ namespace lux::editor::application
         if (focused == views->end())
             return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET, "menu.view"});
         if (descriptor.scope == commands::ECommandScope::VIEW)
-            return commands::CommandInvocation{focused->id};
+            return commands::CommandInvocation::forView(focused->id, lux::object::CodeLease::builtin());
         if (!focused->content.primary)
             return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET, "menu.content"});
         const auto content = sessions_.describe(*focused->content.primary);

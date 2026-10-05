@@ -1024,6 +1024,70 @@ namespace
         std::cout << "Dynamic declarations freeze one backing and reject duplicate/capacity PASS\n";
     }
 
+    void originalWindowCommand(object::ObjectMessageQueue& messages)
+    {
+        auto created_root = ui::Root::create(messages.dispatcherRef());
+        assert(created_root);
+        auto& root = **created_root;
+        ui::Pane window{
+            messages.dispatcherRef(), ui::PaneId{"command-window"}, ui::PaneTypeId{"test.window"}, "Window"
+        };
+        assert(root.addSubPane(window));
+        const auto original = root.identify(window);
+        assert(original);
+        commands::CommandRegistry registry;
+        commands::CommandDispatcher dispatcher{registry};
+        unsigned executions{};
+        commands::CommandDescriptor descriptor{
+            .id = commands::CommandIdView{"test.original-window"},
+            .label = "Original window",
+            .scope = commands::ECommandScope::VIEW,
+            .target_type = cxx::typeToken<ui::PaneHandle>()
+        };
+        auto entry = commands::CommandEntry::create(
+            object::CodeLease::builtin(), descriptor,
+            [&](const commands::CommandQuery& input) -> commands::CommandResult<commands::CommandState>
+            {
+                const auto* target = input.view<ui::PaneHandle>();
+                assert(target);
+                if (!root.findPane(*target))
+                {
+                    return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET});
+                }
+                return commands::CommandState{true};
+            },
+            [&](const commands::CommandInvocation& input) -> commands::CommandResult<commands::DispatchReceipt>
+            {
+                auto execute = [&](ui::Pane& pane) { assert(&pane == &window); ++executions; };
+                auto visited = root.withPane(*input.view<ui::PaneHandle>(), execute);
+                assert(visited);
+                return commands::DispatchReceipt{};
+            }
+        );
+        auto catalog = commands::CommandRegistrySnapshot::create({entry});
+        assert(catalog && registry.publish(*catalog));
+        const auto command = catalog->at(0);
+        assert(command);
+        auto captured = commands::CommandInvocation::forView(*original, lux::object::CodeLease::builtin());
+        assert(registry.execute(*command, captured) && executions == 1);
+        assert(dispatcher.enqueue(*command, captured));
+        auto unmount = root.prepareDetach(window);
+        assert(unmount && root.commit(*unmount));
+        assert(root.addSubPane(window));
+        auto remounted = root.identify(window);
+        assert(remounted && *remounted != *original);
+        auto completion = dispatcher.drain();
+        assert(completion && completion->size() == 1);
+        assert(!completion->front().result);
+        assert(completion->front().result.error().code == commands::ECommandError::STALE_TARGET);
+        assert(executions == 1);
+        const auto remounted_result = registry.execute(
+            *command, commands::CommandInvocation::forView(*remounted, lux::object::CodeLease::builtin())
+        );
+        assert(remounted_result && executions == 2);
+        std::cout << "Original Root attachment command: remount rejects queued old identity "
+                     "without any Host ID mapping PASS\n";
+    }
     void compoundCleanup(object::ObjectMessageQueue& messages, bool commit)
     {
         EditorContext context{messages.dispatcherRef()};
@@ -1128,6 +1192,7 @@ int main()
     auto created = object::ObjectMessageQueue::create(128);
     assert(created);
     auto messages = std::move(*created);
+    originalWindowCommand(messages);
     sharing(messages);
     configuredMount(messages);
     windowOperations(messages);

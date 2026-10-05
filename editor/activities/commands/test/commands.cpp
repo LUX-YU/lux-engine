@@ -36,6 +36,63 @@ namespace
                   CommandDescriptor,
                   CommandEntry::Query,
                   CommandEntry::Execute>);
+    void typedViewTargets()
+    {
+        struct Target final { unsigned value; };
+        int queries{}, executions{};
+        auto metadata = descriptor();
+        metadata.scope = ECommandScope::VIEW;
+        metadata.target_type = cxx::typeToken<Target>();
+        auto create = [&](const CommandDescriptor& value)
+        {
+            return CommandEntry::create(
+                lux::object::CodeLease::builtin(), value,
+                [&](const CommandQuery& query) -> CommandResult<CommandState>
+                {
+                    ++queries;
+                    assert(query.view<Target>() && query.view<Target>()->value == 73);
+                    return CommandState{true};
+                },
+                [&](const CommandInvocation& input) -> CommandResult<DispatchReceipt>
+                {
+                    ++executions;
+                    assert(input.view<Target>() && input.view<Target>()->value == 73);
+                    return DispatchReceipt{};
+                }
+            );
+        };
+        auto original = CommandRegistrySnapshot::create({create(metadata)});
+        assert(original);
+        CommandRegistry registry;
+        assert(registry.publish(*original));
+        auto handle = original->at(0);
+        assert(handle);
+        auto input = CommandInvocation::forView(Target{73}, lux::object::CodeLease::builtin());
+        auto copied = input;
+        assert(copied.view<Target>() == input.view<Target>());
+        assert(registry.execute(*handle, copied) && executions == 1);
+        const auto observed = queries;
+        const auto wrong = registry.execute(
+            *handle, CommandInvocation::forView(73u, lux::object::CodeLease::builtin())
+        );
+        const auto missing = registry.execute(*handle, CommandInvocation{CommandArguments{}});
+        assert(!wrong && wrong.error().code == ECommandError::INVALID_ARGUMENT);
+        assert(!missing && missing.error().code == ECommandError::INVALID_ARGUMENT);
+        assert(queries == observed && executions == 1);
+        metadata.target_type = cxx::typeToken<unsigned>();
+        auto changed = CommandRegistrySnapshot::create({create(metadata)});
+        assert(changed && changed->resolve(*handle).error().code == ECommandError::INCOMPATIBLE_REGISTRATION);
+        assert(registry.publish(*changed));
+        assert(registry.execute(*handle, copied) && executions == 2); // Original pinned declaration.
+        metadata.target_type = {};
+        assert(!CommandRegistrySnapshot::create({create(metadata)}));
+        metadata.scope = ECommandScope::APPLICATION;
+        metadata.target_type = cxx::typeToken<Target>();
+        assert(!CommandRegistrySnapshot::create({create(metadata)}));
+        std::puts(
+            "PASS immutable provider target: exact type, copied value, pinned/current registration and no UI dependency"
+        );
+    }
     void descriptorStorageAndIndex()
     {
         auto query = [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; };
@@ -589,6 +646,7 @@ namespace
 } // namespace
 int main()
 {
+    typedViewTargets();
     descriptorStorageAndIndex();
     shortcutAdmission();
     compoundScope();

@@ -838,7 +838,7 @@ namespace
         {
             return controls.execute(
                 take(controls.snapshot().find(commands::CommandIdView{name})),
-                commands::CommandInvocation{target}
+                commands::CommandInvocation::forView(target, lux::object::CodeLease::builtin())
             );
         };
         constexpr std::pair<const char*, author::ESceneTool> tool_cases[]{
@@ -2317,10 +2317,15 @@ int main(int argc, char** argv)
     using namespace editor::commands;
     auto undo = CommandEntry::create(
         lux::object::CodeLease::builtin(),
-        CommandDescriptor{CommandIdView{"p11.undo"}, "Undo", "Edit", "Ctrl+Z", ECommandScope::VIEW},
+        CommandDescriptor{
+            .id = CommandIdView{"p11.undo"},
+            .label = "Undo", .group = "Edit", .shortcut = "Ctrl+Z",
+            .scope = ECommandScope::VIEW,
+            .target_type = cxx::typeToken<views::ViewId>()
+        },
         [&](const CommandQuery& input) -> CommandResult<CommandState>
         {
-            if (std::get<views::ViewId>(input.target) != id_b || !f.desktop->views().describe(id_b))
+            if (*input.view<views::ViewId>() != id_b || !f.desktop->views().describe(id_b))
                 return cxx::unexpected(CommandFailure{ECommandError::STALE_TARGET, "scene.view"});
             return CommandState{take(f.session->historyView()).can_undo};
         },
@@ -2335,7 +2340,7 @@ int main(int argc, char** argv)
         f.commands,
         f.dispatcher,
         [&](const CommandDescriptor&, const ui::Pane*, const ui::Element*) -> CommandResult<CommandInvocation>
-        { return CommandInvocation{id_b}; }
+        { return CommandInvocation::forView(id_b, lux::object::CodeLease::builtin()); }
     ));
     f.frame();
     ui::MenuRequest open_menu;

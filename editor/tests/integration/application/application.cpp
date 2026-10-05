@@ -1175,7 +1175,10 @@ int main(int argc, char** argv)
     const auto model_source = impl.sessions_.describe(scene_id)->current;
     for (int frame = 0; frame < 32; ++frame)
         assert(app->update());
-    assert(app->execute(commands::CommandId{"lux.editor.scene.resources"}, commands::CommandInvocation{scene_view}));
+    assert(app->execute(
+        commands::CommandId{"lux.editor.scene.resources"},
+        commands::CommandInvocation::forView(scene_view, lux::object::CodeLease::builtin())
+    ));
     auto resource_views = impl.desktop_->views().describeAll();
     assert(resource_views);
     auto resources = std::ranges::find_if(
@@ -1253,7 +1256,10 @@ int main(int argc, char** argv)
     { assert(static_cast<lux::editor::scene::ResourceView&>(pane).snapshot().instance == presented); };
     assert(impl.desktop_->views().withView(resources->id, read_resources));
 
-    assert(app->execute(commands::CommandId{"lux.editor.scene.outliner"}, commands::CommandInvocation{scene_view}));
+    assert(app->execute(
+        commands::CommandId{"lux.editor.scene.outliner"},
+        commands::CommandInvocation::forView(scene_view, lux::object::CodeLease::builtin())
+    ));
     auto all_views = impl.desktop_->views().describeAll();
     assert(all_views);
     auto outliner = std::ranges::find_if(
@@ -1275,7 +1281,10 @@ int main(int argc, char** argv)
         {{lux::editor::scene::SceneObjectRef{scene_id, impl.sessions_.describe(scene_id)->current.state.history, object}
         }}
     ));
-    assert(app->execute(commands::CommandId{"lux.editor.scene.inspector"}, commands::CommandInvocation{scene_view}));
+    assert(app->execute(
+        commands::CommandId{"lux.editor.scene.inspector"},
+        commands::CommandInvocation::forView(scene_view, lux::object::CodeLease::builtin())
+    ));
     auto inspector_views = impl.desktop_->views().describeAll();
     auto inspector_info = std::ranges::find_if(
         *inspector_views,
@@ -1374,12 +1383,18 @@ int main(int argc, char** argv)
     assert(!impl.run_presentations_.front().failure);
     assert(!impl.run_presentations_.front().views.empty());
     const auto run_view = impl.run_presentations_.front().views.front();
-    assert(app->execute(commands::CommandId{"lux.editor.scene.pause"}, commands::CommandInvocation{run_view}));
+    assert(app->execute(
+        commands::CommandId{"lux.editor.scene.pause"},
+        commands::CommandInvocation::forView(run_view, lux::object::CodeLease::builtin())
+    ));
     while (impl.runs_.info(run)->pause_pending)
     {
         assert(app->update());
     }
-    assert(app->execute(commands::CommandId{"lux.editor.scene.step"}, commands::CommandInvocation{run_view}));
+    assert(app->execute(
+        commands::CommandId{"lux.editor.scene.step"},
+        commands::CommandInvocation::forView(run_view, lux::object::CodeLease::builtin())
+    ));
     const auto step = impl.run_presentations_.front().steps.front();
     const auto step_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
     while (impl.runs_.info(run)->pause_pending)
@@ -1400,8 +1415,14 @@ int main(int argc, char** argv)
     assert(impl.desktop_->views().describe(run_view));
     auto running_interaction = lux::editor::scene::shareSceneInteraction(impl.desktop_->views(), run_view);
     assert(running_interaction && (*running_interaction)->synchronize());
-    assert(app->execute(commands::CommandId{"lux.editor.scene.outliner"}, commands::CommandInvocation{run_view}));
-    assert(app->execute(commands::CommandId{"lux.editor.scene.resume"}, commands::CommandInvocation{run_view}));
+    assert(app->execute(
+        commands::CommandId{"lux.editor.scene.outliner"},
+        commands::CommandInvocation::forView(run_view, lux::object::CodeLease::builtin())
+    ));
+    assert(app->execute(
+        commands::CommandId{"lux.editor.scene.resume"},
+        commands::CommandInvocation::forView(run_view, lux::object::CodeLease::builtin())
+    ));
     for (int frame = 0; frame < 4; ++frame)
         assert(app->update());
     assert(impl.runs_.info(run)->provenance.content == run_source);

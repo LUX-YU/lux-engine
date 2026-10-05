@@ -65,9 +65,14 @@ namespace lux::editor::commands
                     return failure(ECommandError::INVALID_ARGUMENT);
                 }
             }
-            if (const auto* target = std::get_if<views::ViewId>(&query.target); target && !target->valid())
+            if (const auto* target = std::get_if<CommandArguments>(&query.target))
             {
-                return failure(ECommandError::INVALID_ARGUMENT);
+                const bool is_invalid_target =
+                    !target->valid() || target->type() != entry.target_type || !target->data();
+                if (is_invalid_target)
+                {
+                    return failure(ECommandError::INVALID_ARGUMENT);
+                }
             }
             return {};
         }
@@ -165,7 +170,8 @@ namespace lux::editor::commands
             const auto group_size = input.group.size();
             const auto shortcut_size = input.shortcut.size();
             const auto argument_size = input.argument_type.name().size();
-            text.reserve(id_size + label_size + group_size + shortcut_size + argument_size + 5);
+            const auto target_size = input.target_type.name().size();
+            text.reserve(id_size + label_size + group_size + shortcut_size + argument_size + target_size + 6);
             const auto append = [&](std::string_view value)
             {
                 const auto offset = text.size();
@@ -177,6 +183,7 @@ namespace lux::editor::commands
             const auto group = append(input.group);
             const auto shortcut = append(input.shortcut);
             const auto argument = append(input.argument_type.name());
+            const auto target = append(input.target_type.name());
             // Final storage does not move. Display slices also have a terminator for UI backends.
             const std::string_view bytes{text};
             count(0);
@@ -210,6 +217,7 @@ namespace lux::editor::commands
             }
             descriptor.dependencies = dependencies;
             descriptor.create = input.create;
+            descriptor.target_type = {input.target_type.hash(), bytes.substr(target, target_size)};
         }
     };
     CommandEntry::CommandEntry(
@@ -320,7 +328,10 @@ namespace lux::editor::commands
             const bool is_invalid_binding =
                 !entry.code_.valid() ||
                 (descriptor.create ? has_direct_binding : (!is_direct_binding || !descriptor.dependencies.empty()));
-            const bool is_invalid = is_invalid_identity || is_invalid_description || is_invalid_binding;
+            const bool is_invalid_target =
+                (descriptor.scope == ECommandScope::VIEW) != descriptor.target_type.isValid();
+            const bool is_invalid =
+                is_invalid_identity || is_invalid_description || is_invalid_binding || is_invalid_target;
             if (is_invalid)
             {
                 return failure(ECommandError::INVALID_ARGUMENT);
@@ -449,8 +460,9 @@ namespace lux::editor::commands
         {
             return failure(ECommandError::NOT_FOUND);
         }
-        const bool is_incompatible = after.scope != before.scope || after.input_version != before.input_version ||
-                                     after.argument_type != before.argument_type;
+        const bool is_incompatible =
+            after.scope != before.scope || after.input_version != before.input_version ||
+            after.argument_type != before.argument_type || after.target_type != before.target_type;
         if (is_incompatible)
         {
             return failure(ECommandError::INCOMPATIBLE_REGISTRATION);

@@ -15,6 +15,7 @@
 #include <lux/engine/editor/storage/ProjectCommands.hpp>
 #include <lux/engine/editor/storage/ProjectContentOpening.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
+#include <lux/engine/editor/storage/ProjectContentReloading.hpp>
 #include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/storage/PublicationFileStore.hpp>
@@ -158,6 +159,7 @@ int main(int argc, char** argv)
     assert(dependencies.publish(
         {services::ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin()),
          services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<kProjectContentReloadingService>(object::CodeLease::builtin()),
          services::ServiceEntry::bind<kProjectPluginSelectionService>(object::CodeLease::builtin()),
          services::ServiceEntry::bind<s::kSessionStoreService>(object::CodeLease::builtin()),
          services::ServiceEntry::bind<s::kSessionOpeningService>(object::CodeLease::builtin()),
@@ -257,6 +259,72 @@ int main(int argc, char** argv)
     assert(take(es::SceneCodec::decode(read(root / "Content/source-0"))).source.scene);
     assert(take(em::MaterialCodec::decode(read(root / "Content/source-1"))).source.name == "Material");
     assert(take(ef::FlowCodec::decode(read(root / "Content/source-2"))).source.name == "Flow");
+    {
+        auto reloads = take(dependencies.get<ProjectContentReloading>(scope));
+        assert(take(dependencies.get<ProjectContentReloading>(scope)) == reloads);
+        assert(reloads->settled() && take(reloads->reports()).empty());
+        auto finish_reload = [&]
+        {
+            for (unsigned turn{}; turn < 10000 && !reloads->settled(); ++turn)
+            {
+                assert(runtime.collectCompletions());
+                assert(scope.maintain());
+                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+            }
+            assert(reloads->settled());
+        };
+        for (const auto session : sessions)
+        {
+            const auto before = take(store.describe(session));
+            const auto bytes = read(root / before.binding->location);
+            bool cleanup_protected{};
+            files.during_resolve = [&]
+            {
+                auto nested = reloads->request(before.current);
+                auto premature = reloads->acknowledge(before.current);
+                auto observed = reloads->reports();
+                cleanup_protected = !nested && nested.error().code == EEditorError::BUSY &&
+                                    !premature && premature.error().code == EEditorError::BUSY &&
+                                    !observed && observed.error().code == EEditorError::BUSY;
+            };
+            assert(reloads->request(before.current) && cleanup_protected);
+            const auto duplicate = reloads->request(before.current);
+            assert(!duplicate && duplicate.error().code == EEditorError::BUSY);
+            const auto premature = reloads->acknowledge(before.current);
+            assert(!premature && premature.error().code == EEditorError::BUSY);
+            assert(take(store.describe(session)).current == before.current);
+            finish_reload();
+            const auto reports = take(reloads->reports());
+            const auto after = take(store.describe(session));
+            assert(reports.size() == 1 && reports.front().source == before.current && reports.front().result);
+            assert(*reports.front().result && **reports.front().result == after.current);
+            assert(after.current.session == before.current.session && after.current != before.current);
+            assert(after.binding == before.binding && !after.dirty && read(root / before.binding->location) == bytes);
+            assert(reloads->acknowledge(before.current) && take(reloads->reports()).empty());
+            const auto stale = reloads->request(before.current);
+            assert(!stale && take(store.describe(session)).current == after.current);
+        }
+        const auto current = take(store.describe(sessions[1]));
+        bool wrong_thread{};
+        std::jthread([&]
+        {
+            auto result = reloads->request(current.current);
+            wrong_thread = !result && result.error().code == EEditorError::INVALID_STATE;
+        }).join();
+        assert(wrong_thread && take(reloads->reports()).empty());
+        assert(reloads->request(current.current));
+        assert(reloads->requestClose());
+        const auto closed = reloads->request(current.current);
+        assert(!closed && closed.error().code == EEditorError::CLOSING);
+        finish_reload();
+        const auto cancelled = take(reloads->reports());
+        assert(cancelled.size() == 1 && cancelled.front().result && !*cancelled.front().result);
+        assert(cancelled.front().result->error().code == s::ESessionFactoryError::CANCELLED);
+        const auto retained = take(store.describe(sessions[1]));
+        assert(retained.current == current.current && retained.binding == current.binding && retained.dirty == current.dirty);
+        assert(reloads->acknowledge(current.current) && take(reloads->reports()).empty());
+        std::cout << "Three-model no-UI reload uses original gate/version, rejects reentry and retains cancellation\n";
+    }
     const auto key = take(store.key<em::MaterialSession>(sessions[1]));
     auto& model = take(store.access<em::MaterialSession>().edit(key)).get();
     auto rename = [&](std::string name)

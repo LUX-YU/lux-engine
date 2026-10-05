@@ -5,59 +5,17 @@ namespace lux::editor::application
 {
     EditorResult<void> EditorApplication::Impl::reload(commands::SessionTarget target)
     {
-        if (reloads_.size() >= 64)
-            return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "reload.results"});
-        auto current = sessions_->describe(target.id);
-        if (!current)
-            return applicationFailure("reload.session", current.error());
-        if (!target.based_on || current->current != *target.based_on)
+        if (!target.based_on || target.based_on->session != target.id)
+        {
             return applicationFailure("reload.source", sessions::ESessionError::STALE_CONTENT);
-        if (!current->binding)
-            return applicationFailure("reload.unbound", persistence::EPersistenceError::UNBOUND);
-        const bool active = std::ranges::any_of(reloads_, [&](const auto& other) {
-            return other.source == *target.based_on || (other.source.session == target.id && !other.result);
-        });
-        if (active)
-            return cxx::unexpected(EditorFailure{EEditorError::BUSY, "reload.active"});
-        const auto* asset = project_->asset(current->binding->asset);
-        if (!asset)
-            return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "reload.asset"});
-        auto destination = files_->resolve(asset->source_path);
-        if (!destination)
-            return applicationFailure("reload.target", destination.error());
-        auto bytes = project_->captureSource(asset->id, 64 * 1024 * 1024, destination->expected_version);
-        if (!bytes)
-            return cxx::unexpected(bytes.error());
-        // Reload uses the same admitted format/code owner as the existing content, not a replacement registry.
-        auto factory = opening_->factory(target.id);
-        if (!factory)
-            return applicationFailure("reload.factory", factory.error());
-        const auto& format = (*factory)->descriptor().source;
-        const bool is_same_format = format && format->canonical_name == asset->source_type &&
-                                    format->version == asset->source_version;
-        if (!is_same_format)
-            return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "reload.format"});
-        sessions::SessionLoadInput input{
-            std::move(*bytes),
-            asset->id,
-            current->binding,
-            std::move(*destination),
-            64 * 1024 * 1024,
-            *target.based_on
-        };
-        auto operation = sessions::ReloadSessionOperation::start(
-            engine_->execution(),
-            *sessions_,
-            *writes_,
-            editor_context_.services(),
-            editor_context_.scope(),
-            std::move(*factory),
-            std::move(input)
-        );
-        if (!operation)
-            return applicationFailure("reload.admission", operation.error());
-        reloads_.push_back({*target.based_on, std::move(*operation)});
-        return {};
+        }
+        if (!reloading_)
+        {
+            auto service = editor_context_.services().get<ProjectContentReloading>(editor_context_.scope());
+            if (!service) return applicationFailure("reload.service", service.error());
+            reloading_ = std::move(*service);
+        }
+        return reloading_->request(*target.based_on);
     }
     EditorResult<void> EditorApplication::Impl::askReload(commands::SessionTarget target)
     {

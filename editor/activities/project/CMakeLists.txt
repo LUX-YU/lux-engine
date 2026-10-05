@@ -2,7 +2,7 @@ generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_STORAGE_LIBRARY
     PUBLIC_MACRO_NAME LUX_EDITOR_STORAGE_PUBLIC DISABLE_DLL_MACRO_NAME LUX_EDITOR_STORAGE_DLL_DISABLE
     GENERATE_FILE_PATH lux/engine/editor/storage/visibility.h)
 add_component(COMPONENT_NAME editor_storage NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/ProjectStorage.cpp src/ProjectContentSaving.cpp src/ProjectPluginSelection.cpp src/RecentProjects.cpp
+    SOURCE_FILES src/ProjectStorage.cpp src/ProjectContentSaving.cpp src/ProjectContentReloading.cpp src/ProjectPluginSelection.cpp src/RecentProjects.cpp
         src/PreparedProjectOpen.cpp src/ProjectAssetSource.cpp src/ProjectPublication.cpp src/ProjectCreation.cpp
         src/ProjectPlugins.cpp src/ProjectPublicationOperation.cpp src/ArtifactPublicationOperation.cpp)
 component_include_directories(editor_storage
@@ -116,6 +116,7 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectCommands.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectContentOpening.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectContentSaving.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectContentReloading.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/RecentProjects.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectPluginSelection.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectCreation.hpp

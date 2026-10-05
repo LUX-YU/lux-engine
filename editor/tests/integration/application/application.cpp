@@ -1232,13 +1232,13 @@ int main(int argc, char** argv)
         commands::CommandId{"lux.editor.reload"},
         commands::CommandInvocation{commands::SessionTarget{material_id, after_copy->current}}
     ));
-    while (!impl.reloads_.back().result)
+    while (!impl.reloading_->reports()->back().result)
     {
         assert(std::chrono::steady_clock::now() < save_deadline);
         checkUpdate(*app);
         std::this_thread::yield();
     }
-    assert(*impl.reloads_.back().result);
+    assert(*impl.reloading_->reports()->back().result);
     const auto reloaded_material = impl.sessions_->describe(material_id);
     assert(reloaded_material && reloaded_material->current != after_copy->current && !reloaded_material->dirty);
     assert(reloaded_material->binding == after_copy->binding);

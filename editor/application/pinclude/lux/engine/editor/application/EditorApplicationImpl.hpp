@@ -26,7 +26,7 @@
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
-#include <lux/engine/editor/sessions/ReloadSessionOperation.hpp>
+#include <lux/engine/editor/storage/ProjectContentReloading.hpp>
 #include <lux/engine/editor/sessions/SessionOperations.hpp>
 #include <lux/engine/editor/storage/PublicationFileStore.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
@@ -102,12 +102,6 @@ namespace lux::editor::application
             lux::ui::PaneHandle view;
         };
 
-        struct ReloadPresentation final
-        {
-            sessions::ContentStamp source;
-            std::unique_ptr<sessions::ReloadSessionOperation> operation;
-            std::optional<sessions::SessionFactoryResult<sessions::ContentStamp>> result;
-        };
         struct ReloadQuestion final
         {
             commands::SessionTarget target;
@@ -229,7 +223,7 @@ namespace lux::editor::application
         std::vector<AssetReference> open_intents_;
         std::shared_ptr<scene::ModelPlacementService> model_placements_;
         std::optional<SaveQuestion> save_question_;
-        std::vector<ReloadPresentation> reloads_;
+        std::shared_ptr<ProjectContentReloading> reloading_;
         std::optional<ReloadQuestion> reload_question_;
         std::optional<project::VResultIntent> result_intent_;
         std::optional<EditorFailure> result_failure_;

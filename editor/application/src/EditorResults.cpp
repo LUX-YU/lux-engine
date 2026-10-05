@@ -53,10 +53,11 @@ namespace lux::editor::application
                 }
                 else if constexpr (std::same_as<Action, AcknowledgeReload>)
                 {
-                    std::erase_if(
-                        reloads_,
-                        [&](const auto& reload) { return reload.source == action.target && reload.result.has_value(); }
-                    );
+                    if (!reloading_)
+                    {
+                        return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "reload.result"});
+                    }
+                    return reloading_->acknowledge(action.target);
                 }
                 else if constexpr (std::same_as<Action, AcknowledgeRunFailure>)
                 {
@@ -364,9 +365,11 @@ namespace lux::editor::application
             }
         }
         snapshot.sections.push_back({"Reload results"});
-        for (std::size_t index{}; index < reloads_.size(); ++index)
+        auto reloads = reloading_ ? reloading_->reports() : EditorResult<std::vector<ProjectReloadReport>>{};
+        if (!reloads) return cxx::unexpected(reloads.error());
+        for (std::size_t index{}; index < reloads->size(); ++index)
         {
-            const auto& reload = reloads_[index];
+            const auto& reload = (*reloads)[index];
             auto& to = row(session_key(reload.source.session) + "/" + std::to_string(index));
             to.messages.emplace_back(
                 !reload.result   ? "reading / preparing"

@@ -572,6 +572,11 @@ namespace lux::editor::application
             auto closing = playback_->requestClose();
             if (!closing) return closing;
         }
+        if (reloading_)
+        {
+            auto closing = reloading_->requestClose();
+            if (!closing) return closing;
+        }
         opening_->requestStop();
         importer_->requestClose();
         desktop_->presentation().stopFrames();
@@ -587,22 +592,6 @@ namespace lux::editor::application
                 outcome = std::move(result);
             }
         };
-        for (auto& reload : reloads_)
-        {
-            if (reload.operation)
-            {
-                if (phase_ == EApplicationPhase::DRAINING)
-                {
-                    reload.operation->cancel();
-                }
-                reload.operation->update(opening_->find(reload.source.session));
-                if (reload.operation->outcome())
-                {
-                    reload.result = *reload.operation->outcome();
-                    reload.operation.reset();
-                }
-            }
-        }
         receive(content_saving_->update(closing_ ? closing_->saves() : std::span<const sessions::SaveAllEntry>{}));
         receive(settleWorkspace());
         if (phase_ == EApplicationPhase::DRAINING)
@@ -630,7 +619,7 @@ namespace lux::editor::application
             ) &&
             (!playback_ || playback_->settled());
         if (phase_ == EApplicationPhase::DRAINING && operations_settled &&
-            std::ranges::none_of(reloads_, [](const auto& reload) { return bool(reload.operation); }) &&
+            (!reloading_ || reloading_->settled()) &&
             (!model_placements_ || model_placements_->settled()))
         {
             project_->requestClose();

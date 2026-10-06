@@ -70,12 +70,13 @@ namespace lux::ui
         [[nodiscard]] const Theme& theme() const noexcept;
         [[nodiscard]] float scale() const noexcept;
         [[nodiscard]] lux::cxx::expected<FontAtlas, EInitError> fontAtlas() const noexcept;
-        // Optional capture, immediate resource pinning, remaining input, then owner maintenance.
-        // A null output maintains owners without generating another frame or replaying input.
         using Capture = cxx::function_ref<cxx::expected<void, ECaptureError>(const DrawData&)>;
+        // Both overloads adopt the prior structural batch first. No drawing or input replay in maintenance-only use.
+        [[nodiscard]] cxx::expected<void, ECaptureError> update(FrameInfo) noexcept;
+        // Capture pins resources synchronously before remaining input and owner maintenance.
         [[nodiscard]] cxx::expected<void, ECaptureError> update(
             FrameInfo,
-            DrawData*,
+            DrawData&,
             std::optional<Capture> = std::nullopt
         ) noexcept;
 
@@ -91,10 +92,6 @@ namespace lux::ui
         // Destruction cancels them synchronously. New intents during apply wait for the next batch.
         void deferChange(Pane& target, ChangeCallback apply) noexcept;
         void deferChange(Element& target, ChangeCallback apply) noexcept;
-        // Host-only boundary, outside drawing, measurement, update and object dispatch.
-        // Neither update() nor a resource wait drains this queue implicitly.
-        void applyPendingChanges() noexcept;
-        [[nodiscard]] bool hasPendingChanges() const noexcept;
 
         void setMenu(std::vector<MenuItem>);
         [[nodiscard]] std::span<const MenuItem> menu() const noexcept;
@@ -119,6 +116,9 @@ namespace lux::ui
 
     private:
         Root() noexcept;
+        void applyPendingChanges() noexcept;
+        [[nodiscard]] cxx::expected<void, ECaptureError>
+        updateFrame(FrameInfo, DrawData*, std::optional<Capture>) noexcept;
         [[nodiscard]] cxx::expected<void, EInitError> initialize(RootConfig) noexcept;
         friend struct detail::RootTestAccess;
         friend class TextEdit;

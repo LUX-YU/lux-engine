@@ -1,3 +1,4 @@
+#include "RootAccess.hpp"
 #pragma once
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <cassert>
@@ -93,11 +94,11 @@ namespace element_checks
             assert(root.requestFocus(*owner.item));
             assert(root.capturePointer(*owner.item));
             owner.replace = true;
-            assert(root.update({}, nullptr));
+            assert(root.update({}));
             assert(owner.item->updates == 1);
-            root.applyPendingChanges();
+            ui_test::apply(root);
             assert(!root.focusedElement() && owner.item->updates == 0);
-            assert(root.update({}, nullptr));
+            assert(root.update({}));
             assert(owner.item->updates == 1);
             owner.setVisible(false);
             auto& child = ui_test::makePane<ui::Pane>(root, "Independent");
@@ -105,7 +106,7 @@ namespace element_checks
             assert(content.displayed() && !owner.item->displayed());
             assert(root.requestFocus(content));
             ui::DrawData draw;
-            assert(root.update({{640, 480}, 0.016F}, &draw));
+            assert(root.update({{640, 480}, 0.016F}, draw));
             assert(content.draws == 1 && owner.item->draws == 0);
         }
         assert(root.clearPanes());
@@ -212,9 +213,9 @@ namespace element_checks
             const auto hint = vertical.measure(60);
             assert(hint.preferred.height == 60);
             ui::DrawData draw;
-            assert(root.update({{640, 480}, 0.016F}, &draw));
+            assert(root.update({{640, 480}, 0.016F}, draw));
             assert(text.draws == 1 && text.updates == 1);
-            assert(root.update({}, nullptr));
+            assert(root.update({}));
             assert(text.updates == 2);
         }
         {
@@ -278,7 +279,7 @@ namespace element_checks
                 {{{ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {&pane}}}, {{0, {{0, 0}, {640, 480}}, false}}}
             ));
             ui::DrawData draw;
-            const auto frame = [&] { assert(root.update({{640, 480}, 0.016F}, &draw)); };
+            const auto frame = [&] { assert(root.update({{640, 480}, 0.016F}, draw)); };
             for (unsigned i{}; i != 3; ++i)
             {
                 frame();

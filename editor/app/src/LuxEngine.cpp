@@ -6,10 +6,10 @@
 #include <lux/engine/RenderContext.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorUiFactories.hpp>
-#include <lux/engine/editor/EditorUiScene.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/FrameworkErrors.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
+#include <lux/engine/editor/detail/EditorUiScene.hpp>
 #include <lux/engine/scene/SceneError.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -149,14 +149,7 @@ namespace lux::editor
             return cxx::unexpected(error::Error{Errors::EditorNativeUiOutputIsNotImplementedOnThisPlatform, {}});
             scene::ViewConfig output;
 #endif
-            auto scene = EditorUiScene::create(
-                engine_->execution(),
-                engine_->sceneRuntime(),
-                context.runtime(),
-                context.resources(),
-                std::move(*configuration),
-                output
-            );
+            auto scene = EditorUiScene::create(*engine_, std::move(*configuration), output);
             if (!scene)
             {
                 return cxx::unexpected(std::move(scene.error()));
@@ -257,7 +250,7 @@ namespace lux::editor
             project_.reset();
             return {};
         }
-        FrameworkResult<bool> frame() noexcept
+        FrameworkResult<EFrameStatus> frame() noexcept
         {
             if (operating_)
             {
@@ -277,7 +270,6 @@ namespace lux::editor
             }
             (void)object::ObjectRuntime::instance().dispatchPending();
             auto& root = window_->uiRoot();
-            root.applyPendingChanges();
             const bool closing = window_->shouldClose();
             if (closing)
             {
@@ -307,7 +299,8 @@ namespace lux::editor
                 {width ? float(pixels_x) / width : 1.F, height ? float(pixels_y) / height : 1.F}
             };
             auto capture = [&](const ui::DrawData& data) noexcept { return ui_scene_->captureDrawData(data); };
-            auto drawn = root.update(info, ui_draw_data, ui::Root::Capture{capture});
+            auto drawn =
+                ui_draw_data ? root.update(info, *ui_draw_data, ui::Root::Capture{capture}) : root.update(info);
             if (!drawn)
             {
                 return cxx::unexpected(error::Error{Errors::UiCapture, {static_cast<std::uint64_t>(drawn.error())}});
@@ -323,7 +316,7 @@ namespace lux::editor
                 ui_draw_data && !consumed.keyboard_captured,
                 ui_draw_data && !consumed.pointer_captured
             );
-            auto published = ui_scene_->publishInput();
+            auto published = ui_scene_->publishFrame();
             if (!published)
             {
                 return cxx::unexpected(std::move(published.error()));
@@ -338,7 +331,7 @@ namespace lux::editor
                 return cxx::unexpected(scene::toError(driven->front()));
             }
             (void)object::ObjectRuntime::instance().collectRetired();
-            return !closing;
+            return closing ? EFrameStatus::EXIT_REQUESTED : EFrameStatus::RUNNING;
         }
         FrameworkResult<void> exec() noexcept
         {
@@ -349,7 +342,7 @@ namespace lux::editor
                 {
                     return cxx::unexpected(std::move(running.error()));
                 }
-                if (!*running)
+                if (*running == EFrameStatus::EXIT_REQUESTED)
                 {
                     return {};
                 }
@@ -413,7 +406,7 @@ namespace lux::editor
     {
         return impl_->exec();
     }
-    FrameworkResult<bool> LuxEngine::frame() noexcept
+    FrameworkResult<EFrameStatus> LuxEngine::frame() noexcept
     {
         return impl_->frame();
     }
@@ -421,20 +414,16 @@ namespace lux::editor
     {
         return *impl_->window_;
     }
-    ui::Root& LuxEngine::uiRoot() noexcept
-    {
-        return impl_->window_->uiRoot();
-    }
     engine::EngineContext& LuxEngine::engine() noexcept
+    {
+        return *impl_->engine_;
+    }
+    const engine::EngineContext& LuxEngine::engine() const noexcept
     {
         return *impl_->engine_;
     }
     EditorContext* LuxEngine::context() noexcept
     {
         return impl_->project_.get();
-    }
-    std::uint64_t LuxEngine::capturedFrames() const noexcept
-    {
-        return impl_->ui_scene_->capturedFrames();
     }
 } // namespace lux::editor

@@ -1,4 +1,5 @@
 #include "../../../../cmake/installed-consumers/common/UiDrawPane.hpp"
+#include "RootAccess.hpp"
 #include <cassert>
 #include <imgui.h>
 int main()
@@ -23,15 +24,16 @@ int main()
         auto& one = ui_test::makePane<TUiDrawPane<decltype(draw_first)>>(**first, draw_first);
         auto draw_second = [] { ImGui::TextUnformatted("Second root"); };
         auto& two = ui_test::makePane<TUiDrawPane<decltype(draw_second)>>(**second, draw_second);
-        (*first)->deferChange(one, [](object::LuxObject& target) noexcept {
-            static_cast<ui::Pane&>(target).setTitle("Adopted");
-        });
+        (*first)->deferChange(
+            one,
+            [](object::LuxObject& target) noexcept { static_cast<ui::Pane&>(target).setTitle("Adopted"); }
+        );
         assert(one.title() == "Draw");
-        (*first)->applyPendingChanges();
+        assert((*first)->update({}));
         assert(one.title() == "Adopted");
         for (int i{}; i < 100; ++i)
         {
-            assert((i % 2 ? *first : *second)->update({{640, 480}, 1.0F / 60.0F}, &slot));
+            assert((i % 2 ? *first : *second)->update({{640, 480}, 1.0F / 60.0F}, slot));
             assert(slot.valid() && ImGui::GetCurrentContext() == original);
         }
         const auto first_input = (*first)->inputSnapshot();
@@ -39,7 +41,7 @@ int main()
         assert(first_input.held[std::size_t(ui::EKey::A)] && !first_input.held[std::size_t(ui::EKey::B)]);
         assert(second_input.held[std::size_t(ui::EKey::B)] && !second_input.held[std::size_t(ui::EKey::A)]);
         assert(first_input.sequence == 100 && second_input.sequence == 200);
-        auto refused = (*first)->update({{0, 480}, 0.016F}, &slot);
+        auto refused = (*first)->update({{0, 480}, 0.016F}, slot);
         assert(!refused && refused.error() == ui::ECaptureError::INVALID_INPUT);
         assert(ImGui::GetCurrentContext() == original);
     }

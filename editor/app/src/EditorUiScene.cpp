@@ -1,6 +1,8 @@
 #include <algorithm>
-#include <lux/engine/editor/EditorUiScene.hpp>
+#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/RenderContext.hpp>
 #include <lux/engine/editor/FrameworkErrors.hpp>
+#include <lux/engine/editor/detail/EditorUiScene.hpp>
 #include <lux/engine/editor/detail/UiFrame.hpp>
 #include <lux/engine/editor/detail/UiRenderSyncStage.hpp>
 #include <lux/engine/process/CompletionWork.hpp>
@@ -242,7 +244,7 @@ namespace lux::editor
                 }
                 frame.resources.push_back(std::move(*captured));
             }
-            frame.sequence = ++captures_;
+            frame.sequence = ++frame_sequence_;
             pending_ = frames_[current_frame_];
             return {};
         }
@@ -316,24 +318,28 @@ namespace lux::editor
         std::shared_ptr<const lux::ui::RenderFrame> pending_;
         std::size_t current_frame_{frames_.size()};
         bool frames_stopped_{}, clear_pending_{};
-        std::uint64_t captures_{};
+        std::uint64_t frame_sequence_{};
         std::optional<error::Error> failure_;
     };
 
     FrameworkResult<std::unique_ptr<EditorUiScene>> EditorUiScene::create(
-        process::ExecutionRuntime& execution,
-        scene::SceneRuntime& scenes,
-        render::RenderRuntime& runtime,
-        scene::RenderResources& resources,
+        engine::EngineContext& engine,
         std::vector<std::byte> configuration,
         std::optional<scene::ViewConfig> output
     ) noexcept
     {
-        if (!resources.uses(runtime))
+        auto* rendering = engine.renderContext();
+        if (!rendering)
         {
             return cxx::unexpected(render::toError(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT}));
         }
-        auto impl = std::make_unique<Impl>(execution, scenes, resources, std::move(output));
+        auto& runtime = rendering->runtime();
+        auto impl = std::make_unique<Impl>(
+            engine.execution(),
+            engine.sceneRuntime(),
+            rendering->resources(),
+            std::move(output)
+        );
         auto initialized = impl->initialize(std::move(configuration), runtime);
         if (!initialized)
         {
@@ -355,10 +361,6 @@ namespace lux::editor
     {
         return impl_->outputReady();
     }
-    bool EditorUiScene::hasWritableFrame() const noexcept
-    {
-        return impl_->hasWritableFrame();
-    }
     ui::DrawData* EditorUiScene::acquireDrawData() noexcept
     {
         return impl_->tryAcquireDrawData();
@@ -367,17 +369,13 @@ namespace lux::editor
     {
         return impl_->captureDrawData(data);
     }
-    FrameworkResult<void> EditorUiScene::publishInput() noexcept
+    FrameworkResult<void> EditorUiScene::publishFrame() noexcept
     {
         return impl_->applySceneInput();
     }
     void EditorUiScene::stopFrames() noexcept
     {
         impl_->stopFrames();
-    }
-    std::uint64_t EditorUiScene::capturedFrames() const noexcept
-    {
-        return impl_->captures_;
     }
     scene::SceneInstanceId EditorUiScene::sceneId() const noexcept
     {

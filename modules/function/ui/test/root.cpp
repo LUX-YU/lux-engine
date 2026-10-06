@@ -182,8 +182,8 @@ namespace
         assert(!lifetime.resource_alive && lifetime.resource_destroyed == 1);
         assert(!root.firstChild() && (ui_test::paneCount(root) == 0));
         assert(!root.focusedElement() && !root.focusedPane());
-        root.applyPendingChanges(); // All callbacks attached to destroyed members were removed.
-        assert(root.update({}, nullptr));
+        ui_test::apply(root); // All callbacks attached to destroyed members were removed.
+        assert(root.update({}));
 
         // A failed factory reclaims a complete but unpublished candidate using the same ordinary deleter.
         Lifetime rejected;
@@ -193,19 +193,19 @@ namespace
             return {};
         };
         assert(!make_candidate() && !root.firstChild() && rejected.resource_destroyed == 1);
-        root.applyPendingChanges();
+        ui_test::apply(root);
 
         auto& owner = ui_test::makePane<ChangeOwner>(root);
         auto& content = *owner.content;
         content.defer_draw = content.defer_update = true;
         ui::DrawData draw;
-        assert(root.update({{640, 480}, 0.016F}, &draw));
+        assert(root.update({{640, 480}, 0.016F}, draw));
         assert(content.draws == 1 && content.updates == 1 && content.applications == 0);
         ui::Command command{ui::CommandIdView{"test.change"}};
         static_cast<void>(object::sendEvent(content, command));
         static_cast<void>(object::routeEvent(content, root, command));
         assert(content.applications == 0);
-        root.applyPendingChanges();
+        ui_test::apply(root);
         assert(content.applications == 1); // Draw, maintenance and events coalesce.
         content.defer_draw = content.defer_update = false;
         root.deferChange(content, ChangeElement::apply);
@@ -213,17 +213,17 @@ namespace
             content,
             [](object::LuxObject& target) noexcept { ++static_cast<ChangeElement&>(target).extra; }
         );
-        root.applyPendingChanges();
+        ui_test::apply(root);
         assert(content.applications == 2 && content.extra == 1);
         content.repeat = true;
         root.deferChange(content, ChangeElement::apply);
         for (unsigned index{}; index < 1000; ++index)
         {
-            root.applyPendingChanges();
+            ui_test::apply(root);
             assert(content.applications == index + 3); // Never consumes the self-enqueued next batch.
         }
         content.repeat = false;
-        root.applyPendingChanges();
+        ui_test::apply(root);
 
         // A preceding owner callback destroys a later target, in both current and next batches.
         root.deferChange(
@@ -238,15 +238,15 @@ namespace
         );
         root.deferChange(content, ChangeElement::apply);
         assert(root.requestFocus(content) && root.capturePointer(content));
-        root.applyPendingChanges();
-        root.applyPendingChanges();
+        ui_test::apply(root);
+        ui_test::apply(root);
         assert(owner.content->applications == 0 && owner.content->updates == 0);
-        assert(root.update({}, nullptr) && owner.content->updates == 1);
+        assert(root.update({}) && owner.content->updates == 1);
         root.deferChange(*owner.content, ChangeElement::apply);
         owner.content.reset();
         assert(!owner.content && !owner.Pane::content());
         owner.replace();
-        root.applyPendingChanges();
+        ui_test::apply(root);
         assert(owner.content->applications == 0);
     }
 
@@ -258,7 +258,7 @@ namespace
         assert(created);
         auto& root = **created;
         auto& owner = ui_test::makePane<ChangeOwner>(root);
-        const auto apply = +[](ChangeElement& target) noexcept { target.root().applyPendingChanges(); };
+        const auto apply = +[](ChangeElement& target) noexcept { ui_test::apply(target.root()); };
         const auto destroy =
             +[](ChangeElement& target) noexcept { static_cast<ChangeOwner&>(target.pane()).content.reset(); };
         ui::Command command{ui::CommandIdView{"test.change"}};
@@ -268,7 +268,7 @@ namespace
         if (scenario == "apply-in-draw" || scenario == "destroy-in-draw")
         {
             owner.content->on_draw = scenario == "apply-in-draw" ? apply : destroy;
-            static_cast<void>(root.update({{640, 480}, 0.016F}, &draw));
+            static_cast<void>(root.update({{640, 480}, 0.016F}, draw));
         }
         else if (scenario == "apply-in-event" || scenario == "destroy-in-event")
         {
@@ -278,13 +278,13 @@ namespace
         else if (scenario == "apply-in-update")
         {
             owner.content->on_update = apply;
-            static_cast<void>(root.update({}, nullptr));
+            static_cast<void>(root.update({}));
         }
         else if (scenario == "recursive-apply" || scenario == "destroy-in-apply")
         {
             owner.content->on_apply = scenario == "recursive-apply" ? apply : destroy;
             root.deferChange(*owner.content, ChangeElement::apply);
-            root.applyPendingChanges();
+            ui_test::apply(root);
         }
         else if (scenario == "apply-in-signal")
         {
@@ -292,7 +292,7 @@ namespace
                 &owner,
                 &ui::Pane::visibilityChanged,
                 &owner,
-                [&root](const ui::PaneVisibilityChanged&) noexcept { root.applyPendingChanges(); }
+                [&root](const ui::PaneVisibilityChanged&) noexcept { ui_test::apply(root); }
             );
             assert(visibility);
             owner.setVisible(false);
@@ -331,7 +331,7 @@ namespace
             }
             if (reject_capture)
             {
-                const auto result = root().update({{400, 300}, 0.016F}, &reentrant);
+                const auto result = root().update({{400, 300}, 0.016F}, reentrant);
                 assert(!result && result.error() == lux::ui::ECaptureError::FRAME_OPEN);
             }
         }
@@ -413,40 +413,40 @@ int main(int argc, char** argv)
         auto& separate = ui_test::makePane<Probe>(**second, "separate");
         assert(&child.root() == first->get());
         assert(ui_test::findPane(**first, ui_test::paneId(child)) == &child);
-        assert((*first)->update({{640, 480}, 0.016F}, &slot));
+        assert((*first)->update({{640, 480}, 0.016F}, slot));
         assert(parent.draws == 1 && child.draws == 1 && sibling.draws == 1 && separate.draws == 0);
         assert(ImGui::GetCurrentContext() == original && slot.valid());
         child.setVisible(false);
-        assert((*first)->update({}, nullptr));
+        assert((*first)->update({}));
         assert(parent.updates == 2 && child.updates == 2 && sibling.updates == 2 && separate.updates == 0);
-        assert((*first)->update({{640, 480}, 0.016F}, &slot));
+        assert((*first)->update({{640, 480}, 0.016F}, slot));
         assert(parent.draws == 2 && child.draws == 1 && sibling.draws == 2);
-        const auto invalid = (*first)->update({{640, 480}, NAN}, &slot);
+        const auto invalid = (*first)->update({{640, 480}, NAN}, slot);
         assert(!invalid && invalid.error() == ui::ECaptureError::INVALID_INPUT && slot.valid());
         assert(parent.draws == 2);
         child.setVisible(true);
         assert((*first)->requestFocus(child));
-        assert((*first)->update({{640, 480}, 0.016F}, &slot));
+        assert((*first)->update({{640, 480}, 0.016F}, slot));
         assert((*first)->focusedPane() == &child);
         assert((*first)->feedInput(ui::Key{ui::EKey::A, true}));
-        assert((*first)->update({{640, 480}, 0.016F}, &slot));
+        assert((*first)->update({{640, 480}, 0.016F}, slot));
         const auto before_hidden = child.keys;
         parent.setVisible(false);
         assert((*first)->requestFocus(child) && (*first)->capturePointer(child));
-        assert((*first)->update({}, nullptr));
+        assert((*first)->update({}));
         assert(child.keys == before_hidden); // Same input is never routed twice.
         parent.setVisible(true);
         child.setVisible(false);
         assert(!(*first)->requestFocus(separate));
         assert(!(*first)->requestFocus(child));
-        assert((*second)->update({{640, 480}, 0.016F}, &slot));
+        assert((*second)->update({{640, 480}, 0.016F}, slot));
         assert(separate.draws == 1 && ImGui::GetCurrentContext() == original);
         auto& temporary = ui_test::makePane<Probe>(**first, "temporary");
         const auto temporary_id = ui_test::paneId(temporary);
         assert((*first)->requestFocus(temporary));
         assert((*first)->capturePointer(temporary));
         assert((*first)->removePane(temporary));
-        assert((*first)->update({{640, 480}, 0.016F}, &slot));
+        assert((*first)->update({{640, 480}, 0.016F}, slot));
         assert(!ui_test::findPane(**first, temporary_id));
     }
     assert((*first)->clearPanes() && (*second)->clearPanes());
@@ -469,28 +469,28 @@ int main(int argc, char** argv)
         two.setSize({32, 24});
         for (unsigned frame{}; frame != 3; ++frame)
         {
-            assert((*second)->update({{640, 480}, 0.016F}, &slot));
+            assert((*second)->update({{640, 480}, 0.016F}, slot));
         }
         assert(one.image() == shared && two.image() == shared);
         assert(one.displayedSize() == (ui::Size{32, 24}));
         assert(!one.interaction().resized);
         one.setSize({40, 28});
-        assert((*second)->update({{640, 480}, 0.016F}, &slot));
+        assert((*second)->update({{640, 480}, 0.016F}, slot));
         assert(one.interaction().resized && one.displayedSize() == (ui::Size{40, 28}));
         assert((*second)->requestFocus(one));
         const auto origin = one.contentOrigin();
         assert((*second)->feedInput(ui::PointerMove{{origin.x + 10, origin.y + 10}}));
-        assert((*second)->update({{640, 480}, 0.016F}, &slot));
+        assert((*second)->update({{640, 480}, 0.016F}, slot));
         assert((*second)->feedInput(ui::PointerButton{ui::EPointerButton::RIGHT, true}));
-        assert((*second)->update({{640, 480}, 0.016F}, &slot));
+        assert((*second)->update({{640, 480}, 0.016F}, slot));
         assert(one.interaction().hovered && one.interaction().right_clicked);
         assert(!two.interaction().right_clicked);
         assert(one.interaction().local_pointer == (ui::Point{10, 10}));
-        assert((*second)->update({}, nullptr));
+        assert((*second)->update({}));
         assert((*second)->feedInput(ui::PointerButton{ui::EPointerButton::RIGHT, false}));
-        assert((*second)->update({{640, 480}, 0.016F}, &slot));
+        assert((*second)->update({{640, 480}, 0.016F}, slot));
         assert(!one.interaction().right_clicked && !one.interaction().resized);
-        assert((*second)->update({}, nullptr));
+        assert((*second)->update({}));
 
         const auto has_image = [&]
         {
@@ -501,9 +501,9 @@ int main(int argc, char** argv)
         };
         assert(has_image()); // Slot zero/generation zero must not become the font token.
         one.setImage({});
-        assert((*second)->update({{640, 480}, 0.016F}, &slot) && has_image());
+        assert((*second)->update({{640, 480}, 0.016F}, slot) && has_image());
         two.setImage({});
-        assert((*second)->update({{640, 480}, 0.016F}, &slot) && !has_image());
+        assert((*second)->update({{640, 480}, 0.016F}, slot) && !has_image());
     }
     first->reset();
     second->reset();
@@ -516,27 +516,27 @@ int main(int argc, char** argv)
         first.immediate_input = true;
         for (unsigned frame{}; frame != 3; ++frame)
         {
-            assert(root.update({{640, 480}, 0.016F}, &slot));
+            assert(root.update({{640, 480}, 0.016F}, slot));
         }
         assert(root.requestFocus(first));
         assert(root.feedInput(ui::PointerMove{{-100, -100}}));
         assert(root.feedInput(ui::PointerButton{ui::EPointerButton::LEFT, true}));
-        assert(root.update({{640, 480}, 0.016F}, &slot));
+        assert(root.update({{640, 480}, 0.016F}, slot));
         assert(root.capturePointer(first));
         assert(root.requestFocus(first));
         first.transfer_capture = &second;
         assert(root.feedInput(ui::Key{ui::EKey::A, true}));
         assert(root.feedInput(ui::PointerMove{{-120, -100}}));
-        assert(root.update({{640, 480}, 0.016F}, &slot));
+        assert(root.update({{640, 480}, 0.016F}, slot));
         assert(first.keys == 1 && first.moves == 0 && second.moves == 1);
         assert(root.feedInput(ui::WindowFocus{false}));
         assert(first.losses == 0 && second.losses == 0); // No delivery from a platform callback.
-        assert(root.update({{640, 480}, 0.016F}, &slot));
+        assert(root.update({{640, 480}, 0.016F}, slot));
         assert(first.losses == 1 && second.losses == 1);
         assert(!root.capturePointer(second));
         assert(root.feedInput(ui::WindowFocus{true}));
         assert(root.feedInput(ui::PointerMove{{-140, -100}}));
-        assert(root.update({{640, 480}, 0.016F}, &slot));
+        assert(root.update({{640, 480}, 0.016F}, slot));
         assert(second.moves == 1); // Loss ended capture even without a physical button-up.
     }
     {
@@ -547,7 +547,7 @@ int main(int argc, char** argv)
         pane.consume_keys = false;
         for (unsigned index{}; index != 3; ++index)
         {
-            assert(root.update({{640, 480}, 0.016F}, &slot));
+            assert(root.update({{640, 480}, 0.016F}, slot));
         }
         assert(root.requestFocus(pane));
         assert(root.feedInput(ui::Key{ui::EKey::LEFT_CONTROL, true}));
@@ -555,24 +555,24 @@ int main(int argc, char** argv)
         assert(root.feedInput(ui::Key{ui::EKey::Z, false}));
         const auto full = root.feedInput(ui::Key{ui::EKey::LEFT_CONTROL, false});
         assert(!full && full.error() == ui::EInputError::FULL);
-        assert(root.update({{640, 480}, 0.016F}, &slot));
+        assert(root.update({{640, 480}, 0.016F}, slot));
         assert(pane.undo == 1); // Input is consumed in the same Root update.
-        assert(root.update({}, nullptr));
-        assert(root.update({}, nullptr));
+        assert(root.update({}));
+        assert(root.update({}));
         assert(pane.undo == 1 && pane.redo == 0);
         // The trickled release is not routed early; a rejected release can be retried.
         assert(root.feedInput(ui::Key{ui::EKey::LEFT_CONTROL, false}));
-        assert(root.update({{640, 480}, 0.016F}, &slot));
-        assert(root.update({{640, 480}, 0.016F}, &slot));
+        assert(root.update({{640, 480}, 0.016F}, slot));
+        assert(root.update({{640, 480}, 0.016F}, slot));
         assert(pane.undo == 1);
         pane.edit_text = true;
         for (unsigned index{}; index != 3; ++index)
         {
-            assert(root.update({{640, 480}, 0.016F}, &slot));
+            assert(root.update({{640, 480}, 0.016F}, slot));
         }
         assert(root.feedInput(ui::Key{ui::EKey::LEFT_CONTROL, true}));
         assert(root.feedInput(ui::Key{ui::EKey::Z, true}));
-        assert(root.update({{640, 480}, 0.016F}, &slot));
+        assert(root.update({{640, 480}, 0.016F}, slot));
         assert(pane.undo == 1); // Text editing owns Ctrl+Z; no document undo.
         const auto invalid = root.feedInput(ui::PointerMove{{NAN, 0}});
         assert(!invalid && invalid.error() == ui::EInputError::INVALID_INPUT);
@@ -597,7 +597,7 @@ int main(int argc, char** argv)
         assert(second->pixels.size() > first->pixels.size());
         assert((*normal)->scale() == 1.f && (*enlarged)->scale() == 2.f);
         // Framebuffer scale remains independent of font preparation.
-        assert((*enlarged)->update({{640, 480}, 0.016f, {2, 2}}, &slot));
+        assert((*enlarged)->update({{640, 480}, 0.016f, {2, 2}}, slot));
         assert(ImGui::GetCurrentContext() == original);
     }
     ui::FontSource invalid_font;

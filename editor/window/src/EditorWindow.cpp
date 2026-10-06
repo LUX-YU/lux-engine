@@ -1,6 +1,6 @@
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/FrameworkErrors.hpp>
-#include <lux/engine/editor/WindowInput.hpp>
+#include <lux/engine/editor/detail/WindowInput.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/window/GlfwRuntime.hpp>
 

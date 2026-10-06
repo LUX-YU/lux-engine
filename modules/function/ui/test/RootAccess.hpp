@@ -5,6 +5,10 @@ namespace lux::ui::detail
 {
     struct RootTestAccess final
     {
+        static void apply(Root& root) noexcept
+        {
+            root.applyPendingChanges();
+        }
         static PaneId id(const Pane& pane) noexcept
         {
             return pane.id_;
@@ -18,6 +22,10 @@ namespace lux::ui::detail
 namespace ui_test
 {
     using lux::ui::detail::RootTestAccess;
+    inline void apply(lux::ui::Root& root) noexcept
+    {
+        RootTestAccess::apply(root);
+    }
     inline auto paneId(const lux::ui::Pane& pane) noexcept
     {
         return RootTestAccess::id(pane);

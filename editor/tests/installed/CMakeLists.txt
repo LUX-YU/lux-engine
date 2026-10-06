@@ -45,14 +45,13 @@ add_test(NAME sdk.error COMMAND sdk_error $<TARGET_FILE:sdk_error_plugin>)
 add_test(NAME sdk.services COMMAND sdk_services)
 add_test(NAME sdk.framework.context COMMAND framework_context "${CMAKE_CURRENT_BINARY_DIR}/data")
 add_test(NAME sdk.framework.ui COMMAND framework_ui)
-add_test(NAME sdk.framework.gpu COMMAND framework_gpu)
 add_test(NAME sdk.framework.desktop COMMAND framework_gpu --native)
-set_tests_properties(sdk.framework.gpu sdk.framework.desktop PROPERTIES RUN_SERIAL TRUE TIMEOUT 90)
+set_tests_properties(sdk.framework.desktop PROPERTIES RUN_SERIAL TRUE TIMEOUT 90)
 set_tests_properties(sdk.framework.context sdk.framework.ui PROPERTIES TIMEOUT 60)
 
 # Each installed public header must be sufficient on its own in a C++20 translation unit.
 set(framework_headers EditorContext EditorServiceRegistrar EditorUiRegistrar FrameworkResult
-    SceneToolRegistrar ProjectDescription EditorUiScene EditorWindow WindowInput LuxEngine)
+    SceneToolRegistrar ProjectDescription EditorLayout EditorUiFactories FrameworkErrors EditorWindow LuxEngine)
 foreach(header IN LISTS framework_headers)
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" "#include <lux/engine/editor/${header}.hpp>\n")
     add_library(header_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")

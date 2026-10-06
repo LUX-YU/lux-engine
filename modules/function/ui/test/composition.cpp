@@ -125,7 +125,7 @@ namespace
         pane.requestClose();
         pane.requestClose();
         assert(direct == 2 && pane.hasCloseRequest());
-        assert((*root)->update({}, nullptr) && pane.hasCloseRequest() && pane.visible());
+        assert((*root)->update({}) && pane.hasCloseRequest() && pane.visible());
         pane.dismissCloseRequest();
         assert(!pane.hasCloseRequest() && pane.visible());
         pane.requestClose();
@@ -190,7 +190,7 @@ namespace
         auto forbidden = [](ui::Pane&) { std::abort(); };
         assert(!object::ObjectRuntime::instance().resolve(root_id));
         const auto remounted = ui_test::paneId(pane);
-        assert((*replacement)->update({}, nullptr));
+        assert((*replacement)->update({}));
         owner = (*replacement)->removePane(pane);
         assert(owner && !ui_test::findPane(**replacement, remounted));
         assert((*replacement)->addPane(std::move(*owner)) && ui_test::paneId(pane) != remounted);
@@ -300,7 +300,7 @@ namespace
         assert(counts.destroyed == 1);
         auto owner = (*root)->removePane(pane);
         assert(owner && !next->attachedRoot());
-        (*root)->applyPendingChanges();
+        ui_test::apply(**root);
         std::cout << "Single content root; replacement revokes input before complete-fact notification PASS\n";
     }
 
@@ -322,8 +322,8 @@ namespace
                 [](object::LuxObject& target) noexcept { static_cast<Window&>(target).setVisible(false); }
             );
         };
-        assert((*root)->update({}, nullptr) && counts.destroyed == 0 && pane.visible());
-        (*root)->applyPendingChanges();
+        assert((*root)->update({}) && counts.destroyed == 0 && pane.visible());
+        ui_test::apply(**root);
         assert(!pane.visible());
         auto owner = (*root)->removePane(pane);
         assert(owner && counts.destroyed == 0);
@@ -378,8 +378,8 @@ namespace
         assert(pane.addElement(old));
         assert((*root)->requestFocus(old) && (*root)->capturePointer(old));
         ui::DrawData draw;
-        assert((*root)->update({{640, 480}, 0.016F}, &draw));
-        assert((*root)->update({{640, 480}, 0.016F}, &draw));
+        assert((*root)->update({{640, 480}, 0.016F}, draw));
+        assert((*root)->update({{640, 480}, 0.016F}, draw));
         ui::VInputEvent event = ui::PointerCancel{};
         static_cast<void>(object::sendEvent(old, event));
         assert(old.draws && old.measurements && old.events);
@@ -403,7 +403,7 @@ namespace
         assert(layout.replaceElement(*old, candidate));
         assert(layout.status() == ui::ELayoutStatus::VALID && counts.destroyed == 0 && !old->parent());
         ui::DrawData draw;
-        assert((*root)->update({{640, 480}, 0.016F}, &draw));
+        assert((*root)->update({{640, 480}, 0.016F}, draw));
         old.reset();
         assert(counts.destroyed == 1);
         auto& independent = ui_test::makePane<Window>(**root, "independent", counts);
@@ -501,7 +501,7 @@ namespace
             // The exact same object/address gets a fresh Root registration.
             assert((*root)->addPane(std::move(*owner)) && ui_test::paneId(old) != identity);
             assert(!ui_test::findPane(**root, identity));
-            (*root)->applyPendingChanges();
+            ui_test::apply(**root);
             // Connection remains attached to ObjectId, independent from the old PaneId.
             assert(messages.dispatchPending() == 1 && counts.callbacks == i + 1);
             assert(sender.send().queued == 1);
@@ -555,7 +555,7 @@ namespace
         assert(connection && b.addElement(child));
         assert(child.finishes == 1 && child.attachedRoot() == second->get());
         assert(!(*first)->focusedElement() && (*second)->requestFocus(child));
-        (*first)->applyPendingChanges(); // The old-root intent was revoked, not rebound to the same object.
+        ui_test::apply(**first); // The old-root intent was revoked, not rebound to the same object.
         assert(b.addElement(child) && child.finishes == 1);
         auto occupied = source.addElement(child);
         assert(!occupied && occupied.error() == ui::EPaneError::OCCUPIED && child.parent() == &b);
@@ -592,7 +592,7 @@ namespace
             assert(!nested && nested.error() == ui::EPaneError::BUSY);
             auto removed = (*root)->removePane(pane);
             assert(!removed && removed.error() == ui::EPaneError::BUSY);
-            auto maintained = (*root)->update({}, nullptr);
+            auto maintained = (*root)->update({});
             assert(!maintained && maintained.error() == ui::ECaptureError::FRAME_OPEN);
             ui::Layout content{};
             auto refused = pane.addElement(content);

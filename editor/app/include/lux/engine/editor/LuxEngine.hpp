@@ -9,10 +9,6 @@ namespace lux::engine
 {
     class EngineContext;
 }
-namespace lux::ui
-{
-    class Root;
-}
 namespace lux::editor
 {
     class EditorWindow;
@@ -23,6 +19,12 @@ namespace lux::editor
         int width{1280};
         int height{800};
         std::uint32_t frame_interval_ms{16};
+    };
+
+    enum class EFrameStatus : std::uint8_t
+    {
+        RUNNING,
+        EXIT_REQUESTED
     };
 
     class LuxEngine final
@@ -40,12 +42,11 @@ namespace lux::editor
         [[nodiscard]] FrameworkResult<void> closeProject() noexcept;
         [[nodiscard]] FrameworkResult<void> exec() noexcept;
         // One host iteration; callers do not drive SceneRuntime a second time.
-        [[nodiscard]] FrameworkResult<bool> frame() noexcept;
+        [[nodiscard]] FrameworkResult<EFrameStatus> frame() noexcept;
         [[nodiscard]] EditorWindow& window() noexcept;
-        [[nodiscard]] ui::Root& uiRoot() noexcept;
         [[nodiscard]] engine::EngineContext& engine() noexcept;
+        [[nodiscard]] const engine::EngineContext& engine() const noexcept;
         [[nodiscard]] EditorContext* context() noexcept;
-        [[nodiscard]] std::uint64_t capturedFrames() const noexcept;
 
     private:
         struct Impl;

@@ -318,7 +318,19 @@ namespace lux::ui
         impl_->window = window;
         impl_->context->bindWindow(window ? window->nativeHandle() : nullptr);
     }
-    lux::cxx::expected<void, ECaptureError> Root::update(
+    cxx::expected<void, ECaptureError> Root::update(FrameInfo info) noexcept
+    {
+        return updateFrame(info, nullptr, std::nullopt);
+    }
+    cxx::expected<void, ECaptureError> Root::update(
+        FrameInfo info,
+        DrawData& output,
+        std::optional<Capture> capture
+    ) noexcept
+    {
+        return updateFrame(info, &output, capture);
+    }
+    lux::cxx::expected<void, ECaptureError> Root::updateFrame(
         FrameInfo info,
         DrawData* output,
         std::optional<Capture> capture
@@ -331,6 +343,7 @@ namespace lux::ui
         {
             return lux::cxx::unexpected(ECaptureError::FRAME_OPEN);
         }
+        applyPendingChanges();
         lux::cxx::expected<void, ECaptureError> result;
         if (output)
         {
@@ -600,8 +613,8 @@ namespace lux::ui
     void Root::applyPendingChanges() noexcept
     {
         requireOwner();
-        impl_->applyPendingChanges(*this);
         const auto count = impl_->menu_calls.size();
+        impl_->applyPendingChanges(*this);
         for (std::size_t index{}; index < count; ++index)
         {
             const auto call = impl_->menu_calls[index];
@@ -619,12 +632,6 @@ namespace lux::ui
             }
         }
         impl_->menu_calls.erase(impl_->menu_calls.begin(), impl_->menu_calls.begin() + count);
-    }
-
-    bool Root::hasPendingChanges() const noexcept
-    {
-        requireOwner();
-        return !impl_->changes.empty() || !impl_->menu_calls.empty();
     }
 
     void Root::Impl::applyPendingChanges(Root& root) noexcept

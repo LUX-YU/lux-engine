@@ -1,4 +1,4 @@
-#include <lux/engine/editor/WindowInput.hpp>
+#include <lux/engine/editor/detail/WindowInput.hpp>
 #include <lux/engine/input/InputSnapshot.hpp>
 #include <optional>
 namespace lux::editor

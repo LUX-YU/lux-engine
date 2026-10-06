@@ -7,18 +7,9 @@
 #include <optional>
 #include <span>
 
-namespace lux::process
+namespace lux::engine
 {
-    class ExecutionRuntime;
-}
-namespace lux::scene
-{
-    class SceneRuntime;
-    class RenderResources;
-} // namespace lux::scene
-namespace lux::render
-{
-    class RenderRuntime;
+    class EngineContext;
 }
 namespace lux::editor
 {
@@ -27,10 +18,7 @@ namespace lux::editor
     {
     public:
         [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorUiScene>> create(
-            process::ExecutionRuntime&,
-            scene::SceneRuntime&,
-            render::RenderRuntime&,
-            scene::RenderResources&,
+            engine::EngineContext&,
             std::vector<std::byte> render_configuration,
             std::optional<scene::ViewConfig> output = {}
         ) noexcept;
@@ -43,11 +31,9 @@ namespace lux::editor
         [[nodiscard]] bool outputReady() noexcept;
         [[nodiscard]] ui::DrawData* acquireDrawData() noexcept;
         [[nodiscard]] cxx::expected<void, ui::ECaptureError> captureDrawData(const ui::DrawData&) noexcept;
-        [[nodiscard]] FrameworkResult<void> publishInput() noexcept;
+        [[nodiscard]] FrameworkResult<void> publishFrame() noexcept;
         void stopFrames() noexcept;
-        [[nodiscard]] std::uint64_t capturedFrames() const noexcept;
         [[nodiscard]] scene::SceneInstanceId sceneId() const noexcept;
-        [[nodiscard]] bool hasWritableFrame() const noexcept;
 
     private:
         struct Impl;

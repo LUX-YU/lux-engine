@@ -1,3 +1,4 @@
+#include "RootAccess.hpp"
 #pragma once
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <cassert>
@@ -87,7 +88,7 @@ namespace api_checks
         );
         worker.join();
         ui::DrawData draw;
-        const auto frame = [&] { assert(root.update({{640, 480}, .016F}, &draw)); };
+        const auto frame = [&] { assert(root.update({{640, 480}, .016F}, draw)); };
         for (unsigned i{}; i < 3; ++i)
         {
             frame();
@@ -109,7 +110,7 @@ namespace api_checks
         frame();
         assert(a.queries && a.executions == 0 && b.executions == 0);
         assert(root.requestFocus(b));
-        root.applyPendingChanges();
+        ui_test::apply(root);
         assert(a.executions == 1 && b.executions == 0);
         assert(root.feedInput(ui::Key{ui::EKey::K, false}));
         frame();
@@ -119,11 +120,11 @@ namespace api_checks
         frame();
         auto removed = root.removePane(a);
         assert(removed);
-        root.applyPendingChanges();
+        ui_test::apply(root);
         assert(a.executions == 1 && b.executions == 0);
         // Remounting the same object must not revive a queued command from its prior registration.
         assert(root.addPane(std::move(*removed)));
-        root.applyPendingChanges();
+        ui_test::apply(root);
         assert(a.executions == 1);
     }
 } // namespace api_checks

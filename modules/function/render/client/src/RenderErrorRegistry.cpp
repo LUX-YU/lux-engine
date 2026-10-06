@@ -4,10 +4,69 @@
 #include <lux/engine/function/render/client/core/EngineSetSlot.hpp> // DescriptorSlot 实参槽
 #include <lux/engine/description/LayoutContract.hpp>                // LogicalResource / BindFrequency 实参槽
 
+#include <lux/engine/error/ErrorRegistry.hpp>
 #include <string>
 
 namespace lux::render
 {
+    error::Error toError(RenderError failure) noexcept
+    {
+        if (failure.ok())
+        {
+            return {};
+        }
+        const auto descriptor = renderErrorRegistry().find(failure.type);
+        if (!descriptor)
+        {
+            return error::makeError(
+                {"lux.render.unavailable_descriptor",
+                 "Unavailable Render description: slot {0}, generation {1}",
+                 error::ERecovery::BUG,
+                 {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}},
+                {failure.type.index, failure.type.gen}
+            );
+        }
+        const std::string name = "lux.render.backend." + std::string(descriptor->name);
+        error::ErrorDescriptor stable{name, descriptor->message};
+        switch (descriptor->recovery)
+        {
+        case ERecovery::PERMANENT:
+            stable.recovery = error::ERecovery::PERMANENT;
+            break;
+        case ERecovery::RETRYABLE:
+            stable.recovery = error::ERecovery::RETRYABLE;
+            break;
+        case ERecovery::NEEDS_INPUT:
+            stable.recovery = error::ERecovery::NEEDS_INPUT;
+            break;
+        case ERecovery::BUG:
+            stable.recovery = error::ERecovery::BUG;
+            break;
+        }
+        std::array<std::uint64_t, 3> args{};
+        for (std::size_t i{}; i < args.size(); ++i)
+        {
+            args[i] = failure.args[i];
+            switch (descriptor->args[i])
+            {
+            case EErrorArg::NONE:
+                stable.arguments[i] = error::EArgument::NONE;
+                break;
+            case EErrorArg::HEX:
+                stable.arguments[i] = error::EArgument::HEX;
+                break;
+            case EErrorArg::VK_RESULT:
+                stable.arguments[i] = error::EArgument::SIGNED;
+                args[i] =
+                    static_cast<std::uint64_t>(static_cast<std::int64_t>(static_cast<std::int32_t>(failure.args[i])));
+                break;
+            default:
+                stable.arguments[i] = error::EArgument::UNSIGNED;
+                break;
+            }
+        }
+        return error::makeError(stable, args);
+    }
     namespace
     {
         /// 常见 VkResult 的稳定 wire 值→名字。这一层只解码已经结构化

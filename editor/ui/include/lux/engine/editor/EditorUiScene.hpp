@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/editor/FrameworkError.hpp>
+#include <lux/engine/editor/FrameworkResult.hpp>
 #include <lux/engine/scene/RenderResourceTypes.hpp>
 #include <lux/engine/scene/SceneInstanceId.hpp>
 #include <lux/engine/ui/DrawData.hpp>

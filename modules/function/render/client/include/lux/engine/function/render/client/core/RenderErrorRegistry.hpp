@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/error/Error.hpp>
 /**
  * @file RenderErrorRegistry.hpp
  * @brief 错误类型注册表:类型绑定、幂等、代化。
@@ -46,6 +47,9 @@
 
 namespace lux::render
 {
+    // Copy a live Render descriptor at its original code-lifetime boundary.
+    // The returned Error uses a stable name hash, never the Render registry's temporary slot.
+    [[nodiscard]] LUX_FUNCTION_PUBLIC error::Error toError(RenderError) noexcept;
     class LUX_FUNCTION_PUBLIC RenderErrorRegistry
     {
     public:

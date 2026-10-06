@@ -1,16 +1,33 @@
 #pragma once
 
+#include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/core/visibility.h>
 #include <lux/engine/error/Error.hpp>
-#include <lux/cxx/compile_time/expected.hpp>
 #include <memory>
 #include <string>
 
 namespace lux::error
 {
-    enum class ERecovery : std::uint8_t { PERMANENT, RETRYABLE, NEEDS_INPUT, BUG };
-    enum class EArgument : std::uint8_t { NONE, UNSIGNED, SIGNED, HEX };
-    enum class ERegistrationError : std::uint8_t { INVALID_DESCRIPTOR, DEFINITION_MISMATCH, HASH_COLLISION };
+    enum class ERecovery : std::uint8_t
+    {
+        PERMANENT,
+        RETRYABLE,
+        NEEDS_INPUT,
+        BUG
+    };
+    enum class EArgument : std::uint8_t
+    {
+        NONE,
+        UNSIGNED,
+        SIGNED,
+        HEX
+    };
+    enum class ERegistrationError : std::uint8_t
+    {
+        INVALID_DESCRIPTOR,
+        DEFINITION_MISMATCH,
+        HASH_COLLISION
+    };
 
     // Borrowed only during registration. No callback or plugin address is retained.
     struct ErrorDescriptor final
@@ -49,7 +66,6 @@ namespace lux::error
     };
 
     // A malformed/conflicting descriptor is reported as a registry error, never overwritten.
-    [[nodiscard]] LUX_CORE_PUBLIC Error
-    makeError(const ErrorDescriptor&, std::array<std::uint64_t, 3> = {}) noexcept;
+    [[nodiscard]] LUX_CORE_PUBLIC Error makeError(const ErrorDescriptor&, std::array<std::uint64_t, 3> = {}) noexcept;
     [[nodiscard]] LUX_CORE_PUBLIC std::string format(Error) noexcept;
-}
+} // namespace lux::error

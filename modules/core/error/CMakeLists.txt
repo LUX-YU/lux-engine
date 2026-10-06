@@ -1,5 +1,5 @@
 find_package(lux-cxx CONFIG REQUIRED COMPONENTS algorithm compile_time)
-add_component(COMPONENT_NAME error NAMESPACE lux::engine::core SHARED
+add_component(COMPONENT_NAME error NAMESPACE lux::engine::core
     OUTPUT_NAME lux_engine_core_error SOURCE_FILES src/ErrorRegistry.cpp)
 component_include_directories(error BUILD_TIME_EXPORT
     ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}

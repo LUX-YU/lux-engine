@@ -21,9 +21,11 @@ namespace lux::editor
         const bool is_invalid_root = project.root.empty() || !project.root.is_absolute();
         if (is_invalid_name || is_invalid_root)
         {
-            return cxx::unexpected(
-                FrameworkFailure{EFrameworkError::INVALID_DESCRIPTION, "Project needs a name and absolute root"}
-            );
+            return cxx::unexpected(error::makeError(
+                {"lux.editor.project_needs_a_name_and_absolute_root",
+                 "Project needs a name and absolute root",
+                 error::ERecovery::PERMANENT}
+            ));
         }
         return {};
     }

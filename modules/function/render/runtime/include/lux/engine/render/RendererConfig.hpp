@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/error/Error.hpp>
 #include <lux/engine/function/render/client/FeatureCatalog.hpp>
 #include <lux/engine/function/render/client/RenderControlSession.hpp>
 #include <lux/engine/function/render/client/RenderProgramSession.hpp>
@@ -43,6 +44,9 @@ namespace lux::render
         std::uint64_t request{};
         std::optional<std::uint32_t> backend_status;
     };
+    // Backend failures retain their descriptor and all three parameters. Other failures
+    // retain the precise admission code, request and optional backend status.
+    [[nodiscard]] LUX_RENDER_RUNTIME_PUBLIC error::Error toError(const RendererFailure&) noexcept;
     struct RendererDiagnostic final
     {
         RendererFailure failure;

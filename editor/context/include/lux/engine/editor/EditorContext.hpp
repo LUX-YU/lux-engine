@@ -52,9 +52,11 @@ namespace lux::editor
         {
             if (!object::ObjectRuntime::instance().isCurrent())
             {
-                return cxx::unexpected(
-                    FrameworkFailure{EFrameworkError::WRONG_THREAD, "Project services require owner thread"}
-                );
+                return cxx::unexpected(error::makeError(
+                    {"lux.editor.project_services_require_owner_thread",
+                     "Project services require owner thread",
+                     error::ERecovery::BUG}
+                ));
             }
             return services_.get<T>(*this);
         }

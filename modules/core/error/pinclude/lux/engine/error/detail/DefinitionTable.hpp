@@ -10,24 +10,37 @@ namespace lux::error::detail
     class DefinitionTable final
     {
     public:
-        [[nodiscard]] cxx::expected<ErrorId, ERegistrationError>
-        insert(ErrorId id, const ErrorDescriptor& descriptor) noexcept
+        [[nodiscard]] cxx::expected<ErrorId, ERegistrationError> insert(
+            ErrorId id,
+            const ErrorDescriptor& descriptor
+        ) noexcept
         {
             auto existing = definitions_.find(id);
             if (existing != definitions_.end())
             {
                 const auto& value = *existing->second;
                 if (value.name != descriptor.name)
+                {
                     return cxx::unexpected(ERegistrationError::HASH_COLLISION);
+                }
                 const bool is_same_definition = value.message == descriptor.message &&
-                    value.recovery == descriptor.recovery && value.arguments == descriptor.arguments;
+                                                value.recovery == descriptor.recovery &&
+                                                value.arguments == descriptor.arguments;
                 if (!is_same_definition)
+                {
                     return cxx::unexpected(ERegistrationError::DEFINITION_MISMATCH);
+                }
                 return id;
             }
-            definitions_.emplace(id, std::make_unique<const ErrorDefinition>(ErrorDefinition{
-                std::string(descriptor.name), std::string(descriptor.message), descriptor.recovery, descriptor.arguments
-            }));
+            definitions_.emplace(
+                id,
+                std::make_unique<const ErrorDefinition>(ErrorDefinition{
+                    std::string(descriptor.name),
+                    std::string(descriptor.message),
+                    descriptor.recovery,
+                    descriptor.arguments
+                })
+            );
             return id;
         }
 
@@ -40,4 +53,4 @@ namespace lux::error::detail
     private:
         std::unordered_map<ErrorId, std::unique_ptr<const ErrorDefinition>> definitions_;
     };
-}
+} // namespace lux::error::detail

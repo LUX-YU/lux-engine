@@ -3,10 +3,10 @@
 #include <lux/engine/system/SystemInstanceId.hpp>
 #include <lux/engine/system/SystemTypeDescription.hpp>
 
-#include <any>
 #include <chrono>
 #include <cstddef>
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/error/Error.hpp>
 #include <stop_token>
 #include <type_traits>
 
@@ -21,7 +21,7 @@ namespace lux::scene
     {
         ESceneExecutionError code{ESceneExecutionError::SYSTEM_FAILURE};
         system::SystemInstanceId system{};
-        std::any cause; // Original owning domain failure; Scene has no Render dependency.
+        error::Error cause; // Stable domain classification; detailed diagnostics remain with the domain owner.
     };
 
     enum class ESceneProgress : std::uint8_t

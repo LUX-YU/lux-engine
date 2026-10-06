@@ -2,7 +2,7 @@
 #include <functional>
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
-#include <lux/engine/editor/FrameworkError.hpp>
+#include <lux/engine/editor/FrameworkResult.hpp>
 #include <memory>
 #include <vector>
 
@@ -27,7 +27,9 @@ namespace lux::editor
         {
             if (!factory)
             {
-                return cxx::unexpected(FrameworkFailure{EFrameworkError::FACTORY_FAILED, "Empty service factory"});
+                return cxx::unexpected(error::makeError(
+                    {"lux.editor.empty_service_factory", "Empty service factory", error::ERecovery::PERMANENT}
+                ));
             }
             auto erased = [factory = std::move(factory)](EditorContext& context) mutable -> FrameworkResult<Owner>
             {
@@ -38,7 +40,9 @@ namespace lux::editor
                 }
                 if (!*created)
                 {
-                    return cxx::unexpected(FrameworkFailure{EFrameworkError::FACTORY_FAILED, "Null service"});
+                    return cxx::unexpected(
+                        error::makeError({"lux.editor.null_service", "Null service", error::ERecovery::PERMANENT})
+                    );
                 }
                 return Owner{created->release(), [](void* value) noexcept { delete static_cast<T*>(value); }};
             };

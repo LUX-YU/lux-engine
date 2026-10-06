@@ -1,7 +1,7 @@
 #pragma once
 #include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/editor/EditorUiRegistrar.hpp>
-#include <lux/engine/editor/FrameworkError.hpp>
+#include <lux/engine/editor/FrameworkResult.hpp>
 #include <lux/engine/editor/ProjectDescription.hpp>
 #include <memory>
 

@@ -14,23 +14,31 @@ namespace lux::editor
         static window::GlfwRuntime runtime;
         if (!runtime.valid())
         {
-            return cxx::unexpected(FrameworkFailure{EFrameworkError::WINDOW, "GLFW initialization failed"});
+            return cxx::unexpected(error::makeError(
+                {"lux.editor.glfw_initialization_failed", "GLFW initialization failed", error::ERecovery::PERMANENT}
+            ));
         }
         auto window = std::unique_ptr<EditorWindow>{new EditorWindow(config)};
         if (!window->isInitialized())
         {
-            return cxx::unexpected(FrameworkFailure{
-                EFrameworkError::WINDOW,
-                "Native window creation failed",
-                static_cast<std::uint64_t>(window->initError())
-            });
+            return cxx::unexpected(error::makeError(
+                {"lux.editor.native_window_creation_failed",
+                 "Native window creation failed: code {0}",
+                 error::ERecovery::PERMANENT,
+                 {error::EArgument::UNSIGNED}},
+                {static_cast<std::uint64_t>(window->initError())}
+            ));
         }
         auto root = ui::Root::create();
         if (!root)
         {
-            return cxx::unexpected(FrameworkFailure{
-                EFrameworkError::UI, "Root initialization failed", static_cast<std::uint64_t>(root.error())
-            });
+            return cxx::unexpected(error::makeError(
+                {"lux.editor.root_initialization_failed",
+                 "Root initialization failed: code {0}",
+                 error::ERecovery::PERMANENT,
+                 {error::EArgument::UNSIGNED}},
+                {static_cast<std::uint64_t>(root.error())}
+            ));
         }
         window->root_ = std::move(*root);
         window->root_->bindWindow(window.get());
@@ -46,11 +54,13 @@ namespace lux::editor
         auto fed = feedWindowInput(*root_, input_.snapshot());
         if (!fed)
         {
-            return cxx::unexpected(FrameworkFailure{
-                EFrameworkError::UI,
-                "Native input delivery failed",
-                static_cast<std::uint64_t>(fed.error())
-            });
+            return cxx::unexpected(error::makeError(
+                {"lux.editor.native_input_delivery_failed",
+                 "Native input delivery failed: code {0}",
+                 error::ERecovery::PERMANENT,
+                 {error::EArgument::UNSIGNED}},
+                {static_cast<std::uint64_t>(fed.error())}
+            ));
         }
         return {};
     }

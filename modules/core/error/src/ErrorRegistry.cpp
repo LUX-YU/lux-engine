@@ -1,7 +1,7 @@
-#include <lux/engine/error/ErrorRegistry.hpp>
-#include <lux/engine/error/detail/DefinitionTable.hpp>
 #include <bit>
 #include <charconv>
+#include <lux/engine/error/ErrorRegistry.hpp>
+#include <lux/engine/error/detail/DefinitionTable.hpp>
 #include <mutex>
 #include <shared_mutex>
 
@@ -10,38 +10,52 @@ namespace lux::error
     namespace
     {
         constexpr ErrorDescriptor RegistrationFailure{
-            "lux.error.registration", "Error descriptor {0} rejected: registration code {1}", ERecovery::BUG,
+            "lux.error.registration",
+            "Error descriptor {0} rejected: registration code {1}",
+            ERecovery::BUG,
             {EArgument::HEX, EArgument::UNSIGNED}
         };
 
         bool valid(const ErrorDescriptor& descriptor) noexcept
         {
             if (descriptor.name.empty() || errorId(descriptor.name) == 0)
+            {
                 return false;
+            }
             for (const auto c : descriptor.name)
             {
                 const bool is_letter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
                 const bool is_digit = c >= '0' && c <= '9';
                 const bool is_separator = c == '.' || c == '_' || c == '-' || c == ':' || c == '/';
                 if (!(is_letter || is_digit || is_separator))
+                {
                     return false;
+                }
             }
             if (descriptor.recovery > ERecovery::BUG)
+            {
                 return false;
+            }
             unsigned declared{}, used{};
             for (std::size_t i{}; i < descriptor.arguments.size(); ++i)
             {
                 if (descriptor.arguments[i] > EArgument::HEX)
+                {
                     return false;
+                }
                 if (descriptor.arguments[i] != EArgument::NONE)
+                {
                     declared |= 1U << i;
+                }
             }
             const auto text = descriptor.message;
             for (std::size_t i{}; i < text.size(); ++i)
             {
                 const char c = text[i];
                 if (c != '{' && c != '}')
+                {
                     continue;
+                }
                 if (i + 1 < text.size() && text[i + 1] == c)
                 {
                     ++i;
@@ -49,10 +63,14 @@ namespace lux::error
                 }
                 const bool has_placeholder = c == '{' && i + 2 < text.size() && text[i + 2] == '}';
                 if (!has_placeholder)
+                {
                     return false;
+                }
                 const char index = text[i + 1];
                 if (index < '0' || index > '2')
+                {
                     return false;
+                }
                 used |= 1U << (index - '0');
                 i += 2;
             }
@@ -63,13 +81,16 @@ namespace lux::error
         {
             char buffer[32];
             if (kind == EArgument::HEX)
+            {
                 output += "0x";
-            const auto converted = kind == EArgument::SIGNED ?
-                std::to_chars(buffer, buffer + sizeof(buffer), std::bit_cast<std::int64_t>(value)) :
-                std::to_chars(buffer, buffer + sizeof(buffer), value, kind == EArgument::HEX ? 16 : 10);
+            }
+            const auto converted =
+                kind == EArgument::SIGNED
+                    ? std::to_chars(buffer, buffer + sizeof(buffer), std::bit_cast<std::int64_t>(value))
+                    : std::to_chars(buffer, buffer + sizeof(buffer), value, kind == EArgument::HEX ? 16 : 10);
             output.append(buffer, converted.ptr);
         }
-    }
+    } // namespace
 
     struct ErrorRegistry::Impl final
     {
@@ -90,7 +111,9 @@ namespace lux::error
     cxx::expected<ErrorId, ERegistrationError> ErrorRegistry::registerType(const ErrorDescriptor& descriptor) noexcept
     {
         if (!valid(descriptor))
+        {
             return cxx::unexpected(ERegistrationError::INVALID_DESCRIPTOR);
+        }
         const auto id = errorId(descriptor.name);
         std::unique_lock lock(impl_->mutex);
         return impl_->table.insert(id, descriptor);
@@ -104,13 +127,20 @@ namespace lux::error
     {
         const auto registered = ErrorRegistry::instance().registerType(descriptor);
         if (!registered)
-            return {errorId(RegistrationFailure.name), {errorId(descriptor.name), static_cast<std::uint64_t>(registered.error())}};
+        {
+            return {
+                errorId(RegistrationFailure.name),
+                {errorId(descriptor.name), static_cast<std::uint64_t>(registered.error())}
+            };
+        }
         return {*registered, args};
     }
     std::string format(Error error) noexcept
     {
         if (!error.type)
+        {
             return "No error";
+        }
         const auto* definition = ErrorRegistry::instance().find(error.type);
         if (!definition)
         {
@@ -144,4 +174,4 @@ namespace lux::error
         }
         return result;
     }
-}
+} // namespace lux::error

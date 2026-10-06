@@ -75,7 +75,7 @@ int main(int argc, char** argv)
         ));
         assert(!context.services().registerFactory<Service>(
             [](EditorContext&) -> FrameworkResult<std::unique_ptr<Service>>
-            { return cxx::unexpected(FrameworkFailure{EFrameworkError::FACTORY_FAILED, "unused"}); }
+            { return cxx::unexpected(error::makeError({"lux.editor.unused", "unused", error::ERecovery::PERMANENT})); }
         ));
         assert(context.services().registerFactory<Other>(
             [&](EditorContext& context) -> FrameworkResult<std::unique_ptr<Other>>
@@ -88,7 +88,7 @@ int main(int argc, char** argv)
             [](EditorContext& context) -> FrameworkResult<std::unique_ptr<Recursive>>
             {
                 auto nested = context.service<Recursive>();
-                assert(!nested && nested.error().code == EFrameworkError::RECURSIVE_CONSTRUCTION);
+                assert(!nested && nested.error().type == error::errorId("lux.editor.recursive_service_factory"));
                 return cxx::unexpected(std::move(nested.error()));
             }
         ));
@@ -97,7 +97,9 @@ int main(int argc, char** argv)
             {
                 if (++attempts == 1)
                 {
-                    return cxx::unexpected(FrameworkFailure{EFrameworkError::FACTORY_FAILED, "first attempt"});
+                    return cxx::unexpected(
+                        error::makeError({"lux.editor.first_attempt", "first attempt", error::ERecovery::PERMANENT})
+                    );
                 }
                 return std::make_unique<Retry>();
             }
@@ -131,11 +133,11 @@ int main(int argc, char** argv)
         assert(second.sceneTools().registerFactory<Tools>(&alsoMatch, factory));
         second.freeze();
         auto ambiguous = second.sceneTools().create<Tools>(second, world);
-        assert(!ambiguous && ambiguous.error().code == EFrameworkError::AMBIGUOUS);
+        assert(!ambiguous && ambiguous.error().type == error::errorId("lux.editor.ambiguous_scene_tool_rules"));
         SceneToolRegistrar empty;
         empty.freeze();
         auto missing = empty.create<Tools>(second, world);
-        assert(!missing && missing.error().code == EFrameworkError::NOT_FOUND);
+        assert(!missing && missing.error().type == error::errorId("lux.editor.no_matching_scene_tool_rule"));
     }
     assert((destroyed == std::vector<int>{2, 1}));
     std::puts("PASS lazy services, frozen registration, recursion, retry, reverse destruction, typed tool rules");

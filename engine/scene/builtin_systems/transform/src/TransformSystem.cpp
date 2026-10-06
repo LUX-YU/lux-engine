@@ -6,12 +6,44 @@
 
 #include <algorithm>
 #include <limits>
+#include <lux/engine/error/ErrorRegistry.hpp>
 
 namespace lux::scene
 {
     using namespace simulation::ecs;
     namespace
     {
+        error::Error transformError(ETransformUpdateError value) noexcept
+        {
+            return error::makeError(
+                {"lux.scene.transform.update",
+                 "Transform update code {0}",
+                 error::ERecovery::NEEDS_INPUT,
+                 {error::EArgument::UNSIGNED}},
+                {static_cast<std::uint64_t>(value)}
+            );
+        }
+        error::Error transformError(EHierarchyError value) noexcept
+        {
+            return error::makeError(
+                {"lux.scene.transform.hierarchy",
+                 "Hierarchy maintenance code {0}",
+                 error::ERecovery::NEEDS_INPUT,
+                 {error::EArgument::UNSIGNED}},
+                {static_cast<std::uint64_t>(value)}
+            );
+        }
+        error::Error transformError(EcsCommandFailure value) noexcept
+        {
+            return error::makeError(
+                {"lux.scene.transform.commands",
+                 "ECS command code {0}; producer {1}, command {2}",
+                 error::ERecovery::NEEDS_INPUT,
+                 {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}},
+                {static_cast<std::uint64_t>(value.code), value.producer, value.command}
+            );
+        }
+
         template <class Matrix> struct TTraversalEntry final
         {
             Entity entity{NullEntity};
@@ -348,7 +380,9 @@ namespace lux::scene
 
         template <class Error> [[nodiscard]] static SceneStageResult failure(Error error) noexcept
         {
-            return lux::cxx::unexpected(SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, error});
+            return lux::cxx::unexpected(
+                SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, transformError(error)}
+            );
         }
 
         [[nodiscard]] SceneStageResult prepare(const TransformSystemConfiguration& configuration) noexcept

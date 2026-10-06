@@ -5,11 +5,12 @@
 #include <lux/engine/EngineRendering.hpp>
 #include <lux/engine/RenderContext.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
-#include <lux/engine/ui/Root.hpp>
 #include <lux/engine/editor/EditorUiScene.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
+#include <lux/engine/scene/SceneError.hpp>
 #include <lux/engine/ui/Pane.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/rendering/RenderFeature.hpp>
 #include <unordered_set>
 
@@ -17,9 +18,52 @@ namespace lux::editor
 {
     namespace
     {
-        template <class E> FrameworkFailure engineFailure(const char* operation, E error)
+        error::Error executionError(process::EExecutionError value) noexcept
         {
-            return {EFrameworkError::ENGINE, operation, 0, std::move(error)};
+            const bool retryable =
+                value == process::EExecutionError::CAPACITY_EXCEEDED || value == process::EExecutionError::WORK_PENDING;
+            const std::string name = "lux.process.execution." + std::to_string(static_cast<unsigned>(value));
+            return error::makeError(
+                {name,
+                 "ExecutionRuntime code {0}",
+                 retryable ? error::ERecovery::RETRYABLE : error::ERecovery::PERMANENT,
+                 {error::EArgument::UNSIGNED}},
+                {static_cast<std::uint64_t>(value)}
+            );
+        }
+        error::Error creationError(const engine::EngineContext::VCreateFailure& failure) noexcept
+        {
+            return std::visit(
+                [](const auto& value) noexcept -> error::Error
+                {
+                    if constexpr (std::is_same_v<std::decay_t<decltype(value)>, process::EExecutionError>)
+                    {
+                        return executionError(value);
+                    }
+                    else
+                    {
+                        return scene::toError(value);
+                    }
+                },
+                failure
+            );
+        }
+        error::Error renderingError(const engine::RenderContext::VFailure& failure) noexcept
+        {
+            return std::visit(
+                [](const auto& value) noexcept -> error::Error
+                {
+                    if constexpr (std::is_same_v<std::decay_t<decltype(value)>, process::EExecutionError>)
+                    {
+                        return executionError(value);
+                    }
+                    else
+                    {
+                        return render::toError(value);
+                    }
+                },
+                failure
+            );
         }
         struct Operation final
         {
@@ -64,25 +108,31 @@ namespace lux::editor
             );
             if (!engine)
             {
-                return cxx::unexpected(engineFailure("engine.create", engine.error()));
+                return cxx::unexpected(creationError(engine.error()));
             }
             engine_ = std::move(*engine);
             auto rendering =
                 engine::initializeRendering(*engine_, window::LuxWindow::requiredVulkanInstanceExtensions());
             if (!rendering)
             {
-                return cxx::unexpected(engineFailure("render.initialize", rendering.error()));
+                return cxx::unexpected(renderingError(rendering.error()));
             }
             auto& context = *engine_->renderContext();
             auto features = context.registerFeatures({render::kUiRenderRenderFeatureRegistration});
             if (!features)
             {
-                return cxx::unexpected(engineFailure("render.ui_feature", features.error()));
+                return cxx::unexpected(renderingError(features.error()));
             }
             auto configuration = ui::makeRenderConfiguration(window_->uiRoot());
             if (!configuration)
             {
-                return cxx::unexpected(engineFailure("ui.configuration", configuration.error()));
+                return cxx::unexpected(error::makeError(
+                    {"lux.ui.render_configuration",
+                     "UI render configuration code {0}",
+                     error::ERecovery::PERMANENT,
+                     {error::EArgument::UNSIGNED}},
+                    {static_cast<std::uint64_t>(configuration.error())}
+                ));
             }
             std::uint32_t width{}, height{};
             window_->framebufferSize(width, height);
@@ -90,13 +140,19 @@ namespace lux::editor
             const auto native = reinterpret_cast<std::uintptr_t>(window_->nativeHandle());
             if (!native)
             {
-                return cxx::unexpected(FrameworkFailure{EFrameworkError::WINDOW, "Window has no native output"});
+                return cxx::unexpected(error::makeError(
+                    {"lux.editor.window_has_no_native_output",
+                     "Window has no native output",
+                     error::ERecovery::PERMANENT}
+                ));
             }
             scene::ViewConfig output{.extent = {width, height}, .output = scene::NativeSurfaceOutput{native}};
 #else
-            return cxx::unexpected(
-                FrameworkFailure{EFrameworkError::WINDOW, "Native UI output is not implemented on this platform"}
-            );
+            return cxx::unexpected(error::makeError(
+                {"lux.editor.native_ui_output_is_not_implemented_on_this_platform",
+                 "Native UI output is not implemented on this platform",
+                 error::ERecovery::PERMANENT}
+            ));
             scene::ViewConfig output;
 #endif
             auto scene = EditorUiScene::create(
@@ -124,8 +180,11 @@ namespace lux::editor
         {
             if (operating_)
             {
-                return cxx::unexpected(FrameworkFailure{EFrameworkError::BUSY, "Project change inside a host operation"}
-                );
+                return cxx::unexpected(error::makeError(
+                    {"lux.editor.project_change_inside_a_host_operation",
+                     "Project change inside a host operation",
+                     error::ERecovery::RETRYABLE}
+                ));
             }
             auto description = validateProject(project);
             if (!description)
@@ -139,22 +198,31 @@ namespace lux::editor
                     ui.type.find('\0') != ui.type.npos || ui.name.find('\0') != ui.name.npos;
                 if (is_invalid_ui)
                 {
-                    return cxx::unexpected(FrameworkFailure{EFrameworkError::INVALID_DESCRIPTION, "Invalid layout item"}
-                    );
+                    return cxx::unexpected(error::makeError(
+                        {"lux.editor.invalid_layout_item", "Invalid layout item", error::ERecovery::PERMANENT}
+                    ));
                 }
                 if (!instances.insert(ui.name).second)
                 {
-                    return cxx::unexpected(FrameworkFailure{EFrameworkError::DUPLICATE, "Duplicate UI instance name"});
+                    return cxx::unexpected(error::makeError(
+                        {"lux.editor.duplicate_ui_instance_name",
+                         "Duplicate UI instance name",
+                         error::ERecovery::PERMANENT}
+                    ));
                 }
             }
             Operation guard{operating_};
             auto cleared = window_->uiRoot().clearPanes();
             if (!cleared)
             {
-                return cxx::unexpected(FrameworkFailure{
-                    cleared.error() == ui::EPaneError::BUSY ? EFrameworkError::BUSY : EFrameworkError::UI,
-                    "Cannot clear project windows", static_cast<std::uint64_t>(cleared.error())
-                });
+                return cxx::unexpected(error::makeError(
+                    {cleared.error() == ui::EPaneError::BUSY ? "lux.editor.ui_clear_busy" : "lux.editor.ui_clear",
+                     "Cannot clear project windows: UI code {0}",
+                     cleared.error() == ui::EPaneError::BUSY ? error::ERecovery::RETRYABLE
+                                                             : error::ERecovery::PERMANENT,
+                     {error::EArgument::UNSIGNED}},
+                    {static_cast<std::uint64_t>(cleared.error())}
+                ));
             }
             project_.reset();
             // Local order matters on every error: candidates die before the Context they borrow.
@@ -176,18 +244,24 @@ namespace lux::editor
                 }
                 if (!*pane || (*pane)->attachedRoot() || (*pane)->parent())
                 {
-                    return cxx::unexpected(
-                        FrameworkFailure{EFrameworkError::FACTORY_FAILED, "UI factory returned an attached or null Pane"}
-                    );
+                    return cxx::unexpected(error::makeError(
+                        {"lux.editor.ui_factory_returned_an_attached_or_null_pane",
+                         "UI factory returned an attached or null Pane",
+                         error::ERecovery::PERMANENT}
+                    ));
                 }
                 panes.push_back(std::move(*pane));
             }
             auto mounted = window_->uiRoot().addPanes(panes);
             if (!mounted)
             {
-                return cxx::unexpected(FrameworkFailure{
-                    EFrameworkError::UI, "Cannot mount project windows", static_cast<std::uint64_t>(mounted.error())
-                });
+                return cxx::unexpected(error::makeError(
+                    {"lux.editor.cannot_mount_project_windows",
+                     "Cannot mount project windows: code {0}",
+                     error::ERecovery::PERMANENT,
+                     {error::EArgument::UNSIGNED}},
+                    {static_cast<std::uint64_t>(mounted.error())}
+                ));
             }
             project_ = std::move(candidate);
             return {};
@@ -196,17 +270,24 @@ namespace lux::editor
         {
             if (operating_)
             {
-                return cxx::unexpected(FrameworkFailure{EFrameworkError::BUSY, "Project change inside a host operation"}
-                );
+                return cxx::unexpected(error::makeError(
+                    {"lux.editor.project_change_inside_a_host_operation",
+                     "Project change inside a host operation",
+                     error::ERecovery::RETRYABLE}
+                ));
             }
             Operation guard{operating_};
             auto cleared = window_->uiRoot().clearPanes();
             if (!cleared)
             {
-                return cxx::unexpected(FrameworkFailure{
-                    cleared.error() == ui::EPaneError::BUSY ? EFrameworkError::BUSY : EFrameworkError::UI,
-                    "Cannot clear project windows", static_cast<std::uint64_t>(cleared.error())
-                });
+                return cxx::unexpected(error::makeError(
+                    {cleared.error() == ui::EPaneError::BUSY ? "lux.editor.ui_clear_busy" : "lux.editor.ui_clear",
+                     "Cannot clear project windows: UI code {0}",
+                     cleared.error() == ui::EPaneError::BUSY ? error::ERecovery::RETRYABLE
+                                                             : error::ERecovery::PERMANENT,
+                     {error::EArgument::UNSIGNED}},
+                    {static_cast<std::uint64_t>(cleared.error())}
+                ));
             }
             project_.reset();
             return {};
@@ -215,19 +296,21 @@ namespace lux::editor
         {
             if (operating_)
             {
-                return cxx::unexpected(FrameworkFailure{EFrameworkError::BUSY, "Recursive host frame"});
+                return cxx::unexpected(error::makeError(
+                    {"lux.editor.recursive_host_frame", "Recursive host frame", error::ERecovery::RETRYABLE}
+                ));
             }
             Operation guard{operating_};
             window::LuxWindow::pollEvents();
             auto collected = engine_->execution().collectCompletions();
             if (!collected)
             {
-                return cxx::unexpected(engineFailure("process.collect", collected.error()));
+                return cxx::unexpected(executionError(collected.error()));
             }
             auto dispatched = engine_->execution().dispatchTaskEvents();
             if (!dispatched)
             {
-                return cxx::unexpected(engineFailure("process.dispatch", dispatched.error()));
+                return cxx::unexpected(executionError(dispatched.error()));
             }
             (void)object::ObjectRuntime::instance().dispatchPending();
             auto& root = window_->uiRoot();
@@ -264,7 +347,11 @@ namespace lux::editor
             auto drawn = root.update(info, ui_draw_data, ui::Root::Capture{capture});
             if (!drawn)
             {
-                return cxx::unexpected(engineFailure("ui.frame", drawn.error()));
+                return cxx::unexpected(error::makeError(
+                    {"lux.ui.capture", "UI capture code {0}", error::ERecovery::PERMANENT, {error::EArgument::UNSIGNED}
+                    },
+                    {static_cast<std::uint64_t>(drawn.error())}
+                ));
             }
             if (ui_draw_data)
             {
@@ -285,11 +372,11 @@ namespace lux::editor
             auto driven = engine_->sceneRuntime().driveFrame();
             if (!driven)
             {
-                return cxx::unexpected(engineFailure("scene.drive", driven.error()));
+                return cxx::unexpected(scene::toError(driven.error()));
             }
             if (!driven->empty())
             {
-                return cxx::unexpected(engineFailure("scene.failure", driven->front()));
+                return cxx::unexpected(scene::toError(driven->front()));
             }
             (void)object::ObjectRuntime::instance().collectRetired();
             return !closing;
@@ -332,12 +419,16 @@ namespace lux::editor
         const bool is_invalid_window = config.width <= 0 || config.height <= 0;
         if (is_invalid_window)
         {
-            return cxx::unexpected(FrameworkFailure{EFrameworkError::INVALID_DESCRIPTION, "Invalid window extent"});
+            return cxx::unexpected(error::makeError(
+                {"lux.editor.invalid_window_extent", "Invalid window extent", error::ERecovery::PERMANENT}
+            ));
         }
         auto& objects = object::ObjectRuntime::instance();
         if (!objects.isCurrent())
         {
-            return cxx::unexpected(FrameworkFailure{EFrameworkError::WRONG_THREAD, "Editor requires object thread"});
+            return cxx::unexpected(error::makeError(
+                {"lux.editor.editor_requires_object_thread", "Editor requires object thread", error::ERecovery::BUG}
+            ));
         }
         auto impl = std::make_unique<Impl>(std::move(config));
         auto initialized = impl->initialize();

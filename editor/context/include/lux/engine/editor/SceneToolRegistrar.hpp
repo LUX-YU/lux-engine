@@ -1,7 +1,7 @@
 #pragma once
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
-#include <lux/engine/editor/FrameworkError.hpp>
+#include <lux/engine/editor/FrameworkResult.hpp>
 #include <memory>
 #include <vector>
 
@@ -31,21 +31,29 @@ namespace lux::editor
         {
             if (frozen_)
             {
-                return cxx::unexpected(FrameworkFailure{EFrameworkError::FROZEN, "Scene tool registration is frozen"});
+                return cxx::unexpected(error::makeError(
+                    {"lux.editor.scene_tool_registration_is_frozen",
+                     "Scene tool registration is frozen",
+                     error::ERecovery::PERMANENT}
+                ));
             }
             const bool is_invalid_factory = match == nullptr || !factory;
             if (is_invalid_factory)
             {
-                return cxx::unexpected(
-                    FrameworkFailure{EFrameworkError::INVALID_DESCRIPTION, "Invalid scene tool factory"}
-                );
+                return cxx::unexpected(error::makeError(
+                    {"lux.editor.invalid_scene_tool_factory", "Invalid scene tool factory", error::ERecovery::PERMANENT}
+                ));
             }
             for (const auto& entry : entries_)
             {
                 const bool is_duplicate = entry.type == cxx::typeToken<T>() && entry.match == match;
                 if (is_duplicate)
                 {
-                    return cxx::unexpected(FrameworkFailure{EFrameworkError::DUPLICATE, "Duplicate scene tool rule"});
+                    return cxx::unexpected(error::makeError(
+                        {"lux.editor.duplicate_scene_tool_rule",
+                         "Duplicate scene tool rule",
+                         error::ERecovery::PERMANENT}
+                    ));
                 }
             }
             auto erased = [factory = std::move(factory
@@ -59,7 +67,9 @@ namespace lux::editor
                 }
                 if (!*result)
                 {
-                    return cxx::unexpected(FrameworkFailure{EFrameworkError::FACTORY_FAILED, "Null scene tool set"});
+                    return cxx::unexpected(error::makeError(
+                        {"lux.editor.null_scene_tool_set", "Null scene tool set", error::ERecovery::PERMANENT}
+                    ));
                 }
                 return Owner{result->release(), [](void* value) noexcept { delete static_cast<T*>(value); }};
             };
@@ -75,9 +85,11 @@ namespace lux::editor
         {
             if (!frozen_)
             {
-                return cxx::unexpected(
-                    FrameworkFailure{EFrameworkError::NOT_READY, "Scene tool registration is not frozen"}
-                );
+                return cxx::unexpected(error::makeError(
+                    {"lux.editor.scene_tool_registration_is_not_frozen",
+                     "Scene tool registration is not frozen",
+                     error::ERecovery::PERMANENT}
+                ));
             }
             Entry* selected{};
             for (auto& entry : entries_)
@@ -88,13 +100,21 @@ namespace lux::editor
                 }
                 if (selected)
                 {
-                    return cxx::unexpected(FrameworkFailure{EFrameworkError::AMBIGUOUS, "Ambiguous scene tool rules"});
+                    return cxx::unexpected(error::makeError(
+                        {"lux.editor.ambiguous_scene_tool_rules",
+                         "Ambiguous scene tool rules",
+                         error::ERecovery::PERMANENT}
+                    ));
                 }
                 selected = &entry;
             }
             if (!selected)
             {
-                return cxx::unexpected(FrameworkFailure{EFrameworkError::NOT_FOUND, "No matching scene tool rule"});
+                return cxx::unexpected(error::makeError(
+                    {"lux.editor.no_matching_scene_tool_rule",
+                     "No matching scene tool rule",
+                     error::ERecovery::PERMANENT}
+                ));
             }
             auto result = selected->factory(context, world);
             if (!result)

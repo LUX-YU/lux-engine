@@ -1,6 +1,6 @@
 #pragma once
 #include <filesystem>
-#include <lux/engine/editor/FrameworkError.hpp>
+#include <lux/engine/editor/FrameworkResult.hpp>
 #include <string>
 
 namespace lux::editor

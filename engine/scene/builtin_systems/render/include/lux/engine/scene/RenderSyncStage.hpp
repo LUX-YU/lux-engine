@@ -14,15 +14,6 @@ namespace lux::scene
         return static_cast<render::ERenderEntityId>(simulation::ecs::entityBits(entity));
     }
 
-    enum class ERenderSyncError : std::uint8_t
-    {
-        STAGE_PREPARE_FAILURE
-    };
-    struct RenderSyncFailure final
-    {
-        ERenderSyncError code{};
-    };
-
     struct RenderSyncStatistics final
     {
         std::uint64_t published{}; // Prepared immutable updates owned by RenderSystem.

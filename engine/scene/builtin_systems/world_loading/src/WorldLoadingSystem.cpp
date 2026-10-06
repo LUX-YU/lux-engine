@@ -1,3 +1,4 @@
+#include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
@@ -14,6 +15,63 @@ namespace lux::scene
     namespace ecs = simulation::ecs;
     namespace loading = process::world_loading;
     using Ordinal = partition::PartitionOrdinal;
+
+    error::Error toError(const WorldLoadingFailure& failure) noexcept
+    {
+        constexpr std::string_view names[]{
+            "invalid_configuration",
+            "invalid_partition",
+            "not_resident",
+            "source_busy",
+            "capacity",
+            "read_failure",
+            "cancelled",
+            "materialize_failure",
+            "task_rejected"
+        };
+        const auto code = static_cast<std::uint64_t>(failure.code);
+        const std::string name =
+            "lux.scene.world_loading." + (code < std::size(names) ? std::string(names[code]) : std::string("unknown"));
+        const bool retryable =
+            failure.code == EWorldLoadingError::SOURCE_BUSY || failure.code == EWorldLoadingError::CAPACITY;
+        const auto recovery = retryable ? error::ERecovery::RETRYABLE : error::ERecovery::PERMANENT;
+        std::string_view cause_name = "none";
+        std::uint64_t cause_code{};
+        std::visit(
+            [&](const auto& cause) noexcept
+            {
+                using T = std::decay_t<decltype(cause)>;
+                if constexpr (std::is_same_v<T, loading::WorldStorageRuntimeFailure>)
+                {
+                    cause_name = "storage";
+                    cause_code = static_cast<std::uint64_t>(cause.code);
+                }
+                else if constexpr (std::is_same_v<T, WorldMaterializeFailure>)
+                {
+                    cause_name = "materialize";
+                    cause_code = static_cast<std::uint64_t>(cause.code);
+                }
+                else if constexpr (std::is_same_v<T, WorldResidencyFailure>)
+                {
+                    cause_name = "residency";
+                    cause_code = static_cast<std::uint64_t>(cause.code);
+                }
+                else if constexpr (std::is_same_v<T, process::EExecutionError>)
+                {
+                    cause_name = "execution";
+                    cause_code = static_cast<std::uint64_t>(cause);
+                }
+            },
+            failure.cause
+        );
+        return error::makeError(
+            {name + "." + std::string(cause_name),
+             "World loading code {0}, partition {1}, cause code {2}",
+             recovery,
+             {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}},
+            {code, failure.partition.value, cause_code}
+        );
+    }
 
     namespace
     {
@@ -179,7 +237,7 @@ namespace lux::scene
                 (missing || result.error().code == EWorldLoadingError::INVALID_PARTITION))
             {
                 return lux::cxx::unexpected(
-                    SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, result.error()}
+                    SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, toError(result.error())}
                 );
             }
             return missing ? ESceneProgress::PENDING : ESceneProgress::COMPLETE;
@@ -309,7 +367,7 @@ namespace lux::scene
             if (!services.source || (!result && result.error().code == EWorldLoadingError::INVALID_CONFIGURATION))
             {
                 return lux::cxx::unexpected(
-                    SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, result.error()}
+                    SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, toError(result.error())}
                 );
             }
             if (context.stop.stop_requested())
@@ -564,7 +622,7 @@ namespace lux::scene
                         {},
                         0,
                         {},
-                        (**instance).status().error()
+                        toError((**instance).status().error())
                     });
                 }
                 return builder.addMaintenanceTask<WorldLoadingSystem>(

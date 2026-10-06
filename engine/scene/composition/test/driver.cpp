@@ -1,6 +1,7 @@
-#include <lux/engine/scene/detail/SceneDriver.hpp>
-#include <lux/engine/scene/SceneSystemInstaller.hpp>
+#include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
+#include <lux/engine/scene/SceneSystemInstaller.hpp>
+#include <lux/engine/scene/detail/SceneDriver.hpp>
 #include <lux/engine/scene/detail/SceneInstance.hpp>
 
 #include <array>
@@ -66,7 +67,13 @@ namespace
                     return cxx::unexpected(SceneSystemBuildFailure{
                         .code = ESceneSystemBuildError::EXTERNAL_OPERATION_FAILURE,
                         .system = input.instanceId(),
-                        .cause = 719
+                        .cause = error::makeError(
+                            {"fixture.scene.failure",
+                             "Test failure {0}",
+                             error::ERecovery::PERMANENT,
+                             {error::EArgument::UNSIGNED}},
+                            {719}
+                        )
                     });
                 }
                 auto maintenance =
@@ -93,8 +100,17 @@ namespace
                         ++self.stable;
                         if (self.failure)
                         {
-                            return cxx::unexpected(SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, 713}
-                            );
+                            return cxx::unexpected(SceneExecutionFailure{
+                                ESceneExecutionError::SYSTEM_FAILURE,
+                                {},
+                                error::makeError(
+                                    {"fixture.scene.failure",
+                                     "Test failure {0}",
+                                     error::ERecovery::PERMANENT,
+                                     {error::EArgument::UNSIGNED}},
+                                    {713}
+                                )
+                            });
                         }
                         return ESceneProgress::COMPLETE;
                     });
@@ -183,7 +199,7 @@ int main(int argc, char** argv)
     auto rejected = SceneInstance::create(info);
     assert(!rejected && rejected.error().code == ESceneBuildError::SCENE_SYSTEM_BUILD_FAILURE);
     assert(rejected.error().scene_system.code == ESceneSystemBuildError::EXTERNAL_OPERATION_FAILURE);
-    assert(std::any_cast<int>(rejected.error().scene_system.cause) == 719);
+    assert(rejected.error().scene_system.cause.args[0] == 719);
     assert(Probe::destructions == 1);
     Probe::reject_install = false;
     auto executor = task::TaskExecutor::create({0, 1024});
@@ -251,11 +267,14 @@ int main(int argc, char** argv)
     assert(!instance.progress().result && instance.stopToken().stop_requested());
     assert(instance.progress().simulation_completed == 3 && instance.progress().stable_completed == 2);
     const auto& failure = std::get<SceneExecutionFailure>(instance.progress().result.error().cause);
-    assert(failure.system.value == 1 && std::any_cast<int>(failure.cause) == 713);
+    assert(
+        failure.system.value == 1 && failure.cause.type == error::errorId("fixture.scene.failure") &&
+        failure.cause.args[0] == 713
+    );
     assert(!driver.tick(instance, 48ms));
     static_cast<void>(driver.maintain(instance));
     assert(driver.publish(instance) == ESceneProgress::COMPLETE);
-    assert(std::any_cast<int>(std::get<SceneExecutionFailure>(instance.progress().result.error().cause).cause) == 713);
+    assert(std::get<SceneExecutionFailure>(instance.progress().result.error().cause).cause.args[0] == 713);
     assert((*second)->progress().time.step_index == 0);
     auto& other = *(*second)->findSceneSystem<Probe>();
     auto& independent = *(*second)->findSceneSystem<IndependentProbe>();

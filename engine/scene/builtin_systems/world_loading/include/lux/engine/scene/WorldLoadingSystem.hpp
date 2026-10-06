@@ -45,6 +45,8 @@ namespace lux::scene
             process::EExecutionError>
             cause;
     };
+    // Compact cross-system classification. status() retains the complete storage/materialization diagnostics.
+    [[nodiscard]] LUX_ENGINE_SCENE_WORLD_LOADING_PUBLIC error::Error toError(const WorldLoadingFailure&) noexcept;
     template <class T> using WorldLoadingResult = lux::cxx::expected<T, WorldLoadingFailure>;
 
     struct WorldLoadingStatistics final

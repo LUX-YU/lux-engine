@@ -16,11 +16,17 @@ namespace lux::editor
     {
         if (frozen_)
         {
-            return cxx::unexpected(FrameworkFailure{EFrameworkError::FROZEN, "Service registration is frozen"});
+            return cxx::unexpected(error::makeError(
+                {"lux.editor.service_registration_is_frozen",
+                 "Service registration is frozen",
+                 error::ERecovery::PERMANENT}
+            ));
         }
         if (std::ranges::find(entries_, type, &Entry::type) != entries_.end())
         {
-            return cxx::unexpected(FrameworkFailure{EFrameworkError::DUPLICATE, "Duplicate service type"});
+            return cxx::unexpected(error::makeError(
+                {"lux.editor.duplicate_service_type", "Duplicate service type", error::ERecovery::PERMANENT}
+            ));
         }
         entries_.push_back(Entry{type, std::move(factory)});
         return {};
@@ -30,13 +36,20 @@ namespace lux::editor
     {
         if (!frozen_ || closing_)
         {
-            return cxx::unexpected(FrameworkFailure{EFrameworkError::NOT_READY, "Service use outside project lifetime"}
-            );
+            return cxx::unexpected(error::makeError(
+                {"lux.editor.service_use_outside_project_lifetime",
+                 "Service use outside project lifetime",
+                 error::ERecovery::PERMANENT}
+            ));
         }
         const auto found = std::ranges::find(entries_, type, &Entry::type);
         if (found == entries_.end())
         {
-            return cxx::unexpected(FrameworkFailure{EFrameworkError::NOT_FOUND, "Service type is not registered"});
+            return cxx::unexpected(error::makeError(
+                {"lux.editor.service_type_is_not_registered",
+                 "Service type is not registered",
+                 error::ERecovery::PERMANENT}
+            ));
         }
         if (found->instance)
         {
@@ -44,9 +57,9 @@ namespace lux::editor
         }
         if (found->constructing)
         {
-            return cxx::unexpected(
-                FrameworkFailure{EFrameworkError::RECURSIVE_CONSTRUCTION, "Recursive service factory"}
-            );
+            return cxx::unexpected(error::makeError(
+                {"lux.editor.recursive_service_factory", "Recursive service factory", error::ERecovery::PERMANENT}
+            ));
         }
         found->constructing = true;
         auto result = found->factory(context);

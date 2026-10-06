@@ -5,10 +5,10 @@ add_component(COMPONENT_NAME lux_editor_context NAMESPACE lux::engine::editor ST
 component_include_directories(lux_editor_context BUILD_TIME_EXPORT
     ${CMAKE_CURRENT_SOURCE_DIR}/context/include ${CMAKE_CURRENT_SOURCE_DIR}/project/include INSTALL_TIME include)
 target_link_libraries(lux_editor_context PUBLIC lux::cxx::core lux::cxx::compile_time
-    lux::engine::core::object lux::engine::resource::asset)
+    lux::engine::core::object lux::engine::core::error lux::engine::resource::asset)
 component_add_transitive_commands(lux_editor_context
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS object)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS object error)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)")
 lux_classify_target(TARGET lux_editor_context LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 

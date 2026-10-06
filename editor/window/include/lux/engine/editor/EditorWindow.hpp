@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/editor/FrameworkError.hpp>
+#include <lux/engine/editor/FrameworkResult.hpp>
 #include <lux/engine/input/Input.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>

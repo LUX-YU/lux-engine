@@ -1,5 +1,6 @@
-#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
+#include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/scene/ScriptRuntimeSystem.hpp>
+#include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/process/TaskScope.hpp>
@@ -649,7 +650,15 @@ namespace lux::scene
             const auto stopped = system_.requestStop();
             if (!stopped)
                 return lux::cxx::unexpected(SceneExecutionFailure{
-                    ESceneExecutionError::SYSTEM_FAILURE, {}, stopped.error()
+                    ESceneExecutionError::SYSTEM_FAILURE,
+                    {},
+                    error::makeError(
+                        {"lux.scene.script.stop",
+                         "Script stop code {0}",
+                         error::ERecovery::BUG,
+                         {error::EArgument::UNSIGNED}},
+                        {static_cast<std::uint64_t>(stopped.error())}
+                    )
                 });
         }
         if (assets_)

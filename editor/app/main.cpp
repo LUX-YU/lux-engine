@@ -29,7 +29,7 @@ int main()
     auto engine = lux::editor::LuxEngine::create();
     if (!engine)
     {
-        std::fprintf(stderr, "%s\n", engine.error().message.c_str());
+        std::fprintf(stderr, "%s\n", lux::error::format(engine.error()).c_str());
         return 1;
     }
     auto assemble = [](lux::editor::EditorContext& context) noexcept -> lux::editor::FrameworkResult<void>
@@ -51,13 +51,13 @@ int main()
     auto opened = (*engine)->openProject({"Framework", std::move(root)}, layout, assemble);
     if (!opened)
     {
-        std::fprintf(stderr, "%s\n", opened.error().message.c_str());
+        std::fprintf(stderr, "%s\n", lux::error::format(opened.error()).c_str());
         return 2;
     }
     auto result = (*engine)->exec();
     if (!result)
     {
-        std::fprintf(stderr, "%s\n", result.error().message.c_str());
+        std::fprintf(stderr, "%s\n", lux::error::format(result.error()).c_str());
     }
     return result ? 0 : 3;
 }

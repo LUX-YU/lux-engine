@@ -2,6 +2,7 @@
 #include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
+#include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/simulation/ecs/HierarchySchema.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
@@ -507,7 +508,24 @@ int main(int argc, char** argv)
     assert(scenes);
     const lux::simulation::ecs::ComponentSchemaSet task_components{*schemas};
     const lux::simulation::SimulationSystemRegistry task_system_types;
-    const std::array task_scene_systems{scene::worldLoadingSystemRegistration()};
+    struct LoaderStatus final
+    {
+        const scene::WorldLoadingSystem* loader{};
+    };
+    auto observed_registration = scene::worldLoadingSystemRegistration();
+    observed_registration.install =
+        +[](scene::SceneSystemInstaller& installer, scene::SceneSystemDescription input) noexcept
+    {
+        auto result = scene::worldLoadingSystemRegistration().install(installer, input);
+        if (result)
+        {
+            installer.registry().ctx().emplace<LoaderStatus>(
+                installer.findSystem<scene::WorldLoadingSystem>(input.instanceId())
+            );
+        }
+        return result;
+    };
+    const std::array task_scene_systems{observed_registration};
     scene::SceneDescriptionBuilder builder;
     const auto registration = scene::worldLoadingSystemRegistration();
     std::vector<std::byte> configuration;
@@ -690,8 +708,12 @@ int main(int argc, char** argv)
         until(*runtime, [&] { assert((*scenes)->driveFrame()); }, [&] { return !final.result; });
         assert(final.time.step_index == 0 && final.result.error().phase == scene::ESceneDrivePhase::MAINTENANCE);
         const auto& stage = std::get<scene::SceneExecutionFailure>(final.result.error().cause);
-        const auto* cause = std::any_cast<scene::WorldLoadingFailure>(&stage.cause);
-        assert(stage.system.value == 1 && cause && cause->code == scene::EWorldLoadingError::MATERIALIZE_FAILURE);
+        const auto& status = registry.ctx().get<LoaderStatus>().loader->status();
+        assert(!status);
+        const auto* cause = &status.error();
+        assert(stage.system.value == 1 && cause->code == scene::EWorldLoadingError::MATERIALIZE_FAILURE);
+        assert(stage.cause == scene::toError(*cause));
+        assert(stage.cause.type == error::errorId("lux.scene.world_loading.materialize_failure.residency"));
         const auto& component = std::get<scene::WorldResidencyFailure>(cause->cause).cause.component;
         assert(
             component.code == ecs::EComponentDecodeError::UNRESOLVED_REFERENCE &&
@@ -794,8 +816,7 @@ int main(int argc, char** argv)
             const auto progressed = loader.maintain(context);
             if (!progressed)
             {
-                const auto* failure = std::any_cast<scene::WorldLoadingFailure>(&progressed.error().cause);
-                assert(failure && !loader.status() && failure->code == loader.status().error().code);
+                assert(!loader.status() && progressed.error().cause == scene::toError(loader.status().error()));
             }
         };
         until(*runtime, poll, [&] { return !loader.status(); });
@@ -827,8 +848,7 @@ int main(int argc, char** argv)
             const auto progressed = loader.maintain(context);
             if (!progressed)
             {
-                const auto* failure = std::any_cast<scene::WorldLoadingFailure>(&progressed.error().cause);
-                assert(failure && !loader.status() && failure->code == loader.status().error().code);
+                assert(!loader.status() && progressed.error().cause == scene::toError(loader.status().error()));
             }
         };
         until(*runtime, poll, [&] { return !loader.status(); });

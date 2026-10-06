@@ -7,9 +7,9 @@
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
 
-#include <any>
 #include <concepts>
 #include <cstdint>
+#include <lux/engine/error/Error.hpp>
 #include <memory>
 #include <span>
 #include <string_view>
@@ -74,7 +74,7 @@ namespace lux::scene
         system::SystemInstanceId related{};
         std::uint64_t subject_hash{};
         lux::serialization::SerializationFailure configuration{};
-        std::any cause;
+        error::Error cause;
     };
 
     using InstallSceneSystemFn = lux::cxx::expected<void, SceneSystemBuildFailure> (*)(

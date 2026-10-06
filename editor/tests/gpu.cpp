@@ -58,22 +58,7 @@ namespace
     {
         if (!result)
         {
-            std::fprintf(
-                stderr,
-                "framework error: %s detail=%llu\n",
-                result.error().message.c_str(),
-                result.error().detail
-            );
-            if (const auto* failure = std::any_cast<render::RendererFailure>(&result.error().cause))
-            {
-                std::fprintf(
-                    stderr,
-                    "renderer code=%u request=%llu backend=%u\n",
-                    unsigned(failure->code),
-                    static_cast<unsigned long long>(failure->request),
-                    failure->backend_status.value_or(UINT32_MAX)
-                );
-            }
+            std::fprintf(stderr, "framework error: %s\n", error::format(result.error()).c_str());
         }
         assert(result);
         return std::move(*result);
@@ -93,7 +78,10 @@ namespace
             void attached(const ui::PaneChanged&) noexcept
             {
                 auto result = host_.closeProject();
-                assert(!result && result.error().code == EFrameworkError::BUSY);
+                assert(
+                    !result &&
+                    result.error().type == error::errorId("lux.editor.project_change_inside_a_host_operation")
+                );
                 ++calls;
             }
             unsigned calls{};
@@ -179,9 +167,11 @@ namespace
                     assert(context.service<Service>());
                     if (description.name == "two")
                     {
-                        return cxx::unexpected(
-                            FrameworkFailure{EFrameworkError::FACTORY_FAILED, "Expected second factory refusal"}
-                        );
+                        return cxx::unexpected(error::makeError(
+                            {"lux.editor.expected_second_factory_refusal",
+                             "Expected second factory refusal",
+                             error::ERecovery::PERMANENT}
+                        ));
                     }
                     return std::unique_ptr<ui::Pane>{new TestPane(description.name, deaths)};
                 }

@@ -28,7 +28,7 @@ set_tests_properties(sdk.framework.gpu sdk.framework.desktop PROPERTIES RUN_SERI
 set_tests_properties(sdk.framework.context sdk.framework.ui PROPERTIES TIMEOUT 60)
 
 # Each installed public header must be sufficient on its own in a C++20 translation unit.
-set(framework_headers EditorContext EditorServiceRegistrar EditorUiRegistrar FrameworkError
+set(framework_headers EditorContext EditorServiceRegistrar EditorUiRegistrar FrameworkResult
     SceneToolRegistrar ProjectDescription EditorUiScene EditorWindow WindowInput LuxEngine)
 foreach(header IN LISTS framework_headers)
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" "#include <lux/engine/editor/${header}.hpp>\n")

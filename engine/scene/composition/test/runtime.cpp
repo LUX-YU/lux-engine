@@ -1,8 +1,9 @@
-#include <lux/engine/scene/SceneRuntime.hpp>
+#include <lux/engine/error/ErrorRegistry.hpp>
+#include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
+#include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>
-#include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 
@@ -30,14 +31,6 @@ namespace
         ~State()
         {
             assert(!alive);
-        }
-    };
-    struct OwnedFailure final
-    {
-        std::weak_ptr<const void> code;
-        ~OwnedFailure()
-        {
-            assert(!code.expired());
         }
     };
     struct Probe final
@@ -74,7 +67,13 @@ namespace
                     return cxx::unexpected(SceneSystemBuildFailure{
                         .code = ESceneSystemBuildError::EXTERNAL_OPERATION_FAILURE,
                         .system = description.instanceId(),
-                        .cause = 419
+                        .cause = error::makeError(
+                            {"fixture.scene.failure",
+                             "Test failure {0}",
+                             error::ERecovery::PERMANENT,
+                             {error::EArgument::UNSIGNED}},
+                            {419}
+                        )
                     });
                 const auto maintenance = installer.addMaintenanceTask<Probe>(
                     description.instanceId(),
@@ -111,11 +110,26 @@ namespace
                             return cxx::unexpected(SceneExecutionFailure{
                                 ESceneExecutionError::SYSTEM_FAILURE,
                                 {},
-                                OwnedFailure{Probe::error_code}
+                                error::makeError(
+                                    {"fixture.scene.pinned_failure",
+                                     "Pinned failure {0}",
+                                     error::ERecovery::PERMANENT,
+                                     {error::EArgument::UNSIGNED}},
+                                    {731}
+                                )
                             });
                         if (probe.state.failed)
-                            return cxx::unexpected(SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, {}, 731}
-                            );
+                            return cxx::unexpected(SceneExecutionFailure{
+                                ESceneExecutionError::SYSTEM_FAILURE,
+                                {},
+                                error::makeError(
+                                    {"fixture.scene.failure",
+                                     "Test failure {0}",
+                                     error::ERecovery::PERMANENT,
+                                     {error::EArgument::UNSIGNED}},
+                                    {731}
+                                )
+                            });
                         return probe.state.blocked ? ESceneProgress::PENDING : ESceneProgress::COMPLETE;
                     }
                 );
@@ -165,7 +179,7 @@ int main()
     Probe::reject = true;
     const auto rejected = builder.build();
     assert(!rejected && Probe::destroyed == 1);
-    assert(std::any_cast<int>(std::get<SceneBuildFailure>(rejected.error().cause).scene_system.cause) == 419);
+    assert(std::get<SceneBuildFailure>(rejected.error().cause).scene_system.cause.args[0] == 419);
     Probe::reject = false;
     auto slow = FixedStepClock::create(1h);
     assert(slow);
@@ -325,7 +339,7 @@ int main()
     *callback_owned = SceneInstanceLease{};
     assert((*runtime)->driveFrame() && Probe::destroyed == destroyed_before + 1);
     std::cout << "PASS X06-04 callback lease release is deferred, in-flight drain, outer guard and one destruction\n";
-    // Only the failure value's code pin survives acknowledgement and heavy instance destruction.
+    // Only the result receipt's code pin survives acknowledgement and heavy instance destruction.
     auto code = std::make_shared<int>(42);
     const std::weak_ptr<const void> weak_code = code;
     auto pinned_registrations = registrations;
@@ -348,13 +362,16 @@ int main()
     auto kept = (*runtime)->stepStatus(*failed_step, pin_receipt);
     assert(kept && kept->state == ESceneStepState::FAILED);
     const auto& cause = std::get<SceneExecutionFailure>(std::get<SceneDriveFailure>(kept->result.error().cause).cause);
-    assert(!std::any_cast<const OwnedFailure&>(cause.cause).code.expired());
+    assert(cause.cause.type == error::errorId("fixture.scene.pinned_failure") && cause.cause.args[0] == 731);
+    assert(!weak_code.expired());
+    const auto stable_error = cause.cause;
     assert((*runtime)->acknowledgeStep(*failed_step, pin_receipt));
     assert(!weak_code.expired());
     assert((*runtime)->driveFrame()); // End the prior borrowed DriveResult span, keeping only the copied result.
     *kept = SceneStepStatus{};
     assert(weak_code.expired()); // Receipt still exists, but no confirmed result retains code.
     Probe::error_code.reset();
+    assert(error::format(stable_error) == "Pinned failure 731");
     std::cout
         << "PASS R06-R1 result receipt identity/thread checks and copied failure code lifetime after reclamation\n";
     runtime->reset(); // Outstanding timer must be cancelled and joined before receiver storage is reclaimed.

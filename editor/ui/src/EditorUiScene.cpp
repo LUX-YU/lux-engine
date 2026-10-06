@@ -6,15 +6,22 @@
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
+#include <lux/engine/scene/SceneError.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 
 namespace lux::editor
 {
     namespace
     {
-        template <class E> FrameworkFailure sceneFailure(const char* operation, E error)
+        error::Error descriptionError(const scene::SceneDescriptionFailure& failure) noexcept
         {
-            return {EFrameworkError::RENDER, operation, 0, std::move(error)};
+            return error::makeError(
+                {"lux.scene.description",
+                 "Scene description code {0}, system {1}, subject {2}",
+                 error::ERecovery::NEEDS_INPUT,
+                 {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::HEX}},
+                {static_cast<std::uint64_t>(failure.code), failure.system.value, failure.subject_hash}
+            );
         }
     } // namespace
     struct EditorUiScene::Impl final
@@ -59,7 +66,13 @@ namespace lux::editor
             const auto encoded = registration.configuration.encode(&render_configuration, bytes);
             if (!encoded)
             {
-                return lux::cxx::unexpected(sceneFailure("ui.configuration", encoded.error()));
+                return lux::cxx::unexpected(error::makeError(
+                    {"lux.ui.configuration_encode",
+                     "UI configuration encoding code {0}, offset {1}",
+                     error::ERecovery::NEEDS_INPUT,
+                     {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}},
+                    {static_cast<std::uint64_t>(encoded.error().code), encoded.error().offset}
+                ));
             }
             lux::scene::SceneDescriptionBuilder description;
             auto added = description.addSystem(
@@ -73,12 +86,12 @@ namespace lux::editor
             );
             if (!added)
             {
-                return lux::cxx::unexpected(sceneFailure("ui.description", added.error()));
+                return lux::cxx::unexpected(descriptionError(added.error()));
             }
             auto resolved = std::move(description).buildResolved();
             if (!resolved)
             {
-                return lux::cxx::unexpected(sceneFailure("ui.description", resolved.error()));
+                return lux::cxx::unexpected(descriptionError(resolved.error()));
             }
             const simulation::ecs::ComponentSchemaSet components;
             const simulation::SimulationSystemRegistry systems;
@@ -110,7 +123,7 @@ namespace lux::editor
             auto built = builder.build();
             if (!built)
             {
-                return lux::cxx::unexpected(sceneFailure("ui.scene", built.error()));
+                return lux::cxx::unexpected(scene::toError(built.error()));
             }
             scene_ = std::move(*built);
             if (!scenes_.pauseSimulation(scene_.id()))
@@ -120,7 +133,7 @@ namespace lux::editor
             auto borrowed = scenes_.borrowInstance(scene_.id());
             if (!borrowed)
             {
-                return lux::cxx::unexpected(sceneFailure("ui.registry", borrowed.error()));
+                return lux::cxx::unexpected(scene::toError(borrowed.error()));
             }
             auto& registry = borrowed->get();
             input_ = registry.create();
@@ -144,7 +157,7 @@ namespace lux::editor
             );
             if (!bound)
             {
-                return lux::cxx::unexpected(sceneFailure("ui.progress", bound.error()));
+                return lux::cxx::unexpected(render::toError(bound.error()));
             }
             return {};
         }
@@ -167,7 +180,7 @@ namespace lux::editor
             }
             if (result->failure)
             {
-                failure_ = sceneFailure("ui.output", *result->failure);
+                failure_ = render::toError(*result->failure);
             }
             if (result->view.isValid())
             {
@@ -229,7 +242,7 @@ namespace lux::editor
                 auto captured = resources_.captureTextures(data.textures());
                 if (!captured)
                 {
-                    failure_ = sceneFailure("ui.textures", captured.error());
+                    failure_ = render::toError(captured.error());
                     return lux::cxx::unexpected(lux::ui::ECaptureError::INVALID_INPUT);
                 }
                 frame.resources.push_back(std::move(*captured));
@@ -266,7 +279,7 @@ namespace lux::editor
                 {
                     return {};
                 }
-                return lux::cxx::unexpected(sceneFailure("ui.input", borrowed.error()));
+                return lux::cxx::unexpected(scene::toError(borrowed.error()));
             }
             auto& registry = borrowed->get();
             if (extent_pending_ && output_)
@@ -309,7 +322,7 @@ namespace lux::editor
         std::size_t current_frame_{frames_.size()};
         bool frames_stopped_{}, clear_pending_{};
         std::uint64_t captures_{};
-        std::optional<FrameworkFailure> failure_;
+        std::optional<error::Error> failure_;
     };
 
     FrameworkResult<std::unique_ptr<EditorUiScene>> EditorUiScene::create(
@@ -323,7 +336,7 @@ namespace lux::editor
     {
         if (!resources.uses(runtime))
         {
-            return cxx::unexpected(sceneFailure("ui.resources", render::ERendererError::INVALID_ARGUMENT));
+            return cxx::unexpected(render::toError(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT}));
         }
         auto impl = std::make_unique<Impl>(execution, scenes, resources, std::move(output));
         auto initialized = impl->initialize(std::move(configuration), runtime);

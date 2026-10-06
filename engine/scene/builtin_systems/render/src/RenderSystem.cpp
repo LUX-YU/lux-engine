@@ -1,6 +1,7 @@
+#include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/scene/Camera.hpp>
-#include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/MeshQuerySystem.hpp>
+#include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.type_static_info.hpp>
 
@@ -141,7 +142,7 @@ namespace lux::scene
                 {},
                 0,
                 {},
-                resource.error()
+                render::toError(resource.error())
             });
         }
         auto* query = builder.findDependency<MeshQuerySystem>() ? builder.registry().ctx().find<MeshQuery>() : nullptr;
@@ -349,8 +350,9 @@ namespace lux::scene
             const auto error = !status.failure.ok()  ? status.failure
                                : !runtime.error.ok() ? runtime.error
                                                      : render::renderError<render::err::comm::ChannelStopping>();
-            result_ =
-                lux::cxx::unexpected(SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, instance_, error});
+            result_ = lux::cxx::unexpected(
+                SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, instance_, render::toError(error)}
+            );
             return result_;
         }
         if (status.state != ESceneResourceState::READY)
@@ -377,9 +379,17 @@ namespace lux::scene
                 );
                 if (!stage)
                 {
-                    result_ = lux::cxx::unexpected(
-                        SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, instance_, stage.error()}
-                    );
+                    result_ = lux::cxx::unexpected(SceneExecutionFailure{
+                        ESceneExecutionError::SYSTEM_FAILURE,
+                        instance_,
+                        error::makeError(
+                            {"lux.scene.render.stage_create",
+                             "Render extraction creation code {0}",
+                             error::ERecovery::NEEDS_INPUT,
+                             {error::EArgument::UNSIGNED}},
+                            {static_cast<std::uint64_t>(stage.error().code)}
+                        )
+                    });
                     return result_;
                 }
                 (*stage)->requestFullSync();
@@ -396,9 +406,11 @@ namespace lux::scene
         auto accepted = runtime_.submit(program);
         if (!accepted)
         {
-            result_ = lux::cxx::unexpected(
-                SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, instance_, accepted.error()}
-            );
+            result_ = lux::cxx::unexpected(SceneExecutionFailure{
+                ESceneExecutionError::SYSTEM_FAILURE,
+                instance_,
+                render::toError(accepted.error())
+            });
             return result_;
         }
         if (*accepted == render::EFrameSubmit::BACKPRESSURED)
@@ -458,7 +470,11 @@ namespace lux::scene
                     result_ = lux::cxx::unexpected(SceneExecutionFailure{
                         ESceneExecutionError::SYSTEM_FAILURE,
                         instance_,
-                        RenderSyncFailure{ERenderSyncError::STAGE_PREPARE_FAILURE}
+                        error::makeError(
+                            {"lux.scene.render.stage_prepare",
+                             "Render extraction preparation failed",
+                             error::ERecovery::BUG}
+                        )
                     });
                     return result_;
                 }
@@ -481,9 +497,11 @@ namespace lux::scene
                     for (auto& stage : stages_)
                         stage->discardPrepared();
                     pending_.clear_keep_capacity();
-                    result_ = lux::cxx::unexpected(
-                        SceneExecutionFailure{ESceneExecutionError::SYSTEM_FAILURE, instance_, use.error()}
-                    );
+                    result_ = lux::cxx::unexpected(SceneExecutionFailure{
+                        ESceneExecutionError::SYSTEM_FAILURE,
+                        instance_,
+                        render::toError(use.error())
+                    });
                     return result_;
                 }
                 builder.emplaceAttachment<render::RenderSubmissionState>(

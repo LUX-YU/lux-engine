@@ -1,0 +1,2 @@
+Previous HEAD position was 1d40785bb Complete legacy generator naming and consumer isolation
+HEAD is now at 84e38bd74 Keep legacy generated headers outside the installed foundation include tree

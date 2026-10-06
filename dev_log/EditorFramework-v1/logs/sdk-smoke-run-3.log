@@ -1,0 +1,7 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/framework-sdk-smoke
+    Start 1: sdk.framework.context
+1/4 Test #1: sdk.framework.context ............   Passed    0.02 sec
+    Start 2: sdk.framework.ui
+2/4 Test #2: sdk.framework.ui .................***Failed  225.31 sec
+
+    Start 3: sdk.framework.gpu

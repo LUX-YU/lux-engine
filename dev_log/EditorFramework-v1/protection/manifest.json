@@ -1,0 +1,11 @@
+{
+  "legacy_path": "editor_legacy/authoring/project/src/ProjectBuilder.cpp",
+  "original_path": "editor/project/src/ProjectBuilder.cpp",
+  "user_sha256": "CCAC49618140D014236C9F23B55FC15D31C96E94B44395DEE39FD67D35AB1F5C",
+  "implementation_base": "de315d48602c5155b919e9a698a9d9306f12decf",
+  "applied": false,
+  "original_head": "f7c27f9375cbf8dd8af37b30a6027a460de26213",
+  "original_blob": "8617d4267f97af42fb24687ca9c3dc964bbe5aec",
+  "original_sha256": "1a8040f36d43c1c88b7513948ccf8b2d5bba71840d50189bea0767103356d2ee",
+  "mapped_patch_applies_cleanly": true
+}

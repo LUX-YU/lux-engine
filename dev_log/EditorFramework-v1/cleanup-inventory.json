@@ -1,0 +1,1100 @@
+[
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-engine-ec1",
+    "head": "248adc4576943cab83976afd8d1d5f31b63b70a9",
+    "branch": "codex/editor-redesign-v4",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 5,
+    "untracked_bytes": 107182,
+    "largest": [
+      [
+        "editor/workbench/scene/codegen/__pycache__/inspector_codegen.cpython-312.pyc",
+        50784
+      ],
+      [
+        "editor/tests/architecture/__pycache__/check_editor_boundaries.cpython-312.pyc",
+        25663
+      ],
+      [
+        "editor/tests/architecture/__pycache__/editor_layering.cpython-312.pyc",
+        13447
+      ],
+      [
+        "editor/tests/architecture/__pycache__/validate_quality_evidence.cpython-312.pyc",
+        9108
+      ],
+      [
+        "cmake/__pycache__/plugin_descriptor.cpython-312.pyc",
+        8180
+      ]
+    ],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/c9f28e4b24a1717a2a79",
+        "sha": "248adc4576943cab83976afd8d1d5f31b63b70a9"
+      },
+      {
+        "original": "refs/heads/codex/p12-closeout",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/43cca59020856ae0066c",
+        "sha": "137b8f441faa1dbb7dfa792b6f01b513327e6248"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/b96dc4a5d1be19c7f672",
+        "sha": "137b8f441faa1dbb7dfa792b6f01b513327e6248"
+      },
+      {
+        "original": "refs/remotes/origin/agent/architecture-recovery",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/8cbd1f124f852afdb128",
+        "sha": "b1a25d3bb23f33f092964465c7d27d819beaf7db"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-d2-c",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/30c56dda5b9347bf1e9a",
+        "sha": "51e47edd2f038ef397e2328398e5a2da368f95c8"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-d3-foundation",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/e2818dcbc82584dfec3f",
+        "sha": "3693b8a185025d26a7e5627597126b7a8285d48e"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-desktop-d2",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/41968b3600a345a1ae7b",
+        "sha": "7d66adf8976b51df5ce42189367b4273a1141a17"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-rebuild-er1",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/b37bfd708ca4993c3fc4",
+        "sha": "dee904683e0398945b59c69168f4336e40ecbbe2"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/0108d29ec133c7c47e78",
+        "sha": "248adc4576943cab83976afd8d1d5f31b63b70a9"
+      },
+      {
+        "original": "refs/remotes/origin/codex/l1-entity-behavior-freeze-closure",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/313d3cbde2570676a52c",
+        "sha": "d72cc8366d789533d00f8b6ed6a8eb81aa8017ca"
+      },
+      {
+        "original": "refs/remotes/origin/codex/l1-entity-behavior-quality-closure",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/345cfc809e7314a34c3c",
+        "sha": "756bd845d8676ff2c98da4fbcdebc5588b141144"
+      },
+      {
+        "original": "refs/remotes/origin/codex/l1-entity-behavior-semantic-acceptance-closure",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/c6c4bb9198f58c035954",
+        "sha": "024fe7700feb59d4865d01e33151130a80ea5a39"
+      },
+      {
+        "original": "refs/remotes/origin/codex/l1-system-hook-script-binding",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/c1ec8eb863eccfb6f15b",
+        "sha": "2bf05234c920b1a86a195e97ec68fc50be1cb5a6"
+      },
+      {
+        "original": "refs/remotes/origin/codex/object-ui-foundation",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/112fd3453e998e112deb",
+        "sha": "99f984cf0eb0ee75f45d21a5f1dd5d7c60c4b9be"
+      },
+      {
+        "original": "refs/remotes/origin/codex/p11-closeout",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/927a1077709d44003164",
+        "sha": "0a6644d8781dd3aeea1da549a87dfd6303a1c1dc"
+      },
+      {
+        "original": "refs/remotes/origin/codex/p12-closeout",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/b164b3a90ac6cf4c719d",
+        "sha": "137b8f441faa1dbb7dfa792b6f01b513327e6248"
+      },
+      {
+        "original": "refs/remotes/origin/codex/s6-deep-optimization",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/872a4d3c831c3159af03",
+        "sha": "f92853ea8361a7dc90ce0da072497d3722c29f88"
+      },
+      {
+        "original": "refs/remotes/origin/codex/s6-execution-cell-a1",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/02564c215e75ee8a725b",
+        "sha": "1039f2bcca44cff7bdfdb09f5c090db3647ae32a"
+      },
+      {
+        "original": "refs/remotes/origin/codex/s6-native-task-lua-steps",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/cb42df362e6f90e6a753",
+        "sha": "70167bb3aaaa498cae682e5e1da502e64f6759d3"
+      },
+      {
+        "original": "refs/remotes/origin/codex/s6-v3-reference-driver",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/08f6941b910a6ba5f514",
+        "sha": "8ce2a0ff5210834c2a574fb41828f37891f3ce39"
+      },
+      {
+        "original": "refs/remotes/origin/codex/s6-v4-prepared-checks",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/c98da2b25e5764273de8",
+        "sha": "e505858e660cec72bd97ad3e296a6c51fa6f8ddb"
+      },
+      {
+        "original": "refs/remotes/origin/codex/scene-main-refactor",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/f885ffcb637dc4a1a6a5",
+        "sha": "70e58a10239615f7f2fe095e94db4d83e3aec177"
+      },
+      {
+        "original": "refs/remotes/origin/codex/scene-ui-unified-v2",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/06fb61ccdeb7e22bb862",
+        "sha": "a83963e7d2939f50aa4ae32a8c845d7728fc576b"
+      },
+      {
+        "original": "refs/remotes/origin/codex/shadow-ui-er1",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/23d2b56350727bbe7cc8",
+        "sha": "a908b0c09ee4c2d9efe9d877aa6e1a99d3d73c58"
+      },
+      {
+        "original": "refs/remotes/origin/docs/implementation-v3",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/e7e6ece29c96391a44c6",
+        "sha": "db2291471bcaec38084a1c88afa17fa19e8abd53"
+      },
+      {
+        "original": "refs/remotes/origin/main",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/463eb9639a36dd415c95",
+        "sha": "2bb33ff1a1f11025cf404e074c0e9b259239d8a4"
+      },
+      {
+        "original": "refs/remotes/origin/migration/finite-pixel-core",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/0fc6a431fc5e04dff627",
+        "sha": "0eee413a43aab3ac2420078d47bc327b4239449d"
+      },
+      {
+        "original": "refs/remotes/origin/migration/finite-pixel-core-ready",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/1163a4246c38d94e3225",
+        "sha": "e25a86cc299850bf6cfd32f50eb29dc95ce01014"
+      },
+      {
+        "original": "refs/remotes/origin/migration/finite-pixel-core-v2",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/11fc05b36e61c29ff18f",
+        "sha": "03b1bac72f100b2a1fcfd545c099299eb732b054"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec1/b5180223165af3583fd0",
+        "sha": "248adc4576943cab83976afd8d1d5f31b63b70a9"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+    "head": "de315d48602c5155b919e9a698a9d9306f12decf",
+    "branch": "codex/editor-redesign-v4",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 5,
+    "untracked_bytes": 110393,
+    "largest": [
+      [
+        "editor/workbench/scene/codegen/__pycache__/inspector_codegen.cpython-312.pyc",
+        50784
+      ],
+      [
+        "editor/tests/architecture/__pycache__/check_editor_boundaries.cpython-312.pyc",
+        26629
+      ],
+      [
+        "editor/tests/architecture/__pycache__/editor_layering.cpython-312.pyc",
+        15692
+      ],
+      [
+        "editor/tests/architecture/__pycache__/validate_quality_evidence.cpython-312.pyc",
+        9108
+      ],
+      [
+        "cmake/__pycache__/plugin_descriptor.cpython-312.pyc",
+        8180
+      ]
+    ],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec2/c9f28e4b24a1717a2a79",
+        "sha": "de315d48602c5155b919e9a698a9d9306f12decf"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec2/b96dc4a5d1be19c7f672",
+        "sha": "de315d48602c5155b919e9a698a9d9306f12decf"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec2/0108d29ec133c7c47e78",
+        "sha": "de315d48602c5155b919e9a698a9d9306f12decf"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec2/b5180223165af3583fd0",
+        "sha": "de315d48602c5155b919e9a698a9d9306f12decf"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-qualified",
+    "head": "dd54847ee281f5e96adf4ebeba2f6c06bc858515",
+    "branch": "",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 5,
+    "untracked_bytes": 109064,
+    "largest": [
+      [
+        "editor/workbench/scene/codegen/__pycache__/inspector_codegen.cpython-312.pyc",
+        50794
+      ],
+      [
+        "editor/tests/architecture/__pycache__/check_editor_boundaries.cpython-312.pyc",
+        25673
+      ],
+      [
+        "editor/tests/architecture/__pycache__/editor_layering.cpython-312.pyc",
+        15289
+      ],
+      [
+        "editor/tests/architecture/__pycache__/validate_quality_evidence.cpython-312.pyc",
+        9118
+      ],
+      [
+        "cmake/__pycache__/plugin_descriptor.cpython-312.pyc",
+        8190
+      ]
+    ],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec2-qualified/c9f28e4b24a1717a2a79",
+        "sha": "dd54847ee281f5e96adf4ebeba2f6c06bc858515"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec2-qualified/b96dc4a5d1be19c7f672",
+        "sha": "dd54847ee281f5e96adf4ebeba2f6c06bc858515"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec2-qualified/0108d29ec133c7c47e78",
+        "sha": "dd54847ee281f5e96adf4ebeba2f6c06bc858515"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec2-qualified/b5180223165af3583fd0",
+        "sha": "dd54847ee281f5e96adf4ebeba2f6c06bc858515"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "head": "ead7e59514a5b9a5d0dc65307e7c9e2a792b69f4",
+    "branch": "",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 2,
+    "untracked_bytes": 23485,
+    "largest": [
+      [
+        "editor/tests/architecture/__pycache__/editor_layering.cpython-312.pyc",
+        15292
+      ],
+      [
+        "cmake/__pycache__/plugin_descriptor.cpython-312.pyc",
+        8193
+      ]
+    ],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec2-r1-qualified/c9f28e4b24a1717a2a79",
+        "sha": "ead7e59514a5b9a5d0dc65307e7c9e2a792b69f4"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec2-r1-qualified/b96dc4a5d1be19c7f672",
+        "sha": "ead7e59514a5b9a5d0dc65307e7c9e2a792b69f4"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec2-r1-qualified/0108d29ec133c7c47e78",
+        "sha": "ead7e59514a5b9a5d0dc65307e7c9e2a792b69f4"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec2-r1-qualified/b5180223165af3583fd0",
+        "sha": "ead7e59514a5b9a5d0dc65307e7c9e2a792b69f4"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-engine-ec3-qualified",
+    "head": "aa4509995ea511c4a4306fc8477e44184ca39cf5",
+    "branch": "",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 4,
+    "untracked_bytes": 58270,
+    "largest": [
+      [
+        "editor/tests/architecture/__pycache__/check_editor_boundaries.cpython-312.pyc",
+        25673
+      ],
+      [
+        "editor/tests/architecture/__pycache__/editor_layering.cpython-312.pyc",
+        15289
+      ],
+      [
+        "editor/tests/architecture/__pycache__/validate_quality_evidence.cpython-312.pyc",
+        9118
+      ],
+      [
+        "cmake/__pycache__/plugin_descriptor.cpython-312.pyc",
+        8190
+      ]
+    ],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec3-qualified/c9f28e4b24a1717a2a79",
+        "sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec3-qualified/b96dc4a5d1be19c7f672",
+        "sha": "0a521da070c1f4addb511ea038f8040f265702f6"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec3-qualified/0108d29ec133c7c47e78",
+        "sha": "0a521da070c1f4addb511ea038f8040f265702f6"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec3-qualified/b5180223165af3583fd0",
+        "sha": "aa4509995ea511c4a4306fc8477e44184ca39cf5"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-engine-ec4-m1-qualified",
+    "head": "3c9fe86d05f031f99bdd897faa4cc4d434158958",
+    "branch": "",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 4,
+    "untracked_bytes": 58510,
+    "largest": [
+      [
+        "editor/tests/architecture/__pycache__/check_editor_boundaries.cpython-312.pyc",
+        25676
+      ],
+      [
+        "editor/tests/architecture/__pycache__/editor_layering.cpython-312.pyc",
+        15520
+      ],
+      [
+        "editor/tests/architecture/__pycache__/validate_quality_evidence.cpython-312.pyc",
+        9121
+      ],
+      [
+        "cmake/__pycache__/plugin_descriptor.cpython-312.pyc",
+        8193
+      ]
+    ],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m1-qualified/c9f28e4b24a1717a2a79",
+        "sha": "3c9fe86d05f031f99bdd897faa4cc4d434158958"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m1-qualified/b96dc4a5d1be19c7f672",
+        "sha": "3c9fe86d05f031f99bdd897faa4cc4d434158958"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m1-qualified/0108d29ec133c7c47e78",
+        "sha": "3c9fe86d05f031f99bdd897faa4cc4d434158958"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m1-qualified/b5180223165af3583fd0",
+        "sha": "3c9fe86d05f031f99bdd897faa4cc4d434158958"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-engine-ec4-m2-qualified",
+    "head": "8ebd8bb9ccc6c53e3a30adfcda5cba60e6ea55fd",
+    "branch": "",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 4,
+    "untracked_bytes": 58510,
+    "largest": [
+      [
+        "editor/tests/architecture/__pycache__/check_editor_boundaries.cpython-312.pyc",
+        25676
+      ],
+      [
+        "editor/tests/architecture/__pycache__/editor_layering.cpython-312.pyc",
+        15520
+      ],
+      [
+        "editor/tests/architecture/__pycache__/validate_quality_evidence.cpython-312.pyc",
+        9121
+      ],
+      [
+        "cmake/__pycache__/plugin_descriptor.cpython-312.pyc",
+        8193
+      ]
+    ],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m2-qualified/c9f28e4b24a1717a2a79",
+        "sha": "8ebd8bb9ccc6c53e3a30adfcda5cba60e6ea55fd"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m2-qualified/b96dc4a5d1be19c7f672",
+        "sha": "8ebd8bb9ccc6c53e3a30adfcda5cba60e6ea55fd"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m2-qualified/0108d29ec133c7c47e78",
+        "sha": "8ebd8bb9ccc6c53e3a30adfcda5cba60e6ea55fd"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m2-qualified/b5180223165af3583fd0",
+        "sha": "8ebd8bb9ccc6c53e3a30adfcda5cba60e6ea55fd"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-engine-ec4-m3-qualified",
+    "head": "a966c01495524f18d7b9fb0c4e0dff1368244925",
+    "branch": "",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 4,
+    "untracked_bytes": 58643,
+    "largest": [
+      [
+        "editor/tests/architecture/__pycache__/check_editor_boundaries.cpython-312.pyc",
+        25809
+      ],
+      [
+        "editor/tests/architecture/__pycache__/editor_layering.cpython-312.pyc",
+        15520
+      ],
+      [
+        "editor/tests/architecture/__pycache__/validate_quality_evidence.cpython-312.pyc",
+        9121
+      ],
+      [
+        "cmake/__pycache__/plugin_descriptor.cpython-312.pyc",
+        8193
+      ]
+    ],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m3-qualified/c9f28e4b24a1717a2a79",
+        "sha": "788661ce61b5d7fa6dd5e5b26e1d1fd41a076be5"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m3-qualified/b96dc4a5d1be19c7f672",
+        "sha": "788661ce61b5d7fa6dd5e5b26e1d1fd41a076be5"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m3-qualified/0108d29ec133c7c47e78",
+        "sha": "788661ce61b5d7fa6dd5e5b26e1d1fd41a076be5"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m3-qualified/b5180223165af3583fd0",
+        "sha": "a966c01495524f18d7b9fb0c4e0dff1368244925"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-engine-ec4-m4-qualified",
+    "head": "90ce5ec72d2b84a5f20db9f1e9ab0fa2d1ca034b",
+    "branch": "",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 4,
+    "untracked_bytes": 59321,
+    "largest": [
+      [
+        "editor/tests/architecture/__pycache__/check_editor_boundaries.cpython-312.pyc",
+        26395
+      ],
+      [
+        "editor/tests/architecture/__pycache__/editor_layering.cpython-312.pyc",
+        15612
+      ],
+      [
+        "editor/tests/architecture/__pycache__/validate_quality_evidence.cpython-312.pyc",
+        9121
+      ],
+      [
+        "cmake/__pycache__/plugin_descriptor.cpython-312.pyc",
+        8193
+      ]
+    ],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m4-qualified/c9f28e4b24a1717a2a79",
+        "sha": "90ce5ec72d2b84a5f20db9f1e9ab0fa2d1ca034b"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m4-qualified/b96dc4a5d1be19c7f672",
+        "sha": "90ce5ec72d2b84a5f20db9f1e9ab0fa2d1ca034b"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m4-qualified/0108d29ec133c7c47e78",
+        "sha": "90ce5ec72d2b84a5f20db9f1e9ab0fa2d1ca034b"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-ec4-m4-qualified/b5180223165af3583fd0",
+        "sha": "90ce5ec72d2b84a5f20db9f1e9ab0fa2d1ca034b"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-engine-p10q-structure",
+    "head": "22ab1a30862f6bff943cef86d4232839173c7107",
+    "branch": "codex/p10q-structure",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 5,
+    "untracked_bytes": 107223,
+    "largest": [
+      [
+        "editor/workbench/scene/codegen/__pycache__/inspector_codegen.cpython-312.pyc",
+        51884
+      ],
+      [
+        "editor/tests/architecture/__pycache__/check_editor_boundaries.cpython-312.pyc",
+        24880
+      ],
+      [
+        "editor/tests/architecture/__pycache__/editor_layering.cpython-312.pyc",
+        13149
+      ],
+      [
+        "editor/tests/architecture/__pycache__/validate_quality_evidence.cpython-312.pyc",
+        9119
+      ],
+      [
+        "cmake/__pycache__/plugin_descriptor.cpython-312.pyc",
+        8191
+      ]
+    ],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-p10q-structure/c9f28e4b24a1717a2a79",
+        "sha": "f7c27f9375cbf8dd8af37b30a6027a460de26213"
+      },
+      {
+        "original": "refs/heads/codex/p10q-structure",
+        "retained": "refs/archive/framework-v1/lux-engine-p10q-structure/72d77775ac98bd98a260",
+        "sha": "22ab1a30862f6bff943cef86d4232839173c7107"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-p10q-structure/b96dc4a5d1be19c7f672",
+        "sha": "22ab1a30862f6bff943cef86d4232839173c7107"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-p10q-structure/0108d29ec133c7c47e78",
+        "sha": "22ab1a30862f6bff943cef86d4232839173c7107"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-p10q-structure/b5180223165af3583fd0",
+        "sha": "22ab1a30862f6bff943cef86d4232839173c7107"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+    "head": "0a6644d8781dd3aeea1da549a87dfd6303a1c1dc",
+    "branch": "codex/p11-closeout",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 2,
+    "untracked_bytes": 21450,
+    "largest": [
+      [
+        "editor/tests/architecture/__pycache__/editor_layering.cpython-312.pyc",
+        13270
+      ],
+      [
+        "cmake/__pycache__/plugin_descriptor.cpython-312.pyc",
+        8180
+      ]
+    ],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/p10q-structure",
+        "retained": "refs/archive/framework-v1/lux-engine-p11/72d77775ac98bd98a260",
+        "sha": "22ab1a30862f6bff943cef86d4232839173c7107"
+      },
+      {
+        "original": "refs/heads/codex/p11-closeout",
+        "retained": "refs/archive/framework-v1/lux-engine-p11/d8982ad0bb632a0f4a24",
+        "sha": "0a6644d8781dd3aeea1da549a87dfd6303a1c1dc"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-p11/b96dc4a5d1be19c7f672",
+        "sha": "22ab1a30862f6bff943cef86d4232839173c7107"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-p11/0108d29ec133c7c47e78",
+        "sha": "0a6644d8781dd3aeea1da549a87dfd6303a1c1dc"
+      },
+      {
+        "original": "refs/remotes/origin/codex/p10q-structure",
+        "retained": "refs/archive/framework-v1/lux-engine-p11/8e7c9fd133041bdad5f6",
+        "sha": "22ab1a30862f6bff943cef86d4232839173c7107"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-p11/b5180223165af3583fd0",
+        "sha": "0a6644d8781dd3aeea1da549a87dfd6303a1c1dc"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-engine-p12",
+    "head": "248adc4576943cab83976afd8d1d5f31b63b70a9",
+    "branch": "codex/p12-closeout",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 5,
+    "untracked_bytes": 107182,
+    "largest": [
+      [
+        "editor/workbench/scene/codegen/__pycache__/inspector_codegen.cpython-312.pyc",
+        50784
+      ],
+      [
+        "editor/tests/architecture/__pycache__/check_editor_boundaries.cpython-312.pyc",
+        25663
+      ],
+      [
+        "editor/tests/architecture/__pycache__/editor_layering.cpython-312.pyc",
+        13447
+      ],
+      [
+        "editor/tests/architecture/__pycache__/validate_quality_evidence.cpython-312.pyc",
+        9108
+      ],
+      [
+        "cmake/__pycache__/plugin_descriptor.cpython-312.pyc",
+        8180
+      ]
+    ],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/p11-closeout",
+        "retained": "refs/archive/framework-v1/lux-engine-p12/d8982ad0bb632a0f4a24",
+        "sha": "0a6644d8781dd3aeea1da549a87dfd6303a1c1dc"
+      },
+      {
+        "original": "refs/heads/codex/p12-closeout",
+        "retained": "refs/archive/framework-v1/lux-engine-p12/43cca59020856ae0066c",
+        "sha": "248adc4576943cab83976afd8d1d5f31b63b70a9"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-p12/b96dc4a5d1be19c7f672",
+        "sha": "0a6644d8781dd3aeea1da549a87dfd6303a1c1dc"
+      },
+      {
+        "original": "refs/remotes/origin/codex/editor-redesign-v4",
+        "retained": "refs/archive/framework-v1/lux-engine-p12/0108d29ec133c7c47e78",
+        "sha": "248adc4576943cab83976afd8d1d5f31b63b70a9"
+      },
+      {
+        "original": "refs/remotes/origin/codex/p10q-structure",
+        "retained": "refs/archive/framework-v1/lux-engine-p12/8e7c9fd133041bdad5f6",
+        "sha": "22ab1a30862f6bff943cef86d4232839173c7107"
+      },
+      {
+        "original": "refs/remotes/origin/codex/p11-closeout",
+        "retained": "refs/archive/framework-v1/lux-engine-p12/927a1077709d44003164",
+        "sha": "0a6644d8781dd3aeea1da549a87dfd6303a1c1dc"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-p12/b5180223165af3583fd0",
+        "sha": "248adc4576943cab83976afd8d1d5f31b63b70a9"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\qualification\\lux-engine-foundation-hotfix-ec2dce21",
+    "head": "ec2dce21064df690f4d613860099acf6a04a52ac",
+    "branch": "main",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 0,
+    "untracked_bytes": 0,
+    "largest": [],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "retained_refs": [
+      {
+        "original": "refs/heads/main",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/f921bd05e68b03740c45",
+        "sha": "ec2dce21064df690f4d613860099acf6a04a52ac"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/b96dc4a5d1be19c7f672",
+        "sha": "ec2dce21064df690f4d613860099acf6a04a52ac"
+      },
+      {
+        "original": "refs/remotes/origin/claude/gifted-roentgen-67fb77",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/f6adaaf176091ae5d231",
+        "sha": "4eb6ae8ddc8622fa37f4a92fafec19f11d209792"
+      },
+      {
+        "original": "refs/remotes/origin/claude/mystifying-hypatia-e61814",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/f7689555ad50ff630a73",
+        "sha": "4eb6ae8ddc8622fa37f4a92fafec19f11d209792"
+      },
+      {
+        "original": "refs/remotes/origin/claude/quirky-davinci-54bfba",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/bfc3d10643aec9867e1a",
+        "sha": "4eb6ae8ddc8622fa37f4a92fafec19f11d209792"
+      },
+      {
+        "original": "refs/remotes/origin/codex/l1-script-endpoint-scale-closure",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/2f5dc9a2347c88bf29c8",
+        "sha": "fb149b8f399e5c58f7eabe8a299829d873f169f1"
+      },
+      {
+        "original": "refs/remotes/origin/codex/l1-script-flowforge-freeze-closure",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/a7665e302734b4fa0833",
+        "sha": "06e18439fabf22253d7fd881de603dcc7e603ff2"
+      },
+      {
+        "original": "refs/remotes/origin/codex/l1-script-system-hookpoint-refactor",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/6faa165f4206ad618cad",
+        "sha": "0b94bf91bb4f55d863418c078dc2807a7225adaf"
+      },
+      {
+        "original": "refs/remotes/origin/codex/l1-worker-event-memory-safety-closure",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/cd583a749b2276b83d28",
+        "sha": "25992bb578ccc7765a0f238c582f62d5424352d1"
+      },
+      {
+        "original": "refs/remotes/origin/codex/process-wave-0-1",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/435bff9e6b75fce4c03d",
+        "sha": "230374a5f0d53e52bbb5d3bdce33cac62da06660"
+      },
+      {
+        "original": "refs/remotes/origin/codex/script-flowforge-concept-compression",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/efee684ef06351d81a01",
+        "sha": "6c26bb03dfb478a2f4703a83a619fb4a5577aa42"
+      },
+      {
+        "original": "refs/remotes/origin/codex/topology-flowforge-node-editor-exception-policy",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/86a12bc128a87e8e641d",
+        "sha": "25809082edf0e21a94409b22de2c75bf31d31697"
+      },
+      {
+        "original": "refs/remotes/origin/main",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/463eb9639a36dd415c95",
+        "sha": "ec2dce21064df690f4d613860099acf6a04a52ac"
+      },
+      {
+        "original": "refs/remotes/origin/refactor/ecs-driven",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/0ae7af374bac9c07540b",
+        "sha": "c3e725e4d685a9b44421956a75340da357ba24cb"
+      },
+      {
+        "original": "refs/remotes/origin/refactor/ecs-layer",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/186615123a414dbabdd6",
+        "sha": "851787ca0625f61afc8b2aa1b44919ca2496cb4f"
+      },
+      {
+        "original": "refs/remotes/origin/refactor/render-layering",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/27e5ea75c6c56602a4a6",
+        "sha": "b6d0a449b227d09fd77b40042e12f1b6dc2d0f78"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-engine-foundation-hotfix-ec2dce21/b5180223165af3583fd0",
+        "sha": "ec2dce21064df690f4d613860099acf6a04a52ac"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-cxx-ec3",
+    "head": "f5447a763fd042f4f08819c8c88f1676f9a2a3cb",
+    "branch": "codex/ec3-inspector-ir",
+    "status": "",
+    "worktree": true,
+    "untracked_files": 0,
+    "untracked_bytes": 0,
+    "largest": [],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-cxx",
+    "retained_refs": [
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-cxx-ec3/b5180223165af3583fd0",
+        "sha": "f5447a763fd042f4f08819c8c88f1676f9a2a3cb"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-cxx-v3q",
+    "head": "af25d29dbd54b6e140ca24814508bbde91fac13a",
+    "branch": "",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 0,
+    "untracked_bytes": 0,
+    "largest": [],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-cxx",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/script-codegen-closure",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3q/9af5a44975730dc57519",
+        "sha": "af25d29dbd54b6e140ca24814508bbde91fac13a"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3q/b96dc4a5d1be19c7f672",
+        "sha": "af25d29dbd54b6e140ca24814508bbde91fac13a"
+      },
+      {
+        "original": "refs/remotes/origin/change_drs_data_structure",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3q/c491d80f40be59d82f33",
+        "sha": "b3d69422bcd644e33ba8c6c2064493dcbd4969c7"
+      },
+      {
+        "original": "refs/remotes/origin/codex/object-ui-foundation",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3q/112fd3453e998e112deb",
+        "sha": "7716c087e384d1bedc8a4a17a2d6ecb01ed30344"
+      },
+      {
+        "original": "refs/remotes/origin/codex/platform-common-primitives",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3q/908242c175370bd3b467",
+        "sha": "8943cf7c87a7b96c6b57fc282388cb44771539c2"
+      },
+      {
+        "original": "refs/remotes/origin/codex/script-codegen-closure",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3q/724d574069e7ceae38a7",
+        "sha": "af25d29dbd54b6e140ca24814508bbde91fac13a"
+      },
+      {
+        "original": "refs/remotes/origin/codex/slam-runtime-primitives",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3q/e30edd137362cc474489",
+        "sha": "bc1eab34b83b5cf8821d6319e5b2a02574dc91fd"
+      },
+      {
+        "original": "refs/remotes/origin/feat/non-intrusive-reflection",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3q/235ff2cf3ccee05d6374",
+        "sha": "7ed15b6f1bc6557aa535e892b274d18346f5e813"
+      },
+      {
+        "original": "refs/remotes/origin/main",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3q/463eb9639a36dd415c95",
+        "sha": "bc1eab34b83b5cf8821d6319e5b2a02574dc91fd"
+      },
+      {
+        "original": "refs/remotes/origin/refactor/reflection-module",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3q/e7e14bed1d1c51449a56",
+        "sha": "0f3605b117c30d0e737935667f729cb706c5f1c2"
+      },
+      {
+        "original": "refs/tags/v0.0.2",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3q/b2bdf1569239e0ed1e86",
+        "sha": "5b1e3a01baef592edfaeab4655ab16fea1d9f2d2"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3q/b5180223165af3583fd0",
+        "sha": "af25d29dbd54b6e140ca24814508bbde91fac13a"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-cxx-v3r",
+    "head": "3100f54d0743c5ed94a4ccf5943df04e933de255",
+    "branch": "",
+    "status": "",
+    "worktree": false,
+    "untracked_files": 0,
+    "untracked_bytes": 0,
+    "largest": [],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-cxx",
+    "retained_refs": [
+      {
+        "original": "refs/heads/codex/script-codegen-closure",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3r/9af5a44975730dc57519",
+        "sha": "3100f54d0743c5ed94a4ccf5943df04e933de255"
+      },
+      {
+        "original": "refs/remotes/origin/HEAD",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3r/b96dc4a5d1be19c7f672",
+        "sha": "3100f54d0743c5ed94a4ccf5943df04e933de255"
+      },
+      {
+        "original": "refs/remotes/origin/change_drs_data_structure",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3r/c491d80f40be59d82f33",
+        "sha": "b3d69422bcd644e33ba8c6c2064493dcbd4969c7"
+      },
+      {
+        "original": "refs/remotes/origin/codex/object-ui-foundation",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3r/112fd3453e998e112deb",
+        "sha": "7716c087e384d1bedc8a4a17a2d6ecb01ed30344"
+      },
+      {
+        "original": "refs/remotes/origin/codex/platform-common-primitives",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3r/908242c175370bd3b467",
+        "sha": "8943cf7c87a7b96c6b57fc282388cb44771539c2"
+      },
+      {
+        "original": "refs/remotes/origin/codex/script-codegen-closure",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3r/724d574069e7ceae38a7",
+        "sha": "3100f54d0743c5ed94a4ccf5943df04e933de255"
+      },
+      {
+        "original": "refs/remotes/origin/codex/slam-runtime-primitives",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3r/e30edd137362cc474489",
+        "sha": "bc1eab34b83b5cf8821d6319e5b2a02574dc91fd"
+      },
+      {
+        "original": "refs/remotes/origin/feat/non-intrusive-reflection",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3r/235ff2cf3ccee05d6374",
+        "sha": "7ed15b6f1bc6557aa535e892b274d18346f5e813"
+      },
+      {
+        "original": "refs/remotes/origin/main",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3r/463eb9639a36dd415c95",
+        "sha": "bc1eab34b83b5cf8821d6319e5b2a02574dc91fd"
+      },
+      {
+        "original": "refs/remotes/origin/refactor/reflection-module",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3r/e7e14bed1d1c51449a56",
+        "sha": "0f3605b117c30d0e737935667f729cb706c5f1c2"
+      },
+      {
+        "original": "refs/tags/v0.0.2",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3r/b2bdf1569239e0ed1e86",
+        "sha": "5b1e3a01baef592edfaeab4655ab16fea1d9f2d2"
+      },
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-cxx-v3r/b5180223165af3583fd0",
+        "sha": "3100f54d0743c5ed94a4ccf5943df04e933de255"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\lux-cmake-toolset-s6-relocation",
+    "head": "99c3d0480d1db816779b1dfa7f3c06cb7d39a94f",
+    "branch": "codex/s6-relocatable-exports",
+    "status": "",
+    "worktree": true,
+    "untracked_files": 0,
+    "untracked_bytes": 0,
+    "largest": [],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-cmake-toolset",
+    "retained_refs": [
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/lux-cmake-toolset-s6-relocation/b5180223165af3583fd0",
+        "sha": "99c3d0480d1db816779b1dfa7f3c06cb7d39a94f"
+      }
+    ],
+    "ancestor_of_canonical": true,
+    "removed": true
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\worktrees\\codex-lux-cmake-toolset-relocatable",
+    "head": "c565251146869e879bdae7bc4170e1b5fb0226fa",
+    "branch": "codex/relocatable-install",
+    "status": "",
+    "worktree": true,
+    "untracked_files": 0,
+    "untracked_bytes": 0,
+    "largest": [],
+    "canonical": "E:\\SyncForder\\CodeRepos\\lux-cmake-toolset",
+    "retained_refs": [
+      {
+        "original": "HEAD",
+        "retained": "refs/archive/framework-v1/codex-lux-cmake-toolset-relocatable/b5180223165af3583fd0",
+        "sha": "c565251146869e879bdae7bc4170e1b5fb0226fa"
+      }
+    ],
+    "ancestor_of_canonical": false,
+    "removed": true
+  }
+]

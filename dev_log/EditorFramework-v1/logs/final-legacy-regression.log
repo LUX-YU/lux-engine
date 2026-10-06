@@ -1,0 +1,26 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-framework
+    Start  27: framework.isolation
+1/8 Test  #27: framework.isolation ................   Passed    0.10 sec
+    Start  28: framework.context
+2/8 Test  #28: framework.context ..................   Passed    0.04 sec
+    Start  29: framework.ui
+3/8 Test  #29: framework.ui .......................   Passed    0.02 sec
+    Start  30: framework.gpu
+4/8 Test  #30: framework.gpu ......................   Passed    0.32 sec
+    Start  31: framework.desktop
+5/8 Test  #31: framework.desktop ..................   Passed    0.64 sec
+    Start 134: editor.presentation_backpressure
+6/8 Test #134: editor.presentation_backpressure ...   Passed    0.51 sec
+    Start 135: editor.presentation_scene-panes
+7/8 Test #135: editor.presentation_scene-panes ....   Passed    0.73 sec
+    Start 225: legacy.plugin.external_editor
+8/8 Test #225: legacy.plugin.external_editor ......   Passed    0.29 sec
+
+100% tests passed, 0 tests failed out of 8
+
+Label Time Summary:
+desktop    =   1.87 sec*proc (3 tests)
+editor     =   1.23 sec*proc (2 tests)
+gpu        =   2.20 sec*proc (4 tests)
+
+Total Test time (real) =   2.70 sec

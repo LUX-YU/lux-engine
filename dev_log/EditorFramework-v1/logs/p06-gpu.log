@@ -1,0 +1,18 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-framework
+    Start 29: framework.gpu
+1/1 Test #29: framework.gpu ....................Exit code 0xc0000409
+***Exception:  24.53 sec
+Assertion failed: std::chrono::steady_clock::now() < deadline, file E:\SyncForder\CodeRepos\lux-engine\editor\tests\gpu.cpp, line 179
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+gpu    =  24.53 sec*proc (1 test)
+
+Total Test time (real) =  24.57 sec
+
+The following tests FAILED:
+	 29 - framework.gpu (Exit code 0xc0000409
+)             gpu
+Errors while running CTest

@@ -1,0 +1,4 @@
+PASS portable receipt: 84e38bd7415e58817812c7ce9c11cb60b30c6a51 146 files
+PASS missing required log rejected
+PASS modified required log rejected
+PASS restored evidence accepted

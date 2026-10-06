@@ -1,0 +1,23 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-framework
+    Start 30: framework.desktop
+1/1 Test #30: framework.desktop ................Exit code 0xc0000409
+***Exception:   3.96 sec
+GPU wait 1
+GPU wait 2
+framework error: ui.output detail=0
+renderer code=6 request=1174405120 backend=1
+Assertion failed: result, file E:\SyncForder\CodeRepos\lux-engine\editor\tests\gpu.cpp, line 58
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+desktop    =   3.96 sec*proc (1 test)
+gpu        =   3.96 sec*proc (1 test)
+
+Total Test time (real) =   4.00 sec
+
+The following tests FAILED:
+	 30 - framework.desktop (Exit code 0xc0000409
+)         desktop gpu
+Errors while running CTest

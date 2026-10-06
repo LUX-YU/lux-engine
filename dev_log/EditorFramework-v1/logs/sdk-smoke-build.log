@@ -1,0 +1,18 @@
+[1/12] Scanning E:\SyncForder\CodeRepos\lux-engine\editor\tests\ui.cpp for CXX dependencies
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/12] Generating CXX dyndep file CMakeFiles\framework_ui.dir\CXX.dd
+[3/12] Scanning E:\SyncForder\CodeRepos\lux-engine\editor\tests\context.cpp for CXX dependencies
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/12] Generating CXX dyndep file CMakeFiles\framework_context.dir\CXX.dd
+[5/12] Scanning E:\SyncForder\CodeRepos\lux-engine\editor\tests\gpu.cpp for CXX dependencies
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[6/12] Generating CXX dyndep file CMakeFiles\framework_gpu.dir\CXX.dd
+[7/12] Building CXX object CMakeFiles\framework_ui.dir\E_\SyncForder\CodeRepos\lux-engine\editor\tests\ui.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[8/12] Linking CXX executable framework_ui.exe
+[9/12] Building CXX object CMakeFiles\framework_context.dir\E_\SyncForder\CodeRepos\lux-engine\editor\tests\context.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[10/12] Linking CXX executable framework_context.exe
+[11/12] Building CXX object CMakeFiles\framework_gpu.dir\E_\SyncForder\CodeRepos\lux-engine\editor\tests\gpu.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[12/12] Linking CXX executable framework_gpu.exe

@@ -1,0 +1,76 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/framework-v1-1d40785b
+      Start  1: platform.process_arguments
+ 1/31 Test  #1: platform.process_arguments .......   Passed    0.04 sec
+      Start  2: window.placement
+ 2/31 Test  #2: window.placement .................   Passed    0.01 sec
+      Start  3: object.ownership
+ 3/31 Test  #3: object.ownership .................   Passed    0.04 sec
+      Start  4: object.retirement_contract
+ 4/31 Test  #4: object.retirement_contract .......   Passed    7.05 sec
+      Start  5: object.tree
+ 5/31 Test  #5: object.tree ......................   Passed    0.01 sec
+      Start  6: object.queue
+ 6/31 Test  #6: object.queue .....................   Passed    0.01 sec
+      Start  7: services.core
+ 7/31 Test  #7: services.core ....................   Passed    0.02 sec
+      Start  8: services.plugin
+ 8/31 Test  #8: services.plugin ..................   Passed    0.01 sec
+      Start  9: render.runtime_resources
+ 9/31 Test  #9: render.runtime_resources .........   Passed    0.40 sec
+      Start 10: ui.root
+10/31 Test #10: ui.root ..........................   Passed    0.02 sec
+      Start 11: ui.composition
+11/31 Test #11: ui.composition ...................   Passed    0.02 sec
+      Start 12: world.partition_decoder_parity
+12/31 Test #12: world.partition_decoder_parity ...   Passed    0.11 sec
+      Start 13: process.asset_read_overlay
+13/31 Test #13: process.asset_read_overlay .......   Passed    0.01 sec
+      Start 14: process.asset_bounded_read
+14/31 Test #14: process.asset_bounded_read .......   Passed    0.02 sec
+      Start 15: scene.driver
+15/31 Test #15: scene.driver .....................   Passed    0.01 sec
+      Start 16: scene.runtime
+16/31 Test #16: scene.runtime ....................   Passed    0.08 sec
+      Start 17: scene.script_asset_scopes
+17/31 Test #17: scene.script_asset_scopes ........   Passed    0.01 sec
+      Start 18: scene.script_asset_plugin
+18/31 Test #18: scene.script_asset_plugin ........   Passed    0.02 sec
+      Start 19: scene.script_asset_values
+19/31 Test #19: scene.script_asset_values ........   Passed    0.01 sec
+      Start 20: scene.script_asset_lua
+20/31 Test #20: scene.script_asset_lua ...........   Passed    0.02 sec
+      Start 21: scene.script_asset_scene
+21/31 Test #21: scene.script_asset_scene .........   Passed    0.58 sec
+      Start 22: scene.render_resources
+22/31 Test #22: scene.render_resources ...........   Passed    0.47 sec
+      Start 23: scene.world_loading
+23/31 Test #23: scene.world_loading ..............   Passed    0.13 sec
+      Start 24: services.tasks
+24/31 Test #24: services.tasks ...................   Passed    0.01 sec
+      Start 25: engine.headless_context
+25/31 Test #25: engine.headless_context ..........   Passed    0.09 sec
+      Start 26: plugin.scene_registrations
+26/31 Test #26: plugin.scene_registrations .......   Passed    0.03 sec
+      Start 27: framework.isolation
+27/31 Test #27: framework.isolation ..............   Passed    0.08 sec
+      Start 28: framework.context
+28/31 Test #28: framework.context ................   Passed    0.02 sec
+      Start 29: framework.ui
+29/31 Test #29: framework.ui .....................   Passed    0.01 sec
+      Start 30: framework.gpu
+30/31 Test #30: framework.gpu ....................   Passed    0.30 sec
+      Start 31: framework.desktop
+31/31 Test #31: framework.desktop ................   Passed    0.61 sec
+
+100% tests passed, 0 tests failed out of 31
+
+Label Time Summary:
+EC2                =   0.67 sec*proc (6 tests)
+P10Q               =   0.11 sec*proc (1 test)
+P12                =   0.03 sec*proc (1 test)
+desktop            =   0.61 sec*proc (1 test)
+editor_layering    =   0.11 sec*proc (1 test)
+gpu                =   0.91 sec*proc (2 tests)
+native             =   0.81 sec*proc (8 tests)
+
+Total Test time (real) =  10.57 sec

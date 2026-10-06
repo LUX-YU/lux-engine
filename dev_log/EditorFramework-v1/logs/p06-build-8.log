@@ -1,0 +1,3 @@
+[0/2] Re-checking globbed directories...
+[1/18] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\comm\RenderServerBootstrap.cpp.obj
+[2/18] Linking CXX shared library bin\render_vulkan.dll

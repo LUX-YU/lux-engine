@@ -1,0 +1,28 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/framework-sdk-smoke
+    Start 1: sdk.framework.context
+1/4 Test #1: sdk.framework.context ............   Passed    0.10 sec
+    Start 2: sdk.framework.ui
+2/4 Test #2: sdk.framework.ui .................Exit code 0xc0000135
+***Exception:   9.80 sec
+
+    Start 3: sdk.framework.gpu
+3/4 Test #3: sdk.framework.gpu ................Exit code 0xc0000135
+***Exception:   1.42 sec
+
+    Start 4: sdk.framework.desktop
+4/4 Test #4: sdk.framework.desktop ............Exit code 0xc0000135
+***Exception:   0.50 sec
+
+
+25% tests passed, 3 tests failed out of 4
+
+Total Test time (real) =  11.83 sec
+
+The following tests FAILED:
+	  2 - sdk.framework.ui (Exit code 0xc0000135
+)
+	  3 - sdk.framework.gpu (Exit code 0xc0000135
+)
+	  4 - sdk.framework.desktop (Exit code 0xc0000135
+)
+Errors while running CTest

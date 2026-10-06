@@ -1,0 +1,17 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-framework
+    Start 27: framework.context
+1/2 Test #27: framework.context ................   Passed    0.04 sec
+    Start 28: framework.ui
+2/2 Test #28: framework.ui .....................Exit code 0xc0000409
+***Exception:   2.77 sec
+Assertion failed: sequence == 3, file E:\SyncForder\CodeRepos\lux-engine\editor\tests\ui.cpp, line 89
+
+
+50% tests passed, 1 tests failed out of 2
+
+Total Test time (real) =   3.46 sec
+
+The following tests FAILED:
+	 28 - framework.ui (Exit code 0xc0000409
+)
+Errors while running CTest

@@ -23,11 +23,10 @@ int main(int argc, char** argv)
     assert(library->is_loaded());
     const auto factory = reinterpret_cast<Get>(library->get_symbol("serviceDefinition"));
     assert(factory);
-    auto messages = object::ObjectMessageQueue::create(8);
-    assert(messages);
+    auto& messages = object::ObjectRuntime::instance();
     std::weak_ptr<fixture::Value> weak;
     {
-        ServiceRegistry registry(messages->dispatcherRef());
+        ServiceRegistry registry{};
         auto scope = registry.createScope();
         assert(scope && scope->provide(ServiceNameView{"fixture.trace"}, trace));
         std::shared_ptr<const ServiceEntry> entry;
@@ -46,7 +45,7 @@ int main(int argc, char** argv)
         std::jthread worker([last = std::move(*second)]() mutable { last.reset(); });
         worker.join();
         assert(weak.expired() && trace.destroyed == 0 && trace.unloaded == 0);
-        assert(messages->collectRetired() == 1);
+        assert(messages.collectRetired() == 1);
         assert(scope->drained() && registry.drained());
         assert(trace.destroyed == 1 && trace.returned == 1);
         assert(registry.publish({})); // Owner publication reclaims only physically retired metadata.
@@ -54,7 +53,7 @@ int main(int argc, char** argv)
     }
     assert(trace.unloaded == 1);
     weak.reset(); // Host control block must be safe after actual DLL unload.
-    assert(messages->pendingRetirements() == 0);
+    assert(messages.pendingRetirements() == 0);
     std::cout << "PASS service DLL: static descriptor, one allocation, worker last release, destructor tail, unload, "
                  "weak cleanup\n";
 }

@@ -2,7 +2,7 @@
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Controls.hpp>
-#include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <cassert>
 #include <array>
@@ -20,8 +20,8 @@ namespace
     class Item final : public ui::Element
     {
     public:
-        Item(object::ObjectDispatcherRef queue, const char* id, Counts& counts)
-            : Element(std::move(queue), ui::ElementId{id}), counts_(counts)
+        Item(const char* id, Counts& counts)
+            : Element(ui::ElementId{id}), counts_(counts)
         {}
         ~Item() override { ++counts_.destroyed; }
         void (*on_draw)(Item&) noexcept {};
@@ -44,12 +44,12 @@ namespace
     class Window final : public ui::Pane
     {
     public:
-        Window(object::ObjectDispatcherRef queue, const char* id, Counts& counts)
-            : Pane(std::move(queue), ui::PaneId{id}, ui::PaneTypeId{"test.window"}, id), counts_(counts)
+        Window(const char* id, Counts& counts)
+            : Pane(ui::PaneId{id}, ui::PaneTypeId{"test.window"}, id), counts_(counts)
         {}
         ~Window() override { clearChildren(); ++counts_.destroyed; }
         void (*on_update)(Window&) noexcept {};
-        object::ObjectMessageQueue* messages{};
+        object::ObjectRuntime* messages{};
         void receive(const unsigned&) noexcept { ++counts_.callbacks; }
         bool dispatching() const noexcept { return isDispatching(); }
     private:
@@ -83,12 +83,12 @@ namespace
     static_assert(!PublicChildren<ui::Button>);
     static_assert(!std::derived_from<ui::Pane, ui::Element>);
 
-    void closeIntent(object::ObjectMessageQueue& messages)
+    void closeIntent(object::ObjectRuntime& messages)
     {
         Counts counts;
-        auto root = ui::Root::create(messages.dispatcherRef());
+        auto root = ui::Root::create();
         assert(root);
-        Window pane(messages.dispatcherRef(), "close-intent", counts);
+        Window pane("close-intent", counts);
         assert((*root)->addSubPane(pane));
         const auto initial = *(*root)->identify(pane);
         unsigned direct{};
@@ -116,33 +116,36 @@ namespace
         assert(counts.destroyed == 0);
 
         // A dropped queued hint cannot consume the Pane's original request.
-        auto receiving = object::ObjectMessageQueue::create(1);
-        assert(receiving);
-        object::LuxObject receiver(receiving->dispatcherRef());
+        auto& receiving = object::ObjectRuntime::instance();
+        auto receiver = std::make_unique<object::LuxObject>();
         unsigned queued{};
-        auto hint = object::LuxObject::connect(&pane, &ui::Pane::closeRequested, &receiver,
+        auto hint = object::LuxObject::connect(&pane, &ui::Pane::closeRequested, receiver.get(),
             [&]() noexcept { ++queued; }, object::EDelivery::QUEUED);
         assert(hint);
+        const auto capacity = receiving.statistics().capacity_per_batch;
+        for (std::size_t i = 1; i < capacity; ++i)
+            assert(object::detail::post(object::detail::makeMessage([]() noexcept {})) == object::detail::EPostStatus::POSTED);
         pane.requestClose();
         pane.dismissCloseRequest();
         pane.requestClose();
-        assert(pane.hasCloseRequest() && receiving->statistics().pending == 1);
-        assert(receiving->dispatchPending() == 1 && queued == 1 && pane.hasCloseRequest());
-        receiving->close();
+        assert(pane.hasCloseRequest() && receiving.statistics().pending == capacity);
+        assert(receiving.dispatchPending() == capacity && queued == 1 && pane.hasCloseRequest());
+        receiver.reset();
+        assert(!hint->connected());
         pane.dismissCloseRequest();
         pane.requestClose();
         assert(pane.hasCloseRequest() && queued == 1);
         std::cout << "Pane close intent survives maintenance and FULL/CLOSED hints, detach clears original intent PASS\n";
     }
 
-    void externalRoot(object::ObjectMessageQueue& messages)
+    void externalRoot(object::ObjectRuntime& messages)
     {
         Counts counts;
-        auto root = ui::Root::create(messages.dispatcherRef());
+        auto root = ui::Root::create();
         assert(root);
-        Window pane(messages.dispatcherRef(), "external", counts);
-        ui::Layout layout(messages.dispatcherRef(), ui::ElementId{"layout"});
-        ui::Button button(messages.dispatcherRef(), ui::ElementId{"button"}, "Button");
+        Window pane("external", counts);
+        ui::Layout layout(ui::ElementId{"layout"});
+        ui::Button button(ui::ElementId{"button"}, "Button");
         assert(layout.addSubElement(button));
         assert(pane.setContent(layout));
         assert((*root)->addSubPane(pane));
@@ -153,7 +156,7 @@ namespace
         root->reset();
         assert(!pane.parent() && !pane.attachedRoot() && !button.attachedRoot());
         assert(button.parent() == &layout && layout.parent() == &pane && pane.content() == &layout);
-        auto replacement = ui::Root::create(messages.dispatcherRef());
+        auto replacement = ui::Root::create();
         assert(replacement && (*replacement)->addSubPane(pane));
         assert(!(*replacement)->findPane(*identity));
         const auto remounted = (*replacement)->identify(pane);
@@ -177,14 +180,14 @@ namespace
         std::cout << "UI external subtree survives Root, revoked routes and pending input, reattach PASS\n";
     }
 
-    void ownership(object::ObjectMessageQueue& messages)
+    void ownership(object::ObjectRuntime& messages)
     {
         Counts counts;
-        auto root = ui::Root::create(messages.dispatcherRef());
+        auto root = ui::Root::create();
         assert(root);
-        Item external(messages.dispatcherRef(), "external-item", counts);
-        auto pane = std::make_unique<Window>(messages.dispatcherRef(), "owned", counts);
-        auto layout = std::make_unique<ui::Layout>(messages.dispatcherRef(), ui::ElementId{"layout"});
+        Item external("external-item", counts);
+        auto pane = std::make_unique<Window>("owned", counts);
+        auto layout = std::make_unique<ui::Layout>(ui::ElementId{"layout"});
         assert(layout->addSubElement(external));
         auto* layout_ptr = layout.get();
         assert(pane->setContent(std::move(layout)) && !layout);
@@ -195,24 +198,24 @@ namespace
         std::cout << "UI owned subtree reclaims once, external descendant unbound PASS\n";
     }
 
-    void rejection(object::ObjectMessageQueue& messages)
+    void rejection(object::ObjectRuntime& messages)
     {
         Counts counts;
-        auto root = ui::Root::create(messages.dispatcherRef(), {.attachment_capacity = 2});
+        auto root = ui::Root::create({.attachment_capacity = 2});
         assert(root);
-        Window existing(messages.dispatcherRef(), "existing", counts);
+        Window existing("existing", counts);
         assert((*root)->addSubPane(existing));
         std::unique_ptr<Window, DeleteWindow> candidate(
-            new Window(messages.dispatcherRef(), "existing", counts), DeleteWindow{counts}
+            new Window("existing", counts), DeleteWindow{counts}
         );
         auto* original = candidate.get();
         auto rejected = (*root)->addSubPane(std::move(candidate));
         assert(!rejected && rejected.error() == ui::EAttachmentError::DUPLICATE_ID);
         assert(candidate.get() == original && !candidate->parent() && counts.deleted == 0);
         std::unique_ptr<Window, DeleteWindow> second(
-            new Window(messages.dispatcherRef(), "second", counts), DeleteWindow{counts}
+            new Window("second", counts), DeleteWindow{counts}
         );
-        Window reentrant(messages.dispatcherRef(), "reentrant", counts);
+        Window reentrant("reentrant", counts);
         bool moving = true;
         second.get_deleter().root = root->get();
         second.get_deleter().candidate = &reentrant;
@@ -229,19 +232,19 @@ namespace
         std::cout << "UI candidate/deleter preserved on refusal, reentrant move and capacity PASS\n";
     }
 
-    void replacement(object::ObjectMessageQueue& messages)
+    void replacement(object::ObjectRuntime& messages)
     {
         Counts counts;
-        auto root = ui::Root::create(messages.dispatcherRef());
+        auto root = ui::Root::create();
         assert(root);
-        Window pane(messages.dispatcherRef(), "replace", counts);
+        Window pane("replace", counts);
         assert((*root)->addSubPane(pane));
-        auto old = std::make_unique<Item>(messages.dispatcherRef(), "old", counts);
+        auto old = std::make_unique<Item>("old", counts);
         auto* old_ptr = old.get();
         assert(pane.setContent(std::move(old)) && !old);
         assert((*root)->capturePointer(*old_ptr) && (*root)->requestFocus(*old_ptr));
         (*root)->deferChange(*old_ptr, [](object::LuxObject&) noexcept { std::abort(); });
-        auto next = std::make_unique<Item>(messages.dispatcherRef(), "next", counts);
+        auto next = std::make_unique<Item>("next", counts);
         auto* next_ptr = next.get();
         auto occupied = pane.setContent(std::move(next));
         assert(!occupied && occupied.error() == ui::EAttachmentError::OCCUPIED);
@@ -255,12 +258,12 @@ namespace
         std::cout << "UI content occupied, atomic replacement, delayed reclaim and invalid input PASS\n";
     }
 
-    void callbackLifetime(object::ObjectMessageQueue& messages)
+    void callbackLifetime(object::ObjectRuntime& messages)
     {
         Counts counts;
-        auto root = ui::Root::create(messages.dispatcherRef());
+        auto root = ui::Root::create();
         assert(root);
-        auto pane = std::make_unique<Window>(messages.dispatcherRef(), "callback", counts);
+        auto pane = std::make_unique<Window>("callback", counts);
         pane->messages = &messages;
         pane->on_update = [](Window& self) noexcept {
             assert(self.requestDestruction());
@@ -274,13 +277,13 @@ namespace
         std::cout << "UI update borrows defer self reclamation until callback returns PASS\n";
     }
 
-    void batch(object::ObjectMessageQueue& messages)
+    void batch(object::ObjectRuntime& messages)
     {
         Counts counts;
-        auto root = ui::Root::create(messages.dispatcherRef());
+        auto root = ui::Root::create();
         assert(root);
-        Window old(messages.dispatcherRef(), "old", counts), a(messages.dispatcherRef(), "a", counts),
-            conflict(messages.dispatcherRef(), "old", counts);
+        Window old("old", counts), a("a", counts),
+            conflict("old", counts);
         assert((*root)->addSubPane(old));
         assert((*root)->requestFocus(old));
         const auto revision = (*root)->windowRevision();
@@ -293,22 +296,20 @@ namespace
         std::thread worker([&] { auto result = (*root)->addSubPane(a); assert(!result); wrong_thread = result.error(); });
         worker.join();
         assert(wrong_thread == ui::EAttachmentError::WRONG_THREAD);
-        auto other_result = object::ObjectMessageQueue::create(32);
-        assert(other_result);
-        auto other = std::move(*other_result);
-        Window foreign(other.dispatcherRef(), "foreign", counts);
-        auto mismatch = (*root)->addSubPane(foreign);
-        assert(!mismatch && mismatch.error() == ui::EAttachmentError::WRONG_DISPATCHER);
-        std::cout << "UI failed batch leaves windows unchanged, precise thread/dispatcher failures PASS\n";
+        Window foreign("foreign", counts);
+        auto same_runtime = (*root)->addSubPane(foreign);
+        assert(same_runtime && foreign.attachedRoot() == root->get());
+        assert((*root)->removeSubPane(foreign));
+        std::cout << "UI failed batch leaves windows unchanged, one object runtime and wrong-thread refusal PASS\n";
     }
 
-    void frozenChanges(object::ObjectMessageQueue& messages)
+    void frozenChanges(object::ObjectRuntime& messages)
     {
         Counts counts;
-        auto root = ui::Root::create(messages.dispatcherRef(), {.docking = false});
+        auto root = ui::Root::create({.docking = false});
         assert(root);
-        Window pane(messages.dispatcherRef(), "frozen", counts);
-        Item old(messages.dispatcherRef(), "old", counts), candidate(messages.dispatcherRef(), "new", counts);
+        Window pane("frozen", counts);
+        Item old("old", counts), candidate("new", counts);
         old.window = &pane;
         old.candidate = &candidate;
         const auto rejected = [](Item& self) noexcept {
@@ -331,25 +332,25 @@ namespace
         std::cout << "UI draw/measurement/event rejects replacement without changing content PASS\n";
     }
 
-    void retiredLayout(object::ObjectMessageQueue& messages)
+    void retiredLayout(object::ObjectRuntime& messages)
     {
         Counts counts;
-        auto root = ui::Root::create(messages.dispatcherRef(), {.docking = false});
+        auto root = ui::Root::create({.docking = false});
         assert(root);
-        Window pane(messages.dispatcherRef(), "layout-retirement", counts);
-        ui::Layout layout(messages.dispatcherRef(), ui::ElementId{"fields"}, ui::ELayoutType::FORM);
-        ui::Label label(messages.dispatcherRef(), ui::ElementId{"label"}, "Field");
-        auto old = std::make_unique<Item>(messages.dispatcherRef(), "field", counts);
+        Window pane("layout-retirement", counts);
+        ui::Layout layout(ui::ElementId{"fields"}, ui::ELayoutType::FORM);
+        ui::Label label(ui::ElementId{"label"}, "Field");
+        auto old = std::make_unique<Item>("field", counts);
         auto* previous = old.get();
         assert(layout.addSubElement(label) && layout.addSubElement(std::move(old)));
         assert(pane.setContent(layout) && (*root)->addSubPane(pane));
-        Item candidate(messages.dispatcherRef(), "field", counts);
+        Item candidate("field", counts);
         assert(layout.replaceSubElement(*previous, candidate));
         assert(layout.status() == ui::ELayoutStatus::VALID && counts.destroyed == 0);
         ui::DrawData draw;
         assert((*root)->update({{640, 480}, 0.016F}, &draw));
         assert(messages.collectRetired() == 1 && counts.destroyed == 1);
-        Window nested(messages.dispatcherRef(), "nested", counts);
+        Window nested("nested", counts);
         assert(pane.addSubPane(nested));
         const std::array<ui::Pane*, 2> overlapping{&pane, &nested};
         auto invalid = (*root)->prepareDetach(overlapping);
@@ -360,17 +361,17 @@ namespace
         std::cout << "UI retired content leaves layout before physical collection; nested removal PASS\n";
     }
 
-    void ownedBatch(object::ObjectMessageQueue& messages)
+    void ownedBatch(object::ObjectRuntime& messages)
     {
         Counts counts;
-        auto root = ui::Root::create(messages.dispatcherRef(), {.attachment_capacity = 3});
+        auto root = ui::Root::create({.attachment_capacity = 3});
         assert(root);
-        Window existing(messages.dispatcherRef(), "existing", counts);
+        Window existing("existing", counts);
         assert((*root)->addSubPane(existing));
         std::vector<std::unique_ptr<ui::Pane, object::ObjectDeleter>> owners;
         const auto append = [&](const char* id)
         {
-            auto value = std::make_unique<Window>(messages.dispatcherRef(), id, counts);
+            auto value = std::make_unique<Window>(id, counts);
             auto deleter = object::ObjectDeleter::create<Window>(DeleteWindow{counts});
             owners.emplace_back(value.release(), std::move(deleter));
         };
@@ -434,7 +435,7 @@ namespace
         std::cout << "UI owned batch rejects Nth capacity failure intact, commits before notification, retires once PASS\n";
     }
 
-    void identityReuse(object::ObjectMessageQueue& messages)
+    void identityReuse(object::ObjectRuntime& messages)
     {
         class Sender final : public object::LuxObject
         {
@@ -442,14 +443,14 @@ namespace
             using LuxObject::LuxObject;
             object::TSignal<unsigned> changed{*this};
             auto send() noexcept { return emit(changed, 1U); }
-        } sender(messages.dispatcherRef());
+        } sender;
         Counts counts;
-        auto root = ui::Root::create(messages.dispatcherRef());
+        auto root = ui::Root::create();
         assert(root);
         alignas(Window) std::byte storage[sizeof(Window)];
         for (unsigned i{}; i < 16; ++i)
         {
-            auto* old = ::new (storage) Window(messages.dispatcherRef(), "same", counts);
+            auto* old = ::new (storage) Window("same", counts);
             assert((*root)->addSubPane(*old));
             const auto identity = (*root)->identify(*old);
             assert(identity && *(*root)->findPane(*identity) == old);
@@ -460,7 +461,7 @@ namespace
             (*root)->deferChange(*old, [](object::LuxObject&) noexcept { std::abort(); });
             assert((*root)->removeSubPane(*old));
             old->~Window();
-            auto* current = ::new (storage) Window(messages.dispatcherRef(), "same", counts);
+            auto* current = ::new (storage) Window("same", counts);
             assert((*root)->addSubPane(*current));
             assert(!(*root)->findPane(*identity));
             assert(*(*root)->identify(*current) != *identity);
@@ -474,12 +475,12 @@ namespace
         std::cout << "UI same address/PaneId reopens do not inherit queued requests or signal receivers PASS\n";
     }
 
-    void synchronousBorrow(object::ObjectMessageQueue& messages)
+    void synchronousBorrow(object::ObjectRuntime& messages)
     {
         Counts counts;
-        auto root = ui::Root::create(messages.dispatcherRef());
+        auto root = ui::Root::create();
         assert(root);
-        auto owner = std::make_unique<Window>(messages.dispatcherRef(), "borrowed", counts);
+        auto owner = std::make_unique<Window>("borrowed", counts);
         auto* window = owner.get();
         assert((*root)->addSubPane(std::move(owner)));
         const auto handle = *(*root)->identify(*window);
@@ -502,7 +503,7 @@ namespace
             auto maintained = (*root)->update({}, nullptr);
             assert(!maintained && maintained.error() == ui::ECaptureError::FRAME_OPEN);
             // Rebinding can replace this owner's content without treating the call as an input signal.
-            auto content = std::make_unique<ui::Layout>(messages.dispatcherRef(), ui::ElementId{"local"});
+            auto content = std::make_unique<ui::Layout>(ui::ElementId{"local"});
             assert(pane.setContent(std::move(content)));
             assert(pane.requestDestruction());
             assert(messages.collectRetired() == 0 && counts.destroyed == 0);
@@ -517,9 +518,8 @@ namespace
 
 int main()
 {
-    auto created = lux::object::ObjectMessageQueue::create(128);
-    assert(created);
-    auto messages = std::move(*created);
+    auto& created = lux::object::ObjectRuntime::instance();
+    auto& messages = created;
     closeIntent(messages);
     externalRoot(messages);
     ownership(messages);

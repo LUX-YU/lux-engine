@@ -9,7 +9,6 @@ namespace lux::editor
     {
     public:
         [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorUIRoot>> create(
-            object::ObjectDispatcherRef,
             ui::RootConfig = {}
         ) noexcept;
         ~EditorUIRoot() noexcept override;
@@ -31,7 +30,7 @@ namespace lux::editor
         [[nodiscard]] cxx::expected<void, ui::ECaptureError> frame(ui::FrameInfo, ui::DrawData*, Capture) noexcept;
 
     private:
-        explicit EditorUIRoot(object::ObjectDispatcherRef) noexcept;
+        EditorUIRoot() noexcept;
         [[nodiscard]] cxx::expected<void, ui::ECaptureError> drawDataReady(const ui::DrawData&) noexcept override;
         struct Impl;
         std::unique_ptr<Impl> impl_;

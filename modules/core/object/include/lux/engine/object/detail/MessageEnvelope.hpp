@@ -10,7 +10,7 @@
 
 namespace lux::object
 {
-    class ObjectMessageQueue;
+    class ObjectRuntime;
 
     namespace detail
     {
@@ -37,7 +37,7 @@ namespace lux::object
 
         private:
             template <class Callable> friend MessageEnvelope makeMessage(Callable&& callable);
-            friend class ::lux::object::ObjectMessageQueue;
+            friend class ::lux::object::ObjectRuntime;
 
             struct Ops final
             {

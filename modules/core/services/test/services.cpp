@@ -54,8 +54,8 @@ namespace
     struct Affine final : lux::object::LuxObject
     {
         Counts& counts;
-        Affine(lux::object::ObjectDispatcherRef dispatcher, Counts& counts)
-            : LuxObject(std::move(dispatcher)), counts(counts)
+        Affine(Counts& counts)
+            : LuxObject(), counts(counts)
         {
             ++counts.created;
         }
@@ -143,7 +143,7 @@ namespace
             {
                 return lux::cxx::unexpected(std::move(counts.error()));
             }
-            return new Affine{resolver.dispatcher(), counts->get()};
+            return new Affine{counts->get()};
         },
         .destroy = [](void* value) noexcept { delete static_cast<Affine*>(value); },
         .object = [](void* value) noexcept -> lux::object::LuxObject* { return static_cast<Affine*>(value); }
@@ -158,10 +158,10 @@ namespace
         }
         return std::move(*result);
     }
-    void sharing(lux::object::ObjectMessageQueue& messages)
+    void sharing(lux::object::ObjectRuntime& messages)
     {
         Counts counts;
-        ServiceRegistry registry(messages.dispatcherRef());
+        ServiceRegistry registry{};
         auto definition = ServiceEntry::bind<calculator>(CodeLease::builtin());
         assert(registry.publish({definition}));
         auto scope = take(registry.createScope());
@@ -200,10 +200,10 @@ namespace
         assert(!closed && closed.error().code == EServiceError::CLOSED);
         assert(scope.cancelClose() && registry.get<Calculator>(scope));
     }
-    void retirement(lux::object::ObjectMessageQueue& messages)
+    void retirement(lux::object::ObjectRuntime& messages)
     {
         Counts counts;
-        ServiceRegistry registry(messages.dispatcherRef());
+        ServiceRegistry registry{};
         assert(registry.publish({ServiceEntry::bind<affine>(CodeLease::builtin())}));
         auto scope = take(registry.createScope());
         assert(scope.provide(ServiceNameView{"test.counts"}, counts));
@@ -225,12 +225,12 @@ namespace
         assert(messages.collectRetired() == 1 && scope.drained() && registry.drained());
         weak.reset();
     }
-    void retentionAndScope(lux::object::ObjectMessageQueue& messages)
+    void retentionAndScope(lux::object::ObjectRuntime& messages)
     {
         Counts counts;
         auto descriptor = affine;
         descriptor.retention = EServiceRetention::SCOPED;
-        ServiceRegistry registry(messages.dispatcherRef(), {.scopes = 4, .instances = 4});
+        ServiceRegistry registry({.scopes = 4, .instances = 4});
         assert(registry.publish({ServiceEntry::create(CodeLease::builtin(), descriptor)}));
         auto root = take(registry.createScope());
         assert(root.provide(ServiceNameView{"test.counts"}, counts));
@@ -253,10 +253,10 @@ namespace
         auto missing = registry.get<Affine>(root);
         assert(!missing && missing.error().code == EServiceError::CLOSED);
     }
-    void nestedCleanup(lux::object::ObjectMessageQueue& messages)
+    void nestedCleanup(lux::object::ObjectRuntime& messages)
     {
         Counts counts;
-        ServiceRegistry registry(messages.dispatcherRef());
+        ServiceRegistry registry{};
         assert(registry.publish({ServiceEntry::bind<calculator>(CodeLease::builtin())}));
         auto outer = take(registry.createScope());
         assert(outer.provide(ServiceNameView{"test.counts"}, counts));
@@ -281,10 +281,10 @@ namespace
             lux::cxx::SharedBytes<>::copyOf(std::as_bytes(std::span{&value, 1}))
         };
     }
-    void definitions(lux::object::ObjectMessageQueue& messages)
+    void definitions(lux::object::ObjectRuntime& messages)
     {
         Counts counts;
-        ServiceRegistry registry(messages.dispatcherRef());
+        ServiceRegistry registry{};
         auto scope = take(registry.createScope());
         assert(scope.provide(ServiceNameView{"test.counts"}, counts));
         auto configured = calculator;
@@ -328,7 +328,7 @@ namespace
         assert(take(registry.get<Calculator>(pinned, scope, {}, configuration(5))) == first);
         assert(counts.created == 2); // Publication never replaces a pinned mutable allocation.
     }
-    void dynamicBacking(lux::object::ObjectMessageQueue& messages)
+    void dynamicBacking(lux::object::ObjectRuntime& messages)
     {
         std::shared_ptr<const ServiceEntry> entry;
         {
@@ -360,7 +360,7 @@ namespace
         assert(entry->descriptor().implementation.name() == "test.temporary.dynamic.implementation");
         assert(entry->descriptor().allocation_type == lux::cxx::typeToken<Calculator>());
         Counts counts;
-        ServiceRegistry registry(messages.dispatcherRef());
+        ServiceRegistry registry{};
         auto scope = take(registry.createScope());
         assert(scope.provide(ServiceNameView{"test.counts"}, counts));
         assert(registry.publish({std::move(entry)}));
@@ -402,10 +402,10 @@ namespace
         dependent_contract,
         dependent_inputs
     );
-    void dependencyLifetimes(lux::object::ObjectMessageQueue& messages)
+    void dependencyLifetimes(lux::object::ObjectRuntime& messages)
     {
         Counts counts;
-        ServiceRegistry registry(messages.dispatcherRef(), {.instances = 3});
+        ServiceRegistry registry({.instances = 3});
         auto root = take(registry.createScope());
         assert(root.provide(ServiceNameView{"test.counts"}, counts));
         auto child = take(registry.createScope(&root));
@@ -487,9 +487,9 @@ namespace
         },
         .destroy = [](void* pointer) noexcept { delete static_cast<B*>(pointer); }
     };
-    void cycles(lux::object::ObjectMessageQueue& messages)
+    void cycles(lux::object::ObjectRuntime& messages)
     {
-        ServiceRegistry registry(messages.dispatcherRef(), {.instances = 2});
+        ServiceRegistry registry({.instances = 2});
         auto scope = take(registry.createScope());
         assert(registry.publish(
             {ServiceEntry::bind<a_descriptor>(CodeLease::builtin()),
@@ -511,10 +511,10 @@ namespace
         thread.join();
         assert(wrong_thread);
     }
-    void cleanupInput(lux::object::ObjectMessageQueue& messages, bool close_parent)
+    void cleanupInput(lux::object::ObjectRuntime& messages, bool close_parent)
     {
         Counts counts;
-        ServiceRegistry registry(messages.dispatcherRef());
+        ServiceRegistry registry{};
         auto root = take(registry.createScope());
         assert(root.provide(ServiceNameView{"test.counts"}, counts));
         std::optional<ServiceScope> parent{take(registry.createScope(&root))};
@@ -561,10 +561,10 @@ namespace
         }
     }
 
-    void closeDuringCreation(lux::object::ObjectMessageQueue& messages, bool projection)
+    void closeDuringCreation(lux::object::ObjectRuntime& messages, bool projection)
     {
         Counts counts;
-        ServiceRegistry registry(messages.dispatcherRef());
+        ServiceRegistry registry{};
         auto root = take(registry.createScope());
         assert(root.provide(ServiceNameView{"test.counts"}, counts));
         std::optional<ServiceScope> scope{take(registry.createScope(&root))};
@@ -591,10 +591,10 @@ namespace
         counts.destroying = {};
     }
 
-    void compoundPublication(lux::object::ObjectMessageQueue& messages)
+    void compoundPublication(lux::object::ObjectRuntime& messages)
     {
         Counts counts;
-        ServiceRegistry registry(messages.dispatcherRef());
+        ServiceRegistry registry{};
         auto scope = take(registry.createScope());
         assert(scope.provide(ServiceNameView{"test.counts"}, counts));
         struct Cleanup final
@@ -631,10 +631,10 @@ namespace
         assert(registry.resolve<Calculator>()); // Abandonment preserves the current catalog.
     }
 
-    void externalFactoryDependencies(lux::object::ObjectMessageQueue& messages)
+    void externalFactoryDependencies(lux::object::ObjectRuntime& messages)
     {
         Counts counts;
-        ServiceRegistry registry(messages.dispatcherRef());
+        ServiceRegistry registry{};
         assert(registry.publish({ServiceEntry::bind<calculator>(CodeLease::builtin())}));
         std::optional<ServiceScope> scope{take(registry.createScope())};
         assert(scope->provide(ServiceNameView{"test.counts"}, counts));
@@ -668,7 +668,7 @@ namespace
         assert(counts.destroyed == 1 && registry.drained());
     }
 
-    void declarationOwnership(lux::object::ObjectMessageQueue& messages, bool fixed)
+    void declarationOwnership(lux::object::ObjectRuntime& messages, bool fixed)
     {
         Counts counts;
         bool code_alive = true;
@@ -693,7 +693,7 @@ namespace
             value.definition_type = lux::cxx::typeToken<Declaration>();
             return value;
         }();
-        ServiceRegistry registry{messages.dispatcherRef()};
+        ServiceRegistry registry{};
         auto scope = take(registry.createScope());
         auto missing = fixed ? ServiceEntry::bind<descriptor>(code) : ServiceEntry::create(code, descriptor);
         assert(registry.publish({missing}).error().code == EServiceError::INVALID_DESCRIPTOR);
@@ -725,7 +725,7 @@ namespace
         backing.reset();
         assert(registry.drained());
     }
-    void declaredDefinitions(lux::object::ObjectMessageQueue& messages)
+    void declaredDefinitions(lux::object::ObjectRuntime& messages)
     {
         Counts counts;
         bool code_alive = true;
@@ -745,7 +745,7 @@ namespace
         auto first = ServiceEntry::create(code, descriptor, std::make_shared<const Declaration>(counts, 17));
         descriptor.implementation = ServiceNameView{"test.second"};
         auto second = ServiceEntry::create(code, descriptor, std::make_shared<const Declaration>(counts, 29));
-        ServiceRegistry registry{messages.dispatcherRef()};
+        ServiceRegistry registry{};
         auto scope = take(registry.createScope());
         assert(registry.publish({first, second}));
         first.reset();
@@ -816,7 +816,7 @@ namespace
         retained.clear();
         assert(!code_alive && counts.created == 0 && registry.drained());
     }
-    void settlement(lux::object::ObjectMessageQueue& messages)
+    void settlement(lux::object::ObjectRuntime& messages)
     {
         Counts root_counts, child_counts, unrelated_counts;
         auto descriptor = calculator;
@@ -840,7 +840,7 @@ namespace
             }
             return counts.ready;
         };
-        ServiceRegistry registry{messages.dispatcherRef()};
+        ServiceRegistry registry{};
         assert(registry.publish({ServiceEntry::create(CodeLease::builtin(), descriptor)}));
         auto root = take(registry.createScope());
         auto child = take(registry.createScope(&root));
@@ -885,7 +885,7 @@ namespace
         assert(root.release() && child.release() && unrelated.release());
         assert(registry.drained() && root_counts.destroyed == 1 && child_counts.destroyed == 1);
     }
-    void maintenance(lux::object::ObjectMessageQueue& messages)
+    void maintenance(lux::object::ObjectRuntime& messages)
     {
         Counts counts, nested_counts, unrelated_counts;
         auto descriptor = calculator;
@@ -909,7 +909,7 @@ namespace
             }
             return {};
         };
-        ServiceRegistry registry{messages.dispatcherRef()};
+        ServiceRegistry registry{};
         assert(registry.publish({ServiceEntry::create(CodeLease::builtin(), descriptor)}));
         auto root = take(registry.createScope());
         auto child = take(registry.createScope(&root));
@@ -950,10 +950,10 @@ namespace
         assert(registry.drained());
         assert(root.maintain() && counts.observations == 2);
     }
-    void churn(lux::object::ObjectMessageQueue& messages)
+    void churn(lux::object::ObjectRuntime& messages)
     {
         Counts counts;
-        ServiceRegistry registry(messages.dispatcherRef(), {.scopes = 3, .instances = 2});
+        ServiceRegistry registry({.scopes = 3, .instances = 2});
         assert(registry.publish({ServiceEntry::bind<calculator>(CodeLease::builtin())}));
         auto parent = take(registry.createScope());
         for (int i{}; i < 10000; ++i)
@@ -974,41 +974,40 @@ namespace
 } // namespace
 int main(int argc, char** argv)
 {
-    auto messages = lux::object::ObjectMessageQueue::create(16);
-    assert(messages);
+    auto& messages = lux::object::ObjectRuntime::instance();
     if (argc == 2)
     {
         const std::string_view mode{argv[1]};
         if (mode == "--factory-close" || mode == "--projection-close")
         {
-            closeDuringCreation(*messages, mode == "--projection-close");
+            closeDuringCreation(messages, mode == "--projection-close");
             return 0;
         }
         assert(mode == "--scope-cleanup" || mode == "--handle-cleanup");
-        cleanupInput(*messages, mode == "--scope-cleanup");
+        cleanupInput(messages, mode == "--scope-cleanup");
         return 0;
     }
-    sharing(*messages);
-    retirement(*messages);
-    retentionAndScope(*messages);
-    nestedCleanup(*messages);
-    definitions(*messages);
-    dynamicBacking(*messages);
-    dependencyLifetimes(*messages);
-    cycles(*messages);
-    cleanupInput(*messages, true);
-    cleanupInput(*messages, false);
-    closeDuringCreation(*messages, false);
-    closeDuringCreation(*messages, true);
-    compoundPublication(*messages);
-    externalFactoryDependencies(*messages);
-    declarationOwnership(*messages, false);
-    declarationOwnership(*messages, true);
-    declaredDefinitions(*messages);
-    settlement(*messages);
-    maintenance(*messages);
-    churn(*messages);
-    assert(messages->pendingRetirements() == 0);
+    sharing(messages);
+    retirement(messages);
+    retentionAndScope(messages);
+    nestedCleanup(messages);
+    definitions(messages);
+    dynamicBacking(messages);
+    dependencyLifetimes(messages);
+    cycles(messages);
+    cleanupInput(messages, true);
+    cleanupInput(messages, false);
+    closeDuringCreation(messages, false);
+    closeDuringCreation(messages, true);
+    compoundPublication(messages);
+    externalFactoryDependencies(messages);
+    declarationOwnership(messages, false);
+    declarationOwnership(messages, true);
+    declaredDefinitions(messages);
+    settlement(messages);
+    maintenance(messages);
+    churn(messages);
+    assert(messages.pendingRetirements() == 0);
     std::cout << "PASS lazy factories, one allocation, declared dependencies, scope/qualifier isolation, "
                  "configuration, reentry, code generations, retirement and plain C++ services\n";
 }

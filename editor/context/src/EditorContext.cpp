@@ -4,10 +4,9 @@ namespace lux::editor
 {
     EditorContext::EditorContext(
         engine::EngineContext& engine,
-        object::ObjectDispatcherRef dispatcher,
         ProjectDescription project
     )
-        : engine_(engine), dispatcher_(std::move(dispatcher)), project_(std::move(project))
+        : engine_(engine), project_(std::move(project))
     {
     }
     void EditorContext::freeze() noexcept

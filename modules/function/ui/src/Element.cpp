@@ -19,8 +19,8 @@ namespace lux::ui
         }
     }
 
-    Element::Element(object::ObjectDispatcherRef dispatcher, ElementId id)
-        : LuxObject(std::move(dispatcher)), id_(std::move(id))
+    Element::Element(ElementId id)
+        : LuxObject(), id_(std::move(id))
     {
         if (!id_.isValid())
             detail::failContract();
@@ -67,7 +67,7 @@ namespace lux::ui
     Element::Element(Element& parent, ElementId id) : Element(parent, parent.containingPane(), &parent, std::move(id))
     {}
     Element::Element(object::LuxObject& parent, Pane* pane, Element* element_parent, ElementId id)
-        : LuxObject(parent.dispatcherRef()), element_parent_(element_parent), id_(std::move(id)), pane_(pane)
+        : LuxObject(), element_parent_(element_parent), id_(std::move(id)), pane_(pane)
     {
         if (!id_.isValid())
             detail::failContract();

@@ -7,7 +7,7 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Connection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Object.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectDispatcher.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectRuntime.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CodeLease.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectOwnership.cpp
 )
@@ -70,4 +70,6 @@ if(BUILD_TESTING)
         target_compile_options(object_queue_test PRIVATE -UNDEBUG)
     endif()
     add_test(NAME object.queue COMMAND object_queue_test)
+    add_test(NAME object.runtime_shutdown COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/runtime_shutdown.py" $<TARGET_FILE:object_queue_test>)
 endif()

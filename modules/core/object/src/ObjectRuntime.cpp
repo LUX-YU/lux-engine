@@ -1,6 +1,7 @@
-#include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/object/detail/MessageEnvelope.hpp>
 #include <lux/engine/object/detail/ObjectState.hpp>
+#include <lux/cxx/container/BasicSparseSet.hpp>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -24,9 +25,9 @@ namespace lux::object::detail
         std::atomic<EQueueSlot> state{EQueueSlot::EMPTY};
         MessageEnvelope message;
     };
-    struct ObjectMessageQueueState final
+    struct ObjectRuntimeState final
     {
-        explicit ObjectMessageQueueState(std::size_t size)
+        explicit ObjectRuntimeState(std::size_t size)
             : capacity(size), slots{std::make_unique<QueueSlot[]>(size), std::make_unique<QueueSlot[]>(size)}
         {}
         void discardReady() noexcept
@@ -43,6 +44,7 @@ namespace lux::object::detail
                     slot.state.store(EQueueSlot::EMPTY, std::memory_order_release);
                 }
         }
+        cxx::SlotKeyAutoSparseSet<ObjectId, LuxObject*> objects;
         const std::size_t capacity;
         std::array<std::unique_ptr<QueueSlot[]>, 2> slots;
         std::mutex mutex;
@@ -61,27 +63,27 @@ namespace lux::object::detail
         SignalStorage* signal_maintenance{};
     };
 
-    void retainReclamation(const ObjectDispatcherRef& dispatcher) noexcept
+    void retainReclamation() noexcept
     {
-        const auto state = dispatcher.state_;
+        auto* state = ObjectRuntime::instance().state_.get();
         if (!state)
             failObjectContract();
         std::scoped_lock lock{state->mutex};
         ++state->retirement_owners;
     }
 
-    void releaseReclamation(const ObjectDispatcherRef& dispatcher) noexcept
+    void releaseReclamation() noexcept
     {
-        const auto state = dispatcher.state_;
+        auto* state = ObjectRuntime::instance().state_.get();
         std::scoped_lock lock{state->mutex};
         if (!state->retirement_owners)
             failObjectContract();
         --state->retirement_owners;
     }
 
-    void scheduleReclamation(const ObjectDispatcherRef& dispatcher, Reclamation& node) noexcept
+    void scheduleReclamation(Reclamation& node) noexcept
     {
-        const auto state = dispatcher.state_;
+        auto* state = ObjectRuntime::instance().state_.get();
         if (!state)
             failObjectContract();
         {
@@ -100,9 +102,9 @@ namespace lux::object::detail
             wake();
     }
 
-    void scheduleSignalMaintenance(const ObjectDispatcherRef& dispatcher, SignalStorage& storage) noexcept
+    void scheduleSignalMaintenance(SignalStorage& storage) noexcept
     {
-        const auto state = dispatcher.state_;
+        auto* state = ObjectRuntime::instance().state_.get();
         if (!state)
             return;
         std::scoped_lock lock{state->mutex};
@@ -116,7 +118,7 @@ namespace lux::object::detail
             wake();
     }
 
-    void maintainSignals(ObjectMessageQueueState& state) noexcept
+    void maintainSignals(ObjectRuntimeState& state) noexcept
     {
         SignalStorage* batch{};
         {
@@ -193,9 +195,9 @@ namespace lux::object::detail
         other.inline_ = false;
     }
 
-    EPostStatus post(const ObjectDispatcherRef& dispatcher, MessageEnvelope&& message) noexcept
+    EPostStatus post(MessageEnvelope&& message) noexcept
     {
-        const auto state = dispatcher.state_;
+        auto* state = ObjectRuntime::instance().state_.get();
         if (!state)
             return EPostStatus::CLOSED;
         QueueSlot* slot{};
@@ -228,41 +230,55 @@ namespace lux::object::detail
 
 namespace lux::object
 {
-    void ObjectMessageQueue::setWake(void (*wake)() noexcept) noexcept
+    void ObjectRuntime::setWake(void (*wake)() noexcept) noexcept
     {
         if (state_)
             state_->wake.store(wake, std::memory_order_release);
     }
-    bool ObjectDispatcherRef::isCurrent() const noexcept
+    ObjectRuntime& ObjectRuntime::instance() noexcept
     {
-        return state_ && !state_->closed.load(std::memory_order_acquire) && state_->owner == std::this_thread::get_id();
+        static ObjectRuntime runtime;
+        return runtime;
     }
-    ObjectMessageQueue::ObjectMessageQueue(std::shared_ptr<detail::ObjectMessageQueueState> state) noexcept
-        : state_(std::move(state))
-    {}
-    lux::cxx::expected<ObjectMessageQueue, EObjectQueueError> ObjectMessageQueue::create(std::size_t capacity) noexcept
-    {
-        if (!capacity || capacity > std::numeric_limits<std::size_t>::max() / (2 * sizeof(detail::QueueSlot)))
-            return lux::cxx::unexpected(EObjectQueueError::INVALID_CAPACITY);
-        {
-            return ObjectMessageQueue{std::make_shared<detail::ObjectMessageQueueState>(capacity)};
-        }
-    }
-    ObjectMessageQueue::ObjectMessageQueue(ObjectMessageQueue&&) noexcept = default;
-    ObjectMessageQueue& ObjectMessageQueue::operator=(ObjectMessageQueue&& other) noexcept
-    {
-        if (this != &other)
-        {
-            closeAndReclaim();
-            state_ = std::move(other.state_);
-        }
-        return *this;
-    }
-    ObjectMessageQueue::~ObjectMessageQueue()
+    ObjectRuntime::ObjectRuntime() noexcept : state_(std::make_unique<detail::ObjectRuntimeState>(4096)) {}
+    ObjectRuntime::~ObjectRuntime()
     {
         closeAndReclaim();
+        if (!state_->objects.empty())
+            detail::failObjectContract();
     }
-    void ObjectMessageQueue::closeAndReclaim() noexcept
+    bool ObjectRuntime::isCurrent() const noexcept
+    {
+        return state_->owner == std::this_thread::get_id();
+    }
+    ObjectId ObjectRuntime::registerObject(LuxObject& object) noexcept
+    {
+        const bool is_unavailable = !isCurrent() || state_->closed.load(std::memory_order_acquire);
+        if (is_unavailable)
+            detail::failObjectContract();
+        const auto id = state_->objects.insert(&object);
+        if (id.isNull())
+            detail::failObjectContract();
+        return id;
+    }
+    void ObjectRuntime::unregisterObject(ObjectId id) noexcept
+    {
+        if (!isCurrent())
+            detail::failObjectContract();
+        state_->objects.erase(id);
+    }
+    ObjectResult<LuxObject*> ObjectRuntime::resolve(ObjectId id) const noexcept
+    {
+        if (!isCurrent())
+            return cxx::unexpected(EObjectTreeError::WRONG_THREAD);
+        if (id.isNull())
+            return cxx::unexpected(EObjectTreeError::INVALID_OBJECT);
+        const auto* found = state_->objects.tryGet(id);
+        if (!found)
+            return cxx::unexpected(EObjectTreeError::CLOSED);
+        return *found;
+    }
+    void ObjectRuntime::closeAndReclaim() noexcept
     {
         close();
         while (pendingRetirements())
@@ -273,11 +289,7 @@ namespace lux::object
                 detail::failObjectContract();
         }
     }
-    ObjectDispatcherRef ObjectMessageQueue::dispatcherRef() const noexcept
-    {
-        return ObjectDispatcherRef{state_};
-    }
-    std::size_t ObjectMessageQueue::pendingRetirements() const noexcept
+    std::size_t ObjectRuntime::pendingRetirements() const noexcept
     {
         if (!state_)
             return 0;
@@ -285,9 +297,9 @@ namespace lux::object
         return state_->retirement_owners;
     }
 
-    std::size_t ObjectMessageQueue::collectRetired() noexcept
+    std::size_t ObjectRuntime::collectRetired() noexcept
     {
-        const auto state = state_;
+        auto* state = state_.get();
         if (!state || state->owner != std::this_thread::get_id())
             detail::failObjectContract();
         if (LuxObject::isDispatching())
@@ -314,7 +326,7 @@ namespace lux::object
             if (node->reclaim(*node))
                 ++reclaimed;
             else
-                detail::scheduleReclamation(dispatcherRef(), *node);
+                detail::scheduleReclamation(*node);
         }
         {
             std::scoped_lock lock{state->mutex};
@@ -322,13 +334,9 @@ namespace lux::object
         }
         return reclaimed;
     }
-    std::size_t ObjectMessageQueue::dispatchPending()
+    std::size_t ObjectRuntime::dispatchPending()
     {
-        return dispatchPending(std::numeric_limits<std::size_t>::max());
-    }
-    std::size_t ObjectMessageQueue::dispatchPending(std::size_t maximum)
-    {
-        const auto state = state_;
+        auto* state = state_.get();
         if (!state || state->owner != std::this_thread::get_id())
             std::abort();
         std::size_t end{};
@@ -343,7 +351,7 @@ namespace lux::object
                 state->batch_count = std::exchange(state->incoming_count, 0);
                 state->batch_position = 0;
             }
-            end = state->batch_position + std::min(maximum, state->batch_count - state->batch_position);
+            end = state->batch_count;
         }
         detail::maintainSignals(*state);
         std::size_t consumed{};
@@ -366,19 +374,20 @@ namespace lux::object
         }
         return consumed;
     }
-    void ObjectMessageQueue::close() noexcept
+    void ObjectRuntime::close() noexcept
     {
-        const auto state = state_;
+        auto* state = state_.get();
         if (!state)
             return;
         {
             std::scoped_lock lock{state->mutex};
             state->closed.store(true, std::memory_order_release);
+            state->wake.store(nullptr, std::memory_order_release);
         }
         state->discardReady();
         detail::maintainSignals(*state);
     }
-    ObjectQueueStatistics ObjectMessageQueue::statistics() const noexcept
+    ObjectQueueStatistics ObjectRuntime::statistics() const noexcept
     {
         if (!state_)
             return {};

@@ -31,7 +31,7 @@ namespace lux::ui
     class LUX_FUNCTION_PUBLIC Element : public lux::object::LuxObject
     {
     public:
-        Element(object::ObjectDispatcherRef, ElementId id);
+        Element(ElementId id);
         [[nodiscard]] Root* attachedRoot() const noexcept;
         [[nodiscard]] Pane* containingPane() const noexcept
         {

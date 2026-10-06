@@ -5,11 +5,10 @@ int main()
 {
     using namespace lux;
     auto* original = ImGui::CreateContext();
-    auto messages_created = object::ObjectMessageQueue::create(64);
-    assert(messages_created);
-    auto messages = std::move(*messages_created);
-    auto first = ui::Root::create(messages.dispatcherRef());
-    auto second = ui::Root::create(messages.dispatcherRef());
+    auto& messages_created = object::ObjectRuntime::instance();
+    auto& messages = messages_created;
+    auto first = ui::Root::create();
+    auto second = ui::Root::create();
     assert(first && second && ImGui::GetCurrentContext() == original);
     ui::DrawData slot;
     {

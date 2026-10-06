@@ -1,6 +1,5 @@
 #pragma once
 #include <exception>
-#include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -12,7 +11,7 @@ template <class Draw> class TUiDrawPane final : public lux::ui::Pane
 {
 public:
     TUiDrawPane(lux::ui::Root& root, Draw draw)
-        : Pane(root.dispatcherRef(), lux::ui::PaneId{"test.draw"}, lux::ui::PaneTypeId{"test.draw"}, "Draw"),
+        : Pane(lux::ui::PaneId{"test.draw"}, lux::ui::PaneTypeId{"test.draw"}, "Draw"),
           content_(*this, std::move(draw))
     {
         if (!setContent(content_))

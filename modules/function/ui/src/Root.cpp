@@ -373,7 +373,7 @@ namespace lux::ui
         }
     }
 
-    Root::Root(object::ObjectDispatcherRef dispatcher) noexcept : LuxObject(std::move(dispatcher)) {}
+    Root::Root() noexcept : LuxObject() {}
     Root::~Root() noexcept
     {
         if (!isOnAffinityThread())
@@ -391,14 +391,12 @@ namespace lux::ui
         }
     }
 
-    Root::CreateResult Root::create(object::ObjectDispatcherRef dispatcher, RootConfig config) noexcept
+    Root::CreateResult Root::create(RootConfig config) noexcept
     {
-        if (!dispatcher)
-            return lux::cxx::unexpected(EInitError::INVALID_DISPATCHER);
-        if (!dispatcher.isCurrent())
+        if (!object::ObjectRuntime::instance().isCurrent())
             return lux::cxx::unexpected(EInitError::WRONG_THREAD);
         {
-            auto root = std::unique_ptr<Root>(new Root(std::move(dispatcher)));
+            auto root = std::unique_ptr<Root>(new Root());
             auto initialized = root->initialize(config);
             if (!initialized)
                 return lux::cxx::unexpected(initialized.error());
@@ -410,8 +408,6 @@ namespace lux::ui
     {
         if (!isOnAffinityThread())
             return lux::cxx::unexpected(EInitError::WRONG_THREAD);
-        if (!dispatcherRef())
-            return lux::cxx::unexpected(EInitError::INVALID_DISPATCHER);
         if (impl_)
             detail::failContract();
         if (config.input_capacity < 2 || config.input_capacity > std::size_t(std::numeric_limits<int>::max()))
@@ -559,14 +555,14 @@ namespace lux::ui
         {
             return cxx::unexpected(EAttachmentError::NOT_ATTACHED);
         }
-        auto reference = pane.identity();
-        if (!reference.resolve())
+        auto reference = pane.objectId();
+        if (!object::ObjectRuntime::instance().resolve(reference))
         {
             return cxx::unexpected(EAttachmentError::CLOSED);
         }
         PaneHandle handle;
         handle.pane_ = std::move(reference);
-        handle.root_ = identity();
+        handle.root_ = objectId();
         handle.attachment_ = pane.attachment_epoch_;
         return handle;
     }
@@ -581,12 +577,12 @@ namespace lux::ui
         {
             return cxx::unexpected(EAttachmentError::CLOSED);
         }
-        const bool is_wrong_root = !handle.valid() || handle.root_ != identity();
+        const bool is_wrong_root = !handle.valid() || handle.root_ != objectId();
         if (is_wrong_root)
         {
             return cxx::unexpected(EAttachmentError::NOT_ATTACHED);
         }
-        auto resolved = handle.pane_.resolve();
+        auto resolved = object::ObjectRuntime::instance().resolve(handle.pane_);
         if (!resolved)
         {
             return cxx::unexpected(EAttachmentError::NOT_ATTACHED);
@@ -1104,8 +1100,6 @@ namespace lux::ui
         const bool is_wrong_thread = !parent.isOnAffinityThread() || !child.isOnAffinityThread();
         if (is_wrong_thread)
             return cxx::unexpected(EAttachmentError::WRONG_THREAD);
-        if (parent.dispatcherRef() != child.dispatcherRef())
-            return cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
         if (isDispatching())
             return cxx::unexpected(EAttachmentError::BUSY);
         auto* parent_root = dynamic_cast<Root*>(&parent);
@@ -1150,7 +1144,7 @@ namespace lux::ui
             if (ancestor == &child)
                 return cxx::unexpected(EAttachmentError::INVALID_TREE);
         if (previous && previous->ownership() == object::EObjectOwnership::PARENT_OWNED &&
-            !previous->dispatcherRef().isCurrent())
+            !previous->isOnAffinityThread())
             return cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
 
         detail::AttachmentState prepared;
@@ -1207,7 +1201,6 @@ namespace lux::ui
             switch (adopted.error())
             {
             case WRONG_THREAD: return cxx::unexpected(EAttachmentError::WRONG_THREAD);
-            case WRONG_DISPATCHER: return cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
             case BUSY: return cxx::unexpected(EAttachmentError::BUSY);
             case CLOSED: return cxx::unexpected(EAttachmentError::CLOSED);
             case ALREADY_ATTACHED: return cxx::unexpected(EAttachmentError::ALREADY_ATTACHED);
@@ -1348,7 +1341,6 @@ namespace lux::ui
             switch (adopted.error())
             {
             case WRONG_THREAD: return cxx::unexpected(EAttachmentError::WRONG_THREAD);
-            case WRONG_DISPATCHER: return cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
             case BUSY: return cxx::unexpected(EAttachmentError::BUSY);
             case CLOSED: return cxx::unexpected(EAttachmentError::CLOSED);
             case ALREADY_ATTACHED: return cxx::unexpected(EAttachmentError::ALREADY_ATTACHED);
@@ -1406,14 +1398,12 @@ namespace lux::ui
                 return lux::cxx::unexpected(EAttachmentError::CLOSED);
             if (pane->preparation_)
                 return lux::cxx::unexpected(EAttachmentError::BUSY);
-            if (pane->dispatcherRef() != dispatcherRef())
-                return lux::cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
             if (mount && (pane->attachedRoot() || pane->parent()))
                 return lux::cxx::unexpected(EAttachmentError::ALREADY_ATTACHED);
             if (!mount && pane->attachedRoot() != this)
                 return lux::cxx::unexpected(EAttachmentError::NOT_ATTACHED);
             const bool is_unretirable = !mount &&
-                pane->ownership() == object::EObjectOwnership::PARENT_OWNED && !pane->dispatcherRef().isCurrent();
+                pane->ownership() == object::EObjectOwnership::PARENT_OWNED && !pane->isOnAffinityThread();
             if (is_unretirable)
                 return lux::cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
             prepared->roots.push_back(pane);

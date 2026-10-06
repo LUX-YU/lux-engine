@@ -7,7 +7,7 @@ namespace
     class PluginObject final : public LuxObject
     {
     public:
-        PluginObject(ObjectDispatcherRef dispatcher, int* trace) : LuxObject(std::move(dispatcher)), trace_(trace) {}
+        PluginObject(int* trace) : LuxObject(), trace_(trace) {}
         ~PluginObject() override
         {
             ++trace_[0];
@@ -41,14 +41,18 @@ namespace
 #define TEST_EXPORT __attribute__((visibility("default")))
 #endif
 extern "C" TEST_EXPORT void make_object(
-    ObjectDispatcherRef dispatcher,
     CodeLease code,
     int* trace,
     std::unique_ptr<LuxObject, ObjectDeleter>& result
 ) noexcept
 {
     result = {
-        new PluginObject(std::move(dispatcher), trace),
+        new PluginObject(trace),
         ObjectDeleter::create<PluginObject>(PluginDeleter{trace}, std::move(code))
     };
+}
+
+extern "C" TEST_EXPORT ObjectRuntime* object_runtime() noexcept
+{
+    return &ObjectRuntime::instance();
 }

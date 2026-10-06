@@ -25,13 +25,12 @@ namespace lux::object::detail
 
     struct ObjectState final : Reclamation
     {
-        ObjectState(LuxObject* value, ObjectDispatcherRef queue, std::thread::id owner) noexcept
-            : object(value), dispatcher(std::move(queue)), affinity(owner)
+        ObjectState(LuxObject* value, ObjectId identity) noexcept
+            : object(value), id(identity)
         {}
         std::atomic_size_t refs{};
         std::atomic<LuxObject*> object;
-        ObjectDispatcherRef dispatcher;
-        const std::thread::id affinity;
+        const ObjectId id;
         std::mutex mutex;
         ConnectionControl* incoming{};
         bool destruction_requested{}; // Affinity thread; one queued reference per identity.
@@ -46,12 +45,10 @@ namespace lux::object::detail
     {
         using Records =
             lux::cxx::StableSlotMap<lux::cxx::intrusive_ptr<ConnectionControl>, ConnectionControl, lux::cxx::NoAux, 8>;
-        SignalStorage(ObjectDispatcherRef queue, QueuedMessageFactory factory) noexcept
-            : dispatcher(std::move(queue)), queue_factory(factory)
+        SignalStorage(QueuedMessageFactory factory) noexcept
+            : queue_factory(factory)
         {}
         std::atomic_size_t refs{};
-        const std::thread::id affinity{std::this_thread::get_id()};
-        ObjectDispatcherRef dispatcher;
         QueuedMessageFactory queue_factory;
         Records records;
         std::atomic_bool closed{};
@@ -69,5 +66,5 @@ namespace lux::object::detail
         [[nodiscard]] SignalDelivery emit(const void*) noexcept;
     };
 
-    void scheduleSignalMaintenance(const ObjectDispatcherRef&, SignalStorage&) noexcept;
+    void scheduleSignalMaintenance(SignalStorage&) noexcept;
 }

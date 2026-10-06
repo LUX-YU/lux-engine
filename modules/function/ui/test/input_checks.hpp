@@ -35,7 +35,7 @@ namespace input_checks
     public:
         template <class Parent>
         Window(Parent& parent, const char* name)
-            : ui::Pane(ui_test::parent(parent), ui::PaneId{name}, ui::PaneTypeId{"test.input"}, name), content(*this)
+            : ui::Pane(ui::PaneId{name}, ui::PaneTypeId{"test.input"}, name), content(*this)
         {
             assert(setContent(content));
             ui_test::mount(parent, *this);
@@ -50,9 +50,9 @@ namespace input_checks
                 keys += std::holds_alternative<ui::Key>(*input);
         }
     };
-    inline void run(object::ObjectDispatcherRef dispatcher)
+    inline void run()
     {
-        auto made = ui::Root::create(dispatcher, {.docking = true});
+        auto made = ui::Root::create({.docking = true});
         assert(made);
         auto& root = **made;
         Window owner(root, "owner"), modal(owner, "modal");

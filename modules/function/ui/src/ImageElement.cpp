@@ -9,8 +9,8 @@
 
 namespace lux::ui
 {
-    ImageElement::ImageElement(object::ObjectDispatcherRef dispatcher, ElementId id)
-        : Element(std::move(dispatcher), std::move(id))
+    ImageElement::ImageElement(ElementId id)
+        : Element(std::move(id))
     {}
     ImageElement::ImageElement(Pane& parent, ElementId id) : Element(parent, std::move(id)) {}
     ImageElement::ImageElement(Element& parent, ElementId id) : Element(parent, std::move(id)) {}

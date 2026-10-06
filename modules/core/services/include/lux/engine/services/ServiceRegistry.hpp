@@ -2,7 +2,7 @@
 
 #include <functional>
 #include <lux/cxx/core/function_ref.hpp>
-#include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/services/ServiceDescriptor.hpp>
 #include <vector>
 
@@ -126,7 +126,6 @@ namespace lux::services
             }
             return result;
         }
-        [[nodiscard]] const object::ObjectDispatcherRef& dispatcher() const noexcept;
         [[nodiscard]] bool isOpen() const noexcept;
         template <class T> [[nodiscard]] ServiceResult<std::shared_ptr<const T>> definition() const noexcept
         {
@@ -165,7 +164,7 @@ namespace lux::services
     class LUX_SERVICES_PUBLIC ServiceRegistry final
     {
     public:
-        explicit ServiceRegistry(object::ObjectDispatcherRef, ServiceLimits = {});
+        explicit ServiceRegistry(ServiceLimits = {});
         ~ServiceRegistry();
         ServiceRegistry(const ServiceRegistry&) = delete;
         ServiceRegistry& operator=(const ServiceRegistry&) = delete;

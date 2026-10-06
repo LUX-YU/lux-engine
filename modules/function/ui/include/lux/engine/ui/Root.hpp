@@ -48,7 +48,7 @@ namespace lux::ui
     {
     public:
         using CreateResult = lux::cxx::expected<std::unique_ptr<Root>, EInitError>;
-        [[nodiscard]] static CreateResult create(object::ObjectDispatcherRef, RootConfig = {}) noexcept;
+        [[nodiscard]] static CreateResult create(RootConfig = {}) noexcept;
         ~Root() noexcept override;
 
         // FULL leaves this event unaccepted, including both physical/aggregate modifiers.
@@ -178,7 +178,7 @@ namespace lux::ui
         );
 
     protected:
-        explicit Root(object::ObjectDispatcherRef) noexcept;
+        Root() noexcept;
         [[nodiscard]] lux::cxx::expected<void, EInitError> initialize(RootConfig) noexcept;
         [[nodiscard]] virtual lux::cxx::expected<void, ECaptureError> drawDataReady(const DrawData&) noexcept;
 

@@ -37,8 +37,8 @@ namespace
     class TestPane final : public ui::Pane
     {
     public:
-        TestPane(object::ObjectDispatcherRef dispatcher, std::string name, std::vector<int>& deaths)
-            : Pane(dispatcher, ui::PaneId{name}, ui::PaneTypeId{"test"}, "Framework GPU"), deaths_(deaths),
+        TestPane(std::string name, std::vector<int>& deaths)
+            : Pane(ui::PaneId{name}, ui::PaneTypeId{"test"}, "Framework GPU"), deaths_(deaths),
               content_(*this, ui::ElementId{"layout"}),
               label_(content_, ui::ElementId{"label"}, "Actual UI GPU content")
         {
@@ -89,7 +89,7 @@ namespace
         class Listener final : public object::LuxObject
         {
         public:
-            explicit Listener(LuxEngine& host) : LuxObject(host.uiRoot().dispatcherRef()), host_(host) {}
+            explicit Listener(LuxEngine& host) : LuxObject(), host_(host) {}
             void attached(const ui::AttachmentChanged&) noexcept
             {
                 auto result = host_.closeProject();
@@ -116,7 +116,7 @@ namespace
                     const UiDescription& description) -> FrameworkResult<std::unique_ptr<ui::Pane>>
                 {
                     assert(context.service<Service>());
-                    return std::unique_ptr<ui::Pane>{new TestPane(context.dispatcher(), description.instance, deaths)};
+                    return std::unique_ptr<ui::Pane>{new TestPane(description.instance, deaths)};
                 }
             );
         };
@@ -180,7 +180,7 @@ namespace
                             FrameworkFailure{EFrameworkError::FACTORY_FAILED, "Expected second factory refusal"}
                         );
                     }
-                    return std::unique_ptr<ui::Pane>{new TestPane(context.dispatcher(), description.instance, deaths)};
+                    return std::unique_ptr<ui::Pane>{new TestPane(description.instance, deaths)};
                 }
             );
         };
@@ -226,9 +226,8 @@ namespace
         auto made_resources = scene::RenderResources::create(*runtime, tasks, execution->cpu());
         assert(made_resources);
         auto resources = std::move(*made_resources);
-        auto messages = object::ObjectMessageQueue::create(128);
-        assert(messages);
-        auto root = take(EditorUIRoot::create(messages->dispatcherRef()));
+        auto& messages = object::ObjectRuntime::instance();
+        auto root = take(EditorUIRoot::create());
         auto scenes_created = scene::SceneRuntime::create(*execution, {0, 128});
         assert(scenes_created);
         auto scenes = std::move(*scenes_created);
@@ -243,7 +242,7 @@ namespace
             scene::ViewConfig{.extent = {640, 480}}
         ));
         std::vector<int> deaths;
-        std::unique_ptr<ui::Pane> pane = std::make_unique<TestPane>(messages->dispatcherRef(), "gpu", deaths);
+        std::unique_ptr<ui::Pane> pane = std::make_unique<TestPane>("gpu", deaths);
         assert(root->takePane(pane));
         const auto pump = [&]
         {

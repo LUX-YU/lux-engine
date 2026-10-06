@@ -20,8 +20,8 @@ namespace
     class Receiver final : public object::LuxObject
     {
     public:
-        Receiver(object::ObjectDispatcherRef dispatcher, Trace& trace, process::ExecutionRuntime& execution)
-            : LuxObject(std::move(dispatcher)), trace_(trace), execution_(execution)
+        Receiver(Trace& trace, process::ExecutionRuntime& execution)
+            : LuxObject(), trace_(trace), execution_(execution)
         {
         }
         ~Receiver() override
@@ -71,7 +71,7 @@ namespace
         {
             return cxx::unexpected(std::move(execution.error()));
         }
-        return std::make_unique<Receiver>(resolver.dispatcher(), trace->get(), execution->get());
+        return std::make_unique<Receiver>(trace->get(), execution->get());
     };
     constexpr auto definition =
         ServiceDescriptor::forType<Receiver, factory>(ServiceNameView{"task.default"}, contracts, dependencies);
@@ -92,9 +92,9 @@ namespace
     void completion(bool transport)
     {
         auto execution = take(process::ExecutionRuntime::create({1, 16, 16, {16}}));
-        auto messages = take(object::ObjectMessageQueue::create(16));
+        auto& messages = object::ObjectRuntime::instance();
         Trace trace;
-        ServiceRegistry services(messages.dispatcherRef());
+        ServiceRegistry services{};
         assert(services.publish({ServiceEntry::bind<definition>(object::CodeLease::builtin())}));
         auto scope = take(services.createScope());
         assert(scope.provide(ServiceNameView{"task.trace"}, trace));
@@ -141,9 +141,9 @@ namespace
     void cancellation()
     {
         auto execution = take(process::ExecutionRuntime::create({1, 16, 16, {16}}));
-        auto messages = take(object::ObjectMessageQueue::create(16));
+        auto& messages = object::ObjectRuntime::instance();
         Trace trace;
-        ServiceRegistry services(messages.dispatcherRef());
+        ServiceRegistry services{};
         assert(services.publish({ServiceEntry::bind<definition>(object::CodeLease::builtin())}));
         auto scope = take(services.createScope());
         assert(scope.provide(ServiceNameView{"task.trace"}, trace));
@@ -206,9 +206,9 @@ namespace
     void retainedResult()
     {
         auto execution = take(process::ExecutionRuntime::create({1, 16, 16, {16}}));
-        auto messages = take(object::ObjectMessageQueue::create(16));
+        auto& messages = object::ObjectRuntime::instance();
         Trace trace;
-        ServiceRegistry services(messages.dispatcherRef());
+        ServiceRegistry services{};
         auto descriptor = definition;
         descriptor.retention = EServiceRetention::SCOPED;
         assert(services.publish({ServiceEntry::create(object::CodeLease::builtin(), descriptor)}));

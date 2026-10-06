@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
 
 namespace lux::object::detail
 {
@@ -11,7 +11,7 @@ namespace lux::object::detail
         bool queued{}; // Dispatcher mutex only.
         bool (*reclaim)(Reclamation&) noexcept {};
     };
-    void scheduleReclamation(const ObjectDispatcherRef&, Reclamation&) noexcept;
-    void retainReclamation(const ObjectDispatcherRef&) noexcept;
-    void releaseReclamation(const ObjectDispatcherRef&) noexcept;
+    void scheduleReclamation(Reclamation&) noexcept;
+    void retainReclamation() noexcept;
+    void releaseReclamation() noexcept;
 } // namespace lux::object::detail

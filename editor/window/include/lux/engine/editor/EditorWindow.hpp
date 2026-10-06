@@ -1,7 +1,7 @@
 #pragma once
 #include <lux/engine/editor/FrameworkError.hpp>
 #include <lux/engine/input/Input.hpp>
-#include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 
 namespace lux::editor
@@ -11,8 +11,7 @@ namespace lux::editor
     {
     public:
         [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorWindow>> create(
-            const window::InitParameter&,
-            object::ObjectDispatcherRef
+            const window::InitParameter&
         ) noexcept;
         ~EditorWindow() override;
         EditorWindow(const EditorWindow&) = delete;

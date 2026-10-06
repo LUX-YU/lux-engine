@@ -40,8 +40,8 @@ namespace
     class Node final : public lux::object::LuxObject
     {
     public:
-        Node(ObjectDispatcherRef dispatcher, Trace& trace, int id) noexcept
-            : lux::object::LuxObject(std::move(dispatcher)), trace_(trace), id_(id)
+        Node(Trace& trace, int id) noexcept
+            : lux::object::LuxObject(), trace_(trace), id_(id)
         {}
 
         Node(LuxObject& parent, Trace& trace, int id) noexcept : lux::object::LuxObject(&parent), trace_(trace), id_(id)
@@ -94,11 +94,10 @@ namespace
 
     void ownership()
     {
-        auto messages_created = ObjectMessageQueue::create(64);
-        assert(messages_created);
-        auto messages = std::move(*messages_created);
+        auto& messages_created = ObjectRuntime::instance();
+        auto& messages = messages_created;
         Trace trace;
-        Node root(messages.dispatcherRef(), trace, 1);
+        Node root(trace, 1);
         assert(!root.parent() && !root.firstChild() && !root.nextSibling());
         {
             Node first(root, trace, 2);
@@ -108,7 +107,7 @@ namespace
             assert(first.nextSibling() == middle.get());
             assert(middle->nextSibling() == &last);
             assert(!last.nextSibling());
-            assert(first.dispatcherRef() == root.dispatcherRef());
+            assert(first.isOnAffinityThread() && root.isOnAffinityThread());
             middle.reset();
             assert(first.nextSibling() == &last);
             trace.expect({-3});
@@ -123,7 +122,7 @@ namespace
     void routing()
     {
         Trace trace;
-        Node root(ObjectDispatcherRef{}, trace, 1);
+        Node root(trace, 1);
         Node middle(root, trace, 2);
         Node leaf(middle, trace, 3);
 

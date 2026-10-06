@@ -9,8 +9,8 @@
 
 namespace lux::ui
 {
-    Pane::Pane(object::ObjectDispatcherRef dispatcher, PaneId id, PaneTypeId type, std::string title)
-        : LuxObject(std::move(dispatcher)), id_(std::move(id)), type_(std::move(type)), title_(std::move(title))
+    Pane::Pane(PaneId id, PaneTypeId type, std::string title)
+        : LuxObject(), id_(std::move(id)), type_(std::move(type)), title_(std::move(title))
     {
         if (!id_.isValid())
             detail::failContract();
@@ -24,7 +24,7 @@ namespace lux::ui
     }
 
     Pane::Pane(Pane& parent, PaneId id, PaneTypeId type, std::string title)
-        : Pane(parent.dispatcherRef(), std::move(id), std::move(type), std::move(title))
+        : Pane(std::move(id), std::move(type), std::move(title))
     {
         root_ = parent.attachedRoot();
         if (root_)

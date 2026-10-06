@@ -16,13 +16,13 @@ namespace lux::ui
     public:
         [[nodiscard]] bool valid() const noexcept
         {
-            return pane_.valid() && root_.valid() && attachment_ != 0;
+            return pane_.isValid() && root_.isValid() && attachment_ != 0;
         }
         friend bool operator==(const PaneHandle&, const PaneHandle&) = default;
 
     private:
         friend class Root;
-        object::ObjectIdentity pane_, root_;
+        object::ObjectId pane_, root_;
         std::uint64_t attachment_{};
     };
     struct WindowVisibility final

@@ -34,15 +34,11 @@ namespace lux::object
 
 namespace lux::object::detail
 {
-    ObjectResult<void> prepareSharedObject(LuxObject& value, const ObjectDispatcherRef& dispatcher) noexcept
+    ObjectResult<void> prepareSharedObject(LuxObject& value) noexcept
     {
         if (!value.isOnAffinityThread())
         {
             return cxx::unexpected(EObjectTreeError::WRONG_THREAD);
-        }
-        if (value.dispatcherRef() != dispatcher)
-        {
-            return cxx::unexpected(EObjectTreeError::WRONG_DISPATCHER);
         }
         if (value.owned_edge_)
         {
@@ -65,7 +61,6 @@ namespace lux::object::detail
     struct AffinityOwner final : Reclamation
     {
         CodeLease code{CodeLease::builtin()};
-        ObjectDispatcherRef dispatcher;
         cxx::move_only_function<void()> destroy;
         LuxObject* object{};
 
@@ -78,7 +73,7 @@ namespace lux::object::detail
                 {
                     return false;
                 }
-                value.object->closing_ = true;
+                value.object->beginDestruction();
                 if (auto* state = value.object->state_.load(std::memory_order_acquire))
                 {
                     state->closeOwner();
@@ -86,14 +81,13 @@ namespace lux::object::detail
             }
             value.destroy();
             value.destroy = {}; // Callable cleanup and its return remain covered by code.
-            releaseReclamation(value.dispatcher);
+            releaseReclamation();
             delete &value;
             return true;
         }
     };
 
     std::shared_ptr<void> makeAffinityOwner(
-        ObjectDispatcherRef dispatcher,
         void* pointer,
         CodeLease code,
         cxx::move_only_function<void()> destroy,
@@ -102,15 +96,14 @@ namespace lux::object::detail
     {
         auto node = std::make_unique<AffinityOwner>();
         node->code = std::move(code);
-        node->dispatcher = std::move(dispatcher);
         node->destroy = std::move(destroy);
         node->object = object;
         node->reclaim = &AffinityOwner::collect;
-        retainReclamation(node->dispatcher);
+        retainReclamation();
         auto* prepared = node.release();
         return std::shared_ptr<void>(
             pointer,
-            [prepared](void*) noexcept { scheduleReclamation(prepared->dispatcher, *prepared); }
+            [prepared](void*) noexcept { scheduleReclamation(*prepared); }
         );
     }
 } // namespace lux::object::detail

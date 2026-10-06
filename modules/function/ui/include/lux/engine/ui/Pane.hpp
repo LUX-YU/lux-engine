@@ -41,7 +41,7 @@ namespace lux::ui
         object::TSignal<PaneVisibilityChanged> visibilityChanged{*this};
         object::TSignal<> closeRequested{*this};
 
-        Pane(object::ObjectDispatcherRef, PaneId id, PaneTypeId type, std::string title);
+        Pane(PaneId id, PaneTypeId type, std::string title);
         [[nodiscard]] Root* attachedRoot() const noexcept
         {
             return root_;

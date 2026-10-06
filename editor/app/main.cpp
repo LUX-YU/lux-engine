@@ -12,7 +12,7 @@ namespace
     public:
         WelcomePane(lux::editor::EditorContext& context, const lux::editor::UiDescription& description)
             : Pane(
-                  context.dispatcher(),
+
                   lux::ui::PaneId{description.instance},
                   lux::ui::PaneTypeId{"framework.welcome"},
                   description.title

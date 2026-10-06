@@ -8,8 +8,7 @@ namespace lux::editor
     EditorWindow::EditorWindow(const window::InitParameter& config) : LuxWindow(config) {}
     EditorWindow::~EditorWindow() = default;
     FrameworkResult<std::unique_ptr<EditorWindow>> EditorWindow::create(
-        const window::InitParameter& config,
-        object::ObjectDispatcherRef dispatcher
+        const window::InitParameter& config
     ) noexcept
     {
         static window::GlfwRuntime runtime;
@@ -26,7 +25,7 @@ namespace lux::editor
                 static_cast<std::uint64_t>(window->initError())
             });
         }
-        auto root = EditorUIRoot::create(std::move(dispatcher));
+        auto root = EditorUIRoot::create();
         if (!root)
         {
             return cxx::unexpected(std::move(root.error()));

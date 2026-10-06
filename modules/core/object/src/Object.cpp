@@ -127,7 +127,7 @@ namespace lux::object::detail
             }
         }
         state.destruction_requested = false;
-        releaseReclamation(state.dispatcher);
+        releaseReclamation();
         intrusive_ptr_release(&state);
         return true;
     }
@@ -144,10 +144,10 @@ namespace lux::object::detail
             control.next_cancelled = cancelled;
             cancelled = &control;
         }
-        if (std::this_thread::get_id() == affinity && depth == 0 && !maintaining)
+        if (ObjectRuntime::instance().isCurrent() && depth == 0 && !maintaining)
             maintain();
         else
-            scheduleSignalMaintenance(dispatcher, *this);
+            scheduleSignalMaintenance(*this);
     }
 
     void SignalStorage::remove(ConnectionControl& control) noexcept
@@ -163,7 +163,7 @@ namespace lux::object::detail
 
     void SignalStorage::maintain() noexcept
     {
-        if (std::this_thread::get_id() != affinity || depth || maintaining)
+        if (!ObjectRuntime::instance().isCurrent() || depth || maintaining)
             return;
         maintaining = true;
         ConnectionControl* batch{};
@@ -183,7 +183,7 @@ namespace lux::object::detail
 
     void SignalStorage::close() noexcept
     {
-        if (std::this_thread::get_id() != affinity || depth)
+        if (!ObjectRuntime::instance().isCurrent() || depth)
             failObjectContract();
         {
             std::scoped_lock lock{cancel_mutex};
@@ -259,7 +259,7 @@ namespace lux::object::detail
                 continue;
             }
             auto message = queue_factory(control, payload);
-            switch (post(control->receiver->dispatcher, std::move(message)))
+            switch (post(std::move(message)))
             {
             case EPostStatus::POSTED:
                 ++result.queued;
@@ -353,17 +353,17 @@ namespace lux::object
             return lux::cxx::unexpected(EObjectTreeError::NOT_OWNED);
         if (!acceptsCallbacks())
             return lux::cxx::unexpected(EObjectTreeError::BUSY);
-        const bool has_live_dispatcher = dispatcher_ && dispatcher_.isCurrent();
+        const bool has_live_dispatcher = ObjectRuntime::instance().isCurrent();
         if (!has_live_dispatcher)
-            return lux::cxx::unexpected(EObjectTreeError::WRONG_DISPATCHER);
+            return lux::cxx::unexpected(EObjectTreeError::WRONG_THREAD);
         auto state = ensureState();
         if (!state->destruction_requested)
         {
             state->destruction_requested = true;
             state->reclaim = &detail::ObjectState::reclaimOwner;
             detail::intrusive_ptr_add_ref(state.get());
-            detail::retainReclamation(dispatcher_);
-            detail::scheduleReclamation(dispatcher_, *state);
+            detail::retainReclamation();
+            detail::scheduleReclamation(*state);
         }
         return {};
     }
@@ -405,8 +405,6 @@ namespace lux::object
         const bool is_wrong_thread = !isOnAffinityThread() || !child.isOnAffinityThread();
         if (is_wrong_thread)
             return lux::cxx::unexpected(EObjectTreeError::WRONG_THREAD);
-        if (dispatcher_ != child.dispatcher_)
-            return lux::cxx::unexpected(EObjectTreeError::WRONG_DISPATCHER);
         const bool is_closed = closing_ || child.closing_;
         if (is_closed)
             return lux::cxx::unexpected(EObjectTreeError::CLOSED);
@@ -560,15 +558,10 @@ namespace lux::object
         changing_children_ = false;
     }
 
-    LuxObject::LuxObject(ObjectDispatcherRef dispatcher) noexcept
-        : affinity_(std::this_thread::get_id()), dispatcher_(std::move(dispatcher))
-    {
-        if (dispatcher_ && !dispatcher_.isCurrent())
-            detail::failObjectContract();
-    }
+    LuxObject::LuxObject() noexcept : id_(ObjectRuntime::instance().registerObject(*this)) {}
 
     LuxObject::LuxObject(LuxObject* parent) noexcept
-        : LuxObject(parent ? parent->dispatcherRef() : ObjectDispatcherRef{})
+        : LuxObject()
     {
         if (!parent || !parent->allowsGenericChildren())
             detail::failObjectContract();
@@ -613,6 +606,7 @@ namespace lux::object
         if (is_active)
             detail::failObjectContract();
         closing_ = true;
+        ObjectRuntime::instance().unregisterObject(id_);
         // Closing rejects callbacks immediately. Keep the identity pointer until physical destruction:
         // an already queued reclamation still needs it to release the original owning edge.
     }
@@ -624,6 +618,7 @@ namespace lux::object
         if (is_illegal_destruction)
             detail::failObjectContract();
         closing_ = true;
+        ObjectRuntime::instance().unregisterObject(id_);
         clearChildren();
         unlinkParent();
         auto* state = state_.exchange(nullptr, std::memory_order_acq_rel);
@@ -699,12 +694,12 @@ namespace lux::object
 
     bool LuxObject::isOnAffinityThread() const noexcept
     {
-        return std::this_thread::get_id() == affinity_;
+        return ObjectRuntime::instance().isCurrent();
     }
 
     void LuxObject::assertAffinity() const noexcept
     {
-        if (std::this_thread::get_id() != affinity_)
+        if (!ObjectRuntime::instance().isCurrent())
             detail::failObjectContract();
     }
 
@@ -713,7 +708,7 @@ namespace lux::object
         auto* state = state_.load(std::memory_order_acquire);
         if (!state)
         {
-            auto* candidate = new detail::ObjectState{const_cast<LuxObject*>(this), dispatcher_, affinity_};
+            auto* candidate = new detail::ObjectState{const_cast<LuxObject*>(this), id_};
             detail::intrusive_ptr_add_ref(candidate); // object ownership
             if (!state_.compare_exchange_strong(state, candidate, std::memory_order_release, std::memory_order_acquire))
             {
@@ -726,29 +721,6 @@ namespace lux::object
             }
         }
         return lux::cxx::intrusive_ptr<detail::ObjectState>{state};
-    }
-
-    ObjectIdentity LuxObject::identity() const noexcept
-    {
-        return ObjectIdentity{ensureState()};
-    }
-
-    ObjectResult<LuxObject*> ObjectIdentity::resolve() const noexcept
-    {
-        if (!state_)
-        {
-            return cxx::unexpected(EObjectTreeError::INVALID_OBJECT);
-        }
-        if (state_->affinity != std::this_thread::get_id())
-        {
-            return cxx::unexpected(EObjectTreeError::WRONG_THREAD);
-        }
-        auto* object = state_->object.load(std::memory_order_acquire);
-        if (!object || object->isClosing())
-        {
-            return cxx::unexpected(EObjectTreeError::CLOSED);
-        }
-        return object;
     }
 
     LuxObject::ConnectResult LuxObject::connectSignal(
@@ -766,19 +738,17 @@ namespace lux::object
         if (is_closed)
             return lux::cxx::unexpected(EConnectError::OBJECT_CLOSED);
         if (delivery == EDelivery::AUTO)
-            delivery = !receiver || receiver->affinity_ == affinity_ ? EDelivery::DIRECT : EDelivery::QUEUED;
-        if (delivery == EDelivery::DIRECT && receiver && receiver->affinity_ != affinity_)
-            return lux::cxx::unexpected(EConnectError::DIRECT_CROSS_AFFINITY);
+            delivery = EDelivery::DIRECT;
         if (delivery == EDelivery::QUEUED && !factory)
             return lux::cxx::unexpected(EConnectError::PAYLOAD_NOT_QUEUEABLE);
-        if (delivery == EDelivery::QUEUED && (!receiver || !receiver->dispatcher_))
-            return lux::cxx::unexpected(EConnectError::RECEIVER_HAS_NO_DISPATCHER);
+        if (delivery == EDelivery::QUEUED && !receiver)
+            return lux::cxx::unexpected(EConnectError::INVALID_ARGUMENT);
         if (delivery != EDelivery::DIRECT && delivery != EDelivery::QUEUED)
             return lux::cxx::unexpected(EConnectError::INVALID_ARGUMENT);
         try
         {
             if (!storage)
-                storage = lux::cxx::make_intrusive<detail::SignalStorage>(dispatcher_, factory);
+                storage = lux::cxx::make_intrusive<detail::SignalStorage>(factory);
             if (storage->closed.load(std::memory_order_acquire))
                 return lux::cxx::unexpected(EConnectError::OBJECT_CLOSED);
             storage->maintain();

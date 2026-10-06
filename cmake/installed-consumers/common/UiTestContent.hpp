@@ -22,13 +22,6 @@ private:
 #include <type_traits>
 namespace ui_test
 {
-    template <class Parent> decltype(auto) parent(Parent& value)
-    {
-        if constexpr (std::derived_from<Parent, lux::ui::Root>)
-            return value.dispatcherRef();
-        else
-            return (value);
-    }
     template <class Parent> void mount(Parent& parent, lux::ui::Pane& pane)
     {
         if constexpr (std::derived_from<Parent, lux::ui::Root>)
@@ -37,6 +30,10 @@ namespace ui_test
             auto ready = parent.prepareMount(pane);
             assert(ready);
             assert(parent.commit(*ready));
+        }
+        else
+        {
+            assert(parent.addSubPane(pane));
         }
     }
 }

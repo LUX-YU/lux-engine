@@ -88,8 +88,8 @@ namespace lux::ui
                 detail::failContract();
         }
     }
-    Button::Button(object::ObjectDispatcherRef dispatcher, ElementId id, std::string text)
-        : Element(std::move(dispatcher), std::move(id)), text_(std::move(text)), label_(text_ + "###button")
+    Button::Button(ElementId id, std::string text)
+        : Element(std::move(id)), text_(std::move(text)), label_(text_ + "###button")
     {
         setStretch({0, 0});
     }
@@ -122,7 +122,7 @@ namespace lux::ui
         if (ImGui::Button(label_.c_str(), {rect().size.width, rect().size.height}))
             static_cast<void>(emit(activated));
     }
-    Label::Label(object::ObjectDispatcherRef dispatcher, ElementId id, std::string text) : Element(std::move(dispatcher), std::move(id)), text_(std::move(text))
+    Label::Label(ElementId id, std::string text) : Element(std::move(id)), text_(std::move(text))
     {
         setStretch({0, 0});
     }
@@ -163,8 +163,8 @@ namespace lux::ui
         if (wrap_)
             ImGui::PopTextWrapPos();
     }
-    CheckBox::CheckBox(object::ObjectDispatcherRef dispatcher, ElementId id, std::string text, bool value)
-        : Element(std::move(dispatcher), std::move(id)), text_(std::move(text)), label_(text_ + "###value"), value_(value)
+    CheckBox::CheckBox(ElementId id, std::string text, bool value)
+        : Element(std::move(id)), text_(std::move(text)), label_(text_ + "###value"), value_(value)
     {
         setStretch({0, 0});
     }
@@ -194,8 +194,8 @@ namespace lux::ui
         if (ImGui::Checkbox(label_.c_str(), &value_))
             static_cast<void>(emit(edited, EditResult{true, true, true, false}));
     }
-    TextEdit::TextEdit(object::ObjectDispatcherRef dispatcher, ElementId id, std::string value)
-        : Element(std::move(dispatcher), std::move(id)), value_(std::move(value))
+    TextEdit::TextEdit(ElementId id, std::string value)
+        : Element(std::move(id)), value_(std::move(value))
     {
         setStretch({1, 0});
     }
@@ -281,8 +281,8 @@ namespace lux::ui
         if (hasEdit(result))
             static_cast<void>(emit(edited, result));
     }
-    NumericEdit::NumericEdit(object::ObjectDispatcherRef dispatcher, ElementId id, VNumericValue value)
-        : Element(std::move(dispatcher), std::move(id)), value_(value), before_(value)
+    NumericEdit::NumericEdit(ElementId id, VNumericValue value)
+        : Element(std::move(id)), value_(value), before_(value)
     {
         setStretch({1, 0});
     }
@@ -428,8 +428,8 @@ namespace lux::ui
         if (hasEdit(result))
             static_cast<void>(emit(edited, result));
     }
-    Choice::Choice(object::ObjectDispatcherRef dispatcher, ElementId id, std::vector<ChoiceOption> options, std::int64_t value)
-        : Element(std::move(dispatcher), std::move(id)), options_(std::move(options)), value_(value)
+    Choice::Choice(ElementId id, std::vector<ChoiceOption> options, std::int64_t value)
+        : Element(std::move(id)), options_(std::move(options)), value_(value)
     {
         setStretch({1, 0});
     }

@@ -261,7 +261,6 @@ namespace lux::services
     } // namespace
     struct ServiceRegistry::Impl final
     {
-        object::ObjectDispatcherRef dispatcher;
         ServiceLimits limits;
         std::shared_ptr<Callbacks> callbacks{std::make_shared<Callbacks>()};
         std::uint64_t domain{}, next_definition{}, next_scope{};
@@ -387,10 +386,10 @@ namespace lux::services
             );
         }
     };
-    ServiceRegistry::ServiceRegistry(object::ObjectDispatcherRef dispatcher, ServiceLimits limits)
+    ServiceRegistry::ServiceRegistry(ServiceLimits limits)
         : impl_(std::make_unique<Impl>())
     {
-        if (!dispatcher.isCurrent())
+        if (!object::ObjectRuntime::instance().isCurrent())
         {
             std::terminate();
         }
@@ -403,7 +402,6 @@ namespace lux::services
             }
         } while (!next_registry.compare_exchange_weak(issued, issued + 1, std::memory_order_relaxed));
         impl_->domain = issued + 1;
-        impl_->dispatcher = std::move(dispatcher);
         impl_->limits = limits;
         impl_->definitions.reserve(limits.definitions);
         impl_->scopes.reserve(limits.scopes);
@@ -959,7 +957,7 @@ namespace lux::services
                 );
                 auto* allocation = candidate.release();
                 auto shared =
-                    object::shareOnDispatcher(impl_->dispatcher, std::move(typed), handle.definition_->entry->code());
+                    object::shareOnRuntime(std::move(typed), handle.definition_->entry->code());
                 if (!shared)
                 {
                     return reject(EServiceError::FACTORY_FAILURE, "Object ownership or dispatcher refused sharing");
@@ -968,8 +966,7 @@ namespace lux::services
             }
             else
             {
-                auto shared = object::shareOnDispatcher(
-                    impl_->dispatcher,
+                auto shared = object::shareOnRuntime(
                     std::move(candidate),
                     handle.definition_->entry->code()
                 );
@@ -1184,10 +1181,7 @@ namespace lux::services
         ServiceResolver resolver{*this, dependencies, std::move(pinned_scope)};
         return invoke(resolver);
     }
-    const object::ObjectDispatcherRef& ServiceResolver::dispatcher() const noexcept
-    {
-        return registry_.impl_->dispatcher;
-    }
+
     ServiceResult<std::shared_ptr<detail::ServiceScopeState>> ServiceRegistry::dependencyScope(
         const ServiceResolver& resolver,
         const ServiceDependency& dependency

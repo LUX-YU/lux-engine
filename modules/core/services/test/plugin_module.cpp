@@ -10,8 +10,8 @@ namespace
     class PluginService final : public object::LuxObject, public fixture::Value
     {
     public:
-        PluginService(object::ObjectDispatcherRef dispatcher, fixture::Trace& trace)
-            : LuxObject(std::move(dispatcher)), trace_(trace)
+        PluginService(fixture::Trace& trace)
+            : LuxObject(), trace_(trace)
         {
             ++trace_.created;
         }
@@ -50,7 +50,7 @@ namespace
         {
             return cxx::unexpected(std::move(trace.error()));
         }
-        return std::make_unique<PluginService>(resolver.dispatcher(), trace->get());
+        return std::make_unique<PluginService>(trace->get());
     };
     constexpr auto descriptor = []
     {

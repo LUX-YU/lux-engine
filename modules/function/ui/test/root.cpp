@@ -4,7 +4,7 @@
 #include <lux/engine/ui/ImageElement.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Command.hpp>
-#include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <imgui.h>
 
@@ -81,7 +81,7 @@ namespace
     {
     public:
         LifetimeOwner(lux::ui::Root& root, Lifetime& lifetime)
-            : Pane(root.dispatcherRef(), lux::ui::PaneId{"lifetime"}, lux::ui::PaneTypeId{"test.lifetime"}, "Lifetime"),
+            : Pane(lux::ui::PaneId{"lifetime"}, lux::ui::PaneTypeId{"test.lifetime"}, "Lifetime"),
               resource_{lifetime}, content_(*this, lux::ui::ElementId{"layout"}), fixed_(content_, lifetime, "fixed"),
               child_(*this, lifetime)
         {
@@ -153,7 +153,7 @@ namespace
     {
     public:
         explicit ChangeOwner(lux::ui::Root& root)
-            : Pane(root.dispatcherRef(), lux::ui::PaneId{"change"}, lux::ui::PaneTypeId{"test.change"}, "Change")
+            : Pane(lux::ui::PaneId{"change"}, lux::ui::PaneTypeId{"test.change"}, "Change")
         {
             replace();
             ui_test::mount(root, *this);
@@ -166,10 +166,10 @@ namespace
         }
     };
 
-    void lifetimeAndChanges(lux::object::ObjectDispatcherRef dispatcher)
+    void lifetimeAndChanges()
     {
         using namespace lux;
-        auto created = ui::Root::create(dispatcher, {.docking = false});
+        auto created = ui::Root::create({.docking = false});
         assert(created);
         auto& root = **created;
         Lifetime lifetime;
@@ -248,10 +248,10 @@ namespace
         assert(owner.content->applications == 0);
     }
 
-    int contractViolation(std::string_view scenario, lux::object::ObjectDispatcherRef dispatcher)
+    int contractViolation(std::string_view scenario)
     {
         using namespace lux;
-        auto created = ui::Root::create(dispatcher, {.docking = false});
+        auto created = ui::Root::create({.docking = false});
         assert(created);
         auto& root = **created;
         ChangeOwner owner(root);
@@ -302,7 +302,7 @@ namespace
     public:
         template <class Parent>
         Probe(Parent& parent, const char* id)
-            : lux::ui::Pane(ui_test::parent(parent), lux::ui::PaneId{id}, lux::ui::PaneTypeId{"test.probe"}, id)
+            : lux::ui::Pane(lux::ui::PaneId{id}, lux::ui::PaneTypeId{"test.probe"}, id)
         {
             assert(setContent(probe_content_));
             ui_test::mount(parent, *this);
@@ -372,16 +372,15 @@ int main(int argc, char** argv)
 {
     using namespace lux;
     auto* original = ImGui::CreateContext();
-    auto messages_created = object::ObjectMessageQueue::create(64);
-    assert(messages_created);
-    auto messages = std::move(*messages_created);
+    auto& messages_created = object::ObjectRuntime::instance();
+    auto& messages = messages_created;
     if (argc == 2)
-        return contractViolation(argv[1], messages.dispatcherRef());
-    lifetimeAndChanges(messages.dispatcherRef());
-    element_checks::run(messages.dispatcherRef());
-    input_checks::run(messages.dispatcherRef());
-    auto first = ui::Root::create(messages.dispatcherRef(), {.docking = false});
-    auto second = ui::Root::create(messages.dispatcherRef(), {.docking = false});
+        return contractViolation(argv[1]);
+    lifetimeAndChanges();
+    element_checks::run();
+    input_checks::run();
+    auto first = ui::Root::create({.docking = false});
+    auto second = ui::Root::create({.docking = false});
     assert(first && second && ImGui::GetCurrentContext() == original);
     auto font = (*first)->fontAtlas();
     assert(font && font->pixels.size() == std::size_t(font->width) * font->height * 4);
@@ -485,7 +484,7 @@ int main(int argc, char** argv)
     first->reset();
     second->reset();
     {
-        auto made = ui::Root::create(messages.dispatcherRef(), {.docking = false});
+        auto made = ui::Root::create({.docking = false});
         assert(made);
         auto& root = **made;
         Probe first(root, "capture-first"), second(root, "capture-second");
@@ -516,7 +515,7 @@ int main(int argc, char** argv)
         assert(second.moves == 1); // Loss ended capture even without a physical button-up.
     }
     {
-        auto bounded = ui::Root::create(messages.dispatcherRef(), {.docking = false, .input_capacity = 4});
+        auto bounded = ui::Root::create({.docking = false, .input_capacity = 4});
         assert(bounded);
         auto& root = **bounded;
         Probe pane(root, "input");
@@ -559,13 +558,13 @@ int main(int argc, char** argv)
     assert(slot.valid() && ImGui::GetCurrentContext() == original);
     for (const float scale : std::array{0.f, -1.f, 4.1f, INFINITY, NAN})
     {
-        const auto invalid = ui::Root::create(messages.dispatcherRef(), {.scale = scale});
+        const auto invalid = ui::Root::create({.scale = scale});
         assert(!invalid && invalid.error() == ui::EInitError::INVALID_SCALE);
         assert(ImGui::GetCurrentContext() == original);
     }
     {
-        auto normal = ui::Root::create(messages.dispatcherRef(), {.scale = 1.f});
-        auto enlarged = ui::Root::create(messages.dispatcherRef(), {.scale = 2.f});
+        auto normal = ui::Root::create({.scale = 1.f});
+        auto enlarged = ui::Root::create({.scale = 2.f});
         assert(normal && enlarged);
         auto first = (*normal)->fontAtlas();
         auto second = (*enlarged)->fontAtlas();
@@ -577,7 +576,7 @@ int main(int argc, char** argv)
         assert(ImGui::GetCurrentContext() == original);
     }
     ui::FontSource invalid_font;
-    const auto rejected = ui::Root::create(messages.dispatcherRef(), {.font = &invalid_font});
+    const auto rejected = ui::Root::create({.font = &invalid_font});
     assert(!rejected && rejected.error() == ui::EInitError::INVALID_FONT_DATA);
     assert(ImGui::GetCurrentContext() == original);
     ImGui::DestroyContext(original);

@@ -58,7 +58,7 @@ namespace element_checks
     {
     public:
         explicit Owner(ui::Root& root)
-            : ui::Pane(root.dispatcherRef(), ui::PaneId{"owner"}, ui::PaneTypeId{"test.owner"}, "Owner"),
+            : ui::Pane(ui::PaneId{"owner"}, ui::PaneTypeId{"test.owner"}, "Owner"),
               item(std::make_unique<Item>(*this, "old"))
         {
             assert(setContent(*item));
@@ -77,9 +77,9 @@ namespace element_checks
         }
     };
 
-    inline void run(object::ObjectDispatcherRef dispatcher)
+    inline void run()
     {
-        auto created = ui::Root::create(dispatcher, {.docking = false});
+        auto created = ui::Root::create({.docking = false});
         assert(created);
         auto& root = **created;
         {
@@ -101,7 +101,7 @@ namespace element_checks
             assert(root.update({{640, 480}, 0.016F}, &draw));
             assert(content.draws == 1 && owner.item->draws == 0);
         }
-        ui::Pane pane(root.dispatcherRef(), ui::PaneId{"layout"}, ui::PaneTypeId{"test"}, "Layout");
+        ui::Pane pane(ui::PaneId{"layout"}, ui::PaneTypeId{"test"}, "Layout");
         ui_test::mount(root, pane);
         {
             std::vector<std::unique_ptr<ui::Layout>> levels;

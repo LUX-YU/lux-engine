@@ -3,7 +3,7 @@
 #include <lux/engine/editor/EditorUiRegistrar.hpp>
 #include <lux/engine/editor/ProjectDescription.hpp>
 #include <lux/engine/editor/SceneToolRegistrar.hpp>
-#include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 
 namespace lux::engine
@@ -15,7 +15,7 @@ namespace lux::editor
     class EditorContext final
     {
     public:
-        EditorContext(engine::EngineContext&, object::ObjectDispatcherRef, ProjectDescription);
+        EditorContext(engine::EngineContext&, ProjectDescription);
         ~EditorContext() = default;
         EditorContext(const EditorContext&) = delete;
         EditorContext& operator=(const EditorContext&) = delete;
@@ -25,10 +25,6 @@ namespace lux::editor
         [[nodiscard]] engine::EngineContext& engine() const noexcept
         {
             return engine_;
-        }
-        [[nodiscard]] object::ObjectDispatcherRef dispatcher() const noexcept
-        {
-            return dispatcher_;
         }
         [[nodiscard]] const ProjectDescription& project() const noexcept
         {
@@ -54,7 +50,7 @@ namespace lux::editor
 
         template <class T> [[nodiscard]] FrameworkResult<std::reference_wrapper<T>> service() noexcept
         {
-            if (!dispatcher_.isCurrent())
+            if (!object::ObjectRuntime::instance().isCurrent())
             {
                 return cxx::unexpected(
                     FrameworkFailure{EFrameworkError::WRONG_THREAD, "Project services require owner thread"}
@@ -65,7 +61,6 @@ namespace lux::editor
 
     private:
         engine::EngineContext& engine_;
-        object::ObjectDispatcherRef dispatcher_;
         ProjectDescription project_;
         asset::AssetVfs assets_;
         EditorUiRegistrar ui_;

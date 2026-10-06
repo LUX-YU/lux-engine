@@ -24,8 +24,8 @@ namespace lux::ui
         }
     }
 
-    Layout::Layout(object::ObjectDispatcherRef dispatcher, ElementId id, ELayoutType type)
-        : Element(std::move(dispatcher), std::move(id)), type_(type)
+    Layout::Layout(ElementId id, ELayoutType type)
+        : Element(std::move(id)), type_(type)
     {}
     Layout::Layout(Pane& parent, ElementId id, ELayoutType type) : Element(parent, std::move(id)), type_(type) {}
     Layout::Layout(Element& parent, ElementId id, ELayoutType type) : Element(parent, std::move(id)), type_(type) {}

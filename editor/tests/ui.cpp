@@ -16,8 +16,8 @@ namespace
     class Pane final : public ui::Pane
     {
     public:
-        Pane(object::ObjectDispatcherRef queue, std::string name, unsigned& count)
-            : ui::Pane(queue, ui::PaneId{name}, ui::PaneTypeId{"test"}, name), destroyed_(count),
+        Pane(std::string name, unsigned& count)
+            : ui::Pane(ui::PaneId{name}, ui::PaneTypeId{"test"}, name), destroyed_(count),
               layout_(*this, ui::ElementId{"content"}), text_(layout_, ui::ElementId{"text"}, "Content")
         {
             assert(setContent(layout_));
@@ -35,7 +35,7 @@ namespace
     class Listener final : public object::LuxObject
     {
     public:
-        Listener(EditorUIRoot& root) : LuxObject(root.dispatcherRef()), root_(root) {}
+        Listener(EditorUIRoot& root) : LuxObject(), root_(root) {}
         void changed(const ui::AttachmentChanged&) noexcept
         {
             ++calls;
@@ -48,26 +48,25 @@ namespace
 } // namespace
 int main()
 {
-    auto queue = object::ObjectMessageQueue::create(128);
-    assert(queue);
-    auto created = EditorUIRoot::create(queue->dispatcherRef());
+    auto& queue = object::ObjectRuntime::instance();
+    auto created = EditorUIRoot::create();
     assert(created);
     auto& root = **created;
     Listener listener(root);
     auto connection = object::LuxObject::connect(&root, &ui::Root::attachmentChanged, &listener, &Listener::changed);
     assert(connection);
     unsigned destroyed{};
-    std::unique_ptr<ui::Pane> a = std::make_unique<Pane>(queue->dispatcherRef(), "a", destroyed);
+    std::unique_ptr<ui::Pane> a = std::make_unique<Pane>("a", destroyed);
     auto* address = a.get();
     auto handle = root.takePane(a);
     assert(handle && !a && root.projectPane(*handle) == address && root.projectPaneCount() == 1);
     assert(address->ownership() == object::EObjectOwnership::EXTERNAL);
-    std::unique_ptr<ui::Pane> duplicate = std::make_unique<Pane>(queue->dispatcherRef(), "a", destroyed);
+    std::unique_ptr<ui::Pane> duplicate = std::make_unique<Pane>("a", destroyed);
     assert(!root.takePane(duplicate) && duplicate && root.projectPaneCount() == 1);
     duplicate.reset();
     std::vector<std::unique_ptr<ui::Pane>> batch;
-    batch.push_back(std::make_unique<Pane>(queue->dispatcherRef(), "b", destroyed));
-    batch.push_back(std::make_unique<Pane>(queue->dispatcherRef(), "a", destroyed));
+    batch.push_back(std::make_unique<Pane>("b", destroyed));
+    batch.push_back(std::make_unique<Pane>("a", destroyed));
     assert(!root.mountProjectUi(batch) && batch[0] && batch[1] && root.projectPaneCount() == 1);
     batch.clear();
     assert(root.requestFocus(*address));
@@ -75,7 +74,7 @@ int main()
     assert(root.removePane(*handle));
     assert(!root.projectPane(*handle) && !root.findPane(ui::PaneIdView{"a"}) && !root.focusedPane());
     assert(root.projectPaneCount() == 0 && destroyed == 4);
-    std::unique_ptr<ui::Pane> next = std::make_unique<Pane>(queue->dispatcherRef(), "a", destroyed);
+    std::unique_ptr<ui::Pane> next = std::make_unique<Pane>("a", destroyed);
     auto next_handle = root.takePane(next);
     assert(next_handle && !root.projectPane(*handle) && root.projectPane(*next_handle));
     auto capture = [&](const ui::DrawData&) noexcept -> cxx::expected<void, ui::ECaptureError>

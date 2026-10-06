@@ -14,7 +14,7 @@
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/core/visibility.h>
 #include <lux/engine/object/Connection.hpp>
-#include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/object/ObjectOwnership.hpp>
 #include <lux/engine/object/Signal.hpp>
 
@@ -22,29 +22,6 @@ namespace lux::object
 {
     class EventView;
     class LuxObject;
-
-    // Non-owning identity backed by the same control block as signal receivers and retirement.
-    // Retaining it never keeps the object or its plugin code alive. Resolve only on the owner thread;
-    // the returned pointer is a synchronous borrow, not permission to retain it across callbacks.
-    class LUX_CORE_PUBLIC ObjectIdentity final
-    {
-    public:
-        ObjectIdentity() noexcept = default;
-        [[nodiscard]] ObjectResult<LuxObject*> resolve() const noexcept;
-        [[nodiscard]] bool valid() const noexcept
-        {
-            return bool(state_);
-        }
-        friend bool operator==(const ObjectIdentity& left, const ObjectIdentity& right) noexcept
-        {
-            return left.state_.get() == right.state_.get();
-        }
-
-    private:
-        friend class LuxObject;
-        explicit ObjectIdentity(cxx::intrusive_ptr<detail::ObjectState> state) noexcept : state_(std::move(state)) {}
-        cxx::intrusive_ptr<detail::ObjectState> state_;
-    };
 
     // Broadcast admission can be partial; never replay already delivered recipients.
     struct SignalDelivery final
@@ -67,8 +44,6 @@ namespace lux::object
         INVALID_ARGUMENT,
         OBJECT_CLOSED,
         WRONG_THREAD,
-        DIRECT_CROSS_AFFINITY,
-        RECEIVER_HAS_NO_DISPATCHER,
         PAYLOAD_NOT_QUEUEABLE,
         ALLOCATION_FAILURE,
         CAPACITY_EXHAUSTED,
@@ -125,7 +100,7 @@ namespace lux::object
         using lux_thread_affine = std::true_type;
         using ConnectResult = lux::cxx::expected<Connection, EConnectError>;
 
-        explicit LuxObject(ObjectDispatcherRef dispatcher = {}) noexcept;
+        LuxObject() noexcept;
         explicit LuxObject(LuxObject* parent) noexcept;
         virtual ~LuxObject();
         LuxObject(const LuxObject&) = delete;
@@ -146,12 +121,8 @@ namespace lux::object
         {
             return next_sibling_;
         }
-        [[nodiscard]] const ObjectDispatcherRef& dispatcherRef() const noexcept
-        {
-            return dispatcher_;
-        }
         [[nodiscard]] EObjectOwnership ownership() const noexcept;
-        [[nodiscard]] ObjectIdentity identity() const noexcept;
+        [[nodiscard]] ObjectId objectId() const noexcept { return id_; }
         // Records intent only; the owning dispatcher reclaims at its explicit safe point.
         [[nodiscard]] ObjectResult<void> requestDestruction() noexcept;
 
@@ -343,12 +314,12 @@ namespace lux::object
         [[nodiscard]] bool acceptsCallbacks() const noexcept;
         void unlinkParent() noexcept;
         friend struct detail::ObjectState;
-        friend class ObjectIdentity;
+        friend class ObjectRuntime;
         friend struct detail::AffinityOwner;
         friend ObjectResult<void>
-        detail::prepareSharedObject(LuxObject&, const ObjectDispatcherRef&) noexcept;
+        detail::prepareSharedObject(LuxObject&) noexcept;
         friend void detail::finishSharedObject(LuxObject&) noexcept;
-        friend class ObjectMessageQueue;
+
         friend void detail::invokeConnection(detail::ConnectionControl*, const void*) noexcept;
         friend bool detail::sendEventErased(LuxObject&, EventView&) noexcept;
         friend bool detail::routeEventErased(LuxObject&, LuxObject&, EventView&) noexcept;
@@ -365,8 +336,7 @@ namespace lux::object
         [[nodiscard]] SignalDelivery emitSignal(LuxObject*, detail::SignalStorage*, const void*) noexcept;
 
         mutable std::atomic<detail::ObjectState*> state_{nullptr};
-        std::thread::id affinity_;
-        ObjectDispatcherRef dispatcher_;
+        ObjectId id_;
         LuxObject* parent_{};
         LuxObject* first_child_{};
         LuxObject* last_child_{};

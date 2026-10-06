@@ -6,7 +6,8 @@
 #include <memory>
 #include <thread>
 #include <cstdio>
-#include <semaphore>
+#include <vector>
+#include <cstdlib>
 
 using namespace lux::object;
 namespace
@@ -30,107 +31,96 @@ namespace
             received += value;
         }
     };
-    ObjectMessageQueue queue(std::size_t capacity)
-    {
-        auto made = ObjectMessageQueue::create(capacity);
-        assert(made);
-        return std::move(*made);
-    }
     void fixedBatch()
     {
-        auto messages = queue(3);
-        const auto dispatcher = messages.dispatcherRef();
-        std::array<int, 8> values{};
+        auto& messages = ObjectRuntime::instance();
+        const auto before = messages.statistics();
+        const auto capacity = before.capacity_per_batch;
+        std::vector<std::size_t> values(capacity + 2);
         std::size_t count{};
-        for (int value = 1; value <= 3; ++value)
-            assert(detail::post(dispatcher, detail::makeMessage([&, value]() noexcept {
-                                    values[count++] = value;
-                                    if (value == 1)
-                                        assert(detail::post(dispatcher, detail::makeMessage([&]() noexcept {
-                                                                values[count++] = 4;
-                                                            })) == detail::EPostStatus::POSTED);
-                                })) == detail::EPostStatus::POSTED);
-        auto retained = detail::makeMessage([&]() noexcept { values[count++] = 5; });
-        assert(detail::post(dispatcher, std::move(retained)) == detail::EPostStatus::FULL && retained);
-        assert(messages.dispatchPending(0) == 0);
-        assert(messages.dispatchPending(2) == 2 && count == 2 && values[0] == 1 && values[1] == 2);
-        assert(messages.dispatchPending() == 1 && values[2] == 3); // Finish the old batch first.
-        assert(detail::post(dispatcher, std::move(retained)) == detail::EPostStatus::POSTED && !retained);
-        assert(messages.dispatchPending() == 2 && values[3] == 4 && values[4] == 5);
+        for (std::size_t value = 0; value < capacity; ++value)
+            assert(detail::post(detail::makeMessage([&, value]() noexcept {
+                values[count++] = value;
+                if (value == 0)
+                    assert(detail::post(detail::makeMessage([&]() noexcept {
+                        values[count++] = capacity;
+                    })) == detail::EPostStatus::POSTED);
+            })) == detail::EPostStatus::POSTED);
+        auto retained = detail::makeMessage([&]() noexcept { values[count++] = capacity + 1; });
+        assert(detail::post(std::move(retained)) == detail::EPostStatus::FULL && retained);
+        assert(messages.dispatchPending() == capacity && count == capacity);
+        for (std::size_t i = 0; i < capacity; ++i)
+            assert(values[i] == i);
+        assert(detail::post(std::move(retained)) == detail::EPostStatus::POSTED && !retained);
+        assert(messages.dispatchPending() == 2 && values[capacity] == capacity && values.back() == capacity + 1);
         const auto stats = messages.statistics();
-        assert(
-            stats.pending == 0 && stats.high_water == 3 && stats.posted == 5 && stats.inline_posted == 5 &&
-            stats.full == 1
-        );
-        messages.close();
-        auto closed = detail::makeMessage([]() noexcept {});
-        assert(detail::post(dispatcher, std::move(closed)) == detail::EPostStatus::CLOSED && closed);
+        assert(stats.pending == 0 && stats.posted - before.posted == capacity + 2);
+        assert(stats.inline_posted - before.inline_posted == capacity + 2 && stats.full - before.full == 1);
     }
+
     void closeDuringDelivery()
     {
-        auto messages = queue(4);
-        int calls{};
-        auto dispatcher = messages.dispatcherRef();
-        assert(detail::post(dispatcher, detail::makeMessage([&]() noexcept {
-                                ++calls;
-                                messages.close();
-                            })) == detail::EPostStatus::POSTED);
-        assert(detail::post(dispatcher, detail::makeMessage([&]() noexcept {
-                                ++calls;
-                            })) == detail::EPostStatus::POSTED);
-        assert(messages.dispatchPending() == 1 && calls == 1 && messages.statistics().pending == 0);
+        auto& messages = ObjectRuntime::instance();
+        Sender sender;
+        auto receiver = std::make_unique<Receiver>();
+        unsigned calls{};
+        auto first = LuxObject::connect(&sender, &Sender::activated, [&]() noexcept {
+            receiver.reset();
+        });
+        auto second = LuxObject::connect(&sender, &Sender::activated, receiver.get(), [&]() noexcept {
+            ++calls;
+        }, EDelivery::QUEUED);
+        assert(first && second);
+        // Queue before revocation; cancelling the endpoint must suppress this accepted callback.
+        auto pending = LuxObject::connect(&sender, &Sender::changed, receiver.get(), &Receiver::accept, EDelivery::QUEUED);
+        assert(pending && sender.emit(sender.changed, 3).queued == 1);
+        assert(sender.emit(sender.activated).direct == 1 && !second->connected() && !pending->connected());
+        assert(messages.dispatchPending() == 1 && calls == 0);
     }
+
     void partialBroadcast()
     {
-        auto sending = queue(2), receiving = queue(1), other = queue(2);
-        Sender sender(sending.dispatcherRef());
-        Receiver first(receiving.dispatcherRef()), second(other.dispatcherRef());
-        auto a = lux::object::LuxObject::connect(
-            std::addressof(sender),
-            &Sender::changed,
-            std::addressof(first),
-            &Receiver::accept,
-            EDelivery::QUEUED
-        );
-        auto b = lux::object::LuxObject::connect(
-            std::addressof(sender),
-            &Sender::changed,
-            std::addressof(second),
-            &Receiver::accept,
-            EDelivery::QUEUED
-        );
+        auto& messages = ObjectRuntime::instance();
+        const auto capacity = messages.statistics().capacity_per_batch;
+        Sender sender;
+        Receiver first, second;
+        auto a = LuxObject::connect(&sender, &Sender::changed, &first, &Receiver::accept, EDelivery::QUEUED);
+        auto b = LuxObject::connect(&sender, &Sender::changed, &second, &Receiver::accept, EDelivery::QUEUED);
         assert(a && b);
-        auto initial = sender.emit(sender.changed, 1);
-        assert(initial.complete() && initial.queued == 2);
+        for (std::size_t i = 0; i < capacity - 3; ++i)
+            assert(detail::post(detail::makeMessage([]() noexcept {})) == detail::EPostStatus::POSTED);
+        assert(sender.emit(sender.changed, 1).queued == 2);
         const auto partial = sender.emit(sender.changed, 2);
-        assert(!partial.complete() && partial.full == 1 && partial.queued == 1);
-        assert(receiving.dispatchPending() == 1 && other.dispatchPending() == 2);
-        assert(first.received == 1 && second.received == 3); // No automatic rebroadcast duplicates.
-        receiving.close();
-        const auto closed = sender.emit(sender.changed, 4);
-        assert(closed.closed == 1 && closed.queued == 1 && !a->connected());
-        assert(other.dispatchPending() == 1 && second.received == 7);
+        assert(partial.queued == 1 && partial.full == 1 && !partial.complete());
+        assert(messages.dispatchPending() == capacity && first.received == 3 && second.received == 1);
+        // Foreign disconnect is not a business message and remains reliable when the queue is full.
+        for (std::size_t i = 0; i < capacity; ++i)
+            assert(detail::post(detail::makeMessage([]() noexcept {})) == detail::EPostStatus::POSTED);
         auto handle = std::move(*b);
         std::thread foreign([&] { handle.disconnect(); });
         foreign.join();
         assert(!handle.connected());
-        assert(sender.emit(sender.changed, 8).complete()); // Reclaims a logical foreign disconnect.
-        assert(other.dispatchPending() == 0 && second.received == 7);
+        assert(messages.dispatchPending() == capacity);
+        assert(sender.emit(sender.changed, 4).queued == 1);
+        assert(messages.dispatchPending() == 1 && first.received == 7 && second.received == 1);
     }
+
     void concurrentProducers()
     {
-        auto messages = queue(32);
-        const auto dispatcher = messages.dispatcherRef();
+        auto& messages = ObjectRuntime::instance();
+        const auto before = messages.statistics();
         std::atomic<unsigned> remaining{4};
         std::array<unsigned, 4> expected{};
         std::array<std::thread, 4> producers;
         for (unsigned producer{}; producer < 4; ++producer)
             producers[producer] = std::thread([&, producer] {
+                assert(!messages.isCurrent());
                 for (unsigned value{}; value < 300; ++value)
                 {
-                    auto message =
-                        detail::makeMessage([&, producer, value]() noexcept { assert(expected[producer]++ == value); });
-                    while (detail::post(dispatcher, std::move(message)) == detail::EPostStatus::FULL)
+                    auto message = detail::makeMessage([&, producer, value]() noexcept {
+                        assert(messages.isCurrent() && expected[producer]++ == value);
+                    });
+                    while (detail::post(std::move(message)) == detail::EPostStatus::FULL)
                     {
                         assert(message);
                         std::this_thread::yield();
@@ -140,7 +130,7 @@ namespace
             });
         while (remaining.load() || messages.statistics().pending)
         {
-            static_cast<void>(messages.dispatchPending(7));
+            static_cast<void>(messages.dispatchPending());
             std::this_thread::yield();
         }
         for (auto& producer : producers)
@@ -148,25 +138,19 @@ namespace
         for (auto count : expected)
             assert(count == 300);
         const auto stats = messages.statistics();
-        assert(stats.posted == 1200 && stats.inline_posted == 1200 && stats.high_water <= 64);
-        std::printf(
-            "Queue MPSC: peak=%zu posted=%zu inline=%zu full=%zu\n",
-            stats.high_water,
-            stats.posted,
-            stats.inline_posted,
-            stats.full
-        );
+        assert(stats.posted - before.posted == 1200 && stats.inline_posted - before.inline_posted == 1200);
+        assert(stats.high_water <= 2 * stats.capacity_per_batch);
     }
 
     void connectionLifetime()
     {
-        auto messages = queue(8);
+        auto& messages = ObjectRuntime::instance();
         struct Derived final : Sender
         {
             using Sender::Sender;
         };
-        Derived sender(messages.dispatcherRef());
-        Receiver receiver(messages.dispatcherRef());
+        Derived sender{};
+        Receiver receiver{};
         {
             auto connection = LuxObject::connect(&sender, &Sender::changed, &receiver, &Receiver::accept);
             assert(connection && sender.emit(sender.changed, 3).direct == 1 && receiver.received == 3);
@@ -189,7 +173,7 @@ namespace
         assert(!rejected && rejected.error() == EConnectError::PAYLOAD_NOT_QUEUEABLE);
         Connection retired;
         {
-            auto temporary = std::make_unique<Receiver>(messages.dispatcherRef());
+            auto temporary = std::make_unique<Receiver>();
             auto made =
                 LuxObject::connect(&sender, &Sender::changed, temporary.get(), &Receiver::accept, EDelivery::QUEUED);
             assert(made);
@@ -204,7 +188,7 @@ namespace
         assert(messages.dispatchPending() == 2 && receiver.received == 8);
         Connection sender_first;
         {
-            Sender temporary(messages.dispatcherRef());
+            Sender temporary{};
             auto made =
                 LuxObject::connect(&temporary, &Sender::changed, &receiver, &Receiver::accept, EDelivery::QUEUED);
             assert(made);
@@ -216,8 +200,8 @@ namespace
 
     void changesDuringEmit()
     {
-        auto messages = queue(8);
-        Sender sender(messages.dispatcherRef());
+        auto& messages = ObjectRuntime::instance();
+        Sender sender{};
         Connection first, second, added;
         unsigned outer{}, later{};
         bool nested{};
@@ -254,50 +238,57 @@ namespace
         assert(sender.emit(sender.activated).direct == 1 && observed.expired());
     }
 
-    void crossThreadEndpoints()
+    void workerPostsToOwner()
     {
-        auto sending = queue(1);
-        Sender sender(sending.dispatcherRef());
-        std::binary_semaphore ready{0}, deliver{0}, finished{0}, retire{0};
-        Receiver* endpoint{};
-        unsigned received{};
-        std::thread worker([&] {
-            auto receiving = queue(8);
-            Receiver receiver(receiving.dispatcherRef());
-            endpoint = &receiver;
-            ready.release();
-            deliver.acquire();
-            assert(receiving.dispatchPending() == 1);
-            received = receiver.received;
-            finished.release();
-            retire.acquire();
+        auto& runtime = ObjectRuntime::instance();
+        Receiver receiver;
+        const auto id = receiver.objectId();
+        std::thread worker([id]() noexcept {
+            auto wrong = ObjectRuntime::instance().resolve(id);
+            assert(!wrong && wrong.error() == EObjectTreeError::WRONG_THREAD);
+            assert(detail::post(detail::makeMessage([id]() noexcept {
+                auto target = ObjectRuntime::instance().resolve(id);
+                assert(target);
+                static_cast<Receiver*>(*target)->accept(11);
+            })) == detail::EPostStatus::POSTED);
         });
-        ready.acquire();
-        auto direct = LuxObject::connect(&sender, &Sender::changed, endpoint, &Receiver::accept, EDelivery::DIRECT);
-        assert(!direct && direct.error() == EConnectError::DIRECT_CROSS_AFFINITY);
-        auto connected = LuxObject::connect(&sender, &Sender::changed, endpoint, &Receiver::accept);
-        assert(connected && sender.emit(sender.changed, 11).queued == 1);
-        deliver.release();
-        finished.acquire();
-        assert(received == 11);
-        assert(detail::post(sending.dispatcherRef(), detail::makeMessage([]() noexcept {
-                            })) == detail::EPostStatus::POSTED);
-        // Foreign endpoint cancellation cannot be lost because the sender's business queue is full.
-        retire.release();
         worker.join();
-        assert(!connected->connected());
-        assert(sending.dispatchPending() == 1 && sender.emit(sender.changed, 1).queued == 0);
+        assert(runtime.dispatchPending() == 1 && receiver.received == 11);
     }
 
+    unsigned shutdown_calls{}, shutdown_cleanup{};
+    struct ShutdownPayload final
+    {
+        ~ShutdownPayload()
+        {
+            auto late = detail::makeMessage([]() noexcept { ++shutdown_calls; });
+            assert(detail::post(std::move(late)) == detail::EPostStatus::CLOSED && late);
+            ++shutdown_cleanup;
+            assert(shutdown_calls == 0 && shutdown_cleanup == 1);
+            std::puts("Runtime shutdown: discarded without dispatch; CLOSED retained");
+            std::fflush(stdout);
+        }
+    };
+
 }
-int main()
+int main(int argc, char**)
 {
-    assert(!ObjectMessageQueue::create(0));
+    if (argc > 1)
+    {
+        auto& runtime = ObjectRuntime::instance();
+        assert(runtime.isCurrent());
+        auto payload = std::make_shared<ShutdownPayload>();
+        assert(detail::post(detail::makeMessage([payload = std::move(payload)]() noexcept {
+            ++shutdown_calls;
+        })) == detail::EPostStatus::POSTED);
+        return 0;
+    }
+    (void)ObjectRuntime::instance();
     fixedBatch();
     closeDuringDelivery();
     partialBroadcast();
     concurrentProducers();
     connectionLifetime();
     changesDuringEmit();
-    crossThreadEndpoints();
+    workerPostsToOwner();
 }

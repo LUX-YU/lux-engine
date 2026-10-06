@@ -54,26 +54,26 @@ namespace
 
     void objectIdentities()
     {
-        ObjectIdentity empty;
-        assert(!empty.valid() && !empty.resolve() && empty.resolve().error() == EObjectTreeError::INVALID_OBJECT);
+        ObjectId empty;
+        assert(!empty.isValid() && !ObjectRuntime::instance().resolve(empty) && ObjectRuntime::instance().resolve(empty).error() == EObjectTreeError::INVALID_OBJECT);
         alignas(Node) std::byte memory[sizeof(Node)];
         auto* first = ::new (memory) Node;
-        auto identity = first->identity();
-        assert(identity.valid() && identity == first->identity() && *identity.resolve() == first);
+        auto identity = first->objectId();
+        assert(identity.isValid() && identity == first->objectId() && *ObjectRuntime::instance().resolve(identity) == first);
         std::thread worker(
             [identity]
             {
-                auto resolved = identity.resolve();
+                auto resolved = ObjectRuntime::instance().resolve(identity);
                 assert(!resolved && resolved.error() == EObjectTreeError::WRONG_THREAD);
             }
         );
         worker.join();
         first->~Node();
         auto* second = ::new (memory) Node;
-        assert(!identity.resolve() && identity.resolve().error() == EObjectTreeError::CLOSED);
-        assert(identity != second->identity() && *second->identity().resolve() == second);
+        assert(!ObjectRuntime::instance().resolve(identity) && ObjectRuntime::instance().resolve(identity).error() == EObjectTreeError::CLOSED);
+        assert(identity != second->objectId() && *ObjectRuntime::instance().resolve(second->objectId()) == second);
         second->~Node();
-        // An identity does not retain a node; its host-side control block is independently releasable.
+        // An identity is a value and never retains the node or a separate control block.
         std::thread release([identity = std::move(identity)]() mutable { identity = {}; });
         release.join();
     }
@@ -160,12 +160,11 @@ namespace
 
     void retirement()
     {
-        auto created = ObjectMessageQueue::create(1);
-        assert(created);
-        auto queue = std::move(*created);
-        Node parent(queue.dispatcherRef()), sender(queue.dispatcherRef());
+        auto& created = ObjectRuntime::instance();
+        auto& queue = created;
+        Node parent{}, sender{};
         int destroyed{};
-        auto child = std::make_unique<Node>(queue.dispatcherRef());
+        auto child = std::make_unique<Node>();
         child->cleanup = [&] { ++destroyed; };
         auto* pointer = child.get();
         assert(parent.adoptChild(std::move(child)));
@@ -187,74 +186,72 @@ namespace
         assert(!parent.firstChild() && !queue.pendingRetirements());
         assert(!parent.requestDestruction());
 
-        auto late = std::make_unique<Node>(queue.dispatcherRef());
+        auto late = std::make_unique<Node>();
         auto late_ptr = parent.adoptChild(std::move(late));
         assert(late_ptr && (*late_ptr)->requestDestruction());
         parent.clearChildren(); // Already queued identity becomes stale, never dereferences its old address.
         assert(queue.collectRetired() == 1 && !queue.pendingRetirements());
 
-        auto shared_candidate = std::make_unique<Node>(queue.dispatcherRef());
+        auto shared_candidate = std::make_unique<Node>();
         const auto affinity = std::this_thread::get_id();
         shared_candidate->cleanup = [&]
         {
             assert(std::this_thread::get_id() == affinity);
             ++destroyed;
         };
-        auto shared = shareOnDispatcher(queue.dispatcherRef(), std::move(shared_candidate));
+        auto shared = shareOnRuntime(std::move(shared_candidate));
         assert(shared && !shared_candidate);
         std::weak_ptr<Node> weak = *shared;
         std::thread worker([owner = std::move(*shared)]() mutable { owner.reset(); });
         worker.join();
         assert(weak.expired() && destroyed == 1 && queue.pendingRetirements() == 1);
-        queue.close(); // Message admission can close before retirement responsibilities drain.
         assert(queue.collectRetired() == 1 && destroyed == 2);
         weak.reset();
     }
 
     void fixedBatchAndIdentity()
     {
-        auto queue = ObjectMessageQueue::create(1);
-        assert(queue);
-        Node parent(queue->dispatcherRef()), other(queue->dispatcherRef());
+        auto& queue = ObjectRuntime::instance();
+        Node parent{}, other{};
         int destroyed{};
-        auto second = std::make_unique<Node>(queue->dispatcherRef());
+        auto second = std::make_unique<Node>();
         second->cleanup = [&] { ++destroyed; };
         auto second_ptr = other.adoptChild(std::move(second));
         assert(second_ptr);
-        auto first = std::make_unique<Node>(queue->dispatcherRef());
+        auto first = std::make_unique<Node>();
         first->cleanup = [&]
         {
             assert((*second_ptr)->requestDestruction());
-            assert(queue->collectRetired() == 0); // Never recursively drain a deleter's new request.
+            assert(queue.collectRetired() == 0); // Never recursively drain a deleter's new request.
         };
         auto first_ptr = parent.adoptChild(std::move(first));
         assert(first_ptr && (*first_ptr)->requestDestruction());
-        assert(queue->collectRetired() == 1 && !destroyed && queue->pendingRetirements() == 1);
-        assert(queue->collectRetired() == 1 && destroyed == 1);
+        assert(queue.collectRetired() == 1 && !destroyed && queue.pendingRetirements() == 1);
+        assert(queue.collectRetired() == 1 && destroyed == 1);
 
         alignas(Node) std::byte storage[sizeof(Node)];
         auto destroy = [](Node* node) noexcept { std::destroy_at(node); };
         using PlacementOwner = std::unique_ptr<Node, decltype(destroy)>;
-        PlacementOwner old{std::construct_at(reinterpret_cast<Node*>(storage), queue->dispatcherRef()), destroy};
+        PlacementOwner old{std::construct_at(reinterpret_cast<Node*>(storage)), destroy};
         auto old_ptr = parent.adoptChild(std::move(old));
         assert(old_ptr && (*old_ptr)->requestDestruction());
         parent.clearChildren();
         PlacementOwner replacement{
-            std::construct_at(reinterpret_cast<Node*>(storage), queue->dispatcherRef()),
+            std::construct_at(reinterpret_cast<Node*>(storage)),
             destroy
         };
         auto* address = replacement.get();
         replacement->cleanup = [&] { ++destroyed; };
         assert(parent.adoptChild(std::move(replacement)));
-        assert(queue->collectRetired() == 1 && destroyed == 1 && parent.firstChild() == address);
+        assert(queue.collectRetired() == 1 && destroyed == 1 && parent.firstChild() == address);
         parent.clearChildren();
         assert(destroyed == 2);
 
         auto plain = std::make_unique<int>(42);
-        auto shared = shareOnDispatcher(queue->dispatcherRef(), std::move(plain));
+        auto shared = shareOnRuntime(std::move(plain));
         assert(shared && **shared == 42 && !plain);
         shared->reset();
-        assert(queue->collectRetired() == 1);
+        assert(queue.collectRetired() == 1);
     }
 
     void partialConstructionAndDerivedResource()
@@ -299,11 +296,10 @@ namespace
 
     void queuedRemovalAndShapes()
     {
-        auto queue = ObjectMessageQueue::create(1);
-        assert(queue);
-        Node owner(queue->dispatcherRef()), sender(queue->dispatcherRef());
+        auto& queue = ObjectRuntime::instance();
+        Node owner{}, sender{};
         int destroyed{};
-        auto child = std::make_unique<Node>(queue->dispatcherRef());
+        auto child = std::make_unique<Node>();
         child->cleanup = [&] { ++destroyed; };
         auto adopted = owner.adoptChild(std::move(child));
         assert(adopted);
@@ -314,15 +310,18 @@ namespace
             [&]() noexcept
             {
                 assert((*adopted)->requestDestruction());
-                assert(queue->collectRetired() == 0 && !destroyed);
+                assert(queue.collectRetired() == 0 && !destroyed);
             },
             EDelivery::QUEUED
         );
         assert(connection);
+        const auto capacity = queue.statistics().capacity_per_batch;
+        for (std::size_t i = 0; i < capacity - 1; ++i)
+            assert(detail::post(detail::makeMessage([]() noexcept {})) == detail::EPostStatus::POSTED);
         assert(sender.emit(sender.changed).queued == 1);
         assert(sender.emit(sender.changed).full == 1);
-        assert(queue->dispatchPending() == 1 && !destroyed);
-        assert(queue->collectRetired() == 1 && destroyed == 1);
+        assert(queue.dispatchPending() == capacity && !destroyed);
+        assert(queue.collectRetired() == 1 && destroyed == 1);
 
         for (int round = 0; round != 8; ++round)
         {
@@ -377,24 +376,23 @@ namespace
                 delete value;
             }
         };
-        auto queue = ObjectMessageQueue::create(1);
-        assert(queue);
-        Node parent(queue->dispatcherRef());
+        auto& queue = ObjectRuntime::instance();
+        Node parent{};
         Node* target{};
         int rejected{};
         auto candidate = std::unique_ptr<Node, ReentrantDeleter>(
-            new Node(queue->dispatcherRef()),
+            new Node(),
             ReentrantDeleter{parent, target, rejected}
         );
         target = candidate.get();
-        auto result = shareOnDispatcher(queue->dispatcherRef(), std::move(candidate));
+        auto result = shareOnRuntime(std::move(candidate));
         assert(result && rejected > 0 && !candidate && !target->parent());
         assert(parent.attachChild(*target)); // Guard is released only after the owning control block exists.
         result->reset();
-        assert(queue->collectRetired() == 1 && !parent.firstChild());
+        assert(queue.collectRetired() == 1 && !parent.firstChild());
         target = nullptr;
         auto adopted_candidate = std::unique_ptr<Node, ReentrantDeleter>(
-            new Node(queue->dispatcherRef()), ReentrantDeleter{parent, target, rejected}
+            new Node(), ReentrantDeleter{parent, target, rejected}
         );
         target = adopted_candidate.get();
         auto adopted = parent.adoptChild(std::move(adopted_candidate));
@@ -403,20 +401,20 @@ namespace
         parent.clearChildren();
     }
 
-    void dispatcherRefusal()
+    void wrongThreadRefusal()
     {
-        auto first_queue = ObjectMessageQueue::create(1), second_queue = ObjectMessageQueue::create(1);
-        assert(first_queue && second_queue);
-        Node parent(first_queue->dispatcherRef());
+        Node parent;
         int releases{}, moves{};
-        auto candidate =
-            std::unique_ptr<Node, Deleter>(new Node(second_queue->dispatcherRef()), Deleter{releases, moves});
+        auto candidate = std::unique_ptr<Node, Deleter>(new Node, Deleter{releases, moves});
         const auto initial_moves = moves;
         auto* address = candidate.get();
-        auto refused = parent.adoptChild(std::move(candidate));
-        assert(!refused && refused.error() == EObjectTreeError::WRONG_DISPATCHER);
-        auto shared = shareOnDispatcher(first_queue->dispatcherRef(), std::move(candidate));
-        assert(!shared && shared.error() == EObjectTreeError::WRONG_DISPATCHER);
+        std::thread worker([&] {
+            auto refused = parent.adoptChild(std::move(candidate));
+            assert(!refused && refused.error() == EObjectTreeError::WRONG_THREAD);
+            auto shared = shareOnRuntime(std::move(candidate));
+            assert(!shared && shared.error() == EObjectTreeError::WRONG_THREAD);
+        });
+        worker.join();
         assert(candidate.get() == address && moves == initial_moves && !releases && !address->parent());
         auto external = address->requestDestruction();
         assert(!external && external.error() == EObjectTreeError::NOT_OWNED);
@@ -424,77 +422,75 @@ namespace
 
     void finalSafePoint()
     {
+        auto& runtime = ObjectRuntime::instance();
         int destroyed{}, delivered{};
         std::shared_ptr<Node> second;
         {
-            auto queue = ObjectMessageQueue::create(4);
-            assert(queue);
-            Node sender(queue->dispatcherRef()), receiver(queue->dispatcherRef());
+            Node sender, receiver;
             auto connection = LuxObject::connect(
                 &sender, &Node::changed, &receiver, [&]() noexcept { ++delivered; }, EDelivery::QUEUED
             );
             assert(connection && sender.emit(sender.changed).queued == 1);
-            auto child = std::make_unique<Node>(queue->dispatcherRef());
+            auto child = std::make_unique<Node>();
             child->cleanup = [&] { ++destroyed; };
-            auto shared = shareOnDispatcher(queue->dispatcherRef(), std::move(child));
+            auto shared = shareOnRuntime(std::move(child));
             assert(shared);
             second = std::move(*shared);
-            auto first = std::make_unique<Node>(queue->dispatcherRef());
+            auto first = std::make_unique<Node>();
             first->cleanup = [&] { second.reset(); ++destroyed; };
-            auto owner = shareOnDispatcher(queue->dispatcherRef(), std::move(first));
+            auto owner = shareOnRuntime(std::move(first));
             assert(owner);
             owner->reset();
-            assert(!destroyed && queue->pendingRetirements() == 2);
+            assert(!destroyed && runtime.pendingRetirements() == 2);
         }
-        assert(destroyed == 2 && delivered == 0 && !second);
-
-        auto first = ObjectMessageQueue::create(1), replacement = ObjectMessageQueue::create(1);
-        assert(first && replacement);
-        auto candidate = std::make_unique<Node>(first->dispatcherRef());
+        // Ending a local framework scope cannot close the process runtime. The host still drains
+        // fixed retirement batches, without dispatching the now-invalid business callback.
+        assert(runtime.collectRetired() == 1 && destroyed == 1 && !second);
+        assert(runtime.collectRetired() == 1 && destroyed == 2 && delivered == 0);
+        assert(runtime.dispatchPending() == 1 && delivered == 0);
+        auto candidate = std::make_unique<Node>();
         candidate->cleanup = [&] { ++destroyed; };
-        auto owner = shareOnDispatcher(first->dispatcherRef(), std::move(candidate));
+        auto owner = shareOnRuntime(std::move(candidate));
         assert(owner);
         owner->reset();
-        *first = std::move(*replacement);
-        assert(destroyed == 3 && first->dispatcherRef().isCurrent());
+        assert(runtime.collectRetired() == 1 && destroyed == 3 && runtime.isCurrent());
     }
 
     int rejectFinalSafePoint(std::string_view mode)
     {
-        auto queue = ObjectMessageQueue::create(4);
-        assert(queue);
-        auto candidate = std::make_unique<Node>(queue->dispatcherRef());
-        auto shared = shareOnDispatcher(queue->dispatcherRef(), std::move(candidate));
-        assert(shared);
-        std::optional<ObjectMessageQueue> provider{std::move(*queue)};
+        auto& runtime = ObjectRuntime::instance();
         std::puts("reached final safe-point contract");
         std::fflush(stdout);
         if (mode == "--reject-held")
-            provider.reset();
+        {
+            auto shared = shareOnRuntime(std::make_unique<Node>());
+            assert(shared);
+            // Intentionally keep a live owner beyond process Runtime shutdown in this death test.
+            (void)new std::shared_ptr<Node>(std::move(*shared));
+        }
         else if (mode == "--reject-dispatch")
         {
-            Node sender(provider->dispatcherRef()), receiver(provider->dispatcherRef());
-            auto connection = LuxObject::connect(&sender, &Node::changed, &receiver, [&]() noexcept {
-                shared->reset();
-                provider.reset();
+            Node sender;
+            auto receiver = std::make_unique<Node>();
+            auto connection = LuxObject::connect(&sender, &Node::changed, receiver.get(), [&]() noexcept {
+                receiver.reset();
             });
             assert(connection);
             (void)sender.emit(sender.changed);
         }
         else if (mode == "--reject-foreign")
         {
-            shared->reset();
-            std::thread worker([&] { provider.reset(); });
+            std::thread worker([&] { (void)runtime.collectRetired(); });
             worker.join();
         }
-        return 0; // Reaching this line means the negative contract was silently weakened.
+        return 0; // --reject-held must fail at the process's actual final safe point.
     }
 
     void pluginReplacement(const char* path)
     {
         using Library = lux::engine::platform::DynamicLibrary;
         using Owner = std::unique_ptr<LuxObject, ObjectDeleter>;
-        using Make = void (*)(ObjectDispatcherRef, CodeLease, int*, Owner&) noexcept;
+        using Make = void (*)(CodeLease, int*, Owner&) noexcept;
         int first_trace[4]{}, second_trace[4]{};
         auto load = [&](int* trace)
         {
@@ -512,12 +508,11 @@ namespace
         assert(first_library->is_loaded() && second_library->is_loaded());
         auto create = reinterpret_cast<Make>(first_library->get_symbol("make_object"));
         assert(create);
-        auto messages = ObjectMessageQueue::create(4);
-        assert(messages);
+        auto& messages = ObjectRuntime::instance();
         Owner first, second;
-        create(messages->dispatcherRef(), CodeLease::plugin(first_library), first_trace, first);
-        create(messages->dispatcherRef(), CodeLease::plugin(second_library), second_trace, second);
-        Node attached(messages->dispatcherRef()), receiver(messages->dispatcherRef());
+        create(CodeLease::plugin(first_library), first_trace, first);
+        create(CodeLease::plugin(second_library), second_trace, second);
+        Node attached{}, receiver{};
         assert(attached.attachChild(*first));
         auto* original = first.get();
         first_library.reset();
@@ -538,7 +533,7 @@ namespace
     {
         using Library = lux::engine::platform::DynamicLibrary;
         using Owner = std::unique_ptr<LuxObject, ObjectDeleter>;
-        using Make = void (*)(ObjectDispatcherRef, CodeLease, int*, Owner&) noexcept;
+        using Make = void (*)(CodeLease, int*, Owner&) noexcept;
         int trace[4]{};
         auto library = std::shared_ptr<Library>(
             new Library(path),
@@ -552,33 +547,34 @@ namespace
         assert(library->is_loaded());
         auto create = reinterpret_cast<Make>(library->get_symbol("make_object"));
         assert(create);
-        auto messages = ObjectMessageQueue::create(8);
-        assert(messages);
+        auto& messages = ObjectRuntime::instance();
         Owner candidate;
-        create(messages->dispatcherRef(), CodeLease::plugin(library), trace, candidate);
-        const auto identity = candidate->identity();
-        assert(identity.resolve());
+        create(CodeLease::plugin(library), trace, candidate);
+        const auto identity = candidate->objectId();
+        auto runtime = reinterpret_cast<ObjectRuntime* (*)() noexcept>(library->get_symbol("object_runtime"));
+        assert(runtime && runtime() == &ObjectRuntime::instance());
+        assert(*ObjectRuntime::instance().resolve(identity) == candidate.get());
         if (parent_owned)
         {
-            Node parent(messages->dispatcherRef());
+            Node parent{};
             assert(parent.adoptChild(std::move(candidate), CodeLease::plugin(library)));
             library.reset();
             assert(!trace[0] && !trace[3]);
             parent.clearChildren();
             assert(trace[0] == 1 && trace[1] == 1 && trace[2] == 1 && trace[3] == 1);
-            assert(!identity.resolve() && identity.resolve().error() == EObjectTreeError::CLOSED);
+            assert(!ObjectRuntime::instance().resolve(identity) && ObjectRuntime::instance().resolve(identity).error() == EObjectTreeError::CLOSED);
             return;
         }
-        auto shared = shareOnDispatcher(messages->dispatcherRef(), std::move(candidate), CodeLease::plugin(library));
+        auto shared = shareOnRuntime(std::move(candidate), CodeLease::plugin(library));
         assert(shared);
         std::weak_ptr<LuxObject> weak = *shared;
         library.reset();
         std::thread worker([owner = std::move(*shared)]() mutable { owner.reset(); });
         worker.join();
         assert(!trace[0] && !trace[3] && weak.expired());
-        assert(messages->collectRetired() == 1);
+        assert(messages.collectRetired() == 1);
         assert(trace[0] == 1 && trace[1] == 1 && trace[2] == 1 && trace[3] == 1);
-        assert(!identity.resolve() && identity.resolve().error() == EObjectTreeError::CLOSED);
+        assert(!ObjectRuntime::instance().resolve(identity) && ObjectRuntime::instance().resolve(identity).error() == EObjectTreeError::CLOSED);
         weak.reset(); // Host control block remains safe after the DLL has actually unloaded.
     }
 } // namespace
@@ -595,7 +591,7 @@ int main(int argc, char** argv)
     partialConstructionAndDerivedResource();
     queuedRemovalAndShapes();
     sharingDeleterReentry();
-    dispatcherRefusal();
+    wrongThreadRefusal();
     finalSafePoint();
     if (argc == 2)
     {

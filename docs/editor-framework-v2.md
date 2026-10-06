@@ -37,6 +37,15 @@ performance limitations are not converted into new passes by this migration.
 
 ## Qualification
 
+The generational container prerequisite is lux-cxx `cf14ab1de6b2b96b56531a4de8bfa02efb4d7ca1`.
+Clearing invalidates issued keys, exhausted generations leave reuse, and insertion preparation covers
+dense, sparse and recycling storage without issuing identities. The engine uses the same container for ObjectId.
+
+ObjectRuntime is supplied by the object DLL. The host establishes its thread before starting workers; independent
+framework lifetimes reuse that Runtime. The old tests for multiple object thread domains are replaced with
+wrong-thread access, worker delivery and singleton DLL identity checks. FULL, fixed batches, partial broadcasts,
+revoked receivers and owner-thread reclamation retain their original assertions.
+
 Use a clean tracked implementation commit for final qualification. Build `all -j 4 -- -k 0`, then confirm the second
 build has no work. Run affected framework, Object/UI, services, Scene/Flow and render tests, PLAYER, fresh SDK consumers,
 public-header checks and actual GPU regressions. Preserve failure/reentrancy assertions when updating test APIs.

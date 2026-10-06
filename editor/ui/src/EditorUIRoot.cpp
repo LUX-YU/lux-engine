@@ -32,8 +32,7 @@ namespace lux::editor
         Capture* capture{};
         bool mutating{};
     };
-    EditorUIRoot::EditorUIRoot(object::ObjectDispatcherRef dispatcher) noexcept
-        : Root(std::move(dispatcher)), impl_(std::make_unique<Impl>())
+    EditorUIRoot::EditorUIRoot() noexcept : Root(), impl_(std::make_unique<Impl>())
     {
     }
     EditorUIRoot::~EditorUIRoot() noexcept
@@ -44,11 +43,10 @@ namespace lux::editor
         }
     }
     FrameworkResult<std::unique_ptr<EditorUIRoot>> EditorUIRoot::create(
-        object::ObjectDispatcherRef dispatcher,
         ui::RootConfig config
     ) noexcept
     {
-        auto root = std::unique_ptr<EditorUIRoot>{new EditorUIRoot(std::move(dispatcher))};
+        auto root = std::unique_ptr<EditorUIRoot>{new EditorUIRoot()};
         auto initialized = root->initialize(std::move(config));
         if (!initialized)
         {

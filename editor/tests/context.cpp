@@ -59,13 +59,13 @@ int main(int argc, char** argv)
     static_assert(!std::is_copy_constructible_v<EditorServiceRegistrar>);
     static_assert(!std::is_move_constructible_v<EditorUiRegistrar>);
     static_assert(!std::is_copy_constructible_v<SceneToolRegistrar>);
-    auto queue = object::ObjectMessageQueue::create(64);
+    auto& queue = object::ObjectRuntime::instance();
     auto engine = engine::EngineContext::create({1, 64, 64, {32}}, {0, 64});
-    assert(queue && engine);
+    assert(queue.isCurrent() && engine);
     std::vector<int> destroyed;
     unsigned constructed{}, attempts{}, tools{};
     {
-        EditorContext context(**engine, queue->dispatcherRef(), {"First", std::filesystem::current_path()});
+        EditorContext context(**engine, {"First", std::filesystem::current_path()});
         assert(context.services().registerFactory<Service>(
             [&](EditorContext&) -> FrameworkResult<std::unique_ptr<Service>>
             {
@@ -124,7 +124,7 @@ int main(int argc, char** argv)
         assert(!context.services().registerFactory<Missing>(
             [](EditorContext&) -> FrameworkResult<std::unique_ptr<Missing>> { return std::make_unique<Missing>(); }
         ));
-        EditorContext second(**engine, queue->dispatcherRef(), {"Second", std::filesystem::current_path()});
+        EditorContext second(**engine, {"Second", std::filesystem::current_path()});
         auto factory = [](EditorContext&, const world::WorldDescription&) -> FrameworkResult<std::unique_ptr<Tools>>
         { return std::make_unique<Tools>(9); };
         assert(second.sceneTools().registerFactory<Tools>(&match, factory));
@@ -152,8 +152,8 @@ int main(int argc, char** argv)
     assert(lower && higher);
     std::weak_ptr<asset::IAssetProvider> lifetime = *higher;
     {
-        EditorContext a(**engine, queue->dispatcherRef(), {"A", path});
-        EditorContext b(**engine, queue->dispatcherRef(), {"B", path});
+        EditorContext a(**engine, {"A", path});
+        EditorContext b(**engine, {"B", path});
         assert(a.assets().mount({"/Game", *lower, 0}));
         assert(b.assets().mount({"/Game", *lower, 0}));
         const auto mounted = a.assets().mount({"/Game", *higher, 1});

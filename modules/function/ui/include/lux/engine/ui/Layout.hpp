@@ -21,7 +21,7 @@ namespace lux::ui
     class LUX_FUNCTION_PUBLIC Layout final : public Element
     {
     public:
-        Layout(object::ObjectDispatcherRef, ElementId id, ELayoutType type = ELayoutType::VERTICAL);
+        Layout(ElementId id, ELayoutType type = ELayoutType::VERTICAL);
         using Element::addSubElement;
         using Element::replaceSubElement;
         Layout(Pane& parent, ElementId id, ELayoutType type = ELayoutType::VERTICAL);

@@ -5,7 +5,7 @@
 
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/core/visibility.h>
-#include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/object/detail/MessageEnvelope.hpp>
 
 namespace lux::object

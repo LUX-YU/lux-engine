@@ -36,8 +36,8 @@ namespace lux::editor
     } // namespace
     struct LuxEngine::Impl final
     {
-        explicit Impl(EditorConfig config, object::ObjectMessageQueue messages)
-            : config_(std::move(config)), messages_(std::move(messages))
+        explicit Impl(EditorConfig config)
+            : config_(std::move(config))
         {
         }
         ~Impl() noexcept
@@ -52,7 +52,7 @@ namespace lux::editor
         FrameworkResult<void> initialize() noexcept
         {
             auto window =
-                EditorWindow::create({config_.width, config_.height, config_.title}, messages_.dispatcherRef());
+                EditorWindow::create({config_.width, config_.height, config_.title});
             if (!window)
             {
                 return cxx::unexpected(std::move(window.error()));
@@ -112,7 +112,7 @@ namespace lux::editor
                 return cxx::unexpected(std::move(scene.error()));
             }
             ui_scene_ = std::move(*scene);
-            messages_.setWake(&window::LuxWindow::wakeEvents);
+            object::ObjectRuntime::instance().setWake(&window::LuxWindow::wakeEvents);
             engine_->execution().setWake(&window::LuxWindow::wakeEvents);
             return {};
         }
@@ -154,7 +154,7 @@ namespace lux::editor
             }
             project_.reset();
             // Local order matters on every error: candidates die before the Context they borrow.
-            auto candidate = std::make_unique<EditorContext>(*engine_, messages_.dispatcherRef(), std::move(project));
+            auto candidate = std::make_unique<EditorContext>(*engine_, std::move(project));
             auto registered = assembly(*candidate);
             if (!registered)
             {
@@ -223,7 +223,7 @@ namespace lux::editor
             {
                 return cxx::unexpected(engineFailure("process.dispatch", dispatched.error()));
             }
-            (void)messages_.dispatchPending();
+            (void)object::ObjectRuntime::instance().dispatchPending();
             auto& root = window_->uiRoot();
             root.applyPendingChanges();
             const bool closing = window_->shouldClose();
@@ -285,7 +285,7 @@ namespace lux::editor
             {
                 return cxx::unexpected(engineFailure("scene.failure", driven->front()));
             }
-            (void)messages_.collectRetired();
+            (void)object::ObjectRuntime::instance().collectRetired();
             return !closing;
         }
         FrameworkResult<void> exec() noexcept
@@ -312,7 +312,6 @@ namespace lux::editor
             }
         }
         EditorConfig config_;
-        object::ObjectMessageQueue messages_;
         std::unique_ptr<EditorWindow> window_;
         std::unique_ptr<engine::EngineContext> engine_;
         std::unique_ptr<EditorUiScene> ui_scene_;
@@ -329,12 +328,12 @@ namespace lux::editor
         {
             return cxx::unexpected(FrameworkFailure{EFrameworkError::INVALID_DESCRIPTION, "Invalid window extent"});
         }
-        auto messages = object::ObjectMessageQueue::create(4096);
-        if (!messages)
+        auto& objects = object::ObjectRuntime::instance();
+        if (!objects.isCurrent())
         {
-            return cxx::unexpected(engineFailure("objects.create", messages.error()));
+            return cxx::unexpected(FrameworkFailure{EFrameworkError::WRONG_THREAD, "Editor requires object thread"});
         }
-        auto impl = std::make_unique<Impl>(std::move(config), std::move(*messages));
+        auto impl = std::make_unique<Impl>(std::move(config));
         auto initialized = impl->initialize();
         if (!initialized)
         {

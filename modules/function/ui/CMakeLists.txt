@@ -18,6 +18,7 @@ add_library(
     src/DrawData.cpp
     src/Table.cpp
     src/Root.cpp
+    src/Context.cpp
     src/Layout.cpp
     src/Controls.cpp
     src/ImageElement.cpp
@@ -101,16 +102,22 @@ if(BUILD_TESTING)
     target_link_libraries(ui_root_test PRIVATE ui imgui::core)
     add_executable(ui_composition_test test/composition.cpp)
     target_link_libraries(ui_composition_test PRIVATE ui)
+    add_executable(ui_context_test test/context.cpp)
+    target_link_libraries(ui_context_test PRIVATE ui imgui::core)
 
     if(MSVC)
         target_compile_options(ui_root_test PRIVATE /UNDEBUG /utf-8)
         target_compile_options(ui_composition_test PRIVATE /UNDEBUG /utf-8)
+        target_compile_options(ui_context_test PRIVATE /UNDEBUG /utf-8)
     else()
         target_compile_options(ui_root_test PRIVATE -UNDEBUG)
         target_compile_options(ui_composition_test PRIVATE -UNDEBUG)
+        target_compile_options(ui_context_test PRIVATE -UNDEBUG)
     endif()
     add_test(NAME ui.root COMMAND ui_root_test )
     set_tests_properties(ui.root PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
     add_test(NAME ui.composition COMMAND ui_composition_test)
     set_tests_properties(ui.composition PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+    add_test(NAME ui.context COMMAND ui_context_test)
+    set_tests_properties(ui.context PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
 endif()

@@ -12,6 +12,7 @@ namespace lux::ui
     namespace detail
     {
         class VulkanRenderer;
+        class Context;
     }
 
     enum class ECaptureError : std::uint8_t
@@ -41,7 +42,7 @@ namespace lux::ui
         [[nodiscard]] std::span<const render::RTextureHandle> textures() const noexcept;
 
     private:
-        friend class Root;
+        friend class detail::Context;
         friend class detail::VulkanRenderer;
         [[nodiscard]] ECaptureError captureCurrent() noexcept;
         [[nodiscard]] const void* nativeDrawData() const noexcept;

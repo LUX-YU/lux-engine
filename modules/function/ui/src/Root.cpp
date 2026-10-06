@@ -4,7 +4,7 @@
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/Command.hpp>
 #include <lux/engine/ui/detail/ContextActivation.hpp>
-#include <lux/engine/ui/detail/FontValidation.hpp>
+#include <lux/engine/ui/detail/Context.hpp>
 #include <lux/engine/ui/detail/Contract.hpp>
 #include <lux/engine/ui/detail/AttachmentState.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
@@ -22,21 +22,6 @@
 
 namespace lux::ui
 {
-    namespace detail
-    {
-        ContextActivation::ContextActivation(void* context) noexcept
-        {
-            previous_ = ImGui::GetCurrentContext();
-            ImGui::SetCurrentContext(static_cast<ImGuiContext*>(context));
-        }
-
-        ContextActivation::~ContextActivation()
-        {
-            ImGui::SetCurrentContext(static_cast<ImGuiContext*>(previous_));
-        }
-
-    } // namespace detail
-
     namespace
     {
         template<class Visit> void visitSubtree(object::LuxObject& root, Visit&& visit) noexcept
@@ -58,152 +43,6 @@ namespace lux::ui
             }
         }
 
-        [[nodiscard]] int toImGuiButton(EPointerButton button) noexcept
-        {
-            switch (button)
-            {
-            case EPointerButton::LEFT:
-                return ImGuiMouseButton_Left;
-            case EPointerButton::MIDDLE:
-                return ImGuiMouseButton_Middle;
-            case EPointerButton::RIGHT:
-                return ImGuiMouseButton_Right;
-            }
-            return ImGuiMouseButton_Left;
-        }
-
-        [[nodiscard]] ImGuiKey toImGuiKey(EKey key) noexcept
-        {
-            switch (key)
-            {
-            case EKey::A:
-                return ImGuiKey_A;
-            case EKey::B:
-                return ImGuiKey_B;
-            case EKey::C:
-                return ImGuiKey_C;
-            case EKey::D:
-                return ImGuiKey_D;
-            case EKey::E:
-                return ImGuiKey_E;
-            case EKey::F:
-                return ImGuiKey_F;
-            case EKey::G:
-                return ImGuiKey_G;
-            case EKey::H:
-                return ImGuiKey_H;
-            case EKey::I:
-                return ImGuiKey_I;
-            case EKey::J:
-                return ImGuiKey_J;
-            case EKey::K:
-                return ImGuiKey_K;
-            case EKey::L:
-                return ImGuiKey_L;
-            case EKey::M:
-                return ImGuiKey_M;
-            case EKey::N:
-                return ImGuiKey_N;
-            case EKey::O:
-                return ImGuiKey_O;
-            case EKey::P:
-                return ImGuiKey_P;
-            case EKey::Q:
-                return ImGuiKey_Q;
-            case EKey::R:
-                return ImGuiKey_R;
-            case EKey::S:
-                return ImGuiKey_S;
-            case EKey::T:
-                return ImGuiKey_T;
-            case EKey::U:
-                return ImGuiKey_U;
-            case EKey::V:
-                return ImGuiKey_V;
-            case EKey::W:
-                return ImGuiKey_W;
-            case EKey::X:
-                return ImGuiKey_X;
-            case EKey::Y:
-                return ImGuiKey_Y;
-            case EKey::Z:
-                return ImGuiKey_Z;
-            case EKey::LEFT_SHIFT:
-                return ImGuiKey_LeftShift;
-            case EKey::RIGHT_SHIFT:
-                return ImGuiKey_RightShift;
-            case EKey::LEFT_CONTROL:
-                return ImGuiKey_LeftCtrl;
-            case EKey::RIGHT_CONTROL:
-                return ImGuiKey_RightCtrl;
-            case EKey::LEFT_ALT:
-                return ImGuiKey_LeftAlt;
-            case EKey::RIGHT_ALT:
-                return ImGuiKey_RightAlt;
-            case EKey::COUNT:
-                return ImGuiKey_None;
-            case EKey::NONE:
-                return ImGuiKey_None;
-            case EKey::TAB:
-                return ImGuiKey_Tab;
-            case EKey::ENTER:
-                return ImGuiKey_Enter;
-            case EKey::ESCAPE:
-                return ImGuiKey_Escape;
-            case EKey::SPACE:
-                return ImGuiKey_Space;
-            case EKey::BACKSPACE:
-                return ImGuiKey_Backspace;
-            case EKey::DELETE_KEY:
-                return ImGuiKey_Delete;
-            case EKey::LEFT:
-                return ImGuiKey_LeftArrow;
-            case EKey::RIGHT:
-                return ImGuiKey_RightArrow;
-            case EKey::UP:
-                return ImGuiKey_UpArrow;
-            case EKey::DOWN:
-                return ImGuiKey_DownArrow;
-            case EKey::HOME:
-                return ImGuiKey_Home;
-            case EKey::END:
-                return ImGuiKey_End;
-            }
-            return ImGuiKey_None;
-        }
-
-        [[nodiscard]] ImVec4 toImGuiColor(Color value) noexcept
-        {
-            return ImVec4{value.red, value.green, value.blue, value.alpha};
-        }
-
-        void applyTheme(const Theme& theme) noexcept
-        {
-            auto& style = ImGui::GetStyle();
-            style.WindowPadding = {theme.spacing.panel_padding.x, theme.spacing.panel_padding.y};
-            style.FramePadding = {theme.spacing.item.x, theme.spacing.compact.y};
-            style.ItemSpacing = {theme.spacing.item.x, theme.spacing.item.y};
-            style.IndentSpacing = theme.metrics.tree_indent;
-            style.WindowRounding = theme.metrics.rounding;
-            style.ChildRounding = theme.metrics.rounding;
-            style.FrameRounding = theme.metrics.rounding;
-            style.PopupRounding = theme.metrics.rounding;
-            style.WindowBorderSize = theme.metrics.border_width;
-            style.ChildBorderSize = theme.metrics.border_width;
-            style.FrameBorderSize = 0.0F;
-            style.Colors[ImGuiCol_WindowBg] = toImGuiColor(theme.palette.window_background);
-            style.Colors[ImGuiCol_ChildBg] = toImGuiColor(theme.palette.panel_background);
-            style.Colors[ImGuiCol_FrameBg] = toImGuiColor(theme.palette.field_background);
-            style.Colors[ImGuiCol_Text] = toImGuiColor(theme.palette.text);
-            style.Colors[ImGuiCol_TextDisabled] = toImGuiColor(theme.palette.muted_text);
-            style.Colors[ImGuiCol_Border] = toImGuiColor(theme.palette.border);
-            style.Colors[ImGuiCol_CheckMark] = toImGuiColor(theme.palette.accent);
-            style.Colors[ImGuiCol_SliderGrab] = toImGuiColor(theme.palette.accent);
-            style.Colors[ImGuiCol_Header] = toImGuiColor(theme.palette.selection);
-            style.Colors[ImGuiCol_HeaderHovered] = toImGuiColor(theme.palette.accent);
-            style.Colors[ImGuiCol_HeaderActive] = toImGuiColor(theme.palette.selection);
-        }
-
     } // namespace
 
     struct PreparedDockTree::Data final
@@ -219,7 +58,6 @@ namespace lux::ui
 
     struct Root::Impl final
     {
-        ~Impl();
         void queueChange(object::LuxObject&, ChangeCallback) noexcept;
         void cancelChanges(object::LuxObject&) noexcept;
         void applyPendingChanges() noexcept;
@@ -242,11 +80,7 @@ namespace lux::ui
         float menu_height{};
         std::uint64_t window_revision{};
 
-        ImGuiContext* native{};
-        std::vector<std::uint8_t> font_bytes;
-        std::vector<ImWchar> font_ranges;
-        Theme theme;
-        float scale{1.f};
+        std::unique_ptr<detail::Context> context;
         window::LuxWindow* window{};
         struct Target final
         {
@@ -308,20 +142,9 @@ namespace lux::ui
         std::uint64_t layout_epoch{};
         bool registration_holes{}, window_holes{};
         bool committing_structure{};
-        std::array<bool, 6> modifier_keys{};
-        int input_capacity{};
         ImGuiKeyChord routed_modifiers{};
-        std::uint64_t sequence{};
-        bool window_focused{true}, drawing{}, updating{}, docking{}, dock_layout_initialized{};
-        bool input_pending{}, composing{};
-        struct InputRecord final
-        {
-            unsigned first{}, end{}; // ImGui EventId interval; may be empty after coalescing.
-            std::uint64_t sequence{};
-            std::optional<ECompositionStage> composition;
-        };
-        std::vector<InputRecord> input_records;
-        std::uint64_t accepted_input{}, adopted_input{}, focus_loss{}, cancelled_input{};
+        bool drawing{}, updating{}, docking{}, dock_layout_initialized{};
+        bool composing{};
         Pane* modal{};
         std::optional<DockLayout> split_layout;
         std::unique_ptr<PreparedDockTree::Data> pending_dock_tree;
@@ -359,20 +182,6 @@ namespace lux::ui
         }
     };
 
-    Root::Impl::~Impl()
-    {
-        if (native)
-        {
-            auto* previous = ImGui::GetCurrentContext();
-            if (previous == native)
-            {
-                previous = nullptr;
-            }
-            ImGui::DestroyContext(native);
-            ImGui::SetCurrentContext(previous);
-        }
-    }
-
     Root::Root() noexcept : LuxObject() {}
     Root::~Root() noexcept
     {
@@ -407,105 +216,18 @@ namespace lux::ui
     lux::cxx::expected<void, EInitError> Root::initialize(RootConfig config) noexcept
     {
         if (!isOnAffinityThread())
-            return lux::cxx::unexpected(EInitError::WRONG_THREAD);
+            return cxx::unexpected(EInitError::WRONG_THREAD);
         if (impl_)
             detail::failContract();
-        if (config.input_capacity < 2 || config.input_capacity > std::size_t(std::numeric_limits<int>::max()))
-            return lux::cxx::unexpected(EInitError::INVALID_INPUT_CAPACITY);
-        const bool is_invalid_scale = !std::isfinite(config.scale) || config.scale < 0.5f || config.scale > 4.f;
-        if (is_invalid_scale)
-            return lux::cxx::unexpected(EInitError::INVALID_SCALE);
-        const auto* font = config.font;
-        {
-            if (font)
-            {
-                if (auto valid = detail::validateFont(*font); !valid)
-                {
-                    return lux::cxx::unexpected(valid.error());
-                }
-            }
-            // The partial owner releases a newly-created context on every business
-            // failure, before restoring the caller's still-live context.
-            struct Restore final
-            {
-                ImGuiContext* previous{ImGui::GetCurrentContext()};
-                ~Restore()
-                {
-                    ImGui::SetCurrentContext(previous);
-                }
-            } restore;
-            auto data = std::make_unique<Impl>();
-            data->attachment_capacity = config.attachment_capacity;
-            data->theme = config.theme;
-            data->scale = config.scale;
-            data->docking = config.docking;
-            data->native = ImGui::CreateContext();
-            data->input_capacity = static_cast<int>(config.input_capacity);
-            data->input_records.reserve(config.input_capacity);
-            data->native->InputEventsQueue.reserve(data->input_capacity);
-            data->native->InputEventsTrail.reserve(data->input_capacity);
-            ImGui::SetCurrentContext(data->native);
-            auto& io = ImGui::GetIO();
-            io.IniFilename = nullptr;
-            io.BackendRendererName = "lux.ui";
-            io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
-            if (config.docking)
-            {
-                io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-            }
-            auto* atlas = ImGui::GetIO().Fonts;
-            if (font)
-            {
-                data->font_bytes = font->bytes;
-                data->font_ranges.reserve(font->ranges.size() * 2 + 1);
-                for (const auto range : font->ranges)
-                {
-                    data->font_ranges.push_back(static_cast<ImWchar>(range.first));
-                    data->font_ranges.push_back(static_cast<ImWchar>(range.last));
-                }
-                data->font_ranges.push_back(0);
-                ImFontConfig font_config;
-                font_config.FontDataOwnedByAtlas = false;
-                font_config.FontNo = static_cast<int>(font->face);
-                font_config.OversampleH = font_config.OversampleV = 1;
-                atlas->TexDesiredWidth = 4096;
-                if (!atlas->AddFontFromMemoryTTF(
-                        data->font_bytes.data(),
-                        static_cast<int>(data->font_bytes.size()),
-                        font->size_pixels * config.scale,
-                        &font_config,
-                        data->font_ranges.data()
-                    ))
-                {
-                    return lux::cxx::unexpected(EInitError::ATLAS_FAILURE);
-                }
-            }
-            else
-            {
-                ImFontConfig font_config;
-                font_config.SizePixels = 13.f * config.scale;
-                atlas->AddFontDefault(&font_config);
-            }
-            if (!atlas->Build())
-            {
-                return lux::cxx::unexpected(EInitError::ATLAS_FAILURE);
-            }
-            const bool valid_extent =
-                atlas->TexWidth > 0 && atlas->TexHeight > 0 && atlas->TexWidth <= 8192 && atlas->TexHeight <= 8192;
-            if (!valid_extent || std::uint64_t(atlas->TexWidth) * atlas->TexHeight * 4 > 64U * 1024U * 1024U)
-            {
-                return lux::cxx::unexpected(EInitError::ATLAS_LIMIT);
-            }
-            unsigned char* pixels = nullptr;
-            int width = 0;
-            int height = 0;
-            ImGui::GetIO().Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
-
-            applyTheme(data->theme);
-            ImGui::GetStyle().ScaleAllSizes(config.scale);
-            impl_ = std::move(data);
-            return {};
-        }
+        auto context = detail::Context::create(config);
+        if (!context)
+            return cxx::unexpected(context.error());
+        auto data = std::make_unique<Impl>();
+        data->context = std::move(*context);
+        data->attachment_capacity = config.attachment_capacity;
+        data->docking = config.docking;
+        impl_ = std::move(data);
+        return {};
     }
 
     void Root::requireOwner() const noexcept
@@ -516,29 +238,17 @@ namespace lux::ui
     const Theme& Root::theme() const noexcept
     {
         requireOwner();
-        return impl_->theme;
+        return impl_->context->theme();
     }
     float Root::scale() const noexcept
     {
         requireOwner();
-        return impl_->scale;
+        return impl_->context->scale();
     }
     lux::cxx::expected<FontAtlas, EInitError> Root::fontAtlas() const noexcept
     {
         requireOwner();
-        const auto* atlas = impl_->native->IO.Fonts;
-        const bool valid = atlas->TexPixelsRGBA32 && atlas->TexReady && atlas->TexWidth > 0 && atlas->TexHeight > 0;
-        if (!valid)
-            return lux::cxx::unexpected(EInitError::ATLAS_FAILURE);
-        {
-            FontAtlas result;
-            result.width = atlas->TexWidth;
-            result.height = atlas->TexHeight;
-            const auto size = std::size_t(result.width) * result.height * 4;
-            const auto* pixels = reinterpret_cast<const std::uint8_t*>(atlas->TexPixelsRGBA32);
-            result.pixels.assign(pixels, pixels + size);
-            return result;
-        }
+        return impl_->context->fontAtlas();
     }
     cxx::expected<PaneHandle, EAttachmentError> Root::identify(const Pane& pane) const noexcept
     {
@@ -663,7 +373,7 @@ namespace lux::ui
     bool Root::capturePointer(Pane& pane) noexcept
     {
         requireOwner();
-        if (pane.attachedRoot() != this || !pane.visible() || !impl_->window_focused || !allowedByModal(pane))
+        if (pane.attachedRoot() != this || !pane.visible() || !impl_->context->windowFocused() || !allowedByModal(pane))
             return false;
         impl_->pointer_capture = &pane;
         return true;
@@ -682,10 +392,7 @@ namespace lux::ui
         if (!impl_)
             return;
         impl_->window = window;
-        auto* previous = ImGui::GetCurrentContext();
-        ImGui::SetCurrentContext(impl_->native);
-        ImGui::GetMainViewport()->PlatformHandleRaw = window ? window->nativeHandle() : nullptr;
-        ImGui::SetCurrentContext(previous);
+        impl_->context->bindWindow(window ? window->nativeHandle() : nullptr);
     }
     window::LuxWindow* Root::window() const noexcept
     {
@@ -969,16 +676,7 @@ namespace lux::ui
         requireOwner();
         if (impl_->drawing || impl_->updating)
             return lux::cxx::unexpected(ECaptureError::FRAME_OPEN);
-        if (impl_->input_pending)
-            return lux::cxx::unexpected(ECaptureError::INPUT_PENDING);
-        const bool valid_size = std::isfinite(info.display_size.width) && info.display_size.width > 0 &&
-                                std::isfinite(info.display_size.height) && info.display_size.height > 0;
-        const bool valid_time = std::isfinite(info.delta_seconds) && info.delta_seconds > 0;
-        const bool valid_scale = std::isfinite(info.framebuffer_scale.x) && info.framebuffer_scale.x > 0 &&
-                                 std::isfinite(info.framebuffer_scale.y) && info.framebuffer_scale.y > 0;
-        if (!valid_size || !valid_time || !valid_scale)
-            return lux::cxx::unexpected(ECaptureError::INVALID_INPUT);
-        ++impl_->layout_epoch;
+        detail::ContextActivation active{impl_->context->native()};
         impl_->drawing = true;
         struct Finish final
         {
@@ -988,15 +686,12 @@ namespace lux::ui
                 root.impl_->drawing = false;
             }
         } finish{*this};
-        detail::ContextActivation active{impl_->native};
-        auto& io = ImGui::GetIO();
-        io.DisplaySize = {info.display_size.width, info.display_size.height};
-        io.DeltaTime = info.delta_seconds;
-        io.DisplayFramebufferScale = {info.framebuffer_scale.x, info.framebuffer_scale.y};
-        applyTheme(impl_->theme);
+        auto started = impl_->context->beginFrame(info);
+        if (!started)
+            return started;
+        ++impl_->layout_epoch;
         impl_->draw_focused = impl_->draw_hovered = nullptr;
         impl_->draw_focused_element = impl_->draw_hovered_element = nullptr;
-        ImGui::NewFrame();
         impl_->drawMenu(*this);
         prepareLayout();
         for (auto* pane : impl_->windows)
@@ -1020,13 +715,7 @@ namespace lux::ui
         if (impl_->draw_hovered)
             impl_->draw_hovered->setHovered(true);
         impl_->reset_docking = false;
-        ImGui::Render();
-        ++impl_->sequence;
-        impl_->input_pending = !impl_->native->InputEventsTrail.empty() || !impl_->input_records.empty();
-        const auto captured = output.captureCurrent();
-        if (captured != ECaptureError::NONE)
-            return lux::cxx::unexpected(captured);
-        return {};
+        return impl_->context->endFrame(output);
     }
 
     PreparedAttachment::PreparedAttachment(std::unique_ptr<detail::AttachmentState> state) noexcept
@@ -1739,7 +1428,7 @@ namespace lux::ui
         impl_->registration_holes = true;
         if (impl_->focused_element == &element)
         {
-            detail::ContextActivation context{impl_->native};
+            detail::ContextActivation context{impl_->context->native()};
             ImGui::ClearActiveID();
         }
         for (auto** target :
@@ -1783,11 +1472,10 @@ namespace lux::ui
         if (impl_->drawing || impl_->updating)
             detail::failContract();
         impl_->updating = true;
-        if (!impl_->input_pending && impl_->focus_loss > impl_->cancelled_input)
+        if (impl_->context->takeFocusLoss())
         {
             // Loss ends the current interaction even while presentation has no writable frame.
             // Its older native batch is still consumed by ImGui, but cannot replay business commands.
-            impl_->cancelled_input = impl_->focus_loss;
             deliverWindowFocus(false);
         }
         // Losing capture is observable even when no new native input or UI frame
@@ -1799,9 +1487,9 @@ namespace lux::ui
             VInputEvent cancelled = PointerCancel{};
             static_cast<void>(object::sendEvent(*capture, cancelled));
         }
-        if (std::exchange(impl_->input_pending, false))
+        if (impl_->context->hasInput())
         {
-            detail::ContextActivation context{impl_->native};
+            detail::ContextActivation context{impl_->context->native()};
             routeInput();
         }
         // Construction order is parent-before-child. New registrations belong to the next turn;
@@ -1837,7 +1525,7 @@ namespace lux::ui
     bool Root::capturePointer(Element& element) noexcept
     {
         requireOwner();
-        if (element.attachedRoot() != this || !element.displayed() || !element.enabled() || !impl_->window_focused ||
+        if (element.attachedRoot() != this || !element.displayed() || !element.enabled() || !impl_->context->windowFocused() ||
             !allowedByModal(element))
             return false;
         impl_->pointer_capture = &element;
@@ -1852,7 +1540,7 @@ namespace lux::ui
             impl_->pending_element = {};
         if (impl_->focused_element != &element)
             return;
-        detail::ContextActivation context{impl_->native};
+        detail::ContextActivation context{impl_->context->native()};
         ImGui::ClearActiveID();
         impl_->focused_element = {};
         releasePointer(element);
@@ -1866,7 +1554,7 @@ namespace lux::ui
     SizeHint Root::measureElement(Element& element, float width, bool intrinsic) noexcept
     {
         requireOwner();
-        detail::ContextActivation context{impl_->native};
+        detail::ContextActivation context{impl_->context->native()};
         if (impl_->layout_depth++ == 0 && !impl_->drawing)
             ++impl_->layout_epoch;
         const auto epoch = impl_->layout_epoch;
@@ -1890,7 +1578,7 @@ namespace lux::ui
     void Root::arrangeElement(Element& element) noexcept
     {
         requireOwner();
-        detail::ContextActivation context{impl_->native};
+        detail::ContextActivation context{impl_->context->native()};
         if (impl_->layout_depth++ == 0 && !impl_->drawing)
             ++impl_->layout_epoch;
         static_cast<void>(element.measure(element.rect().size.width));
@@ -2122,8 +1810,8 @@ namespace lux::ui
         if (!pane.visible())
         {
             if (pane.modal_)
-                for (int i = 0; i < impl_->native->OpenPopupStack.Size; ++i)
-                    if (auto* window = impl_->native->OpenPopupStack[i].Window;
+                for (int i = 0; i < impl_->context->native()->OpenPopupStack.Size; ++i)
+                    if (auto* window = impl_->context->native()->OpenPopupStack[i].Window;
                         window && std::strcmp(window->Name, pane.window_label_.c_str()) == 0)
                     {
                         ImGui::ClosePopupToLevel(i, true);
@@ -2219,7 +1907,7 @@ namespace lux::ui
 
     Pane* Root::modalPane() const noexcept
     {
-        detail::ContextActivation context{impl_->native};
+        detail::ContextActivation context{impl_->context->native()};
         const auto* modal = ImGui::GetTopMostPopupModal();
         if (!modal)
             return nullptr;
@@ -2231,7 +1919,7 @@ namespace lux::ui
 
     bool Root::allowedByModal(const Pane& target) const noexcept
     {
-        detail::ContextActivation context{impl_->native};
+        detail::ContextActivation context{impl_->context->native()};
         return !ImGui::GetTopMostPopupModal() || modalPane() == &target;
     }
     bool Root::allowedByModal(const Element& target) const noexcept
@@ -2255,7 +1943,7 @@ namespace lux::ui
     void Root::deliverWindowFocus(bool focused_value) noexcept
     {
         const auto capture = impl_->pointer_capture;
-        impl_->window_focused = focused_value;
+        impl_->context->setWindowFocused(focused_value);
         VInputEvent focus = WindowFocus{focused_value};
         Impl::Target focused{impl_->focused_element};
         if (!focused)
@@ -2296,7 +1984,7 @@ namespace lux::ui
             {
                 deliverWindowFocus(input.AppFocused.Focused);
                 if (!input.AppFocused.Focused)
-                    impl_->cancelled_input = impl_->adopted_input;
+                    impl_->context->cancelAdoptedInput();
                 return;
             }
             if (capture && (!capture.visible() || !allowedByModal(*capture.pane())))
@@ -2323,9 +2011,8 @@ namespace lux::ui
                 if (impl_->composing || io.WantTextInput || ImGui::IsAnyItemActive() ||
                     !ImGui::TestKeyOwner(input.Key.Key, ImGuiKeyOwner_NoOwner))
                     break;
-                for (std::size_t i = 1; i < static_cast<std::size_t>(EKey::COUNT); ++i)
-                    if (toImGuiKey(static_cast<EKey>(i)) == input.Key.Key)
-                        value = Key{static_cast<EKey>(i), input.Key.Down};
+                if (const auto key = detail::Context::keyFromNative(input.Key.Key); key != EKey::NONE)
+                    value = Key{key, input.Key.Down};
                 break;
             case ImGuiInputEventType_MousePos:
                 target = capture ? capture : Impl::Target{impl_->hovered_element};
@@ -2376,45 +2063,19 @@ namespace lux::ui
                 static_cast<void>(object::routeEvent(*target, boundary, command));
             }
         };
-        std::size_t complete{};
-        int trail{};
-        for (auto& record : impl_->input_records)
+        auto composition = [&](ECompositionStage stage) noexcept
         {
-            if (record.first != record.end)
+            impl_->composing = stage == ECompositionStage::STARTED || stage == ECompositionStage::UPDATED;
+            Impl::Target target{impl_->focused_element};
+            if (!target)
+                target = focusedPane();
+            if (target && allowedByModal(*target.pane()))
             {
-                while (trail < impl_->native->InputEventsTrail.Size)
-                {
-                    const auto& input = impl_->native->InputEventsTrail[trail];
-                    if (input.EventId >= record.end)
-                        break;
-                    ++trail;
-                    if (input.EventId < record.first)
-                        continue;
-                    impl_->adopted_input = record.sequence;
-                    if (record.sequence > impl_->cancelled_input)
-                        route(input);
-                    record.first = input.EventId + 1;
-                }
-                if (record.first != record.end)
-                    break; // ImGui trickles the remainder.
+                VInputEvent event = Composition{stage};
+                static_cast<void>(object::sendEvent(*target, event));
             }
-            impl_->adopted_input = record.sequence;
-            if (record.composition && record.sequence > impl_->cancelled_input)
-            {
-                const auto stage = *record.composition;
-                impl_->composing = stage == ECompositionStage::STARTED || stage == ECompositionStage::UPDATED;
-                Impl::Target target{impl_->focused_element};
-                if (!target)
-                    target = focusedPane();
-                if (target && allowedByModal(*target.pane()))
-                {
-                    VInputEvent event = Composition{stage};
-                    static_cast<void>(object::sendEvent(*target, event));
-                }
-            }
-            ++complete;
-        }
-        impl_->input_records.erase(impl_->input_records.begin(), impl_->input_records.begin() + complete);
+        };
+        impl_->context->consumeInput(route, composition);
         if (!ImGui::IsAnyMouseDown())
             impl_->pointer_capture = {};
     }
@@ -2422,160 +2083,22 @@ namespace lux::ui
     lux::cxx::expected<void, EInputError> Root::feedInput(const VInputEvent& event, std::uint64_t sequence) noexcept
     {
         requireOwner();
-        detail::ContextActivation context{impl_->native};
-        auto& io = ImGui::GetIO();
-        if (!io.AppAcceptingEvents)
-            return lux::cxx::unexpected(EInputError::CLOSED);
-        const bool valid = std::visit(
-            [](const auto& value) noexcept
-            {
-                using Value = std::remove_cvref_t<decltype(value)>;
-                if constexpr (std::same_as<Value, PointerMove>)
-                    return std::isfinite(value.position.x) && std::isfinite(value.position.y);
-                else if constexpr (std::same_as<Value, PointerWheel>)
-                    return std::isfinite(value.delta.x) && std::isfinite(value.delta.y);
-                else if constexpr (std::same_as<Value, PointerButton>)
-                    return value.button >= EPointerButton::LEFT && value.button <= EPointerButton::RIGHT;
-                else if constexpr (std::same_as<Value, Key>)
-                    return value.key > EKey::NONE && value.key < EKey::COUNT;
-                else if constexpr (std::same_as<Value, Text>)
-                    return value.codepoint > 0 && value.codepoint <= 0x10FFFF &&
-                           (value.codepoint < 0xD800 || value.codepoint > 0xDFFF);
-                else if constexpr (std::same_as<Value, Composition>)
-                    return value.stage >= ECompositionStage::STARTED && value.stage <= ECompositionStage::CANCELLED;
-                else
-                    return !std::same_as<Value, PointerCancel>;
-            },
-            event
-        );
-        const bool invalid_sequence = sequence && sequence <= impl_->accepted_input;
-        if (!valid || invalid_sequence || impl_->accepted_input == UINT64_MAX)
-            return lux::cxx::unexpected(EInputError::INVALID_INPUT);
-        const auto* key_event = std::get_if<Key>(&event);
-        const bool modifier = key_event && key_event->key >= EKey::LEFT_SHIFT;
-        const int required = modifier ? 2 : 1;
-        // Preflight the entire native event, including its aggregate modifier.
-        // The existing ImGui queue is the only pending input store.
-        if (impl_->native->InputEventsQueue.Size > impl_->input_capacity - required ||
-            impl_->input_records.size() == std::size_t(impl_->input_capacity))
-            return lux::cxx::unexpected(EInputError::FULL);
-        const auto first = impl_->native->InputEventsNextEventId;
-        std::visit(
-            [&](const auto& value)
-            {
-                using Value = std::remove_cvref_t<decltype(value)>;
-                if constexpr (std::same_as<Value, PointerMove>)
-                {
-                    io.AddMousePosEvent(value.position.x, value.position.y);
-                }
-                else if constexpr (std::same_as<Value, PointerButton>)
-                {
-                    io.AddMouseButtonEvent(toImGuiButton(value.button), value.down);
-                }
-                else if constexpr (std::same_as<Value, PointerWheel>)
-                {
-                    io.AddMouseWheelEvent(value.delta.x, value.delta.y);
-                }
-                else if constexpr (std::same_as<Value, Key>)
-                {
-                    constexpr std::array physical_modifiers{
-                        EKey::LEFT_CONTROL,
-                        EKey::RIGHT_CONTROL,
-                        EKey::LEFT_SHIFT,
-                        EKey::RIGHT_SHIFT,
-                        EKey::LEFT_ALT,
-                        EKey::RIGHT_ALT
-                    };
-                    constexpr std::array aggregate_modifiers{ImGuiMod_Ctrl, ImGuiMod_Shift, ImGuiMod_Alt};
-                    for (std::size_t index = 0; index < physical_modifiers.size(); ++index)
-                    {
-                        if (value.key == physical_modifiers[index])
-                        {
-                            // ImGui does not derive aggregate modifiers from
-                            // side-specific events. Preserve the other side.
-                            impl_->modifier_keys[index] = value.down;
-                            const auto pair = index / 2;
-                            io.AddKeyEvent(
-                                aggregate_modifiers[pair],
-                                impl_->modifier_keys[pair * 2] || impl_->modifier_keys[pair * 2 + 1]
-                            );
-                            break;
-                        }
-                    }
-                    const auto key = toImGuiKey(value.key);
-                    if (key != ImGuiKey_None)
-                    {
-                        io.AddKeyEvent(key, value.down);
-                    }
-                }
-                else if constexpr (std::same_as<Value, Text>)
-                {
-                    io.AddInputCharacter(static_cast<unsigned int>(value.codepoint));
-                }
-                else if constexpr (std::same_as<Value, WindowFocus>)
-                {
-                    impl_->window_focused = value.focused;
-                    if (!value.focused)
-                    {
-                        impl_->modifier_keys.fill(false);
-                    }
-                    io.AddFocusEvent(value.focused);
-                }
-            },
-            event
-        );
-        const auto accepted = sequence ? sequence : impl_->accepted_input + 1;
-        if (const auto* focus = std::get_if<WindowFocus>(&event); focus && !focus->focused)
-            impl_->focus_loss = accepted;
-        const auto* composition = std::get_if<Composition>(&event);
-        impl_->input_records.push_back(
-            {first,
-             impl_->native->InputEventsNextEventId,
-             accepted,
-             composition ? std::optional{composition->stage} : std::nullopt}
-        );
-        impl_->accepted_input = accepted;
-        return {};
+        return impl_->context->feedInput(event, sequence);
     }
 
     void Root::closeInput() noexcept
     {
         if (!impl_)
-            return; // No input was admitted if initialization never completed.
-        requireOwner();
-        if (!impl_->native->IO.AppAcceptingEvents)
             return;
-        impl_->native->IO.SetAppAcceptingEvents(false);
-        impl_->cancelled_input = impl_->accepted_input;
-        deliverWindowFocus(false);
+        requireOwner();
+        if (impl_->context->closeInput())
+            deliverWindowFocus(false);
     }
 
     InputSnapshot Root::inputSnapshot() const noexcept
     {
         requireOwner();
-        detail::ContextActivation context{impl_->native};
-        InputSnapshot result;
-        const auto& io = ImGui::GetIO();
-        for (std::size_t index = 1; index < result.held.size(); ++index)
-        {
-            const auto key = toImGuiKey(static_cast<EKey>(index));
-            result.held[index] = ImGui::IsKeyDown(key);
-            result.pressed[index] = ImGui::IsKeyPressed(key, false);
-        }
-        for (std::size_t index = 0; index < result.buttons.size(); ++index)
-        {
-            result.buttons[index] = ImGui::IsMouseDown(toImGuiButton(static_cast<EPointerButton>(index)));
-        }
-        result.pointer_delta = {io.MouseDelta.x, io.MouseDelta.y};
-        result.wheel = {io.MouseWheelH, io.MouseWheel};
-        result.window_focused = !io.AppFocusLost;
-        result.composing = impl_->composing;
-        result.keyboard_captured = io.WantCaptureKeyboard || impl_->composing;
-        result.pointer_captured = io.WantCaptureMouse || bool(impl_->pointer_capture);
-        result.sequence = impl_->adopted_input;
-        result.modal_open = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup);
-        result.keyboard_blocked = impl_->composing || io.WantTextInput || ImGui::IsAnyItemActive() || result.modal_open;
-        return result;
+        return impl_->context->inputSnapshot(impl_->composing, bool(impl_->pointer_capture));
     }
 
     lux::cxx::expected<PreparedDockTree, EDockError> Root::prepareDockTree(DockTree tree) const
@@ -2647,7 +2170,7 @@ namespace lux::ui
     DockTree Root::captureDockTree() const
     {
         requireOwner();
-        detail::ContextActivation context{impl_->native};
+        detail::ContextActivation context{impl_->context->native()};
         if (impl_->pending_dock_tree)
         {
             auto result = impl_->pending_dock_tree->tree;
@@ -2731,7 +2254,7 @@ namespace lux::ui
     DockState Root::captureDockState() const
     {
         requireOwner();
-        detail::ContextActivation context{impl_->native};
+        detail::ContextActivation context{impl_->context->native()};
         std::size_t size = 0;
         const char* data = ImGui::SaveIniSettingsToMemory(&size);
         std::vector<std::byte> bytes(size);
@@ -2753,7 +2276,7 @@ namespace lux::ui
         {
             return lux::cxx::unexpected<EDockError>{EDockError::INVALID_DATA};
         }
-        detail::ContextActivation context{impl_->native};
+        detail::ContextActivation context{impl_->context->native()};
         std::string data(reinterpret_cast<const char*>(bytes.data()), bytes.size());
         std::vector<std::pair<ImGuiID, ImGuiID>> selected;
         std::size_t position{};

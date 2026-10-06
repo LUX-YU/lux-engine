@@ -66,7 +66,7 @@ target_compile_definitions(ui PRIVATE LUX_FUNCTION_LIBRARY)
 
 target_link_libraries(
     ui
-    PRIVATE ui_imgui_backend
+    PRIVATE ui_imgui_backend imgui::core
     PUBLIC
         lux::engine::function::ui_input
         lux::cxx::core

@@ -81,6 +81,8 @@ namespace lux::ui
         Vec2 wheel{};
         bool window_focused{};
         bool keyboard_blocked{};
+        bool keyboard_captured{};
+        bool pointer_captured{};
         bool modal_open{};
         bool composing{};
         std::uint64_t sequence{}; // Last native input adopted by this UI.

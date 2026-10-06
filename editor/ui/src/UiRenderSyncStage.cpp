@@ -1,9 +1,9 @@
-#include <lux/engine/editor/desktop/detail/UiFrame.hpp>
-#include <lux/engine/editor/desktop/detail/UiRenderSyncStage.hpp>
+#include <lux/engine/editor/detail/UiFrame.hpp>
+#include <lux/engine/editor/detail/UiRenderSyncStage.hpp>
 #include <lux/engine/scene/RenderSyncStage.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 
-namespace lux::editor::desktop::detail
+namespace lux::editor::detail
 {
     namespace
     {
@@ -18,7 +18,9 @@ namespace lux::editor::desktop::detail
                 updated_ = registry_.on_update<UiFrame>().connect<&UiRenderSyncStage::changed>(*this);
                 destroyed_ = registry_.on_destroy<UiFrame>().connect<&UiRenderSyncStage::removed>(*this);
                 for (const auto entity : registry_.view<UiFrame>())
+                {
                     changed(registry_, entity);
+                }
             }
 
             bool hasPendingChanges() const noexcept override
@@ -33,13 +35,17 @@ namespace lux::editor::desktop::detail
             {
                 using enum lux::scene::ERenderSyncPrepareResult;
                 if (!dirty_)
+                {
                     return NO_CHANGES;
+                }
                 const auto* input = registry_.try_get<UiFrame>(entity_);
                 const auto result = input && input->frame
                                         ? lux::ui::appendFrame(builder, operations_, scene_, feature_, input->frame)
                                         : lux::ui::appendClear(builder, operations_, scene_, feature_);
                 if (!result)
+                {
                     return FAILED;
+                }
                 return input && input->frame ? PREPARED_FRAME_COMMANDS : PREPARED_COMMANDS;
             }
             void commitPrepared() noexcept override
@@ -73,7 +79,7 @@ namespace lux::editor::desktop::detail
         {
             return std::unique_ptr<lux::scene::RenderSyncStage>{new UiRenderSyncStage{input}};
         }
-    }
+    } // namespace
 
     lux::scene::RenderFeatureSceneBinding uiRenderFeatureBinding() noexcept
     {
@@ -84,4 +90,4 @@ namespace lux::editor::desktop::detail
             &createUiStage
         };
     }
-}
+} // namespace lux::editor::detail

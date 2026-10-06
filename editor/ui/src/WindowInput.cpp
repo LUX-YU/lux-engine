@@ -1,7 +1,7 @@
-#include <lux/engine/editor/desktop/WindowInput.hpp>
+#include <lux/engine/editor/WindowInput.hpp>
 #include <lux/engine/input/InputSnapshot.hpp>
 #include <optional>
-namespace lux::editor::desktop
+namespace lux::editor
 {
     namespace
     {
@@ -125,14 +125,18 @@ namespace lux::editor::desktop
     ) noexcept
     {
         lux::cxx::expected<void, lux::ui::EInputError> result;
-        const auto feedPlatformInput = [&](const lux::ui::VInputEvent& event, std::uint64_t sequence) {
+        const auto feedPlatformInput = [&](const lux::ui::VInputEvent& event, std::uint64_t sequence)
+        {
             if (result)
+            {
                 result = root.feedInput(event, sequence);
+            }
         };
         for (const auto& event : snapshot.events)
         {
             std::visit(
-                [&](const auto& value) {
+                [&](const auto& value)
+                {
                     using Value = std::remove_cvref_t<decltype(value)>;
                     if constexpr (std::same_as<Value, input::KeyAction>)
                     {
@@ -201,4 +205,4 @@ namespace lux::editor::desktop
         }
         return result;
     }
-}
+} // namespace lux::editor

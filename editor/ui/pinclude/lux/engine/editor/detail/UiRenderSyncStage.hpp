@@ -2,7 +2,7 @@
 
 #include <lux/engine/scene/RenderFeatureSceneBinding.hpp>
 
-namespace lux::editor::desktop::detail
+namespace lux::editor::detail
 {
     [[nodiscard]] lux::scene::RenderFeatureSceneBinding uiRenderFeatureBinding() noexcept;
 }

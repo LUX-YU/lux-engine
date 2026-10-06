@@ -2580,6 +2580,8 @@ namespace lux::ui
         result.wheel = {io.MouseWheelH, io.MouseWheel};
         result.window_focused = !io.AppFocusLost;
         result.composing = impl_->composing;
+        result.keyboard_captured = io.WantCaptureKeyboard || impl_->composing;
+        result.pointer_captured = io.WantCaptureMouse || bool(impl_->pointer_capture);
         result.sequence = impl_->adopted_input;
         result.modal_open = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopup);
         result.keyboard_blocked = impl_->composing || io.WantTextInput || ImGui::IsAnyItemActive() || result.modal_open;

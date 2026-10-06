@@ -5,7 +5,7 @@ generate_visibility_header(ENABLE_MACRO_NAME LUX_RENDER_EDITOR_LIBRARY
     PUBLIC_MACRO_NAME LUX_RENDER_EDITOR_PUBLIC
     GENERATE_FILE_PATH lux/engine/editor/extensions/builtin/render_visibility.h)
 add_component(COMPONENT_NAME scene_render_meta_legacy NAMESPACE lux::engine::editor
-    OUTPUT_NAME lux_engine_scene_render_meta SOURCE_FILES src/RenderSystemEditorExports.cpp)
+    OUTPUT_NAME lux_engine_scene_render_meta_legacy SOURCE_FILES src/RenderSystemEditorExports.cpp)
 component_include_directories(scene_render_meta_legacy BUILD_TIME_EXPORT ${LUX_GENERATE_HEADER_DIR} INSTALL_TIME include)
 lux_classify_target(TARGET scene_render_meta_legacy LAYER EDITOR PRODUCT EDITOR ROLE PLUGIN)
 target_compile_definitions(scene_render_meta_legacy PRIVATE LUX_RENDER_EDITOR_LIBRARY)
@@ -20,7 +20,7 @@ engine_target_add_type_runtime_info(TARGET scene_render_meta_legacy METAS scene_
 set(_feature_root "${PROJECT_SOURCE_DIR}/modules/function/render/features")
 include(${_feature_root}/cmake/render_comm_operations.cmake)
 add_component(COMPONENT_NAME render_feature_meta_legacy NAMESPACE lux::engine::editor
-    OUTPUT_NAME lux_engine_function_render_feature_meta
+    OUTPUT_NAME lux_engine_function_render_feature_meta_legacy
     SOURCE_FILES src/RenderFeatureEditorExports.cpp)
 component_include_directories(render_feature_meta_legacy
     BUILD_TIME_EXPORT ${_feature_root}/include ${LUX_GENERATE_HEADER_DIR}

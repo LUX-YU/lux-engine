@@ -56,3 +56,15 @@ if(TARGET builtin_scene_render_plugin)
         INPUTS ${_render_source}/BuiltinSceneRenderExports.cpp "${_render_binary}/scene-render.declaration.json")
     add_dependencies(builtin_scene_render_plugin_plugin_identity builtin_scene_render_declaration)
 endif()
+
+# Optional legacy consumers load these libraries dynamically. EXCLUDE_FROM_ALL must not
+# leave their declared runtime dependencies unbuilt when a consumer is requested explicitly.
+foreach(consumer lux_editor_legacy lux_launcher_legacy sample_editor_test_legacy)
+    if(TARGET ${consumer})
+        foreach(provider render_feature_meta_legacy scene_render_meta_legacy physics2d_editor_legacy)
+            if(TARGET ${provider})
+                add_dependencies(${consumer} ${provider})
+            endif()
+        endforeach()
+    endif()
+endforeach()

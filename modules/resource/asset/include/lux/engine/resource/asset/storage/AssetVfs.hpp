@@ -1,7 +1,7 @@
 #pragma once
 // ============================================================================
-// AssetVfs is the explicit, low-frequency mount control plane. AssetVfsView
-// is the copyable read capability published to runtime and Editor consumers.
+// AssetVfs owns the mount control plane and supports direct reads. AssetVfsView
+// is a copyable read capability for consumers that do not own the mount table.
 // Each read retains one immutable mount-table snapshot for the entire provider
 // call, so mount publication cannot invalidate readers or provider lifetimes.
 // ============================================================================
@@ -87,6 +87,12 @@ namespace lux::asset
             std::span<const MountId> removed,
             std::span<const MountDesc> added
         );
+
+        [[nodiscard]] AssetId resolve(std::string_view vpath) const;
+        [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetStorageError>
+        open(AssetId id, std::size_t max_bytes = SIZE_MAX) const;
+        void enumerate(const std::function<void(const ProviderEntry&)>& fn) const;
+        [[nodiscard]] std::optional<std::string> pathOf(AssetId id) const;
 
         [[nodiscard]] AssetVfsView view() const noexcept;
         [[nodiscard]] std::size_t mountCount() const noexcept;

@@ -53,21 +53,29 @@ function(lux_add_plugin_exports)
     set(_identity "${_directory}/identity.cpp")
     set(_descriptor "${CMAKE_BINARY_DIR}/share/lux-engine/plugins/${_module}.json")
     set(_editor_arguments)
+    set(_install_descriptor "${_descriptor}")
+    set(_runtime_arguments)
+    set(_runtime_outputs)
     if(P_EDITOR_TARGET)
         list(APPEND _editor_arguments --editor-library "bin/$<TARGET_FILE_NAME:${P_EDITOR_TARGET}>")
         target_sources(${P_EDITOR_TARGET} PRIVATE "${_identity}")
         target_link_libraries(${P_EDITOR_TARGET} PRIVATE lux::engine::platform::dynamic_library)
+        if(P_EDITOR_TARGET MATCHES "_legacy$")
+            set(_install_descriptor "${_directory}/install/${_module}.json")
+            set(_runtime_arguments --runtime-output "${_install_descriptor}")
+            set(_runtime_outputs "${_install_descriptor}")
+        endif()
     endif()
     get_property(_value_fragments GLOBAL PROPERTY LUX_VALUE_METADATA_FRAGMENTS)
     set(_value_arguments)
     if(_value_fragments)
         set(_value_arguments --value-fragments ${_value_fragments})
     endif()
-    add_custom_command(OUTPUT "${_identity}" "${_descriptor}"
+    add_custom_command(OUTPUT "${_identity}" "${_descriptor}" ${_runtime_outputs}
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin_descriptor.py"
             --input "${P_DESCRIPTION}" --identity "${_identity}" --output "${_descriptor}"
             --library "bin/$<TARGET_FILE_NAME:${P_TARGET}>" --sdk-abi "${LUX_PLUGIN_SDK_ABI}"
-            ${_editor_arguments} --sources ${P_INPUTS} ${_value_arguments}
+            ${_editor_arguments} ${_runtime_arguments} --sources ${P_INPUTS} ${_value_arguments}
         DEPENDS "${P_DESCRIPTION}" ${P_INPUTS} ${_value_fragments} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin_descriptor.py"
         VERBATIM)
     # Composition may run outside either target's source directory. Give the
@@ -81,7 +89,8 @@ function(lux_add_plugin_exports)
     target_link_libraries(${P_TARGET} PRIVATE lux::engine::platform::dynamic_library)
     set_property(TARGET ${P_TARGET} PROPERTY LUX_PLUGIN_DESCRIPTION "${_descriptor}")
     set_property(GLOBAL APPEND PROPERTY LUX_PLUGIN_DESCRIPTIONS "${_descriptor}")
-    install(FILES "${_descriptor}" DESTINATION share/lux-engine/plugins)
+    set_property(GLOBAL APPEND PROPERTY LUX_INSTALLED_PLUGIN_DESCRIPTIONS "${_install_descriptor}")
+    install(FILES "${_install_descriptor}" DESTINATION share/lux-engine/plugins)
 endfunction()
 
 function(lux_generate_capabilities)
@@ -97,5 +106,16 @@ function(lux_generate_capabilities)
             --output "${output}" --inputs ${descriptions} ${base_arguments}
         DEPENDS ${descriptions} ${P_BASE} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin_capabilities.py" VERBATIM)
     add_custom_target(lux_plugin_capabilities ALL DEPENDS "${output}")
-    install(FILES "${output}" DESTINATION share/lux-engine/plugins)
+    get_property(installed_descriptions GLOBAL PROPERTY LUX_INSTALLED_PLUGIN_DESCRIPTIONS)
+    if(installed_descriptions STREQUAL descriptions)
+        install(FILES "${output}" DESTINATION share/lux-engine/plugins)
+    else()
+        set(installed_output "${CMAKE_BINARY_DIR}/plugin/install/catalog.json")
+        add_custom_command(OUTPUT "${installed_output}"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin_capabilities.py"
+                --output "${installed_output}" --inputs ${installed_descriptions} ${base_arguments}
+            DEPENDS ${installed_descriptions} ${P_BASE} "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/plugin_capabilities.py" VERBATIM)
+        add_custom_target(lux_installed_plugin_capabilities ALL DEPENDS "${installed_output}")
+        install(FILES "${installed_output}" DESTINATION share/lux-engine/plugins)
+    endif()
 endfunction()

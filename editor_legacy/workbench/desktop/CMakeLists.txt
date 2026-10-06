@@ -51,11 +51,11 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
 endif()
 
 add_component(COMPONENT_NAME desktop_shell_legacy NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/WorkspaceActions.cpp src/DesktopShell.cpp src/WindowInput.cpp src/WindowOutput.cpp src/Presentation.cpp src/UiRenderSyncStage.cpp)
+    SOURCE_FILES src/WorkspaceActions.cpp src/DesktopShell.cpp src/WindowOutput.cpp src/Presentation.cpp)
 component_include_directories(desktop_shell_legacy BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude INSTALL_TIME include)
 
-target_link_libraries(desktop_shell_legacy PUBLIC lux::engine::editor::workspace_store_legacy lux::engine::editor::editor_composition_legacy lux::engine::scene::scene_render
+target_link_libraries(desktop_shell_legacy PUBLIC lux_editor_ui lux::engine::editor::workspace_store_legacy lux::engine::editor::editor_composition_legacy lux::engine::scene::scene_render
     lux::engine::function::ui_rendering lux::engine::function::input lux::engine::platform::window)
 component_add_transitive_commands(desktop_shell_legacy
     "find_package(lux-engine-editor-composition REQUIRED COMPONENTS editor_composition_legacy)"
@@ -76,7 +76,6 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/DesktopError.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/DesktopShell.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/Presentation.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/WindowInput.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/WindowOutput.hpp
     DESTINATION include/lux/engine/editor/desktop COMPONENT lux_engine_editor_desktop)
 

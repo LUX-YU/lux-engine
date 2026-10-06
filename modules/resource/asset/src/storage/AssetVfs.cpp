@@ -66,97 +66,127 @@ namespace lux::asset
         return static_cast<bool>(state_);
     }
 
-    AssetId AssetVfsView::resolve(std::string_view vpath) const
+    namespace
     {
-        const auto parsed = VirtualPath::parse(vpath);
-        const auto table = snapshot(state_);
-        if (!parsed || !table)
+        AssetId resolve(const std::shared_ptr<detail::AssetVfsState>& state, std::string_view vpath)
         {
+            const auto parsed = VirtualPath::parse(vpath);
+            const auto table = snapshot(state);
+            if (!parsed || !table)
+            {
+                return {};
+            }
+
+            const auto relative = parsed->relPath();
+            for (const auto& mount : table->mounts)
+            {
+                if (std::string_view{mount.root}.substr(1U) != parsed->root())
+                {
+                    continue;
+                }
+                if (const auto id = mount.provider->resolve(relative))
+                {
+                    return *id;
+                }
+            }
             return {};
         }
 
-        const auto relative = parsed->relPath();
-        for (const auto& mount : table->mounts)
+        lux::cxx::expected<AssetBlob, EAssetStorageError> open(
+            const std::shared_ptr<detail::AssetVfsState>& state, AssetId id, std::size_t max_bytes
+        )
         {
-            if (std::string_view{mount.root}.substr(1U) != parsed->root())
+            const auto table = snapshot(state);
+            if (id.isNull() || !table)
             {
-                continue;
+                return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
             }
-            if (const auto id = mount.provider->resolve(relative))
-            {
-                return *id;
-            }
-        }
-        return {};
-    }
 
-    lux::cxx::expected<AssetBlob, EAssetStorageError> AssetVfsView::open(AssetId id, std::size_t max_bytes) const
-    {
-        const auto table = snapshot(state_);
-        if (id.isNull() || !table)
-        {
+            for (const auto& mount : table->mounts)
+            {
+                if (mount.provider->contains(id))
+                {
+                    return mount.provider->open(id, max_bytes);
+                }
+            }
             return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
         }
 
-        for (const auto& mount : table->mounts)
+        void enumerate(
+            const std::shared_ptr<detail::AssetVfsState>& state, const std::function<void(const ProviderEntry&)>& fn
+        )
         {
-            if (mount.provider->contains(id))
+            const auto table = snapshot(state);
+            if (!table)
             {
-                return mount.provider->open(id, max_bytes);
+                return;
+            }
+
+            std::unordered_set<AssetId> claimed_ids;
+            std::unordered_set<std::string> claimed_paths;
+            for (const auto& mount : table->mounts)
+            {
+                mount.provider->enumerate([&](const ProviderEntry& entry) {
+                    if (!claimed_ids.insert(entry.id).second || entry.tombstone)
+                    {
+                        return;
+                    }
+                    auto absolute = entry;
+                    absolute.vpath = mount.root + "/" + entry.vpath;
+                    if (claimed_paths.insert(absolute.vpath).second)
+                    {
+                        fn(absolute);
+                    }
+                });
             }
         }
-        return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);
-    }
 
-    void AssetVfsView::enumerate(const std::function<void(const ProviderEntry&)>& fn) const
-    {
-        const auto table = snapshot(state_);
-        if (!table)
+        std::optional<std::string> pathOf(const std::shared_ptr<detail::AssetVfsState>& state, AssetId id)
         {
-            return;
-        }
+            const auto table = snapshot(state);
+            if (id.isNull() || !table)
+            {
+                return std::nullopt;
+            }
 
-        std::unordered_set<AssetId> claimed_ids;
-        std::unordered_set<std::string> claimed_paths;
-        for (const auto& mount : table->mounts)
-        {
-            mount.provider->enumerate([&](const ProviderEntry& entry) {
-                if (!claimed_ids.insert(entry.id).second || entry.tombstone)
+            for (const auto& mount : table->mounts)
+            {
+                if (!mount.provider->contains(id))
                 {
-                    return;
+                    continue;
                 }
-                auto absolute = entry;
-                absolute.vpath = mount.root + "/" + entry.vpath;
-                if (claimed_paths.insert(absolute.vpath).second)
+                if (auto relative = mount.provider->pathOf(id))
                 {
-                    fn(absolute);
+                    return mount.root + "/" + *relative;
                 }
-            });
-        }
-    }
-
-    std::optional<std::string> AssetVfsView::pathOf(AssetId id) const
-    {
-        const auto table = snapshot(state_);
-        if (id.isNull() || !table)
-        {
+                return std::nullopt;
+            }
             return std::nullopt;
         }
 
-        for (const auto& mount : table->mounts)
-        {
-            if (!mount.provider->contains(id))
-            {
-                continue;
-            }
-            if (auto relative = mount.provider->pathOf(id))
-            {
-                return mount.root + "/" + *relative;
-            }
-            return std::nullopt;
-        }
-        return std::nullopt;
+    } // namespace
+
+    AssetId AssetVfsView::resolve(std::string_view path) const { return asset::resolve(state_, path); }
+    lux::cxx::expected<AssetBlob, EAssetStorageError> AssetVfsView::open(AssetId id, std::size_t limit) const
+    {
+        return asset::open(state_, id, limit);
     }
+    void AssetVfsView::enumerate(const std::function<void(const ProviderEntry&)>& visitor) const
+    {
+        asset::enumerate(state_, visitor);
+    }
+    std::optional<std::string> AssetVfsView::pathOf(AssetId id) const { return asset::pathOf(state_, id); }
+
+    AssetId AssetVfs::resolve(std::string_view path) const { return asset::resolve(state_, path); }
+    lux::cxx::expected<AssetBlob, EAssetStorageError> AssetVfs::open(AssetId id, std::size_t limit) const
+    {
+        return asset::open(state_, id, limit);
+    }
+    void AssetVfs::enumerate(const std::function<void(const ProviderEntry&)>& visitor) const
+    {
+        asset::enumerate(state_, visitor);
+    }
+    std::optional<std::string> AssetVfs::pathOf(AssetId id) const { return asset::pathOf(state_, id); }
 
     AssetVfs::AssetVfs() : state_(std::make_shared<detail::AssetVfsState>()) {}
 

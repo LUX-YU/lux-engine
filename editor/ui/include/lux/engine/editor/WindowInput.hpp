@@ -4,7 +4,7 @@ namespace lux::input
 {
     struct InputSnapshot;
 }
-namespace lux::editor::desktop
+namespace lux::editor
 {
     [[nodiscard]] lux::cxx::expected<void, lux::ui::EInputError>
     feedWindowInput(lux::ui::Root&, const input::InputSnapshot&) noexcept;

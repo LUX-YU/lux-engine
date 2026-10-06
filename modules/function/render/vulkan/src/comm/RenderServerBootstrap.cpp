@@ -1271,13 +1271,45 @@ namespace lux::render
                 return;
             }
 #endif
-            if (!t || !t->pool || t->frozen)
+            if (!t || t->frozen)
             {
                 reply.status = 1;
             }
             else if (p.new_extent.width == 0 || p.new_extent.height == 0)
             {
                 reply.status = 2;
+            }
+            else if (t->kind == GeneralRenderServer::Impl::RenderTargetEntry::EKind::SURFACE)
+            {
+                // Control dispatch precedes beginRenderFrame (no reset, unsubmitted fence).
+                // A native target has a PresentContext, not an offscreen image pool.
+                auto* provider = t->present ? t->present->provider() : nullptr;
+                const bool is_missing_present = !provider || !im.frame_driver_;
+                if (is_missing_present)
+                {
+                    reply.status = 1;
+                }
+                else
+                {
+                    auto waited = im.frame_driver_->waitAllFences();
+                    if (!waited)
+                    {
+                        reply.status = 3;
+                    }
+                    else
+                    {
+                        provider->requestResize({p.new_extent.width, p.new_extent.height});
+                        auto rebuilt = t->present->rebuild();
+                        if (!rebuilt)
+                            reply.status = 3;
+                        const auto extent = provider->extent();
+                        reply.extent = {extent.width, extent.height};
+                    }
+                }
+            }
+            else if (!t->pool)
+            {
+                reply.status = 1;
             }
             else
             {

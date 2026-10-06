@@ -1,9 +1,4 @@
 cmake_minimum_required(VERSION 3.22)
-set(LUX_EDITOR_LAYERING_MODE "CONSTRUCTION" CACHE STRING "Editor source responsibility qualification")
-set_property(CACHE LUX_EDITOR_LAYERING_MODE PROPERTY STRINGS CONSTRUCTION STRICT)
-if(NOT LUX_EDITOR_LAYERING_MODE MATCHES "^(CONSTRUCTION|STRICT)$")
-    message(FATAL_ERROR "Unknown LUX_EDITOR_LAYERING_MODE: ${LUX_EDITOR_LAYERING_MODE}")
-endif()
 
 project(lux-engine VERSION 0.1.0 LANGUAGES CXX)
 
@@ -105,11 +100,12 @@ if(BUILD_TESTING)
 endif()
 
 include(LuxPlugins)
+include(EditorTests)
 
 add_subdirectory(modules)
 add_subdirectory(engine)
 option(LUX_BUILD_EDITOR_LEGACY "Build the isolated, non-installed legacy editor" OFF)
-if(LUX_PROFILE_HAS_EDITOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/CMakeLists.txt")
+if(LUX_PROFILE_HAS_EDITOR)
     add_subdirectory(editor)
 endif()
 if(LUX_BUILD_EDITOR_LEGACY)
@@ -123,6 +119,7 @@ include(BuiltinPlugins)
 
 install(DIRECTORY examples/render-plugin/ DESTINATION share/lux-engine/examples/external-feature
     FILES_MATCHING PATTERN "*.cpp" PATTERN "*.hpp" PATTERN "*.json" PATTERN "*.py"
-    PATTERN "*.vert" PATTERN "*.frag" PATTERN "CMakeLists.txt")
+    PATTERN "*.vert" PATTERN "*.frag" PATTERN "CMakeLists.txt"
+    PATTERN "ExternalEditor*" EXCLUDE)
 
 lux_generate_capabilities()

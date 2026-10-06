@@ -21,7 +21,7 @@ namespace lux::editor
                 EditorFailure{EEditorError::SOURCE_FAILURE, "editor.executable", executable.error().native_code}
             );
         }
-        auto editor = installation / "bin/lux_editor";
+        auto editor = installation / "bin/lux_editor_legacy";
         editor += executable->extension();
         const auto launched = engine::platform::launchProcess(editor, arguments);
         if (!launched)

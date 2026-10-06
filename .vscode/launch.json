@@ -1,0 +1,352 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "lux_editor.exe",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\lux_editor.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Legacy: test project (enable LUX_BUILD_EDITOR_LEGACY)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\lux_editor_legacy.exe",
+            "args": [
+                "--project",
+                "E:\\SyncForder\\CodeRepos\\lux-engine-test\\demo\\demo.luxproject",
+                "--vk-validation"
+            ],
+            "cwd": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Legacy: CesiumMan (enable LUX_BUILD_EDITOR_LEGACY)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\lux_editor_legacy.exe",
+            "args": [
+                "--project",
+                "E:\\SyncForder\\CodeRepos\\lux-engine-test\\demo\\demo.luxproject",
+                "--vk-validation"
+            ],
+            "cwd": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Legacy launcher (enable LUX_BUILD_EDITOR_LEGACY)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\lux_launcher_legacy.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "deferred_stress_test.exe (--evsm)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\deferred_stress_test.exe",
+            // Flags: --no-floor | --grid <N> | --evsm (EVSM shadow technique instead of PCF).
+            "args": [
+                "--evsm"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "trajectory_line_test.exe",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\trajectory_line_test.exe",
+            // main() takes no args.
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "point_cloud_stress_test.exe",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\point_cloud_stress_test.exe",
+            // main() takes no args.
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "imgui_comm_render_test.exe",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\imgui_comm_render_test.exe",
+            // main() takes no args.
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "scene_view_integration_test.exe",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\scene_view_integration_test.exe",
+            // main() takes no args.
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "mesh_asset_test.exe",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\mesh_asset_test.exe",
+            // CPU-only mesh codec round-trip (incl. v2 LOD chain + legacy v1 tolerance); main() takes no args.
+            // Requires -DENABLE_ASSET_TEST=ON (added to .vscode/settings.json configureArgs).
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "sprite2d_offscreen_test.exe",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\sprite2d_offscreen_test.exe",
+            // S2-03 Sprite Slice A visual gate: Canvas2D sprite offscreen render + readback
+            // on a real device (built on DeviceRenderFixture). Skips if no Vulkan. main() takes no args.
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "image2d_visual_demo.exe (on-screen)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\image2d_visual_demo.exe",
+            // S2-03 VISUAL: Canvas2D sprites drawn ON SCREEN (swapchain), a colour grid +
+            // one orbiting sprite. Opens a window and loops until you close it. no args.
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "pixel_world_visual_stress.exe (on-screen, living pixel world)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\pixel_world_visual_stress.exe",
+            // FULL-STACK 2D showcase: a 92k-cell Noita-style pixel world (raining sand,
+            // dripping semi-transparent water, periodic digs) simulated by the real
+            // fixed-step CA, with ~700 sprites interleaved on the SAME priority axis
+            // (stars pop through the field every ~2.5s), breathing camera, all through
+            // the real gameplay bridges + wire. Console prints fps + CA stats. no args.
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "pixel_world_visual_stress.exe (--soak 600, unattended)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\pixel_world_visual_stress.exe",
+            // Slice D soak mode: runs unattended for N seconds then exits 0, printing
+            // tiles/scanned/upRev deltas/eventsDropped every 10 s (growth-trend evidence).
+            "args": [
+                "--soak",
+                "600"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "tilemap_visual_stress.exe (on-screen, 32k-tile map)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\tilemap_visual_stress.exe",
+            // A2-02 VISUAL STRESS: one 256x128 tilemap instance (R16 index texture +
+            // procedural 4x4 tileset atlas), auto-scrolling/zooming camera, a mining
+            // wave editing tiles every frame (dirty-rect region uploads), full terrain
+            // regeneration every ~15 s (worst-case full-map upload). Sprites below and
+            // above the map on the same priority axis. Close the window to exit. no args.
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "platformer2d_visual_demo.exe (on-screen, PLAYABLE)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\platformer2d_visual_demo.exe",
+            // PLAYABLE traditional-2D demo covering A2-01/A2-02/P2-01 in one window:
+            // tilemap level + colliders from one rect list, procedural spritesheet ->
+            // SpriteAtlas/SpriteAnimClip assets -> frame-animated player, kinematic
+            // character controller. CONTROLS: A/D or arrows = run, Space = jump;
+            // the cyan mid-height platform is ONE-WAY (jump up through it). no args.
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "pixel_parallel_determinism_stress.exe (headless, 1==N threads)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\pixel_parallel_determinism_stress.exe",
+            // I2-02 PERMANENT stress (cpu, no window): the same seeded 768x480 pixel
+            // world stepped 600 times under 1/2/4/8 worker threads; determinism hashes
+            // must be bit-identical at every 50-step checkpoint. Exits by itself. no args.
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "canvas2d_visual_stress.exe (on-screen, 50k sprites)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\canvas2d_visual_stress.exe",
+            // GPU-driven Canvas2D v2 VISUAL STRESS (2D counterpart of deferred_stress_test):
+            // 50k GPU-resident sprites (rainbow galaxy, created once = zero wire/frame) +
+            // orbiting/zooming camera (ONE op moves everything) + 1k dynamic swirl ring
+            // (one transform bulk/frame) + priority-wave layer pops (full order rebuilds).
+            // Console prints fps once per second. Close the window to exit. no args.
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "rigidbody2d_visual_demo.exe (on-screen, Box2D physics)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\lux-engine-framework\\bin\\rigidbody2d_visual_demo.exe",
+            // VISUAL: the Box2D-backed Physics2DSystem on screen — solid-tint rigid boxes
+            // fall, tip and STACK on a static floor between two walls (box-vs-box + rotation
+            // the swept demo solver cannot do), driven by the real Simulation2DSystem fixed
+            // step via addScene2D + addPhysics2D (the Box2D backer). CONTROLS: Space = drop a
+            // box, R = reset the pile. Close the window to exit. no args.
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                {
+                    "name": "PATH",
+                    "value": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1\\bin;D:\\Development\\vcpkg\\installed\\x64-windows\\bin;${env:PATH}"
+                }
+            ],
+            "console": "integratedTerminal"
+        }
+    ]
+}

@@ -1,5 +1,5 @@
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
-#include <lux/engine/editor/desktop/WindowInput.hpp>
+#include <lux/engine/editor/WindowInput.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 
 namespace lux::editor::desktop

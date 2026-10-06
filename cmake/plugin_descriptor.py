@@ -50,6 +50,7 @@ def main():
     for name in ("input", "identity", "output", "library", "sdk-abi"):
         parser.add_argument("--" + name, required=True)
     parser.add_argument("--editor-library")
+    parser.add_argument("--runtime-output")
     parser.add_argument("--value-fragments", nargs="*", default=[])
     parser.add_argument("--sources", nargs="+", required=True)
     args = parser.parse_args()
@@ -110,7 +111,11 @@ extern "C" LUX_PLUGIN_EXPORT const lux::engine::platform::LibraryExportIdentity 
     return &identity;
 }}
 '''
-    publish([(args.identity, code), (args.output, json.dumps(value, indent=2, ensure_ascii=False) + "\n")])
+    outputs = [(args.identity, code), (args.output, json.dumps(value, indent=2, ensure_ascii=False) + "\n")]
+    if args.runtime_output:
+        plugin.pop("editor_library", None)
+        outputs.append((args.runtime_output, json.dumps(value, indent=2, ensure_ascii=False) + "\n"))
+    publish(outputs)
 
 
 if __name__ == "__main__":

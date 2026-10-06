@@ -1,0 +1,15 @@
+add_component(COMPONENT_NAME flowforge_interaction_legacy NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/FlowInteraction.cpp)
+component_include_directories(flowforge_interaction_legacy BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+target_link_libraries(flowforge_interaction_legacy PUBLIC lux::engine::editor::flowforge_model_legacy)
+component_add_transitive_commands(flowforge_interaction_legacy "find_package(lux-engine-editor-flowforge-model REQUIRED COMPONENTS flowforge_model_legacy)")
+lux_classify_target(TARGET flowforge_interaction_legacy LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+lux_engine_install_components(PROJECT_NAME lux-engine-editor-flowforge-interaction VERSION ${PROJECT_VERSION}
+    NAMESPACE lux::engine::editor COMPONENTS flowforge_interaction_legacy)
+
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(editor_flowforge_interaction_test_legacy test/interaction.cpp)
+    target_link_libraries(editor_flowforge_interaction_test_legacy PRIVATE flowforge_interaction_legacy)
+    lux_editor_test_options(editor_flowforge_interaction_test_legacy)
+    add_test(NAME editor.flowforge_interaction_legacy COMMAND editor_flowforge_interaction_test_legacy)
+    set_tests_properties(editor.flowforge_interaction_legacy PROPERTIES LABELS "editor;native;P08")
+endif()

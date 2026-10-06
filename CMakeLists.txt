@@ -108,8 +108,16 @@ include(LuxPlugins)
 
 add_subdirectory(modules)
 add_subdirectory(engine)
-if(LUX_PROFILE_HAS_EDITOR)
+option(LUX_BUILD_EDITOR_LEGACY "Build the isolated, non-installed legacy editor" OFF)
+if(LUX_PROFILE_HAS_EDITOR AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/editor/CMakeLists.txt")
     add_subdirectory(editor)
+endif()
+if(LUX_BUILD_EDITOR_LEGACY)
+    if(NOT LUX_PROFILE_HAS_EDITOR)
+        message(FATAL_ERROR "Legacy Editor requires the EDITOR profile")
+    endif()
+    # Explicit build targets remain available; parent installation never includes this directory.
+    add_subdirectory(editor_legacy EXCLUDE_FROM_ALL)
 endif()
 include(BuiltinPlugins)
 
@@ -118,7 +126,3 @@ install(DIRECTORY examples/render-plugin/ DESTINATION share/lux-engine/examples/
     PATTERN "*.vert" PATTERN "*.frag" PATTERN "CMakeLists.txt")
 
 lux_generate_capabilities()
-if(LUX_PROFILE_HAS_EDITOR)
-    include(EditorArchitectureChecks)
-    lux_editor_check_architecture()
-endif()

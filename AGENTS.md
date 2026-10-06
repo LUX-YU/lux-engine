@@ -15,12 +15,11 @@
 lux 是一个项目簇；lux-engine 是其中的游戏引擎——`modules/` 提供可被外部项目
 复用的基础应用功能，`engine/` 提供游戏与编辑器共用的引擎功能，顶层 `editor/` 提供编辑器产品。
 依赖方向为 `editor -> engine -> modules`，Editor 可以直接使用 modules，底层不得反向链接 Editor。
-Editor 正式实现按 `editing -> authoring -> activities -> workbench -> application` 由内向外组织；
-层目录不是聚合库。通用服务工厂归 `modules/core/services`，EditorContext 归 workbench 共同组合；
-创建期按声明解析准确依赖，稳定宿主不显式创建或维护具体业务。项目纯描述和 Builder 归 `authoring/project`，文件与资产活动归
-`activities/project`，保存和文件发布归 `activities/persistence`；领域 UI 归对应 workbench 主题。
-P12 已移除旧产品根与兼容接线；正式路径只能依赖相应层的真实 provider。
-公开逻辑 include 和安装包不随物理目录迁移改名。
+Editor Framework v1 按 app/window/context/project/ui 组织，具体工具以后采用纵向目录。
+原五层实现归 editor_legacy，默认不构建、不安装，不得成为新 Editor 的直接或传递依赖。
+新 Editor 的唯一生命周期分别由 LuxEngine、EditorWindow、EditorContext、EditorUIRoot 承担。
+顶层 UI 由 EditorUIRoot 的 SparseSet 唯一拥有；LuxObject 仅保留原非拥有登记语义。
+本轮不接入旧服务容器、命令目录、写入协议或具体工具。通用基础的现有消费者不因此删除。
 编译与执行入口见
 `.vscode/launch.json` 与 `.vscode/settings.json`。
 
@@ -308,7 +307,5 @@ layer 就不会重设——Android 切回前台后画面永远停在旧 surface 
 
 P10Q 及后续 Editor 修改遵守 [docs/editor-quality.md](docs/editor-quality.md) 的 QR01–QR22。
 该文件只定义持续规则；唯一可变施工材料仍为 `.internal/editor-redesign/`，不另建状态账本。
-五层源和目标归属在现有架构规则的 `editor_layering` 组核验，最终资格显式使用
-`LUX_EDITOR_MIGRATION_STAGE=<当前获授权阶段>` 与 `LUX_EDITOR_LAYERING_MODE=STRICT`。
-同目录多 target 必须精确声明头文件的 provider 和安装清单；不得用整个目录的归属
-替代实际 SOURCES、生成依赖、编译器依赖与静态链接闭包。
+Framework v1 不沿用历史迁移阶段门禁；旧规则仅用于 legacy 对照。
+新框架核验真实 source/include/link/install 闭包，不允许 legacy 或旧 SDK 残留补全依赖。

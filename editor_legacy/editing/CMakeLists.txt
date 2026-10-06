@@ -1,0 +1,109 @@
+add_interface_component(COMPONENT_NAME editor_contracts_legacy NAMESPACE lux::engine::editor)
+component_include_directories(editor_contracts_legacy
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+find_package(lux-cxx REQUIRED COMPONENTS core compile_time)
+target_link_libraries(editor_contracts_legacy INTERFACE lux::cxx::core lux::cxx::compile_time)
+component_add_transitive_commands(editor_contracts_legacy "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)")
+lux_classify_target(TARGET editor_contracts_legacy LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+lux_engine_install_components(PROJECT_NAME lux-engine-editor-contracts VERSION ${PROJECT_VERSION}
+    NAMESPACE lux::engine::editor COMPONENTS editor_contracts_legacy)
+
+find_package(lux-cxx REQUIRED COMPONENTS compile_time)
+
+generate_visibility_header(
+    ENABLE_MACRO_NAME LUX_EDIT_HISTORY_LIBRARY
+    PUBLIC_MACRO_NAME LUX_EDIT_HISTORY_PUBLIC
+    DISABLE_DLL_MACRO_NAME LUX_EDIT_HISTORY_DLL_DISABLE
+    GENERATE_FILE_PATH lux/engine/editor/editing/history_visibility.h
+)
+add_component(
+    COMPONENT_NAME edit_history_legacy
+    NAMESPACE lux::engine::editor
+    OUTPUT_NAME lux_engine_edit_history_legacy
+    SOURCE_FILES src/history/EditTypes.cpp src/history/EditHistory.cpp src/history/EditExecutor.cpp
+)
+component_include_directories(
+    edit_history_legacy
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    INSTALL_TIME include
+)
+target_compile_definitions(edit_history_legacy PRIVATE LUX_EDIT_HISTORY_LIBRARY)
+lux_classify_target(TARGET edit_history_legacy LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+target_link_libraries(edit_history_legacy PUBLIC lux::cxx::compile_time lux::engine::editor::editor_contracts_legacy)
+component_add_transitive_commands(edit_history_legacy "find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts_legacy)")
+component_add_transitive_commands(edit_history_legacy "find_package(lux-cxx REQUIRED COMPONENTS compile_time)")
+
+lux_engine_install_components(
+    PROJECT_NAME lux-engine-edit-history
+    VERSION ${PROJECT_VERSION}
+    NAMESPACE lux::engine::editor
+    COMPONENTS edit_history_legacy
+)
+
+find_package(lux-cxx REQUIRED COMPONENTS compile_time container)
+generate_visibility_header(ENABLE_MACRO_NAME LUX_EDIT_SESSIONS_LIBRARY
+    PUBLIC_MACRO_NAME LUX_EDIT_SESSIONS_PUBLIC DISABLE_DLL_MACRO_NAME LUX_EDIT_SESSIONS_DLL_DISABLE
+    GENERATE_FILE_PATH lux/engine/editor/sessions/visibility.h)
+add_component(COMPONENT_NAME edit_sessions_legacy NAMESPACE lux::engine::editor OUTPUT_NAME lux_engine_edit_sessions_legacy
+    SOURCE_FILES src/sessions/PersistenceCheckpoint.cpp src/sessions/SessionState.cpp src/sessions/SessionStore.cpp)
+component_include_directories(edit_sessions_legacy
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR} INSTALL_TIME include)
+target_compile_definitions(edit_sessions_legacy PRIVATE LUX_EDIT_SESSIONS_LIBRARY)
+target_link_libraries(edit_sessions_legacy PUBLIC lux::engine::editor::edit_history_legacy lux::engine::editor::editor_contracts_legacy
+    lux::engine::resource::identity lux::engine::core::object PRIVATE lux::cxx::container)
+component_add_transitive_commands(edit_sessions_legacy
+    "find_package(lux-engine-core REQUIRED COMPONENTS object)"
+    "find_package(lux-engine-edit-history REQUIRED COMPONENTS edit_history_legacy)"
+    "find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts_legacy)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS identity)")
+lux_classify_target(TARGET edit_sessions_legacy LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+lux_engine_install_components(PROJECT_NAME lux-engine-edit-sessions VERSION ${PROJECT_VERSION}
+    NAMESPACE lux::engine::editor COMPONENTS edit_sessions_legacy)
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(editor_sessions_test_legacy test/sessions/sessions.cpp)
+    target_link_libraries(editor_sessions_test_legacy PRIVATE edit_sessions_legacy)
+    lux_editor_test_options(editor_sessions_test_legacy)
+    add_test(NAME editor.sessions COMMAND editor_sessions_test_legacy)
+    add_test(NAME editor.sessions_close_throw COMMAND editor_sessions_test_legacy close-throw)
+    add_test(NAME editor.sessions_close_contract COMMAND editor_sessions_test_legacy close-contract)
+    set_tests_properties(editor.sessions_close_throw editor.sessions_close_contract PROPERTIES LABELS "editor;native;P01-R1")
+    set_tests_properties(editor.sessions PROPERTIES LABELS "editor;native;P01")
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    if(MSVC)
+        add_test(NAME editor.sessions_scope_compile
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/sessions/scope_compile.py"
+                --build "${CMAKE_BINARY_DIR}")
+        set_tests_properties(editor.sessions_scope_compile PROPERTIES LABELS "editor;native;P01")
+    endif()
+endif()
+
+# Exact SDK ownership: sibling providers share a build include root, never an install manifest.
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/EditExecutor.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/EditHistory.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/EditOperation.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/EditTypes.hpp
+    DESTINATION include/lux/engine/editor/editing COMPONENT lux_engine_edit_history)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/ContentStamp.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/IEditSession.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/PersistenceCheckpoint.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/SessionPermits.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/SessionState.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/SessionStore.hpp
+    DESTINATION include/lux/engine/editor/sessions COMPONENT lux_engine_edit_sessions)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/EditorError.hpp
+    DESTINATION include/lux/engine/editor COMPONENT lux_engine_editor_contracts)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/views/ViewContent.hpp
+    DESTINATION include/lux/engine/editor/views COMPONENT lux_engine_editor_contracts)
+install(FILES ${LUX_GENERATE_HEADER_DIR}/lux/engine/editor/editing/history_visibility.h
+    DESTINATION include/lux/engine/editor/editing COMPONENT lux_engine_edit_history)
+install(FILES ${LUX_GENERATE_HEADER_DIR}/lux/engine/editor/sessions/visibility.h
+    DESTINATION include/lux/engine/editor/sessions COMPONENT lux_engine_edit_sessions)
+
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/SessionId.hpp
+    DESTINATION include/lux/engine/editor/sessions COMPONENT lux_engine_editor_contracts)

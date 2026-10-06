@@ -1,0 +1,7 @@
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(editor_task_monitor_test_legacy monitor.cpp)
+    target_link_libraries(editor_task_monitor_test_legacy PRIVATE tasks_ui_legacy)
+    lux_editor_test_options(editor_task_monitor_test_legacy)
+    add_test(NAME editor.tasks.monitor COMMAND editor_task_monitor_test_legacy)
+    set_tests_properties(editor.tasks.monitor PROPERTIES LABELS "editor;native;P10Q" TIMEOUT 60)
+endif()

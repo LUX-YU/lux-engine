@@ -21,7 +21,6 @@ namespace lux::ui
 
     enum class EInitError : std::uint8_t
     {
-        ALLOCATION_FAILURE,
         INVALID_FONT_DATA,
         INVALID_FONT_FACE,
         INVALID_GLYPH_RANGE,

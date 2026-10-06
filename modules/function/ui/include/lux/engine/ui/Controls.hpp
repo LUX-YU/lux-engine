@@ -33,7 +33,7 @@ namespace lux::ui
 
     public:
         object::TSignal<> activated{*this};
-        Button(ElementId id, std::string text);
+        Button(std::string text);
         void setText(std::string text);
 
     private:
@@ -44,7 +44,7 @@ namespace lux::ui
     class LUX_FUNCTION_PUBLIC Label final : public Element
     {
     public:
-        Label(ElementId id, std::string text = {});
+        Label(std::string text = {});
         void setText(std::string text);
         void setWrap(bool wrap) noexcept;
 
@@ -61,7 +61,7 @@ namespace lux::ui
 
     public:
         object::TSignal<EditResult> edited{*this};
-        CheckBox(ElementId id, std::string text, bool value = false);
+        CheckBox(std::string text, bool value = false);
         void setValue(bool value) noexcept;
         [[nodiscard]] bool value() const noexcept
         {
@@ -80,7 +80,7 @@ namespace lux::ui
 
     public:
         object::TSignal<EditResult> edited{*this};
-        TextEdit(ElementId id, std::string value = {});
+        TextEdit(std::string value = {});
         void setValue(std::string value);
         void setHint(std::string hint);
         void finishEdit(bool cancel = false) noexcept override;
@@ -117,7 +117,7 @@ namespace lux::ui
 
     public:
         object::TSignal<EditResult> edited{*this};
-        NumericEdit(ElementId id, VNumericValue value);
+        NumericEdit(VNumericValue value);
         void setValue(VNumericValue value) noexcept;
         void finishEdit(bool cancel = false) noexcept override;
         [[nodiscard]] bool editing() const noexcept
@@ -153,7 +153,7 @@ namespace lux::ui
 
     public:
         object::TSignal<EditResult> edited{*this};
-        Choice(ElementId id, std::vector<ChoiceOption> options, std::int64_t value = 0);
+        Choice(std::vector<ChoiceOption> options, std::int64_t value = 0);
         // Owner maintenance replaces candidate values; this never emits an editing signal.
         void setOptions(std::vector<ChoiceOption> options) noexcept;
         void setValue(std::int64_t value) noexcept;
@@ -168,4 +168,4 @@ namespace lux::ui
         std::vector<ChoiceOption> options_;
         std::int64_t value_{};
     };
-}
+} // namespace lux::ui

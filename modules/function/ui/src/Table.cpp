@@ -1,7 +1,7 @@
-#include <lux/engine/ui/Table.hpp>
-#include <lux/engine/ui/detail/NullTerminatedText.hpp>
-#include <lux/engine/ui/detail/Contract.hpp>
 #include <imgui.h>
+#include <lux/engine/ui/Table.hpp>
+#include <lux/engine/ui/detail/Contract.hpp>
+#include <lux/engine/ui/detail/NullTerminatedText.hpp>
 #include <utility>
 
 namespace lux::ui
@@ -58,7 +58,7 @@ namespace lux::ui
 
     TableScope::TableScope(const TableSpec& spec) noexcept
     {
-        if (!spec.id.isValid() || spec.columns == 0U)
+        if (spec.key.empty() || spec.columns == 0U)
         {
             detail::failContract();
         }
@@ -71,7 +71,7 @@ namespace lux::ui
         {
             flags |= ImGuiTableFlags_RowBg;
         }
-        const detail::NullTerminatedText id_text{spec.id.name()};
+        const detail::NullTerminatedText id_text{spec.key};
         const bool open = ImGui::BeginTable(id_text.c_str(), static_cast<int>(spec.columns), flags);
         if (open && spec.first_column_width > 0.0F)
         {
@@ -93,4 +93,4 @@ namespace lux::ui
         ImGui::TableSetColumnIndex(1);
     }
 
-}
+} // namespace lux::ui

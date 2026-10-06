@@ -1,19 +1,19 @@
-#include <lux/engine/ui/Controls.hpp>
-#include <lux/engine/ui/Pane.hpp>
-#include <lux/engine/ui/Root.hpp>
-#include <lux/engine/ui/InputEvent.hpp>
-#include <lux/engine/object/ObjectEvent.hpp>
-#include <lux/engine/ui/detail/Contract.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
+#include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/ui/Command.hpp>
+#include <lux/engine/ui/Controls.hpp>
+#include <lux/engine/ui/InputEvent.hpp>
+#include <lux/engine/ui/Pane.hpp>
+#include <lux/engine/ui/Root.hpp>
+#include <lux/engine/ui/detail/Contract.hpp>
 namespace ImStb
 {
 #include <imstb_textedit.h>
 }
-#include <imgui_stdlib.h>
 #include <algorithm>
 #include <cmath>
+#include <imgui_stdlib.h>
 
 namespace lux::ui
 {
@@ -26,14 +26,18 @@ namespace lux::ui
         {
             auto* command = event.getIf<Command>();
             if (!command || !editing)
+            {
                 return false;
+            }
             const auto id = command->id.name();
             const bool is_undo = id == "lux.edit.undo";
             const bool is_redo = id == "lux.edit.redo";
             const bool other_text = id == "lux.edit.cut" || id == "lux.edit.copy" || id == "lux.edit.paste" ||
                                     id == "lux.edit.delete" || id == "lux.edit.select-all";
             if (!is_undo && !is_redo && !other_text)
+            {
                 return false;
+            }
             command->enabled = (is_undo && undo) || (is_redo && redo);
             command->result = ECommandDispatchResult::DISABLED;
             if (command->phase == ECommandPhase::EXECUTE && command->enabled)
@@ -47,7 +51,9 @@ namespace lux::ui
         ImGuiInputTextState* applyTextCommand(unsigned id, int& pending) noexcept
         {
             if (!pending)
+            {
                 return nullptr;
+            }
             const auto command = std::exchange(pending, 0);
             if (auto* state = ImGui::GetInputTextState(id))
             {
@@ -85,11 +91,12 @@ namespace lux::ui
         void requireOwner(const object::LuxObject& object) noexcept
         {
             if (!object.isOnAffinityThread())
+            {
                 detail::failContract();
+            }
         }
-    }
-    Button::Button(ElementId id, std::string text)
-        : Element(std::move(id)), text_(std::move(text)), label_(text_ + "###button")
+    } // namespace
+    Button::Button(std::string text) : Element(), text_(std::move(text)), label_(text_ + "###button")
     {
         setStretch({0, 0});
     }
@@ -110,9 +117,11 @@ namespace lux::ui
     void Button::draw() noexcept
     {
         if (ImGui::Button(label_.c_str(), {rect().size.width, rect().size.height}))
+        {
             static_cast<void>(emit(activated));
+        }
     }
-    Label::Label(ElementId id, std::string text) : Element(std::move(id)), text_(std::move(text))
+    Label::Label(std::string text) : Element(), text_(std::move(text))
     {
         setStretch({0, 0});
     }
@@ -139,13 +148,17 @@ namespace lux::ui
     void Label::draw() noexcept
     {
         if (wrap_)
+        {
             ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + rect().size.width);
+        }
         ImGui::TextUnformatted(text_.c_str(), text_.c_str() + text_.size());
         if (wrap_)
+        {
             ImGui::PopTextWrapPos();
+        }
     }
-    CheckBox::CheckBox(ElementId id, std::string text, bool value)
-        : Element(std::move(id)), text_(std::move(text)), label_(text_ + "###value"), value_(value)
+    CheckBox::CheckBox(std::string text, bool value)
+        : Element(), text_(std::move(text)), label_(text_ + "###value"), value_(value)
     {
         setStretch({0, 0});
     }
@@ -163,10 +176,11 @@ namespace lux::ui
     void CheckBox::draw() noexcept
     {
         if (ImGui::Checkbox(label_.c_str(), &value_))
+        {
             static_cast<void>(emit(edited, EditResult{true, true, true, false}));
+        }
     }
-    TextEdit::TextEdit(ElementId id, std::string value)
-        : Element(std::move(id)), value_(std::move(value))
+    TextEdit::TextEdit(std::string value) : Element(), value_(std::move(value))
     {
         setStretch({1, 0});
     }
@@ -175,7 +189,9 @@ namespace lux::ui
         requireOwner(*this);
         value_ = std::move(value);
         if (!editing_)
+        {
             before_ = value_;
+        }
     }
     void TextEdit::setHint(std::string hint)
     {
@@ -186,23 +202,35 @@ namespace lux::ui
     {
         requireOwner(*this);
         if (!std::exchange(editing_, false))
+        {
             return;
+        }
         if (cancel)
+        {
             value_ = before_;
+        }
         if (auto* attached = attachedRoot())
+        {
             attached->releaseFocus(*this);
+        }
         static_cast<void>(emit(edited, EditResult{cancel, false, !cancel, cancel}));
     }
     void TextEdit::event(object::EventView& event) noexcept
     {
         if (textCommand(event, editing_, can_undo_, can_redo_, text_command_))
+        {
             return;
+        }
         const auto* input = event.getIf<VInputEvent>();
         if (!input)
+        {
             return;
+        }
         const auto* focus = std::get_if<WindowFocus>(input);
         if ((focus && !focus->focused) || std::holds_alternative<PointerCancel>(*input))
+        {
             finishEdit();
+        }
     }
     SizeHint TextEdit::sizeHintContent() noexcept
     {
@@ -211,10 +239,14 @@ namespace lux::ui
     void TextEdit::draw() noexcept
     {
         if (!editing_)
+        {
             before_ = value_;
+        }
         const bool cancel = editing_ && ImGui::IsKeyPressed(ImGuiKey_Escape, false);
         if (text_command_)
+        {
             ImGui::SetKeyboardFocusHere();
+        }
         ImGui::SetNextItemWidth(rect().size.width);
         auto result = editResult(ImGui::InputTextWithHint("##value", hint_.c_str(), &value_));
         if (const auto* state = applyTextCommand(ImGui::GetItemID(), text_command_))
@@ -226,9 +258,13 @@ namespace lux::ui
         text_id_ = ImGui::GetItemID();
         textUndoState(text_id_, can_undo_, can_redo_);
         if (root().menuTargets(*this))
+        {
             result.committed = false;
+        }
         if (result.began)
+        {
             editing_ = true;
+        }
         if (cancel)
         {
             value_ = before_;
@@ -236,14 +272,19 @@ namespace lux::ui
         }
         const bool left_text = editing_ && !root().menuTargets(*this) && !ImGui::IsItemActive() && !result.cancelled;
         if (left_text)
+        {
             result.committed = true;
+        }
         if (result.committed || result.cancelled)
+        {
             editing_ = false;
+        }
         if (hasEdit(result))
+        {
             static_cast<void>(emit(edited, result));
+        }
     }
-    NumericEdit::NumericEdit(ElementId id, VNumericValue value)
-        : Element(std::move(id)), value_(value), before_(value)
+    NumericEdit::NumericEdit(VNumericValue value) : Element(), value_(value), before_(value)
     {
         setStretch({1, 0});
     }
@@ -251,30 +292,44 @@ namespace lux::ui
     {
         requireOwner(*this);
         if (value.index() != value_.index())
+        {
             detail::failContract();
+        }
         value_ = value;
     }
     void NumericEdit::finishEdit(bool cancel) noexcept
     {
         requireOwner(*this);
         if (!std::exchange(editing_, false))
+        {
             return;
+        }
         if (cancel)
+        {
             value_ = before_;
+        }
         if (auto* attached = attachedRoot())
+        {
             attached->releaseFocus(*this);
+        }
         static_cast<void>(emit(edited, EditResult{cancel, false, !cancel, cancel}));
     }
     void NumericEdit::event(object::EventView& event) noexcept
     {
         if (textCommand(event, editing_, can_undo_, can_redo_, text_command_))
+        {
             return;
+        }
         const auto* input = event.getIf<VInputEvent>();
         if (!input)
+        {
             return;
+        }
         const auto* focus = std::get_if<WindowFocus>(input);
         if ((focus && !focus->focused) || std::holds_alternative<PointerCancel>(*input))
+        {
             finishEdit();
+        }
     }
     bool NumericEdit::setSpec(NumericSpec spec) noexcept
     {
@@ -283,9 +338,13 @@ namespace lux::ui
         const bool valid =
             same(spec.minimum) && same(spec.maximum) && same(spec.step) && std::isfinite(spec.speed) && spec.speed > 0;
         if (!valid || (spec.mode == EScalarEditMode::SLIDER && (!spec.minimum || !spec.maximum)))
+        {
             return false;
+        }
         if (spec.minimum && spec.maximum && *spec.minimum > *spec.maximum)
+        {
             return false;
+        }
         spec_ = std::move(spec);
         return true;
     }
@@ -296,11 +355,16 @@ namespace lux::ui
     bool NumericEdit::valueValid() const noexcept
     {
         const bool finite = std::visit(
-            [](auto value) {
+            [](auto value)
+            {
                 if constexpr (std::is_floating_point_v<decltype(value)>)
+                {
                     return std::isfinite(value);
+                }
                 else
+                {
                     return true;
+                }
             },
             value_
         );
@@ -310,27 +374,45 @@ namespace lux::ui
     {
         const auto previous = value_;
         if (!editing_)
+        {
             before_ = value_;
+        }
         const bool cancel = editing_ && ImGui::IsKeyPressed(ImGuiKey_Escape, false);
         if (text_command_)
+        {
             ImGui::SetKeyboardFocusHere();
+        }
         ImGui::SetNextItemWidth(rect().size.width);
         auto result = std::visit(
-            [&](auto& value) {
+            [&](auto& value)
+            {
                 using Value = std::remove_cvref_t<decltype(value)>;
-                constexpr auto data_type = [] {
+                constexpr auto data_type = []
+                {
                     if constexpr (std::same_as<Value, std::int32_t>)
+                    {
                         return ImGuiDataType_S32;
+                    }
                     else if constexpr (std::same_as<Value, std::uint32_t>)
+                    {
                         return ImGuiDataType_U32;
+                    }
                     else if constexpr (std::same_as<Value, std::int64_t>)
+                    {
                         return ImGuiDataType_S64;
+                    }
                     else if constexpr (std::same_as<Value, std::uint64_t>)
+                    {
                         return ImGuiDataType_U64;
+                    }
                     else if constexpr (std::same_as<Value, float>)
+                    {
                         return ImGuiDataType_Float;
+                    }
                     else
+                    {
                         return ImGuiDataType_Double;
+                    }
                 }();
                 const auto* minimum = spec_.minimum ? &std::get<Value>(*spec_.minimum) : nullptr;
                 const auto* maximum = spec_.maximum ? &std::get<Value>(*spec_.maximum) : nullptr;
@@ -350,7 +432,9 @@ namespace lux::ui
                     break;
                 }
                 if (const auto* state = applyTextCommand(ImGui::GetItemID(), text_command_))
+                {
                     changed |= ImGui::DataTypeApplyFromText(state->TextA.Data, data_type, &value, format);
+                }
                 return editResult(changed);
             },
             value_
@@ -363,9 +447,13 @@ namespace lux::ui
         text_id_ = ImGui::GetItemID();
         textUndoState(text_id_, can_undo_, can_redo_);
         if (root().menuTargets(*this))
+        {
             result.committed = false;
+        }
         if (result.began)
+        {
             editing_ = true;
+        }
         if (cancel)
         {
             value_ = before_;
@@ -373,14 +461,20 @@ namespace lux::ui
         }
         const bool left_text = editing_ && !root().menuTargets(*this) && !ImGui::IsItemActive() && !result.cancelled;
         if (left_text)
+        {
             result.committed = true;
+        }
         if (result.committed || result.cancelled)
+        {
             editing_ = false;
+        }
         if (hasEdit(result))
+        {
             static_cast<void>(emit(edited, result));
+        }
     }
-    Choice::Choice(ElementId id, std::vector<ChoiceOption> options, std::int64_t value)
-        : Element(std::move(id)), options_(std::move(options)), value_(value)
+    Choice::Choice(std::vector<ChoiceOption> options, std::int64_t value)
+        : Element(), options_(std::move(options)), value_(value)
     {
         setStretch({1, 0});
     }
@@ -389,7 +483,9 @@ namespace lux::ui
         requireOwner(*this);
         options_ = std::move(options);
         if (std::ranges::find(options_, value_, &ChoiceOption::value) == options_.end())
+        {
             value_ = options_.empty() ? -1 : options_.front().value;
+        }
     }
     void Choice::setValue(std::int64_t value) noexcept
     {
@@ -400,7 +496,9 @@ namespace lux::ui
     {
         float width{40};
         for (const auto& option : options_)
+        {
             width = std::max(width, textSize(option.label).width + 32);
+        }
         return fieldHint(width);
     }
     void Choice::draw() noexcept
@@ -409,7 +507,9 @@ namespace lux::ui
             std::find_if(options_.begin(), options_.end(), [&](const auto& option) { return option.value == value_; });
         ImGui::SetNextItemWidth(rect().size.width);
         if (!ImGui::BeginCombo("##value", current == options_.end() ? "" : current->label.c_str()))
+        {
             return;
+        }
         for (std::size_t i{}; i < options_.size(); ++i)
         {
             const auto& option = options_[i];
@@ -423,4 +523,4 @@ namespace lux::ui
         }
         ImGui::EndCombo();
     }
-}
+} // namespace lux::ui

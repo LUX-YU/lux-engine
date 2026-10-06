@@ -1,13 +1,13 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
-#include <lux/engine/ui/Root.hpp>
 #include <lux/engine/editor/WindowInput.hpp>
 #include <lux/engine/input/Input.hpp>
 #include <lux/engine/input/InputSnapshot.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
+#include <lux/engine/ui/Root.hpp>
 
 using namespace lux;
 using namespace lux::editor;
@@ -16,9 +16,7 @@ namespace
     class Pane final : public ui::Pane
     {
     public:
-        Pane(std::string name, unsigned& count)
-            : ui::Pane(name), destroyed_(count),
-              layout_(ui::ElementId{"content"}), text_(ui::ElementId{"text"}, "Content")
+        Pane(std::string name, unsigned& count) : ui::Pane(name), destroyed_(count), layout_{}, text_("Content")
         {
             assert(layout_.addElement(text_) && addElement(layout_));
         }

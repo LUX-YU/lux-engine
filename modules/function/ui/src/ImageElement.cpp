@@ -1,21 +1,21 @@
+#include <algorithm>
+#include <cmath>
+#include <imgui.h>
 #include <lux/engine/ui/ImageElement.hpp>
 #include <lux/engine/ui/Pane.hpp>
-#include <lux/engine/ui/detail/ImageEncoding.hpp>
 #include <lux/engine/ui/detail/Contract.hpp>
 #include <lux/engine/ui/detail/DragDropEncoding.hpp>
-#include <imgui.h>
-#include <cmath>
-#include <algorithm>
+#include <lux/engine/ui/detail/ImageEncoding.hpp>
 
 namespace lux::ui
 {
-    ImageElement::ImageElement(ElementId id)
-        : Element(std::move(id))
-    {}
+    ImageElement::ImageElement() : Element() {}
     void ImageElement::setImage(render::RTextureHandle image) noexcept
     {
         if (!isOnAffinityThread())
+        {
             detail::failContract();
+        }
         image_ = image;
     }
 
@@ -24,7 +24,9 @@ namespace lux::ui
         const bool is_invalid_uv = !std::isfinite(minimum.x) || !std::isfinite(minimum.y) ||
                                    !std::isfinite(maximum.x) || !std::isfinite(maximum.y);
         if (!isOnAffinityThread() || is_invalid_uv)
+        {
             detail::failContract();
+        }
         uv_min_ = minimum;
         uv_max_ = maximum;
     }
@@ -34,7 +36,9 @@ namespace lux::ui
         const bool is_invalid_size =
             !std::isfinite(size.width) || !std::isfinite(size.height) || size.width < 0 || size.height < 0;
         if (!isOnAffinityThread() || is_invalid_size)
+        {
             detail::failContract();
+        }
         size_ = size;
     }
 
@@ -55,7 +59,9 @@ namespace lux::ui
         interaction_.size = available;
         interaction_.resized = previous_size != interaction_.size;
         if (interaction_.size.width <= 0 || interaction_.size.height <= 0)
+        {
             return;
+        }
         const ImVec2 extent{interaction_.size.width, interaction_.size.height};
         if (image_.isValid())
         {

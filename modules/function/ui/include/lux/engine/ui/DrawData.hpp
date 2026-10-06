@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/engine/function/visibility.h>
 #include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
+#include <lux/engine/function/visibility.h>
 
 #include <cstdint>
 #include <memory>
@@ -13,7 +13,7 @@ namespace lux::ui
     {
         class VulkanRenderer;
         class Context;
-    }
+    } // namespace detail
 
     enum class ECaptureError : std::uint8_t
     {
@@ -24,7 +24,6 @@ namespace lux::ui
         NO_FRAME,
         INVALID_INPUT,
         UNSUPPORTED_CALLBACK,
-        ALLOCATION_FAILURE
     };
 
     // Owns the finished draw lists. Texture tokens describe usage, not texture ownership.

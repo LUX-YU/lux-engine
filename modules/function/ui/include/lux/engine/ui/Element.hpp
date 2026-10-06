@@ -31,7 +31,7 @@ namespace lux::ui
     class LUX_FUNCTION_PUBLIC Element : public lux::object::LuxObject
     {
     public:
-        Element(ElementId id);
+        Element() noexcept = default;
         [[nodiscard]] Root* attachedRoot() const noexcept;
         [[nodiscard]] Pane* containingPane() const noexcept
         {
@@ -40,10 +40,6 @@ namespace lux::ui
         ~Element() noexcept override;
         [[nodiscard]] Root& root() const noexcept;
         [[nodiscard]] Pane& pane() const noexcept;
-        [[nodiscard]] const ElementId& id() const noexcept
-        {
-            return id_;
-        }
         [[nodiscard]] bool visible() const noexcept
         {
             return visible_;
@@ -95,8 +91,11 @@ namespace lux::ui
 
     protected:
         // Only composites override this; leaf controls reject children even via a base reference.
-        [[nodiscard]] virtual bool acceptsElements() const noexcept { return false; }
-        void clearChildren() noexcept;
+        [[nodiscard]] virtual bool acceptsElements() const noexcept
+        {
+            return false;
+        }
+        void clearElements() noexcept;
         [[nodiscard]] virtual SizeHint sizeHintContent() noexcept;
         [[nodiscard]] virtual SizeHint measureContent(float width) noexcept;
         virtual void arrangeContent() noexcept {}
@@ -108,14 +107,16 @@ namespace lux::ui
         friend class Root;
         friend class Pane;
         friend class Layout;
-        bool allowsGenericStructure() const noexcept final { return false; }
+        bool allowsGenericStructure() const noexcept final
+        {
+            return false;
+        }
         void assignPane(Pane*) noexcept;
         [[nodiscard]] SizeHint constrain(SizeHint) const noexcept;
         std::uint64_t hint_epoch_{}, measure_epoch_{};
         SizeHint intrinsic_hint_, measured_hint_;
         float measured_width_{};
         Element* element_parent_{};
-        ElementId id_;
         Pane* pane_{};
         Rect rect_;
         Point draw_origin_;
@@ -125,4 +126,4 @@ namespace lux::ui
         EAlignment horizontal_alignment_{EAlignment::FILL}, vertical_alignment_{EAlignment::FILL};
         bool visible_{true}, enabled_{true}, hovered_{};
     };
-}
+} // namespace lux::ui

@@ -1,15 +1,15 @@
-#include <lux/engine/ui/Root.hpp>
-#include <lux/engine/ui/Pane.hpp>
-#include <lux/engine/ui/Layout.hpp>
-#include <lux/engine/ui/Controls.hpp>
-#include <lux/engine/object/ObjectRuntime.hpp>
-#include <lux/engine/object/ObjectEvent.hpp>
-#include <cassert>
-#include <array>
-#include <iostream>
-#include <thread>
-#include <new>
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
+#include <array>
+#include <cassert>
+#include <iostream>
+#include <lux/engine/object/ObjectEvent.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
+#include <lux/engine/ui/Controls.hpp>
+#include <lux/engine/ui/Layout.hpp>
+#include <lux/engine/ui/Pane.hpp>
+#include <lux/engine/ui/Root.hpp>
+#include <new>
+#include <thread>
 
 namespace
 {
@@ -21,40 +21,83 @@ namespace
     class Item final : public ui::Element
     {
     public:
-        Item(const char* id, Counts& counts)
-            : Element(ui::ElementId{id}), counts_(counts)
-        {}
-        ~Item() override { ++counts_.destroyed; }
+        Item(const char* id, Counts& counts) : Element{}, counts_(counts) {}
+        ~Item() override
+        {
+            ++counts_.destroyed;
+        }
         void (*on_draw)(Item&) noexcept {};
         void (*on_measure)(Item&) noexcept {};
         void (*on_event)(Item&) noexcept {};
+        void (*on_finish)(Item&) noexcept {};
         ui::Pane* window{};
         ui::Element* candidate{};
-        unsigned draws{}, measurements{}, events{};
+        unsigned draws{}, measurements{}, events{}, finishes{};
+        void finishEdit(bool = false) noexcept override
+        {
+            ++finishes;
+            if (on_finish)
+            {
+                on_finish(*this);
+            }
+        }
+
     private:
-        void draw() noexcept override { ++draws; if (on_draw) on_draw(*this); }
+        void draw() noexcept override
+        {
+            ++draws;
+            if (on_draw)
+            {
+                on_draw(*this);
+            }
+        }
         ui::SizeHint measureContent(float) noexcept override
         {
             ++measurements;
-            if (on_measure) on_measure(*this);
+            if (on_measure)
+            {
+                on_measure(*this);
+            }
             return {{10, 10}, {40, 40}};
         }
-        void event(object::EventView&) noexcept override { ++events; if (on_event) on_event(*this); }
+        void event(object::EventView&) noexcept override
+        {
+            ++events;
+            if (on_event)
+            {
+                on_event(*this);
+            }
+        }
         Counts& counts_;
     };
     class Window final : public ui::Pane
     {
     public:
-        Window(const char* id, Counts& counts)
-            : Pane(id), counts_(counts)
-        {}
-        ~Window() override { clearChildren(); ++counts_.destroyed; }
+        Window(const char* id, Counts& counts) : Pane(id), counts_(counts) {}
+        ~Window() override
+        {
+            clearContent();
+            ++counts_.destroyed;
+        }
         void (*on_update)(Window&) noexcept {};
         object::ObjectRuntime* messages{};
-        void receive(const unsigned&) noexcept { ++counts_.callbacks; }
-        bool dispatching() const noexcept { return isDispatching(); }
+        void receive(const unsigned&) noexcept
+        {
+            ++counts_.callbacks;
+        }
+        bool dispatching() const noexcept
+        {
+            return isDispatching();
+        }
+
     private:
-        void update() noexcept override { if (on_update) on_update(*this); }
+        void update() noexcept override
+        {
+            if (on_update)
+            {
+                on_update(*this);
+            }
+        }
         Counts& counts_;
     };
     static_assert(!std::derived_from<ui::Pane, ui::Element>);
@@ -68,10 +111,15 @@ namespace
         auto& pane = ui_test::makePane<Window>(**root, "close-intent", counts);
         const auto initial = pane.id();
         unsigned direct{};
-        auto connection = object::LuxObject::connect(&pane, &ui::Pane::closeRequested, [&]() noexcept {
-            assert(pane.hasCloseRequest() && pane.visible());
-            ++direct;
-        });
+        auto connection = object::LuxObject::connect(
+            &pane,
+            &ui::Pane::closeRequested,
+            [&]() noexcept
+            {
+                assert(pane.hasCloseRequest() && pane.visible());
+                ++direct;
+            }
+        );
         assert(connection);
         pane.requestClose();
         pane.requestClose();
@@ -90,12 +138,22 @@ namespace
         assert(!pane.hasCloseRequest() && !pane.attachedRoot() && !pane.parent() && counts.destroyed == 0);
         auto receiver = std::make_unique<object::LuxObject>();
         unsigned queued{};
-        auto hint = object::LuxObject::connect(&pane, &ui::Pane::closeRequested, receiver.get(),
-            [&]() noexcept { ++queued; }, object::EDelivery::QUEUED);
+        auto hint = object::LuxObject::connect(
+            &pane,
+            &ui::Pane::closeRequested,
+            receiver.get(),
+            [&]() noexcept { ++queued; },
+            object::EDelivery::QUEUED
+        );
         assert(hint);
         const auto capacity = messages.statistics().capacity_per_batch;
         for (std::size_t i = 1; i < capacity; ++i)
-            assert(object::detail::post(object::detail::makeMessage([]() noexcept {})) == object::detail::EPostStatus::POSTED);
+        {
+            assert(
+                object::detail::post(object::detail::makeMessage([]() noexcept {})) ==
+                object::detail::EPostStatus::POSTED
+            );
+        }
         pane.requestClose();
         pane.dismissCloseRequest();
         pane.requestClose();
@@ -115,8 +173,8 @@ namespace
         auto root = ui::Root::create();
         assert(root);
         auto& pane = ui_test::makePane<Window>(**root, "external", counts);
-        ui::Layout layout(ui::ElementId{"layout"});
-        ui::Button button(ui::ElementId{"button"}, "Button");
+        ui::Layout layout{};
+        ui::Button button("Button");
         assert(layout.addElement(button) && pane.addElement(layout));
         const auto root_id = (*root)->objectId();
         const auto identity = pane.id();
@@ -137,10 +195,13 @@ namespace
         assert((*replacement)->addPane(std::move(*owner)) && pane.id() != remounted);
         const auto current_root = (*replacement)->objectId();
         const auto current_id = pane.id();
-        std::thread other([&] {
-            auto result = (*replacement)->withPane(current_root, current_id, forbidden);
-            assert(!result && result.error() == ui::EPaneError::WRONG_THREAD);
-        });
+        std::thread other(
+            [&]
+            {
+                auto result = (*replacement)->withPane(current_root, current_id, forbidden);
+                assert(!result && result.error() == ui::EPaneError::WRONG_THREAD);
+            }
+        );
         other.join();
         owner = (*replacement)->removePane(pane);
         assert(owner && !button.attachedRoot());
@@ -160,10 +221,14 @@ namespace
             {
                 assert(layout_.addElement(external) && addElement(layout_));
             }
-            ~Composite() override { ++counts_.destroyed; }
+            ~Composite() override
+            {
+                ++counts_.destroyed;
+            }
+
         private:
             Counts& counts_;
-            ui::Layout layout_{ui::ElementId{"layout"}};
+            ui::Layout layout_{};
         };
         auto& pane = ui_test::makePane<Composite>(**root, counts, external);
         assert(external.parent() == pane.content() && external.attachedRoot() == root->get());
@@ -188,7 +253,7 @@ namespace
         object::LuxObject plain;
         assert(!plain.addChild(first) && !first.addChild(plain));
         assert(!second.setParent(&first) && first.parent() == root->get() && second.parent() == root->get());
-        ui::Button leaf(ui::ElementId{"leaf"}, "Leaf");
+        ui::Button leaf("Leaf");
         Item child("child", counts);
         auto invalid = leaf.addElement(child);
         assert(!invalid && invalid.error() == ui::EPaneError::INVALID_TREE && !child.parent());
@@ -214,13 +279,20 @@ namespace
         assert(!occupied && occupied.error() == ui::EPaneError::OCCUPIED);
         assert(next && pane.content() == old.get() && old->attachedRoot());
         unsigned notices{};
-        auto notice = object::LuxObject::connect(root->get(), &ui::Root::objectRemoved,
-            [&](object::LuxObject* value) noexcept {
-                if (value != old.get()) return;
+        auto notice = object::LuxObject::connect(
+            root->get(),
+            &ui::Root::objectRemoved,
+            [&](object::LuxObject* value) noexcept
+            {
+                if (value != old.get())
+                {
+                    return;
+                }
                 assert(pane.content() == next.get() && !old->parent() && !(*root)->focusedElement());
                 assert(!pane.replaceContent(*old));
                 ++notices;
-            });
+            }
+        );
         assert(notice && pane.replaceContent(*next) && notices == 1);
         assert(!old->attachedRoot() && counts.destroyed == 0);
         old.reset();
@@ -238,14 +310,16 @@ namespace
         assert(root);
         auto& pane = ui_test::makePane<Window>(**root, "callback", counts);
         pane.messages = &messages;
-        pane.on_update = [](Window& self) noexcept {
+        pane.on_update = [](Window& self) noexcept
+        {
             auto removal = self.root().removePane(self);
             assert(!removal && removal.error() == ui::EPaneError::BUSY);
             assert(self.messages->collectRetired() == 0);
             self.on_update = nullptr;
-            self.root().deferChange(self, [](object::LuxObject& target) noexcept {
-                static_cast<Window&>(target).setVisible(false);
-            });
+            self.root().deferChange(
+                self,
+                [](object::LuxObject& target) noexcept { static_cast<Window&>(target).setVisible(false); }
+            );
         };
         assert((*root)->update({}, nullptr) && counts.destroyed == 0 && pane.visible());
         (*root)->applyPendingChanges();
@@ -273,10 +347,13 @@ namespace
         assert(candidates[0].get() == original && !original->id().isValid() && !original->parent());
         assert((*root)->windowRevision() == revision && (*root)->panes().size() == 1);
         assert((*root)->findPane(old.id()) == &old);
-        std::thread worker([&] {
-            auto result = (*root)->addPane(std::move(candidates[0]));
-            assert(!result && result.error() == ui::EPaneError::WRONG_THREAD);
-        });
+        std::thread worker(
+            [&]
+            {
+                auto result = (*root)->addPane(std::move(candidates[0]));
+                assert(!result && result.error() == ui::EPaneError::WRONG_THREAD);
+            }
+        );
         worker.join();
         assert(candidates[0].get() == original && (*root)->addPane(std::move(candidates[0])));
         std::cout << "Nth invalid candidate and wrong thread preserve original owners/UI PASS\n";
@@ -291,7 +368,8 @@ namespace
         Item old("old", counts), candidate("new", counts);
         old.window = &pane;
         old.candidate = &candidate;
-        const auto rejected = [](Item& self) noexcept {
+        const auto rejected = [](Item& self) noexcept
+        {
             const auto result = self.window->replaceContent(*self.candidate);
             assert(!result && result.error() == ui::EPaneError::BUSY);
             assert(self.window->content() == &self && !self.candidate->parent());
@@ -317,8 +395,8 @@ namespace
         auto root = ui::Root::create({.docking = false});
         assert(root);
         auto& pane = ui_test::makePane<Window>(**root, "layout-retirement", counts);
-        ui::Layout layout(ui::ElementId{"fields"}, ui::ELayoutType::FORM);
-        ui::Label label(ui::ElementId{"label"}, "Field");
+        ui::Layout layout(ui::ELayoutType::FORM);
+        ui::Label label("Field");
         auto old = std::make_unique<Item>("field", counts);
         assert(layout.addElement(label) && layout.addElement(*old) && pane.addElement(layout));
         Item candidate("field", counts);
@@ -343,13 +421,15 @@ namespace
         auto& existing = ui_test::makePane<Window>(**root, "existing", counts);
         std::vector<std::unique_ptr<ui::Pane>> owners;
         for (auto name : {"first", "second", "third"})
+        {
             owners.push_back(std::make_unique<Window>(name, counts));
+        }
         auto* first = owners[0].get();
         auto* second = owners[1].get();
-        auto dock = (*root)->prepareDockTree({
-            {{ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, 0.5F, {existing.id()}}},
-            {{0, {{20, 30}, {600, 400}}, false}}
-        });
+        auto dock = (*root)->prepareDockTree(
+            {{{ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, 0.5F, {existing.id()}}},
+             {{0, {{20, 30}, {600, 400}}, false}}}
+        );
         assert(dock && (*root)->commitDockTree(std::move(*dock)));
         const auto revision = (*root)->windowRevision();
         auto failed = (*root)->addPanes(owners);
@@ -362,15 +442,22 @@ namespace
         assert(unchanged.surfaces.size() == 1 && unchanged.surfaces[0].node == 0 && !unchanged.surfaces[0].floating);
         owners.pop_back();
         unsigned notifications{};
-        auto connection = object::LuxObject::connect(root->get(), &ui::Root::paneChanged,
-            [&](const ui::PaneChanged& change) noexcept {
-                if (!change.attached) return;
+        auto connection = object::LuxObject::connect(
+            root->get(),
+            &ui::Root::paneChanged,
+            [&](const ui::PaneChanged& change) noexcept
+            {
+                if (!change.attached)
+                {
+                    return;
+                }
                 assert(!owners[0] && !owners[1] && first->parent() == root->get() && second->parent() == root->get());
                 assert((*root)->findPane(first->id()) == first && (*root)->findPane(second->id()) == second);
                 auto result = (*root)->clearPanes();
                 assert(!result && result.error() == ui::EPaneError::BUSY);
                 ++notifications;
-            });
+            }
+        );
         assert(connection && (*root)->addPanes(owners) && notifications == 2 && counts.destroyed == 1);
         const auto first_id = first->id();
         auto removed = (*root)->removePane(*first);
@@ -388,7 +475,10 @@ namespace
         {
         public:
             object::TSignal<unsigned> changed{*this};
-            auto send() noexcept { return emit(changed, 1U); }
+            auto send() noexcept
+            {
+                return emit(changed, 1U);
+            }
         } sender;
         Counts counts;
         auto root = ui::Root::create();
@@ -398,7 +488,12 @@ namespace
             auto& old = ui_test::makePane<Window>(**root, "same", counts);
             const auto identity = old.id();
             auto connection = object::LuxObject::connect(
-                &sender, &Sender::changed, &old, &Window::receive, object::EDelivery::QUEUED);
+                &sender,
+                &Sender::changed,
+                &old,
+                &Window::receive,
+                object::EDelivery::QUEUED
+            );
             assert(connection && sender.send().queued == 1);
             (*root)->deferChange(old, [](object::LuxObject&) noexcept { std::abort(); });
             auto owner = (*root)->removePane(old);
@@ -420,6 +515,63 @@ namespace
         std::cout << "Object and Pane generations independently reject stale routing and reused registrations PASS\n";
     }
 
+    void reparenting()
+    {
+        Counts counts;
+        auto first = ui::Root::create({.docking = false});
+        auto second = ui::Root::create({.docking = false});
+        assert(first && second);
+        auto& source = ui_test::makePane<Window>(**first, "Source", counts);
+        auto& destination = ui_test::makePane<Window>(**second, "Destination", counts);
+        ui::Layout a, b, nested;
+        Item child("identical label", counts), other("identical label", counts), candidate("new", counts);
+        assert(child.objectId() != other.objectId());
+        assert(source.addElement(a) && destination.addElement(b));
+        assert(a.addElement(nested) && nested.addElement(child) && a.addElement(other));
+        assert(child.finishes == 0 && other.finishes == 0);
+        assert((*first)->requestFocus(child) && (*first)->capturePointer(child));
+        (*first)->deferChange(child, [](object::LuxObject&) noexcept { std::abort(); });
+        child.window = &destination;
+        child.candidate = &candidate;
+        child.on_finish = [](Item& self) noexcept
+        {
+            const auto blocked = self.window->content()->addElement(*self.candidate);
+            assert(!blocked && blocked.error() == ui::EPaneError::BUSY && !self.candidate->parent());
+        };
+        auto connection = object::LuxObject::connect(
+            first->get(),
+            &ui::Root::objectRemoved,
+            [&](object::LuxObject* removed) noexcept
+            {
+                if (removed == &child)
+                {
+                    assert(child.parent() == &b && child.containingPane() == &destination);
+                    assert(!(*first)->focusedElement() && !nested.firstChild());
+                }
+            }
+        );
+        assert(connection && b.addElement(child));
+        assert(child.finishes == 1 && child.attachedRoot() == second->get());
+        assert(!(*first)->focusedElement() && (*second)->requestFocus(child));
+        (*first)->applyPendingChanges(); // The old-root intent was revoked, not rebound to the same object.
+        assert(b.addElement(child) && child.finishes == 1);
+        auto occupied = source.addElement(child);
+        assert(!occupied && occupied.error() == ui::EPaneError::OCCUPIED && child.parent() == &b);
+        auto cycle = nested.addElement(a);
+        assert(!cycle && cycle.error() == ui::EPaneError::INVALID_TREE && nested.parent() == &a);
+        child.on_finish = nullptr;
+        ui::Layout detached;
+        assert(detached.addElement(child) && !child.containingPane() && !(*second)->focusedElement());
+        assert(child.finishes == 2 && child.parent() == &detached);
+        assert(b.addElement(child) && child.finishes == 3);
+
+        // Promoting an existing descendant replaces its old composite without ending the gesture twice.
+        assert(source.replaceContent(other));
+        assert(source.content() == &other && !a.parent() && other.containingPane() == &source);
+        assert(other.finishes == 1 && nested.containingPane() == nullptr);
+        std::cout << "UI reparent preserves ownership, ends interaction once and revokes both routing domains PASS\n";
+    }
+
     void synchronousBorrow(object::ObjectRuntime&)
     {
         Counts counts;
@@ -430,7 +582,8 @@ namespace
         const auto id = window.id();
         bool called{};
         auto forbidden = [](ui::Pane&) { std::abort(); };
-        auto visit = [&](ui::Pane& pane) {
+        auto visit = [&](ui::Pane& pane)
+        {
             called = true;
             assert(&pane == &window && !window.dispatching());
             auto nested = (*root)->withPane(root_id, id, forbidden);
@@ -439,7 +592,7 @@ namespace
             assert(!removed && removed.error() == ui::EPaneError::BUSY);
             auto maintained = (*root)->update({}, nullptr);
             assert(!maintained && maintained.error() == ui::ECaptureError::FRAME_OPEN);
-            ui::Layout content(ui::ElementId{"local"});
+            ui::Layout content{};
             auto refused = pane.addElement(content);
             assert(!refused && refused.error() == ui::EPaneError::BUSY && !content.parent());
         };
@@ -449,12 +602,13 @@ namespace
         assert(!stale && stale.error() == ui::EPaneError::INVALID_ID);
         std::cout << "Synchronous borrow freezes structure, nested maintenance and stale targets PASS\n";
     }
-}
+} // namespace
 
 int main()
 {
     auto& created = lux::object::ObjectRuntime::instance();
     auto& messages = created;
+    reparenting();
     closeIntent(messages);
     externalRoot(messages);
     ownership(messages);

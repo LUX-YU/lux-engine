@@ -114,7 +114,6 @@ namespace lux::object
         using ConnectResult = lux::cxx::expected<Connection, EConnectError>;
 
         LuxObject() noexcept;
-        explicit LuxObject(LuxObject* parent) noexcept;
         virtual ~LuxObject();
         LuxObject(const LuxObject&) = delete;
         LuxObject& operator=(const LuxObject&) = delete;

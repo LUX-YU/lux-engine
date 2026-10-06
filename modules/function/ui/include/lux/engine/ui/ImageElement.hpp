@@ -1,9 +1,9 @@
 #pragma once
 
 #include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
-#include <lux/engine/ui/Geometry.hpp>
-#include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/DragDrop.hpp>
+#include <lux/engine/ui/Element.hpp>
+#include <lux/engine/ui/Geometry.hpp>
 #include <optional>
 
 namespace lux::ui
@@ -24,7 +24,7 @@ namespace lux::ui
     class LUX_FUNCTION_PUBLIC ImageElement : public Element
     {
     public:
-        ImageElement(ElementId id);
+        ImageElement();
 
         void setImage(render::RTextureHandle image) noexcept;
         [[nodiscard]] render::RTextureHandle image() const noexcept

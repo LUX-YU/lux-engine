@@ -21,7 +21,7 @@ namespace lux::ui
     class LUX_FUNCTION_PUBLIC Layout final : public Element
     {
     public:
-        Layout(ElementId id, ELayoutType type = ELayoutType::VERTICAL);
+        Layout(ELayoutType type = ELayoutType::VERTICAL);
         void setType(ELayoutType type) noexcept;
         void setSpacing(Vec2 spacing) noexcept;
         void setMargins(Insets margins) noexcept;
@@ -30,7 +30,10 @@ namespace lux::ui
         [[nodiscard]] ELayoutStatus status() const noexcept;
 
     private:
-        bool acceptsElements() const noexcept override { return true; }
+        bool acceptsElements() const noexcept override
+        {
+            return true;
+        }
         struct Cell final
         {
             Element* element{};
@@ -52,7 +55,7 @@ namespace lux::ui
         void fit(std::vector<Track>& tracks, float available, float spacing, float origin) noexcept;
         [[nodiscard]] SizeHint trackHint() const noexcept;
         [[nodiscard]] Element* elementOf(object::LuxObject*) const noexcept;
-        static float extent(const std::vector<Track>& tracks, float Track::*member, float spacing) noexcept;
+        static float extent(const std::vector<Track>& tracks, float Track::* member, float spacing) noexcept;
         void place() noexcept;
 
         ELayoutType type_;
@@ -65,4 +68,4 @@ namespace lux::ui
         std::vector<Track> columns_, rows_;
         std::vector<std::size_t> saturated_;
     };
-}
+} // namespace lux::ui

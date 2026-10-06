@@ -1,12 +1,13 @@
 #pragma once
+#include <cstdint>
 #include <lux/engine/function/visibility.h>
-#include <lux/engine/ui/Ids.hpp>
+#include <string_view>
 
 namespace lux::ui
 {
     struct TableSpec final
     {
-        ElementIdView id;
+        std::string_view key;
         std::uint32_t columns{};
         bool headers{};
         bool borders{true};
@@ -36,4 +37,4 @@ namespace lux::ui
     };
 
     LUX_FUNCTION_PUBLIC void propertyRow(std::string_view label) noexcept;
-}
+} // namespace lux::ui

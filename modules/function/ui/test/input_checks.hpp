@@ -1,11 +1,11 @@
 #pragma once
-#include <exception>
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
-#include <lux/engine/ui/Root.hpp>
-#include <lux/engine/ui/Pane.hpp>
-#include <lux/engine/ui/Layout.hpp>
-#include <lux/engine/object/ObjectEvent.hpp>
 #include <cassert>
+#include <exception>
+#include <lux/engine/object/ObjectEvent.hpp>
+#include <lux/engine/ui/Layout.hpp>
+#include <lux/engine/ui/Pane.hpp>
+#include <lux/engine/ui/Root.hpp>
 
 namespace input_checks
 {
@@ -13,7 +13,7 @@ namespace input_checks
     class Content final : public ui::Element
     {
     public:
-        Content() : ui::Element(ui::ElementId{"input"}) {}
+        Content() : ui::Element{} {}
         unsigned keys{}, compositions{}, cancellations{}, focus_losses{};
 
     private:
@@ -26,7 +26,9 @@ namespace input_checks
                 compositions += std::holds_alternative<ui::Composition>(*input);
                 cancellations += std::holds_alternative<ui::PointerCancel>(*input);
                 if (const auto* focus = std::get_if<ui::WindowFocus>(input))
+                {
                     focus_losses += !focus->focused;
+                }
             }
         }
     };
@@ -44,7 +46,9 @@ namespace input_checks
         void event(object::EventView& event) noexcept override
         {
             if (auto* input = event.getIf<ui::VInputEvent>())
+            {
                 keys += std::holds_alternative<ui::Key>(*input);
+            }
         }
     };
     inline void run()
@@ -59,7 +63,9 @@ namespace input_checks
         ui::DrawData data;
         const auto turn = [&] { assert(root.update({{640, 480}, 0.016F}, &data)); };
         for (int i = 0; i < 3; ++i)
+        {
             turn();
+        }
         assert(root.requestFocus(owner.content));
         assert(root.capturePointer(owner.content));
         owner.content.setVisible(false);
@@ -111,4 +117,4 @@ namespace input_checks
         turn();
         assert(owner.content.focus_losses == losses + 1); // The later ImGui batch does not repeat cancellation.
     }
-}
+} // namespace input_checks

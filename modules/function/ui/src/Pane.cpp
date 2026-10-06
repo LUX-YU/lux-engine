@@ -18,10 +18,10 @@ namespace lux::ui
             detail::failContract(); // Only Root can surrender a registered window's unique owner.
         }
         beginDestruction();
-        clearChildren();
+        clearContent();
     }
 
-    void Pane::clearChildren() noexcept
+    void Pane::clearContent() noexcept
     {
         if (!content_)
         {

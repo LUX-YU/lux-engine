@@ -963,7 +963,9 @@ namespace lux::ui
         }
         auto& parent = pane ? static_cast<object::LuxObject&>(*pane) : *element;
         auto* root = pane ? pane->root_ : element->attachedRoot();
-        const bool is_busy = isDispatching() || (root && !root->attachmentSafe());
+        auto* old_root = child.attachedRoot();
+        const bool is_busy = isDispatching() || (root && !root->attachmentSafe()) ||
+                             (old_root && old_root != root && !old_root->attachmentSafe());
         if (is_busy)
         {
             return cxx::unexpected(EPaneError::BUSY);
@@ -972,37 +974,94 @@ namespace lux::ui
         {
             return cxx::unexpected(EPaneError::NOT_ATTACHED);
         }
-        if (previous && (!replace || previous == &child))
+        auto validate = [&]() noexcept -> PaneResult<void>
+        {
+            const auto valid = validateRelation(child, &parent);
+            if (!valid)
+            {
+                using enum object::EObjectTreeError;
+                if (valid.error() == CLOSED)
+                {
+                    return cxx::unexpected(EPaneError::CLOSED);
+                }
+                return cxx::unexpected(valid.error() == BUSY ? EPaneError::BUSY : EPaneError::INVALID_TREE);
+            }
+            if (previous && previous != &child && !validateRelation(*previous, nullptr))
+            {
+                return cxx::unexpected(EPaneError::BUSY);
+            }
+            return {};
+        };
+        if (auto valid = validate(); !valid)
+        {
+            return valid;
+        }
+        if (child.parent() == &parent && (!previous || previous == &child))
+        {
+            return {};
+        }
+        if (previous && !replace)
         {
             return cxx::unexpected(EPaneError::OCCUPIED);
         }
-        if (child.parent())
+
+        bool detached_mutation{}, other_mutation{};
+        Mutation destination{root ? root->impl_->committing_structure : detached_mutation};
+        Mutation source{old_root && old_root != root ? old_root->impl_->committing_structure : other_mutation};
+        // Complete active interaction while the old routing and containing Pane are still valid.
+        // Every borrowed participant remains alive, including detached composites.
+        if (pane)
         {
-            return cxx::unexpected(EPaneError::ALREADY_ATTACHED);
+            pane->beginTreeVisit();
         }
-        auto valid = validateRelation(child, &parent);
-        if (!valid)
+        else
         {
-            using enum object::EObjectTreeError;
-            if (valid.error() == CLOSED)
-            {
-                return cxx::unexpected(EPaneError::CLOSED);
-            }
-            return cxx::unexpected(valid.error() == BUSY ? EPaneError::BUSY : EPaneError::INVALID_TREE);
+            element->beginTreeVisit();
         }
-        if (previous && !validateRelation(*previous, nullptr))
+        child.beginTreeVisit();
+        if (previous && previous != &child)
         {
-            return cxx::unexpected(EPaneError::BUSY);
+            previous->beginTreeVisit();
         }
-        for (auto* node = parent.firstChild(); node; node = node->nextSibling())
+        bool child_in_previous{};
+        for (auto* ancestor = child.parent(); ancestor && !child_in_previous; ancestor = ancestor->parent())
         {
-            if (node != previous && static_cast<Element*>(node)->id().view() == child.id().view())
-            {
-                return cxx::unexpected(EPaneError::DUPLICATE_ID);
-            }
+            child_in_previous = ancestor == previous;
         }
-        bool detached_mutation{};
-        Mutation commit{root ? root->impl_->committing_structure : detached_mutation};
+        if (child.parent() && !child_in_previous)
+        {
+            visitSubtree(child, [](object::LuxObject& node) noexcept { static_cast<Element&>(node).finishEdit(); });
+        }
+        if (previous && previous != &child)
+        {
+            visitSubtree(*previous, [](object::LuxObject& node) noexcept { static_cast<Element&>(node).finishEdit(); });
+        }
+        if (previous && previous != &child)
+        {
+            previous->endTreeVisit();
+        }
+        child.endTreeVisit();
+        if (pane)
+        {
+            pane->endTreeVisit();
+        }
+        else
+        {
+            element->endTreeVisit();
+        }
+        if (auto valid = validate(); !valid)
+        {
+            return valid;
+        }
+
+        if (old_root)
+        {
+            old_root->releaseElement(child);
+        }
+        if (child.pane_ && child.pane_->content_ == &child)
+        {
+            child.pane_->content_ = nullptr;
+        }
         if (previous)
         {
             if (root)
@@ -1020,13 +1079,21 @@ namespace lux::ui
         {
             pane->content_ = &child;
         }
-        if (root)
+        if (old_root)
+        {
+            ++old_root->impl_->layout_epoch;
+        }
+        if (root && root != old_root)
         {
             ++root->impl_->layout_epoch;
-            if (previous)
-            {
-                root->notifyRemoved(*previous);
-            }
+        }
+        if (old_root)
+        {
+            old_root->notifyRemoved(child);
+        }
+        if (root && previous)
+        {
+            root->notifyRemoved(*previous);
         }
         return {};
     }
@@ -1300,7 +1367,9 @@ namespace lux::ui
         auto& rect = element.rect_;
         element.draw_origin_ = {parent_origin.x + rect.position.x, parent_origin.y + rect.position.y};
         const auto origin = element.draw_origin_;
-        ImGui::PushID(element.id().name().data(), element.id().name().data() + element.id().name().size());
+        const auto identity = element.objectId();
+        ImGui::PushID(static_cast<int>(identity.index));
+        ImGui::PushID(static_cast<int>(identity.gen));
         ImGui::SetCursorScreenPos({origin.x, origin.y});
         ImGui::PushClipRect({origin.x, origin.y}, {origin.x + rect.size.width, origin.y + rect.size.height}, true);
         ImGui::BeginDisabled(!element.enabled());
@@ -1333,6 +1402,7 @@ namespace lux::ui
         }
         ImGui::EndDisabled();
         ImGui::PopClipRect();
+        ImGui::PopID();
         ImGui::PopID();
     }
 

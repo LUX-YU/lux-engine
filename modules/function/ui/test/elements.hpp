@@ -1,13 +1,13 @@
 #pragma once
-#include <exception>
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
+#include <cassert>
+#include <cmath>
+#include <exception>
+#include <lux/engine/object/ObjectEvent.hpp>
+#include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
-#include <lux/engine/ui/Controls.hpp>
-#include <lux/engine/object/ObjectEvent.hpp>
-#include <cassert>
-#include <cmath>
 #include <type_traits>
 
 namespace element_checks
@@ -20,9 +20,10 @@ namespace element_checks
     {
     public:
         template <class Parent>
-        Item(Parent& parent, const char* id, ui::Size preferred = {40, 20})
-            : ui::Element(ui::ElementId{id}), preferred(preferred)
-        { assert(parent.addElement(*this)); }
+        Item(Parent& parent, const char* id, ui::Size preferred = {40, 20}) : ui::Element{}, preferred(preferred)
+        {
+            assert(parent.addElement(*this));
+        }
         ui::Size preferred;
         unsigned draws{}, updates{}, measures{}, events{};
         bool wrap{}, accept{};
@@ -51,16 +52,15 @@ namespace element_checks
         {
             ++events;
             if (accept)
+            {
                 event.accept();
+            }
         }
     };
     class Owner final : public ui::Pane
     {
     public:
-        Owner() : ui::Pane("Owner"), item(std::make_unique<Item>(*this, "old"))
-        {
-
-        }
+        Owner() : ui::Pane("Owner"), item(std::make_unique<Item>(*this, "old")) {}
         std::unique_ptr<Item> item;
         bool replace{};
 
@@ -68,12 +68,18 @@ namespace element_checks
         void update() noexcept override
         {
             if (!std::exchange(replace, false))
+            {
                 return;
-            root().deferChange(*this, [](object::LuxObject& target) noexcept {
-                auto& self = static_cast<Owner&>(target);
-                self.item.reset();
-                self.item = std::make_unique<Item>(self, "new");
-            });
+            }
+            root().deferChange(
+                *this,
+                [](object::LuxObject& target) noexcept
+                {
+                    auto& self = static_cast<Owner&>(target);
+                    self.item.reset();
+                    self.item = std::make_unique<Item>(self, "new");
+                }
+            );
         }
     };
 
@@ -88,7 +94,7 @@ namespace element_checks
             assert(root.capturePointer(*owner.item));
             owner.replace = true;
             assert(root.update({}, nullptr));
-            assert(owner.item->id().view() == ui::ElementIdView{"old"} && owner.item->updates == 1);
+            assert(owner.item->updates == 1);
             root.applyPendingChanges();
             assert(!root.focusedElement() && owner.item->updates == 0);
             assert(root.update({}, nullptr));
@@ -106,11 +112,11 @@ namespace element_checks
         auto& pane = ui_test::makePane<ui::Pane>(root, "Layout");
         {
             std::vector<std::unique_ptr<ui::Layout>> levels;
-            levels.push_back(std::make_unique<ui::Layout>(ui::ElementId{"deep"}));
+            levels.push_back(std::make_unique<ui::Layout>());
             assert(pane.addElement(*levels.back()));
             for (unsigned i = 1; i < 32; ++i)
             {
-                auto level = std::make_unique<ui::Layout>(ui::ElementId{"nested"});
+                auto level = std::make_unique<ui::Layout>();
                 assert(levels.back()->addElement(*level));
                 levels.push_back(std::move(level));
             }
@@ -124,10 +130,12 @@ namespace element_checks
                 assert(wrapped.measures == 1);
             }
             while (!levels.empty())
+            {
                 levels.pop_back();
+            }
         }
         {
-            ui::Layout row(ui::ElementId{"saturation"}, ui::ELayoutType::HORIZONTAL);
+            ui::Layout row(ui::ELayoutType::HORIZONTAL);
             assert(pane.addElement(row));
             row.setSpacing({0, 0});
             Item a(row, "a", {10, 20}), b(row, "b", {10, 20}), c(row, "c", {10, 20});
@@ -139,7 +147,7 @@ namespace element_checks
             assert(c.rect().position.x == 60);
         }
         {
-            ui::Layout layout(ui::ElementId{"row"}, ui::ELayoutType::HORIZONTAL);
+            ui::Layout layout(ui::ELayoutType::HORIZONTAL);
             assert(pane.addElement(layout));
             layout.setSpacing({0, 0});
             Item one(layout, "one"), two(layout, "two");
@@ -161,7 +169,7 @@ namespace element_checks
             assert(two.rect().size.width == 40);
         }
         {
-            ui::Layout form(ui::ElementId{"form"}, ui::ELayoutType::FORM);
+            ui::Layout form(ui::ELayoutType::FORM);
             assert(pane.addElement(form));
             form.setSpacing({4, 2});
             Item label(form, "label", {30, 20}), field(form, "field", {80, 20});
@@ -180,7 +188,7 @@ namespace element_checks
             assert(form.status() == ui::ELayoutStatus::VALID); // No draw/measure needed after a structure change.
         }
         {
-            ui::Layout grid(ui::ElementId{"grid"}, ui::ELayoutType::GRID);
+            ui::Layout grid(ui::ELayoutType::GRID);
             assert(pane.addElement(grid));
             grid.setColumns(2);
             grid.setSpacing({4, 6});
@@ -194,10 +202,10 @@ namespace element_checks
             assert(c.rect().position.x == 56 && c.rect().position.y == 3);
         }
         {
-            ui::Layout vertical(ui::ElementId{"vertical"});
+            ui::Layout vertical{};
             assert(pane.addElement(vertical));
             vertical.setSpacing({0, 0});
-            ui::Layout row(ui::ElementId{"nested"}, ui::ELayoutType::HORIZONTAL);
+            ui::Layout row(ui::ELayoutType::HORIZONTAL);
             assert(vertical.addElement(row));
             Item text(row, "wrapped", {180, 20});
             text.wrap = true;
@@ -210,30 +218,32 @@ namespace element_checks
             assert(text.updates == 2);
         }
         {
-            ui::Layout layout(ui::ElementId{"controls"});
+            ui::Layout layout{};
             assert(pane.addElement(layout));
-            ui::Button button(ui::ElementId{"button"}, "Apply");
+            ui::Button button("Apply");
             assert(layout.addElement(button));
-            ui::CheckBox check(ui::ElementId{"check"}, "Enabled");
+            ui::CheckBox check("Enabled");
             assert(layout.addElement(check));
-            ui::TextEdit text(ui::ElementId{"text"}, "before");
+            ui::TextEdit text("before");
             assert(layout.addElement(text));
-            ui::NumericEdit number(ui::ElementId{"number"}, 1.0F);
+            ui::NumericEdit number(1.0F);
             assert(layout.addElement(number));
-            ui::Choice choice(ui::ElementId{"choice"}, {{1, "One"}, {2, "Two"}}, 1);
+            ui::Choice choice({{1, "One"}, {2, "Two"}}, 1);
             assert(layout.addElement(choice));
-            ui::Label label(ui::ElementId{"label"}, "A label that can wrap when space is limited.");
+            ui::Label label("A label that can wrap when space is limited.");
             assert(layout.addElement(label));
             label.setWrap(true);
             unsigned clicks{}, checks{}, text_changes{}, cancelled{};
-            const auto button_connection =
-                lux::object::LuxObject::connect(std::addressof(button), &ui::Button::activated, [&]() noexcept {
-                    ++clicks;
-                }).value();
+            const auto button_connection = lux::object::LuxObject::connect(
+                                               std::addressof(button),
+                                               &ui::Button::activated,
+                                               [&]() noexcept { ++clicks; }
+            ).value();
             const auto check_connection = lux::object::LuxObject::connect(
                                               std::addressof(check),
                                               &ui::CheckBox::edited,
-                                              [&](const ui::EditResult& result) noexcept {
+                                              [&](const ui::EditResult& result) noexcept
+                                              {
                                                   assert(result.began && result.changed && result.committed);
                                                   ++checks;
                                               }
@@ -241,7 +251,8 @@ namespace element_checks
             const auto text_connection = lux::object::LuxObject::connect(
                                              std::addressof(text),
                                              &ui::TextEdit::edited,
-                                             [&](const ui::EditResult& result) noexcept {
+                                             [&](const ui::EditResult& result) noexcept
+                                             {
                                                  text_changes += result.changed;
                                                  cancelled += result.cancelled;
                                              }
@@ -251,8 +262,11 @@ namespace element_checks
             number.setValue(2.0F);
             choice.setValue(2);
             unsigned choice_changes{};
-            auto choice_connection = lux::object::LuxObject::connect(&choice, &ui::Choice::edited,
-                [&](const ui::EditResult&) noexcept { ++choice_changes; }).value();
+            auto choice_connection = lux::object::LuxObject::connect(
+                                         &choice,
+                                         &ui::Choice::edited,
+                                         [&](const ui::EditResult&) noexcept { ++choice_changes; }
+            ).value();
             choice.setOptions({{2, "Two renamed"}, {3, "Three"}});
             assert(choice.value() == 2 && choice_changes == 0);
             choice.setOptions({{1, "One"}, {2, "Two"}});
@@ -264,8 +278,11 @@ namespace element_checks
             ui::DrawData draw;
             const auto frame = [&] { assert(root.update({{640, 480}, 0.016F}, &draw)); };
             for (unsigned i{}; i != 3; ++i)
+            {
                 frame();
-            const auto click = [&](ui::Element& element) {
+            }
+            const auto click = [&](ui::Element& element)
+            {
                 const auto origin = element.contentOrigin();
                 assert(root.feedInput(ui::PointerMove{{origin.x + 8, origin.y + 8}}));
                 frame();
@@ -302,4 +319,4 @@ namespace element_checks
             frame();
         }
     }
-}
+} // namespace element_checks

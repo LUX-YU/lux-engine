@@ -19,13 +19,6 @@ namespace lux::ui
         }
     } // namespace
 
-    Element::Element(ElementId id) : LuxObject(), id_(std::move(id))
-    {
-        if (!id_.isValid())
-        {
-            detail::failContract();
-        }
-    }
     Root* Element::attachedRoot() const noexcept
     {
         return pane_ ? pane_->attachedRoot() : nullptr;
@@ -94,10 +87,10 @@ namespace lux::ui
         {
             root->notifyRemoved(*this);
         }
-        clearChildren();
+        clearElements();
     }
 
-    void Element::clearChildren() noexcept
+    void Element::clearElements() noexcept
     {
         auto* root = attachedRoot();
         if (root)

@@ -45,8 +45,7 @@ namespace
     {
     public:
         TestPane(std::string name, std::vector<int>& deaths)
-            : Pane(std::move(name)), deaths_(deaths), content_(ui::ElementId{"layout"}),
-              label_(ui::ElementId{"label"}, "Actual UI GPU content")
+            : Pane(std::move(name)), deaths_(deaths), content_{}, label_("Actual UI GPU content")
         {
             assert(content_.addElement(label_) && addElement(content_));
         }

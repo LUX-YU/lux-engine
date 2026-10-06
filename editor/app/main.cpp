@@ -12,9 +12,8 @@ namespace
     {
     public:
         WelcomePane(lux::editor::EditorContext& context, const lux::editor::PaneDescription& description)
-            : Pane(description.title), layout_(lux::ui::ElementId{"layout"}),
-              label_(lux::ui::ElementId{"welcome"}, "LuxEngine Editor Framework v2"),
-              detail_(lux::ui::ElementId{"scope"}, "Framework ready. Authoring tools are not loaded.")
+            : Pane(description.title), layout_{}, label_("LuxEngine Editor Framework v2"),
+              detail_("Framework ready. Authoring tools are not loaded.")
         {
             if (!layout_.addElement(label_) || !layout_.addElement(detail_) || !addElement(layout_))
             {

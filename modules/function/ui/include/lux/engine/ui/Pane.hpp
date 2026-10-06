@@ -91,7 +91,7 @@ namespace lux::ui
         }
 
     protected:
-        void clearChildren() noexcept;
+        void clearContent() noexcept;
         virtual void update() noexcept {}
 
     private:

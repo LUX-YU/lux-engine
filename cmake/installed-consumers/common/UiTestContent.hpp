@@ -6,8 +6,7 @@
 template <class Owner> class TUiTestContent final : public lux::ui::Element
 {
 public:
-    explicit TUiTestContent(Owner& owner) : lux::ui::Element(lux::ui::ElementId{"probe-content"}), owner_(owner)
-    {}
+    explicit TUiTestContent(Owner& owner) : lux::ui::Element{}, owner_(owner) {}
 
 private:
     void draw() noexcept override
@@ -17,8 +16,8 @@ private:
     Owner& owner_;
 };
 
-#include <lux/engine/ui/Root.hpp>
 #include <cassert>
+#include <lux/engine/ui/Root.hpp>
 #include <type_traits>
 namespace ui_test
 {
@@ -30,4 +29,4 @@ namespace ui_test
         assert(adopted && !candidate && &adopted->get() == result);
         return *result;
     }
-}
+} // namespace ui_test

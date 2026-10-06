@@ -1,8 +1,8 @@
 #include <lux/engine/object/LuxObject.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 
-#include <array>
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <memory>
 #include <span>
@@ -10,6 +10,7 @@
 namespace
 {
     using namespace lux::object;
+    static_assert(!std::is_constructible_v<LuxObject, LuxObject*>);
 
     struct Request final
     {
@@ -40,12 +41,12 @@ namespace
     class Node final : public lux::object::LuxObject
     {
     public:
-        Node(Trace& trace, int id) noexcept
-            : lux::object::LuxObject(), trace_(trace), id_(id)
-        {}
+        Node(Trace& trace, int id) noexcept : lux::object::LuxObject(), trace_(trace), id_(id) {}
 
-        Node(LuxObject& parent, Trace& trace, int id) noexcept : lux::object::LuxObject(&parent), trace_(trace), id_(id)
-        {}
+        Node(LuxObject& parent, Trace& trace, int id) noexcept : trace_(trace), id_(id)
+        {
+            assert(parent.addChild(*this));
+        }
 
         ~Node() noexcept override
         {
@@ -66,7 +67,9 @@ namespace
             {
                 trace_.push(id_ * 10);
                 if (request->filter_at == id_)
+                {
                     view.accept();
+                }
             }
         }
 
@@ -82,9 +85,13 @@ namespace
                     assert(routeEvent(*this, *parent(), nested));
                 }
                 if (request->close)
+                {
                     close_requested = true;
+                }
                 if (request->accept_at == id_)
+                {
                     view.accept();
+                }
             }
         }
 

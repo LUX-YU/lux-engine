@@ -1,15 +1,17 @@
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
-#include <lux/engine/ui/Root.hpp>
-#include <lux/engine/ui/Pane.hpp>
+#include <imgui.h>
+#include <lux/engine/object/ObjectEvent.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
+#include <lux/engine/ui/Command.hpp>
 #include <lux/engine/ui/ImageElement.hpp>
 #include <lux/engine/ui/Layout.hpp>
-#include <lux/engine/ui/Command.hpp>
-#include <lux/engine/object/ObjectRuntime.hpp>
-#include <lux/engine/object/ObjectEvent.hpp>
-#include <imgui.h>
+#include <lux/engine/ui/Pane.hpp>
+#include <lux/engine/ui/Root.hpp>
 
-#include <array>
+#include "elements.hpp"
+#include "input_checks.hpp"
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstdlib>
@@ -17,8 +19,6 @@
 #include <memory>
 #include <optional>
 #include <string_view>
-#include "elements.hpp"
-#include "input_checks.hpp"
 
 namespace
 {
@@ -43,8 +43,7 @@ namespace
     {
     public:
         template <class Parent>
-        LifetimeElement(Parent& parent, Lifetime& lifetime, const char* id)
-            : Element(lux::ui::ElementId{id}), lifetime_(lifetime)
+        LifetimeElement(Parent& parent, Lifetime& lifetime, const char* id) : Element{}, lifetime_(lifetime)
         {
             assert(parent.addElement(*this));
         }
@@ -63,14 +62,17 @@ namespace
     {
     public:
         LifetimeOwner(Lifetime& lifetime)
-            : Pane("Lifetime"), resource_{lifetime}, content_(lux::ui::ElementId{"layout"}),
-              fixed_(content_, lifetime, "fixed"), child_(content_, lifetime, "child")
+            : Pane("Lifetime"), resource_{lifetime}, content_{}, fixed_(content_, lifetime, "fixed"),
+              child_(content_, lifetime, "child")
         {
             assert(addElement(content_));
             fields_.push_back(std::make_unique<LifetimeElement>(content_, lifetime, "first"));
             fields_.push_back(std::make_unique<LifetimeElement>(content_, lifetime, "second"));
         }
-        ~LifetimeOwner() override { ++resource_.lifetime.panes_destroyed; }
+        ~LifetimeOwner() override
+        {
+            ++resource_.lifetime.panes_destroyed;
+        }
         void capture()
         {
             assert(root().requestFocus(*fields_.front()));
@@ -90,7 +92,7 @@ namespace
     class ChangeElement final : public lux::ui::Element
     {
     public:
-        ChangeElement() : Element(lux::ui::ElementId{"changing"}) {}
+        ChangeElement() : Element{} {}
         unsigned applications{}, updates{}, draws{}, extra{};
         bool defer_draw{}, defer_update{}, repeat{};
         void (*on_apply)(ChangeElement&) noexcept {};
@@ -103,9 +105,13 @@ namespace
             auto& self = static_cast<ChangeElement&>(object);
             ++self.applications;
             if (self.repeat)
+            {
                 self.root().deferChange(self, apply);
+            }
             if (self.on_apply)
+            {
                 self.on_apply(self);
+            }
         }
 
     private:
@@ -113,23 +119,33 @@ namespace
         {
             ++draws;
             if (defer_draw)
+            {
                 root().deferChange(*this, apply);
+            }
             if (on_draw)
+            {
                 on_draw(*this);
+            }
         }
         void update() noexcept override
         {
             ++updates;
             if (defer_update)
+            {
                 root().deferChange(*this, apply);
+            }
             if (on_update)
+            {
                 on_update(*this);
+            }
         }
         void event(lux::object::EventView&) noexcept override
         {
             root().deferChange(*this, apply);
             if (on_event)
+            {
                 on_event(*this);
+            }
         }
     };
 
@@ -302,7 +318,9 @@ namespace
         {
             ++draws;
             if (immediate_input)
+            {
                 ImGui::GetIO().ConfigInputTrickleEventQueue = false;
+            }
             ImGui::TextUnformatted("CPU pane");
             if (edit_text)
             {
@@ -326,9 +344,13 @@ namespace
             {
                 ++keys;
                 if (transfer_capture)
+                {
                     assert(root().capturePointer(*transfer_capture));
+                }
                 if (consume_keys)
+                {
                     event.accept();
+                }
             }
             if (input && std::holds_alternative<lux::ui::PointerMove>(*input))
             {
@@ -336,14 +358,22 @@ namespace
                 event.accept();
             }
             if (input)
+            {
                 if (const auto* focus = std::get_if<lux::ui::WindowFocus>(input); focus && !focus->focused)
+                {
                     ++losses;
+                }
+            }
             if (const auto* command = event.getIf<lux::ui::Command>())
             {
                 if (command->id == lux::ui::CommandIdView{"lux.edit.undo"})
+                {
                     ++undo;
+                }
                 if (command->id == lux::ui::CommandIdView{"lux.edit.redo"})
+                {
                     ++redo;
+                }
                 event.accept();
             }
         }
@@ -357,7 +387,9 @@ int main(int argc, char** argv)
     auto& messages_created = object::ObjectRuntime::instance();
     auto& messages = messages_created;
     if (argc == 2)
+    {
         return contractViolation(argv[1]);
+    }
     lifetimeAndChanges();
     element_checks::run();
     input_checks::run();
@@ -419,11 +451,11 @@ int main(int argc, char** argv)
         auto& parent = ui_test::makePane<Probe>(**second, "images");
         parent.nested = true;
         parent.immediate_input = true;
-        ui::Layout layout(ui::ElementId{"content"});
+        ui::Layout layout{};
         assert(parent.replaceContent(layout));
-        ui::ImageElement one(ui::ElementId{"one"});
+        ui::ImageElement one{};
         assert(layout.addElement(one));
-        ui::ImageElement two(ui::ElementId{"two"});
+        ui::ImageElement two{};
         assert(layout.addElement(two));
         one.setStretch({0, 0});
         two.setStretch({0, 0});
@@ -433,7 +465,9 @@ int main(int argc, char** argv)
         one.setSize({32, 24});
         two.setSize({32, 24});
         for (unsigned frame{}; frame != 3; ++frame)
+        {
             assert((*second)->update({{640, 480}, 0.016F}, &slot));
+        }
         assert(one.image() == shared && two.image() == shared);
         assert(one.displayedSize() == (ui::Size{32, 24}));
         assert(!one.interaction().resized);
@@ -455,7 +489,8 @@ int main(int argc, char** argv)
         assert(!one.interaction().right_clicked && !one.interaction().resized);
         assert((*second)->update({}, nullptr));
 
-        const auto has_image = [&] {
+        const auto has_image = [&]
+        {
             return std::ranges::any_of(
                 slot.textures(),
                 [](auto texture) { return texture == render::RTextureHandle{0, 0}; }

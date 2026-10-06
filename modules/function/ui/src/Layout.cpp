@@ -1,9 +1,9 @@
+#include <algorithm>
+#include <cmath>
+#include <imgui.h>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/detail/Contract.hpp>
-#include <imgui.h>
-#include <algorithm>
-#include <cmath>
 #include <numeric>
 
 namespace lux::ui
@@ -17,16 +17,18 @@ namespace lux::ui
         float alignedOffset(EAlignment alignment, float available, float size) noexcept
         {
             if (alignment == EAlignment::CENTER)
+            {
                 return (available - size) * 0.5F;
+            }
             if (alignment == EAlignment::END)
+            {
                 return available - size;
+            }
             return 0.F;
         }
-    }
+    } // namespace
 
-    Layout::Layout(ElementId id, ELayoutType type)
-        : Element(std::move(id)), type_(type)
-    {}
+    Layout::Layout(ELayoutType type) : Element(), type_(type) {}
     Element* Layout::elementOf(object::LuxObject* object) const noexcept
     {
         auto* element = static_cast<Element*>(object);
@@ -36,14 +38,18 @@ namespace lux::ui
     void Layout::setType(ELayoutType type) noexcept
     {
         if (!isOnAffinityThread())
+        {
             detail::failContract();
+        }
         type_ = type;
     }
     void Layout::setSpacing(Vec2 spacing) noexcept
     {
         const bool valid = std::isfinite(spacing.x) && std::isfinite(spacing.y) && spacing.x >= 0 && spacing.y >= 0;
         if (!isOnAffinityThread() || !valid)
+        {
             detail::failContract();
+        }
         spacing_ = spacing;
     }
     void Layout::setMargins(Insets margins) noexcept
@@ -52,19 +58,25 @@ namespace lux::ui
                             std::isfinite(margins.bottom);
         const bool nonnegative = margins.left >= 0 && margins.right >= 0 && margins.top >= 0 && margins.bottom >= 0;
         if (!isOnAffinityThread() || !finite || !nonnegative)
+        {
             detail::failContract();
+        }
         margins_ = margins;
     }
     void Layout::setColumns(std::size_t count) noexcept
     {
         if (!isOnAffinityThread() || count == 0)
+        {
             detail::failContract();
+        }
         column_count_ = count;
     }
     void Layout::setScrollable(bool horizontal, bool vertical) noexcept
     {
         if (!isOnAffinityThread())
+        {
             detail::failContract();
+        }
         horizontal_scroll_ = horizontal;
         vertical_scroll_ = vertical;
     }
@@ -72,13 +84,21 @@ namespace lux::ui
     ELayoutStatus Layout::status() const noexcept
     {
         if (!isOnAffinityThread())
+        {
             detail::failContract();
+        }
         if (type_ != ELayoutType::FORM)
+        {
             return ELayoutStatus::VALID;
+        }
         bool unpaired{};
         for (auto* child = firstChild(); child; child = child->nextSibling())
+        {
             if (elementOf(child))
+            {
                 unpaired = !unpaired;
+            }
+        }
         return unpaired ? ELayoutStatus::INCOMPLETE_FORM : ELayoutStatus::VALID;
     }
 
@@ -91,7 +111,9 @@ namespace lux::ui
         {
             auto* element = elementOf(object);
             if (!element)
+            {
                 continue;
+            }
             if (type_ == ELayoutType::FORM)
             {
                 if (!label)
@@ -108,10 +130,14 @@ namespace lux::ui
                 label = nullptr;
             }
             else if (element->visible())
+            {
                 cells_.push_back({element, element->sizeHint(), 0, 0});
+            }
         }
         if (type_ == ELayoutType::FORM)
+        {
             return;
+        }
         const auto count = type_ == ELayoutType::HORIZONTAL ? cells_.size()
                            : type_ == ELayoutType::GRID     ? column_count_
                                                             : 1;
@@ -153,11 +179,13 @@ namespace lux::ui
             track.weight = std::max(track.weight, cell.element->stretch().y);
         }
     }
-    float Layout::extent(const std::vector<Track>& tracks, float Track::*member, float spacing) noexcept
+    float Layout::extent(const std::vector<Track>& tracks, float Track::* member, float spacing) noexcept
     {
         float result = tracks.empty() ? 0.F : float(tracks.size() - 1) * spacing;
         for (const auto& track : tracks)
+        {
             result += track.*member;
+        }
         return result;
     }
     void Layout::fit(std::vector<Track>& tracks, float available, float spacing, float origin) noexcept
@@ -170,13 +198,17 @@ namespace lux::ui
             total += track.size;
             minimum += track.minimum;
             if (track.weight > 0 && track.size < track.maximum)
+            {
                 weights += track.weight;
+            }
         }
         if (available < total)
         {
             const double fraction = total > minimum ? std::min(1.0, (total - available) / (total - minimum)) : 0;
             for (auto& track : tracks)
+            {
                 track.size -= static_cast<float>((track.size - track.minimum) * fraction);
+            }
         }
         else if (weights > 0)
         {
@@ -187,7 +219,9 @@ namespace lux::ui
                 const auto& track = tracks[i];
                 const double capacity = track.maximum - track.size;
                 if (track.weight > 0 && capacity > 0 && capacity / track.weight < initial_share)
+                {
                     saturated_.push_back(i);
+                }
             }
             // The common uncapped case is linear. With finite caps, sorted saturation thresholds
             // avoid repeatedly scanning every track. Sorting indices preserves child order.
@@ -195,18 +229,25 @@ namespace lux::ui
             {
                 saturated_.clear();
                 for (std::size_t i{}; i < tracks.size(); ++i)
+                {
                     if (tracks[i].weight > 0 && tracks[i].size < tracks[i].maximum)
+                    {
                         saturated_.push_back(i);
-                const auto threshold = [&](std::size_t i) noexcept -> double {
-                    return (static_cast<double>(tracks[i].maximum) - tracks[i].size) / tracks[i].weight;
-                };
-                std::sort(saturated_.begin(), saturated_.end(), [&](auto a, auto b) noexcept {
-                    return threshold(a) < threshold(b);
-                });
+                    }
+                }
+                const auto threshold = [&](std::size_t i) noexcept -> double
+                { return (static_cast<double>(tracks[i].maximum) - tracks[i].size) / tracks[i].weight; };
+                std::sort(
+                    saturated_.begin(),
+                    saturated_.end(),
+                    [&](auto a, auto b) noexcept { return threshold(a) < threshold(b); }
+                );
                 for (const auto i : saturated_)
                 {
                     if (weights <= 0 || threshold(i) >= remaining / weights)
+                    {
                         break;
+                    }
                     remaining -= static_cast<double>(tracks[i].maximum) - tracks[i].size;
                     weights -= tracks[i].weight;
                 }
@@ -214,10 +255,14 @@ namespace lux::ui
             const double share =
                 weights > 0 ? std::max(0.0, remaining / weights) : std::numeric_limits<double>::infinity();
             for (auto& track : tracks)
+            {
                 if (track.weight > 0)
+                {
                     track.size += static_cast<float>(
                         std::min(static_cast<double>(track.maximum - track.size), share * track.weight)
                     );
+                }
+            }
         }
         for (auto& track : tracks)
         {
@@ -229,7 +274,8 @@ namespace lux::ui
     {
         const float bar_width = vertical_scroll_ ? ImGui::GetStyle().ScrollbarSize : 0.F;
         const float bar_height = horizontal_scroll_ ? ImGui::GetStyle().ScrollbarSize : 0.F;
-        const auto size = [&](float Track::*member) noexcept -> Size {
+        const auto size = [&](float Track::* member) noexcept -> Size
+        {
             return {
                 extent(columns_, member, spacing_.x) + margins_.left + margins_.right + bar_width,
                 extent(rows_, member, spacing_.y) + margins_.top + margins_.bottom + bar_height
@@ -249,7 +295,9 @@ namespace lux::ui
         static_cast<void>(sizeHint());
         // Intrinsic widths do not depend on a previous frame or a previous measurement width.
         for (auto& cell : cells_)
+        {
             cell.hint = cell.element->sizeHint();
+        }
         columns();
         const float bar_width = vertical_scroll_ ? ImGui::GetStyle().ScrollbarSize : 0.F;
         const float column_spacing = columns_.empty() ? 0.F : float(columns_.size() - 1) * spacing_.x;
@@ -313,9 +361,13 @@ namespace lux::ui
         {
             ImGuiWindowFlags flags = ImGuiWindowFlags_None;
             if (horizontal_scroll_)
+            {
                 flags |= ImGuiWindowFlags_AlwaysHorizontalScrollbar;
+            }
             if (vertical_scroll_)
+            {
                 flags |= ImGuiWindowFlags_AlwaysVerticalScrollbar;
+            }
             const float width = horizontal_scroll_
                                     ? extent(columns_, &Track::size, spacing_.x) + margins_.left + margins_.right
                                     : std::max(1.F, rect().size.width - ImGui::GetStyle().ScrollbarSize);
@@ -332,7 +384,9 @@ namespace lux::ui
         if (shown)
         {
             for (const auto& cell : cells_)
+            {
                 drawChild(*cell.element, offset);
+            }
             const auto origin = contentOrigin();
             ImGui::SetCursorScreenPos({origin.x + offset.x, origin.y + offset.y});
             ImGui::Dummy(
@@ -341,6 +395,8 @@ namespace lux::ui
             );
         }
         if (scroll)
+        {
             ImGui::EndChild();
+        }
     }
-}
+} // namespace lux::ui

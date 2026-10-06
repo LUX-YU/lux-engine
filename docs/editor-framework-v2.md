@@ -16,7 +16,8 @@ The working record is `.internal/editor-redesign/framework-v2/`; raw evidence is
 | V6 | Immutable shared error descriptions and stable numeric errors, including active Scene failures |
 | V7 | No RTTI in first-party active targets; clean build, SDK and rendering qualification |
 
-This table describes the target contracts, not completed implementation. Batch results belong to the working record.
+Final implementation and verification scope are recorded in [the delivery record](editor-framework-v2-verification.md).
+Batch history belongs to the working record; historical results are not substituted for final qualification.
 Window, EngineContext and Root survive project switches. Panes die before project services. The existing SceneRuntime,
 Process and Renderer remain the sole owners of their respective execution and retirement protocols.
 

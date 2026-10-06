@@ -1,3 +1,0 @@
-# Preserve receipt and diagnostic byte hashes on every checkout.
-*.json -text
-logs/* -text -diff

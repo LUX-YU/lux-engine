@@ -1,8 +1,0 @@
-Traceback (most recent call last):
-  File "E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\EC3\diagnose_plugin_load.py", line 9, in <module>
-    selected = next(p for p in catalog['plugins'] if p['id'] == 'lux.builtin.scene_render')
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\EC3\diagnose_plugin_load.py", line 9, in <genexpr>
-    selected = next(p for p in catalog['plugins'] if p['id'] == 'lux.builtin.scene_render')
-                                                     ~^^^^^^
-KeyError: 'id'

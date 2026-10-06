@@ -1,9 +1,0 @@
-[1/6] Building CXX object CMakeFiles\ownership_consumer.dir\ownership.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[2/6] Building CXX object CMakeFiles\projection_consumer.dir\projection.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[3/6] Building CXX object CMakeFiles\compilation_consumer.dir\compilation.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[4/6] Linking CXX executable ownership_consumer.exe
-[5/6] Linking CXX executable projection_consumer.exe
-[6/6] Linking CXX executable compilation_consumer.exe

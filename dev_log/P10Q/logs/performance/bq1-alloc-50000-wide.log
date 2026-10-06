@@ -1,1 +1,0 @@
-hierarchy n=50000 shape=wide owner-thread executable/static new calls=50005 requested_bytes=3498861 (one count-only run; no timing qualification)

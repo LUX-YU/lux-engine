@@ -1,9 +1,0 @@
-{
-  "glfw3.dll": [
-    "window.dll"
-  ],
-  "nfd.dll": [
-    "window.dll"
-  ]
-}
-Scanned 35

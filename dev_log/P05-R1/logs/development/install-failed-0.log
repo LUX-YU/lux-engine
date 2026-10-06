@@ -1,7 +1,0 @@
--- Install configuration: "RelWithDebInfo"
-CMake Error at E:/SyncForder/CodeRepos/build/RelWithDebInfo/p05-r1-f2b5a00c60e9/cmake_install.cmake:36 (file):
-  file cannot create directory: C:/Program Files
-  (x86)/lux-engine/share/lux-engine/plugins.  Maybe need administrative
-  privileges.
-
-

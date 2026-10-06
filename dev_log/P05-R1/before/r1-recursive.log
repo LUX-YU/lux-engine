@@ -1,2 +1,0 @@
-R05-02 accepts=2 nested_ack=1 record_alive=0
-Assertion failed: !acknowledged, file E:\SyncForder\CodeRepos\build\RelWithDebInfo\persistence-p05-source\main.cpp, line 342

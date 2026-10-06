@@ -1,4 +1,0 @@
-[1/4] Building CXX object editor\workbench\material\CMakeFiles\material_ui.dir\material_ui.cpp.obj
-[2/4] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\scene_ui.cpp.obj
-[3/4] Linking CXX static library editor\workbench\material\material_ui.lib
-[4/4] Linking CXX static library editor\workbench\scene\scene_ui.lib

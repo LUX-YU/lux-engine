@@ -1,2 +1,0 @@
-R11 first publication cleanup direct_calls=1 blocked=0 consistent=0
-Assertion failed: attempt.blocked == attempt.calls && facts_correct && notifications == 1, file E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\P11-R1\before\source\contributions.cpp, line 277

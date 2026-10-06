@@ -1,2 +1,0 @@
-editor shared: ['consumer_domain', 'consumer_gui', 'edit_history', 'edit_sessions', 'editor_editing', 'editor_metadata', 'editor_ui', 'physics2d_editor', 'render_feature_meta', 'scene_render_meta']
-editor static count: 39

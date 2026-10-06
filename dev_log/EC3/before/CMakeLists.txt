@@ -1,8 +1,0 @@
-cmake_minimum_required(VERSION 3.24)
-project(ec3_before LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_EXTENSIONS OFF)
-find_package(lux-engine-editor-commands REQUIRED COMPONENTS editor_commands)
-add_executable(ec3_before main.cpp)
-target_link_libraries(ec3_before PRIVATE lux::engine::editor::editor_commands)
-target_compile_options(ec3_before PRIVATE /UNDEBUG /permissive- /utf-8)

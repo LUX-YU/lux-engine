@@ -1,4 +1,0 @@
-PASS X01-R1-04: describe exception restores callback admission
-PASS X01-R1-05: published close destroys history, source, then code
-PASS X01-R1-02: close describe calls before=1 after=1 long_binding=32768
-PASS X01-R1-01: close describe calls before=1 after=1 long_binding=32768

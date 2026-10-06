@@ -1,5 +1,0 @@
-[0/2] Re-checking globbed directories...
-[1/18] [lux_target_add_codegen] ui_render_ops_UiRenderOperation_comm_codegen: parse once, render 6 projection(s)
-[Info] Parsed 1 target file(s) for 6 projection(s).
-[2/7] Building CXX object modules\function\ui\rendering\CMakeFiles\ui_rendering.dir\comm_gen\lux\engine\ui\rendering\genops\UiRenderOperation.client.ops.cpp.obj
-[3/7] Linking CXX shared library bin\ui_rendering.dll

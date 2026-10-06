@@ -1,7 +1,0 @@
-[1/1] Building CXX object CMakeFiles\recipe_consumer.dir\recipe.cpp.obj
-FAILED: CMakeFiles/recipe_consumer.dir/recipe.cpp.obj 
-D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe  /nologo /TP -DENTT_NO_ETO -DSTDEXEC_ENABLE_WINDOWS_THREAD_POOL -external:IE:\SyncForder\CodeRepos\install\EC2-dd54847ee281\include -external:ID:\Development\vcpkg\installed\x64-windows\include -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3 -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr /showIncludes /FoCMakeFiles\recipe_consumer.dir\recipe.cpp.obj /FdCMakeFiles\recipe_consumer.dir\ /FS -c E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\EC2-R1\before\recipe.cpp
-E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\EC2-R1\before\recipe.cpp(5): error C2039: 'MaterialPreviewRecipe': is not a member of 'lux::editor::material'
-E:\SyncForder\CodeRepos\install\EC2-dd54847ee281\include\lux/engine/editor/material/MaterialPreview.hpp(8): note: see declaration of 'lux::editor::material'
-E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\EC2-R1\before\recipe.cpp(5): error C2065: 'MaterialPreviewRecipe': undeclared identifier
-ninja: build stopped: cannot make progress due to previous errors.

@@ -1,1 +1,0 @@
-PASS P03 gate: X03-01..04, scoped Q01/Q07/Q09/Q11/Q27, mixed batches and stable reads; P01/P02/R1 and old product regressions retained, actual dependency negatives, installed CPU consumer. C01/C03/C04 remain FAIL. Stop at P03.

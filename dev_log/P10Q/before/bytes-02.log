@@ -1,6 +1,0 @@
-BQ4 actual Material publication admission (sized transport payload) entries=1048576 views=1 warmup=10 samples=100 p50_us=188.100 p95_us=200.400 p99_us=223.500 max_us=223.500
-payload_aliases=0/110 copied_payload_bytes_per_admission=1048576
-BQ4 actual Material publication admission (sized transport payload) entries=16777216 views=1 warmup=10 samples=100 p50_us=2361.000 p95_us=2623.800 p99_us=2686.800 max_us=2686.800
-payload_aliases=0/110 copied_payload_bytes_per_admission=16777216
-BQ4 actual Material publication admission (sized transport payload) entries=67108864 views=1 warmup=10 samples=100 p50_us=9854.200 p95_us=10530.500 p99_us=10599.000 max_us=10599.000
-payload_aliases=0/110 copied_payload_bytes_per_admission=67108864

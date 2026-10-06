@@ -1,1 +1,0 @@
-Clean build intentionally stopped during compilation to include README contract preservation in final SHA. No compiler failure observed before interruption; this attempt is neither cold PASS nor an observed source build failure. Prior dependency seed failure and logs retained.

@@ -1,9 +1,0 @@
-Traceback (most recent call last):
-  File "E:\SyncForder\CodeRepos\lux-engine-ec2-qualified\editor\tests\architecture\validate_ec2_evidence.py", line 86, in <module>
-    print("EC2 archive:", check(args.source, args.archive))
-                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "E:\SyncForder\CodeRepos\lux-engine-ec2-qualified\editor\tests\architecture\validate_ec2_evidence.py", line 30, in check
-    archived(directory, item["path"], item["sha256"])
-  File "E:\SyncForder\CodeRepos\lux-engine-ec2-qualified\editor\tests\architecture\validate_quality_evidence.py", line 21, in archived
-    raise ValueError('Evidence digest mismatch: '+name)
-ValueError: Evidence digest mismatch: logs/final-build.log

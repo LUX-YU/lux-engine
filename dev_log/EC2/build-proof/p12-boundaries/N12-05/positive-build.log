@@ -1,4 +1,0 @@
-[1/4] Building CXX object editor\editing\CMakeFiles\editor_contracts.dir\editor_contracts.cpp.obj
-[2/4] Building CXX object engine\domain\world\storage\CMakeFiles\world_storage.dir\world_storage.cpp.obj
-[3/4] Linking CXX static library editor\editing\editor_contracts.lib
-[4/4] Linking CXX static library engine\domain\world\storage\world_storage.lib

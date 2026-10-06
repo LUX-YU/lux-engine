@@ -1,8 +1,0 @@
-{
-  "Linux": "NOT_RUN",
-  "system_IME": "NOT_RUN",
-  "ASan": "NOT_RUN",
-  "old_P10Q": "PARTIAL",
-  "old_performance": "PARTIAL",
-  "reason": "User explicitly waived Linux as current blocker and stopped old50k sample completion. Windows, UI/GPU, SDK and dependency negatives remain mandatory; no new fault deferred to old C IDs."
-}

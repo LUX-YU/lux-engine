@@ -1,4 +1,0 @@
-[0/2] Re-checking globbed directories...
-[1/3] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorViews.cpp.obj
-[2/3] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorLifecycle.cpp.obj
-[3/3] Linking CXX static library lib\editor_bootstrap.lib

@@ -1,6 +1,0 @@
-[1/6] Building CXX object editor\editing\CMakeFiles\editor_contracts.dir\editor_contracts.cpp.obj
-[2/6] Building CXX object editor\workbench\material\interaction\CMakeFiles\material_interaction.dir\material_interaction.cpp.obj
-[3/6] Building CXX object modules\function\ui\CMakeFiles\ui.dir\ui.cpp.obj
-[4/6] Linking CXX static library editor\editing\editor_contracts.lib
-[5/6] Linking CXX static library editor\workbench\material\interaction\material_interaction.lib
-[6/6] Linking CXX static library modules\function\ui\ui.lib

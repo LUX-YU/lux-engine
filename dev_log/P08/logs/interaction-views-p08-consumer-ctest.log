@@ -1,9 +1,0 @@
-Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/interaction-views-p08-consumer
-    Start 1: installed.interactions
-1/2 Test #1: installed.interactions ...........   Passed    0.05 sec
-    Start 2: installed.detached_views
-2/2 Test #2: installed.detached_views .........   Passed    0.04 sec
-
-100% tests passed, 0 tests failed out of 2
-
-Total Test time (real) =   0.11 sec

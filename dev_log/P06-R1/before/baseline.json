@@ -1,6 +1,0 @@
-{
-  "production_sha": "26cca1c47adabdbf52346e149b44f7264479bf40",
-  "acceptance_sha": "cc3f455095f52e9a2740bf0a31a55e6672240916",
-  "only_overlay": "editor/tools/scene/execution/test/runs.cpp",
-  "test_sha256": "b9f2f8aad4bbf7c1573992420003da0296241ee86493e2e06baa4ddb759375d7"
-}

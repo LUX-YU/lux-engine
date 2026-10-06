@@ -1,8 +1,0 @@
-{
-  "implementation_sha": "84e38bd7415e58817812c7ce9c11cb60b30c6a51",
-  "source": "E:\\SyncForder\\CodeRepos\\qualification\\framework-v1-1d40785b",
-  "build": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\framework-v1-1d40785b",
-  "sdk": "E:\\SyncForder\\CodeRepos\\install\\EditorFramework-v1",
-  "cold_build_sha": "1d40785bb2dacb84fd96b79a726d4505c5c5484e",
-  "final_change_scope": "Only legacy generated-header scope; default Editor/engine/modules unchanged. Reconfigured independent clean checkout and repeated all applicable qualification."
-}

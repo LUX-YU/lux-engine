@@ -1,4 +1,0 @@
-[0/2] Re-checking globbed directories...
-[1/2] Building CXX object editor\tools\material\preview\CMakeFiles\editor_compilation_ownership_test.dir\test\ownership.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[2/2] Linking CXX executable bin\editor_compilation_ownership_test.exe

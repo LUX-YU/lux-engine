@@ -1,9 +1,0 @@
-Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/external-feature
-    Start 1: plugin.external_editor
-1/2 Test #1: plugin.external_editor ...........   Passed    0.65 sec
-    Start 2: plugin.external_gpu
-2/2 Test #2: plugin.external_gpu ..............   Passed    0.47 sec
-
-100% tests passed, 0 tests failed out of 2
-
-Total Test time (real) =   1.13 sec

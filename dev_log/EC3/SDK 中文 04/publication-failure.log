@@ -1,7 +1,0 @@
-Editor Inspector: 1 component(s), validated MetaUnit and explicit author/Run inja projections
-CMake Error at E:/SyncForder/CodeRepos/lux-engine/.internal/editor-redesign/EC3/SDK 中文 04/installed-tools/share/lux-engine-editor-scene-ui/scene_ui/cmake_scripts/codegen/GenerateInspector.cmake:26 (file):
-  file COPY_FILE cannot copy to a directory
-
-    E:/SyncForder/CodeRepos/lux-engine/.internal/editor-redesign/EC3/SDK 中文 04/build/inspector_gen/a_fields/a__Component_4e294f2e.inspector.generated.cpp
-
-

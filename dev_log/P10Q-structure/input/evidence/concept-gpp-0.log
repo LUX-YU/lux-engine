@@ -1,4 +1,0 @@
-/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp: In function ‘int main()’:
-/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:26:10: warning: variable ‘good’ set but not used [-Wunused-but-set-variable]
-   26 |     auto good = []() -> Result { return {}; };
-      |          ^~~~

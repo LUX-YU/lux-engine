@@ -1,8 +1,0 @@
-[0/2] Re-checking globbed directories...
-[1/6] Building CXX object editor\persistence\CMakeFiles\editor_persistence.dir\src\WriteCoordinator.cpp.obj
-[2/6] Linking CXX static library lib\editor_persistence.lib
-[3/6] Building CXX object editor\persistence\CMakeFiles\editor_write_coordinator_test.dir\test\write_coordinator.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[4/6] Linking CXX executable bin\editor_publication_test.exe
-[5/6] Linking CXX executable bin\editor_write_coordinator_test.exe
-[6/6] Linking CXX executable bin\editor_persistence_models_test.exe

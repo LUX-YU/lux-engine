@@ -1,4 +1,0 @@
-[1/4] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\editor_bootstrap.cpp.obj
-[2/4] Building CXX object editor\workbench\project\tools\CMakeFiles\project_tools_ui.dir\project_tools_ui.cpp.obj
-[3/4] Linking CXX static library editor\application\editor_bootstrap.lib
-[4/4] Linking CXX static library editor\workbench\project\tools\project_tools_ui.lib

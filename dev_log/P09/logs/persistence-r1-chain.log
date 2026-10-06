@@ -1,5 +1,0 @@
-R05-04 model=0 ack_w1=1 w4_published=1
-R05-04 model=1 ack_w1=1 w4_published=1
-R05-04 model=2 ack_w1=1 w4_published=1
-R05-04 material_file=material4 scene_objects=4 flow_file=flow4
-R05-04 all three actual models W1 ack, delayed W2/W3 adoption, real W4 publication PASS

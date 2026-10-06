@@ -1,2 +1,0 @@
-R02-08 nested_apply=1 error=0 session_error=0
-Assertion failed: rejected && component.bytes == bytes, file E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\model\test\plugin_snapshot.cpp, line 259

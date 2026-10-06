@@ -1,2 +1,0 @@
-X05-04 actual three sessions: captured baseline, continued edits, exact Undo clean; real codec bytes PASS
-three author sessions share one Store, SaveService and WriteCoordinator: PASS

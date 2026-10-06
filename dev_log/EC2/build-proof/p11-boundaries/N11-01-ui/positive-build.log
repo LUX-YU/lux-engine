@@ -1,4 +1,0 @@
-[1/4] Building CXX object editor\activities\commands\CMakeFiles\editor_commands.dir\editor_commands.cpp.obj
-[2/4] Building CXX object modules\function\ui\CMakeFiles\ui.dir\ui.cpp.obj
-[3/4] Linking CXX static library editor\activities\commands\editor_commands.lib
-[4/4] Linking CXX static library modules\function\ui\ui.lib

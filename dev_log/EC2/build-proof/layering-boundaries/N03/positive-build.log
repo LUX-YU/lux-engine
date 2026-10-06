@@ -1,4 +1,0 @@
-[1/4] Building CXX object editor\activities\persistence\CMakeFiles\editor_persistence.dir\editor_persistence.cpp.obj
-[2/4] Building CXX object editor\activities\scene\CMakeFiles\scene_persistence.dir\scene_persistence.cpp.obj
-[3/4] Linking CXX static library editor\activities\persistence\editor_persistence.lib
-[4/4] Linking CXX static library editor\activities\scene\scene_persistence.lib

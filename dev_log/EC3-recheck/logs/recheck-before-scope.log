@@ -1,2 +1,0 @@
-first allowed page: draft=0, error=settings.draft
-Assertion failed: page.settings.draft(), file E:\SyncForder\CodeRepos\lux-engine-ec2\editor\tests\integration\application\settings_navigation.cpp, line 98

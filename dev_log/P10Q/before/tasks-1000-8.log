@@ -1,2 +1,0 @@
-BQ2 tasks default: 10 Root updates/sample entries=1000 views=8 warmup=10 samples=100 p50_us=1227.300 p95_us=1656.400 p99_us=1748.500 max_us=1748.500
-tasks shared_buffers=1 first_view_buffer_changes=1100 (address-change count; not all allocator calls)

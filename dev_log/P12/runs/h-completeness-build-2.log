@@ -1,8 +1,0 @@
-[0/2] Re-checking globbed directories...
-[1/6] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorProjectTools.cpp.obj
-[2/6] Linking CXX static library lib\editor_bootstrap.lib
-[3/6] Linking CXX executable bin\lux_launcher.exe
-[4/6] Linking CXX executable bin\lux_editor.exe
-[5/6] Building CXX object editor\tests\integration\application\CMakeFiles\editor_application_test.dir\application.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[6/6] Linking CXX executable bin\editor_application_test.exe

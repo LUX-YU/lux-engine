@@ -1,6 +1,0 @@
-{
-  "sha256": "15D6D30E44FFBD9A90B466139384FA34FA82231C079AD78964416D68E1DD12B0",
-  "source": "D:/Development/vcpkg/installed/x64-windows/bin/box2d.dll",
-  "target": "E:/SyncForder/CodeRepos/install/P12-8d4aa55f840d/bin/box2d.dll",
-  "purpose": "Diagnostic closure only; final qualification uses clean commit install"
-}

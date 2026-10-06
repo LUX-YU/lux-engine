@@ -1,8 +1,0 @@
-[1/8] Building CXX object CMakeFiles\catalog.dir\catalog.cpp.obj
-[2/8] Building CXX object CMakeFiles\containers.dir\containers.cpp.obj
-[3/8] Building CXX object CMakeFiles\canvas.dir\canvas.cpp.obj
-[4/8] Building CXX object CMakeFiles\monitor.dir\monitor.cpp.obj
-[5/8] Linking CXX executable catalog.exe
-[6/8] Linking CXX executable containers.exe
-[7/8] Linking CXX executable canvas.exe
-[8/8] Linking CXX executable monitor.exe

@@ -1,4 +1,0 @@
-[1/4] Building CXX object editor\editing\CMakeFiles\edit_sessions.dir\edit_sessions.cpp.obj
-[2/4] Building CXX object editor\workbench\widgets\CMakeFiles\editor_widgets.dir\editor_widgets.cpp.obj
-[3/4] Linking CXX static library editor\workbench\widgets\editor_widgets.lib
-[4/4] Linking CXX static library editor\editing\edit_sessions.lib

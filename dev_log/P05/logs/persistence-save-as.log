@@ -1,2 +1,0 @@
-X05-05/Q15/Q16 three Save As: real failure retains full state; success keeps history/author IDs; subsequent save PASS
-X05-05 three Export Copy: binding, current, observed, dirty unchanged PASS

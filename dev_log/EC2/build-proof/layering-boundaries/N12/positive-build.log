@@ -1,4 +1,0 @@
-[1/4] Building CXX object editor\context\CMakeFiles\editor_context.dir\editor_context.cpp.obj
-[2/4] Building CXX object editor\authoring\scene\CMakeFiles\scene_model.dir\scene_model.cpp.obj
-[3/4] Linking CXX static library editor\context\editor_context.lib
-[4/4] Linking CXX static library editor\authoring\scene\scene_model.lib

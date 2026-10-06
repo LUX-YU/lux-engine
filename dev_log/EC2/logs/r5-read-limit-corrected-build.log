@@ -1,4 +1,0 @@
-[0/2] Re-checking globbed directories...
-[1/2] Building CXX object engine\process\asset_loading\CMakeFiles\asset_bounded_read_test.dir\test\bounded_read.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[2/2] Linking CXX executable bin\asset_bounded_read_test.exe

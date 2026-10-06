@@ -1,1 +1,0 @@
-R04-03 PASS: signature Undo/shrink branch retains old pins, allocates new pins without reuse, stable nodes/links/literals

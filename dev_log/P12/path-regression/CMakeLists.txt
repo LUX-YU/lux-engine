@@ -1,6 +1,0 @@
-cmake_minimum_required(VERSION 3.22)
-project(P12NativePath LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 20)
-find_package(lux-engine-toolchain-asset REQUIRED COMPONENTS toolchain_model_cooker)
-add_executable(native_path main.cpp)
-target_link_libraries(native_path PRIVATE lux::engine::toolchain::toolchain_model_cooker)

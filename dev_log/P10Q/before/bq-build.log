@@ -1,8 +1,0 @@
-[1/2] Building CXX object CMakeFiles\measure.dir\main.cpp.obj
-FAILED: CMakeFiles/measure.dir/main.cpp.obj 
-D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe  /nologo /TP -DENTT_NO_ETO -DSTDEXEC_ENABLE_WINDOWS_THREAD_POOL -external:IE:\SyncForder\CodeRepos\install\RelWithDebInfo\include -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3 -external:ID:\Development\vcpkg\installed\x64-windows\include -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid -external:W0 /DWIN32 /D_WINDOWS /EHsc /O2 /Ob1 /DNDEBUG -std:c++20 -MD -Zi /UNDEBUG /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr /showIncludes /FoCMakeFiles\measure.dir\main.cpp.obj /FdCMakeFiles\measure.dir\ /FS -c E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\P10Q-bench\main.cpp
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\P10Q-bench\main.cpp(175): error C2872: 'tasks': ambiguous symbol
-E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\P10Q-bench\main.cpp(77): note: could be 'void tasks(size_t,size_t,bool)'
-E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/tasks/TaskView.hpp(5): note: or       'lux::editor::tasks'
-ninja: build stopped: cannot make progress due to previous errors.

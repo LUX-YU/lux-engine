@@ -5,8 +5,8 @@
 前两节（项目簇背景、代码风格）是用户定的基线约定，随仓走。
 
 （早期设计材料曾按用户要求清理。后续阶段的唯一可变施工材料位于
-`.internal/editor-redesign/`，验收快照冻结于 `dev_log/`，按各自 implementation SHA 核验。
-这些历史快照及失败证据必须保留，不修改过去的判定；用户免验或未测项目不能标成通过。）
+`.internal/editor-redesign/`，验收输出保存于源码树外，按各自 implementation SHA 核验。
+历史 dev_log 已经逐文件验证归档，Git 历史保持不变；不修改过去的判定，用户免验或未测不能标成通过。）
 
 ---
 
@@ -15,10 +15,10 @@
 lux 是一个项目簇；lux-engine 是其中的游戏引擎——`modules/` 提供可被外部项目
 复用的基础应用功能，`engine/` 提供游戏与编辑器共用的引擎功能，顶层 `editor/` 提供编辑器产品。
 依赖方向为 `editor -> engine -> modules`，Editor 可以直接使用 modules，底层不得反向链接 Editor。
-Editor Framework v1 按 app/window/context/project/ui 组织，具体工具以后采用纵向目录。
-原五层实现归 editor_legacy，默认不构建、不安装，不得成为新 Editor 的直接或传递依赖。
-新 Editor 的唯一生命周期分别由 LuxEngine、EditorWindow、EditorContext、EditorUIRoot 承担。
-顶层 UI 由 EditorUIRoot 的 SparseSet 唯一拥有；LuxObject 仅保留原非拥有登记语义。
+Editor Framework v2 按 app/window/context/project/ui 组织，具体工具以后采用纵向目录。
+editor_legacy 是冻结参考源码，不参与当前配置、构建和安装，不得成为正式路径的依赖。
+ObjectRuntime 统一对象线程与代际身份；LuxObject parent 只表达结构，不决定删除。
+ui::Root 的 SlotKeyAutoSparseSet 唯一拥有全部顶层 Pane；Pane 只有一个内容根，不包含子 Pane。
 本轮不接入旧服务容器、命令目录、写入协议或具体工具。通用基础的现有消费者不因此删除。
 编译与执行入口见
 `.vscode/launch.json` 与 `.vscode/settings.json`。
@@ -307,5 +307,5 @@ layer 就不会重设——Android 切回前台后画面永远停在旧 surface 
 
 P10Q 及后续 Editor 修改遵守 [docs/editor-quality.md](docs/editor-quality.md) 的 QR01–QR22。
 该文件只定义持续规则；唯一可变施工材料仍为 `.internal/editor-redesign/`，不另建状态账本。
-Framework v1 不沿用历史迁移阶段门禁；旧规则仅用于 legacy 对照。
+Framework v2 不沿用历史迁移阶段门禁；历史规则只在其原 Git 提交核验。
 新框架核验真实 source/include/link/install 闭包，不允许 legacy 或旧 SDK 残留补全依赖。

@@ -1,7 +1,0 @@
-Traceback (most recent call last):
-  File "E:\SyncForder\CodeRepos\build\P11 归档迁移 3bbc7312a3d1\verify.py", line 100, in <module>
-    check(a.source.resolve(),a.archive)
-  File "E:\SyncForder\CodeRepos\build\P11 归档迁移 3bbc7312a3d1\verify.py", line 23, in check
-    files=json.loads(data('files.json'));assert {f['path'] for f in files}==set(git('diff','--name-only',base,sha).decode().splitlines())
-                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-AssertionError

@@ -1,6 +1,0 @@
-[1/6] Building CXX object editor\editing\CMakeFiles\editor_contracts.dir\editor_contracts.cpp.obj
-[2/6] Building CXX object editor\authoring\material\CMakeFiles\material_model.dir\material_model.cpp.obj
-[3/6] Building CXX object editor\workbench\material\CMakeFiles\material_ui.dir\material_ui.cpp.obj
-[4/6] Linking CXX static library editor\editing\editor_contracts.lib
-[5/6] Linking CXX static library editor\authoring\material\material_model.lib
-[6/6] Linking CXX static library editor\workbench\material\material_ui.lib

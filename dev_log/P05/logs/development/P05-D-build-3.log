@@ -1,6 +1,0 @@
-[0/2] Re-checking globbed directories...
-[1/4] Building CXX object editor\tools\scene\persistence\CMakeFiles\scene_persistence.dir\src\SceneCodec.cpp.obj
-[2/4] Linking CXX static library lib\scene_persistence.lib
-[3/4] Building CXX object editor\tests\persistence\CMakeFiles\editor_persistence_models_test.dir\models.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[4/4] Linking CXX executable bin\editor_persistence_models_test.exe

@@ -1,6 +1,0 @@
-r1-mixed stop_complete=1 run_state=3 instance_absent=1 ticket=0 readable=1
-PASS original terminal state=2 and cause retained
-r1-mixed stop_complete=1 run_state=3 instance_absent=1 ticket=1 readable=1
-PASS original terminal state=4 and cause retained
-r1-mixed stop_complete=1 run_state=3 instance_absent=1 ticket=2 readable=1
-PASS original terminal state=4 and cause retained

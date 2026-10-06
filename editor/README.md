@@ -47,10 +47,13 @@ no-work build. `LUX_EDITOR_BUILD_NATIVE_TESTS` enables framework CPU tests; GPU 
 explicit switches. Desktop lifecycle tests do not qualify system IME or interactive native input. Windows native output
 is currently implemented; Linux native output returns an explicit unsupported error.
 
-Legacy can be configured with `LUX_BUILD_EDITOR_LEGACY=ON`, then built explicitly as `lux_editor_legacy` and
-`lux_launcher_legacy`. Its directory is excluded from default build and root installation. Existing test assertions and
-historical snapshots remain available. Legacy migration architecture tests are a separate opt-in and are not the new
-framework's dependency policy. New tests inspect the actual CMake dependency closure for legacy contamination.
+Framework v2 freezes `editor_legacy` as reference source. It has no active build or installation entry; requesting
+`LUX_BUILD_EDITOR_LEGACY=ON` is rejected. To reproduce old results, use the corresponding historical Git revision.
+Historical evidence was verified and archived outside the source tree; no old result qualifies the new framework.
+New tests inspect the actual CMake dependency closure for legacy contamination.
+
+Local build configuration uses `LUX_CMAKE_TOOLCHAIN`, `LUX_CMAKE_PREFIX_PATH` and `LUX_FRAMEWORK_SDK` environment
+variables. Machine-specific paths belong to the local environment, not the tracked editor settings.
 
 ## Scope
 

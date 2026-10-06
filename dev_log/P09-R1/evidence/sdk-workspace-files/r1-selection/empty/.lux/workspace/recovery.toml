@@ -1,7 +1,0 @@
-entries = []
-opaque = []
-schema = 1
-
-[origin]
-digest = '8e3a75870800e2140711027a65bcfc7e65a3f54b366ac31a2733e5932f5bba69'
-key = 'legacy.workspace.v1'

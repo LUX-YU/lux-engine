@@ -1,2 +1,0 @@
-R2 real runtime collected=1 encoding_calls=1 stuck_encoding=0
-R05-R2-01/02/04 real Material/SaveExecution first collect in accept success: exact bytes, baseline, FIFO follower, guarded acknowledgement, once-only cleanup PASS

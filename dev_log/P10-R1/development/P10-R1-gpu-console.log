@@ -1,9 +1,0 @@
-gpu-device 0
-explicit-gpu_ui-configure 0
-explicit-gpu_ui-build 0
-explicit-gpu_ui-no-work 0
-explicit-gpu_ui-ctest 0
-explicit-editor_scene_pane-configure 0
-explicit-editor_scene_pane-build 0
-explicit-editor_scene_pane-no-work 0
-explicit-editor_scene_pane-ctest 0

@@ -1,3 +1,0 @@
-[1/2] Building CXX object CMakeFiles\scene_execution_consumer.dir\main.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[2/2] Linking CXX executable scene_execution_consumer.exe

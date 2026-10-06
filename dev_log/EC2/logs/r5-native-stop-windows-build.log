@@ -1,8 +1,0 @@
-[0/2] Re-checking globbed directories...
-[1/11] Building CXX object engine\scene\scripting\assets\CMakeFiles\scene_script_assets_test.dir\test\lifecycle.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[2/11] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptInstances.cpp.obj
-[3/11] Linking CXX shared library bin\lux_engine_simulation_script.dll
-[4/5] Building CXX object engine\scene\scripting\assets\CMakeFiles\scene_script_assets_test.dir\test\access.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[5/5] Linking CXX executable bin\scene_script_assets_test.exe

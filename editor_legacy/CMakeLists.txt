@@ -1,3 +1,5 @@
+message(FATAL_ERROR "Frozen reference source: build editor_legacy from its historical Git revision.")
+
 include(${CMAKE_CURRENT_LIST_DIR}/MigrationStage.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/EditorTests.cmake)
 

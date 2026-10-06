@@ -1,4 +1,0 @@
-[1/4] Building CXX object engine\scene\scripting\assets\CMakeFiles\scene_script_assets.dir\scene_script_assets.cpp.obj
-[2/4] Building CXX object engine\scene\scripting\assets_lua\CMakeFiles\scene_script_assets_lua.dir\scene_script_assets_lua.cpp.obj
-[3/4] Linking CXX static library engine\scene\scripting\assets\scene_script_assets.lib
-[4/4] Linking CXX static library engine\scene\scripting\assets_lua\scene_script_assets_lua.lib

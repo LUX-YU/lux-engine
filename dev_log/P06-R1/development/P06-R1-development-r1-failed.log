@@ -1,2 +1,0 @@
-r1-failed stop_complete=1 run_state=4 instance_absent=1 ticket=0 readable=1
-PASS original terminal state=3 and cause retained

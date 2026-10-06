@@ -1,5 +1,0 @@
-X05-01 reverse ready + older state intent: PASS
-X05-02 failure hole: PASS
-X05-03 active late writer quarantines one lane until retirement and verification: PASS
-X05-06 distinct copy cannot inherit writer version: PASS
-X05-09 bounded tickets and bytes: PASS

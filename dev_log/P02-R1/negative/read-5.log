@@ -1,3 +1,0 @@
-R02-05 nested_apply=1 error=0 session_error=0
-snapshot_stamp_unchanged=1 live_stamp_unchanged=0 snapshot_payload_unchanged=0
-Assertion failed: rejected, file E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\model\test\plugin_snapshot.cpp, line 251

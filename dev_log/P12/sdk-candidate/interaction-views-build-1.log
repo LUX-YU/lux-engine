@@ -1,6 +1,0 @@
-[1/4] Building CXX object CMakeFiles\detached_views_consumer.dir\lifecycle.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[2/4] Linking CXX executable detached_views_consumer.exe
-[3/4] Building CXX object CMakeFiles\interaction_reclaim_consumer.dir\interaction_reclaim.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[4/4] Linking CXX executable interaction_reclaim_consumer.exe

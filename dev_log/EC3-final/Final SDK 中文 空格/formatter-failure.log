@@ -1,6 +1,0 @@
-Editor Inspector: 1 component(s), validated MetaUnit and explicit author/Run inja projections
-CMake Error at E:/SyncForder/CodeRepos/lux-engine/.internal/editor-redesign/EC3/Final SDK 中文 空格/installed-tools/share/lux-engine-editor-scene-ui/scene_ui/cmake_scripts/codegen/GenerateInspector.cmake:19 (message):
-  Inspector formatting failed (no such file or directory):
-  a_fields.inspector.generated.hpp
-
-

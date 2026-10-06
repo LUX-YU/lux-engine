@@ -1,9 +1,0 @@
-{
-  "sdk_implementation": "0a521da070c1f4addb511ea038f8040f265702f6",
-  "fixture_sha256": "78acdaef9df916c7991b121946800a1b04f407c4aa417cf9d4b62f02f2eb1130",
-  "tests": [
-    "recheck-before-scope",
-    "recheck-before-readonly"
-  ],
-  "fixture_compile_failure": "recheck-before-build is a corrected fixture error, not a product negative"
-}

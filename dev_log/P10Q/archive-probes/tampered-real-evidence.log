@@ -1,9 +1,0 @@
-Traceback (most recent call last):
-  File "E:\SyncForder\CodeRepos\lux-engine\editor\tests\architecture\validate_quality_evidence.py", line 107, in <module>
-    print('P10Q archive verified; qualification status:',check(args.source.resolve(),args.archive.resolve()))
-                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "E:\SyncForder\CodeRepos\lux-engine\editor\tests\architecture\validate_quality_evidence.py", line 53, in check
-    archived(directory,item['path'],item['sha256'])
-  File "E:\SyncForder\CodeRepos\lux-engine\editor\tests\architecture\validate_quality_evidence.py", line 21, in archived
-    raise ValueError('Evidence digest mismatch: '+name)
-ValueError: Evidence digest mismatch: logs/ctest.log

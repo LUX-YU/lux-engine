@@ -1,6 +1,0 @@
-format = "lux.editor.project"
-version = 2
-project_id = "14c98b6e-712a-4d04-b96d-57153b316557"
-name = "Minimal"
-default_scene = ""
-plugins = []

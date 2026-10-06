@@ -1,6 +1,0 @@
-{
-  "input_sha": "24896eaa89ea426c29b4c92daa0f4a0c3bba6fe3",
-  "implementation_sha": "1afb8f3f6e584075c6a9204e4faa7c406e55e146",
-  "removed_assertions": [],
-  "review": "Original main of contributions moved intact to originalCases(); original paths still executed with no extra argument. Other test bodies extended only."
-}

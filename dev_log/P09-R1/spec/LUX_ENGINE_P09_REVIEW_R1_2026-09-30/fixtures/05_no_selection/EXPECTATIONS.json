@@ -1,9 +1,0 @@
-{
-  "case": "05_no_selection",
-  "expected_layout_count": 2,
-  "selected_name": "",
-  "proposed_recovery_locators": [],
-  "expected_diagnostic": "No selected legacy layout; no automatic content recovery.",
-  "execution_status": "fixture_only_not_executed_with_Lux",
-  "semantic_note": "Per-layout legacy snapshots are independent. Selected-layout recovery is the explicit R1 policy; nonselected source bytes must remain preserved."
-}

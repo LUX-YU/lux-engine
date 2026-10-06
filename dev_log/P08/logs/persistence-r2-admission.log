@@ -1,7 +1,0 @@
-R05-R2-03/05 describe success 12 bounded cycles: completed input, capture rollback, exact capacity, jobs retired PASS
-R05-R2-03/05 describe throw 12 bounded cycles: completed input, capture rollback, exact capacity, jobs retired PASS
-R05-R2-03/05 describe revoke 12 bounded cycles: completed input, capture rollback, exact capacity, jobs retired PASS
-R05-R2-03/05 capture success 12 bounded cycles: completed input, capture rollback, exact capacity, jobs retired PASS
-R05-R2-03/05 capture throw 12 bounded cycles: completed input, capture rollback, exact capacity, jobs retired PASS
-R05-R2-03/05 capture revoke 12 bounded cycles: completed input, capture rollback, exact capacity, jobs retired PASS
-R05-R2-02/05 actual Runtime task-capacity rejection settles EXECUTION without encoder retry PASS

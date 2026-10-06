@@ -1,7 +1,0 @@
-[0/2] Re-checking globbed directories...
-[1/5] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorViewClosure.cpp.obj
-[2/5] Building CXX object editor\tests\integration\application\CMakeFiles\editor_application_test.dir\application.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[3/5] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorLifecycle.cpp.obj
-[4/5] Linking CXX static library lib\editor_bootstrap.lib
-[5/5] Linking CXX executable bin\editor_application_test.exe

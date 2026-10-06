@@ -1,2 +1,0 @@
-parent_reads n=10000 shape=cycle count=10000
-hierarchy n=10000 shape=cycle owner-thread executable/static new calls=10005 requested_bytes=752429 (one count-only run; no timing qualification)

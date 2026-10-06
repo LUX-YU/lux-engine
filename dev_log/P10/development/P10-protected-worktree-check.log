@@ -1,6 +1,0 @@
--- Found Git: D:/Development/Git/cmd/git.exe (found version "2.48.1.windows.1")
-CMake Error at cmake/ValidateTrackedSnapshot.cmake:11 (message):
-  Qualification requires a clean tracked commit: M
-  editor/project/src/ProjectBuilder.cpp
-
-

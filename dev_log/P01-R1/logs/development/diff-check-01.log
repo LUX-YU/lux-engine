@@ -1,4 +1,0 @@
-warning: in the working copy of 'editor/sessions/include/lux/engine/editor/sessions/IEditSession.hpp', LF will be replaced by CRLF the next time Git touches it
-warning: in the working copy of 'editor/sessions/src/SessionStore.cpp', LF will be replaced by CRLF the next time Git touches it
-editor/tests/architecture/test_editor_boundaries.py:63: trailing whitespace.
-+                top += 'set_property(TARGET lux::cxx::container PROPERTY INTERFACE_LINK_LIBRARIES fixture::ui_fixture)\n' 

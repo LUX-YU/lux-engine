@@ -1,6 +1,0 @@
-cmake_minimum_required(VERSION 3.24)
-project(plugin_startup_probe LANGUAGES CXX)
-set(CMAKE_CXX_STANDARD 20)
-find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)
-add_executable(plugin_startup_probe main.cpp)
-target_link_libraries(plugin_startup_probe PRIVATE lux::engine::editor::editor_storage)

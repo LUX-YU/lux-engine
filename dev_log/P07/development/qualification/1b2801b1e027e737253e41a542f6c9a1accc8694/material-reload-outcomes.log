@@ -1,7 +1,0 @@
-bound wrong-asset rejected=1 callback_ran=1 alive=0 released_early=0 released_with_nodes=0 released=1
-source_unchanged=1 history_unchanged=1 observed_unchanged=1 dirty_unchanged=1 binding_unchanged=1
-bound clone-exception rejected=1 callback_ran=1 alive=0 released_early=0 released_with_nodes=0 released=1
-source_unchanged=1 history_unchanged=1 observed_unchanged=1 dirty_unchanged=1 binding_unchanged=1
-source_unchanged=1 history_unchanged=1 observed_unchanged=1 dirty_unchanged=1 binding_unchanged=1
-source_unchanged=1 history_unchanged=1 observed_unchanged=1 dirty_unchanged=1 binding_unchanged=1
-bound identity/exception cleanup, atomic reload, stale rejection and last lease release PASS

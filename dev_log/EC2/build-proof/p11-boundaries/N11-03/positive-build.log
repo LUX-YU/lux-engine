@@ -1,6 +1,0 @@
-[1/6] Building CXX object editor\editing\CMakeFiles\editor_contracts.dir\editor_contracts.cpp.obj
-[2/6] Building CXX object editor\activities\material\CMakeFiles\material_persistence.dir\material_persistence.cpp.obj
-[3/6] Building CXX object editor\application\extensions\CMakeFiles\editor_extensions.dir\editor_extensions.cpp.obj
-[4/6] Linking CXX static library editor\editing\editor_contracts.lib
-[5/6] Linking CXX static library editor\activities\material\material_persistence.lib
-[6/6] Linking CXX static library editor\application\extensions\editor_extensions.lib

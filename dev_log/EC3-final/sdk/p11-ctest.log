@@ -1,9 +1,0 @@
-Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11
-    Start 1: installed.p11.extension.with-configuration
-1/2 Test #1: installed.p11.extension.with-configuration ......   Passed    0.06 sec
-    Start 2: installed.p11.extension.without-configuration
-2/2 Test #2: installed.p11.extension.without-configuration ...   Passed    0.06 sec
-
-100% tests passed, 0 tests failed out of 2
-
-Total Test time (real) =   0.13 sec

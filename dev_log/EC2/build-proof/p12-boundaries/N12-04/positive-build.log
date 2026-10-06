@@ -1,4 +1,0 @@
-[1/4] Building CXX object editor\activities\tasks\CMakeFiles\editor_tasks.dir\editor_tasks.cpp.obj
-[2/4] Building CXX object editor\workbench\tasks\CMakeFiles\tasks_ui.dir\tasks_ui.cpp.obj
-[3/4] Linking CXX static library editor\activities\tasks\editor_tasks.lib
-[4/4] Linking CXX static library editor\workbench\tasks\tasks_ui.lib

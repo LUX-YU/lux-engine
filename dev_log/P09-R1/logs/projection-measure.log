@@ -1,5 +1,0 @@
-{"process_launch": 0, "elapsed_ns": 35774100, "peak_working_set_bytes": 12181504, "sampled_peak_private_bytes": 3489792, "samples": 19, "exit_code": 0, "archive_log": "dev_log/P08-R1/logs/projection-measure-0.log"}
-{"process_launch": 1, "elapsed_ns": 32504800, "peak_working_set_bytes": 12222464, "sampled_peak_private_bytes": 3493888, "samples": 18, "exit_code": 0, "archive_log": "dev_log/P08-R1/logs/projection-measure-1.log"}
-{"process_launch": 2, "elapsed_ns": 32819400, "peak_working_set_bytes": 12181504, "sampled_peak_private_bytes": 3502080, "samples": 18, "exit_code": 0, "archive_log": "dev_log/P08-R1/logs/projection-measure-2.log"}
-{"process_launch": 3, "elapsed_ns": 34152300, "peak_working_set_bytes": 12206080, "sampled_peak_private_bytes": 3489792, "samples": 19, "exit_code": 0, "archive_log": "dev_log/P08-R1/logs/projection-measure-3.log"}
-{"process_launch": 4, "elapsed_ns": 33335800, "peak_working_set_bytes": 12259328, "sampled_peak_private_bytes": 3485696, "samples": 19, "exit_code": 0, "archive_log": "dev_log/P08-R1/logs/projection-measure-4.log"}

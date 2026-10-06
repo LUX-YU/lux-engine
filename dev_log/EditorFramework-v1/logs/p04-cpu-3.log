@@ -1,9 +1,0 @@
-Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine-framework
-    Start 27: framework.context
-1/2 Test #27: framework.context ................   Passed    0.02 sec
-    Start 28: framework.ui
-2/2 Test #28: framework.ui .....................   Passed    0.03 sec
-
-100% tests passed, 0 tests failed out of 2
-
-Total Test time (real) =   0.10 sec

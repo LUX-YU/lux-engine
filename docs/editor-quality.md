@@ -6,10 +6,10 @@
 
 本文件是 QR01–QR22 的唯一现行规范。施工状态只记录于 `.internal/editor-redesign/` 的迁移账本；本文件不宣告任何阶段通过。历史验收材料按固定实现 SHA 保持原样。
 
-## Framework v1 适用范围
+## Framework v2 适用范围
 
-新框架以用户确认的 Framework v1 规范为准：三个轻量 Registrar、项目级唯一服务 owner、
-Root 外部拥有登记，不继承旧五层、全局命令目录、复杂服务 Scope 或写入协议。
+新框架以用户确认的 Framework v2 规范为准：三个轻量 Registrar、项目级唯一服务 owner、
+Root 唯一拥有顶层 Pane，Object parent 仅维护结构，不继承旧五层、全局命令目录或服务 Scope。
 QR02 的描述式依赖/Scope 要求仅适用于 legacy 和既有底层服务提供者；新框架工厂创建后保存
 准确借用，Registrar 不成为热路径服务定位器。其余代码风格、错误、寿命与完成交付原则继续适用。
 历史验收和延期判定不因本次框架替换而改变。
@@ -28,8 +28,8 @@ QR02 的描述式依赖/Scope 要求仅适用于 legacy 和既有底层服务提
 
 不要求每个类都有接口。继承只用于真实替代关系、对象协议或已经存在的 polymorphic 边界；依赖和资源 owner 默认组合。纯值不因“统一对象体系”而继承 LuxObject。
 
-LuxObject 相对父对象只有 EXTERNAL 与 PARENT_OWNED 两态。成员和外部智能指针为 EXTERNAL；
-父托管只由真实拥有型转移建立。Root 的窗口顺序和路由是非拥有索引，不建立第二份删除权。
+LuxObject 父链不拥有孩子。Root 通过唯一 SparseSet 拥有窗口；内容由成员或智能指针拥有。
+结构登记不改变 C++ owner。Runtime 负责身份和安全回收，不成为第二个对象 owner。
 
 ### QR02 — 声明式依赖与受约束创建环境
 
@@ -71,7 +71,7 @@ LuxObject 相对父对象只有 EXTERNAL 与 PARENT_OWNED 两态。成员和外�
 
 `shared_ptr` 的数量不是控制责任协议。外部 code owner 放在正确的拥有单元，不能只将 lease 放进插件对象自身后就宣称虚析构尾部安全。
 
-父托管不得与外部共享删除同一对象。动态 deleter、析构返回及控制块清理使用下层代码保活合同；
+每个对象只有一个实际删除责任。动态 deleter、析构返回及控制块清理使用下层代码保活合同；
 最后共享引用在 worker 释放时，实际 affinity 析构回到原对象 owner 的安全点。成员不得独立请求 delete。
 
 ### QR08 — 草稿必须携带真实来源

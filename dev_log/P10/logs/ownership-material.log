@@ -1,1 +1,0 @@
-Material: worker-finished handoff, unique_ptr moves, independent cleanup, exactly-once completion, owning result after owner destruction; author unchanged.

@@ -1,2 +1,0 @@
-MaterialCompileOperation copy_constructible=1 copy_assignable=1 move_constructible=1 move_assignable=1
-FlowCompileOperation copy_constructible=1 copy_assignable=1 move_constructible=1 move_assignable=1

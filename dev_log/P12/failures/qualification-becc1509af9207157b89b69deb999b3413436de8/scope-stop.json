@@ -1,6 +1,0 @@
-{
-  "status": "ABORTED_SCOPE_INCOMPLETE",
-  "reason": "Semantic migration audit found original recent-projects, default-scene and About menu not yet connected. Cold build was intentionally stopped before final qualification; no compilation success or failure conclusion is drawn.",
-  "implementation_sha": "becc1509af9207157b89b69deb999b3413436de8",
-  "evidence_retained": true
-}

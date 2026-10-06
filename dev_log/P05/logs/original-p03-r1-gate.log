@@ -1,1 +1,0 @@
-PASS P03 R1 gate: real-model before/after R03-01..04, input owner/destruction/read scope; original 59 tests and assertions preserved, full regressions, installed consumers, explicit P03. C01/C03/C04 remain FAIL. Stop at P03.

@@ -1,3 +1,0 @@
-MEASURE SceneRuntime paused_turns=10000 elapsed_us=1218.3 business_tasks=0
-PASS X06-04 callback lease release is deferred, in-flight drain, outer guard and one destruction
-PASS SceneRuntime: identity, sealed construction, multi-scene clocks, pause, failure, RAII timer

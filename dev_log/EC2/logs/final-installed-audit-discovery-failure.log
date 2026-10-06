@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\EC2\verify_audit_part.py", line 8, in <module>
-    assert x['sdk_identities']
-           ~^^^^^^^^^^^^^^^^^^
-AssertionError

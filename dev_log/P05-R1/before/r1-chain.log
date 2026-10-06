@@ -1,5 +1,0 @@
-R05-04 model=0 ack_w1=1 w4_published=0
-R05-04 model=1 ack_w1=1 w4_published=0
-R05-04 model=2 ack_w1=1 w4_published=0
-R05-04 material_file=material3 scene_objects=3 flow_file=flow3
-Assertion failed: published == 3, file E:\SyncForder\CodeRepos\build\RelWithDebInfo\persistence-p05-source\main.cpp, line 394

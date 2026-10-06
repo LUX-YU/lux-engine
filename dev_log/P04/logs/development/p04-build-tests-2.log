@@ -1,7 +1,0 @@
-[0/2] Re-checking globbed directories...
-[1/4] Building CXX object editor\tools\flowforge\model\CMakeFiles\editor_flowforge_model_test.dir\test\flow_session.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[2/4] Building CXX object editor\tests\architecture\CMakeFiles\editor_three_sessions_test.dir\three_sessions.cpp.obj
-cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
-[3/4] Linking CXX executable bin\editor_flowforge_model_test.exe
-[4/4] Linking CXX executable bin\editor_three_sessions_test.exe

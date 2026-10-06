@@ -1,5 +1,0 @@
-Traceback (most recent call last):
-  File "E:\SyncForder\CodeRepos\lux-engine\dev_log\P01\verify.py", line 102, in <module>
-    assert architecture["stage"] == "P01" and not architecture["findings"]
-           ~~~~~~~~~~~~^^^^^^^^^
-KeyError: 'stage'

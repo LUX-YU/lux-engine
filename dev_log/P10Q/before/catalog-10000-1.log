@@ -1,2 +1,0 @@
-BQ2 catalog: 10 stable Root updates per sample entries=10000 views=1 warmup=10 samples=100 p50_us=0.200 p95_us=0.300 p99_us=0.300 max_us=0.300
-catalog read_calls=1 copied_rows=10000 initial_distinct_buffers=1 stable_read_calls=0

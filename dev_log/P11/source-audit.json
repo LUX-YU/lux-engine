@@ -1,8 +1,0 @@
-{
-  "implementation_sha": "3bbc7312a3d130a76f2c1807a9e3bca0d413e7ee",
-  "moved_header_residuals": [],
-  "existing_private_product_inputs": [],
-  "formal_new_targets": "editor_commands/session_factories/editor_configuration/editor_extensions; exact graph in final target-map",
-  "old_product_executable": "lux_editor remains editor/app until P12",
-  "public_modules_modified": false
-}

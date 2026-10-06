@@ -1,5 +1,0 @@
-pure: negative coordinates, ambiguous names, DPI, disconnect, tiny area, invalid inputs PASS
-mode=1 content=2560x1369 framebuffer=2560x1369 scale=1,1 restore=880,408,800,600
-mode=2 content=2560x1440 framebuffer=2560x1440 scale=1,1 restore=880,408,800,600
-mode=0 content=800x600 framebuffer=800x600 scale=1,1 restore=880,408,800,600
-actual platform placement PASS; not a native-input/IME qualification

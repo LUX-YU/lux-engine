@@ -6,7 +6,7 @@
 template <class Owner> class TUiTestContent final : public lux::ui::Element
 {
 public:
-    explicit TUiTestContent(Owner& owner) : lux::ui::Element(owner, lux::ui::ElementId{"probe-content"}), owner_(owner)
+    explicit TUiTestContent(Owner& owner) : lux::ui::Element(lux::ui::ElementId{"probe-content"}), owner_(owner)
     {}
 
 private:
@@ -22,18 +22,12 @@ private:
 #include <type_traits>
 namespace ui_test
 {
-    template <class Parent> void mount(Parent& parent, lux::ui::Pane& pane)
+    template <class T, class... Args> T& makePane(lux::ui::Root& root, Args&&... args)
     {
-        if constexpr (std::derived_from<Parent, lux::ui::Root>)
-        {
-            assert(!pane.attachedRoot());
-            auto ready = parent.prepareMount(pane);
-            assert(ready);
-            assert(parent.commit(*ready));
-        }
-        else
-        {
-            assert(parent.addSubPane(pane));
-        }
+        std::unique_ptr<lux::ui::Pane> candidate = std::make_unique<T>(std::forward<Args>(args)...);
+        auto* result = static_cast<T*>(candidate.get());
+        auto adopted = root.addPane(std::move(candidate));
+        assert(adopted && !candidate && &adopted->get() == result);
+        return *result;
     }
 }

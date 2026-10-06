@@ -12,9 +12,6 @@ namespace lux::ui
     ImageElement::ImageElement(ElementId id)
         : Element(std::move(id))
     {}
-    ImageElement::ImageElement(Pane& parent, ElementId id) : Element(parent, std::move(id)) {}
-    ImageElement::ImageElement(Element& parent, ElementId id) : Element(parent, std::move(id)) {}
-
     void ImageElement::setImage(render::RTextureHandle image) noexcept
     {
         if (!isOnAffinityThread())

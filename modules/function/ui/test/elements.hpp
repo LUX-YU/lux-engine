@@ -21,8 +21,8 @@ namespace element_checks
     public:
         template <class Parent>
         Item(Parent& parent, const char* id, ui::Size preferred = {40, 20})
-            : ui::Element(parent, ui::ElementId{id}), preferred(preferred)
-        {}
+            : ui::Element(ui::ElementId{id}), preferred(preferred)
+        { assert(parent.addElement(*this)); }
         ui::Size preferred;
         unsigned draws{}, updates{}, measures{}, events{};
         bool wrap{}, accept{};
@@ -57,12 +57,9 @@ namespace element_checks
     class Owner final : public ui::Pane
     {
     public:
-        explicit Owner(ui::Root& root)
-            : ui::Pane(ui::PaneId{"owner"}, ui::PaneTypeId{"test.owner"}, "Owner"),
-              item(std::make_unique<Item>(*this, "old"))
+        Owner() : ui::Pane("Owner"), item(std::make_unique<Item>(*this, "old"))
         {
-            assert(setContent(*item));
-            ui_test::mount(root, *this);
+
         }
         std::unique_ptr<Item> item;
         bool replace{};
@@ -72,8 +69,11 @@ namespace element_checks
         {
             if (!std::exchange(replace, false))
                 return;
-            item = std::make_unique<Item>(*this, "new");
-            assert(setContent(*item));
+            root().deferChange(*this, [](object::LuxObject& target) noexcept {
+                auto& self = static_cast<Owner&>(target);
+                self.item.reset();
+                self.item = std::make_unique<Item>(self, "new");
+            });
         }
     };
 
@@ -83,31 +83,37 @@ namespace element_checks
         assert(created);
         auto& root = **created;
         {
-            Owner owner(root);
+            auto& owner = ui_test::makePane<Owner>(root);
             assert(root.requestFocus(*owner.item));
             assert(root.capturePointer(*owner.item));
             owner.replace = true;
             assert(root.update({}, nullptr));
+            assert(owner.item->id().view() == ui::ElementIdView{"old"} && owner.item->updates == 1);
+            root.applyPendingChanges();
             assert(!root.focusedElement() && owner.item->updates == 0);
             assert(root.update({}, nullptr));
             assert(owner.item->updates == 1);
             owner.setVisible(false);
-            ui::Pane child(owner, ui::PaneId{"independent"}, ui::PaneTypeId{"test"}, "Independent");
+            auto& child = ui_test::makePane<ui::Pane>(root, "Independent");
             Item content(child, "content");
-            assert(child.setContent(content));
             assert(content.displayed() && !owner.item->displayed());
             assert(root.requestFocus(content));
             ui::DrawData draw;
             assert(root.update({{640, 480}, 0.016F}, &draw));
             assert(content.draws == 1 && owner.item->draws == 0);
         }
-        ui::Pane pane(ui::PaneId{"layout"}, ui::PaneTypeId{"test"}, "Layout");
-        ui_test::mount(root, pane);
+        assert(root.clearPanes());
+        auto& pane = ui_test::makePane<ui::Pane>(root, "Layout");
         {
             std::vector<std::unique_ptr<ui::Layout>> levels;
-            levels.push_back(std::make_unique<ui::Layout>(pane, ui::ElementId{"deep"}));
+            levels.push_back(std::make_unique<ui::Layout>(ui::ElementId{"deep"}));
+            assert(pane.addElement(*levels.back()));
             for (unsigned i = 1; i < 32; ++i)
-                levels.push_back(std::make_unique<ui::Layout>(*levels.back(), ui::ElementId{"nested"}));
+            {
+                auto level = std::make_unique<ui::Layout>(ui::ElementId{"nested"});
+                assert(levels.back()->addElement(*level));
+                levels.push_back(std::move(level));
+            }
             {
                 Item wrapped(*levels.back(), "leaf", {180, 20});
                 wrapped.wrap = true;
@@ -121,7 +127,8 @@ namespace element_checks
                 levels.pop_back();
         }
         {
-            ui::Layout row(pane, ui::ElementId{"saturation"}, ui::ELayoutType::HORIZONTAL);
+            ui::Layout row(ui::ElementId{"saturation"}, ui::ELayoutType::HORIZONTAL);
+            assert(pane.addElement(row));
             row.setSpacing({0, 0});
             Item a(row, "a", {10, 20}), b(row, "b", {10, 20}), c(row, "c", {10, 20});
             a.setMaximumSize({20, 20});
@@ -132,9 +139,9 @@ namespace element_checks
             assert(c.rect().position.x == 60);
         }
         {
-            ui::Layout layout(pane, ui::ElementId{"row"}, ui::ELayoutType::HORIZONTAL);
+            ui::Layout layout(ui::ElementId{"row"}, ui::ELayoutType::HORIZONTAL);
+            assert(pane.addElement(layout));
             layout.setSpacing({0, 0});
-            assert(pane.setContent(layout));
             Item one(layout, "one"), two(layout, "two");
             one.setMaximumSize({60, 50});
             two.setStretch({3, 1});
@@ -154,7 +161,8 @@ namespace element_checks
             assert(two.rect().size.width == 40);
         }
         {
-            ui::Layout form(pane, ui::ElementId{"form"}, ui::ELayoutType::FORM);
+            ui::Layout form(ui::ElementId{"form"}, ui::ELayoutType::FORM);
+            assert(pane.addElement(form));
             form.setSpacing({4, 2});
             Item label(form, "label", {30, 20}), field(form, "field", {80, 20});
             Item second_label(form, "label2", {50, 20}), second_field(form, "field2", {80, 20});
@@ -172,7 +180,8 @@ namespace element_checks
             assert(form.status() == ui::ELayoutStatus::VALID); // No draw/measure needed after a structure change.
         }
         {
-            ui::Layout grid(pane, ui::ElementId{"grid"}, ui::ELayoutType::GRID);
+            ui::Layout grid(ui::ElementId{"grid"}, ui::ELayoutType::GRID);
+            assert(pane.addElement(grid));
             grid.setColumns(2);
             grid.setSpacing({4, 6});
             grid.setMargins({2, 3, 2, 3});
@@ -185,14 +194,15 @@ namespace element_checks
             assert(c.rect().position.x == 56 && c.rect().position.y == 3);
         }
         {
-            ui::Layout vertical(pane, ui::ElementId{"vertical"});
+            ui::Layout vertical(ui::ElementId{"vertical"});
+            assert(pane.addElement(vertical));
             vertical.setSpacing({0, 0});
-            ui::Layout row(vertical, ui::ElementId{"nested"}, ui::ELayoutType::HORIZONTAL);
+            ui::Layout row(ui::ElementId{"nested"}, ui::ELayoutType::HORIZONTAL);
+            assert(vertical.addElement(row));
             Item text(row, "wrapped", {180, 20});
             text.wrap = true;
             const auto hint = vertical.measure(60);
             assert(hint.preferred.height == 60);
-            assert(pane.setContent(vertical));
             ui::DrawData draw;
             assert(root.update({{640, 480}, 0.016F}, &draw));
             assert(text.draws == 1 && text.updates == 1);
@@ -200,14 +210,20 @@ namespace element_checks
             assert(text.updates == 2);
         }
         {
-            ui::Layout layout(pane, ui::ElementId{"controls"});
-            assert(pane.setContent(layout));
-            ui::Button button(layout, ui::ElementId{"button"}, "Apply");
-            ui::CheckBox check(layout, ui::ElementId{"check"}, "Enabled");
-            ui::TextEdit text(layout, ui::ElementId{"text"}, "before");
-            ui::NumericEdit number(layout, ui::ElementId{"number"}, 1.0F);
-            ui::Choice choice(layout, ui::ElementId{"choice"}, {{1, "One"}, {2, "Two"}}, 1);
-            ui::Label label(layout, ui::ElementId{"label"}, "A label that can wrap when space is limited.");
+            ui::Layout layout(ui::ElementId{"controls"});
+            assert(pane.addElement(layout));
+            ui::Button button(ui::ElementId{"button"}, "Apply");
+            assert(layout.addElement(button));
+            ui::CheckBox check(ui::ElementId{"check"}, "Enabled");
+            assert(layout.addElement(check));
+            ui::TextEdit text(ui::ElementId{"text"}, "before");
+            assert(layout.addElement(text));
+            ui::NumericEdit number(ui::ElementId{"number"}, 1.0F);
+            assert(layout.addElement(number));
+            ui::Choice choice(ui::ElementId{"choice"}, {{1, "One"}, {2, "Two"}}, 1);
+            assert(layout.addElement(choice));
+            ui::Label label(ui::ElementId{"label"}, "A label that can wrap when space is limited.");
+            assert(layout.addElement(label));
             label.setWrap(true);
             unsigned clicks{}, checks{}, text_changes{}, cancelled{};
             const auto button_connection =
@@ -244,7 +260,7 @@ namespace element_checks
             assert(checks == 0 && text_changes == 0 && std::get<float>(number.value()) == 2.F);
             assert(!number.setSpec({.minimum = std::int32_t{0}}));
             assert(number.setSpec({.minimum = 0.0F, .maximum = 10.0F}));
-            root.setDockLayout({.center = "layout"});
+            root.setDockLayout({.center = pane.id()});
             ui::DrawData draw;
             const auto frame = [&] { assert(root.update({{640, 480}, 0.016F}, &draw)); };
             for (unsigned i{}; i != 3; ++i)

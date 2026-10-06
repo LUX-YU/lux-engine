@@ -120,4 +120,8 @@ if(BUILD_TESTING)
     set_tests_properties(ui.composition PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
     add_test(NAME ui.context COMMAND ui_context_test)
     set_tests_properties(ui.context PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME ui.structure_contract COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/test/structure_contract.py $<TARGET_FILE:ui_root_test>)
+    set_tests_properties(ui.structure_contract PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
 endif()

@@ -1,9 +1,9 @@
+#include <algorithm>
+#include <cmath>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/detail/Contract.hpp>
-#include <algorithm>
-#include <cmath>
 
 namespace lux::ui
 {
@@ -17,13 +17,14 @@ namespace lux::ui
                 size.height >= 0 && (infinite ? !std::isnan(size.height) : std::isfinite(size.height));
             return valid_width && valid_height;
         }
-    }
+    } // namespace
 
-    Element::Element(ElementId id)
-        : LuxObject(), id_(std::move(id))
+    Element::Element(ElementId id) : LuxObject(), id_(std::move(id))
     {
         if (!id_.isValid())
+        {
             detail::failContract();
+        }
     }
     Root* Element::attachedRoot() const noexcept
     {
@@ -36,65 +37,87 @@ namespace lux::ui
         {
             node->pane_ = pane;
             if (node->firstChild())
+            {
                 node = static_cast<Element*>(node->firstChild());
+            }
             else
             {
                 while (node != this && !node->nextSibling())
+                {
                     node = static_cast<Element*>(node->parent());
+                }
                 if (node == this)
+                {
                     return;
+                }
                 node = static_cast<Element*>(node->nextSibling());
             }
         }
     }
-    cxx::expected<void, EAttachmentError> Element::addSubElement(Element& child) noexcept
+    PaneResult<void> Element::addElement(Element& child) noexcept
     {
-        auto attach = [&]() noexcept { return attachChild(child); };
-        return addSubElementImpl(child, attach);
+        if (!acceptsElements())
+        {
+            return cxx::unexpected(EPaneError::INVALID_TREE);
+        }
+        return Root::compose(nullptr, this, child, nullptr, false);
     }
-    cxx::expected<void, EAttachmentError> Element::addSubElementImpl(
-        Element& child, cxx::function_ref<object::ObjectResult<void>()> attach
-    ) noexcept
+
+    PaneResult<void> Element::replaceElement(Element& previous, Element& child) noexcept
     {
-        return Root::compose(*this, child, false, attach);
-    }
-    cxx::expected<void, EAttachmentError> Element::replaceSubElement(Element& previous, Element& child) noexcept
-    {
-        auto attach = [&]() noexcept { return attachChild(child); };
-        return Root::compose(*this, child, true, attach, &previous);
-    }
-    Element::Element(Pane& parent, ElementId id) : Element(parent, &parent, nullptr, std::move(id)) {}
-    Element::Element(Element& parent, ElementId id) : Element(parent, parent.containingPane(), &parent, std::move(id))
-    {}
-    Element::Element(object::LuxObject& parent, Pane* pane, Element* element_parent, ElementId id)
-        : LuxObject(), element_parent_(element_parent), id_(std::move(id)), pane_(pane)
-    {
-        if (!id_.isValid())
-            detail::failContract();
-        if (pane_)
-            pane_->invalidatePreparation();
-        if (auto* attached = attachedRoot())
-            attached->checkContentChange();
-        attachTo(parent);
-        if (auto* attached = attachedRoot())
-            attached->registerElement(*this);
+        if (!acceptsElements())
+        {
+            return cxx::unexpected(EPaneError::INVALID_TREE);
+        }
+        return Root::compose(nullptr, this, child, &previous, true);
     }
 
     Element::~Element() noexcept
     {
+        auto* root = attachedRoot();
+        if (root)
+        {
+            root->checkContentChange();
+            root->checkDestruction(*this);
+        }
         beginDestruction();
-        if (pane_)
-            pane_->invalidatePreparation();
-        if (auto* attached = attachedRoot())
-            attached->releaseSubtree(*this, true);
+        if (root)
+        {
+            root->releaseElement(*this);
+        }
         if (pane_ && pane_->content_ == this)
+        {
             pane_->content_ = nullptr;
+        }
+        commitRelation(*this, nullptr);
+        if (root)
+        {
+            root->notifyRemoved(*this);
+        }
         clearChildren();
     }
+
     void Element::clearChildren() noexcept
     {
-        Root::prepareChildrenRelease(*this);
-        LuxObject::clearChildren();
+        auto* root = attachedRoot();
+        if (root)
+        {
+            root->checkContentChange();
+        }
+        while (auto* child = static_cast<Element*>(firstChild()))
+        {
+            if (root)
+            {
+                root->releaseElement(*child);
+            }
+            commitRelation(*child, nullptr);
+            child->assignPane(nullptr);
+            child->element_parent_ = nullptr;
+            if (root)
+            {
+                root->notifyRemoved(*child);
+            }
+        }
     }
     Root& Element::root() const noexcept
     {
@@ -103,7 +126,9 @@ namespace lux::ui
     Pane& Element::pane() const noexcept
     {
         if (!pane_)
+        {
             detail::failContract();
+        }
         return *pane_;
     }
     bool Element::focused() const noexcept
@@ -114,46 +139,64 @@ namespace lux::ui
     bool Element::displayed() const noexcept
     {
         if (!attachedRoot() || !pane_->visible())
+        {
             return false;
+        }
         for (auto* node = this; node; node = node->element_parent_)
+        {
             if (!node->visible())
+            {
                 return false;
+            }
+        }
         return true;
     }
     void Element::setVisible(bool visible) noexcept
     {
         if (!isOnAffinityThread())
+        {
             detail::failContract();
+        }
         visible_ = visible;
     }
     void Element::setEnabled(bool enabled) noexcept
     {
         if (!isOnAffinityThread())
+        {
             detail::failContract();
+        }
         enabled_ = enabled;
     }
     void Element::setMinimumSize(Size size) noexcept
     {
         if (!isOnAffinityThread() || !validSize(size))
+        {
             detail::failContract();
+        }
         minimum_ = size;
     }
     void Element::setMaximumSize(Size size) noexcept
     {
         if (!isOnAffinityThread() || !validSize(size, true))
+        {
             detail::failContract();
+        }
         maximum_ = size;
     }
     void Element::setStretch(Vec2 weight) noexcept
     {
         if (!isOnAffinityThread() || !validSize({weight.x, weight.y}))
+        {
             detail::failContract();
+        }
         stretch_ = weight;
     }
     void Element::setAlignment(EAlignment horizontal, EAlignment vertical) noexcept
     {
         if (!isOnAffinityThread())
+        {
             detail::failContract();
+        }
         horizontal_alignment_ = horizontal;
         vertical_alignment_ = vertical;
     }
@@ -172,7 +215,9 @@ namespace lux::ui
     SizeHint Element::measure(float width) noexcept
     {
         if (!isOnAffinityThread() || !std::isfinite(width) || width < 0.F)
+        {
             detail::failContract();
+        }
         return root().measureElement(*this, width, false);
     }
     SizeHint Element::constrain(SizeHint hint) const noexcept
@@ -180,7 +225,9 @@ namespace lux::ui
         const bool invalid_hint =
             !validSize(hint.minimum) || !validSize(hint.preferred) || !validSize(hint.maximum, true);
         if (invalid_hint)
+        {
             detail::failContract();
+        }
         hint.minimum.width = std::max(hint.minimum.width, minimum_.width);
         hint.minimum.height = std::max(hint.minimum.height, minimum_.height);
         hint.maximum.width = std::max(hint.minimum.width, std::min(hint.maximum.width, maximum_.width));
@@ -193,14 +240,18 @@ namespace lux::ui
     {
         const bool valid_origin = std::isfinite(rect.position.x) && std::isfinite(rect.position.y);
         if (!isOnAffinityThread() || !valid_origin || !validSize(rect.size))
+        {
             detail::failContract();
+        }
         rect_ = rect;
         root().arrangeElement(*this);
     }
     void Element::drawChild(Element& child, Point offset) noexcept
     {
         if (child.parent() != this)
+        {
             detail::failContract();
+        }
         root().drawElement(child, {draw_origin_.x + offset.x, draw_origin_.y + offset.y});
     }
-}
+} // namespace lux::ui

@@ -22,10 +22,6 @@ namespace lux::ui
     {
     public:
         Layout(ElementId id, ELayoutType type = ELayoutType::VERTICAL);
-        using Element::addSubElement;
-        using Element::replaceSubElement;
-        Layout(Pane& parent, ElementId id, ELayoutType type = ELayoutType::VERTICAL);
-        Layout(Element& parent, ElementId id, ELayoutType type = ELayoutType::VERTICAL);
         void setType(ELayoutType type) noexcept;
         void setSpacing(Vec2 spacing) noexcept;
         void setMargins(Insets margins) noexcept;
@@ -34,6 +30,7 @@ namespace lux::ui
         [[nodiscard]] ELayoutStatus status() const noexcept;
 
     private:
+        bool acceptsElements() const noexcept override { return true; }
         struct Cell final
         {
             Element* element{};

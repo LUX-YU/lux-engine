@@ -1,27 +1,26 @@
 # LuxObject、信号与事件
 
-`object` 是不依赖 UI、Scene 或 meta 的基础库。需要身份、线程归属或通知的业务对象继承
-`LuxObject`；普通数据不要求继承。它提供两态父子链、同步事件及模板信号。
+`object` 不依赖 UI、Scene 或 meta。LuxObject 提供非拥有父链、同步事件和模板信号。
 
-成员、栈对象和外部智能指针保持 `EXTERNAL`。派生组合类型通过 protected `attachChild()`
-建立非拥有关系，或通过 `adoptChild(unique_ptr<T,D>&&)` 转交真实删除责任，成为 `PARENT_OWNED`。
-接管失败不移动候选和 deleter；支持普通 `T*` 指针及可无失败移动的 deleter。UI 使用自己的结构入口。
-父对象销毁时，托管孩子按逆接管顺序回收，外部孩子只解绑。固定成员无需额外 heap owner。
-孩子若借用派生成员，派生析构体必须先 `clearChildren()`；基类析构不执行保存等业务。
-机械回收使用兄弟链的迭代后序遍历，不逐层重新扫描整棵子树，也不随树深度增加析构调用栈。
-接管时仍检查祖先以拒绝成环；这次局部准入检查不需要为每个对象维护第二份层级索引。
+ObjectRuntime 在 object 动态库中定义进程唯一实例；宿主先于 worker 首次访问它，确定 owner 线程。
+所有 LuxObject 在该线程构造、访问和实际析构。默认构造取得全局代际 ObjectId；注册表只保存非拥有地址。
+resolve() 只提供一次同步借用，不能跨回调或跨帧保存。对象关闭后撤销身份与接收资格，槽位复用不恢复旧 ID。
 
-`requestDestruction()` 只记录托管对象的销毁意图。原 ObjectState 标识合并同一对象的请求，
-不会因地址复用而销毁新对象。宿主在业务派发和 UI 遍历外调用 `ObjectMessageQueue::collectRetired()`；
-它处理固定批次，期间新请求留到下一批。外部成员不能独立请求删除，消息队列 FULL 不丢失回收责任。
+setParent()/addChild()/removeChild() 仅修改关系，不转移删除责任。addChild 可原子移动到新父对象；
+重复设置同一父对象成功但不改链。线程、环、关闭与活动结构资格验证失败时原树完整。
+父对象析构只解绑剩余孩子；成员、unique_ptr、shared_ptr 决定实际析构。需要派生成员的内容必须在该资源
+仍有效时由实际 C++ owner 清理。UI 的类型化入口执行自己的拓扑验证。
 
-`shareOnDispatcher()` 转移真实唯一 allocation 到共享控制块。最后引用可在 worker 释放，但回收节点
-在创建时就已准备，实际析构回到 dispatcher 的 owner 安全点。消息关闭后仍可收取退休责任；
-queue provider 的析构是最后一个 owner 安全点：关闭消息准入，分批收回已经交还的对象，不泵业务消息、
-不等待任务。若仍有外部共享 owner、活动回调或错误线程使回收无法推进，继续报告寿命契约错误。
-移动状态型 deleter 时仍处于对象的原结构保护内；拒绝准入不消耗调用方的候选或最后代码 pin。
-`CodeLease` 和 `pinCodeOwner()` 位于本模块；共享控制块及释放桥由本库编译，代码保活覆盖对象、
-deleter 清理及返回，过期 weak 引用不必继续保活插件。
+Runtime 复用有界双批次消息与连接维护；dispatchPending() 处理固定批次，回调追加留到后批。
+FULL/CLOSED 保留原语义。worker 只能投递拥有型消息、断开连接或交还已准备的回收责任。
+一个 Root 或 Editor 析构不会关闭进程 Runtime，重复创建框架实例仍可使用它。
+
+shareOnRuntime() 转移真实唯一 allocation 到共享控制块。最后引用可在 worker 释放；回收节点预先准备，
+实际析构在 collectRetired() 的 owner 安全点执行，不依赖父托管或可能已满的业务队列。
+Runtime 最终清理关闭准入、结清已交还的回收责任，不派发业务回调、不等待任务。
+仍有外部共享 owner、活动回调或错误线程使回收无法推进时报告寿命契约错误。
+CodeLease/pinCodeOwner 的宿主释放桥覆盖对象析构、状态型 deleter 清理和返回；weak 控制块可晚于 DLL 卸载。
+共享准入失败不消费候选或代码 pin，deleter 移动期间仍受结构保护。
 
 ```cpp
 class Counter final : public lux::object::LuxObject
@@ -53,14 +52,14 @@ value_connection = std::move(*connected);
 
 `Connection` 是唯一的 move-only RAII 凭据：析构或 `disconnect()` 取消，移动赋值先取消原连接。调用方须保存成功结果。发送方或显式接收方销毁也会取消；外部凭据随后析构仍然安全。lambda 捕获遵循普通 C++ 寿命，不自动跟踪任意捕获。
 
-connect/emit 在发送方线程执行。DIRECT 要求显式接收方同线程；QUEUED 要求接收方 dispatcher；AUTO 按双方线程选择。无接收方 lambda 仅 DIRECT。异线程可断开 Connection，原子取消立即阻止后续接纳，容器回收在发送方安全点进行；disconnect 不是 join，已开始回调可以完成。
+connect/emit 在唯一 owner 线程执行。DIRECT 同步交付；QUEUED 使用 Runtime 后批；AUTO 对同域对象同步交付。无接收方 lambda 仅 DIRECT。异线程可断开 Connection，原子取消立即阻止后续接纳，容器回收在发送方安全点进行；disconnect 不是 join，已开始回调可以完成。
 
-每信号惰性建立 `StableSlotMap`，使用 lux-cxx 的 `SlotKey`，发送只遍历该信号。最外层派发固定可见范围；期间新增连接下次可见，断开的未开始回调跳过。接收端反向链用于关闭，不是第二份订阅表。取消维护不使用可能 FULL 的业务消息；无 dispatcher 的发送方在下一次 connect/emit/关闭收尾。
+每信号惰性建立 `StableSlotMap`，使用 lux-cxx 的 `SlotKey`，发送只遍历该信号。最外层派发固定可见范围；期间新增连接下次可见，断开的未开始回调跳过。接收端反向链用于关闭，不是第二份订阅表。取消维护不使用可能 FULL 的业务消息；取消记录由 Runtime 安全点和 connect/emit/关闭收尾。
 
 `SignalDelivery` 分别报告 direct、queued、full、closed。排队载荷由消息工厂固定，实际执行时重查取消及接收端存活。队列不会读取已经销毁的对象。消息准备中的内存不足或载荷复制异常会终止进程。
 
 同步 `EventView` 支持过滤和父链传播，与信号广播分开。当前对象及祖先不能在回调栈中析构；对象在自己的线程销毁，析构不泵消息。关闭业务和结束编辑须先于对象析构。没有公开 `ObjectWeakRef`，UI 的焦点和维护借用由 UI 自身的析构注销协议处理。
 
-测试 `object.tree`、`object.queue` 保留原父链、路由和信号行为；`object.ownership` 验证混合树、
+测试 `object.tree`、`object.queue` 保留路由和信号行为；`object.ownership` 验证非拥有混合树、
 拒绝不消费、清理期重入、安全点和真实 DLL 析构尾部。独立 object-ownership SDK 消费者使用安装的
 公共头和库重跑这些行为。测试入口的存在不代表已执行，实际结果以阶段验收记录为准。

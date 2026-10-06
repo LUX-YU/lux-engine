@@ -93,16 +93,6 @@ namespace lux::ui
     {
         setStretch({0, 0});
     }
-    Button::Button(Pane& parent, ElementId id, std::string text)
-        : Element(parent, std::move(id)), text_(std::move(text)), label_(text_ + "###button")
-    {
-        setStretch({0, 0});
-    }
-    Button::Button(Element& parent, ElementId id, std::string text)
-        : Element(parent, std::move(id)), text_(std::move(text)), label_(text_ + "###button")
-    {
-        setStretch({0, 0});
-    }
     void Button::setText(std::string text)
     {
         requireOwner(*this);
@@ -123,15 +113,6 @@ namespace lux::ui
             static_cast<void>(emit(activated));
     }
     Label::Label(ElementId id, std::string text) : Element(std::move(id)), text_(std::move(text))
-    {
-        setStretch({0, 0});
-    }
-    Label::Label(Pane& parent, ElementId id, std::string text) : Element(parent, std::move(id)), text_(std::move(text))
-    {
-        setStretch({0, 0});
-    }
-    Label::Label(Element& parent, ElementId id, std::string text)
-        : Element(parent, std::move(id)), text_(std::move(text))
     {
         setStretch({0, 0});
     }
@@ -168,16 +149,6 @@ namespace lux::ui
     {
         setStretch({0, 0});
     }
-    CheckBox::CheckBox(Pane& parent, ElementId id, std::string text, bool value)
-        : Element(parent, std::move(id)), text_(std::move(text)), label_(text_ + "###value"), value_(value)
-    {
-        setStretch({0, 0});
-    }
-    CheckBox::CheckBox(Element& parent, ElementId id, std::string text, bool value)
-        : Element(parent, std::move(id)), text_(std::move(text)), label_(text_ + "###value"), value_(value)
-    {
-        setStretch({0, 0});
-    }
     void CheckBox::setValue(bool value) noexcept
     {
         requireOwner(*this);
@@ -196,16 +167,6 @@ namespace lux::ui
     }
     TextEdit::TextEdit(ElementId id, std::string value)
         : Element(std::move(id)), value_(std::move(value))
-    {
-        setStretch({1, 0});
-    }
-    TextEdit::TextEdit(Pane& parent, ElementId id, std::string value)
-        : Element(parent, std::move(id)), value_(std::move(value))
-    {
-        setStretch({1, 0});
-    }
-    TextEdit::TextEdit(Element& parent, ElementId id, std::string value)
-        : Element(parent, std::move(id)), value_(std::move(value))
     {
         setStretch({1, 0});
     }
@@ -283,16 +244,6 @@ namespace lux::ui
     }
     NumericEdit::NumericEdit(ElementId id, VNumericValue value)
         : Element(std::move(id)), value_(value), before_(value)
-    {
-        setStretch({1, 0});
-    }
-    NumericEdit::NumericEdit(Pane& parent, ElementId id, VNumericValue value)
-        : Element(parent, std::move(id)), value_(value), before_(value)
-    {
-        setStretch({1, 0});
-    }
-    NumericEdit::NumericEdit(Element& parent, ElementId id, VNumericValue value)
-        : Element(parent, std::move(id)), value_(value), before_(value)
     {
         setStretch({1, 0});
     }
@@ -430,16 +381,6 @@ namespace lux::ui
     }
     Choice::Choice(ElementId id, std::vector<ChoiceOption> options, std::int64_t value)
         : Element(std::move(id)), options_(std::move(options)), value_(value)
-    {
-        setStretch({1, 0});
-    }
-    Choice::Choice(Pane& parent, ElementId id, std::vector<ChoiceOption> options, std::int64_t value)
-        : Element(parent, std::move(id)), options_(std::move(options)), value_(value)
-    {
-        setStretch({1, 0});
-    }
-    Choice::Choice(Element& parent, ElementId id, std::vector<ChoiceOption> options, std::int64_t value)
-        : Element(parent, std::move(id)), options_(std::move(options)), value_(value)
     {
         setStretch({1, 0});
     }

@@ -9,10 +9,10 @@ namespace lux::engine
 {
     class EngineContext;
 }
+namespace lux::ui { class Root; }
 namespace lux::editor
 {
     class EditorWindow;
-    class EditorUIRoot;
     class EditorContext;
     struct EditorConfig final
     {
@@ -39,7 +39,7 @@ namespace lux::editor
         // One host iteration; callers do not drive SceneRuntime a second time.
         [[nodiscard]] FrameworkResult<bool> frame() noexcept;
         [[nodiscard]] EditorWindow& window() noexcept;
-        [[nodiscard]] EditorUIRoot& uiRoot() noexcept;
+        [[nodiscard]] ui::Root& uiRoot() noexcept;
         [[nodiscard]] engine::EngineContext& engine() noexcept;
         [[nodiscard]] EditorContext* context() noexcept;
         [[nodiscard]] std::uint64_t capturedFrames() const noexcept;

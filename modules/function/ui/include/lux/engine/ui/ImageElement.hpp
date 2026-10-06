@@ -25,8 +25,6 @@ namespace lux::ui
     {
     public:
         ImageElement(ElementId id);
-        ImageElement(Pane& parent, ElementId id);
-        ImageElement(Element& parent, ElementId id);
 
         void setImage(render::RTextureHandle image) noexcept;
         [[nodiscard]] render::RTextureHandle image() const noexcept

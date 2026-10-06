@@ -5,7 +5,7 @@
 #include <lux/engine/EngineRendering.hpp>
 #include <lux/engine/RenderContext.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
-#include <lux/engine/editor/EditorUIRoot.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <lux/engine/editor/EditorUiScene.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
@@ -44,7 +44,7 @@ namespace lux::editor
         {
             // Only mechanical project teardown here. The original Runtime drains retirement during its destruction.
             // Engine (and native output users) dies before EditorWindow by member declaration order.
-            if (window_ && !window_->uiRoot().clearProjectUi())
+            if (window_ && !window_->uiRoot().clearPanes())
             {
                 std::terminate();
             }
@@ -135,22 +135,26 @@ namespace lux::editor
             std::unordered_set<std::string> instances;
             for (const auto& ui : layout)
             {
-                const bool is_invalid_ui = !ui.type.isValid() || ui.instance.empty();
+                const bool is_invalid_ui = ui.type.empty() || ui.name.empty() ||
+                    ui.type.find('\0') != ui.type.npos || ui.name.find('\0') != ui.name.npos;
                 if (is_invalid_ui)
                 {
                     return cxx::unexpected(FrameworkFailure{EFrameworkError::INVALID_DESCRIPTION, "Invalid layout item"}
                     );
                 }
-                if (!instances.insert(ui.instance).second)
+                if (!instances.insert(ui.name).second)
                 {
                     return cxx::unexpected(FrameworkFailure{EFrameworkError::DUPLICATE, "Duplicate UI instance name"});
                 }
             }
             Operation guard{operating_};
-            auto cleared = window_->uiRoot().clearProjectUi();
+            auto cleared = window_->uiRoot().clearPanes();
             if (!cleared)
             {
-                return cleared;
+                return cxx::unexpected(FrameworkFailure{
+                    cleared.error() == ui::EPaneError::BUSY ? EFrameworkError::BUSY : EFrameworkError::UI,
+                    "Cannot clear project windows", static_cast<std::uint64_t>(cleared.error())
+                });
             }
             project_.reset();
             // Local order matters on every error: candidates die before the Context they borrow.
@@ -170,21 +174,20 @@ namespace lux::editor
                 {
                     return cxx::unexpected(std::move(pane.error()));
                 }
-                const bool is_null = !*pane;
-                const bool is_wrong_identity =
-                    !is_null && ((*pane)->id().name() != item.instance || (*pane)->type().name() != item.type.name());
-                if (is_null || is_wrong_identity)
+                if (!*pane || (*pane)->attachedRoot() || (*pane)->parent())
                 {
                     return cxx::unexpected(
-                        FrameworkFailure{EFrameworkError::FACTORY_FAILED, "UI factory returned a wrong instance"}
+                        FrameworkFailure{EFrameworkError::FACTORY_FAILED, "UI factory returned an attached or null Pane"}
                     );
                 }
                 panes.push_back(std::move(*pane));
             }
-            auto mounted = window_->uiRoot().mountProjectUi(panes);
+            auto mounted = window_->uiRoot().addPanes(panes);
             if (!mounted)
             {
-                return mounted;
+                return cxx::unexpected(FrameworkFailure{
+                    EFrameworkError::UI, "Cannot mount project windows", static_cast<std::uint64_t>(mounted.error())
+                });
             }
             project_ = std::move(candidate);
             return {};
@@ -197,10 +200,13 @@ namespace lux::editor
                 );
             }
             Operation guard{operating_};
-            auto cleared = window_->uiRoot().clearProjectUi();
+            auto cleared = window_->uiRoot().clearPanes();
             if (!cleared)
             {
-                return cleared;
+                return cxx::unexpected(FrameworkFailure{
+                    cleared.error() == ui::EPaneError::BUSY ? EFrameworkError::BUSY : EFrameworkError::UI,
+                    "Cannot clear project windows", static_cast<std::uint64_t>(cleared.error())
+                });
             }
             project_.reset();
             return {};
@@ -255,7 +261,7 @@ namespace lux::editor
                 {width ? float(pixels_x) / width : 1.F, height ? float(pixels_y) / height : 1.F}
             };
             auto capture = [&](const ui::DrawData& data) noexcept { return ui_scene_->captureDrawData(data); };
-            auto drawn = root.frame(info, ui_draw_data, capture);
+            auto drawn = root.update(info, ui_draw_data, ui::Root::Capture{capture});
             if (!drawn)
             {
                 return cxx::unexpected(engineFailure("ui.frame", drawn.error()));
@@ -365,7 +371,7 @@ namespace lux::editor
     {
         return *impl_->window_;
     }
-    EditorUIRoot& LuxEngine::uiRoot() noexcept
+    ui::Root& LuxEngine::uiRoot() noexcept
     {
         return impl_->window_->uiRoot();
     }

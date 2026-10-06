@@ -13,7 +13,7 @@ component_add_transitive_commands(lux_editor_context
 lux_classify_target(TARGET lux_editor_context LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
 add_component(COMPONENT_NAME lux_editor_ui NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES ui/src/EditorUIRoot.cpp ui/src/EditorUiFactories.cpp ui/src/WindowInput.cpp window/src/EditorWindow.cpp
+    SOURCE_FILES ui/src/EditorUiFactories.cpp ui/src/WindowInput.cpp window/src/EditorWindow.cpp
         ui/src/EditorUiScene.cpp ui/src/UiRenderSyncStage.cpp)
 component_include_directories(lux_editor_ui BUILD_TIME_EXPORT
     ${CMAKE_CURRENT_SOURCE_DIR}/ui/include ${CMAKE_CURRENT_SOURCE_DIR}/window/include INSTALL_TIME include

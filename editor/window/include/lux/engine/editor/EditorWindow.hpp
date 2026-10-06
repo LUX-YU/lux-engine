@@ -4,9 +4,9 @@
 #include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 
+namespace lux::ui { class Root; }
 namespace lux::editor
 {
-    class EditorUIRoot;
     class EditorWindow final : public window::LuxWindow
     {
     public:
@@ -18,7 +18,7 @@ namespace lux::editor
         EditorWindow& operator=(const EditorWindow&) = delete;
         EditorWindow(EditorWindow&&) = delete;
         EditorWindow& operator=(EditorWindow&&) = delete;
-        [[nodiscard]] EditorUIRoot& uiRoot() noexcept;
+        [[nodiscard]] ui::Root& uiRoot() noexcept;
         [[nodiscard]] input::Input& input() noexcept
         {
             return input_;
@@ -28,6 +28,6 @@ namespace lux::editor
     private:
         explicit EditorWindow(const window::InitParameter&);
         input::Input input_;
-        std::unique_ptr<EditorUIRoot> root_;
+        std::unique_ptr<ui::Root> root_;
     };
 } // namespace lux::editor

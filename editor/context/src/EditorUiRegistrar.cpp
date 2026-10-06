@@ -4,13 +4,13 @@
 namespace lux::editor
 {
     EditorUiRegistrar::~EditorUiRegistrar() = default;
-    FrameworkResult<void> EditorUiRegistrar::registerFactory(UiTypeId type, UiFactory factory) noexcept
+    FrameworkResult<void> EditorUiRegistrar::registerFactory(std::string type, UiFactory factory) noexcept
     {
         if (frozen_)
         {
             return cxx::unexpected(FrameworkFailure{EFrameworkError::FROZEN, "UI registration is frozen"});
         }
-        const bool is_invalid_factory = !type.isValid() || !factory;
+        const bool is_invalid_factory = type.empty() || type.find_first_of("\r\n") != type.npos || type.find('\0') != type.npos || !factory;
         if (is_invalid_factory)
         {
             return cxx::unexpected(FrameworkFailure{EFrameworkError::INVALID_DESCRIPTION, "Invalid UI factory"});
@@ -22,7 +22,7 @@ namespace lux::editor
         entries_.push_back({std::move(type), std::move(factory)});
         return {};
     }
-    FrameworkResult<std::reference_wrapper<UiFactory>> EditorUiRegistrar::findFactory(const UiTypeId& type) noexcept
+    FrameworkResult<std::reference_wrapper<UiFactory>> EditorUiRegistrar::findFactory(std::string_view type) noexcept
     {
         if (!frozen_)
         {

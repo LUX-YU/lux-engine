@@ -30,7 +30,6 @@ namespace lux::ui
         ATLAS_FAILURE,
         ATLAS_LIMIT,
         WRONG_THREAD,
-        INVALID_DISPATCHER,
         INVALID_INPUT_CAPACITY,
         INVALID_SCALE
     };

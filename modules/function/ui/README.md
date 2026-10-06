@@ -1,93 +1,57 @@
 # UI：Root、Pane、Element 与 Layout
 
-`ui` 提供 CPU UI，`ui_rendering` 提供可选的 RenderFeature 与 Vulkan 后端。Root 和 Pane 不拥有原生窗口、Scene、RenderRuntime 或 GPU 资源。
+`ui` 提供 CPU UI；`ui_rendering` 提供可选 RenderFeature。UI 不拥有原生窗口、Scene 或 GPU 资源。
 
-## 对象与所有权
+## 所有权与身份
 
-Root 拥有 ImGui Context、字体、主题、输入、焦点、捕获和公共停靠区。Pane 与 Element 没有继承关系；二者复用 LuxObject 的 EXTERNAL／PARENT_OWNED 关系。引用入口不接管删除责任；unique_ptr 入口在完整校验后转交真实 owner 和 deleter。ObjectMessageQueue 由宿主先创建、最后关闭，Root 仅接收 dispatcher。
+Root 是全部窗口的唯一 owner，使用 SlotKeyAutoSparseSet<PaneId, unique_ptr<Pane>>。
+Pane 直接属于 Root，没有嵌套 Pane；停靠、标题和显示状态不改变 owner。
+Pane::addElement(Element&) 设置唯一内容根，通常为 Layout；第二次添加返回 OCCUPIED，替换用 replaceContent。
+Layout::addElement/replaceElement 只建立非拥有关系。固定内容优先值成员，动态内容由具体 owner 保存 unique_ptr。
+叶子控件拒绝子内容；通用 LuxObject 接口不能绕过 UI 拓扑。父对象析构只解绑剩余外部内容。
 
-Pane 是独立窗口，Element 是窗口内组件。Root 独立提交所有 Pane，父窗口隐藏不影响独立子窗口；停靠不改变父链。Pane::setContent 设置唯一内容根，重复设置返回 OCCUPIED；replaceContent 显式替换。Layout 通过已有子链排列内容，不增加第二份拥有型 children。Element 不进入停靠登记。
+Pane 只用标题构造；Element、Layout、控件可离树构造。ObjectId 是进程身份；PaneId 是当前 Root 内一次登记。
+移除后重加取得新 PaneId，同标题窗口可以并存，ImGui 标签使用登记身份。持久名称属于 Editor。
+跨帧窗口目标同时保存 Root ObjectId 和 PaneId；withPane 验证后提供同步借用。
 
-Layout 支持水平、垂直、固定列数网格与标签/字段配对的表单。隐藏元素不占空间，禁用元素占空间；表单隐藏整对，不重新配对。先分配宽度再测量换行高度；按最小/期望/最大尺寸和伸展权重计算。空间小于最小尺寸时裁剪，或显式开启滚动。DockLayout/DockState 位于 Docking.hpp，保留原有编码。
+addPane(unique_ptr<Pane>&&) / addPanes(span<unique_ptr<Pane>>) 完整验证候选、准备容量后才转移 owner，最后通知。
+失败保留全部候选和原 UI。removePane 撤销焦点、捕获、菜单和待执行结构操作，使 PaneId 失效，通知后返回 owner。
+clearPanes 在全部登记撤销后通知和析构。容器 swap-and-pop 不执行用户析构。
 
-Button、Label、TextEdit、CheckBox、NumericEdit 和 Choice 是公共 Element。setValue 不发用户编辑信号；交互通过 LuxObject 信号报告 EditResult，控件缓冲不替代业务模型和历史。
+## 构帧和安全点
 
-原 Context、Frame、CommandRouter 已移除。Root 仅保留非拥有窗口和维护索引，登记发生在完整子树挂载时。UI 复用 LuxObject 信号和栈上 EventView，不提供第二套事件系统或删除队列。
+私有 detail::Context 保存 ImGuiContext、字体/主题、输入积累和 EventId 对照，并执行后端构帧及捕获。
+Root 保存窗口、焦点、捕获、模态、停靠和内容树编排，不公开 ImGui ABI。
+update(FrameInfo, DrawData*, optional<Capture>) 顺序执行绘制/捕获、同步资源固定回调、已处理输入路由和树维护。
+回调不跨帧保存，Root 不认识 Renderer。空输出时仍维护和处理失焦，不重放控件交互。隐藏窗口仍维护。
+父先子后遍历 Pane→Element 子链，没有全局 Element 登记或逐帧目标快照。
 
-## 输入和宿主循环
+维护、绘制、测量、排列、事件和通知期间冻结结构。deferChange 保存 Root/Object/Pane 代际身份与操作指针，
+输入保留在具体 owner。宿主在外层安全点调用 applyPendingChanges；相同目标/操作合并，追加意图留到后批。
+卸载或析构撤销旧意图，执行前再次验证身份和所属窗口。owner 可以在安全点替换子内容，不能销毁当前回调对象或祖先。
 
-Root::feedInput() 接收平台无关的 InputEvent，返回 FULL、CLOSED 或 INVALID_INPUT。FULL 不接纳本次事件；调用方必须保留/重试或报告终止故障，不得静默丢失 release。输入容量在 RootConfig 中指定，ImGui 的 pending/trail 缓冲在初始化时预留。
+## 输入、布局与控件
 
-feedInput 的可选 sequence 对应原生窗口的单调序号，零由 Root 分配。预留的关联表把序号映射到 ImGui EventId 区间；trickle 的后续输入不提前派发，FULL 不消耗序号。Composition 只报告 IME 状态，Text 是唯一字符路径。模态 Pane 不停靠，内部事件能到达所属 Pane，但不能越过它；捕获因隐藏或模态失效时直接通知实际交互 owner。
+feedInput 保留顺序和 sequence，返回 FULL/CLOSED/INVALID_INPUT；FULL 不消费事件或序号。
+只路由 ImGui 已消费的 trail，不提前派发 trickle 队列。Composition 表达 IME 状态，Text 是唯一文字路径。
+捕获失效和失焦送达实际交互 owner。模态窗口阻断外部路由；无新帧时仍处理失焦。
 
-一次循环的边界为：
+Layout 支持水平、垂直、网格和表单。隐藏内容不占空间，宽度先确定再测量换行高度；
+尺寸遵从最小/期望/最大及伸展权重。空间不足时裁剪或显式滚动。控件每帧只实际执行一次。
+运行期 DockLayout/DockTree 使用 PaneId；Editor 把稳定名称解析成当前窗口，不保存 ImGui runtime ID。
 
-1. 接纳平台输入；处理已经完成的异步结果。
-2. Root::update(FrameInfo, DrawData*) 一次完成绘制/捕获、drawDataReady 资源固定、剩余输入路由和树维护。
-3. 宿主通过 SceneRuntime.tick 集中维护内容和 UI 场景，并由各 RenderSystem 发布；背压复用已有数据。
+Button、Label、TextEdit、CheckBox、NumericEdit、Choice 是 Element。setValue 不发送用户编辑信号。
+用户交互报告 EditResult，finishEdit 支持无新帧提交/取消，文本 Undo 优先由控件处理。
+Pane 没有 draw/drawContent 覆写口；closeRequested 只表达意图，不自动隐藏或销毁。
 
-没有可写帧槽时传 nullptr，仍维护对象和失焦状态，不重放控件交互。
-Root 不调用 Simulation，也不做渲染资源 retain/release。draw/measure/arrange/event 冻结结构。维护使用固定非拥有目标批次：析构同步将旧位置置空，本轮不复用，新对象下一轮维护；owner 可替换已结束交互的子对象，但不能在回调栈内销毁自己或祖先。
+## DrawData、资源和菜单
 
-涉及业务实例采用等必须离开维护遍历的操作，由 owner 调用 `deferChange(target, apply)` 登记。
-target 只能是该 Root 下已有的 Pane 或 Element；apply 是 `void(object::LuxObject&) noexcept` 函数指针，
-请求输入仍保存在具体 owner 中。相同 target/apply 在待执行批次中只保留一次；不同操作不合并。
-宿主在 `update` 返回后的外层安全点显式调用 `applyPendingChanges()`，它不属于 `update`，也不由资源等待调用。
-执行中新登记的意图下一次采用；目标析构同步撤销当前批次与待执行批次中的记录，地址复用不会继承旧意图。
-采用期间允许 owner 用普通成员替换子对象，不能销毁正在执行的目标或其祖先。
-绘制、测量、排列、维护、对象事件和信号回调中直接采用属于契约错误；同步信号同样不能绕过这一边界。
-队列使用复用容量的连续数组，不拥有对象，不使用弱引用或 generation，也不增加任务线程或通用删除机制。
+DrawData 拥有顶点、索引、命令和图像 ID，复用缓冲，不传 CPU Context/Pane 借用到渲染线程。
+字体 atlas 是拥有型像素副本。ImageElement 只显示非拥有 TextureHandle，不读资产或 retain/release GPU。
+业务 owner 和发布 owner 分别保证资源需求与已捕获帧使用责任，退休仍由原渲染链处理。
 
-## 绘制数据与图像
+setMenu 接收值树，复用 Command QUERY/EXECUTE。菜单打开时固定目标；实际执行离开绘制栈，
+验证对象及窗口代际，不改投新焦点窗口。业务身份和历史校验属于 Editor。
 
-DrawData 拥有顶点、索引、命令和使用到的图像 ID，复用 DrawList/buffer 容量；没有 CPU Context、Pane 或 viewport 借用跨到渲染线程。任意带外部借用的 draw callback 在修改输出前拒绝，内置 reset callback 保留。公开类型不暴露 ImGui ABI。
-
-ImageElement::setImage(render::RTextureHandle) 只设置非拥有身份。空 ID 输出占位，UV 与期望尺寸可配置；最终显示尺寸由布局矩形决定。组件不接收路径、AssetId 或资产读取回调。业务 owner 保证资源需求，发布 owner 保证已经捕获的图像仍有效。
-
-ImageElement 同时显示普通纹理和离屏输出，区域几何、焦点、点击及拖放视图统一由 interaction() 提供。拖放数据只在当前帧借用，业务 owner 在 draw 中解码或复制所需值。引擎场景绑定由 Editor workbench/viewport 的 ViewportElement 负责，资源需求由 RenderResources 管理，UI 发布捕获独立保留 GPU 使用。
-
-字体 atlas 是拥有型 CPU 像素，GPU atlas 属于 Feature。渲染线程的 create/draw/destroy 不访问 CPU Context。Feature 会保留最近一份发布内容；Clear 结束后续绘制，已经提交的 GPU 使用仍须等实际完成，不能以 Program 被消费代替 GPU 退休。
-
-## 维护与验证
-
-Pane 没有 draw/drawContent 扩展口；content 是唯一绘制入口。closeRequested 只表达意图，不自动隐藏。
-TextEdit/NumericEdit 的 finishEdit 支持无新帧时提交或取消；setValue 仍不发送编辑信号。
-所有 Element 均有 finishEdit 入口，上层不识别具体控件类型。构造参数限定 Root→Pane、Pane→Pane/Element、Element→Element；焦点和捕获采用明确的 Pane/Element 指针，析构同步撤销，不使用 ObjectWeakRef 或 UI generation。
-公开 ValueEdit 绘制 API 已删除，EditResult/EScalarEditMode 位于 Controls.hpp。
-
-验收快照按各自 implementation SHA 保留，当前批次只引用适用证据；真实 IME 和 DPI 不能由 CPU 测试代替。
-
-专用组合 Element 若直接使用 ImGui 输出可变长内容，应在自身矩形内建立滚动区域；不能依赖 Pane 的外层滚动把内容移出 Element 的裁剪矩形。Layout 的显式滚动接口已处理这一边界。
-
-## 菜单与布局恢复
-
-Root::setMenu 接收 MenuItem 值树。主菜单占用固定区域，复用 Command 的 QUERY/EXECUTE，
-不引入命令类层级。MenuRequest 把打开时的 Pane/Element 目标交给宿主；Editor 额外固定 HistoryId 与命令登记版本。
-目标注销同步使指针失效；命令采用在绘制栈之外。无宿主处理的普通控件命令也先排队，再由 applyPendingChanges 派发。
-模态窗口打开时禁用全局菜单。TextEdit 与 NumericEdit 的活动文本 Undo/Redo 使用 ImGui 编辑状态，
-不能误投父级资产历史；未实现的文本菜单动作禁用，原生文本快捷键继续交给 ImGui。
-
-DockIdentity 只将保存的窗口身份映射为当前窗口身份，包含内部角色后缀及选中标签；
-DockState 仍使用原 ImGui ini 编码。Root 不认识资产、插件和磁盘设置，布局 I/O 与恢复工厂属于 Editor。
-
-## 离树装配与两态所有权
-
-`Pane(dispatcher, id, type, title)` 和 `Element(dispatcher, id)` 不注册 Root。
-新组合通过 `Root::addSubPane`、`Pane::addSubPane`、`Pane::setContent` 和 `Layout::addSubElement` 建立关系。
-引用和 unique_ptr 重载返回 expected；失败保留原候选、deleter 和登记。固定控件优先作为值成员；叶子控件没有公共的子树装配接口。
-
-父对象析构时，托管孩子由 LuxObject 逆接管顺序回收，外部孩子只解绑。派生控件的托管子对象如果借用派生成员，必须在派生析构体或既有关闭阶段调用 clearChildren。Root 在 Impl 仍有效时撤销整棵子树的路由；外部 Pane 可以完整存活并挂到另一个 Root。
-
-`attachedRoot()` 返回空表示未挂载，`containingPane()` 还区分独立 Element。
-离树时可设标题、modal、可见性、尺寸约束和内容；focus/capture 请求返回 false。
-测量、排列、实际绘制和旧 `root()/pane()` 引用入口要求已建立相应关联，不能把离树测量伪称成功。
-新工厂只传 owner dispatcher，不传 Root。生成的 Inspector 工厂返回未挂载控件；调用方通过 Layout 接入。存量父参数构造仍有业务消费者，EC4 M6 随业务装配迁移；它们不是新接口的实现路径。root() 是已挂载对象的借用访问，不是构造入口。
-
-Root 的 `prepareMount/prepareDetach` 只拥有一次性准备记录，不拥有节点。
-整棵子树的注册容量预留在准备阶段；候选/Root 析构、子树或活动注册变更会使准备失效。
-`commit` 必须在 draw、measure、update、事件和 deferred callback 之外；先完成所有关联，再通知。
-提交结果含通知统计，队列 FULL/CLOSED 不能把已经提交的事实改判失败。
-
-卸载撤销输入目标、捕获、菜单目标和延迟修改记录，再撤销注册和父链，最后发出通知。
-Host 在此之前结束业务交互，在此之后按各组件原协议移交 GPU 退休责任并析构节点。
-Root 不执行保存或等待 GPU。已接受的异步工作仍由原 owner 接收完成。托管节点逻辑移除后通过原 ObjectDispatcher 安全回收，退休中的内容不再参与布局；外部节点只撤销关系。
+测试覆盖布局、控件输入、固定批次、所有权、拓扑、代际及同步回调冻结。
+CPU 模拟输入不代表系统 IME 或原生输入接管资格。

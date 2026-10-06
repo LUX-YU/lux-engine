@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
-#include <lux/cxx/core/StableNameId.hpp>
+#include <string>
+#include <string_view>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/FrameworkError.hpp>
 #include <memory>
@@ -13,19 +14,15 @@ namespace lux::ui
 namespace lux::editor
 {
     class EditorContext;
-    struct UiTypeTag final
+    struct PaneDescription final
     {
-    };
-    using UiTypeId = cxx::StableNameId<UiTypeTag>;
-    struct UiDescription final
-    {
-        UiTypeId type;
-        std::string instance;
+        std::string type;
+        std::string name;
         std::string title;
     };
-    using EditorLayout = std::vector<UiDescription>;
+    using EditorLayout = std::vector<PaneDescription>;
     using UiFactory =
-        cxx::move_only_function<FrameworkResult<std::unique_ptr<ui::Pane>>(EditorContext&, const UiDescription&)>;
+        cxx::move_only_function<FrameworkResult<std::unique_ptr<ui::Pane>>(EditorContext&, const PaneDescription&)>;
 
     class EditorUiRegistrar final
     {
@@ -36,19 +33,19 @@ namespace lux::editor
         EditorUiRegistrar& operator=(const EditorUiRegistrar&) = delete;
         EditorUiRegistrar(EditorUiRegistrar&&) = delete;
         EditorUiRegistrar& operator=(EditorUiRegistrar&&) = delete;
-        [[nodiscard]] FrameworkResult<void> registerFactory(UiTypeId, UiFactory) noexcept;
+        [[nodiscard]] FrameworkResult<void> registerFactory(std::string, UiFactory) noexcept;
         // Defined in lux_editor_ui: invocation/destruction need the complete Pane type.
-        [[nodiscard]] FrameworkResult<std::unique_ptr<ui::Pane>> create(EditorContext&, const UiDescription&) noexcept;
+        [[nodiscard]] FrameworkResult<std::unique_ptr<ui::Pane>> create(EditorContext&, const PaneDescription&) noexcept;
         void freeze() noexcept
         {
             frozen_ = true;
         }
 
     private:
-        [[nodiscard]] FrameworkResult<std::reference_wrapper<UiFactory>> findFactory(const UiTypeId&) noexcept;
+        [[nodiscard]] FrameworkResult<std::reference_wrapper<UiFactory>> findFactory(std::string_view) noexcept;
         struct Entry final
         {
-            UiTypeId type;
+            std::string type;
             UiFactory factory;
         };
         std::vector<Entry> entries_;

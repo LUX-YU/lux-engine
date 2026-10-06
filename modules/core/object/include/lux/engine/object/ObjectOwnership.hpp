@@ -12,11 +12,6 @@
 namespace lux::object
 {
     class LuxObject;
-    enum class EObjectOwnership : std::uint8_t
-    {
-        EXTERNAL,
-        PARENT_OWNED
-    };
     namespace detail
     {
         struct AffinityOwner;
@@ -71,43 +66,4 @@ namespace lux::object
         return std::shared_ptr<T>(std::move(owner), pointer);
     }
 
-    // A real matching destruction operation. The code lease outlives callable destruction and return.
-    class LUX_CORE_PUBLIC ObjectDeleter final
-    {
-    public:
-        ObjectDeleter() noexcept;
-        ~ObjectDeleter();
-        ObjectDeleter(ObjectDeleter&&) noexcept;
-        ObjectDeleter& operator=(ObjectDeleter&&) noexcept;
-        ObjectDeleter(const ObjectDeleter&) = delete;
-        ObjectDeleter& operator=(const ObjectDeleter&) = delete;
-        template <class T, class D>
-            requires(!std::is_reference_v<D>) && std::is_nothrow_move_constructible_v<D> &&
-                    std::is_nothrow_destructible_v<D>
-        [[nodiscard]] static ObjectDeleter create(D&& deleter, CodeLease code = CodeLease::builtin()) noexcept
-        {
-            return ObjectDeleter{
-                std::move(code),
-                [stored = std::move(deleter)](LuxObject* value) mutable noexcept
-                {
-                    if constexpr (requires { static_cast<T*>(value); })
-                    {
-                        stored(static_cast<T*>(value));
-                    }
-                    else
-                    {
-                        stored(dynamic_cast<T*>(value));
-                    }
-                }
-            };
-        }
-        void operator()(LuxObject*) noexcept;
-
-    private:
-        using Destroy = cxx::move_only_function<void(LuxObject*)>;
-        ObjectDeleter(CodeLease, Destroy);
-        // Stable destruction state: moving a prepared owner cannot execute a foreign deleter move.
-        struct Storage;
-        std::unique_ptr<Storage> storage_;
-    };
 } // namespace lux::object

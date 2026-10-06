@@ -13,7 +13,7 @@ namespace input_checks
     class Content final : public ui::Element
     {
     public:
-        explicit Content(ui::Pane& parent) : ui::Element(parent, ui::ElementId{"input"}) {}
+        Content() : ui::Element(ui::ElementId{"input"}) {}
         unsigned keys{}, compositions{}, cancellations{}, focus_losses{};
 
     private:
@@ -33,12 +33,9 @@ namespace input_checks
     class Window final : public ui::Pane
     {
     public:
-        template <class Parent>
-        Window(Parent& parent, const char* name)
-            : ui::Pane(ui::PaneId{name}, ui::PaneTypeId{"test.input"}, name), content(*this)
+        explicit Window(const char* name) : ui::Pane(name)
         {
-            assert(setContent(content));
-            ui_test::mount(parent, *this);
+            assert(addElement(content));
         }
         Content content;
         unsigned keys{};
@@ -55,7 +52,8 @@ namespace input_checks
         auto made = ui::Root::create({.docking = true});
         assert(made);
         auto& root = **made;
-        Window owner(root, "owner"), modal(owner, "modal");
+        auto& owner = ui_test::makePane<Window>(root, "owner");
+        auto& modal = ui_test::makePane<Window>(root, "modal");
         modal.setModal(true);
         modal.setVisible(false);
         ui::DrawData data;

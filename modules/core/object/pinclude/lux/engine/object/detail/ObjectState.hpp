@@ -23,7 +23,7 @@ namespace lux::object::detail
         bool incoming_linked{}; // Receiver mutex only.
     };
 
-    struct ObjectState final : Reclamation
+    struct ObjectState final
     {
         ObjectState(LuxObject* value, ObjectId identity) noexcept
             : object(value), id(identity)
@@ -33,12 +33,10 @@ namespace lux::object::detail
         const ObjectId id;
         std::mutex mutex;
         ConnectionControl* incoming{};
-        bool destruction_requested{}; // Affinity thread; one queued reference per identity.
 
         [[nodiscard]] bool addIncoming(ConnectionControl&) noexcept;
         void removeIncoming(ConnectionControl&) noexcept;
         void closeOwner() noexcept;
-        static bool reclaimOwner(Reclamation&) noexcept;
     };
 
     struct SignalStorage final

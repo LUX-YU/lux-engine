@@ -2,36 +2,6 @@
 #include <lux/engine/object/ObjectOwnership.hpp>
 #include <lux/engine/object/detail/ObjectState.hpp>
 
-namespace lux::object
-{
-    struct ObjectDeleter::Storage final
-    {
-        CodeLease code;
-        Destroy destroy;
-        Storage(CodeLease code, Destroy destroy) : code(std::move(code)), destroy(std::move(destroy)) {}
-    };
-    ObjectDeleter::ObjectDeleter() noexcept = default;
-    ObjectDeleter::ObjectDeleter(CodeLease code, Destroy destroy)
-        : storage_(std::make_unique<Storage>(std::move(code), std::move(destroy)))
-    {
-    }
-    ObjectDeleter::~ObjectDeleter() = default;
-    ObjectDeleter::ObjectDeleter(ObjectDeleter&&) noexcept = default;
-    ObjectDeleter& ObjectDeleter::operator=(ObjectDeleter&& other) noexcept = default;
-    void ObjectDeleter::operator()(LuxObject* value) noexcept
-    {
-        if (storage_)
-        {
-            storage_->destroy(value);
-        }
-        else
-        {
-            delete value;
-        }
-    }
-
-} // namespace lux::object
-
 namespace lux::object::detail
 {
     ObjectResult<void> prepareSharedObject(LuxObject& value) noexcept
@@ -39,10 +9,6 @@ namespace lux::object::detail
         if (!value.isOnAffinityThread())
         {
             return cxx::unexpected(EObjectTreeError::WRONG_THREAD);
-        }
-        if (value.owned_edge_)
-        {
-            return cxx::unexpected(EObjectTreeError::ALREADY_ATTACHED);
         }
         const bool is_busy = !value.acceptsCallbacks() || value.hasActiveTree();
         if (is_busy)

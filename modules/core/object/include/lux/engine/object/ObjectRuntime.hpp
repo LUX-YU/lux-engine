@@ -20,9 +20,7 @@ namespace lux::object
         BUSY,
         CLOSED,
         ALREADY_ATTACHED,
-        INVALID_TREE,
-        NOT_OWNED,
-        OWNED_CHILD
+        INVALID_TREE
     };
     template <class T> using ObjectResult = cxx::expected<T, EObjectTreeError>;
 

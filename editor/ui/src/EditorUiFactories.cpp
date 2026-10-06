@@ -5,7 +5,7 @@ namespace lux::editor
 {
     FrameworkResult<std::unique_ptr<ui::Pane>> EditorUiRegistrar::create(
         EditorContext& context,
-        const UiDescription& description
+        const PaneDescription& description
     ) noexcept
     {
         auto factory = findFactory(description.type);

@@ -121,10 +121,10 @@ namespace lux::object
         {
             return next_sibling_;
         }
-        [[nodiscard]] EObjectOwnership ownership() const noexcept;
         [[nodiscard]] ObjectId objectId() const noexcept { return id_; }
-        // Records intent only; the owning dispatcher reclaims at its explicit safe point.
-        [[nodiscard]] ObjectResult<void> requestDestruction() noexcept;
+        [[nodiscard]] ObjectResult<void> setParent(LuxObject*) noexcept;
+        [[nodiscard]] ObjectResult<void> addChild(LuxObject&) noexcept;
+        [[nodiscard]] ObjectResult<void> removeChild(LuxObject&) noexcept;
 
         template <class Sender, class Owner, class Payload, class Callback>
             requires std::derived_from<Sender, Owner> && std::derived_from<Sender, LuxObject>
@@ -245,32 +245,9 @@ namespace lux::object
         }
 
     protected:
-        [[nodiscard]] ObjectResult<void> attachChild(LuxObject&) noexcept;
-        template <class T, class D>
-            requires std::derived_from<T, LuxObject> && std::same_as<typename std::unique_ptr<T, D>::pointer, T*> &&
-                     (!std::is_reference_v<D>) && std::is_nothrow_move_constructible_v<D> &&
-                     std::is_nothrow_destructible_v<D>
-        [[nodiscard]] ObjectResult<T*>
-        adoptChild(std::unique_ptr<T, D>&& candidate, const CodeLease& code = CodeLease::builtin()) noexcept
-        {
-            const bool is_invalid_owner = !candidate || !code.valid();
-            if (is_invalid_owner)
-                return lux::cxx::unexpected(EObjectTreeError::INVALID_OBJECT);
-            auto prepared = beginAdoption(*candidate);
-            if (!prepared)
-                return lux::cxx::unexpected(prepared.error());
-            auto deleter = ObjectDeleter::create<T>(std::move(candidate.get_deleter()), code);
-            auto* child = candidate.release();
-            finishAdoption(*child, std::move(deleter));
-            return child;
-        }
-        // A typed UI owner supplies already checked candidates and transfers their matching deleters.
-        // No callback is entered until every relation and ownership record has been prepared.
-        [[nodiscard]] ObjectResult<void> adoptChildren(
-            std::span<LuxObject* const>, cxx::function_ref<ObjectDeleter(std::size_t)> transfer
-        ) noexcept;
-        [[nodiscard]] ObjectResult<void> detachChild(LuxObject&) noexcept;
-        // Call from the derived destructor when children borrow derived members.
+        // Typed owners validate their topology before committing the common non-owning relation.
+        [[nodiscard]] static ObjectResult<void> validateRelation(LuxObject& child, LuxObject* parent) noexcept;
+        static void commitRelation(LuxObject& child, LuxObject* parent) noexcept;
         void clearChildren() noexcept;
         // Revoke callbacks before a typed owner tears down its derived routing/resources.
         void beginDestruction() noexcept;
@@ -284,14 +261,7 @@ namespace lux::object
         {
             return emitSignal(signal.owner_, signal.storage_.get(), std::addressof(value));
         }
-        // Typed owners can attach after validating their public parent contract.
-        void attachTo(LuxObject& parent) noexcept;
-        // Removes only the non-owning parent association, never deletes an object.
-        void detachFromParent() noexcept;
-        virtual bool allowsGenericChildren() const noexcept
-        {
-            return true;
-        }
+        virtual bool allowsGenericStructure() const noexcept { return true; }
         void beginTreeVisit() noexcept;
         void endTreeVisit() noexcept;
         // Owner callbacks may change finished child subtrees, but cannot reclaim themselves or ancestors.
@@ -304,12 +274,7 @@ namespace lux::object
         virtual void filterEvent(LuxObject&, EventView&) noexcept {}
 
     private:
-        struct OwnedEdge;
-        [[nodiscard]] ObjectResult<void> validateChild(const LuxObject&) const noexcept;
-        [[nodiscard]] ObjectResult<void> beginAdoption(LuxObject&) noexcept;
-        void finishAdoption(LuxObject&, ObjectDeleter) noexcept;
         void linkChild(LuxObject&) noexcept;
-        void destroyOwnedChild(LuxObject&) noexcept;
         [[nodiscard]] bool hasActiveTree() const noexcept;
         [[nodiscard]] bool acceptsCallbacks() const noexcept;
         void unlinkParent() noexcept;
@@ -344,7 +309,6 @@ namespace lux::object
         LuxObject* next_sibling_{};
         std::size_t active_events_{};
         std::size_t callback_borrows_{};
-        std::unique_ptr<OwnedEdge> owned_edge_;
         bool changing_children_{};
         bool closing_{};
     };

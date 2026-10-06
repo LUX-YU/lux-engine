@@ -27,15 +27,10 @@ namespace lux::ui
     Layout::Layout(ElementId id, ELayoutType type)
         : Element(std::move(id)), type_(type)
     {}
-    Layout::Layout(Pane& parent, ElementId id, ELayoutType type) : Element(parent, std::move(id)), type_(type) {}
-    Layout::Layout(Element& parent, ElementId id, ELayoutType type) : Element(parent, std::move(id)), type_(type) {}
-
     Element* Layout::elementOf(object::LuxObject* object) const noexcept
     {
         auto* element = static_cast<Element*>(object);
-        // Replaced owned children remain on Object's ownership chain until its safe point.
-        // They have already left this layout and must not be measured or paired in a form.
-        return element->element_parent_ == this ? element : nullptr;
+        return element;
     }
 
     void Layout::setType(ELayoutType type) noexcept

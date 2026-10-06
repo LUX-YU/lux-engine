@@ -44,8 +44,9 @@ namespace
     public:
         template <class Parent>
         LifetimeElement(Parent& parent, Lifetime& lifetime, const char* id)
-            : Element(parent, lux::ui::ElementId{id}), lifetime_(lifetime)
+            : Element(lux::ui::ElementId{id}), lifetime_(lifetime)
         {
+            assert(parent.addElement(*this));
         }
         ~LifetimeElement() override
         {
@@ -58,55 +59,38 @@ namespace
         Lifetime& lifetime_;
     };
 
-    class LifetimePane final : public lux::ui::Pane
-    {
-    public:
-        LifetimePane(lux::ui::Pane& parent, Lifetime& lifetime)
-            : Pane(parent, lux::ui::PaneId{"child"}, lux::ui::PaneTypeId{"test.lifetime"}, "Child"),
-              content_(*this, lifetime, "child-content"), lifetime_(lifetime)
-        {
-            assert(setContent(content_));
-        }
-        ~LifetimePane() override
-        {
-            ++lifetime_.panes_destroyed;
-        }
-
-    private:
-        LifetimeElement content_;
-        Lifetime& lifetime_;
-    };
-
     class LifetimeOwner final : public lux::ui::Pane
     {
     public:
-        LifetimeOwner(lux::ui::Root& root, Lifetime& lifetime)
-            : Pane(lux::ui::PaneId{"lifetime"}, lux::ui::PaneTypeId{"test.lifetime"}, "Lifetime"),
-              resource_{lifetime}, content_(*this, lux::ui::ElementId{"layout"}), fixed_(content_, lifetime, "fixed"),
-              child_(*this, lifetime)
+        LifetimeOwner(Lifetime& lifetime)
+            : Pane("Lifetime"), resource_{lifetime}, content_(lux::ui::ElementId{"layout"}),
+              fixed_(content_, lifetime, "fixed"), child_(content_, lifetime, "child")
         {
-            assert(setContent(content_));
+            assert(addElement(content_));
             fields_.push_back(std::make_unique<LifetimeElement>(content_, lifetime, "first"));
             fields_.push_back(std::make_unique<LifetimeElement>(content_, lifetime, "second"));
-            ui_test::mount(root, *this);
-            assert(root.requestFocus(*fields_.front()));
-            assert(root.capturePointer(*fields_.front()));
-            root.deferChange(*fields_.front(), [](lux::object::LuxObject&) noexcept { std::abort(); });
-            root.deferChange(child_, [](lux::object::LuxObject&) noexcept { std::abort(); });
+        }
+        ~LifetimeOwner() override { ++resource_.lifetime.panes_destroyed; }
+        void capture()
+        {
+            assert(root().requestFocus(*fields_.front()));
+            assert(root().capturePointer(*fields_.front()));
+            root().deferChange(*fields_.front(), [](lux::object::LuxObject&) noexcept { std::abort(); });
+            root().deferChange(child_, [](lux::object::LuxObject&) noexcept { std::abort(); });
         }
 
     private:
         Resource resource_;
         lux::ui::Layout content_;
         LifetimeElement fixed_;
-        LifetimePane child_;
+        LifetimeElement child_;
         std::vector<std::unique_ptr<lux::ui::Element>> fields_;
     };
 
     class ChangeElement final : public lux::ui::Element
     {
     public:
-        explicit ChangeElement(lux::ui::Pane& parent) : Element(parent, lux::ui::ElementId{"changing"}) {}
+        ChangeElement() : Element(lux::ui::ElementId{"changing"}) {}
         unsigned applications{}, updates{}, draws{}, extra{};
         bool defer_draw{}, defer_update{}, repeat{};
         void (*on_apply)(ChangeElement&) noexcept {};
@@ -152,17 +136,15 @@ namespace
     class ChangeOwner final : public lux::ui::Pane
     {
     public:
-        explicit ChangeOwner(lux::ui::Root& root)
-            : Pane(lux::ui::PaneId{"change"}, lux::ui::PaneTypeId{"test.change"}, "Change")
+        ChangeOwner() : Pane("Change")
         {
             replace();
-            ui_test::mount(root, *this);
         }
         std::optional<ChangeElement> content;
         void replace() noexcept
         {
-            content.emplace(*this); // Deliberate address reuse: old intents must not follow the pointer.
-            assert(setContent(*content));
+            content.emplace(); // Deliberate address reuse: old intents must not follow the pointer.
+            assert(addElement(*content));
         }
     };
 
@@ -174,11 +156,13 @@ namespace
         auto& root = **created;
         Lifetime lifetime;
         {
-            std::unique_ptr<ui::Pane> owner = std::make_unique<LifetimeOwner>(root, lifetime);
-            assert(root.firstChild() == owner.get());
+            auto& owner = ui_test::makePane<LifetimeOwner>(root, lifetime);
+            owner.capture();
+            assert(root.firstChild() == &owner);
+            assert(root.clearPanes());
         }
         assert(!lifetime.resource_alive && lifetime.resource_destroyed == 1);
-        assert(!root.firstChild() && !root.findPane(ui::PaneIdView{"child"}));
+        assert(!root.firstChild() && root.panes().empty());
         assert(!root.focusedElement() && !root.focusedPane());
         root.applyPendingChanges(); // All callbacks attached to destroyed members were removed.
         assert(root.update({}, nullptr));
@@ -187,13 +171,13 @@ namespace
         Lifetime rejected;
         const auto make_candidate = [&]() -> std::unique_ptr<ui::Pane>
         {
-            auto candidate = std::make_unique<LifetimeOwner>(root, rejected);
+            auto candidate = std::make_unique<LifetimeOwner>(rejected);
             return {};
         };
         assert(!make_candidate() && !root.firstChild() && rejected.resource_destroyed == 1);
         root.applyPendingChanges();
 
-        ChangeOwner owner(root);
+        auto& owner = ui_test::makePane<ChangeOwner>(root);
         auto& content = *owner.content;
         content.defer_draw = content.defer_update = true;
         ui::DrawData draw;
@@ -250,11 +234,12 @@ namespace
 
     int contractViolation(std::string_view scenario)
     {
+        std::cout << "UI contract probe entered\n" << std::flush;
         using namespace lux;
         auto created = ui::Root::create({.docking = false});
         assert(created);
         auto& root = **created;
-        ChangeOwner owner(root);
+        auto& owner = ui_test::makePane<ChangeOwner>(root);
         const auto apply = +[](ChangeElement& target) noexcept { target.root().applyPendingChanges(); };
         const auto destroy =
             +[](ChangeElement& target) noexcept { static_cast<ChangeOwner&>(target.pane()).content.reset(); };
@@ -300,12 +285,9 @@ namespace
     class Probe final : public lux::ui::Pane
     {
     public:
-        template <class Parent>
-        Probe(Parent& parent, const char* id)
-            : lux::ui::Pane(lux::ui::PaneId{id}, lux::ui::PaneTypeId{"test.probe"}, id)
+        explicit Probe(const char* id) : lux::ui::Pane(id)
         {
-            assert(setContent(probe_content_));
-            ui_test::mount(parent, *this);
+            assert(addElement(probe_content_));
         }
         unsigned draws{}, updates{}, keys{}, undo{}, redo{}, moves{}, losses{};
         bool nested{}, reject_capture{}, edit_text{}, consume_keys{true}, immediate_input{};
@@ -386,16 +368,16 @@ int main(int argc, char** argv)
     assert(font && font->pixels.size() == std::size_t(font->width) * font->height * 4);
     ui::DrawData slot;
     {
-        Probe parent(**first, "parent");
+        auto& parent = ui_test::makePane<Probe>(**first, "parent");
         parent.nested = true;
         parent.reject_capture = true;
-        Probe child(parent, "child");
-        static_assert(!std::is_constructible_v<ui::Pane, object::LuxObject&, ui::PaneId, ui::PaneTypeId, std::string>);
-        static_assert(!std::is_constructible_v<ui::Pane, ui::Root&, ui::PaneId, ui::PaneTypeId, std::string>);
-        Probe sibling(**first, "sibling");
-        Probe separate(**second, "separate");
+        auto& child = ui_test::makePane<Probe>(**first, "child");
+        static_assert(!std::is_constructible_v<ui::Pane, object::LuxObject&, ui::PaneId, std::string>);
+        static_assert(!std::is_constructible_v<ui::Pane, ui::Root&, ui::PaneId, std::string>);
+        auto& sibling = ui_test::makePane<Probe>(**first, "sibling");
+        auto& separate = ui_test::makePane<Probe>(**second, "separate");
         assert(&child.root() == first->get());
-        assert((*first)->findPane(ui::PaneIdView{"child"}) == &child);
+        assert((*first)->findPane(child.id()) == &child);
         assert((*first)->update({{640, 480}, 0.016F}, &slot));
         assert(parent.draws == 1 && child.draws == 1 && sibling.draws == 1 && separate.draws == 0);
         assert(ImGui::GetCurrentContext() == original && slot.valid());
@@ -424,21 +406,25 @@ int main(int argc, char** argv)
         assert(!(*first)->requestFocus(child));
         assert((*second)->update({{640, 480}, 0.016F}, &slot));
         assert(separate.draws == 1 && ImGui::GetCurrentContext() == original);
-        auto temporary = std::make_unique<Probe>(**first, "temporary");
-        assert((*first)->requestFocus(*temporary));
-        assert((*first)->capturePointer(*temporary));
-        temporary.reset();
+        auto& temporary = ui_test::makePane<Probe>(**first, "temporary");
+        const auto temporary_id = temporary.id();
+        assert((*first)->requestFocus(temporary));
+        assert((*first)->capturePointer(temporary));
+        assert((*first)->removePane(temporary));
         assert((*first)->update({{640, 480}, 0.016F}, &slot));
-        assert(!(*first)->findPane(ui::PaneIdView{"temporary"}));
+        assert(!(*first)->findPane(temporary_id));
     }
+    assert((*first)->clearPanes() && (*second)->clearPanes());
     {
-        Probe parent(**second, "images");
+        auto& parent = ui_test::makePane<Probe>(**second, "images");
         parent.nested = true;
         parent.immediate_input = true;
-        ui::Layout layout(parent, ui::ElementId{"content"});
+        ui::Layout layout(ui::ElementId{"content"});
         assert(parent.replaceContent(layout));
-        ui::ImageElement one(layout, ui::ElementId{"one"});
-        ui::ImageElement two(layout, ui::ElementId{"two"});
+        ui::ImageElement one(ui::ElementId{"one"});
+        assert(layout.addElement(one));
+        ui::ImageElement two(ui::ElementId{"two"});
+        assert(layout.addElement(two));
         one.setStretch({0, 0});
         two.setStretch({0, 0});
         const render::RTextureHandle shared{0, 0};
@@ -487,7 +473,8 @@ int main(int argc, char** argv)
         auto made = ui::Root::create({.docking = false});
         assert(made);
         auto& root = **made;
-        Probe first(root, "capture-first"), second(root, "capture-second");
+        auto& first = ui_test::makePane<Probe>(root, "capture-first");
+        auto& second = ui_test::makePane<Probe>(root, "capture-second");
         first.immediate_input = true;
         for (unsigned frame{}; frame != 3; ++frame)
         {
@@ -518,7 +505,7 @@ int main(int argc, char** argv)
         auto bounded = ui::Root::create({.docking = false, .input_capacity = 4});
         assert(bounded);
         auto& root = **bounded;
-        Probe pane(root, "input");
+        auto& pane = ui_test::makePane<Probe>(root, "input");
         pane.consume_keys = false;
         for (unsigned index{}; index != 3; ++index)
         {

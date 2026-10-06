@@ -1,4 +1,4 @@
-# Editor Framework v1
+# Editor Framework v2
 
 `editor/` is the new framework. The previous product is isolated in `editor_legacy/`.
 The default build installs one `lux_editor`; it displays a Welcome Pane and does not load authoring tools.
@@ -7,9 +7,9 @@ The default build installs one `lux_editor`; it displays a Welcome Pane and does
 
 | Owner | Responsibility |
 |---|---|
-| `LuxEngine` | Object queue, native window, EngineContext, UI Scene transport, optional project Context, one frame loop |
-| `EditorWindow` | GLFW lifetime entry, one Input sample, one EditorUIRoot |
-| `EditorUIRoot` | SparseSet of unique top-level Panes; EXTERNAL parent links and existing PaneHandle routing |
+| `LuxEngine` | Native window, EngineContext, UI Scene transport, optional project Context, one frame loop |
+| `EditorWindow` | GLFW lifetime entry, one Input sample, one ui::Root |
+| `ui::Root` | Sole generational sparse owner of Panes, content traversal, focus/capture and docking |
 | `EditorContext` | Project values, independent AssetVfs, three frozen registrars; explicit EngineContext borrow |
 | `EditorServiceRegistrar` | Lazy unique service instances; reverse successful-construction destruction |
 | `EditorUiRegistrar` | Detached Pane factories; invocation lives in the UI library, ownership passes to Root |
@@ -20,7 +20,8 @@ Context is owner-thread only. Registration finishes before `freeze()`; factories
 Service requests return borrowed references, valid until Context destruction. Factories may request other registered
 services; recursive creation fails, and failed creation is not cached as success. There is no dynamic plugin/scope protocol.
 
-UI factories receive values and Context, returning a complete detached `unique_ptr<ui::Pane>`. They must not start work
+UI factories use canonical string `PaneDescription.type`; `name` is the stable layout identity,
+and `title` is visible text. Factories receive values and Context, returning a complete detached `unique_ptr<ui::Pane>`. They must not start work
 that depends on a not-yet-published project. Root prepares the entire batch before transferring any owner. Removal first
 revokes routing, then removes ownership lookup, then notifies, and destroys the Pane after callbacks return. Structural
 calls from drawing, event delivery or attachment callbacks return BUSY. Existing Root route indices are not owners.
@@ -39,10 +40,9 @@ its SceneSystems. The existing Runtime performs final resource retirement; there
 
 The production targets are `lux_editor_context`, `lux_editor_ui`, `lux_editor_app` (STATIC) and `lux_editor`.
 The SDK package is `lux-engine-editor-framework`, with those three library component names under
-`lux::engine::editor::`. `EditorUIRoot.hpp` exposes no Renderer or SceneRuntime dependency; the UI Scene transport has
-its own header. Context has no UI library dependency; `EditorUiRegistrar::create()` is implemented by `lux_editor_ui`.
+`lux::engine::editor::`. Root exposes no Renderer or SceneRuntime dependency; the UI Scene transport has its own header. Context has no UI library dependency; `EditorUiRegistrar::create()` is implemented by `lux_editor_ui`.
 
-Use EDITOR profile, `LUX_BUILD_EDITOR_LEGACY=OFF` (default). Build `all -j 4 -- -k 0`; CMake changes require a second
+Use the EDITOR profile; legacy has no active build path. Build `all -j 4 -- -k 0`; CMake changes require a second
 no-work build. `LUX_EDITOR_BUILD_NATIVE_TESTS` enables framework CPU tests; GPU and desktop lifecycle tests require their
 explicit switches. Desktop lifecycle tests do not qualify system IME or interactive native input. Windows native output
 is currently implemented; Linux native output returns an explicit unsupported error.

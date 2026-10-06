@@ -19,8 +19,10 @@ int main()
     assert((*second)->feedInput(ui::Key{ui::EKey::B, true}, 200));
     ui::DrawData slot;
     {
-        TUiDrawPane one(**first, [] { ImGui::TextUnformatted("First root"); });
-        TUiDrawPane two(**second, [] { ImGui::TextUnformatted("Second root"); });
+        auto draw_first = [] { ImGui::TextUnformatted("First root"); };
+        auto& one = ui_test::makePane<TUiDrawPane<decltype(draw_first)>>(**first, draw_first);
+        auto draw_second = [] { ImGui::TextUnformatted("Second root"); };
+        auto& two = ui_test::makePane<TUiDrawPane<decltype(draw_second)>>(**second, draw_second);
         (*first)->deferChange(one, [](object::LuxObject& target) noexcept {
             static_cast<ui::Pane&>(target).setTitle("Adopted");
         });

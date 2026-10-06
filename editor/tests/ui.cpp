@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
-#include <lux/engine/editor/EditorUIRoot.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <lux/engine/editor/WindowInput.hpp>
 #include <lux/engine/input/Input.hpp>
 #include <lux/engine/input/InputSnapshot.hpp>
@@ -17,10 +17,10 @@ namespace
     {
     public:
         Pane(std::string name, unsigned& count)
-            : ui::Pane(ui::PaneId{name}, ui::PaneTypeId{"test"}, name), destroyed_(count),
-              layout_(*this, ui::ElementId{"content"}), text_(layout_, ui::ElementId{"text"}, "Content")
+            : ui::Pane(name), destroyed_(count),
+              layout_(ui::ElementId{"content"}), text_(ui::ElementId{"text"}, "Content")
         {
-            assert(setContent(layout_));
+            assert(layout_.addElement(text_) && addElement(layout_));
         }
         ~Pane() override
         {
@@ -35,52 +35,53 @@ namespace
     class Listener final : public object::LuxObject
     {
     public:
-        Listener(EditorUIRoot& root) : LuxObject(), root_(root) {}
-        void changed(const ui::AttachmentChanged&) noexcept
+        Listener(ui::Root& root) : LuxObject(), root_(root) {}
+        void changed(const ui::PaneChanged&) noexcept
         {
             ++calls;
-            auto blocked = root_.clearProjectUi();
-            assert(!blocked && blocked.error().code == EFrameworkError::BUSY);
+            auto blocked = root_.clearPanes();
+            assert(!blocked && blocked.error() == ui::EPaneError::BUSY);
         }
-        EditorUIRoot& root_;
+        ui::Root& root_;
         unsigned calls{};
     };
 } // namespace
 int main()
 {
     auto& queue = object::ObjectRuntime::instance();
-    auto created = EditorUIRoot::create();
+    auto created = ui::Root::create();
     assert(created);
     auto& root = **created;
     Listener listener(root);
-    auto connection = object::LuxObject::connect(&root, &ui::Root::attachmentChanged, &listener, &Listener::changed);
+    auto connection = object::LuxObject::connect(&root, &ui::Root::paneChanged, &listener, &Listener::changed);
     assert(connection);
     unsigned destroyed{};
     std::unique_ptr<ui::Pane> a = std::make_unique<Pane>("a", destroyed);
     auto* address = a.get();
-    auto handle = root.takePane(a);
-    assert(handle && !a && root.projectPane(*handle) == address && root.projectPaneCount() == 1);
-    assert(address->ownership() == object::EObjectOwnership::EXTERNAL);
+    auto adopted = root.addPane(std::move(a));
+    assert(adopted && !a && &adopted->get() == address && root.panes().size() == 1);
+    const auto identity = address->id();
     std::unique_ptr<ui::Pane> duplicate = std::make_unique<Pane>("a", destroyed);
-    assert(!root.takePane(duplicate) && duplicate && root.projectPaneCount() == 1);
-    duplicate.reset();
+    assert(root.addPane(std::move(duplicate)) && !duplicate && root.panes().size() == 2);
     std::vector<std::unique_ptr<ui::Pane>> batch;
     batch.push_back(std::make_unique<Pane>("b", destroyed));
-    batch.push_back(std::make_unique<Pane>("a", destroyed));
-    assert(!root.mountProjectUi(batch) && batch[0] && batch[1] && root.projectPaneCount() == 1);
+    batch.push_back({});
+    auto* candidate = batch[0].get();
+    assert(!root.addPanes(batch) && batch[0].get() == candidate && root.panes().size() == 2);
     batch.clear();
-    assert(root.requestFocus(*address));
-    assert(root.capturePointer(*address));
-    assert(root.removePane(*handle));
-    assert(!root.projectPane(*handle) && !root.findPane(ui::PaneIdView{"a"}) && !root.focusedPane());
-    assert(root.projectPaneCount() == 0 && destroyed == 4);
+    assert(root.requestFocus(*address) && root.capturePointer(*address));
+    auto removed = root.removePane(*address);
+    assert(removed && !root.findPane(identity) && !root.focusedPane());
+    assert(root.panes().size() == 1 && destroyed == 1);
+    removed->reset();
+    assert(destroyed == 2);
     std::unique_ptr<ui::Pane> next = std::make_unique<Pane>("a", destroyed);
-    auto next_handle = root.takePane(next);
-    assert(next_handle && !root.projectPane(*handle) && root.projectPane(*next_handle));
+    auto next_pane = root.addPane(std::move(next));
+    assert(next_pane && !root.findPane(identity) && root.findPane(next_pane->get().id()));
     auto capture = [&](const ui::DrawData&) noexcept -> cxx::expected<void, ui::ECaptureError>
     {
-        auto blocked = root.clearProjectUi();
-        assert(!blocked && blocked.error().code == EFrameworkError::BUSY);
+        auto blocked = root.clearPanes();
+        assert(!blocked && blocked.error() == ui::EPaneError::BUSY);
         return {};
     };
     ui::DrawData data;
@@ -89,20 +90,20 @@ int main()
     snapshot.events.emplace_back(input::CursorAction{20, 20, 2});
     snapshot.events.emplace_back(input::CharInput{0x4e2d, 3});
     assert(feedWindowInput(root, snapshot));
-    assert(root.frame({{640, 480}, 0.016F}, &data, capture));
+    assert(root.update({{640, 480}, 0.016F}, &data, ui::Root::Capture{capture}));
     const auto sequence = root.inputSnapshot().sequence;
     assert(sequence <= 3);
-    assert(root.frame({{640, 480}, 0.016F}, nullptr, capture));
+    assert(root.update({{640, 480}, 0.016F}, nullptr, ui::Root::Capture{capture}));
     assert(root.inputSnapshot().sequence == sequence);
     for (unsigned frame{}; root.inputSnapshot().sequence < 3 && frame < 8; ++frame)
     {
-        assert(root.frame({{640, 480}, 0.016F}, &data, capture));
+        assert(root.update({{640, 480}, 0.016F}, &data, ui::Root::Capture{capture}));
     }
     assert(root.inputSnapshot().sequence == 3);
     input::InputSnapshot composition;
     composition.events.emplace_back(input::CompositionAction{input::ECompositionStage::STARTED, 4});
     assert(feedWindowInput(root, composition));
-    assert(root.frame({{640, 480}, 0.016F}, &data, capture));
+    assert(root.update({{640, 480}, 0.016F}, &data, ui::Root::Capture{capture}));
     assert(root.inputSnapshot().composing && root.inputSnapshot().keyboard_captured);
     input::Input actions;
     const auto action = actions.actionRegistry().registerAction({.name = "framework.shortcut"});
@@ -116,8 +117,8 @@ int main()
     assert(!actions.mapper().active(action));
     actions.evaluate(key, 0.016F, true);
     assert(actions.mapper().active(action));
-    assert(root.clearProjectUi() && destroyed == 5 && listener.calls == 4);
-    assert(std::ranges::all_of(root.panes(), [](auto* pane) { return pane == nullptr; }));
+    assert(root.clearPanes() && destroyed == 4 && listener.calls == 6);
+    assert(root.panes().empty());
     std::puts(
         "PASS ownership, atomic refusal, stable addresses/handles, routing removal, callback guard and input sequence"
     );

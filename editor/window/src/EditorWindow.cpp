@@ -1,4 +1,4 @@
-#include <lux/engine/editor/EditorUIRoot.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/WindowInput.hpp>
 #include <lux/engine/window/GlfwRuntime.hpp>
@@ -25,16 +25,18 @@ namespace lux::editor
                 static_cast<std::uint64_t>(window->initError())
             });
         }
-        auto root = EditorUIRoot::create();
+        auto root = ui::Root::create();
         if (!root)
         {
-            return cxx::unexpected(std::move(root.error()));
+            return cxx::unexpected(FrameworkFailure{
+                EFrameworkError::UI, "Root initialization failed", static_cast<std::uint64_t>(root.error())
+            });
         }
         window->root_ = std::move(*root);
         window->root_->bindWindow(window.get());
         return window;
     }
-    EditorUIRoot& EditorWindow::uiRoot() noexcept
+    ui::Root& EditorWindow::uiRoot() noexcept
     {
         return *root_;
     }

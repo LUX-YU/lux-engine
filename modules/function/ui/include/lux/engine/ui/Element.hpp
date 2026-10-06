@@ -5,7 +5,7 @@
 #include <lux/engine/object/LuxObject.hpp>
 #include <lux/engine/ui/Geometry.hpp>
 #include <lux/engine/ui/Ids.hpp>
-#include <lux/engine/ui/Attachment.hpp>
+#include <lux/engine/ui/PaneError.hpp>
 
 namespace lux::ui
 {
@@ -37,8 +37,6 @@ namespace lux::ui
         {
             return pane_;
         }
-        Element(Pane& parent, ElementId id);
-        Element(Element& parent, ElementId id);
         ~Element() noexcept override;
         [[nodiscard]] Root& root() const noexcept;
         [[nodiscard]] Pane& pane() const noexcept;
@@ -92,29 +90,12 @@ namespace lux::ui
         [[nodiscard]] SizeHint measure(float width) noexcept;
         void arrange(Rect rect) noexcept;
 
+        [[nodiscard]] PaneResult<void> addElement(Element&) noexcept;
+        [[nodiscard]] PaneResult<void> replaceElement(Element& previous, Element&) noexcept;
+
     protected:
-        // Composite implementations expose this only when they have a real content responsibility.
-        [[nodiscard]] cxx::expected<void, EAttachmentError> addSubElement(Element&) noexcept;
-        [[nodiscard]] cxx::expected<void, EAttachmentError> replaceSubElement(Element& previous, Element&) noexcept;
-        template <class T, class D>
-            requires std::derived_from<T, Element> && std::same_as<typename std::unique_ptr<T, D>::pointer, T*> &&
-                     (!std::is_reference_v<D>) && std::is_nothrow_move_constructible_v<D> &&
-                     std::is_nothrow_destructible_v<D>
-        [[nodiscard]] cxx::expected<void, EAttachmentError>
-        addSubElement(std::unique_ptr<T, D>&& candidate) noexcept
-        {
-            if (!candidate)
-                return cxx::unexpected(EAttachmentError::INVALID_TREE);
-            auto attach = [&]() noexcept -> object::ObjectResult<void>
-            {
-                auto adopted = adoptChild(std::move(candidate));
-                if (!adopted)
-                    return cxx::unexpected(adopted.error());
-                return {};
-            };
-            return addSubElementImpl(*candidate, attach);
-        }
-        // Revoke UI borrows before the common Object ownership algorithm runs.
+        // Only composites override this; leaf controls reject children even via a base reference.
+        [[nodiscard]] virtual bool acceptsElements() const noexcept { return false; }
         void clearChildren() noexcept;
         [[nodiscard]] virtual SizeHint sizeHintContent() noexcept;
         [[nodiscard]] virtual SizeHint measureContent(float width) noexcept;
@@ -127,17 +108,9 @@ namespace lux::ui
         friend class Root;
         friend class Pane;
         friend class Layout;
-        [[nodiscard]] cxx::expected<void, EAttachmentError> addSubElementImpl(
-            Element&, cxx::function_ref<object::ObjectResult<void>()>
-        ) noexcept;
-        bool allowsGenericChildren() const noexcept override
-        {
-            return false;
-        }
-        Element(object::LuxObject&, Pane*, Element*, ElementId);
+        bool allowsGenericStructure() const noexcept final { return false; }
         void assignPane(Pane*) noexcept;
         [[nodiscard]] SizeHint constrain(SizeHint) const noexcept;
-        std::size_t registration_slot_{SIZE_MAX};
         std::uint64_t hint_epoch_{}, measure_epoch_{};
         SizeHint intrinsic_hint_, measured_hint_;
         float measured_width_{};

@@ -1,111 +1,72 @@
+#include <charconv>
+#include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
-#include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/detail/Contract.hpp>
-#include <lux/engine/ui/detail/AttachmentState.hpp>
 
 #include <algorithm>
 #include <utility>
 
 namespace lux::ui
 {
-    Pane::Pane(PaneId id, PaneTypeId type, std::string title)
-        : LuxObject(), id_(std::move(id)), type_(std::move(type)), title_(std::move(title))
-    {
-        if (!id_.isValid())
-            detail::failContract();
-        rebuildWindowLabel();
-    }
-    void Pane::invalidatePreparation() noexcept
-    {
-        for (auto* node = this; node; node = dynamic_cast<Pane*>(node->parent()))
-            if (node->preparation_)
-                node->preparation_->valid = false;
-    }
-
-    Pane::Pane(Pane& parent, PaneId id, PaneTypeId type, std::string title)
-        : Pane(std::move(id), std::move(type), std::move(title))
-    {
-        root_ = parent.attachedRoot();
-        if (root_)
-            root_->checkContentChange();
-        parent.invalidatePreparation();
-        attachTo(parent);
-        if (root_)
-            root_->registerPane(*this);
-    }
+    Pane::Pane(std::string title) : title_(std::move(title)) {}
 
     Pane::~Pane()
     {
-        beginDestruction();
-        invalidatePreparation();
-        if (preparation_)
-        {
-            for (auto*& pane : preparation_->roots)
-                if (pane == this)
-                    pane = nullptr;
-            preparation_ = nullptr;
-        }
         if (root_)
-            root_->releaseSubtree(*this, true);
+        {
+            detail::failContract(); // Only Root can surrender a registered window's unique owner.
+        }
+        beginDestruction();
         clearChildren();
     }
 
     void Pane::clearChildren() noexcept
     {
-        Root::prepareChildrenRelease(*this);
-        LuxObject::clearChildren();
+        if (!content_)
+        {
+            return;
+        }
+        if (root_)
+        {
+            root_->checkContentChange();
+            root_->releaseElement(*content_);
+        }
+        auto* previous = std::exchange(content_, nullptr);
+        commitRelation(*previous, nullptr);
+        previous->assignPane(nullptr);
+        previous->element_parent_ = nullptr;
+        if (root_)
+        {
+            root_->notifyRemoved(*previous);
+        }
     }
 
     Root& Pane::root() const noexcept
     {
         if (!root_)
+        {
             detail::failContract();
+        }
         return *root_;
     }
 
-    cxx::expected<void, EAttachmentError> Pane::addSubPane(Pane& pane) noexcept
+    PaneResult<void> Pane::addElement(Element& element) noexcept
     {
-        auto attach = [&]() noexcept { return attachChild(pane); };
-        return addSubPaneImpl(pane, attach);
+        return Root::compose(this, nullptr, element, content_, false);
     }
 
-    cxx::expected<void, EAttachmentError> Pane::addSubPaneImpl(
-        Pane& pane, cxx::function_ref<object::ObjectResult<void>()> attach
-    ) noexcept
+    PaneResult<void> Pane::replaceContent(Element& element) noexcept
     {
-        return Root::compose(*this, pane, false, attach);
-    }
-
-    cxx::expected<void, EAttachmentError> Pane::setContent(Element& element) noexcept
-    {
-        auto attach = [&]() noexcept -> object::ObjectResult<void>
-        {
-            return element.parent() == this ? object::ObjectResult<void>{} : attachChild(element);
-        };
-        return setContentImpl(element, false, attach);
-    }
-
-    cxx::expected<void, EAttachmentError> Pane::replaceContent(Element& element) noexcept
-    {
-        auto attach = [&]() noexcept -> object::ObjectResult<void>
-        {
-            return element.parent() == this ? object::ObjectResult<void>{} : attachChild(element);
-        };
-        return setContentImpl(element, true, attach);
-    }
-
-    cxx::expected<void, EAttachmentError> Pane::setContentImpl(
-        Element& element, bool replace, cxx::function_ref<object::ObjectResult<void>()> attach
-    ) noexcept
-    {
-        return Root::compose(*this, element, replace, attach);
+        return Root::compose(this, nullptr, element, content_, true);
     }
 
     void Pane::requestClose() noexcept
     {
         if (!isOnAffinityThread())
+        {
             detail::failContract();
+        }
         close_requested_ = true;
         static_cast<void>(emit(closeRequested));
     }
@@ -113,44 +74,55 @@ namespace lux::ui
     void Pane::dismissCloseRequest() noexcept
     {
         if (!isOnAffinityThread())
+        {
             detail::failContract();
+        }
         close_requested_ = false;
     }
 
     void Pane::setTitle(std::string title)
     {
         if (title_ == title)
+        {
             return;
-        invalidatePreparation();
+        }
         title_ = std::move(title);
         rebuildWindowLabel();
         if (root_)
+        {
             root_->paneLabelChanged();
+        }
     }
 
     void Pane::setVisible(bool visible)
     {
         if (visible_ == visible)
+        {
             return;
-        invalidatePreparation();
+        }
         visible_ = visible;
         if (root_)
+        {
             root_->paneLabelChanged();
+        }
         static_cast<void>(emit(visibilityChanged, PaneVisibilityChanged{visible_}));
     }
 
     void Pane::setModal(bool modal) noexcept
     {
-        invalidatePreparation();
         if (root_)
+        {
             root_->checkContentChange();
+        }
         modal_ = modal;
     }
 
     void Pane::setFocused(bool focused)
     {
         if (focused_ == focused)
+        {
             return;
+        }
         focused_ = focused;
         static_cast<void>(emit(focusChanged, PaneFocusChanged{focused_}));
     }
@@ -159,6 +131,10 @@ namespace lux::ui
     {
         window_label_ = title_;
         window_label_ += "###";
-        window_label_ += id_.name();
+        char identity[48];
+        auto first = std::to_chars(std::begin(identity), std::end(identity), id_.index);
+        *first.ptr++ = ':';
+        auto second = std::to_chars(first.ptr, std::end(identity), id_.gen);
+        window_label_.append(identity, second.ptr);
     }
 } // namespace lux::ui

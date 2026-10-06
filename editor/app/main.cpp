@@ -10,21 +10,13 @@ namespace
     class WelcomePane final : public lux::ui::Pane
     {
     public:
-        WelcomePane(lux::editor::EditorContext& context, const lux::editor::UiDescription& description)
-            : Pane(
-
-                  lux::ui::PaneId{description.instance},
-                  lux::ui::PaneTypeId{"framework.welcome"},
-                  description.title
-              ),
-              layout_(*this, lux::ui::ElementId{"layout"}),
-              label_(layout_, lux::ui::ElementId{"welcome"}, "LuxEngine Editor Framework v1"),
-              detail_(layout_, lux::ui::ElementId{"scope"}, "Framework ready. Authoring tools are not loaded.")
+        WelcomePane(lux::editor::EditorContext& context, const lux::editor::PaneDescription& description)
+            : Pane(description.title), layout_(lux::ui::ElementId{"layout"}),
+              label_(lux::ui::ElementId{"welcome"}, "LuxEngine Editor Framework v2"),
+              detail_(lux::ui::ElementId{"scope"}, "Framework ready. Authoring tools are not loaded.")
         {
-            if (!setContent(layout_))
-            {
+            if (!layout_.addElement(label_) || !layout_.addElement(detail_) || !addElement(layout_))
                 std::terminate();
-            }
         }
 
     private:
@@ -43,8 +35,8 @@ int main()
     auto assemble = [](lux::editor::EditorContext& context) noexcept -> lux::editor::FrameworkResult<void>
     {
         return context.ui().registerFactory(
-            lux::editor::UiTypeId{"framework.welcome"},
-            [](lux::editor::EditorContext& value, const lux::editor::UiDescription& description
+            "framework.welcome",
+            [](lux::editor::EditorContext& value, const lux::editor::PaneDescription& description
             ) -> lux::editor::FrameworkResult<std::unique_ptr<lux::ui::Pane>>
             { return std::unique_ptr<lux::ui::Pane>{new WelcomePane(value, description)}; }
         );
@@ -55,7 +47,7 @@ int main()
     {
         return 1;
     }
-    const lux::editor::EditorLayout layout{{lux::editor::UiTypeId{"framework.welcome"}, "welcome", "Welcome"}};
+    const lux::editor::EditorLayout layout{{"framework.welcome", "welcome", "Welcome"}};
     auto opened = (*engine)->openProject({"Framework", std::move(root)}, layout, assemble);
     if (!opened)
     {

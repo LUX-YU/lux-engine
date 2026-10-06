@@ -34,8 +34,6 @@ namespace lux::ui
     public:
         object::TSignal<> activated{*this};
         Button(ElementId id, std::string text);
-        Button(Pane& parent, ElementId id, std::string text);
-        Button(Element& parent, ElementId id, std::string text);
         void setText(std::string text);
 
     private:
@@ -47,8 +45,6 @@ namespace lux::ui
     {
     public:
         Label(ElementId id, std::string text = {});
-        Label(Pane& parent, ElementId id, std::string text = {});
-        Label(Element& parent, ElementId id, std::string text = {});
         void setText(std::string text);
         void setWrap(bool wrap) noexcept;
 
@@ -66,8 +62,6 @@ namespace lux::ui
     public:
         object::TSignal<EditResult> edited{*this};
         CheckBox(ElementId id, std::string text, bool value = false);
-        CheckBox(Pane& parent, ElementId id, std::string text, bool value = false);
-        CheckBox(Element& parent, ElementId id, std::string text, bool value = false);
         void setValue(bool value) noexcept;
         [[nodiscard]] bool value() const noexcept
         {
@@ -87,8 +81,6 @@ namespace lux::ui
     public:
         object::TSignal<EditResult> edited{*this};
         TextEdit(ElementId id, std::string value = {});
-        TextEdit(Pane& parent, ElementId id, std::string value = {});
-        TextEdit(Element& parent, ElementId id, std::string value = {});
         void setValue(std::string value);
         void setHint(std::string hint);
         void finishEdit(bool cancel = false) noexcept override;
@@ -126,8 +118,6 @@ namespace lux::ui
     public:
         object::TSignal<EditResult> edited{*this};
         NumericEdit(ElementId id, VNumericValue value);
-        NumericEdit(Pane& parent, ElementId id, VNumericValue value);
-        NumericEdit(Element& parent, ElementId id, VNumericValue value);
         void setValue(VNumericValue value) noexcept;
         void finishEdit(bool cancel = false) noexcept override;
         [[nodiscard]] bool editing() const noexcept
@@ -164,8 +154,6 @@ namespace lux::ui
     public:
         object::TSignal<EditResult> edited{*this};
         Choice(ElementId id, std::vector<ChoiceOption> options, std::int64_t value = 0);
-        Choice(Pane& parent, ElementId id, std::vector<ChoiceOption> options, std::int64_t value = 0);
-        Choice(Element& parent, ElementId id, std::vector<ChoiceOption> options, std::int64_t value = 0);
         // Owner maintenance replaces candidate values; this never emits an editing signal.
         void setOptions(std::vector<ChoiceOption> options) noexcept;
         void setValue(std::int64_t value) noexcept;

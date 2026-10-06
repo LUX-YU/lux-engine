@@ -10,13 +10,12 @@
 template <class Draw> class TUiDrawPane final : public lux::ui::Pane
 {
 public:
-    TUiDrawPane(lux::ui::Root& root, Draw draw)
-        : Pane(lux::ui::PaneId{"test.draw"}, lux::ui::PaneTypeId{"test.draw"}, "Draw"),
+    TUiDrawPane(Draw draw)
+        : Pane("Draw"),
           content_(*this, std::move(draw))
     {
-        if (!setContent(content_))
+        if (!addElement(content_))
             std::terminate(); // Fixed content in a detached Pane.
-        ui_test::mount(root, *this);
     }
 
 private:
@@ -24,7 +23,7 @@ private:
     {
     public:
         Content(TUiDrawPane& parent, Draw draw)
-            : lux::ui::Element(parent, lux::ui::ElementId{"content"}), draw_(std::move(draw))
+            : lux::ui::Element(lux::ui::ElementId{"content"}), draw_(std::move(draw))
         {}
 
     private:

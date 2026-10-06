@@ -43,13 +43,14 @@ namespace
 extern "C" TEST_EXPORT void make_object(
     CodeLease code,
     int* trace,
-    std::unique_ptr<LuxObject, ObjectDeleter>& result
+    std::shared_ptr<LuxObject>& result
 ) noexcept
 {
-    result = {
-        new PluginObject(trace),
-        ObjectDeleter::create<PluginObject>(PluginDeleter{trace}, std::move(code))
-    };
+    auto candidate = std::unique_ptr<PluginObject, PluginDeleter>(new PluginObject(trace), PluginDeleter{trace});
+    auto shared = shareOnRuntime(std::move(candidate), code);
+    if (!shared)
+        std::terminate();
+    result = std::move(*shared);
 }
 
 extern "C" TEST_EXPORT ObjectRuntime* object_runtime() noexcept

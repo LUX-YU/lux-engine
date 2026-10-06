@@ -4,7 +4,7 @@
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/RenderContext.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
-#include <lux/engine/editor/EditorUIRoot.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <lux/engine/editor/EditorUiScene.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
@@ -38,11 +38,11 @@ namespace
     {
     public:
         TestPane(std::string name, std::vector<int>& deaths)
-            : Pane(ui::PaneId{name}, ui::PaneTypeId{"test"}, "Framework GPU"), deaths_(deaths),
-              content_(*this, ui::ElementId{"layout"}),
-              label_(content_, ui::ElementId{"label"}, "Actual UI GPU content")
+            : Pane(std::move(name)), deaths_(deaths),
+              content_(ui::ElementId{"layout"}),
+              label_(ui::ElementId{"label"}, "Actual UI GPU content")
         {
-            assert(setContent(content_));
+            assert(content_.addElement(label_) && addElement(content_));
         }
         ~TestPane() override
         {
@@ -90,7 +90,7 @@ namespace
         {
         public:
             explicit Listener(LuxEngine& host) : LuxObject(), host_(host) {}
-            void attached(const ui::AttachmentChanged&) noexcept
+            void attached(const ui::PaneChanged&) noexcept
             {
                 auto result = host_.closeProject();
                 assert(!result && result.error().code == EFrameworkError::BUSY);
@@ -102,7 +102,7 @@ namespace
             LuxEngine& host_;
         } listener(*engine);
         auto connection =
-            object::LuxObject::connect(root, &ui::Root::attachmentChanged, &listener, &Listener::attached);
+            object::LuxObject::connect(root, &ui::Root::paneChanged, &listener, &Listener::attached);
         assert(connection);
         auto assembly = [&](EditorContext& context) noexcept -> FrameworkResult<void>
         {
@@ -111,17 +111,17 @@ namespace
                 { return std::make_unique<Service>(deaths); }
             ));
             return context.ui().registerFactory(
-                UiTypeId{"test"},
+                "test",
                 [&](EditorContext& context,
-                    const UiDescription& description) -> FrameworkResult<std::unique_ptr<ui::Pane>>
+                    const PaneDescription& description) -> FrameworkResult<std::unique_ptr<ui::Pane>>
                 {
                     assert(context.service<Service>());
-                    return std::unique_ptr<ui::Pane>{new TestPane(description.instance, deaths)};
+                    return std::unique_ptr<ui::Pane>{new TestPane(description.name, deaths)};
                 }
             );
         };
         const auto directory = std::filesystem::current_path();
-        const EditorLayout layout{{UiTypeId{"test"}, "one", "One"}, {UiTypeId{"test"}, "two", "Two"}};
+        const EditorLayout layout{{"test", "one", "One"}, {"test", "two", "Two"}};
         assert(engine->openProject({"A", directory}, layout, assembly));
         unsigned waiting{};
         auto until = [&](auto predicate)
@@ -139,6 +139,9 @@ namespace
               { return engine->capturedFrames() >= 4 && runtime->renderContext()->runtime().statistics().frames > 0; });
         auto* original = engine->context();
         assert(!engine->openProject({"", directory}, layout, assembly) && engine->context() == original);
+        const EditorLayout duplicate_names{{"test", "same", "One"}, {"test", "same", "Two"}};
+        assert(!engine->openProject({"Invalid", directory}, duplicate_names, assembly));
+        assert(engine->context() == original && root->panes().size() == 2);
         assert(engine->openProject({"B", directory}, layout, assembly));
         assert((deaths == std::vector<int>{1, 1, 2}));
         assert(&engine->engine() == runtime && &engine->window() == window && &engine->uiRoot() == root);
@@ -169,23 +172,23 @@ namespace
                 { return std::make_unique<Service>(deaths); }
             ));
             return context.ui().registerFactory(
-                UiTypeId{"test"},
+                "test",
                 [&](EditorContext& context,
-                    const UiDescription& description) -> FrameworkResult<std::unique_ptr<ui::Pane>>
+                    const PaneDescription& description) -> FrameworkResult<std::unique_ptr<ui::Pane>>
                 {
                     assert(context.service<Service>());
-                    if (description.instance == "two")
+                    if (description.name == "two")
                     {
                         return cxx::unexpected(
                             FrameworkFailure{EFrameworkError::FACTORY_FAILED, "Expected second factory refusal"}
                         );
                     }
-                    return std::unique_ptr<ui::Pane>{new TestPane(description.instance, deaths)};
+                    return std::unique_ptr<ui::Pane>{new TestPane(description.name, deaths)};
                 }
             );
         };
         assert(!engine->openProject({"C", directory}, layout, failing));
-        assert(!engine->context() && root->projectPaneCount() == 0);
+        assert(!engine->context() && root->panes().empty());
         assert((deaths == std::vector<int>{1, 1, 2, 1, 1, 2, 1, 2}));
         assert(engine->openProject({"D", directory}, layout, assembly));
         until([&] { return engine->capturedFrames() > before + 2; });
@@ -227,7 +230,9 @@ namespace
         assert(made_resources);
         auto resources = std::move(*made_resources);
         auto& messages = object::ObjectRuntime::instance();
-        auto root = take(EditorUIRoot::create());
+        auto made_root = ui::Root::create();
+        assert(made_root);
+        auto root = std::move(*made_root);
         auto scenes_created = scene::SceneRuntime::create(*execution, {0, 128});
         assert(scenes_created);
         auto scenes = std::move(*scenes_created);
@@ -243,7 +248,7 @@ namespace
         ));
         std::vector<int> deaths;
         std::unique_ptr<ui::Pane> pane = std::make_unique<TestPane>("gpu", deaths);
-        assert(root->takePane(pane));
+        assert(root->addPane(std::move(pane)));
         const auto pump = [&]
         {
             std::size_t controls = 8, programs = 4;
@@ -291,7 +296,7 @@ namespace
                     return data != nullptr;
                 }
             );
-            assert(root->frame({{640, 480}, 0.016F}, data, capture));
+            assert(root->update({{640, 480}, 0.016F}, data, ui::Root::Capture{capture}));
             assert(ui_scene->acquireDrawData() == nullptr); // Captured pending frame is never redrawn.
             pump();
         }
@@ -316,7 +321,7 @@ namespace
                     // Readback settles on render ticks. Keep producing frames, with the same backpressure contract.
                     if (auto* data = ui_scene->acquireDrawData())
                     {
-                        assert(root->frame({{640, 480}, 0.016F}, data, capture));
+                        assert(root->update({{640, 480}, 0.016F}, data, ui::Root::Capture{capture}));
                     }
                     return false;
                 }
@@ -327,7 +332,7 @@ namespace
             return bytes;
         };
         auto populated = readPixels();
-        assert(root->clearProjectUi());
+        assert(root->clearPanes());
         for (unsigned i{}; i < 8; ++i)
         {
             ui::DrawData* data{};
@@ -338,7 +343,7 @@ namespace
                     return data != nullptr;
                 }
             );
-            assert(root->frame({{640, 480}, 0.016F}, data, capture));
+            assert(root->update({{640, 480}, 0.016F}, data, ui::Root::Capture{capture}));
             pump();
         }
         auto empty = readPixels();

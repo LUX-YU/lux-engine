@@ -49,8 +49,6 @@ def main():
     parser = argparse.ArgumentParser()
     for name in ("input", "identity", "output", "library", "sdk-abi"):
         parser.add_argument("--" + name, required=True)
-    parser.add_argument("--editor-library")
-    parser.add_argument("--runtime-output")
     parser.add_argument("--value-fragments", nargs="*", default=[])
     parser.add_argument("--sources", nargs="+", required=True)
     args = parser.parse_args()
@@ -65,8 +63,7 @@ def main():
             if generated:
                 old = {f["id"]: f for f in record["fields"]}
                 record["fields"] = [dict(old.get(f["id"], {}), **f) for f in generated["fields"]]
-    if not args.editor_library:
-        value["plugin"].pop("editor_library", None)
+    value["plugin"].pop("editor_library", None)
     # Only runtime contracts enter the declaration fingerprint. Presentation and
     # installation locations do not change a module's executable contract.
     projection = {key: value[key] for key in ("abilities", "implementations", "systems", "components", "configurations", "render_features", "render_scene_bindings")}
@@ -90,9 +87,6 @@ def main():
     library = plugin["runtime_library"]
     library.update(path=args.library, interface_version=1, sdk_abi=args.sdk_abi,
                    build_id=build_id, declaration_digest=digest)
-    if args.editor_library:
-        plugin["editor_library"] = dict(path=args.editor_library, interface_version=1, sdk_abi=args.sdk_abi,
-            build_id=build_id, declaration_digest=digest, exports=["editor"])
     quote = lambda text: json.dumps(text, ensure_ascii=True)
     code = f'''// Generated together with the installed plugin description.
 #include <lux/engine/dynamic_library/LibraryExport.hpp>
@@ -112,9 +106,6 @@ extern "C" LUX_PLUGIN_EXPORT const lux::engine::platform::LibraryExportIdentity 
 }}
 '''
     outputs = [(args.identity, code), (args.output, json.dumps(value, indent=2, ensure_ascii=False) + "\n")]
-    if args.runtime_output:
-        plugin.pop("editor_library", None)
-        outputs.append((args.runtime_output, json.dumps(value, indent=2, ensure_ascii=False) + "\n"))
     publish(outputs)
 
 

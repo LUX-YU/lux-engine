@@ -15,14 +15,6 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 endif()
 find_package(Vulkan REQUIRED)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
-option(LUX_SAMPLE_EDITOR "Build the optional editor extension and its installed host check" OFF)
-set(sample_editor_argument)
-if(LUX_SAMPLE_EDITOR)
-    if(NOT TARGET editor_extensions_legacy)
-        message(FATAL_ERROR "The prior Editor extension requires LUX_BUILD_EDITOR_LEGACY; Framework v1 has no plugin ABI")
-    endif()
-    add_subdirectory("${PROJECT_SOURCE_DIR}/editor_legacy/tests/external-feature" legacy-editor EXCLUDE_FROM_ALL)
-endif()
 set(shaders "${CMAKE_CURRENT_BINARY_DIR}/ExternalShaders.hpp")
 add_custom_command(OUTPUT "${shaders}"
     COMMAND "${Vulkan_GLSLC_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/triangle.vert" -o "${CMAKE_CURRENT_BINARY_DIR}/triangle.vert.spv"
@@ -34,19 +26,18 @@ add_library(sample_external_plugin SHARED ExternalFeatureSample.cpp "${shaders}"
 target_include_directories(sample_external_plugin PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_link_libraries(sample_external_plugin PRIVATE lux::engine::function::render_vulkan
     lux::engine::scene::scene_render lux::engine::simulation::ecs::schema)
-lux_add_plugin_exports(TARGET sample_external_plugin ${sample_editor_argument} DESCRIPTION "${CMAKE_CURRENT_SOURCE_DIR}/triangle.plugin.json"
+lux_add_plugin_exports(TARGET sample_external_plugin DESCRIPTION "${CMAKE_CURRENT_SOURCE_DIR}/triangle.plugin.json"
     INPUTS "${CMAKE_CURRENT_SOURCE_DIR}/ExternalFeatureSample.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/ExternalFeature.hpp"
         "${shaders}")
-if(TARGET sample_editor_test_legacy)
-    add_dependencies(sample_editor_test_legacy sample_external_plugin)
-endif()
 add_executable(sample_external_test ExternalFeatureTest.cpp)
 target_link_libraries(sample_external_test PRIVATE lux::engine::project::project_plugin_rendering
     lux::engine::function::render_runtime lux::engine::scene::scene_render)
 if(MSVC)
-    target_compile_options(sample_external_test PRIVATE /UNDEBUG /utf-8)
+    target_compile_options(sample_external_test PRIVATE /UNDEBUG /utf-8 /GR- /we4541)
+    target_compile_options(sample_external_plugin PRIVATE /utf-8 /GR- /we4541)
 else()
-    target_compile_options(sample_external_test PRIVATE -UNDEBUG)
+    target_compile_options(sample_external_test PRIVATE -UNDEBUG -fno-rtti)
+    target_compile_options(sample_external_plugin PRIVATE -fno-rtti)
 endif()
 add_dependencies(sample_external_test sample_external_plugin)
 add_test(NAME plugin.external_gpu COMMAND sample_external_test

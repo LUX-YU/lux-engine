@@ -1,6 +1,10 @@
 include(${CMAKE_CURRENT_LIST_DIR}/MigrationStage.cmake)
 include(${PROJECT_SOURCE_DIR}/cmake/EditorTests.cmake)
 
+# Legacy-generated ABI/visibility headers must never enter the shared generated include
+# directory installed by engine/modules providers. This subtree is EXCLUDE_FROM_ALL.
+set(LUX_GENERATE_HEADER_DIR "${CMAKE_CURRENT_BINARY_DIR}/gen/include")
+
 # Formal providers, configured inside-out. Layers are source ownership, not aggregate libraries.
 add_subdirectory(editing)
 add_subdirectory(authoring)

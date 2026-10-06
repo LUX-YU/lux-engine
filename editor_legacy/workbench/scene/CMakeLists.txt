@@ -48,19 +48,19 @@ endif()
 
 include_component_cmake_scripts(meta)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_editor_imgui_inspector_codegen.cmake)
-engine_target_add_imgui_inspector_codegen(NAME scene_fields_transform TARGET scene_ui_legacy
+engine_target_add_imgui_inspector_codegen(NAME scene_fields_transform_legacy TARGET scene_ui_legacy
     SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/CodegenInput.cpp
     HEADER ${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/transform/include/lux/engine/simulation/ecs/Transform.hpp
     LOGICAL_PATH lux/engine/simulation/ecs/Transform.hpp
     COMPONENTS lux::simulation::ecs::Transform2D lux::simulation::ecs::Transform3D)
-engine_target_add_imgui_inspector_codegen(NAME scene_fields_hierarchy TARGET scene_ui_legacy
+engine_target_add_imgui_inspector_codegen(NAME scene_fields_hierarchy_legacy TARGET scene_ui_legacy
     SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/CodegenInput.cpp
     HEADER ${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/hierarchy/include/lux/engine/simulation/ecs/Parent.hpp
     LOGICAL_PATH lux/engine/simulation/ecs/Parent.hpp
     COMPONENTS lux::simulation::ecs::Parent
     CUSTOM_TYPES lux::simulation::ecs::Entity
     CUSTOM_HEADERS FirstPartyInspectorControls.hpp)
-engine_target_add_imgui_inspector_codegen(NAME scene_fields_visual TARGET scene_ui_legacy
+engine_target_add_imgui_inspector_codegen(NAME scene_fields_visual_legacy TARGET scene_ui_legacy
     SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/CodegenInput.cpp
     HEADER ${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/visual/include/lux/engine/simulation/ecs/Visual.hpp
     LOGICAL_PATH lux/engine/simulation/ecs/Visual.hpp
@@ -68,7 +68,7 @@ engine_target_add_imgui_inspector_codegen(NAME scene_fields_visual TARGET scene_
     CUSTOM_TYPES lux::rdesc::LightDescription
     CUSTOM_ELEMENTS lux::rdesc::MeshVisualDescription=MeshVisualControl
     CUSTOM_HEADERS FirstPartyInspectorControls.hpp)
-engine_target_add_imgui_inspector_codegen(NAME scene_fields_camera TARGET scene_ui_legacy
+engine_target_add_imgui_inspector_codegen(NAME scene_fields_camera_legacy TARGET scene_ui_legacy
     SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/CodegenInput.cpp
     HEADER ${PROJECT_SOURCE_DIR}/engine/scene/components/camera/include/lux/engine/scene/Camera.hpp
     LOGICAL_PATH lux/engine/scene/Camera.hpp

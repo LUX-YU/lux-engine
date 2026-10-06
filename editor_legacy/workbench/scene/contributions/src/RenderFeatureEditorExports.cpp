@@ -1,4 +1,4 @@
-#include "render_feature_client_meta_registration.hpp"
+#include "render_feature_meta_legacy_meta_registration.hpp"
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/scene/ConfigurationForm.hpp>
 #include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
@@ -115,7 +115,7 @@ extern "C" LUX_RENDER_FEATURE_META_PUBLIC const lux::editor::extensions::EditorE
             draft.reflection.push_back(
                 {code,
                  +[](lux::meta::ReflectionRegistry& registry, lux::meta::qual_type_index_fix_list&)
-                 { LuxRegisterRender_feature_clientMetas_META(registry); },
+                 { LuxRegisterRender_feature_meta_legacyMetas_META(registry); },
                  &scene::validateSceneEditors}
             );
             scene::SceneEditorCatalog::Definition definition;

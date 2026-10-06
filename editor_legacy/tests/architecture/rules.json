@@ -5921,10 +5921,10 @@
       "imgui::core",
       "project_plugins",
       "project_ui_legacy",
-      "scene_fields_camera_ir_generate_legacy",
-      "scene_fields_hierarchy_ir_generate_legacy",
-      "scene_fields_transform_ir_generate_legacy",
-      "scene_fields_visual_ir_generate_legacy",
+      "scene_fields_camera_legacy_ir_generate",
+      "scene_fields_hierarchy_legacy_ir_generate",
+      "scene_fields_transform_legacy_ir_generate",
+      "scene_fields_visual_legacy_ir_generate",
       "scene_interaction_legacy",
       "scene_mesh_query",
       "scene_projection_legacy",
@@ -6190,16 +6190,16 @@
       "scene_execution_api_legacy": {
         "path": "editor_legacy/activities/scene"
       },
-      "scene_fields_camera_ir_generate_legacy": {
+      "scene_fields_camera_legacy_ir_generate": {
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_hierarchy_ir_generate_legacy": {
+      "scene_fields_hierarchy_legacy_ir_generate": {
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_transform_ir_generate_legacy": {
+      "scene_fields_transform_legacy_ir_generate": {
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_visual_ir_generate_legacy": {
+      "scene_fields_visual_legacy_ir_generate": {
         "path": "editor_legacy/workbench/scene"
       },
       "scene_interaction_legacy": {
@@ -6468,10 +6468,10 @@
       "numbers",
       "random",
       "ranges",
-      "scene_fields_camera.inspector.generated.hpp",
-      "scene_fields_hierarchy.inspector.generated.hpp",
-      "scene_fields_transform.inspector.generated.hpp",
-      "scene_fields_visual.inspector.generated.hpp",
+      "scene_fields_camera_legacy.inspector.generated.hpp",
+      "scene_fields_hierarchy_legacy.inspector.generated.hpp",
+      "scene_fields_transform_legacy.inspector.generated.hpp",
+      "scene_fields_visual_legacy.inspector.generated.hpp",
       "stop_token",
       "string_view",
       "tuple",
@@ -6933,16 +6933,16 @@
       "scene_execution_api_legacy": {
         "path": "editor_legacy/activities/scene"
       },
-      "scene_fields_camera_ir_generate_legacy": {
+      "scene_fields_camera_legacy_ir_generate": {
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_hierarchy_ir_generate_legacy": {
+      "scene_fields_hierarchy_legacy_ir_generate": {
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_transform_ir_generate_legacy": {
+      "scene_fields_transform_legacy_ir_generate": {
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_visual_ir_generate_legacy": {
+      "scene_fields_visual_legacy_ir_generate": {
         "path": "editor_legacy/workbench/scene"
       },
       "scene_interaction_legacy": {
@@ -8970,16 +8970,16 @@
       "scene_execution_api_legacy": {
         "path": "editor_legacy/activities/scene"
       },
-      "scene_fields_camera_ir_generate_legacy": {
+      "scene_fields_camera_legacy_ir_generate": {
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_hierarchy_ir_generate_legacy": {
+      "scene_fields_hierarchy_legacy_ir_generate": {
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_transform_ir_generate_legacy": {
+      "scene_fields_transform_legacy_ir_generate": {
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_visual_ir_generate_legacy": {
+      "scene_fields_visual_legacy_ir_generate": {
         "path": "editor_legacy/workbench/scene"
       },
       "scene_interaction_legacy": {
@@ -12718,7 +12718,7 @@
         ],
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_transform_ir_legacy": {
+      "scene_fields_transform_legacy_ir": {
         "layer": "E3",
         "role": "GENERATOR",
         "capabilities": [
@@ -12726,7 +12726,7 @@
         ],
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_transform_ir_generate_legacy": {
+      "scene_fields_transform_legacy_ir_generate": {
         "layer": "E3",
         "role": "GENERATOR",
         "capabilities": [
@@ -12734,7 +12734,7 @@
         ],
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_hierarchy_ir_legacy": {
+      "scene_fields_hierarchy_legacy_ir": {
         "layer": "E3",
         "role": "GENERATOR",
         "capabilities": [
@@ -12742,7 +12742,7 @@
         ],
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_hierarchy_ir_generate_legacy": {
+      "scene_fields_hierarchy_legacy_ir_generate": {
         "layer": "E3",
         "role": "GENERATOR",
         "capabilities": [
@@ -12750,7 +12750,7 @@
         ],
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_visual_ir_legacy": {
+      "scene_fields_visual_legacy_ir": {
         "layer": "E3",
         "role": "GENERATOR",
         "capabilities": [
@@ -12758,7 +12758,7 @@
         ],
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_visual_ir_generate_legacy": {
+      "scene_fields_visual_legacy_ir_generate": {
         "layer": "E3",
         "role": "GENERATOR",
         "capabilities": [
@@ -12766,7 +12766,7 @@
         ],
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_camera_ir_legacy": {
+      "scene_fields_camera_legacy_ir": {
         "layer": "E3",
         "role": "GENERATOR",
         "capabilities": [
@@ -12774,7 +12774,7 @@
         ],
         "path": "editor_legacy/workbench/scene"
       },
-      "scene_fields_camera_ir_generate_legacy": {
+      "scene_fields_camera_legacy_ir_generate": {
         "layer": "E3",
         "role": "GENERATOR",
         "capabilities": [
@@ -12894,7 +12894,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_grid3_d_operation_meta_legacy": {
+      "render_feature_meta_legacy_grid3_d_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -12905,7 +12905,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_grid2_d_operation_meta_legacy": {
+      "render_feature_meta_legacy_grid2_d_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -12916,7 +12916,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_line_list_operation_meta_legacy": {
+      "render_feature_meta_legacy_line_list_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -12927,7 +12927,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_tri_overlay_operation_meta_legacy": {
+      "render_feature_meta_legacy_tri_overlay_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -12938,7 +12938,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_trajectory_operation_meta_legacy": {
+      "render_feature_meta_legacy_trajectory_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -12949,7 +12949,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_skybox_operation_meta_legacy": {
+      "render_feature_meta_legacy_skybox_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -12960,7 +12960,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_skinning_operation_meta_legacy": {
+      "render_feature_meta_legacy_skinning_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -12971,7 +12971,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_point_cloud_operation_meta_legacy": {
+      "render_feature_meta_legacy_point_cloud_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -12982,7 +12982,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_tonemap_operation_meta_legacy": {
+      "render_feature_meta_legacy_tonemap_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -12993,7 +12993,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_shadow_map_operation_meta_legacy": {
+      "render_feature_meta_legacy_shadow_map_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13004,7 +13004,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_view_camera_operation_meta_legacy": {
+      "render_feature_meta_legacy_view_camera_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13015,7 +13015,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_light_operation_meta_legacy": {
+      "render_feature_meta_legacy_light_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13026,7 +13026,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_mesh_stack_operation_meta_legacy": {
+      "render_feature_meta_legacy_mesh_stack_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13037,7 +13037,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_material_operation_meta_legacy": {
+      "render_feature_meta_legacy_material_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13048,7 +13048,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_deferred_g_buffer_operation_meta_legacy": {
+      "render_feature_meta_legacy_deferred_g_buffer_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13059,7 +13059,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_deferred_lighting_operation_meta_legacy": {
+      "render_feature_meta_legacy_deferred_lighting_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13070,7 +13070,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_depth_prepass_operation_meta_legacy": {
+      "render_feature_meta_legacy_depth_prepass_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13081,7 +13081,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_forward_mesh_operation_meta_legacy": {
+      "render_feature_meta_legacy_forward_mesh_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13092,7 +13092,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_highlight_operation_meta_legacy": {
+      "render_feature_meta_legacy_highlight_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13103,7 +13103,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_streaming_feedback_operation_meta_legacy": {
+      "render_feature_meta_legacy_streaming_feedback_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13114,7 +13114,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_hzb_operation_meta_legacy": {
+      "render_feature_meta_legacy_hzb_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13125,7 +13125,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_linear_depth_operation_meta_legacy": {
+      "render_feature_meta_legacy_linear_depth_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13136,7 +13136,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_ssao_operation_meta_legacy": {
+      "render_feature_meta_legacy_ssao_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13147,7 +13147,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_fog_operation_meta_legacy": {
+      "render_feature_meta_legacy_fog_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13158,7 +13158,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_canvas2_d_operation_meta_legacy": {
+      "render_feature_meta_legacy_canvas2_d_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13169,7 +13169,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_mesh_shadow_operation_meta_legacy": {
+      "render_feature_meta_legacy_mesh_shadow_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13180,7 +13180,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_spatial_cull_operation_meta_legacy": {
+      "render_feature_meta_legacy_spatial_cull_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13191,7 +13191,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_render_cluster_operation_meta_legacy": {
+      "render_feature_meta_legacy_render_cluster_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13202,7 +13202,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_terrain_operation_meta_legacy": {
+      "render_feature_meta_legacy_terrain_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13213,7 +13213,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_water_operation_meta_legacy": {
+      "render_feature_meta_legacy_water_operation_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13224,7 +13224,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_tonemap_params_meta_legacy": {
+      "render_feature_meta_legacy_tonemap_params_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13235,7 +13235,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_spatial_cull_params_meta_legacy": {
+      "render_feature_meta_legacy_spatial_cull_params_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13246,7 +13246,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_shadow_quality_params_meta_legacy": {
+      "render_feature_meta_legacy_shadow_quality_params_meta": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13257,7 +13257,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_grid3_d_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_grid3_d_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13268,7 +13268,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_grid2_d_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_grid2_d_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13279,7 +13279,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_line_list_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_line_list_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13290,7 +13290,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_tri_overlay_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_tri_overlay_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13301,7 +13301,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_trajectory_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_trajectory_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13312,7 +13312,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_skybox_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_skybox_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13323,7 +13323,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_skinning_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_skinning_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13334,7 +13334,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_point_cloud_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_point_cloud_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13345,7 +13345,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_tonemap_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_tonemap_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13356,7 +13356,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_shadow_map_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_shadow_map_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13367,7 +13367,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_view_camera_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_view_camera_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13378,7 +13378,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_light_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_light_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13389,7 +13389,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_mesh_stack_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_mesh_stack_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13400,7 +13400,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_material_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_material_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13411,7 +13411,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_deferred_g_buffer_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_deferred_g_buffer_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13422,7 +13422,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_deferred_lighting_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_deferred_lighting_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13433,7 +13433,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_depth_prepass_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_depth_prepass_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13444,7 +13444,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_forward_mesh_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_forward_mesh_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13455,7 +13455,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_highlight_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_highlight_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13466,7 +13466,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_streaming_feedback_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_streaming_feedback_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13477,7 +13477,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_hzb_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_hzb_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13488,7 +13488,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_linear_depth_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_linear_depth_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13499,7 +13499,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_ssao_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_ssao_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13510,7 +13510,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_fog_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_fog_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13521,7 +13521,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_canvas2_d_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_canvas2_d_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13532,7 +13532,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_mesh_shadow_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_mesh_shadow_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13543,7 +13543,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_spatial_cull_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_spatial_cull_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13554,7 +13554,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_render_cluster_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_render_cluster_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13565,7 +13565,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_terrain_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_terrain_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13576,7 +13576,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_water_operation_meta_generate_legacy": {
+      "render_feature_meta_legacy_water_operation_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13587,7 +13587,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_tonemap_params_meta_generate_legacy": {
+      "render_feature_meta_legacy_tonemap_params_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13598,7 +13598,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_spatial_cull_params_meta_generate_legacy": {
+      "render_feature_meta_legacy_spatial_cull_params_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
@@ -13609,7 +13609,7 @@
         ],
         "path": "editor_legacy/workbench/scene/contributions"
       },
-      "render_feature_client_shadow_quality_params_meta_generate_legacy": {
+      "render_feature_meta_legacy_shadow_quality_params_meta_generate": {
         "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [

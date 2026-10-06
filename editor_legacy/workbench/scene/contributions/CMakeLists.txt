@@ -31,7 +31,7 @@ target_link_libraries(render_feature_meta_legacy PRIVATE lux::engine::editor::sc
 lux_classify_target(TARGET render_feature_meta_legacy LAYER EDITOR PRODUCT EDITOR ROLE PLUGIN)
 component_add_transitive_commands(render_feature_meta_legacy
     "find_package(lux-engine-function REQUIRED COMPONENTS render_feature_client)")
-engine_enable_module_meta(EXPLICIT_REGISTRATION TARGET render_feature_client SIDECAR_TARGET render_feature_meta_legacy
+engine_enable_module_meta(EXPLICIT_REGISTRATION TARGET render_feature_meta_legacy
     REGISTER_FUNC_MACRO LUX_RENDER_FEATURE_META_PUBLIC
     VISIBILITY_HEADER lux/engine/function/render/features/meta_visibility.h
     TARGET_FILES ${LUX_RENDER_COMM_OPERATION_HEADERS}

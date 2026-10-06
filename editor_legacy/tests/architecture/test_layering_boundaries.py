@@ -128,7 +128,7 @@ def main():
         if kind == "transitive":
             names.add("editor_contracts_legacy")
         if kind == "generated":
-            names.add("scene_fields_transform_ir_generate_legacy")
+            names.add("scene_fields_transform_legacy_ir_generate")
         declarations, rules = {}, json.loads(json.dumps(base_rules))
         # Preserve all real classifications. Only this named imported fixture leaf is added for
         # the positive control; removing its classification must fail without relying on linking.
@@ -184,7 +184,7 @@ def main():
         top += "".join(f"add_subdirectory({p})\n" for p in declarations)
         legal_edges = f"target_link_libraries({owner} PRIVATE {dependency})\n" if kind == "unknown" else ""
         if kind == "generated":
-            legal_edges = f"add_dependencies({owner} scene_fields_transform_ir_generate_legacy)\n"
+            legal_edges = f"add_dependencies({owner} scene_fields_transform_legacy_ir_generate)\n"
         tail = f'include("{repo.as_posix()}/cmake/EditorArchitectureChecks.cmake")\nlux_editor_check_architecture()\n'
         rules_file = tools / "rules.json"
         rules_file.write_text(json.dumps(rules, indent=2))

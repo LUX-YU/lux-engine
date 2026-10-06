@@ -1,7 +1,7 @@
-#include <scene_fields_hierarchy.inspector.generated.hpp>
-#include <scene_fields_transform.inspector.generated.hpp>
-#include <scene_fields_visual.inspector.generated.hpp>
-#include <scene_fields_camera.inspector.generated.hpp>
+#include <scene_fields_hierarchy_legacy.inspector.generated.hpp>
+#include <scene_fields_transform_legacy.inspector.generated.hpp>
+#include <scene_fields_visual_legacy.inspector.generated.hpp>
+#include <scene_fields_camera_legacy.inspector.generated.hpp>
 #include <lux/engine/editor/scene/InspectorView.hpp>
 
 namespace lux::editor::scene
@@ -12,10 +12,10 @@ namespace lux::editor::scene
         const auto append = [&](const auto& bindings) {
             result.insert(result.end(), bindings.begin(), bindings.end());
         };
-        append(generated::scene_fields_transformBindings());
-        append(generated::scene_fields_hierarchyBindings());
-        append(generated::scene_fields_visualBindings());
-        append(generated::scene_fields_cameraBindings());
+        append(generated::scene_fields_transform_legacyBindings());
+        append(generated::scene_fields_hierarchy_legacyBindings());
+        append(generated::scene_fields_visual_legacyBindings());
+        append(generated::scene_fields_camera_legacyBindings());
         return result;
     }
     std::vector<RunInspectorComponent> runInspectorComponents()
@@ -24,10 +24,10 @@ namespace lux::editor::scene
         const auto append = [&](const auto& bindings) {
             result.insert(result.end(), bindings.begin(), bindings.end());
         };
-        append(run_generated::scene_fields_transformBindings());
-        append(run_generated::scene_fields_hierarchyBindings());
-        append(run_generated::scene_fields_visualBindings());
-        append(run_generated::scene_fields_cameraBindings());
+        append(run_generated::scene_fields_transform_legacyBindings());
+        append(run_generated::scene_fields_hierarchy_legacyBindings());
+        append(run_generated::scene_fields_visual_legacyBindings());
+        append(run_generated::scene_fields_camera_legacyBindings());
         return result;
     }
 } // namespace lux::editor::scene

@@ -1,4 +1,3 @@
-#include "../../cmake/installed-consumers/common/RenderRegistration.hpp"
 #include "../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <cassert>
 #include <cstdio>
@@ -8,13 +7,10 @@
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
-#include <lux/engine/scene/RenderResources.hpp>
-#include <lux/engine/scene/RenderViewRequest.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
-#include <lux/engine/ui/rendering/RenderFeature.hpp>
 #include <thread>
 #if defined(_WIN32)
 #define NOMINMAX

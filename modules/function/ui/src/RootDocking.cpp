@@ -44,9 +44,9 @@ namespace lux::ui
                     }
                     else
                     {
-                        for (const auto& window : node.panes)
+                        for (const auto& pane_id : node.panes)
                         {
-                            if (auto* pane = findPane(window))
+                            if (auto* pane = findPane(pane_id))
                             {
                                 ImGui::DockBuilderDockWindow(pane->imgui_label_.c_str(), id);
                             }

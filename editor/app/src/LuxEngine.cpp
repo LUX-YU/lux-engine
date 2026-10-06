@@ -39,7 +39,8 @@ namespace lux::editor
                 std::size(ids) == static_cast<std::size_t>(process::EExecutionError::CAPABILITY_UNAVAILABLE) + 1
             );
             const auto code = static_cast<std::size_t>(value);
-            return {code < std::size(ids) ? ids[code] : error::errorId("lux.process.execution.unknown"), {code}};
+            constexpr auto unknown = error::errorId("lux.process.execution.unknown");
+            return {code < std::size(ids) ? ids[code] : unknown, {code}};
         }
         error::Error creationError(const engine::EngineContext::VCreateFailure& failure) noexcept
         {
@@ -193,8 +194,7 @@ namespace lux::editor
             if (!cleared)
             {
                 return cxx::unexpected(error::Error{
-                    cleared.error() == ui::EPaneError::BUSY ? error::errorId("lux.editor.ui_clear_busy")
-                                                            : error::errorId("lux.editor.ui_clear"),
+                    cleared.error() == ui::EPaneError::BUSY ? Errors::EditorUiClearBusy : Errors::EditorUiClear,
                     {static_cast<std::uint64_t>(cleared.error())}
                 });
             }
@@ -242,8 +242,7 @@ namespace lux::editor
             if (!cleared)
             {
                 return cxx::unexpected(error::Error{
-                    cleared.error() == ui::EPaneError::BUSY ? error::errorId("lux.editor.ui_clear_busy")
-                                                            : error::errorId("lux.editor.ui_clear"),
+                    cleared.error() == ui::EPaneError::BUSY ? Errors::EditorUiClearBusy : Errors::EditorUiClear,
                     {static_cast<std::uint64_t>(cleared.error())}
                 });
             }

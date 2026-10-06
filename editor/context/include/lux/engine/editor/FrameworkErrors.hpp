@@ -7,6 +7,8 @@ namespace lux::editor
     [[nodiscard]] FrameworkResult<void> registerFrameworkErrors() noexcept;
     namespace Errors
     {
+        inline constexpr error::ErrorId EditorUiClear = error::errorId("lux.editor.ui_clear");
+        inline constexpr error::ErrorId EditorUiClearBusy = error::errorId("lux.editor.ui_clear_busy");
         inline constexpr error::ErrorId UiRenderConfiguration = error::errorId("lux.ui.render_configuration");
         inline constexpr error::ErrorId EditorWindowHasNoNativeOutput =
             error::errorId("lux.editor.window_has_no_native_output");

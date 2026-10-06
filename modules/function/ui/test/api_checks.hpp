@@ -1,6 +1,6 @@
-#include "RootAccess.hpp"
 #pragma once
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
+#include "RootAccess.hpp"
 #include <cassert>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/ui/Command.hpp>

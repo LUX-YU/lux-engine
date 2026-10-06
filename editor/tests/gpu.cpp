@@ -7,6 +7,7 @@
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
+#include <lux/engine/function/render/runtime/RenderRuntime.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>

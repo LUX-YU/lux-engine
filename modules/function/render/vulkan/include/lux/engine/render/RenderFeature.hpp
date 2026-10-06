@@ -4,6 +4,7 @@
 #include <lux/engine/function/render/client/core/FeatureDescriptor.hpp> // FeatureDescriptor (type-level metadata)
 #include <lux/engine/function/render/client/core/FeatureHandle.hpp>     // FeatureHandle (generational)
 #include <lux/engine/function/render/client/core/FeatureTypeId.hpp>     // FeatureTypeId (stable type identity)
+#include <lux/engine/function/render/client/core/RenderEntityId.hpp>
 #include <lux/engine/function/render/graph/RGForwardDecls.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/render/RenderContextView.hpp> // contextView() return type (narrow facade)
@@ -107,6 +108,13 @@ namespace lux::render
         RenderFeature(Config cfg) : cfg_(std::move(cfg)) {}
 
         virtual ~RenderFeature() = default;
+
+        // Optional per-view selection capability. Unsupported features reject the
+        // operation without relying on a mutable descriptor or a concrete downcast.
+        [[nodiscard]] virtual bool replaceHighlightTargets(ViewHandle, std::vector<ERenderEntityId>)
+        {
+            return false;
+        }
 
         // A capability may require per-View input (for example a camera). An
         // unavailable input suppresses this Scene's passes, but its target still

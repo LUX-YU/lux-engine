@@ -29,3 +29,15 @@ for config in model['configurations']:
             assert 'ui' not in closure and 'lux_editor_ui' not in closure
         print(name, 'closure:', ', '.join(closure))
 print('PASS: new product dependency/include closure excludes legacy; Context excludes UI')
+
+source = Path(model['paths']['source'])
+removed = (
+    'modules/core/object/include/lux/engine/object/ObjectDispatcher.hpp',
+    'modules/core/object/include/lux/engine/object/ObjectIdentity.hpp',
+    'modules/core/object/include/lux/engine/object/ObjectDeleter.hpp',
+    'editor/ui/include/lux/engine/editor/EditorUIRoot.hpp',
+    'editor/context/include/lux/engine/editor/FrameworkError.hpp',
+)
+for path in removed:
+    assert not (source / path).exists(), path
+print('PASS: removed public providers have no compatibility headers')

@@ -764,3 +764,12 @@ file(GLOB_RECURSE _render_plugin_sources CONFIGURE_DEPENDS
 # The repository composition attaches runtime/editor exports after both owners exist.
 set_property(TARGET render_features PROPERTY LUX_PLUGIN_DESCRIPTION_INPUT "${_render_declaration}")
 set_property(TARGET render_features PROPERTY LUX_PLUGIN_SOURCE_INPUTS "${_render_plugin_sources};${_render_exports}")
+
+if(BUILD_TESTING AND LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(render_view_binding_test test/view_binding.cpp)
+    target_include_directories(render_view_binding_test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/sinclude" "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/sinclude")
+    target_link_libraries(render_view_binding_test PRIVATE render_features)
+    lux_editor_test_options(render_view_binding_test)
+    add_test(NAME render.view_binding COMMAND render_view_binding_test)
+endif()

@@ -61,3 +61,10 @@ lux_engine_install_components(
     NAMESPACE    lux::engine::flowforge
     COMPONENTS   flowforge_compiler
 )
+
+if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
+    add_executable(flowforge_ability_contract_test test/ability_contract.cpp)
+    target_link_libraries(flowforge_ability_contract_test PRIVATE flowforge_compiler)
+    lux_editor_test_options(flowforge_ability_contract_test)
+    add_test(NAME flowforge.ability_contract COMMAND flowforge_ability_contract_test)
+endif()

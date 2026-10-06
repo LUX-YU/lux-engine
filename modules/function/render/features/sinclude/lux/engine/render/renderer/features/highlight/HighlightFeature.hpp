@@ -60,7 +60,7 @@ namespace lux::render
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void onDetachFromScene(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;
-        void replaceTargets(ViewHandle view, std::vector<ERenderEntityId> targets);
+        [[nodiscard]] bool replaceHighlightTargets(ViewHandle view, std::vector<ERenderEntityId> targets) override;
         void deallocateViewState(std::uint32_t view) override;
         [[nodiscard]] std::span<const ERenderEntityId> targets(ViewHandle view) const noexcept;
 

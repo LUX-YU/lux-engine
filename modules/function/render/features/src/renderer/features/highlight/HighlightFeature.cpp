@@ -227,7 +227,7 @@ namespace lux::render
     // =========================================================================
     //  Render graph passes
     // =========================================================================
-    void HighlightFeature::replaceTargets(ViewHandle view, std::vector<ERenderEntityId> targets)
+    bool HighlightFeature::replaceHighlightTargets(ViewHandle view, std::vector<ERenderEntityId> targets)
     {
         std::ranges::sort(targets);
         targets.erase(std::unique(targets.begin(), targets.end()), targets.end());
@@ -241,6 +241,7 @@ namespace lux::render
         }
         else if (!targets.empty())
             targets_.push_back({view, std::move(targets)});
+        return true;
     }
 
     void HighlightFeature::deallocateViewState(std::uint32_t view)

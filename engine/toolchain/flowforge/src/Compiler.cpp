@@ -162,9 +162,19 @@ namespace lux::flowforge
                 std::vector<lux::rdesc::ScriptApiRequirement> requirements;
                 for (const auto& storage : graph.nodes())
                 {
-                    const auto* node = dynamic_cast<const ScriptAbilityNode*>(storage.node.get());
+                    const auto* node = storage.node->scriptAbility();
                     if (node == nullptr)
+                    {
+                        if (storage.node->operation() == ENodeOperation::SCRIPT_ABILITY_CALL)
+                        {
+                            return lux::cxx::unexpected(FlowForgeFailure{
+                                .code = EFlowForgeError::GRAPH_INVALID,
+                                .message = "Script Ability operation has no Script Ability node contract",
+                                .node_id = storage.node->id().value
+                            });
+                        }
                         continue;
+                    }
 
                     for (const auto& requirement : requirements)
                     {
@@ -326,7 +336,7 @@ namespace lux::flowforge
         {
             for (const auto& storage : graph.nodes())
             {
-                const auto* producer = dynamic_cast<const ScriptAbilityNode*>(storage.node.get());
+                const auto* producer = storage.node->scriptAbility();
                 if (producer == nullptr)
                     continue;
                 for (std::size_t index{}; index < producer->results().size(); ++index)

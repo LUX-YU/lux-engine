@@ -15,6 +15,11 @@ namespace lux::flowforge
         explicit ScriptAbilityNode(const ScriptAbilityNodeDescription& description);
         ~ScriptAbilityNode() override;
 
+        [[nodiscard]] const ScriptAbilityNode* scriptAbility() const noexcept override
+        {
+            return this;
+        }
+
         [[nodiscard]] lux::script::ScriptApiContractIdView contract() const noexcept
         {
             return lux::script::ScriptApiContractIdView{contract_.name()};

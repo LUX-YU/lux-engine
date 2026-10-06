@@ -21,6 +21,7 @@
 namespace lux::flowforge
 {
     class FlowGraph;
+    class ScriptAbilityNode;
 
     using lux::graph::NodeId;
     using lux::graph::PinId;
@@ -685,6 +686,12 @@ namespace lux::flowforge
          * @brief Virtual destructor. Pins will be unlinked automatically.
          */
         virtual ~Node();
+
+        // The operation number alone does not prove the concrete node contract.
+        [[nodiscard]] virtual const ScriptAbilityNode* scriptAbility() const noexcept
+        {
+            return nullptr;
+        }
 
         /**
          * @brief Gets the unique ID of this Node.

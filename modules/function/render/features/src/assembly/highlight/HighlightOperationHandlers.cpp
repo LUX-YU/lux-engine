@@ -20,7 +20,7 @@ namespace lux::render
         {
             return;
         }
-        auto* feature = dynamic_cast<HighlightFeature*>(scene->getFeature(payload.feature));
+        auto* feature = scene->getFeature(payload.feature);
         const auto bytes = resolveBlob(ctx.program, payload.targets);
         if (!feature)
         {
@@ -41,7 +41,7 @@ namespace lux::render
         {
             std::memcpy(targets.data(), bytes.data(), bytes.size());
         }
-        feature->replaceTargets(payload.view, std::move(targets));
+        (void)feature->replaceHighlightTargets(payload.view, std::move(targets));
     }
 
     Expected<FeatureHandle> HighlightCreateFn(void* scene_ptr, const void* param, size_t param_size)

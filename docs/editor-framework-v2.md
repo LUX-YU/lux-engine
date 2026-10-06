@@ -51,3 +51,19 @@ build has no work. Run affected framework, Object/UI, services, Scene/Flow and r
 public-header checks and actual GPU regressions. Preserve failure/reentrancy assertions when updating test APIs.
 Raw logs, command provenance and dependency SHAs stay in the external delivery directory. The repository retains
 contracts and repeatable tests, not a second evidence archive.
+
+## Dispatch and error boundaries
+
+All active first-party targets compile without RTTI. `build.no_rtti` checks actual compiler commands and
+compiles a positive case followed by rejected `dynamic_cast` and `typeid` cases. This does not change third-party
+compiler settings or exception containment. Flow uses its narrow ScriptAbility capability, and the highlight backend
+dispatches through the existing render-feature interface; operation tags alone never justify a downcast.
+
+The error DLL owns process-wide immutable descriptions. Error values contain a stable name-derived ID and three
+numeric arguments, never an owning or borrowed plugin payload. Framework boundaries and Scene build/execution causes
+use these values. Local typed errors and complete domain diagnostics remain on their original owners. Render's local
+registry is translated while its description is available; a temporary render slot is not a stable ErrorId.
+
+The installed consumer in `editor/tests/installed` uses installed public headers and libraries, including real Object
+and Error DLL probes. The DLL probes check shared Runtime/Registry identity, destructor-tail code lifetime and error
+formatting after plugin unload. Each listed public header is compiled independently under C++20 without RTTI.

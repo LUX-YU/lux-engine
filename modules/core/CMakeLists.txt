@@ -9,6 +9,7 @@ generate_visibility_header(
 add_subdirectory(math)
 add_subdirectory(async_port)
 add_subdirectory(semantic)
+add_subdirectory(error)
 add_subdirectory(type_info)
 add_subdirectory(meta)
 add_subdirectory(object)
@@ -25,6 +26,7 @@ lux_engine_install_components(
 	COMPONENTS		math
 					async_port
 					semantic
+                    error
 					type_info
 					meta
 					object

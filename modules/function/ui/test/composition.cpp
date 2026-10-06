@@ -1,4 +1,5 @@
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
+#include "RootAccess.hpp"
 #include <array>
 #include <cassert>
 #include <iostream>
@@ -109,7 +110,7 @@ namespace
         auto root = ui::Root::create();
         assert(root);
         auto& pane = ui_test::makePane<Window>(**root, "close-intent", counts);
-        const auto initial = pane.id();
+        const auto initial = ui_test::paneId(pane);
         unsigned direct{};
         auto connection = object::LuxObject::connect(
             &pane,
@@ -129,8 +130,8 @@ namespace
         assert(!pane.hasCloseRequest() && pane.visible());
         pane.requestClose();
         auto owner = (*root)->removePane(pane);
-        assert(owner && !pane.hasCloseRequest() && !(*root)->findPane(initial));
-        assert((*root)->addPane(std::move(*owner)) && pane.id() != initial);
+        assert(owner && !pane.hasCloseRequest() && !ui_test::findPane(**root, initial));
+        assert((*root)->addPane(std::move(*owner)) && ui_test::paneId(pane) != initial);
         pane.requestClose();
         owner = (*root)->removePane(pane);
         assert(owner);
@@ -177,7 +178,7 @@ namespace
         ui::Button button("Button");
         assert(layout.addElement(button) && pane.addElement(layout));
         const auto root_id = (*root)->objectId();
-        const auto identity = pane.id();
+        const auto identity = ui_test::paneId(pane);
         assert((*root)->requestFocus(button) && (*root)->capturePointer(button));
         (*root)->deferChange(button, [](object::LuxObject&) noexcept { std::abort(); });
         auto owner = (*root)->removePane(pane);
@@ -187,18 +188,18 @@ namespace
         auto replacement = ui::Root::create();
         assert(replacement && (*replacement)->addPane(std::move(*owner)));
         auto forbidden = [](ui::Pane&) { std::abort(); };
-        assert(!(*replacement)->withPane(root_id, identity, forbidden));
-        const auto remounted = pane.id();
+        assert(!object::ObjectRuntime::instance().resolve(root_id));
+        const auto remounted = ui_test::paneId(pane);
         assert((*replacement)->update({}, nullptr));
         owner = (*replacement)->removePane(pane);
-        assert(owner && !(*replacement)->findPane(remounted));
-        assert((*replacement)->addPane(std::move(*owner)) && pane.id() != remounted);
+        assert(owner && !ui_test::findPane(**replacement, remounted));
+        assert((*replacement)->addPane(std::move(*owner)) && ui_test::paneId(pane) != remounted);
         const auto current_root = (*replacement)->objectId();
-        const auto current_id = pane.id();
+        const auto current_id = ui_test::paneId(pane);
         std::thread other(
             [&]
             {
-                auto result = (*replacement)->withPane(current_root, current_id, forbidden);
+                auto result = (*replacement)->forEachPane(forbidden);
                 assert(!result && result.error() == ui::EPaneError::WRONG_THREAD);
             }
         );
@@ -244,12 +245,12 @@ namespace
         assert(root);
         auto& first = ui_test::makePane<Window>(**root, "same", counts);
         auto& second = ui_test::makePane<Window>(**root, "same", counts);
-        assert(first.id() != second.id() && (*root)->panes().size() == 2);
+        assert(ui_test::paneId(first) != ui_test::paneId(second) && ui_test::paneCount(**root) == 2);
         std::unique_ptr<ui::Pane> candidate = std::make_unique<Window>("capacity", counts);
         auto* original = candidate.get();
         auto refused = (*root)->addPane(std::move(candidate));
         assert(!refused && refused.error() == ui::EPaneError::CAPACITY);
-        assert(candidate.get() == original && !candidate->parent() && !candidate->id().isValid());
+        assert(candidate.get() == original && !candidate->parent() && !ui_test::paneId(*candidate).isValid());
         object::LuxObject plain;
         assert(!plain.addChild(first) && !first.addChild(plain));
         assert(!second.setParent(&first) && first.parent() == root->get() && second.parent() == root->get());
@@ -327,7 +328,7 @@ namespace
         auto owner = (*root)->removePane(pane);
         assert(owner && counts.destroyed == 0);
         owner->reset();
-        assert(counts.destroyed == 1 && (*root)->panes().empty());
+        assert(counts.destroyed == 1 && (ui_test::paneCount(**root) == 0));
         std::cout << "Update cannot destroy owner; safe-point intent and explicit C++ lifetime PASS\n";
     }
 
@@ -338,15 +339,14 @@ namespace
         assert(root);
         auto& old = ui_test::makePane<Window>(**root, "old", counts);
         assert((*root)->requestFocus(old));
-        const auto revision = (*root)->windowRevision();
         std::array<std::unique_ptr<ui::Pane>, 2> candidates;
         candidates[0] = std::make_unique<Window>("a", counts);
         auto* original = candidates[0].get();
         auto failed = (*root)->addPanes(candidates);
         assert(!failed && failed.error() == ui::EPaneError::INVALID_TREE);
-        assert(candidates[0].get() == original && !original->id().isValid() && !original->parent());
-        assert((*root)->windowRevision() == revision && (*root)->panes().size() == 1);
-        assert((*root)->findPane(old.id()) == &old);
+        assert(candidates[0].get() == original && !ui_test::paneId(*original).isValid() && !original->parent());
+        assert(ui_test::paneCount(**root) == 1);
+        assert(ui_test::findPane(**root, ui_test::paneId(old)) == &old);
         std::thread worker(
             [&]
             {
@@ -426,19 +426,16 @@ namespace
         }
         auto* first = owners[0].get();
         auto* second = owners[1].get();
-        auto dock = (*root)->prepareDockTree(
-            {{{ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, 0.5F, {existing.id()}}},
-             {{0, {{20, 30}, {600, 400}}, false}}}
+        auto dock = (*root)->setDockTree(
+            {{{ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, 0.5F, {&existing}}}, {{0, {{20, 30}, {600, 400}}, false}}}
         );
-        assert(dock && (*root)->commitDockTree(std::move(*dock)));
-        const auto revision = (*root)->windowRevision();
+        assert(dock);
         auto failed = (*root)->addPanes(owners);
         assert(!failed && failed.error() == ui::EPaneError::CAPACITY);
         assert(owners[0].get() == first && owners[1].get() == second && owners[2]);
-        assert(!first->parent() && !second->parent() && (*root)->panes().size() == 1);
+        assert(!first->parent() && !second->parent() && ui_test::paneCount(**root) == 1);
         const auto unchanged = (*root)->captureDockTree();
-        assert((*root)->windowRevision() == revision);
-        assert(unchanged.nodes.size() == 1 && unchanged.nodes[0].windows == std::vector{existing.id()});
+        assert(unchanged.nodes.size() == 1 && unchanged.nodes[0].panes == std::vector<ui::Pane*>{&existing});
         assert(unchanged.surfaces.size() == 1 && unchanged.surfaces[0].node == 0 && !unchanged.surfaces[0].floating);
         owners.pop_back();
         unsigned notifications{};
@@ -452,16 +449,19 @@ namespace
                     return;
                 }
                 assert(!owners[0] && !owners[1] && first->parent() == root->get() && second->parent() == root->get());
-                assert((*root)->findPane(first->id()) == first && (*root)->findPane(second->id()) == second);
+                assert(
+                    ui_test::findPane(**root, ui_test::paneId(*first)) == first &&
+                    ui_test::findPane(**root, ui_test::paneId(*second)) == second
+                );
                 auto result = (*root)->clearPanes();
                 assert(!result && result.error() == ui::EPaneError::BUSY);
                 ++notifications;
             }
         );
         assert(connection && (*root)->addPanes(owners) && notifications == 2 && counts.destroyed == 1);
-        const auto first_id = first->id();
+        const auto first_id = ui_test::paneId(*first);
         auto removed = (*root)->removePane(*first);
-        assert(removed && counts.destroyed == 1 && !(*root)->findPane(first_id));
+        assert(removed && counts.destroyed == 1 && !ui_test::findPane(**root, first_id));
         removed->reset();
         assert(counts.destroyed == 2);
         root->reset();
@@ -486,7 +486,7 @@ namespace
         for (unsigned i{}; i < 16; ++i)
         {
             auto& old = ui_test::makePane<Window>(**root, "same", counts);
-            const auto identity = old.id();
+            const auto identity = ui_test::paneId(old);
             auto connection = object::LuxObject::connect(
                 &sender,
                 &Sender::changed,
@@ -497,17 +497,19 @@ namespace
             assert(connection && sender.send().queued == 1);
             (*root)->deferChange(old, [](object::LuxObject&) noexcept { std::abort(); });
             auto owner = (*root)->removePane(old);
-            assert(owner && !old.id().isValid());
+            assert(owner && !ui_test::paneId(old).isValid());
             // The exact same object/address gets a fresh Root registration.
-            assert((*root)->addPane(std::move(*owner)) && old.id() != identity);
-            assert(!(*root)->findPane(identity));
+            assert((*root)->addPane(std::move(*owner)) && ui_test::paneId(old) != identity);
+            assert(!ui_test::findPane(**root, identity));
             (*root)->applyPendingChanges();
             // Connection remains attached to ObjectId, independent from the old PaneId.
             assert(messages.dispatchPending() == 1 && counts.callbacks == i + 1);
             assert(sender.send().queued == 1);
             assert((*root)->clearPanes());
             auto& current = ui_test::makePane<Window>(**root, "same", counts);
-            assert(!(*root)->findPane(identity) && (*root)->findPane(current.id()) == &current);
+            assert(
+                !ui_test::findPane(**root, identity) && ui_test::findPane(**root, ui_test::paneId(current)) == &current
+            );
             assert(messages.dispatchPending() == 1 && counts.callbacks == i + 1);
             assert((*root)->clearPanes());
         }
@@ -579,14 +581,14 @@ namespace
         assert(root);
         auto& window = ui_test::makePane<Window>(**root, "borrowed", counts);
         const auto root_id = (*root)->objectId();
-        const auto id = window.id();
+        const auto id = ui_test::paneId(window);
         bool called{};
         auto forbidden = [](ui::Pane&) { std::abort(); };
         auto visit = [&](ui::Pane& pane)
         {
             called = true;
             assert(&pane == &window && !window.dispatching());
-            auto nested = (*root)->withPane(root_id, id, forbidden);
+            auto nested = (*root)->forEachPane(forbidden);
             assert(!nested && nested.error() == ui::EPaneError::BUSY);
             auto removed = (*root)->removePane(pane);
             assert(!removed && removed.error() == ui::EPaneError::BUSY);
@@ -596,10 +598,10 @@ namespace
             auto refused = pane.addElement(content);
             assert(!refused && refused.error() == ui::EPaneError::BUSY && !content.parent());
         };
-        assert((*root)->withPane(root_id, id, visit) && called);
+        assert((*root)->forEachPane(visit) && called);
         assert((*root)->clearPanes() && counts.destroyed == 1);
-        auto stale = (*root)->withPane(root_id, id, forbidden);
-        assert(!stale && stale.error() == ui::EPaneError::INVALID_ID);
+        auto stale = (*root)->forEachPane(forbidden);
+        assert(stale && !ui_test::findPane(**root, id));
         std::cout << "Synchronous borrow freezes structure, nested maintenance and stale targets PASS\n";
     }
 } // namespace

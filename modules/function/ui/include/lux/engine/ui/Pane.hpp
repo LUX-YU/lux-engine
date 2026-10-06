@@ -12,6 +12,7 @@
 
 namespace lux::ui
 {
+    namespace detail { struct RootTestAccess; }
     class Root;
     class Element;
 
@@ -45,10 +46,6 @@ namespace lux::ui
 
         ~Pane() override;
 
-        [[nodiscard]] const PaneId& id() const noexcept
-        {
-            return id_;
-        }
         [[nodiscard]] std::string_view title() const noexcept
         {
             return title_;
@@ -95,6 +92,7 @@ namespace lux::ui
         virtual void update() noexcept {}
 
     private:
+        friend struct detail::RootTestAccess;
         friend class Root;
         friend class Element;
         void setFocused(bool focused);

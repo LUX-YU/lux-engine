@@ -30,3 +30,14 @@ namespace ui_test
         return *result;
     }
 } // namespace ui_test
+
+namespace ui_test
+{
+    inline std::size_t paneCount(lux::ui::Root& root)
+    {
+        std::size_t count{};
+        auto visit = [&](lux::ui::Pane&) { ++count; };
+        assert(root.forEachPane(visit));
+        return count;
+    }
+} // namespace ui_test

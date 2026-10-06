@@ -64,18 +64,20 @@ namespace lux::ui
 
     } // namespace
 
-    struct PreparedDockTree::Data final
+    struct DockData final
     {
-        object::ObjectId root;
-        DockTree tree;
+        struct Node final
+        {
+            EDockSplit split{EDockSplit::LEAF};
+            std::uint32_t first{UINT32_MAX}, second{UINT32_MAX};
+            float ratio{0.5F};
+            std::vector<PaneId> panes;
+        };
+        std::vector<Node> nodes;
+        std::vector<DockSurface> surfaces;
         std::vector<std::uint32_t> order;
         std::vector<ImGuiID> ids;
     };
-    PreparedDockTree::PreparedDockTree(std::unique_ptr<Data> data) noexcept : data_(std::move(data)) {}
-    PreparedDockTree::~PreparedDockTree() = default;
-    PreparedDockTree::PreparedDockTree(PreparedDockTree&&) noexcept = default;
-    PreparedDockTree& PreparedDockTree::operator=(PreparedDockTree&&) noexcept = default;
-
     struct Root::Impl final
     {
         struct StoredTarget final
@@ -92,9 +94,8 @@ namespace lux::ui
         void applyPendingChanges(Root&) noexcept;
         void drawMenu(Root&) noexcept;
         void drawMenuItems(Root&, std::span<const MenuItem>) noexcept;
-        void menuCommand(Root&, Command&, std::size_t) noexcept;
+        void menuCommand(Root&, Command&) noexcept;
         bool shortcut(Root&, const Key&) noexcept;
-        std::shared_ptr<const void> menu_source;
         std::vector<MenuItem> menu;
         Pane* menu_pane{};
         Element* menu_element{};
@@ -105,9 +106,7 @@ namespace lux::ui
             CommandId command;
         };
         std::vector<MenuCall> menu_calls;
-        bool reset_docking{};
         float menu_height{};
-        std::uint64_t window_revision{};
 
         std::unique_ptr<detail::Context> context;
         window::LuxWindow* window{};
@@ -162,18 +161,10 @@ namespace lux::ui
         std::uint64_t layout_epoch{};
         bool committing_structure{};
         ImGuiKeyChord routed_modifiers{};
-        bool drawing{}, updating{}, docking{}, dock_layout_initialized{};
+        bool drawing{}, updating{}, docking{};
         bool composing{};
         Pane* modal{};
-        std::optional<DockLayout> split_layout;
-        std::unique_ptr<PreparedDockTree::Data> pending_dock_tree;
-        std::array<ImGuiID, 5> dock_regions{};
-        struct Placement final
-        {
-            PaneId id;
-            ImVec2 position, size;
-        };
-        std::array<Placement, 5> placements{};
+        std::unique_ptr<DockData> pending_dock_tree;
     };
 
     Root::Root() noexcept : LuxObject() {}
@@ -259,46 +250,24 @@ namespace lux::ui
         return owner ? owner->get() : nullptr;
     }
 
-    PaneResult<void> Root::withPane(object::ObjectId root, PaneId id, cxx::function_ref<void(Pane&)> visit) noexcept
+    PaneResult<void> Root::forEachPane(cxx::function_ref<void(Pane&)> visit) noexcept
     {
-        auto ready = checkStructureSafe();
-        if (!ready)
+        if (auto ready = checkStructureSafe(); !ready)
         {
             return ready;
         }
-        if (root != objectId())
-        {
-            return cxx::unexpected(EPaneError::INVALID_ID);
-        }
-        auto* pane = findPane(id);
-        if (!pane)
-        {
-            return cxx::unexpected(EPaneError::INVALID_ID);
-        }
         Mutation guard{impl_->updating};
         beginCallbackBorrow(*this);
-        beginCallbackBorrow(*pane);
-        visit(*pane);
-        endCallbackBorrow(*pane);
+        for (const auto& owner : impl_->panes.values())
+        {
+            beginCallbackBorrow(*owner);
+            visit(*owner);
+            endCallbackBorrow(*owner);
+        }
         endCallbackBorrow(*this);
         return {};
     }
 
-    void Root::showPanes() noexcept
-    {
-        requireOwner();
-        beginTreeVisit();
-        for (const auto& pane_owner : impl_->panes.values())
-        {
-            auto* pane = pane_owner.get();
-
-            if (!pane->modal())
-            {
-                pane->setVisible(true);
-            }
-        }
-        endTreeVisit();
-    }
     Pane* Root::focusedPane() const noexcept
     {
         requireOwner();
@@ -314,11 +283,6 @@ namespace lux::ui
         }
         impl_->pending_focus = &pane;
         return true;
-    }
-    bool Root::requestFocus(PaneId id) noexcept
-    {
-        auto* pane = findPane(id);
-        return pane && requestFocus(*pane);
     }
     bool Root::capturePointer(Pane& pane) noexcept
     {
@@ -354,12 +318,6 @@ namespace lux::ui
         impl_->window = window;
         impl_->context->bindWindow(window ? window->nativeHandle() : nullptr);
     }
-    window::LuxWindow* Root::window() const noexcept
-    {
-        requireOwner();
-        return impl_ ? impl_->window : nullptr;
-    }
-
     lux::cxx::expected<void, ECaptureError> Root::update(
         FrameInfo info,
         DrawData* output,
@@ -413,10 +371,9 @@ namespace lux::ui
         impl_->queueChange(Impl::store(*this, target.pane(), target), apply);
     }
 
-    void Root::setMenu(std::vector<MenuItem> menu, std::shared_ptr<const void> source)
+    void Root::setMenu(std::vector<MenuItem> menu)
     {
         checkContentChange();
-        const auto old_source = std::exchange(impl_->menu_source, std::move(source));
         impl_->menu = std::move(menu);
     }
     std::span<const MenuItem> Root::menu() const noexcept
@@ -424,24 +381,14 @@ namespace lux::ui
         requireOwner();
         return impl_->menu;
     }
-    std::span<const std::unique_ptr<Pane>> Root::panes() const noexcept
-    {
-        requireOwner();
-        return impl_->panes.values();
-    }
-    std::uint64_t Root::windowRevision() const noexcept
-    {
-        requireOwner();
-        return impl_->window_revision;
-    }
     bool Root::menuTargets(const Element& element) const noexcept
     {
         requireOwner();
         return impl_->menu_open && impl_->menu_element == &element;
     }
-    void Root::Impl::menuCommand(Root& root, Command& command, std::size_t index) noexcept
+    void Root::Impl::menuCommand(Root& root, Command& command) noexcept
     {
-        MenuRequest request{EMenuAction::COMMAND, menu_pane, menu_element, command, menu_source.get(), index};
+        MenuRequest request{EMenuAction::COMMAND, menu_pane, menu_element, command};
         if (object::sendEvent(root, request))
         {
             command = request.command;
@@ -488,13 +435,13 @@ namespace lux::ui
                 }
                 continue;
             }
-            Command command{item.command};
-            menuCommand(root, command, item.index);
+            Command command{item.command.view()};
+            menuCommand(root, command);
             const auto* shortcut = item.shortcut_label.empty() ? "" : item.shortcut_label.data();
             if (ImGui::MenuItem(label, shortcut, command.checked, command.enabled))
             {
                 command.phase = ECommandPhase::EXECUTE;
-                menuCommand(root, command, item.index);
+                menuCommand(root, command);
             }
         }
     }
@@ -514,7 +461,7 @@ namespace lux::ui
                     {
                         menu_pane = focused;
                         menu_element = focused_element;
-                        MenuRequest request{EMenuAction::OPEN, menu_pane, menu_element, {}, menu_source.get()};
+                        MenuRequest request{EMenuAction::OPEN, menu_pane, menu_element, {}};
                         static_cast<void>(object::sendEvent(root, request));
                         menu_open = true;
                     }
@@ -526,7 +473,7 @@ namespace lux::ui
         }
         if (menu_open && !opened)
         {
-            MenuRequest request{EMenuAction::CLOSE, menu_pane, menu_element, {}, menu_source.get()};
+            MenuRequest request{EMenuAction::CLOSE, menu_pane, menu_element, {}};
             static_cast<void>(object::sendEvent(root, request));
             menu_pane = nullptr;
             menu_element = nullptr;
@@ -567,21 +514,21 @@ namespace lux::ui
         }
         menu_pane = focused;
         menu_element = focused_element;
-        MenuRequest opened{EMenuAction::OPEN, menu_pane, menu_element, {}, menu_source.get()};
+        MenuRequest opened{EMenuAction::OPEN, menu_pane, menu_element, {}};
         static_cast<void>(object::sendEvent(root, opened));
-        Command command{item->command};
-        menuCommand(root, command, item->index);
+        Command command{item->command.view()};
+        menuCommand(root, command);
         if (command.enabled)
         {
             command.phase = ECommandPhase::EXECUTE;
-            menuCommand(root, command, item->index);
+            menuCommand(root, command);
         }
         return true;
     }
 
     Root::Impl::StoredTarget Root::Impl::store(Root& root, Pane& pane, object::LuxObject& target) noexcept
     {
-        return {root.objectId(), pane.id(), target.objectId()};
+        return {root.objectId(), pane.id_, target.objectId()};
     }
 
     object::LuxObject* Root::Impl::resolve(Root& root, StoredTarget target) noexcept
@@ -769,7 +716,6 @@ namespace lux::ui
         {
             impl_->draw_hovered->setHovered(true);
         }
-        impl_->reset_docking = false;
         return impl_->context->endFrame(output);
     }
 
@@ -864,12 +810,11 @@ namespace lux::ui
         }
         if (!prepared.empty())
         {
-            ++impl_->window_revision;
         }
         for (auto* pane : prepared)
         {
             pane->beginTreeVisit();
-            static_cast<void>(emit(paneChanged, PaneChanged{pane->id_, true}));
+            static_cast<void>(emit(paneChanged, PaneChanged{pane, true}));
             pane->endTreeVisit();
         }
         return {};
@@ -898,9 +843,8 @@ namespace lux::ui
         pane.id_ = {};
         std::unique_ptr<Pane> owner;
         impl_->panes.extract(id, owner); // Move before swap-and-pop; no user destructor runs in the container.
-        ++impl_->window_revision;
         notifyRemoved(pane);
-        static_cast<void>(emit(paneChanged, PaneChanged{id, false}));
+        static_cast<void>(emit(paneChanged, PaneChanged{&pane, false}));
         return owner;
     }
 
@@ -935,14 +879,10 @@ namespace lux::ui
             pane.id_ = {};
             impl_->panes.extract(entry.id, entry.owner);
         }
-        if (!removed.empty())
-        {
-            ++impl_->window_revision;
-        }
         for (auto& entry : removed)
         {
             notifyRemoved(*entry.owner);
-            static_cast<void>(emit(paneChanged, PaneChanged{entry.id, false}));
+            static_cast<void>(emit(paneChanged, PaneChanged{entry.owner.get(), false}));
         }
         // Every registration has gone before notification or destruction can observe the Root.
         removed.clear();
@@ -1105,12 +1045,6 @@ namespace lux::ui
         endCallbackBorrow(subtree);
     }
 
-    void Root::paneLabelChanged() noexcept
-    {
-        requireOwner();
-        ++impl_->window_revision;
-    }
-
     void Root::releasePane(Pane& pane) noexcept
     {
         if (pane.content_)
@@ -1123,7 +1057,6 @@ namespace lux::ui
             impl_->menu_pane = nullptr;
             impl_->menu_element = nullptr;
         }
-        ++impl_->window_revision;
         impl_->cancelChanges(pane);
         for (auto** target :
              {&impl_->focused,
@@ -1408,7 +1341,6 @@ namespace lux::ui
 
     void Root::prepareLayout() noexcept
     {
-        impl_->placements = {};
         if (impl_->docking)
         {
             const auto* viewport = ImGui::GetMainViewport();
@@ -1416,16 +1348,13 @@ namespace lux::ui
             if (impl_->pending_dock_tree)
             {
                 auto prepared = std::move(impl_->pending_dock_tree);
-                const auto& tree = prepared->tree;
+                const auto& tree = *prepared;
+                ImGui::DockBuilderRemoveNode(root);
                 // Unlisted windows keep their owners and position. Removing the replaced DockSpace
                 // only undocks them; the new tree never infers additional content or view creation.
                 for (const auto& surface : tree.surfaces)
                 {
                     auto flags = surface.floating ? ImGuiDockNodeFlags_None : ImGuiDockNodeFlags_DockSpace;
-                    if (!surface.floating)
-                    {
-                        ImGui::DockBuilderRemoveNode(root);
-                    }
                     const auto id = ImGui::DockBuilderAddNode(surface.floating ? 0 : root, flags);
                     prepared->ids[surface.node] = id;
                     const auto position = surface.floating
@@ -1452,7 +1381,7 @@ namespace lux::ui
                     }
                     else
                     {
-                        for (const auto& window : node.windows)
+                        for (const auto& window : node.panes)
                         {
                             if (auto* pane = findPane(window))
                             {
@@ -1465,145 +1394,8 @@ namespace lux::ui
                 {
                     ImGui::DockBuilderFinish(prepared->ids[surface.node]);
                 }
-                impl_->split_layout.reset();
-                impl_->dock_layout_initialized = true;
             }
-            if (impl_->split_layout && !impl_->dock_layout_initialized && viewport->WorkSize.x > 0 &&
-                viewport->WorkSize.y > 0)
-            {
-                impl_->dock_layout_initialized = true;
-                const auto& layout = *impl_->split_layout;
-                ImGui::DockBuilderRemoveNode(root);
-                ImGui::DockBuilderAddNode(root, ImGuiDockNodeFlags_DockSpace);
-                ImGui::DockBuilderSetNodeSize(root, viewport->WorkSize);
-                ImGuiID center = root;
-                auto& regions = impl_->dock_regions;
-                if (layout.toolbar.isValid())
-                {
-                    ImGui::DockBuilderSplitNode(center, ImGuiDir_Up, 0.12F, &regions[4], &center);
-                }
-                if (layout.bottom.isValid())
-                {
-                    ImGui::DockBuilderSplitNode(
-                        center,
-                        ImGuiDir_Down,
-                        std::clamp(layout.bottom_height / viewport->WorkSize.y, 0.1F, 0.4F),
-                        &regions[3],
-                        &center
-                    );
-                }
-                if (layout.left.isValid())
-                {
-                    ImGui::DockBuilderSplitNode(
-                        center,
-                        ImGuiDir_Left,
-                        std::clamp(layout.left_width / viewport->WorkSize.x, 0.1F, 0.3F),
-                        &regions[0],
-                        &center
-                    );
-                }
-                if (layout.right.isValid())
-                {
-                    ImGui::DockBuilderSplitNode(
-                        center,
-                        ImGuiDir_Right,
-                        std::clamp(
-                            layout.right_width / std::max(1.0F, viewport->WorkSize.x - layout.left_width),
-                            0.1F,
-                            0.4F
-                        ),
-                        &regions[2],
-                        &center
-                    );
-                }
-                regions[1] = center;
-                if (impl_->reset_docking)
-                {
-                    for (const auto& pane_owner : impl_->panes.values())
-                    {
-                        auto* pane = pane_owner.get();
-
-                        if (!pane->modal_)
-                        {
-                            ImGui::DockBuilderDockWindow(pane->window_label_.c_str(), center);
-                        }
-                    }
-                }
-                ImGui::DockBuilderFinish(root);
-            }
-            // Submit even when panes are hidden: docking owns their persistent placement.
             ImGui::DockSpaceOverViewport(root, viewport);
-        }
-        if (impl_->split_layout && !impl_->docking)
-        {
-            auto& layout = *impl_->split_layout;
-            const auto size = ImGui::GetIO().DisplaySize;
-            const float top = impl_->menu_height + (!layout.toolbar.isValid() ? 0 : 38.0F);
-            const auto visible = [&](PaneId id)
-            {
-                const auto* pane = findPane(id);
-                return pane && pane->visible();
-            };
-            const float left =
-                size.x >= 700 && visible(layout.left) ? std::clamp(layout.left_width, 160.0F, size.x * 0.3F) : 0;
-            const float right =
-                size.x >= 1000 && visible(layout.right) ? std::clamp(layout.right_width, 220.0F, size.x * 0.35F) : 0;
-            const float bottom =
-                size.y >= 450 && visible(layout.bottom) ? std::clamp(layout.bottom_height, 100.0F, size.y * 0.4F) : 0;
-            const auto splitter = [&](const char* id, ImVec2 pos, ImVec2 extent, bool vertical, float& value)
-            {
-                ImGui::SetNextWindowPos(pos);
-                ImGui::SetNextWindowSize(extent);
-                ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{0, 0});
-                ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2{1, 1});
-                ImGui::Begin(
-                    id,
-                    nullptr,
-                    ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
-                        ImGuiWindowFlags_NoNav
-                );
-                ImGui::InvisibleButton("##split", extent);
-                if (ImGui::IsItemActive())
-                {
-                    value += vertical ? ImGui::GetIO().MouseDelta.x : ImGui::GetIO().MouseDelta.y;
-                }
-                if (ImGui::IsItemHovered() || ImGui::IsItemActive())
-                {
-                    ImGui::SetMouseCursor(vertical ? ImGuiMouseCursor_ResizeEW : ImGuiMouseCursor_ResizeNS);
-                }
-                ImGui::End();
-                ImGui::PopStyleVar(2);
-            };
-            if (left > 0)
-            {
-                layout.left_width = left;
-                splitter("##layout-left", {left, top}, {5, size.y - bottom - top}, true, layout.left_width);
-                layout.left_width = std::clamp(layout.left_width, 160.0F, size.x * 0.3F);
-            }
-            if (right > 0)
-            {
-                float edge = -right;
-                splitter("##layout-right", {size.x - right - 5, top}, {5, size.y - bottom - top}, true, edge);
-                layout.right_width = std::clamp(-edge, 220.0F, size.x * 0.35F);
-            }
-            if (bottom > 0)
-            {
-                float edge = -bottom;
-                splitter("##layout-bottom", {0, size.y - bottom - 5}, {size.x, 5}, false, edge);
-                layout.bottom_height = std::clamp(-edge, 100.0F, size.y * 0.4F);
-            }
-            const float center_x = left > 0 ? left + 5 : 0;
-            const float upper_height = std::max(0.0F, size.y - bottom - (bottom > 0 ? 5 : 0));
-            impl_->placements = {
-                {{layout.left, {0, top}, {left, std::max(0.0F, upper_height - top)}},
-                 {layout.center,
-                  {center_x, top},
-                  {std::max(0.0F, size.x - center_x - right - (right > 0 ? 5 : 0)), std::max(0.0F, upper_height - top)}
-                 },
-                 {layout.right, {size.x - right, top}, {right, std::max(0.0F, upper_height - top)}},
-                 {layout.bottom, {0, size.y - bottom}, {size.x, bottom}},
-                 {layout.toolbar, {0, 0}, {size.x, top}}}
-            };
         }
     }
 
@@ -1643,61 +1435,12 @@ namespace lux::ui
             );
         }
         ImGuiWindowFlags flags{};
-        for (const auto& placement : impl_->placements)
-        {
-            if (pane.modal_ || !placement.id.isValid() || placement.id != pane.id())
-            {
-                continue;
-            }
-            if (placement.size.x <= 0 || placement.size.y <= 0)
-            {
-                return;
-            }
-            ImGui::SetNextWindowPos(placement.position);
-            ImGui::SetNextWindowSize(placement.size);
-            flags = ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize;
-            break;
-        }
-        if (!pane.modal_ && impl_->docking && impl_->split_layout)
-        {
-            if (auto* node = ImGui::DockBuilderGetCentralNode(ImGui::GetID("lux.ui.dockspace")))
-            {
-                ImGui::SetNextWindowDockID(node->ID, ImGuiCond_FirstUseEver);
-            }
-            const auto& layout = *impl_->split_layout;
-            const std::array<PaneId, 5> ids{layout.left, layout.center, layout.right, layout.bottom, layout.toolbar};
-            for (std::size_t i{}; i < ids.size(); ++i)
-            {
-                if (ids[i] != pane.id())
-                {
-                    continue;
-                }
-                auto* node = ImGui::DockBuilderGetNode(impl_->dock_regions[i]);
-                if (!node || !node->IsLeafNode())
-                {
-                    node = ImGui::DockBuilderGetCentralNode(ImGui::GetID("lux.ui.dockspace"));
-                }
-                if (node)
-                {
-                    ImGui::SetNextWindowDockID(
-                        node->ID,
-                        impl_->reset_docking ? ImGuiCond_Always : ImGuiCond_FirstUseEver
-                    );
-                }
-                break;
-            }
-        }
         if (impl_->pending_focus == &pane)
         {
             ImGui::SetNextWindowFocus();
             impl_->pending_focus = {};
         }
         bool visible = true;
-        const bool toolbar = impl_->split_layout && impl_->split_layout->toolbar == pane.id();
-        if (toolbar && !impl_->docking)
-        {
-            flags |= ImGuiWindowFlags_NoDecoration;
-        }
         if (pane.modal_ && !ImGui::IsPopupOpen(pane.window_label_.c_str()))
         {
             ImGui::OpenPopup(pane.window_label_.c_str());
@@ -1705,14 +1448,14 @@ namespace lux::ui
         const bool shown =
             pane.modal_
                 ? ImGui::BeginPopupModal(pane.window_label_.c_str(), &visible, flags | ImGuiWindowFlags_NoDocking)
-                : ImGui::Begin(pane.window_label_.c_str(), toolbar ? nullptr : &visible, flags);
+                : ImGui::Begin(pane.window_label_.c_str(), &visible, flags);
         if (shown)
         {
             if (pane.modal_)
             {
                 impl_->modal = &pane;
             }
-            // Record the window before nested panes draw; a focused child wins afterwards.
+            // Record the Pane before drawing nested content.
             if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows))
             {
                 impl_->draw_focused = &pane;
@@ -1986,21 +1729,32 @@ namespace lux::ui
         return impl_->context->inputSnapshot(impl_->composing, bool(impl_->pointer_capture));
     }
 
-    lux::cxx::expected<PreparedDockTree, EDockError> Root::prepareDockTree(DockTree tree) const
+    cxx::expected<void, EDockError> Root::setDockTree(DockTree tree) noexcept
     {
-        requireOwner();
+        if (!isOnAffinityThread())
+        {
+            return cxx::unexpected(EDockError::WRONG_THREAD);
+        }
+        if (!checkStructureSafe())
+        {
+            return cxx::unexpected(EDockError::BUSY);
+        }
+        if (!impl_->docking)
+        {
+            return cxx::unexpected(EDockError::DISABLED);
+        }
         auto invalid = [] { return cxx::unexpected(EDockError::INVALID_DATA); };
         if (tree.nodes.size() > impl_->pane_capacity || tree.surfaces.size() > impl_->pane_capacity)
         {
             return invalid();
         }
-        auto prepared = std::make_unique<PreparedDockTree::Data>();
+        auto prepared = std::make_unique<DockData>();
         prepared->order.reserve(tree.nodes.size());
         prepared->ids.resize(tree.nodes.size());
         std::vector<std::uint8_t> visited(tree.nodes.size());
         std::vector<std::uint32_t> pending;
         pending.reserve(tree.nodes.size());
-        std::unordered_set<PaneId> windows;
+        std::unordered_set<Pane*> panes;
         unsigned main_surfaces{};
         for (const auto& surface : tree.surfaces)
         {
@@ -2030,10 +1784,9 @@ namespace lux::ui
                     {
                         return invalid();
                     }
-                    for (const auto id : node.windows)
+                    for (auto* pane : node.panes)
                     {
-                        const auto* pane = findPane(id);
-                        if (!pane || pane->modal_ || !windows.insert(id).second)
+                        if (!pane || pane->root_ != this || pane->modal_ || !panes.insert(pane).second)
                         {
                             return invalid();
                         }
@@ -2044,7 +1797,7 @@ namespace lux::ui
                     const bool invalid_split =
                         node.split != EDockSplit::HORIZONTAL && node.split != EDockSplit::VERTICAL;
                     const bool invalid_ratio = !std::isfinite(node.ratio) || node.ratio <= 0 || node.ratio >= 1;
-                    if (invalid_split || invalid_ratio || !node.windows.empty())
+                    if (invalid_split || invalid_ratio || !node.panes.empty())
                     {
                         return invalid();
                     }
@@ -2057,29 +1810,19 @@ namespace lux::ui
         {
             return invalid();
         }
-        prepared->root = objectId();
-        prepared->tree = std::move(tree);
-        return PreparedDockTree{std::move(prepared)};
-    }
-    cxx::expected<void, EDockError> Root::commitDockTree(PreparedDockTree&& prepared) noexcept
-    {
-        if (!checkStructureSafe() || !prepared.data_ || prepared.data_->root != objectId())
+        prepared->nodes.reserve(tree.nodes.size());
+        for (const auto& node : tree.nodes)
         {
-            return cxx::unexpected(EDockError::INVALID_DATA);
-        }
-        for (const auto& node : prepared.data_->tree.nodes)
-        {
-            for (const auto id : node.windows)
+            auto& retained =
+                prepared->nodes.emplace_back(DockData::Node{node.split, node.first, node.second, node.ratio});
+            retained.panes.reserve(node.panes.size());
+            for (auto* pane : node.panes)
             {
-                const auto* pane = findPane(id);
-                if (!pane || pane->modal_)
-                {
-                    return cxx::unexpected(EDockError::INVALID_DATA);
-                }
+                retained.panes.push_back(pane->id_);
             }
         }
-        impl_->pending_dock_tree = std::move(prepared.data_);
-        ++impl_->window_revision;
+        prepared->surfaces = std::move(tree.surfaces);
+        impl_->pending_dock_tree = std::move(prepared);
         return {};
     }
     DockTree Root::captureDockTree() const
@@ -2088,11 +1831,20 @@ namespace lux::ui
         detail::ContextActivation context{impl_->context->native()};
         if (impl_->pending_dock_tree)
         {
-            auto result = impl_->pending_dock_tree->tree;
-            std::unordered_set<PaneId> included;
-            for (const auto& node : impl_->pending_dock_tree->tree.nodes)
+            DockTree result;
+            result.surfaces = impl_->pending_dock_tree->surfaces;
+            for (const auto& node : impl_->pending_dock_tree->nodes)
             {
-                for (const auto& name : node.windows)
+                auto& output = result.nodes.emplace_back(DockNode{node.split, node.first, node.second, node.ratio});
+                for (const auto id : node.panes)
+                {
+                    output.panes.push_back(findPane(id));
+                }
+            }
+            std::unordered_set<PaneId> included;
+            for (const auto& node : impl_->pending_dock_tree->nodes)
+            {
+                for (const auto& name : node.panes)
                 {
                     included.insert(name);
                 }
@@ -2103,7 +1855,7 @@ namespace lux::ui
             {
                 auto* pane = pane_owner.get();
 
-                if (pane->modal_ || included.contains(pane->id()))
+                if (pane->modal_ || included.contains(pane->id_))
                 {
                     continue;
                 }
@@ -2111,7 +1863,7 @@ namespace lux::ui
                 const Rect bounds = window ? Rect{{window->Pos.x, window->Pos.y}, {window->Size.x, window->Size.y}}
                                            : Rect{{40, 40}, {640, 480}};
                 const auto index = static_cast<std::uint32_t>(result.nodes.size());
-                result.nodes.push_back({EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {pane->id()}});
+                result.nodes.push_back({EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {pane}});
                 result.surfaces.push_back({index, bounds, true});
             }
             return result;
@@ -2141,7 +1893,7 @@ namespace lux::ui
             if (!window || !window->DockNode)
             {
                 const auto index = static_cast<std::uint32_t>(result.nodes.size());
-                result.nodes.push_back({EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {pane->id()}});
+                result.nodes.push_back({EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {pane}});
                 const Rect bounds = window ? Rect{{window->Pos.x, window->Pos.y}, {window->Size.x, window->Size.y}}
                                            : Rect{{40, 40}, {640, 480}};
                 result.surfaces.push_back({index, bounds, true});
@@ -2159,7 +1911,7 @@ namespace lux::ui
                 );
             }
             const auto leaf = insert(window->DockNode);
-            result.nodes[leaf].windows.emplace_back(pane->id());
+            result.nodes[leaf].panes.emplace_back(pane);
         }
         for (std::size_t i{}; i < pending.size(); ++i)
         {
@@ -2182,81 +1934,4 @@ namespace lux::ui
         return result;
     }
 
-    void Root::setDockLayout(DockLayout layout)
-    {
-        requireOwner();
-        if (!validateDockLayout(layout))
-        {
-            return;
-        }
-        impl_->split_layout = std::move(layout);
-    }
-    void Root::resetDockLayout(DockLayout layout)
-    {
-        checkContentChange();
-        if (!layout.center.isValid())
-        {
-            if (impl_->split_layout && validateDockLayout(*impl_->split_layout))
-            {
-                layout = *impl_->split_layout;
-            }
-            else
-            {
-                for (const auto& pane_owner : impl_->panes.values())
-                {
-                    auto* pane = pane_owner.get();
-
-                    if (!pane->modal_)
-                    {
-                        layout.center = pane->id();
-                        break;
-                    }
-                }
-            }
-        }
-        if (!validateDockLayout(layout))
-        {
-            return;
-        }
-        impl_->split_layout = std::move(layout);
-        impl_->dock_layout_initialized = false;
-        impl_->reset_docking = true;
-    }
-    void Root::clearDockLayout() noexcept
-    {
-        requireOwner();
-        impl_->split_layout.reset();
-    }
-    lux::cxx::expected<void, EDockError> Root::validateDockLayout(const DockLayout& layout) const noexcept
-    {
-        requireOwner();
-        const bool valid_dimensions = std::isfinite(layout.left_width) && layout.left_width >= 0 &&
-                                      std::isfinite(layout.right_width) && layout.right_width >= 0 &&
-                                      std::isfinite(layout.bottom_height) && layout.bottom_height >= 0;
-        if (!valid_dimensions || !layout.center.isValid())
-        {
-            return lux::cxx::unexpected(EDockError::INVALID_DATA);
-        }
-        const std::array<PaneId, 5> ids{layout.left, layout.center, layout.right, layout.bottom, layout.toolbar};
-        for (std::size_t i{}; i < ids.size(); ++i)
-        {
-            if (!ids[i].isValid())
-            {
-                continue;
-            }
-            const auto* pane = findPane(ids[i]);
-            if (!pane || pane->modal_)
-            {
-                return cxx::unexpected(EDockError::INVALID_DATA);
-            }
-            for (std::size_t j{}; j < i; ++j)
-            {
-                if (ids[i] == ids[j])
-                {
-                    return cxx::unexpected(EDockError::INVALID_DATA);
-                }
-            }
-        }
-        return {};
-    }
 } // namespace lux::ui

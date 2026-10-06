@@ -1,4 +1,5 @@
 #include "../../cmake/installed-consumers/common/RenderRegistration.hpp"
+#include "../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <cassert>
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
@@ -133,7 +134,7 @@ namespace
         assert(!engine->openProject({"", directory}, layout, assembly) && engine->context() == original);
         const EditorLayout duplicate_names{{"test", "same", "One"}, {"test", "same", "Two"}};
         assert(!engine->openProject({"Invalid", directory}, duplicate_names, assembly));
-        assert(engine->context() == original && root->panes().size() == 2);
+        assert(engine->context() == original && ui_test::paneCount(*root) == 2);
         assert(engine->openProject({"B", directory}, layout, assembly));
         assert((deaths == std::vector<int>{1, 1, 2}));
         assert(&engine->engine() == runtime && &engine->window() == window && &engine->uiRoot() == root);
@@ -178,7 +179,7 @@ namespace
             );
         };
         assert(!engine->openProject({"C", directory}, layout, failing));
-        assert(!engine->context() && root->panes().empty());
+        assert(!engine->context() && (ui_test::paneCount(*root) == 0));
         assert((deaths == std::vector<int>{1, 1, 2, 1, 1, 2, 1, 2}));
         assert(engine->openProject({"D", directory}, layout, assembly));
         until([&] { return engine->capturedFrames() > before + 2; });

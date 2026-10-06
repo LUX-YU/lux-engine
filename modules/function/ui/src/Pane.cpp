@@ -82,29 +82,29 @@ namespace lux::ui
 
     void Pane::setTitle(std::string title)
     {
+        if (!isOnAffinityThread())
+        {
+            detail::failContract();
+        }
         if (title_ == title)
         {
             return;
         }
         title_ = std::move(title);
         rebuildWindowLabel();
-        if (root_)
-        {
-            root_->paneLabelChanged();
-        }
     }
 
     void Pane::setVisible(bool visible)
     {
+        if (!isOnAffinityThread())
+        {
+            detail::failContract();
+        }
         if (visible_ == visible)
         {
             return;
         }
         visible_ = visible;
-        if (root_)
-        {
-            root_->paneLabelChanged();
-        }
         static_cast<void>(emit(visibilityChanged, PaneVisibilityChanged{visible_}));
     }
 

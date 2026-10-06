@@ -1,4 +1,5 @@
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
+#include "RootAccess.hpp"
 #include <imgui.h>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
@@ -8,6 +9,7 @@
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
 
+#include "api_checks.hpp"
 #include "elements.hpp"
 #include "input_checks.hpp"
 #include <algorithm>
@@ -178,7 +180,7 @@ namespace
             assert(root.clearPanes());
         }
         assert(!lifetime.resource_alive && lifetime.resource_destroyed == 1);
-        assert(!root.firstChild() && root.panes().empty());
+        assert(!root.firstChild() && (ui_test::paneCount(root) == 0));
         assert(!root.focusedElement() && !root.focusedPane());
         root.applyPendingChanges(); // All callbacks attached to destroyed members were removed.
         assert(root.update({}, nullptr));
@@ -391,6 +393,7 @@ int main(int argc, char** argv)
         return contractViolation(argv[1]);
     }
     lifetimeAndChanges();
+    api_checks::run();
     element_checks::run();
     input_checks::run();
     auto first = ui::Root::create({.docking = false});
@@ -409,7 +412,7 @@ int main(int argc, char** argv)
         auto& sibling = ui_test::makePane<Probe>(**first, "sibling");
         auto& separate = ui_test::makePane<Probe>(**second, "separate");
         assert(&child.root() == first->get());
-        assert((*first)->findPane(child.id()) == &child);
+        assert(ui_test::findPane(**first, ui_test::paneId(child)) == &child);
         assert((*first)->update({{640, 480}, 0.016F}, &slot));
         assert(parent.draws == 1 && child.draws == 1 && sibling.draws == 1 && separate.draws == 0);
         assert(ImGui::GetCurrentContext() == original && slot.valid());
@@ -439,12 +442,12 @@ int main(int argc, char** argv)
         assert((*second)->update({{640, 480}, 0.016F}, &slot));
         assert(separate.draws == 1 && ImGui::GetCurrentContext() == original);
         auto& temporary = ui_test::makePane<Probe>(**first, "temporary");
-        const auto temporary_id = temporary.id();
+        const auto temporary_id = ui_test::paneId(temporary);
         assert((*first)->requestFocus(temporary));
         assert((*first)->capturePointer(temporary));
         assert((*first)->removePane(temporary));
         assert((*first)->update({{640, 480}, 0.016F}, &slot));
-        assert(!(*first)->findPane(temporary_id));
+        assert(!ui_test::findPane(**first, temporary_id));
     }
     assert((*first)->clearPanes() && (*second)->clearPanes());
     {

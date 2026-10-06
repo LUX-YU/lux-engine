@@ -85,7 +85,7 @@ namespace element_checks
 
     inline void run()
     {
-        auto created = ui::Root::create({.docking = false});
+        auto created = ui::Root::create();
         assert(created);
         auto& root = **created;
         {
@@ -274,7 +274,9 @@ namespace element_checks
             assert(checks == 0 && text_changes == 0 && std::get<float>(number.value()) == 2.F);
             assert(!number.setSpec({.minimum = std::int32_t{0}}));
             assert(number.setSpec({.minimum = 0.0F, .maximum = 10.0F}));
-            root.setDockLayout({.center = pane.id()});
+            assert(root.setDockTree(
+                {{{ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {&pane}}}, {{0, {{0, 0}, {640, 480}}, false}}}
+            ));
             ui::DrawData draw;
             const auto frame = [&] { assert(root.update({{640, 480}, 0.016F}, &draw)); };
             for (unsigned i{}; i != 3; ++i)

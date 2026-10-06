@@ -22,6 +22,10 @@ namespace lux::window
 
 namespace lux::ui
 {
+    namespace detail
+    {
+        struct RootTestAccess;
+    }
     class Pane;
     class Element;
     struct SizeHint;
@@ -63,7 +67,6 @@ namespace lux::ui
         [[nodiscard]] InputSnapshot inputSnapshot() const noexcept;
         // Optional platform attachment. CPU-only roots have no native window.
         void bindWindow(window::LuxWindow*) noexcept;
-        [[nodiscard]] window::LuxWindow* window() const noexcept;
         [[nodiscard]] const Theme& theme() const noexcept;
         [[nodiscard]] float scale() const noexcept;
         [[nodiscard]] lux::cxx::expected<FontAtlas, EInitError> fontAtlas() const noexcept;
@@ -93,22 +96,15 @@ namespace lux::ui
         void applyPendingChanges() noexcept;
         [[nodiscard]] bool hasPendingChanges() const noexcept;
 
-        // One source keeps all borrowed IDs/text alive. Empty owner is only for static menu data.
-        void setMenu(std::vector<MenuItem>, std::shared_ptr<const void> source);
+        void setMenu(std::vector<MenuItem>);
         [[nodiscard]] std::span<const MenuItem> menu() const noexcept;
-        [[nodiscard]] std::span<const std::unique_ptr<Pane>> panes() const noexcept;
-        [[nodiscard]] std::uint64_t windowRevision() const noexcept;
-        [[nodiscard]] bool menuTargets(const Element&) const noexcept;
+        // Borrowed enumeration freezes structure until every callback has returned.
+        [[nodiscard]] PaneResult<void> forEachPane(cxx::function_ref<void(Pane&)>) noexcept;
         // DIRECT notification; receivers may only invalidate borrows, never destroy other UI objects.
         object::TSignal<object::LuxObject*> objectRemoved{*this};
 
-        // Synchronous borrow only. Stored targets must also retain and validate this Root's ObjectId.
-        [[nodiscard]] Pane* findPane(PaneId) const noexcept;
-        [[nodiscard]] PaneResult<void> withPane(object::ObjectId root, PaneId, cxx::function_ref<void(Pane&)>) noexcept;
-        void showPanes() noexcept;
         [[nodiscard]] Pane* focusedPane() const noexcept;
         [[nodiscard]] bool requestFocus(Pane&) noexcept;
-        [[nodiscard]] bool requestFocus(PaneId) noexcept;
         [[nodiscard]] bool capturePointer(Pane&) noexcept;
         void releasePointer(Pane&) noexcept;
         [[nodiscard]] Element* focusedElement() const noexcept;
@@ -117,20 +113,18 @@ namespace lux::ui
         [[nodiscard]] bool capturePointer(Element&) noexcept;
         void releasePointer(Element&) noexcept;
 
-        // Preparation is side-effect free. Commit only transfers owned values; ImGui adopts them before
-        // the next window draw. It does not open a view or resolve a content identity.
-        [[nodiscard]] lux::cxx::expected<PreparedDockTree, EDockError> prepareDockTree(DockTree) const;
-        [[nodiscard]] cxx::expected<void, EDockError> commitDockTree(PreparedDockTree&&) noexcept;
+        // Validate and prepare the entire tree before publishing one pending placement.
+        [[nodiscard]] cxx::expected<void, EDockError> setDockTree(DockTree) noexcept;
         [[nodiscard]] DockTree captureDockTree() const;
-
-        void setDockLayout(DockLayout);
-        void resetDockLayout(DockLayout = {});
-        void clearDockLayout() noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EDockError> validateDockLayout(const DockLayout&) const noexcept;
 
     private:
         Root() noexcept;
         [[nodiscard]] cxx::expected<void, EInitError> initialize(RootConfig) noexcept;
+        friend struct detail::RootTestAccess;
+        friend class TextEdit;
+        friend class NumericEdit;
+        [[nodiscard]] Pane* findPane(PaneId) const noexcept;
+        [[nodiscard]] bool menuTargets(const Element&) const noexcept;
         friend class Pane;
         friend class Element;
         [[nodiscard]] static PaneResult<void> compose(
@@ -140,7 +134,6 @@ namespace lux::ui
             Element* previous,
             bool replace
         ) noexcept;
-        void paneLabelChanged() noexcept;
         void releasePane(Pane&) noexcept;
         void releaseElement(Element&) noexcept;
         void notifyRemoved(object::LuxObject&) noexcept;

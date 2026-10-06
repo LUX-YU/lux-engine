@@ -203,6 +203,13 @@ compiler 或明确的 plugin/foreign containment boundary 捕获，并必须立�
 不得让异常跨 DLL、System、Task、Script ABI 或 plugin boundary。不得为此全局启用
 `-fno-exceptions` 或 `/EHs-`。
 
+### 普通堆内存耗尽不可恢复
+
+普通 new/STL 分配的 OOM 为 fatal；expected 不承诺恢复 bad_alloc，不声明没有真实可恢复生产者的
+ALLOCATION_FAILURE。边界已有异常转换时先终止 bad_alloc，再转换其它外部异常；不新增热路径 catch。
+显式容量耗尽、设备分配和外部后端的失败仍保留准确错误，不与普通堆 OOM 混为一谈。
+错误描述在模块装配时登记，失败点只构造预声明 ErrorId 和数值参数，不在 failure path 注册字符串。
+
 ### 库不决定文字打到哪；宿主装配一次出口
 
 见 `modules/core/log/include/lux/engine/log/Log.hpp` 的文件头（§7.1 两条通道）。

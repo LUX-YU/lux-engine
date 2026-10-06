@@ -100,11 +100,11 @@ namespace lux::ui
         {
             hovered_ = hovered;
         }
-        void rebuildWindowLabel();
+        void rebuildImGuiLabel();
         bool allowsGenericStructure() const noexcept final { return false; }
         PaneId id_;
         std::string title_;
-        std::string window_label_;
+        std::string imgui_label_;
         bool visible_{true};
         bool focused_{false};
         bool hovered_{false};

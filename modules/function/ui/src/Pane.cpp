@@ -15,7 +15,7 @@ namespace lux::ui
     {
         if (root_)
         {
-            detail::failContract(); // Only Root can surrender a registered window's unique owner.
+            detail::failContract(); // Only Root can surrender a registered Pane's unique owner.
         }
         beginDestruction();
         clearContent();
@@ -91,7 +91,7 @@ namespace lux::ui
             return;
         }
         title_ = std::move(title);
-        rebuildWindowLabel();
+        rebuildImGuiLabel();
     }
 
     void Pane::setVisible(bool visible)
@@ -127,14 +127,14 @@ namespace lux::ui
         static_cast<void>(emit(focusChanged, PaneFocusChanged{focused_}));
     }
 
-    void Pane::rebuildWindowLabel()
+    void Pane::rebuildImGuiLabel()
     {
-        window_label_ = title_;
-        window_label_ += "###";
+        imgui_label_ = title_;
+        imgui_label_ += "###";
         char identity[48];
         auto first = std::to_chars(std::begin(identity), std::end(identity), id_.index);
         *first.ptr++ = ':';
         auto second = std::to_chars(first.ptr, std::end(identity), id_.gen);
-        window_label_.append(identity, second.ptr);
+        imgui_label_.append(identity, second.ptr);
     }
 } // namespace lux::ui

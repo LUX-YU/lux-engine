@@ -28,11 +28,12 @@ namespace lux::editor
         EditorUiRegistrar(EditorUiRegistrar&&) = delete;
         EditorUiRegistrar& operator=(EditorUiRegistrar&&) = delete;
         [[nodiscard]] FrameworkResult<void> registerFactory(std::string, UiFactory) noexcept;
-        using FactoryRef = std::reference_wrapper<UiFactory>;
-        [[nodiscard]] FrameworkResult<FactoryRef> resolveFactory(std::string_view) noexcept;
 
     private:
         friend class EditorContext;
+        friend FrameworkResult<std::unique_ptr<ui::Pane>> createPane(EditorContext&, const PaneDescription&) noexcept;
+        using FactoryRef = std::reference_wrapper<UiFactory>;
+        [[nodiscard]] FrameworkResult<FactoryRef> resolveFactory(std::string_view) noexcept;
         void freeze() noexcept
         {
             frozen_ = true;

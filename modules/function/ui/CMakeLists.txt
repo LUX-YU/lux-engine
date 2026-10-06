@@ -18,6 +18,12 @@ add_library(
     src/DrawData.cpp
     src/Table.cpp
     src/Root.cpp
+    src/RootPanes.cpp
+    src/RootInput.cpp
+    src/RootLayout.cpp
+    src/RootDocking.cpp
+    src/RootMenu.cpp
+    src/RootChanges.cpp
     src/Context.cpp
     src/Layout.cpp
     src/Controls.cpp

@@ -16,7 +16,8 @@ The default build installs one `lux_editor`; it displays a Welcome Pane and does
 | `SceneToolRegistrar` | Typed factories selected by WorldDescription predicates; no cached tool instances |
 | `EditorUiScene` | DrawData slots, immediate resource pinning, Scene input publication and existing Runtime retirement |
 
-Context is owner-thread only. Registration finishes before `freeze()`; factories cannot be replaced afterwards.
+Context is owner-thread only. `EditorContext::create` completes assembly and privately freezes the registrars;
+callers cannot freeze early or replace factories afterwards.
 Service requests return borrowed references, valid until Context destruction. Factories may request other registered
 services; recursive creation fails, and failed creation is not cached as success. There is no dynamic plugin/scope protocol.
 
@@ -31,8 +32,8 @@ function. Pure validation failure preserves the current project. After teardown 
 candidate Panes before their Context and leaves no project. EngineContext, window and ImGui Context survive project
 switches. UI dies before project services; Engine/GPU retirement completes before the native window is destroyed.
 
-The loop collects platform/Process/object facts, applies queued UI structure, samples Input once, draws when a slot is
-available, pins the captured data immediately, evaluates ActionMapper with UI capture, publishes UI Scene input and calls
+The loop collects platform/Process/object facts, samples Input once, lets Root adopt queued UI structure, draws when a slot is
+available, pins the captured data immediately, evaluates ActionMapper with UI capture, publishes the pending UI frame and calls
 `SceneRuntime::driveFrame()` once. Backpressure does not redraw pending frames. A paused UI Simulation still maintains
 its SceneSystems. The existing Runtime performs final resource retirement; there is no new business close coordinator.
 
@@ -40,7 +41,9 @@ its SceneSystems. The existing Runtime performs final resource retirement; there
 
 The production targets are `lux_editor_context`, `lux_editor_ui`, `lux_editor_app` (STATIC) and `lux_editor`.
 The SDK package is `lux-engine-editor-framework`, with those three library component names under
-`lux::engine::editor::`. Root exposes no Renderer or SceneRuntime dependency; the UI Scene transport has its own header. Context has no UI library dependency; `EditorUiRegistrar::create()` is implemented by `lux_editor_ui`.
+`lux::engine::editor::`. Root and lux_editor_ui expose no Renderer or SceneRuntime dependency. UI Scene transport lives in the app private
+include/source area; WindowInput is UI-private. Context registers factories but cannot invoke them. The public
+`createPane` function and its declaration belong entirely to lux_editor_ui. `EditorLayout.hpp` owns layout values.
 
 Use the EDITOR profile; legacy has no active build path. Build `all -j 4 -- -k 0`; CMake changes require a second
 no-work build. `LUX_EDITOR_BUILD_NATIVE_TESTS` enables framework CPU tests; GPU and desktop lifecycle tests require their
@@ -58,9 +61,12 @@ variables. Machine-specific paths belong to the local environment, not the track
 ## Scope
 
 Future tools belong in `tools/scene`, `tools/material`, `tools/flowforge`. Their services will own sessions; SceneSession
-will own its SceneToolSet. No empty libraries or placeholder business classes are created in this stage. Real project file
+will own its SceneToolSet. SceneToolRegistrar selection is provisional and must be reviewed with that first real slice. No empty libraries or placeholder business classes are created in this stage. Real project file
 loading, asset browsing, plugins, persistence, history and play mode remain outside this rewrite qualification.
 
 The original ProjectBuilder user patch is preserved separately and **not applied**. Its mapped location is
 `editor_legacy/authoring/project/src/ProjectBuilder.cpp`. Historical EC4 remains incomplete; this framework does not
 retroactively qualify EC4 or previously deferred input/Linux/IME/performance results.
+
+`LuxEngine::frame` returns EFrameStatus (RUNNING or EXIT_REQUESTED). Embedders access Root through
+`window().uiRoot()`; no duplicate root accessor or public frame-count test probe is provided.

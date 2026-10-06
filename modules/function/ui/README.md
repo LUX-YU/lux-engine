@@ -7,12 +7,14 @@
 Root 是全部窗口的唯一 owner，使用 SlotKeyAutoSparseSet<PaneId, unique_ptr<Pane>>。
 Pane 直接属于 Root，没有嵌套 Pane；停靠、标题和显示状态不改变 owner。
 Pane::addElement(Element&) 设置唯一内容根，通常为 Layout；第二次添加返回 OCCUPIED，替换用 replaceContent。
-Layout::addElement/replaceElement 只建立非拥有关系。固定内容优先值成员，动态内容由具体 owner 保存 unique_ptr。
+Layout::addElement/replaceElement 只建立非拥有关系。addElement 与 Object addChild 一样允许 reparent，完整准备后迁移；
+失败保留原树，迁移撤销旧窗口焦点、捕获和菜单目标。固定内容优先值成员，动态内容由具体 owner 保存 unique_ptr。
 叶子控件拒绝子内容；通用 LuxObject 接口不能绕过 UI 拓扑。父对象析构只解绑剩余外部内容。
 
 Pane 只用标题构造；Element、Layout、控件可离树构造。ObjectId 是进程身份；PaneId 是当前 Root 内一次登记。
 移除后重加取得新 PaneId，同标题窗口可以并存，ImGui 标签使用登记身份。持久名称属于 Editor。
-跨帧窗口目标同时保存 Root ObjectId 和 PaneId；withPane 验证后提供同步借用。
+PaneId 由 Root 私有使用；普通调用通过 Pane&，枚举使用同步 forEachPane，不暴露容器 owner。
+内部跨帧目标同时保存 Root ObjectId 和 PaneId，执行前验证代际。Element 的 ImGui 身份来自 ObjectId，无字符串 ElementId。
 
 addPane(unique_ptr<Pane>&&) / addPanes(span<unique_ptr<Pane>>) 完整验证候选、准备容量后才转移 owner，最后通知。
 失败保留全部候选和原 UI。removePane 撤销焦点、捕获、菜单和待执行结构操作，使 PaneId 失效，通知后返回 owner。
@@ -22,12 +24,12 @@ clearPanes 在全部登记撤销后通知和析构。容器 swap-and-pop 不执�
 
 私有 detail::Context 保存 ImGuiContext、字体/主题、输入积累和 EventId 对照，并执行后端构帧及捕获。
 Root 保存窗口、焦点、捕获、模态、停靠和内容树编排，不公开 ImGui ABI。
-update(FrameInfo, DrawData*, optional<Capture>) 顺序执行绘制/捕获、同步资源固定回调、已处理输入路由和树维护。
+update(FrameInfo) 只维护；update(FrameInfo, DrawData&, optional<Capture>) 执行绘制/捕获、同步资源固定回调、已处理输入路由和树维护。
 回调不跨帧保存，Root 不认识 Renderer。空输出时仍维护和处理失焦，不重放控件交互。隐藏窗口仍维护。
 父先子后遍历 Pane→Element 子链，没有全局 Element 登记或逐帧目标快照。
 
 维护、绘制、测量、排列、事件和通知期间冻结结构。deferChange 保存 Root/Object/Pane 代际身份与操作指针，
-输入保留在具体 owner。宿主在外层安全点调用 applyPendingChanges；相同目标/操作合并，追加意图留到后批。
+输入保留在具体 owner。update 开始时自动采用上一批结构意图；相同目标/操作合并，追加意图留到后批。
 卸载或析构撤销旧意图，执行前再次验证身份和所属窗口。owner 可以在安全点替换子内容，不能销毁当前回调对象或祖先。
 
 ## 输入、布局与控件
@@ -38,7 +40,8 @@ feedInput 保留顺序和 sequence，返回 FULL/CLOSED/INVALID_INPUT；FULL 不
 
 Layout 支持水平、垂直、网格和表单。隐藏内容不占空间，宽度先确定再测量换行高度；
 尺寸遵从最小/期望/最大及伸展权重。空间不足时裁剪或显式滚动。控件每帧只实际执行一次。
-运行期 DockLayout/DockTree 使用 PaneId；Editor 把稳定名称解析成当前窗口，不保存 ImGui runtime ID。
+UI 只提供 DockTree。setDockTree 在内部验证、准备并提交；调用使用同步 Pane* 借用，内部保存代际身份。
+Editor 把稳定名称解析成当前窗口，不保存 ImGui runtime ID，不将五区产品偏好放入 Root。
 
 Button、Label、TextEdit、CheckBox、NumericEdit、Choice 是 Element。setValue 不发送用户编辑信号。
 用户交互报告 EditResult，finishEdit 支持无新帧提交/取消，文本 Undo 优先由控件处理。
@@ -50,7 +53,7 @@ DrawData 拥有顶点、索引、命令和图像 ID，复用缓冲，不传 CPU 
 字体 atlas 是拥有型像素副本。ImageElement 只显示非拥有 TextureHandle，不读资产或 retain/release GPU。
 业务 owner 和发布 owner 分别保证资源需求与已捕获帧使用责任，退休仍由原渲染链处理。
 
-setMenu 接收值树，复用 Command QUERY/EXECUTE。菜单打开时固定目标；实际执行离开绘制栈，
+setMenu 接收拥有 CommandId 和标签字符串的值树，不保存外部 source token，复用 Command QUERY/EXECUTE。菜单打开时固定目标；实际执行离开绘制栈，
 验证对象及窗口代际，不改投新焦点窗口。业务身份和历史校验属于 Editor。
 
 测试覆盖布局、控件输入、固定批次、所有权、拓扑、代际及同步回调冻结。

@@ -80,3 +80,19 @@ on `bad_alloc` before converting other foreign exceptions; hot paths do not acqu
 The installed consumer in `editor/tests/installed` uses installed public headers and libraries, including real Object
 and Error DLL probes. The DLL probes check shared Runtime/Registry identity, destructor-tail code lifetime and error
 formatting after plugin unload. Each listed public header is compiled independently under C++20 without RTTI.
+
+## Final convergence before tool migration
+
+The API convergence retains the v2 owners and execution algorithms. LuxObject has only detached construction;
+parent links and UI addElement both support guarded reparenting. Elements use ObjectId for ImGui identity. PaneId
+is private registration bookkeeping, not a caller-provided layout key. Root owns Panes but enumerates borrowed Pane&.
+It retains one DockTree model and validates/prepares/commits internally. Menus own their cold labels and command IDs.
+
+Root::update adopts queued changes itself. The maintenance overload cannot accidentally draw, and the drawing overload
+pins resources synchronously. Root implementation is split by concern behind one Impl with grouped state, not separate
+managers. Private EditorUiScene transport belongs to app; WindowInput belongs to UI implementation. The public Context
+component registers factories, while createPane is supplied and declared by UI. Freeze and mutable factory lookup are
+private. All error domains declare IDs before failure, with registration conflicts reported during assembly.
+
+SceneToolRegistrar remains provisional until the first real SceneSession/SceneToolSet. No Scene/Material/Flow tool,
+dynamic registration, new docking persistence or additional runtime is introduced by this convergence.

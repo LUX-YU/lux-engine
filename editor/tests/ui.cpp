@@ -1,4 +1,5 @@
 #include "../../cmake/installed-consumers/common/UiTestContent.hpp"
+#include "api_contract.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
@@ -10,6 +11,12 @@
 #include <lux/engine/ui/Root.hpp>
 
 using namespace lux;
+
+static_assert(!api_contract::PublicPaneOwners<ui::Root>);
+static_assert(!api_contract::PublicPendingDrain<ui::Root>);
+static_assert(!api_contract::PublicRuntimePaneId<ui::Pane>);
+static_assert(!std::is_constructible_v<object::LuxObject, object::LuxObject*>);
+static_assert(std::is_default_constructible_v<ui::Layout>);
 
 namespace
 {

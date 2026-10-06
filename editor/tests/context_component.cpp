@@ -1,3 +1,4 @@
+#include "api_contract.hpp"
 #include <cassert>
 #include <lux/engine/editor/EditorUiRegistrar.hpp>
 #include <lux/engine/editor/FrameworkErrors.hpp>
@@ -9,8 +10,8 @@ int main()
     using namespace lux;
     assert(editor::registerFrameworkErrors());
     editor::EditorUiRegistrar factories;
-    auto result = factories.resolveFactory("missing");
-    assert(!result && result.error().type == editor::Errors::EditorUiRegistrationIsNotFrozen);
+    auto result = factories.registerFactory("missing", {});
+    assert(!result && result.error().type == editor::Errors::EditorInvalidUiFactory);
     assert(error::ErrorRegistry::instance().find(editor::Errors::EditorInvalidWindowExtent));
     constexpr error::Error failure{editor::Errors::EditorInvalidWindowExtent};
     static_assert(failure.type == error::errorId("lux.editor.invalid_window_extent"));

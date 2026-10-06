@@ -4,7 +4,6 @@
 
 struct Item final : lux::object::LuxObject
 {
-    using LuxObject::LuxObject;
     int received{};
     lux::object::TSignal<int> changed{*this};
     void receive(int value) noexcept
@@ -25,7 +24,8 @@ int main()
 {
     Item item;
     assert(item.isOnAffinityThread());
-    Item child(&item);
+    Item child;
+    assert(item.addChild(child));
     assert(item.firstChild() == &child && child.parent() == &item);
     int value = 2;
     assert(!lux::object::sendEvent(child, value));

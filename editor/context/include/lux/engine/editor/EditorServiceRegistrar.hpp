@@ -2,6 +2,7 @@
 #include <functional>
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/editor/FrameworkErrors.hpp>
 #include <lux/engine/editor/FrameworkResult.hpp>
 #include <memory>
 #include <vector>
@@ -27,9 +28,7 @@ namespace lux::editor
         {
             if (!factory)
             {
-                return cxx::unexpected(error::makeError(
-                    {"lux.editor.empty_service_factory", "Empty service factory", error::ERecovery::PERMANENT}
-                ));
+                return cxx::unexpected(error::Error{Errors::EditorEmptyServiceFactory, {}});
             }
             auto erased = [factory = std::move(factory)](EditorContext& context) mutable -> FrameworkResult<Owner>
             {
@@ -40,15 +39,19 @@ namespace lux::editor
                 }
                 if (!*created)
                 {
-                    return cxx::unexpected(
-                        error::makeError({"lux.editor.null_service", "Null service", error::ERecovery::PERMANENT})
-                    );
+                    return cxx::unexpected(error::Error{Errors::EditorNullService, {}});
                 }
                 return Owner{created->release(), [](void* value) noexcept { delete static_cast<T*>(value); }};
             };
             return registerErased(cxx::typeToken<T>(), std::move(erased));
         }
 
+    private:
+        friend class EditorContext;
+        void freeze() noexcept
+        {
+            frozen_ = true;
+        }
         template <class T> [[nodiscard]] FrameworkResult<std::reference_wrapper<T>> get(EditorContext& context) noexcept
         {
             auto result = getErased(cxx::typeToken<T>(), context);
@@ -58,12 +61,7 @@ namespace lux::editor
             }
             return std::ref(*static_cast<T*>(*result));
         }
-        void freeze() noexcept
-        {
-            frozen_ = true;
-        }
 
-    private:
         using Owner = std::unique_ptr<void, void (*)(void*) noexcept>;
         using Factory = cxx::move_only_function<FrameworkResult<Owner>(EditorContext&)>;
         struct Entry final

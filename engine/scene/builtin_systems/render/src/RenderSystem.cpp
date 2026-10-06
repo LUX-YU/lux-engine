@@ -5,14 +5,30 @@
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.type_static_info.hpp>
 
-#include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/scene/RenderAssets.hpp>
+#include <lux/engine/scene/SceneSystemInstaller.hpp>
 
 #include <algorithm>
 #include <cmath>
 
 namespace lux::scene
 {
+    namespace
+    {
+        namespace Errors
+        {
+            constexpr error::ErrorId SceneRenderStageCreate = error::errorId("lux.scene.render.stage_create");
+            constexpr error::ErrorId SceneRenderStagePrepare = error::errorId("lux.scene.render.stage_prepare");
+        } // namespace Errors
+        constexpr error::ErrorDescriptor ErrorDescriptors[]{
+            {"lux.scene.render.stage_create",
+             "Render extraction creation code {0}",
+             error::ERecovery::NEEDS_INPUT,
+             {error::EArgument::UNSIGNED}},
+            {"lux.scene.render.stage_prepare", "Render extraction preparation failed", error::ERecovery::BUG}
+        };
+    } // namespace
+
     namespace
     {
 
@@ -58,6 +74,14 @@ namespace lux::scene
         SceneSystemDescription description
     ) noexcept
     {
+        if (auto registered = error::ErrorRegistry::instance().registerTypes(ErrorDescriptors); !registered)
+        {
+            return cxx::unexpected(SceneSystemBuildFailure{
+                .code = ESceneSystemBuildError::CONSTRUCTION_FAILURE,
+                .system = description.instanceId(),
+                .cause = registered.error()
+            });
+        }
         auto* runtime = builder.require<render::RenderRuntime>(description.instanceId(), "render_runtime");
         auto* bindings = builder.require<RenderFeatureSceneBindings>(description.instanceId(), "render_bindings");
         if (!runtime || !bindings)
@@ -100,27 +124,37 @@ namespace lux::scene
             const auto type = registration.factory.descriptor.type;
             const auto& codec = registration.configuration;
             if (!registration.scene_configurable || !codec.valid())
+            {
                 return lux::cxx::unexpected(
                     failure(ESceneSystemBuildError::INVALID_DESCRIPTION, description.instanceId(), type)
                 );
+            }
             const auto selected = std::ranges::find(config->features, type, &RenderFeatureInstanceDescription::type);
             if (selected == config->features.end() || selected->configuration_schema != codec.schema ||
                 selected->configuration_version != codec.schema_version)
+            {
                 return lux::cxx::unexpected(
                     failure(ESceneSystemBuildError::INVALID_DESCRIPTION, description.instanceId(), type)
                 );
+            }
             SceneFeatureAttachment attachment{type, entry->feature_type_id, {}, registration.code_lifetime};
             auto encoded = codec.materialize_attach(selected->configuration, attachment.configuration);
             if (!encoded)
+            {
                 return lux::cxx::unexpected(
                     failure(ESceneSystemBuildError::INVALID_DESCRIPTION, description.instanceId(), type)
                 );
+            }
             features.push_back(std::move(attachment));
-            const auto binding = std::ranges::find_if(*bindings, [&](const auto& candidate) {
-                return candidate.feature == type && candidate.scene_system == description.type();
-            });
+            const auto binding = std::ranges::find_if(
+                *bindings,
+                [&](const auto& candidate)
+                { return candidate.feature == type && candidate.scene_system == description.type(); }
+            );
             if (binding != bindings->end() && binding->create_sync_stage)
+            {
                 extractions.push_back({type, binding->create_sync_stage, binding->code_lifetime});
+            }
         }
         auto* resources = builder.require<RenderResources>(description.instanceId(), "render_resources");
         auto* assets = builder.require<RenderAssetInput>(description.instanceId(), "render_assets");
@@ -128,7 +162,9 @@ namespace lux::scene
         const bool missing_resources = !resources;
         const bool invalid_input = assets && !*assets;
         if (wrong_runtime || missing_resources || invalid_input)
+        {
             return lux::cxx::unexpected(failure(ESceneSystemBuildError::INVALID_DESCRIPTION, description.instanceId()));
+        }
         const std::string name(description.instanceName());
         render::RenderControlSession::CreateSceneConfig create{};
         create.name = name.c_str();
@@ -201,9 +237,13 @@ namespace lux::scene
         request_updated_ = registry_.on_update<RenderViewRequest>().connect<&RenderSystem::requestChanged>(*this);
         request_destroyed_ = registry_.on_destroy<RenderViewRequest>().connect<&RenderSystem::requestDestroyed>(*this);
         for (auto entity : registry_.view<RenderViewRequest>())
+        {
             requestChanged(registry_, entity);
+        }
         if (!resources_.retain(scene_state_.resource))
+        {
             render::renderFatal("Invalid RenderSystem Scene resource");
+        }
     }
 
     RenderSystem::~RenderSystem() noexcept
@@ -214,24 +254,34 @@ namespace lux::scene
     void RenderSystem::beginRetirement() noexcept
     {
         if (std::exchange(retiring_, true))
+        {
             return;
+        }
         // SceneInstance has already revoked hook execution. Disconnect observers
         // while the Registry is still alive, then retire unaccepted input locally.
         request_created_.release();
         request_updated_.release();
         request_destroyed_.release();
         for (auto& request : view_requests_)
+        {
             request.cancellation.reset();
+        }
         stages_.clear();
         registry_.ctx().erase<RenderSceneState::Entry>();
         RenderAssets::uninstall(registry_, instance_);
         scene_state_.transport.retired_unforwarded += prepared_ ? 1 : 0;
         pending_.clear_keep_capacity();
         for (const auto& request : view_requests_)
+        {
             if (request.view.isValid())
+            {
                 resources_.release(request.view);
+            }
+        }
         for (const auto view : retiring_views_)
+        {
             resources_.release(view);
+        }
         resources_.release(scene_state_.resource);
     }
 
@@ -262,15 +312,20 @@ namespace lux::scene
         const auto append = [&](RenderResourceId id,
                                 simulation::ecs::Entity camera,
                                 std::uint64_t revision,
-                                simulation::ecs::Entity request) {
+                                simulation::ecs::Entity request)
+        {
             auto observed = resources_.observeView(id);
             if (!observed)
+            {
                 return;
+            }
             const bool is_closing =
                 observed->status.state == EViewState::CLOSING || observed->status.state == EViewState::CLOSED;
             const bool has_extent = observed->render_extent.width && observed->render_extent.height;
             if (is_closing || observed->handle.isNull() || !has_extent)
+            {
                 return;
+            }
             const RenderViewAssociation value{
                 observed->handle,
                 camera,
@@ -297,7 +352,9 @@ namespace lux::scene
         {
             const auto* result = registry_.try_get<RenderViewResult>(request.entity);
             if (request.view.isValid() && result && !result->failure && !request.removed)
+            {
                 append(request.view, request.adopted.camera, request.adopted.revision, request.entity);
+            }
         }
         changed |= count != view_associations_.values.size();
         view_associations_.values.resize(count);
@@ -329,9 +386,11 @@ namespace lux::scene
         if (result && *result == ESceneProgress::COMPLETE)
         {
             if (context.allow_structure)
+            {
                 context.publication_needed |=
                     full_sync_ || !retiring_views_.empty() || forwarded_views_ != view_associations_.revision ||
                     std::ranges::any_of(stages_, [](const auto& stage) { return stage->hasPendingChanges(); });
+            }
         }
         return result;
     }
@@ -382,13 +441,7 @@ namespace lux::scene
                     result_ = lux::cxx::unexpected(SceneExecutionFailure{
                         ESceneExecutionError::SYSTEM_FAILURE,
                         instance_,
-                        error::makeError(
-                            {"lux.scene.render.stage_create",
-                             "Render extraction creation code {0}",
-                             error::ERecovery::NEEDS_INPUT,
-                             {error::EArgument::UNSIGNED}},
-                            {static_cast<std::uint64_t>(stage.error().code)}
-                        )
+                        error::Error{Errors::SceneRenderStageCreate, {static_cast<std::uint64_t>(stage.error().code)}}
                     });
                     return result_;
                 }
@@ -433,9 +486,9 @@ namespace lux::scene
             const bool time_changed = full_sync_ || captured_elapsed_ != context.elapsed ||
                                       captured_delta_ != context.delta || captured_step_ != context.step;
             const bool views_changed = captured_views_ != view_associations_.revision || !retiring_views_.empty();
-            const bool changes = time_changed || views_changed || std::ranges::any_of(stages_, [](const auto& stage) {
-                                     return stage->hasPendingChanges();
-                                 });
+            const bool changes =
+                time_changed || views_changed ||
+                std::ranges::any_of(stages_, [](const auto& stage) { return stage->hasPendingChanges(); });
             if (!changes)
             {
                 return ESceneProgress::COMPLETE;
@@ -470,32 +523,34 @@ namespace lux::scene
                     result_ = lux::cxx::unexpected(SceneExecutionFailure{
                         ESceneExecutionError::SYSTEM_FAILURE,
                         instance_,
-                        error::makeError(
-                            {"lux.scene.render.stage_prepare",
-                             "Render extraction preparation failed",
-                             error::ERecovery::BUG}
-                        )
+                        error::Error{Errors::SceneRenderStagePrepare, {}}
                     });
                     return result_;
                 }
                 const bool has_frame = prepared == ERenderSyncPrepareResult::PREPARED_FRAME_COMMANDS;
                 commands = commands || has_frame || prepared == ERenderSyncPrepareResult::PREPARED_COMMANDS;
                 if (has_frame)
+                {
                     pending_.kind = render::ERenderProgramKind::FRAME;
+                }
             }
             if (commands)
             {
                 publication_resources_.clear();
                 publication_resources_.push_back(scene_state_.resource);
                 for (const auto& view : view_associations_.values)
+                {
                     publication_resources_.push_back(view.resource);
+                }
                 publication_resources_
                     .insert(publication_resources_.end(), retiring_views_.begin(), retiring_views_.end());
                 auto use = resources_.capture(publication_resources_);
                 if (!use)
                 {
                     for (auto& stage : stages_)
+                    {
                         stage->discardPrepared();
+                    }
                     pending_.clear_keep_capacity();
                     result_ = lux::cxx::unexpected(SceneExecutionFailure{
                         ESceneExecutionError::SYSTEM_FAILURE,
@@ -516,7 +571,9 @@ namespace lux::scene
                 stage->commitPrepared();
             }
             for (const auto view : retiring_views_)
+            {
                 resources_.release(view);
+            }
             retiring_views_.clear();
             captured_elapsed_ = context.elapsed;
             captured_delta_ = context.delta;

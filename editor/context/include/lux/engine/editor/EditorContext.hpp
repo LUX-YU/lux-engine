@@ -1,9 +1,10 @@
 #pragma once
+#include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/editor/EditorServiceRegistrar.hpp>
 #include <lux/engine/editor/EditorUiRegistrar.hpp>
+#include <lux/engine/editor/FrameworkErrors.hpp>
 #include <lux/engine/editor/ProjectDescription.hpp>
 #include <lux/engine/editor/SceneToolRegistrar.hpp>
-#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 
 namespace lux::engine
@@ -15,14 +16,23 @@ namespace lux::editor
     class EditorContext final
     {
     public:
-        EditorContext(engine::EngineContext&, ProjectDescription);
+        using Assembly = cxx::function_ref<FrameworkResult<void>(EditorContext&)>;
+        [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorContext>> create(
+            engine::EngineContext&,
+            ProjectDescription,
+            Assembly
+        ) noexcept;
         ~EditorContext() = default;
         EditorContext(const EditorContext&) = delete;
         EditorContext& operator=(const EditorContext&) = delete;
         EditorContext(EditorContext&&) = delete;
         EditorContext& operator=(EditorContext&&) = delete;
 
-        [[nodiscard]] engine::EngineContext& engine() const noexcept
+        [[nodiscard]] engine::EngineContext& engine() noexcept
+        {
+            return engine_;
+        }
+        [[nodiscard]] const engine::EngineContext& engine() const noexcept
         {
             return engine_;
         }
@@ -31,6 +41,10 @@ namespace lux::editor
             return project_;
         }
         [[nodiscard]] asset::AssetVfs& assets() noexcept
+        {
+            return assets_;
+        }
+        [[nodiscard]] const asset::AssetVfs& assets() const noexcept
         {
             return assets_;
         }
@@ -46,22 +60,15 @@ namespace lux::editor
         {
             return scene_tools_;
         }
-        void freeze() noexcept;
 
         template <class T> [[nodiscard]] FrameworkResult<std::reference_wrapper<T>> service() noexcept
         {
-            if (!object::ObjectRuntime::instance().isCurrent())
-            {
-                return cxx::unexpected(error::makeError(
-                    {"lux.editor.project_services_require_owner_thread",
-                     "Project services require owner thread",
-                     error::ERecovery::BUG}
-                ));
-            }
             return services_.get<T>(*this);
         }
 
     private:
+        EditorContext(engine::EngineContext&, ProjectDescription);
+        void freeze() noexcept;
         engine::EngineContext& engine_;
         ProjectDescription project_;
         asset::AssetVfs assets_;

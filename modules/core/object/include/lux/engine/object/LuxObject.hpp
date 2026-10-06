@@ -1,22 +1,22 @@
 #pragma once
 
 #include <atomic>
-#include <exception>
 #include <concepts>
+#include <exception>
 #include <functional>
-#include <memory>
-#include <span>
-#include <lux/cxx/core/function_ref.hpp>
-#include <thread>
-#include <tuple>
-#include <type_traits>
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/cxx/core/function_ref.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/core/visibility.h>
 #include <lux/engine/object/Connection.hpp>
-#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/object/ObjectOwnership.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/object/Signal.hpp>
+#include <memory>
+#include <span>
+#include <thread>
+#include <tuple>
+#include <type_traits>
 
 namespace lux::object
 {
@@ -45,7 +45,6 @@ namespace lux::object
         OBJECT_CLOSED,
         WRONG_THREAD,
         PAYLOAD_NOT_QUEUEABLE,
-        ALLOCATION_FAILURE,
         CAPACITY_EXHAUSTED,
         CALLBACK_CONSTRUCTION_FAILURE
     };
@@ -62,11 +61,13 @@ namespace lux::object
         template <class Owner, class Result, class... Args>
         struct TCallbackArguments<Result (Owner::*)(Args...) noexcept>
             : TCallbackArguments<Result (*)(Args...) noexcept>
-        {};
+        {
+        };
         template <class Owner, class Result, class... Args>
         struct TCallbackArguments<Result (Owner::*)(Args...) const noexcept>
             : TCallbackArguments<Result (*)(Args...) noexcept>
-        {};
+        {
+        };
 
         template <class Payload, class Callable> consteval bool validCallbackArguments()
         {
@@ -75,24 +76,36 @@ namespace lux::object
                 using Traits = TCallbackArguments<Callable>;
                 using Args = typename Traits::arguments;
                 if constexpr (!std::same_as<typename Traits::result, void>)
+                {
                     return false;
+                }
                 else if constexpr (std::is_void_v<Payload>)
+                {
                     return std::tuple_size_v<Args> == 0;
+                }
                 else if constexpr (std::tuple_size_v<Args> != 1)
+                {
                     return false;
+                }
                 else
+                {
                     return std::same_as<std::tuple_element_t<0, Args>, Payload> ||
                            std::same_as<std::tuple_element_t<0, Args>, const Payload&>;
+                }
             }
             else if constexpr (requires { &Callable::operator(); })
+            {
                 return validCallbackArguments<Payload, decltype(&Callable::operator())>();
+            }
             else
+            {
                 return true; // Generic/overloaded callable is checked at the exact invocation below.
+            }
         }
 
         [[nodiscard]] LUX_CORE_PUBLIC bool sendEventErased(LuxObject&, EventView&) noexcept;
         [[nodiscard]] LUX_CORE_PUBLIC bool routeEventErased(LuxObject&, LuxObject&, EventView&) noexcept;
-    }
+    } // namespace detail
 
     class LUX_CORE_PUBLIC LuxObject
     {
@@ -121,7 +134,10 @@ namespace lux::object
         {
             return next_sibling_;
         }
-        [[nodiscard]] ObjectId objectId() const noexcept { return id_; }
+        [[nodiscard]] ObjectId objectId() const noexcept
+        {
+            return id_;
+        }
         [[nodiscard]] ObjectResult<void> setParent(LuxObject*) noexcept;
         [[nodiscard]] ObjectResult<void> addChild(LuxObject&) noexcept;
         [[nodiscard]] ObjectResult<void> removeChild(LuxObject&) noexcept;
@@ -130,7 +146,7 @@ namespace lux::object
             requires std::derived_from<Sender, Owner> && std::derived_from<Sender, LuxObject>
         [[nodiscard]] static ConnectResult connect(
             Sender* sender,
-            TSignal<Payload> Owner::*member,
+            TSignal<Payload> Owner::* member,
             Callback&& callback
         ) noexcept
         {
@@ -148,14 +164,16 @@ namespace lux::object
                      std::derived_from<Receiver, LuxObject>
         [[nodiscard]] static ConnectResult connect(
             Sender* sender,
-            TSignal<Payload> Owner::*member,
+            TSignal<Payload> Owner::* member,
             Receiver* receiver,
             Callback&& callback,
             EDelivery delivery = EDelivery::AUTO
         ) noexcept
         {
             if (!receiver)
+            {
                 return lux::cxx::unexpected(EConnectError::INVALID_ARGUMENT);
+            }
             return connectImpl(sender, member, receiver, std::forward<Callback>(callback), delivery);
         }
 
@@ -163,7 +181,7 @@ namespace lux::object
         template <class Sender, class Owner, class Payload, class Receiver, class Callback>
         [[nodiscard]] static ConnectResult connectImpl(
             Sender* sender,
-            TSignal<Payload> Owner::*member,
+            TSignal<Payload> Owner::* member,
             Receiver* receiver,
             Callback&& callback,
             EDelivery delivery
@@ -175,57 +193,70 @@ namespace lux::object
             if constexpr (method)
             {
                 if constexpr (std::is_void_v<Payload>)
-                    static_assert(
-                        std::is_nothrow_invocable_v<Stored&, Receiver&> &&
-                        std::same_as<std::invoke_result_t<Stored&, Receiver&>, void>
-                    );
+                {
+                    static_assert(std::is_nothrow_invocable_v<Stored&, Receiver&> && std::same_as<std::invoke_result_t<Stored&, Receiver&>, void>);
+                }
                 else
-                    static_assert(
-                        std::is_nothrow_invocable_v<Stored&, Receiver&, const Payload&> &&
-                        std::same_as<std::invoke_result_t<Stored&, Receiver&, const Payload&>, void>
-                    );
+                {
+                    static_assert(std::is_nothrow_invocable_v<Stored&, Receiver&, const Payload&> && std::same_as<std::invoke_result_t<Stored&, Receiver&, const Payload&>, void>);
+                }
             }
             else
             {
                 if constexpr (std::is_void_v<Payload>)
-                    static_assert(
-                        std::is_nothrow_invocable_v<Stored&> &&
-                        std::same_as<std::invoke_result_t<Stored&>, void>
-                    );
+                {
+                    static_assert(std::is_nothrow_invocable_v<Stored&> && std::same_as<std::invoke_result_t<Stored&>, void>);
+                }
                 else
-                    static_assert(
-                        std::is_nothrow_invocable_v<Stored&, const Payload&> &&
-                        std::same_as<std::invoke_result_t<Stored&, const Payload&>, void>
-                    );
+                {
+                    static_assert(std::is_nothrow_invocable_v<Stored&, const Payload&> && std::same_as<std::invoke_result_t<Stored&, const Payload&>, void>);
+                }
             }
             if (!sender || !member || (method && !receiver))
+            {
                 return lux::cxx::unexpected(EConnectError::INVALID_ARGUMENT);
+            }
             if (!sender->isOnAffinityThread())
+            {
                 return lux::cxx::unexpected(EConnectError::WRONG_THREAD);
+            }
             auto& signal = sender->*member;
             if (signal.owner_ != sender)
+            {
                 return lux::cxx::unexpected(EConnectError::INVALID_ARGUMENT);
+            }
             // Connection creation is the fallible allocation/callable construction boundary.
             try
             {
-                detail::SignalCallback invoke{[value = Stored(std::forward<Callback>(callback)
-                                               )](LuxObject* object, const void* payload) mutable noexcept {
-                    if constexpr (method)
+                detail::SignalCallback invoke{
+                    [value = Stored(std::forward<Callback>(callback)
+                     )](LuxObject* object, const void* payload) mutable noexcept
                     {
-                        auto& target = *static_cast<Receiver*>(object);
-                        if constexpr (std::is_void_v<Payload>)
-                            std::invoke(value, target);
+                        if constexpr (method)
+                        {
+                            auto& target = *static_cast<Receiver*>(object);
+                            if constexpr (std::is_void_v<Payload>)
+                            {
+                                std::invoke(value, target);
+                            }
+                            else
+                            {
+                                std::invoke(value, target, *static_cast<const Payload*>(payload));
+                            }
+                        }
                         else
-                            std::invoke(value, target, *static_cast<const Payload*>(payload));
+                        {
+                            if constexpr (std::is_void_v<Payload>)
+                            {
+                                std::invoke(value);
+                            }
+                            else
+                            {
+                                std::invoke(value, *static_cast<const Payload*>(payload));
+                            }
+                        }
                     }
-                    else
-                    {
-                        if constexpr (std::is_void_v<Payload>)
-                            std::invoke(value);
-                        else
-                            std::invoke(value, *static_cast<const Payload*>(payload));
-                    }
-                }};
+                };
                 return sender->connectSignal(
                     signal.storage_,
                     receiver,
@@ -251,7 +282,10 @@ namespace lux::object
         void clearChildren() noexcept;
         // Revoke callbacks before a typed owner tears down its derived routing/resources.
         void beginDestruction() noexcept;
-        [[nodiscard]] bool isClosing() const noexcept { return closing_; }
+        [[nodiscard]] bool isClosing() const noexcept
+        {
+            return closing_;
+        }
         [[nodiscard]] SignalDelivery emit(TSignal<>& signal) noexcept
         {
             return emitSignal(signal.owner_, signal.storage_.get(), nullptr);
@@ -261,7 +295,10 @@ namespace lux::object
         {
             return emitSignal(signal.owner_, signal.storage_.get(), std::addressof(value));
         }
-        virtual bool allowsGenericStructure() const noexcept { return true; }
+        virtual bool allowsGenericStructure() const noexcept
+        {
+            return true;
+        }
         void beginTreeVisit() noexcept;
         void endTreeVisit() noexcept;
         // Owner callbacks may change finished child subtrees, but cannot reclaim themselves or ancestors.
@@ -281,8 +318,7 @@ namespace lux::object
         friend struct detail::ObjectState;
         friend class ObjectRuntime;
         friend struct detail::AffinityOwner;
-        friend ObjectResult<void>
-        detail::prepareSharedObject(LuxObject&) noexcept;
+        friend ObjectResult<void> detail::prepareSharedObject(LuxObject&) noexcept;
         friend void detail::finishSharedObject(LuxObject&) noexcept;
 
         friend void detail::invokeConnection(detail::ConnectionControl*, const void*) noexcept;
@@ -312,4 +348,4 @@ namespace lux::object
         bool changing_children_{};
         bool closing_{};
     };
-}
+} // namespace lux::object

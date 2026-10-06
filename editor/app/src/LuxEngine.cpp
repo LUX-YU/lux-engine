@@ -5,8 +5,10 @@
 #include <lux/engine/EngineRendering.hpp>
 #include <lux/engine/RenderContext.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
+#include <lux/engine/editor/EditorUiFactories.hpp>
 #include <lux/engine/editor/EditorUiScene.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
+#include <lux/engine/editor/FrameworkErrors.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/scene/SceneError.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -20,16 +22,24 @@ namespace lux::editor
     {
         error::Error executionError(process::EExecutionError value) noexcept
         {
-            const bool retryable =
-                value == process::EExecutionError::CAPACITY_EXCEEDED || value == process::EExecutionError::WORK_PENDING;
-            const std::string name = "lux.process.execution." + std::to_string(static_cast<unsigned>(value));
-            return error::makeError(
-                {name,
-                 "ExecutionRuntime code {0}",
-                 retryable ? error::ERecovery::RETRYABLE : error::ERecovery::PERMANENT,
-                 {error::EArgument::UNSIGNED}},
-                {static_cast<std::uint64_t>(value)}
+            constexpr error::ErrorId ids[]{
+                error::errorId("lux.process.execution.0"),
+                error::errorId("lux.process.execution.1"),
+                error::errorId("lux.process.execution.2"),
+                error::errorId("lux.process.execution.3"),
+                error::errorId("lux.process.execution.4"),
+                error::errorId("lux.process.execution.5"),
+                error::errorId("lux.process.execution.6"),
+                error::errorId("lux.process.execution.7"),
+                error::errorId("lux.process.execution.8"),
+                error::errorId("lux.process.execution.9"),
+                error::errorId("lux.process.execution.10")
+            };
+            static_assert(
+                std::size(ids) == static_cast<std::size_t>(process::EExecutionError::CAPABILITY_UNAVAILABLE) + 1
             );
+            const auto code = static_cast<std::size_t>(value);
+            return {code < std::size(ids) ? ids[code] : error::errorId("lux.process.execution.unknown"), {code}};
         }
         error::Error creationError(const engine::EngineContext::VCreateFailure& failure) noexcept
         {
@@ -80,10 +90,7 @@ namespace lux::editor
     } // namespace
     struct LuxEngine::Impl final
     {
-        explicit Impl(EditorConfig config)
-            : config_(std::move(config))
-        {
-        }
+        explicit Impl(EditorConfig config) : config_(std::move(config)) {}
         ~Impl() noexcept
         {
             // Only mechanical project teardown here. The original Runtime drains retirement during its destruction.
@@ -95,8 +102,7 @@ namespace lux::editor
         }
         FrameworkResult<void> initialize() noexcept
         {
-            auto window =
-                EditorWindow::create({config_.width, config_.height, config_.title});
+            auto window = EditorWindow::create({config_.width, config_.height, config_.title});
             if (!window)
             {
                 return cxx::unexpected(std::move(window.error()));
@@ -126,13 +132,9 @@ namespace lux::editor
             auto configuration = ui::makeRenderConfiguration(window_->uiRoot());
             if (!configuration)
             {
-                return cxx::unexpected(error::makeError(
-                    {"lux.ui.render_configuration",
-                     "UI render configuration code {0}",
-                     error::ERecovery::PERMANENT,
-                     {error::EArgument::UNSIGNED}},
-                    {static_cast<std::uint64_t>(configuration.error())}
-                ));
+                return cxx::unexpected(
+                    error::Error{Errors::UiRenderConfiguration, {static_cast<std::uint64_t>(configuration.error())}}
+                );
             }
             std::uint32_t width{}, height{};
             window_->framebufferSize(width, height);
@@ -140,19 +142,11 @@ namespace lux::editor
             const auto native = reinterpret_cast<std::uintptr_t>(window_->nativeHandle());
             if (!native)
             {
-                return cxx::unexpected(error::makeError(
-                    {"lux.editor.window_has_no_native_output",
-                     "Window has no native output",
-                     error::ERecovery::PERMANENT}
-                ));
+                return cxx::unexpected(error::Error{Errors::EditorWindowHasNoNativeOutput, {}});
             }
             scene::ViewConfig output{.extent = {width, height}, .output = scene::NativeSurfaceOutput{native}};
 #else
-            return cxx::unexpected(error::makeError(
-                {"lux.editor.native_ui_output_is_not_implemented_on_this_platform",
-                 "Native UI output is not implemented on this platform",
-                 error::ERecovery::PERMANENT}
-            ));
+            return cxx::unexpected(error::Error{Errors::EditorNativeUiOutputIsNotImplementedOnThisPlatform, {}});
             scene::ViewConfig output;
 #endif
             auto scene = EditorUiScene::create(
@@ -180,11 +174,7 @@ namespace lux::editor
         {
             if (operating_)
             {
-                return cxx::unexpected(error::makeError(
-                    {"lux.editor.project_change_inside_a_host_operation",
-                     "Project change inside a host operation",
-                     error::ERecovery::RETRYABLE}
-                ));
+                return cxx::unexpected(error::Error{Errors::EditorProjectChangeInsideAHostOperation, {}});
             }
             auto description = validateProject(project);
             if (!description)
@@ -194,74 +184,56 @@ namespace lux::editor
             std::unordered_set<std::string> instances;
             for (const auto& ui : layout)
             {
-                const bool is_invalid_ui = ui.type.empty() || ui.name.empty() ||
-                    ui.type.find('\0') != ui.type.npos || ui.name.find('\0') != ui.name.npos;
+                const bool is_invalid_ui = ui.type.empty() || ui.name.empty() || ui.type.find('\0') != ui.type.npos ||
+                                           ui.name.find('\0') != ui.name.npos;
                 if (is_invalid_ui)
                 {
-                    return cxx::unexpected(error::makeError(
-                        {"lux.editor.invalid_layout_item", "Invalid layout item", error::ERecovery::PERMANENT}
-                    ));
+                    return cxx::unexpected(error::Error{Errors::EditorInvalidLayoutItem, {}});
                 }
                 if (!instances.insert(ui.name).second)
                 {
-                    return cxx::unexpected(error::makeError(
-                        {"lux.editor.duplicate_ui_instance_name",
-                         "Duplicate UI instance name",
-                         error::ERecovery::PERMANENT}
-                    ));
+                    return cxx::unexpected(error::Error{Errors::EditorDuplicateUiInstanceName, {}});
                 }
             }
             Operation guard{operating_};
             auto cleared = window_->uiRoot().clearPanes();
             if (!cleared)
             {
-                return cxx::unexpected(error::makeError(
-                    {cleared.error() == ui::EPaneError::BUSY ? "lux.editor.ui_clear_busy" : "lux.editor.ui_clear",
-                     "Cannot clear project windows: UI code {0}",
-                     cleared.error() == ui::EPaneError::BUSY ? error::ERecovery::RETRYABLE
-                                                             : error::ERecovery::PERMANENT,
-                     {error::EArgument::UNSIGNED}},
+                return cxx::unexpected(error::Error{
+                    cleared.error() == ui::EPaneError::BUSY ? error::errorId("lux.editor.ui_clear_busy")
+                                                            : error::errorId("lux.editor.ui_clear"),
                     {static_cast<std::uint64_t>(cleared.error())}
-                ));
+                });
             }
             project_.reset();
             // Local order matters on every error: candidates die before the Context they borrow.
-            auto candidate = std::make_unique<EditorContext>(*engine_, std::move(project));
-            auto registered = assembly(*candidate);
-            if (!registered)
+            auto created_context = EditorContext::create(*engine_, std::move(project), assembly);
+            if (!created_context)
             {
-                return registered;
+                return cxx::unexpected(created_context.error());
             }
-            candidate->freeze();
+            auto candidate = std::move(*created_context);
             std::vector<std::unique_ptr<ui::Pane>> panes;
             panes.reserve(layout.size());
             for (const auto& item : layout)
             {
-                auto pane = candidate->ui().create(*candidate, item);
+                auto pane = createPane(*candidate, item);
                 if (!pane)
                 {
                     return cxx::unexpected(std::move(pane.error()));
                 }
                 if (!*pane || (*pane)->attachedRoot() || (*pane)->parent())
                 {
-                    return cxx::unexpected(error::makeError(
-                        {"lux.editor.ui_factory_returned_an_attached_or_null_pane",
-                         "UI factory returned an attached or null Pane",
-                         error::ERecovery::PERMANENT}
-                    ));
+                    return cxx::unexpected(error::Error{Errors::EditorUiFactoryReturnedAnAttachedOrNullPane, {}});
                 }
                 panes.push_back(std::move(*pane));
             }
             auto mounted = window_->uiRoot().addPanes(panes);
             if (!mounted)
             {
-                return cxx::unexpected(error::makeError(
-                    {"lux.editor.cannot_mount_project_windows",
-                     "Cannot mount project windows: code {0}",
-                     error::ERecovery::PERMANENT,
-                     {error::EArgument::UNSIGNED}},
-                    {static_cast<std::uint64_t>(mounted.error())}
-                ));
+                return cxx::unexpected(
+                    error::Error{Errors::EditorCannotMountProjectWindows, {static_cast<std::uint64_t>(mounted.error())}}
+                );
             }
             project_ = std::move(candidate);
             return {};
@@ -270,24 +242,17 @@ namespace lux::editor
         {
             if (operating_)
             {
-                return cxx::unexpected(error::makeError(
-                    {"lux.editor.project_change_inside_a_host_operation",
-                     "Project change inside a host operation",
-                     error::ERecovery::RETRYABLE}
-                ));
+                return cxx::unexpected(error::Error{Errors::EditorProjectChangeInsideAHostOperation, {}});
             }
             Operation guard{operating_};
             auto cleared = window_->uiRoot().clearPanes();
             if (!cleared)
             {
-                return cxx::unexpected(error::makeError(
-                    {cleared.error() == ui::EPaneError::BUSY ? "lux.editor.ui_clear_busy" : "lux.editor.ui_clear",
-                     "Cannot clear project windows: UI code {0}",
-                     cleared.error() == ui::EPaneError::BUSY ? error::ERecovery::RETRYABLE
-                                                             : error::ERecovery::PERMANENT,
-                     {error::EArgument::UNSIGNED}},
+                return cxx::unexpected(error::Error{
+                    cleared.error() == ui::EPaneError::BUSY ? error::errorId("lux.editor.ui_clear_busy")
+                                                            : error::errorId("lux.editor.ui_clear"),
                     {static_cast<std::uint64_t>(cleared.error())}
-                ));
+                });
             }
             project_.reset();
             return {};
@@ -296,9 +261,7 @@ namespace lux::editor
         {
             if (operating_)
             {
-                return cxx::unexpected(error::makeError(
-                    {"lux.editor.recursive_host_frame", "Recursive host frame", error::ERecovery::RETRYABLE}
-                ));
+                return cxx::unexpected(error::Error{Errors::EditorRecursiveHostFrame, {}});
             }
             Operation guard{operating_};
             window::LuxWindow::pollEvents();
@@ -347,11 +310,7 @@ namespace lux::editor
             auto drawn = root.update(info, ui_draw_data, ui::Root::Capture{capture});
             if (!drawn)
             {
-                return cxx::unexpected(error::makeError(
-                    {"lux.ui.capture", "UI capture code {0}", error::ERecovery::PERMANENT, {error::EArgument::UNSIGNED}
-                    },
-                    {static_cast<std::uint64_t>(drawn.error())}
-                ));
+                return cxx::unexpected(error::Error{Errors::UiCapture, {static_cast<std::uint64_t>(drawn.error())}});
             }
             if (ui_draw_data)
             {
@@ -416,19 +375,19 @@ namespace lux::editor
     LuxEngine::~LuxEngine() noexcept = default;
     FrameworkResult<std::unique_ptr<LuxEngine>> LuxEngine::create(EditorConfig config) noexcept
     {
+        if (auto registered = registerFrameworkErrors(); !registered)
+        {
+            return cxx::unexpected(registered.error());
+        }
         const bool is_invalid_window = config.width <= 0 || config.height <= 0;
         if (is_invalid_window)
         {
-            return cxx::unexpected(error::makeError(
-                {"lux.editor.invalid_window_extent", "Invalid window extent", error::ERecovery::PERMANENT}
-            ));
+            return cxx::unexpected(error::Error{Errors::EditorInvalidWindowExtent, {}});
         }
         auto& objects = object::ObjectRuntime::instance();
         if (!objects.isCurrent())
         {
-            return cxx::unexpected(error::makeError(
-                {"lux.editor.editor_requires_object_thread", "Editor requires object thread", error::ERecovery::BUG}
-            ));
+            return cxx::unexpected(error::Error{Errors::EditorEditorRequiresObjectThread, {}});
         }
         auto impl = std::make_unique<Impl>(std::move(config));
         auto initialized = impl->initialize();

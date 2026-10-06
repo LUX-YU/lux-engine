@@ -85,13 +85,19 @@ namespace lux::render
         [[nodiscard]] std::size_t size() const;
 
     private:
+        friend LUX_FUNCTION_PUBLIC error::Error toError(RenderError) noexcept;
+        struct RegisteredType final
+        {
+            ErrorTypeDesc descriptor;
+            error::ErrorId stable_id;
+        };
         using TypeKey = std::uint64_t; ///< lux::cxx::type_hash 的返回类型
 
         ErrorTypeId acquire(TypeKey key, const ErrorTypeDesc& desc);
         void release(TypeKey key) noexcept;
 
         mutable std::shared_mutex mutex_;
-        lux::cxx::SlotKeyAutoSparseSet<ErrorTypeId, ErrorTypeDesc> types_;
+        lux::cxx::SlotKeyAutoSparseSet<ErrorTypeId, RegisteredType> types_;
         std::unordered_map<TypeKey, ErrorTypeId> by_type_;
         std::unordered_map<std::string_view, ErrorTypeId> by_name_;
     };
@@ -165,9 +171,15 @@ namespace lux::render
 #undef LUX_RENDER_ERROR_NAME_ENTRY
             };
             for (std::size_t i = 0; i < std::size(names); ++i)
+            {
                 for (std::size_t j = i + 1; j < std::size(names); ++j)
+                {
                     if (names[i] == names[j])
+                    {
                         return false;
+                    }
+                }
+            }
             return true;
         }
     } // namespace detail

@@ -123,17 +123,20 @@ namespace lux::error
         std::shared_lock lock(impl_->mutex);
         return impl_->table.find(id);
     }
-    Error makeError(const ErrorDescriptor& descriptor, std::array<std::uint64_t, 3> args) noexcept
+    cxx::expected<void, Error> ErrorRegistry::registerTypes(std::span<const ErrorDescriptor> descriptors) noexcept
     {
-        const auto registered = ErrorRegistry::instance().registerType(descriptor);
-        if (!registered)
+        for (const auto& descriptor : descriptors)
         {
-            return {
-                errorId(RegistrationFailure.name),
-                {errorId(descriptor.name), static_cast<std::uint64_t>(registered.error())}
-            };
+            const auto registered = registerType(descriptor);
+            if (!registered)
+            {
+                return cxx::unexpected(Error{
+                    errorId(RegistrationFailure.name),
+                    {errorId(descriptor.name), static_cast<std::uint64_t>(registered.error())}
+                });
+            }
         }
-        return {*registered, args};
+        return {};
     }
     std::string format(Error error) noexcept
     {

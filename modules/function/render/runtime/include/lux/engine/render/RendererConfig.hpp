@@ -46,6 +46,7 @@ namespace lux::render
     };
     // Backend failures retain their descriptor and all three parameters. Other failures
     // retain the precise admission code, request and optional backend status.
+    [[nodiscard]] LUX_RENDER_RUNTIME_PUBLIC cxx::expected<void, error::Error> registerRendererErrors() noexcept;
     [[nodiscard]] LUX_RENDER_RUNTIME_PUBLIC error::Error toError(const RendererFailure&) noexcept;
     struct RendererDiagnostic final
     {

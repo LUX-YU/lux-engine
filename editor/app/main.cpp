@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
+#include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -16,7 +17,9 @@ namespace
               detail_(lux::ui::ElementId{"scope"}, "Framework ready. Authoring tools are not loaded.")
         {
             if (!layout_.addElement(label_) || !layout_.addElement(detail_) || !addElement(layout_))
+            {
                 std::terminate();
+            }
         }
 
     private:

@@ -4,15 +4,16 @@
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/RenderContext.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
-#include <lux/engine/ui/Root.hpp>
 #include <lux/engine/editor/EditorUiScene.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
+#include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/scene/RenderResources.hpp>
 #include <lux/engine/scene/RenderViewRequest.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/rendering/RenderFeature.hpp>
 #include <thread>
 #if defined(_WIN32)
@@ -24,6 +25,12 @@
 using namespace lux;
 using namespace lux::editor;
 using namespace std::chrono_literals;
+namespace FixtureErrors
+{
+    inline constexpr lux::error::ErrorId EditorExpectedSecondFactoryRefusal =
+        lux::error::errorId("lux.editor.expected_second_factory_refusal");
+}
+
 namespace
 {
     struct Service final
@@ -38,8 +45,7 @@ namespace
     {
     public:
         TestPane(std::string name, std::vector<int>& deaths)
-            : Pane(std::move(name)), deaths_(deaths),
-              content_(ui::ElementId{"layout"}),
+            : Pane(std::move(name)), deaths_(deaths), content_(ui::ElementId{"layout"}),
               label_(ui::ElementId{"label"}, "Actual UI GPU content")
         {
             assert(content_.addElement(label_) && addElement(content_));
@@ -89,8 +95,7 @@ namespace
         private:
             LuxEngine& host_;
         } listener(*engine);
-        auto connection =
-            object::LuxObject::connect(root, &ui::Root::paneChanged, &listener, &Listener::attached);
+        auto connection = object::LuxObject::connect(root, &ui::Root::paneChanged, &listener, &Listener::attached);
         assert(connection);
         auto assembly = [&](EditorContext& context) noexcept -> FrameworkResult<void>
         {
@@ -167,11 +172,7 @@ namespace
                     assert(context.service<Service>());
                     if (description.name == "two")
                     {
-                        return cxx::unexpected(error::makeError(
-                            {"lux.editor.expected_second_factory_refusal",
-                             "Expected second factory refusal",
-                             error::ERecovery::PERMANENT}
-                        ));
+                        return cxx::unexpected(error::Error{FixtureErrors::EditorExpectedSecondFactoryRefusal, {}});
                     }
                     return std::unique_ptr<ui::Pane>{new TestPane(description.name, deaths)};
                 }
@@ -350,6 +351,13 @@ namespace
 } // namespace
 int main(int argc, char** argv)
 {
+    const lux::error::ErrorDescriptor fixture_errors[]{
+        {"lux.editor.expected_second_factory_refusal",
+         "Expected second factory refusal",
+         lux::error::ERecovery::PERMANENT}
+    };
+    assert(lux::error::ErrorRegistry::instance().registerTypes(fixture_errors));
+
     if (argc > 1 && std::string_view(argv[1]) == "--native")
     {
         nativeLifecycle();

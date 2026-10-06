@@ -1,7 +1,7 @@
 find_package(lux-cxx REQUIRED COMPONENTS core compile_time container)
 
 add_component(COMPONENT_NAME lux_editor_context NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES context/src/EditorContext.cpp context/src/EditorServiceRegistrar.cpp context/src/EditorUiRegistrar.cpp)
+    SOURCE_FILES context/src/FrameworkErrors.cpp context/src/EditorContext.cpp context/src/EditorServiceRegistrar.cpp context/src/EditorUiRegistrar.cpp)
 component_include_directories(lux_editor_context BUILD_TIME_EXPORT
     ${CMAKE_CURRENT_SOURCE_DIR}/context/include ${CMAKE_CURRENT_SOURCE_DIR}/project/include INSTALL_TIME include)
 target_link_libraries(lux_editor_context PUBLIC lux::cxx::core lux::cxx::compile_time
@@ -53,10 +53,15 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_test(NAME framework.isolation COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/check_isolation.py" "${CMAKE_BINARY_DIR}")
+    add_executable(editor_framework_component_test tests/context_component.cpp)
+    target_link_libraries(editor_framework_component_test PRIVATE lux_editor_context)
+    lux_editor_test_options(editor_framework_component_test)
+    add_test(NAME framework.context_component COMMAND editor_framework_component_test)
     add_executable(editor_framework_context_test tests/context.cpp)
     target_link_libraries(editor_framework_context_test PRIVATE lux_editor_context lux::engine::engine_context)
     lux_editor_test_options(editor_framework_context_test)
     add_test(NAME framework.context COMMAND editor_framework_context_test ${CMAKE_CURRENT_BINARY_DIR}/test-data)
+    add_test(NAME framework.error_registration_conflict COMMAND editor_framework_context_test --registration-conflict)
     add_executable(editor_framework_ui_test tests/ui.cpp)
     target_link_libraries(editor_framework_ui_test PRIVATE lux_editor_ui)
     lux_editor_test_options(editor_framework_ui_test)

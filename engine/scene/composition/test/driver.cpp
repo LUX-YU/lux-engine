@@ -8,6 +8,11 @@
 #include <cassert>
 #include <iostream>
 
+namespace FixtureErrors
+{
+    inline constexpr lux::error::ErrorId FixtureSceneFailure = lux::error::errorId("fixture.scene.failure");
+}
+
 namespace
 {
     using namespace lux;
@@ -56,7 +61,8 @@ namespace
             .cpp_type = cxx::typeToken<Probe>(),
             .description = &Probe::Description,
             .install = +[](SceneSystemInstaller& builder,
-                           SceneSystemDescription input) noexcept -> cxx::expected<void, SceneSystemBuildFailure> {
+                           SceneSystemDescription input) noexcept -> cxx::expected<void, SceneSystemBuildFailure>
+            {
                 auto system = builder.emplaceSystem<Probe>(input.instanceId(), builder.registry());
                 if (!system)
                 {
@@ -67,60 +73,58 @@ namespace
                     return cxx::unexpected(SceneSystemBuildFailure{
                         .code = ESceneSystemBuildError::EXTERNAL_OPERATION_FAILURE,
                         .system = input.instanceId(),
-                        .cause = error::makeError(
-                            {"fixture.scene.failure",
-                             "Test failure {0}",
-                             error::ERecovery::PERMANENT,
-                             {error::EArgument::UNSIGNED}},
-                            {719}
-                        )
+                        .cause = error::Error{FixtureErrors::FixtureSceneFailure, {719}}
                     });
                 }
-                auto maintenance =
-                    builder.addMaintenanceTask<Probe>(input.instanceId(), [](Probe& self) noexcept -> SceneStageResult {
+                auto maintenance = builder.addMaintenanceTask<Probe>(
+                    input.instanceId(),
+                    [](Probe& self) noexcept -> SceneStageResult
+                    {
                         ++self.maintenance;
                         return self.maintenance_waiting ? ESceneProgress::PENDING : ESceneProgress::COMPLETE;
-                    });
+                    }
+                );
                 if (!maintenance)
                 {
                     return maintenance;
                 }
                 auto synchronized = builder.addSynchronizationTask<Probe>(
                     input.instanceId(),
-                    [](Probe& self, SceneStageContext& context) noexcept -> SceneStageResult {
+                    [](Probe& self, SceneStageContext& context) noexcept -> SceneStageResult
+                    {
                         ++self.synchronization;
                         context.publication_needed |= std::exchange(self.changed, false);
                         return ESceneProgress::COMPLETE;
                     }
                 );
                 if (!synchronized)
+                {
                     return synchronized;
-                auto stable =
-                    builder.addStablePointTask<Probe>(input.instanceId(), [](Probe& self) noexcept -> SceneStageResult {
+                }
+                auto stable = builder.addStablePointTask<Probe>(
+                    input.instanceId(),
+                    [](Probe& self) noexcept -> SceneStageResult
+                    {
                         ++self.stable;
                         if (self.failure)
                         {
                             return cxx::unexpected(SceneExecutionFailure{
                                 ESceneExecutionError::SYSTEM_FAILURE,
                                 {},
-                                error::makeError(
-                                    {"fixture.scene.failure",
-                                     "Test failure {0}",
-                                     error::ERecovery::PERMANENT,
-                                     {error::EArgument::UNSIGNED}},
-                                    {713}
-                                )
+                                error::Error{FixtureErrors::FixtureSceneFailure, {713}}
                             });
                         }
                         return ESceneProgress::COMPLETE;
-                    });
+                    }
+                );
                 if (!stable)
                 {
                     return stable;
                 }
                 return builder.addPublicationTask<Probe>(
                     input.instanceId(),
-                    [](Probe& self, SceneStageContext& context) noexcept -> SceneStageResult {
+                    [](Probe& self, SceneStageContext& context) noexcept -> SceneStageResult
+                    {
                         ++self.publication;
                         return self.gate ? ESceneProgress::COMPLETE : ESceneProgress::PENDING;
                     }
@@ -146,13 +150,17 @@ namespace
             .cpp_type = cxx::typeToken<IndependentProbe>(),
             .description = &IndependentProbe::Description,
             .install = +[](SceneSystemInstaller& builder,
-                           SceneSystemDescription input) noexcept -> cxx::expected<void, SceneSystemBuildFailure> {
+                           SceneSystemDescription input) noexcept -> cxx::expected<void, SceneSystemBuildFailure>
+            {
                 auto system = builder.emplaceSystem<IndependentProbe>(input.instanceId());
                 if (!system)
+                {
                     return cxx::unexpected(system.error());
+                }
                 return builder.addMaintenanceTask<IndependentProbe>(
                     input.instanceId(),
-                    [](IndependentProbe& self) noexcept -> SceneStageResult {
+                    [](IndependentProbe& self) noexcept -> SceneStageResult
+                    {
                         ++self.maintenance;
                         return ESceneProgress::COMPLETE;
                     }
@@ -166,6 +174,14 @@ void runTransformChecks();
 
 int main(int argc, char** argv)
 {
+    const lux::error::ErrorDescriptor fixture_errors[]{
+        {"fixture.scene.failure",
+         "Test failure {0}",
+         lux::error::ERecovery::PERMANENT,
+         {lux::error::EArgument::UNSIGNED}}
+    };
+    assert(lux::error::ErrorRegistry::instance().registerTypes(fixture_errors));
+
     using namespace lux;
     using namespace lux::scene;
     using namespace std::chrono_literals;

@@ -2,12 +2,21 @@
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
+#include <lux/engine/error/ErrorRegistry.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
+#include <thread>
 #include <type_traits>
 
 using namespace lux;
 using namespace lux::editor;
+namespace FixtureErrors
+{
+    inline constexpr lux::error::ErrorId EditorUnused = lux::error::errorId("lux.editor.unused");
+    inline constexpr lux::error::ErrorId EditorFirstAttempt = lux::error::errorId("lux.editor.first_attempt");
+} // namespace FixtureErrors
+
 namespace
 {
     struct Service final
@@ -55,6 +64,33 @@ namespace
 } // namespace
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string_view(argv[1]) == "--registration-conflict")
+    {
+        auto& registry = error::ErrorRegistry::instance();
+        assert(registry.registerType({"lux.editor.invalid_window_extent", "Conflicting schema"}));
+        auto& runtime = object::ObjectRuntime::instance();
+        auto engine = engine::EngineContext::create({1, 64, 64, {32}}, {0, 64});
+        assert(engine && runtime.isCurrent());
+        bool assembled{};
+        auto assembly = [&](EditorContext&) -> FrameworkResult<void>
+        {
+            assembled = true;
+            return {};
+        };
+        auto context = EditorContext::create(**engine, {"Conflict", std::filesystem::current_path()}, assembly);
+        assert(!context && !assembled);
+        assert(context.error().type == error::errorId("lux.error.registration"));
+        assert(context.error().args[0] == Errors::EditorInvalidWindowExtent);
+        assert(registry.find(Errors::EditorInvalidWindowExtent)->message == "Conflicting schema");
+        return 0;
+    }
+
+    const lux::error::ErrorDescriptor fixture_errors[]{
+        {"lux.editor.unused", "unused", lux::error::ERecovery::PERMANENT},
+        {"lux.editor.first_attempt", "first attempt", lux::error::ERecovery::PERMANENT}
+    };
+    assert(lux::error::ErrorRegistry::instance().registerTypes(fixture_errors));
+
     static_assert(!std::is_move_constructible_v<EditorContext>);
     static_assert(!std::is_copy_constructible_v<EditorServiceRegistrar>);
     static_assert(!std::is_move_constructible_v<EditorUiRegistrar>);
@@ -65,53 +101,67 @@ int main(int argc, char** argv)
     std::vector<int> destroyed;
     unsigned constructed{}, attempts{}, tools{};
     {
-        EditorContext context(**engine, {"First", std::filesystem::current_path()});
-        assert(context.services().registerFactory<Service>(
-            [&](EditorContext&) -> FrameworkResult<std::unique_ptr<Service>>
-            {
-                ++constructed;
-                return std::make_unique<Service>(destroyed, 1);
-            }
-        ));
-        assert(!context.services().registerFactory<Service>(
-            [](EditorContext&) -> FrameworkResult<std::unique_ptr<Service>>
-            { return cxx::unexpected(error::makeError({"lux.editor.unused", "unused", error::ERecovery::PERMANENT})); }
-        ));
-        assert(context.services().registerFactory<Other>(
-            [&](EditorContext& context) -> FrameworkResult<std::unique_ptr<Other>>
-            {
-                assert(context.service<Service>());
-                return std::make_unique<Other>(destroyed);
-            }
-        ));
-        assert(context.services().registerFactory<Recursive>(
-            [](EditorContext& context) -> FrameworkResult<std::unique_ptr<Recursive>>
-            {
-                auto nested = context.service<Recursive>();
-                assert(!nested && nested.error().type == error::errorId("lux.editor.recursive_service_factory"));
-                return cxx::unexpected(std::move(nested.error()));
-            }
-        ));
-        assert(context.services().registerFactory<Retry>(
-            [&](EditorContext&) -> FrameworkResult<std::unique_ptr<Retry>>
-            {
-                if (++attempts == 1)
+        auto assemble = [&](EditorContext& context) -> FrameworkResult<void>
+        {
+            assert(context.services().registerFactory<Service>(
+                [&](EditorContext&) -> FrameworkResult<std::unique_ptr<Service>>
                 {
-                    return cxx::unexpected(
-                        error::makeError({"lux.editor.first_attempt", "first attempt", error::ERecovery::PERMANENT})
-                    );
+                    ++constructed;
+                    return std::make_unique<Service>(destroyed, 1);
                 }
-                return std::make_unique<Retry>();
+            ));
+            assert(!context.services().registerFactory<Service>(
+                [](EditorContext&) -> FrameworkResult<std::unique_ptr<Service>>
+                { return cxx::unexpected(error::Error{FixtureErrors::EditorUnused, {}}); }
+            ));
+            assert(context.services().registerFactory<Other>(
+                [&](EditorContext& context) -> FrameworkResult<std::unique_ptr<Other>>
+                {
+                    assert(context.service<Service>());
+                    return std::make_unique<Other>(destroyed);
+                }
+            ));
+            assert(context.services().registerFactory<Recursive>(
+                [](EditorContext& context) -> FrameworkResult<std::unique_ptr<Recursive>>
+                {
+                    auto nested = context.service<Recursive>();
+                    assert(!nested && nested.error().type == error::errorId("lux.editor.recursive_service_factory"));
+                    return cxx::unexpected(std::move(nested.error()));
+                }
+            ));
+            assert(context.services().registerFactory<Retry>(
+                [&](EditorContext&) -> FrameworkResult<std::unique_ptr<Retry>>
+                {
+                    if (++attempts == 1)
+                    {
+                        return cxx::unexpected(error::Error{FixtureErrors::EditorFirstAttempt, {}});
+                    }
+                    return std::make_unique<Retry>();
+                }
+            ));
+            assert(context.sceneTools().registerFactory<Tools>(
+                &match,
+                [&](EditorContext&, const world::WorldDescription&) -> FrameworkResult<std::unique_ptr<Tools>>
+                { return std::make_unique<Tools>(++tools); }
+            ));
+            assert(constructed == 0);
+            assert(!context.service<Service>());
+            return {};
+        };
+        auto created = EditorContext::create(**engine, {"First", std::filesystem::current_path()}, assemble);
+        assert(created);
+        auto& context = **created;
+        static_assert(std::is_same_v<decltype(std::as_const(context).engine()), const engine::EngineContext&>);
+        static_assert(std::is_same_v<decltype(std::as_const(context).assets()), const asset::AssetVfs&>);
+        assert(error::ErrorRegistry::instance().find(Errors::EditorInvalidWindowExtent));
+        std::thread worker(
+            [&]
+            {
+                auto rejected = context.service<Service>();
+                assert(!rejected && rejected.error().type == Errors::EditorProjectServicesRequireOwnerThread);
             }
-        ));
-        assert(context.sceneTools().registerFactory<Tools>(
-            &match,
-            [&](EditorContext&, const world::WorldDescription&) -> FrameworkResult<std::unique_ptr<Tools>>
-            { return std::make_unique<Tools>(++tools); }
-        ));
-        assert(constructed == 0);
-        assert(!context.service<Service>());
-        context.freeze();
+        );
+        worker.join();
         assert(!context.service<Missing>());
         assert(context.service<Other>());
         auto first = context.service<Service>();
@@ -126,17 +176,24 @@ int main(int argc, char** argv)
         assert(!context.services().registerFactory<Missing>(
             [](EditorContext&) -> FrameworkResult<std::unique_ptr<Missing>> { return std::make_unique<Missing>(); }
         ));
-        EditorContext second(**engine, {"Second", std::filesystem::current_path()});
         auto factory = [](EditorContext&, const world::WorldDescription&) -> FrameworkResult<std::unique_ptr<Tools>>
         { return std::make_unique<Tools>(9); };
-        assert(second.sceneTools().registerFactory<Tools>(&match, factory));
-        assert(second.sceneTools().registerFactory<Tools>(&alsoMatch, factory));
-        second.freeze();
+        auto assemble_second = [&](EditorContext& second) -> FrameworkResult<void>
+        {
+            assert(second.sceneTools().registerFactory<Tools>(&match, factory));
+            assert(second.sceneTools().registerFactory<Tools>(&alsoMatch, factory));
+            return {};
+        };
+        auto second_owner =
+            EditorContext::create(**engine, {"Second", std::filesystem::current_path()}, assemble_second);
+        assert(second_owner);
+        auto& second = **second_owner;
         auto ambiguous = second.sceneTools().create<Tools>(second, world);
         assert(!ambiguous && ambiguous.error().type == error::errorId("lux.editor.ambiguous_scene_tool_rules"));
-        SceneToolRegistrar empty;
-        empty.freeze();
-        auto missing = empty.create<Tools>(second, world);
+        auto empty_assembly = [](EditorContext&) -> FrameworkResult<void> { return {}; };
+        auto empty = EditorContext::create(**engine, {"Empty", std::filesystem::current_path()}, empty_assembly);
+        assert(empty);
+        auto missing = (*empty)->sceneTools().create<Tools>(**empty, world);
         assert(!missing && missing.error().type == error::errorId("lux.editor.no_matching_scene_tool_rule"));
     }
     assert((destroyed == std::vector<int>{2, 1}));
@@ -154,8 +211,12 @@ int main(int argc, char** argv)
     assert(lower && higher);
     std::weak_ptr<asset::IAssetProvider> lifetime = *higher;
     {
-        EditorContext a(**engine, {"A", path});
-        EditorContext b(**engine, {"B", path});
+        auto empty_assembly = [](EditorContext&) -> FrameworkResult<void> { return {}; };
+        auto first_context = EditorContext::create(**engine, {"A", path}, empty_assembly);
+        auto second_context = EditorContext::create(**engine, {"B", path}, empty_assembly);
+        assert(first_context && second_context);
+        auto& a = **first_context;
+        auto& b = **second_context;
         assert(a.assets().mount({"/Game", *lower, 0}));
         assert(b.assets().mount({"/Game", *lower, 0}));
         const auto mounted = a.assets().mount({"/Game", *higher, 1});

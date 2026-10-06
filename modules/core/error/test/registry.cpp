@@ -1,7 +1,7 @@
+#include <cassert>
+#include <lux/engine/dynamic_library/DynamicLibrary.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/error/detail/DefinitionTable.hpp>
-#include <lux/engine/dynamic_library/DynamicLibrary.hpp>
-#include <cassert>
 #include <thread>
 #include <vector>
 
@@ -11,7 +11,9 @@ int main(int argc, char** argv)
     static_assert(std::is_trivially_copyable_v<Error> && sizeof(Error) == 32);
     auto& registry = ErrorRegistry::instance();
     const ErrorDescriptor descriptor{
-        "fixture.numbers", "{{value}} {0} {1} {2}", ERecovery::PERMANENT,
+        "fixture.numbers",
+        "{{value}} {0} {1} {2}",
+        ERecovery::PERMANENT,
         {EArgument::UNSIGNED, EArgument::SIGNED, EArgument::HEX}
     };
     const auto first = registry.registerType(descriptor);
@@ -38,7 +40,9 @@ int main(int argc, char** argv)
     assert(!registry.registerType({"fixture.unused", "unused", ERecovery::BUG, {EArgument::UNSIGNED}}));
     assert(!registry.registerType({"fixture.argument", "{0}", ERecovery::BUG, {static_cast<EArgument>(99)}}));
     assert(!registry.registerType({"fixture.recovery", "invalid", static_cast<ERecovery>(99)}));
-    const auto registration_failure = makeError(conflict);
+    const auto batch = registry.registerTypes(std::span{&conflict, 1});
+    assert(!batch);
+    const auto registration_failure = batch.error();
     assert(registration_failure.type == errorId("lux.error.registration"));
     assert(registration_failure.args[0] == *first);
     assert(registration_failure.args[1] == static_cast<std::uint64_t>(ERegistrationError::DEFINITION_MISMATCH));
@@ -55,15 +59,20 @@ int main(int argc, char** argv)
 
     std::vector<std::jthread> workers;
     for (int thread{}; thread < 8; ++thread)
-        workers.emplace_back([&] {
-            for (int i{}; i < 1024; ++i)
+    {
+        workers.emplace_back(
+            [&]
             {
-                const std::string name = "fixture.concurrent." + std::to_string(i);
-                const auto id = registry.registerType({name, "shared"});
-                assert(id && registry.find(*id)->name == name);
-                assert(registry.find(*first) == stable && stable->message == descriptor.message);
+                for (int i{}; i < 1024; ++i)
+                {
+                    const std::string name = "fixture.concurrent." + std::to_string(i);
+                    const auto id = registry.registerType({name, "shared"});
+                    assert(id && registry.find(*id)->name == name);
+                    assert(registry.find(*first) == stable && stable->message == descriptor.message);
+                }
             }
-        });
+        );
+    }
     workers.clear();
 
     assert(argc == 2);
@@ -75,6 +84,9 @@ int main(int argc, char** argv)
         const auto address = reinterpret_cast<ErrorRegistry* (*)() noexcept>(library.get_symbol("error_registry"));
         const auto failure = reinterpret_cast<Error (*)() noexcept>(library.get_symbol("plugin_failure"));
         assert(address && failure && address() == &registry);
+        const auto register_errors = reinterpret_cast<Error (*)() noexcept>(library.get_symbol("register_errors"));
+        assert(register_errors && !register_errors().type);
+        assert(registry.find(errorId("fixture.plugin.failure")));
         plugin_error = failure();
         plugin_definition = registry.find(plugin_error.type);
         assert(plugin_definition && plugin_definition->recovery == ERecovery::NEEDS_INPUT);

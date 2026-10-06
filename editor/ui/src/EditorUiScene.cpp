@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <lux/engine/editor/EditorUiScene.hpp>
+#include <lux/engine/editor/FrameworkErrors.hpp>
 #include <lux/engine/editor/detail/UiFrame.hpp>
 #include <lux/engine/editor/detail/UiRenderSyncStage.hpp>
 #include <lux/engine/process/CompletionWork.hpp>
@@ -15,13 +16,10 @@ namespace lux::editor
     {
         error::Error descriptionError(const scene::SceneDescriptionFailure& failure) noexcept
         {
-            return error::makeError(
-                {"lux.scene.description",
-                 "Scene description code {0}, system {1}, subject {2}",
-                 error::ERecovery::NEEDS_INPUT,
-                 {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::HEX}},
+            return error::Error{
+                Errors::SceneDescription,
                 {static_cast<std::uint64_t>(failure.code), failure.system.value, failure.subject_hash}
-            );
+            };
         }
     } // namespace
     struct EditorUiScene::Impl final
@@ -66,13 +64,10 @@ namespace lux::editor
             const auto encoded = registration.configuration.encode(&render_configuration, bytes);
             if (!encoded)
             {
-                return lux::cxx::unexpected(error::makeError(
-                    {"lux.ui.configuration_encode",
-                     "UI configuration encoding code {0}, offset {1}",
-                     error::ERecovery::NEEDS_INPUT,
-                     {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}},
+                return lux::cxx::unexpected(error::Error{
+                    Errors::UiConfigurationEncode,
                     {static_cast<std::uint64_t>(encoded.error().code), encoded.error().offset}
-                ));
+                });
             }
             lux::scene::SceneDescriptionBuilder description;
             auto added = description.addSystem(

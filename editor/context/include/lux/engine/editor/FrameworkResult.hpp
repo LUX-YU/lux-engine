@@ -1,6 +1,6 @@
 #pragma once
-#include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/error/Error.hpp>
 
 namespace lux::editor
 {

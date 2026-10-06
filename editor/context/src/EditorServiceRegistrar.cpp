@@ -1,5 +1,7 @@
 #include <algorithm>
 #include <lux/engine/editor/EditorServiceRegistrar.hpp>
+#include <lux/engine/editor/FrameworkErrors.hpp>
+#include <lux/engine/object/ObjectRuntime.hpp>
 
 namespace lux::editor
 {
@@ -16,17 +18,11 @@ namespace lux::editor
     {
         if (frozen_)
         {
-            return cxx::unexpected(error::makeError(
-                {"lux.editor.service_registration_is_frozen",
-                 "Service registration is frozen",
-                 error::ERecovery::PERMANENT}
-            ));
+            return cxx::unexpected(error::Error{Errors::EditorServiceRegistrationIsFrozen, {}});
         }
         if (std::ranges::find(entries_, type, &Entry::type) != entries_.end())
         {
-            return cxx::unexpected(error::makeError(
-                {"lux.editor.duplicate_service_type", "Duplicate service type", error::ERecovery::PERMANENT}
-            ));
+            return cxx::unexpected(error::Error{Errors::EditorDuplicateServiceType, {}});
         }
         entries_.push_back(Entry{type, std::move(factory)});
         return {};
@@ -34,22 +30,18 @@ namespace lux::editor
 
     FrameworkResult<void*> EditorServiceRegistrar::getErased(cxx::TypeToken type, EditorContext& context) noexcept
     {
+        if (!object::ObjectRuntime::instance().isCurrent())
+        {
+            return cxx::unexpected(error::Error{Errors::EditorProjectServicesRequireOwnerThread});
+        }
         if (!frozen_ || closing_)
         {
-            return cxx::unexpected(error::makeError(
-                {"lux.editor.service_use_outside_project_lifetime",
-                 "Service use outside project lifetime",
-                 error::ERecovery::PERMANENT}
-            ));
+            return cxx::unexpected(error::Error{Errors::EditorServiceUseOutsideProjectLifetime, {}});
         }
         const auto found = std::ranges::find(entries_, type, &Entry::type);
         if (found == entries_.end())
         {
-            return cxx::unexpected(error::makeError(
-                {"lux.editor.service_type_is_not_registered",
-                 "Service type is not registered",
-                 error::ERecovery::PERMANENT}
-            ));
+            return cxx::unexpected(error::Error{Errors::EditorServiceTypeIsNotRegistered, {}});
         }
         if (found->instance)
         {
@@ -57,9 +49,7 @@ namespace lux::editor
         }
         if (found->constructing)
         {
-            return cxx::unexpected(error::makeError(
-                {"lux.editor.recursive_service_factory", "Recursive service factory", error::ERecovery::PERMANENT}
-            ));
+            return cxx::unexpected(error::Error{Errors::EditorRecursiveServiceFactory, {}});
         }
         found->constructing = true;
         auto result = found->factory(context);

@@ -1,7 +1,7 @@
-#include <lux/engine/render/RendererConfig.hpp>
-#include <lux/engine/function/render/client/core/RenderErrorRegistry.hpp>
-#include <lux/engine/error/ErrorRegistry.hpp>
 #include <cassert>
+#include <lux/engine/error/ErrorRegistry.hpp>
+#include <lux/engine/function/render/client/core/RenderErrorRegistry.hpp>
+#include <lux/engine/render/RendererConfig.hpp>
 
 namespace
 {
@@ -11,17 +11,23 @@ namespace
         static constexpr const char* message = "Result {0}, flags {1}, count {2}";
         static constexpr auto recovery = lux::render::ERecovery::RETRYABLE;
         static constexpr lux::render::ErrorArgs args{
-            lux::render::EErrorArg::VK_RESULT, lux::render::EErrorArg::HEX, lux::render::EErrorArg::UINT
+            lux::render::EErrorArg::VK_RESULT,
+            lux::render::EErrorArg::HEX,
+            lux::render::EErrorArg::UINT
         };
     };
-}
+} // namespace
 int main()
 {
+    assert(lux::render::registerRendererErrors());
+
     using namespace lux;
     auto& registry = render::renderErrorRegistry();
     // Every existing backend descriptor must be valid in the numeric boundary format.
     for (const auto& [slot, descriptor] : registry.snapshot())
     {
+        const auto expected = error::errorId("lux.render.backend." + std::string(descriptor.name));
+        assert(error::ErrorRegistry::instance().find(expected));
         const auto value = render::toError(render::makeError(slot, 3, 4, 5));
         assert(value.type == error::errorId("lux.render.backend." + std::string(descriptor.name)));
         const auto* stable = error::ErrorRegistry::instance().find(value.type);

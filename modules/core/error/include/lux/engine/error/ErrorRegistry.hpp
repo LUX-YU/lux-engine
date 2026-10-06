@@ -4,6 +4,7 @@
 #include <lux/engine/core/visibility.h>
 #include <lux/engine/error/Error.hpp>
 #include <memory>
+#include <span>
 #include <string>
 
 namespace lux::error
@@ -51,6 +52,8 @@ namespace lux::error
     public:
         [[nodiscard]] static ErrorRegistry& instance() noexcept;
         [[nodiscard]] cxx::expected<ErrorId, ERegistrationError> registerType(const ErrorDescriptor&) noexcept;
+        // Initialization only. Successfully published definitions remain immutable on later rejection.
+        [[nodiscard]] cxx::expected<void, Error> registerTypes(std::span<const ErrorDescriptor>) noexcept;
         // Published definitions are immutable and retain their addresses until process shutdown.
         [[nodiscard]] const ErrorDefinition* find(ErrorId) const noexcept;
         ErrorRegistry(const ErrorRegistry&) = delete;
@@ -65,7 +68,5 @@ namespace lux::error
         std::unique_ptr<Impl> impl_;
     };
 
-    // A malformed/conflicting descriptor is reported as a registry error, never overwritten.
-    [[nodiscard]] LUX_CORE_PUBLIC Error makeError(const ErrorDescriptor&, std::array<std::uint64_t, 3> = {}) noexcept;
     [[nodiscard]] LUX_CORE_PUBLIC std::string format(Error) noexcept;
 } // namespace lux::error

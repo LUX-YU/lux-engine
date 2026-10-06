@@ -1,71 +1,47 @@
-#include <lux/engine/function/render/client/core/RenderErrorRegistry.hpp>
 #include <lux/cxx/core/Format.hpp>
-#include <lux/engine/function/render/client/core/RenderFatal.hpp>
-#include <lux/engine/function/render/client/core/EngineSetSlot.hpp> // DescriptorSlot 实参槽
 #include <lux/engine/description/LayoutContract.hpp>                // LogicalResource / BindFrequency 实参槽
+#include <lux/engine/function/render/client/core/EngineSetSlot.hpp> // DescriptorSlot 实参槽
+#include <lux/engine/function/render/client/core/RenderErrorRegistry.hpp>
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <string>
 
 namespace lux::render
 {
+    namespace
+    {
+        constexpr error::ErrorDescriptor UnavailableDescriptor{
+            "lux.render.unavailable_descriptor",
+            "Unavailable Render description: slot {0}, generation {1}",
+            error::ERecovery::BUG,
+            {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
+        };
+    }
     error::Error toError(RenderError failure) noexcept
     {
         if (failure.ok())
         {
             return {};
         }
-        const auto descriptor = renderErrorRegistry().find(failure.type);
-        if (!descriptor)
+        const auto& registry = renderErrorRegistry();
+        const std::shared_lock read{registry.mutex_};
+        const auto* record = registry.types_.tryGet(failure.type);
+        if (!record)
         {
-            return error::makeError(
-                {"lux.render.unavailable_descriptor",
-                 "Unavailable Render description: slot {0}, generation {1}",
-                 error::ERecovery::BUG,
-                 {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}},
-                {failure.type.index, failure.type.gen}
-            );
+            return {error::errorId(UnavailableDescriptor.name), {failure.type.index, failure.type.gen}};
         }
-        const std::string name = "lux.render.backend." + std::string(descriptor->name);
-        error::ErrorDescriptor stable{name, descriptor->message};
-        switch (descriptor->recovery)
+        error::Error result{record->stable_id};
+        for (std::size_t i{}; i < result.args.size(); ++i)
         {
-        case ERecovery::PERMANENT:
-            stable.recovery = error::ERecovery::PERMANENT;
-            break;
-        case ERecovery::RETRYABLE:
-            stable.recovery = error::ERecovery::RETRYABLE;
-            break;
-        case ERecovery::NEEDS_INPUT:
-            stable.recovery = error::ERecovery::NEEDS_INPUT;
-            break;
-        case ERecovery::BUG:
-            stable.recovery = error::ERecovery::BUG;
-            break;
-        }
-        std::array<std::uint64_t, 3> args{};
-        for (std::size_t i{}; i < args.size(); ++i)
-        {
-            args[i] = failure.args[i];
-            switch (descriptor->args[i])
+            result.args[i] = failure.args[i];
+            if (record->descriptor.args[i] == EErrorArg::VK_RESULT)
             {
-            case EErrorArg::NONE:
-                stable.arguments[i] = error::EArgument::NONE;
-                break;
-            case EErrorArg::HEX:
-                stable.arguments[i] = error::EArgument::HEX;
-                break;
-            case EErrorArg::VK_RESULT:
-                stable.arguments[i] = error::EArgument::SIGNED;
-                args[i] =
+                result.args[i] =
                     static_cast<std::uint64_t>(static_cast<std::int64_t>(static_cast<std::int32_t>(failure.args[i])));
-                break;
-            default:
-                stable.arguments[i] = error::EArgument::UNSIGNED;
-                break;
             }
         }
-        return error::makeError(stable, args);
+        return result;
     }
     namespace
     {
@@ -175,17 +151,23 @@ namespace lux::render
                 out += std::to_string(value);
                 return;
 
-            case EErrorArg::HEX: {
+            case EErrorArg::HEX:
+            {
                 out += lux::format("0x{:X}", value);
                 return;
             }
 
-            case EErrorArg::VK_RESULT: {
+            case EErrorArg::VK_RESULT:
+            {
                 const auto signed_value = static_cast<std::int32_t>(value);
                 if (const char* named = vkResultName(signed_value))
+                {
                     out += named;
+                }
                 else
+                {
                     out += std::to_string(signed_value);
+                }
                 return;
             }
 
@@ -222,7 +204,9 @@ namespace lux::render
 
             case EErrorArg::DESCRIPTOR_SLOT:
                 if (const char* named = descriptorSlotName(value))
+                {
                     out += named;
+                }
                 else
                 {
                     out += "set ";
@@ -232,9 +216,13 @@ namespace lux::render
 
             case EErrorArg::BIND_FREQUENCY:
                 if (const char* named = bindFrequencyName(value))
+                {
                     out += named;
+                }
                 else
+                {
                     out += std::to_string(value);
+                }
                 return;
 
             case EErrorArg::GRAPH_RESOURCE:
@@ -247,7 +235,8 @@ namespace lux::render
                 out += std::to_string(value);
                 return;
 
-            case EErrorArg::FEATURE_TYPE: {
+            case EErrorArg::FEATURE_TYPE:
+            {
                 // 低 32 位而已(见 EErrorArg::FEATURE_TYPE),渲染层没有 id→名字 的反查表
                 // ——注册表在 Renderer 那一侧。原样以十六进制给出,消费侧自行比对。
                 out += lux::format("feature:0x{:08X}", value);
@@ -277,9 +266,13 @@ namespace lux::render
 
                 const auto slot = static_cast<std::size_t>(tmpl[i + 1] - '0');
                 if (slot < kErrorArgCount)
+                {
                     appendArg(out, desc.args[slot], error.args[slot]);
+                }
                 else
+                {
                     out.append(tmpl.substr(i, 3));
+                }
                 i += 2;
             }
             return out;
@@ -292,7 +285,12 @@ namespace lux::render
         return instance;
     }
 
-    RenderErrorRegistry::RenderErrorRegistry(){
+    RenderErrorRegistry::RenderErrorRegistry()
+    {
+        if (!error::ErrorRegistry::instance().registerType(UnavailableDescriptor))
+        {
+            renderFatal("Render error fallback definition conflicts with its registered schema");
+        }
 #define LUX_RENDER_ERROR_REGISTER(T) (void)errorType<T>();
         LUX_RENDER_ERROR_LIST(LUX_RENDER_ERROR_REGISTER)
 #undef LUX_RENDER_ERROR_REGISTER
@@ -303,14 +301,18 @@ namespace lux::render
         {
             const std::shared_lock read{mutex_};
             if (const auto it = by_type_.find(key); it != by_type_.end())
+            {
                 return it->second;
+            }
         }
 
         const std::unique_lock write{mutex_};
 
         // 双检:两个线程同时首次请求同一个类型时,后到的那个在这里命中。
         if (const auto it = by_type_.find(key); it != by_type_.end())
+        {
             return it->second;
+        }
 
         const std::string_view name{desc.name ? desc.name : ""};
         if (const auto clash = by_name_.find(name); clash != by_name_.end())
@@ -321,7 +323,47 @@ namespace lux::render
             renderFatal(what);
         }
 
-        const ErrorTypeId id = types_.insert(desc);
+        const std::string stable_name = "lux.render.backend." + std::string(name);
+        error::ErrorDescriptor stable{stable_name, desc.message};
+        switch (desc.recovery)
+        {
+        case ERecovery::PERMANENT:
+            stable.recovery = error::ERecovery::PERMANENT;
+            break;
+        case ERecovery::RETRYABLE:
+            stable.recovery = error::ERecovery::RETRYABLE;
+            break;
+        case ERecovery::NEEDS_INPUT:
+            stable.recovery = error::ERecovery::NEEDS_INPUT;
+            break;
+        case ERecovery::BUG:
+            stable.recovery = error::ERecovery::BUG;
+            break;
+        }
+        for (std::size_t i{}; i < stable.arguments.size(); ++i)
+        {
+            switch (desc.args[i])
+            {
+            case EErrorArg::NONE:
+                stable.arguments[i] = error::EArgument::NONE;
+                break;
+            case EErrorArg::HEX:
+                stable.arguments[i] = error::EArgument::HEX;
+                break;
+            case EErrorArg::VK_RESULT:
+                stable.arguments[i] = error::EArgument::SIGNED;
+                break;
+            default:
+                stable.arguments[i] = error::EArgument::UNSIGNED;
+                break;
+            }
+        }
+        const auto stable_id = error::ErrorRegistry::instance().registerType(stable);
+        if (!stable_id)
+        {
+            renderFatal("Render error definition conflicts with its registered stable schema");
+        }
+        const ErrorTypeId id = types_.insert(RegisteredType{desc, *stable_id});
         by_type_.emplace(key, id);
         by_name_.emplace(name, id);
         return id;
@@ -333,11 +375,15 @@ namespace lux::render
 
         const auto it = by_type_.find(key);
         if (it == by_type_.end())
+        {
             return;
+        }
 
         const ErrorTypeId id = it->second;
-        if (const ErrorTypeDesc* desc = types_.tryGet(id))
-            by_name_.erase(std::string_view{desc->name ? desc->name : ""});
+        if (const RegisteredType* record = types_.tryGet(id))
+        {
+            by_name_.erase(std::string_view{record->descriptor.name ? record->descriptor.name : ""});
+        }
 
         types_.erase(id);
         by_type_.erase(it);
@@ -346,8 +392,10 @@ namespace lux::render
     std::optional<ErrorTypeDesc> RenderErrorRegistry::find(ErrorTypeId id) const
     {
         const std::shared_lock read{mutex_};
-        if (const ErrorTypeDesc* desc = types_.tryGet(id))
-            return *desc;
+        if (const RegisteredType* record = types_.tryGet(id))
+        {
+            return record->descriptor;
+        }
         return std::nullopt;
     }
 
@@ -368,7 +416,9 @@ namespace lux::render
         std::vector<std::pair<ErrorTypeId, ErrorTypeDesc>> out;
         out.reserve(keys.size());
         for (std::size_t i = 0; i < keys.size(); ++i)
-            out.emplace_back(keys[i], values[i]);
+        {
+            out.emplace_back(keys[i], values[i].descriptor);
+        }
         return out;
     }
 
@@ -381,7 +431,9 @@ namespace lux::render
     std::string formatRenderError(const RenderErrorRegistry& registry, const RenderError& error)
     {
         if (error.ok())
+        {
             return "成功";
+        }
 
         const std::optional<ErrorTypeDesc> desc = registry.find(error.type);
         if (!desc)

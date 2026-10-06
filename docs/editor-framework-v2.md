@@ -65,6 +65,18 @@ numeric arguments, never an owning or borrowed plugin payload. Framework boundar
 use these values. Local typed errors and complete domain diagnostics remain on their original owners. Render's local
 registry is translated while its description is available; a temporary render slot is not a stable ErrorId.
 
+Error descriptions are declared by their owning module and registered during assembly, before operations can fail.
+Registration conflicts are assembly errors. A failure constructs only a stable ErrorId and numeric arguments;
+it does not register descriptions, acquire the global registration lock or allocate diagnostic strings. Render
+descriptions acquire their stable identity when admitted to the existing Render registry. They are copied into the
+immutable error provider there, so formatting a previously produced Error remains valid after provider unload.
+
+Ordinary heap exhaustion is fatal. `noexcept` semantic APIs do not promise to recover from `new`, STL allocation or
+`bad_alloc`; their expected errors describe domain, capacity, validation and foreign-operation failures. No
+recoverable allocation error may be advertised without a real producer. Explicit bounded capacity, GPU allocation
+and foreign backend failures retain their distinct contracts. A callable/factory containment boundary must terminate
+on `bad_alloc` before converting other foreign exceptions; hot paths do not acquire new exception handlers.
+
 The installed consumer in `editor/tests/installed` uses installed public headers and libraries, including real Object
 and Error DLL probes. The DLL probes check shared Runtime/Registry identity, destructor-tail code lifetime and error
 formatting after plugin unload. Each listed public header is compiled independently under C++20 without RTTI.

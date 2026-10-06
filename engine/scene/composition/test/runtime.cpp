@@ -12,6 +12,13 @@
 #include <iostream>
 #include <thread>
 
+namespace FixtureErrors
+{
+    inline constexpr lux::error::ErrorId FixtureSceneFailure = lux::error::errorId("fixture.scene.failure");
+    inline constexpr lux::error::ErrorId FixtureScenePinnedFailure =
+        lux::error::errorId("fixture.scene.pinned_failure");
+} // namespace FixtureErrors
+
 namespace
 {
     using namespace lux;
@@ -58,26 +65,26 @@ namespace
             .type = system::systemTypeId(Probe::Description.canonical_name),
             .cpp_type = cxx::typeToken<Probe>(),
             .description = &Probe::Description,
-            .install = +[](SceneSystemInstaller& installer, SceneSystemDescription description
-                        ) noexcept -> cxx::expected<void, SceneSystemBuildFailure> {
+            .install = +[](SceneSystemInstaller& installer,
+                           SceneSystemDescription description) noexcept -> cxx::expected<void, SceneSystemBuildFailure>
+            {
                 auto probe = installer.emplaceSystem<Probe>(description.instanceId(), installer.registry());
                 if (!probe)
+                {
                     return cxx::unexpected(probe.error());
+                }
                 if (Probe::reject)
+                {
                     return cxx::unexpected(SceneSystemBuildFailure{
                         .code = ESceneSystemBuildError::EXTERNAL_OPERATION_FAILURE,
                         .system = description.instanceId(),
-                        .cause = error::makeError(
-                            {"fixture.scene.failure",
-                             "Test failure {0}",
-                             error::ERecovery::PERMANENT,
-                             {error::EArgument::UNSIGNED}},
-                            {419}
-                        )
+                        .cause = error::Error{FixtureErrors::FixtureSceneFailure, {419}}
                     });
+                }
                 const auto maintenance = installer.addMaintenanceTask<Probe>(
                     description.instanceId(),
-                    [](Probe& probe) noexcept -> SceneStageResult {
+                    [](Probe& probe) noexcept -> SceneStageResult
+                    {
                         ++probe.state.maintained;
                         if (probe.state.runtime)
                         {
@@ -101,35 +108,30 @@ namespace
                     }
                 );
                 if (!maintenance)
+                {
                     return maintenance;
+                }
                 return installer.addPublicationTask<Probe>(
                     description.instanceId(),
-                    [](Probe& probe) noexcept -> SceneStageResult {
+                    [](Probe& probe) noexcept -> SceneStageResult
+                    {
                         ++probe.state.published;
                         if (probe.state.failed && !Probe::error_code.expired())
+                        {
                             return cxx::unexpected(SceneExecutionFailure{
                                 ESceneExecutionError::SYSTEM_FAILURE,
                                 {},
-                                error::makeError(
-                                    {"fixture.scene.pinned_failure",
-                                     "Pinned failure {0}",
-                                     error::ERecovery::PERMANENT,
-                                     {error::EArgument::UNSIGNED}},
-                                    {731}
-                                )
+                                error::Error{FixtureErrors::FixtureScenePinnedFailure, {731}}
                             });
+                        }
                         if (probe.state.failed)
+                        {
                             return cxx::unexpected(SceneExecutionFailure{
                                 ESceneExecutionError::SYSTEM_FAILURE,
                                 {},
-                                error::makeError(
-                                    {"fixture.scene.failure",
-                                     "Test failure {0}",
-                                     error::ERecovery::PERMANENT,
-                                     {error::EArgument::UNSIGNED}},
-                                    {731}
-                                )
+                                error::Error{FixtureErrors::FixtureSceneFailure, {731}}
                             });
+                        }
                         return probe.state.blocked ? ESceneProgress::PENDING : ESceneProgress::COMPLETE;
                     }
                 );
@@ -143,10 +145,22 @@ namespace
         assert(clock);
         return std::visit([](const auto& value) { return value.snapshot(); }, clock->get());
     }
-}
+} // namespace
 
 int main()
 {
+    const lux::error::ErrorDescriptor fixture_errors[]{
+        {"fixture.scene.failure",
+         "Test failure {0}",
+         lux::error::ERecovery::PERMANENT,
+         {lux::error::EArgument::UNSIGNED}},
+        {"fixture.scene.pinned_failure",
+         "Pinned failure {0}",
+         lux::error::ERecovery::PERMANENT,
+         {lux::error::EArgument::UNSIGNED}}
+    };
+    assert(lux::error::ErrorRegistry::instance().registerTypes(fixture_errors));
+
     auto execution = process::ExecutionRuntime::create({1, 32, 32, {16}});
     assert(execution);
     auto runtime = SceneRuntime::create(*execution, {0, 1024});
@@ -216,7 +230,9 @@ int main()
     assert(!(*runtime)->borrowInstance(first->id()));
     assert(std::as_const(**runtime).borrowInstance(first->id()));
     for (unsigned turn{}; turn < 5; ++turn)
+    {
         assert((*runtime)->driveFrame());
+    }
     assert(time(**runtime, first->id()).step_index == 1);
     probe.blocked = false;
     assert((*runtime)->driveFrame());
@@ -235,11 +251,14 @@ int main()
     assert((*runtime)->driveFrame() && time(**runtime, second->id()).step_index == 2);
 
     bool wrong_thread{};
-    std::jthread worker([&] {
-        const auto rejected = (*runtime)->borrowClock(second->id());
-        wrong_thread =
-            !rejected && std::get<ESceneRuntimeError>(rejected.error().cause) == ESceneRuntimeError::WRONG_THREAD;
-    });
+    std::jthread worker(
+        [&]
+        {
+            const auto rejected = (*runtime)->borrowClock(second->id());
+            wrong_thread =
+                !rejected && std::get<ESceneRuntimeError>(rejected.error().cause) == ESceneRuntimeError::WRONG_THREAD;
+        }
+    );
     worker.join();
     assert(wrong_thread);
     const auto first_retirement = (*runtime)->retireInstance(first->id());
@@ -281,7 +300,9 @@ int main()
         assert((*runtime)->driveFrame());
         assert(std::chrono::steady_clock::now() - start < 2s);
         if (time(**runtime, timed->id()).step_index < 3)
+        {
             execution->waitForWork(epoch, start + 2s);
+        }
     }
     assert(execution->taskInfos().empty());
     assert((*runtime)->pauseSimulation(timed->id()));
@@ -292,7 +313,9 @@ int main()
     }
     const auto measured = std::chrono::steady_clock::now();
     for (unsigned turn{}; turn < 10000; ++turn)
+    {
         assert((*runtime)->driveFrame());
+    }
     const auto elapsed = std::chrono::steady_clock::now() - measured;
     std::cout << "MEASURE SceneRuntime paused_turns=10000 elapsed_us="
               << std::chrono::duration<double, std::micro>(elapsed).count() << " business_tasks=0\n";
@@ -327,11 +350,14 @@ int main()
     assert(std::get<ESceneRuntimeError>(late->result.error().cause) == ESceneRuntimeError::STOPPED);
     assert(!(*other)->stepStatus(*callback_step, retirement));
     bool wrong_result_thread{};
-    std::jthread result_reader([&] {
-        const auto result = (*runtime)->stepStatus(*callback_step, retirement);
-        wrong_result_thread =
-            !result && std::get<ESceneRuntimeError>(result.error().cause) == ESceneRuntimeError::WRONG_THREAD;
-    });
+    std::jthread result_reader(
+        [&]
+        {
+            const auto result = (*runtime)->stepStatus(*callback_step, retirement);
+            wrong_result_thread =
+                !result && std::get<ESceneRuntimeError>(result.error().cause) == ESceneRuntimeError::WRONG_THREAD;
+        }
+    );
     result_reader.join();
     assert(wrong_result_thread);
     assert((*runtime)->acknowledgeStep(*callback_step, retirement));

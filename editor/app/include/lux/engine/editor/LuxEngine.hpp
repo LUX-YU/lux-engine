@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/cxx/core/function_ref.hpp>
-#include <lux/engine/editor/EditorUiRegistrar.hpp>
+#include <lux/engine/editor/EditorLayout.hpp>
 #include <lux/engine/editor/FrameworkResult.hpp>
 #include <lux/engine/editor/ProjectDescription.hpp>
 #include <memory>
@@ -9,7 +9,10 @@ namespace lux::engine
 {
     class EngineContext;
 }
-namespace lux::ui { class Root; }
+namespace lux::ui
+{
+    class Root;
+}
 namespace lux::editor
 {
     class EditorWindow;

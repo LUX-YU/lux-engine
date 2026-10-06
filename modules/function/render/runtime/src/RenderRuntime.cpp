@@ -1,8 +1,8 @@
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/render/RenderRuntime.hpp>
 #include <lux/engine/render/detail/RendererThread.hpp>
 #include <lux/engine/render/detail/ReplyPump.hpp>
 #include <lux/engine/render/detail/UploadQueue.hpp>
-#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 
 #include <cmath>
 #include <limits>
@@ -47,7 +47,8 @@ namespace lux::render
     {
         explicit Impl(RendererConfig value)
             : config(std::move(value)), thread(config), diagnostics(config.diagnostic_capacity)
-        {}
+        {
+        }
 
         const std::thread::id owner{std::this_thread::get_id()};
         RendererConfig config;
@@ -79,7 +80,9 @@ namespace lux::render
         [[nodiscard]] bool featureBatchPending() const noexcept
         {
             if (!feature_batch)
+            {
                 return false;
+            }
             const auto state = feature_batch->status.state;
             return state == EFeatureRegistrationState::REGISTERING || state == EFeatureRegistrationState::READY ||
                    state == EFeatureRegistrationState::ROLLING_BACK;
@@ -88,7 +91,9 @@ namespace lux::render
         void collectFeatureReplies()
         {
             if (!featureBatchPending())
+            {
                 return;
+            }
             auto& batch = *feature_batch;
             if (retired)
             {
@@ -102,7 +107,9 @@ namespace lux::render
             if (batch.registration.valid())
             {
                 if (!batch.registration.isReady())
+                {
                     return;
+                }
                 auto value = batch.registration.tryResult();
                 const auto error = value ? value->get().error : value.error();
                 if (!error.ok() || (value && value->get().feature_type_id == 0))
@@ -121,7 +128,9 @@ namespace lux::render
                 if (batch.rollback.valid())
                 {
                     if (!batch.rollback.isReady())
+                    {
                         return;
+                    }
                     auto value = batch.rollback.tryResult();
                     if (!value || value->get().code != 0 || !value->get().error.ok())
                     {
@@ -144,7 +153,9 @@ namespace lux::render
                 return;
             }
             if (batch.status.state != EFeatureRegistrationState::REGISTERING)
+            {
                 return;
+            }
             if (batch.accepted.size() == batch.candidates.size())
             {
                 batch.status.state = EFeatureRegistrationState::READY;
@@ -155,14 +166,20 @@ namespace lux::render
         void submitFeatureRequest(std::size_t& budget)
         {
             if (!featureBatchPending() || !budget || !control.canSubmit() || retired)
+            {
                 return;
+            }
             auto& batch = *feature_batch;
             if (batch.registration.valid() || batch.rollback.valid())
+            {
                 return;
+            }
             if (batch.status.state == EFeatureRegistrationState::ROLLING_BACK)
             {
                 if (batch.accepted.empty())
+                {
                     return;
+                }
                 batch.rollback = control.unregisterFeatureType(batch.accepted.back().feature_type_id);
                 --budget;
             }
@@ -210,9 +227,13 @@ namespace lux::render
     RenderRuntime::~RenderRuntime()
     {
         if (impl_->joined)
+        {
             return;
+        }
         if (!beginClose())
+        {
             renderFatal("RenderRuntime destruction outside its owner thread or within a callback");
+        }
         for (;;)
         {
             // Snapshot before progressing: a reply published during adoption must not be missed.
@@ -221,13 +242,19 @@ namespace lux::render
             auto controls = replies, programs = replies;
             const auto closed = advanceClose(replies, controls, programs);
             if (!closed)
+            {
                 renderFatal("RenderRuntime close contract failed during destruction");
+            }
             if (*closed == ERenderClose::COMPLETE)
+            {
                 break;
+            }
             impl_->thread.sync->work_epoch.wait(epoch, std::memory_order_acquire);
         }
         if (!joinStopped())
+        {
             renderFatal("RenderRuntime failed to join its retired backend");
+        }
     }
 
     RenderResult<std::unique_ptr<RenderRuntime>> RenderRuntime::create(
@@ -235,6 +262,10 @@ namespace lux::render
         ValidationMessageSink diagnostics
     )
     {
+        if (auto registered = registerRendererErrors(); !registered)
+        {
+            renderFatal("RenderRuntime error definitions conflict with the registered schema");
+        }
         if (config.frame_capacity < 2 || config.frame_capacity > 3 || config.control_capacity < 2 ||
             config.control_capacity > 65536 || config.upload_capacity < 2 || config.upload_capacity > 65536 ||
             !config.upload_byte_capacity || !config.diagnostic_capacity)
@@ -244,7 +275,8 @@ namespace lux::render
         auto impl = std::make_unique<Impl>(std::move(config));
         impl->programs.setErrorEventHandler(
             [stats = impl->thread.statistics](const auto& batch) { stats->dropped += batch.dropped; },
-            [owner = impl.get()](const auto& event) {
+            [owner = impl.get()](const auto& event)
+            {
                 owner->thread.statistics->events += event.occurrences;
                 owner->record(
                     {{ERendererError::DEVICE_FAILURE, event.error},
@@ -366,7 +398,9 @@ namespace lux::render
         }
         data.collectFeatureReplies();
         if (consumed)
+        {
             data.thread.sync->notifyRequestStateChanged();
+        }
         return consumed;
     }
 
@@ -374,7 +408,9 @@ namespace lux::render
     {
         auto& data = *impl_;
         if (auto checked = data.check(); !checked)
+        {
             return checked;
+        }
         struct Gate final
         {
             bool& busy;
@@ -412,9 +448,13 @@ namespace lux::render
     RenderResult<void> RenderRuntime::bindProgress(std::shared_ptr<void> owner, void (*wake)(void*) noexcept) noexcept
     {
         if (auto checked = impl_->check(); !checked)
+        {
             return checked;
+        }
         if (!owner || !wake || impl_->closing)
+        {
             return fail(ERendererError::INVALID_ARGUMENT);
+        }
         {
             impl_->thread.sync->bindExternalWake(owner, wake);
         }
@@ -426,11 +466,17 @@ namespace lux::render
     RenderResult<void> RenderRuntime::beginFeatureRegistration(std::vector<RenderFeatureRegistration> candidates)
     {
         if (auto checked = impl_->check(); !checked)
+        {
             return checked;
+        }
         if (impl_->closing || impl_->thread.sync->isStopping())
+        {
             return fail(ERendererError::STOPPING);
+        }
         if (impl_->featureBatchPending())
+        {
             return fail(ERendererError::BUSY);
+        }
         std::vector<FeatureTypeId> identities;
         std::vector<std::string_view> names;
         for (const auto& candidate : candidates)
@@ -445,11 +491,15 @@ namespace lux::render
                 (factory.operation_count && (!factory.register_ops_fn || !factory.unregister_ops_fn)) ||
                 (candidate.scene_configurable && !candidate.configuration.valid());
             if (invalid_identity || invalid_factory)
+            {
                 return fail(ERendererError::INVALID_ARGUMENT);
+            }
             if (impl_->thread.catalog.find(descriptor.type) || impl_->thread.catalog.find(factory.name) ||
                 std::ranges::find(identities, descriptor.type) != identities.end() ||
                 std::ranges::find(names, factory.name) != names.end())
+            {
                 return fail(ERendererError::INVALID_ARGUMENT);
+            }
             identities.push_back(descriptor.type);
             names.push_back(factory.name);
         }
@@ -468,9 +518,13 @@ namespace lux::render
     RenderResult<void> RenderRuntime::commitFeatureRegistration()
     {
         if (auto checked = impl_->check(); !checked)
+        {
             return checked;
+        }
         if (!impl_->feature_batch || impl_->feature_batch->status.state != EFeatureRegistrationState::READY)
+        {
             return fail(ERendererError::NOT_READY);
+        }
         auto& batch = *impl_->feature_batch;
         for (std::size_t index = 0; index < batch.candidates.size(); ++index)
         {
@@ -480,7 +534,9 @@ namespace lux::render
             // Main validated the complete input before registration; no other writer
             // can publish between begin and commit. Allocation failure terminates.
             if (!inserted)
+            {
                 std::terminate();
+            }
         }
         batch.status.state = EFeatureRegistrationState::COMMITTED;
         return {};
@@ -489,7 +545,9 @@ namespace lux::render
     RenderResult<void> RenderRuntime::cancelFeatureRegistration() noexcept
     {
         if (auto checked = impl_->check(); !checked)
+        {
             return checked;
+        }
         if (impl_->featureBatchPending())
         {
             impl_->feature_batch->cancelled = true;
@@ -546,7 +604,9 @@ namespace lux::render
         }
         auto cancelled = cancelFeatureRegistration();
         if (!cancelled)
+        {
             return cancelled;
+        }
         impl_->closing = true;
         impl_->upload_queue->stop();
         return {};
@@ -570,7 +630,9 @@ namespace lux::render
         replies -= *adopted;
         const auto submitted = submitPending(controls, programs);
         if (!submitted)
+        {
             return lux::cxx::unexpected(submitted.error());
+        }
         if (impl_->featureBatchPending() || !impl_->upload_queue->empty())
         {
             return ERenderClose::PENDING;
@@ -584,7 +646,9 @@ namespace lux::render
             return ERenderClose::PENDING;
         }
         if (!impl_->thread.sync->isStopping())
+        {
             impl_->thread.sync->requestStop();
+        }
         return ERenderClose::PENDING;
     }
 

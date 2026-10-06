@@ -18,6 +18,9 @@ int main(int argc, char** argv)
         const auto failure = library.get_symbol<Error() noexcept>("plugin_failure");
         assert(registry && failure);
         assert(registry() == &ErrorRegistry::instance());
+        const auto register_errors = library.get_symbol<Error() noexcept>("register_errors");
+        assert(register_errors && !register_errors().type);
+        assert(ErrorRegistry::instance().find(errorId("fixture.plugin.failure")));
         error = failure();
         description = ErrorRegistry::instance().find(error.type);
         assert(description && description->name == "fixture.plugin.failure");

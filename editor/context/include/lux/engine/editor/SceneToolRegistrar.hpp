@@ -1,6 +1,7 @@
 #pragma once
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/editor/FrameworkErrors.hpp>
 #include <lux/engine/editor/FrameworkResult.hpp>
 #include <memory>
 #include <vector>
@@ -31,29 +32,19 @@ namespace lux::editor
         {
             if (frozen_)
             {
-                return cxx::unexpected(error::makeError(
-                    {"lux.editor.scene_tool_registration_is_frozen",
-                     "Scene tool registration is frozen",
-                     error::ERecovery::PERMANENT}
-                ));
+                return cxx::unexpected(error::Error{Errors::EditorSceneToolRegistrationIsFrozen, {}});
             }
             const bool is_invalid_factory = match == nullptr || !factory;
             if (is_invalid_factory)
             {
-                return cxx::unexpected(error::makeError(
-                    {"lux.editor.invalid_scene_tool_factory", "Invalid scene tool factory", error::ERecovery::PERMANENT}
-                ));
+                return cxx::unexpected(error::Error{Errors::EditorInvalidSceneToolFactory, {}});
             }
             for (const auto& entry : entries_)
             {
                 const bool is_duplicate = entry.type == cxx::typeToken<T>() && entry.match == match;
                 if (is_duplicate)
                 {
-                    return cxx::unexpected(error::makeError(
-                        {"lux.editor.duplicate_scene_tool_rule",
-                         "Duplicate scene tool rule",
-                         error::ERecovery::PERMANENT}
-                    ));
+                    return cxx::unexpected(error::Error{Errors::EditorDuplicateSceneToolRule, {}});
                 }
             }
             auto erased = [factory = std::move(factory
@@ -67,9 +58,7 @@ namespace lux::editor
                 }
                 if (!*result)
                 {
-                    return cxx::unexpected(error::makeError(
-                        {"lux.editor.null_scene_tool_set", "Null scene tool set", error::ERecovery::PERMANENT}
-                    ));
+                    return cxx::unexpected(error::Error{Errors::EditorNullSceneToolSet, {}});
                 }
                 return Owner{result->release(), [](void* value) noexcept { delete static_cast<T*>(value); }};
             };
@@ -85,11 +74,7 @@ namespace lux::editor
         {
             if (!frozen_)
             {
-                return cxx::unexpected(error::makeError(
-                    {"lux.editor.scene_tool_registration_is_not_frozen",
-                     "Scene tool registration is not frozen",
-                     error::ERecovery::PERMANENT}
-                ));
+                return cxx::unexpected(error::Error{Errors::EditorSceneToolRegistrationIsNotFrozen, {}});
             }
             Entry* selected{};
             for (auto& entry : entries_)
@@ -100,21 +85,13 @@ namespace lux::editor
                 }
                 if (selected)
                 {
-                    return cxx::unexpected(error::makeError(
-                        {"lux.editor.ambiguous_scene_tool_rules",
-                         "Ambiguous scene tool rules",
-                         error::ERecovery::PERMANENT}
-                    ));
+                    return cxx::unexpected(error::Error{Errors::EditorAmbiguousSceneToolRules, {}});
                 }
                 selected = &entry;
             }
             if (!selected)
             {
-                return cxx::unexpected(error::makeError(
-                    {"lux.editor.no_matching_scene_tool_rule",
-                     "No matching scene tool rule",
-                     error::ERecovery::PERMANENT}
-                ));
+                return cxx::unexpected(error::Error{Errors::EditorNoMatchingSceneToolRule, {}});
             }
             auto result = selected->factory(context, world);
             if (!result)
@@ -123,12 +100,13 @@ namespace lux::editor
             }
             return std::unique_ptr<T>{static_cast<T*>(result->release())};
         }
+
+    private:
+        friend class EditorContext;
         void freeze() noexcept
         {
             frozen_ = true;
         }
-
-    private:
         using Owner = std::unique_ptr<void, void (*)(void*) noexcept>;
         struct Entry final
         {

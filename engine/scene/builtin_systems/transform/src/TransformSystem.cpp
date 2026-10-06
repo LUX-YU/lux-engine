@@ -1,6 +1,6 @@
+#include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>
 #include <lux/engine/scene/TransformSystem.type_static_info.hpp>
-#include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/simulation/ecs/TransformEvaluation.hpp>
 #include <lux/engine/simulation/ecs/hierarchy/detail/HierarchyMaintenance.hpp>
 
@@ -10,38 +10,47 @@
 
 namespace lux::scene
 {
+    namespace
+    {
+        namespace Errors
+        {
+            constexpr error::ErrorId SceneTransformUpdate = error::errorId("lux.scene.transform.update");
+            constexpr error::ErrorId SceneTransformHierarchy = error::errorId("lux.scene.transform.hierarchy");
+            constexpr error::ErrorId SceneTransformCommands = error::errorId("lux.scene.transform.commands");
+        } // namespace Errors
+        constexpr error::ErrorDescriptor ErrorDescriptors[]{
+            {"lux.scene.transform.update",
+             "Transform update code {0}",
+             error::ERecovery::NEEDS_INPUT,
+             {error::EArgument::UNSIGNED}},
+            {"lux.scene.transform.hierarchy",
+             "Hierarchy maintenance code {0}",
+             error::ERecovery::NEEDS_INPUT,
+             {error::EArgument::UNSIGNED}},
+            {"lux.scene.transform.commands",
+             "ECS command code {0}; producer {1}, command {2}",
+             error::ERecovery::NEEDS_INPUT,
+             {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}}
+        };
+    } // namespace
+
     using namespace simulation::ecs;
     namespace
     {
         error::Error transformError(ETransformUpdateError value) noexcept
         {
-            return error::makeError(
-                {"lux.scene.transform.update",
-                 "Transform update code {0}",
-                 error::ERecovery::NEEDS_INPUT,
-                 {error::EArgument::UNSIGNED}},
-                {static_cast<std::uint64_t>(value)}
-            );
+            return error::Error{Errors::SceneTransformUpdate, {static_cast<std::uint64_t>(value)}};
         }
         error::Error transformError(EHierarchyError value) noexcept
         {
-            return error::makeError(
-                {"lux.scene.transform.hierarchy",
-                 "Hierarchy maintenance code {0}",
-                 error::ERecovery::NEEDS_INPUT,
-                 {error::EArgument::UNSIGNED}},
-                {static_cast<std::uint64_t>(value)}
-            );
+            return error::Error{Errors::SceneTransformHierarchy, {static_cast<std::uint64_t>(value)}};
         }
         error::Error transformError(EcsCommandFailure value) noexcept
         {
-            return error::makeError(
-                {"lux.scene.transform.commands",
-                 "ECS command code {0}; producer {1}, command {2}",
-                 error::ERecovery::NEEDS_INPUT,
-                 {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}},
+            return error::Error{
+                Errors::SceneTransformCommands,
                 {static_cast<std::uint64_t>(value.code), value.producer, value.command}
-            );
+            };
         }
 
         template <class Matrix> struct TTraversalEntry final
@@ -61,7 +70,8 @@ namespace lux::scene
                   ),
                   updated_(registry.on_update<Local>().template connect<&TTransformState::onLocalChanged>(*this)),
                   destroyed_(registry.on_destroy<Local>().template connect<&TTransformState::onLocalDestroyed>(*this))
-            {}
+            {
+            }
 
             [[nodiscard]] lux::cxx::expected<void, ETransformUpdateError> prepare(std::size_t entity_capacity) noexcept
             {
@@ -114,7 +124,9 @@ namespace lux::scene
                     for (const Entity entity : registry_->view<const Local>())
                     {
                         if (!appendCurrent(entity))
+                        {
                             return capacityFailure();
+                        }
                     }
                     for (const Entity entity : registry_->view<const Derived>())
                     {
@@ -137,19 +149,27 @@ namespace lux::scene
                 }
 
                 if (dirty_.empty())
+                {
                     return {};
+                }
 
-                std::sort(dirty_.begin(), dirty_.end(), [](Entity left, Entity right) noexcept {
-                    return entityBits(left) < entityBits(right);
-                });
+                std::sort(
+                    dirty_.begin(),
+                    dirty_.end(),
+                    [](Entity left, Entity right) noexcept { return entityBits(left) < entityBits(right); }
+                );
                 dirty_.erase(std::unique(dirty_.begin(), dirty_.end()), dirty_.end());
                 if (dirty_.size() > capacity_)
+                {
                     return capacityFailure();
+                }
                 collectRoots();
                 for (const Entity root : roots_)
                 {
                     if (!registry_->valid(root))
+                    {
                         continue;
+                    }
                     auto traversed = traverse(commands, root);
                     if (!traversed)
                     {
@@ -207,9 +227,12 @@ namespace lux::scene
 
             [[nodiscard]] bool isDirty(Entity entity) const noexcept
             {
-                return std::binary_search(dirty_.begin(), dirty_.end(), entity, [](Entity left, Entity right) noexcept {
-                    return entityBits(left) < entityBits(right);
-                });
+                return std::binary_search(
+                    dirty_.begin(),
+                    dirty_.end(),
+                    entity,
+                    [](Entity left, Entity right) noexcept { return entityBits(left) < entityBits(right); }
+                );
             }
 
             void collectRoots() noexcept
@@ -229,7 +252,9 @@ namespace lux::scene
                         parent = hierarchy_->parent(parent);
                     }
                     if (!covered)
+                    {
                         roots_.push_back(candidate);
+                    }
                 }
             }
 
@@ -282,7 +307,9 @@ namespace lux::scene
                                                                    : localTransformMatrix(local);
                     auto published = publish(commands, *iterator, value);
                     if (!published)
+                    {
                         return lux::cxx::unexpected(published.error());
+                    }
                     result.parent_world = value;
                     result.parent_contributes = true;
                 }
@@ -315,14 +342,18 @@ namespace lux::scene
                 traversal_.clear();
                 auto entry = rootEntry(root, commands);
                 if (!entry)
+                {
                     return lux::cxx::unexpected(entry.error());
+                }
                 traversal_.push_back(*entry);
                 while (!traversal_.empty())
                 {
                     const auto current = traversal_.back();
                     traversal_.pop_back();
                     if (!registry_->valid(current.entity))
+                    {
                         continue;
+                    }
 
                     Matrix world = Matrix::Identity();
                     bool contributes{};
@@ -333,7 +364,9 @@ namespace lux::scene
                         contributes = true;
                         auto published = publish(commands, current.entity, world);
                         if (!published)
+                        {
                             return published;
+                        }
                     }
                     else if (registry_->all_of<Derived>(current.entity) &&
                              !commands.template remove<Derived>(current.entity))
@@ -369,14 +402,15 @@ namespace lux::scene
             entt::scoped_connection updated_;
             entt::scoped_connection destroyed_;
         };
-    }
+    } // namespace
 
     struct TransformSystem::Impl final
     {
         explicit Impl(Registry& value)
             : registry(value), maintenance(value, hierarchy, deltas), transform2d(value, hierarchy, deltas),
               transform3d(value, hierarchy, deltas)
-        {}
+        {
+        }
 
         template <class Error> [[nodiscard]] static SceneStageResult failure(Error error) noexcept
         {
@@ -395,22 +429,34 @@ namespace lux::scene
                 configuration.max_payload_bytes > std::numeric_limits<std::size_t>::max();
             const bool is_invalid_capacity = has_zero_capacity || is_capacity_overflow;
             if (is_invalid_capacity)
+            {
                 return failure(ETransformUpdateError::CAPACITY_EXCEEDED);
+            }
             const auto capacity = static_cast<std::size_t>(configuration.entity_capacity);
             if (const auto result = deltas.prepare(capacity); !result)
+            {
                 return failure(result.error());
+            }
             if (const auto result = maintenance.prepare(capacity); !result)
+            {
                 return failure(result.error());
+            }
             if (const auto result = transform2d.prepare(capacity); !result)
+            {
                 return failure(result.error());
+            }
             if (const auto result = transform3d.prepare(capacity); !result)
+            {
                 return failure(result.error());
+            }
             const EcsCommandProducerCapacity producer{
                 static_cast<std::size_t>(configuration.max_commands),
                 static_cast<std::size_t>(configuration.max_payload_bytes)
             };
             if (const auto result = commands.prepare(std::span{&producer, 1U}); !result)
+            {
                 return failure(result.error());
+            }
             return ESceneProgress::COMPLETE;
         }
 
@@ -419,24 +465,38 @@ namespace lux::scene
             const bool has_pending =
                 maintenance.hasPendingChanges() || transform2d.hasPendingChanges() || transform3d.hasPendingChanges();
             if (!has_pending || context.stop.stop_requested())
+            {
                 return ESceneProgress::COMPLETE;
+            }
             if (!context.allow_structure)
+            {
                 return ESceneProgress::PENDING;
+            }
             {
                 auto writer = commands.begin(0);
                 if (!writer)
+                {
                     return failure(writer.error());
+                }
                 if (const auto result = maintenance.update(*writer); !result)
+                {
                     return failure(result.error());
+                }
                 transform2d.beginUpdate();
                 transform3d.beginUpdate();
                 if (const auto result = transform2d.update(*writer); !result)
+                {
                     return failure(result.error());
+                }
                 if (const auto result = transform3d.update(*writer); !result)
+                {
                     return failure(result.error());
+                }
             }
             if (const auto result = applyEcsCommands(registry, commands); !result)
+            {
                 return failure(result.error());
+            }
             context.publication_needed = true;
             return ESceneProgress::COMPLETE;
         }
@@ -454,6 +514,10 @@ namespace lux::scene
     TransformSystem::~TransformSystem() noexcept = default;
     SceneStageResult TransformSystem::prepare(const TransformSystemConfiguration& configuration) noexcept
     {
+        if (auto registered = error::ErrorRegistry::instance().registerTypes(ErrorDescriptors); !registered)
+        {
+            return cxx::unexpected(SceneExecutionFailure{.cause = registered.error()});
+        }
         return impl_->prepare(configuration);
     }
     SceneStageResult TransformSystem::synchronize(SceneStageContext& context) noexcept
@@ -469,13 +533,18 @@ namespace lux::scene
             .description = &TransformSystem::Description,
             .configuration = lux::serialization::makePortableValueCodec<TransformSystemConfiguration>(),
             .install = +[](SceneSystemInstaller& installer, SceneSystemDescription description
-                        ) noexcept -> lux::cxx::expected<void, SceneSystemBuildFailure> {
+                        ) noexcept -> lux::cxx::expected<void, SceneSystemBuildFailure>
+            {
                 auto config = installer.decodeConfiguration<TransformSystemConfiguration>(description);
                 if (!config)
+                {
                     return lux::cxx::unexpected(config.error());
+                }
                 auto system = installer.emplaceSystem<TransformSystem>(description.instanceId(), installer.registry());
                 if (!system)
+                {
                     return lux::cxx::unexpected(system.error());
+                }
                 if (auto prepared = (*system)->prepare(*config); !prepared)
                 {
                     return lux::cxx::unexpected(SceneSystemBuildFailure{
@@ -486,9 +555,8 @@ namespace lux::scene
                 }
                 return installer.addSynchronizationTask<TransformSystem>(
                     description.instanceId(),
-                    [](TransformSystem& system, SceneStageContext& context) noexcept {
-                        return system.synchronize(context);
-                    }
+                    [](TransformSystem& system, SceneStageContext& context) noexcept
+                    { return system.synchronize(context); }
                 );
             }
         };
@@ -516,4 +584,4 @@ namespace lux::scene
         }
         return result;
     }
-}
+} // namespace lux::scene

@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <array>
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/project/PluginRendering.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
@@ -114,7 +113,7 @@ namespace lux::editor
                 schemas.push_back(world::worldDataSchemaId(schema->id.name));
             }
 
-            // The preset is product policy, in dependency order. The project owns availability
+            // The preset is product policy. FeatureCatalog owns dependency resolution. The project owns availability
             // and codecs; this path never registers features with a live RenderRuntime.
             constexpr std::string_view feature_names[]{
                 "lux.render.material.v1",
@@ -123,9 +122,8 @@ namespace lux::editor
                 "lux.render.light.v1",
                 "lux.render.forward_mesh.v1"
             };
-            std::array<const render::RenderFeatureRegistration*, std::size(feature_names)> selected{};
             scene::RenderSystemConfiguration rendering;
-            for (std::size_t i{}; i < selected.size(); ++i)
+            for (std::size_t i{}; i < std::size(feature_names); ++i)
             {
                 const auto found = std::ranges::find_if(
                     info.registrations.features,
@@ -141,7 +139,6 @@ namespace lux::editor
                 {
                     return cxx::unexpected(missing("3d profile feature configuration", feature_names[i]));
                 }
-                selected[i] = &*found;
                 scene::RenderFeatureInstanceDescription instance;
                 instance.type = found->factory.descriptor.type;
                 instance.configuration_schema = found->configuration.schema;
@@ -158,41 +155,6 @@ namespace lux::editor
                     });
                 }
                 rendering.features.push_back(std::move(instance));
-            }
-            for (std::size_t i{}; i < selected.size(); ++i)
-            {
-                const auto& descriptor = selected[i]->factory.descriptor;
-                for (const auto& dependency : descriptor.dependencies)
-                {
-                    const auto provider = std::ranges::find_if(
-                        selected,
-                        [&](const auto* entry) { return entry->factory.descriptor.type == dependency.type; }
-                    );
-                    if (provider == selected.end())
-                    {
-                        if (dependency.optional)
-                        {
-                            continue;
-                        }
-                        return cxx::unexpected(missing("3d preset missing dependency", descriptor.canonical_name));
-                    }
-                    const bool wrong_version = (*provider)->factory.descriptor.abi_version != dependency.abi_version;
-                    const bool wrong_order = static_cast<std::size_t>(provider - selected.begin()) >= i;
-                    if (wrong_version || wrong_order)
-                    {
-                        return cxx::unexpected(missing("3d preset incompatible dependency", descriptor.canonical_name));
-                    }
-                }
-                for (const auto conflict : descriptor.conflicts)
-                {
-                    if (std::ranges::any_of(
-                            selected,
-                            [&](const auto* entry) { return entry->factory.descriptor.type == conflict; }
-                        ))
-                    {
-                        return cxx::unexpected(missing("3d preset feature conflict", descriptor.canonical_name));
-                    }
-                }
             }
             for (const auto feature : {"lux.render.view_camera.v1", "lux.render.mesh_stack.v1", "lux.render.light.v1"})
             {

@@ -1,9 +1,10 @@
 #pragma once
 
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/project/PluginIdentity.hpp>
 
-#include <cstdint>
 #include <array>
+#include <cstdint>
 #include <deque>
 #include <filesystem>
 #include <map>
@@ -53,13 +54,6 @@ namespace lux::project
         RENDER,
         RENDER_SCENE,
         EDITOR,
-    };
-
-    struct MetadataIdentity final
-    {
-        std::string id;
-        std::uint32_t version{};
-        friend bool operator==(const MetadataIdentity&, const MetadataIdentity&) = default;
     };
 
     struct PluginLibraryDescription final

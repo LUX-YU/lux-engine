@@ -58,16 +58,6 @@ namespace lux::project
             return expected && lux::cxx::algorithm::Sha256::hash(std::as_bytes(std::span{bytes})) == *expected;
         }
 
-        bool nameValid(std::string_view name) noexcept
-        {
-            const auto letter = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; };
-            if (name.empty() || !letter(name.front()))
-                return false;
-            return std::ranges::all_of(name, [&](char c) {
-                return letter(c) || (c >= '0' && c <= '9') || c == '.' || c == '-';
-            });
-        }
-
         bool identity(const Json& input, MetadataIdentity& value)
         {
             value.id = input.at("id").get<std::string>();
@@ -75,7 +65,7 @@ namespace lux::project
             if (!version.is_number_unsigned() || version.get<std::uint64_t>() > UINT32_MAX)
                 return false;
             value.version = version.get<std::uint32_t>();
-            return nameValid(value.id) && value.version != 0;
+            return isMetadataName(value.id) && value.version != 0;
         }
 
         bool digestValid(std::string_view value) noexcept
@@ -149,7 +139,7 @@ namespace lux::project
                 if (item.contains("default_display"))
                     field.default_display = item.at("default_display").dump();
                 const bool invalid_bounds = field.minimum && field.maximum && *field.minimum > *field.maximum;
-                if (!nameValid(field.id) || field.type.empty() || field.display_name.empty() || invalid_bounds ||
+                if (!isMetadataName(field.id) || field.type.empty() || field.display_name.empty() || invalid_bounds ||
                     !fields.insert(field.id).second)
                     return false;
                 value.fields.push_back(std::move(field));
@@ -262,7 +252,7 @@ namespace lux::project
                     MetadataRequirement requirement;
                     requirement.slot = entry.at("slot").get<std::string>();
                     requirement.optional = entry.value("optional", false);
-                    if (!nameValid(requirement.slot) || !identity(entry.at("ability"), requirement.ability))
+                    if (!isMetadataName(requirement.slot) || !identity(entry.at("ability"), requirement.ability))
                         return invalid("requirements");
                     system.requirements.push_back(std::move(requirement));
                 }
@@ -276,7 +266,7 @@ namespace lux::project
                         {
                             const auto mode = entry.at("mode").get<std::string>();
                             const auto type = entry.at(external ? "resource" : "component").get<std::string>();
-                            if ((mode != "read" && mode != "write") || !nameValid(type))
+                            if ((mode != "read" && mode != "write") || !isMetadataName(type))
                                 return invalid("access");
                             system.access.push_back({type, mode == "write", external});
                         }
@@ -320,7 +310,7 @@ namespace lux::project
                     const bool valid_kind =
                         kind == "stream" || kind == "bulk" || kind == "blob" || kind == "resource" || kind == "param";
                     const bool valid_lane = lane == "program" || lane == "control" || lane == "upload";
-                    if (!nameValid(name) || payload.empty() || !valid_kind || !valid_lane ||
+                    if (!isMetadataName(name) || payload.empty() || !valid_kind || !valid_lane ||
                         !operation_names.insert(name).second)
                         return invalid("operation_layout");
                 }

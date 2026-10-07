@@ -9,5 +9,7 @@ namespace lux::editor
     {
         std::string name;
         std::filesystem::path root;
+        // Canonical source binding for an opened project. Empty only for explicit in-memory bootstrap.
+        std::filesystem::path manifest_file;
     };
 } // namespace lux::editor

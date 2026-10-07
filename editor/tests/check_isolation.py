@@ -13,7 +13,7 @@ for config in model['configurations']:
     targets = {t['id']: json.loads((reply / t['jsonFile']).read_text()) for t in config['targets']}
     names = {t['name']: key for key, t in targets.items()}
     for name in ('lux_editor_project', 'lux_editor_context', 'lux_editor_ui', 'lux_editor_app',
-                 'lux_editor_scene_profiles', 'lux_editor'):
+                 'lux_editor_scene', 'lux_editor_file_io', 'lux_editor_scene_profiles', 'lux_editor'):
         seen, pending = set(), [names[name]]
         while pending:
             key = pending.pop()
@@ -26,11 +26,15 @@ for config in model['configurations']:
             assert 'editor_legacy/' not in facts, (name, target['name'], 'legacy provider')
             pending.extend(d['id'] for d in target.get('dependencies', []))
         closure = sorted(targets[k]['name'] for k in seen)
-        if name == 'lux_editor_project':
+        if name in ('lux_editor_project', 'lux_editor_scene', 'lux_editor_file_io'):
             for forbidden in ('process_execution', 'engine_context', 'scene_runtime', 'scene_render', 'ui'):
                 assert forbidden not in closure, (name, forbidden)
-        if name in ('lux_editor_project', 'lux_editor_context', 'lux_editor_ui', 'lux_editor_app'):
+        if name in ('lux_editor_project', 'lux_editor_context', 'lux_editor_ui', 'lux_editor_app', 'lux_editor_scene', 'lux_editor_file_io'):
             assert 'lux_editor_scene_profiles' not in closure, (name, 'product profile in framework')
+        if name == 'lux_editor_scene':
+            assert 'lux_editor_project' not in closure and 'lux_editor_context' not in closure
+        if name == 'lux_editor_file_io':
+            assert 'lux_editor_scene' not in closure and 'lux_editor_project' not in closure
         if name == 'lux_editor_context':
             assert 'ui' not in closure and 'lux_editor_ui' not in closure
         if name == 'lux_editor_ui':
@@ -41,6 +45,8 @@ print('PASS: no legacy; manifest excludes runtime; Context excludes UI; host exc
 
 source = Path(model['paths']['source'])
 removed = (
+    'editor/project/sinclude/lux/engine/editor/detail/ProjectFiles.hpp',
+    'editor/scene/profiles/include/lux/engine/editor/ScenePackageFile.hpp',
     'modules/core/object/include/lux/engine/object/ObjectDispatcher.hpp',
     'modules/core/object/include/lux/engine/object/ObjectIdentity.hpp',
     'modules/core/object/include/lux/engine/object/ObjectDeleter.hpp',

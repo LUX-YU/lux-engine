@@ -98,7 +98,9 @@ The installed package is `lux-engine-editor-framework` under `lux::engine::edito
 - `lux_editor_context`: project lifetime, registrars and Process ownership; no UI or rendering implementation.
 - `lux_editor_ui`: native window/input and detached UI factory invocation; no scene_render or app dependency.
 - `lux_editor_app`: async transition, host and private UI Scene transport.
-- `lux_editor_scene_profiles`: concrete 3D authoring preset and existing scene-package file adapter.
+- `lux_editor_scene`: generic ScenePackage file IO, independent of Project and concrete profiles.
+- `lux_editor_scene_profiles`: concrete 3D authoring preset.
+- `lux_editor_file_io`: shared internal file primitive; only its static library is installed, not its support header.
 
 These libraries are STATIC. The executable explicitly selects the concrete profile; Context and the host do not link
 it. UI Scene transport remains private. Product-owned factory layout names are not a workspace persistence protocol.
@@ -115,3 +117,24 @@ runtime, global event bus or frame-hook registry is added.
 The ProjectBuilder user patch remains separately archived and unapplied. Existing Context alignment and Pane comment
 changes are preserved. Interactive native input, IME, Linux, sanitizer and old longbench deferrals remain unchanged;
 automated desktop/GPU tests do not qualify those deferred checks. Logs and command provenance remain outside source.
+
+### PS0–PS2 correction contracts
+
+ProjectManifest schema 1 requires `format: "lux.editor.project"`. Duplicate keys (including escaped spellings)
+and unknown fields at the root or in plugin/scene records are rejected. There is no pre-freeze format fallback.
+Plugin selections use the same `project_identity` grammar as PluginCatalog; scene profile/capability names use
+`isCanonicalSceneName`. Project display names remain human text.
+
+A prepared ProjectDescription binds the canonical `manifest_file`, independently of its display name. `root`
+is that file's parent, including when the input follows a filesystem alias. Direct in-memory bootstrap may leave
+`manifest_file` empty; it does not claim a disk binding.
+
+LuxEngine tracks only the handles from its project mount. Switching detaches those panes, retains their owners
+until the old TaskScope settles, destroys the panes while their Context is alive, then adopts the next project.
+Application panes remain mounted and continue maintenance. Root has no Project grouping or Project ownership tag.
+A pane removed/re-registered by an external owner has a different registration and is no longer part of that mount.
+
+`lux_editor_scene` supplies generic ScenePackage file IO; `lux_editor_scene_profiles` supplies the concrete 3D
+preset. Neither the generic scene provider nor project file IO depends on the other domain. Their domain errors
+map the single internal `lux_editor_file_io` publication algorithm; its support headers are not installed.
+Feature dependency order/conflicts remain owned by FeatureCatalog/RenderSystem, not by the profile.

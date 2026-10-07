@@ -167,10 +167,10 @@ int main(int argc, char** argv)
     const auto file = directory / "profile.scene";
     std::filesystem::remove(file);
     constexpr std::size_t limit = 16U * 1024U * 1024U;
-    auto written = writeScenePackageAtomic(file, *package, EProjectWrite::CREATE, limit);
+    auto written = writeScenePackageAtomic(file, *package, ESceneWrite::CREATE, limit);
     if (!written)
     {
-        if (auto* error = std::get_if<ProjectFailure>(&written.error()))
+        if (auto* error = std::get_if<SceneFileFailure>(&written.error()))
         {
             std::fprintf(stderr, "Scene file IO: %u %s\n", unsigned(error->code), error->system.message().c_str());
         }
@@ -188,7 +188,7 @@ int main(int argc, char** argv)
         }
     }
     assert(written);
-    assert(!writeScenePackageAtomic(file, *package, EProjectWrite::CREATE, limit));
+    assert(!writeScenePackageAtomic(file, *package, ESceneWrite::CREATE, limit));
     auto loaded = readScenePackageFile(file, limit);
     assert(loaded);
     inspect3D(*loaded, scene_id);
@@ -199,13 +199,13 @@ int main(int argc, char** argv)
         [&](const auto& entry) { return entry.metadata.id == opaque_id; }
     );
     assert(found != loaded->package.entries.end() && std::ranges::equal(found->bytes.view(), *opaque));
-    assert(!writeScenePackageAtomic(file, *two_package, EProjectWrite::REPLACE, limit, stopped.get_token()));
-    assert(!writeScenePackageAtomic(file, *two_package, EProjectWrite::REPLACE, 1));
+    assert(!writeScenePackageAtomic(file, *two_package, ESceneWrite::REPLACE, limit, stopped.get_token()));
+    assert(!writeScenePackageAtomic(file, *two_package, ESceneWrite::REPLACE, 1));
     loaded = readScenePackageFile(file, limit);
     assert(loaded && scene::encodeScenePackage(*loaded, limit).value() == *roundtrip);
     assert(!readScenePackageFile(file, 1));
     assert(!readScenePackageFile(file, limit, stopped.get_token()));
-    assert(writeScenePackageAtomic(file, *two_package, EProjectWrite::REPLACE, limit));
+    assert(writeScenePackageAtomic(file, *two_package, ESceneWrite::REPLACE, limit));
     loaded = readScenePackageFile(file, limit);
     assert(loaded && loaded->scene->data().systemCount() == 0);
     std::filesystem::remove(file);

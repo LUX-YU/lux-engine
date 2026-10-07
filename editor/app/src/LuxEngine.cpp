@@ -115,7 +115,6 @@ namespace lux::editor
                         std::terminate();
                     }
                 }
-                transition_.reset();
             }
             if (project_)
             {
@@ -125,6 +124,8 @@ namespace lux::editor
                     std::terminate();
                 }
             }
+            // Retiring panes still borrow the old Context; accepted completions settle before their destruction.
+            transition_.reset();
             // Only mechanical project teardown here. The original Runtime drains retirement during its destruction.
             // Engine (and native output users) dies before EditorWindow by member declaration order.
             if (window_ && !window_->uiRoot().clearPanes())
@@ -202,9 +203,11 @@ namespace lux::editor
             process::TaskScope task;
             std::unique_ptr<EditorContext> candidate;
             std::vector<std::unique_ptr<ui::Pane>> panes;
+            std::vector<std::unique_ptr<ui::Pane>> retiring_panes;
             bool cancel_requested{};
             bool close_only{};
             bool candidate_prepared{};
+            bool current_detached{};
             bool cleaning_failed_candidate{};
             error::Error failure;
         };
@@ -409,35 +412,54 @@ namespace lux::editor
                 return {};
             }
             // From here closure is committed intent; cancellation is only allowed during preparation.
-            // Hiding old panes revokes their interactive routes while their owners remain alive.
-            if (project_ && !project_->closing())
+            // Root owns both application and project UI. Only this mount's handles belong to the project.
+            if (!next.current_detached)
             {
-                auto hide = [](ui::Pane& pane) noexcept { pane.setVisible(false); };
-                if (auto hidden = window_->uiRoot().forEachPane(hide); !hidden)
+                next.retiring_panes.reserve(project_panes_.size());
+                auto& root = window_->uiRoot();
+                while (!project_panes_.empty())
                 {
-                    return {}; // Existing Root safe-point discipline; retry without losing preparation.
+                    if (auto* pane = root.resolvePane(project_panes_.back()))
+                    {
+                        auto removed = root.removePane(*pane);
+                        if (!removed)
+                        {
+                            if (removed.error() == ui::EPaneError::BUSY)
+                            {
+                                return {};
+                            }
+                            return cxx::unexpected(
+                                error::Error{Errors::EditorUiClear, {static_cast<std::uint64_t>(removed.error())}}
+                            );
+                        }
+                        next.retiring_panes.push_back(std::move(*removed));
+                    }
+                    // A prior external removal already invalidated this registration. Never follow a reused slot.
+                    project_panes_.pop_back();
                 }
-                project_->beginClose();
+                next.current_detached = true;
+                if (project_)
+                {
+                    project_->beginClose();
+                }
             }
             status_.state = EProjectTransition::CLOSING_CURRENT;
             if (project_ && !project_->closed())
             {
                 return {};
             }
-            auto cleared = window_->uiRoot().clearPanes();
-            if (!cleared)
-            {
-                if (cleared.error() == ui::EPaneError::BUSY)
-                {
-                    return {};
-                }
-                return cxx::unexpected(
-                    error::Error{Errors::EditorUiClear, {static_cast<std::uint64_t>(cleared.error())}}
-                );
-            }
+            // Detached UI cannot update or receive input, but its destructors still borrow the settled Context.
+            next.retiring_panes.clear();
             project_.reset();
             if (!next.close_only)
             {
+                std::vector<ui::Pane*> candidates;
+                candidates.reserve(next.panes.size());
+                project_panes_.reserve(next.panes.size());
+                for (const auto& pane : next.panes)
+                {
+                    candidates.push_back(pane.get());
+                }
                 auto mounted = window_->uiRoot().addPanes(next.panes);
                 if (!mounted)
                 {
@@ -445,6 +467,11 @@ namespace lux::editor
                         {Errors::EditorCannotMountProjectWindows, {static_cast<std::uint64_t>(mounted.error())}}
                     );
                     return {};
+                }
+                // addPanes freezes structure through notification; no callback intervenes before these borrows resolve.
+                for (const auto* pane : candidates)
+                {
+                    project_panes_.push_back(window_->uiRoot().paneHandle(*pane));
                 }
                 project_ = std::move(next.candidate);
             }
@@ -629,6 +656,7 @@ namespace lux::editor
         std::unique_ptr<engine::EngineContext> engine_;
         std::unique_ptr<EditorUiScene> ui_scene_;
         std::unique_ptr<EditorContext> project_;
+        std::vector<ui::PaneHandle> project_panes_;
         std::unique_ptr<ProjectTransition> transition_;
         std::chrono::steady_clock::time_point last_frame_{std::chrono::steady_clock::now()};
         bool operating_{};

@@ -40,5 +40,8 @@ CMake 消费者使用 `find_package(lux-engine-project-plugins REQUIRED COMPONEN
 可用 `lux_generate_capabilities(BASE <sdk>/share/lux-engine/plugins/catalog.json)` 合并 SDK 目录。
 实际 Vulkan 插件示例安装到 `share/lux-engine/examples/external-feature`，只链接公开 Runtime SDK。
 
-编辑器的 `.luxproject` 格式是 version 2，启用项保存身份、版本和可选项目相对描述路径；空 plugins 是明确的空选择。
-它属于 editor/project 的项目描述；带发布事务的 ProjectStorage 留在 editor/activities/project，不迁入游戏层。
+当前 Editor 项目文件为 `.luxproj`：`format = "lux.editor.project"`、`format_version = 1`。
+`plugins` 只保存正式插件身份与精确版本；空数组表示明确的空选择。插件身份与目录共同使用
+`project_identity` 的 `[A-Za-z_][A-Za-z0-9_.-]*` 规则；纯选择值不链接插件装载器。
+项目显示名称不是插件身份。实际清单文件的规范路径由 Editor 的 ProjectDescription 保留，
+项目格式和读写由 editor/project 提供，游戏层不依赖它。旧 `.luxproject` 及 ProjectStorage 仅属于冻结参考源码。

@@ -19,7 +19,7 @@ namespace lux::editor
         const bool invalid_name = entry.display_name.empty() ||
                                   entry.display_name.find_first_of("\r\n") != std::string::npos ||
                                   entry.display_name.find('\0') != std::string::npos;
-        const bool invalid_entry = !isCanonicalProjectName(entry.id) || invalid_name || !entry.create;
+        const bool invalid_entry = !isCanonicalSceneName(entry.id) || invalid_name || !entry.create;
         if (invalid_entry)
         {
             return cxx::unexpected(error::Error{Errors::SceneProfileInvalid});
@@ -29,7 +29,7 @@ namespace lux::editor
             const auto& capability = entry.capabilities[i];
             const bool duplicate = std::find(entry.capabilities.begin(), entry.capabilities.begin() + i, capability) !=
                                    entry.capabilities.begin() + i;
-            if (!isCanonicalProjectName(capability) || duplicate)
+            if (!isCanonicalSceneName(capability) || duplicate)
             {
                 return cxx::unexpected(error::Error{Errors::SceneProfileInvalid});
             }

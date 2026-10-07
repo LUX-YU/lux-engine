@@ -3,7 +3,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <fstream>
-#include <lux/engine/editor/detail/ProjectFiles.hpp>
+#include <lux/engine/editor/detail/FileIo.hpp>
 #if defined(_WIN32)
 #include <Windows.h>
 #else
@@ -15,9 +15,9 @@ namespace lux::editor::detail
 {
     namespace
     {
-        ProjectFailure ioFailure(int value) noexcept
+        FileIoFailure ioFailure(int value) noexcept
         {
-            return {EProjectError::IO, 0, {value, std::system_category()}};
+            return {EFileIoError::IO, {value, std::system_category()}};
         }
         struct TemporaryFile final
         {
@@ -58,7 +58,7 @@ namespace lux::editor::detail
             TemporaryFile& operator=(const TemporaryFile&) = delete;
         };
     } // namespace
-    ProjectResult<std::vector<std::byte>> readProjectBytes(
+    FileIoResult<std::vector<std::byte>> readFileBounded(
         const std::filesystem::path& path,
         std::size_t limit,
         std::stop_token stop
@@ -66,7 +66,7 @@ namespace lux::editor::detail
     {
         if (stop.stop_requested())
         {
-            return cxx::unexpected(ProjectFailure{EProjectError::CANCELLED});
+            return cxx::unexpected(FileIoFailure{EFileIoError::CANCELLED});
         }
         std::ifstream stream(path, std::ios::binary | std::ios::ate);
         if (!stream)
@@ -80,7 +80,7 @@ namespace lux::editor::detail
         }
         if (static_cast<std::uint64_t>(size) > limit)
         {
-            return cxx::unexpected(ProjectFailure{EProjectError::LIMIT});
+            return cxx::unexpected(FileIoFailure{EFileIoError::LIMIT});
         }
         std::vector<std::byte> result(static_cast<std::size_t>(size));
         stream.seekg(0);
@@ -88,7 +88,7 @@ namespace lux::editor::detail
         {
             if (stop.stop_requested())
             {
-                return cxx::unexpected(ProjectFailure{EProjectError::CANCELLED});
+                return cxx::unexpected(FileIoFailure{EFileIoError::CANCELLED});
             }
             const auto count = std::min<std::size_t>(result.size() - offset, 64 * 1024);
             if (!stream.read(reinterpret_cast<char*>(result.data() + offset), count))
@@ -97,27 +97,27 @@ namespace lux::editor::detail
             }
             offset += count;
         }
-        // A concurrently appended manifest is not silently accepted as its old prefix.
+        // A concurrently appended file is not silently accepted as its old prefix.
         if (stream.peek() != std::ifstream::traits_type::eof())
         {
-            return cxx::unexpected(ProjectFailure{EProjectError::IO});
+            return cxx::unexpected(FileIoFailure{EFileIoError::IO});
         }
         return result;
     }
-    ProjectResult<void> writeProjectBytesAtomic(
+    FileIoResult<void> writeFileAtomic(
         const std::filesystem::path& path,
         std::span<const std::byte> bytes,
-        EProjectWrite mode,
+        EFileWriteMode mode,
         std::stop_token stop
     ) noexcept
     {
         if (stop.stop_requested())
         {
-            return cxx::unexpected(ProjectFailure{EProjectError::CANCELLED});
+            return cxx::unexpected(FileIoFailure{EFileIoError::CANCELLED});
         }
         if (!path.is_absolute() || path.filename().empty())
         {
-            return cxx::unexpected(ProjectFailure{EProjectError::INVALID_PATH});
+            return cxx::unexpected(FileIoFailure{EFileIoError::INVALID_PATH});
         }
         static std::atomic<std::uint64_t> sequence{};
         TemporaryFile temporary;
@@ -147,7 +147,7 @@ namespace lux::editor::detail
         {
             if (stop.stop_requested())
             {
-                return cxx::unexpected(ProjectFailure{EProjectError::CANCELLED});
+                return cxx::unexpected(FileIoFailure{EFileIoError::CANCELLED});
             }
             const auto count = std::min<std::size_t>(bytes.size() - offset, 64 * 1024);
 #if defined(_WIN32)
@@ -169,7 +169,7 @@ namespace lux::editor::detail
 #endif
             if (written == 0)
             {
-                return cxx::unexpected(ProjectFailure{EProjectError::IO});
+                return cxx::unexpected(FileIoFailure{EFileIoError::IO});
             }
             offset += written;
         }
@@ -187,32 +187,32 @@ namespace lux::editor::detail
         temporary.close();
         if (stop.stop_requested())
         {
-            return cxx::unexpected(ProjectFailure{EProjectError::CANCELLED});
+            return cxx::unexpected(FileIoFailure{EFileIoError::CANCELLED});
         }
 #if defined(_WIN32)
-        const DWORD flags = MOVEFILE_WRITE_THROUGH | (mode == EProjectWrite::REPLACE ? MOVEFILE_REPLACE_EXISTING : 0);
+        const DWORD flags = MOVEFILE_WRITE_THROUGH | (mode == EFileWriteMode::REPLACE ? MOVEFILE_REPLACE_EXISTING : 0);
         if (!MoveFileExW(temporary.path.c_str(), path.c_str(), flags))
         {
             const auto error = GetLastError();
             if (error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS)
             {
-                return cxx::unexpected(ProjectFailure{EProjectError::DESTINATION_EXISTS});
+                return cxx::unexpected(FileIoFailure{EFileIoError::DESTINATION_EXISTS});
             }
             return cxx::unexpected(ioFailure(error));
         }
         temporary.owns_path = false;
 #else
-        const auto published = mode == EProjectWrite::REPLACE ? ::rename(temporary.path.c_str(), path.c_str())
-                                                              : ::link(temporary.path.c_str(), path.c_str());
+        const auto published = mode == EFileWriteMode::REPLACE ? ::rename(temporary.path.c_str(), path.c_str())
+                                                               : ::link(temporary.path.c_str(), path.c_str());
         if (published != 0)
         {
             if (errno == EEXIST)
             {
-                return cxx::unexpected(ProjectFailure{EProjectError::DESTINATION_EXISTS});
+                return cxx::unexpected(FileIoFailure{EFileIoError::DESTINATION_EXISTS});
             }
             return cxx::unexpected(ioFailure(errno));
         }
-        if (mode == EProjectWrite::CREATE)
+        if (mode == EFileWriteMode::CREATE)
         {
             ::unlink(temporary.path.c_str());
         }
@@ -220,18 +220,14 @@ namespace lux::editor::detail
         const int directory = ::open(path.parent_path().c_str(), O_RDONLY | O_DIRECTORY | O_CLOEXEC);
         if (directory < 0)
         {
-            return cxx::unexpected(
-                ProjectFailure{EProjectError::PUBLICATION_UNKNOWN, 0, {errno, std::system_category()}}
-            );
+            return cxx::unexpected(FileIoFailure{EFileIoError::PUBLICATION_UNKNOWN, {errno, std::system_category()}});
         }
         const auto flushed = ::fsync(directory);
         const auto error = errno;
         ::close(directory);
         if (flushed != 0)
         {
-            return cxx::unexpected(
-                ProjectFailure{EProjectError::PUBLICATION_UNKNOWN, 0, {error, std::system_category()}}
-            );
+            return cxx::unexpected(FileIoFailure{EFileIoError::PUBLICATION_UNKNOWN, {error, std::system_category()}});
         }
 #endif
         return {};

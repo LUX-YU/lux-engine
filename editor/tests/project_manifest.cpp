@@ -65,8 +65,33 @@ int main(int argc, char** argv)
     {
         assert(!decodeProjectManifest(text));
     }
-    auto future = decodeProjectManifest("{\"format_version\":2}");
+    auto future = decodeProjectManifest("{\"format\":\"lux.editor.project\",\"format_version\":2}");
     assert(!future && future.error().code == EProjectError::UNSUPPORTED_VERSION);
+    const auto valid_json = encodeProjectManifest(manifest).value();
+    assert(valid_json.find("lux.editor.project") != valid_json.npos);
+    const auto invalidJson = [&](std::string text)
+    {
+        auto result = decodeProjectManifest(text);
+        assert(!result && result.error().code == EProjectError::INVALID_FORMAT);
+    };
+    const auto replaced = [&](std::string_view from, std::string_view to)
+    {
+        auto text = valid_json;
+        auto position = text.find(from);
+        assert(position != text.npos);
+        text.replace(position, from.size(), to);
+        return text;
+    };
+    invalidJson(replaced("lux.editor.project", "another.format"));
+    invalidJson(replaced("\"format\"", "\"unknown_format\""));
+    invalidJson("{\"name\":\"Duplicate\"," + valid_json.substr(1));
+    invalidJson("{\"na\\u006de\":\"Escaped duplicate\"," + valid_json.substr(1));
+    invalidJson("{\"startup_scen\":null," + valid_json.substr(1));
+    invalidJson(replaced("\"version\": 1", "\"version\": 1, \"version\": 1"));
+    invalidJson(replaced("\"version\": 1", "\"version\": 1, \"extra\": 1"));
+    invalidJson(replaced("\"profile\":", "\"path\": \"Duplicate.scene\", \"profile\":"));
+    invalidJson(replaced("\"profile\":", "\"extra\": true, \"profile\":"));
+    expect(EProjectError::INVALID_PLUGIN, [](auto& m) { m.plugins[0].id = "1.plugin"; });
     auto huge = decodeProjectManifest(std::string(1024 * 1024 + 1, ' '));
     assert(!huge && huge.error().code == EProjectError::LIMIT);
     std::stop_source stopped;

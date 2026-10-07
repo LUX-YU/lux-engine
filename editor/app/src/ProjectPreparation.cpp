@@ -54,7 +54,13 @@ namespace lux::editor::detail
             }
             published = true;
         }
-        auto manifest = create ? ProjectResult<ProjectManifest>{*create} : readProjectManifest(file, stop);
+        std::error_code ec;
+        auto manifest_file = std::filesystem::canonical(file, ec);
+        if (ec)
+        {
+            return failed(failure({EProjectError::IO, 0, ec}));
+        }
+        auto manifest = create ? ProjectResult<ProjectManifest>{*create} : readProjectManifest(manifest_file, stop);
         if (!manifest)
         {
             return failed(failure(manifest.error()));
@@ -104,14 +110,8 @@ namespace lux::editor::detail
         {
             return failed({Errors::ProjectCancelled});
         }
-        std::error_code ec;
-        auto root = std::filesystem::canonical(file.parent_path(), ec);
-        if (ec)
-        {
-            return failed(failure({EProjectError::IO, 0, ec}));
-        }
         PreparedProject result{
-            {manifest->name, std::move(root)},
+            {manifest->name, manifest_file.parent_path(), std::move(manifest_file)},
             std::move(*manifest),
             std::make_unique<project::PluginManager>(std::move(*plugins)),
             std::make_shared<const project::SceneRegistrations>(std::move(*registrations))

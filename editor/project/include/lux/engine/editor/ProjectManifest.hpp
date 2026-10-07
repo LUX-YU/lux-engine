@@ -65,7 +65,7 @@ namespace lux::editor
     template <class T> using ProjectResult = cxx::expected<T, ProjectFailure>;
 
     // Canonical identifiers contain lower-case ASCII segments separated by dots.
-    [[nodiscard]] bool isCanonicalProjectName(std::string_view) noexcept;
+    [[nodiscard]] bool isCanonicalSceneName(std::string_view) noexcept;
     [[nodiscard]] ProjectResult<void> validateProjectManifest(const ProjectManifest&) noexcept;
     [[nodiscard]] ProjectResult<ProjectManifest> decodeProjectManifest(std::string_view) noexcept;
     [[nodiscard]] ProjectResult<std::string> encodeProjectManifest(const ProjectManifest&) noexcept;

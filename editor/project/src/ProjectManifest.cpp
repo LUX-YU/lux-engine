@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <lux/engine/editor/ProjectManifest.hpp>
-#include <lux/engine/editor/detail/ProjectFiles.hpp>
+#include <lux/engine/editor/detail/FileIo.hpp>
+#include <lux/engine/project/PluginIdentity.hpp>
 #include <nlohmann/json.hpp>
 #include <unordered_set>
 
@@ -8,8 +9,38 @@ namespace lux::editor
 {
     namespace
     {
+        ProjectFailure fileFailure(detail::FileIoFailure value) noexcept
+        {
+            switch (value.code)
+            {
+            case detail::EFileIoError::INVALID_PATH:
+                return {EProjectError::INVALID_PATH, 0, value.system};
+            case detail::EFileIoError::LIMIT:
+                return {EProjectError::LIMIT, 0, value.system};
+            case detail::EFileIoError::CANCELLED:
+                return {EProjectError::CANCELLED, 0, value.system};
+            case detail::EFileIoError::IO:
+                return {EProjectError::IO, 0, value.system};
+            case detail::EFileIoError::DESTINATION_EXISTS:
+                return {EProjectError::DESTINATION_EXISTS, 0, value.system};
+            case detail::EFileIoError::PUBLICATION_UNKNOWN:
+                return {EProjectError::PUBLICATION_UNKNOWN, 0, value.system};
+            }
+            std::terminate();
+        }
+
         constexpr std::size_t MaxManifestBytes = 1024 * 1024;
         constexpr std::size_t MaxRecords = 4096;
+        constexpr std::string_view Format = "lux.editor.project";
+
+        bool knownFields(const nlohmann::json& value, std::initializer_list<std::string_view> names) noexcept
+        {
+            return value.is_object() &&
+                   std::ranges::all_of(
+                       value.items(),
+                       [&](const auto& item) { return std::ranges::find(names, item.key()) != names.end(); }
+                   );
+        }
 
         bool validText(std::string_view text) noexcept
         {
@@ -66,7 +97,7 @@ namespace lux::editor
             return uuids::uuid::from_string(value.get_ref<const std::string&>());
         }
     } // namespace
-    bool isCanonicalProjectName(std::string_view value) noexcept
+    bool isCanonicalSceneName(std::string_view value) noexcept
     {
         if (value.empty() || value.size() > 256)
         {
@@ -116,7 +147,7 @@ namespace lux::editor
         for (std::size_t i = 0; i < value.plugins.size(); ++i)
         {
             const auto& plugin = value.plugins[i];
-            if (!isCanonicalProjectName(plugin.id) || plugin.version == 0)
+            if (!project::isMetadataName(plugin.id) || plugin.version == 0)
             {
                 return cxx::unexpected(ProjectFailure{EProjectError::INVALID_PLUGIN, i});
             }
@@ -138,7 +169,7 @@ namespace lux::editor
             {
                 return cxx::unexpected(ProjectFailure{EProjectError::INVALID_NAME, i});
             }
-            if (!isCanonicalProjectName(scene.profile))
+            if (!isCanonicalSceneName(scene.profile))
             {
                 return cxx::unexpected(ProjectFailure{EProjectError::INVALID_PROFILE, i});
             }
@@ -176,9 +207,34 @@ namespace lux::editor
         {
             return cxx::unexpected(ProjectFailure{EProjectError::LIMIT});
         }
-        auto input = nlohmann::json::parse(text, nullptr, false);
+        std::vector<std::unordered_set<std::string>> keys;
+        bool duplicate_key{};
+        auto input = nlohmann::json::parse(
+            text,
+            [&](int, nlohmann::json::parse_event_t event, nlohmann::json& value)
+            {
+                using Event = nlohmann::json::parse_event_t;
+                if (event == Event::object_start)
+                {
+                    keys.emplace_back();
+                }
+                if (event == Event::key && !keys.back().insert(value.get<std::string>()).second)
+                {
+                    duplicate_key = true;
+                }
+                if (event == Event::object_end)
+                {
+                    keys.pop_back();
+                }
+                return true;
+            },
+            false
+        );
         const auto invalid = [] { return cxx::unexpected(ProjectFailure{EProjectError::INVALID_FORMAT}); };
-        if (!input.is_object() || !input.contains("format_version") || !unsigned32(input["format_version"]))
+        const bool has_format = input.is_object() && input.contains("format") && input["format"].is_string() &&
+                                input["format"].get_ref<const std::string&>() == Format &&
+                                input.contains("format_version") && unsigned32(input["format_version"]);
+        if (duplicate_key || !has_format)
         {
             return invalid();
         }
@@ -187,6 +243,10 @@ namespace lux::editor
         if (result.format_version != 1)
         {
             return cxx::unexpected(ProjectFailure{EProjectError::UNSUPPORTED_VERSION});
+        }
+        if (!knownFields(input, {"format", "format_version", "id", "name", "plugins", "scenes", "startup_scene"}))
+        {
+            return invalid();
         }
         const bool has_fields =
             input.contains("id") && input.contains("name") && input.contains("plugins") && input.contains("scenes");
@@ -205,7 +265,8 @@ namespace lux::editor
         result.name = input["name"].get<std::string>();
         for (const auto& item : input["plugins"])
         {
-            const bool has_plugin_fields = item.is_object() && item.contains("id") && item.contains("version");
+            const bool has_plugin_fields =
+                knownFields(item, {"id", "version"}) && item.contains("id") && item.contains("version");
             if (!has_plugin_fields || !item["id"].is_string() || !unsigned32(item["version"]))
             {
                 return invalid();
@@ -214,8 +275,8 @@ namespace lux::editor
         }
         for (const auto& item : input["scenes"])
         {
-            const bool has_scene_fields = item.is_object() && item.contains("id") && item.contains("name") &&
-                                          item.contains("path") && item.contains("profile");
+            const bool has_scene_fields = knownFields(item, {"id", "name", "path", "profile"}) && item.contains("id") &&
+                                          item.contains("name") && item.contains("path") && item.contains("profile");
             if (!has_scene_fields)
             {
                 return invalid();
@@ -252,6 +313,7 @@ namespace lux::editor
             return cxx::unexpected(valid.error());
         }
         nlohmann::json result{
+            {"format", Format},
             {"format_version", value.format_version},
             {"id", uuids::to_string(value.id)},
             {"name", value.name},
@@ -294,10 +356,10 @@ namespace lux::editor
     }
     ProjectResult<ProjectManifest> readProjectManifest(const std::filesystem::path& path, std::stop_token stop) noexcept
     {
-        auto bytes = detail::readProjectBytes(path, MaxManifestBytes, stop);
+        auto bytes = detail::readFileBounded(path, MaxManifestBytes, stop);
         if (!bytes)
         {
-            return cxx::unexpected(bytes.error());
+            return cxx::unexpected(fileFailure(bytes.error()));
         }
         return decodeProjectManifest({reinterpret_cast<const char*>(bytes->data()), bytes->size()});
     }
@@ -313,6 +375,16 @@ namespace lux::editor
         {
             return cxx::unexpected(encoded.error());
         }
-        return detail::writeProjectBytesAtomic(path, std::as_bytes(std::span{*encoded}), mode, stop);
+        auto written = detail::writeFileAtomic(
+            path,
+            std::as_bytes(std::span{*encoded}),
+            mode == EProjectWrite::CREATE ? detail::EFileWriteMode::CREATE : detail::EFileWriteMode::REPLACE,
+            stop
+        );
+        if (!written)
+        {
+            return cxx::unexpected(fileFailure(written.error()));
+        }
+        return {};
     }
 } // namespace lux::editor

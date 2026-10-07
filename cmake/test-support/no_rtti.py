@@ -22,7 +22,7 @@ for item in commands:
         continue
     required = ('/GR-', '/we4541') if msvc else ('-fno-rtti',)
     if clang_cl:
-        required += ('-fno-rtti',)
+        required += ('/clang:-fno-rtti',)
     for flag in required:
         assert flag in command, (source, 'missing', flag)
     assert not re.search(r'(?:^|\s)(?:/GR(?:\s|$)|-frtti(?:\s|$))', command), source
@@ -32,6 +32,8 @@ assert checked, 'No active C++ compilation was checked'
 directory = build / 'no-rtti-probes'
 directory.mkdir(exist_ok=True)
 base = '#include <typeinfo>\nstruct B { virtual ~B() = default; }; struct D : B {};\n'
+if clang_cl:
+    base += '#ifdef __cpp_rtti\n#error Clang RTTI language feature is still enabled\n#endif\n'
 cases = {
     'positive': base + 'int probe(B* b) { return b != nullptr; }\n',
     'downcast': base + 'D* probe(B* b) { return dynamic_cast<D*>(b); }\n',
@@ -44,7 +46,7 @@ for name, text in cases.items():
         args = [compiler, '/nologo', '/c', '/std:c++20', '/GR-', '/we4541',
                 '/Fo' + str(directory / (name + '.obj')), str(source)]
         if clang_cl:
-            args.append('-fno-rtti')
+            args.append('/clang:-fno-rtti')
     else:
         args = [compiler, '-c', '-std=c++20', '-fno-rtti', str(source),
                 '-o', str(directory / (name + '.o'))]

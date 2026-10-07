@@ -187,6 +187,24 @@ namespace
 
 int main()
 {
+    {
+        struct Closing final : lux::object::LuxObject
+        {
+            void close() noexcept
+            {
+                beginDestruction();
+            }
+        };
+        auto& runtime = lux::object::ObjectRuntime::instance();
+        Closing value;
+        const auto old = value.objectId();
+        assert(runtime.resolve(old));
+        value.close();
+        assert(value.objectId().isNull() && !runtime.resolve(old));
+        value.close();
+        Closing replacement;
+        assert(replacement.objectId() != old && runtime.resolve(replacement.objectId()));
+    }
     ownership();
     routing();
 }

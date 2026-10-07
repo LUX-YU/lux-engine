@@ -1,6 +1,6 @@
 #pragma once
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
-#include "RootAccess.hpp"
+#include "UiTestHelpers.hpp"
 #include <cassert>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/ui/Command.hpp>
@@ -45,35 +45,40 @@ namespace api_checks
         auto& b = ui_test::makePane<CommandPane>(root);
         auto& foreign = ui_test::makePane<CommandPane>(**other);
         ui::DockTree tree{
-            {{ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {&a}}},
+            {{ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {ui_test::paneHandle(a)}}},
             {{0, {{0, 0}, {640, 480}}, false}}
         };
         assert(root.setDockTree(tree));
         auto captured = root.captureDockTree();
-        assert(captured.nodes.size() == 2 && captured.nodes[0].panes == std::vector<ui::Pane*>{&a});
-        assert(captured.nodes[1].panes == std::vector<ui::Pane*>{&b} && captured.surfaces[1].floating);
+        assert(
+            captured.nodes.size() == 2 && captured.nodes[0].panes == std::vector<ui::PaneHandle>{ui_test::paneHandle(a)}
+        );
+        assert(
+            captured.nodes[1].panes == std::vector<ui::PaneHandle>{ui_test::paneHandle(b)} &&
+            captured.surfaces[1].floating
+        );
         const auto refused = [&](ui::DockTree invalid)
         {
             auto result = root.setDockTree(std::move(invalid));
             assert(!result && result.error() == ui::EDockError::INVALID_DATA);
-            assert(root.captureDockTree().nodes[0].panes == std::vector<ui::Pane*>{&a});
+            assert(root.captureDockTree().nodes[0].panes == std::vector<ui::PaneHandle>{ui_test::paneHandle(a)});
         };
         auto invalid = tree;
-        invalid.nodes[0].panes.push_back(&a);
+        invalid.nodes[0].panes.push_back(ui_test::paneHandle(a));
         refused(invalid);
-        invalid.nodes[0].panes = {&foreign};
+        invalid.nodes[0].panes = {ui_test::paneHandle(foreign)};
         refused(invalid);
-        invalid.nodes[0].panes = {nullptr};
+        invalid.nodes[0].panes = {{}};
         refused(invalid);
         invalid = tree;
         invalid.nodes[0].first = 0;
         refused(invalid);
         b.setModal(true);
         invalid = tree;
-        invalid.nodes[0].panes = {&b};
+        invalid.nodes[0].panes = {ui_test::paneHandle(b)};
         refused(invalid);
         b.setModal(false);
-        auto busy = [&](ui::Pane&)
+        auto busy = [&](ui::Pane&) noexcept
         {
             auto result = root.setDockTree(tree);
             assert(!result && result.error() == ui::EDockError::BUSY);

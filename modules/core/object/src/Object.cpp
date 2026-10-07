@@ -581,7 +581,10 @@ namespace lux::object
             detail::failObjectContract();
         }
         closing_ = true;
-        ObjectRuntime::instance().unregisterObject(id_);
+        if (const auto id = std::exchange(id_, {}); !id.isNull())
+        {
+            ObjectRuntime::instance().unregisterObject(id);
+        }
         if (auto* state = state_.load(std::memory_order_acquire))
         {
             state->closeOwner();
@@ -597,7 +600,10 @@ namespace lux::object
             detail::failObjectContract();
         }
         closing_ = true;
-        ObjectRuntime::instance().unregisterObject(id_);
+        if (const auto id = std::exchange(id_, {}); !id.isNull())
+        {
+            ObjectRuntime::instance().unregisterObject(id);
+        }
         clearChildren();
         unlinkParent();
         auto* state = state_.exchange(nullptr, std::memory_order_acq_rel);

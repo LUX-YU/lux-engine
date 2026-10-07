@@ -69,7 +69,7 @@ namespace input_checks
         assert(root.requestFocus(owner.content));
         assert(root.capturePointer(owner.content));
         owner.content.setVisible(false);
-        assert(root.update({}));
+        assert(root.update());
         assert(owner.content.cancellations == 1);
         owner.content.setVisible(true);
         turn();
@@ -112,7 +112,7 @@ namespace input_checks
         assert(root.capturePointer(owner.content));
         const auto losses = owner.content.focus_losses;
         assert(root.feedInput(ui::WindowFocus{false}, 30));
-        assert(root.update({}));
+        assert(root.update());
         assert(owner.content.focus_losses == losses + 1);
         turn();
         assert(owner.content.focus_losses == losses + 1); // The later ImGui batch does not repeat cancellation.

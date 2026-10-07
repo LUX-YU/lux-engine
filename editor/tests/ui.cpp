@@ -98,7 +98,7 @@ int main()
     assert(root.update({{640, 480}, 0.016F}, data, ui::Root::Capture{capture}));
     const auto sequence = root.inputSnapshot().sequence;
     assert(sequence <= 3);
-    assert(root.update({{640, 480}, 0.016F}));
+    assert(root.update());
     assert(root.inputSnapshot().sequence == sequence);
     for (unsigned frame{}; root.inputSnapshot().sequence < 3 && frame < 8; ++frame)
     {

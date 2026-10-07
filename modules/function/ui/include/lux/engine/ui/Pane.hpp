@@ -1,9 +1,6 @@
 #pragma once
 
-#include <memory>
-#include <span>
 #include <string>
-#include <vector>
 
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/object/LuxObject.hpp>
@@ -12,7 +9,6 @@
 
 namespace lux::ui
 {
-    namespace detail { struct RootTestAccess; }
     class Root;
     class Element;
 
@@ -92,7 +88,9 @@ namespace lux::ui
         virtual void update() noexcept {}
 
     private:
-        friend struct detail::RootTestAccess;
+        using LuxObject::setParent;
+        using LuxObject::addChild;
+        using LuxObject::removeChild;
         friend class Root;
         friend class Element;
         void setFocused(bool focused);

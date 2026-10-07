@@ -117,8 +117,9 @@ namespace lux::ui
                     {
                         return invalid();
                     }
-                    for (auto* pane : node.panes)
+                    for (const auto handle : node.panes)
                     {
+                        auto* pane = resolvePane(handle);
                         if (!pane || pane->root_ != this || pane->modal_ || !panes.insert(pane).second)
                         {
                             return invalid();
@@ -149,9 +150,9 @@ namespace lux::ui
             auto& retained =
                 prepared->nodes.emplace_back(DockData::Node{node.split, node.first, node.second, node.ratio});
             retained.panes.reserve(node.panes.size());
-            for (auto* pane : node.panes)
+            for (const auto handle : node.panes)
             {
-                retained.panes.push_back(pane->id_);
+                retained.panes.push_back(handle.pane_);
             }
         }
         prepared->surfaces = std::move(tree.surfaces);
@@ -171,7 +172,7 @@ namespace lux::ui
                 auto& output = result.nodes.emplace_back(DockNode{node.split, node.first, node.second, node.ratio});
                 for (const auto id : node.panes)
                 {
-                    output.panes.push_back(findPane(id));
+                    output.panes.push_back(PaneHandle{objectId(), id});
                 }
             }
             std::unordered_set<PaneId> included;
@@ -196,7 +197,7 @@ namespace lux::ui
                 const Rect bounds = window ? Rect{{window->Pos.x, window->Pos.y}, {window->Size.x, window->Size.y}}
                                            : Rect{{40, 40}, {640, 480}};
                 const auto index = static_cast<std::uint32_t>(result.nodes.size());
-                result.nodes.push_back({EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {pane}});
+                result.nodes.push_back({EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {paneHandle(*pane)}});
                 result.surfaces.push_back({index, bounds, true});
             }
             return result;
@@ -226,7 +227,7 @@ namespace lux::ui
             if (!window || !window->DockNode)
             {
                 const auto index = static_cast<std::uint32_t>(result.nodes.size());
-                result.nodes.push_back({EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {pane}});
+                result.nodes.push_back({EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {paneHandle(*pane)}});
                 const Rect bounds = window ? Rect{{window->Pos.x, window->Pos.y}, {window->Size.x, window->Size.y}}
                                            : Rect{{40, 40}, {640, 480}};
                 result.surfaces.push_back({index, bounds, true});
@@ -244,7 +245,7 @@ namespace lux::ui
                 );
             }
             const auto leaf = insert(window->DockNode);
-            result.nodes[leaf].panes.emplace_back(pane);
+            result.nodes[leaf].panes.emplace_back(paneHandle(*pane));
         }
         for (std::size_t i{}; i < pending.size(); ++i)
         {

@@ -26,11 +26,15 @@ namespace lux::scene
     {
         namespace Errors
         {
-            constexpr error::ErrorId SceneScriptStop = error::errorId("lux.scene.script.stop");
-        }
-        constexpr error::ErrorDescriptor ErrorDescriptors[]{
-            {"lux.scene.script.stop", "Script stop code {0}", error::ERecovery::BUG, {error::EArgument::UNSIGNED}}
-        };
+            constexpr error::ErrorDescriptor SceneScriptStopDescriptor{
+                "lux.scene.script.stop",
+                "Script stop code {0}",
+                error::ERecovery::BUG,
+                {error::EArgument::UNSIGNED}
+            };
+            constexpr error::ErrorId SceneScriptStop = error::errorId(SceneScriptStopDescriptor.name);
+        } // namespace Errors
+        constexpr error::ErrorDescriptor ErrorDescriptors[]{Errors::SceneScriptStopDescriptor};
     } // namespace
 
     struct ScriptRealDelayProvider::Impl final

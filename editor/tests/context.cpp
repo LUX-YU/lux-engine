@@ -72,7 +72,7 @@ int main(int argc, char** argv)
         auto engine = engine::EngineContext::create({1, 64, 64, {32}}, {0, 64});
         assert(engine && runtime.isCurrent());
         bool assembled{};
-        auto assembly = [&](EditorContext&) -> FrameworkResult<void>
+        auto assembly = [&](EditorContext&) noexcept -> FrameworkResult<void>
         {
             assembled = true;
             return {};
@@ -101,28 +101,28 @@ int main(int argc, char** argv)
     std::vector<int> destroyed;
     unsigned constructed{}, attempts{}, tools{};
     {
-        auto assemble = [&](EditorContext& context) -> FrameworkResult<void>
+        auto assemble = [&](EditorContext& context) noexcept -> FrameworkResult<void>
         {
             assert(context.services().registerFactory<Service>(
-                [&](EditorContext&) -> FrameworkResult<std::unique_ptr<Service>>
+                [&](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Service>>
                 {
                     ++constructed;
                     return std::make_unique<Service>(destroyed, 1);
                 }
             ));
             assert(!context.services().registerFactory<Service>(
-                [](EditorContext&) -> FrameworkResult<std::unique_ptr<Service>>
+                [](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Service>>
                 { return cxx::unexpected(error::Error{FixtureErrors::EditorUnused, {}}); }
             ));
             assert(context.services().registerFactory<Other>(
-                [&](EditorContext& context) -> FrameworkResult<std::unique_ptr<Other>>
+                [&](EditorContext& context) noexcept -> FrameworkResult<std::unique_ptr<Other>>
                 {
                     assert(context.service<Service>());
                     return std::make_unique<Other>(destroyed);
                 }
             ));
             assert(context.services().registerFactory<Recursive>(
-                [](EditorContext& context) -> FrameworkResult<std::unique_ptr<Recursive>>
+                [](EditorContext& context) noexcept -> FrameworkResult<std::unique_ptr<Recursive>>
                 {
                     auto nested = context.service<Recursive>();
                     assert(!nested && nested.error().type == error::errorId("lux.editor.recursive_service_factory"));
@@ -130,7 +130,7 @@ int main(int argc, char** argv)
                 }
             ));
             assert(context.services().registerFactory<Retry>(
-                [&](EditorContext&) -> FrameworkResult<std::unique_ptr<Retry>>
+                [&](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Retry>>
                 {
                     if (++attempts == 1)
                     {
@@ -141,7 +141,7 @@ int main(int argc, char** argv)
             ));
             assert(context.sceneTools().registerFactory<Tools>(
                 &match,
-                [&](EditorContext&, const world::WorldDescription&) -> FrameworkResult<std::unique_ptr<Tools>>
+                [&](EditorContext&, const world::WorldDescription&) noexcept -> FrameworkResult<std::unique_ptr<Tools>>
                 { return std::make_unique<Tools>(++tools); }
             ));
             assert(constructed == 0);
@@ -174,11 +174,13 @@ int main(int argc, char** argv)
         auto b = context.sceneTools().create<Tools>(context, world);
         assert(a && b && a->get() != b->get() && (*a)->serial == 1 && (*b)->serial == 2);
         assert(!context.services().registerFactory<Missing>(
-            [](EditorContext&) -> FrameworkResult<std::unique_ptr<Missing>> { return std::make_unique<Missing>(); }
+            [](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Missing>>
+            { return std::make_unique<Missing>(); }
         ));
-        auto factory = [](EditorContext&, const world::WorldDescription&) -> FrameworkResult<std::unique_ptr<Tools>>
+        auto factory = [](EditorContext&,
+                          const world::WorldDescription&) noexcept -> FrameworkResult<std::unique_ptr<Tools>>
         { return std::make_unique<Tools>(9); };
-        auto assemble_second = [&](EditorContext& second) -> FrameworkResult<void>
+        auto assemble_second = [&](EditorContext& second) noexcept -> FrameworkResult<void>
         {
             assert(second.sceneTools().registerFactory<Tools>(&match, factory));
             assert(second.sceneTools().registerFactory<Tools>(&alsoMatch, factory));
@@ -190,7 +192,7 @@ int main(int argc, char** argv)
         auto& second = **second_owner;
         auto ambiguous = second.sceneTools().create<Tools>(second, world);
         assert(!ambiguous && ambiguous.error().type == error::errorId("lux.editor.ambiguous_scene_tool_rules"));
-        auto empty_assembly = [](EditorContext&) -> FrameworkResult<void> { return {}; };
+        auto empty_assembly = [](EditorContext&) noexcept -> FrameworkResult<void> { return {}; };
         auto empty = EditorContext::create(**engine, {"Empty", std::filesystem::current_path()}, empty_assembly);
         assert(empty);
         auto missing = (*empty)->sceneTools().create<Tools>(**empty, world);
@@ -211,7 +213,7 @@ int main(int argc, char** argv)
     assert(lower && higher);
     std::weak_ptr<asset::IAssetProvider> lifetime = *higher;
     {
-        auto empty_assembly = [](EditorContext&) -> FrameworkResult<void> { return {}; };
+        auto empty_assembly = [](EditorContext&) noexcept -> FrameworkResult<void> { return {}; };
         auto first_context = EditorContext::create(**engine, {"A", path}, empty_assembly);
         auto second_context = EditorContext::create(**engine, {"B", path}, empty_assembly);
         assert(first_context && second_context);

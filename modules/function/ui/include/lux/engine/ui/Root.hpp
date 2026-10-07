@@ -22,10 +22,15 @@ namespace lux::window
 
 namespace lux::ui
 {
-    namespace detail
+    // A synchronous borrow, intentionally not copyable or queueable.
+    struct ObjectRemoved final
     {
-        struct RootTestAccess;
-    }
+        explicit ObjectRemoved(object::LuxObject& value) noexcept : object(&value) {}
+        ObjectRemoved(const ObjectRemoved&) = delete;
+        ObjectRemoved& operator=(const ObjectRemoved&) = delete;
+        object::LuxObject* object;
+    };
+
     class Pane;
     class Element;
     struct SizeHint;
@@ -70,9 +75,9 @@ namespace lux::ui
         [[nodiscard]] const Theme& theme() const noexcept;
         [[nodiscard]] float scale() const noexcept;
         [[nodiscard]] lux::cxx::expected<FontAtlas, EInitError> fontAtlas() const noexcept;
-        using Capture = cxx::function_ref<cxx::expected<void, ECaptureError>(const DrawData&)>;
+        using Capture = cxx::function_ref<cxx::expected<void, ECaptureError>(const DrawData&) noexcept>;
         // Both overloads adopt the prior structural batch first. No drawing or input replay in maintenance-only use.
-        [[nodiscard]] cxx::expected<void, ECaptureError> update(FrameInfo) noexcept;
+        [[nodiscard]] cxx::expected<void, ECaptureError> update() noexcept;
         // Capture pins resources synchronously before remaining input and owner maintenance.
         [[nodiscard]] cxx::expected<void, ECaptureError> update(
             FrameInfo,
@@ -84,7 +89,9 @@ namespace lux::ui
         [[nodiscard]] PaneResult<void> addPanes(std::span<std::unique_ptr<Pane>>) noexcept;
         [[nodiscard]] PaneResult<std::unique_ptr<Pane>> removePane(Pane&) noexcept;
         [[nodiscard]] PaneResult<void> clearPanes() noexcept;
-        [[nodiscard]] PaneResult<void> checkStructureSafe() const noexcept;
+        [[nodiscard]] PaneHandle paneHandle(const Pane&) const noexcept;
+        // Owner-thread synchronous borrow only; never retain the pointer across callbacks or frames.
+        [[nodiscard]] Pane* resolvePane(PaneHandle) const noexcept;
         object::TSignal<PaneChanged> paneChanged{*this};
 
         using ChangeCallback = void (*)(object::LuxObject&) noexcept;
@@ -96,9 +103,9 @@ namespace lux::ui
         void setMenu(std::vector<MenuItem>);
         [[nodiscard]] std::span<const MenuItem> menu() const noexcept;
         // Borrowed enumeration freezes structure until every callback has returned.
-        [[nodiscard]] PaneResult<void> forEachPane(cxx::function_ref<void(Pane&)>) noexcept;
+        [[nodiscard]] PaneResult<void> forEachPane(cxx::function_ref<void(Pane&) noexcept>) noexcept;
         // DIRECT notification; receivers may only invalidate borrows, never destroy other UI objects.
-        object::TSignal<object::LuxObject*> objectRemoved{*this};
+        object::TSignal<ObjectRemoved> objectRemoved{*this};
 
         [[nodiscard]] Pane* focusedPane() const noexcept;
         [[nodiscard]] bool requestFocus(Pane&) noexcept;
@@ -115,12 +122,15 @@ namespace lux::ui
         [[nodiscard]] DockTree captureDockTree() const;
 
     private:
+        using LuxObject::addChild;
+        using LuxObject::removeChild;
+        using LuxObject::setParent;
+        [[nodiscard]] PaneResult<void> checkStructureSafe() const noexcept;
         Root() noexcept;
         void applyPendingChanges() noexcept;
         [[nodiscard]] cxx::expected<void, ECaptureError>
         updateFrame(FrameInfo, DrawData*, std::optional<Capture>) noexcept;
         [[nodiscard]] cxx::expected<void, EInitError> initialize(RootConfig) noexcept;
-        friend struct detail::RootTestAccess;
         friend class TextEdit;
         friend class NumericEdit;
         [[nodiscard]] Pane* findPane(PaneId) const noexcept;

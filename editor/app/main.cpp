@@ -39,7 +39,7 @@ int main()
         return context.ui().registerFactory(
             "framework.welcome",
             [](lux::editor::EditorContext& value, const lux::editor::PaneDescription& description
-            ) -> lux::editor::FrameworkResult<std::unique_ptr<lux::ui::Pane>>
+            ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::ui::Pane>>
             { return std::unique_ptr<lux::ui::Pane>{new WelcomePane(value, description)}; }
         );
     };

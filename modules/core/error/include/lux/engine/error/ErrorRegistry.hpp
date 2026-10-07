@@ -2,41 +2,18 @@
 
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/core/visibility.h>
-#include <lux/engine/error/Error.hpp>
+#include <lux/engine/error/ErrorDescriptor.hpp>
 #include <memory>
 #include <span>
 #include <string>
 
 namespace lux::error
 {
-    enum class ERecovery : std::uint8_t
-    {
-        PERMANENT,
-        RETRYABLE,
-        NEEDS_INPUT,
-        BUG
-    };
-    enum class EArgument : std::uint8_t
-    {
-        NONE,
-        UNSIGNED,
-        SIGNED,
-        HEX
-    };
     enum class ERegistrationError : std::uint8_t
     {
         INVALID_DESCRIPTOR,
         DEFINITION_MISMATCH,
         HASH_COLLISION
-    };
-
-    // Borrowed only during registration. No callback or plugin address is retained.
-    struct ErrorDescriptor final
-    {
-        std::string_view name;
-        std::string_view message;
-        ERecovery recovery{ERecovery::PERMANENT};
-        std::array<EArgument, 3> arguments{};
     };
 
     struct ErrorDefinition final

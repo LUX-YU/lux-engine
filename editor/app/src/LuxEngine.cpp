@@ -23,23 +23,23 @@ namespace lux::editor
         error::Error executionError(process::EExecutionError value) noexcept
         {
             constexpr error::ErrorId ids[]{
-                error::errorId("lux.process.execution.0"),
-                error::errorId("lux.process.execution.1"),
-                error::errorId("lux.process.execution.2"),
-                error::errorId("lux.process.execution.3"),
-                error::errorId("lux.process.execution.4"),
-                error::errorId("lux.process.execution.5"),
-                error::errorId("lux.process.execution.6"),
-                error::errorId("lux.process.execution.7"),
-                error::errorId("lux.process.execution.8"),
-                error::errorId("lux.process.execution.9"),
-                error::errorId("lux.process.execution.10")
+                Errors::ProcessExecution0,
+                Errors::ProcessExecution1,
+                Errors::ProcessExecution2,
+                Errors::ProcessExecution3,
+                Errors::ProcessExecution4,
+                Errors::ProcessExecution5,
+                Errors::ProcessExecution6,
+                Errors::ProcessExecution7,
+                Errors::ProcessExecution8,
+                Errors::ProcessExecution9,
+                Errors::ProcessExecution10
             };
             static_assert(
                 std::size(ids) == static_cast<std::size_t>(process::EExecutionError::CAPABILITY_UNAVAILABLE) + 1
             );
             const auto code = static_cast<std::size_t>(value);
-            constexpr auto unknown = error::errorId("lux.process.execution.unknown");
+            constexpr auto unknown = Errors::ProcessExecutionUnknown;
             return {code < std::size(ids) ? ids[code] : unknown, {code}};
         }
         error::Error creationError(const engine::EngineContext::VCreateFailure& failure) noexcept
@@ -298,8 +298,7 @@ namespace lux::editor
                 {width ? float(pixels_x) / width : 1.F, height ? float(pixels_y) / height : 1.F}
             };
             auto capture = [&](const ui::DrawData& data) noexcept { return ui_scene_->captureDrawData(data); };
-            auto drawn =
-                ui_draw_data ? root.update(info, *ui_draw_data, ui::Root::Capture{capture}) : root.update(info);
+            auto drawn = ui_draw_data ? root.update(info, *ui_draw_data, ui::Root::Capture{capture}) : root.update();
             if (!drawn)
             {
                 return cxx::unexpected(error::Error{Errors::UiCapture, {static_cast<std::uint64_t>(drawn.error())}});

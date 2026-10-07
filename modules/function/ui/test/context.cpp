@@ -1,5 +1,5 @@
 #include "../../../../cmake/installed-consumers/common/UiDrawPane.hpp"
-#include "RootAccess.hpp"
+#include "UiTestHelpers.hpp"
 #include <cassert>
 #include <imgui.h>
 int main()
@@ -29,7 +29,7 @@ int main()
             [](object::LuxObject& target) noexcept { static_cast<ui::Pane&>(target).setTitle("Adopted"); }
         );
         assert(one.title() == "Draw");
-        assert((*first)->update({}));
+        assert((*first)->update());
         assert(one.title() == "Adopted");
         for (int i{}; i < 100; ++i)
         {

@@ -14,23 +14,32 @@ namespace lux::scene
     {
         namespace Errors
         {
-            constexpr error::ErrorId SceneTransformUpdate = error::errorId("lux.scene.transform.update");
-            constexpr error::ErrorId SceneTransformHierarchy = error::errorId("lux.scene.transform.hierarchy");
-            constexpr error::ErrorId SceneTransformCommands = error::errorId("lux.scene.transform.commands");
+            constexpr error::ErrorDescriptor SceneTransformUpdateDescriptor{
+                "lux.scene.transform.update",
+                "Transform update code {0}",
+                error::ERecovery::NEEDS_INPUT,
+                {error::EArgument::UNSIGNED}
+            };
+            constexpr error::ErrorId SceneTransformUpdate = error::errorId(SceneTransformUpdateDescriptor.name);
+            constexpr error::ErrorDescriptor SceneTransformHierarchyDescriptor{
+                "lux.scene.transform.hierarchy",
+                "Hierarchy maintenance code {0}",
+                error::ERecovery::NEEDS_INPUT,
+                {error::EArgument::UNSIGNED}
+            };
+            constexpr error::ErrorId SceneTransformHierarchy = error::errorId(SceneTransformHierarchyDescriptor.name);
+            constexpr error::ErrorDescriptor SceneTransformCommandsDescriptor{
+                "lux.scene.transform.commands",
+                "ECS command code {0}; producer {1}, command {2}",
+                error::ERecovery::NEEDS_INPUT,
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
+            };
+            constexpr error::ErrorId SceneTransformCommands = error::errorId(SceneTransformCommandsDescriptor.name);
         } // namespace Errors
         constexpr error::ErrorDescriptor ErrorDescriptors[]{
-            {"lux.scene.transform.update",
-             "Transform update code {0}",
-             error::ERecovery::NEEDS_INPUT,
-             {error::EArgument::UNSIGNED}},
-            {"lux.scene.transform.hierarchy",
-             "Hierarchy maintenance code {0}",
-             error::ERecovery::NEEDS_INPUT,
-             {error::EArgument::UNSIGNED}},
-            {"lux.scene.transform.commands",
-             "ECS command code {0}; producer {1}, command {2}",
-             error::ERecovery::NEEDS_INPUT,
-             {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}}
+            Errors::SceneTransformUpdateDescriptor,
+            Errors::SceneTransformHierarchyDescriptor,
+            Errors::SceneTransformCommandsDescriptor
         };
     } // namespace
 

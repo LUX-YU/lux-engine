@@ -1,4 +1,4 @@
-#include "RootAccess.hpp"
+#include "UiTestHelpers.hpp"
 #pragma once
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <cassert>
@@ -94,12 +94,12 @@ namespace element_checks
             assert(root.requestFocus(*owner.item));
             assert(root.capturePointer(*owner.item));
             owner.replace = true;
-            assert(root.update({}));
+            assert(root.update());
             assert(owner.item->updates == 1);
             ui_test::apply(root);
-            assert(!root.focusedElement() && owner.item->updates == 0);
-            assert(root.update({}));
-            assert(owner.item->updates == 1);
+            assert(!root.focusedElement() && owner.item->updates == 1);
+            assert(root.update());
+            assert(owner.item->updates == 2);
             owner.setVisible(false);
             auto& child = ui_test::makePane<ui::Pane>(root, "Independent");
             Item content(child, "content");
@@ -215,7 +215,7 @@ namespace element_checks
             ui::DrawData draw;
             assert(root.update({{640, 480}, 0.016F}, draw));
             assert(text.draws == 1 && text.updates == 1);
-            assert(root.update({}));
+            assert(root.update());
             assert(text.updates == 2);
         }
         {
@@ -276,7 +276,8 @@ namespace element_checks
             assert(!number.setSpec({.minimum = std::int32_t{0}}));
             assert(number.setSpec({.minimum = 0.0F, .maximum = 10.0F}));
             assert(root.setDockTree(
-                {{{ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {&pane}}}, {{0, {{0, 0}, {640, 480}}, false}}}
+                {{{ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5F, {root.paneHandle(pane)}}},
+                 {{0, {{0, 0}, {640, 480}}, false}}}
             ));
             ui::DrawData draw;
             const auto frame = [&] { assert(root.update({{640, 480}, 0.016F}, draw)); };

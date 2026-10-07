@@ -102,13 +102,13 @@ namespace
         auto assembly = [&](EditorContext& context) noexcept -> FrameworkResult<void>
         {
             assert(context.services().registerFactory<Service>(
-                [&](EditorContext&) -> FrameworkResult<std::unique_ptr<Service>>
+                [&](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Service>>
                 { return std::make_unique<Service>(deaths); }
             ));
             return context.ui().registerFactory(
                 "test",
                 [&](EditorContext& context,
-                    const PaneDescription& description) -> FrameworkResult<std::unique_ptr<ui::Pane>>
+                    const PaneDescription& description) noexcept -> FrameworkResult<std::unique_ptr<ui::Pane>>
                 {
                     assert(context.service<Service>());
                     return std::unique_ptr<ui::Pane>{new TestPane(description.name, deaths)};
@@ -162,13 +162,13 @@ namespace
         auto failing = [&](EditorContext& context) noexcept -> FrameworkResult<void>
         {
             assert(context.services().registerFactory<Service>(
-                [&](EditorContext&) -> FrameworkResult<std::unique_ptr<Service>>
+                [&](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Service>>
                 { return std::make_unique<Service>(deaths); }
             ));
             return context.ui().registerFactory(
                 "test",
                 [&](EditorContext& context,
-                    const PaneDescription& description) -> FrameworkResult<std::unique_ptr<ui::Pane>>
+                    const PaneDescription& description) noexcept -> FrameworkResult<std::unique_ptr<ui::Pane>>
                 {
                     assert(context.service<Service>());
                     if (description.name == "two")

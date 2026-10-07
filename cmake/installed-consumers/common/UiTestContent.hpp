@@ -36,7 +36,7 @@ namespace ui_test
     inline std::size_t paneCount(lux::ui::Root& root)
     {
         std::size_t count{};
-        auto visit = [&](lux::ui::Pane&) { ++count; };
+        auto visit = [&](lux::ui::Pane&) noexcept { ++count; };
         assert(root.forEachPane(visit));
         return count;
     }

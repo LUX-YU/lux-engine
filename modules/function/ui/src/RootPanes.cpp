@@ -2,6 +2,18 @@
 
 namespace lux::ui
 {
+    PaneHandle Root::paneHandle(const Pane& pane) const noexcept
+    {
+        requireOwner();
+        return pane.root_ == this ? PaneHandle{objectId(), pane.id_} : PaneHandle{};
+    }
+
+    Pane* Root::resolvePane(PaneHandle handle) const noexcept
+    {
+        requireOwner();
+        return handle.root_ == objectId() ? findPane(handle.pane_) : nullptr;
+    }
+
     Pane* Root::findPane(PaneId id) const noexcept
     {
         requireOwner();
@@ -9,7 +21,7 @@ namespace lux::ui
         return owner ? owner->get() : nullptr;
     }
 
-    PaneResult<void> Root::forEachPane(cxx::function_ref<void(Pane&)> visit) noexcept
+    PaneResult<void> Root::forEachPane(cxx::function_ref<void(Pane&) noexcept> visit) noexcept
     {
         if (auto ready = checkStructureSafe(); !ready)
         {
@@ -88,7 +100,7 @@ namespace lux::ui
             }
             if (std::ranges::find(prepared, candidate.get()) != prepared.end())
             {
-                return cxx::unexpected(EPaneError::DUPLICATE_ID);
+                return cxx::unexpected(EPaneError::DUPLICATE_PANE);
             }
             auto relation = validateRelation(*candidate, this);
             if (!relation)
@@ -346,7 +358,10 @@ namespace lux::ui
     void Root::notifyRemoved(object::LuxObject& subtree) noexcept
     {
         beginCallbackBorrow(subtree);
-        visitSubtree(subtree, [&](object::LuxObject& node) noexcept { static_cast<void>(emit(objectRemoved, &node)); });
+        visitSubtree(
+            subtree,
+            [&](object::LuxObject& node) noexcept { static_cast<void>(emit(objectRemoved, ObjectRemoved{node})); }
+        );
         endCallbackBorrow(subtree);
     }
 

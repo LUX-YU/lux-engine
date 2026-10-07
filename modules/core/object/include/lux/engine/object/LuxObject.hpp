@@ -13,8 +13,6 @@
 #include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/object/Signal.hpp>
 #include <memory>
-#include <span>
-#include <thread>
 #include <tuple>
 #include <type_traits>
 

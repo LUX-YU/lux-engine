@@ -1,18 +1,19 @@
 #pragma once
 #include <lux/engine/editor/FrameworkResult.hpp>
 #include <lux/engine/input/Input.hpp>
-#include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 
-namespace lux::ui { class Root; }
+namespace lux::ui
+{
+    class Root;
+}
 namespace lux::editor
 {
     class EditorWindow final : public window::LuxWindow
     {
     public:
-        [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorWindow>> create(
-            const window::InitParameter&
-        ) noexcept;
+        [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorWindow>>
+        create(const window::InitParameter&) noexcept;
         ~EditorWindow() override;
         EditorWindow(const EditorWindow&) = delete;
         EditorWindow& operator=(const EditorWindow&) = delete;

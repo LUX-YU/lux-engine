@@ -15,8 +15,8 @@ namespace lux::ui
 namespace lux::editor
 {
     class EditorContext;
-    using UiFactory =
-        cxx::move_only_function<FrameworkResult<std::unique_ptr<ui::Pane>>(EditorContext&, const PaneDescription&)>;
+    using UiFactory = cxx::move_only_function<
+        FrameworkResult<std::unique_ptr<ui::Pane>>(EditorContext&, const PaneDescription&) noexcept>;
 
     class EditorUiRegistrar final
     {

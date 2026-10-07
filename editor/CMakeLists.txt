@@ -67,10 +67,12 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     target_link_libraries(editor_framework_input_test PRIVATE lux_editor_ui)
     lux_editor_test_options(editor_framework_input_test)
     add_test(NAME framework.input_conversion COMMAND editor_framework_input_test)
-    add_executable(editor_framework_ui_test tests/ui.cpp)
+    add_executable(editor_framework_ui_test tests/ui.cpp tests/callback_contract.cpp)
     target_link_libraries(editor_framework_ui_test PRIVATE lux_editor_ui)
     lux_editor_test_options(editor_framework_ui_test)
     add_test(NAME framework.ui COMMAND editor_framework_ui_test)
+    add_test(NAME framework.callback_contract COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/callback_contract.py" "${CMAKE_BINARY_DIR}")
     set_tests_properties(framework.context framework.ui PROPERTIES TIMEOUT 60)
 endif()
 

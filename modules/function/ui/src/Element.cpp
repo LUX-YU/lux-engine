@@ -73,11 +73,11 @@ namespace lux::ui
             root->checkContentChange();
             root->checkDestruction(*this);
         }
-        beginDestruction();
         if (root)
         {
             root->releaseElement(*this);
         }
+        beginDestruction();
         if (pane_ && pane_->content_ == this)
         {
             pane_->content_ = nullptr;

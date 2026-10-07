@@ -13,6 +13,8 @@ namespace lux::world
 namespace lux::editor
 {
     class EditorContext;
+    // Provisional: selection semantics are excluded from the Framework v2 freeze contract.
+    // Revisit with the first real SceneSession/SceneToolSet rather than extending dummy rules.
     class SceneToolRegistrar final
     {
     public:
@@ -26,8 +28,8 @@ namespace lux::editor
         template <class T>
         [[nodiscard]] FrameworkResult<void> registerFactory(
             Match match,
-            cxx::move_only_function<FrameworkResult<std::unique_ptr<T>>(EditorContext&, const world::WorldDescription&)>
-                factory
+            cxx::move_only_function<
+                FrameworkResult<std::unique_ptr<T>>(EditorContext&, const world::WorldDescription&) noexcept> factory
         ) noexcept
         {
             if (frozen_)
@@ -47,9 +49,11 @@ namespace lux::editor
                     return cxx::unexpected(error::Error{Errors::EditorDuplicateSceneToolRule, {}});
                 }
             }
-            auto erased = [factory = std::move(factory
-                           )](EditorContext& context,
-                              const world::WorldDescription& world) mutable -> FrameworkResult<Owner>
+            using ErasedResult = FrameworkResult<Owner>;
+            auto erased = [factory = std::move(factory)](
+                EditorContext& context,
+                const world::WorldDescription& world
+            ) mutable noexcept -> ErasedResult
             {
                 auto result = factory(context, world);
                 if (!result)
@@ -112,7 +116,8 @@ namespace lux::editor
         {
             cxx::TypeToken type;
             Match match;
-            cxx::move_only_function<FrameworkResult<Owner>(EditorContext&, const world::WorldDescription&)> factory;
+            cxx::move_only_function<FrameworkResult<Owner>(EditorContext&, const world::WorldDescription&) noexcept>
+                factory;
         };
         std::vector<Entry> entries_;
         bool frozen_{};

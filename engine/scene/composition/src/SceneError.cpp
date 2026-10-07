@@ -8,44 +8,80 @@ namespace lux::scene
     {
         namespace Errors
         {
-            constexpr error::ErrorId SceneSystemBuild = error::errorId("lux.scene.system.build");
-            constexpr error::ErrorId SceneBuild = error::errorId("lux.scene.build");
-            constexpr error::ErrorId SceneExecution = error::errorId("lux.scene.execution");
-            constexpr error::ErrorId SimulationCommands = error::errorId("lux.simulation.commands");
-            constexpr error::ErrorId SimulationExecution = error::errorId("lux.simulation.execution");
-            constexpr error::ErrorId SceneDrive = error::errorId("lux.scene.drive");
-            constexpr error::ErrorId SceneClock = error::errorId("lux.scene.clock");
-            constexpr error::ErrorId SceneExecutor = error::errorId("lux.scene.executor");
-            constexpr error::ErrorId SceneTimer = error::errorId("lux.scene.timer");
+            constexpr error::ErrorDescriptor SceneSystemBuildDescriptor{
+                "lux.scene.system.build",
+                "Scene system code {0}, instance {1}, subject {2}",
+                error::ERecovery::NEEDS_INPUT,
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::HEX}
+            };
+            constexpr error::ErrorId SceneSystemBuild = error::errorId(SceneSystemBuildDescriptor.name);
+            constexpr error::ErrorDescriptor SceneBuildDescriptor{
+                "lux.scene.build",
+                "Scene build code {0}, simulation code {1}, subject {2}",
+                error::ERecovery::NEEDS_INPUT,
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::HEX}
+            };
+            constexpr error::ErrorId SceneBuild = error::errorId(SceneBuildDescriptor.name);
+            constexpr error::ErrorDescriptor SceneExecutionDescriptor{
+                "lux.scene.execution",
+                "Scene execution code {0}, system {1}, phase {2}",
+                error::ERecovery::PERMANENT,
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
+            };
+            constexpr error::ErrorId SceneExecution = error::errorId(SceneExecutionDescriptor.name);
+            constexpr error::ErrorDescriptor SimulationCommandsDescriptor{
+                "lux.simulation.commands",
+                "ECS command code {0}, producer {1}, command {2}",
+                error::ERecovery::PERMANENT,
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
+            };
+            constexpr error::ErrorId SimulationCommands = error::errorId(SimulationCommandsDescriptor.name);
+            constexpr error::ErrorDescriptor SimulationExecutionDescriptor{
+                "lux.simulation.execution",
+                "Simulation code {0}, system {1}, executor code {2}",
+                error::ERecovery::PERMANENT,
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
+            };
+            constexpr error::ErrorId SimulationExecution = error::errorId(SimulationExecutionDescriptor.name);
+            constexpr error::ErrorDescriptor SceneDriveDescriptor{
+                "lux.scene.drive",
+                "Scene drive code {0}, phase {1}",
+                error::ERecovery::PERMANENT,
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
+            };
+            constexpr error::ErrorId SceneDrive = error::errorId(SceneDriveDescriptor.name);
+            constexpr error::ErrorDescriptor SceneClockDescriptor{
+                "lux.scene.clock",
+                "Clock code {0}",
+                error::ERecovery::PERMANENT,
+                {error::EArgument::UNSIGNED}
+            };
+            constexpr error::ErrorId SceneClock = error::errorId(SceneClockDescriptor.name);
+            constexpr error::ErrorDescriptor SceneExecutorDescriptor{
+                "lux.scene.executor",
+                "Executor code {0}",
+                error::ERecovery::PERMANENT,
+                {error::EArgument::UNSIGNED}
+            };
+            constexpr error::ErrorId SceneExecutor = error::errorId(SceneExecutorDescriptor.name);
+            constexpr error::ErrorDescriptor SceneTimerDescriptor{
+                "lux.scene.timer",
+                "Timer code {0}",
+                error::ERecovery::PERMANENT,
+                {error::EArgument::UNSIGNED}
+            };
+            constexpr error::ErrorId SceneTimer = error::errorId(SceneTimerDescriptor.name);
         } // namespace Errors
         constexpr error::ErrorDescriptor ErrorDescriptors[]{
-            {"lux.scene.system.build",
-             "Scene system code {0}, instance {1}, subject {2}",
-             error::ERecovery::NEEDS_INPUT,
-             {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::HEX}},
-            {"lux.scene.build",
-             "Scene build code {0}, simulation code {1}, subject {2}",
-             error::ERecovery::NEEDS_INPUT,
-             {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::HEX}},
-            {"lux.scene.execution",
-             "Scene execution code {0}, system {1}, phase {2}",
-             error::ERecovery::PERMANENT,
-             {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}},
-            {"lux.simulation.commands",
-             "ECS command code {0}, producer {1}, command {2}",
-             error::ERecovery::PERMANENT,
-             {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}},
-            {"lux.simulation.execution",
-             "Simulation code {0}, system {1}, executor code {2}",
-             error::ERecovery::PERMANENT,
-             {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}},
-            {"lux.scene.drive",
-             "Scene drive code {0}, phase {1}",
-             error::ERecovery::PERMANENT,
-             {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}},
-            {"lux.scene.clock", "Clock code {0}", error::ERecovery::PERMANENT, {error::EArgument::UNSIGNED}},
-            {"lux.scene.executor", "Executor code {0}", error::ERecovery::PERMANENT, {error::EArgument::UNSIGNED}},
-            {"lux.scene.timer", "Timer code {0}", error::ERecovery::PERMANENT, {error::EArgument::UNSIGNED}}
+            Errors::SceneSystemBuildDescriptor,
+            Errors::SceneBuildDescriptor,
+            Errors::SceneExecutionDescriptor,
+            Errors::SimulationCommandsDescriptor,
+            Errors::SimulationExecutionDescriptor,
+            Errors::SceneDriveDescriptor,
+            Errors::SceneClockDescriptor,
+            Errors::SceneExecutorDescriptor,
+            Errors::SceneTimerDescriptor
         };
     } // namespace
 

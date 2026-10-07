@@ -110,6 +110,10 @@ namespace lux::ui
 
     void Pane::setModal(bool modal) noexcept
     {
+        if (!isOnAffinityThread())
+        {
+            detail::failContract();
+        }
         if (root_)
         {
             root_->checkContentChange();

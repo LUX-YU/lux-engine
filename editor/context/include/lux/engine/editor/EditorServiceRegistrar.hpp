@@ -23,14 +23,15 @@ namespace lux::editor
 
         template <class T>
         [[nodiscard]] FrameworkResult<void> registerFactory(
-            cxx::move_only_function<FrameworkResult<std::unique_ptr<T>>(EditorContext&)> factory
+            cxx::move_only_function<FrameworkResult<std::unique_ptr<T>>(EditorContext&) noexcept> factory
         ) noexcept
         {
             if (!factory)
             {
                 return cxx::unexpected(error::Error{Errors::EditorEmptyServiceFactory, {}});
             }
-            auto erased = [factory = std::move(factory)](EditorContext& context) mutable -> FrameworkResult<Owner>
+            using ErasedResult = FrameworkResult<Owner>;
+            auto erased = [factory = std::move(factory)](EditorContext& context) mutable noexcept -> ErasedResult
             {
                 auto created = factory(context);
                 if (!created)
@@ -63,7 +64,7 @@ namespace lux::editor
         }
 
         using Owner = std::unique_ptr<void, void (*)(void*) noexcept>;
-        using Factory = cxx::move_only_function<FrameworkResult<Owner>(EditorContext&)>;
+        using Factory = cxx::move_only_function<FrameworkResult<Owner>(EditorContext&) noexcept>;
         struct Entry final
         {
             cxx::TypeToken type;

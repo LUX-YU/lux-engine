@@ -17,15 +17,23 @@ namespace lux::scene
     {
         namespace Errors
         {
-            constexpr error::ErrorId SceneRenderStageCreate = error::errorId("lux.scene.render.stage_create");
-            constexpr error::ErrorId SceneRenderStagePrepare = error::errorId("lux.scene.render.stage_prepare");
+            constexpr error::ErrorDescriptor SceneRenderStageCreateDescriptor{
+                "lux.scene.render.stage_create",
+                "Render extraction creation code {0}",
+                error::ERecovery::NEEDS_INPUT,
+                {error::EArgument::UNSIGNED}
+            };
+            constexpr error::ErrorId SceneRenderStageCreate = error::errorId(SceneRenderStageCreateDescriptor.name);
+            constexpr error::ErrorDescriptor SceneRenderStagePrepareDescriptor{
+                "lux.scene.render.stage_prepare",
+                "Render extraction preparation failed",
+                error::ERecovery::BUG
+            };
+            constexpr error::ErrorId SceneRenderStagePrepare = error::errorId(SceneRenderStagePrepareDescriptor.name);
         } // namespace Errors
         constexpr error::ErrorDescriptor ErrorDescriptors[]{
-            {"lux.scene.render.stage_create",
-             "Render extraction creation code {0}",
-             error::ERecovery::NEEDS_INPUT,
-             {error::EArgument::UNSIGNED}},
-            {"lux.scene.render.stage_prepare", "Render extraction preparation failed", error::ERecovery::BUG}
+            Errors::SceneRenderStageCreateDescriptor,
+            Errors::SceneRenderStagePrepareDescriptor
         };
     } // namespace
 

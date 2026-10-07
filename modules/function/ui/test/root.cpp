@@ -1,5 +1,5 @@
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
-#include "RootAccess.hpp"
+#include "UiTestHelpers.hpp"
 #include <imgui.h>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
@@ -21,6 +21,7 @@
 #include <memory>
 #include <optional>
 #include <string_view>
+#include <thread>
 
 namespace
 {
@@ -183,7 +184,7 @@ namespace
         assert(!root.firstChild() && (ui_test::paneCount(root) == 0));
         assert(!root.focusedElement() && !root.focusedPane());
         ui_test::apply(root); // All callbacks attached to destroyed members were removed.
-        assert(root.update({}));
+        assert(root.update());
 
         // A failed factory reclaims a complete but unpublished candidate using the same ordinary deleter.
         Lifetime rejected;
@@ -240,8 +241,8 @@ namespace
         assert(root.requestFocus(content) && root.capturePointer(content));
         ui_test::apply(root);
         ui_test::apply(root);
-        assert(owner.content->applications == 0 && owner.content->updates == 0);
-        assert(root.update({}) && owner.content->updates == 1);
+        assert(owner.content->applications == 0 && owner.content->updates == 2);
+        assert(root.update() && owner.content->updates == 3);
         root.deferChange(*owner.content, ChangeElement::apply);
         owner.content.reset();
         assert(!owner.content && !owner.Pane::content());
@@ -258,7 +259,19 @@ namespace
         assert(created);
         auto& root = **created;
         auto& owner = ui_test::makePane<ChangeOwner>(root);
-        const auto apply = +[](ChangeElement& target) noexcept { ui_test::apply(target.root()); };
+        const auto apply = +[](ChangeElement& target) noexcept
+        {
+            const auto result = target.root().update();
+            assert(!result && result.error() == ui::ECaptureError::FRAME_OPEN);
+            ++target.extra;
+        };
+        if (scenario == "modal-wrong-thread")
+        {
+            ui::Pane detached("Detached");
+            std::thread worker([&detached] { detached.setModal(true); });
+            worker.join();
+            return EXIT_FAILURE;
+        }
         const auto destroy =
             +[](ChangeElement& target) noexcept { static_cast<ChangeOwner&>(target.pane()).content.reset(); };
         ui::Command command{ui::CommandIdView{"test.change"}};
@@ -278,7 +291,7 @@ namespace
         else if (scenario == "apply-in-update")
         {
             owner.content->on_update = apply;
-            static_cast<void>(root.update({}));
+            static_cast<void>(root.update());
         }
         else if (scenario == "recursive-apply" || scenario == "destroy-in-apply")
         {
@@ -292,10 +305,15 @@ namespace
                 &owner,
                 &ui::Pane::visibilityChanged,
                 &owner,
-                [&root](const ui::PaneVisibilityChanged&) noexcept { ui_test::apply(root); }
+                [&owner, apply](const ui::PaneVisibilityChanged&) noexcept { apply(*owner.content); }
             );
             assert(visibility);
             owner.setVisible(false);
+        }
+        if (scenario.find("destroy") == std::string_view::npos)
+        {
+            assert(owner.content->extra == 1);
+            return EXIT_SUCCESS;
         }
         return EXIT_FAILURE;
     }
@@ -412,12 +430,12 @@ int main(int argc, char** argv)
         auto& sibling = ui_test::makePane<Probe>(**first, "sibling");
         auto& separate = ui_test::makePane<Probe>(**second, "separate");
         assert(&child.root() == first->get());
-        assert(ui_test::findPane(**first, ui_test::paneId(child)) == &child);
+        assert(ui_test::resolvePane(**first, ui_test::paneHandle(child)) == &child);
         assert((*first)->update({{640, 480}, 0.016F}, slot));
         assert(parent.draws == 1 && child.draws == 1 && sibling.draws == 1 && separate.draws == 0);
         assert(ImGui::GetCurrentContext() == original && slot.valid());
         child.setVisible(false);
-        assert((*first)->update({}));
+        assert((*first)->update());
         assert(parent.updates == 2 && child.updates == 2 && sibling.updates == 2 && separate.updates == 0);
         assert((*first)->update({{640, 480}, 0.016F}, slot));
         assert(parent.draws == 2 && child.draws == 1 && sibling.draws == 2);
@@ -433,7 +451,7 @@ int main(int argc, char** argv)
         const auto before_hidden = child.keys;
         parent.setVisible(false);
         assert((*first)->requestFocus(child) && (*first)->capturePointer(child));
-        assert((*first)->update({}));
+        assert((*first)->update());
         assert(child.keys == before_hidden); // Same input is never routed twice.
         parent.setVisible(true);
         child.setVisible(false);
@@ -442,12 +460,12 @@ int main(int argc, char** argv)
         assert((*second)->update({{640, 480}, 0.016F}, slot));
         assert(separate.draws == 1 && ImGui::GetCurrentContext() == original);
         auto& temporary = ui_test::makePane<Probe>(**first, "temporary");
-        const auto temporary_id = ui_test::paneId(temporary);
+        const auto temporary_id = ui_test::paneHandle(temporary);
         assert((*first)->requestFocus(temporary));
         assert((*first)->capturePointer(temporary));
         assert((*first)->removePane(temporary));
         assert((*first)->update({{640, 480}, 0.016F}, slot));
-        assert(!ui_test::findPane(**first, temporary_id));
+        assert(!ui_test::resolvePane(**first, temporary_id));
     }
     assert((*first)->clearPanes() && (*second)->clearPanes());
     {
@@ -486,11 +504,11 @@ int main(int argc, char** argv)
         assert(one.interaction().hovered && one.interaction().right_clicked);
         assert(!two.interaction().right_clicked);
         assert(one.interaction().local_pointer == (ui::Point{10, 10}));
-        assert((*second)->update({}));
+        assert((*second)->update());
         assert((*second)->feedInput(ui::PointerButton{ui::EPointerButton::RIGHT, false}));
         assert((*second)->update({{640, 480}, 0.016F}, slot));
         assert(!one.interaction().right_clicked && !one.interaction().resized);
-        assert((*second)->update({}));
+        assert((*second)->update());
 
         const auto has_image = [&]
         {
@@ -557,8 +575,8 @@ int main(int argc, char** argv)
         assert(!full && full.error() == ui::EInputError::FULL);
         assert(root.update({{640, 480}, 0.016F}, slot));
         assert(pane.undo == 1); // Input is consumed in the same Root update.
-        assert(root.update({}));
-        assert(root.update({}));
+        assert(root.update());
+        assert(root.update());
         assert(pane.undo == 1 && pane.redo == 0);
         // The trickled release is not routed early; a rejected release can be retried.
         assert(root.feedInput(ui::Key{ui::EKey::LEFT_CONTROL, false}));

@@ -26,7 +26,7 @@ add_executable(framework_component ../context_component.cpp)
 target_link_libraries(framework_component PRIVATE lux::engine::editor::lux_editor_context)
 add_executable(framework_context ../context.cpp)
 target_link_libraries(framework_context PRIVATE lux::engine::editor::lux_editor_context lux::engine::engine_context)
-add_executable(framework_ui ../ui.cpp)
+add_executable(framework_ui ../ui.cpp ../callback_contract.cpp)
 target_link_libraries(framework_ui PRIVATE lux::engine::editor::lux_editor_ui)
 add_executable(framework_gpu ../gpu.cpp)
 target_link_libraries(framework_gpu PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_context_render)
@@ -37,7 +37,11 @@ foreach(target framework_component framework_context framework_ui framework_gpu 
         target_compile_options(${target} PRIVATE -UNDEBUG -fno-rtti)
     endif()
 endforeach()
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 enable_testing()
+add_test(NAME sdk.framework.callback_contract COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../callback_contract.py" "${CMAKE_BINARY_DIR}")
 add_test(NAME sdk.framework.component COMMAND framework_component)
 add_test(NAME sdk.framework.registration_conflict COMMAND framework_context --registration-conflict)
 add_test(NAME sdk.object COMMAND sdk_object $<TARGET_FILE:sdk_object_plugin>)
@@ -64,8 +68,8 @@ foreach(header IN LISTS framework_headers)
 endforeach()
 
 set(foundation_headers object/ObjectRuntime object/LuxObject object/ObjectOwnership
-    object/CodeLease object/Connection error/Error error/ErrorRegistry services/ServiceRegistry
-    ui/Root ui/Pane ui/Element ui/Layout ui/Controls ui/Docking ui/ImageElement)
+    object/CodeLease object/Connection error/Error error/ErrorDescriptor error/ErrorRegistry services/ServiceRegistry
+    ui/Root ui/Pane ui/Element ui/Layout ui/Controls ui/Docking ui/PaneHandle ui/ImageElement)
 foreach(header IN LISTS foundation_headers)
     string(REPLACE "/" "_" name "${header}")
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${name}.cpp" "#include <lux/engine/${header}.hpp>\n")

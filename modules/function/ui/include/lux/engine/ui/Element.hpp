@@ -4,7 +4,6 @@
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/object/LuxObject.hpp>
 #include <lux/engine/ui/Geometry.hpp>
-#include <lux/engine/ui/Ids.hpp>
 #include <lux/engine/ui/PaneError.hpp>
 
 namespace lux::ui
@@ -104,6 +103,9 @@ namespace lux::ui
         void drawChild(Element& child, Point offset = {}) noexcept;
 
     private:
+        using LuxObject::addChild;
+        using LuxObject::removeChild;
+        using LuxObject::setParent;
         friend class Root;
         friend class Pane;
         friend class Layout;

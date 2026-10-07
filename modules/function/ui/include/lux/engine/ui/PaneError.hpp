@@ -13,14 +13,16 @@ namespace lux::ui
         OCCUPIED,
         NOT_ATTACHED,
         INVALID_TREE,
-        DUPLICATE_ID,
-        CAPACITY,
-        INVALID_ID
+        DUPLICATE_PANE,
+        CAPACITY
     };
     template <class T> using PaneResult = cxx::expected<T, EPaneError>;
     class Pane;
     struct PaneChanged final
     {
+        PaneChanged(Pane* value, bool is_attached) noexcept : pane(value), attached(is_attached) {}
+        PaneChanged(const PaneChanged&) = delete;
+        PaneChanged& operator=(const PaneChanged&) = delete;
         Pane* pane{};
         bool attached{};
     };

@@ -92,9 +92,9 @@ namespace lux::ui
         impl_->window = window;
         impl_->context->bindWindow(window ? window->nativeHandle() : nullptr);
     }
-    cxx::expected<void, ECaptureError> Root::update(FrameInfo info) noexcept
+    cxx::expected<void, ECaptureError> Root::update() noexcept
     {
-        return updateFrame(info, nullptr, std::nullopt);
+        return updateFrame({}, nullptr, std::nullopt);
     }
     cxx::expected<void, ECaptureError> Root::update(
         FrameInfo info,

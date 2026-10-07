@@ -96,3 +96,31 @@ private. All error domains declare IDs before failure, with registration conflic
 
 SceneToolRegistrar remains provisional until the first real SceneSession/SceneToolSet. No Scene/Material/Flow tool,
 dynamic registration, new docking persistence or additional runtime is introduced by this convergence.
+
+## Final lifetime/API contract
+
+DockTree values retain opaque `PaneHandle` values, never Pane addresses. A handle identifies one
+registration in one Root (Root ObjectId plus local generational PaneId); it does not keep either alive.
+`paneHandle` captures that identity, and `resolvePane` permits only a synchronous owner-thread borrow.
+Removal, remount, Root replacement and address reuse leave old handles stale. Layout application resolves
+all handles before dereferencing any Pane and publishes nothing on failure. Runtime handles are not a
+persistent layout format.
+
+`PaneChanged` and `ObjectRemoved` are noncopyable synchronous borrows. Existing signal admission rejects
+QUEUED connections as `PAYLOAD_NOT_QUEUEABLE`; no new signal dispatch or lifetime protocol is introduced.
+UI-specific structural methods are public; generic LuxObject mutators are hidden on UI types and remain
+rejected through explicit base access. Maintenance uses `Root::update()`; frame capture uses the explicit
+frame overload. Installed headers do not grant test-only private access.
+
+Assembly, UI/service/tool factories, frame capture and Pane enumeration encode `noexcept` in their callback
+signatures. The original callback borrowing/owning split remains; semantic failures use expected, ordinary
+heap exhaustion is fatal. Descriptors supply canonical names once; numeric IDs are derived from those
+same declarations, and registration remains a cold assembly operation.
+
+Assembly remains a synchronous `openProject` input in this correction; no stored lifetime contract is added.
+PaneDescription.name is a unique layout input and factory parameter, not yet a framework-owned persistent
+name binding. That binding belongs to a future Editor-side layout implementation, not generic Pane.
+SceneToolRegistrar remains **provisional and excluded from API freeze** until a real SceneSession/SceneToolSet
+vertical slice establishes its selection semantics. Vector registrars and their ownership are unchanged.
+
+Noexcept callable support for this correction uses lux-cxx `0a0e7419fc7229df6e372cd35a540249f92250ef`.

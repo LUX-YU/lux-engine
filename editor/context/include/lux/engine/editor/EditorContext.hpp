@@ -16,7 +16,7 @@ namespace lux::editor
     class EditorContext final
     {
     public:
-        using Assembly = cxx::function_ref<FrameworkResult<void>(EditorContext&)>;
+        using Assembly = cxx::function_ref<FrameworkResult<void>(EditorContext&) noexcept>;
         [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorContext>> create(
             engine::EngineContext&,
             ProjectDescription,

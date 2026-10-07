@@ -30,7 +30,7 @@ namespace lux::editor
     class LuxEngine final
     {
     public:
-        using Assembly = cxx::function_ref<FrameworkResult<void>(EditorContext&)>;
+        using Assembly = cxx::function_ref<FrameworkResult<void>(EditorContext&) noexcept>;
         [[nodiscard]] static FrameworkResult<std::unique_ptr<LuxEngine>> create(EditorConfig = {}) noexcept;
         ~LuxEngine() noexcept;
         LuxEngine(const LuxEngine&) = delete;

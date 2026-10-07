@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <lux/engine/editor/FrameworkErrors.hpp>
+#include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/SceneProfileRegistry.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
 
@@ -9,6 +9,7 @@ namespace lux::editor
         : entries_(std::move(entries))
     {
     }
+
     FrameworkResult<std::reference_wrapper<const SceneProfileRegistration>> SceneProfileRegistry::find(
         std::string_view id
     ) const noexcept
@@ -24,6 +25,7 @@ namespace lux::editor
         }
         return std::cref(*found);
     }
+
     std::span<const SceneProfileRegistration> SceneProfileRegistry::profiles() const noexcept
     {
         // This is a borrow, not a mutable registration snapshot.

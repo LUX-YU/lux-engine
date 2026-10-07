@@ -3,7 +3,6 @@
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
-#include <lux/engine/editor/FrameworkErrors.hpp>
 
 // Public SDK consumer: inspect an adopted Context in its signal, then close.
 // No test-only pumping or incomplete Context construction.

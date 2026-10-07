@@ -146,6 +146,12 @@ Feature dependency order/conflicts remain owned by FeatureCatalog/RenderSystem, 
 
 ## Host boundary
 
+Each component owns its error catalog: `ProjectErrors`, `ContextErrors`, `EditorUiErrors`, and `AppErrors`.
+Explicit assembly registers only the catalogs it uses; the host assembles all four. Failure paths construct the
+same stable numeric errors and never register descriptors. There is no aggregate FrameworkErrors header or
+registration function. Project's catalog links only its own component and the core error provider, not Context.
+Independent installed consumers qualify registration, idempotence, collisions and descriptor ownership.
+
 `run()` is the only public event-loop entry. Single-step access belongs to a noninstalled test support header;
 there is no public frame/exec or host profiling API. Pacing tests measure their own elapsed time and query original
 component statistics. EditorWindow owns the native resize/framebuffer/minimize slots and exposes cached metrics;

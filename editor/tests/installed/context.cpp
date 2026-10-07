@@ -3,6 +3,8 @@
 #include <cassert>
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/editor/AppErrors.hpp>
+#include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
@@ -15,6 +17,7 @@
 
 using namespace lux;
 using namespace lux::editor;
+
 namespace FixtureErrors
 {
     inline constexpr lux::error::ErrorId EditorUnused = lux::error::errorId("lux.editor.unused");
@@ -33,45 +36,56 @@ namespace
     {
         std::vector<int>& events;
         int id;
+
         ~Service()
         {
             events.push_back(id);
         }
     };
+
     struct Other final
     {
         std::vector<int>& events;
+
         ~Other()
         {
             events.push_back(2);
         }
     };
+
     struct Recursive final
     {
     };
+
     struct Retry final
     {
     };
+
     struct Missing final
     {
     };
+
     struct Tools final
     {
         unsigned serial;
     };
+
     bool match(const world::WorldDescription&) noexcept
     {
         return true;
     }
+
     bool alsoMatch(const world::WorldDescription&) noexcept
     {
         return true;
     }
+
     bool noMatch(const world::WorldDescription&) noexcept
     {
         return false;
     }
 } // namespace
+
 int main(int argc, char** argv)
 {
     assert(argc == 2);

@@ -1,4 +1,3 @@
-#include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include "../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include "support/ProjectRequests.hpp"
 #include <atomic>
@@ -10,6 +9,8 @@
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
+#include <lux/engine/editor/ProjectErrors.hpp>
+#include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/project/PluginRendering.hpp>
@@ -29,6 +30,7 @@
 using namespace lux;
 using namespace lux::editor;
 using namespace std::chrono_literals;
+
 namespace FixtureErrors
 {
     inline constexpr lux::error::ErrorId EditorExpectedSecondFactoryRefusal =
@@ -40,11 +42,13 @@ namespace
     struct Service final
     {
         std::vector<int>& deaths;
+
         ~Service()
         {
             deaths.push_back(2);
         }
     };
+
     class TestPane final : public ui::Pane
     {
     public:
@@ -53,11 +57,14 @@ namespace
         {
             assert(content_.addElement(label_) && content_.addElement(draw_probe_) && addElement(content_));
         }
+
         inline static std::uint64_t draws{};
+
         void drawTestContent(ui::Element&) noexcept
         {
             ++draws;
         }
+
         ~TestPane() override
         {
             deaths_.push_back(1);
@@ -69,6 +76,7 @@ namespace
         ui::Label label_;
         TUiTestContent<TestPane> draw_probe_;
     };
+
     template <class T> T take(FrameworkResult<T> result)
     {
         if (!result)
@@ -78,6 +86,7 @@ namespace
         assert(result);
         return std::move(*result);
     }
+
     void nativeLifecycle(const std::filesystem::path& catalog, const std::filesystem::path& plugin_root)
     {
         assert(!LuxEngine::create({"Invalid extent", 0, 480}));
@@ -136,21 +145,25 @@ namespace
         auto* runtime = &engine->engine();
         auto* window = &engine->window();
         auto* root = &window->uiRoot();
+
         class Listener final : public object::LuxObject
         {
         public:
             explicit Listener(LuxEngine& host) : host_(host) {}
+
             void attached(const ui::PaneChanged&) noexcept
             {
                 // Structural facts observe the semantic owner published by on_commit.
                 assert(host_.project() || host_.window().shouldClose());
                 ++calls;
             }
+
             unsigned calls{};
 
         private:
             LuxEngine& host_;
         } listener(*engine);
+
         auto connection = object::LuxObject::connect(root, &ui::Root::paneChanged, &listener, &Listener::attached);
         assert(connection);
         fixture::ProjectFacts facts{*engine};
@@ -316,6 +329,7 @@ namespace
     }
 
 } // namespace
+
 int main(int argc, char** argv)
 {
     const lux::error::ErrorDescriptor fixture_errors[]{

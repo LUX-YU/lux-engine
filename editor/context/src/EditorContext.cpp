@@ -1,7 +1,8 @@
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
-#include <lux/engine/editor/FrameworkErrors.hpp>
+#include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/detail/PreparedProject.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
 
@@ -19,14 +20,20 @@ namespace lux::editor
           tasks_(engine.execution())
     {
     }
+
     EditorContext::~EditorContext() noexcept = default;
+
     FrameworkResult<std::unique_ptr<EditorContext>> EditorContext::create(
         engine::EngineContext& engine,
         detail::PreparedProject prepared,
         EditorComposition&& composition
     ) noexcept
     {
-        if (auto registered = registerFrameworkErrors(); !registered)
+        if (auto registered = registerProjectErrors(); !registered)
+        {
+            return cxx::unexpected(registered.error());
+        }
+        if (auto registered = registerContextErrors(); !registered)
         {
             return cxx::unexpected(registered.error());
         }
@@ -58,6 +65,7 @@ namespace lux::editor
         }
         return std::unique_ptr<EditorContext>(new EditorContext(engine, std::move(prepared), std::move(composition)));
     }
+
     process::TaskScope& EditorContext::tasks() noexcept
     {
         if (!object::ObjectRuntime::instance().isCurrent())
@@ -66,6 +74,7 @@ namespace lux::editor
         }
         return tasks_;
     }
+
     FrameworkResult<std::unique_ptr<EditorContext>> detail::createEditorContext(
         engine::EngineContext& engine,
         PreparedProject prepared,

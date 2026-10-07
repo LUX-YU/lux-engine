@@ -1,7 +1,7 @@
 #pragma once
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
-#include <lux/engine/editor/FrameworkErrors.hpp>
+#include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/FrameworkResult.hpp>
 #include <memory>
 #include <vector>
@@ -10,9 +10,11 @@ namespace lux::world
 {
     struct WorldDescription;
 }
+
 namespace lux::editor
 {
     class EditorContext;
+
     // Provisional: selection semantics are excluded from the Framework v2 freeze contract.
     // Revisit with the first real SceneSession/SceneToolSet rather than extending dummy rules.
     class SceneToolRegistry final
@@ -59,6 +61,7 @@ namespace lux::editor
         friend class EditorContext;
         friend class EditorComposition;
         using Owner = std::unique_ptr<void, void (*)(void*) noexcept>;
+
         struct Entry final
         {
             cxx::TypeToken type;
@@ -67,6 +70,7 @@ namespace lux::editor
                 FrameworkResult<Owner>(EditorContext&, const world::WorldDescription&) noexcept>
                 factory;
         };
+
         std::vector<Entry> entries_;
         explicit SceneToolRegistry(std::vector<Entry>) noexcept;
     };

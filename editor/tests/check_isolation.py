@@ -12,6 +12,16 @@ model = json.loads((reply / index['reply']['codemodel-v2']['jsonFile']).read_tex
 for config in model['configurations']:
     targets = {t['id']: json.loads((reply / t['jsonFile']).read_text()) for t in config['targets']}
     names = {t['name']: key for key, t in targets.items()}
+    catalogs = {
+        'editor/project/src/ProjectErrors.cpp': 'lux_editor_project',
+        'editor/context/src/ContextErrors.cpp': 'lux_editor_context',
+        'editor/ui/src/EditorUiErrors.cpp': 'lux_editor_ui',
+        'editor/app/src/AppErrors.cpp': 'lux_editor_app',
+    }
+    for path, owner in catalogs.items():
+        providers = [t['name'] for t in targets.values()
+                     if any(s['path'].replace('\\', '/') == path for s in t.get('sources', []))]
+        assert providers == [owner], ('error catalog provider', path, providers, owner)
     for name in ('ui', 'lux_editor_project', 'lux_editor_context', 'lux_editor_ui', 'lux_editor_app',
                  'lux_editor_scene', 'lux_editor_file_io', 'lux_editor_scene_profiles', 'lux_editor'):
         seen, pending = set(), [names[name]]
@@ -28,6 +38,8 @@ for config in model['configurations']:
         closure = sorted(targets[k]['name'] for k in seen)
         if name == 'ui':
             assert not any(value.startswith('lux_editor') for value in closure), 'UI depends on Editor'
+        if name == 'lux_editor_project':
+            assert 'lux_editor_context' not in closure, (name, 'Project depends on Context')
         if name in ('lux_editor_project', 'lux_editor_scene', 'lux_editor_file_io'):
             for forbidden in ('process_execution', 'engine_context', 'scene_runtime', 'scene_render', 'ui'):
                 assert forbidden not in closure, (name, forbidden)
@@ -47,6 +59,8 @@ print('PASS: no legacy; manifest excludes runtime; Context excludes UI; host exc
 
 source = Path(model['paths']['source'])
 removed = (
+    'editor/context/include/lux/engine/editor/FrameworkErrors.hpp',
+    'editor/context/src/FrameworkErrors.cpp',
     'editor/app/include/lux/engine/editor/FrameStatistics.hpp',
     'editor/context/include/lux/engine/editor/EditorServiceRegistrar.hpp',
     'editor/context/include/lux/engine/editor/EditorUiRegistrar.hpp',

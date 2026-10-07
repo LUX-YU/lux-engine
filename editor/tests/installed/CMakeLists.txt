@@ -1,58 +1,128 @@
 cmake_minimum_required(VERSION 3.28)
+
 project(EditorFrameworkConsumer LANGUAGES CXX)
+
 set(CMAKE_CXX_STANDARD 20)
+
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 set(CMAKE_CXX_EXTENSIONS OFF)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-find_package(lux-engine-editor-framework REQUIRED COMPONENTS lux_editor_project lux_editor_context lux_editor_ui lux_editor_app lux_editor_scene lux_editor_scene_profiles)
+
+find_package(
+    lux-engine-editor-framework REQUIRED
+    COMPONENTS
+        lux_editor_project
+        lux_editor_context
+        lux_editor_ui
+        lux_editor_app
+        lux_editor_scene
+        lux_editor_scene_profiles
+)
+
 find_package(lux-engine-context REQUIRED COMPONENTS engine_context)
+
 find_package(lux-engine-context-render REQUIRED COMPONENTS engine_context_render)
+
 find_package(lux-engine-core REQUIRED COMPONENTS object error services)
+
 find_package(lux-engine-platform REQUIRED COMPONENTS dynamic_library)
+
 find_package(lux-engine-project-plugin-rendering REQUIRED COMPONENTS project_plugin_rendering)
+
 get_filename_component(sdk_root "${lux-engine-editor-framework_DIR}/../.." ABSOLUTE)
 
 # Test source is shared with the in-tree tests, but every header/library provider
 # is resolved through the freshly installed SDK, without private/source includes.
 set(foundation "${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/core")
+
 add_library(sdk_object_plugin MODULE "${foundation}/object/test/ownership_plugin.cpp")
+
 target_link_libraries(sdk_object_plugin PRIVATE lux::engine::core::object)
+
 add_executable(sdk_object "${foundation}/object/test/ownership.cpp")
+
 target_link_libraries(sdk_object PRIVATE lux::engine::core::object lux::engine::platform::dynamic_library)
+
 add_library(sdk_error_plugin MODULE "${foundation}/error/test/plugin.cpp")
+
 target_link_libraries(sdk_error_plugin PRIVATE lux::engine::core::error)
+
 add_executable(sdk_error errors.cpp)
+
 target_link_libraries(sdk_error PRIVATE lux::engine::core::error lux::engine::platform::dynamic_library)
+
 add_executable(sdk_services "${foundation}/services/test/services.cpp")
+
 target_link_libraries(sdk_services PRIVATE lux::engine::core::services)
+
 add_executable(framework_component ../context_component.cpp)
+
 target_link_libraries(framework_component PRIVATE lux::engine::editor::lux_editor_context)
+
 add_executable(framework_context context.cpp)
+
 target_link_libraries(framework_context PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_context)
 
 add_executable(framework_transaction "${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/function/ui/test/transaction.cpp")
+
 target_link_libraries(framework_transaction PRIVATE lux::engine::function::ui)
+
 add_executable(framework_ui ../ui.cpp ../callback_contract.cpp)
+
 target_link_libraries(framework_ui PRIVATE lux::engine::editor::lux_editor_ui)
+
 add_executable(framework_profiles ../scene_profiles.cpp)
+
 target_compile_definitions(framework_profiles PRIVATE LUX_INSTALLED_CONSUMER=1)
+
 target_link_libraries(framework_profiles PRIVATE lux::engine::editor::lux_editor_app)
-target_link_libraries(framework_profiles PRIVATE lux::engine::editor::lux_editor_scene lux::engine::editor::lux_editor_scene_profiles
-    lux::engine::engine_context lux::engine::project::project_plugin_rendering
-    lux::engine::scene::scene_render lux::engine::scene::scene_transform lux::engine::scene::scene_world_loading)
+
+target_link_libraries(
+    framework_profiles
+    PRIVATE
+        lux::engine::editor::lux_editor_scene
+        lux::engine::editor::lux_editor_scene_profiles
+        lux::engine::engine_context
+        lux::engine::project::project_plugin_rendering
+        lux::engine::scene::scene_render
+        lux::engine::scene::scene_transform
+        lux::engine::scene::scene_world_loading
+)
+
 add_executable(framework_manifest ../project_manifest.cpp)
+
 target_link_libraries(framework_manifest PRIVATE lux::engine::editor::lux_editor_project)
+
 add_executable(framework_pacing ../pacing.cpp)
+
 target_link_libraries(framework_pacing PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_context_render)
+
 find_package(nlohmann_json CONFIG REQUIRED)
+
 add_executable(framework_identity ../plugin_selection.cpp)
-target_link_libraries(framework_identity PRIVATE lux::engine::editor::lux_editor_project lux::engine::project::project_plugins nlohmann_json::nlohmann_json)
+
+target_link_libraries(
+    framework_identity
+    PRIVATE
+        lux::engine::editor::lux_editor_project
+        lux::engine::project::project_plugins
+        nlohmann_json::nlohmann_json
+)
+
 add_executable(framework_scene_file ../scene_file.cpp)
+
 target_link_libraries(framework_scene_file PRIVATE lux::engine::editor::lux_editor_scene)
+
 add_executable(framework_host host.cpp)
+
 target_link_libraries(framework_host PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_context_render)
+
 add_executable(framework_shutdown ../shutdown.cpp)
+
 target_link_libraries(framework_shutdown PRIVATE lux::engine::editor::lux_editor_app)
+
 foreach(target framework_transaction framework_identity framework_scene_file framework_host framework_shutdown framework_profiles framework_manifest framework_pacing framework_component framework_context framework_ui sdk_object sdk_error sdk_services sdk_object_plugin sdk_error_plugin)
     if(MSVC)
         target_compile_options(${target} PRIVATE /UNDEBUG /utf-8 /permissive- /GR- /we4541)
@@ -60,36 +130,111 @@ foreach(target framework_transaction framework_identity framework_scene_file fra
         target_compile_options(${target} PRIVATE -UNDEBUG -fno-rtti)
     endif()
 endforeach()
+
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
 enable_testing()
+
 add_test(NAME sdk.framework.public_host COMMAND framework_host "${CMAKE_CURRENT_BINARY_DIR}/host-data")
+
 add_test(NAME sdk.framework.shutdown_posted COMMAND framework_shutdown "${CMAKE_CURRENT_BINARY_DIR}/shutdown.luxproj")
-set_tests_properties(sdk.framework.public_host sdk.framework.shutdown_posted PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE LABELS "gpu;desktop")
+
+set_tests_properties(
+    sdk.framework.public_host sdk.framework.shutdown_posted
+    PROPERTIES
+        TIMEOUT
+        30
+        RUN_SERIAL
+        TRUE
+        LABELS
+        "gpu;desktop"
+)
+
 add_test(NAME sdk.framework.identity COMMAND framework_identity "${CMAKE_CURRENT_BINARY_DIR}/identity-data")
+
 add_test(NAME sdk.framework.scene_file COMMAND framework_scene_file "${CMAKE_CURRENT_BINARY_DIR}/scene-data")
-add_test(NAME sdk.framework.profiles COMMAND framework_profiles "${sdk_root}/share/lux-engine/plugins/catalog.json" "${sdk_root}" "${CMAKE_CURRENT_BINARY_DIR}/profile-data")
+
+add_test(
+    NAME sdk.framework.profiles
+    COMMAND
+        framework_profiles
+        "${sdk_root}/share/lux-engine/plugins/catalog.json"
+        "${sdk_root}"
+        "${CMAKE_CURRENT_BINARY_DIR}/profile-data"
+)
+
 add_test(NAME sdk.framework.manifest COMMAND framework_manifest "${CMAKE_CURRENT_BINARY_DIR}/manifest-data")
-add_test(NAME sdk.framework.callback_contract COMMAND "${Python3_EXECUTABLE}"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../callback_contract.py" "${CMAKE_BINARY_DIR}")
+
+add_test(
+    NAME sdk.framework.callback_contract
+    COMMAND
+        "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../callback_contract.py"
+        "${CMAKE_BINARY_DIR}"
+)
+
 add_test(NAME sdk.framework.component COMMAND framework_component)
+
 add_test(NAME sdk.framework.registration_conflict COMMAND framework_context --registration-conflict)
+
 add_test(NAME sdk.object COMMAND sdk_object $<TARGET_FILE:sdk_object_plugin>)
+
 add_test(NAME sdk.error COMMAND sdk_error $<TARGET_FILE:sdk_error_plugin>)
+
 add_test(NAME sdk.services COMMAND sdk_services)
+
 add_test(NAME sdk.framework.context COMMAND framework_context "${CMAKE_CURRENT_BINARY_DIR}/data")
+
 add_test(NAME sdk.framework.ui COMMAND framework_ui)
+
 add_test(NAME sdk.ui.transaction COMMAND framework_transaction)
+
 add_test(NAME sdk.framework.pacing COMMAND framework_pacing)
+
 set_tests_properties(sdk.framework.pacing PROPERTIES RUN_SERIAL TRUE TIMEOUT 60)
+
 set_tests_properties(sdk.framework.context sdk.framework.ui PROPERTIES TIMEOUT 60)
 
 # Each installed public header must be sufficient on its own in a C++20 translation unit.
-set(framework_headers EditorComposition EditorContext EditorServices EditorUiRegistry FrameworkResult
-    SceneToolRegistry ProjectDescription EditorLayout EditorUiFactories FrameworkErrors EditorWindow LuxEngine EditorAssembly ProjectManifest ProjectEvents EditorConfig SceneProfileRegistry SceneProfile3D ScenePackageFile)
+set(
+    framework_headers
+    EditorComposition
+    EditorContext
+    EditorServices
+    EditorUiRegistry
+    FrameworkResult
+    SceneToolRegistry
+    ProjectDescription
+    EditorLayout
+    EditorUiFactories
+    ProjectErrors
+    ContextErrors
+    EditorUiErrors
+    AppErrors
+    EditorWindow
+    LuxEngine
+    EditorAssembly
+    ProjectManifest
+    ProjectEvents
+    EditorConfig
+    SceneProfileRegistry
+    SceneProfile3D
+    ScenePackageFile
+)
+
 foreach(header IN LISTS framework_headers)
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" "#include <lux/engine/editor/${header}.hpp>\n")
+
     add_library(header_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")
-    target_link_libraries(header_${header} PRIVATE lux::engine::editor::lux_editor_app lux::engine::editor::lux_editor_scene lux::engine::editor::lux_editor_scene_profiles)
+
+    target_link_libraries(
+        header_${header}
+        PRIVATE
+            lux::engine::editor::lux_editor_app
+            lux::engine::editor::lux_editor_scene
+            lux::engine::editor::lux_editor_scene_profiles
+    )
+
     if(MSVC)
         target_compile_options(header_${header} PRIVATE /GR- /we4541 /utf-8)
     else()
@@ -97,14 +242,39 @@ foreach(header IN LISTS framework_headers)
     endif()
 endforeach()
 
-set(foundation_headers project/PluginIdentity process/TaskScope object/ObjectRuntime object/LuxObject object/ObjectOwnership
-    object/CodeLease object/Connection error/Error error/ErrorDescriptor error/ErrorRegistry services/ServiceRegistry
-    ui/UpdateStatistics ui/Root ui/Pane ui/Element ui/Layout ui/Controls ui/Docking ui/PaneHandle ui/ImageElement)
+set(
+    foundation_headers
+    project/PluginIdentity
+    process/TaskScope
+    object/ObjectRuntime
+    object/LuxObject
+    object/ObjectOwnership
+    object/CodeLease
+    object/Connection
+    error/Error
+    error/ErrorDescriptor
+    error/ErrorRegistry
+    services/ServiceRegistry
+    ui/UpdateStatistics
+    ui/Root
+    ui/Pane
+    ui/Element
+    ui/Layout
+    ui/Controls
+    ui/Docking
+    ui/PaneHandle
+    ui/ImageElement
+)
+
 foreach(header IN LISTS foundation_headers)
     string(REPLACE "/" "_" name "${header}")
+
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${name}.cpp" "#include <lux/engine/${header}.hpp>\n")
+
     add_library(header_${name} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${name}.cpp")
+
     target_link_libraries(header_${name} PRIVATE lux::engine::editor::lux_editor_ui lux::engine::core::services)
+
     if(MSVC)
         target_compile_options(header_${name} PRIVATE /GR- /we4541 /utf-8)
     else()

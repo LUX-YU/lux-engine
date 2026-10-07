@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/RenderContext.hpp>
-#include <lux/engine/editor/FrameworkErrors.hpp>
+#include <lux/engine/editor/EditorUiErrors.hpp>
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
 #include <lux/engine/editor/detail/UiFrame.hpp>
 #include <lux/engine/editor/detail/UiRenderSyncStage.hpp>
@@ -24,6 +24,7 @@ namespace lux::editor
             };
         }
     } // namespace
+
     struct EditorUiScene::Impl final
     {
         Impl(
@@ -41,6 +42,7 @@ namespace lux::editor
                 slot = std::make_shared<lux::ui::RenderFrame>();
             }
         }
+
         ~Impl() noexcept
         {
             collectOutputReceipt();
@@ -197,14 +199,17 @@ namespace lux::editor
             }
             return !output_ || output_receipt_.status().status.state == lux::scene::EViewState::READY;
         }
+
         static bool reusable(const std::shared_ptr<lux::ui::RenderFrame>& frame) noexcept
         {
             return frame.use_count() == 1 && frame->submission.complete();
         }
+
         bool hasWritableFrame() const noexcept
         {
             return !frames_stopped_ && !failure_ && !pending_ && std::ranges::any_of(frames_, &Impl::reusable);
         }
+
         void collectCompletions() noexcept
         {
             for (auto& frame : frames_)
@@ -215,6 +220,7 @@ namespace lux::editor
                 }
             }
         }
+
         lux::ui::DrawData* tryAcquireDrawData() noexcept
         {
             if (frames_stopped_ || failure_ || pending_)
@@ -230,6 +236,7 @@ namespace lux::editor
             (*slot)->resources.clear();
             return &(*slot)->draw_data;
         }
+
         lux::cxx::expected<void, lux::ui::ECaptureError> captureDrawData(const lux::ui::DrawData& data) noexcept
         {
             const bool is_valid_slot = current_frame_ < frames_.size() && &frames_[current_frame_]->draw_data == &data;
@@ -252,6 +259,7 @@ namespace lux::editor
             pending_ = frames_[current_frame_];
             return {};
         }
+
         void stopFrames() noexcept
         {
             if (std::exchange(frames_stopped_, true))
@@ -262,6 +270,7 @@ namespace lux::editor
             pending_.reset();
             clear_pending_ = true;
         }
+
         FrameworkResult<void> applySceneInput() noexcept
         {
             if (failure_)
@@ -351,8 +360,11 @@ namespace lux::editor
         }
         return std::unique_ptr<EditorUiScene>{new EditorUiScene(std::move(impl))};
     }
+
     EditorUiScene::EditorUiScene(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
+
     EditorUiScene::~EditorUiScene() noexcept = default;
+
     void EditorUiScene::setExtent(render::PixelExtent extent) noexcept
     {
         if (impl_->desired_extent_ != extent)
@@ -361,30 +373,37 @@ namespace lux::editor
             impl_->extent_pending_ = true;
         }
     }
+
     FrameworkResult<bool> EditorUiScene::outputReady() noexcept
     {
         return impl_->outputReady();
     }
+
     bool EditorUiScene::hasWritableFrame() const noexcept
     {
         return impl_->hasWritableFrame();
     }
+
     ui::DrawData* EditorUiScene::acquireDrawData() noexcept
     {
         return impl_->tryAcquireDrawData();
     }
+
     cxx::expected<void, ui::ECaptureError> EditorUiScene::captureDrawData(const ui::DrawData& data) noexcept
     {
         return impl_->captureDrawData(data);
     }
+
     FrameworkResult<void> EditorUiScene::publishFrame() noexcept
     {
         return impl_->applySceneInput();
     }
+
     void EditorUiScene::stopFrames() noexcept
     {
         impl_->stopFrames();
     }
+
     scene::SceneInstanceId EditorUiScene::sceneId() const noexcept
     {
         return impl_->scene_.id();

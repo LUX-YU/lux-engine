@@ -5,6 +5,8 @@
 #include <chrono>
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/editor/ContextErrors.hpp>
+#include <lux/engine/editor/ProjectErrors.hpp>
 #include <semaphore>
 #include <thread>
 
@@ -63,6 +65,7 @@ int main()
         std::binary_semaphore release{0};
         bool delivered{};
     };
+
     auto work = std::make_shared<Work>();
     auto scheduler = (*engine)->execution().blocking();
     assert(scheduler);
@@ -112,7 +115,6 @@ int main()
         static_cast<void>((*engine)->execution().collectCompletions());
         std::this_thread::yield();
     }
-    std::puts(
-        "PASS complete Context, assembly refusal before construction, blocked task outlives Context without wait"
+    std::puts("PASS complete Context, assembly refusal before construction, blocked task outlives Context without wait"
     );
 }

@@ -1,6 +1,8 @@
 #pragma once
+#include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
+#include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/detail/PreparedProject.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
 #include <lux/engine/project/PluginRendering.hpp>
@@ -17,7 +19,11 @@ namespace fixture
     {
         using namespace lux;
         using namespace lux::editor;
-        if (auto registered = registerFrameworkErrors(); !registered)
+        if (auto registered = registerProjectErrors(); !registered)
+        {
+            return cxx::unexpected(registered.error());
+        }
+        if (auto registered = registerContextErrors(); !registered)
         {
             return cxx::unexpected(registered.error());
         }

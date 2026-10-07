@@ -1,6 +1,6 @@
 #include <algorithm>
+#include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/EditorServices.hpp>
-#include <lux/engine/editor/FrameworkErrors.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
 
 namespace lux::editor
@@ -9,6 +9,7 @@ namespace lux::editor
     {
         construction_order_.reserve(entries_.size());
     }
+
     EditorServices::~EditorServices() noexcept
     {
         // Remove lookup access before any user destructor runs, without another closing state.
@@ -19,6 +20,7 @@ namespace lux::editor
             entries[*index].instance.reset();
         }
     }
+
     FrameworkResult<void*> EditorServices::getErased(cxx::TypeToken type, EditorContext& context) noexcept
     {
         if (!object::ObjectRuntime::instance().isCurrent())

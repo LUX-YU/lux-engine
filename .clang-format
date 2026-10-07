@@ -16,3 +16,4 @@ AllowAllArgumentsOnNextLine: false
 AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortFunctionsOnASingleLine: Empty
 AllowShortBlocksOnASingleLine: Never
+SeparateDefinitionBlocks: Always

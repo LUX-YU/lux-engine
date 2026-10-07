@@ -1,4 +1,4 @@
-#include <lux/engine/editor/FrameworkErrors.hpp>
+#include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/detail/ProjectPreparation.hpp>
 #include <lux/engine/project/PluginRendering.hpp>
 
@@ -10,15 +10,20 @@ namespace lux::editor::detail
         {
             return {
                 Errors::ProjectManifest,
-                {static_cast<std::uint64_t>(value.code), value.ordinal, static_cast<std::uint64_t>(value.system.value())
+                {
+                    static_cast<std::uint64_t>(value.code),
+                    value.ordinal,
+                    static_cast<std::uint64_t>(value.system.value())
                 }
             };
         }
+
         error::Error failure(const project::PluginFailure& value) noexcept
         {
             return {Errors::ProjectPlugins, {static_cast<std::uint64_t>(value.code)}};
         }
     } // namespace
+
     ProjectPreparation prepareProject(
         const std::filesystem::path& file,
         const std::optional<ProjectManifest>& create,

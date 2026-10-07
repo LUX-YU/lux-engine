@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/EditorServices.hpp>
 #include <lux/engine/editor/EditorUiRegistry.hpp>
 #include <lux/engine/editor/SceneProfileRegistry.hpp>
@@ -15,6 +16,7 @@ namespace lux::editor
         EditorComposition& operator=(const EditorComposition&) = delete;
         EditorComposition(EditorComposition&&) = delete;
         EditorComposition& operator=(EditorComposition&&) = delete;
+
         template <class T>
         [[nodiscard]] FrameworkResult<void> registerServiceFactory(
             cxx::move_only_function<FrameworkResult<std::unique_ptr<T>>(EditorContext&) noexcept> factory
@@ -41,6 +43,7 @@ namespace lux::editor
             };
             return registerErased(cxx::typeToken<T>(), std::move(erased));
         }
+
         template <class T>
         [[nodiscard]] FrameworkResult<void> registerSceneTool(
             SceneToolRegistry::Match match,
@@ -64,7 +67,8 @@ namespace lux::editor
             using Owner = SceneToolRegistry::Owner;
             using ErasedResult = FrameworkResult<Owner>;
             auto erased = [factory = std::move(factory)](
-                EditorContext& context, const world::WorldDescription& world
+                EditorContext& context,
+                const world::WorldDescription& world
             ) mutable noexcept -> ErasedResult
             {
                 auto result = factory(context, world);

@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
@@ -14,6 +15,7 @@
 
 using namespace lux;
 using namespace lux::editor;
+
 namespace FixtureErrors
 {
     inline constexpr lux::error::ErrorId EditorUnused = lux::error::errorId("lux.editor.unused");
@@ -32,51 +34,62 @@ namespace
     {
         std::vector<int>& events;
         int id;
+
         ~Service()
         {
             events.push_back(id);
         }
     };
+
     struct Other final
     {
         std::vector<int>& events;
+
         ~Other()
         {
             events.push_back(2);
         }
     };
+
     struct Recursive final
     {
     };
+
     struct Retry final
     {
     };
+
     struct Missing final
     {
     };
+
     struct Tools final
     {
         unsigned serial;
     };
+
     bool match(const world::WorldDescription&) noexcept
     {
         return true;
     }
+
     bool alsoMatch(const world::WorldDescription&) noexcept
     {
         return true;
     }
+
     bool noMatch(const world::WorldDescription&) noexcept
     {
         return false;
     }
 } // namespace
+
 int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]) == "--registration-conflict")
     {
         auto& registry = error::ErrorRegistry::instance();
-        assert(registry.registerType({"lux.editor.invalid_window_extent", "Conflicting schema"}));
+        assert(registry.registerType({"lux.editor.recursive_service_factory", "Conflicting schema"}));
         auto& runtime = object::ObjectRuntime::instance();
         auto engine = engine::EngineContext::create({1, 64, 64, {32}}, {0, 64});
         assert(engine && runtime.isCurrent());
@@ -94,8 +107,8 @@ int main(int argc, char** argv)
         );
         assert(!context && !assembled);
         assert(context.error().type == error::errorId("lux.error.registration"));
-        assert(context.error().args[0] == Errors::EditorInvalidWindowExtent);
-        assert(registry.find(Errors::EditorInvalidWindowExtent)->message == "Conflicting schema");
+        assert(context.error().args[0] == Errors::EditorRecursiveServiceFactory);
+        assert(registry.find(Errors::EditorRecursiveServiceFactory)->message == "Conflicting schema");
         return 0;
     }
 
@@ -168,7 +181,7 @@ int main(int argc, char** argv)
         auto& context = **created;
         static_assert(std::is_same_v<decltype(std::as_const(context).engine()), const engine::EngineContext&>);
         static_assert(std::is_same_v<decltype(std::as_const(context).assets()), const asset::AssetVfs&>);
-        assert(error::ErrorRegistry::instance().find(Errors::EditorInvalidWindowExtent));
+        assert(error::ErrorRegistry::instance().find(Errors::EditorRecursiveServiceFactory));
         std::thread worker(
             [&]
             {

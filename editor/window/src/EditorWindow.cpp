@@ -1,5 +1,5 @@
+#include <lux/engine/editor/EditorUiErrors.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
-#include <lux/engine/editor/FrameworkErrors.hpp>
 #include <lux/engine/editor/detail/WindowInput.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/window/GlfwRuntime.hpp>
@@ -7,10 +7,12 @@
 namespace lux::editor
 {
     EditorWindow::EditorWindow(const window::InitParameter& config) : LuxWindow(config) {}
+
     EditorWindow::~EditorWindow() = default;
+
     FrameworkResult<std::unique_ptr<EditorWindow>> EditorWindow::create(const window::InitParameter& config) noexcept
     {
-        if (auto registered = registerFrameworkErrors(); !registered)
+        if (auto registered = registerEditorUiErrors(); !registered)
         {
             return cxx::unexpected(registered.error());
         }
@@ -71,6 +73,7 @@ namespace lux::editor
         };
         return window;
     }
+
     void EditorWindow::metricsChanged() noexcept
     {
         if (++metrics_.revision == 0)
@@ -79,10 +82,12 @@ namespace lux::editor
         }
         wakeEvents();
     }
+
     ui::Root& EditorWindow::uiRoot() noexcept
     {
         return *root_;
     }
+
     FrameworkResult<void> EditorWindow::sampleInput() noexcept
     {
         input_.sample(*this);

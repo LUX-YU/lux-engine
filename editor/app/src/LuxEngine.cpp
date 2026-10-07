@@ -5,12 +5,15 @@
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/EngineRendering.hpp>
 #include <lux/engine/RenderContext.hpp>
+#include <lux/engine/editor/AppErrors.hpp>
+#include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
+#include <lux/engine/editor/EditorUiErrors.hpp>
 #include <lux/engine/editor/EditorUiFactories.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
-#include <lux/engine/editor/FrameworkErrors.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
+#include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/editor/detail/ProjectPrepared.hpp>
@@ -51,6 +54,7 @@ namespace lux::editor
             constexpr auto unknown = Errors::ProcessExecutionUnknown;
             return {code < std::size(ids) ? ids[code] : unknown, {code}};
         }
+
         error::Error creationError(const engine::EngineContext::VCreateFailure& failure) noexcept
         {
             return std::visit(
@@ -68,6 +72,7 @@ namespace lux::editor
                 failure
             );
         }
+
         error::Error renderingError(const engine::RenderContext::VFailure& failure) noexcept
         {
             return std::visit(
@@ -85,19 +90,23 @@ namespace lux::editor
                 failure
             );
         }
+
         struct Operation final
         {
             bool& active;
+
             explicit Operation(bool& flag) noexcept : active(flag)
             {
                 active = true;
             }
+
             ~Operation()
             {
                 active = false;
             }
         };
     } // namespace
+
     struct LuxEngine::Impl final
     {
         struct HostResources final
@@ -114,10 +123,12 @@ namespace lux::editor
                 : window(std::move(window)), engine(std::move(engine)), ui_scene(std::move(scene))
             {
             }
+
             HostResources(HostResources&&) noexcept = default;
             HostResources& operator=(HostResources&&) = delete;
             HostResources(const HostResources&) = delete;
             HostResources& operator=(const HostResources&) = delete;
+
             ~HostResources() noexcept
             {
                 if (engine) // A factory transfer leaves an empty resource bundle.
@@ -125,6 +136,7 @@ namespace lux::editor
                     drainAcceptedWork();
                 }
             }
+
             void drainAcceptedWork() noexcept
             {
                 // Application shutdown only. Context/Pane destruction never waits. Keep the original
@@ -166,11 +178,13 @@ namespace lux::editor
                 }
             }
         };
+
         Impl(EditorConfig config, EditorAssembly assembly, HostResources host) noexcept
             : host_(std::move(host)), config_(std::move(config)), assembly_(std::move(assembly)),
               project_tasks_(host_.engine->execution())
         {
         }
+
         ~Impl() noexcept
         {
             // Global UI also belongs to this host. Every Pane dies while its Context/Engine is valid.
@@ -179,6 +193,7 @@ namespace lux::editor
                 std::terminate();
             }
         }
+
         static FrameworkResult<std::unique_ptr<Impl>> create(EditorConfig config, EditorAssembly assembly) noexcept
         {
             auto window = EditorWindow::create({config.width, config.height, config.title});
@@ -247,11 +262,13 @@ namespace lux::editor
                 HostResources{std::move(*window), std::move(*engine), std::move(*scene)}
             );
         }
+
         struct OpenProject final
         {
             std::unique_ptr<EditorContext> context;
             detail::ProjectUiMount ui;
         };
+
         struct AdoptProject final
         {
             std::uint64_t request_serial{};
@@ -260,10 +277,12 @@ namespace lux::editor
             std::unique_ptr<EditorContext> context;
             std::vector<std::unique_ptr<ui::Pane>> panes;
         };
+
         struct CloseCurrentProject final
         {
             std::uint64_t request_serial{};
         };
+
         using VPendingProjectChange = std::variant<AdoptProject, CloseCurrentProject>;
 
         void invalidatePreparation() noexcept
@@ -282,6 +301,7 @@ namespace lux::editor
             auto discarded = std::move(pending_project_change_);
             pending_project_change_.reset();
         }
+
         FrameworkResult<void> admitProject(
             LuxEngine& owner,
             std::filesystem::path file,
@@ -368,6 +388,7 @@ namespace lux::editor
             project_prepare_ = *submitted;
             return {};
         }
+
         void receivePrepared(LuxEngine& owner, detail::ProjectPrepared& event) noexcept
         {
             const auto serial = event.request_serial;
@@ -439,6 +460,7 @@ namespace lux::editor
             }
             pending_project_change_.emplace(std::move(candidate));
         }
+
         void requestClose() noexcept
         {
             const auto serial = project_request_serial_ + 1;
@@ -448,6 +470,7 @@ namespace lux::editor
                 pending_project_change_.emplace(CloseCurrentProject{serial});
             }
         }
+
         FrameworkResult<void> applyPendingHostChanges(LuxEngine& owner) noexcept
         {
             if (!pending_project_change_)
@@ -525,6 +548,7 @@ namespace lux::editor
             static_cast<void>(owner.emit(owner.projectChanged));
             return {};
         }
+
         FrameworkResult<EHostState> pumpOnce(LuxEngine& owner) noexcept
         {
             if (pumping_)
@@ -623,6 +647,7 @@ namespace lux::editor
             (void)object::ObjectRuntime::instance().collectRetired();
             return closing ? EHostState::EXIT_REQUESTED : EHostState::RUNNING;
         }
+
         [[nodiscard]] FrameworkResult<bool> hasImmediateWork() noexcept
         {
             const auto& metrics = host_.window->metrics();
@@ -639,6 +664,7 @@ namespace lux::editor
                    host_.engine->execution().hasPendingWork() ||
                    object::ObjectRuntime::instance().statistics().pending != 0;
         }
+
         HostResources host_;
         EditorConfig config_;
         EditorAssembly assembly_;
@@ -651,10 +677,12 @@ namespace lux::editor
         std::chrono::steady_clock::time_point last_frame_{std::chrono::steady_clock::now()};
         bool pumping_{};
     };
+
     LuxEngine::LuxEngine(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl))
     {
         impl_->host_.window->uiRoot().setCommandFallback(this);
     }
+
     LuxEngine::~LuxEngine() noexcept
     {
         if (isDispatching()) // Final application barrier cannot run inside a completion callback.
@@ -664,9 +692,22 @@ namespace lux::editor
         impl_->host_.window->uiRoot().setCommandFallback(nullptr);
         beginDestruction();
     }
+
     FrameworkResult<std::unique_ptr<LuxEngine>> LuxEngine::create(EditorConfig config, EditorAssembly assembly) noexcept
     {
-        if (auto registered = registerFrameworkErrors(); !registered)
+        if (auto registered = registerProjectErrors(); !registered)
+        {
+            return cxx::unexpected(registered.error());
+        }
+        if (auto registered = registerContextErrors(); !registered)
+        {
+            return cxx::unexpected(registered.error());
+        }
+        if (auto registered = registerEditorUiErrors(); !registered)
+        {
+            return cxx::unexpected(registered.error());
+        }
+        if (auto registered = registerAppErrors(); !registered)
         {
             return cxx::unexpected(registered.error());
         }
@@ -708,6 +749,7 @@ namespace lux::editor
         }
         return std::unique_ptr<LuxEngine>{new LuxEngine(std::move(*impl))};
     }
+
     void LuxEngine::event(object::EventView& event) noexcept
     {
         if (auto* request = event.getIf<OpenProjectRequest>())
@@ -758,6 +800,7 @@ namespace lux::editor
             }
         }
     }
+
     FrameworkResult<void> LuxEngine::run() noexcept
     {
         for (;;)
@@ -783,6 +826,7 @@ namespace lux::editor
             }
         }
     }
+
     FrameworkResult<LuxEngine::EHostState> LuxEngine::pumpOnce() noexcept
     {
         if (isDispatching())
@@ -794,6 +838,7 @@ namespace lux::editor
         endCallbackBorrow(*this);
         return result;
     }
+
     FrameworkResult<bool> detail::LuxEngineTestAccess::pumpOnce(LuxEngine& host) noexcept
     {
         auto state = host.pumpOnce();
@@ -803,22 +848,27 @@ namespace lux::editor
         }
         return *state == LuxEngine::EHostState::RUNNING;
     }
+
     EditorWindow& LuxEngine::window() noexcept
     {
         return *impl_->host_.window;
     }
+
     engine::EngineContext& LuxEngine::engine() noexcept
     {
         return *impl_->host_.engine;
     }
+
     const engine::EngineContext& LuxEngine::engine() const noexcept
     {
         return *impl_->host_.engine;
     }
+
     EditorContext* LuxEngine::project() noexcept
     {
         return impl_->project_ ? impl_->project_->context.get() : nullptr;
     }
+
     const EditorContext* LuxEngine::project() const noexcept
     {
         return impl_->project_ ? impl_->project_->context.get() : nullptr;

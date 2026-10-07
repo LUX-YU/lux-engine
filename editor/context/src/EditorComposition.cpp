@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
@@ -33,6 +34,7 @@ namespace lux::editor
         ui_.push_back(EditorUiRegistry::Factory{std::move(type), std::move(factory)});
         return {};
     }
+
     FrameworkResult<void> EditorComposition::registerSceneProfile(SceneProfileRegistration entry) noexcept
     {
         if (!object::ObjectRuntime::instance().isCurrent())

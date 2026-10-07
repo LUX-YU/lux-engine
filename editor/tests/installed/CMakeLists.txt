@@ -142,12 +142,9 @@ add_test(NAME sdk.framework.shutdown_posted COMMAND framework_shutdown "${CMAKE_
 set_tests_properties(
     sdk.framework.public_host sdk.framework.shutdown_posted
     PROPERTIES
-        TIMEOUT
-        30
-        RUN_SERIAL
-        TRUE
-        LABELS
-        "gpu;desktop"
+        TIMEOUT 30
+        RUN_SERIAL TRUE
+        LABELS "gpu;desktop"
 )
 
 add_test(NAME sdk.framework.identity COMMAND framework_identity "${CMAKE_CURRENT_BINARY_DIR}/identity-data")

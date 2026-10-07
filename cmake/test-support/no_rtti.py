@@ -22,7 +22,7 @@ for item in commands:
         continue
     required = ('/GR-', '/we4541') if msvc else ('-fno-rtti',)
     if clang_cl:
-        required += ('-Werror=rtti',)
+        required += ('-fno-rtti',)
     for flag in required:
         assert flag in command, (source, 'missing', flag)
     assert not re.search(r'(?:^|\s)(?:/GR(?:\s|$)|-frtti(?:\s|$))', command), source
@@ -44,7 +44,7 @@ for name, text in cases.items():
         args = [compiler, '/nologo', '/c', '/std:c++20', '/GR-', '/we4541',
                 '/Fo' + str(directory / (name + '.obj')), str(source)]
         if clang_cl:
-            args.append('-Werror=rtti')
+            args.append('-fno-rtti')
     else:
         args = [compiler, '-c', '-std=c++20', '-fno-rtti', str(source),
                 '-o', str(directory / (name + '.o'))]

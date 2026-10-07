@@ -478,14 +478,14 @@ namespace lux::object
             {
                 return cxx::unexpected(EObjectTreeError::INVALID_TREE);
             }
-            if (ancestor->active_events_ || ancestor->callback_borrows_)
+            if (ancestor->active_events_)
             {
                 return cxx::unexpected(EObjectTreeError::BUSY);
             }
         }
         for (auto* ancestor = child.parent_; ancestor; ancestor = ancestor->parent_)
         {
-            if (ancestor->active_events_ || ancestor->callback_borrows_)
+            if (ancestor->active_events_)
             {
                 return cxx::unexpected(EObjectTreeError::BUSY);
             }

@@ -222,6 +222,30 @@ namespace lux::object::detail
         }
     }
 
+    void ObjectState::deliver(cxx::move_only_function<void(LuxObject*) noexcept>& callback) noexcept
+    {
+        if (!ObjectRuntime::instance().isCurrent())
+        {
+            failObjectContract();
+        }
+        auto* receiver = object.load(std::memory_order_acquire);
+        if (receiver && !receiver->acceptsCallbacks())
+        {
+            receiver = nullptr;
+        }
+        // Same admission and active-delivery protection as Signal/Event callbacks.
+        if (receiver)
+        {
+            ++receiver->active_events_;
+        }
+        const DispatchScope dispatch;
+        callback(receiver);
+        if (receiver)
+        {
+            --receiver->active_events_;
+        }
+    }
+
     void invokeConnection(ConnectionControl* control, const void* payload) noexcept
     {
         // Acquiring this observed live state admits the invocation. Disconnect is not join.

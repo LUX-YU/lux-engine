@@ -37,6 +37,7 @@ namespace lux::object::detail
         [[nodiscard]] bool addIncoming(ConnectionControl&) noexcept;
         void removeIncoming(ConnectionControl&) noexcept;
         void closeOwner() noexcept;
+        void deliver(cxx::move_only_function<void(LuxObject*) noexcept>&) noexcept;
     };
 
     struct SignalStorage final

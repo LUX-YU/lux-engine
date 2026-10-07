@@ -38,8 +38,14 @@ namespace lux::object::detail
                     auto& slot = bank[index];
                     auto expected = EQueueSlot::READY;
                     if (!slot.state.compare_exchange_strong(expected, EQueueSlot::READING, std::memory_order_acq_rel))
+                    {
+                        // Runtime must outlive all producers; never destroy a slot still being published.
+                        if (expected == EQueueSlot::WRITING)
+                            failObjectContract();
                         continue;
+                    }
                     pending.fetch_sub(1, std::memory_order_relaxed);
+                    slot.message.cancel(); // Only completion envelopes have a shutdown cancellation.
                     slot.message = {}; // Payload destruction never holds the queue mutex.
                     slot.state.store(EQueueSlot::EMPTY, std::memory_order_release);
                 }
@@ -166,6 +172,12 @@ namespace lux::object::detail
             ops_->invoke(data_);
     }
 
+    void MessageEnvelope::cancel() noexcept
+    {
+        if (ops_)
+            ops_->cancel(data_);
+    }
+
     void MessageEnvelope::reset() noexcept
     {
         if (ops_)
@@ -222,8 +234,7 @@ namespace lux::object::detail
         slot->state.store(EQueueSlot::READY, std::memory_order_release);
         if (const auto wake = state->wake.load(std::memory_order_acquire))
             wake();
-        if (state->closed.load(std::memory_order_acquire))
-            state->discardReady();
+        // Only owner drains/cancels accepted work; shutdown requires producers to have stopped.
         return EPostStatus::POSTED;
     }
 } // namespace lux::object::detail
@@ -376,6 +387,8 @@ namespace lux::object
     }
     void ObjectRuntime::close() noexcept
     {
+        if (!isCurrent())
+            detail::failObjectContract();
         auto* state = state_.get();
         if (!state)
             return;

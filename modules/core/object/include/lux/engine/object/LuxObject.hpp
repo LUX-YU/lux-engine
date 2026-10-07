@@ -8,6 +8,7 @@
 #include <lux/cxx/core/function_ref.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/core/visibility.h>
+#include <lux/engine/object/ObjectTarget.hpp>
 #include <lux/engine/object/Connection.hpp>
 #include <lux/engine/object/ObjectOwnership.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
@@ -118,6 +119,7 @@ namespace lux::object
         LuxObject(LuxObject&&) = delete;
         LuxObject& operator=(LuxObject&&) = delete;
 
+        [[nodiscard]] ObjectTarget target() const noexcept;
         [[nodiscard]] bool isOnAffinityThread() const noexcept;
         [[nodiscard]] LuxObject* parent() const noexcept
         {

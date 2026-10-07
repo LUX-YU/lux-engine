@@ -7,6 +7,7 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Connection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Object.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectTarget.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectRuntime.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/CodeLease.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectOwnership.cpp
@@ -72,4 +73,17 @@ if(BUILD_TESTING)
     add_test(NAME object.queue COMMAND object_queue_test)
     add_test(NAME object.runtime_shutdown COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/test/runtime_shutdown.py" $<TARGET_FILE:object_queue_test>)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(object_target_test test/target.cpp)
+    target_link_libraries(object_target_test PRIVATE object)
+    if(MSVC)
+        target_compile_options(object_target_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(object_target_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME object.target COMMAND object_target_test)
+    add_test(NAME object.target_contract COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/target_contract.py" $<TARGET_FILE:object_target_test>)
 endif()

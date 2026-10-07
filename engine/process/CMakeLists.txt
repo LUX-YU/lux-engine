@@ -2,3 +2,4 @@
 add_subdirectory(execution)
 add_subdirectory(world_loading)
 add_subdirectory(asset_loading)
+add_subdirectory(object_execution)

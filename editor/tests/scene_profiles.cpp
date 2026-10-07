@@ -1,4 +1,5 @@
 #include "api_contract.hpp"
+#include "support/ContextFixture.hpp"
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
@@ -71,34 +72,33 @@ namespace
 int main(int argc, char** argv)
 {
     assert(argc == 4);
-    static_assert(!api_contract::PublicFreeze<SceneProfileRegistrar>);
+    static_assert(!api_contract::PublicFreeze<SceneProfileRegistry>);
     auto& object_runtime = object::ObjectRuntime::instance();
     assert(object_runtime.isCurrent());
     auto engine = engine::EngineContext::create({1, 64, 64, {32}}, {0, 64});
     assert(engine && (*engine)->sceneRuntime().instanceCount() == 0);
     std::weak_ptr<int> provider;
-    auto assembly = [&](EditorContext& context) noexcept -> FrameworkResult<void>
+    auto assembly = [&](EditorComposition& composition) noexcept -> FrameworkResult<void>
     {
-        auto& profiles = context.sceneProfiles();
-        assert(!profiles.find("lux.editor.scene.3d"));
+        static_assert(!api_contract::PublicProfileLookup<EditorComposition>);
         auto profile = sceneProfile3D();
         profile.id = "Bad Profile";
-        assert(!profiles.registerProfile(std::move(profile)));
+        assert(!composition.registerSceneProfile(std::move(profile)));
         profile = sceneProfile3D();
         profile.capabilities.push_back(profile.capabilities.front());
-        assert(!profiles.registerProfile(std::move(profile)));
-        assert(profiles.registerProfile(sceneProfile3D()));
-        assert(!profiles.registerProfile(sceneProfile3D()));
+        assert(!composition.registerSceneProfile(std::move(profile)));
+        assert(composition.registerSceneProfile(sceneProfile3D()));
+        assert(!composition.registerSceneProfile(sceneProfile3D()));
         auto pin = std::make_shared<int>(42);
         provider = pin;
-        return profiles.registerProfile({pin, "test.editor.scene.2d", "Test 2D", {"spatial.2d"}, &create2D});
+        return composition.registerSceneProfile({pin, "test.editor.scene.2d", "Test 2D", {"spatial.2d"}, &create2D});
     };
     ProjectManifest manifest{1, identity("project"), "Profiles"};
     auto context =
-        EditorContext::create(**engine, {manifest.name, std::filesystem::current_path()}, manifest, assembly);
+        fixture::createContext(**engine, {manifest.name, std::filesystem::current_path()}, manifest, assembly);
     assert(context);
     assert((*context)->sceneProfiles().profiles().size() == 2);
-    assert(!(*context)->sceneProfiles().registerProfile(sceneProfile3D()));
+    static_assert(!api_contract::PublicProfileRegistration<SceneProfileRegistry>);
     assert(!(*context)->sceneProfiles().find("test.missing"));
     auto three = (*context)->sceneProfiles().find("lux.editor.scene.3d")->get();
     auto two = (*context)->sceneProfiles().find("test.editor.scene.2d")->get();

@@ -1,58 +1,29 @@
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
+#include <lux/engine/editor/FrameworkErrors.hpp>
 #include <lux/engine/editor/detail/PreparedProject.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
-#include <lux/engine/process/TaskScope.hpp>
 
 namespace lux::editor
 {
-    EditorContext::EditorContext(engine::EngineContext& engine, detail::PreparedProject prepared)
+    EditorContext::EditorContext(
+        engine::EngineContext& engine,
+        detail::PreparedProject prepared,
+        EditorComposition&& composition
+    ) noexcept
         : engine_(engine), project_(std::move(prepared.description)), manifest_(std::move(prepared.manifest)),
           plugins_(std::move(prepared.plugins)), registrations_(std::move(prepared.registrations)),
-          tasks_(std::make_unique<process::TaskScope>(engine.execution()))
+          ui_(std::move(composition.ui_)), scene_tools_(std::move(composition.scene_tools_)),
+          scene_profiles_(std::move(composition.scene_profiles_)), services_(std::move(composition.services_)),
+          tasks_(engine.execution())
     {
     }
-    EditorContext::~EditorContext() noexcept
-    {
-        beginClose();
-        // The host reaches this only after settled(). Direct RAII users must keep the
-        // original transport-only completion contract during TaskScope destruction.
-    }
-    FrameworkResult<std::unique_ptr<EditorContext>> EditorContext::create(
-        engine::EngineContext& engine,
-        ProjectDescription description,
-        ProjectManifest manifest,
-        Assembly assembly
-    ) noexcept
-    {
-        if (auto registered = registerFrameworkErrors(); !registered)
-        {
-            return cxx::unexpected(registered.error());
-        }
-        if (!manifest.plugins.empty())
-        {
-            return cxx::unexpected(error::Error{Errors::ProjectNeedsPreparedPlugins});
-        }
-        auto plugins = project::PluginManager::create({}, {});
-        if (!plugins)
-        {
-            return cxx::unexpected(
-                error::Error{Errors::ProjectPlugins, {static_cast<std::uint64_t>(plugins.error().code)}}
-            );
-        }
-        return create(
-            engine,
-            {std::move(description),
-             std::move(manifest),
-             std::make_unique<project::PluginManager>(std::move(*plugins)),
-             {}},
-            assembly
-        );
-    }
+    EditorContext::~EditorContext() noexcept = default;
     FrameworkResult<std::unique_ptr<EditorContext>> EditorContext::create(
         engine::EngineContext& engine,
         detail::PreparedProject prepared,
-        Assembly assembly
+        EditorComposition&& composition
     ) noexcept
     {
         if (auto registered = registerFrameworkErrors(); !registered)
@@ -71,48 +42,36 @@ namespace lux::editor
             });
         }
         const bool invalid_root = prepared.description.root.empty() || !prepared.description.root.is_absolute();
-        if (invalid_root || prepared.description.name != prepared.manifest.name)
+        const bool invalid_file = prepared.description.manifest_file.empty() ||
+                                  !prepared.description.manifest_file.is_absolute() ||
+                                  prepared.description.manifest_file.parent_path() != prepared.description.root;
+        const bool invalid_summary =
+            invalid_root || invalid_file || prepared.description.name != prepared.manifest.name;
+        if (invalid_summary)
         {
             return cxx::unexpected(error::Error{Errors::EditorProjectNeedsANameAndAbsoluteRoot});
         }
-        auto result = std::unique_ptr<EditorContext>(new EditorContext(engine, std::move(prepared)));
-        if (auto assembled = assembly(*result); !assembled)
+        const bool missing_preparation = !prepared.plugins || !prepared.registrations;
+        if (missing_preparation)
         {
-            return cxx::unexpected(assembled.error());
+            return cxx::unexpected(error::Error{Errors::ProjectNeedsPreparedPlugins});
         }
-        result->freeze();
-        return result;
-    }
-    void EditorContext::freeze() noexcept
-    {
-        services_.freeze();
-        ui_.freeze();
-        scene_tools_.freeze();
-        scene_profiles_.freeze();
-        assembled_ = true;
+        return std::unique_ptr<EditorContext>(new EditorContext(engine, std::move(prepared), std::move(composition)));
     }
     process::TaskScope& EditorContext::tasks() noexcept
-    {
-        if (!object::ObjectRuntime::instance().isCurrent() || !assembled_)
-        {
-            std::terminate();
-        }
-        return *tasks_;
-    }
-    void EditorContext::beginClose() noexcept
     {
         if (!object::ObjectRuntime::instance().isCurrent())
         {
             std::terminate();
         }
-        if (!closing_)
-        {
-            closing_ = true;
-            tasks_->requestStop();
-        }
+        return tasks_;
     }
-    bool EditorContext::closed() const noexcept
+    FrameworkResult<std::unique_ptr<EditorContext>> detail::createEditorContext(
+        engine::EngineContext& engine,
+        PreparedProject prepared,
+        EditorComposition&& composition
+    ) noexcept
     {
-        return closing_ && tasks_->settled();
+        return EditorContext::create(engine, std::move(prepared), std::move(composition));
     }
 } // namespace lux::editor

@@ -1,6 +1,9 @@
+#include "api_contract.hpp"
+#include "support/ContextFixture.hpp"
 #include <cassert>
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
@@ -78,12 +81,12 @@ int main(int argc, char** argv)
         auto engine = engine::EngineContext::create({1, 64, 64, {32}}, {0, 64});
         assert(engine && runtime.isCurrent());
         bool assembled{};
-        auto assembly = [&](EditorContext&) noexcept -> FrameworkResult<void>
+        auto assembly = [&](EditorComposition&) noexcept -> FrameworkResult<void>
         {
             assembled = true;
             return {};
         };
-        auto context = EditorContext::create(
+        auto context = fixture::createContext(
             **engine,
             {"Conflict", std::filesystem::current_path()},
             manifest("Conflict"),
@@ -103,36 +106,36 @@ int main(int argc, char** argv)
     assert(lux::error::ErrorRegistry::instance().registerTypes(fixture_errors));
 
     static_assert(!std::is_move_constructible_v<EditorContext>);
-    static_assert(!std::is_copy_constructible_v<EditorServiceRegistrar>);
-    static_assert(!std::is_move_constructible_v<EditorUiRegistrar>);
-    static_assert(!std::is_copy_constructible_v<SceneToolRegistrar>);
+    static_assert(!std::is_copy_constructible_v<EditorServices>);
+    static_assert(!std::is_move_constructible_v<EditorUiRegistry>);
+    static_assert(!std::is_copy_constructible_v<SceneToolRegistry>);
     auto& queue = object::ObjectRuntime::instance();
     auto engine = engine::EngineContext::create({1, 64, 64, {32}}, {0, 64});
     assert(queue.isCurrent() && engine);
     std::vector<int> destroyed;
     unsigned constructed{}, attempts{}, tools{};
     {
-        auto assemble = [&](EditorContext& context) noexcept -> FrameworkResult<void>
+        auto assemble = [&](EditorComposition& context) noexcept -> FrameworkResult<void>
         {
-            assert(context.services().registerFactory<Service>(
+            assert(context.registerServiceFactory<Service>(
                 [&](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Service>>
                 {
                     ++constructed;
                     return std::make_unique<Service>(destroyed, 1);
                 }
             ));
-            assert(!context.services().registerFactory<Service>(
+            assert(!context.registerServiceFactory<Service>(
                 [](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Service>>
                 { return cxx::unexpected(error::Error{FixtureErrors::EditorUnused, {}}); }
             ));
-            assert(context.services().registerFactory<Other>(
+            assert(context.registerServiceFactory<Other>(
                 [&](EditorContext& context) noexcept -> FrameworkResult<std::unique_ptr<Other>>
                 {
                     assert(context.service<Service>());
                     return std::make_unique<Other>(destroyed);
                 }
             ));
-            assert(context.services().registerFactory<Recursive>(
+            assert(context.registerServiceFactory<Recursive>(
                 [](EditorContext& context) noexcept -> FrameworkResult<std::unique_ptr<Recursive>>
                 {
                     auto nested = context.service<Recursive>();
@@ -140,7 +143,7 @@ int main(int argc, char** argv)
                     return cxx::unexpected(std::move(nested.error()));
                 }
             ));
-            assert(context.services().registerFactory<Retry>(
+            assert(context.registerServiceFactory<Retry>(
                 [&](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Retry>>
                 {
                     if (++attempts == 1)
@@ -150,17 +153,17 @@ int main(int argc, char** argv)
                     return std::make_unique<Retry>();
                 }
             ));
-            assert(context.sceneTools().registerFactory<Tools>(
+            assert(context.registerSceneTool<Tools>(
                 &match,
                 [&](EditorContext&, const world::WorldDescription&) noexcept -> FrameworkResult<std::unique_ptr<Tools>>
                 { return std::make_unique<Tools>(++tools); }
             ));
             assert(constructed == 0);
-            assert(!context.service<Service>());
+            static_assert(!api_contract::PublicServiceLookup<EditorComposition>);
             return {};
         };
         auto created =
-            EditorContext::create(**engine, {"First", std::filesystem::current_path()}, manifest("First"), assemble);
+            fixture::createContext(**engine, {"First", std::filesystem::current_path()}, manifest("First"), assemble);
         assert(created);
         auto& context = **created;
         static_assert(std::is_same_v<decltype(std::as_const(context).engine()), const engine::EngineContext&>);
@@ -185,20 +188,17 @@ int main(int argc, char** argv)
         auto a = context.sceneTools().create<Tools>(context, world);
         auto b = context.sceneTools().create<Tools>(context, world);
         assert(a && b && a->get() != b->get() && (*a)->serial == 1 && (*b)->serial == 2);
-        assert(!context.services().registerFactory<Missing>(
-            [](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Missing>>
-            { return std::make_unique<Missing>(); }
-        ));
+        static_assert(!api_contract::PublicRegistration<EditorServices>);
         auto factory = [](EditorContext&,
                           const world::WorldDescription&) noexcept -> FrameworkResult<std::unique_ptr<Tools>>
         { return std::make_unique<Tools>(9); };
-        auto assemble_second = [&](EditorContext& second) noexcept -> FrameworkResult<void>
+        auto assemble_second = [&](EditorComposition& second) noexcept -> FrameworkResult<void>
         {
-            assert(second.sceneTools().registerFactory<Tools>(&match, factory));
-            assert(second.sceneTools().registerFactory<Tools>(&alsoMatch, factory));
+            assert(second.registerSceneTool<Tools>(&match, factory));
+            assert(second.registerSceneTool<Tools>(&alsoMatch, factory));
             return {};
         };
-        auto second_owner = EditorContext::create(
+        auto second_owner = fixture::createContext(
             **engine,
             {"Second", std::filesystem::current_path()},
             manifest("Second"),
@@ -208,8 +208,8 @@ int main(int argc, char** argv)
         auto& second = **second_owner;
         auto ambiguous = second.sceneTools().create<Tools>(second, world);
         assert(!ambiguous && ambiguous.error().type == error::errorId("lux.editor.ambiguous_scene_tool_rules"));
-        auto empty_assembly = [](EditorContext&) noexcept -> FrameworkResult<void> { return {}; };
-        auto empty = EditorContext::create(
+        auto empty_assembly = [](EditorComposition&) noexcept -> FrameworkResult<void> { return {}; };
+        auto empty = fixture::createContext(
             **engine,
             {"Empty", std::filesystem::current_path()},
             manifest("Empty"),
@@ -220,7 +220,7 @@ int main(int argc, char** argv)
         assert(!missing && missing.error().type == error::errorId("lux.editor.no_matching_scene_tool_rule"));
     }
     assert((destroyed == std::vector<int>{2, 1}));
-    std::puts("PASS lazy services, frozen registration, recursion, retry, reverse destruction, typed tool rules");
+    std::puts("PASS lazy services, build-only registration, recursion, retry, reverse destruction, typed tool rules");
     assert(argc == 2);
     const auto path = std::filesystem::path(argv[1]) / "framework-vfs";
     std::filesystem::create_directories(path);
@@ -234,9 +234,9 @@ int main(int argc, char** argv)
     assert(lower && higher);
     std::weak_ptr<asset::IAssetProvider> lifetime = *higher;
     {
-        auto empty_assembly = [](EditorContext&) noexcept -> FrameworkResult<void> { return {}; };
-        auto first_context = EditorContext::create(**engine, {"A", path}, manifest("A"), empty_assembly);
-        auto second_context = EditorContext::create(**engine, {"B", path}, manifest("B"), empty_assembly);
+        auto empty_assembly = [](EditorComposition&) noexcept -> FrameworkResult<void> { return {}; };
+        auto first_context = fixture::createContext(**engine, {"A", path}, manifest("A"), empty_assembly);
+        auto second_context = fixture::createContext(**engine, {"B", path}, manifest("B"), empty_assembly);
         assert(first_context && second_context);
         auto& a = **first_context;
         auto& b = **second_context;

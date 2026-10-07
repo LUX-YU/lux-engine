@@ -45,6 +45,11 @@ print('PASS: no legacy; manifest excludes runtime; Context excludes UI; host exc
 
 source = Path(model['paths']['source'])
 removed = (
+    'editor/context/include/lux/engine/editor/EditorServiceRegistrar.hpp',
+    'editor/context/include/lux/engine/editor/EditorUiRegistrar.hpp',
+    'editor/context/include/lux/engine/editor/SceneProfileRegistrar.hpp',
+    'editor/context/include/lux/engine/editor/SceneToolRegistrar.hpp',
+
     'editor/project/sinclude/lux/engine/editor/detail/ProjectFiles.hpp',
     'editor/scene/profiles/include/lux/engine/editor/ScenePackageFile.hpp',
     'modules/core/object/include/lux/engine/object/ObjectDispatcher.hpp',

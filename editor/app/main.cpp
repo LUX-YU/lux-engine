@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
@@ -107,13 +108,13 @@ int main(int argc, char** argv)
             return 2;
         }
     }
-    auto assemble = [](lux::editor::EditorContext& context) noexcept -> lux::editor::FrameworkResult<void>
+    auto assemble = [](lux::editor::EditorComposition& context) noexcept -> lux::editor::FrameworkResult<void>
     {
-        if (auto registered = context.sceneProfiles().registerProfile(lux::editor::sceneProfile3D()); !registered)
+        if (auto registered = context.registerSceneProfile(lux::editor::sceneProfile3D()); !registered)
         {
             return registered;
         }
-        return context.ui().registerFactory(
+        return context.registerUiFactory(
             "framework.welcome",
             [](lux::editor::EditorContext& value, const lux::editor::PaneDescription& description
             ) noexcept -> lux::editor::FrameworkResult<std::unique_ptr<lux::ui::Pane>>

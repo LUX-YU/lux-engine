@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/RenderContext.hpp>
+#include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
@@ -94,14 +95,15 @@ namespace
         };
         std::vector<int> deaths;
         bool rejected_candidate_delivered{};
-        auto assembly = [&, owned = std::make_unique<int>(42)](EditorContext& context) noexcept -> FrameworkResult<void>
+        auto assembly = [&, owned = std::make_unique<int>(42)](EditorComposition& context
+                        ) noexcept -> FrameworkResult<void>
         {
             assert(*owned == 42); // Real move-only assembly survives every asynchronous open.
-            assert(context.services().registerFactory<Service>(
+            assert(context.registerServiceFactory<Service>(
                 [&](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Service>>
                 { return std::make_unique<Service>(deaths); }
             ));
-            return context.ui().registerFactory(
+            return context.registerUiFactory(
                 "test",
                 [&](EditorContext& context,
                     const PaneDescription& description) noexcept -> FrameworkResult<std::unique_ptr<ui::Pane>>
@@ -251,18 +253,19 @@ namespace
         auto b = manifest("B");
         b.plugins = {{"lux.builtin.scene_render", 1}};
         assert(engine->openProject(write(b)));
-        until([&] { return original->closing(); });
+        until([&] { return engine->projectStatus().state == EProjectTransition::CLOSING_CURRENT; });
         for (int i = 0; i < 3; ++i)
         {
             assert(take(engine->frame()) == EFrameStatus::RUNNING);
             assert(engine->context() == original && deaths.empty() && !delivered);
-            assert(!original->service<Service>());
+            assert(original->service<Service>()
+            ); // Existing complete Context stays usable until P05 replaces the transition.
         }
         release = true;
         until(settled);
         assert(delivered && engine->context()->project().name == "B");
         assert((deaths == std::vector<int>{1, 1, 2}));
-        assert(engine->context()->sceneRegistrations() && !engine->context()->sceneRegistrations()->features.empty());
+        assert(!engine->context()->sceneRegistrations().features.empty());
         assert(&engine->engine() == runtime && &engine->window() == window && &window->uiRoot() == root);
         assert(runtime->sceneRuntime().instanceCount() == 1); // Only the original UI Scene; no project Scene yet.
         auto state = window->state();

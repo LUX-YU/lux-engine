@@ -34,28 +34,23 @@ namespace lux::editor
         SceneCreateResult (*create)(const SceneCreateInfo&) noexcept {};
     };
 
-    class SceneProfileRegistrar final
+    class SceneProfileRegistry final
     {
     public:
-        SceneProfileRegistrar() = default;
-        SceneProfileRegistrar(const SceneProfileRegistrar&) = delete;
-        SceneProfileRegistrar& operator=(const SceneProfileRegistrar&) = delete;
-        SceneProfileRegistrar(SceneProfileRegistrar&&) = delete;
-        SceneProfileRegistrar& operator=(SceneProfileRegistrar&&) = delete;
+        SceneProfileRegistry(const SceneProfileRegistry&) = delete;
+        SceneProfileRegistry& operator=(const SceneProfileRegistry&) = delete;
+        SceneProfileRegistry(SceneProfileRegistry&&) = delete;
+        SceneProfileRegistry& operator=(SceneProfileRegistry&&) = delete;
 
-        [[nodiscard]] FrameworkResult<void> registerProfile(SceneProfileRegistration) noexcept;
-        [[nodiscard]] FrameworkResult<std::reference_wrapper<const SceneProfileRegistration>>
-        find(std::string_view id) const noexcept;
-        // Frozen entries have stable addresses until their EditorContext is destroyed.
+        [[nodiscard]] FrameworkResult<std::reference_wrapper<const SceneProfileRegistration>> find(std::string_view id
+        ) const noexcept;
+        // Immutable entries have stable addresses until their EditorContext is destroyed.
         [[nodiscard]] std::span<const SceneProfileRegistration> profiles() const noexcept;
 
     private:
         friend class EditorContext;
-        void freeze() noexcept
-        {
-            frozen_ = true;
-        }
+        friend class EditorComposition;
+        explicit SceneProfileRegistry(std::vector<SceneProfileRegistration>) noexcept;
         std::vector<SceneProfileRegistration> entries_;
-        bool frozen_{};
     };
 } // namespace lux::editor

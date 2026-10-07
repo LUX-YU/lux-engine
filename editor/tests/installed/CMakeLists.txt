@@ -28,10 +28,14 @@ target_link_libraries(sdk_services PRIVATE lux::engine::core::services)
 add_executable(framework_component ../context_component.cpp)
 target_link_libraries(framework_component PRIVATE lux::engine::editor::lux_editor_context)
 add_executable(framework_context ../context.cpp)
-target_link_libraries(framework_context PRIVATE lux::engine::editor::lux_editor_context lux::engine::engine_context)
+target_link_libraries(framework_context PRIVATE lux::engine::editor::lux_editor_app lux::engine::engine_context)
+    target_compile_definitions(framework_context PRIVATE LUX_INSTALLED_CONSUMER=1)
+
 add_executable(framework_ui ../ui.cpp ../callback_contract.cpp)
 target_link_libraries(framework_ui PRIVATE lux::engine::editor::lux_editor_ui)
 add_executable(framework_profiles ../scene_profiles.cpp)
+target_compile_definitions(framework_profiles PRIVATE LUX_INSTALLED_CONSUMER=1)
+target_link_libraries(framework_profiles PRIVATE lux::engine::editor::lux_editor_app)
 target_link_libraries(framework_profiles PRIVATE lux::engine::editor::lux_editor_scene lux::engine::editor::lux_editor_scene_profiles
     lux::engine::engine_context lux::engine::project::project_plugin_rendering
     lux::engine::scene::scene_render lux::engine::scene::scene_transform lux::engine::scene::scene_world_loading)
@@ -81,8 +85,8 @@ set_tests_properties(sdk.framework.desktop PROPERTIES RUN_SERIAL TRUE TIMEOUT 90
 set_tests_properties(sdk.framework.context sdk.framework.ui PROPERTIES TIMEOUT 60)
 
 # Each installed public header must be sufficient on its own in a C++20 translation unit.
-set(framework_headers EditorContext EditorServiceRegistrar EditorUiRegistrar FrameworkResult
-    SceneToolRegistrar ProjectDescription EditorLayout EditorUiFactories FrameworkErrors EditorWindow LuxEngine FrameStatistics EditorAssembly ProjectManifest ProjectTransition SceneProfileRegistrar SceneProfile3D ScenePackageFile)
+set(framework_headers EditorComposition EditorContext EditorServices EditorUiRegistry FrameworkResult
+    SceneToolRegistry ProjectDescription EditorLayout EditorUiFactories FrameworkErrors EditorWindow LuxEngine FrameStatistics EditorAssembly ProjectManifest ProjectTransition SceneProfileRegistry SceneProfile3D ScenePackageFile)
 foreach(header IN LISTS framework_headers)
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" "#include <lux/engine/editor/${header}.hpp>\n")
     add_library(header_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")

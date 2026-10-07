@@ -14,6 +14,6 @@ namespace lux::editor
         {
             return cxx::unexpected(std::move(factory.error()));
         }
-        return factory->get()(context, description);
+        return factory->get().create_(context, description);
     }
 } // namespace lux::editor

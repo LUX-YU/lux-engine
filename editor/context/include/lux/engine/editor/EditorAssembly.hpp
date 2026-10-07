@@ -4,7 +4,7 @@
 
 namespace lux::editor
 {
-    class EditorContext;
+    class EditorComposition;
     // Product composition belongs to the host lifetime, not to a single open request.
-    using EditorAssembly = cxx::move_only_function<FrameworkResult<void>(EditorContext&) noexcept>;
+    using EditorAssembly = cxx::move_only_function<FrameworkResult<void>(EditorComposition&) noexcept>;
 } // namespace lux::editor

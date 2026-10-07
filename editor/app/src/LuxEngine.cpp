@@ -5,6 +5,7 @@
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/EngineRendering.hpp>
 #include <lux/engine/RenderContext.hpp>
+#include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorUiFactories.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
@@ -109,7 +110,7 @@ namespace lux::editor
                 }
                 if (transition_->candidate)
                 {
-                    transition_->candidate->beginClose();
+                    transition_->candidate->tasks().requestStop();
                     if (!transition_->candidate->tasks().join())
                     {
                         std::terminate();
@@ -118,7 +119,7 @@ namespace lux::editor
             }
             if (project_)
             {
-                project_->beginClose();
+                project_->tasks().requestStop();
                 if (!project_->tasks().join())
                 {
                     std::terminate();
@@ -318,7 +319,7 @@ namespace lux::editor
             transition_->cleaning_failed_candidate = true;
             if (transition_->candidate)
             {
-                transition_->candidate->beginClose();
+                transition_->candidate->tasks().requestStop();
             }
             transition_->panes.clear();
         }
@@ -364,9 +365,12 @@ namespace lux::editor
                     }
                     else
                     {
-                        auto assemble = [&](EditorContext& context) noexcept -> FrameworkResult<void>
-                        { return assembly_ ? assembly_(context) : FrameworkResult<void>{}; };
-                        auto context = EditorContext::create(*engine_, std::move(*completed->result), assemble);
+                        EditorComposition composition;
+                        const auto assembled = assembly_ ? assembly_(composition) : FrameworkResult<void>{};
+                        auto context =
+                            assembled
+                                ? detail::createEditorContext(*engine_, std::move(*completed->result), std::move(composition))
+                                : FrameworkResult<std::unique_ptr<EditorContext>>{cxx::unexpected(assembled.error())};
                         if (!context)
                         {
                             failTransition(context.error());
@@ -397,7 +401,7 @@ namespace lux::editor
             }
             if (next.cleaning_failed_candidate)
             {
-                if (next.candidate && !next.candidate->closed())
+                if (next.candidate && !next.candidate->tasks().settled())
                 {
                     return {};
                 }
@@ -440,11 +444,11 @@ namespace lux::editor
                 next.current_detached = true;
                 if (project_)
                 {
-                    project_->beginClose();
+                    project_->tasks().requestStop();
                 }
             }
             status_.state = EProjectTransition::CLOSING_CURRENT;
-            if (project_ && !project_->closed())
+            if (project_ && !project_->tasks().settled())
             {
                 return {};
             }
@@ -630,8 +634,8 @@ namespace lux::editor
                 const bool can_produce = !window_->shouldClose() && visible_output && *output && !backpressured;
                 const bool candidate_settled =
                     transition_ && (!transition_->cleaning_failed_candidate || !transition_->candidate ||
-                                    transition_->candidate->closed());
-                const bool current_settled = !project_ || !project_->closing() || project_->closed();
+                                    transition_->candidate->tasks().settled());
+                const bool current_settled = !project_ || project_->tasks().settled();
                 const bool transition_ready =
                     transition_ && transition_->task.settled() && candidate_settled && current_settled;
                 const bool begin_close = window_->shouldClose() && !transition_;

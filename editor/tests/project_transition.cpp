@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
+#include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
@@ -34,7 +35,7 @@ namespace
         {
             if (context_)
             {
-                assert(context_->closing() && context_->closed());
+                assert(context_->tasks().settled());
             }
             ++counts_.destroyed;
         }
@@ -80,9 +81,9 @@ int main(int argc, char** argv)
     config.layout = {{"probe", "project", "Project"}};
     auto host = LuxEngine::create(
         std::move(config),
-        [&](EditorContext& context) noexcept -> FrameworkResult<void>
+        [&](EditorComposition& context) noexcept -> FrameworkResult<void>
         {
-            return context.ui().registerFactory(
+            return context.registerUiFactory(
                 "probe",
                 [&](EditorContext& context,
                     const PaneDescription&) noexcept -> FrameworkResult<std::unique_ptr<ui::Pane>>
@@ -152,7 +153,7 @@ int main(int argc, char** argv)
     ));
     until([&] { return started.load(); });
     assert(engine.openProject(b_file));
-    until([&] { return old->closing(); });
+    until([&] { return engine.projectStatus().state == EProjectTransition::CLOSING_CURRENT; });
     const auto before = a;
     const auto global_before = global.pane;
     for (int i{}; i < 5; ++i)

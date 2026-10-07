@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/editor/SceneProfileRegistrar.hpp>
+#include <lux/engine/editor/SceneProfileRegistry.hpp>
 
 namespace lux::editor
 {

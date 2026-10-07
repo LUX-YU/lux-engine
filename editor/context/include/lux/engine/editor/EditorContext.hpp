@@ -1,21 +1,16 @@
 #pragma once
-#include <lux/cxx/core/function_ref.hpp>
-#include <lux/engine/editor/EditorServiceRegistrar.hpp>
-#include <lux/engine/editor/EditorUiRegistrar.hpp>
-#include <lux/engine/editor/FrameworkErrors.hpp>
+#include <lux/engine/editor/EditorServices.hpp>
+#include <lux/engine/editor/EditorUiRegistry.hpp>
 #include <lux/engine/editor/ProjectDescription.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
-#include <lux/engine/editor/SceneProfileRegistrar.hpp>
-#include <lux/engine/editor/SceneToolRegistrar.hpp>
+#include <lux/engine/editor/SceneProfileRegistry.hpp>
+#include <lux/engine/editor/SceneToolRegistry.hpp>
+#include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 
 namespace lux::engine
 {
     class EngineContext;
-}
-namespace lux::process
-{
-    class TaskScope;
 }
 namespace lux::project
 {
@@ -24,21 +19,17 @@ namespace lux::project
 } // namespace lux::project
 namespace lux::editor
 {
+    class EditorContext;
+    class EditorComposition;
     namespace detail
     {
         struct PreparedProject;
-    }
-    class LuxEngine;
+        [[nodiscard]] FrameworkResult<std::unique_ptr<EditorContext>>
+        createEditorContext(engine::EngineContext&, PreparedProject, EditorComposition&&) noexcept;
+    } // namespace detail
     class EditorContext final
     {
     public:
-        using Assembly = cxx::function_ref<FrameworkResult<void>(EditorContext&) noexcept>;
-        [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorContext>> create(
-            engine::EngineContext&,
-            ProjectDescription,
-            ProjectManifest,
-            Assembly
-        ) noexcept;
         ~EditorContext() noexcept;
         EditorContext(const EditorContext&) = delete;
         EditorContext& operator=(const EditorContext&) = delete;
@@ -57,6 +48,18 @@ namespace lux::editor
         {
             return project_;
         }
+        [[nodiscard]] const ProjectManifest& manifest() const noexcept
+        {
+            return manifest_;
+        }
+        [[nodiscard]] const project::PluginManager& plugins() const noexcept
+        {
+            return *plugins_;
+        }
+        [[nodiscard]] const project::SceneRegistrations& sceneRegistrations() const noexcept
+        {
+            return *registrations_;
+        }
         [[nodiscard]] asset::AssetVfs& assets() noexcept
         {
             return assets_;
@@ -65,76 +68,46 @@ namespace lux::editor
         {
             return assets_;
         }
-        [[nodiscard]] EditorServiceRegistrar& services() noexcept
+        [[nodiscard]] EditorServices& services() noexcept
         {
             return services_;
         }
-        [[nodiscard]] EditorUiRegistrar& ui() noexcept
+        [[nodiscard]] const EditorUiRegistry& ui() const noexcept
         {
             return ui_;
         }
-        [[nodiscard]] SceneToolRegistrar& sceneTools() noexcept
+        [[nodiscard]] const SceneToolRegistry& sceneTools() const noexcept
         {
             return scene_tools_;
         }
-
-        [[nodiscard]] SceneProfileRegistrar& sceneProfiles() noexcept
+        [[nodiscard]] const SceneProfileRegistry& sceneProfiles() const noexcept
         {
             return scene_profiles_;
-        }
-        [[nodiscard]] const SceneProfileRegistrar& sceneProfiles() const noexcept
-        {
-            return scene_profiles_;
-        }
-
-        [[nodiscard]] const ProjectManifest& manifest() const noexcept
-        {
-            return manifest_;
-        }
-        [[nodiscard]] const project::PluginManager* plugins() const noexcept
-        {
-            return plugins_.get();
-        }
-        [[nodiscard]] const project::SceneRegistrations* sceneRegistrations() const noexcept
-        {
-            return registrations_.get();
         }
         [[nodiscard]] process::TaskScope& tasks() noexcept;
-        void beginClose() noexcept;
-        [[nodiscard]] bool closed() const noexcept;
-        [[nodiscard]] bool closing() const noexcept
-        {
-            return closing_;
-        }
-
         template <class T> [[nodiscard]] FrameworkResult<std::reference_wrapper<T>> service() noexcept
         {
             return services_.get<T>(*this);
         }
 
     private:
-        friend class LuxEngine;
-        [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorContext>> create(
-            engine::EngineContext&,
-            detail::PreparedProject,
-            Assembly
-        ) noexcept;
-        EditorContext(engine::EngineContext&, detail::PreparedProject);
-        bool closing_{};
-        bool assembled_{};
-        void freeze() noexcept;
+        friend FrameworkResult<std::unique_ptr<EditorContext>> detail::
+            createEditorContext(engine::EngineContext&, detail::PreparedProject, EditorComposition&&) noexcept;
+        [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorContext>>
+        create(engine::EngineContext&, detail::PreparedProject, EditorComposition&&) noexcept;
+        EditorContext(engine::EngineContext&, detail::PreparedProject, EditorComposition&&) noexcept;
         engine::EngineContext& engine_;
         ProjectDescription project_;
         ProjectManifest manifest_;
         std::unique_ptr<project::PluginManager> plugins_;
         std::shared_ptr<const project::SceneRegistrations> registrations_;
         asset::AssetVfs assets_;
-        EditorUiRegistrar ui_;
-        SceneToolRegistrar scene_tools_;
-        SceneProfileRegistrar scene_profiles_;
-        // Services die before factory captures, project paths and VFS providers.
-        EditorServiceRegistrar services_;
-        // Transport callbacks settle while services, VFS and plugin code are still alive.
-        std::unique_ptr<process::TaskScope> tasks_;
+        EditorUiRegistry ui_;
+        SceneToolRegistry scene_tools_;
+        SceneProfileRegistry scene_profiles_;
+        // Instances die before factory captures, project paths, VFS and plugin registrations.
+        EditorServices services_;
+        // Destruction requests cancellation only; accepted tasks own their inputs and code.
+        process::TaskScope tasks_;
     };
 } // namespace lux::editor

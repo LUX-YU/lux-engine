@@ -24,7 +24,7 @@ component_add_transitive_commands(lux_editor_project
 lux_classify_target(TARGET lux_editor_project LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
 add_component(COMPONENT_NAME lux_editor_context NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES context/src/FrameworkErrors.cpp context/src/EditorContext.cpp context/src/EditorServiceRegistrar.cpp context/src/EditorUiRegistrar.cpp context/src/SceneProfileRegistrar.cpp)
+    SOURCE_FILES context/src/FrameworkErrors.cpp context/src/EditorContext.cpp context/src/EditorServices.cpp context/src/EditorUiRegistry.cpp context/src/SceneProfileRegistry.cpp context/src/SceneToolRegistry.cpp context/src/EditorComposition.cpp)
 component_include_directories(lux_editor_context BUILD_TIME_EXPORT
     ${CMAKE_CURRENT_SOURCE_DIR}/context/include INSTALL_TIME include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/context/sinclude)
@@ -134,10 +134,18 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     lux_editor_test_options(editor_framework_component_test)
     add_test(NAME framework.context_component COMMAND editor_framework_component_test)
     add_executable(editor_framework_context_test tests/context.cpp)
-    target_link_libraries(editor_framework_context_test PRIVATE lux_editor_context lux::engine::engine_context)
+    target_link_libraries(editor_framework_context_test PRIVATE lux_editor_context lux::engine::engine_context lux::engine::project::project_plugin_rendering)
+    target_include_directories(editor_framework_context_test PRIVATE context/sinclude)
+    target_include_directories(editor_scene_profiles_test PRIVATE context/sinclude)
     lux_editor_test_options(editor_framework_context_test)
     add_test(NAME framework.context COMMAND editor_framework_context_test ${CMAKE_CURRENT_BINARY_DIR}/test-data)
     add_test(NAME framework.error_registration_conflict COMMAND editor_framework_context_test --registration-conflict)
+    add_executable(editor_context_lifetime_test tests/context_lifetime.cpp)
+    target_link_libraries(editor_context_lifetime_test PRIVATE lux_editor_context lux::engine::engine_context lux::engine::project::project_plugin_rendering)
+    target_include_directories(editor_context_lifetime_test PRIVATE context/sinclude)
+    lux_editor_test_options(editor_context_lifetime_test)
+    add_test(NAME framework.context_lifetime COMMAND editor_context_lifetime_test)
+    set_tests_properties(framework.context_lifetime PROPERTIES TIMEOUT 15)
     add_executable(editor_framework_input_test tests/input.cpp)
     target_include_directories(editor_framework_input_test PRIVATE ui/pinclude)
     target_link_libraries(editor_framework_input_test PRIVATE lux_editor_ui)

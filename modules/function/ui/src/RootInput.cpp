@@ -298,10 +298,6 @@ namespace lux::ui
 
     void Root::closeInput() noexcept
     {
-        if (!impl_)
-        {
-            return;
-        }
         requireOwner();
         if (impl_->context->closeInput())
         {

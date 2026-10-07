@@ -2,14 +2,15 @@
 
 namespace lux::ui
 {
-    Root::Root() noexcept : LuxObject() {}
+    Root::Root(std::unique_ptr<Impl> impl) noexcept : LuxObject(), impl_(std::move(impl)) {}
+
     Root::~Root() noexcept
     {
         if (!isOnAffinityThread())
         {
             detail::failContract();
         }
-        if (impl_ && !clearPanes())
+        if (!clearPanes())
         {
             detail::failContract();
         }
@@ -22,27 +23,6 @@ namespace lux::ui
         {
             return lux::cxx::unexpected(EInitError::WRONG_THREAD);
         }
-        {
-            auto root = std::unique_ptr<Root>(new Root());
-            auto initialized = root->initialize(config);
-            if (!initialized)
-            {
-                return lux::cxx::unexpected(initialized.error());
-            }
-            return root;
-        }
-    }
-
-    lux::cxx::expected<void, EInitError> Root::initialize(RootConfig config) noexcept
-    {
-        if (!isOnAffinityThread())
-        {
-            return cxx::unexpected(EInitError::WRONG_THREAD);
-        }
-        if (impl_)
-        {
-            detail::failContract();
-        }
         auto context = detail::Context::create(config);
         if (!context)
         {
@@ -52,55 +32,53 @@ namespace lux::ui
         data->context = std::move(*context);
         data->pane_capacity = config.pane_capacity;
         data->dock_state.enabled = config.docking;
-        impl_ = std::move(data);
-        return {};
+        return std::unique_ptr<Root>(new Root(std::move(data)));
     }
 
     void Root::requireOwner() const noexcept
     {
-        if (!impl_ || !isOnAffinityThread())
+        if (!isOnAffinityThread())
         {
             detail::failContract();
         }
     }
+
     UpdateStatistics Root::statistics() const noexcept
     {
         requireOwner();
         return impl_->statistics;
     }
+
     const Theme& Root::theme() const noexcept
     {
         requireOwner();
         return impl_->context->theme();
     }
+
     float Root::scale() const noexcept
     {
         requireOwner();
         return impl_->context->scale();
     }
+
     lux::cxx::expected<FontAtlas, EInitError> Root::fontAtlas() const noexcept
     {
         requireOwner();
         return impl_->context->fontAtlas();
     }
+
     void Root::bindWindow(window::LuxWindow* window) noexcept
     {
-        if (!impl_ && !window)
-        {
-            return; // Detaching is valid after failed initialization.
-        }
         requireOwner();
-        if (!impl_)
-        {
-            return;
-        }
         impl_->window = window;
         impl_->context->bindWindow(window ? window->nativeHandle() : nullptr);
     }
+
     cxx::expected<void, ECaptureError> Root::update() noexcept
     {
         return updateFrame({}, nullptr, std::nullopt);
     }
+
     cxx::expected<void, ECaptureError> Root::update(
         FrameInfo info,
         DrawData& output,
@@ -109,6 +87,7 @@ namespace lux::ui
     {
         return updateFrame(info, &output, capture);
     }
+
     lux::cxx::expected<void, ECaptureError> Root::updateFrame(
         FrameInfo info,
         DrawData* output,

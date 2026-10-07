@@ -140,11 +140,11 @@ namespace lux::ui
         using LuxObject::removeChild;
         using LuxObject::setParent;
         [[nodiscard]] PaneResult<void> checkStructureSafe() const noexcept;
-        Root() noexcept;
+        struct Impl;
+        explicit Root(std::unique_ptr<Impl>) noexcept;
         void applyPendingChanges() noexcept;
         [[nodiscard]] cxx::expected<void, ECaptureError>
         updateFrame(FrameInfo, DrawData*, std::optional<Capture>) noexcept;
-        [[nodiscard]] cxx::expected<void, EInitError> initialize(RootConfig) noexcept;
         [[nodiscard]] Pane* findPane(PaneId) const noexcept;
         [[nodiscard]] bool menuTargets(const Element&) const noexcept;
         friend class Pane;
@@ -180,7 +180,6 @@ namespace lux::ui
         [[nodiscard]] bool allowedByModal(const Element&) const noexcept;
         [[nodiscard]] Pane* modalPane() const noexcept;
         void prepareLayout() noexcept;
-        struct Impl;
         std::unique_ptr<Impl> impl_;
     };
 } // namespace lux::ui

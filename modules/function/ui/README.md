@@ -2,6 +2,9 @@
 
 `ui` 提供 CPU UI；`ui_rendering` 提供可选 RenderFeature。UI 不拥有原生窗口、Scene 或 GPU 资源。
 
+Root::create 先完成私有 Context/Impl，再构造 Root 和注册 ObjectId。配置或后端失败不发布对象身份，
+已有 ImGui Context 保持不变；成功 Root 在整个寿命中始终拥有完整后端，没有 initialize 或空壳状态。
+
 ## 所有权与身份
 
 Root 是全部窗口的唯一 owner，使用 SlotKeyAutoSparseSet<PaneId, unique_ptr<Pane>>。

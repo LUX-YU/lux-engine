@@ -2,6 +2,7 @@
 #include "UiTestHelpers.hpp"
 #include <cassert>
 #include <imgui.h>
+
 int main()
 {
     using namespace lux;
@@ -13,6 +14,23 @@ int main()
     auto invalid = ui::Root::create({.input_capacity = 1});
     assert(!invalid && invalid.error() == ui::EInitError::INVALID_INPUT_CAPACITY);
     assert(ImGui::GetCurrentContext() == original);
+    object::ObjectId previous;
+    {
+        object::LuxObject probe;
+        previous = probe.objectId();
+    }
+    // A rejected backend candidate must not even construct/register a Root.
+    for (unsigned attempt{}; attempt < 3; ++attempt)
+    {
+        auto rejected = ui::Root::create({.input_capacity = 1});
+        assert(!rejected && rejected.error() == ui::EInitError::INVALID_INPUT_CAPACITY);
+        assert(ImGui::GetCurrentContext() == original);
+    }
+    {
+        object::LuxObject probe;
+        assert(probe.objectId().index == previous.index);
+        assert(probe.objectId().gen == previous.gen + 1);
+    }
     auto first_font = (*first)->fontAtlas();
     auto second_font = (*second)->fontAtlas();
     assert(first_font && second_font && first_font->pixels == second_font->pixels);

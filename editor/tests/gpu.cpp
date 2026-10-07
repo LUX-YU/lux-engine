@@ -1,4 +1,5 @@
 #include "../../cmake/installed-consumers/common/UiTestContent.hpp"
+#include "support/ProjectRequests.hpp"
 #include <atomic>
 #include <cassert>
 #include <cstdio>
@@ -116,8 +117,8 @@ namespace
                             [](process::TaskReporter) noexcept { return stdexec::just(FrameworkResult<void>{}); },
                             [&](process::TTaskResult<void, error::Error>&& result) noexcept
                             {
-                                // C's UI was removed, but its service and Context must still be alive.
-                                assert(result && (deaths == std::vector<int>{1, 1, 2, 1}));
+                                // C's UI and Context are gone. Completion owns its result, not the failed candidate.
+                                assert(result && (deaths == std::vector<int>{1, 1, 2, 1, 2}));
                                 rejected_candidate_delivered = true;
                             }
                         ));
@@ -140,8 +141,8 @@ namespace
             explicit Listener(LuxEngine& host) : host_(host) {}
             void attached(const ui::PaneChanged&) noexcept
             {
-                auto result = host_.closeProject();
-                assert(!result && result.error().type == Errors::EditorProjectChangeInsideAHostOperation);
+                // Structural facts observe the semantic owner published by on_commit.
+                assert(host_.project() || host_.window().shouldClose());
                 ++calls;
             }
             unsigned calls{};
@@ -151,6 +152,7 @@ namespace
         } listener(*engine);
         auto connection = object::LuxObject::connect(root, &ui::Root::paneChanged, &listener, &Listener::attached);
         assert(connection);
+        fixture::ProjectFacts facts{*engine};
         unsigned waiting{};
         auto until = [&](auto predicate)
         {
@@ -163,59 +165,49 @@ namespace
                 std::this_thread::sleep_for(1ms);
             }
         };
-        const auto settled = [&]
-        {
-            auto state = engine->projectStatus().state;
-            return state != EProjectTransition::PREPARING && state != EProjectTransition::CLOSING_CURRENT;
-        };
-        assert(engine->createProject({directory / "A", manifest("A")}));
-        assert(engine->projectStatus().state == EProjectTransition::PREPARING && !engine->context());
+        const auto settled = [&] { return fixture::preparationsFinished(*engine); };
+        assert(fixture::create(*engine, {directory / "A", manifest("A")}));
+        assert(!engine->project());
         until(settled);
-        assert(engine->projectStatus().state == EProjectTransition::SUCCEEDED);
-        assert(engine->projectStatus().manifest_published);
+        assert(facts.changed == 1 && facts.failed == 0);
         assert(readProjectManifest(directory / "A/Project.luxproj"));
         until([&] { return TestPane::draws >= 4 && runtime->renderContext()->runtime().statistics().frames > 0; });
-        auto* original = engine->context();
-        assert(!engine->openProject({}) && engine->context() == original);
-        assert(engine->openProject(directory / "missing.luxproj"));
+        auto* original = engine->project();
+        assert(!fixture::open(*engine, {}) && engine->project() == original);
+        assert(fixture::open(*engine, directory / "missing.luxproj"));
         until(settled);
-        assert(engine->projectStatus().state == EProjectTransition::FAILED && engine->context() == original);
+        assert(facts.failed != 0 && engine->project() == original);
         auto broken = manifest("MissingPlugin");
         broken.plugins = {{"test.no_such_plugin", 1}};
-        assert(engine->openProject(write(broken)));
+        assert(fixture::open(*engine, write(broken)));
         until(settled);
-        assert(engine->projectStatus().state == EProjectTransition::FAILED && engine->context() == original);
-        assert(engine->projectStatus().failure.type == Errors::ProjectPlugins);
+        assert(facts.failed != 0 && engine->project() == original);
+        assert(facts.failure.error.type == Errors::ProjectPlugins);
         const auto d = write(manifest("D"));
-        assert(engine->openProject(d));
-        assert(!engine->openProject(d));
-        assert(engine->cancelProjectTransition());
+        assert(fixture::open(*engine, d));
+        assert(fixture::open(*engine, d)); // Latest intent replaces the previous one.
+        fixture::cancel(*engine);
         until(settled);
-        assert(engine->projectStatus().state == EProjectTransition::CANCELLED && engine->context() == original);
+        assert(facts.failed == 2 && engine->project() == original);
         assert(deaths.empty() && ui_test::paneCount(*root) == 2);
         // Finish worker preparation without collecting it, then cancel. The manifest publication
         // remains a disk fact even though the prepared Context must never be adopted.
-        const auto submitted_after = std::chrono::steady_clock::now();
-        assert(engine->createProject({directory / "PublishedCancelled", manifest("PublishedCancelled")}));
+        assert(fixture::create(*engine, {directory / "PublishedCancelled", manifest("PublishedCancelled")}));
         const auto prepared_deadline = std::chrono::steady_clock::now() + 20s;
         for (;;)
         {
-            const auto infos = runtime->execution().taskInfos();
-            const auto task = std::ranges::find_if(
-                infos,
-                [&](const auto& info) { return info.category == "editor.project" && info.submitted >= submitted_after; }
-            );
-            if (task != infos.end() && task->state == process::ETaskState::SUCCEEDED)
+            if (std::filesystem::exists(directory / "PublishedCancelled/Project.luxproj") &&
+                object::ObjectRuntime::instance().statistics().pending != 0)
             {
                 break;
             }
             assert(std::chrono::steady_clock::now() < prepared_deadline);
             std::this_thread::sleep_for(1ms);
         }
-        assert(engine->cancelProjectTransition());
+        fixture::cancel(*engine);
         until(settled);
-        assert(engine->projectStatus().state == EProjectTransition::CANCELLED);
-        assert(engine->projectStatus().manifest_published && engine->context() == original);
+        assert(facts.failed == 2);
+        assert(engine->project() == original);
         assert(readProjectManifest(directory / "PublishedCancelled/Project.luxproj"));
         assert(deaths.empty());
 
@@ -245,27 +237,26 @@ namespace
             },
             [&](process::TTaskResult<void, error::Error>&& result) noexcept
             {
-                assert(result && deaths.empty());
+                assert(result && (deaths == std::vector<int>{1, 1, 2}));
                 delivered = true;
             }
         ));
         until([&] { return started.load(); });
         auto b = manifest("B");
         b.plugins = {{"lux.builtin.scene_render", 1}};
-        assert(engine->openProject(write(b)));
-        until([&] { return engine->projectStatus().state == EProjectTransition::CLOSING_CURRENT; });
+        assert(fixture::open(*engine, write(b)));
+        until([&] { return engine->project() && engine->project()->project().name == "B"; });
+        assert(!delivered && (deaths == std::vector<int>{1, 1, 2}));
         for (int i = 0; i < 3; ++i)
         {
             assert(take(engine->frame()) == EFrameStatus::RUNNING);
-            assert(engine->context() == original && deaths.empty() && !delivered);
-            assert(original->service<Service>()
-            ); // Existing complete Context stays usable until P05 replaces the transition.
+            assert(engine->project()->project().name == "B" && !delivered);
         }
         release = true;
-        until(settled);
-        assert(delivered && engine->context()->project().name == "B");
+        until([&] { return delivered; });
+        assert(delivered && engine->project()->project().name == "B");
         assert((deaths == std::vector<int>{1, 1, 2}));
-        assert(!engine->context()->sceneRegistrations().features.empty());
+        assert(!engine->project()->sceneRegistrations().features.empty());
         assert(&engine->engine() == runtime && &engine->window() == window && &window->uiRoot() == root);
         assert(runtime->sceneRuntime().instanceCount() == 1); // Only the original UI Scene; no project Scene yet.
         auto state = window->state();
@@ -288,22 +279,22 @@ namespace
         ShowWindow(static_cast<HWND>(window->nativeHandle()), SW_RESTORE);
         until([&] { return !window->minimized() && TestPane::draws > before; });
 #endif
-        auto* b_context = engine->context();
-        assert(engine->openProject(write(manifest("C"))));
+        auto* b_context = engine->project();
+        assert(fixture::open(*engine, write(manifest("C"))));
         until(settled);
-        assert(engine->projectStatus().state == EProjectTransition::FAILED);
-        assert(engine->projectStatus().failure.type == FixtureErrors::EditorExpectedSecondFactoryRefusal);
-        assert(engine->context() == b_context && ui_test::paneCount(*root) == 2);
-        assert(rejected_candidate_delivered);
+        assert(facts.failed == 3);
+        assert(facts.failure.error.type == FixtureErrors::EditorExpectedSecondFactoryRefusal);
+        assert(engine->project() == b_context && ui_test::paneCount(*root) == 2);
+        until([&] { return rejected_candidate_delivered; });
         assert((deaths == std::vector<int>{1, 1, 2, 1, 2})); // Only C's detached candidates were destroyed.
-        assert(engine->openProject(d));
+        assert(fixture::open(*engine, d));
         until(settled);
-        assert(engine->context()->project().name == "D");
+        assert(engine->project()->project().name == "D");
         assert((deaths == std::vector<int>{1, 1, 2, 1, 2, 1, 1, 2}));
         until([&] { return TestPane::draws > before + 2; });
         const auto statistics = runtime->renderContext()->runtime().statistics();
         assert(statistics.frames > 0);
-        assert(engine->openProject(directory / "A/Project.luxproj"));
+        assert(fixture::open(*engine, directory / "A/Project.luxproj"));
         window->exit(); // Late preparation is drained/cancelled; A is never adopted after native close.
         const auto exit_deadline = std::chrono::steady_clock::now() + 20s;
         while (take(engine->frame()) != EFrameStatus::EXIT_REQUESTED)
@@ -311,7 +302,7 @@ namespace
             assert(std::chrono::steady_clock::now() < exit_deadline);
             std::this_thread::sleep_for(1ms);
         }
-        assert(!engine->context());
+        assert(!engine->project());
         assert(listener.calls > 0);
         connection->disconnect();
         engine.reset();

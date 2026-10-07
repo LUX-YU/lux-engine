@@ -393,13 +393,6 @@ namespace lux::editor
             {error::EArgument::UNSIGNED}
         };
         inline constexpr error::ErrorId ProjectPlugins = error::errorId(ProjectPluginsDescriptor.name);
-        inline constexpr error::ErrorDescriptor ProjectTransitionBusyDescriptor{
-            "lux.editor.project.transition_busy",
-            "A project transition is already in progress",
-            error::ERecovery::RETRYABLE,
-            {}
-        };
-        inline constexpr error::ErrorId ProjectTransitionBusy = error::errorId(ProjectTransitionBusyDescriptor.name);
         inline constexpr error::ErrorDescriptor ProjectCancelledDescriptor{
             "lux.editor.project.cancelled",
             "Project preparation was cancelled",

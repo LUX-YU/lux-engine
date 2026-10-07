@@ -47,17 +47,19 @@ from persisted project values. The product executable supports `lux_editor proje
 `lux_editor --create directory name`; a project-free launch displays instructions. New product projects select the
 existing `lux.builtin.scene_render` runtime plugin; this is product policy, not a framework branch.
 
-Only one transition is admitted. `projectStatus()` separates PREPARING, CLOSING_CURRENT and terminal outcomes;
-`manifest_published` records confirmed creation even when subsequent plugin preparation fails or adoption is cancelled.
-A publication-unknown error remains explicit. Cancellation is accepted during preparation, before old-project closure.
-New requests during a transition or a host callback return BUSY.
+LuxEngine is an Object Event receiver. OpenProjectRequest/CreateProjectRequest carry owned inputs; CloseProjectRequest
+and the application close/cancel commands express intent. Newer requests invalidate older serials and request stop;
+accepted completion remains owned by Process/ObjectScheduler and is always settled. No public transition/status API exists.
+projectChanged and projectOpenFailed are facts, not progress polling. A confirmed created manifest remains on disk even
+when subsequent plugin preparation fails. Cancellation and stale completion do not emit a false open failure.
 
-Preparation reads and verifies plugins on the existing blocking scheduler. Completion only deposits owning values.
-The host prepares all candidate UI while A remains intact. A failed read/plugin/assembly/factory leaves A active.
-After candidate preparation, A stops accepting work; its Panes become noninteractive while accepted work finishes.
-UI is removed before A's Context; the complete B batch is then mounted. Failed candidates drain their own accepted
-work before Context destruction. EngineContext, native window, Root and ImGui Context survive every switch.
-Native close cancels preparation and continues draining before teardown; late results cannot adopt a new project.
+Preparation runs on the existing blocking scheduler with owned paths/configuration. ObjectScheduler protects the complete
+owner continuation. The Event builds a complete detached candidate while A remains intact; failed candidates clean up
+immediately without waiting for their cancellation scopes. Only the host safe point calls Root::replacePanes. Its commit
+publishes the new Context/mount before notifications; old Panes are destroyed before their old Context, without joining
+workers. Global UI remains mounted, and late requests from notifications enter the next batch. Window, Root, ImGui and
+EngineContext survive project switches. Object callbacks may assemble/clean unrelated detached candidates, but cannot
+mutate an attached UI tree or move an already-parented Object relation during dispatch.
 
 Context construction is private and requires verified PluginManager and SceneRegistrations values. Source tests use a
 noninstalled complete-preparation fixture. Installed consumers use the same public host/project path as the product;
@@ -100,7 +102,7 @@ The installed package is `lux-engine-editor-framework` under `lux::engine::edito
 - `lux_editor_project`: pure project values, codec and file IO; no Process/UI/Renderer dependency.
 - `lux_editor_context`: composition declarations, complete runtime directories and Process cancellation scopes; no UI or rendering implementation.
 - `lux_editor_ui`: native window/input and detached UI factory invocation; no scene_render or app dependency.
-- `lux_editor_app`: async transition, host and private UI Scene transport.
+- `lux_editor_app`: typed Project Events, safe-point adoption, host and private UI Scene transport.
 - `lux_editor_scene`: generic ScenePackage file IO, independent of Project and concrete profiles.
 - `lux_editor_scene_profiles`: concrete 3D authoring preset.
 - `lux_editor_file_io`: shared internal file primitive; only its static library is installed, not its support header.
@@ -130,8 +132,8 @@ Plugin selections use the same `project_identity` grammar as PluginCatalog; scen
 A prepared ProjectDescription binds the canonical `manifest_file`, independently of its display name. `root`
 is that file's parent, including when the input follows a filesystem alias. Every constructed Context has this exact file binding; the removed incomplete bootstrap is not an SDK fallback.
 
-LuxEngine tracks only the handles from its project mount. Switching detaches those panes, retains their owners
-until the old TaskScope settles, destroys the panes while their Context is alive, then adopts the next project.
+LuxEngine tracks only the handles from its project mount. Switching atomically replaces those panes, publishes the new Context before notification, then destroys the old
+panes before the old Context without waiting for its TaskScope.
 Application panes remain mounted and continue maintenance. Root has no Project grouping or Project ownership tag.
 A pane removed/re-registered by an external owner has a different registration and is no longer part of that mount.
 

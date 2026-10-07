@@ -143,8 +143,8 @@ namespace lux::ui
         auto& parent = pane ? static_cast<object::LuxObject&>(*pane) : *element;
         auto* root = pane ? pane->root_ : element->attachedRoot();
         auto* old_root = child.attachedRoot();
-        const bool is_busy = isDispatching() || (root && !root->attachmentSafe()) ||
-                             (old_root && old_root != root && !old_root->attachmentSafe());
+        const bool is_busy =
+            (root && !root->attachmentSafe()) || (old_root && old_root != root && !old_root->attachmentSafe());
         if (is_busy)
         {
             return cxx::unexpected(EPaneError::BUSY);

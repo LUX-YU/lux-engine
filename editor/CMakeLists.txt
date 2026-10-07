@@ -58,8 +58,9 @@ lux_classify_target(TARGET lux_editor_ui LAYER EDITOR PRODUCT EDITOR ROLE LIBRAR
 
 add_component(COMPONENT_NAME lux_editor_app NAMESPACE lux::engine::editor STATIC SOURCE_FILES app/src/LuxEngine.cpp app/src/ProjectUiMount.cpp app/src/ProjectPreparation.cpp app/src/EditorUiScene.cpp app/src/UiRenderSyncStage.cpp)
 component_include_directories(lux_editor_app BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/app/include INSTALL_TIME include PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/app/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/context/sinclude)
-target_link_libraries(lux_editor_app PUBLIC lux_editor_context lux_editor_ui PRIVATE lux::engine::engine_context_render lux::engine::scene::scene_render lux::engine::function::ui_rendering lux::engine::project::project_plugin_rendering)
+target_link_libraries(lux_editor_app PUBLIC lux_editor_context lux_editor_ui PRIVATE lux::engine::process::object_execution lux::engine::engine_context_render lux::engine::scene::scene_render lux::engine::function::ui_rendering lux::engine::project::project_plugin_rendering)
 component_add_transitive_commands(lux_editor_app
+    "find_package(lux-engine-process-object-execution REQUIRED COMPONENTS object_execution)"
     "find_package(lux-engine-context-render REQUIRED COMPONENTS engine_context_render)"
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
     "find_package(lux-engine-function REQUIRED COMPONENTS ui_rendering)"
@@ -176,11 +177,16 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
     add_test(NAME framework.gpu COMMAND editor_framework_transport_test)
     set_tests_properties(framework.gpu PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE LABELS gpu)
     if(LUX_EDITOR_BUILD_DESKTOP_TESTS)
-        add_executable(editor_project_transition_test tests/project_transition.cpp)
-        target_link_libraries(editor_project_transition_test PRIVATE lux_editor_app lux::engine::engine_context_render)
-        lux_editor_test_options(editor_project_transition_test)
+        add_executable(editor_project_requests_test tests/project_requests.cpp)
+        target_link_libraries(editor_project_requests_test PRIVATE lux_editor_app lux::engine::engine_context_render)
+        lux_editor_test_options(editor_project_requests_test)
+        add_test(NAME framework.project_requests COMMAND editor_project_requests_test "${CMAKE_CURRENT_BINARY_DIR}/request-data")
+        set_tests_properties(framework.project_requests PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE LABELS "gpu;desktop")
+        add_executable(editor_project_lifecycle_test tests/project_lifecycle.cpp)
+        target_link_libraries(editor_project_lifecycle_test PRIVATE lux_editor_app lux::engine::engine_context_render)
+        lux_editor_test_options(editor_project_lifecycle_test)
         foreach(mode global maintenance)
-            add_test(NAME framework.project_${mode} COMMAND editor_project_transition_test ${mode} "${CMAKE_CURRENT_BINARY_DIR}/transition-${mode}")
+            add_test(NAME framework.project_${mode} COMMAND editor_project_lifecycle_test ${mode} "${CMAKE_CURRENT_BINARY_DIR}/lifecycle-${mode}")
             set_tests_properties(framework.project_${mode} PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE LABELS "gpu;desktop")
         endforeach()
         add_executable(editor_framework_pacing_test tests/pacing.cpp)

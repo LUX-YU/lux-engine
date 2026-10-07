@@ -463,7 +463,10 @@ namespace lux::object
         {
             return {};
         }
-        const bool is_busy = isDispatching() || child.hasActiveTree() || !child.acceptsCallbacks() ||
+        // A callback may assemble a new, unattached candidate. Reparenting an existing
+        // relation still waits for the owner safe point; active participants are never borrowed away.
+        const bool is_dispatch_reparent = isDispatching() && child.parent_ != nullptr;
+        const bool is_busy = is_dispatch_reparent || child.hasActiveTree() || !child.acceptsCallbacks() ||
                              (parent && !parent->acceptsCallbacks());
         if (is_busy)
         {
@@ -475,14 +478,14 @@ namespace lux::object
             {
                 return cxx::unexpected(EObjectTreeError::INVALID_TREE);
             }
-            if (ancestor->active_events_)
+            if (ancestor->active_events_ || ancestor->callback_borrows_)
             {
                 return cxx::unexpected(EObjectTreeError::BUSY);
             }
         }
         for (auto* ancestor = child.parent_; ancestor; ancestor = ancestor->parent_)
         {
-            if (ancestor->active_events_)
+            if (ancestor->active_events_ || ancestor->callback_borrows_)
             {
                 return cxx::unexpected(EObjectTreeError::BUSY);
             }
@@ -599,7 +602,7 @@ namespace lux::object
     void LuxObject::beginDestruction() noexcept
     {
         assertAffinity();
-        const bool is_active = hasActiveTree() || isDispatching();
+        const bool is_active = hasActiveTree();
         if (is_active)
         {
             detail::failObjectContract();

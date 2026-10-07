@@ -615,6 +615,40 @@ namespace
         assert(stale && !ui_test::resolvePane(**root, id));
         std::cout << "Synchronous borrow freezes structure, nested maintenance and stale targets PASS\n";
     }
+
+    void detachedEventCandidate()
+    {
+        struct Prepare final
+        {
+        };
+        struct Receiver final : object::LuxObject
+        {
+            ui::Root& root;
+            bool prepared{};
+            explicit Receiver(ui::Root& value) noexcept : root(value) {}
+            void event(object::EventView& event) noexcept override
+            {
+                assert(event.getIf<Prepare>());
+                auto pane = std::make_unique<ui::Pane>("Candidate");
+                ui::Layout layout;
+                ui::Label label{"Detached"};
+                assert(layout.addElement(label) && pane->addElement(layout));
+                assert(!pane->attachedRoot() && label.containingPane() == pane.get());
+                auto rejected = root.addPane(std::move(pane));
+                assert(!rejected && rejected.error() == ui::EPaneError::BUSY && pane);
+                pane.reset(); // Failed candidate cleanup is legal inside an unrelated receiver's Event.
+                assert(!layout.parent());
+                prepared = true;
+                event.accept();
+            }
+        };
+        auto root = ui::Root::create();
+        assert(root);
+        Receiver receiver{**root};
+        Prepare prepare;
+        assert(object::sendEvent(receiver, prepare) && receiver.prepared);
+        std::cout << "Detached Event candidate composition/cleanup allowed; live Root mutation remains BUSY PASS\n";
+    }
 } // namespace
 
 int main()
@@ -635,6 +669,7 @@ int main()
     ownedBatch(messages);
     identityReuse(messages);
     synchronousBorrow(messages);
+    detachedEventCandidate();
     static_cast<void>(messages.collectRetired());
     assert(messages.pendingRetirements() == 0);
 }

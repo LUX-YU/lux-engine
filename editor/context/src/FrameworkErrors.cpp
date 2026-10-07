@@ -13,7 +13,6 @@ namespace lux::editor
             Errors::SceneProfileUnknownDescriptor,
             Errors::ProjectManifestDescriptor,
             Errors::ProjectPluginsDescriptor,
-            Errors::ProjectTransitionBusyDescriptor,
             Errors::ProjectCancelledDescriptor,
             Errors::ProjectClosingDescriptor,
             Errors::ProjectNeedsPreparedPluginsDescriptor,

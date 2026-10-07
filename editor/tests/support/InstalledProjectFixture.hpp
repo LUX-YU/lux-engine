@@ -1,4 +1,5 @@
 #pragma once
+#include "ProjectRequests.hpp"
 #include <cassert>
 #include <chrono>
 #include <lux/engine/editor/EditorComposition.hpp>
@@ -17,11 +18,11 @@ namespace fixture
         ContextOwner& operator=(ContextOwner&&) noexcept = default;
         [[nodiscard]] lux::editor::EditorContext& operator*() const noexcept
         {
-            return *host_->context();
+            return *host_->project();
         }
         [[nodiscard]] lux::editor::EditorContext* operator->() const noexcept
         {
-            return host_->context();
+            return host_->project();
         }
         void reset() noexcept
         {
@@ -54,20 +55,21 @@ namespace fixture
             EditorAssembly{std::forward<Assembly>(assembly)}
         );
         assert(host);
-        assert((*host)->openProject(file));
+        ProjectFacts facts{**host};
+        assert(open(**host, file));
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
         for (;;)
         {
             assert(std::chrono::steady_clock::now() < deadline);
-            const auto state = (*host)->projectStatus();
-            if (state.state == EProjectTransition::SUCCEEDED)
+
+            if (facts.changed != 0)
             {
-                assert((*host)->context());
+                assert((*host)->project());
                 return ContextOwner{std::move(*host)};
             }
-            if (state.state == EProjectTransition::FAILED)
+            if (facts.failed != 0)
             {
-                return cxx::unexpected(state.failure);
+                return cxx::unexpected(facts.failure.error);
             }
             assert((*host)->frame());
             std::this_thread::sleep_for(std::chrono::milliseconds(1));

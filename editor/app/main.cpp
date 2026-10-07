@@ -5,6 +5,7 @@
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/editor/SceneProfile3D.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
+#include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/platform/Process.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
@@ -52,34 +53,33 @@ namespace
             {
                 std::terminate();
             }
-        }
-        void update() noexcept override
-        {
-            const auto status = engine_.projectStatus();
-            if (status.state == last_)
+            auto changed =
+                connect(&engine_, &lux::editor::LuxEngine::projectChanged, this, [this]() noexcept { showProject(); });
+            auto failed = connect(
+                &engine_,
+                &lux::editor::LuxEngine::projectOpenFailed,
+                this,
+                [this](const lux::editor::ProjectOpenFailure& failure) noexcept
+                { label_.setText(lux::error::format(failure.error)); }
+            );
+            if (!changed || !failed)
             {
-                return;
+                std::terminate();
             }
-            last_ = status.state;
-            using State = lux::editor::EProjectTransition;
-            if (status.failure.type)
-            {
-                label_.setText(lux::error::format(status.failure));
-            }
-            else if (last_ == State::PREPARING)
-            {
-                label_.setText("Preparing project...");
-            }
-            else if (last_ == State::CLOSING_CURRENT)
-            {
-                label_.setText("Waiting for accepted project tasks to complete...");
-            }
+            changed_ = std::move(*changed);
+            failed_ = std::move(*failed);
+            showProject();
         }
 
     private:
+        void showProject() noexcept
+        {
+            auto* project = engine_.project();
+            label_.setText(project ? "Project: " + project->project().name : "No project");
+        }
         lux::editor::LuxEngine& engine_;
         lux::ui::Label label_;
-        lux::editor::EProjectTransition last_{lux::editor::EProjectTransition::IDLE};
+        lux::object::Connection changed_, failed_;
     };
 } // namespace
 int main(int argc, char** argv)
@@ -141,14 +141,16 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "%s\n", lux::error::format(engine.error()).c_str());
         return 1;
     }
-    lux::editor::FrameworkResult<void> requested;
+    lux::error::Error rejection;
     if (!(*engine)->window().uiRoot().addPane(std::make_unique<ProjectStatusPane>(**engine)))
     {
         return 1;
     }
     if (opening)
     {
-        requested = (*engine)->openProject(requested_path);
+        lux::editor::OpenProjectRequest request{requested_path};
+        static_cast<void>(lux::object::sendEvent(**engine, request));
+        rejection = request.rejection;
     }
     else if (creating)
     {
@@ -157,16 +159,24 @@ int main(int argc, char** argv)
         std::mt19937 random{seed};
         uuids::uuid_random_generator generate(random);
         lux::editor::ProjectManifest manifest{1, generate(), args[3], {{"lux.builtin.scene_render", 1}}};
-        requested = (*engine)->createProject({requested_path, std::move(manifest)});
+        lux::editor::CreateProjectRequest request{requested_path, std::move(manifest)};
+        static_cast<void>(lux::object::sendEvent(**engine, request));
+        rejection = request.rejection;
     }
-    if (!requested)
+    if (rejection.type)
     {
-        std::fprintf(stderr, "%s\n", lux::error::format(requested.error()).c_str());
+        std::fprintf(stderr, "%s\n", lux::error::format(rejection).c_str());
         return 2;
     }
     // Product key bindings, transported by the same menu/shortcut path as external commands.
     (*engine)->window().uiRoot().setMenu(
         {{{},
+          "Project",
+          {},
+          {},
+          {{lux::ui::CommandId{"lux.project.close"}, "Close project", "Ctrl+W", {lux::ui::EKey::W, true}},
+           {lux::ui::CommandId{"lux.project.cancel_open"}, "Cancel opening", {}, {}}}},
+         {{},
           "Edit",
           {},
           {},

@@ -183,7 +183,7 @@ int main(int argc, char** argv)
           {{lux::ui::CommandId{"lux.edit.undo"}, "Undo", "Ctrl+Z", {lux::ui::EKey::Z, true}},
            {lux::ui::CommandId{"lux.edit.redo"}, "Redo", "Ctrl+Y", {lux::ui::EKey::Y, true}}}}}
     );
-    auto result = (*engine)->exec();
+    auto result = (*engine)->run();
     if (!result)
     {
         std::fprintf(stderr, "%s\n", lux::error::format(result.error()).c_str());

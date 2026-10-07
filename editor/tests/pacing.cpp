@@ -111,72 +111,84 @@ namespace
             ShowWindow(hwnd, SW_MINIMIZE);
         }
 #endif
-        // Let initial output construction settle before observing quiet idle.
-        const auto warm_until = std::chrono::steady_clock::now() + 250ms;
-        do
-        {
-            assert(host->frame());
-            std::this_thread::sleep_for(1ms);
-        } while (std::chrono::steady_clock::now() < warm_until);
-        assert(probe->changed);
-        const auto before = host->statistics();
-        const auto started = std::chrono::steady_clock::now();
+        // Observe only after a real timer wakes the public event loop. No public
+        // frame hook or host-owned profiling state is used by this SDK consumer.
+        std::size_t before_updates{}, before_frames{}, before_messages{};
+        std::chrono::steady_clock::time_point started;
         process::Task task;
         std::jthread close;
-        if (native_close)
-        {
-#if defined(_WIN32)
-            close = std::jthread(
-                [hwnd]
+        bool warmed{};
+        auto& execution = host->engine().execution();
+        auto warm = execution.submit(
+            {"Pacing warmup", "qualification"},
+            [&](process::TaskReporter) noexcept
+            {
+                return stdexec::upon_error(
+                    stdexec::then(
+                        execution.timer().after(250ms),
+                        []() noexcept { return cxx::expected<void, process::ETimerError>{}; }
+                    ),
+                    [](process::ETimerError error) noexcept -> cxx::expected<void, process::ETimerError>
+                    { return cxx::unexpected(error); }
+                );
+            },
+            [&](process::TTaskResult<void, process::ETimerError>&& result) noexcept
+            {
+                assert(result && probe->changed);
+                warmed = true;
+                before_updates = probe->updates;
+                before_frames = host->engine().renderContext()->runtime().statistics().frames;
+                before_messages = object::ObjectRuntime::instance().statistics().posted;
+                started = std::chrono::steady_clock::now();
+                if (native_close)
                 {
-                    std::this_thread::sleep_for(700ms);
-                    assert(PostMessageW(hwnd, WM_CLOSE, 0, 0));
-                }
-            );
+#if defined(_WIN32)
+                    close = std::jthread(
+                        [hwnd]
+                        {
+                            std::this_thread::sleep_for(700ms);
+                            assert(PostMessageW(hwnd, WM_CLOSE, 0, 0));
+                        }
+                    );
 #endif
-        }
-        else
-        {
-            auto accepted = timer(*host, receiver);
-            assert(accepted);
-            task = std::move(*accepted);
-        }
-        assert(host->exec());
+                }
+                else
+                {
+                    auto accepted = timer(*host, receiver);
+                    assert(accepted);
+                    task = std::move(*accepted);
+                }
+            }
+        );
+        assert(warm);
+        assert(host->run());
+        assert(warmed);
         const auto elapsed = std::chrono::steady_clock::now() - started;
-        const auto after = host->statistics();
-        const auto iterations = after.iterations - before.iterations;
-        const auto frames = after.captured_frames - before.captured_frames;
-        const auto waits = after.waits - before.waits;
-        const auto wait_ms = std::chrono::duration<double, std::milli>(after.wait - before.wait).count();
+        const auto iterations = probe->updates - before_updates;
+        const auto frames = host->engine().renderContext()->runtime().statistics().frames - before_frames;
         std::printf(
-            "PACING vsync=%d minimized=%d native=%d iterations=%llu frames=%llu waits=%llu wait_ms=%.3f "
-            "elapsed_ms=%.3f active_ms=%.3f backpressure_waits=%llu\n",
+            "PACING vsync=%d minimized=%d native=%d updates=%llu rendered=%llu elapsed_ms=%.3f\n",
             vsync,
             minimized,
             native_close,
-            iterations,
-            frames,
-            waits,
-            wait_ms,
-            std::chrono::duration<double, std::milli>(elapsed).count(),
-            std::chrono::duration<double, std::milli>(after.total - before.total).count(),
-            after.backpressure_waits - before.backpressure_waits
+            static_cast<unsigned long long>(iterations),
+            static_cast<unsigned long long>(frames),
+            std::chrono::duration<double, std::milli>(elapsed).count()
         );
         assert(elapsed >= 650ms && elapsed < 3s);
         assert(native_close || receiver.called);
-        assert(native_close || after.object_messages > before.object_messages);
-        assert(waits > 0); // Real blocking path, not just a predicate unit test.
+        assert(native_close || object::ObjectRuntime::instance().statistics().posted > before_messages);
         if (minimized)
         {
-            assert(frames == 0 && iterations < 30 && wait_ms > 400);
+            assert(frames == 0 && iterations < 30); // Rules out busy polling over the 700ms observation.
         }
         else
         {
-            assert(after.backpressure_waits > before.backpressure_waits);
-            assert(frames > 0 && after.ui_draw > before.ui_draw && after.ui_capture > before.ui_capture);
+            assert(frames > 0 && iterations > 0);
         }
-        assert(after.scenes == 1 && after.ui.panes == 1 && after.ui.elements == 1);
-        assert(host->engine().renderContext()->runtime().statistics().frames > 0 || minimized);
+        assert(host->engine().sceneRuntime().instanceCount() == 1);
+        assert(host->window().uiRoot().statistics().panes == 1);
+        assert(host->window().uiRoot().statistics().elements == 1);
     }
     void closeDuringMaintenance()
     {
@@ -184,15 +196,15 @@ namespace
         assert(made);
         auto host = std::move(*made);
         auto pane = std::make_unique<Probe>();
+        auto* probe = pane.get();
         pane->close_window = &host->window();
         std::unique_ptr<ui::Pane> owner = std::move(pane);
         assert(host->window().uiRoot().addPane(std::move(owner)));
 #if defined(_WIN32)
         ShowWindow(static_cast<HWND>(host->window().nativeHandle()), SW_MINIMIZE);
 #endif
-        assert(host->exec());
-        assert(host->statistics().iterations <= 2);
-        assert(host->statistics().waits == 0);
+        assert(host->run());
+        assert(probe->updates <= 2);
     }
 } // namespace
 int main()

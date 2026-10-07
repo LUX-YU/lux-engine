@@ -29,8 +29,9 @@ component_include_directories(lux_editor_context BUILD_TIME_EXPORT
     ${CMAKE_CURRENT_SOURCE_DIR}/context/include INSTALL_TIME include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/context/sinclude)
 target_link_libraries(lux_editor_context PUBLIC lux::cxx::core lux::cxx::compile_time
-    lux::engine::core::object lux::engine::core::error lux::engine::resource::asset lux_editor_project
+    lux::engine::core::object lux::engine::core::error lux::engine::resource::asset
     lux::engine::scene::scene_asset lux::engine::process::process_execution PRIVATE lux::engine::engine_context lux::engine::project::project_plugins)
+component_add_internal_dependencies(lux_editor_context lux_editor_project)
 component_add_transitive_commands(lux_editor_context
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object error)"
@@ -46,9 +47,10 @@ add_component(COMPONENT_NAME lux_editor_ui NAMESPACE lux::engine::editor STATIC
 component_include_directories(lux_editor_ui BUILD_TIME_EXPORT
     ${CMAKE_CURRENT_SOURCE_DIR}/ui/include ${CMAKE_CURRENT_SOURCE_DIR}/window/include INSTALL_TIME include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/ui/pinclude)
-target_link_libraries(lux_editor_ui PUBLIC lux_editor_context lux::engine::function::ui
+target_link_libraries(lux_editor_ui PUBLIC lux::engine::function::ui
     lux::engine::function::input lux::engine::platform::window
     PRIVATE lux::cxx::container)
+component_add_internal_dependencies(lux_editor_ui lux_editor_context)
 component_add_transitive_commands(lux_editor_ui
     "find_package(lux-engine-function REQUIRED COMPONENTS ui input)"
     "find_package(lux-engine-platform REQUIRED COMPONENTS window)"
@@ -58,7 +60,8 @@ lux_classify_target(TARGET lux_editor_ui LAYER EDITOR PRODUCT EDITOR ROLE LIBRAR
 
 add_component(COMPONENT_NAME lux_editor_app NAMESPACE lux::engine::editor STATIC SOURCE_FILES app/src/LuxEngine.cpp app/src/ProjectUiMount.cpp app/src/ProjectPreparation.cpp app/src/EditorUiScene.cpp app/src/UiRenderSyncStage.cpp)
 component_include_directories(lux_editor_app BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/app/include INSTALL_TIME include PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/app/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/context/sinclude)
-target_link_libraries(lux_editor_app PUBLIC lux_editor_context lux_editor_ui PRIVATE lux::engine::process::object_execution lux::engine::engine_context_render lux::engine::scene::scene_render lux::engine::function::ui_rendering lux::engine::project::project_plugin_rendering)
+target_link_libraries(lux_editor_app PRIVATE lux::engine::process::object_execution lux::engine::engine_context_render lux::engine::scene::scene_render lux::engine::function::ui_rendering lux::engine::project::project_plugin_rendering)
+component_add_internal_dependencies(lux_editor_app lux_editor_context lux_editor_ui)
 component_add_transitive_commands(lux_editor_app
     "find_package(lux-engine-process-object-execution REQUIRED COMPONENTS object_execution)"
     "find_package(lux-engine-context-render REQUIRED COMPONENTS engine_context_render)"
@@ -82,9 +85,9 @@ add_component(COMPONENT_NAME lux_editor_scene_profiles NAMESPACE lux::engine::ed
     SOURCE_FILES scene/profiles/src/SceneProfile3D.cpp)
 component_include_directories(lux_editor_scene_profiles BUILD_TIME_EXPORT
     ${CMAKE_CURRENT_SOURCE_DIR}/scene/profiles/include INSTALL_TIME include)
-target_link_libraries(lux_editor_scene_profiles PUBLIC lux_editor_context
-    PRIVATE lux::engine::project::project_plugin_rendering lux::engine::scene::scene_render
+target_link_libraries(lux_editor_scene_profiles PRIVATE lux::engine::project::project_plugin_rendering lux::engine::scene::scene_render
     lux::engine::scene::scene_transform lux::engine::scene::scene_world_loading)
+component_add_internal_dependencies(lux_editor_scene_profiles lux_editor_context)
 component_add_transitive_commands(lux_editor_scene_profiles
     "find_package(lux-engine-project-plugin-rendering REQUIRED COMPONENTS project_plugin_rendering)"
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
@@ -173,17 +176,30 @@ if(LUX_EDITOR_BUILD_GPU_TESTS)
     lux_editor_test_options(editor_framework_transport_test)
     add_executable(editor_framework_gpu_test tests/gpu.cpp)
     target_link_libraries(editor_framework_gpu_test PRIVATE lux_editor_app lux::engine::engine_context_render lux::engine::project::project_plugin_rendering)
+    target_include_directories(editor_framework_gpu_test PRIVATE app/pinclude)
     lux_editor_test_options(editor_framework_gpu_test)
     add_test(NAME framework.gpu COMMAND editor_framework_transport_test)
     set_tests_properties(framework.gpu PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE LABELS gpu)
     if(LUX_EDITOR_BUILD_DESKTOP_TESTS)
+        add_executable(editor_host_shutdown_test tests/shutdown.cpp)
+        target_link_libraries(editor_host_shutdown_test PRIVATE lux_editor_app)
+        lux_editor_test_options(editor_host_shutdown_test)
+        add_test(NAME framework.shutdown_posted COMMAND editor_host_shutdown_test "${CMAKE_CURRENT_BINARY_DIR}/shutdown.luxproj")
+        set_tests_properties(framework.shutdown_posted PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE LABELS "gpu;desktop")
+        add_executable(editor_public_host_test tests/installed/host.cpp)
+        target_link_libraries(editor_public_host_test PRIVATE lux_editor_app lux::engine::engine_context_render)
+        lux_editor_test_options(editor_public_host_test)
+        add_test(NAME framework.public_host COMMAND editor_public_host_test "${CMAKE_CURRENT_BINARY_DIR}/public-host")
+        set_tests_properties(framework.public_host PROPERTIES TIMEOUT 30 RUN_SERIAL TRUE LABELS "gpu;desktop")
         add_executable(editor_project_requests_test tests/project_requests.cpp)
         target_link_libraries(editor_project_requests_test PRIVATE lux_editor_app lux::engine::engine_context_render)
+        target_include_directories(editor_project_requests_test PRIVATE app/pinclude)
         lux_editor_test_options(editor_project_requests_test)
         add_test(NAME framework.project_requests COMMAND editor_project_requests_test "${CMAKE_CURRENT_BINARY_DIR}/request-data")
         set_tests_properties(framework.project_requests PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE LABELS "gpu;desktop")
         add_executable(editor_project_lifecycle_test tests/project_lifecycle.cpp)
         target_link_libraries(editor_project_lifecycle_test PRIVATE lux_editor_app lux::engine::engine_context_render)
+        target_include_directories(editor_project_lifecycle_test PRIVATE app/pinclude)
         lux_editor_test_options(editor_project_lifecycle_test)
         foreach(mode global maintenance)
             add_test(NAME framework.project_${mode} COMMAND editor_project_lifecycle_test ${mode} "${CMAKE_CURRENT_BINARY_DIR}/lifecycle-${mode}")

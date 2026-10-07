@@ -1,3 +1,4 @@
+#include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include "../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include "support/ProjectRequests.hpp"
 #include <atomic>
@@ -161,7 +162,7 @@ namespace
             while (!predicate())
             {
                 assert(std::chrono::steady_clock::now() < deadline);
-                assert(take(engine->frame()) == EFrameStatus::RUNNING);
+                assert(take(lux::editor::detail::LuxEngineTestAccess::pumpOnce(*engine)) == true);
                 std::this_thread::sleep_for(1ms);
             }
         };
@@ -211,8 +212,8 @@ namespace
         assert(readProjectManifest(directory / "PublishedCancelled/Project.luxproj"));
         assert(deaths.empty());
 
-        // A real accepted task is deliberately held after stop. Switching must keep A's services alive
-        // and return from frame(); the test releases the worker only after observing several frames.
+        // A real accepted task is deliberately held after stop. Switching must destroy A's services immediately
+        // and return from the host iteration; the test releases the worker only after observing several frames.
         std::atomic_bool started{}, release{};
         bool delivered{};
         auto scheduler = runtime->execution().blocking();
@@ -249,7 +250,7 @@ namespace
         assert(!delivered && (deaths == std::vector<int>{1, 1, 2}));
         for (int i = 0; i < 3; ++i)
         {
-            assert(take(engine->frame()) == EFrameStatus::RUNNING);
+            assert(take(lux::editor::detail::LuxEngineTestAccess::pumpOnce(*engine)) == true);
             assert(engine->project()->project().name == "B" && !delivered);
         }
         release = true;
@@ -273,7 +274,7 @@ namespace
         before = TestPane::draws;
         for (int i{}; i < 5; ++i)
         {
-            assert(take(engine->frame()) == EFrameStatus::RUNNING);
+            assert(take(lux::editor::detail::LuxEngineTestAccess::pumpOnce(*engine)) == true);
         }
         assert(TestPane::draws == before);
         ShowWindow(static_cast<HWND>(window->nativeHandle()), SW_RESTORE);
@@ -297,7 +298,7 @@ namespace
         assert(fixture::open(*engine, directory / "A/Project.luxproj"));
         window->exit(); // Late preparation is drained/cancelled; A is never adopted after native close.
         const auto exit_deadline = std::chrono::steady_clock::now() + 20s;
-        while (take(engine->frame()) != EFrameStatus::EXIT_REQUESTED)
+        while (take(lux::editor::detail::LuxEngineTestAccess::pumpOnce(*engine)) != false)
         {
             assert(std::chrono::steady_clock::now() < exit_deadline);
             std::this_thread::sleep_for(1ms);

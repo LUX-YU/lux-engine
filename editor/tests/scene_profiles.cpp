@@ -94,14 +94,24 @@ int main(int argc, char** argv)
         return composition.registerSceneProfile({pin, "test.editor.scene.2d", "Test 2D", {"spatial.2d"}, &create2D});
     };
     ProjectManifest manifest{1, identity("project"), "Profiles"};
+    SceneProfileRegistration three, two;
+    auto inspect = [&](EditorContext& context) noexcept
+    {
+        assert(context.sceneProfiles().profiles().size() == 2);
+        static_assert(!api_contract::PublicProfileRegistration<SceneProfileRegistry>);
+        assert(!context.sceneProfiles().find("test.missing"));
+        three = context.sceneProfiles().find("lux.editor.scene.3d")->get();
+        two = context.sceneProfiles().find("test.editor.scene.2d")->get();
+    };
+#if defined(LUX_INSTALLED_CONSUMER)
+    fixture::withContext({manifest.name, std::filesystem::current_path()}, manifest, assembly, inspect);
+#else
     auto context =
         fixture::createContext(**engine, {manifest.name, std::filesystem::current_path()}, manifest, assembly);
     assert(context);
-    assert((*context)->sceneProfiles().profiles().size() == 2);
-    static_assert(!api_contract::PublicProfileRegistration<SceneProfileRegistry>);
-    assert(!(*context)->sceneProfiles().find("test.missing"));
-    auto three = (*context)->sceneProfiles().find("lux.editor.scene.3d")->get();
-    auto two = (*context)->sceneProfiles().find("test.editor.scene.2d")->get();
+    inspect(**context);
+    context->reset();
+#endif
     const auto scene_id = asset::AssetId{identity("scene")};
     project::SceneRegistrations registrations;
     {
@@ -114,7 +124,6 @@ int main(int argc, char** argv)
         assert(read);
         registrations = std::move(*read);
     } // Only the real registration leases now keep plugin codec callbacks alive.
-    context->reset();
     assert(!provider.expired()); // A copied profile safely owns its provider code.
     auto two_package = two.create({scene_id, "2D", registrations, {}});
     assert(two_package && two_package->scene->data().systemCount() == 0);

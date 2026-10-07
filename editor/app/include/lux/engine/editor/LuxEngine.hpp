@@ -1,7 +1,6 @@
 #pragma once
 #include <lux/engine/editor/EditorAssembly.hpp>
 #include <lux/engine/editor/EditorConfig.hpp>
-#include <lux/engine/editor/FrameStatistics.hpp>
 #include <lux/engine/editor/FrameworkResult.hpp>
 #include <lux/engine/editor/ProjectEvents.hpp>
 #include <lux/engine/object/LuxObject.hpp>
@@ -15,11 +14,10 @@ namespace lux::editor
 {
     class EditorWindow;
     class EditorContext;
-    enum class EFrameStatus : std::uint8_t
+    namespace detail
     {
-        RUNNING,
-        EXIT_REQUESTED
-    };
+        struct LuxEngineTestAccess;
+    }
 
     class LuxEngine final : public object::LuxObject
     {
@@ -34,10 +32,7 @@ namespace lux::editor
         LuxEngine(LuxEngine&&) = delete;
         LuxEngine& operator=(LuxEngine&&) = delete;
 
-        [[nodiscard]] FrameworkResult<void> exec() noexcept;
-        // One host iteration; callers do not drive SceneRuntime a second time.
-        [[nodiscard]] FrameworkResult<EFrameStatus> frame() noexcept;
-        [[nodiscard]] FrameStatistics statistics() const noexcept;
+        [[nodiscard]] FrameworkResult<void> run() noexcept;
         [[nodiscard]] EditorWindow& window() noexcept;
         [[nodiscard]] engine::EngineContext& engine() noexcept;
         [[nodiscard]] const engine::EngineContext& engine() const noexcept;
@@ -51,6 +46,13 @@ namespace lux::editor
         void event(object::EventView&) noexcept override;
 
     private:
+        enum class EHostState : std::uint8_t
+        {
+            RUNNING,
+            EXIT_REQUESTED
+        };
+        [[nodiscard]] FrameworkResult<EHostState> pumpOnce() noexcept;
+        friend struct detail::LuxEngineTestAccess;
         struct Impl;
         explicit LuxEngine(std::unique_ptr<Impl>) noexcept;
         std::unique_ptr<Impl> impl_;

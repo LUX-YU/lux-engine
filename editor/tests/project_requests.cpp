@@ -1,3 +1,4 @@
+#include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include "support/ProjectRequests.hpp"
 #include <atomic>
 #include <chrono>
@@ -149,7 +150,7 @@ int main(int argc, char** argv)
         while (!ready())
         {
             assert(std::chrono::steady_clock::now() < deadline);
-            assert(engine->frame());
+            assert(lux::editor::detail::LuxEngineTestAccess::pumpOnce(*engine));
             std::this_thread::sleep_for(1ms);
         }
     };

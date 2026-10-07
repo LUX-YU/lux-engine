@@ -1,14 +1,14 @@
 # Editor Framework v2 — Project / Scene foundation
 
 `editor/` builds the sole installed `lux_editor`. `editor_legacy/` remains frozen reference source.
-The current terminal-architecture work has completed P01–P03; the earlier PS0–PS2 Project/Scene behavior remains in use until P05 replaces the transition. It does not yet open a project Scene
+The terminal architecture uses typed Project Events, complete Contexts and immediate RAII project replacement. It does not yet open a project Scene
 in SceneRuntime, create SceneSession/EditorScene/SceneWorkspace, or install editing tools.
 
 ## Ownership and lifetime
 
 | Owner | Responsibility |
 |---|---|
-| LuxEngine | Window, EngineContext, UI Scene transport, owning product assembly, optional project Context and private transition |
+| LuxEngine | Window, EngineContext, UI Scene transport, owning product assembly, optional project Context and owned pending adoption |
 | EditorWindow / ui::Root | One native Input sample; Root uniquely owns mounted Panes and their UI routes |
 | EditorContext | Manifest and summary, independent AssetVfs, verified PluginManager and immutable SceneRegistrations, complete runtime registries, cancellation TaskScope |
 | EditorServices | Lazy unique services, destroyed in reverse successful construction order |
@@ -19,8 +19,8 @@ in SceneRuntime, create SceneSession/EditorScene/SceneWorkspace, or install edit
 Parent links still do not own C++ objects. Object/UI/Error Framework v2 contracts remain unchanged.
 TaskScope destruction only requests cancellation. Accepted tasks retain their TaskGroup and own all worker inputs,
 results and code leases; they must not borrow a Context, service, Pane or mutable Registry. Context destruction never
-waits. The old host transition still explicitly observes settlement until its P05 replacement; that is not a Context
-lifetime requirement. `join()` remains an explicit synchronous application/runtime boundary.
+waits. `join()` remains an explicit synchronous application/runtime boundary. Final host shutdown stops admission and
+continues original Object/Process completion collection before EngineContext joins producers. Project closure has no wait.
 
 ## Project use
 
@@ -32,8 +32,10 @@ auto assembly = [](lux::editor::EditorComposition& composition) noexcept
 };
 auto host = lux::editor::LuxEngine::create(config, std::move(assembly));
 // Check host, then request an absolute path. Success here means request admission.
-auto accepted = (*host)->openProject(project_file);
-// frame()/exec() collect the owning result and adopt it at the owner safe point.
+lux::editor::OpenProjectRequest request{project_file};
+auto delivered = lux::object::sendEvent(**host, request);
+// Check delivery and request.rejection, then enter the sole public host loop.
+auto result = (*host)->run();
 ```
 
 Assembly belongs to the host lifetime, may own move-only captures, and builds EditorComposition before any candidate
@@ -41,7 +43,7 @@ Context exists. Composition exposes registration only. Its tables move into immu
 EditorServices when a complete PreparedProject is adopted into a Context. No freeze/closing flag or incomplete public
 Context constructor exists. UI/service factories receive a fully constructed Context. A factory may start accepted transport work but must not publish project effects before adoption.
 
-`createProject({absolute_root, manifest})` creates `Project.luxproj` in an empty directory. `openProject(path)` reads
+`CreateProjectRequest{absolute_root, manifest}` creates `Project.luxproj` in an empty directory. `OpenProjectRequest{path}` reads
 an existing manifest. Product configuration supplies plugin catalog locations and the default layout, separately
 from persisted project values. The product executable supports `lux_editor project.luxproj` and
 `lux_editor --create directory name`; a project-free launch displays instructions. New product projects select the
@@ -119,7 +121,7 @@ The event-driven loop retains one input sample and one SceneRuntime drive per it
 resource ownership. Accepted completions and retirement continue while a project closes. No private executor, second
 runtime, global event bus or frame-hook registry is added.
 
-The ProjectBuilder user patch remains separately archived and unapplied. Original user formatting bytes remain archived; the Context definition was replaced under the P03 contract and the untouched Pane comment change remains uncommitted. Interactive native input, IME, Linux, sanitizer and old longbench deferrals remain unchanged;
+The ProjectBuilder user patch remains separately archived and unapplied. Original user formatting bytes remain archived; the Context definition was replaced under the P03 contract and the untouched Pane comment change remains uncommitted. Interactive native input, IME, Linux and old longbench deferrals remain unchanged; sanitizer execution and its exact coverage are recorded in the terminal P06 qualification;
 automated desktop/GPU tests do not qualify those deferred checks. Logs and command provenance remain outside source.
 
 ### PS0–PS2 correction contracts
@@ -141,3 +143,15 @@ A pane removed/re-registered by an external owner has a different registration a
 preset. Neither the generic scene provider nor project file IO depends on the other domain. Their domain errors
 map the single internal `lux_editor_file_io` publication algorithm; its support headers are not installed.
 Feature dependency order/conflicts remain owned by FeatureCatalog/RenderSystem, not by the profile.
+
+## Host boundary
+
+`run()` is the only public event-loop entry. Single-step access belongs to a noninstalled test support header;
+there is no public frame/exec or host profiling API. Pacing tests measure their own elapsed time and query original
+component statistics. EditorWindow owns the native resize/framebuffer/minimize slots and exposes cached metrics;
+the host synchronizes UI extent only when their revision changes.
+
+The installed consumer uses public run/Project Events, not private pumping. Granular source tests retain their
+safe-point, queued-stale, callback and shortcut assertions through private test access. SDK tests separately verify
+complete Contexts, the same service/VFS assertions, blocked-worker replacement, global UI, candidate rollback,
+metrics, real rendering and final posted-completion drain. A minimal consumer requests only the app component.

@@ -1,3 +1,4 @@
+#include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include "support/ProjectRequests.hpp"
 #include <atomic>
 #include <cassert>
@@ -105,8 +106,8 @@ int main(int argc, char** argv)
         while (!predicate())
         {
             assert(std::chrono::steady_clock::now() < deadline);
-            auto frame = engine.frame();
-            assert(frame && *frame == EFrameStatus::RUNNING);
+            auto frame = lux::editor::detail::LuxEngineTestAccess::pumpOnce(engine);
+            assert(frame && *frame == true);
             std::this_thread::sleep_for(1ms);
         }
     };
@@ -156,7 +157,7 @@ int main(int argc, char** argv)
     const auto global_before = global.pane;
     for (int i{}; i < 5; ++i)
     {
-        assert(engine.frame());
+        assert(lux::editor::detail::LuxEngineTestAccess::pumpOnce(engine));
     }
     if (mode == "maintenance")
     {

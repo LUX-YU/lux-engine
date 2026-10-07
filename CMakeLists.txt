@@ -127,12 +127,17 @@ string(REPLACE ";" "\n" _no_rtti_targets "${_no_rtti_targets}")
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/no-rtti-targets.txt" CONTENT "${_no_rtti_targets}\n")
 if(BUILD_TESTING)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    if(MSVC)
+    if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        set(_rtti_compiler CLANG_CL)
+    elseif(MSVC)
         set(_rtti_compiler MSVC)
     else()
         set(_rtti_compiler OTHER)
     endif()
-    add_test(NAME build.no_rtti COMMAND "${Python3_EXECUTABLE}"
+    add_test(
+        NAME build.no_rtti
+        COMMAND "${Python3_EXECUTABLE}"
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/test-support/no_rtti.py"
-        "${CMAKE_BINARY_DIR}" "${CMAKE_CXX_COMPILER}" "${_rtti_compiler}")
+        "${CMAKE_BINARY_DIR}" "${CMAKE_CXX_COMPILER}" "${_rtti_compiler}"
+    )
 endif()

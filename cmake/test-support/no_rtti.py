@@ -7,7 +7,10 @@ import sys
 
 build = Path(sys.argv[1])
 compiler = sys.argv[2]
-msvc = sys.argv[3] == 'MSVC'
+mode = sys.argv[3]
+assert mode in ('MSVC', 'CLANG_CL', 'OTHER'), mode
+msvc = mode in ('MSVC', 'CLANG_CL')
+clang_cl = mode == 'CLANG_CL'
 commands = json.loads((build / 'compile_commands.json').read_text())
 checked = 0
 for item in commands:
@@ -18,6 +21,8 @@ for item in commands:
     if not source.endswith(('.cpp', '.cxx', '.cc')):
         continue
     required = ('/GR-', '/we4541') if msvc else ('-fno-rtti',)
+    if clang_cl:
+        required += ('-Werror=rtti',)
     for flag in required:
         assert flag in command, (source, 'missing', flag)
     assert not re.search(r'(?:^|\s)(?:/GR(?:\s|$)|-frtti(?:\s|$))', command), source
@@ -38,6 +43,8 @@ for name, text in cases.items():
     if msvc:
         args = [compiler, '/nologo', '/c', '/std:c++20', '/GR-', '/we4541',
                 '/Fo' + str(directory / (name + '.obj')), str(source)]
+        if clang_cl:
+            args.append('-Werror=rtti')
     else:
         args = [compiler, '-c', '-std=c++20', '-fno-rtti', str(source),
                 '-o', str(directory / (name + '.o'))]
@@ -47,5 +54,5 @@ for name, text in cases.items():
         assert result.returncode == 0
     else:
         assert result.returncode != 0
-        assert ('4541' in result.stdout if msvc else 'rtti' in result.stdout.lower()), result.stdout
+        assert ('4541' in result.stdout if mode == 'MSVC' else 'rtti' in result.stdout.lower()), result.stdout
 print('PASS:', checked, 'active C++ units disable RTTI; positive and two compiler negatives qualified')

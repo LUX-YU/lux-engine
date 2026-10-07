@@ -68,7 +68,7 @@ int main(int argc, char** argv)
             assert(
                 post(
                     endpoint,
-                    [&, owned](LuxObject* value) noexcept
+                    [&, endpoint, owned](LuxObject* value) noexcept
                     {
                         assert(value == &target && runtime.isCurrent());
                         ++calls;

@@ -189,7 +189,7 @@ namespace lux::simulation::script::detail
                 record.id.slot = 0U;
                 record.continuation = {};
                 record.value.bytes.clear();
-                record.value.type = {};
+                record.value.type = PreparedResumeType{};
                 record.error = {};
                 record.release_pending = false;
                 --active_;

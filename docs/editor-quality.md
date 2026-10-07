@@ -8,7 +8,7 @@
 
 ## Framework v2 适用范围
 
-新框架以用户确认的 Framework v2 规范为准：三个轻量 Registrar、项目级唯一服务 owner、
+新框架以用户确认的 Framework v2 及 Project/Scene 规范为准：独立轻量 Registrar、项目级唯一服务 owner、
 Root 唯一拥有顶层 Pane，Object parent 仅维护结构，不继承旧五层、全局命令目录或服务 Scope。
 QR02 的描述式依赖/Scope 要求仅适用于 legacy 和既有底层服务提供者；新框架工厂创建后保存
 准确借用，Registrar 不成为热路径服务定位器。其余代码风格、错误、寿命与完成交付原则继续适用。

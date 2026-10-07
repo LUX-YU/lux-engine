@@ -117,7 +117,8 @@ signatures. The original callback borrowing/owning split remains; semantic failu
 heap exhaustion is fatal. Descriptors supply canonical names once; numeric IDs are derived from those
 same declarations, and registration remains a cold assembly operation.
 
-Assembly remains a synchronous `openProject` input in this correction; no stored lifetime contract is added.
+The lifetime correction originally kept synchronous per-open Assembly. The PS0–PS2 project slice now stores
+an owning noexcept Assembly on LuxEngine and reuses it for asynchronous project transitions; see [Editor contracts](../editor/README.md).
 PaneDescription.name is a unique layout input and factory parameter, not yet a framework-owned persistent
 name binding. That binding belongs to a future Editor-side layout implementation, not generic Pane.
 SceneToolRegistrar remains **provisional and excluded from API freeze** until a real SceneSession/SceneToolSet

@@ -93,6 +93,7 @@ namespace
             return file;
         };
         std::vector<int> deaths;
+        bool rejected_candidate_delivered{};
         auto assembly = [&, owned = std::make_unique<int>(42)](EditorContext& context) noexcept -> FrameworkResult<void>
         {
             assert(*owned == 42); // Real move-only assembly survives every asynchronous open.
@@ -108,6 +109,16 @@ namespace
                     assert(context.service<Service>());
                     if (context.project().name == "C" && description.name == "two")
                     {
+                        assert(context.tasks().submit(
+                            {"Rejected candidate completion", "test"},
+                            [](process::TaskReporter) noexcept { return stdexec::just(FrameworkResult<void>{}); },
+                            [&](process::TTaskResult<void, error::Error>&& result) noexcept
+                            {
+                                // C's UI was removed, but its service and Context must still be alive.
+                                assert(result && (deaths == std::vector<int>{1, 1, 2, 1}));
+                                rejected_candidate_delivered = true;
+                            }
+                        ));
                         return cxx::unexpected(error::Error{FixtureErrors::EditorExpectedSecondFactoryRefusal});
                     }
                     return std::unique_ptr<ui::Pane>{new TestPane(description.name, deaths)};
@@ -180,6 +191,31 @@ namespace
         until(settled);
         assert(engine->projectStatus().state == EProjectTransition::CANCELLED && engine->context() == original);
         assert(deaths.empty() && ui_test::paneCount(*root) == 2);
+        // Finish worker preparation without collecting it, then cancel. The manifest publication
+        // remains a disk fact even though the prepared Context must never be adopted.
+        const auto submitted_after = std::chrono::steady_clock::now();
+        assert(engine->createProject({directory / "PublishedCancelled", manifest("PublishedCancelled")}));
+        const auto prepared_deadline = std::chrono::steady_clock::now() + 20s;
+        for (;;)
+        {
+            const auto infos = runtime->execution().taskInfos();
+            const auto task = std::ranges::find_if(
+                infos,
+                [&](const auto& info) { return info.category == "editor.project" && info.submitted >= submitted_after; }
+            );
+            if (task != infos.end() && task->state == process::ETaskState::SUCCEEDED)
+            {
+                break;
+            }
+            assert(std::chrono::steady_clock::now() < prepared_deadline);
+            std::this_thread::sleep_for(1ms);
+        }
+        assert(engine->cancelProjectTransition());
+        until(settled);
+        assert(engine->projectStatus().state == EProjectTransition::CANCELLED);
+        assert(engine->projectStatus().manifest_published && engine->context() == original);
+        assert(readProjectManifest(directory / "PublishedCancelled/Project.luxproj"));
+        assert(deaths.empty());
 
         // A real accepted task is deliberately held after stop. Switching must keep A's services alive
         // and return from frame(); the test releases the worker only after observing several frames.
@@ -255,6 +291,7 @@ namespace
         assert(engine->projectStatus().state == EProjectTransition::FAILED);
         assert(engine->projectStatus().failure.type == FixtureErrors::EditorExpectedSecondFactoryRefusal);
         assert(engine->context() == b_context && ui_test::paneCount(*root) == 2);
+        assert(rejected_candidate_delivered);
         assert((deaths == std::vector<int>{1, 1, 2, 1, 2})); // Only C's detached candidates were destroyed.
         assert(engine->openProject(d));
         until(settled);
@@ -263,8 +300,15 @@ namespace
         until([&] { return TestPane::draws > before + 2; });
         const auto statistics = runtime->renderContext()->runtime().statistics();
         assert(statistics.frames > 0);
-        window->exit();
-        assert(take(engine->frame()) == EFrameStatus::EXIT_REQUESTED);
+        assert(engine->openProject(directory / "A/Project.luxproj"));
+        window->exit(); // Late preparation is drained/cancelled; A is never adopted after native close.
+        const auto exit_deadline = std::chrono::steady_clock::now() + 20s;
+        while (take(engine->frame()) != EFrameStatus::EXIT_REQUESTED)
+        {
+            assert(std::chrono::steady_clock::now() < exit_deadline);
+            std::this_thread::sleep_for(1ms);
+        }
+        assert(!engine->context());
         assert(listener.calls > 0);
         connection->disconnect();
         engine.reset();

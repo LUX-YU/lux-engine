@@ -88,6 +88,7 @@ namespace lux::editor
         services_.freeze();
         ui_.freeze();
         scene_tools_.freeze();
+        scene_profiles_.freeze();
         assembled_ = true;
     }
     process::TaskScope& EditorContext::tasks() noexcept

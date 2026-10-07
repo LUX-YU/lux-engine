@@ -12,7 +12,8 @@ model = json.loads((reply / index['reply']['codemodel-v2']['jsonFile']).read_tex
 for config in model['configurations']:
     targets = {t['id']: json.loads((reply / t['jsonFile']).read_text()) for t in config['targets']}
     names = {t['name']: key for key, t in targets.items()}
-    for name in ('lux_editor_context', 'lux_editor_ui', 'lux_editor_app', 'lux_editor'):
+    for name in ('lux_editor_project', 'lux_editor_context', 'lux_editor_ui', 'lux_editor_app',
+                 'lux_editor_scene_profiles', 'lux_editor'):
         seen, pending = set(), [names[name]]
         while pending:
             key = pending.pop()
@@ -25,13 +26,18 @@ for config in model['configurations']:
             assert 'editor_legacy/' not in facts, (name, target['name'], 'legacy provider')
             pending.extend(d['id'] for d in target.get('dependencies', []))
         closure = sorted(targets[k]['name'] for k in seen)
+        if name == 'lux_editor_project':
+            for forbidden in ('process_execution', 'engine_context', 'scene_runtime', 'scene_render', 'ui'):
+                assert forbidden not in closure, (name, forbidden)
+        if name in ('lux_editor_project', 'lux_editor_context', 'lux_editor_ui', 'lux_editor_app'):
+            assert 'lux_editor_scene_profiles' not in closure, (name, 'product profile in framework')
         if name == 'lux_editor_context':
             assert 'ui' not in closure and 'lux_editor_ui' not in closure
         if name == 'lux_editor_ui':
             for forbidden in ('scene_render', 'ui_rendering', 'lux_editor_app'):
                 assert forbidden not in closure, (name, forbidden)
         print(name, 'closure:', ', '.join(closure))
-print('PASS: new product dependency/include closure excludes legacy; Context excludes UI')
+print('PASS: no legacy; manifest excludes runtime; Context excludes UI; host excludes concrete profiles')
 
 source = Path(model['paths']['source'])
 removed = (

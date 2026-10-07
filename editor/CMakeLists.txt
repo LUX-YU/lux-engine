@@ -14,18 +14,19 @@ component_add_transitive_commands(lux_editor_project
 lux_classify_target(TARGET lux_editor_project LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
 add_component(COMPONENT_NAME lux_editor_context NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES context/src/FrameworkErrors.cpp context/src/EditorContext.cpp context/src/EditorServiceRegistrar.cpp context/src/EditorUiRegistrar.cpp)
+    SOURCE_FILES context/src/FrameworkErrors.cpp context/src/EditorContext.cpp context/src/EditorServiceRegistrar.cpp context/src/EditorUiRegistrar.cpp context/src/SceneProfileRegistrar.cpp)
 component_include_directories(lux_editor_context BUILD_TIME_EXPORT
     ${CMAKE_CURRENT_SOURCE_DIR}/context/include INSTALL_TIME include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/context/sinclude)
 target_link_libraries(lux_editor_context PUBLIC lux::cxx::core lux::cxx::compile_time
     lux::engine::core::object lux::engine::core::error lux::engine::resource::asset lux_editor_project
-    lux::engine::process::process_execution PRIVATE lux::engine::engine_context lux::engine::project::project_plugins)
+    lux::engine::scene::scene_asset lux::engine::process::process_execution PRIVATE lux::engine::engine_context lux::engine::project::project_plugins)
 component_add_transitive_commands(lux_editor_context
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object error)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
+    "find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)"
     "find_package(lux-engine-context REQUIRED COMPONENTS engine_context)"
     "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)")
 lux_classify_target(TARGET lux_editor_context LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
@@ -54,17 +55,41 @@ component_add_transitive_commands(lux_editor_app
     "find_package(lux-engine-function REQUIRED COMPONENTS ui_rendering)"
     "find_package(lux-engine-project-plugin-rendering REQUIRED COMPONENTS project_plugin_rendering)")
 lux_classify_target(TARGET lux_editor_app LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+
+# Concrete authoring preset and file adapters; the host/context do not reference this implementation.
+add_component(COMPONENT_NAME lux_editor_scene_profiles NAMESPACE lux::engine::editor STATIC
+    SOURCE_FILES scene/profiles/src/SceneProfile3D.cpp scene/profiles/src/ScenePackageFile.cpp)
+component_include_directories(lux_editor_scene_profiles BUILD_TIME_EXPORT
+    ${CMAKE_CURRENT_SOURCE_DIR}/scene/profiles/include INSTALL_TIME include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/project/sinclude)
+target_link_libraries(lux_editor_scene_profiles PUBLIC lux_editor_context
+    PRIVATE lux::engine::project::project_plugin_rendering lux::engine::scene::scene_render
+    lux::engine::scene::scene_transform lux::engine::scene::scene_world_loading)
+component_add_transitive_commands(lux_editor_scene_profiles
+    "find_package(lux-engine-project-plugin-rendering REQUIRED COMPONENTS project_plugin_rendering)"
+    "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
+    "find_package(lux-engine-scene-transform REQUIRED COMPONENTS scene_transform)"
+    "find_package(lux-engine-scene-world-loading REQUIRED COMPONENTS scene_world_loading)")
+lux_classify_target(TARGET lux_editor_scene_profiles LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+
 add_executable(lux_editor app/main.cpp)
-target_link_libraries(lux_editor PRIVATE lux_editor_app)
+target_link_libraries(lux_editor PRIVATE lux_editor_app lux_editor_scene_profiles lux::engine::platform::platform_process)
 lux_classify_target(TARGET lux_editor LAYER EDITOR PRODUCT EDITOR ROLE EXECUTABLE)
 install(TARGETS lux_editor RUNTIME DESTINATION bin)
 if(WIN32)
     install(FILES $<TARGET_RUNTIME_DLLS:lux_editor> DESTINATION bin)
 endif()
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-framework VERSION ${PROJECT_VERSION}
-    NAMESPACE lux::engine::editor COMPONENTS lux_editor_project lux_editor_context lux_editor_ui lux_editor_app)
+    NAMESPACE lux::engine::editor COMPONENTS lux_editor_project lux_editor_context lux_editor_ui lux_editor_app lux_editor_scene_profiles)
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(editor_scene_profiles_test tests/scene_profiles.cpp)
+    target_link_libraries(editor_scene_profiles_test PRIVATE lux_editor_scene_profiles
+        lux::engine::engine_context lux::engine::project::project_plugin_rendering
+        lux::engine::scene::scene_render lux::engine::scene::scene_transform lux::engine::scene::scene_world_loading)
+    lux_editor_test_options(editor_scene_profiles_test)
+    add_test(NAME framework.scene_profiles COMMAND editor_scene_profiles_test
+        "${CMAKE_BINARY_DIR}/share/lux-engine/plugins/catalog.json" "${CMAKE_BINARY_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/profile-data")
     add_executable(editor_project_manifest_test tests/project_manifest.cpp)
     target_link_libraries(editor_project_manifest_test PRIVATE lux_editor_project)
     lux_editor_test_options(editor_project_manifest_test)

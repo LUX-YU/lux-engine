@@ -5,6 +5,7 @@
 #include <lux/engine/editor/FrameworkErrors.hpp>
 #include <lux/engine/editor/ProjectDescription.hpp>
 #include <lux/engine/editor/ProjectManifest.hpp>
+#include <lux/engine/editor/SceneProfileRegistrar.hpp>
 #include <lux/engine/editor/SceneToolRegistrar.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 
@@ -77,6 +78,15 @@ namespace lux::editor
             return scene_tools_;
         }
 
+        [[nodiscard]] SceneProfileRegistrar& sceneProfiles() noexcept
+        {
+            return scene_profiles_;
+        }
+        [[nodiscard]] const SceneProfileRegistrar& sceneProfiles() const noexcept
+        {
+            return scene_profiles_;
+        }
+
         [[nodiscard]] const ProjectManifest& manifest() const noexcept
         {
             return manifest_;
@@ -121,6 +131,7 @@ namespace lux::editor
         asset::AssetVfs assets_;
         EditorUiRegistrar ui_;
         SceneToolRegistrar scene_tools_;
+        SceneProfileRegistrar scene_profiles_;
         // Services die before factory captures, project paths and VFS providers.
         EditorServiceRegistrar services_;
         // Transport callbacks settle while services, VFS and plugin code are still alive.

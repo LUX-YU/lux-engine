@@ -30,6 +30,9 @@ void callbackContract(lux::editor::EditorContext& context, lux::ui::Root& root)
         [](editor::EditorContext&, const world::WorldDescription&) noexcept(LUX_CALLBACK_CASE != 4)
             -> editor::FrameworkResult<std::unique_ptr<int>> { return std::make_unique<int>(2); }
     ));
+    auto profile = [](const editor::SceneCreateInfo&) noexcept(LUX_CALLBACK_CASE != 7) -> editor::SceneCreateResult
+    { return cxx::unexpected(scene::ScenePackageFailure{scene::EScenePackageError::INVALID_ARGUMENT}); };
+    static_cast<void>(context.sceneProfiles().registerProfile({{}, "test.callback", "Test", {}, profile}));
     auto capture = [](const ui::DrawData&) noexcept(LUX_CALLBACK_CASE != 5) -> cxx::expected<void, ui::ECaptureError>
     { return {}; };
     ui::Root::Capture captured(capture);

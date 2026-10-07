@@ -422,5 +422,40 @@ namespace lux::editor
         };
         inline constexpr error::ErrorId ProjectNeedsPreparedPlugins =
             error::errorId(ProjectNeedsPreparedPluginsDescriptor.name);
+        inline constexpr error::ErrorDescriptor SceneProfileFrozenDescriptor{
+            "lux.editor.scene_profile.frozen",
+            "Scene profile registration is frozen",
+            error::ERecovery::PERMANENT,
+            {}
+        };
+        inline constexpr error::ErrorId SceneProfileFrozen = error::errorId(SceneProfileFrozenDescriptor.name);
+        inline constexpr error::ErrorDescriptor SceneProfileNotFrozenDescriptor{
+            "lux.editor.scene_profile.not_frozen",
+            "Scene profile registration is not frozen",
+            error::ERecovery::PERMANENT,
+            {}
+        };
+        inline constexpr error::ErrorId SceneProfileNotFrozen = error::errorId(SceneProfileNotFrozenDescriptor.name);
+        inline constexpr error::ErrorDescriptor SceneProfileInvalidDescriptor{
+            "lux.editor.scene_profile.invalid",
+            "Invalid scene profile declaration",
+            error::ERecovery::PERMANENT,
+            {}
+        };
+        inline constexpr error::ErrorId SceneProfileInvalid = error::errorId(SceneProfileInvalidDescriptor.name);
+        inline constexpr error::ErrorDescriptor SceneProfileDuplicateDescriptor{
+            "lux.editor.scene_profile.duplicate",
+            "Duplicate scene profile identity",
+            error::ERecovery::PERMANENT,
+            {}
+        };
+        inline constexpr error::ErrorId SceneProfileDuplicate = error::errorId(SceneProfileDuplicateDescriptor.name);
+        inline constexpr error::ErrorDescriptor SceneProfileUnknownDescriptor{
+            "lux.editor.scene_profile.unknown",
+            "Unknown scene profile identity",
+            error::ERecovery::PERMANENT,
+            {}
+        };
+        inline constexpr error::ErrorId SceneProfileUnknown = error::errorId(SceneProfileUnknownDescriptor.name);
     } // namespace Errors
 } // namespace lux::editor

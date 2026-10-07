@@ -1,84 +1,117 @@
-# Editor Framework v2
+# Editor Framework v2 — Project / Scene foundation
 
-`editor/` is the new framework. The previous product is isolated in `editor_legacy/`.
-The default build installs one `lux_editor`; it displays a Welcome Pane and does not load authoring tools.
+`editor/` builds the sole installed `lux_editor`. `editor_legacy/` remains frozen reference source.
+The current delivery implements PS0–PS2 of the Project/Scene specification. It does not yet open a project Scene
+in SceneRuntime, create SceneSession/EditorScene/SceneWorkspace, or install editing tools.
 
-## Owners and boundaries
+## Ownership and lifetime
 
 | Owner | Responsibility |
 |---|---|
-| `LuxEngine` | Native window, EngineContext, UI Scene transport, optional project Context, one frame loop |
-| `EditorWindow` | GLFW lifetime entry, one Input sample, one ui::Root |
-| `ui::Root` | Sole generational sparse owner of Panes, content traversal, focus/capture and docking |
-| `EditorContext` | Project values, independent AssetVfs, three frozen registrars; explicit EngineContext borrow |
-| `EditorServiceRegistrar` | Lazy unique service instances; reverse successful-construction destruction |
-| `EditorUiRegistrar` | Detached Pane factories; invocation lives in the UI library, ownership passes to Root |
-| `SceneToolRegistrar` | Typed factories selected by WorldDescription predicates; no cached tool instances |
-| `EditorUiScene` | DrawData slots, immediate resource pinning, Scene input publication and existing Runtime retirement |
+| LuxEngine | Window, EngineContext, UI Scene transport, owning product assembly, optional project Context and private transition |
+| EditorWindow / ui::Root | One native Input sample; Root uniquely owns mounted Panes and their UI routes |
+| EditorContext | Manifest and summary, independent AssetVfs, verified PluginManager and immutable SceneRegistrations, frozen registrars, project TaskScope |
+| EditorServiceRegistrar | Lazy unique services, destroyed in reverse successful construction order |
+| EditorUiRegistrar | Detached factories; createPane is implemented by lux_editor_ui, Root adopts the returned owners |
+| SceneProfileRegistrar | Frozen canonical profile declarations; creation returns an owned authored ScenePackage |
+| Original Process / SceneRuntime / RenderRuntime | Scheduling, completion, the single frame driver and resource retirement |
 
-Context is owner-thread only. `EditorContext::create` completes assembly and privately freezes the registrars;
-callers cannot freeze early or replace factories afterwards.
-Service requests return borrowed references, valid until Context destruction. Factories may request other registered
-services; recursive creation fails, and failed creation is not cached as success. There is no dynamic plugin/scope protocol.
+Parent links still do not own C++ objects. Object/UI/Error Framework v2 contracts remain unchanged.
+A Context's accepted work settles before its services, factories, VFS and plugin owners are released.
+TaskScope::settled() is an owner-thread, nonblocking query; it neither closes admission nor delivers callbacks.
+Normal project switching does not join on the UI thread. TaskScope destruction remains the final mechanical RAII boundary.
 
-UI factories use canonical string `PaneDescription.type`; `name` is the stable layout identity,
-and `title` is visible text. Factories receive values and Context, returning a complete detached `unique_ptr<ui::Pane>`. They must not start work
-that depends on a not-yet-published project. Root prepares the entire batch before transferring any owner. Removal first
-revokes routing, then removes ownership lookup, then notifies, and destroys the Pane after callbacks return. Structural
-calls from drawing, event delivery or attachment callbacks return BUSY. Existing Root route indices are not owners.
+## Project use
 
-`openProject()` accepts **in-memory** `ProjectDescription` and `EditorLayout`, plus a borrowed synchronous assembly
-function. Pure validation failure preserves the current project. After teardown starts, a factory failure destroys all
-candidate Panes before their Context and leaves no project. EngineContext, window and ImGui Context survive project
-switches. UI dies before project services; Engine/GPU retirement completes before the native window is destroyed.
+```cpp
+auto assembly = [](lux::editor::EditorContext& context) noexcept
+    -> lux::editor::FrameworkResult<void>
+{
+    return context.sceneProfiles().registerProfile(lux::editor::sceneProfile3D());
+};
+auto host = lux::editor::LuxEngine::create(config, std::move(assembly));
+// Check host, then request an absolute path. Success here means request admission.
+auto accepted = (*host)->openProject(project_file);
+// frame()/exec() collect the owning result and adopt it at the owner safe point.
+```
 
-The loop collects platform/Process/object facts, samples Input once, lets Root adopt queued UI structure, draws when a slot is
-available, pins the captured data immediately, evaluates ActionMapper with UI capture, publishes the pending UI frame and calls
-`SceneRuntime::driveFrame()` once. Backpressure does not redraw pending frames. A paused UI Simulation still maintains
-its SceneSystems. The existing Runtime performs final resource retirement; there is no new business close coordinator.
+Assembly belongs to the host lifetime, may own move-only captures, and runs for each candidate Context. It only
+registers factories during assembly; accessing project tasks before freeze is a contract violation. UI factories run
+after freeze. A factory may start accepted transport work but must not publish project effects before adoption.
 
-## Build and install
+`createProject({absolute_root, manifest})` creates `Project.luxproj` in an empty directory. `openProject(path)` reads
+an existing manifest. Product configuration supplies plugin catalog locations and the default layout, separately
+from persisted project values. The product executable supports `lux_editor project.luxproj` and
+`lux_editor --create directory name`; a project-free launch displays instructions. New product projects select the
+existing `lux.builtin.scene_render` runtime plugin; this is product policy, not a framework branch.
 
-The production targets are `lux_editor_context`, `lux_editor_ui`, `lux_editor_app` (STATIC) and `lux_editor`.
-The SDK package is `lux-engine-editor-framework`, with those three library component names under
-`lux::engine::editor::`. Root and lux_editor_ui expose no Renderer or SceneRuntime dependency. UI Scene transport lives in the app private
-include/source area; WindowInput is UI-private. Context registers factories but cannot invoke them. The public
-`createPane` function and its declaration belong entirely to lux_editor_ui. `EditorLayout.hpp` owns layout values.
+Only one transition is admitted. `projectStatus()` separates PREPARING, CLOSING_CURRENT and terminal outcomes;
+`manifest_published` records confirmed creation even when subsequent plugin preparation fails or adoption is cancelled.
+A publication-unknown error remains explicit. Cancellation is accepted during preparation, before old-project closure.
+New requests during a transition or a host callback return BUSY.
 
-Use the EDITOR profile; legacy has no active build path. Build `all -j 4 -- -k 0`; CMake changes require a second
-no-work build. `LUX_EDITOR_BUILD_NATIVE_TESTS` enables framework CPU tests; GPU and desktop lifecycle tests require their
-explicit switches. Desktop lifecycle tests do not qualify system IME or interactive native input. Windows native output
-is currently implemented; Linux native output returns an explicit unsupported error.
+Preparation reads and verifies plugins on the existing blocking scheduler. Completion only deposits owning values.
+The host prepares all candidate UI while A remains intact. A failed read/plugin/assembly/factory leaves A active.
+After candidate preparation, A stops accepting work; its Panes become noninteractive while accepted work finishes.
+UI is removed before A's Context; the complete B batch is then mounted. Failed candidates drain their own accepted
+work before Context destruction. EngineContext, native window, Root and ImGui Context survive every switch.
+Native close cancels preparation and continues draining before teardown; late results cannot adopt a new project.
 
-Framework v2 freezes `editor_legacy` as reference source. It has no active build or installation entry; requesting
-`LUX_BUILD_EDITOR_LEGACY=ON` is rejected. To reproduce old results, use the corresponding historical Git revision.
-Historical evidence was verified and archived outside the source tree; no old result qualifies the new framework.
-New tests inspect the actual CMake dependency closure for legacy contamination.
+The direct headless EditorContext::create overload accepts an already-owned manifest without plugin requests.
+It does not load unchecked plugins synchronously. The host's prepared path supplies verified libraries and registrations.
 
-Local build configuration uses `LUX_CMAKE_TOOLCHAIN`, `LUX_CMAKE_PREFIX_PATH` and `LUX_FRAMEWORK_SDK` environment
-variables. Machine-specific paths belong to the local environment, not the tracked editor settings.
+## Manifest and scene profiles
 
-## Scope
+ProjectManifest version 1 persists project UUID/name, plugin name/version selections, and scene AssetId/name/relative
+file/profile records with an optional startup AssetId. It does not persist runtime handles, factories, tool state,
+absolute asset paths or an additional scene identity. Empty projects are valid. Scene paths are physical project-relative
+paths, distinct from asset VFS paths. Validation rejects traversal, aliases, duplicate identities and unsupported versions.
 
-Future tools belong in `tools/scene`, `tools/material`, `tools/flowforge`. Their services will own sessions; SceneSession
-will own its SceneToolSet. SceneToolRegistrar selection is provisional and must be reviewed with that first real slice. No empty libraries or placeholder business classes are created in this stage. Real project file
-loading, asset browsing, plugins, persistence, history and play mode remain outside this rewrite qualification.
+`lux_editor_project` supplies bounded JSON read/encode and atomic single-file CREATE/REPLACE publication. Temporary
+files are exclusive and adjacent; cancellation is observed before publication. File/directory errors are not absence.
+This is not a cross-file transaction, versioned save service or alternate write coordinator.
 
-The original ProjectBuilder user patch is preserved separately and **not applied**. Its mapped location is
-`editor_legacy/authoring/project/src/ProjectBuilder.cpp`. Historical EC4 remains incomplete; this framework does not
-retroactively qualify EC4 or previously deferred input/Linux/IME/performance results.
+A profile owns canonical id/display/capability values and a noexcept factory, with an optional provider code lease.
+Registration freezes with Context assembly; lookup/enumeration are stable owner-thread borrows. Copying a declaration
+retains its code. Creation synchronously borrows immutable SceneRegistrations and returns owned ScenePackage values;
+a worker must own those registrations for the whole call, not borrow a live Context.
 
-`LuxEngine::frame` returns EFrameStatus (RUNNING or EXIT_REQUESTED). Embedders access Root through
-`window().uiRoot()`; no duplicate root accessor or public frame-count test probe is provided.
+`sceneProfile3D()` contributes `lux.editor.scene.3d` and spatial.3d/transform.3d/mesh.3d/camera.3d capabilities. It uses
+verified project schema/system/feature registrations and their codecs to create a single-partition world with Parent,
+Transform3D, Mesh3D, Light3D and Camera author schemas; Transform, WorldLoading and Render systems; an empty Simulation;
+and the material/mesh-stack/view-camera/light/forward preset. No editor camera, picking entity or runtime scene is created.
+Missing capabilities and incompatible configuration fail without partial output. A test-only 2D profile uses the same
+public registration/creation path without changing the host.
 
-## Host cadence and measurements
+`ScenePackageFile` reuses the existing ScenePackage/Pak/world codecs and the same file-publication primitive as the
+manifest. It preserves unknown package entries. There is no second scene format. These synchronous helpers are intended
+for worker-side IO; the async scene load/adopt layer belongs to PS3–PS5.
 
-The frame producer is work-conserving: no 16 ms deadline or idle polling timeout. The renderer owns VSync and
-backpressure; Process/Object/native/Scene timer progress wakes the existing native wait. `frame()` remains a single
-non-waiting host iteration; `exec()` also performs event-driven waiting. The product owns its menu/shortcut bindings.
-`LuxEngine::statistics()` reports accumulated phases/counters and latest UI/scene sizes without retaining samples.
-See `docs/editor-framework-v2.md` for phase definitions and the Event/Signal and cross-Pane boundaries.
+SceneToolRegistrar remains **provisional and excluded from freeze**. Its replacement with 0..N applicable contributions
+is scheduled for PS6, after a real SceneSession/EditorScene composition exists. Profiles do not create tools.
 
-`framework.pacing` is explicit automated desktop/GPU qualification (including VSync on/off and minimized wake), not
-interactive native-input or IME certification. `ui.ocp_statistics` uses five warmups and thirty samples for 1/3 Panes
-and 100/1000 retained labels per Pane; it makes no general zero-allocation or absolute FPS claim.
+## Components and verification
+
+The installed package is `lux-engine-editor-framework` under `lux::engine::editor::`:
+
+- `lux_editor_project`: pure project values, codec and file IO; no Process/UI/Renderer dependency.
+- `lux_editor_context`: project lifetime, registrars and Process ownership; no UI or rendering implementation.
+- `lux_editor_ui`: native window/input and detached UI factory invocation; no scene_render or app dependency.
+- `lux_editor_app`: async transition, host and private UI Scene transport.
+- `lux_editor_scene_profiles`: concrete 3D authoring preset and existing scene-package file adapter.
+
+These libraries are STATIC. The executable explicitly selects the concrete profile; Context and the host do not link
+it. UI Scene transport remains private. Product-owned factory layout names are not a workspace persistence protocol.
+
+Build the EDITOR profile, `all -j 4 -- -k 0`, with a second no-work build after CMake changes. CPU tests cover manifests,
+actual plugin-driven profiles, scope completion and existing framework behavior. Explicit GPU/desktop tests cover async
+project switching, native close, resize, minimization and the original UI rendering chain. Installed tests use SDK
+public headers/libraries, including isolated project and context consumers and throwing-callback compile negatives.
+
+The event-driven loop retains one input sample and one SceneRuntime drive per iteration. Backpressure retains captured
+resource ownership. Accepted completions and retirement continue while a project closes. No private executor, second
+runtime, global event bus or frame-hook registry is added.
+
+The ProjectBuilder user patch remains separately archived and unapplied. Existing Context alignment and Pane comment
+changes are preserved. Interactive native input, IME, Linux, sanitizer and old longbench deferrals remain unchanged;
+automated desktop/GPU tests do not qualify those deferred checks. Logs and command provenance remain outside source.

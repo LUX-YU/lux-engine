@@ -6,6 +6,11 @@ namespace lux::editor
     FrameworkResult<void> registerFrameworkErrors() noexcept
     {
         static constexpr error::ErrorDescriptor descriptors[]{
+            Errors::SceneProfileFrozenDescriptor,
+            Errors::SceneProfileNotFrozenDescriptor,
+            Errors::SceneProfileInvalidDescriptor,
+            Errors::SceneProfileDuplicateDescriptor,
+            Errors::SceneProfileUnknownDescriptor,
             Errors::ProjectManifestDescriptor,
             Errors::ProjectPluginsDescriptor,
             Errors::ProjectTransitionBusyDescriptor,

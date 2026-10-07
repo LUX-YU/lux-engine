@@ -20,5 +20,6 @@ namespace api_contract
     static_assert(!PublicFreeze<lux::editor::EditorServiceRegistrar>);
     static_assert(!PublicFreeze<lux::editor::EditorUiRegistrar>);
     static_assert(!PublicFreeze<lux::editor::SceneToolRegistrar>);
+    static_assert(!PublicFreeze<lux::editor::SceneProfileRegistrar>);
     static_assert(!PublicFactoryReplacement<lux::editor::EditorUiRegistrar>);
 } // namespace api_contract

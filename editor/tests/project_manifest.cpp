@@ -52,7 +52,8 @@ int main(int argc, char** argv)
     expect(EProjectError::DUPLICATE_IDENTITY, [](auto& m) { m.plugins.push_back(m.plugins.front()); });
     expect(EProjectError::DUPLICATE_PATH, [](auto& m) { m.scenes[1].path = "beginner/main.luxscene"; });
     expect(EProjectError::INVALID_PROFILE, [](auto& m) { m.scenes[0].profile = "lux..3d"; });
-    for (const auto path : {"../x", "a/../x", "/x", "C:/x", "a\\x", "a//x", "a/", "a/./b"})
+    for (const auto path :
+         {"../x", "a/../x", "/x", "C:/x", "a\\x", "a//x", "a/", "a/./b", "a?.scene", "con.scene", "A/LPT9.scene"})
     {
         expect(EProjectError::INVALID_PATH, [&](auto& m) { m.scenes[0].path = path; });
     }

@@ -1,4 +1,4 @@
-"""Compile the real SDK callback sites: a positive control and six throwing negatives."""
+"""Compile the real SDK callback sites: a positive control and seven throwing negatives."""
 import ctypes
 import json
 import os
@@ -23,7 +23,7 @@ else:
 directory = build / 'callback-contract-probes'
 directory.mkdir(exist_ok=True)
 msvc = any(a.startswith('/Fo') for a in args)
-for case in range(7):
+for case in range(8):
     output = directory / (str(case) + ('.obj' if msvc else '.o'))
     invocation = list(args)
     if msvc:
@@ -38,4 +38,4 @@ for case in range(7):
     assert (result.returncode == 0) == (case == 0), 'Incorrect acceptance for callback case ' + str(case)
     if case:
         assert ('noexcept' in result.stdout or 'constraints' in result.stdout), result.stdout
-print('PASS: Assembly, UI, service, scene tool, capture and enumeration reject throwing callbacks')
+print('PASS: Assembly, UI, service, scene tool, capture, enumeration and scene profile reject throwing callbacks')

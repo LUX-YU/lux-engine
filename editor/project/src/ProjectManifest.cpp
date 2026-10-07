@@ -18,8 +18,9 @@ namespace lux::editor
         }
         bool validPath(std::string_view path) noexcept
         {
-            const bool has_invalid_character = path.find_first_of("\\:") != path.npos;
-            if (!validText(path) || has_invalid_character || path.front() == '/')
+            const bool has_invalid_character = path.find_first_of("\\:<>\"|?*") != path.npos;
+            const bool is_invalid_path = !validText(path) || has_invalid_character || path.front() == '/';
+            if (is_invalid_path)
             {
                 return false;
             }
@@ -30,6 +31,17 @@ namespace lux::editor
                 const bool is_invalid_part =
                     part.empty() || part == "." || part == ".." || part.back() == '.' || part.back() == ' ';
                 if (is_invalid_part)
+                {
+                    return false;
+                }
+                // Windows device names are aliases even when followed by an extension.
+                auto stem = std::string{part.substr(0, part.find('.'))};
+                std::ranges::transform(stem, stem.begin(), [](char c) { return c >= 'a' && c <= 'z' ? c - 32 : c; });
+                const bool numbered_device = stem.size() == 4 && stem.back() >= '1' && stem.back() <= '9' &&
+                                             (stem.starts_with("COM") || stem.starts_with("LPT"));
+                const bool is_device =
+                    stem == "CON" || stem == "PRN" || stem == "AUX" || stem == "NUL" || numbered_device;
+                if (is_device)
                 {
                     return false;
                 }

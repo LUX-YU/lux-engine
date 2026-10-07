@@ -13,30 +13,36 @@ namespace lux::engine
                     EngineContext::RenderOwner{context.release(), [](RenderContext* value) noexcept { delete value; }};
             }
         };
-    }
+    } // namespace detail
 
     RenderContext::Result initializeRendering(
         EngineContext& engine,
-        std::span<const char* const> instance_extensions
+        std::span<const char* const> instance_extensions,
+        render::RendererConfig configuration
     ) noexcept
     {
         if (engine.renderContext())
+        {
             return lux::cxx::unexpected(
                 RenderContext::VFailure{render::RendererFailure{render::ERendererError::INVALID_ARGUMENT}}
             );
-        render::RendererConfig configuration;
+        }
         for (const auto* extension : instance_extensions)
         {
             if (!extension)
+            {
                 return lux::cxx::unexpected(
                     RenderContext::VFailure{render::RendererFailure{render::ERendererError::INVALID_ARGUMENT}}
                 );
+            }
             configuration.instance_extensions.emplace_back(extension);
         }
         auto context = RenderContext::create(engine.execution(), std::move(configuration));
         if (!context)
+        {
             return lux::cxx::unexpected(context.error());
+        }
         detail::EngineRenderAccess::adopt(engine, std::move(*context));
         return {};
     }
-}
+} // namespace lux::engine

@@ -6,7 +6,7 @@ namespace lux::process
 {
     class ExecutionRuntime;
     enum class EExecutionError : std::uint8_t;
-}
+} // namespace lux::process
 namespace lux::render
 {
     class RenderRuntime;
@@ -32,11 +32,15 @@ namespace lux::engine
         [[nodiscard]] Result registerFeatures(std::vector<render::RenderFeatureRegistration>) noexcept;
 
     private:
-        friend Result initializeRendering(EngineContext&, std::span<const char* const>) noexcept;
+        friend Result initializeRendering(
+            EngineContext&,
+            std::span<const char* const>,
+            render::RendererConfig
+        ) noexcept;
         struct Impl;
         explicit RenderContext(std::unique_ptr<Impl>) noexcept;
         using CreateResult = lux::cxx::expected<std::unique_ptr<RenderContext>, VFailure>;
         [[nodiscard]] static CreateResult create(process::ExecutionRuntime&, render::RendererConfig) noexcept;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::engine

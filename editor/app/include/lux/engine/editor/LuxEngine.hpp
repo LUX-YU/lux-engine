@@ -1,6 +1,7 @@
 #pragma once
 #include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/editor/EditorLayout.hpp>
+#include <lux/engine/editor/FrameStatistics.hpp>
 #include <lux/engine/editor/FrameworkResult.hpp>
 #include <lux/engine/editor/ProjectDescription.hpp>
 #include <memory>
@@ -18,7 +19,8 @@ namespace lux::editor
         std::string title{"LuxEngine"};
         int width{1280};
         int height{800};
-        std::uint32_t frame_interval_ms{16};
+        // Forwarded to the renderer/swapchain; never used as a CPU frame deadline.
+        bool enable_vsync{true};
     };
 
     enum class EFrameStatus : std::uint8_t
@@ -43,6 +45,7 @@ namespace lux::editor
         [[nodiscard]] FrameworkResult<void> exec() noexcept;
         // One host iteration; callers do not drive SceneRuntime a second time.
         [[nodiscard]] FrameworkResult<EFrameStatus> frame() noexcept;
+        [[nodiscard]] FrameStatistics statistics() const noexcept;
         [[nodiscard]] EditorWindow& window() noexcept;
         [[nodiscard]] engine::EngineContext& engine() noexcept;
         [[nodiscard]] const engine::EngineContext& engine() const noexcept;

@@ -75,6 +75,7 @@ namespace lux::render
         lux::render::ProgramMemoryHints program_memory{32, 8192, 2, 8, 1024};
         std::vector<std::string> instance_extensions;
         bool validation{};
+        bool enable_vsync{true};
     };
     struct RendererStatistics final
     {

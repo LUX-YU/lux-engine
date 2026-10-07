@@ -1,10 +1,12 @@
 #include <cstdio>
 #include <lux/engine/editor/EditorContext.hpp>
+#include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
+#include <lux/engine/ui/Root.hpp>
 
 namespace
 {
@@ -56,6 +58,15 @@ int main()
         std::fprintf(stderr, "%s\n", lux::error::format(opened.error()).c_str());
         return 2;
     }
+    // Product key bindings, transported by the same menu/shortcut path as external commands.
+    (*engine)->window().uiRoot().setMenu(
+        {{{},
+          "Edit",
+          {},
+          {},
+          {{lux::ui::CommandId{"lux.edit.undo"}, "Undo", "Ctrl+Z", {lux::ui::EKey::Z, true}},
+           {lux::ui::CommandId{"lux.edit.redo"}, "Redo", "Ctrl+Y", {lux::ui::EKey::Y, true}}}}}
+    );
     auto result = (*engine)->exec();
     if (!result)
     {

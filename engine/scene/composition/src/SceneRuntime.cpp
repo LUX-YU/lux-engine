@@ -955,6 +955,15 @@ namespace lux::scene
         **found = {};
         return {};
     }
+    std::size_t SceneRuntime::instanceCount() const noexcept
+    {
+        if (std::this_thread::get_id() != impl_->owner_)
+        {
+            std::terminate();
+        }
+        return impl_->records_.size();
+    }
+
     SceneRuntime::DriveResult SceneRuntime::driveFrame() noexcept
     {
         return impl_->driveFrame();

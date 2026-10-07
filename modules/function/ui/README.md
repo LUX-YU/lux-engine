@@ -58,3 +58,14 @@ setMenu 接收拥有 CommandId 和标签字符串的值树，不保存外部 sou
 
 测试覆盖布局、控件输入、固定批次、所有权、拓扑、代际及同步回调冻结。
 CPU 模拟输入不代表系统 IME 或原生输入接管资格。
+
+## Generic commands and measurement
+
+Concrete controls use protected `Element::menuActive()`; Root does not friend particular controls. Menu items own
+labels and CommandId. Shortcuts are supplied by the host and follow the same query/deferred-execute path, preserving
+focus and stale-target checks. Root has no implicit Ctrl+Z/Ctrl+Y policy or MenuRequest host hook.
+
+`Root::statistics()` is the latest update snapshot, populated by the actual hierarchy/draw phases. Hidden content
+continues to count and maintain; maintenance-only updates report zero draw/capture counts. Theme application belongs
+to Context creation; normal beginFrame does not rewrite the scaled style. Event routes local input/commands up the
+tree; Signal carries semantic notifications from a shared domain owner. Use neither to stream per-frame bulk data.

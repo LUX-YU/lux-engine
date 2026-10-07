@@ -63,6 +63,11 @@ namespace lux::ui
             detail::failContract();
         }
     }
+    UpdateStatistics Root::statistics() const noexcept
+    {
+        requireOwner();
+        return impl_->statistics;
+    }
     const Theme& Root::theme() const noexcept
     {
         requireOwner();
@@ -118,24 +123,39 @@ namespace lux::ui
         {
             return lux::cxx::unexpected(ECaptureError::FRAME_OPEN);
         }
+        impl_->statistics = {};
+        auto started = std::chrono::steady_clock::now();
         applyPendingChanges();
+        impl_->statistics.maintenance = std::chrono::steady_clock::now() - started;
         lux::cxx::expected<void, ECaptureError> result;
         if (output)
         {
+            started = std::chrono::steady_clock::now();
             result = collectDrawData(info, *output);
+            impl_->statistics.draw = std::chrono::steady_clock::now() - started - impl_->statistics.capture;
             if (result)
             {
                 // Freeze mutation until all references in the captured data have been pinned.
                 impl_->updating = true;
                 if (capture)
                 {
+                    started = std::chrono::steady_clock::now();
                     result = (*capture)(*output);
+                    impl_->statistics.capture += std::chrono::steady_clock::now() - started;
                 }
                 impl_->updating = false;
+                impl_->statistics.captured = bool(result);
             }
         }
         // Input and accepted interactions still finish if capture/pinning failed.
+        started = std::chrono::steady_clock::now();
         maintain();
+        impl_->statistics.maintenance += std::chrono::steady_clock::now() - started;
+        const bool pending = !impl_->change_state.pending.empty() || !impl_->menu_state.calls.empty();
+        if (pending && impl_->window)
+        {
+            window::LuxWindow::wakeEvents();
+        }
         return result;
     }
 
@@ -200,7 +220,7 @@ namespace lux::ui
         {
             impl_->focus_state.draw_hovered->setHovered(true);
         }
-        return impl_->context->endFrame(output);
+        return impl_->context->endFrame(output, impl_->statistics);
     }
 
     void Root::maintain() noexcept
@@ -234,6 +254,7 @@ namespace lux::ui
         // The hierarchy is frozen for this whole pass; no global Element index or per-frame snapshot.
         for (const auto& owner : impl_->panes.values())
         {
+            ++impl_->statistics.panes;
             auto& pane = *owner;
             impl_->active_update = &pane;
             beginCallbackBorrow(pane);
@@ -245,6 +266,7 @@ namespace lux::ui
                     *pane.content_,
                     [&](object::LuxObject& node) noexcept
                     {
+                        ++impl_->statistics.elements;
                         auto& element = static_cast<Element&>(node);
                         impl_->active_update = &element;
                         beginCallbackBorrow(element);

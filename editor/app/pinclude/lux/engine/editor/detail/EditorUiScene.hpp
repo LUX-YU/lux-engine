@@ -28,7 +28,8 @@ namespace lux::editor
         EditorUiScene(EditorUiScene&&) = delete;
         EditorUiScene& operator=(EditorUiScene&&) = delete;
         void setExtent(render::PixelExtent) noexcept;
-        [[nodiscard]] bool outputReady() noexcept;
+        [[nodiscard]] FrameworkResult<bool> outputReady() noexcept;
+        [[nodiscard]] bool hasWritableFrame() const noexcept;
         [[nodiscard]] ui::DrawData* acquireDrawData() noexcept;
         [[nodiscard]] cxx::expected<void, ui::ECaptureError> captureDrawData(const ui::DrawData&) noexcept;
         [[nodiscard]] FrameworkResult<void> publishFrame() noexcept;

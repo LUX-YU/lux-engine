@@ -70,3 +70,15 @@ retroactively qualify EC4 or previously deferred input/Linux/IME/performance res
 
 `LuxEngine::frame` returns EFrameStatus (RUNNING or EXIT_REQUESTED). Embedders access Root through
 `window().uiRoot()`; no duplicate root accessor or public frame-count test probe is provided.
+
+## Host cadence and measurements
+
+The frame producer is work-conserving: no 16 ms deadline or idle polling timeout. The renderer owns VSync and
+backpressure; Process/Object/native/Scene timer progress wakes the existing native wait. `frame()` remains a single
+non-waiting host iteration; `exec()` also performs event-driven waiting. The product owns its menu/shortcut bindings.
+`LuxEngine::statistics()` reports accumulated phases/counters and latest UI/scene sizes without retaining samples.
+See `docs/editor-framework-v2.md` for phase definitions and the Event/Signal and cross-Pane boundaries.
+
+`framework.pacing` is explicit automated desktop/GPU qualification (including VSync on/off and minimized wake), not
+interactive native-input or IME certification. `ui.ocp_statistics` uses five warmups and thirty samples for 1/3 Panes
+and 100/1000 retained labels per Pane; it makes no general zero-allocation or absolute FPS claim.

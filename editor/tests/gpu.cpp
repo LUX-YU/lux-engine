@@ -75,7 +75,7 @@ namespace
     {
         assert(!LuxEngine::create({"Invalid extent", 0, 480}));
         std::vector<int> deaths;
-        auto engine = take(LuxEngine::create({"Framework lifecycle qualification", 640, 480, 1}));
+        auto engine = take(LuxEngine::create({"Framework lifecycle qualification", 640, 480}));
         auto* runtime = &engine->engine();
         auto* window = &engine->window();
         auto* root = &engine->window().uiRoot();

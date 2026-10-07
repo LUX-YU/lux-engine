@@ -1,9 +1,9 @@
+#include <cmath>
+#include <limits>
+#include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/detail/Context.hpp>
 #include <lux/engine/ui/detail/ContextActivation.hpp>
 #include <lux/engine/ui/detail/FontValidation.hpp>
-#include <lux/engine/ui/Root.hpp>
-#include <cmath>
-#include <limits>
 #include <utility>
 
 namespace lux::ui
@@ -23,7 +23,7 @@ namespace lux::ui
 
     } // namespace detail
 
-}
+} // namespace lux::ui
 
 namespace lux::ui::detail
 {
@@ -175,15 +175,19 @@ namespace lux::ui::detail
             style.Colors[ImGuiCol_HeaderActive] = toImGuiColor(theme.palette.selection);
         }
 
-    }
+    } // namespace
 
     Context::~Context() noexcept
     {
         if (!native_)
+        {
             return;
+        }
         auto* previous = ImGui::GetCurrentContext();
         if (previous == native_)
+        {
             previous = nullptr;
+        }
         ImGui::DestroyContext(native_);
         ImGui::SetCurrentContext(previous);
     }
@@ -191,10 +195,14 @@ namespace lux::ui::detail
     Context::CreateResult Context::create(const RootConfig& config) noexcept
     {
         if (config.input_capacity < 2 || config.input_capacity > std::size_t(std::numeric_limits<int>::max()))
+        {
             return lux::cxx::unexpected(EInitError::INVALID_INPUT_CAPACITY);
+        }
         const bool is_invalid_scale = !std::isfinite(config.scale) || config.scale < 0.5f || config.scale > 4.f;
         if (is_invalid_scale)
+        {
             return lux::cxx::unexpected(EInitError::INVALID_SCALE);
+        }
         const auto* font = config.font;
         {
             if (font)
@@ -290,7 +298,9 @@ namespace lux::ui::detail
         const auto* atlas = native_->IO.Fonts;
         const bool valid = atlas->TexPixelsRGBA32 && atlas->TexReady && atlas->TexWidth > 0 && atlas->TexHeight > 0;
         if (!valid)
+        {
             return lux::cxx::unexpected(EInitError::ATLAS_FAILURE);
+        }
         {
             FontAtlas result;
             result.width = atlas->TexWidth;
@@ -306,32 +316,50 @@ namespace lux::ui::detail
         detail::ContextActivation context{native_};
         auto& io = ImGui::GetIO();
         if (!io.AppAcceptingEvents)
+        {
             return lux::cxx::unexpected(EInputError::CLOSED);
+        }
         const bool valid = std::visit(
             [](const auto& value) noexcept
             {
                 using Value = std::remove_cvref_t<decltype(value)>;
                 if constexpr (std::same_as<Value, PointerMove>)
+                {
                     return std::isfinite(value.position.x) && std::isfinite(value.position.y);
+                }
                 else if constexpr (std::same_as<Value, PointerWheel>)
+                {
                     return std::isfinite(value.delta.x) && std::isfinite(value.delta.y);
+                }
                 else if constexpr (std::same_as<Value, PointerButton>)
+                {
                     return value.button >= EPointerButton::LEFT && value.button <= EPointerButton::RIGHT;
+                }
                 else if constexpr (std::same_as<Value, Key>)
+                {
                     return value.key > EKey::NONE && value.key < EKey::COUNT;
+                }
                 else if constexpr (std::same_as<Value, Text>)
+                {
                     return value.codepoint > 0 && value.codepoint <= 0x10FFFF &&
                            (value.codepoint < 0xD800 || value.codepoint > 0xDFFF);
+                }
                 else if constexpr (std::same_as<Value, Composition>)
+                {
                     return value.stage >= ECompositionStage::STARTED && value.stage <= ECompositionStage::CANCELLED;
+                }
                 else
+                {
                     return !std::same_as<Value, PointerCancel>;
+                }
             },
             event
         );
         const bool invalid_sequence = sequence && sequence <= accepted_input_;
         if (!valid || invalid_sequence || accepted_input_ == UINT64_MAX)
+        {
             return lux::cxx::unexpected(EInputError::INVALID_INPUT);
+        }
         const auto* key_event = std::get_if<Key>(&event);
         const bool modifier = key_event && key_event->key >= EKey::LEFT_SHIFT;
         const int required = modifier ? 2 : 1;
@@ -339,7 +367,9 @@ namespace lux::ui::detail
         // The existing ImGui queue is the only pending input store.
         if (native_->InputEventsQueue.Size > input_capacity_ - required ||
             input_records_.size() == std::size_t(input_capacity_))
+        {
             return lux::cxx::unexpected(EInputError::FULL);
+        }
         const auto first = native_->InputEventsNextEventId;
         std::visit(
             [&](const auto& value)
@@ -407,7 +437,9 @@ namespace lux::ui::detail
         );
         const auto accepted = sequence ? sequence : accepted_input_ + 1;
         if (const auto* focus = std::get_if<WindowFocus>(&event); focus && !focus->focused)
+        {
             focus_loss_ = accepted;
+        }
         const auto* composition = std::get_if<Composition>(&event);
         input_records_.push_back(
             {first,
@@ -446,7 +478,6 @@ namespace lux::ui::detail
         return result;
     }
 
-
     void Context::bindWindow(void* window) noexcept
     {
         ContextActivation active{native_};
@@ -456,15 +487,21 @@ namespace lux::ui::detail
     EKey Context::keyFromNative(ImGuiKey native_key) noexcept
     {
         for (unsigned key = unsigned(EKey::NONE) + 1; key < unsigned(EKey::COUNT); ++key)
+        {
             if (toImGuiKey(static_cast<EKey>(key)) == native_key)
+            {
                 return static_cast<EKey>(key);
+            }
+        }
         return EKey::NONE;
     }
 
     cxx::expected<void, ECaptureError> Context::beginFrame(FrameInfo info) noexcept
     {
         if (input_pending_)
+        {
             return cxx::unexpected(ECaptureError::INPUT_PENDING);
+        }
         const bool valid_size = std::isfinite(info.display_size.width) && info.display_size.width > 0 &&
                                 std::isfinite(info.display_size.height) && info.display_size.height > 0;
         const bool valid_time = std::isfinite(info.delta_seconds) && info.delta_seconds > 0;
@@ -472,30 +509,49 @@ namespace lux::ui::detail
                                  std::isfinite(info.framebuffer_scale.y) && info.framebuffer_scale.y > 0;
         const bool invalid_input = !valid_size || !valid_time || !valid_scale;
         if (invalid_input)
+        {
             return cxx::unexpected(ECaptureError::INVALID_INPUT);
+        }
         auto& io = native_->IO;
         io.DisplaySize = {info.display_size.width, info.display_size.height};
         io.DeltaTime = info.delta_seconds;
         io.DisplayFramebufferScale = {info.framebuffer_scale.x, info.framebuffer_scale.y};
-        applyTheme(theme_);
         ImGui::NewFrame();
         return {};
     }
 
-    cxx::expected<void, ECaptureError> Context::endFrame(DrawData& output) noexcept
+    cxx::expected<void, ECaptureError> Context::endFrame(DrawData& output, UpdateStatistics& statistics) noexcept
     {
         ImGui::Render();
         input_pending_ = !native_->InputEventsTrail.empty() || !input_records_.empty();
+        const auto start = std::chrono::steady_clock::now();
         const auto captured = output.captureCurrent();
+        statistics.capture = std::chrono::steady_clock::now() - start;
         if (captured != ECaptureError::NONE)
+        {
             return cxx::unexpected(captured);
+        }
+        const auto* data = ImGui::GetDrawData();
+        if (data && data->Valid)
+        {
+            statistics.draw_lists = data->CmdListsCount;
+            statistics.draw_vertices = data->TotalVtxCount;
+            statistics.draw_indices = data->TotalIdxCount;
+            for (const auto* list : data->CmdLists)
+            {
+                statistics.draw_commands += list->CmdBuffer.Size;
+            }
+        }
+        statistics.textures = output.textures().size();
         return {};
     }
 
     bool Context::closeInput() noexcept
     {
         if (!native_->IO.AppAcceptingEvents)
+        {
             return false;
+        }
         native_->IO.SetAppAcceptingEvents(false);
         cancelled_input_ = accepted_input_;
         window_focused_ = false;
@@ -506,7 +562,9 @@ namespace lux::ui::detail
     {
         const bool pending_loss = !input_pending_ && focus_loss_ > cancelled_input_;
         if (pending_loss)
+        {
             cancelled_input_ = focus_loss_;
+        }
         return pending_loss;
     }
 
@@ -526,17 +584,25 @@ namespace lux::ui::detail
                 {
                     const auto& input = native_->InputEventsTrail[trail];
                     if (input.EventId >= record.end)
+                    {
                         break;
+                    }
                     ++trail;
                     if (input.EventId < record.first)
+                    {
                         continue;
+                    }
                     adopted_input_ = record.sequence;
                     if (record.sequence > cancelled_input_)
+                    {
                         route(input);
+                    }
                     record.first = input.EventId + 1;
                 }
                 if (record.first != record.end)
+                {
                     break; // ImGui trickles the remainder.
+                }
             }
             adopted_input_ = record.sequence;
             if (record.composition && record.sequence > cancelled_input_)
@@ -547,4 +613,4 @@ namespace lux::ui::detail
         }
         input_records_.erase(input_records_.begin(), input_records_.begin() + complete);
     }
-}
+} // namespace lux::ui::detail

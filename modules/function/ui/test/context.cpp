@@ -45,6 +45,21 @@ int main()
         assert(!refused && refused.error() == ui::ECaptureError::INVALID_INPUT);
         assert(ImGui::GetCurrentContext() == original);
     }
+    {
+        auto scaled = ui::Root::create({.scale = 2.F});
+        assert(scaled);
+        auto draw = [&]
+        {
+            const auto expected = (*scaled)->theme().spacing.panel_padding;
+            const auto actual = ImGui::GetStyle().WindowPadding;
+            assert(actual.x == expected.x * 2 && actual.y == expected.y * 2);
+        };
+        auto& pane = ui_test::makePane<TUiDrawPane<decltype(draw)>>(**scaled, draw);
+        for (unsigned n{}; n < 3; ++n)
+        {
+            assert((*scaled)->update({{640, 480}, 0.016F}, slot));
+        }
+    }
     first->reset();
     second->reset();
     assert(slot.valid() && ImGui::GetCurrentContext() == original);

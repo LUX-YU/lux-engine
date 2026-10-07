@@ -188,10 +188,14 @@ namespace lux::editor
             }
         }
 
-        bool outputReady() noexcept
+        FrameworkResult<bool> outputReady() noexcept
         {
             collectOutputReceipt();
-            return !failure_ && (!output_ || output_receipt_.status().status.state == lux::scene::EViewState::READY);
+            if (failure_)
+            {
+                return cxx::unexpected(*failure_);
+            }
+            return !output_ || output_receipt_.status().status.state == lux::scene::EViewState::READY;
         }
         static bool reusable(const std::shared_ptr<lux::ui::RenderFrame>& frame) noexcept
         {
@@ -357,9 +361,13 @@ namespace lux::editor
             impl_->extent_pending_ = true;
         }
     }
-    bool EditorUiScene::outputReady() noexcept
+    FrameworkResult<bool> EditorUiScene::outputReady() noexcept
     {
         return impl_->outputReady();
+    }
+    bool EditorUiScene::hasWritableFrame() const noexcept
+    {
+        return impl_->hasWritableFrame();
     }
     ui::DrawData* EditorUiScene::acquireDrawData() noexcept
     {

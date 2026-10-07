@@ -19,12 +19,6 @@ namespace lux::ui
     }
     void Root::Impl::menuCommand(Root& root, Command& command) noexcept
     {
-        MenuRequest request{EMenuAction::COMMAND, menu_state.pane, menu_state.element, command};
-        if (object::sendEvent(root, request))
-        {
-            command = request.command;
-            return;
-        }
         object::LuxObject* target =
             menu_state.element ? static_cast<object::LuxObject*>(menu_state.element) : menu_state.pane;
         if (!target)
@@ -95,8 +89,6 @@ namespace lux::ui
                     {
                         menu_state.pane = focus_state.focused;
                         menu_state.element = focus_state.focused_element;
-                        MenuRequest request{EMenuAction::OPEN, menu_state.pane, menu_state.element, {}};
-                        static_cast<void>(object::sendEvent(root, request));
                         menu_state.open = true;
                     }
                     drawMenuItems(root, item.children);
@@ -107,8 +99,6 @@ namespace lux::ui
         }
         if (menu_state.open && !opened)
         {
-            MenuRequest request{EMenuAction::CLOSE, menu_state.pane, menu_state.element, {}};
-            static_cast<void>(object::sendEvent(root, request));
             menu_state.pane = nullptr;
             menu_state.element = nullptr;
             menu_state.open = false;
@@ -148,8 +138,6 @@ namespace lux::ui
         }
         menu_state.pane = focus_state.focused;
         menu_state.element = focus_state.focused_element;
-        MenuRequest opened{EMenuAction::OPEN, menu_state.pane, menu_state.element, {}};
-        static_cast<void>(object::sendEvent(root, opened));
         Command command{item->command.view()};
         menuCommand(root, command);
         if (command.enabled)

@@ -117,7 +117,7 @@ namespace
                 std::this_thread::sleep_for(1ms);
             }
         };
-        until([&] { return ui_scene->outputReady(); });
+        until([&] { return take(ui_scene->outputReady()); });
         scene::RenderResourceId view;
         {
             auto registry = std::as_const(*scenes).borrowInstance(ui_scene->sceneId());
@@ -174,6 +174,21 @@ namespace
             bytes.resize(response->get().bytes_written);
             return bytes;
         };
+        // Real output admission failure stays a failure when queried by a sleeping host.
+        auto invalid_configuration = ui::makeRenderConfiguration(*root);
+        assert(invalid_configuration);
+        auto invalid = take(EditorUiScene::create(
+            *engine,
+            std::move(*invalid_configuration),
+            scene::ViewConfig{.extent = {640, 480}, .output = scene::NativeSurfaceOutput{0}}
+        ));
+        until([&] { return !invalid->outputReady(); });
+        const auto failure = invalid->outputReady();
+        assert(
+            !failure &&
+            failure.error() == render::toError(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT})
+        );
+        invalid.reset();
         auto populated = readPixels();
         assert(root->clearPanes());
         for (unsigned i{}; i < 8; ++i)

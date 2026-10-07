@@ -13,6 +13,7 @@
 #include <lux/engine/ui/Menu.hpp>
 #include <lux/engine/ui/PaneError.hpp>
 #include <lux/engine/ui/Theme.hpp>
+#include <lux/engine/ui/UpdateStatistics.hpp>
 #include <optional>
 
 namespace lux::window
@@ -73,6 +74,7 @@ namespace lux::ui
         // Optional platform attachment. CPU-only roots have no native window.
         void bindWindow(window::LuxWindow*) noexcept;
         [[nodiscard]] const Theme& theme() const noexcept;
+        [[nodiscard]] UpdateStatistics statistics() const noexcept;
         [[nodiscard]] float scale() const noexcept;
         [[nodiscard]] lux::cxx::expected<FontAtlas, EInitError> fontAtlas() const noexcept;
         using Capture = cxx::function_ref<cxx::expected<void, ECaptureError>(const DrawData&) noexcept>;
@@ -131,8 +133,6 @@ namespace lux::ui
         [[nodiscard]] cxx::expected<void, ECaptureError>
         updateFrame(FrameInfo, DrawData*, std::optional<Capture>) noexcept;
         [[nodiscard]] cxx::expected<void, EInitError> initialize(RootConfig) noexcept;
-        friend class TextEdit;
-        friend class NumericEdit;
         [[nodiscard]] Pane* findPane(PaneId) const noexcept;
         [[nodiscard]] bool menuTargets(const Element&) const noexcept;
         friend class Pane;

@@ -257,7 +257,7 @@ namespace lux::ui
         }
         text_id_ = ImGui::GetItemID();
         textUndoState(text_id_, can_undo_, can_redo_);
-        if (root().menuTargets(*this))
+        if (menuActive())
         {
             result.committed = false;
         }
@@ -270,7 +270,7 @@ namespace lux::ui
             value_ = before_;
             result = {true, false, false, true};
         }
-        const bool left_text = editing_ && !root().menuTargets(*this) && !ImGui::IsItemActive() && !result.cancelled;
+        const bool left_text = editing_ && !menuActive() && !ImGui::IsItemActive() && !result.cancelled;
         if (left_text)
         {
             result.committed = true;
@@ -446,7 +446,7 @@ namespace lux::ui
         }
         text_id_ = ImGui::GetItemID();
         textUndoState(text_id_, can_undo_, can_redo_);
-        if (root().menuTargets(*this))
+        if (menuActive())
         {
             result.committed = false;
         }
@@ -459,7 +459,7 @@ namespace lux::ui
             value_ = before_;
             result = {true, false, false, true};
         }
-        const bool left_text = editing_ && !root().menuTargets(*this) && !ImGui::IsItemActive() && !result.cancelled;
+        const bool left_text = editing_ && !menuActive() && !ImGui::IsItemActive() && !result.cancelled;
         if (left_text)
         {
             result.committed = true;

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <chrono>
 #include <exception>
+#include <limits>
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/EngineRendering.hpp>
 #include <lux/engine/RenderContext.hpp>
@@ -118,8 +119,11 @@ namespace lux::editor
                 return cxx::unexpected(creationError(engine.error()));
             }
             engine_ = std::move(*engine);
-            auto rendering =
-                engine::initializeRendering(*engine_, window::LuxWindow::requiredVulkanInstanceExtensions());
+            auto rendering = engine::initializeRendering(
+                *engine_,
+                window::LuxWindow::requiredVulkanInstanceExtensions(),
+                render::RendererConfig{.enable_vsync = config_.enable_vsync}
+            );
             if (!rendering)
             {
                 return cxx::unexpected(renderingError(rendering.error()));
@@ -256,18 +260,26 @@ namespace lux::editor
                 return cxx::unexpected(error::Error{Errors::EditorRecursiveHostFrame, {}});
             }
             Operation guard{operating_};
+            const auto frame_started = std::chrono::steady_clock::now();
+            ++statistics_.iterations;
             window::LuxWindow::pollEvents();
+            auto phase_started = std::chrono::steady_clock::now();
             auto collected = engine_->execution().collectCompletions();
             if (!collected)
             {
                 return cxx::unexpected(executionError(collected.error()));
             }
+            statistics_.execution_collect += std::chrono::steady_clock::now() - phase_started;
+            phase_started = std::chrono::steady_clock::now();
             auto dispatched = engine_->execution().dispatchTaskEvents();
             if (!dispatched)
             {
                 return cxx::unexpected(executionError(dispatched.error()));
             }
-            (void)object::ObjectRuntime::instance().dispatchPending();
+            statistics_.task_dispatch += std::chrono::steady_clock::now() - phase_started;
+            phase_started = std::chrono::steady_clock::now();
+            statistics_.object_messages += object::ObjectRuntime::instance().dispatchPending();
+            statistics_.object_dispatch += std::chrono::steady_clock::now() - phase_started;
             auto& root = window_->uiRoot();
             const bool closing = window_->shouldClose();
             if (closing)
@@ -288,10 +300,16 @@ namespace lux::editor
             ui_scene_->setExtent({pixels_x, pixels_y});
             const auto now = std::chrono::steady_clock::now();
             const bool has_extent = width && height && pixels_x && pixels_y;
-            const bool can_draw =
-                !closing && has_extent && !window_->minimized() && now >= next_frame_ && ui_scene_->outputReady();
+            auto output = ui_scene_->outputReady();
+            if (!output)
+            {
+                return cxx::unexpected(output.error());
+            }
+            const bool can_draw = !closing && has_extent && !window_->minimized() && *output;
             auto* ui_draw_data = can_draw ? ui_scene_->acquireDrawData() : nullptr;
-            const float elapsed = std::clamp(std::chrono::duration<float>(now - last_frame_).count(), 0.001F, 0.1F);
+            statistics_.backpressured_iterations += can_draw && !ui_draw_data;
+            const float elapsed =
+                std::max(std::chrono::duration<float>(now - last_frame_).count(), std::numeric_limits<float>::min());
             ui::FrameInfo info{
                 {float(width), float(height)},
                 elapsed,
@@ -303,10 +321,14 @@ namespace lux::editor
             {
                 return cxx::unexpected(error::Error{Errors::UiCapture, {static_cast<std::uint64_t>(drawn.error())}});
             }
+            statistics_.ui = root.statistics();
+            statistics_.ui_maintenance += statistics_.ui.maintenance;
+            statistics_.ui_draw += statistics_.ui.draw;
+            statistics_.ui_capture += statistics_.ui.capture;
+            statistics_.captured_frames += statistics_.ui.captured;
             if (ui_draw_data)
             {
                 last_frame_ = now;
-                next_frame_ = now + std::chrono::milliseconds(config_.frame_interval_ms);
             }
             const auto consumed = root.inputSnapshot();
             window_->input().evaluate(
@@ -314,12 +336,17 @@ namespace lux::editor
                 ui_draw_data && !consumed.keyboard_captured,
                 ui_draw_data && !consumed.pointer_captured
             );
+            phase_started = std::chrono::steady_clock::now();
             auto published = ui_scene_->publishFrame();
             if (!published)
             {
                 return cxx::unexpected(std::move(published.error()));
             }
+            statistics_.ui_publish += std::chrono::steady_clock::now() - phase_started;
+            phase_started = std::chrono::steady_clock::now();
             auto driven = engine_->sceneRuntime().driveFrame();
+            statistics_.scene_drive += std::chrono::steady_clock::now() - phase_started;
+            statistics_.scenes = engine_->sceneRuntime().instanceCount();
             if (!driven)
             {
                 return cxx::unexpected(scene::toError(driven.error()));
@@ -329,6 +356,7 @@ namespace lux::editor
                 return cxx::unexpected(scene::toError(driven->front()));
             }
             (void)object::ObjectRuntime::instance().collectRetired();
+            statistics_.total += std::chrono::steady_clock::now() - frame_started;
             return closing ? EFrameStatus::EXIT_REQUESTED : EFrameStatus::RUNNING;
         }
         FrameworkResult<void> exec() noexcept
@@ -344,22 +372,39 @@ namespace lux::editor
                 {
                     return {};
                 }
-                // Native input and Process/renderer completions wake this same wait. No worker polling loop.
-                const auto now = std::chrono::steady_clock::now();
-                const auto remaining = std::chrono::duration<double>(next_frame_ - now).count();
-                const double delay = std::clamp(remaining, 0.001, 0.05);
-                if (!engine_->execution().hasPendingWork())
+                // A reusable slot is immediate work. Every other progress source already wakes
+                // GLFW: native events, Process completions, Object messages and Scene timers.
+                // GLFW retains a posted event across the predicate -> wait race.
+                std::uint32_t width{}, height{}, pixels_x{}, pixels_y{};
+                window_->size(width, height);
+                window_->framebufferSize(pixels_x, pixels_y);
+                const bool visible_output = width && height && pixels_x && pixels_y && !window_->minimized();
+                auto output = ui_scene_->outputReady();
+                if (!output)
                 {
-                    window::LuxWindow::waitEvents(delay);
+                    return cxx::unexpected(output.error());
+                }
+                const bool backpressured = visible_output && *output && !ui_scene_->hasWritableFrame();
+                const bool can_produce = visible_output && *output && !backpressured;
+                const bool ready = window_->shouldClose() || can_produce || engine_->execution().hasPendingWork() ||
+                                   object::ObjectRuntime::instance().statistics().pending != 0;
+                if (!ready)
+                {
+                    const auto started = std::chrono::steady_clock::now();
+                    ++statistics_.waits;
+                    statistics_.backpressure_waits += backpressured;
+                    window::LuxWindow::waitEvents();
+                    statistics_.wait += std::chrono::steady_clock::now() - started;
                 }
             }
         }
+        FrameStatistics statistics_;
         EditorConfig config_;
         std::unique_ptr<EditorWindow> window_;
         std::unique_ptr<engine::EngineContext> engine_;
         std::unique_ptr<EditorUiScene> ui_scene_;
         std::unique_ptr<EditorContext> project_;
-        std::chrono::steady_clock::time_point last_frame_{std::chrono::steady_clock::now()}, next_frame_{};
+        std::chrono::steady_clock::time_point last_frame_{std::chrono::steady_clock::now()};
         bool operating_{};
     };
     LuxEngine::LuxEngine(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
@@ -407,6 +452,14 @@ namespace lux::editor
     FrameworkResult<EFrameStatus> LuxEngine::frame() noexcept
     {
         return impl_->frame();
+    }
+    FrameStatistics LuxEngine::statistics() const noexcept
+    {
+        if (!object::ObjectRuntime::instance().isCurrent())
+        {
+            std::terminate();
+        }
+        return impl_->statistics_;
     }
     EditorWindow& LuxEngine::window() noexcept
     {

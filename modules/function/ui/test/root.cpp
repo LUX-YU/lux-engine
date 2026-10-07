@@ -384,8 +384,14 @@ namespace
                     ++losses;
                 }
             }
-            if (const auto* command = event.getIf<lux::ui::Command>())
+            if (auto* command = event.getIf<lux::ui::Command>())
             {
+                command->enabled = true;
+                if (command->phase == lux::ui::ECommandPhase::QUERY)
+                {
+                    event.accept();
+                    return;
+                }
                 if (command->id == lux::ui::CommandIdView{"lux.edit.undo"})
                 {
                     ++undo;
@@ -563,6 +569,10 @@ int main(int argc, char** argv)
         auto& root = **bounded;
         auto& pane = ui_test::makePane<Probe>(root, "input");
         pane.consume_keys = false;
+        root.setMenu(
+            {{ui::CommandId{"lux.edit.undo"}, "Undo", "Ctrl+Z", {ui::EKey::Z, true}},
+             {ui::CommandId{"lux.edit.redo"}, "Redo", "Ctrl+Y", {ui::EKey::Y, true}}}
+        );
         for (unsigned index{}; index != 3; ++index)
         {
             assert(root.update({{640, 480}, 0.016F}, slot));
@@ -574,7 +584,9 @@ int main(int argc, char** argv)
         const auto full = root.feedInput(ui::Key{ui::EKey::LEFT_CONTROL, false});
         assert(!full && full.error() == ui::EInputError::FULL);
         assert(root.update({{640, 480}, 0.016F}, slot));
-        assert(pane.undo == 1); // Input is consumed in the same Root update.
+        assert(pane.undo == 0); // Shortcut input is consumed; command waits for the structural safe point.
+        assert(root.update());
+        assert(pane.undo == 1);
         assert(root.update());
         assert(root.update());
         assert(pane.undo == 1 && pane.redo == 0);

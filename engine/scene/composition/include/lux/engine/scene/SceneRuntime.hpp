@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/process/Timer.hpp>
 #include <lux/engine/scene/Clock.hpp>
 #include <lux/engine/scene/SceneCapabilityProvider.hpp>
 #include <lux/engine/scene/SceneDescription.hpp>
@@ -11,7 +12,6 @@
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
 #include <lux/engine/world/WorldDescription.hpp>
-#include <lux/engine/process/Timer.hpp>
 
 #include <functional>
 #include <utility>
@@ -133,7 +133,8 @@ namespace lux::scene
             std::shared_ptr<const void> code = {}
         ) noexcept
             : code_lifetime_(std::move(code)), state(value), result(std::move(outcome))
-        {}
+        {
+        }
         SceneStepStatus(const SceneStepStatus&) = default;
         SceneStepStatus(SceneStepStatus&&) noexcept = default;
         SceneStepStatus& operator=(SceneStepStatus value) noexcept
@@ -222,6 +223,7 @@ namespace lux::scene
         // May be called inside a system callback; no callback or erasure happens here.
         [[nodiscard]] SceneRuntimeResult<InstanceRetirement> retireInstance(SceneInstanceId) noexcept;
         [[nodiscard]] DriveResult driveFrame() noexcept;
+        [[nodiscard]] std::size_t instanceCount() const noexcept;
 
     private:
         struct Impl;
@@ -229,4 +231,4 @@ namespace lux::scene
         [[nodiscard]] SceneRuntimeResult<SceneInstanceLease> build(const Builder&) noexcept;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::scene

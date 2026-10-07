@@ -14,7 +14,8 @@ namespace lux::render::detail
             explicit RuntimeServer(RendererThread& state)
                 : GeneralRenderServer(state.frames, state.controls, state.uploads, state.sync),
                   statistics_(*state.statistics), sync_(state.sync)
-            {}
+            {
+            }
 
             bool tick() override
             {
@@ -54,7 +55,9 @@ namespace lux::render::detail
             {
                 const auto serial = gpuCompletedSerial();
                 if (statistics_.completed.exchange(serial, std::memory_order_acq_rel) != serial)
+                {
                     sync_->notifyRequestStateChanged();
+                }
             }
         };
     } // namespace
@@ -69,37 +72,41 @@ namespace lux::render::detail
         // No UI Context, Window or SceneInstance is borrowed by the backend.
         try
         {
-            return std::jthread([&state, config, diagnostics = std::move(diagnostics)] {
+            return std::jthread(
+                [&state, config, diagnostics = std::move(diagnostics)]
                 {
-                    RuntimeServer server(state);
-                    ServerConfig server_config;
-                    for (const auto& extension : config.instance_extensions)
                     {
-                        server_config.instance_extensions.push_back(extension.c_str());
-                    }
-                    server_config.enable_validation = config.validation;
-                    server_config.validation_error_counter = &state.statistics->validation_errors;
-                    server_config.gpu_completed_serial = &state.statistics->completed;
-                    server_config.validation_message_sink = diagnostics;
-                    auto initialized = server.init(std::move(server_config));
-                    if (!initialized)
-                    {
-                        state.startup_error = initialized.error();
-                    }
-                    state.startup.store(initialized ? 1 : 2, std::memory_order_release);
-                    state.startup.notify_all();
-                    if (initialized)
-                    {
-                        while (server.tick())
+                        RuntimeServer server(state);
+                        ServerConfig server_config;
+                        for (const auto& extension : config.instance_extensions)
                         {
+                            server_config.instance_extensions.push_back(extension.c_str());
+                        }
+                        server_config.enable_validation = config.validation;
+                        server_config.enable_vsync = config.enable_vsync;
+                        server_config.validation_error_counter = &state.statistics->validation_errors;
+                        server_config.gpu_completed_serial = &state.statistics->completed;
+                        server_config.validation_message_sink = diagnostics;
+                        auto initialized = server.init(std::move(server_config));
+                        if (!initialized)
+                        {
+                            state.startup_error = initialized.error();
+                        }
+                        state.startup.store(initialized ? 1 : 2, std::memory_order_release);
+                        state.startup.notify_all();
+                        if (initialized)
+                        {
+                            while (server.tick())
+                            {
+                            }
                         }
                     }
+                    // Published only after Vulkan owners and the server are gone.
+                    state.sync->requestStop();
+                    state.stopped.store(1, std::memory_order_release);
+                    state.sync->notifyReplyProduced(); // Final owner fact is visible before waking a destructor waiter.
                 }
-                // Published only after Vulkan owners and the server are gone.
-                state.sync->requestStop();
-                state.stopped.store(1, std::memory_order_release);
-                state.sync->notifyReplyProduced(); // Final owner fact is visible before waking a destructor waiter.
-            });
+            );
         }
         catch (const std::system_error&)
         {

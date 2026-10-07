@@ -89,6 +89,8 @@ namespace lux::ui
         [[nodiscard]] PaneResult<void> replaceElement(Element& previous, Element&) noexcept;
 
     protected:
+        // True while a menu holds this control as its synchronous command target.
+        [[nodiscard]] bool menuActive() const noexcept;
         // Only composites override this; leaf controls reject children even via a base reference.
         [[nodiscard]] virtual bool acceptsElements() const noexcept
         {

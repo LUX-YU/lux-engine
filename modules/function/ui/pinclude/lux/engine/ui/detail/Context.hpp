@@ -1,14 +1,14 @@
 #pragma once
 
+#include <array>
+#include <imgui_internal.h>
+#include <lux/cxx/compile_time/expected.hpp>
+#include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/ui/DrawData.hpp>
 #include <lux/engine/ui/FontAtlas.hpp>
 #include <lux/engine/ui/FontSource.hpp>
 #include <lux/engine/ui/InputEvent.hpp>
 #include <lux/engine/ui/Theme.hpp>
-#include <lux/cxx/core/function_ref.hpp>
-#include <lux/cxx/compile_time/expected.hpp>
-#include <imgui_internal.h>
-#include <array>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -17,7 +17,8 @@ namespace lux::ui
 {
     struct RootConfig;
     struct FrameInfo;
-}
+    struct UpdateStatistics;
+} // namespace lux::ui
 
 namespace lux::ui::detail
 {
@@ -33,25 +34,45 @@ namespace lux::ui::detail
         Context(Context&&) = delete;
         Context& operator=(Context&&) = delete;
 
-        [[nodiscard]] ImGuiContext* native() const noexcept { return native_; }
-        [[nodiscard]] const Theme& theme() const noexcept { return theme_; }
-        [[nodiscard]] float scale() const noexcept { return scale_; }
+        [[nodiscard]] ImGuiContext* native() const noexcept
+        {
+            return native_;
+        }
+        [[nodiscard]] const Theme& theme() const noexcept
+        {
+            return theme_;
+        }
+        [[nodiscard]] float scale() const noexcept
+        {
+            return scale_;
+        }
         [[nodiscard]] cxx::expected<FontAtlas, EInitError> fontAtlas() const noexcept;
         void bindWindow(void*) noexcept;
         [[nodiscard]] cxx::expected<void, ECaptureError> beginFrame(FrameInfo) noexcept;
-        [[nodiscard]] cxx::expected<void, ECaptureError> endFrame(DrawData&) noexcept;
+        [[nodiscard]] cxx::expected<void, ECaptureError> endFrame(DrawData&, UpdateStatistics&) noexcept;
         [[nodiscard]] cxx::expected<void, EInputError> feedInput(const VInputEvent&, std::uint64_t) noexcept;
         [[nodiscard]] bool closeInput() noexcept;
         [[nodiscard]] InputSnapshot inputSnapshot(bool composing, bool pointer_captured) const noexcept;
         [[nodiscard]] static EKey keyFromNative(ImGuiKey) noexcept;
-        [[nodiscard]] bool hasInput() const noexcept { return input_pending_; }
+        [[nodiscard]] bool hasInput() const noexcept
+        {
+            return input_pending_;
+        }
         [[nodiscard]] bool takeFocusLoss() noexcept;
-        [[nodiscard]] bool windowFocused() const noexcept { return window_focused_; }
-        void setWindowFocused(bool value) noexcept { window_focused_ = value; }
-        void cancelAdoptedInput() noexcept { cancelled_input_ = adopted_input_; }
-        void consumeInput(
-            cxx::function_ref<void(const ImGuiInputEvent&)>, cxx::function_ref<void(ECompositionStage)>
-        ) noexcept;
+        [[nodiscard]] bool windowFocused() const noexcept
+        {
+            return window_focused_;
+        }
+        void setWindowFocused(bool value) noexcept
+        {
+            window_focused_ = value;
+        }
+        void cancelAdoptedInput() noexcept
+        {
+            cancelled_input_ = adopted_input_;
+        }
+        void
+            consumeInput(cxx::function_ref<void(const ImGuiInputEvent&)>, cxx::function_ref<void(ECompositionStage)>) noexcept;
 
     private:
         Context() noexcept = default;
@@ -72,4 +93,4 @@ namespace lux::ui::detail
         std::vector<InputRecord> input_records_;
         std::uint64_t accepted_input_{}, adopted_input_{}, focus_loss_{}, cancelled_input_{};
     };
-}
+} // namespace lux::ui::detail

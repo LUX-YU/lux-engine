@@ -124,3 +124,39 @@ SceneToolRegistrar remains **provisional and excluded from API freeze** until a 
 vertical slice establishes its selection semantics. Vector registrars and their ownership are unchanged.
 
 Noexcept callable support for this correction uses lux-cxx `0a0e7419fc7229df6e372cd35a540249f92250ef`.
+
+## P0–P2 pacing, generic commands and observations
+
+The host has no software frame deadline. A visible ready output and a reusable UI frame slot are immediate work;
+otherwise exec waits for native events. Execution completions, Object messages, renderer progress and the existing
+Scene timer wake that same wait. Deferred UI structure/menu work posts a native wake when its fixed batch leaves
+another batch pending. Closing requested by a UI callback is checked again before waiting. Output failure is returned
+as an error, never confused with not-ready. There is still one SceneRuntime drive per iteration and one input sample.
+No frame hook list, thread pool, render transport or resource retirement algorithm is added.
+
+EditorConfig.enable_vsync is only forwarded through RendererConfig to the Vulkan swapchain policy. It does not
+specify a host sleep interval. Frames already captured retain their original resource pins during backpressure.
+The native window remains alive through the original RenderContext retirement drain.
+
+Root has no concrete TextEdit/NumericEdit friends. Controls use Element::menuActive() for synchronous menu targeting.
+Root routes the configured MenuItem shortcut to the focused hierarchy; product code supplies Undo/Redo bindings.
+Command execution remains deferred to the next structure-safe update and revalidates the target there. Unused
+MenuRequest OPEN/COMMAND/CLOSE dispatch and its public protocol are removed; no replacement global command bus
+is installed. A future application command slice must supply its real semantic owner.
+
+Root::statistics() reports its last update. LuxEngine::statistics() accumulates host phase durations/counters and
+includes the latest UI counts and SceneRuntime::instanceCount(). Durations use steady_clock; no sample history,
+observers or histogram are held in production. Counts are folded into existing traversals except the bounded draw-list
+command count. maintenance includes deferred changes, input routing and hidden owner maintenance; draw includes
+layout/ImGui rendering; capture includes DrawData copying and the immediate pin callback. Host total excludes native
+wait, which is recorded separately. A maintenance-only update resets draw counts/timings. Theme/style is applied once
+at Context construction, preserving configured scale; there is no public mutable theme or per-frame reapplication.
+
+Event is hierarchy-local interaction/command routing. Signal communicates semantic state changes from its actual
+owner. Sibling Panes cooperate through their SceneSession/project service, not by keeping business pointers to each
+other. PaneHandle remains a runtime UI identity, not dependency injection. Bulk frame data continues through the
+existing owned/shared render path. No global Element registry or speculative active-scene scheduler is introduced.
+
+P0–P2 stops before SceneSession/Outliner/Inspector/tool migration. A future real slice must exercise multiple
+simultaneously applicable tools before finalizing the provisional SceneToolRegistrar. Persistent name-to-handle
+binding and application command policy remain future Editor responsibilities, not additions to generic Root.

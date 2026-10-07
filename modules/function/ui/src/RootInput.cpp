@@ -264,15 +264,6 @@ namespace lux::ui
             {
                 return;
             }
-            const bool control = (impl_->input_state.modifiers & ImGuiMod_Ctrl) != 0;
-            const bool shift = (impl_->input_state.modifiers & ImGuiMod_Shift) != 0;
-            const bool alternate = (impl_->input_state.modifiers & (ImGuiMod_Alt | ImGuiMod_Super)) != 0;
-            if (key && key->down && control && !alternate && (key->key == EKey::Z || key->key == EKey::Y))
-            {
-                const bool redo = key->key == EKey::Y || shift;
-                Command command{CommandIdView{redo ? "lux.edit.redo" : "lux.edit.undo"}, ECommandPhase::EXECUTE};
-                static_cast<void>(object::routeEvent(*target, boundary, command));
-            }
         };
         auto composition = [&](ECompositionStage stage) noexcept
         {

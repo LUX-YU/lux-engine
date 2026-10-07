@@ -181,6 +181,7 @@ namespace lux::ui
         void drawMenuItems(Root&, std::span<const MenuItem>) noexcept;
         void menuCommand(Root&, Command&) noexcept;
         bool shortcut(Root&, const Key&) noexcept;
+        UpdateStatistics statistics;
         std::unique_ptr<detail::Context> context;
         window::LuxWindow* window{};
         std::size_t pane_capacity{65536};

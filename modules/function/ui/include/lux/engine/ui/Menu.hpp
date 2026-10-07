@@ -7,9 +7,6 @@
 
 namespace lux::ui
 {
-    class Pane;
-    class Element;
-
     struct MenuItem final
     {
         CommandId command;
@@ -19,20 +16,4 @@ namespace lux::ui
         std::vector<MenuItem> children;
     };
 
-    enum class EMenuAction : std::uint8_t
-    {
-        OPEN,
-        COMMAND,
-        CLOSE
-    };
-
-    // Synchronous host request. Targets are borrowed only for this dispatch.
-    // The host retains its own business identity before accepting an invocation.
-    struct MenuRequest final
-    {
-        EMenuAction action{EMenuAction::OPEN};
-        Pane* pane{};
-        Element* element{};
-        Command command;
-    };
 } // namespace lux::ui

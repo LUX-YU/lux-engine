@@ -23,6 +23,11 @@ namespace lux::ui
     {
         return pane_ ? pane_->attachedRoot() : nullptr;
     }
+    bool Element::menuActive() const noexcept
+    {
+        const auto* owner = attachedRoot();
+        return owner && owner->menuTargets(*this);
+    }
     void Element::assignPane(Pane* pane) noexcept
     {
         auto* node = this;

@@ -1,4 +1,17 @@
 find_package(lux-cxx REQUIRED COMPONENTS core compile_time container)
+find_package(nlohmann_json CONFIG REQUIRED)
+
+add_component(COMPONENT_NAME lux_editor_project NAMESPACE lux::engine::editor STATIC
+    SOURCE_FILES project/src/ProjectManifest.cpp project/src/ProjectFiles.cpp)
+component_include_directories(lux_editor_project BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/project/include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/project/sinclude INSTALL_TIME include)
+target_link_libraries(lux_editor_project PUBLIC lux::cxx::compile_time lux::engine::resource::identity
+    PRIVATE nlohmann_json::nlohmann_json)
+component_add_transitive_commands(lux_editor_project
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
+    "find_package(nlohmann_json CONFIG REQUIRED)")
+lux_classify_target(TARGET lux_editor_project LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
 add_component(COMPONENT_NAME lux_editor_context NAMESPACE lux::engine::editor STATIC
     SOURCE_FILES context/src/FrameworkErrors.cpp context/src/EditorContext.cpp context/src/EditorServiceRegistrar.cpp context/src/EditorUiRegistrar.cpp)
@@ -43,9 +56,13 @@ if(WIN32)
     install(FILES $<TARGET_RUNTIME_DLLS:lux_editor> DESTINATION bin)
 endif()
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-framework VERSION ${PROJECT_VERSION}
-    NAMESPACE lux::engine::editor COMPONENTS lux_editor_context lux_editor_ui lux_editor_app)
+    NAMESPACE lux::engine::editor COMPONENTS lux_editor_project lux_editor_context lux_editor_ui lux_editor_app)
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(editor_project_manifest_test tests/project_manifest.cpp)
+    target_link_libraries(editor_project_manifest_test PRIVATE lux_editor_project)
+    lux_editor_test_options(editor_project_manifest_test)
+    add_test(NAME framework.project_manifest COMMAND editor_project_manifest_test ${CMAKE_CURRENT_BINARY_DIR}/manifest-data)
     if(CMAKE_VERSION VERSION_LESS 3.27)
         message(FATAL_ERROR "Framework isolation tests require CMake 3.27 or newer for first-configure File API queries")
     endif()

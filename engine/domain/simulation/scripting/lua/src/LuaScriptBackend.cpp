@@ -258,9 +258,6 @@ namespace lux::simulation::script
 
         template <class Value> class TPreparedBlockStorage final
         {
-            static_assert(std::is_nothrow_default_constructible_v<Value>);
-            static_assert(std::is_nothrow_destructible_v<Value>);
-
         public:
             struct Stats final
             {
@@ -278,6 +275,9 @@ namespace lux::simulation::script
             )
                 : capacity_(capacity)
             {
+                // Evaluate after the enclosing Impl and its nested value types are complete.
+                static_assert(std::is_nothrow_default_constructible_v<Value>);
+                static_assert(std::is_nothrow_destructible_v<Value>);
                 if (capacity == 0U)
                     return;
                 if (classes.empty() || classes.size() > 64U || capacity >= (std::numeric_limits<std::uint32_t>::max)())

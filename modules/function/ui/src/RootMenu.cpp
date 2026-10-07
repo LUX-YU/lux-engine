@@ -17,23 +17,50 @@ namespace lux::ui
         requireOwner();
         return impl_->menu_state.open && impl_->menu_state.element == &element;
     }
+    void Root::setCommandFallback(object::LuxObject* target) noexcept
+    {
+        requireOwner();
+        impl_->command_fallback = target ? target->objectId() : object::ObjectId{};
+    }
+    void Root::Impl::routeCommand(Root& root, object::LuxObject* target, Command& command) noexcept
+    {
+        Root::beginCallbackBorrow(root);
+        bool accepted = target && object::routeEvent(*target, root, command);
+        if (!accepted)
+        {
+            auto fallback = object::ObjectRuntime::instance().resolve(command_fallback);
+            if (fallback)
+            {
+                accepted = object::sendEvent(**fallback, command);
+            }
+        }
+        if (!accepted)
+        {
+            command.enabled = false;
+            command.result = ECommandDispatchResult::NOT_FOUND;
+        }
+        else if (command.phase == ECommandPhase::QUERY && !command.enabled)
+        {
+            command.result = ECommandDispatchResult::DISABLED;
+        }
+        else if (command.phase == ECommandPhase::EXECUTE && command.result == ECommandDispatchResult::NOT_FOUND)
+        {
+            command.result = ECommandDispatchResult::EXECUTED;
+        }
+        Root::endCallbackBorrow(root);
+    }
     void Root::Impl::menuCommand(Root& root, Command& command) noexcept
     {
         object::LuxObject* target =
             menu_state.element ? static_cast<object::LuxObject*>(menu_state.element) : menu_state.pane;
-        if (!target)
-        {
-            return;
-        }
         if (command.phase == ECommandPhase::QUERY)
         {
-            static_cast<void>(object::routeEvent(*target, root, command));
+            routeCommand(root, target, command);
         }
         else
         {
-            menu_state.calls.push_back(
-                {store(root, *menu_state.pane, *target), CommandId{std::string(command.id.name())}}
-            );
+            const auto stored = target ? store(root, *menu_state.pane, *target) : StoredTarget{};
+            menu_state.calls.push_back({stored, CommandId{std::string(command.id.name())}});
             command.result = ECommandDispatchResult::EXECUTED;
         }
     }

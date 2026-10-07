@@ -73,7 +73,7 @@ namespace lux::ui
         {
             if (call.target.object == target.objectId())
             {
-                call.target = {};
+                call.command = {};
             }
         }
         // The active batch keeps its indices even if a preceding callback destroys a later target.
@@ -102,16 +102,18 @@ namespace lux::ui
         {
             const auto call = impl_->menu_state.calls[index];
             auto* target = Impl::resolve(*this, call.target);
-            if (!target)
+            const bool cancelled = !call.command.isValid();
+            const bool stale_target = !call.target.object.isNull() && !target;
+            if (cancelled || stale_target)
             {
                 continue;
             }
             Command command{call.command.view()};
-            static_cast<void>(object::routeEvent(*target, *this, command));
+            impl_->routeCommand(*this, target, command);
             if (command.enabled)
             {
                 command.phase = ECommandPhase::EXECUTE;
-                static_cast<void>(object::routeEvent(*target, *this, command));
+                impl_->routeCommand(*this, target, command);
             }
         }
         impl_->menu_state.calls.erase(impl_->menu_state.calls.begin(), impl_->menu_state.calls.begin() + count);

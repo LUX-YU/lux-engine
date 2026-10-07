@@ -14,7 +14,10 @@
 #include <lux/engine/ui/PaneError.hpp>
 #include <lux/engine/ui/Theme.hpp>
 #include <lux/engine/ui/UpdateStatistics.hpp>
+#include <memory>
 #include <optional>
+#include <span>
+#include <vector>
 
 namespace lux::window
 {
@@ -91,6 +94,13 @@ namespace lux::ui
         [[nodiscard]] PaneResult<void> addPanes(std::span<std::unique_ptr<Pane>>) noexcept;
         [[nodiscard]] PaneResult<std::unique_ptr<Pane>> removePane(Pane&) noexcept;
         [[nodiscard]] PaneResult<void> clearPanes() noexcept;
+        using PaneCommit = cxx::function_ref<void(std::span<const PaneHandle>) noexcept>;
+        // Commit complete structure and semantic ownership before any removal/attachment notification.
+        [[nodiscard]] PaneResult<std::vector<std::unique_ptr<Pane>>> replacePanes(
+            std::span<const PaneHandle> remove,
+            std::span<std::unique_ptr<Pane>> add,
+            PaneCommit on_commit
+        ) noexcept;
         [[nodiscard]] PaneHandle paneHandle(const Pane&) const noexcept;
         // Owner-thread synchronous borrow only; never retain the pointer across callbacks or frames.
         [[nodiscard]] Pane* resolvePane(PaneHandle) const noexcept;
@@ -102,6 +112,8 @@ namespace lux::ui
         void deferChange(Pane& target, ChangeCallback apply) noexcept;
         void deferChange(Element& target, ChangeCallback apply) noexcept;
 
+        // Non-owning endpoint for unhandled commands, including commands with no focused Pane.
+        void setCommandFallback(object::LuxObject*) noexcept;
         void setMenu(std::vector<MenuItem>);
         [[nodiscard]] std::span<const MenuItem> menu() const noexcept;
         // Borrowed enumeration freezes structure until every callback has returned.

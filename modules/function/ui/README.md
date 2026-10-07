@@ -20,11 +20,17 @@ addPane(unique_ptr<Pane>&&) / addPanes(span<unique_ptr<Pane>>) 完整验证候�
 失败保留全部候选和原 UI。removePane 撤销焦点、捕获、菜单和待执行结构操作，使 PaneId 失效，通知后返回 owner。
 clearPanes 在全部登记撤销后通知和析构。容器 swap-and-pop 不执行用户析构。
 
+replacePanes(remove handles, add owners, on_commit) 使用同一挂载/卸载内核完成原子替换。
+失效 remove handle 忽略，重复有效 handle 拒绝；按最终窗口数验证容量，失败不消费候选或修改原树。
+全部旧窗口脱离、新窗口挂载后，先同步调用一次 noexcept on_commit，再发送移除/添加通知。
+on_commit 只提交上层已准备好的状态，不分配或重入结构操作。返回旧 Pane owners，由调用方在依赖仍有效时销毁。
+Root 不知道 Project、Session 或业务分组；应用只保存自己的非拥有 PaneHandle。
+
 ## 构帧和安全点
 
 私有 detail::Context 保存 ImGuiContext、字体/主题、输入积累和 EventId 对照，并执行后端构帧及捕获。
 Root 保存窗口、焦点、捕获、模态、停靠和内容树编排，不公开 ImGui ABI。
-update(FrameInfo) 只维护；update(FrameInfo, DrawData&, optional<Capture>) 执行绘制/捕获、同步资源固定回调、已处理输入路由和树维护。
+update() 只维护；update(FrameInfo, DrawData&, optional<Capture>) 执行绘制/捕获、同步资源固定回调、已处理输入路由和树维护。
 回调不跨帧保存，Root 不认识 Renderer。空输出时仍维护和处理失焦，不重放控件交互。隐藏窗口仍维护。
 父先子后遍历 Pane→Element 子链，没有全局 Element 登记或逐帧目标快照。
 
@@ -40,7 +46,7 @@ feedInput 保留顺序和 sequence，返回 FULL/CLOSED/INVALID_INPUT；FULL 不
 
 Layout 支持水平、垂直、网格和表单。隐藏内容不占空间，宽度先确定再测量换行高度；
 尺寸遵从最小/期望/最大及伸展权重。空间不足时裁剪或显式滚动。控件每帧只实际执行一次。
-UI 只提供 DockTree。setDockTree 在内部验证、准备并提交；调用使用同步 Pane* 借用，内部保存代际身份。
+UI 只提供 DockTree。setDockTree 在内部验证、准备并提交；树中保存 opaque PaneHandle，移除后重加不会复活旧布局目标。
 Editor 把稳定名称解析成当前窗口，不保存 ImGui runtime ID，不将五区产品偏好放入 Root。
 
 Button、Label、TextEdit、CheckBox、NumericEdit、Choice 是 Element。setValue 不发送用户编辑信号。
@@ -64,6 +70,12 @@ CPU 模拟输入不代表系统 IME 或原生输入接管资格。
 Concrete controls use protected `Element::menuActive()`; Root does not friend particular controls. Menu items own
 labels and CommandId. Shortcuts are supplied by the host and follow the same query/deferred-execute path, preserving
 focus and stale-target checks. Root has no implicit Ctrl+Z/Ctrl+Y policy or MenuRequest host hook.
+
+`setCommandFallback(LuxObject*)` keeps only the object's generational ObjectId. Both QUERY and EXECUTE first route
+through the focused Element/Pane and Root boundary; only unaccepted requests reach the fallback. With no focused
+target, application commands can still be queried and queued for the next safe point. A removed original target
+cancels its queued command; it does not become a new target-less application request. Clearing or destroying the
+fallback never leaves an owning pointer or a stale-address callback.
 
 `Root::statistics()` is the latest update snapshot, populated by the actual hierarchy/draw phases. Hidden content
 continues to count and maintain; maintenance-only updates report zero draw/capture counts. Theme application belongs

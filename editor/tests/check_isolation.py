@@ -12,7 +12,7 @@ model = json.loads((reply / index['reply']['codemodel-v2']['jsonFile']).read_tex
 for config in model['configurations']:
     targets = {t['id']: json.loads((reply / t['jsonFile']).read_text()) for t in config['targets']}
     names = {t['name']: key for key, t in targets.items()}
-    for name in ('lux_editor_project', 'lux_editor_context', 'lux_editor_ui', 'lux_editor_app',
+    for name in ('ui', 'lux_editor_project', 'lux_editor_context', 'lux_editor_ui', 'lux_editor_app',
                  'lux_editor_scene', 'lux_editor_file_io', 'lux_editor_scene_profiles', 'lux_editor'):
         seen, pending = set(), [names[name]]
         while pending:
@@ -26,6 +26,8 @@ for config in model['configurations']:
             assert 'editor_legacy/' not in facts, (name, target['name'], 'legacy provider')
             pending.extend(d['id'] for d in target.get('dependencies', []))
         closure = sorted(targets[k]['name'] for k in seen)
+        if name == 'ui':
+            assert not any(value.startswith('lux_editor') for value in closure), 'UI depends on Editor'
         if name in ('lux_editor_project', 'lux_editor_scene', 'lux_editor_file_io'):
             for forbidden in ('process_execution', 'engine_context', 'scene_runtime', 'scene_render', 'ui'):
                 assert forbidden not in closure, (name, forbidden)

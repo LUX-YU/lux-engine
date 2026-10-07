@@ -251,13 +251,17 @@ namespace lux::ui
             default:
                 break;
             }
-            if (!target || !target.visible() || !allowedByModal(*target.containingPane()) || !value)
+            if (!value)
             {
                 return;
             }
-            if (object::routeEvent(*target, boundary, *value))
+            if (target)
             {
-                return;
+                const bool blocked = !target.visible() || !allowedByModal(*target.containingPane());
+                if (blocked || object::routeEvent(*target, boundary, *value))
+                {
+                    return;
+                }
             }
             const auto* key = std::get_if<Key>(&*value);
             if (key && !modal && impl_->shortcut(*this, *key))

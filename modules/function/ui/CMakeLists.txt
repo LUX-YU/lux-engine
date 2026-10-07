@@ -18,6 +18,7 @@ add_library(
     src/DrawData.cpp
     src/Table.cpp
     src/Root.cpp
+    src/RootTransaction.cpp
     src/RootPanes.cpp
     src/RootInput.cpp
     src/RootLayout.cpp
@@ -104,6 +105,15 @@ if(TARGET render_vulkan)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(ui_transaction_test test/transaction.cpp)
+    target_link_libraries(ui_transaction_test PRIVATE ui)
+    if(MSVC)
+        target_compile_options(ui_transaction_test PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(ui_transaction_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME ui.transaction COMMAND ui_transaction_test)
+    set_tests_properties(ui.transaction PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
     add_executable(ui_root_test test/root.cpp)
     target_link_libraries(ui_root_test PRIVATE ui imgui::core)
     add_executable(ui_composition_test test/composition.cpp)

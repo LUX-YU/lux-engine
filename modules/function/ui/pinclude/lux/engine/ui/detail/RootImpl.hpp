@@ -179,8 +179,10 @@ namespace lux::ui
         void applyPendingChanges(Root&) noexcept;
         void drawMenu(Root&) noexcept;
         void drawMenuItems(Root&, std::span<const MenuItem>) noexcept;
+        void routeCommand(Root&, object::LuxObject*, Command&) noexcept;
         void menuCommand(Root&, Command&) noexcept;
         bool shortcut(Root&, const Key&) noexcept;
+        object::ObjectId command_fallback;
         UpdateStatistics statistics;
         std::unique_ptr<detail::Context> context;
         window::LuxWindow* window{};

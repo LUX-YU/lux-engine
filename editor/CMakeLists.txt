@@ -56,7 +56,7 @@ component_add_transitive_commands(lux_editor_ui
 )
 lux_classify_target(TARGET lux_editor_ui LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
-add_component(COMPONENT_NAME lux_editor_app NAMESPACE lux::engine::editor STATIC SOURCE_FILES app/src/LuxEngine.cpp app/src/ProjectPreparation.cpp app/src/EditorUiScene.cpp app/src/UiRenderSyncStage.cpp)
+add_component(COMPONENT_NAME lux_editor_app NAMESPACE lux::engine::editor STATIC SOURCE_FILES app/src/LuxEngine.cpp app/src/ProjectUiMount.cpp app/src/ProjectPreparation.cpp app/src/EditorUiScene.cpp app/src/UiRenderSyncStage.cpp)
 component_include_directories(lux_editor_app BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/app/include INSTALL_TIME include PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/app/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/context/sinclude)
 target_link_libraries(lux_editor_app PUBLIC lux_editor_context lux_editor_ui PRIVATE lux::engine::engine_context_render lux::engine::scene::scene_render lux::engine::function::ui_rendering lux::engine::project::project_plugin_rendering)
 component_add_transitive_commands(lux_editor_app
@@ -102,6 +102,11 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-framework VERSION $
     NAMESPACE lux::engine::editor COMPONENTS lux_editor_file_io lux_editor_scene lux_editor_project lux_editor_context lux_editor_ui lux_editor_app lux_editor_scene_profiles)
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(editor_project_ui_mount_test tests/project_ui_mount.cpp)
+    target_include_directories(editor_project_ui_mount_test PRIVATE app/pinclude)
+    target_link_libraries(editor_project_ui_mount_test PRIVATE lux_editor_app)
+    lux_editor_test_options(editor_project_ui_mount_test)
+    add_test(NAME framework.project_ui_mount COMMAND editor_project_ui_mount_test)
     add_executable(editor_scene_profiles_test tests/scene_profiles.cpp)
     target_link_libraries(editor_scene_profiles_test PRIVATE lux_editor_scene lux_editor_scene_profiles
         lux::engine::engine_context lux::engine::project::project_plugin_rendering

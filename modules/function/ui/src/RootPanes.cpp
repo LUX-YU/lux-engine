@@ -75,72 +75,18 @@ namespace lux::ui
 
     PaneResult<void> Root::addPanes(std::span<std::unique_ptr<Pane>> candidates) noexcept
     {
-        auto ready = checkStructureSafe();
-        if (!ready)
+        auto committed = [](std::span<const PaneHandle>) noexcept {};
+        auto result = replacePanes({}, candidates, committed);
+        if (!result)
         {
-            return ready;
-        }
-        const auto available = impl_->pane_capacity - std::min(impl_->panes.size(), impl_->pane_capacity);
-        if (candidates.size() > available)
-        {
-            return cxx::unexpected(EPaneError::CAPACITY);
-        }
-        std::vector<Pane*> prepared;
-        prepared.reserve(candidates.size());
-        for (const auto& candidate : candidates)
-        {
-            if (!candidate)
-            {
-                return cxx::unexpected(EPaneError::INVALID_TREE);
-            }
-            const bool already_attached = candidate->root_ || candidate->parent() || candidate->id_.isValid();
-            if (already_attached)
-            {
-                return cxx::unexpected(EPaneError::ALREADY_ATTACHED);
-            }
-            if (std::ranges::find(prepared, candidate.get()) != prepared.end())
-            {
-                return cxx::unexpected(EPaneError::DUPLICATE_PANE);
-            }
-            auto relation = validateRelation(*candidate, this);
-            if (!relation)
-            {
-                return cxx::unexpected(
-                    relation.error() == object::EObjectTreeError::CLOSED ? EPaneError::CLOSED : EPaneError::BUSY
-                );
-            }
-            prepared.push_back(candidate.get());
-        }
-        if (!impl_->panes.prepareInsert(candidates.size()))
-        {
-            return cxx::unexpected(EPaneError::CAPACITY);
-        }
-        for (auto* pane : prepared)
-        {
-            pane->imgui_label_.reserve(pane->title_.size() + 64);
-        }
-        Mutation commit{impl_->committing_structure};
-        for (std::size_t index{}; index < candidates.size(); ++index)
-        {
-            auto* pane = prepared[index];
-            pane->id_ = impl_->panes.insert(std::move(candidates[index]));
-            pane->root_ = this;
-            pane->rebuildImGuiLabel();
-            commitRelation(*pane, this);
-        }
-        for (auto* pane : prepared)
-        {
-            pane->beginTreeVisit();
-            static_cast<void>(emit(paneChanged, PaneChanged{pane, true}));
-            pane->endTreeVisit();
+            return cxx::unexpected(result.error());
         }
         return {};
     }
 
     PaneResult<std::unique_ptr<Pane>> Root::removePane(Pane& pane) noexcept
     {
-        auto ready = checkStructureSafe();
-        if (!ready)
+        if (auto ready = checkStructureSafe(); !ready)
         {
             return cxx::unexpected(ready.error());
         }
@@ -148,61 +94,37 @@ namespace lux::ui
         {
             return cxx::unexpected(EPaneError::NOT_ATTACHED);
         }
-        if (!validateRelation(pane, nullptr))
+        const auto handle = paneHandle(pane);
+        auto committed = [](std::span<const PaneHandle>) noexcept {};
+        auto result = replacePanes(std::span{&handle, 1}, {}, committed);
+        if (!result)
         {
-            return cxx::unexpected(EPaneError::BUSY);
+            return cxx::unexpected(result.error());
         }
-        Mutation commit{impl_->committing_structure};
-        const auto id = pane.id_;
-        releasePane(pane);
-        commitRelation(pane, nullptr);
-        pane.root_ = nullptr;
-        pane.id_ = {};
-        std::unique_ptr<Pane> owner;
-        impl_->panes.extract(id, owner); // Move before swap-and-pop; no user destructor runs in the container.
-        notifyRemoved(pane);
-        static_cast<void>(emit(paneChanged, PaneChanged{&pane, false}));
-        return owner;
+        return std::move(result->front());
     }
 
     PaneResult<void> Root::clearPanes() noexcept
     {
-        auto ready = checkStructureSafe();
-        if (!ready)
+        if (auto ready = checkStructureSafe(); !ready)
         {
             return ready;
         }
-        for (const auto& owner : impl_->panes.values())
+        std::vector<PaneHandle> handles;
+        handles.reserve(impl_->panes.size());
+        for (const auto& pane : impl_->panes.values())
         {
-            if (!validateRelation(*owner, nullptr))
-            {
-                return cxx::unexpected(EPaneError::BUSY);
-            }
+            handles.push_back(paneHandle(*pane));
         }
-        struct Removed final
+        auto committed = [](std::span<const PaneHandle>) noexcept {};
+        auto result = replacePanes(handles, {}, committed);
+        if (!result)
         {
-            PaneId id;
-            std::unique_ptr<Pane> owner;
-        };
-        std::vector<Removed> removed(impl_->panes.size());
-        Mutation commit{impl_->committing_structure};
-        for (auto& entry : removed)
-        {
-            entry.id = impl_->panes.keys().back();
-            auto& pane = **impl_->panes.tryGet(entry.id);
-            releasePane(pane);
-            commitRelation(pane, nullptr);
-            pane.root_ = nullptr;
-            pane.id_ = {};
-            impl_->panes.extract(entry.id, entry.owner);
+            return cxx::unexpected(result.error());
         }
-        for (auto& entry : removed)
-        {
-            notifyRemoved(*entry.owner);
-            static_cast<void>(emit(paneChanged, PaneChanged{entry.owner.get(), false}));
-        }
-        // Every registration has gone before notification or destruction can observe the Root.
-        removed.clear();
+        // Destructors cannot repopulate a Root while clearPanes is finishing its ownership responsibility.
+        Mutation cleanup{impl_->committing_structure};
+        result->clear();
         return {};
     }
 

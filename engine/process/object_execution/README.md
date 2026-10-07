@@ -19,5 +19,5 @@ calling thread.
 
 The host still stops and joins Process/Renderer producers before process ObjectRuntime shutdown. Accepted target
 envelopes remaining at shutdown complete with nullptr/stopped on the owner; ordinary queued signals remain discarded.
-This does not change TaskScope's existing blocking destructor or the current Project transition protocol. Those are
-separate review-gated stages in the terminal architecture specification.
+TaskScope destruction only requests cancellation; accepted records retain their group until Runtime collection.
+ObjectScheduler remains the business-completion boundary, independent of transport-only scope callbacks.

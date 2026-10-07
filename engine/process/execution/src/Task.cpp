@@ -84,7 +84,7 @@ namespace lux::process::detail
     lux::cxx::expected<TaskRecord*, EExecutionError> admitTask(
         TaskRuntime& runtime,
         TaskOptions options,
-        TaskGroup* group
+        std::shared_ptr<TaskGroup> group
     ) noexcept
     {
         std::lock_guard lock{runtime.mutex};
@@ -387,17 +387,13 @@ namespace lux::process::detail
 namespace lux::process
 {
     TaskScope::TaskScope(ExecutionRuntime& runtime) noexcept
-        : runtime_(runtime), group_(std::make_unique<detail::TaskGroup>())
+        : runtime_(runtime), group_(std::make_shared<detail::TaskGroup>())
     {
     }
 
     TaskScope::~TaskScope() noexcept
     {
         requestStop();
-        if (!join())
-        {
-            std::terminate();
-        }
     }
 
     void TaskScope::requestStop() noexcept
@@ -414,7 +410,7 @@ namespace lux::process
             stops.reserve(group_->outstanding);
             for (auto& record : tasks.records)
             {
-                if (record->group != group_.get() || record->info.finished)
+                if (record->group != group_ || record->info.finished)
                 {
                     continue;
                 }

@@ -51,3 +51,15 @@ lux_engine_install_components(
     NAMESPACE    lux::engine::process
     COMPONENTS   process_execution
 )
+
+if(BUILD_TESTING)
+    add_executable(task_scope_test test/TaskScopeTest.cpp)
+    target_link_libraries(task_scope_test PRIVATE lux::engine::process::process_execution)
+    if(MSVC)
+        target_compile_options(task_scope_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(task_scope_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME process.task_scope COMMAND task_scope_test)
+    set_tests_properties(process.task_scope PROPERTIES TIMEOUT 15)
+endif()

@@ -50,7 +50,8 @@ namespace lux::process::asset_loading
             TaskScope& scope,
             std::size_t requested_capacity
         ) noexcept
-            : vfs(std::move(view)), blocking(std::move(scheduler)), tasks(scope), capacity(requested_capacity),
+            : vfs(std::move(view)), blocking(std::move(scheduler)), tasks(scope), execution(scope.execution()),
+              capacity(requested_capacity),
               owner_thread(std::this_thread::get_id())
         {}
 
@@ -65,13 +66,14 @@ namespace lux::process::asset_loading
                 complete(completion_state, std::move(outcome));
                 std::lock_guard lock{endpoint->impl_->mutex};
                 --endpoint->impl_->admitted;
-                endpoint->impl_->tasks.execution().wake();
+                endpoint->impl_->execution.wake();
             }
         };
 
         asset::AssetVfsView vfs;
         BlockingScheduler blocking;
         TaskScope& tasks;
+        ExecutionRuntime& execution;
         std::mutex mutex;
         std::size_t capacity{};
         std::size_t admitted{};

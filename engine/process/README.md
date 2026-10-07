@@ -61,5 +61,9 @@ Simulation 的系统并行使用现有 TaskGraph 和明确访问契约。资产�
 `submit(TaskOptions, factory(TaskReporter), completed(TTaskResult<T,E>&&))` 接纳成功即启动。
 Task 只管理取消和寿命；结果交给回调，不提供 ready/take/acknowledge。
 析构撤销业务交付、请求停止，并仅通过 collectCompletions 等待真实完成。
-TaskScope 服务结果可在纯收取阶段处理运输/存储事实；不得操作 Pane/Registry 或启动新的 UI 业务。
+TaskScope 是准入与分组取消作用域，析构只请求停止，不等待、不收取 completion。
+每个已接受 TaskRecord 与作用域共享 TaskGroup；scope 消失后仍由原 Runtime 收取结果并释放最后 owner。
+服务结果只处理拥有型运输/存储事实，不得借用 Pane、EditorContext、SceneSession 或可变 Registry。
+`TaskScope::join()` 是显式同步 barrier，仅用于 Runtime/application shutdown、同步启动/API 与测试，
+不得用于项目关闭/切换或 Context、Session、Pane、LuxObject 析构。它等待完整交付后才返回。
 Runtime 必须比其所有 Task/TaskScope 活得久。任务元信息有界，进度合并，端口用不透明 correlation 关联父任务。

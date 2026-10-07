@@ -43,7 +43,8 @@ namespace lux::process::asset_loading
         ) noexcept;
 
         // Requests retain their endpoint; last-owner destruction never waits.
-        // The host TaskScope must outlive all accepted operations.
+        // TaskScope must outlive admission calls; ExecutionRuntime must outlive accepted operations.
+        // Close endpoint admission before releasing the borrowed scope.
         ~VfsAssetReadEndpoint() override;
         VfsAssetReadEndpoint(const VfsAssetReadEndpoint&) = delete;
         VfsAssetReadEndpoint& operator=(const VfsAssetReadEndpoint&) = delete;

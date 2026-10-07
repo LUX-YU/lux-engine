@@ -68,6 +68,20 @@ int main(int argc, char** argv)
     (*endpoint)->requestStop();
     assert(tasks.join());
     assert((*endpoint)->join());
+    // An accepted endpoint result owns its transport state after its admission scope disappears.
+    // Completion must wake the Runtime directly, never dereference the destroyed TaskScope.
+    {
+        auto scope = std::make_unique<process::TaskScope>(*runtime);
+        auto late = VfsAssetReadEndpoint::create(vfs.view().capture(), *blocking, *scope, {2});
+        assert(late);
+        Reply reply;
+        assert((*late)->port().submit({id, image.size()}, &reply, &Reply::complete, {}));
+        (*late)->requestStop();
+        scope.reset();
+        assert(!reply.result);
+        assert(runtime->waitUntil([&]() noexcept { return reply.result.has_value(); }));
+        assert((*late)->join());
+    }
     runtime->requestStop();
     assert(runtime->join());
 }

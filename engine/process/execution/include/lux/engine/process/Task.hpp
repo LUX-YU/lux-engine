@@ -29,10 +29,11 @@ namespace lux::process
         struct TaskRuntime;
         struct TaskRecord;
         struct TaskGroup;
-    }
+    } // namespace detail
 
     struct TaskCancelled final
-    {};
+    {
+    };
 
     template <class E> class TTaskError final
     {
@@ -70,7 +71,8 @@ namespace lux::process
         template <std::size_t Index, class Value>
         TTaskError(std::in_place_index_t<Index> index, Value&& value) noexcept
             : error_(index, std::forward<Value>(value))
-        {}
+        {
+        }
         std::variant<E, EExecutionError, TaskCancelled> error_;
     };
 
@@ -123,9 +125,13 @@ namespace lux::process
             template <class Env> [[nodiscard]] TaskReporter operator()(const Env& env) const noexcept
             {
                 if constexpr (requires { env.query(*this); })
+                {
                     return env.query(*this);
+                }
                 else
+                {
                     return {};
+                }
             }
         };
         inline constexpr GetTaskReporter getTaskReporter{};
@@ -153,7 +159,7 @@ namespace lux::process
         [[nodiscard]] LUX_PROCESS_EXECUTION_PUBLIC lux::cxx::expected<TaskRecord*, EExecutionError> admitTask(
             TaskRuntime&,
             TaskOptions,
-            TaskGroup* = nullptr
+            std::shared_ptr<TaskGroup> = {}
         ) noexcept;
         LUX_PROCESS_EXECUTION_PUBLIC void startTask(TaskRecord&, std::unique_ptr<TaskOperation>) noexcept;
         LUX_PROCESS_EXECUTION_PUBLIC void completeTask(TaskRecord&, ETaskState) noexcept;
@@ -203,9 +209,13 @@ namespace lux::process
                     else
                     {
                         if constexpr (std::is_void_v<typename Types::Value>)
+                        {
                             owner->result_.emplace();
+                        }
                         else
+                        {
                             owner->result_.emplace(std::move(*value));
+                        }
                         completeTask(*owner->record_, ETaskState::SUCCEEDED);
                     }
                 }
@@ -250,5 +260,5 @@ namespace lux::process
             std::optional<Result> result_;
             stdexec::connect_result_t<Sender, Receiver> operation_;
         };
-    }
-}
+    } // namespace detail
+} // namespace lux::process

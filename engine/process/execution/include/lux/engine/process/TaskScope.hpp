@@ -41,8 +41,8 @@ namespace lux::process
             );
         }
 
-        // Service results run during collectCompletions, including owner destruction.
-        // They may settle transport/storage facts; they must not call UI or business code.
+        // Accepted work outlives this scope. Results run during Runtime collection, never scope destruction.
+        // Capture owned transport/storage state, not UI, EditorContext, SceneSession or a mutable Registry.
         template <class Factory, class Completion>
         [[nodiscard]] lux::cxx::expected<TaskId, EExecutionError> submit(
             TaskOptions options,
@@ -51,7 +51,7 @@ namespace lux::process
         ) noexcept
         {
             static_assert(std::is_nothrow_invocable_v<Factory, TaskReporter>);
-            auto admitted = detail::admitTask(*runtime_.tasks_, std::move(options), group_.get());
+            auto admitted = detail::admitTask(*runtime_.tasks_, std::move(options), group_);
             if (!admitted)
             {
                 return lux::cxx::unexpected(admitted.error());
@@ -75,11 +75,12 @@ namespace lux::process
         void requestStop() noexcept;
         // Owner-thread observation only: no waiting, callbacks or admission changes.
         [[nodiscard]] bool settled() const noexcept;
-        // Close admission and preserve accepted work. Destruction first requests cancellation.
+        // Explicit synchronous barrier: closes admission and collects accepted work to completion.
+        // Only shutdown, synchronous startup/APIs and tests may wait; object/project destruction must not.
         [[nodiscard]] lux::cxx::expected<void, EExecutionError> join() noexcept;
 
     private:
         ExecutionRuntime& runtime_;
-        std::unique_ptr<detail::TaskGroup> group_;
+        std::shared_ptr<detail::TaskGroup> group_;
     };
 } // namespace lux::process

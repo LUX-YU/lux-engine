@@ -20,7 +20,7 @@ namespace lux::process::detail
         // The pin must outlive the operation's virtual destructor, including plugin code.
         std::shared_ptr<const void> code_lifetime;
         std::unique_ptr<TaskOperation> operation;
-        TaskGroup* group{};
+        std::shared_ptr<TaskGroup> group;
         bool starting{true};
         bool collected{};
         bool dirty{};
@@ -68,4 +68,4 @@ namespace lux::process::detail
         void* observer_owner{};
         ExecutionRuntime::TaskObserver observer{};
     };
-}
+} // namespace lux::process::detail

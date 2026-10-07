@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorServiceRegistrar.hpp>
 #include <lux/engine/editor/FrameworkErrors.hpp>
 #include <lux/engine/object/ObjectRuntime.hpp>
@@ -34,6 +35,10 @@ namespace lux::editor
         {
             return cxx::unexpected(error::Error{Errors::EditorProjectServicesRequireOwnerThread});
         }
+        if (context.closing())
+        {
+            return cxx::unexpected(error::Error{Errors::ProjectClosing});
+        }
         if (!frozen_ || closing_)
         {
             return cxx::unexpected(error::Error{Errors::EditorServiceUseOutsideProjectLifetime, {}});
@@ -57,6 +62,10 @@ namespace lux::editor
         if (!result)
         {
             return cxx::unexpected(std::move(result.error()));
+        }
+        if (context.closing())
+        {
+            return cxx::unexpected(error::Error{Errors::ProjectClosing});
         }
         found->instance = std::move(*result);
         construction_order_.push_back(static_cast<std::size_t>(found - entries_.begin()));

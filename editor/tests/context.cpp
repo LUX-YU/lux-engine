@@ -19,6 +19,12 @@ namespace FixtureErrors
 
 namespace
 {
+    ProjectManifest manifest(std::string name)
+    {
+        uuids::uuid_name_generator id{*uuids::uuid::from_string("08d1775a-340c-4082-9385-91d06aa8cecc")};
+        return {1, id(name), std::move(name)};
+    }
+
     struct Service final
     {
         std::vector<int>& events;
@@ -77,7 +83,12 @@ int main(int argc, char** argv)
             assembled = true;
             return {};
         };
-        auto context = EditorContext::create(**engine, {"Conflict", std::filesystem::current_path()}, assembly);
+        auto context = EditorContext::create(
+            **engine,
+            {"Conflict", std::filesystem::current_path()},
+            manifest("Conflict"),
+            assembly
+        );
         assert(!context && !assembled);
         assert(context.error().type == error::errorId("lux.error.registration"));
         assert(context.error().args[0] == Errors::EditorInvalidWindowExtent);
@@ -148,7 +159,8 @@ int main(int argc, char** argv)
             assert(!context.service<Service>());
             return {};
         };
-        auto created = EditorContext::create(**engine, {"First", std::filesystem::current_path()}, assemble);
+        auto created =
+            EditorContext::create(**engine, {"First", std::filesystem::current_path()}, manifest("First"), assemble);
         assert(created);
         auto& context = **created;
         static_assert(std::is_same_v<decltype(std::as_const(context).engine()), const engine::EngineContext&>);
@@ -186,14 +198,23 @@ int main(int argc, char** argv)
             assert(second.sceneTools().registerFactory<Tools>(&alsoMatch, factory));
             return {};
         };
-        auto second_owner =
-            EditorContext::create(**engine, {"Second", std::filesystem::current_path()}, assemble_second);
+        auto second_owner = EditorContext::create(
+            **engine,
+            {"Second", std::filesystem::current_path()},
+            manifest("Second"),
+            assemble_second
+        );
         assert(second_owner);
         auto& second = **second_owner;
         auto ambiguous = second.sceneTools().create<Tools>(second, world);
         assert(!ambiguous && ambiguous.error().type == error::errorId("lux.editor.ambiguous_scene_tool_rules"));
         auto empty_assembly = [](EditorContext&) noexcept -> FrameworkResult<void> { return {}; };
-        auto empty = EditorContext::create(**engine, {"Empty", std::filesystem::current_path()}, empty_assembly);
+        auto empty = EditorContext::create(
+            **engine,
+            {"Empty", std::filesystem::current_path()},
+            manifest("Empty"),
+            empty_assembly
+        );
         assert(empty);
         auto missing = (*empty)->sceneTools().create<Tools>(**empty, world);
         assert(!missing && missing.error().type == error::errorId("lux.editor.no_matching_scene_tool_rule"));
@@ -214,8 +235,8 @@ int main(int argc, char** argv)
     std::weak_ptr<asset::IAssetProvider> lifetime = *higher;
     {
         auto empty_assembly = [](EditorContext&) noexcept -> FrameworkResult<void> { return {}; };
-        auto first_context = EditorContext::create(**engine, {"A", path}, empty_assembly);
-        auto second_context = EditorContext::create(**engine, {"B", path}, empty_assembly);
+        auto first_context = EditorContext::create(**engine, {"A", path}, manifest("A"), empty_assembly);
+        auto second_context = EditorContext::create(**engine, {"B", path}, manifest("B"), empty_assembly);
         assert(first_context && second_context);
         auto& a = **first_context;
         auto& b = **second_context;

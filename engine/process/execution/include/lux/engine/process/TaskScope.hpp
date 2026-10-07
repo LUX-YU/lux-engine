@@ -30,10 +30,12 @@ namespace lux::process
             static_assert(std::is_nothrow_invocable_v<Factory, TaskReporter>);
             return submit(
                 std::move(options),
-                [&make_sender](TaskReporter reporter) noexcept {
-                    return stdexec::then(std::invoke(std::forward<Factory>(make_sender), reporter), []() noexcept {
-                        return lux::cxx::expected<void, EExecutionError>{};
-                    });
+                [&make_sender](TaskReporter reporter) noexcept
+                {
+                    return stdexec::then(
+                        std::invoke(std::forward<Factory>(make_sender), reporter),
+                        []() noexcept { return lux::cxx::expected<void, EExecutionError>{}; }
+                    );
                 },
                 [](TTaskResult<void, EExecutionError>&&) noexcept {}
             );
@@ -51,7 +53,9 @@ namespace lux::process
             static_assert(std::is_nothrow_invocable_v<Factory, TaskReporter>);
             auto admitted = detail::admitTask(*runtime_.tasks_, std::move(options), group_.get());
             if (!admitted)
+            {
                 return lux::cxx::unexpected(admitted.error());
+            }
             const auto id = detail::taskId(**admitted);
             TaskReporter reporter{*admitted};
             auto sender = std::invoke(std::forward<Factory>(make_sender), reporter);
@@ -69,6 +73,8 @@ namespace lux::process
         }
 
         void requestStop() noexcept;
+        // Owner-thread observation only: no waiting, callbacks or admission changes.
+        [[nodiscard]] bool settled() const noexcept;
         // Close admission and preserve accepted work. Destruction first requests cancellation.
         [[nodiscard]] lux::cxx::expected<void, EExecutionError> join() noexcept;
 
@@ -76,4 +82,4 @@ namespace lux::process
         ExecutionRuntime& runtime_;
         std::unique_ptr<detail::TaskGroup> group_;
     };
-}
+} // namespace lux::process

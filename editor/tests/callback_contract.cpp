@@ -1,3 +1,4 @@
+#include <lux/engine/editor/EditorAssembly.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -14,6 +15,8 @@ void callbackContract(lux::editor::EditorContext& context, lux::ui::Root& root)
     { return {}; };
     editor::EditorContext::Assembly borrowed(assembly);
     static_cast<void>(borrowed);
+    editor::EditorAssembly owned(assembly);
+    static_cast<void>(owned);
     auto ui = [](editor::EditorContext&, const editor::PaneDescription&) noexcept(
                   LUX_CALLBACK_CASE != 2
               ) -> editor::FrameworkResult<std::unique_ptr<ui::Pane>> { return std::make_unique<ui::Pane>("Test"); };

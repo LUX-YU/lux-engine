@@ -11,6 +11,8 @@
 #include <lux/engine/editor/FrameworkErrors.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
+#include <lux/engine/editor/detail/ProjectPreparation.hpp>
+#include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/scene/SceneError.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -92,9 +94,37 @@ namespace lux::editor
     } // namespace
     struct LuxEngine::Impl final
     {
-        explicit Impl(EditorConfig config) : config_(std::move(config)) {}
+        explicit Impl(EditorConfig config, EditorAssembly assembly)
+            : config_(std::move(config)), assembly_(std::move(assembly))
+        {
+        }
         ~Impl() noexcept
         {
+            if (transition_)
+            {
+                transition_->task.requestStop();
+                if (!transition_->task.join())
+                {
+                    std::terminate();
+                }
+                if (transition_->candidate)
+                {
+                    transition_->candidate->beginClose();
+                    if (!transition_->candidate->tasks().join())
+                    {
+                        std::terminate();
+                    }
+                }
+                transition_.reset();
+            }
+            if (project_)
+            {
+                project_->beginClose();
+                if (!project_->tasks().join())
+                {
+                    std::terminate();
+                }
+            }
             // Only mechanical project teardown here. The original Runtime drains retirement during its destruction.
             // Engine (and native output users) dies before EditorWindow by member declaration order.
             if (window_ && !window_->uiRoot().clearPanes())
@@ -164,93 +194,261 @@ namespace lux::editor
             engine_->execution().setWake(&window::LuxWindow::wakeEvents);
             return {};
         }
-        FrameworkResult<void> openProject(
-            ProjectDescription project,
-            const EditorLayout& layout,
-            Assembly assembly
-        ) noexcept
+        struct ProjectTransition final
         {
+            explicit ProjectTransition(process::ExecutionRuntime& execution) : task(execution) {}
+            // Completion never borrows a Context; this record remains stable until task.settled().
+            std::optional<process::TTaskResult<detail::ProjectPreparation, error::Error>> completed;
+            process::TaskScope task;
+            std::unique_ptr<EditorContext> candidate;
+            std::vector<std::unique_ptr<ui::Pane>> panes;
+            bool cancel_requested{};
+            bool close_only{};
+            bool candidate_prepared{};
+            bool cleaning_failed_candidate{};
+            error::Error failure;
+        };
+        FrameworkResult<void> admitProject(std::filesystem::path file, std::optional<ProjectManifest> create) noexcept
+        {
+            if (!object::ObjectRuntime::instance().isCurrent())
+            {
+                return cxx::unexpected(error::Error{Errors::EditorProjectServicesRequireOwnerThread});
+            }
             if (operating_)
             {
-                return cxx::unexpected(error::Error{Errors::EditorProjectChangeInsideAHostOperation, {}});
+                return cxx::unexpected(error::Error{Errors::EditorProjectChangeInsideAHostOperation});
             }
-            auto description = validateProject(project);
-            if (!description)
+            if (transition_ || window_->shouldClose())
             {
-                return description;
+                return cxx::unexpected(error::Error{Errors::ProjectTransitionBusy});
             }
-            std::unordered_set<std::string> instances;
-            for (const auto& ui : layout)
-            {
-                const bool is_invalid_ui = ui.type.empty() || ui.name.empty() || ui.type.find('\0') != ui.type.npos ||
-                                           ui.name.find('\0') != ui.name.npos;
-                if (is_invalid_ui)
-                {
-                    return cxx::unexpected(error::Error{Errors::EditorInvalidLayoutItem, {}});
-                }
-                if (!instances.insert(ui.name).second)
-                {
-                    return cxx::unexpected(error::Error{Errors::EditorDuplicateUiInstanceName, {}});
-                }
-            }
-            Operation guard{operating_};
-            auto cleared = window_->uiRoot().clearPanes();
-            if (!cleared)
-            {
-                return cxx::unexpected(error::Error{
-                    cleared.error() == ui::EPaneError::BUSY ? Errors::EditorUiClearBusy : Errors::EditorUiClear,
-                    {static_cast<std::uint64_t>(cleared.error())}
-                });
-            }
-            project_.reset();
-            // Local order matters on every error: candidates die before the Context they borrow.
-            auto created_context = EditorContext::create(*engine_, std::move(project), assembly);
-            if (!created_context)
-            {
-                return cxx::unexpected(created_context.error());
-            }
-            auto candidate = std::move(*created_context);
-            std::vector<std::unique_ptr<ui::Pane>> panes;
-            panes.reserve(layout.size());
-            for (const auto& item : layout)
-            {
-                auto pane = createPane(*candidate, item);
-                if (!pane)
-                {
-                    return cxx::unexpected(std::move(pane.error()));
-                }
-                if (!*pane || (*pane)->attachedRoot() || (*pane)->parent())
-                {
-                    return cxx::unexpected(error::Error{Errors::EditorUiFactoryReturnedAnAttachedOrNullPane, {}});
-                }
-                panes.push_back(std::move(*pane));
-            }
-            auto mounted = window_->uiRoot().addPanes(panes);
-            if (!mounted)
+            if (!file.is_absolute() || file.filename().empty())
             {
                 return cxx::unexpected(
-                    error::Error{Errors::EditorCannotMountProjectWindows, {static_cast<std::uint64_t>(mounted.error())}}
+                    error::Error{Errors::ProjectManifest, {static_cast<std::uint64_t>(EProjectError::INVALID_PATH)}}
                 );
             }
-            project_ = std::move(candidate);
+            if (create)
+            {
+                if (auto valid = validateProjectManifest(*create); !valid)
+                {
+                    return cxx::unexpected(error::Error{
+                        Errors::ProjectManifest,
+                        {static_cast<std::uint64_t>(valid.error().code), valid.error().ordinal}
+                    });
+                }
+            }
+            auto scheduler = engine_->execution().blocking();
+            if (!scheduler)
+            {
+                return cxx::unexpected(executionError(scheduler.error()));
+            }
+            Operation guard{operating_};
+            auto next = std::make_unique<ProjectTransition>(engine_->execution());
+            auto* record = next.get();
+            auto submitted = record->task.submit(
+                {"Prepare project", "editor.project"},
+                [scheduler = *scheduler, file, create = std::move(create), locations = config_.plugin_locations](
+                    process::TaskReporter reporter
+                ) mutable noexcept
+                {
+                    return stdexec::then(
+                        stdexec::schedule(scheduler),
+                        [file = std::move(file),
+                         create = std::move(create),
+                         locations = std::move(locations),
+                         reporter]() noexcept -> FrameworkResult<detail::ProjectPreparation>
+                        { return detail::prepareProject(file, create, locations, reporter); }
+                    );
+                },
+                [record](process::TTaskResult<detail::ProjectPreparation, error::Error>&& result) noexcept
+                { record->completed.emplace(std::move(result)); }
+            );
+            if (!submitted)
+            {
+                return cxx::unexpected(executionError(submitted.error()));
+            }
+            status_ = {EProjectTransition::PREPARING, {}, std::move(file)};
+            transition_ = std::move(next);
             return {};
         }
         FrameworkResult<void> closeProject() noexcept
         {
+            if (!object::ObjectRuntime::instance().isCurrent())
+            {
+                return cxx::unexpected(error::Error{Errors::EditorProjectServicesRequireOwnerThread});
+            }
             if (operating_)
             {
-                return cxx::unexpected(error::Error{Errors::EditorProjectChangeInsideAHostOperation, {}});
+                return cxx::unexpected(error::Error{Errors::EditorProjectChangeInsideAHostOperation});
             }
-            Operation guard{operating_};
+            if (transition_)
+            {
+                return cxx::unexpected(error::Error{Errors::ProjectTransitionBusy});
+            }
+            transition_ = std::make_unique<ProjectTransition>(engine_->execution());
+            transition_->close_only = true;
+            status_ = {EProjectTransition::CLOSING_CURRENT};
+            return {};
+        }
+        FrameworkResult<void> cancelProjectTransition() noexcept
+        {
+            if (!object::ObjectRuntime::instance().isCurrent())
+            {
+                return cxx::unexpected(error::Error{Errors::EditorProjectServicesRequireOwnerThread});
+            }
+            if (operating_)
+            {
+                return cxx::unexpected(error::Error{Errors::EditorProjectChangeInsideAHostOperation});
+            }
+            if (!transition_ || status_.state != EProjectTransition::PREPARING)
+            {
+                return cxx::unexpected(error::Error{Errors::ProjectTransitionBusy});
+            }
+            transition_->cancel_requested = true;
+            transition_->task.requestStop();
+            return {};
+        }
+        void failTransition(error::Error error) noexcept
+        {
+            transition_->failure = error;
+            transition_->cleaning_failed_candidate = true;
+            if (transition_->candidate)
+            {
+                transition_->candidate->beginClose();
+            }
+            transition_->panes.clear();
+        }
+        void finishTransition(EProjectTransition state, error::Error error = {}) noexcept
+        {
+            status_.state = state;
+            status_.failure = error;
+            transition_.reset();
+        }
+        FrameworkResult<void> advanceProject() noexcept
+        {
+            if (!transition_)
+            {
+                return {};
+            }
+            auto& next = *transition_;
+            if (!next.task.settled())
+            {
+                return {};
+            }
+            if (next.completed)
+            {
+                auto completed = std::move(*next.completed);
+                next.completed.reset();
+                if (!completed)
+                {
+                    const auto& error = completed.error();
+                    const auto failure = error.domainFailure()      ? *error.domainFailure()
+                                         : error.executionFailure() ? executionError(*error.executionFailure())
+                                                                    : error::Error{Errors::ProjectCancelled};
+                    failTransition(failure);
+                }
+                else
+                {
+                    status_.manifest_published = completed->published;
+                    if (next.cancel_requested)
+                    {
+                        failTransition({Errors::ProjectCancelled});
+                    }
+                    else if (!completed->result)
+                    {
+                        failTransition(completed->result.error());
+                    }
+                    else
+                    {
+                        auto assemble = [&](EditorContext& context) noexcept -> FrameworkResult<void>
+                        { return assembly_ ? assembly_(context) : FrameworkResult<void>{}; };
+                        auto context = EditorContext::create(*engine_, std::move(*completed->result), assemble);
+                        if (!context)
+                        {
+                            failTransition(context.error());
+                        }
+                        else
+                        {
+                            next.candidate = std::move(*context);
+                            next.panes.reserve(config_.layout.size());
+                            for (const auto& item : config_.layout)
+                            {
+                                auto pane = createPane(*next.candidate, item);
+                                if (!pane)
+                                {
+                                    failTransition(pane.error());
+                                    break;
+                                }
+                                if (!*pane || (*pane)->attachedRoot() || (*pane)->parent())
+                                {
+                                    failTransition({Errors::EditorUiFactoryReturnedAnAttachedOrNullPane});
+                                    break;
+                                }
+                                next.panes.push_back(std::move(*pane));
+                            }
+                            next.candidate_prepared = !next.cleaning_failed_candidate;
+                        }
+                    }
+                }
+            }
+            if (next.cleaning_failed_candidate)
+            {
+                if (next.candidate && !next.candidate->closed())
+                {
+                    return {};
+                }
+                const auto state = next.failure.type == Errors::ProjectCancelled || next.cancel_requested
+                                       ? EProjectTransition::CANCELLED
+                                       : EProjectTransition::FAILED;
+                finishTransition(state, next.failure);
+                return {};
+            }
+            if (!next.close_only && !next.candidate_prepared)
+            {
+                return {};
+            }
+            // From here closure is committed intent; cancellation is only allowed during preparation.
+            // Hiding old panes revokes their interactive routes while their owners remain alive.
+            if (project_ && !project_->closing())
+            {
+                auto hide = [](ui::Pane& pane) noexcept { pane.setVisible(false); };
+                if (auto hidden = window_->uiRoot().forEachPane(hide); !hidden)
+                {
+                    return {}; // Existing Root safe-point discipline; retry without losing preparation.
+                }
+                project_->beginClose();
+            }
+            status_.state = EProjectTransition::CLOSING_CURRENT;
+            if (project_ && !project_->closed())
+            {
+                return {};
+            }
             auto cleared = window_->uiRoot().clearPanes();
             if (!cleared)
             {
-                return cxx::unexpected(error::Error{
-                    cleared.error() == ui::EPaneError::BUSY ? Errors::EditorUiClearBusy : Errors::EditorUiClear,
-                    {static_cast<std::uint64_t>(cleared.error())}
-                });
+                if (cleared.error() == ui::EPaneError::BUSY)
+                {
+                    return {};
+                }
+                return cxx::unexpected(
+                    error::Error{Errors::EditorUiClear, {static_cast<std::uint64_t>(cleared.error())}}
+                );
             }
             project_.reset();
+            if (!next.close_only)
+            {
+                auto mounted = window_->uiRoot().addPanes(next.panes);
+                if (!mounted)
+                {
+                    failTransition(
+                        {Errors::EditorCannotMountProjectWindows, {static_cast<std::uint64_t>(mounted.error())}}
+                    );
+                    return {};
+                }
+                project_ = std::move(next.candidate);
+            }
+            finishTransition(EProjectTransition::SUCCEEDED);
             return {};
         }
         FrameworkResult<EFrameStatus> frame() noexcept
@@ -280,8 +478,25 @@ namespace lux::editor
             phase_started = std::chrono::steady_clock::now();
             statistics_.object_messages += object::ObjectRuntime::instance().dispatchPending();
             statistics_.object_dispatch += std::chrono::steady_clock::now() - phase_started;
-            auto& root = window_->uiRoot();
             const bool closing = window_->shouldClose();
+            if (closing)
+            {
+                if (transition_ && status_.state == EProjectTransition::PREPARING)
+                {
+                    transition_->cancel_requested = true;
+                    transition_->task.requestStop();
+                }
+                if (!transition_ && project_)
+                {
+                    transition_ = std::make_unique<ProjectTransition>(engine_->execution());
+                    transition_->close_only = true;
+                }
+            }
+            if (auto advanced = advanceProject(); !advanced)
+            {
+                return cxx::unexpected(advanced.error());
+            }
+            auto& root = window_->uiRoot();
             if (closing)
             {
                 ui_scene_->stopFrames();
@@ -357,7 +572,7 @@ namespace lux::editor
             }
             (void)object::ObjectRuntime::instance().collectRetired();
             statistics_.total += std::chrono::steady_clock::now() - frame_started;
-            return closing ? EFrameStatus::EXIT_REQUESTED : EFrameStatus::RUNNING;
+            return closing && !transition_ && !project_ ? EFrameStatus::EXIT_REQUESTED : EFrameStatus::RUNNING;
         }
         FrameworkResult<void> exec() noexcept
         {
@@ -385,8 +600,16 @@ namespace lux::editor
                     return cxx::unexpected(output.error());
                 }
                 const bool backpressured = visible_output && *output && !ui_scene_->hasWritableFrame();
-                const bool can_produce = visible_output && *output && !backpressured;
-                const bool ready = window_->shouldClose() || can_produce || engine_->execution().hasPendingWork() ||
+                const bool can_produce = !window_->shouldClose() && visible_output && *output && !backpressured;
+                const bool candidate_settled =
+                    transition_ && (!transition_->cleaning_failed_candidate || !transition_->candidate ||
+                                    transition_->candidate->closed());
+                const bool current_settled = !project_ || !project_->closing() || project_->closed();
+                const bool transition_ready =
+                    transition_ && transition_->task.settled() && candidate_settled && current_settled;
+                const bool begin_close = window_->shouldClose() && !transition_;
+                const bool ready = begin_close || transition_ready || can_produce ||
+                                   engine_->execution().hasPendingWork() ||
                                    object::ObjectRuntime::instance().statistics().pending != 0;
                 if (!ready)
                 {
@@ -400,16 +623,19 @@ namespace lux::editor
         }
         FrameStatistics statistics_;
         EditorConfig config_;
+        EditorAssembly assembly_;
+        ProjectTransitionStatus status_;
         std::unique_ptr<EditorWindow> window_;
         std::unique_ptr<engine::EngineContext> engine_;
         std::unique_ptr<EditorUiScene> ui_scene_;
         std::unique_ptr<EditorContext> project_;
+        std::unique_ptr<ProjectTransition> transition_;
         std::chrono::steady_clock::time_point last_frame_{std::chrono::steady_clock::now()};
         bool operating_{};
     };
     LuxEngine::LuxEngine(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
     LuxEngine::~LuxEngine() noexcept = default;
-    FrameworkResult<std::unique_ptr<LuxEngine>> LuxEngine::create(EditorConfig config) noexcept
+    FrameworkResult<std::unique_ptr<LuxEngine>> LuxEngine::create(EditorConfig config, EditorAssembly assembly) noexcept
     {
         if (auto registered = registerFrameworkErrors(); !registered)
         {
@@ -425,7 +651,28 @@ namespace lux::editor
         {
             return cxx::unexpected(error::Error{Errors::EditorEditorRequiresObjectThread, {}});
         }
-        auto impl = std::make_unique<Impl>(std::move(config));
+        if (config.layout.size() > ui::RootConfig{}.pane_capacity)
+        {
+            return cxx::unexpected(error::Error{
+                Errors::EditorCannotMountProjectWindows,
+                {static_cast<std::uint64_t>(ui::EPaneError::CAPACITY)}
+            });
+        }
+        std::unordered_set<std::string> names;
+        for (const auto& item : config.layout)
+        {
+            const bool invalid = item.type.empty() || item.name.empty() || item.type.find('\0') != item.type.npos ||
+                                 item.name.find('\0') != item.name.npos;
+            if (invalid)
+            {
+                return cxx::unexpected(error::Error{Errors::EditorInvalidLayoutItem});
+            }
+            if (!names.insert(item.name).second)
+            {
+                return cxx::unexpected(error::Error{Errors::EditorDuplicateUiInstanceName});
+            }
+        }
+        auto impl = std::make_unique<Impl>(std::move(config), std::move(assembly));
         auto initialized = impl->initialize();
         if (!initialized)
         {
@@ -433,13 +680,25 @@ namespace lux::editor
         }
         return std::unique_ptr<LuxEngine>{new LuxEngine(std::move(impl))};
     }
-    FrameworkResult<void> LuxEngine::openProject(
-        ProjectDescription project,
-        const EditorLayout& layout,
-        Assembly assembly
-    ) noexcept
+    FrameworkResult<void> LuxEngine::openProject(std::filesystem::path file) noexcept
     {
-        return impl_->openProject(std::move(project), layout, assembly);
+        return impl_->admitProject(std::move(file), {});
+    }
+    FrameworkResult<void> LuxEngine::createProject(ProjectCreateRequest request) noexcept
+    {
+        return impl_->admitProject(request.root / "Project.luxproj", std::move(request.manifest));
+    }
+    FrameworkResult<void> LuxEngine::cancelProjectTransition() noexcept
+    {
+        return impl_->cancelProjectTransition();
+    }
+    ProjectTransitionStatus LuxEngine::projectStatus() const noexcept
+    {
+        if (!object::ObjectRuntime::instance().isCurrent())
+        {
+            std::terminate();
+        }
+        return impl_->status_;
     }
     FrameworkResult<void> LuxEngine::closeProject() noexcept
     {

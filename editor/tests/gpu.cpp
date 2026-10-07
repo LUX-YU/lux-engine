@@ -1,4 +1,5 @@
 #include "../../cmake/installed-consumers/common/UiTestContent.hpp"
+#include <atomic>
 #include <cassert>
 #include <cstdio>
 #include <lux/engine/EngineContext.hpp>
@@ -7,11 +8,14 @@
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
+#include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/project/PluginRendering.hpp>
 #include <lux/engine/render/RenderRuntime.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
+#include <random>
 #include <thread>
 #if defined(_WIN32)
 #define NOMINMAX
@@ -71,36 +75,27 @@ namespace
         assert(result);
         return std::move(*result);
     }
-    void nativeLifecycle()
+    void nativeLifecycle(const std::filesystem::path& catalog, const std::filesystem::path& plugin_root)
     {
         assert(!LuxEngine::create({"Invalid extent", 0, 480}));
+        EditorConfig invalid;
+        invalid.layout = {{"test", "same", "One"}, {"test", "same", "Two"}};
+        assert(!LuxEngine::create(invalid));
+        std::mt19937 random{std::random_device{}()};
+        uuids::uuid_random_generator generate(random);
+        const auto directory = std::filesystem::temp_directory_path() / ("lux-project-" + uuids::to_string(generate()));
+        std::filesystem::create_directories(directory);
+        const auto manifest = [&](std::string name) { return ProjectManifest{1, generate(), std::move(name)}; };
+        const auto write = [&](const ProjectManifest& value)
+        {
+            const auto file = directory / (value.name + ".luxproj");
+            assert(writeProjectManifestAtomic(file, value, EProjectWrite::CREATE));
+            return file;
+        };
         std::vector<int> deaths;
-        auto engine = take(LuxEngine::create({"Framework lifecycle qualification", 640, 480}));
-        auto* runtime = &engine->engine();
-        auto* window = &engine->window();
-        auto* root = &engine->window().uiRoot();
-        class Listener final : public object::LuxObject
+        auto assembly = [&, owned = std::make_unique<int>(42)](EditorContext& context) noexcept -> FrameworkResult<void>
         {
-        public:
-            explicit Listener(LuxEngine& host) : LuxObject(), host_(host) {}
-            void attached(const ui::PaneChanged&) noexcept
-            {
-                auto result = host_.closeProject();
-                assert(
-                    !result &&
-                    result.error().type == error::errorId("lux.editor.project_change_inside_a_host_operation")
-                );
-                ++calls;
-            }
-            unsigned calls{};
-
-        private:
-            LuxEngine& host_;
-        } listener(*engine);
-        auto connection = object::LuxObject::connect(root, &ui::Root::paneChanged, &listener, &Listener::attached);
-        assert(connection);
-        auto assembly = [&](EditorContext& context) noexcept -> FrameworkResult<void>
-        {
+            assert(*owned == 42); // Real move-only assembly survives every asynchronous open.
             assert(context.services().registerFactory<Service>(
                 [&](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Service>>
                 { return std::make_unique<Service>(deaths); }
@@ -111,13 +106,38 @@ namespace
                     const PaneDescription& description) noexcept -> FrameworkResult<std::unique_ptr<ui::Pane>>
                 {
                     assert(context.service<Service>());
+                    if (context.project().name == "C" && description.name == "two")
+                    {
+                        return cxx::unexpected(error::Error{FixtureErrors::EditorExpectedSecondFactoryRefusal});
+                    }
                     return std::unique_ptr<ui::Pane>{new TestPane(description.name, deaths)};
                 }
             );
         };
-        const auto directory = std::filesystem::current_path();
-        const EditorLayout layout{{"test", "one", "One"}, {"test", "two", "Two"}};
-        assert(engine->openProject({"A", directory}, layout, assembly));
+        EditorConfig config{"Framework project qualification", 640, 480};
+        config.layout = {{"test", "one", "One"}, {"test", "two", "Two"}};
+        config.plugin_locations = {{catalog, plugin_root}};
+        auto engine = take(LuxEngine::create(std::move(config), std::move(assembly)));
+        auto* runtime = &engine->engine();
+        auto* window = &engine->window();
+        auto* root = &window->uiRoot();
+        class Listener final : public object::LuxObject
+        {
+        public:
+            explicit Listener(LuxEngine& host) : host_(host) {}
+            void attached(const ui::PaneChanged&) noexcept
+            {
+                auto result = host_.closeProject();
+                assert(!result && result.error().type == Errors::EditorProjectChangeInsideAHostOperation);
+                ++calls;
+            }
+            unsigned calls{};
+
+        private:
+            LuxEngine& host_;
+        } listener(*engine);
+        auto connection = object::LuxObject::connect(root, &ui::Root::paneChanged, &listener, &Listener::attached);
+        assert(connection);
         unsigned waiting{};
         auto until = [&](auto predicate)
         {
@@ -130,15 +150,85 @@ namespace
                 std::this_thread::sleep_for(1ms);
             }
         };
+        const auto settled = [&]
+        {
+            auto state = engine->projectStatus().state;
+            return state != EProjectTransition::PREPARING && state != EProjectTransition::CLOSING_CURRENT;
+        };
+        assert(engine->createProject({directory / "A", manifest("A")}));
+        assert(engine->projectStatus().state == EProjectTransition::PREPARING && !engine->context());
+        until(settled);
+        assert(engine->projectStatus().state == EProjectTransition::SUCCEEDED);
+        assert(engine->projectStatus().manifest_published);
+        assert(readProjectManifest(directory / "A/Project.luxproj"));
         until([&] { return TestPane::draws >= 4 && runtime->renderContext()->runtime().statistics().frames > 0; });
         auto* original = engine->context();
-        assert(!engine->openProject({"", directory}, layout, assembly) && engine->context() == original);
-        const EditorLayout duplicate_names{{"test", "same", "One"}, {"test", "same", "Two"}};
-        assert(!engine->openProject({"Invalid", directory}, duplicate_names, assembly));
-        assert(engine->context() == original && ui_test::paneCount(*root) == 2);
-        assert(engine->openProject({"B", directory}, layout, assembly));
+        assert(!engine->openProject({}) && engine->context() == original);
+        assert(engine->openProject(directory / "missing.luxproj"));
+        until(settled);
+        assert(engine->projectStatus().state == EProjectTransition::FAILED && engine->context() == original);
+        auto broken = manifest("MissingPlugin");
+        broken.plugins = {{"test.no_such_plugin", 1}};
+        assert(engine->openProject(write(broken)));
+        until(settled);
+        assert(engine->projectStatus().state == EProjectTransition::FAILED && engine->context() == original);
+        assert(engine->projectStatus().failure.type == Errors::ProjectPlugins);
+        const auto d = write(manifest("D"));
+        assert(engine->openProject(d));
+        assert(!engine->openProject(d));
+        assert(engine->cancelProjectTransition());
+        until(settled);
+        assert(engine->projectStatus().state == EProjectTransition::CANCELLED && engine->context() == original);
+        assert(deaths.empty() && ui_test::paneCount(*root) == 2);
+
+        // A real accepted task is deliberately held after stop. Switching must keep A's services alive
+        // and return from frame(); the test releases the worker only after observing several frames.
+        std::atomic_bool started{}, release{};
+        bool delivered{};
+        auto scheduler = runtime->execution().blocking();
+        assert(scheduler);
+        assert(original->tasks().submit(
+            {"Project close negative", "test"},
+            [&](process::TaskReporter reporter) noexcept
+            {
+                return stdexec::then(
+                    stdexec::schedule(*scheduler),
+                    [&, reporter]() noexcept -> FrameworkResult<void>
+                    {
+                        started = true;
+                        while (!release.load())
+                        {
+                            std::this_thread::yield();
+                        }
+                        assert(reporter.stopToken().stop_requested());
+                        return {};
+                    }
+                );
+            },
+            [&](process::TTaskResult<void, error::Error>&& result) noexcept
+            {
+                assert(result && deaths.empty());
+                delivered = true;
+            }
+        ));
+        until([&] { return started.load(); });
+        auto b = manifest("B");
+        b.plugins = {{"lux.builtin.scene_render", 1}};
+        assert(engine->openProject(write(b)));
+        until([&] { return original->closing(); });
+        for (int i = 0; i < 3; ++i)
+        {
+            assert(take(engine->frame()) == EFrameStatus::RUNNING);
+            assert(engine->context() == original && deaths.empty() && !delivered);
+            assert(!original->service<Service>());
+        }
+        release = true;
+        until(settled);
+        assert(delivered && engine->context()->project().name == "B");
         assert((deaths == std::vector<int>{1, 1, 2}));
-        assert(&engine->engine() == runtime && &engine->window() == window && &engine->window().uiRoot() == root);
+        assert(engine->context()->sceneRegistrations() && !engine->context()->sceneRegistrations()->features.empty());
+        assert(&engine->engine() == runtime && &engine->window() == window && &window->uiRoot() == root);
+        assert(runtime->sceneRuntime().instanceCount() == 1); // Only the original UI Scene; no project Scene yet.
         auto state = window->state();
         assert(state);
         auto placement = state->placement;
@@ -159,30 +249,17 @@ namespace
         ShowWindow(static_cast<HWND>(window->nativeHandle()), SW_RESTORE);
         until([&] { return !window->minimized() && TestPane::draws > before; });
 #endif
-        auto failing = [&](EditorContext& context) noexcept -> FrameworkResult<void>
-        {
-            assert(context.services().registerFactory<Service>(
-                [&](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Service>>
-                { return std::make_unique<Service>(deaths); }
-            ));
-            return context.ui().registerFactory(
-                "test",
-                [&](EditorContext& context,
-                    const PaneDescription& description) noexcept -> FrameworkResult<std::unique_ptr<ui::Pane>>
-                {
-                    assert(context.service<Service>());
-                    if (description.name == "two")
-                    {
-                        return cxx::unexpected(error::Error{FixtureErrors::EditorExpectedSecondFactoryRefusal, {}});
-                    }
-                    return std::unique_ptr<ui::Pane>{new TestPane(description.name, deaths)};
-                }
-            );
-        };
-        assert(!engine->openProject({"C", directory}, layout, failing));
-        assert(!engine->context() && (ui_test::paneCount(*root) == 0));
-        assert((deaths == std::vector<int>{1, 1, 2, 1, 1, 2, 1, 2}));
-        assert(engine->openProject({"D", directory}, layout, assembly));
+        auto* b_context = engine->context();
+        assert(engine->openProject(write(manifest("C"))));
+        until(settled);
+        assert(engine->projectStatus().state == EProjectTransition::FAILED);
+        assert(engine->projectStatus().failure.type == FixtureErrors::EditorExpectedSecondFactoryRefusal);
+        assert(engine->context() == b_context && ui_test::paneCount(*root) == 2);
+        assert((deaths == std::vector<int>{1, 1, 2, 1, 2})); // Only C's detached candidates were destroyed.
+        assert(engine->openProject(d));
+        until(settled);
+        assert(engine->context()->project().name == "D");
+        assert((deaths == std::vector<int>{1, 1, 2, 1, 2, 1, 1, 2}));
         until([&] { return TestPane::draws > before + 2; });
         const auto statistics = runtime->renderContext()->runtime().statistics();
         assert(statistics.frames > 0);
@@ -190,14 +267,15 @@ namespace
         assert(take(engine->frame()) == EFrameStatus::EXIT_REQUESTED);
         assert(listener.calls > 0);
         connection->disconnect();
-        engine.reset(); // GPU work may still be in flight; original Runtime performs its retirement drain.
+        engine.reset();
         assert(deaths.size() == 11 && deaths.back() == 2);
+        std::filesystem::remove_all(directory);
         std::printf(
-            "PASS native framework: %llu renderer frames, resize/minimize, A->B, failed C, D and in-flight "
-            "destruction\n",
+            "PASS real project create/prepare/cancel/plugins/async close, failed C preserves B, GPU %llu frames\n",
             static_cast<unsigned long long>(statistics.frames)
         );
     }
+
 } // namespace
 int main(int argc, char** argv)
 {
@@ -208,5 +286,6 @@ int main(int argc, char** argv)
     };
     assert(lux::error::ErrorRegistry::instance().registerTypes(fixture_errors));
 
-    nativeLifecycle();
+    assert(argc == 4);
+    nativeLifecycle(argv[2], argv[3]);
 }

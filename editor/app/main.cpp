@@ -7,6 +7,7 @@
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
+#include <random>
 
 namespace
 {
@@ -28,14 +29,8 @@ namespace
         lux::ui::Label label_, detail_;
     };
 } // namespace
-int main()
+int main(int argc, char** argv)
 {
-    auto engine = lux::editor::LuxEngine::create();
-    if (!engine)
-    {
-        std::fprintf(stderr, "%s\n", lux::error::format(engine.error()).c_str());
-        return 1;
-    }
     auto assemble = [](lux::editor::EditorContext& context) noexcept -> lux::editor::FrameworkResult<void>
     {
         return context.ui().registerFactory(
@@ -45,17 +40,35 @@ int main()
             { return std::unique_ptr<lux::ui::Pane>{new WelcomePane(value, description)}; }
         );
     };
-    std::error_code error;
-    auto root = std::filesystem::current_path(error);
-    if (error)
+    lux::editor::EditorConfig config;
+    config.layout = {{"framework.welcome", "welcome", "Welcome"}};
+    auto engine = lux::editor::LuxEngine::create(std::move(config), std::move(assemble));
+    if (!engine)
     {
+        std::fprintf(stderr, "%s\n", lux::error::format(engine.error()).c_str());
         return 1;
     }
-    const lux::editor::EditorLayout layout{{"framework.welcome", "welcome", "Welcome"}};
-    auto opened = (*engine)->openProject({"Framework", std::move(root)}, layout, assemble);
-    if (!opened)
+    lux::editor::FrameworkResult<void> requested;
+    if (argc == 2)
     {
-        std::fprintf(stderr, "%s\n", lux::error::format(opened.error()).c_str());
+        requested = (*engine)->openProject(std::filesystem::absolute(argv[1]));
+    }
+    else if (argc == 4 && std::string_view(argv[1]) == "--create")
+    {
+        std::random_device entropy;
+        std::seed_seq seed{entropy(), entropy(), entropy(), entropy(), entropy(), entropy(), entropy(), entropy()};
+        std::mt19937 random{seed};
+        uuids::uuid_random_generator generate(random);
+        requested = (*engine)->createProject({std::filesystem::absolute(argv[2]), {1, generate(), argv[3]}});
+    }
+    else if (argc != 1)
+    {
+        std::fprintf(stderr, "Usage: lux_editor [project.luxproj | --create directory name]\n");
+        return 2;
+    }
+    if (!requested)
+    {
+        std::fprintf(stderr, "%s\n", lux::error::format(requested.error()).c_str());
         return 2;
     }
     // Product key bindings, transported by the same menu/shortcut path as external commands.

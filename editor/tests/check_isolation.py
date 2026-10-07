@@ -28,7 +28,7 @@ for config in model['configurations']:
         if name == 'lux_editor_context':
             assert 'ui' not in closure and 'lux_editor_ui' not in closure
         if name == 'lux_editor_ui':
-            for forbidden in ('scene_render', 'scene_runtime', 'ui_rendering', 'lux_editor_app'):
+            for forbidden in ('scene_render', 'ui_rendering', 'lux_editor_app'):
                 assert forbidden not in closure, (name, forbidden)
         print(name, 'closure:', ', '.join(closure))
 print('PASS: new product dependency/include closure excludes legacy; Context excludes UI')

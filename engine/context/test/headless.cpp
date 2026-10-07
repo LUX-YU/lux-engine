@@ -1,16 +1,16 @@
-#include <lux/engine/EngineContext.hpp>
-#include <lux/engine/process/CompletionWork.hpp>
-#include <lux/engine/project/PluginCatalog.hpp>
-#include <lux/engine/project/PluginLibrary.hpp>
-#include <lux/engine/scene/SceneRuntime.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
-#include <lux/engine/scene/WorldLoadingSystem.hpp>
-#include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
-#include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <cassert>
 #include <chrono>
-#include <latch>
 #include <cstdio>
+#include <latch>
+#include <lux/engine/EngineContext.hpp>
+#include <lux/engine/process/CompletionWork.hpp>
+#include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
+#include <lux/engine/project/PluginCatalog.hpp>
+#include <lux/engine/project/PluginLibrary.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/scene/SceneRuntime.hpp>
+#include <lux/engine/scene/WorldLoadingSystem.hpp>
+#include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -34,18 +34,21 @@ namespace
         Task nested;
         auto task = runtime.submit(
             {"immediate", "test"},
-            [](TaskReporter reporter) noexcept {
+            [](TaskReporter reporter) noexcept
+            {
                 reporter.setPhase("ready");
                 reporter.setProgress(1, 1);
                 return stdexec::just(Value{std::make_unique<int>(73)});
             },
-            [&](Result&& result) noexcept {
+            [&](Result&& result) noexcept
+            {
                 assert(result && **result == 73);
                 ++calls;
                 auto created = runtime.submit(
                     {"nested", "test"},
                     [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
-                    [&](TTaskResult<void, EFailure>&& value) noexcept {
+                    [&](TTaskResult<void, EFailure>&& value) noexcept
+                    {
                         assert(value);
                         ++calls;
                     }
@@ -69,13 +72,19 @@ namespace
         bool adopted{};
         auto cpu = runtime.submit(
             {"cpu", "test"},
-            [&](TaskReporter) noexcept {
-                return stdexec::then(stdexec::schedule(runtime.cpu()), [&]() noexcept -> Value {
-                    on_worker = std::this_thread::get_id() != owner_thread;
-                    return lux::cxx::unexpected(EFailure::REJECTED);
-                });
+            [&](TaskReporter) noexcept
+            {
+                return stdexec::then(
+                    stdexec::schedule(runtime.cpu()),
+                    [&]() noexcept -> Value
+                    {
+                        on_worker = std::this_thread::get_id() != owner_thread;
+                        return lux::cxx::unexpected(EFailure::REJECTED);
+                    }
+                );
             },
-            [&](Result&& result) noexcept {
+            [&](Result&& result) noexcept
+            {
                 assert(std::this_thread::get_id() == owner_thread && on_worker);
                 assert(!result && *result.error().domainFailure() == EFailure::REJECTED);
                 adopted = true;
@@ -89,7 +98,9 @@ namespace
             assert(runtime.collectCompletions());
             assert(runtime.dispatchTaskEvents());
             if (!adopted)
+            {
                 runtime.waitForWork(epoch, deadline);
+            }
             assert(std::chrono::steady_clock::now() < deadline);
         }
         *cpu = {};
@@ -99,19 +110,28 @@ namespace
         {
             auto cancelled = runtime.submit(
                 {"cancel", "test"},
-                [&](TaskReporter reporter) noexcept {
-                    return stdexec::then(stdexec::schedule(runtime.cpu()), [&, reporter]() noexcept {
-                        const auto stop = reporter.stopToken();
-                        std::atomic<bool> signalled{};
-                        std::stop_callback notify(stop, [&]() noexcept {
-                            signalled.store(true, std::memory_order_release);
-                            signalled.notify_one();
-                        });
-                        entered.count_down();
-                        signalled.wait(false, std::memory_order_acquire);
-                        worker_exited = true;
-                        return lux::cxx::expected<void, EFailure>{};
-                    });
+                [&](TaskReporter reporter) noexcept
+                {
+                    return stdexec::then(
+                        stdexec::schedule(runtime.cpu()),
+                        [&, reporter]() noexcept
+                        {
+                            const auto stop = reporter.stopToken();
+                            std::atomic<bool> signalled{};
+                            std::stop_callback notify(
+                                stop,
+                                [&]() noexcept
+                                {
+                                    signalled.store(true, std::memory_order_release);
+                                    signalled.notify_one();
+                                }
+                            );
+                            entered.count_down();
+                            signalled.wait(false, std::memory_order_acquire);
+                            worker_exited = true;
+                            return lux::cxx::expected<void, EFailure>{};
+                        }
+                    );
                 },
                 [&](TTaskResult<void, EFailure>&&) noexcept { ++calls; }
             );
@@ -150,15 +170,23 @@ namespace
         unsigned settled{};
         {
             TaskScope services(runtime);
+            assert(services.settled());
             assert(services.submit(
                 {"settle storage", "test"},
                 [](TaskReporter) noexcept { return stdexec::just(lux::cxx::expected<void, EFailure>{}); },
-                [&](TTaskResult<void, EFailure>&& result) noexcept {
+                [&](TTaskResult<void, EFailure>&& result) noexcept
+                {
                     assert(result);
                     ++settled;
                 }
             ));
             assert(settled == 0);
+            assert(!services.settled());
+            assert(settled == 0); // The query cannot deliver a finished result.
+            assert(runtime.collectCompletions());
+            assert(services.settled());
+            assert(services.submit({}, [](TaskReporter) noexcept { return stdexec::just(); }));
+            assert(!services.settled()); // Querying settlement did not close admission.
             assert(services.join());
             assert(settled == 1 && calls == 2);
         }
@@ -221,7 +249,9 @@ namespace
             assert(runtime.dispatchTaskEvents());
             const auto delivered = Clock::now();
             if (sample == 0)
+            {
                 cold = delivered - begin;
+            }
             if (sample >= warmup)
             {
                 admission += submitted - begin;
@@ -254,11 +284,13 @@ namespace
         assert(HeapLock(heap));
         PROCESS_HEAP_ENTRY entry{};
         while (HeapWalk(heap, &entry))
+        {
             if ((entry.wFlags & PROCESS_HEAP_ENTRY_BUSY) != 0)
             {
                 ++sample.blocks;
                 sample.bytes += entry.cbData;
             }
+        }
         const auto error = GetLastError();
         assert(HeapUnlock(heap));
         assert(error == ERROR_NO_MORE_ITEMS);
@@ -268,9 +300,8 @@ namespace
     {
         FILETIME created{}, exited{}, kernel{}, user{};
         assert(GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user));
-        const auto value = [](FILETIME time) {
-            return (static_cast<unsigned long long>(time.dwHighDateTime) << 32) | time.dwLowDateTime;
-        };
+        const auto value = [](FILETIME time)
+        { return (static_cast<unsigned long long>(time.dwHighDateTime) << 32) | time.dwLowDateTime; };
         return value(kernel) + value(user);
     }
     void taskMemoryAndWait(lux::process::ExecutionRuntime& runtime)
@@ -309,7 +340,8 @@ namespace
         using TimerResult = lux::cxx::expected<void, ETimerError>;
         assert(timer.submit(
             {"idle wait", "test"},
-            [&](TaskReporter) noexcept {
+            [&](TaskReporter) noexcept
+            {
                 return stdexec::upon_error(
                     stdexec::then(
                         runtime.timer().after(std::chrono::milliseconds(50)),
@@ -318,7 +350,8 @@ namespace
                     [](ETimerError error) noexcept -> TimerResult { return lux::cxx::unexpected(error); }
                 );
             },
-            [&](TTaskResult<void, ETimerError>&& result) noexcept {
+            [&](TTaskResult<void, ETimerError>&& result) noexcept
+            {
                 assert(result);
                 completed = true;
             }
@@ -369,13 +402,20 @@ namespace
         assert(*runtime.collectCompletions() == 0 && b.calls == 1);
         std::atomic<bool> stop{};
         std::atomic<bool> started{};
-        std::jthread producer([request = first.requester(), &stop, &started] {
-            started.store(true, std::memory_order_release);
-            while (!stop.load(std::memory_order_acquire))
-                request.request();
-        });
+        std::jthread producer(
+            [request = first.requester(), &stop, &started]
+            {
+                started.store(true, std::memory_order_release);
+                while (!stop.load(std::memory_order_acquire))
+                {
+                    request.request();
+                }
+            }
+        );
         while (!started.load(std::memory_order_acquire))
+        {
             std::this_thread::yield();
+        }
         first.cancel();
         stop.store(true, std::memory_order_release);
         producer.join();
@@ -383,16 +423,23 @@ namespace
 
         std::atomic<unsigned> stages{};
         TaskScope tasks(runtime);
-        assert(tasks.submit({"service", "test"}, [&](TaskReporter) noexcept {
-            return stdexec::upon_error(
-                stdexec::then(stdexec::schedule(runtime.cpu()), [&]() noexcept { ++stages; }),
-                [](EExecutionError) noexcept { std::terminate(); }
-            );
-        }));
-        std::jthread wrong_thread([&] {
-            const auto result = tasks.join();
-            assert(!result && result.error() == EExecutionError::WRONG_THREAD);
-        });
+        assert(tasks.submit(
+            {"service", "test"},
+            [&](TaskReporter) noexcept
+            {
+                return stdexec::upon_error(
+                    stdexec::then(stdexec::schedule(runtime.cpu()), [&]() noexcept { ++stages; }),
+                    [](EExecutionError) noexcept { std::terminate(); }
+                );
+            }
+        ));
+        std::jthread wrong_thread(
+            [&]
+            {
+                const auto result = tasks.join();
+                assert(!result && result.error() == EExecutionError::WRONG_THREAD);
+            }
+        );
         wrong_thread.join();
         assert(tasks.join() && stages == 1);
         assert(!tasks.submit({}, [](TaskReporter) noexcept { return stdexec::just(); }));
@@ -404,30 +451,36 @@ namespace
             std::latch started{1};
             std::atomic<unsigned> accepted{};
             unsigned settled{};
-            std::jthread producer([&] {
-                started.count_down();
-                for (unsigned i{}; i < 16; ++i)
+            std::jthread producer(
+                [&]
                 {
-                    const auto result = concurrent.submit(
-                        {"concurrent", "test"},
-                        [](TaskReporter) noexcept {
-                            return stdexec::just(lux::cxx::expected<void, EExecutionError>{});
-                        },
-                        [&](TTaskResult<void, EExecutionError>&&) noexcept { ++settled; }
-                    );
-                    if (result)
-                        ++accepted;
-                    else
-                        assert(result.error() == EExecutionError::STOPPING);
+                    started.count_down();
+                    for (unsigned i{}; i < 16; ++i)
+                    {
+                        const auto result = concurrent.submit(
+                            {"concurrent", "test"},
+                            [](TaskReporter) noexcept
+                            { return stdexec::just(lux::cxx::expected<void, EExecutionError>{}); },
+                            [&](TTaskResult<void, EExecutionError>&&) noexcept { ++settled; }
+                        );
+                        if (result)
+                        {
+                            ++accepted;
+                        }
+                        else
+                        {
+                            assert(result.error() == EExecutionError::STOPPING);
+                        }
+                    }
                 }
-            });
+            );
             started.wait();
             concurrent.requestStop();
             producer.join();
             assert(concurrent.join() && settled == accepted.load());
         }
     }
-}
+} // namespace
 
 int main(int argc, char** argv)
 {
@@ -531,7 +584,9 @@ int main(int argc, char** argv)
         const auto registry = std::as_const(scenes).borrowInstance(instance->id());
         assert(registry);
         if (registry->get().ctx().get<scene::WorldResidency>().statistics().resident_partitions == 1)
+        {
             break;
+        }
     }
     assert(scenes.resumeSimulation(instance->id()));
     assert(scenes.driveFrame());

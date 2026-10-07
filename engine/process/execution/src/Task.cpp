@@ -1,5 +1,5 @@
-#include <lux/engine/process/detail/TaskState.hpp>
 #include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/process/detail/TaskState.hpp>
 
 #include <algorithm>
 #include <atomic>
@@ -16,7 +16,9 @@ namespace lux::process::detail
           history_capacity(history_limit)
     {
         if (identity == 0)
+        {
             std::terminate();
+        }
         records.reserve(capacity);
         ready.reserve(capacity);
         collect_batch.reserve(capacity);
@@ -31,27 +33,35 @@ namespace lux::process::detail
     {
         // Task/TaskScope are lifetime borrows of their Runtime.
         if (!records.empty())
+        {
             std::terminate();
+        }
     }
 
     void TaskRuntime::requireOwner() const noexcept
     {
         if (owner_thread != std::this_thread::get_id())
+        {
             std::terminate();
+        }
     }
 
     void TaskRuntime::moveTo(ExecutionRuntime& execution) noexcept
     {
         std::lock_guard lock{mutex};
         if (!records.empty())
+        {
             std::terminate();
+        }
         owner = &execution;
     }
 
     TaskRecord* TaskRuntime::find(TaskId id) const noexcept
     {
         if (id.runtime != identity)
+        {
             return nullptr;
+        }
         const auto* value = records.find(id.slot);
         return value ? value->get() : nullptr;
     }
@@ -59,7 +69,9 @@ namespace lux::process::detail
     void TaskRuntime::changed(TaskRecord& record) noexcept
     {
         if (std::exchange(record.dirty, true))
+        {
             return;
+        }
         if (changes.size() == changes.capacity())
         {
             // Monitoring can coalesce to a refresh; terminal delivery has a separate reliable queue.
@@ -77,9 +89,13 @@ namespace lux::process::detail
     {
         std::lock_guard lock{runtime.mutex};
         if (!runtime.accepting || (group && !group->accepting))
+        {
             return lux::cxx::unexpected(EExecutionError::STOPPING);
+        }
         if (runtime.records.size() == runtime.capacity)
+        {
             return lux::cxx::unexpected(EExecutionError::CAPACITY_EXCEEDED);
+        }
         auto record = std::make_unique<TaskRecord>();
         record->runtime = &runtime;
         record->info.name = std::move(options.name);
@@ -92,7 +108,9 @@ namespace lux::process::detail
         result->info.id = {runtime.identity, runtime.records.emplace(std::move(record))};
         ++runtime.outstanding;
         if (group)
+        {
             ++group->outstanding;
+        }
         runtime.changed(*result);
         return result;
     }
@@ -138,7 +156,9 @@ namespace lux::process::detail
     {
         requireOwner();
         if (collecting)
+        {
             std::terminate();
+        }
         collecting = true;
         {
             std::lock_guard lock{mutex};
@@ -157,7 +177,9 @@ namespace lux::process::detail
                 record->collected = true;
                 --outstanding;
                 if (!record->group)
+                {
                     deliveries.push_back(record->info.id);
+                }
             }
             if (record->group)
             {
@@ -182,7 +204,9 @@ namespace lux::process::detail
         if (history_capacity)
         {
             if (history.size() < history_capacity)
+            {
                 history.push_back(std::move(record.info));
+            }
             else
             {
                 history[history_next] = std::move(record.info);
@@ -197,7 +221,9 @@ namespace lux::process::detail
     {
         requireOwner();
         if (dispatching || collecting)
+        {
             std::terminate();
+        }
         dispatching = true;
         bool refresh{};
         {
@@ -208,13 +234,19 @@ namespace lux::process::detail
             if (refresh)
             {
                 for (auto& record : records)
+                {
                     record->dirty = false;
+                }
             }
             else
             {
                 for (auto id : change_batch)
+                {
                     if (auto* record = find(id))
+                    {
                         record->dirty = false;
+                    }
+                }
             }
         }
         std::size_t delivered{};
@@ -231,12 +263,16 @@ namespace lux::process::detail
                 }
             }
             if (!operation)
+            {
                 continue; // The Task may have been destroyed by an earlier callback.
+            }
             operation->deliver();
             ++delivered;
         }
         if (observer && (refresh || !change_batch.empty()))
+        {
             observer(observer_owner, change_batch, refresh);
+        }
         delivery_batch.clear();
         change_batch.clear();
         dispatching = false;
@@ -252,9 +288,13 @@ namespace lux::process::detail
         {
             const auto epoch = owner->wakeEpoch();
             if (!owner->collectCompletions())
+            {
                 std::terminate();
+            }
             if (!record.collected)
+            {
                 owner->waitForWork(epoch);
+            }
         }
         record.operation.reset();
         record.code_lifetime.reset();
@@ -271,7 +311,9 @@ namespace lux::process::detail
             std::lock_guard lock{mutex};
             auto* record = find(id);
             if (!record || record->info.finished)
+            {
                 return false;
+            }
             record->info.cancel_requested = true;
             stop = record->stop;
             changed(*record);
@@ -292,14 +334,18 @@ namespace lux::process::detail
             for (auto& record : records)
             {
                 if (record->info.finished)
+                {
                     continue;
+                }
                 record->info.cancel_requested = true;
                 stops.push_back(record->stop);
                 changed(*record);
             }
         }
         for (auto& stop : stops)
+        {
             stop.request_stop();
+        }
     }
 
     bool TaskRuntime::settled() const noexcept
@@ -318,7 +364,9 @@ namespace lux::process::detail
     {
         std::lock_guard lock{mutex};
         if (const auto* record = find(id))
+        {
             return record->info;
+        }
         const auto it = std::ranges::find(history, id, &TaskInfo::id);
         return it == history.end() ? std::nullopt : std::optional{*it};
     }
@@ -329,22 +377,27 @@ namespace lux::process::detail
         std::vector<TaskInfo> result = history;
         result.reserve(result.size() + records.size());
         for (const auto& record : records)
+        {
             result.push_back(record->info);
+        }
         return result;
     }
-}
+} // namespace lux::process::detail
 
 namespace lux::process
 {
     TaskScope::TaskScope(ExecutionRuntime& runtime) noexcept
         : runtime_(runtime), group_(std::make_unique<detail::TaskGroup>())
-    {}
+    {
+    }
 
     TaskScope::~TaskScope() noexcept
     {
         requestStop();
         if (!join())
+        {
             std::terminate();
+        }
     }
 
     void TaskScope::requestStop() noexcept
@@ -355,45 +408,72 @@ namespace lux::process
             std::lock_guard lock{tasks.mutex};
             group_->accepting = false;
             if (group_->outstanding == 0)
+            {
                 return;
+            }
             stops.reserve(group_->outstanding);
             for (auto& record : tasks.records)
             {
                 if (record->group != group_.get() || record->info.finished)
+                {
                     continue;
+                }
                 record->info.cancel_requested = true;
                 stops.push_back(record->stop);
                 tasks.changed(*record);
             }
         }
         for (auto& stop : stops)
+        {
             stop.request_stop();
+        }
         runtime_.wake();
+    }
+
+    bool TaskScope::settled() const noexcept
+    {
+        auto& tasks = *runtime_.tasks_;
+        if (tasks.owner_thread != std::this_thread::get_id())
+        {
+            std::terminate();
+        }
+        std::lock_guard lock{tasks.mutex};
+        return group_->outstanding == 0;
     }
 
     lux::cxx::expected<void, EExecutionError> TaskScope::join() noexcept
     {
         auto& tasks = *runtime_.tasks_;
         if (tasks.owner_thread != std::this_thread::get_id())
+        {
             return lux::cxx::unexpected(EExecutionError::WRONG_THREAD);
+        }
         {
             std::lock_guard lock{tasks.mutex};
             group_->accepting = false;
             if (group_->outstanding == 0)
+            {
                 return {};
+            }
         }
         const auto valid = runtime_.validateWait();
         if (!valid)
+        {
             return lux::cxx::unexpected(valid.error());
+        }
         for (;;)
         {
             const auto epoch = runtime_.wakeEpoch();
             if (!runtime_.collectCompletions())
+            {
                 std::terminate();
+            }
             {
                 std::lock_guard lock{tasks.mutex};
                 if (group_->outstanding == 0)
+                {
                     return {};
+                }
             }
             runtime_.waitForWork(epoch);
         }
@@ -405,7 +485,9 @@ namespace lux::process
         if (this != &other)
         {
             if (record_)
+            {
                 record_->runtime->release(*record_);
+            }
             record_ = std::exchange(other.record_, nullptr);
         }
         return *this;
@@ -413,7 +495,9 @@ namespace lux::process
     Task::~Task() noexcept
     {
         if (record_)
+        {
             record_->runtime->release(*record_);
+        }
     }
     TaskId Task::id() const noexcept
     {
@@ -422,7 +506,9 @@ namespace lux::process
     void Task::requestStop() noexcept
     {
         if (record_)
+        {
             static_cast<void>(record_->runtime->requestStop(id()));
+        }
     }
 
     TaskId TaskReporter::id() const noexcept
@@ -436,7 +522,9 @@ namespace lux::process
     void TaskReporter::setPhase(std::string_view phase) const noexcept
     {
         if (!record_)
+        {
             return;
+        }
         auto& runtime = *record_->runtime;
         {
             std::lock_guard lock{runtime.mutex};
@@ -448,7 +536,9 @@ namespace lux::process
     void TaskReporter::setProgress(std::uint64_t completed, std::uint64_t total) const noexcept
     {
         if (!record_)
+        {
             return;
+        }
         auto& runtime = *record_->runtime;
         {
             std::lock_guard lock{runtime.mutex};
@@ -457,4 +547,4 @@ namespace lux::process
         }
         runtime.owner->wake();
     }
-}
+} // namespace lux::process

@@ -379,5 +379,48 @@ namespace lux::editor
         };
         inline constexpr error::ErrorId ProcessExecutionUnknown =
             error::errorId(ProcessExecutionUnknownDescriptor.name);
+        inline constexpr error::ErrorDescriptor ProjectManifestDescriptor{
+            "lux.editor.project.manifest",
+            "Project manifest code {0}, record {1}, system {2}",
+            error::ERecovery::PERMANENT,
+            {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
+        };
+        inline constexpr error::ErrorId ProjectManifest = error::errorId(ProjectManifestDescriptor.name);
+        inline constexpr error::ErrorDescriptor ProjectPluginsDescriptor{
+            "lux.editor.project.plugins",
+            "Project plugin code {0}",
+            error::ERecovery::PERMANENT,
+            {error::EArgument::UNSIGNED}
+        };
+        inline constexpr error::ErrorId ProjectPlugins = error::errorId(ProjectPluginsDescriptor.name);
+        inline constexpr error::ErrorDescriptor ProjectTransitionBusyDescriptor{
+            "lux.editor.project.transition_busy",
+            "A project transition is already in progress",
+            error::ERecovery::RETRYABLE,
+            {}
+        };
+        inline constexpr error::ErrorId ProjectTransitionBusy = error::errorId(ProjectTransitionBusyDescriptor.name);
+        inline constexpr error::ErrorDescriptor ProjectCancelledDescriptor{
+            "lux.editor.project.cancelled",
+            "Project preparation was cancelled",
+            error::ERecovery::PERMANENT,
+            {}
+        };
+        inline constexpr error::ErrorId ProjectCancelled = error::errorId(ProjectCancelledDescriptor.name);
+        inline constexpr error::ErrorDescriptor ProjectClosingDescriptor{
+            "lux.editor.project.closing",
+            "Project is closing",
+            error::ERecovery::PERMANENT,
+            {}
+        };
+        inline constexpr error::ErrorId ProjectClosing = error::errorId(ProjectClosingDescriptor.name);
+        inline constexpr error::ErrorDescriptor ProjectNeedsPreparedPluginsDescriptor{
+            "lux.editor.project.needs_prepared_plugins",
+            "Plugin projects require verified preparation by the host",
+            error::ERecovery::PERMANENT,
+            {}
+        };
+        inline constexpr error::ErrorId ProjectNeedsPreparedPlugins =
+            error::errorId(ProjectNeedsPreparedPluginsDescriptor.name);
     } // namespace Errors
 } // namespace lux::editor

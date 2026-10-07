@@ -1,9 +1,10 @@
 #pragma once
-#include <lux/cxx/core/function_ref.hpp>
+#include <lux/engine/editor/EditorAssembly.hpp>
 #include <lux/engine/editor/EditorLayout.hpp>
 #include <lux/engine/editor/FrameStatistics.hpp>
 #include <lux/engine/editor/FrameworkResult.hpp>
 #include <lux/engine/editor/ProjectDescription.hpp>
+#include <lux/engine/editor/ProjectTransition.hpp>
 #include <memory>
 
 namespace lux::engine
@@ -21,6 +22,8 @@ namespace lux::editor
         int height{800};
         // Forwarded to the renderer/swapchain; never used as a CPU frame deadline.
         bool enable_vsync{true};
+        EditorLayout layout;
+        std::vector<ProjectPluginLocation> plugin_locations;
     };
 
     enum class EFrameStatus : std::uint8_t
@@ -32,15 +35,21 @@ namespace lux::editor
     class LuxEngine final
     {
     public:
-        using Assembly = cxx::function_ref<FrameworkResult<void>(EditorContext&) noexcept>;
-        [[nodiscard]] static FrameworkResult<std::unique_ptr<LuxEngine>> create(EditorConfig = {}) noexcept;
+        [[nodiscard]] static FrameworkResult<std::unique_ptr<LuxEngine>> create(
+            EditorConfig = {},
+            EditorAssembly = {}
+        ) noexcept;
         ~LuxEngine() noexcept;
         LuxEngine(const LuxEngine&) = delete;
         LuxEngine& operator=(const LuxEngine&) = delete;
         LuxEngine(LuxEngine&&) = delete;
         LuxEngine& operator=(LuxEngine&&) = delete;
 
-        [[nodiscard]] FrameworkResult<void> openProject(ProjectDescription, const EditorLayout&, Assembly) noexcept;
+        // Admission only. Preparation/closure/adoption progress in frame(); failures keep the current project.
+        [[nodiscard]] FrameworkResult<void> openProject(std::filesystem::path manifest_file) noexcept;
+        [[nodiscard]] FrameworkResult<void> createProject(ProjectCreateRequest) noexcept;
+        [[nodiscard]] FrameworkResult<void> cancelProjectTransition() noexcept;
+        [[nodiscard]] ProjectTransitionStatus projectStatus() const noexcept;
         [[nodiscard]] FrameworkResult<void> closeProject() noexcept;
         [[nodiscard]] FrameworkResult<void> exec() noexcept;
         // One host iteration; callers do not drive SceneRuntime a second time.

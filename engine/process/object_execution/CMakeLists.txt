@@ -26,6 +26,7 @@ lux_engine_install_components(
 
 
 if(BUILD_TESTING)
+    cmake_file_api(QUERY API_VERSION 1 CODEMODEL 2)
     add_executable(object_scheduler_test test/ObjectSchedulerTest.cpp)
     target_link_libraries(object_scheduler_test PRIVATE object_execution)
     if(MSVC)

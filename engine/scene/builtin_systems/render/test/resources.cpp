@@ -191,17 +191,6 @@ int main()
     assert(runtime->statistics().validation_errors == 0);
 
     assert(tasks.join());
-    assert(runtime->beginClose());
-    bool complete{};
-    until([&] {
-        std::size_t replies = 8, controls = 4, programs = 1;
-        auto closing = runtime->advanceClose(replies, controls, programs);
-        assert(closing);
-        complete = *closing == ERenderClose::COMPLETE;
-        return complete;
-    });
-    assert(runtime->joinStopped());
-    assert(runtime->status().state == ERenderRuntimeState::RETIRED);
     // Retained receipts remain observations after the runtime is destroyed.
     runtime.reset();
     verifyRenderContext();

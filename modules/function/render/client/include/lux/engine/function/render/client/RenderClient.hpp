@@ -153,6 +153,26 @@ namespace lux::render
             return pending_;
         }
 
+        // Only after the reply producer has ended and its published replies
+        // have been consumed. Release each slot before invoking user code.
+        std::size_t failPending(RenderError error, std::size_t budget)
+        {
+            const auto limit = slots_.size();
+            std::size_t completed{};
+            for (std::size_t index = 0; index < limit && completed < budget; ++index)
+            {
+                if (!slots_[index].entry)
+                {
+                    continue;
+                }
+                auto callback = std::move(slots_[index].entry->callback);
+                releaseSlot(static_cast<std::uint32_t>(index));
+                ++completed;
+                static_cast<void>(callback.settleFailure(error));
+            }
+            return completed;
+        }
+
     private:
         struct Entry
         {
@@ -954,6 +974,8 @@ namespace lux::render
         }
 
     private:
+        friend class RenderRuntime;
+
         std::shared_ptr<Channel> channel_;
         std::shared_ptr<RenderChannelSync> sync_;
         CallbackStore callbacks_{};

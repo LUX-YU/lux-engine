@@ -64,7 +64,7 @@ namespace lux::render
         std::vector<RendererDiagnostic> diagnostics;
         std::size_t head{}, count{}, next_reply_lane{}, storage_rotations{};
         std::optional<RendererDiagnostic> terminal_diagnostic;
-        bool terminal_reported{}, closing{}, retired{}, joined{true}, busy{};
+        bool terminal_reported{}, closing{}, retired{}, busy{};
 
         struct FeatureBatch final
         {
@@ -75,6 +75,7 @@ namespace lux::render
             FeatureRegistrationStatus status{EFeatureRegistrationState::REGISTERING, {}};
             bool cancelled{};
         };
+
         std::optional<FeatureBatch> feature_batch;
 
         [[nodiscard]] bool featureBatchPending() const noexcept
@@ -226,11 +227,7 @@ namespace lux::render
 
     RenderRuntime::~RenderRuntime()
     {
-        if (impl_->joined)
-        {
-            return;
-        }
-        if (!beginClose())
+        if (!beginRetirement())
         {
             renderFatal("RenderRuntime destruction outside its owner thread or within a callback");
         }
@@ -240,20 +237,16 @@ namespace lux::render
             const auto epoch = impl_->thread.sync->work_epoch.load(std::memory_order_acquire);
             auto replies = std::numeric_limits<std::size_t>::max();
             auto controls = replies, programs = replies;
-            const auto closed = advanceClose(replies, controls, programs);
+            const auto closed = advanceRetirement(replies, controls, programs);
             if (!closed)
             {
                 renderFatal("RenderRuntime close contract failed during destruction");
             }
-            if (*closed == ERenderClose::COMPLETE)
+            if (*closed)
             {
                 break;
             }
             impl_->thread.sync->work_epoch.wait(epoch, std::memory_order_acquire);
-        }
-        if (!joinStopped())
-        {
-            renderFatal("RenderRuntime failed to join its retired backend");
         }
     }
 
@@ -288,8 +281,7 @@ namespace lux::render
                 );
             }
         );
-        auto result = std::unique_ptr<RenderRuntime>(new RenderRuntime(std::move(impl)));
-        auto& data = *result->impl_;
+        auto& data = *impl;
         auto started = detail::startRendererThread(data.thread, data.config, std::move(diagnostics));
         if (!started)
         {
@@ -305,13 +297,19 @@ namespace lux::render
             data.worker.join();
             return lux::cxx::unexpected(RendererFailure{ERendererError::DEVICE_FAILURE, data.thread.startup_error});
         }
-        data.joined = false;
-        return result;
+        // Publish only after native startup succeeds; failed prefixes never
+        // construct a semantic Runtime requiring a partial-lifetime sentinel.
+        return std::unique_ptr<RenderRuntime>(new RenderRuntime(std::move(impl)));
     }
 
     bool RenderRuntime::controlAvailable(std::size_t packets) const noexcept
     {
-        if (impl_->owner != std::this_thread::get_id() || impl_->thread.sync->isStopping())
+        if (impl_->owner != std::this_thread::get_id())
+        {
+            return false;
+        }
+        const bool is_unavailable = impl_->busy || impl_->closing || impl_->thread.sync->isStopping();
+        if (is_unavailable)
         {
             return false;
         }
@@ -324,6 +322,10 @@ namespace lux::render
         {
             return lux::cxx::unexpected(checked.error());
         }
+        if (impl_->closing)
+        {
+            return fail(ERendererError::STOPPING);
+        }
         return std::ref(impl_->control);
     }
 
@@ -332,6 +334,10 @@ namespace lux::render
         if (auto checked = impl_->check(); !checked)
         {
             return lux::cxx::unexpected(checked.error());
+        }
+        if (impl_->closing)
+        {
+            return fail(ERendererError::STOPPING);
         }
         return impl_->upload_client;
     }
@@ -369,16 +375,19 @@ namespace lux::render
         {
             return lux::cxx::unexpected(checked.error());
         }
+
         struct Gate final
         {
             bool& busy;
+
             ~Gate()
             {
                 busy = false;
             }
         } gate{data.busy};
+
         data.busy = true;
-        const auto consumed =
+        auto consumed =
             detail::pumpRendererReplies(data.control, data.programs, data.uploads, data.next_reply_lane, replies);
         const auto terminal = data.thread.sync->terminalError();
         if (!data.terminal_reported && !terminal.ok())
@@ -388,13 +397,44 @@ namespace lux::render
         }
         if (data.thread.stopped.load(std::memory_order_acquire) && !data.retired)
         {
-            data.worker.join();
-            if (!clearJoinedRing(data.thread.frames->requests))
+            if (data.worker.joinable())
             {
-                return fail(ERendererError::CONTRACT_FAILURE);
+                data.worker.join();
+                if (!clearJoinedRing(data.thread.frames->requests))
+                {
+                    return fail(ERendererError::CONTRACT_FAILURE);
+                }
+                data.programs.rawClient().retireAfterBackendStopped();
+                TOperationPacket<> packet;
+                while (data.thread.controls->requests.tryPop(packet) == lux::cxx::EQueuePopResult::VALUE)
+                {
+                    packet = {};
+                }
+                while (data.thread.uploads->requests.tryPop(packet) == lux::cxx::EQueuePopResult::VALUE)
+                {
+                    data.thread.uploads->releaseBytes(packet.accountedBytes());
+                    packet = {};
+                }
             }
-            data.programs.rawClient().retireAfterBackendStopped();
-            data.retired = true;
+            // Join proves there can be no later reply publication. Re-check the
+            // original rings after that boundary; never replace a queued success
+            // with a fabricated terminal failure, or exceed this call's budget.
+            const auto remaining = replies - consumed;
+            const auto published =
+                detail::pumpRendererReplies(data.control, data.programs, data.uploads, data.next_reply_lane, remaining);
+            consumed += published;
+            if (published < remaining)
+            {
+                const auto stopped_error = data.thread.sync->terminalError();
+                const auto failure = stopped_error.ok() ? renderError<err::comm::ChannelStopping>() : stopped_error;
+                consumed += data.control.callbacks_.failPending(failure, replies - consumed);
+                consumed += data.programs.rawClient().callbacks_.failPending(failure, replies - consumed);
+                consumed += data.uploads.callbacks_.failPending(failure, replies - consumed);
+                const bool has_callbacks = data.control.callbacks_.pendingCallbacks() ||
+                                           data.programs.rawClient().callbacks_.pendingCallbacks() ||
+                                           data.uploads.callbacks_.pendingCallbacks();
+                data.retired = !has_callbacks;
+            }
         }
         data.collectFeatureReplies();
         if (consumed)
@@ -411,14 +451,17 @@ namespace lux::render
         {
             return checked;
         }
+
         struct Gate final
         {
             bool& busy;
+
             ~Gate()
             {
                 busy = false;
             }
         } gate{data.busy};
+
         data.busy = true;
         data.submitFeatureRequest(controls);
         // Upload forwarding consumes the explicit command-work allowance;
@@ -560,9 +603,9 @@ namespace lux::render
     RenderRuntimeStatus RenderRuntime::status() const noexcept
     {
         return {
-            impl_->retired                     ? ERenderRuntimeState::RETIRED
-            : impl_->thread.sync->isStopping() ? ERenderRuntimeState::STOPPING
-                                               : ERenderRuntimeState::ACTIVE,
+            impl_->retired                                       ? ERenderRuntimeState::RETIRED
+            : impl_->closing || impl_->thread.sync->isStopping() ? ERenderRuntimeState::STOPPING
+                                                                 : ERenderRuntimeState::ACTIVE,
             impl_->thread.sync->terminalError()
         };
     }
@@ -596,7 +639,7 @@ namespace lux::render
         return std::optional{result};
     }
 
-    RenderResult<void> RenderRuntime::beginClose() noexcept
+    RenderResult<void> RenderRuntime::beginRetirement() noexcept
     {
         if (auto checked = impl_->check(); !checked)
         {
@@ -612,7 +655,7 @@ namespace lux::render
         return {};
     }
 
-    RenderResult<ERenderClose> RenderRuntime::advanceClose(
+    RenderResult<bool> RenderRuntime::advanceRetirement(
         std::size_t& replies,
         std::size_t& controls,
         std::size_t& programs
@@ -635,34 +678,34 @@ namespace lux::render
         }
         if (impl_->featureBatchPending() || !impl_->upload_queue->empty())
         {
-            return ERenderClose::PENDING;
+            return false;
         }
         if (impl_->retired)
         {
-            return ERenderClose::COMPLETE;
+            return true;
         }
         if (impl_->storage_rotations)
         {
-            return ERenderClose::PENDING;
+            return false;
+        }
+        // Forwarding a packet is not completion. In particular, a full response
+        // ring may keep accepted control/upload work on the backend. Keep its
+        // producer alive until the original callbacks and request lanes drain.
+        const bool pending_replies = impl_->control.callbacks_.pendingCallbacks() ||
+                                     impl_->uploads.callbacks_.pendingCallbacks() ||
+                                     impl_->programs.rawClient().callbacks_.pendingCallbacks();
+        const bool pending_packets = !impl_->thread.controls->requests.empty() ||
+                                     !impl_->thread.uploads->requests.empty() ||
+                                     impl_->thread.frames->requests.pendingFrames();
+        if (pending_replies || pending_packets)
+        {
+            return false;
         }
         if (!impl_->thread.sync->isStopping())
         {
             impl_->thread.sync->requestStop();
         }
-        return ERenderClose::PENDING;
+        return false;
     }
 
-    RenderResult<void> RenderRuntime::joinStopped() noexcept
-    {
-        if (auto checked = impl_->check(); !checked)
-        {
-            return checked;
-        }
-        if (!impl_->retired || !impl_->upload_queue->empty())
-        {
-            return fail(ERendererError::BUSY);
-        }
-        impl_->joined = true;
-        return {};
-    }
 } // namespace lux::render

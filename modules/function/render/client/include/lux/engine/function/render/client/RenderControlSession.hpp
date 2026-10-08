@@ -37,6 +37,7 @@ namespace lux::render
         RenderControlSession& operator=(const RenderControlSession&) = delete;
 
         std::size_t pumpReplies(std::size_t budget = (std::numeric_limits<std::size_t>::max)());
+
         [[nodiscard]] bool waitAndPumpReplies();
 
         template <class Reply> [[nodiscard]] Expected<Reply> syncCall(TRenderRequest<Reply> request)
@@ -240,6 +241,8 @@ namespace lux::render
         void requestStop() noexcept;
 
     private:
+        friend class RenderRuntime;
+
         [[nodiscard]] bool publishPacket(TOperationPacket<>&& packet, bool blocking = true);
 
         template <class Reply, class Record>

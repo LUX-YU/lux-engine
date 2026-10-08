@@ -62,11 +62,6 @@ namespace lux::render
         SUBMITTED,
         BACKPRESSURED
     };
-    enum class ERenderClose : std::uint8_t
-    {
-        PENDING,
-        COMPLETE
-    };
     struct RendererConfig final
     {
         std::size_t frame_capacity{3}, control_capacity{8}, upload_capacity{8}, upload_byte_capacity{16 * 1024 * 1024};

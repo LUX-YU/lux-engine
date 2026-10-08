@@ -13,6 +13,10 @@ RenderRuntime 不包含 SceneDescription、Project、ImGui 或 Editor 类型。�
 
 RenderSystem、UI 系统或其他宿主可以先于 GPU 资源析构。维护不回调已经消失的宿主；正常关闭中途出现的失败仍保存在收据里。窗口 owner 必须活到其 surface 退休。
 
+RenderContext 唯一拥有应用级 RenderRuntime。其析构是最终物理同步边界，普通 Project、Pane 和 Scene 释放不能借此等待整个后端。关闭准入、排空、停止和 join 是 Runtime 的私有实现，不提供供调用者逐步拼装的关闭协议。
+
+正常关闭先结清已接纳的 Control、Program 和 Upload，再停止后端。后端提前终止时，owner 在 join 后先消费原回复队列，再按剩余预算把无回复的请求结清为原终止错误；没有后端错误时使用 ChannelStopping。每个终态回调计入一次完成预算，回调中重入收取仍返回 BUSY。RETIRED 表示后端、传输包与这些回调已经结清，不仅是停止请求已发出。
+
 ## 图与帧
 
 RenderFeature 声明 pass 和资源使用。离屏 View 输出供另一个 Scene 的 UI pass 采样时，图根据实际图像版本、范围和访问关系生成依赖；同帧循环反馈拒绝。序号变化不等于图拓扑变化。

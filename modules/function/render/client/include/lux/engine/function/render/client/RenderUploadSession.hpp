@@ -65,6 +65,7 @@ namespace lux::render
         RenderUploadSession& operator=(const RenderUploadSession&) = delete;
 
         std::size_t pumpReplies(std::size_t budget = (std::numeric_limits<std::size_t>::max)());
+
         [[nodiscard]] bool waitAndPumpReplies();
 
         /// Declares that coordinator is the sole submit/reply owner. Generic
@@ -304,6 +305,8 @@ namespace lux::render
         }
 
     private:
+        friend class RenderRuntime;
+
         [[nodiscard]] static std::uint64_t currentThreadToken() noexcept;
         void requireOwnerThread() noexcept;
 

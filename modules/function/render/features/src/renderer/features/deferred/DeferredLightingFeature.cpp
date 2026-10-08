@@ -275,7 +275,11 @@ namespace lux::render
             }};
 
             auto id = ctx.descriptorService().registerLayout({.bindings = bindings, .debug_name = "ClusterDSLayout"});
-            cluster_ds_layout_ = ctx.descriptorService().layout(id);
+            if (!id)
+            {
+                return lux::cxx::unexpected(id.error());
+            }
+            cluster_ds_layout_ = ctx.descriptorService().layout(*id);
         }
 
         // (Counter-clear set: clear_count_buffers.comp uses all 8 bindings,

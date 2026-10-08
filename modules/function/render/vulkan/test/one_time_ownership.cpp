@@ -30,7 +30,8 @@ namespace
         FENCE,
         SUBMIT,
         WAIT,
-        ADDRESS
+        ADDRESS,
+        LAYOUT
     };
 
     struct CommandOrigin
@@ -127,6 +128,33 @@ namespace
             return VK_ERROR_MEMORY_MAP_FAILED;
         }
         return vmaFlushAllocation(allocator, allocation, offset, size);
+    }
+
+    unsigned layout_creations{}, layout_destroys{};
+
+    VkResult createDescriptorLayout(
+        VkDevice device,
+        const VkDescriptorSetLayoutCreateInfo* info,
+        const VkAllocationCallbacks* callbacks,
+        VkDescriptorSetLayout* out
+    )
+    {
+        if (reject(EFailure::LAYOUT))
+        {
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        const auto result = vkCreateDescriptorSetLayout(device, info, callbacks, out);
+        if (result == VK_SUCCESS)
+        {
+            ++layout_creations;
+        }
+        return result;
+    }
+
+    void destroyDescriptorLayout(VkDevice device, VkDescriptorSetLayout layout, const VkAllocationCallbacks* callbacks)
+    {
+        ++layout_destroys;
+        vkDestroyDescriptorSetLayout(device, layout, callbacks);
     }
 
     VkResult createPool(
@@ -438,6 +466,8 @@ namespace
 
 // Actual allocation and descriptor-set implementation; native faults only.
 // clang-format off
+#define vkCreateDescriptorSetLayout createDescriptorLayout
+#define vkDestroyDescriptorSetLayout destroyDescriptorLayout
 #define vmaCreateBuffer trackedCreateStagingBuffer
 #define vmaDestroyBuffer trackedDestroyStagingBuffer
 #define vmaFlushAllocation trackedFlushStagingAllocation
@@ -505,6 +535,8 @@ namespace
 #undef vkUpdateDescriptorSets
 #undef vkFreeDescriptorSets
 #undef vkAllocateDescriptorSets
+#undef vkCreateDescriptorSetLayout
+#undef vkDestroyDescriptorSetLayout
 #undef vmaCreateBuffer
 #undef vmaDestroyBuffer
 #undef vmaFlushAllocation
@@ -1255,6 +1287,52 @@ void checkSceneResources(
     );
 }
 
+void checkDescriptorRegistration(lux::render::DeviceContext& device)
+{
+    using namespace lux::render;
+    const auto initial_live = layout_creations - layout_destroys;
+    {
+        DescriptorService service(device.logicalDevice());
+        const auto first = service.registerLayout(storageBufferVertexLayout("first"));
+        assert(first && *first == 0);
+        const auto first_handle = service.layout(*first);
+        assert(first_handle);
+        const VkDescriptorSetLayoutBinding
+            next_binding{3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr};
+        const DescriptorLayoutDesc second{{&next_binding, 1}, {}, 0, "second"};
+        const auto created_before = layout_creations;
+        const auto rejected_before = rejections;
+        failure = EFailure::LAYOUT;
+        const auto rejected = service.registerLayout(second);
+        failure = EFailure::NONE;
+        assert(!rejected && rejections == rejected_before + 1);
+        assert(isError<err::device::VulkanCallFailed>(rejected.error()));
+        assert(rejected.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+        assert(layout_creations == created_before && service.layout(*first) == first_handle);
+        assert(!service.layout(1));
+        const auto retry = service.registerLayout(second);
+        assert(retry && *retry == 1 && service.layout(*retry));
+        const auto stable_creations = layout_creations;
+        for (unsigned i = 0; i < 30; ++i)
+        {
+            const auto first_again = service.registerLayout(storageBufferVertexLayout("alias label"));
+            const auto second_again = service.registerLayout(second);
+            assert(first_again && *first_again == *first);
+            assert(second_again && *second_again == *retry);
+        }
+        assert(layout_creations == stable_creations);
+        const std::array<VkDescriptorBindingFlags, 2> invalid_flags{};
+        auto invalid = second;
+        invalid.binding_flags = invalid_flags;
+        const auto invalid_result = service.registerLayout(invalid);
+        assert(!invalid_result && isError<err::internal::InvalidArgument>(invalid_result.error()));
+        assert(layout_creations == stable_creations && service.layout(*first) == first_handle);
+    }
+    assert(layout_creations - layout_destroys == initial_live);
+    std::puts("Descriptor registration: exact native rejection, no ID publication, retry, cache identity and final "
+              "release PASS");
+}
+
 void checkMdcPublication(
     lux::render::DeviceContext& device,
     lux::render::GeneralDescriptorSetLayout& layouts,
@@ -1750,6 +1828,11 @@ int main(int argc, char** argv)
     auto layout_owner = GeneralDescriptorSetLayout::create(device);
     assert(layout_owner);
     auto& layouts = **layout_owner;
+    checkDescriptorRegistration(device);
+    if (argc == 2 && std::string_view(argv[1]) == "--descriptor-registration")
+    {
+        return 0;
+    }
     checkSceneDescriptorArena(device, layouts.getLayout(EDescriptorSetSlot::SCENE));
     checkHzbDescriptorFailure(device);
     if (argc == 2 && std::string_view(argv[1]) == "--scene-arena")
@@ -2226,7 +2309,7 @@ int main(int argc, char** argv)
         allocation.descriptorSetCount = 2;
         allocation.pSetLayouts = set_layouts.data();
         assert(allocateSets(device.logicalDevice(), &allocation, light_sets.data()) == VK_SUCCESS);
-        DescriptorService descriptors(device.logicalDevice(), pool->get());
+        DescriptorService descriptors(device.logicalDevice());
         LightResources::CreateInfo config{};
         config.ssbo_config = SSBOInitConfig{
             .device_context = &device,

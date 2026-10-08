@@ -802,8 +802,12 @@ namespace lux::render
             if (update_after_bind)
                 desc.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
 
-            VkDescriptorSetLayout private_layout =
-                descriptor_service_->layout(descriptor_service_->registerLayout(desc));
+            const auto registered = descriptor_service_->registerLayout(desc);
+            if (!registered)
+            {
+                return lux::cxx::unexpected(registered.error());
+            }
+            const VkDescriptorSetLayout private_layout = descriptor_service_->layout(*registered);
             out_set_layouts.push_back(private_layout);
             noteSlot(s, ESlotSource::PIPELINE_PRIVATE, s, private_layout);
         }

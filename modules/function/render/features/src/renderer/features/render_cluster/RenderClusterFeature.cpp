@@ -155,8 +155,15 @@ namespace lux::render
                 .bindings = {&pick_result_binding, 1u},
                 .debug_name = "RenderClusterPickResultSetLayout"
             };
-            pick_set_layout_ =
-                context.descriptorService().layout(context.descriptorService().registerLayout(pick_result_layout));
+            const auto registered = context.descriptorService().registerLayout(pick_result_layout);
+            if (!registered)
+            {
+                candidate_source.clear();
+                resources.shutdownGpuCulling();
+                resources.shutdownPicking();
+                return lux::cxx::unexpected(registered.error());
+            }
+            pick_set_layout_ = context.descriptorService().layout(*registered);
         }
         if (pick_set_layout_ == VK_NULL_HANDLE)
         {

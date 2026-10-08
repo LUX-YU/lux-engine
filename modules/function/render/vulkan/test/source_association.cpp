@@ -19,17 +19,7 @@ int main()
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
     DeferredDestroyQueue retire;
     retire.init(device.vmaAllocator(), device.logicalDevice());
-    VkDescriptorPool pool{};
-    const VkDescriptorPoolSize pool_sizes[]{
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, kShadingInputSlotCount}
-    };
-    VkDescriptorPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    pool_info.maxSets = 1;
-    pool_info.poolSizeCount = 2;
-    pool_info.pPoolSizes = pool_sizes;
-    assert(vkCreateDescriptorPool(device.logicalDevice(), &pool_info, nullptr, &pool) == VK_SUCCESS);
-    DescriptorService descriptors(device.logicalDevice(), pool);
+    DescriptorService descriptors(device.logicalDevice());
     auto layouts = GeneralDescriptorSetLayout::create(device);
     auto arena = SceneDescriptorArena::create(device.logicalDevice(), {});
     assert(layouts && arena);
@@ -123,12 +113,13 @@ int main()
             nullptr
         };
         const auto layout = descriptors.registerLayout({.bindings = bindings, .debug_name = "owner light check"});
-        const auto set = descriptors.allocate(layout);
+        assert(layout);
+        const auto set = (*arena)->allocate(descriptors.layout(*layout));
         assert(set);
         LightResources::CreateInfo info{};
         info.ssbo_config = SSBOInitConfig{&device, &retire, 16, 1};
         info.descriptor_svc = &descriptors;
-        info.domain_sets = std::span(&set, 1);
+        info.domain_sets = std::span(&*set, 1);
         auto owner = LightResources::create(info);
         assert(owner);
         auto& lights = **owner;
@@ -147,7 +138,6 @@ int main()
     }
     retire.collect(0);
     assert(retire.pendingCount() == 0);
-    vkDestroyDescriptorPool(device.logicalDevice(), pool, nullptr);
     std::puts("PASS R06/R07 Mesh and Light owners: anonymous allocation/free, complete source keys, stale handles, "
               "owner release and empty indices; real GPU allocations, no submitted work");
 }

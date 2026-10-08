@@ -225,12 +225,20 @@ namespace lux::render
         // live shadow MDC count (no fixed cap → no GPU OOB on large scenes).
 
         // Cull descriptor layout + frustum UBO (no persistent descriptor set)
+        if (auto layout = createCullLayout(); !layout)
+        {
+            return layout;
+        }
         createCullResources();
 
         if (shadow_visible_set_layout_ == VK_NULL_HANDLE)
         {
             auto id = ctx.descriptorService().registerLayout(storageBufferVertexLayout("ShadowVisibleSetLayout"));
-            shadow_visible_set_layout_ = ctx.descriptorService().layout(id);
+            if (!id)
+            {
+                return lux::cxx::unexpected(id.error());
+            }
+            shadow_visible_set_layout_ = ctx.descriptorService().layout(*id);
         }
 
         // Shadow cull compute pipeline
@@ -312,7 +320,11 @@ namespace lux::render
 
                 auto clear_id =
                     ctx.descriptorService().registerLayout({.bindings = bindings, .debug_name = "ShadowClearDSLayout"});
-                shadow_clear_ds_layout_ = ctx.descriptorService().layout(clear_id);
+                if (!clear_id)
+                {
+                    return lux::cxx::unexpected(clear_id.error());
+                }
+                shadow_clear_ds_layout_ = ctx.descriptorService().layout(*clear_id);
 
                 const VkPushConstantRange clear_pc{
                     VK_SHADER_STAGE_COMPUTE_BIT,
@@ -1208,10 +1220,7 @@ namespace lux::render
 
     void MeshShadowFeature::createCullResources()
     {
-        // Reuse the shared 9-binding cull layout used by other mesh features.
-        // The cull/compact passes bind a per-frame transient DS built from this
-        // layout (see addPasses) — no persistent descriptor set is allocated.
-        createCullLayout();
+        // The shared cull layout was admitted by initAndAttachTo before buffer construction.
 
         // Shadow frustum SSBO (updated per-view via vkCmdUpdateBuffer in MeshShadowCull)
         {

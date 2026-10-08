@@ -515,12 +515,17 @@ namespace lux::render
                     VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
                     VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
                 };
-                ds_layout_id_ = svc_->registerLayout(
+                const auto registered = svc_->registerLayout(
                     {.bindings = bindings,
                      .binding_flags = bind_flags,
                      .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
                      .debug_name = "Canvas2DInstanceArena"}
                 );
+                if (!registered)
+                {
+                    return lux::cxx::unexpected(registered.error());
+                }
+                ds_layout_id_ = *registered;
             }
 
             if (!images_.init(device_ctx_, *info.deferred_queue, info.initial_capacity, info.max_capacity))

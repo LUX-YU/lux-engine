@@ -73,7 +73,11 @@ namespace lux::render
 
         auto layout_id =
             context.descriptorService().registerLayout(storageBufferVertexLayout("StreamingFeedbackVisibleSetLayout"));
-        visible_set_layout_ = context.descriptorService().layout(layout_id);
+        if (!layout_id)
+        {
+            return lux::cxx::unexpected(layout_id.error());
+        }
+        visible_set_layout_ = context.descriptorService().layout(*layout_id);
         auto mask_sampler = context.descriptorService().sampler(SamplerDesc::linearClamp());
         if (!mask_sampler)
         {

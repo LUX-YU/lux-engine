@@ -214,7 +214,11 @@ namespace lux::render
                 auto id = ctx.descriptorService().registerLayout(
                     {.bindings = {&b, 1}, .debug_name = "Canvas2DGroupCompositeDS"}
                 );
-                composite_ds_layout_ = ctx.descriptorService().layout(id);
+                if (!id)
+                {
+                    return lux::cxx::unexpected(id.error());
+                }
+                composite_ds_layout_ = ctx.descriptorService().layout(*id);
             }
             if (group_sampler_ == VK_NULL_HANDLE)
             {

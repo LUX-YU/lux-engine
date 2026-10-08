@@ -64,7 +64,10 @@ namespace lux::render
             return renderFailure<err::shader::HandleStale>();
 
         // ---- 1. Custom 5-binding descriptor set layout (compute stage) ----
-        createDescriptorLayout(vk_device_);
+        if (auto layout = createDescriptorLayout(); !layout)
+        {
+            return layout;
+        }
 
         // ---- 2. Compute pipeline layout (1 set, no push constants needed here) ----
         const std::array<VkDescriptorSetLayout, 1> set_layouts{cull_layout_};
@@ -342,9 +345,8 @@ namespace lux::render
     //  Private — resource creation helpers
     // ============================================================================
 
-    void PCFeatureIndirectBase::createDescriptorLayout(VkDevice device)
+    Expected<void> PCFeatureIndirectBase::createDescriptorLayout()
     {
-        (void)device;
         auto& ds = renderContext().descriptorService();
 
         // 5 bindings, all COMPUTE stage:
@@ -366,12 +368,18 @@ namespace lux::render
         b[3].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         b[4].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 
-        cull_layout_id_ = ds.registerLayout(
+        const auto registered = ds.registerLayout(
             {.bindings = std::span<const VkDescriptorSetLayoutBinding>{b, 5},
              .flags = 0,
              .debug_name = "PointCloudCullSet"}
         );
+        if (!registered)
+        {
+            return lux::cxx::unexpected(registered.error());
+        }
+        cull_layout_id_ = *registered;
         cull_layout_ = ds.layout(cull_layout_id_);
+        return {};
     }
 
     // ============================================================================

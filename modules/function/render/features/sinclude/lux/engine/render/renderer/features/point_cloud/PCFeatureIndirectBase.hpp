@@ -165,7 +165,7 @@ namespace lux::render
         GpuOctreeNodeBuffer* node_buf_{nullptr};
 
     private:
-        void createDescriptorLayout(VkDevice device);
+        [[nodiscard]] Expected<void> createDescriptorLayout();
     };
 
 } // namespace lux::render

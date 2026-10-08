@@ -254,7 +254,7 @@ int main()
     }
 
     {
-        DescriptorService cache(first_device, VK_NULL_HANDLE);
+        DescriptorService cache(first_device);
         const SamplerDesc descriptor{};
         fail_at = attempts + 1;
         const auto rejected = cache.sampler(descriptor);
@@ -266,7 +266,11 @@ int main()
         const auto same = cache.sampler(descriptor);
         assert(sampler && same && *same == *sampler && live.size() == 1);
         const auto layout = cache.registerLayout({});
-        assert(cache.layout(layout) != VK_NULL_HANDLE && cache.registerLayout({}) == layout && live.size() == 2);
+        const auto same_layout = cache.registerLayout({});
+        assert(
+            layout && same_layout && cache.layout(*layout) != VK_NULL_HANDLE && *same_layout == *layout &&
+            live.size() == 2
+        );
     }
     assert(live.empty());
     assert(last_destroyed == EKind::SAMPLER);

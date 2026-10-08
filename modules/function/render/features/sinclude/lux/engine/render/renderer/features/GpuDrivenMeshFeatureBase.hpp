@@ -173,7 +173,7 @@ namespace lux::render
         [[nodiscard]] VkDeviceSize mdcVisibleBufferSize() const noexcept;
 
         /// Creates or reuses the shared 9-binding cull descriptor set layout.
-        void createCullLayout();
+        [[nodiscard]] Expected<void> createCullLayout();
 
         // =====================================================================
         //  Variant-bucket pipeline resolution helpers (shared by F/D)

@@ -113,7 +113,11 @@ namespace lux::render
         if (visible_set_layout_ == VK_NULL_HANDLE)
         {
             auto id = ctx.descriptorService().registerLayout(storageBufferVertexLayout("ForwardVisibleSetLayout"));
-            visible_set_layout_ = ctx.descriptorService().layout(id);
+            if (!id)
+            {
+                return lux::cxx::unexpected(id.error());
+            }
+            visible_set_layout_ = ctx.descriptorService().layout(*id);
         }
 
         // ---- Forward graphics pipelines (per material family bucket) ----

@@ -356,7 +356,10 @@ namespace lux::render
         }
 
         // ---- Descriptor set layout (cull) ----
-        createCullLayout();
+        if (auto layout = createCullLayout(); !layout)
+        {
+            return layout;
+        }
 
         // ---- View cull compute pipeline ----
         {
@@ -381,8 +384,12 @@ namespace lux::render
                 DescriptorLayoutDesc rd{};
                 rd.bindings = std::span<const VkDescriptorSetLayoutBinding>(rb.data(), rb.size());
                 rd.debug_name = "HzbReadSet";
-                const VkDescriptorSetLayout hzb_read =
-                    ctx.descriptorService().layout(ctx.descriptorService().registerLayout(rd));
+                const auto registered = ctx.descriptorService().registerLayout(rd);
+                if (!registered)
+                {
+                    return lux::cxx::unexpected(registered.error());
+                }
+                const VkDescriptorSetLayout hzb_read = ctx.descriptorService().layout(*registered);
                 const std::array sl{cull_set_layout_, hzb_read};
                 auto pl_exp = ctx.pipelineLayoutService().getOrCreate(
                     PipelineLayoutDesc{.set_layouts = sl, .push_constants = pcs, .debug_name = debug_name.c_str()}
@@ -501,7 +508,7 @@ namespace lux::render
     //  Descriptor set creation
     // =========================================================================
 
-    void GpuDrivenMeshFeatureBase::createCullLayout()
+    Expected<void> GpuDrivenMeshFeatureBase::createCullLayout()
     {
         // §2.1: Use DescriptorService for layout caching + lifetime management.
         // DescriptorService::registerLayout() deduplicates by bindings content,
@@ -527,7 +534,12 @@ namespace lux::render
             .bindings = bindings,
             .debug_name = std::string(name()) + "_CullLayout",
         });
-        cull_set_layout_ = ds.layout(layout_id);
+        if (!layout_id)
+        {
+            return lux::cxx::unexpected(layout_id.error());
+        }
+        cull_set_layout_ = ds.layout(*layout_id);
+        return {};
     }
 
     // =========================================================================

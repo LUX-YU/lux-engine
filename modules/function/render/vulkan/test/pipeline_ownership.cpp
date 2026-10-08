@@ -21,12 +21,26 @@ namespace
     std::map<VkPipeline, PipelineOrigin> pipelines;
     std::map<VkRenderPass, VkDevice> passes;
     std::uintptr_t next_handle{100};
-    bool reject_compute{}, reject_graphics{}, reject_pass{};
+    bool reject_compute{}, reject_graphics{}, reject_pass{}, reject_layout{};
     unsigned computes_created{}, graphics_created{}, passes_created{};
 
     template <class Handle> Handle nextHandle()
     {
         return reinterpret_cast<Handle>(++next_handle);
+    }
+
+    VkResult createDescriptorLayout(
+        VkDevice device,
+        const VkDescriptorSetLayoutCreateInfo* info,
+        const VkAllocationCallbacks* callbacks,
+        VkDescriptorSetLayout* out
+    )
+    {
+        if (reject_layout)
+        {
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        return vkCreateDescriptorSetLayout(device, info, callbacks, out);
     }
 
     VkResult createCompute(
@@ -110,6 +124,7 @@ namespace
 // Real cache/key/telemetry algorithms, with deterministic native create/destroy endpoints.
 // Actual pipeline rendering is covered by the separate framework GPU regression.
 // clang-format off
+#define vkCreateDescriptorSetLayout createDescriptorLayout
 #include "../src/gpu/memory/VmaTypes.cpp"
 #define vkCreateComputePipelines createCompute
 #define vkCreateGraphicsPipelines createGraphics
@@ -117,7 +132,9 @@ namespace
 #define vkCreateRenderPass createPass
 #define vkDestroyRenderPass destroyPass
 #include "../src/gpu/VulkanContext.cpp"
+#include "../src/gpu/descriptor/DescriptorService.cpp"
 #include "../src/gpu/pipeline/PipelineManager.cpp"
+#undef vkCreateDescriptorSetLayout
 #undef vkDestroyRenderPass
 #undef vkCreateRenderPass
 #undef vkDestroyPipeline
@@ -133,7 +150,7 @@ namespace
         auto shared_owner = GeneralDescriptorSetLayout::create(device);
         assert(shared_owner);
         auto& shared = **shared_owner;
-        DescriptorService descriptors(device.logicalDevice(), VK_NULL_HANDLE);
+        DescriptorService descriptors(device.logicalDevice());
         const auto maximum_sets = device.physicalDevice().properties().properties.limits.maxBoundDescriptorSets;
         PipelineLayoutService layouts(device.logicalDevice(), maximum_sets);
         PipelineManager manager(device, false);
@@ -143,6 +160,36 @@ namespace
         lux::rdesc::ShaderInfo info;
         info.entry_points.push_back({"main", lux::rdesc::EShaderType::COMPUTE});
         info.push_constants.push_back({0, 4});
+        // Actual reflected registration must stop before creating a pipeline or publishing its record.
+        auto private_info = info;
+        const lux::rdesc::EDescriptorBindingInfo private_binding{
+            .set = 0,
+            .binding = 3,
+            .type = lux::rdesc::EDescriptorType::STORAGE_BUFFER,
+            .name = "private_admission_buffer"
+        };
+        private_info.sets.push_back({0, {private_binding}});
+        {
+            PipelineManager candidate(device, false);
+            candidate.setReflectedLayoutEnv(shared, descriptors, layouts);
+            reject_layout = true;
+            const auto failed_layout = candidate.registerComputePipelineReflected(
+                shader,
+                private_info,
+                "layout rejected"
+            );
+            reject_layout = false;
+            assert(!failed_layout && isError<err::device::VulkanCallFailed>(failed_layout.error()));
+            assert(failed_layout.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+            assert(pipelines.empty() && candidate.computeReflection({0}) == nullptr);
+            assert(!descriptors.layout(0));
+            const auto retry = candidate.registerComputePipelineReflected(shader, private_info, "layout retry");
+            assert(retry && retry->index == 0 && candidate.computeReflection(*retry));
+            assert(candidate.computeSetLayout(*retry, 0) == descriptors.layout(0));
+            assert(pipelines.size() == 1);
+        }
+        assert(pipelines.empty());
+
         reject_compute = true;
         if (reflected_failure)
         {

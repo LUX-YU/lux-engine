@@ -47,7 +47,7 @@ namespace lux::render
         // Domain resources are installed by their assembly after this infrastructure is complete.
 
         vk_device_ = res_ctx.deviceContext().logicalDevice();
-        descriptor_service_ = std::make_unique<DescriptorService>(vk_device_, res_ctx.descriptorPool());
+        descriptor_service_ = std::make_unique<DescriptorService>(vk_device_);
         pipeline_layout_service_ = std::make_unique<PipelineLayoutService>(
             vk_device_,
             res_ctx.deviceContext().physicalDevice().properties().properties.limits.maxBoundDescriptorSets

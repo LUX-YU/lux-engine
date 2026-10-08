@@ -55,7 +55,12 @@ namespace lux::render
             DescriptorLayoutDesc rd{};
             rd.bindings = std::span<const VkDescriptorSetLayoutBinding>(rb.data(), rb.size());
             rd.debug_name = "HzbReadSet";
-            read_layout_id_ = ctx.descriptorService().registerLayout(rd);
+            const auto registered = ctx.descriptorService().registerLayout(rd);
+            if (!registered)
+            {
+                return lux::cxx::unexpected(registered.error());
+            }
+            read_layout_id_ = *registered;
             read_layout_ = ctx.descriptorService().layout(read_layout_id_);
         }
 

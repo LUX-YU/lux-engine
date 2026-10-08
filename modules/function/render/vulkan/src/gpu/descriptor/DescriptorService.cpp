@@ -1,8 +1,7 @@
-#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
 #include <lux/engine/render/gpu/utils/vk_convert.hpp> // toVk(SamplerDesc)
 
-#include <cassert>
+#include <limits>
 
 namespace lux::render
 {
@@ -65,10 +64,7 @@ namespace lux::render
         }
     } // namespace
 
-    DescriptorService::DescriptorService(VkDevice device, VkDescriptorPool descriptor_pool)
-        : device_(device), descriptor_pool_(descriptor_pool)
-    {
-    }
+    DescriptorService::DescriptorService(VkDevice device) noexcept : device_(device) {}
 
     // Shared sampler cache.
     //
@@ -113,13 +109,22 @@ namespace lux::render
         return sampler;
     }
 
-    DescriptorLayoutId DescriptorService::registerLayout(const DescriptorLayoutDesc& desc)
+    Expected<DescriptorLayoutId> DescriptorService::registerLayout(const DescriptorLayoutDesc& desc) noexcept
     {
+        const bool is_invalid_device = device_ == VK_NULL_HANDLE;
+        const bool has_invalid_flags = !desc.binding_flags.empty() && desc.binding_flags.size() != desc.bindings.size();
+        const bool exceeds_binding_count = desc.bindings.size() > std::numeric_limits<uint32_t>::max();
+        const bool is_invalid_descriptor = is_invalid_device || has_invalid_flags || exceeds_binding_count;
+        if (is_invalid_descriptor)
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
         for (size_t i = 0; i < layouts_.size(); ++i)
         {
             const auto& e = layouts_[i];
-            if (e.flags == desc.flags && equalBindings(e.bindings, desc.bindings) &&
-                equalBindingFlags(e.binding_flags, desc.binding_flags))
+            const bool has_same_shape = e.flags == desc.flags && equalBindings(e.bindings, desc.bindings) &&
+                                        equalBindingFlags(e.binding_flags, desc.binding_flags);
+            if (has_same_shape)
             {
                 return static_cast<uint32_t>(i);
             }
@@ -149,7 +154,7 @@ namespace lux::render
         auto candidate = DescriptorSetLayoutOwner::create(device_, ci);
         if (!candidate)
         {
-            renderFatal("DescriptorService::registerLayout failed");
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(candidate.error()));
         }
         entry.layout = std::move(*candidate);
 
@@ -169,34 +174,6 @@ namespace lux::render
             return VK_NULL_HANDLE;
         }
         return layouts_[idx].layout.get();
-    }
-
-    VkDescriptorSet DescriptorService::allocate(DescriptorLayoutId layout_id, uint32_t variable_count) const
-    {
-        const auto vk_layout = layout(layout_id);
-        assert(vk_layout != VK_NULL_HANDLE && "DescriptorService::allocate invalid layout id");
-
-        VkDescriptorSetAllocateInfo alloc{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-        alloc.descriptorPool = descriptor_pool_;
-        alloc.descriptorSetCount = 1;
-        alloc.pSetLayouts = &vk_layout;
-
-        VkDescriptorSetVariableDescriptorCountAllocateInfo var_info{
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO
-        };
-        if (variable_count > 0)
-        {
-            var_info.descriptorSetCount = 1;
-            var_info.pDescriptorCounts = &variable_count;
-            alloc.pNext = &var_info;
-        }
-
-        VkDescriptorSet set{VK_NULL_HANDLE};
-        if (vkAllocateDescriptorSets(device_, &alloc, &set) != VK_SUCCESS)
-        {
-            renderFatal("DescriptorService::allocate failed");
-        }
-        return set;
     }
 
 } // namespace lux::render

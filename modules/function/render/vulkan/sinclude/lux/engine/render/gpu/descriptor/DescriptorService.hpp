@@ -56,16 +56,14 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC DescriptorService
     {
     public:
-        DescriptorService(VkDevice device, VkDescriptorPool descriptor_pool);
+        explicit DescriptorService(VkDevice device) noexcept;
         ~DescriptorService() noexcept = default;
 
         DescriptorService(const DescriptorService&) = delete;
         DescriptorService& operator=(const DescriptorService&) = delete;
 
-        [[nodiscard]] DescriptorLayoutId registerLayout(const DescriptorLayoutDesc& desc);
+        [[nodiscard]] Expected<DescriptorLayoutId> registerLayout(const DescriptorLayoutDesc& desc) noexcept;
         [[nodiscard]] VkDescriptorSetLayout layout(DescriptorLayoutId id) const noexcept;
-
-        [[nodiscard]] VkDescriptorSet allocate(DescriptorLayoutId layout_id, uint32_t variable_count = 0) const;
 
         /// 按描述取共享采样器 —— 同描述返回同句柄,生命周期随本服务
         /// (设备关停时统一销毁)。取代各特性 init() 里手写的
@@ -83,7 +81,6 @@ namespace lux::render
         };
 
         VkDevice device_{VK_NULL_HANDLE};
-        VkDescriptorPool descriptor_pool_{VK_NULL_HANDLE};
         /// 采样器缓存。N ≤ 个位数,线性扫描 —— 不为四个条目上哈希。
         std::vector<std::pair<SamplerDesc, SamplerOwner>> samplers_{};
         // Layouts may refer to immutable samplers. Destroy layouts before the sampler cache.

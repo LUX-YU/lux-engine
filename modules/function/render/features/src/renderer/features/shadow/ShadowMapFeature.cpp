@@ -382,9 +382,14 @@ namespace lux::render
         // must therefore expose binding 2 to both stages.
         bindings[2].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
 
-        shadow_ds_layout_id_ =
+        const auto registered =
             ctx.descriptorService().registerLayout({.bindings = bindings, .flags = 0, .debug_name = "ShadowFeatureSet"}
             );
+        if (!registered)
+        {
+            return lux::cxx::unexpected(registered.error());
+        }
+        shadow_ds_layout_id_ = *registered;
 
         // (Plan A): ShadowResources is per-scene now — lazily emplaced into this
         // scene's registry (only scenes with a shadow feature pay the atlas cost).

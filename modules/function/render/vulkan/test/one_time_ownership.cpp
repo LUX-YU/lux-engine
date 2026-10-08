@@ -416,6 +416,7 @@ namespace
 #include "../src/resources/descriptor/BindlessCombinedSet.cpp"
 #include "../src/gpu/memory/GPUBufferVma.cpp"
 #include "../src/resources/TextureResources.cpp"
+#include "../src/resources/material/MaterialResources.cpp"
 #include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
 #include "../src/gpu/lifecycle/DeferredDestroyQueue.cpp"
 #undef vkWaitForFences
@@ -566,6 +567,158 @@ int main(int argc, char** argv)
     info.descriptor_set_layout = layouts.getLayout(TGetBindingSet<ETextureSetBindings>::value);
     info.layout_max_capacity = layouts.bindless2DCount();
     info.initial_capacity = 8;
+    {
+        static_assert(!std::is_default_constructible_v<MaterialResources>);
+        static_assert(!std::is_copy_constructible_v<MaterialResources>);
+        static_assert(!std::is_move_constructible_v<MaterialResources>);
+        TextureResources::CreateInfo texture_config{};
+        texture_config.combined_ci = info;
+        texture_config.cube_max_capacity = layouts.bindlessCubeCount();
+        auto textures = TextureResources::create(texture_config);
+        assert(textures);
+        const auto texture_buffer_count = buffers.size();
+        const auto texture_set_count = sets.size();
+        auto catalog = builtinTextureSamplingRepresentationCatalog();
+        MaterialResources::CreateInfo config{};
+        config.ssbo_config = SSBOInitConfig{
+            .device_context = &device,
+            .deferred_queue = &retirement,
+            .initial_dense_capacity = 16,
+            .slices = 2
+        };
+        VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 100};
+        VkDescriptorPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+        pool_info.maxSets = 2;
+        pool_info.poolSizeCount = 1;
+        pool_info.pPoolSizes = &size;
+        auto pool = DescriptorPoolOwner::create(device.logicalDevice(), pool_info);
+        assert(pool);
+        config.descriptor_pool = pool->get();
+        config.set_layout = layouts.getLayout(EDescriptorSetSlot::MATERIAL);
+        config.texture_sampling_catalog = &catalog;
+        config.textures = textures->get();
+        for (auto boundary : {EFailure::BUFFER, EFailure::MAPPED, EFailure::SET})
+        {
+            const unsigned attempts = boundary == EFailure::SET ? 1 : 5;
+            for (unsigned index = 0; index < attempts; ++index)
+            {
+                failure = boundary;
+                skip_rejections = index;
+                const auto old_rejections = rejections;
+                ResourceRegistry registry;
+                auto candidate = MaterialResources::create(config);
+                assert(!candidate && registry.find<MaterialResources>() == nullptr);
+                assert(rejections == old_rejections + 1);
+                const auto expected =
+                    boundary == EFailure::MAPPED
+                        ? VK_ERROR_MEMORY_MAP_FAILED
+                        : (boundary == EFailure::SET ? VK_ERROR_OUT_OF_POOL_MEMORY : VK_ERROR_OUT_OF_DEVICE_MEMORY);
+                assert(isError<err::device::VulkanCallFailed>(candidate.error()));
+                assert(candidate.error().args[0] == encodeVkResult(expected));
+                const auto retired = boundary == EFailure::SET ? 5 : index + unsigned(boundary == EFailure::MAPPED);
+                assert(retirement.pendingCount() == retired);
+                failure = EFailure::NONE;
+                retirement.flushAll();
+                assert(buffers.size() == texture_buffer_count && sets.size() == texture_set_count);
+            }
+        }
+        for (unsigned index = 0; index < 7; ++index)
+        {
+            auto bad = config;
+            TextureSamplingRepresentationCatalog empty_catalog;
+            switch (index)
+            {
+            case 0:
+                bad.texture_sampling_catalog = nullptr;
+                break;
+            case 1:
+                bad.textures = nullptr;
+                break;
+            case 2:
+                bad.descriptor_pool = VK_NULL_HANDLE;
+                break;
+            case 3:
+                bad.set_layout = VK_NULL_HANDLE;
+                break;
+            case 4:
+                bad.ssbo_config.slices = 0;
+                break;
+            case 5:
+                bad.ssbo_config.slices = kMaxFramesInFlight + 1;
+                break;
+            case 6:
+                bad.texture_sampling_catalog = &empty_catalog;
+                break;
+            }
+            auto rejected = MaterialResources::create(bad);
+            assert(!rejected && isError<err::memory::InvalidMaterialConfiguration>(rejected.error()));
+            assert(buffers.size() == texture_buffer_count && retirement.pendingCount() == 0);
+        }
+        for (unsigned index = 0; index < 3; ++index)
+        {
+            auto bad = config;
+            switch (index)
+            {
+            case 0:
+                bad.ssbo_config.device_context = nullptr;
+                break;
+            case 1:
+                bad.ssbo_config.deferred_queue = nullptr;
+                break;
+            case 2:
+                bad.ssbo_config.initial_dense_capacity = 0;
+                break;
+            }
+            auto rejected = MaterialResources::create(bad);
+            assert(!rejected && isError<err::memory::InvalidBufferConfiguration>(rejected.error()));
+            assert(buffers.size() == texture_buffer_count && retirement.pendingCount() == 0);
+        }
+        {
+            ResourceRegistry registry;
+            auto candidate = MaterialResources::create(config);
+            assert(candidate && registry.find<MaterialResources>() == nullptr);
+            auto* original = candidate->get();
+            auto published = registry.insert(std::move(*candidate));
+            assert(published.get() == original && registry.find<MaterialResources>() == original);
+            assert(original->descriptorSet(0) && original->descriptorSet(1));
+            assert(original->descriptorSet(0) != original->descriptorSet(1));
+            assert(original->graphMaterialAddress(0) && original->graphMaterialCapacity() >= 16);
+            GraphMaterialData data{};
+            data.param_count = 1;
+            data.params[0][0] = 17;
+            auto handle = original->submitGraph(data);
+            assert(handle && original->slotRecord(*handle));
+            auto bad = data;
+            bad.tex_mask = 1;
+            assert(!original->submitGraph(bad));
+            assert(original->retainForInstance(*handle));
+            original->remove(*handle);
+            assert(original->slotRecord(*handle) && !original->retainForInstance(*handle));
+            original->releaseFromInstance(*handle);
+            assert(!original->slotRecord(*handle));
+            auto reused = original->submitGraph(data);
+            assert(reused && reused->index == handle->index && reused->gen != handle->gen);
+            data.params[0][0] = 29;
+            assert(original->modifyGraph(*reused, data).ok());
+            original->remove(*reused);
+            assert(!original->slotRecord(*reused));
+        }
+        assert(retirement.pendingCount() == 5 && buffers.size() == texture_buffer_count + 5);
+        retirement.flushAll();
+        pool->reset();
+        assert(buffers.size() == texture_buffer_count && sets.size() == texture_set_count);
+        textures->reset();
+        retirement.flushAll();
+        assert(buffers.empty() && images.empty() && views.empty() && samplers.empty());
+        assert(pools.size() == baseline_pools && sets.size() == baseline_sets);
+        std::puts("Material complete construction: five allocation/mapping failures, descriptor failure, exact errors, "
+                  "retry, registry publication and retained material generations PASS");
+        if (argc > 1 && std::string_view(argv[1]) == "--material")
+        {
+            return 0;
+        }
+    }
     {
         static_assert(!std::is_default_constructible_v<TextureResources>);
         static_assert(!std::is_copy_constructible_v<TextureResources>);

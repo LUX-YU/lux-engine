@@ -256,7 +256,7 @@ namespace lux::render
     static_assert(std::is_trivially_copyable_v<DestroyMeshPayload>);
 
     /// 无客户端创建参数 —— 空 tag 承载特性身份。
-    /// requires=material:MaterialResources::init 需要内建 shading-model 表先在
+    /// requires=material:网格实例需要已构造的 MaterialResources 和 shading-model 表
     /// (StandardMaterialFeature attach 时 ensure)——语义必需,但代码里没有
     /// fail-fast 兜底,此前只靠 attach 目录的位置注释撑着。
     struct LUX_TYPE_INFO(both) LUX_COMM_CONFIG(

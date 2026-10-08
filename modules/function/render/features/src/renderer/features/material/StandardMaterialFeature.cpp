@@ -21,9 +21,8 @@ namespace lux::render
 
     lux::render::Expected<void> StandardMaterialFeature::initAndAttachTo(RenderScene& sc)
     {
-        // Own the global material stack (registry-first; MaterialResources::init
-        // Idempotent + shared across scenes (lives
-        // in the global registry). Adding this feature IS the opt-in to the stack —
+        // Construct the complete material stack before publishing it in the global registry.
+        // Idempotent and shared across scenes. Adding this feature IS the opt-in to the stack —
         // moved out of RenderServer::init so a 2D / unlit / headless server pays
         // nothing.
         if (auto ready = ensureGlobalMaterialResources(renderContext()); !ready)

@@ -350,7 +350,12 @@ namespace lux::render
             {
                 return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(result));
             }
-            return Allocation{TFifOwnedAllocated<VkBuffer>{queue, buffer, allocation}, mapped};
+            Allocation candidate{TFifOwnedAllocated<VkBuffer>{queue, buffer, allocation}, mapped};
+            if (cpu_writable && !mapped)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(VK_ERROR_MEMORY_MAP_FAILED));
+            }
+            return candidate;
         }
     };
 

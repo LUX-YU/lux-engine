@@ -197,6 +197,15 @@ namespace lux::render::err
     // ── 显存与容量 ───────────────────────────────────────────────────────
     namespace memory
     {
+        struct InvalidMaterialConfiguration
+        {
+            static constexpr const char* name = "memory.invalid_material_configuration";
+            static constexpr const char* message =
+                "Material storage requires texture bindings, descriptor storage and valid frames";
+            static constexpr ERecovery recovery = ERecovery::BUG;
+            static constexpr ErrorArgs args{};
+        };
+
         struct InvalidTextureConfiguration
         {
             static constexpr const char* name = "memory.invalid_texture_configuration";
@@ -1388,6 +1397,7 @@ namespace lux::render::err
     X(::lux::render::err::shader::ReflectionOutOfSyncWithSpirv)                                                        \
     X(::lux::render::err::memory::GpuAllocationFailed)                                                                 \
     X(::lux::render::err::memory::OutOfMemory)                                                                         \
+    X(::lux::render::err::memory::InvalidMaterialConfiguration)                                                        \
     X(::lux::render::err::memory::InvalidTextureConfiguration)                                                         \
     X(::lux::render::err::memory::InvalidBindlessConfiguration)                                                        \
     X(::lux::render::err::memory::InvalidMeshConfiguration)                                                            \

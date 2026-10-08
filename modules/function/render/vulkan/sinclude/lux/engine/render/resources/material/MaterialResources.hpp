@@ -1,28 +1,27 @@
 #pragma once
+#include <lux/engine/function/render/client/core/Errors.hpp>
+#include <lux/engine/function/render/client/core/FrameStamp.hpp>
+#include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
-#include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
-#include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
-#include <lux/engine/render/core/FrameServices.hpp>
+#include <lux/engine/function/render/features/resources/material/GraphMaterialData.hpp>
+#include <lux/engine/function/visibility.h>
 #include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
-#include <lux/engine/render/resources/material/MaterialFamily.hpp>
+#include <lux/engine/render/core/FrameServices.hpp>
+#include <lux/engine/render/core/LayoutTypes.hpp>
+#include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
+#include <lux/engine/render/gpu/lifecycle/DescriptorRevision.hpp>
+#include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
 #include <lux/engine/render/gpu/pipeline/ShaderPermutation.hpp>
+#include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
+#include <lux/engine/render/gpu/utils/SlotMetaVector.hpp>
+#include <lux/engine/render/resources/material/MaterialFamily.hpp>
 #include <lux/engine/render/resources/material/MaterialGpuTypes.hpp>
 #include <lux/engine/render/resources/material/TextureSamplingRepresentationCatalog.hpp>
-#include <lux/engine/function/render/features/resources/material/GraphMaterialData.hpp>
 #include <lux/engine/render/resources/material/VariantBucketManager.hpp>
-#include <lux/engine/function/render/client/core/ResourceHandle.hpp>
-#include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
-#include <lux/engine/render/core/LayoutTypes.hpp>
-#include <lux/engine/function/render/client/core/Errors.hpp>
-#include <lux/engine/render/gpu/utils/SlotMetaVector.hpp>
-#include <lux/engine/function/render/client/core/FrameStamp.hpp>
-#include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
-#include <lux/engine/function/visibility.h>
 
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <vector>
 #include <span>
 
@@ -30,7 +29,6 @@ namespace lux::render
 {
     class TextureResources;
     class LUX_FUNCTION_PUBLIC MaterialResources final
-        : public TGPUResourceBase<MaterialResources, EGPUResourceType::MATERIAL>
     {
     public:
         /// Internal record: maps handle → family/shading-model for dispatch.
@@ -52,19 +50,23 @@ namespace lux::render
         // GpuDrivenMeshFeatureBase keeps compiling.
         using VariantBucketDesc = lux::render::VariantBucketDesc;
 
-        struct InitInfo
+        struct CreateInfo
         {
             SSBOInitConfig ssbo_config;
-            VkDescriptorPool descriptor_pool; // Descriptor pool
-            VkDescriptorSetLayout set_layout; // Descriptor set layout
+            VkDescriptorPool descriptor_pool{}; // Borrowed pool owns all allocated sets.
+            VkDescriptorSetLayout set_layout{};
             const TextureSamplingRepresentationCatalog* texture_sampling_catalog{};
             const TextureResources* textures{};
         };
 
-        MaterialResources();
-        ~MaterialResources();
+        using CreateResult = Expected<std::unique_ptr<MaterialResources>>;
 
-        bool init(const InitInfo& info);
+        [[nodiscard]] static CreateResult create(const CreateInfo& info) noexcept;
+        ~MaterialResources() noexcept;
+        MaterialResources(const MaterialResources&) = delete;
+        MaterialResources& operator=(const MaterialResources&) = delete;
+        MaterialResources(MaterialResources&&) = delete;
+        MaterialResources& operator=(MaterialResources&&) = delete;
 
         /**
          * @brief Rewrite all material SSBO descriptors with tight ranges (count-based).
@@ -74,11 +76,13 @@ namespace lux::render
             refreshAllDescriptors(slice);
         }
 
-        /// Refresh descriptors for ALL per-frame sets (called after init or buffer resize).
+        /// Refresh descriptors for ALL per-frame sets after buffer resize.
         void refreshDescriptorsAllSets()
         {
-            for (uint32_t i = 0; i < frames_in_flight_; ++i)
+            for (uint32_t i = 0; i < descriptor_sets_.size(); ++i)
+            {
                 refreshAllDescriptorsOnSet(i, i);
+            }
         }
 
         // (submit(rdesc::Material) — the builtin closure-material upload — retired in
@@ -124,12 +128,12 @@ namespace lux::render
         /// wanted-mip pass, so no duplicate material-to-texture index is needed.
         [[nodiscard]] VkDeviceAddress graphMaterialAddress(uint32_t frame_slot) const noexcept
         {
-            return graph_ssbo_->deviceAddress(frame_slot);
+            return graph_ssbo_.deviceAddress(frame_slot);
         }
 
         [[nodiscard]] uint32_t graphMaterialCapacity() const noexcept
         {
-            return graph_ssbo_->capacity();
+            return graph_ssbo_.capacity();
         }
 
         [[nodiscard]] VariantBucketDesc variantBucket(uint32_t bucket_id) const noexcept
@@ -140,13 +144,13 @@ namespace lux::render
         // Get descriptor set for current frame
         VkDescriptorSet descriptorSet() const noexcept
         {
-            return descriptor_sets_.empty() ? VK_NULL_HANDLE : descriptor_sets_[current_frame_];
+            return descriptor_sets_[current_frame_];
         }
 
         /// Get descriptor set for a specific FIF slot.
         VkDescriptorSet descriptorSet(uint32_t frame_slot) const noexcept
         {
-            return descriptor_sets_.empty() ? VK_NULL_HANDLE : descriptor_sets_[frame_slot % descriptor_sets_.size()];
+            return descriptor_sets_[frame_slot % descriptor_sets_.size()];
         }
 
         /// DSResolverFn-compatible static resolver for bindResourceDS().
@@ -156,34 +160,9 @@ namespace lux::render
             return static_cast<const MaterialResources*>(resource)->descriptorSet(frame_slot);
         }
 
-        // ========== IGPUResource Interface Implementation ==========
-
-        void shutdown()
-        {
-            if (!initialized_)
-                return;
-            initialized_ = false;
-            //(此前这里逐个 reset 五个族 SSBO,理由同 LightResources —— "赶在 VMA
-            // allocator 之前"的约束已被 FifOwned/DeferredDestroyQueue 消灭,
-            // 详见该处说明。)
-            descriptor_sets_.clear();
-            bucket_mgr_.clear();
-            slot_records_.clear();
-            handle_generations_.clear();
-            handle_alive_.clear();
-            free_handle_indices_.clear();
-            instance_refcounts_.clear();
-            destroy_requested_.clear();
-        }
-
-        bool isInitialized() const
-        {
-            return initialized_;
-        }
-
         VkDescriptorSet getDescriptorSet() const
         {
-            return descriptor_sets_.empty() ? VK_NULL_HANDLE : descriptor_sets_[current_frame_];
+            return descriptor_sets_[current_frame_];
         }
 
         void uploadData(VkCommandBuffer cb, const FrameStamp& stamp);
@@ -196,11 +175,11 @@ namespace lux::render
                 if (auto b = ssbo.uploadDataSliceDeferred(current_frame_))
                     scheduler.submitExtraPostBarrier(*b);
             };
-            submit(*unlit_ssbo_);
-            submit(*legacy_lit_ssbo_);
-            submit(*pbr_ssbo_);
-            submit(*stylized_ssbo_);
-            submit(*graph_ssbo_);
+            submit(unlit_ssbo_);
+            submit(legacy_lit_ssbo_);
+            submit(pbr_ssbo_);
+            submit(stylized_ssbo_);
+            submit(graph_ssbo_);
         }
 
         void onFrameBeginMaintenance(const FrameStamp& stamp)
@@ -211,6 +190,9 @@ namespace lux::render
         }
 
     private:
+        struct Backing;
+        MaterialResources(const TextureResources& textures, Backing&& backing) noexcept;
+
         [[nodiscard]] MaterialHandle allocateGlobalHandle();
         void releaseGlobalHandle(MaterialHandle h) noexcept;
         void removeNow(MaterialHandle slot);
@@ -245,11 +227,11 @@ namespace lux::render
         void refreshAllDescriptorsOnSet(uint32_t set_index, uint32_t slice);
 
         // --- 5 family SSBOs (binding = ELightingTechnique ordinal) ---
-        std::optional<SlicedSSBO<UnlitFamilyGPU>> unlit_ssbo_;
-        std::optional<SlicedSSBO<LegacyLitFamilyGPU>> legacy_lit_ssbo_;
-        std::optional<SlicedSSBO<PbrFamilyGPU>> pbr_ssbo_;
-        std::optional<SlicedSSBO<StylizedFamilyGPU>> stylized_ssbo_;
-        std::optional<SlicedSSBO<GraphFamilyGPU>> graph_ssbo_;
+        SlicedSSBO<UnlitFamilyGPU> unlit_ssbo_;
+        SlicedSSBO<LegacyLitFamilyGPU> legacy_lit_ssbo_;
+        SlicedSSBO<PbrFamilyGPU> pbr_ssbo_;
+        SlicedSSBO<StylizedFamilyGPU> stylized_ssbo_;
+        SlicedSSBO<GraphFamilyGPU> graph_ssbo_;
 
         // Per-frame descriptor sets (one per frame-in-flight)
         std::vector<VkDescriptorSet> descriptor_sets_;
@@ -286,7 +268,8 @@ namespace lux::render
         std::vector<uint32_t> instance_refcounts_;
         std::vector<uint8_t> destroy_requested_;
         std::uint32_t texture_representation_index_{0u};
-        const class TextureResources* textures_{};
+        const TextureResources& textures_;
+        DescriptorRevision ds_revision_;
     };
 
     class RenderContext;

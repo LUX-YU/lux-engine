@@ -61,17 +61,12 @@ namespace lux::render
             auto* rctx = lookupRenderContext(user_state);
             if (!rctx)
                 return RMaterialHandle{};
-            // The lazy material stack is normally built at StandardMaterial attach, but
-            // never rely on dispatch order — self-heal here. Fail closed if it never
-            // initialized (the uninitialized object survives in the registry → guard via
-            // isInitialized()).
+            // Successful admission publishes a complete stack before returning.
             if (!ensureGlobalMaterialResources(*rctx))
                 return RMaterialHandle{};
-            auto* mat_res = rctx->globalRegistry().find<MaterialResources>();
-            if (!mat_res || !mat_res->isInitialized())
-                return RMaterialHandle{};
+            auto& mat_res = rctx->globalRegistry().must<MaterialResources>();
 
-            auto result = mat_res->submitGraph(
+            auto result = mat_res.submitGraph(
                 data,
                 gbuffer_shader,
                 forward_shader,
@@ -98,8 +93,8 @@ namespace lux::render
                 return;
             if (!ensureGlobalMaterialResources(*rctx))
                 return;
-            if (auto* mat = rctx->globalRegistry().find<MaterialResources>(); mat && mat->isInitialized())
-                mat->modifyGraph(MaterialHandle{handle.index, handle.gen}, data);
+            auto& mat = rctx->globalRegistry().must<MaterialResources>();
+            mat.modifyGraph(MaterialHandle{handle.index, handle.gen}, data);
         }
 
         void serverDestroyMaterial(void* user_state, RMaterialHandle handle)
@@ -109,10 +104,8 @@ namespace lux::render
                 return;
             if (!ensureGlobalMaterialResources(*rctx))
                 return;
-            auto* mat = rctx->globalRegistry().find<MaterialResources>();
-            if (!mat || !mat->isInitialized())
-                return;
-            mat->remove(MaterialHandle{handle.index, handle.gen});
+            auto& mat = rctx->globalRegistry().must<MaterialResources>();
+            mat.remove(MaterialHandle{handle.index, handle.gen});
             forEachSceneOnServer(user_state, [](RenderScene& scene) {
                 scene.invalidateGraph(EGraphInvalidationReason::MATERIAL_LAYOUT);
             });

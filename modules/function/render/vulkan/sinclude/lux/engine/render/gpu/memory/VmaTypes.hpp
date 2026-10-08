@@ -1,11 +1,11 @@
 #pragma once
 /**
  * @file VmaTypes.hpp
- * @brief Move-only RAII owners for VMA allocators, buffers and images.
+ * @brief Move-only RAII owners for VMA allocators, pools, buffers and images.
  *
- * These types own a single VMA allocation and automatically destroy it
- * in the destructor.  They provide map/unmap/flush helpers and an
- * explicit reset() for early release.
+ * Each owner retains its native resource and the context required to destroy it.
+ * Buffer and image owners also provide mapping and visibility helpers.
+ * reset() permits early release at the resource's existing safe point.
  *
  * Intended for all general-purpose VMA allocations.
  */
@@ -49,6 +49,42 @@ namespace lux::render
         explicit VmaAllocatorOwner(VmaAllocator allocator) noexcept : allocator_(allocator) {}
 
         VmaAllocator allocator_{};
+    };
+
+    /// Owns one custom pool. Its allocator is borrowed and must outlive it;
+    /// all allocations from the pool must have retired before it is destroyed.
+    class LUX_FUNCTION_PUBLIC VmaPoolOwner final
+    {
+    public:
+        using CreateResult = lux::cxx::expected<VmaPoolOwner, VkResult>;
+
+        [[nodiscard]] static CreateResult create(VmaAllocator allocator, const VmaPoolCreateInfo& info) noexcept;
+
+        VmaPoolOwner() noexcept = default;
+        ~VmaPoolOwner() noexcept;
+
+        VmaPoolOwner(const VmaPoolOwner&) = delete;
+        VmaPoolOwner& operator=(const VmaPoolOwner&) = delete;
+        VmaPoolOwner(VmaPoolOwner&& other) noexcept;
+        VmaPoolOwner& operator=(VmaPoolOwner&& other) noexcept;
+
+        [[nodiscard]] VmaPool get() const noexcept
+        {
+            return pool_;
+        }
+
+        explicit operator bool() const noexcept
+        {
+            return pool_ != nullptr;
+        }
+
+        void reset() noexcept;
+
+    private:
+        VmaPoolOwner(VmaAllocator allocator, VmaPool pool) noexcept : allocator_(allocator), pool_(pool) {}
+
+        VmaAllocator allocator_{};
+        VmaPool pool_{};
     };
 
     // =====================================================================

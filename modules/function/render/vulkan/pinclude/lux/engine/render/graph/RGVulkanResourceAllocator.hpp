@@ -1,6 +1,7 @@
 #pragma once
 #include <vulkan/vulkan.h>
 #include <lux/engine/render/gpu/VmaFwd.hpp>
+#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 #include <lux/engine/render/graph/PhysicalResourceAllocator.hpp>
 #include <lux/cxx/compile_time/type_info.hpp>
 #include <unordered_map>
@@ -70,6 +71,11 @@ namespace lux::render
         RGVulkanResourceAllocator(ResourceContext& context);
         ~RGVulkanResourceAllocator() override;
 
+        RGVulkanResourceAllocator(const RGVulkanResourceAllocator&) = delete;
+        RGVulkanResourceAllocator& operator=(const RGVulkanResourceAllocator&) = delete;
+        RGVulkanResourceAllocator(RGVulkanResourceAllocator&&) = delete;
+        RGVulkanResourceAllocator& operator=(RGVulkanResourceAllocator&&) = delete;
+
         Expected<RGPhysicalResourceTable> allocate(
             const RGGraphDescription& graph,
             const RGDependencyInfo& /*deps*/,
@@ -127,14 +133,14 @@ namespace lux::render
         /// VMA custom pool for transient image sub-allocation.
         /// Prevents per-image dedicated vkAllocateMemory calls by sub-allocating
         /// from large memory blocks.  Created lazily on first transient image.
-        VmaPool transient_image_pool_{VK_NULL_HANDLE};
+        VmaPoolOwner transient_image_pool_;
 
         /// 同上,但钉在 LAZILY_ALLOCATED 内存类型上 —— 只在设备真有那个类型时创建。
         ///
         /// 此前纯附件用途的 transient 图像走的是「preferredFlags 加 LAZILY,由 VMA
         /// 自行回退」的路子,并且**整支绕开了池**。后果:设备没有惰性内存时,每张图
         /// 都是一次独立的 vkAllocateMemory —— FIF × 3 张,恰是建池要避免的那件事。
-        VmaPool lazy_image_pool_{VK_NULL_HANDLE};
+        VmaPoolOwner lazy_image_pool_;
 
         /// 惰性内存类型的探测结果。三态:未探测 / 有 / 无。探测只做一次
         /// (它是设备属性,不随图变化)。

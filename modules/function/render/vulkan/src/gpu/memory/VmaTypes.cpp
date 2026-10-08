@@ -43,6 +43,47 @@ namespace lux::render
         }
     }
 
+    VmaPoolOwner::CreateResult VmaPoolOwner::create(VmaAllocator allocator, const VmaPoolCreateInfo& info) noexcept
+    {
+        VmaPool pool{};
+        const auto result = vmaCreatePool(allocator, &info, &pool);
+        if (result != VK_SUCCESS)
+        {
+            return lux::cxx::unexpected(result);
+        }
+        return VmaPoolOwner(allocator, pool);
+    }
+
+    VmaPoolOwner::~VmaPoolOwner() noexcept
+    {
+        reset();
+    }
+
+    VmaPoolOwner::VmaPoolOwner(VmaPoolOwner&& other) noexcept
+        : allocator_(std::exchange(other.allocator_, nullptr)), pool_(std::exchange(other.pool_, nullptr))
+    {
+    }
+
+    VmaPoolOwner& VmaPoolOwner::operator=(VmaPoolOwner&& other) noexcept
+    {
+        if (this != &other)
+        {
+            reset();
+            allocator_ = std::exchange(other.allocator_, nullptr);
+            pool_ = std::exchange(other.pool_, nullptr);
+        }
+        return *this;
+    }
+
+    void VmaPoolOwner::reset() noexcept
+    {
+        if (pool_)
+        {
+            vmaDestroyPool(allocator_, std::exchange(pool_, nullptr));
+            allocator_ = nullptr;
+        }
+    }
+
     // =====================================================================
     //  VmaBuffer
     // =====================================================================

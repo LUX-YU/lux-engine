@@ -365,19 +365,22 @@ namespace lux::render
                     // 惰性内存在 tiler 上不占物理页,块开小一些即可。
                     pool_ci.blockSize = 64u * 1024u * 1024u;
                     pool_ci.maxBlockCount = 0;
-                    if (vmaCreatePool(context_.vmaAllocator(), &pool_ci, &lazy_image_pool_) != VK_SUCCESS)
-                        lazy_image_pool_ = VK_NULL_HANDLE;
+                    auto pool = VmaPoolOwner::create(context_.vmaAllocator(), pool_ci);
+                    if (pool)
+                    {
+                        lazy_image_pool_ = std::move(*pool);
+                    }
                 }
             }
 
-            const bool use_lazy_pool = lazy_attachment && lazy_image_pool_ != VK_NULL_HANDLE;
+            const bool use_lazy_pool = lazy_attachment && static_cast<bool>(lazy_image_pool_);
             if (use_lazy_pool)
             {
-                alloc_info.pool = lazy_image_pool_;
+                alloc_info.pool = lazy_image_pool_.get();
             }
             else
             {
-                if (transient_image_pool_ == VK_NULL_HANDLE)
+                if (!transient_image_pool_)
                 {
                     uint32_t mem_type_index = 0;
                     VmaAllocationCreateInfo probe{};
@@ -395,11 +398,15 @@ namespace lux::render
                         pool_ci.flags = VMA_POOL_CREATE_IGNORE_BUFFER_IMAGE_GRANULARITY_BIT;
                         pool_ci.blockSize = 256u * 1024u * 1024u; // 256 MB blocks
                         pool_ci.maxBlockCount = 0;                // unlimited
-                        vmaCreatePool(context_.vmaAllocator(), &pool_ci, &transient_image_pool_);
+                        auto pool = VmaPoolOwner::create(context_.vmaAllocator(), pool_ci);
+                        if (pool)
+                        {
+                            transient_image_pool_ = std::move(*pool);
+                        }
                     }
                 }
-                if (transient_image_pool_ != VK_NULL_HANDLE)
-                    alloc_info.pool = transient_image_pool_;
+                if (transient_image_pool_)
+                    alloc_info.pool = transient_image_pool_.get();
             }
         }
 
@@ -606,16 +613,8 @@ namespace lux::render
         }
         resource_pool_.clear();
 
-        if (transient_image_pool_ != VK_NULL_HANDLE)
-        {
-            vmaDestroyPool(context_.vmaAllocator(), transient_image_pool_);
-            transient_image_pool_ = VK_NULL_HANDLE;
-        }
-        if (lazy_image_pool_ != VK_NULL_HANDLE)
-        {
-            vmaDestroyPool(context_.vmaAllocator(), lazy_image_pool_);
-            lazy_image_pool_ = VK_NULL_HANDLE;
-        }
+        transient_image_pool_.reset();
+        lazy_image_pool_.reset();
         // 探测结果不重置:它是设备属性,与本分配器持有的资源无关。
     }
 

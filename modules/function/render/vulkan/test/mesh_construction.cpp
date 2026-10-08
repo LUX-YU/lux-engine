@@ -2,6 +2,8 @@
 #include <vk_mem_alloc.h>
 
 #include <lux/engine/render/gpu/VulkanContext.hpp>
+#include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
+#include <lux/engine/render/resources/vertex/StaticVertexPoolSet.hpp>
 
 #include <cassert>
 #include <cstdio>
@@ -18,6 +20,35 @@ namespace
     };
 
     std::map<VkBuffer, BufferOrigin> buffers;
+
+    struct DescriptorWrite
+    {
+        VkDescriptorSet set;
+        std::uint32_t slot;
+        VkBuffer buffer;
+    };
+
+    std::vector<DescriptorWrite> descriptor_writes;
+
+    void updateDescriptors(
+        VkDevice device,
+        std::uint32_t count,
+        const VkWriteDescriptorSet* writes,
+        std::uint32_t copy_count,
+        const VkCopyDescriptorSet* copies
+    )
+    {
+        for (std::uint32_t index = 0; index < count; ++index)
+        {
+            assert(writes[index].descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+            assert(writes[index].descriptorCount == 1);
+            descriptor_writes.push_back(
+                {writes[index].dstSet, writes[index].dstArrayElement, writes[index].pBufferInfo->buffer}
+            );
+        }
+        vkUpdateDescriptorSets(device, count, writes, copy_count, copies);
+    }
+
     unsigned buffer_attempts{}, fail_buffer{};
     unsigned virtual_attempts{}, fail_virtual{};
     std::set<VmaVirtualBlock> virtual_blocks;
@@ -87,10 +118,15 @@ namespace
 #define vmaDestroyVirtualBlock destroyVirtual
 #include "../src/gpu/memory/VmaTypes.cpp"
 #include "../src/gpu/VulkanContext.cpp"
+#include "../src/gpu/pipeline/GeneralDescriptorSetLayout.cpp"
 #include "../src/gpu/memory/ArenaAllocator.cpp"
 #include "../src/gpu/memory/GPUBufferVma.cpp"
 #include "../src/gpu/lifecycle/DeferredDestroyQueue.cpp"
 #include "../src/resources/mesh/MeshResources.cpp"
+#include "../src/resources/vertex/StaticVertexSource.cpp"
+#define vkUpdateDescriptorSets updateDescriptors
+#include "../src/resources/vertex/VertexPoolRegistry.cpp"
+#undef vkUpdateDescriptorSets
 #undef vmaDestroyVirtualBlock
 #undef vmaCreateVirtualBlock
 #undef vmaDestroyBuffer
@@ -223,6 +259,115 @@ void checkBufferConstruction(lux::render::DeviceContext& device)
     first_queue.collect(7);
     assert(buffers.empty());
     std::puts("GPU buffer construction: native failure, growth, data, slot identity, move and retirement PASS");
+}
+
+void checkStaticPools(lux::render::DeviceContext& device, lux::render::MeshResources& mesh)
+{
+    using namespace lux::render;
+    auto layouts = GeneralDescriptorSetLayout::create(device);
+    assert(layouts);
+    const VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 * kVertexPoolMaxCount};
+    VkDescriptorPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+    pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+    pool_info.maxSets = 2;
+    pool_info.poolSizeCount = 1;
+    pool_info.pPoolSizes = &pool_size;
+    auto pool = DescriptorPoolOwner::create(device.logicalDevice(), pool_info);
+    assert(pool);
+    const std::array set_layouts{
+        (*layouts)->getLayout(EDescriptorSetSlot::VERTEX_POOL),
+        (*layouts)->getLayout(EDescriptorSetSlot::VERTEX_POOL)
+    };
+    std::array<VkDescriptorSet, 2> targets{};
+    VkDescriptorSetAllocateInfo allocation{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+    allocation.descriptorPool = pool->get();
+    allocation.descriptorSetCount = 2;
+    allocation.pSetLayouts = set_layouts.data();
+    assert(vkAllocateDescriptorSets(device.logicalDevice(), &allocation, targets.data()) == VK_SUCCESS);
+    auto registry = VertexPoolRegistry::create(device, targets, 0);
+    assert(registry);
+    StaticVertexSource independent(mesh, 0, 1);
+    assert((*registry)->registerSource(independent) == 0);
+    descriptor_writes.clear();
+    const auto allocation_count = buffer_attempts;
+    const auto arena_count = virtual_attempts;
+    {
+        static_assert(!std::is_default_constructible_v<StaticVertexPoolSet>);
+        static_assert(!std::is_copy_constructible_v<StaticVertexPoolSet>);
+        static_assert(!std::is_move_constructible_v<StaticVertexPoolSet>);
+        static_assert(std::is_nothrow_constructible_v<StaticVertexPoolSet, VertexPoolRegistry&, MeshResources&>);
+        StaticVertexPoolSet pools(**registry, mesh);
+        assert(descriptor_writes.empty());
+        assert(buffer_attempts == allocation_count && virtual_attempts == arena_count);
+        assert(pools.ensureRegistered(mesh.vboSegmentCount(), 1) == ~0u);
+        assert(pools.ensureRegistered(0, kInvalidVertexLayoutId) == ~0u);
+        assert(!pools.handleForMesh({}).valid());
+        assert(descriptor_writes.empty());
+        const auto first = pools.ensureRegistered(0, 1);
+        const auto second = pools.ensureRegistered(1, 1);
+        const auto other_layout = pools.ensureRegistered(0, 2);
+        assert(first == 1 && second == 2 && other_layout == 3);
+        assert(descriptor_writes.size() == 6);
+        const std::array expected_buffers{mesh.vertexBuffer(0), mesh.vertexBuffer(1), mesh.vertexBuffer(0)};
+        for (std::size_t entry = 0; entry < 3; ++entry)
+        {
+            for (std::size_t frame = 0; frame < targets.size(); ++frame)
+            {
+                const auto& write = descriptor_writes[entry * targets.size() + frame];
+                assert(write.set == targets[frame] && write.slot == entry + 1);
+                assert(write.buffer == expected_buffers[entry]);
+            }
+        }
+        assert(pools.ensureRegistered(0, 1) == first && pools.ensureRegistered(1, 1) == second);
+        assert(descriptor_writes.size() == 6);
+
+        const std::vector<std::byte> bytes(64);
+        MeshCreateInfo info{};
+        info.layout_id = 1;
+        info.vertex_stride = 16;
+        info.vertex_buffer = bytes;
+        info.index_buffer = bytes;
+        const auto small = mesh.allocateOnly(info);
+        assert(small);
+        const auto* record = mesh.getGpuRecord(small->handle);
+        assert(record && record->vbo_segment == 0);
+        const auto handle = pools.handleForMesh(small->handle);
+        assert(handle.valid() && handle.pool_id == first && handle.vertex_count == 4);
+        assert(handle.vertex_base == record->vertex_buffer_range.offset / 16);
+        assert(descriptor_writes.size() == 6);
+        assert(mesh.destroy(small->handle));
+        assert(!pools.handleForMesh(small->handle).valid());
+
+        std::vector<std::unique_ptr<StaticVertexSource>> fillers;
+        for (std::uint32_t slot = 4; slot < kVertexPoolMaxCount; ++slot)
+        {
+            auto source = std::make_unique<StaticVertexSource>(mesh, 0, 1);
+            assert((*registry)->registerSource(*source) == slot);
+            fillers.push_back(std::move(source));
+        }
+        const auto before_retry = descriptor_writes.size();
+        assert(pools.ensureRegistered(1, 2) == ~0u);
+        assert(pools.ensureRegistered(1, 2) == ~0u);
+        assert(descriptor_writes.size() == before_retry);
+        (*registry)->unregisterSource(4);
+        assert(pools.ensureRegistered(1, 2) == 4);
+        assert(descriptor_writes.size() == before_retry + targets.size());
+        assert(pools.ensureRegistered(1, 2) == 4);
+        assert(descriptor_writes.size() == before_retry + targets.size());
+        for (std::uint32_t slot = 5; slot < kVertexPoolMaxCount; ++slot)
+        {
+            (*registry)->unregisterSource(slot);
+        }
+    }
+    assert((*registry)->isRegistered(0) && independent.bindlessPoolId() == 0);
+    for (std::uint32_t slot = 1; slot < kVertexPoolMaxCount; ++slot)
+    {
+        assert(!(*registry)->isRegistered(slot));
+    }
+    (*registry)->unregisterSource(0);
+    assert(independent.bindlessPoolId() == ~0u);
+    assert(buffer_attempts == allocation_count && virtual_attempts == arena_count);
+    std::puts("Static vertex pools: native descriptors, segment/layout identity, capacity retry and revoke PASS");
 }
 
 int main(int argc, char** argv)
@@ -362,6 +507,7 @@ int main(int argc, char** argv)
         assert(accepted);
         assert(mesh.vboSegmentCount() == 2 && mesh.iboSegmentCount() == 2);
         assert(mesh.iboTopologySerial() == 1 && mesh.alive(accepted->handle));
+        checkStaticPools(device, mesh);
         assert(mesh.destroy(accepted->handle));
         assert(!mesh.alive(accepted->handle));
         mesh.retireFrameStagingBuffers(0);

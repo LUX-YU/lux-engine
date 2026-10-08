@@ -36,7 +36,7 @@ namespace lux::render
         // emplace unconditionally. ensure<T>: whoever attaches first builds them;
         // a second mesh feature gets the same instances. Order matters —
         // VertexPoolRegistry MUST precede StaticVertexPoolSet (the latter holds a
-        // pointer to it, and reverse-order teardown must drop the set first).
+        // reference to it, and reverse-order teardown must drop the set first).
         auto& reg = sc.resources();
         auto& ctx = renderContext();
 
@@ -73,21 +73,8 @@ namespace lux::render
             vpr = reg.insert(std::move(*candidate)).get();
         }
 
-        // (3) Global static VBO exposed as a bindless pool entry. Needs (2) + the
-        //     GLOBAL MeshResources.
-        //     两个依赖此处**必然齐备**:(2) 刚成功返回,(0) 的
-        //     ensureGlobalMeshResources 成功即意味着全局注册表里有一个已初始化的
-        //     MeshResources。原先的 `if (vpr && mesh_res)` 因此是死守卫,而它的
-        //     else 分支——把一个未初始化的 StaticVertexPoolSet 留在注册表里——正是
-        //     ensure<T>(init_args) 要消灭的形状,所以改成 must<>。
-        auto mip_r = reg.ensure<StaticVertexPoolSet>(StaticVertexPoolSet::InitInfo{
-            .vertex_pool_registry = vpr,
-            .mesh_resources = &ctx.globalRegistry().must<MeshResources>(),
-        });
-        if (!mip_r)
-        {
-            return lux::cxx::unexpected<RenderError>(mip_r.error());
-        }
+        // (3) Mandatory dependencies are complete above; construction only binds their lifetime.
+        reg.ensure<StaticVertexPoolSet>(*vpr, ctx.globalRegistry().must<MeshResources>());
 
         // (4) Per-scene instance streams (transform/cullmeta/property/mdc).
         //     This feature is the sole ensure<>-er, so it is also the one that

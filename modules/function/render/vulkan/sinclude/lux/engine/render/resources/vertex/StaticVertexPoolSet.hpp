@@ -26,58 +26,34 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC StaticVertexPoolSet final
     {
     public:
-        StaticVertexPoolSet() = default;
+        /// Both dependencies outlive this cache. Destruction occurs after scene GPU uses retire.
+        StaticVertexPoolSet(VertexPoolRegistry& vertex_pool_registry, MeshResources& mesh_resources) noexcept
+            : vertex_pool_registry_(vertex_pool_registry), mesh_resources_(mesh_resources)
+        {
+        }
+
         ~StaticVertexPoolSet()
         {
-            shutdown();
+            for (auto& [key, entry] : entries_)
+            {
+                if (entry.pool_id != ~0u)
+                {
+                    vertex_pool_registry_.unregisterSource(entry.pool_id);
+                }
+            }
         }
 
         StaticVertexPoolSet(const StaticVertexPoolSet&) = delete;
         StaticVertexPoolSet& operator=(const StaticVertexPoolSet&) = delete;
-
-        struct InitInfo final
-        {
-            VertexPoolRegistry* vertex_pool_registry{nullptr};
-            MeshResources* mesh_resources{nullptr};
-        };
-
-        [[nodiscard]] bool init(const InitInfo& info)
-        {
-            if (initialized_)
-                return true;
-            if (info.vertex_pool_registry == nullptr || info.mesh_resources == nullptr)
-            {
-                return false;
-            }
-            vertex_pool_registry_ = info.vertex_pool_registry;
-            mesh_resources_ = info.mesh_resources;
-            initialized_ = true;
-            return true;
-        }
-
-        void shutdown() noexcept
-        {
-            if (!initialized_)
-                return;
-            if (vertex_pool_registry_ != nullptr)
-            {
-                for (auto& [key, entry] : entries_)
-                {
-                    (void)key;
-                    if (entry.pool_id != ~0u)
-                        vertex_pool_registry_->unregisterSource(entry.pool_id);
-                }
-            }
-            entries_.clear();
-            mesh_resources_ = nullptr;
-            vertex_pool_registry_ = nullptr;
-            initialized_ = false;
-        }
+        StaticVertexPoolSet(StaticVertexPoolSet&&) = delete;
+        StaticVertexPoolSet& operator=(StaticVertexPoolSet&&) = delete;
 
         [[nodiscard]] std::uint32_t ensureRegistered(std::uint16_t vbo_segment, VertexLayoutId layout_id) noexcept
         {
-            if (!initialized_ || vbo_segment >= mesh_resources_->vboSegmentCount() ||
-                layout_id == kInvalidVertexLayoutId)
+            const bool is_invalid_segment = vbo_segment >= mesh_resources_.vboSegmentCount();
+            const bool is_invalid_layout = layout_id == kInvalidVertexLayoutId;
+            const bool is_invalid_source = is_invalid_segment || is_invalid_layout;
+            if (is_invalid_source)
             {
                 return ~0u;
             }
@@ -87,7 +63,7 @@ namespace lux::render
             auto& entry = iterator->second;
             if (inserted)
             {
-                entry.source = std::make_unique<StaticVertexSource>(*mesh_resources_, vbo_segment, layout_id);
+                entry.source = std::make_unique<StaticVertexSource>(mesh_resources_, vbo_segment, layout_id);
             }
 
             const VkBuffer current = entry.source->buffer();
@@ -95,12 +71,12 @@ namespace lux::render
                 return ~0u;
             if (entry.pool_id == ~0u)
             {
-                entry.pool_id = vertex_pool_registry_->registerSource(*entry.source);
+                entry.pool_id = vertex_pool_registry_.registerSource(*entry.source);
                 entry.registered_buffer = current;
             }
             else if (current != entry.registered_buffer)
             {
-                vertex_pool_registry_->refreshSource(entry.pool_id);
+                vertex_pool_registry_.refreshSource(entry.pool_id);
                 entry.registered_buffer = current;
             }
             return entry.pool_id;
@@ -108,9 +84,7 @@ namespace lux::render
 
         [[nodiscard]] VertexSourceHandle handleForMesh(MeshHandle mesh) noexcept
         {
-            if (!initialized_)
-                return kInvalidVertexSourceHandle;
-            const auto* record = mesh_resources_->getGpuRecord(mesh);
+            const auto* record = mesh_resources_.getGpuRecord(mesh);
             if (record == nullptr || ensureRegistered(record->vbo_segment, record->layout_id) == ~0u)
             {
                 return kInvalidVertexSourceHandle;
@@ -118,22 +92,6 @@ namespace lux::render
             const auto iterator = entries_.find(Key{record->vbo_segment, record->layout_id});
             return iterator == entries_.end() ? kInvalidVertexSourceHandle
                                               : iterator->second.source->handleForMesh(mesh);
-        }
-
-        [[nodiscard]] bool initialized() const noexcept
-        {
-            return initialized_;
-        }
-
-        [[nodiscard]] std::uint32_t registeredPoolCount() const noexcept
-        {
-            std::uint32_t result = 0u;
-            for (const auto& [key, entry] : entries_)
-            {
-                (void)key;
-                result += entry.pool_id != ~0u ? 1u : 0u;
-            }
-            return result;
         }
 
     private:
@@ -161,8 +119,7 @@ namespace lux::render
         };
 
         std::unordered_map<Key, Entry, KeyHash> entries_;
-        VertexPoolRegistry* vertex_pool_registry_{nullptr};
-        MeshResources* mesh_resources_{nullptr};
-        bool initialized_{false};
+        VertexPoolRegistry& vertex_pool_registry_;
+        MeshResources& mesh_resources_;
     };
 } // namespace lux::render

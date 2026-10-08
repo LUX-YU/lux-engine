@@ -52,7 +52,6 @@ namespace lux::simulation::script
         EVENT_REGISTRATION_FAILURE,
         VM_CONFIGURATION_FAILURE,
         INVALID_SCRIPT_REQUIREMENT,
-        ALLOCATION_FAILURE,
     };
 
     struct LuaPreparedBlockClass final
@@ -124,7 +123,7 @@ namespace lux::simulation::script
         [[nodiscard]] static lux::cxx::expected<LuaScriptBackend, ELuaScriptBindingBackendError> create(
             LuaScriptBackendConfig config
         ) noexcept;
-        ~LuaScriptBackend();
+        ~LuaScriptBackend() noexcept;
 
         LuaScriptBackend(LuaScriptBackend&&) noexcept;
         LuaScriptBackend& operator=(LuaScriptBackend&&) noexcept;

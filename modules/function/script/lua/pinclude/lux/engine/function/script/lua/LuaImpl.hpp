@@ -1,57 +1,77 @@
 #pragma once
-#include <string_view>
 #include <lux/engine/function/script/lua/Lua.hpp>
+#include <string_view>
 
 #include <lua.hpp>
-#include <lux/engine/function/script/lua/LuaPageAllocator.hpp>
 #include <lux/engine/function/script/lua/LuaBoundary.h>
+#include <lux/engine/function/script/lua/LuaPageAllocator.hpp>
 
 namespace lux::script::lua
 {
     class ScriptEngineImpl
     {
     public:
-        explicit ScriptEngineImpl(LuaVmConfiguration config) : allocator_(config)
+        struct VmDeleter final
         {
-            const bool invalid_mode =
-                config.gc_mode != ELuaGcMode::INCREMENTAL && config.gc_mode != ELuaGcMode::GENERATIONAL;
-            if (invalid_mode || std::ranges::any_of(config.gc_parameters, [](int value) { return value < -1; }))
-                return;
-            L_ = lua_newstate(allocator_.callback(), &allocator_, config.seed);
-            if (!L_)
-                return;
-            lua_pushcfunction(L_, &luxLuaBootstrap);
-            if (lua_pcall(L_, 0, 0, 0) != LUA_OK)
+            void operator()(lua_State* state) const noexcept
             {
-                lua_close(L_);
-                L_ = nullptr;
-                return;
+                lua_close(state);
             }
-            lua_gc(L_, config.gc_mode == ELuaGcMode::GENERATIONAL ? LUA_GCGEN : LUA_GCINC);
+        };
+
+        using VmOwner = std::unique_ptr<lua_State, VmDeleter>;
+        using CreateResult = lux::cxx::expected<std::unique_ptr<ScriptEngineImpl>, ELuaEngineError>;
+
+        [[nodiscard]] static CreateResult create(LuaVmConfiguration config) noexcept
+        {
+            const bool is_invalid_mode =
+                config.gc_mode != ELuaGcMode::INCREMENTAL && config.gc_mode != ELuaGcMode::GENERATIONAL;
+            const bool has_invalid_parameter =
+                std::ranges::any_of(config.gc_parameters, [](int value) { return value < -1; });
+            if (is_invalid_mode || has_invalid_parameter)
+            {
+                return lux::cxx::unexpected(ELuaEngineError::INVALID_CONFIGURATION);
+            }
+            auto allocator = std::make_unique<LuaPageAllocator>(config);
+            VmOwner vm(lua_newstate(allocator->callback(), allocator.get(), config.seed));
+            if (!vm)
+            {
+                return lux::cxx::unexpected(ELuaEngineError::VM_CREATION_FAILURE);
+            }
+            lua_pushcfunction(vm.get(), &luxLuaBootstrap);
+            if (lua_pcall(vm.get(), 0, 0, 0) != LUA_OK)
+            {
+                return lux::cxx::unexpected(ELuaEngineError::BOOTSTRAP_FAILURE);
+            }
+            lua_gc(vm.get(), config.gc_mode == ELuaGcMode::GENERATIONAL ? LUA_GCGEN : LUA_GCINC);
             for (int index{}; index < LUA_GCPN; ++index)
+            {
                 if (config.gc_parameters[index] != -1)
-                    lua_gc(L_, LUA_GCPARAM, index, config.gc_parameters[index]);
+                {
+                    lua_gc(vm.get(), LUA_GCPARAM, index, config.gc_parameters[index]);
+                }
+            }
+            return std::unique_ptr<ScriptEngineImpl>(new ScriptEngineImpl(std::move(allocator), std::move(vm)));
         }
+
         [[nodiscard]] LuaAllocationStats allocationStats() const noexcept
         {
-            auto result = allocator_.stats();
-            if (result.enabled && L_)
+            auto result = allocator_->stats();
+            if (result.enabled)
+            {
                 for (int i{}; i < LUA_GCPN; ++i)
-                    result.gc_parameters[i] = lua_gc(L_, LUA_GCPARAM, i, -1);
+                {
+                    result.gc_parameters[i] = lua_gc(vm_.get(), LUA_GCPARAM, i, -1);
+                }
+            }
             return result;
         }
 
-        ~ScriptEngineImpl()
-        {
-            if (L_)
-            {
-                lua_close(L_);
-            }
-        }
+        ~ScriptEngineImpl() noexcept = default;
 
-        lua_State* state() const
+        [[nodiscard]] lua_State* state() const noexcept
         {
-            return L_;
+            return vm_.get();
         }
 
         void setErrorCallback(ScriptEngine::ErrorHandler cb)
@@ -62,32 +82,30 @@ namespace lux::script::lua
         /// Parses the source code and returns a registry ref
         std::optional<int> parseScript(std::string_view code)
         {
-            if (!L_)
-                return std::nullopt;
-            if (luaL_loadbufferx(L_, code.data(), code.size(), "blueprint", "t") != LUA_OK)
+            if (luaL_loadbufferx(vm_.get(), code.data(), code.size(), "blueprint", "t") != LUA_OK)
             {
                 reportAndPopError();
                 return std::nullopt;
             }
-            return luaL_ref(L_, LUA_REGISTRYINDEX);
+            return luaL_ref(vm_.get(), LUA_REGISTRYINDEX);
         }
 
         /// Runs a registry ref
         bool runScript(const ScriptRef& program)
         {
-            if (!L_)
-                return false;
             // push traceback(err) closure
-            lua_pushlightuserdata(L_, this);
-            lua_pushcclosure(L_, &luaTraceback, 1);
-            int errfunc = lua_gettop(L_);
+            lua_pushlightuserdata(vm_.get(), this);
+            lua_pushcclosure(vm_.get(), &luaTraceback, 1);
+            int errfunc = lua_gettop(vm_.get());
 
-            lua_rawgeti(L_, LUA_REGISTRYINDEX, program.ref()); // push func
+            lua_rawgeti(vm_.get(), LUA_REGISTRYINDEX, program.ref()); // push func
 
-            const bool succeeded = lua_pcall(L_, 0, 0, errfunc) == LUA_OK;
+            const bool succeeded = lua_pcall(vm_.get(), 0, 0, errfunc) == LUA_OK;
             if (!succeeded)
+            {
                 reportAndPopError(); // the error message is already on top of the stack
-            lua_remove(L_, errfunc); // pop the traceback closure
+            }
+            lua_remove(vm_.get(), errfunc); // pop the traceback closure
             return succeeded;
         }
 
@@ -95,12 +113,19 @@ namespace lux::script::lua
         ScriptEngineImpl& operator=(const ScriptEngineImpl&) = delete;
 
     private:
+        ScriptEngineImpl(std::unique_ptr<LuaPageAllocator> allocator, VmOwner vm) noexcept
+            : allocator_(std::move(allocator)), vm_(std::move(vm))
+        {
+        }
+
         static int luaTraceback(lua_State* L)
         {
             const char* msg = lua_tostring(L, 1);
             auto* self = static_cast<ScriptEngineImpl*>(lua_touserdata(L, lua_upvalueindex(1)));
             if (self && self->on_error_)
+            {
                 self->on_error_(msg ? msg : "(no msg)");
+            }
             luaL_traceback(L, L, msg, 1);
             return 1;
         }
@@ -108,12 +133,15 @@ namespace lux::script::lua
         void reportAndPopError()
         {
             if (on_error_)
-                on_error_(lua_tostring(L_, -1));
-            lua_pop(L_, 1);
+            {
+                on_error_(lua_tostring(vm_.get(), -1));
+            }
+            lua_pop(vm_.get(), 1);
         }
 
-        LuaPageAllocator allocator_; // Construct before VM; destroy after lua_close.
-        lua_State* L_ = nullptr;
+        // lua_Alloc retains the allocator address. Move only the owning pointer; close VM first.
+        std::unique_ptr<LuaPageAllocator> allocator_;
         ScriptEngine::ErrorHandler on_error_;
+        VmOwner vm_;
     };
-}
+} // namespace lux::script::lua

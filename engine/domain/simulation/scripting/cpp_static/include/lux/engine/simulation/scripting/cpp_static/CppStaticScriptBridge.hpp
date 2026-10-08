@@ -11,7 +11,6 @@ namespace lux::simulation::script
     enum class ECppStaticScriptBridgeError : std::uint8_t
     {
         INVALID_DESCRIPTOR,
-        ALLOCATION_FAILURE,
     };
 
     using CppStaticDescriptionResult = lux::cxx::expected<lux::rdesc::Script, ECppStaticScriptBridgeError>;
@@ -57,7 +56,7 @@ namespace lux::simulation::script
         [[nodiscard]] static lux::cxx::expected<CppStaticScriptBackend, ECppStaticScriptBridgeError> create(
             std::span<const CppStaticScriptPoolDescription> pools
         ) noexcept;
-        ~CppStaticScriptBackend();
+        ~CppStaticScriptBackend() noexcept;
         CppStaticScriptBackend(CppStaticScriptBackend&&) noexcept;
         CppStaticScriptBackend& operator=(CppStaticScriptBackend&&) noexcept;
         CppStaticScriptBackend(const CppStaticScriptBackend&) = delete;

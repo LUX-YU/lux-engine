@@ -1,16 +1,26 @@
 #pragma once
-#include <string_view>
+#include <lux/cxx/compile_time/expected.hpp>
+
+#include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/function/script/lua/LuaAllocation.hpp>
+#include <lux/engine/function/visibility.h>
 #include <memory>
 #include <optional>
-#include <lux/cxx/core/move_only_function.hpp>
-#include <lux/engine/function/visibility.h>
+#include <string_view>
 
 struct lua_State;
 
 namespace lux::script::lua
 {
+    enum class ELuaEngineError : std::uint8_t
+    {
+        INVALID_CONFIGURATION,
+        VM_CREATION_FAILURE,
+        BOOTSTRAP_FAILURE
+    };
+
     class ScriptEngine;
+
     class LUX_FUNCTION_PUBLIC ScriptRef
     {
     public:
@@ -34,13 +44,19 @@ namespace lux::script::lua
     };
 
     class ScriptEngineImpl;
+
     class LUX_FUNCTION_PUBLIC ScriptEngine
     {
     public:
-        explicit ScriptEngine(LuaVmConfiguration configuration = {});
+        using CreateResult = lux::cxx::expected<std::unique_ptr<ScriptEngine>, ELuaEngineError>;
+        [[nodiscard]] static CreateResult create(LuaVmConfiguration configuration = {}) noexcept;
+        ScriptEngine(const ScriptEngine&) = delete;
+        ScriptEngine& operator=(const ScriptEngine&) = delete;
+        ScriptEngine(ScriptEngine&&) = delete;
+        ScriptEngine& operator=(ScriptEngine&&) = delete;
         [[nodiscard]] LuaAllocationStats allocationStats() const noexcept;
-        ~ScriptEngine();
-        lua_State* state();
+        ~ScriptEngine() noexcept;
+        [[nodiscard]] lua_State* state() const noexcept;
         std::optional<ScriptRef> parseScript(std::string_view script);
         [[nodiscard]] bool runScript(const ScriptRef& program);
 
@@ -49,6 +65,7 @@ namespace lux::script::lua
         void setOnError(ErrorHandler on_error);
 
     private:
+        explicit ScriptEngine(std::unique_ptr<ScriptEngineImpl> impl) noexcept;
         std::unique_ptr<ScriptEngineImpl> impl_;
     };
-}
+} // namespace lux::script::lua

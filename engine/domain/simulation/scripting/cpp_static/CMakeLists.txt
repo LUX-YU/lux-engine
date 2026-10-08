@@ -34,6 +34,24 @@ component_add_transitive_commands(
 )
 
 component_add_cmake_scripts(simulation_script_cpp_static ${CMAKE_CURRENT_SOURCE_DIR}/cmake/lux_cpp_static_scripts.cmake)
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/template/
-    DESTINATION share/lux-engine-simulation/simulation_script_cpp_static/cmake_scripts/template)
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/template/
+    DESTINATION share/lux-engine-simulation/simulation_script_cpp_static/cmake_scripts/template
+)
+
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/lux_cpp_static_scripts.cmake)
+
+if(BUILD_TESTING)
+    add_executable(
+        cpp_script_construction_test
+        ${PROJECT_SOURCE_DIR}/cmake/installed-consumers/script-construction/cpp.cpp
+    )
+    target_link_libraries(cpp_script_construction_test PRIVATE simulation_script_cpp_static)
+    if(MSVC)
+        target_compile_options(cpp_script_construction_test PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(cpp_script_construction_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME script.cpp_construction COMMAND cpp_script_construction_test)
+    set_tests_properties(script.cpp_construction PROPERTIES TIMEOUT 30)
+endif()

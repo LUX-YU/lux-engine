@@ -34,3 +34,18 @@ component_add_transitive_commands(
     "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_script)"
     "find_package(lux-engine-function REQUIRED COMPONENTS script_lua)"
 )
+
+if(BUILD_TESTING)
+    add_executable(
+        lua_script_construction_test
+        ${PROJECT_SOURCE_DIR}/cmake/installed-consumers/script-construction/lua.cpp
+    )
+    target_link_libraries(lua_script_construction_test PRIVATE simulation_script_lua LuxLua55::Runtime)
+    if(MSVC)
+        target_compile_options(lua_script_construction_test PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(lua_script_construction_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME script.lua_construction COMMAND lua_script_construction_test)
+    set_tests_properties(script.lua_construction PROPERTIES TIMEOUT 30)
+endif()

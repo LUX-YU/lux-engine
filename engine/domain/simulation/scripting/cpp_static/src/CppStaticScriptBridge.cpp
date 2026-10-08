@@ -430,31 +430,39 @@ namespace lux::simulation::script
             }
         };
 
-        explicit State(std::span<const CppStaticScriptPoolDescription> pools)
+        struct PreparedPools final
         {
-            descriptor_indexes.reserve(pools.size());
-            descriptor_by_key.reserve(pools.size());
+            std::vector<DescriptorIndex> descriptor_indexes;
+            std::unordered_map<std::string_view, std::size_t> descriptor_by_key;
+            std::size_t instance_capacity{};
             std::size_t prepared_capacity{};
             std::size_t coroutine_capacity{};
+        };
+
+        [[nodiscard]] static lux::cxx::expected<PreparedPools, ECppStaticScriptBridgeError>
+        preparePools(std::span<const CppStaticScriptPoolDescription> pools) noexcept
+        {
+            PreparedPools result;
+            result.descriptor_indexes.reserve(pools.size());
+            result.descriptor_by_key.reserve(pools.size());
             for (const auto& pool : pools)
             {
                 const auto* descriptor = pool.descriptor;
-                if (!descriptor || !validContract(*descriptor) || pool.instance_capacity == 0U)
+                const bool is_invalid_pool = !descriptor || !validContract(*descriptor) || pool.instance_capacity == 0U;
+                if (is_invalid_pool)
                 {
-                    valid = false;
-                    return;
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
                 }
                 const bool instance_capacity_overflow =
-                    instance_capacity > (std::numeric_limits<std::size_t>::max)() - pool.instance_capacity;
+                    result.instance_capacity > (std::numeric_limits<std::size_t>::max)() - pool.instance_capacity;
                 const bool prepared_capacity_overflow =
                     pool.prepared_method_capacity == 0U ||
-                    prepared_capacity > (std::numeric_limits<std::size_t>::max)() - pool.prepared_method_capacity;
+                    result.prepared_capacity > (std::numeric_limits<std::size_t>::max)() - pool.prepared_method_capacity;
                 const bool coroutine_capacity_overflow =
-                    coroutine_capacity > (std::numeric_limits<std::size_t>::max)() - pool.coroutine_capacity;
+                    result.coroutine_capacity > (std::numeric_limits<std::size_t>::max)() - pool.coroutine_capacity;
                 if (instance_capacity_overflow || prepared_capacity_overflow || coroutine_capacity_overflow)
                 {
-                    valid = false;
-                    return;
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
                 }
 
                 DescriptorIndex index;
@@ -467,8 +475,7 @@ namespace lux::simulation::script
                 const bool event_overflow = event_count != 0U && pool.instance_capacity > maximum / event_count;
                 if (ability_overflow || event_overflow)
                 {
-                    valid = false;
-                    return;
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
                 }
                 if (ability_count != 0U || event_count != 0U)
                 {
@@ -486,8 +493,7 @@ namespace lux::simulation::script
                 {
                     if (pool.coroutine_capacity > (std::numeric_limits<std::size_t>::max)() / 2U)
                     {
-                        valid = false;
-                        return;
+                        return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
                     }
                     index.frame_limit = pool.max_coroutine_frame_bytes;
                     index.frame_alignment = pool.coroutine_frame_storage_alignment;
@@ -496,14 +502,12 @@ namespace lux::simulation::script
                         alignment < alignof(std::max_align_t) || (alignment & (alignment - 1U)) != 0U;
                     if (invalid_alignment || index.frame_limit == 0U)
                     {
-                        valid = false;
-                        return;
+                        return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
                     }
                     const auto overhead = CppStaticCoroutineAccess::frameOverhead(alignment);
                     if (index.frame_limit > (std::numeric_limits<std::size_t>::max)() - overhead - alignment + 1U)
                     {
-                        valid = false;
-                        return;
+                        return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
                     }
                     const auto frame_bytes = index.frame_limit + overhead;
                     const auto frame_stride = (frame_bytes + alignment - 1U) & ~(alignment - 1U);
@@ -515,13 +519,12 @@ namespace lux::simulation::script
                         owned_alignment = (std::max)(owned_alignment, entry.owned_alignment);
                     }
                     const auto owned_stride = (owned_bytes + owned_alignment - 1U) & ~(owned_alignment - 1U);
-                    if (pool.coroutine_capacity == 0U ||
-                        pool.coroutine_capacity > (std::numeric_limits<std::size_t>::max)() / frame_stride ||
-                        (owned_stride != 0U &&
-                         pool.coroutine_capacity > (std::numeric_limits<std::size_t>::max)() / owned_stride))
+                    const bool is_invalid_capacity = pool.coroutine_capacity == 0U ||
+                        pool.coroutine_capacity > maximum / frame_stride ||
+                        (owned_stride != 0U && pool.coroutine_capacity > maximum / owned_stride);
+                    if (is_invalid_capacity)
                     {
-                        valid = false;
-                        return;
+                        return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
                     }
                     std::array<detail::StorageClassPlan, 2> plans{
                         detail::StorageClassPlan{frame_bytes, alignment, frame_stride * pool.coroutine_capacity, 1U},
@@ -543,35 +546,27 @@ namespace lux::simulation::script
                     );
                     if (!frames)
                     {
-                        error = frames.error() == detail::EClassStorageError::ALLOCATION_FAILURE
-                                    ? ECppStaticScriptBridgeError::ALLOCATION_FAILURE
-                                    : ECppStaticScriptBridgeError::INVALID_DESCRIPTOR;
-                        valid = false;
-                        return;
+                        return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
                     }
                     index.coroutine_frames = std::move(*frames);
                 }
                 else if (pool.coroutine_capacity != 0U || pool.coroutine_frame_storage_bytes != 0U)
                 {
-                    valid = false;
-                    return;
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
                 }
                 if (index.descriptor->object.size)
                 {
                     const auto& type = index.descriptor->object;
                     const bool valid_alignment = type.alignment != 0U && (type.alignment & (type.alignment - 1U)) == 0U;
-                    const bool stride_overflow = valid_alignment && type.size > (std::numeric_limits<std::size_t>::max)(
-                                                                                ) - (type.alignment - 1U);
+                    const bool stride_overflow = valid_alignment && type.size > maximum - (type.alignment - 1U);
                     if (type.size == 0U || !valid_alignment || stride_overflow)
                     {
-                        valid = false;
-                        return;
+                        return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
                     }
                     index.object_stride = (type.size + type.alignment - 1U) & ~(type.alignment - 1U);
                     if (pool.instance_capacity > (std::numeric_limits<std::size_t>::max)() / index.object_stride)
                     {
-                        valid = false;
-                        return;
+                        return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
                     }
                     const auto slab_size = index.object_stride * pool.instance_capacity;
                     index.objects.data = ::operator new(slab_size, std::align_val_t{type.alignment});
@@ -580,17 +575,26 @@ namespace lux::simulation::script
                     for (std::size_t slot = pool.instance_capacity; slot > 0U; --slot)
                         index.free_objects.push_back(slot - 1U);
                 }
-                descriptor_indexes.push_back(std::move(index));
-                const auto descriptor_index = descriptor_indexes.size() - 1U;
-                if (!descriptor_by_key.emplace(descriptor->key, descriptor_index).second)
+                result.descriptor_indexes.push_back(std::move(index));
+                const auto descriptor_index = result.descriptor_indexes.size() - 1U;
+                if (!result.descriptor_by_key.emplace(descriptor->key, descriptor_index).second)
                 {
-                    valid = false;
-                    return;
+                    return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
                 }
-                instance_capacity += pool.instance_capacity;
-                prepared_capacity += pool.prepared_method_capacity;
-                coroutine_capacity += pool.coroutine_capacity;
+                result.instance_capacity += pool.instance_capacity;
+                result.prepared_capacity += pool.prepared_method_capacity;
+                result.coroutine_capacity += pool.coroutine_capacity;
             }
+            return result;
+        }
+
+        explicit State(PreparedPools prepared) noexcept
+            : descriptor_indexes(std::move(prepared.descriptor_indexes)),
+              descriptor_by_key(std::move(prepared.descriptor_by_key)),
+              instance_capacity(prepared.instance_capacity)
+        {
+            const auto prepared_capacity = prepared.prepared_capacity;
+            const auto coroutine_capacity = prepared.coroutine_capacity;
             instances.resize(instance_capacity);
             artifact_associations.resize(instance_capacity);
             artifact_index.reserve(instance_capacity);
@@ -612,7 +616,7 @@ namespace lux::simulation::script
                 free_continuations.push_back(index - 1U);
         }
 
-        ~State()
+        ~State() noexcept
         {
             for (auto& continuation : continuations)
             {
@@ -1128,8 +1132,6 @@ namespace lux::simulation::script
         std::vector<std::size_t> free_continuations;
         std::size_t instance_capacity{};
         std::size_t active_instances{};
-        ECppStaticScriptBridgeError error{ECppStaticScriptBridgeError::INVALID_DESCRIPTOR};
-        bool valid{true};
     };
 
     lux::cxx::expected<CppStaticScriptBackend, ECppStaticScriptBridgeError> CppStaticScriptBackend::create(
@@ -1138,18 +1140,20 @@ namespace lux::simulation::script
     {
         if (pools.empty())
             return lux::cxx::unexpected(ECppStaticScriptBridgeError::INVALID_DESCRIPTOR);
+        auto prepared = State::preparePools(pools);
+        if (!prepared)
         {
-            auto state = std::make_unique<State>(pools);
-            if (!state->valid)
-                return lux::cxx::unexpected(state->error);
-            return CppStaticScriptBackend{std::move(state)};
+            return lux::cxx::unexpected(prepared.error());
         }
+        return CppStaticScriptBackend{std::make_unique<State>(std::move(*prepared))};
     }
 
     CppStaticScriptBackend::CppStaticScriptBackend(std::unique_ptr<State> state) noexcept : state_(std::move(state)) {}
 
-    CppStaticScriptBackend::~CppStaticScriptBackend() = default;
+    CppStaticScriptBackend::~CppStaticScriptBackend() noexcept = default;
+
     CppStaticScriptBackend::CppStaticScriptBackend(CppStaticScriptBackend&&) noexcept = default;
+
     CppStaticScriptBackend& CppStaticScriptBackend::operator=(CppStaticScriptBackend&&) noexcept = default;
 
     CppStaticScriptBackend::operator bool() const noexcept

@@ -3,6 +3,7 @@
 namespace lux::script::lua
 {
     ScriptRef::ScriptRef(int ref, ScriptEngine* engine) : ref_(ref), engine_(engine) {}
+
     ScriptRef::~ScriptRef()
     {
         if (ref_ != LUA_NOREF)
@@ -36,14 +37,24 @@ namespace lux::script::lua
         return *this;
     }
 
-    ScriptEngine::ScriptEngine(LuaVmConfiguration config) : impl_(std::make_unique<ScriptEngineImpl>(config)) {}
+    ScriptEngine::CreateResult ScriptEngine::create(LuaVmConfiguration config) noexcept
+    {
+        auto impl = ScriptEngineImpl::create(config);
+        if (!impl)
+        {
+            return lux::cxx::unexpected(impl.error());
+        }
+        return std::unique_ptr<ScriptEngine>(new ScriptEngine(std::move(*impl)));
+    }
+
+    ScriptEngine::ScriptEngine(std::unique_ptr<ScriptEngineImpl> impl) noexcept : impl_(std::move(impl)) {}
 
     LuaAllocationStats ScriptEngine::allocationStats() const noexcept
     {
         return impl_->allocationStats();
     }
 
-    ScriptEngine::~ScriptEngine() {}
+    ScriptEngine::~ScriptEngine() noexcept = default;
 
     std::optional<ScriptRef> ScriptEngine::parseScript(std::string_view script)
     {
@@ -55,7 +66,7 @@ namespace lux::script::lua
         return ScriptRef(*program_ref_opt, this);
     }
 
-    lua_State* ScriptEngine::state()
+    lua_State* ScriptEngine::state() const noexcept
     {
         return impl_->state();
     }
@@ -69,4 +80,4 @@ namespace lux::script::lua
     {
         impl_->setErrorCallback(std::move(on_error));
     }
-}
+} // namespace lux::script::lua

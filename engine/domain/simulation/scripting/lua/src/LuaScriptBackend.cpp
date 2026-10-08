@@ -268,22 +268,23 @@ namespace lux::simulation::script
                 std::uint64_t release_steps{};
             };
 
-            TPreparedBlockStorage(
+            using CreateResult = lux::cxx::expected<TPreparedBlockStorage, ELuaScriptBindingBackendError>;
+            [[nodiscard]] static CreateResult create(
                 std::size_t capacity,
                 std::span<const LuaPreparedBlockClass> classes,
                 std::size_t byte_budget
-            )
-                : capacity_(capacity)
+            ) noexcept
             {
                 // Evaluate after the enclosing Impl and its nested value types are complete.
                 static_assert(std::is_nothrow_default_constructible_v<Value>);
                 static_assert(std::is_nothrow_destructible_v<Value>);
                 if (capacity == 0U)
-                    return;
-                if (classes.empty() || classes.size() > 64U || capacity >= (std::numeric_limits<std::uint32_t>::max)())
+                    return TPreparedBlockStorage({}, 0U);
+                const bool is_invalid_capacity =
+                    classes.empty() || classes.size() > 64U || capacity >= (std::numeric_limits<std::uint32_t>::max)();
+                if (is_invalid_capacity)
                 {
-                    valid_ = false;
-                    return;
+                    return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
                 }
                 std::vector<detail::StorageClassPlan> plans;
                 plans.reserve(classes.size());
@@ -297,23 +298,21 @@ namespace lux::simulation::script
                         item.entries > (std::numeric_limits<std::size_t>::max)() / sizeof(Value);
                     if (is_invalid_class)
                     {
-                        valid_ = false;
-                        return;
+                        return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
                     }
                     const auto block_bytes = item.entries * sizeof(Value);
                     if (item.blocks > (std::numeric_limits<std::size_t>::max)() / block_bytes)
                     {
-                        valid_ = false;
-                        return;
+                        return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
                     }
                     plans.push_back({block_bytes, alignof(Value), block_bytes * item.blocks, 1U});
                     entries += item.entries * item.blocks;
                     blocks += item.blocks;
                 }
                 auto created = detail::BoundedClassStorage::create(plans, byte_budget, blocks);
-                valid_ = static_cast<bool>(created);
-                if (created)
-                    storage_ = std::move(*created);
+                if (!created)
+                    return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
+                return TPreparedBlockStorage(std::move(*created), capacity);
             }
 
             [[nodiscard]] detail::BoundedClassStorage::ClassHandle select(std::size_t count) noexcept
@@ -378,17 +377,15 @@ namespace lux::simulation::script
                     stats.release_steps
                 };
             }
-            [[nodiscard]] bool valid() const noexcept
-            {
-                return valid_;
-            }
-
         private:
+            TPreparedBlockStorage(detail::BoundedClassStorage storage, std::size_t capacity) noexcept
+                : storage_(std::move(storage)), capacity_(capacity)
+            {}
+
             detail::BoundedClassStorage storage_;
             std::size_t capacity_{};
             std::size_t active_{};
             std::size_t high_water_{};
-            bool valid_{true};
         };
 
         struct LuaContinuation final
@@ -450,47 +447,70 @@ namespace lux::simulation::script
             bool active_{};
         };
 
-        Impl(LuaScriptBackendConfig config)
-            : engine([&config] {
-                  auto vm = config.vm;
-                  vm.track_allocations |= config.track_vm_allocations;
-                  return vm;
-              }()),
-              main_thread(engine.state()), instance_capacity(config.instance_capacity),
-              prepared_call_capacity(config.prepared_call_capacity),
-              continuation_capacity(config.continuation_capacity),
-              execution_depth_capacity(config.execution_depth_capacity), prepared_abilities(
-                                                                             config.prepared_ability_capacity,
-                                                                             config.prepared_ability_blocks,
-                                                                             config.prepared_ability_storage_bytes
-                                                                         ),
-              prepared_events(
-                  config.prepared_event_capacity,
-                  config.prepared_event_blocks,
-                  config.prepared_event_storage_bytes
-              )
+        struct PreparedVm final
         {
-            if (!prepared_abilities.valid() || !prepared_events.valid())
-                return;
-            if (!lux::script::lua::detail::configureLuaVm(main_thread, runtime_info))
+            std::unique_ptr<lux::script::lua::ScriptEngine> engine;
+            lux::script::lua::LuaRuntimeInfo runtime_info;
+            int traceback_ref{LUA_NOREF};
+            int thread_roots_ref{LUA_NOREF};
+            std::size_t continuation_capacity{};
+        };
+
+        [[nodiscard]] static lux::cxx::expected<PreparedVm, ELuaScriptBindingBackendError>
+        prepareVm(const LuaScriptBackendConfig& config) noexcept
+        {
+            auto vm_config = config.vm;
+            vm_config.track_allocations |= config.track_vm_allocations;
+            auto engine = lux::script::lua::ScriptEngine::create(vm_config);
+            if (!engine)
             {
-                return;
+                return lux::cxx::unexpected(ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
             }
-            if (!lux::script::lua::detail::LuaValueAccess::initialize(main_thread))
-                return;
+            PreparedVm prepared{std::move(*engine), {}, LUA_NOREF, LUA_NOREF, config.continuation_capacity};
+            if (!lux::script::lua::detail::configureLuaVm(prepared.engine->state(), prepared.runtime_info))
+            {
+                return lux::cxx::unexpected(ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
+            }
+            if (!lux::script::lua::detail::LuaValueAccess::initialize(prepared.engine->state()))
+                return lux::cxx::unexpected(ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
             for (const auto& value : config.values)
-                if (value.prepare != nullptr && !value.prepare(main_thread))
-                    return;
+                if (value.prepare != nullptr && !value.prepare(prepared.engine->state()))
+                    return lux::cxx::unexpected(ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
             for (const auto& ability : config.abilities)
                 for (const auto& method : ability.methods)
                 {
                     for (const auto& value : method.parameters)
-                        if (value.prepare != nullptr && !value.prepare(main_thread))
-                            return;
+                        if (value.prepare != nullptr && !value.prepare(prepared.engine->state()))
+                            return lux::cxx::unexpected(ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
                     for (const auto& value : method.results)
-                        if (value.prepare != nullptr && !value.prepare(main_thread))
-                            return;
+                        if (value.prepare != nullptr && !value.prepare(prepared.engine->state()))
+                            return lux::cxx::unexpected(ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
                 }
+            auto* vm = prepared.engine->state();
+            if (!lua_checkstack(vm, 3))
+                return lux::cxx::unexpected(ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
+            lua_pushcfunction(vm, &Impl::createRoots);
+            lua_pushlightuserdata(vm, std::addressof(prepared));
+            if (lua_pcall(vm, 1, 0, 0) != LUA_OK)
+            {
+                return lux::cxx::unexpected(ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
+            }
+            return prepared;
+        }
+
+        Impl(
+            const LuaScriptBackendConfig& config,
+            PreparedVm prepared_vm,
+            TPreparedBlockStorage<PreparedAbility> ability_storage,
+            TPreparedBlockStorage<PreparedEventSource> event_storage
+        ) noexcept
+            : engine(std::move(prepared_vm.engine)), main_thread(engine->state()),
+              runtime_info(prepared_vm.runtime_info), traceback_ref(prepared_vm.traceback_ref),
+              thread_roots_ref(prepared_vm.thread_roots_ref), instance_capacity(config.instance_capacity),
+              prepared_call_capacity(config.prepared_call_capacity), continuation_capacity(config.continuation_capacity),
+              execution_depth_capacity(config.execution_depth_capacity), prepared_abilities(std::move(ability_storage)),
+              prepared_events(std::move(event_storage))
+        {
             prototypes.reserve(config.instance_capacity);
             latest_prototypes.reserve(config.instance_capacity);
             components.assign(config.components.begin(), config.components.end());
@@ -537,21 +557,11 @@ namespace lux::simulation::script
             free_continuations.reserve(continuation_capacity);
             for (std::size_t index = continuation_capacity; index > 0U; --index)
                 free_continuations.push_back(index - 1U);
-            if (!lua_checkstack(main_thread, 3))
-                return;
-            lua_pushcfunction(main_thread, &Impl::createRoots);
-            lua_pushlightuserdata(main_thread, this);
-            if (lua_pcall(main_thread, 1, 0, 0) != LUA_OK)
-            {
-                lua_pop(main_thread, 1);
-                return;
-            }
-            vm_configured = true;
         }
 
         static int createRoots(lua_State* vm)
         {
-            auto* owner = static_cast<Impl*>(lua_touserdata(vm, 1));
+            auto* owner = static_cast<PreparedVm*>(lua_touserdata(vm, 1));
             if (owner->continuation_capacity != 0U)
             {
                 lua_createtable(vm, static_cast<int>(owner->continuation_capacity), 0);
@@ -575,10 +585,8 @@ namespace lux::simulation::script
             lua_pop(main_thread, 1);
         }
 
-        ~Impl()
+        ~Impl() noexcept
         {
-            if (!main_thread)
-                return;
             // The root table owns all remaining VM references and is released once.
             if (thread_roots_ref != LUA_NOREF)
                 luaL_unref(main_thread, LUA_REGISTRYINDEX, thread_roots_ref);
@@ -2363,10 +2371,9 @@ namespace lux::simulation::script
             self.collectPrototype(*prototype);
         }
 
-        lux::script::lua::ScriptEngine engine;
+        std::unique_ptr<lux::script::lua::ScriptEngine> engine;
         lua_State* main_thread{};
         lux::script::lua::LuaRuntimeInfo runtime_info;
-        bool vm_configured{};
 #if defined(LUX_LUA55_LEAF_YIELD_REVISION)
         static constexpr bool leaf_yield_available = true;
 #else
@@ -2786,27 +2793,39 @@ namespace lux::simulation::script
                 }
             }
         }
-        {
-            auto state = std::make_unique<Impl>(config);
-            if (!state->prepared_abilities.valid() || !state->prepared_events.valid())
-                return lux::cxx::unexpected(ELuaScriptBindingBackendError::INVALID_CAPACITY);
-            if (!state->vm_configured)
-            {
-                return lux::cxx::unexpected(ELuaScriptBindingBackendError::VM_CONFIGURATION_FAILURE);
-            }
-            return LuaScriptBackend{std::move(state)};
-        }
+        auto abilities = Impl::TPreparedBlockStorage<Impl::PreparedAbility>::create(
+            config.prepared_ability_capacity,
+            config.prepared_ability_blocks,
+            config.prepared_ability_storage_bytes
+        );
+        if (!abilities)
+            return lux::cxx::unexpected(abilities.error());
+        auto events = Impl::TPreparedBlockStorage<Impl::PreparedEventSource>::create(
+            config.prepared_event_capacity,
+            config.prepared_event_blocks,
+            config.prepared_event_storage_bytes
+        );
+        if (!events)
+            return lux::cxx::unexpected(events.error());
+        auto vm = Impl::prepareVm(config);
+        if (!vm)
+            return lux::cxx::unexpected(vm.error());
+        return LuaScriptBackend{
+            std::make_unique<Impl>(config, std::move(*vm), std::move(*abilities), std::move(*events))
+        };
     }
 
     LuaScriptBackend::LuaScriptBackend(std::unique_ptr<Impl> state) noexcept : state_(std::move(state)) {}
 
-    LuaScriptBackend::~LuaScriptBackend() = default;
+    LuaScriptBackend::~LuaScriptBackend() noexcept = default;
+
     LuaScriptBackend::LuaScriptBackend(LuaScriptBackend&&) noexcept = default;
+
     LuaScriptBackend& LuaScriptBackend::operator=(LuaScriptBackend&&) noexcept = default;
 
     LuaScriptBackend::operator bool() const noexcept
     {
-        return state_ && state_->main_thread && state_->traceback_ref != LUA_NOREF;
+        return state_ != nullptr;
     }
 
     lux::script::lua::LuaRuntimeInfo LuaScriptBackend::runtimeInfo() const noexcept
@@ -2821,7 +2840,7 @@ namespace lux::simulation::script
         const auto abilities = state_->prepared_abilities.stats();
         const auto events = state_->prepared_events.stats();
         unsigned long long fast{}, fallback{};
-        const bool collected = luxlua_vmleafstats(state_->engine.state(), &fast, &fallback) != 0;
+        const bool collected = luxlua_vmleafstats(state_->engine->state(), &fast, &fallback) != 0;
         return {
             abilities.active,
             abilities.high_water,
@@ -2832,7 +2851,7 @@ namespace lux::simulation::script
             state_->execution_depth_high_water,
             state_->vm_coroutine_resumes,
             state_->vm_coroutine_releases,
-            state_->engine.allocationStats(),
+            state_->engine->allocationStats(),
             abilities.acquire_steps + events.acquire_steps,
             abilities.release_steps + events.release_steps,
             state_->prototypes.size(),

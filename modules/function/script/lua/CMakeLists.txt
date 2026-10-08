@@ -110,3 +110,16 @@ install(
     DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/cmake/template/
     DESTINATION share/lux-engine-function/script_lua/cmake_scripts/template
 )
+
+if(BUILD_TESTING)
+    add_executable(lua_engine_construction_test test/construction.cpp)
+    target_include_directories(lua_engine_construction_test PRIVATE pinclude)
+    target_link_libraries(lua_engine_construction_test PRIVATE script_lua LuxLua55::Runtime)
+    if(MSVC)
+        target_compile_options(lua_engine_construction_test PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(lua_engine_construction_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME lua.engine_construction COMMAND lua_engine_construction_test)
+    set_tests_properties(lua.engine_construction PROPERTIES TIMEOUT 30)
+endif()

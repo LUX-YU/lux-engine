@@ -26,7 +26,6 @@ namespace lux::simulation::script::detail
     {
         INVALID_CONFIGURATION,
         CAPACITY_EXCEEDED,
-        ALLOCATION_FAILURE,
     };
 
     // Storage only: the containing backend owns its budget and serializes preparation/maintenance.

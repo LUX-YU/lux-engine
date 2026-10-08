@@ -1,134 +1,199 @@
-#include "lux/engine/window/TrayIcon.hpp"
-#include "lux/engine/window/LuxWindow.hpp"
-#include <cassert>
+#include <exception>
+#include <iterator>
+#include <lux/engine/window/LuxWindow.hpp>
+#include <lux/engine/window/TrayIcon.hpp>
+#include <type_traits>
+#include <utility>
 
-#include <GLFW/glfw3.h>
-#define GLFW_EXPOSE_NATIVE_WIN32
-#include <GLFW/glfw3native.h>
-
+#define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
+// clang-format off: Win32 extension headers require the umbrella definitions first.
 #include <windows.h>
-
-#define WM_TRAYICON (WM_USER + 1)
-#define ID_TRAY_EXIT 1001
-#define ID_TRAY_HIDE 1002
-#define ID_TRAY_RECOVER 1003
+#include <commctrl.h>
+#include <shellapi.h>
+// clang-format on
 
 namespace lux::window
 {
-    class TrayIcon::Impl
+    namespace
     {
-    public:
-        Impl(lux::window::LuxWindow& window)
+        constexpr UINT tray_message = WM_APP + 1;
+        constexpr UINT_PTR subclass_id = 1;
+        constexpr UINT exit_command = 1001;
+        constexpr UINT hide_command = 1002;
+        constexpr UINT restore_command = 1003;
+
+        struct MenuDeleter final
         {
-            assert(!init);
-            window.setExitBehavior(lux::window::EExitBehavior::HIDE);
-
-            // Get the window handle
-            HWND hWnd = glfwGetWin32Window(window.handle());
-
-            originalWndProc = (WNDPROC)SetWindowLongPtr(hWnd, GWLP_WNDPROC, (LONG_PTR)WindowProc);
-            SetWindowLongPtr(hWnd, GWLP_WNDPROC, (LONG_PTR)WindowProc);
-            SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)&window);
-            // Create the tray icon
-            CreateTrayIcon(hWnd);
-
-            init = true;
-        }
-
-        ~Impl()
-        {
-            // Clean up the tray icon
-            CleanupTrayIcon();
+            void operator()(HMENU menu) const noexcept
+            {
+                DestroyMenu(menu);
+            }
         };
 
-        static LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+        struct IconDeleter final
         {
-            LONG_PTR lpData = GetWindowLongPtr(hwnd, GWLP_USERDATA);
-            lux::window::LuxWindow* window = (lux::window::LuxWindow*)lpData;
-            switch (uMsg)
+            void operator()(NOTIFYICONDATAW* data) const noexcept
             {
-            case WM_SYSCOMMAND:
-                if (wParam == SC_MINIMIZE)
+                Shell_NotifyIconW(NIM_DELETE, data);
+                delete data;
+            }
+        };
+
+        using Menu = std::unique_ptr<std::remove_pointer_t<HMENU>, MenuDeleter>;
+        using Icon = std::unique_ptr<NOTIFYICONDATAW, IconDeleter>;
+    } // namespace
+
+    struct TrayIcon::Impl final : std::enable_shared_from_this<Impl>
+    {
+        LuxWindow* window;
+        Menu menu;
+        Icon icon;
+        EExitBehavior previous_exit;
+        HWND attached_window{};
+
+        Impl(LuxWindow& owner, Menu prepared_menu, Icon prepared_icon) noexcept
+            : window(&owner), menu(std::move(prepared_menu)), icon(std::move(prepared_icon)),
+              previous_exit(owner.exit_behavior_)
+        {
+        }
+
+        void detach() noexcept
+        {
+            if (auto native = std::exchange(attached_window, nullptr))
+            {
+                if (!RemoveWindowSubclass(native, windowProc, subclass_id))
                 {
-                    ShowWindow(hwnd, SW_HIDE);
+                    std::terminate(); // A live native callback cannot retain a soon-to-be-released state pointer.
+                }
+                window->setExitBehavior(previous_exit);
+                window = nullptr;
+            }
+            icon.reset();
+        }
+
+        static LRESULT CALLBACK
+        windowProc(HWND native, UINT message, WPARAM wparam, LPARAM lparam, UINT_PTR id, DWORD_PTR data) noexcept
+        {
+            // SetForegroundWindow and TrackPopupMenu can synchronously call application code.
+            // The registration is revoked immediately on teardown, while this invocation retains its menu.
+            const auto pinned = reinterpret_cast<Impl*>(data)->shared_from_this();
+            auto& state = *pinned;
+            if (message == WM_NCDESTROY)
+            {
+                // Revoke the borrow before native destruction can finish or this HWND can be reused.
+                state.attached_window = nullptr;
+                state.window = nullptr;
+                if (!RemoveWindowSubclass(native, windowProc, id))
+                {
+                    std::terminate();
+                }
+                state.icon.reset();
+                return DefSubclassProc(native, message, wparam, lparam);
+            }
+            if (message == WM_SYSCOMMAND && (wparam & 0xfff0u) == SC_MINIMIZE)
+            {
+                state.window->hide(true);
+                return 0;
+            }
+            if (message == tray_message && lparam == WM_RBUTTONUP)
+            {
+                POINT point{};
+                if (!GetCursorPos(&point))
+                {
                     return 0;
                 }
-                break;
-            case WM_USER + 1:
-                if (lParam == WM_RBUTTONUP)
+                SetForegroundWindow(native);
+                if (!state.attached_window)
                 {
-                    POINT p;
-                    GetCursorPos(&p);
-                    SetForegroundWindow(hwnd);
-                    TrackPopupMenu(hMenu, TPM_BOTTOMALIGN | TPM_RIGHTBUTTON, p.x, p.y, 0, hwnd, NULL);
+                    return 0;
                 }
-                break;
-            case WM_COMMAND:
-                if (LOWORD(wParam) == ID_TRAY_EXIT)
+                const auto selected = TrackPopupMenu(
+                    state.menu.get(),
+                    TPM_BOTTOMALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
+                    point.x,
+                    point.y,
+                    0,
+                    native,
+                    nullptr
+                );
+                if (!state.attached_window)
                 {
-                    Shell_NotifyIcon(NIM_DELETE, &nid);
-                    window->exit();
-                    PostQuitMessage(0);
+                    return 0;
                 }
-                if (LOWORD(wParam) == ID_TRAY_HIDE)
+                // Commands are returned by this menu only; unrelated window WM_COMMAND IDs are untouched.
+                switch (selected)
                 {
-                    window->hide(true);
+                case exit_command:
+                    state.window->exit();
+                    break;
+                case hide_command:
+                    state.window->hide(true);
+                    break;
+                case restore_command:
+                    state.window->hide(false);
+                    break;
+                default:
+                    break;
                 }
-                if (LOWORD(wParam) == ID_TRAY_RECOVER)
-                {
-                    window->hide(false);
-                }
-                break;
-            case WM_DESTROY:
-                Shell_NotifyIcon(NIM_DELETE, &nid);
-                PostQuitMessage(0);
-                break;
+                return 0;
             }
-            return CallWindowProc(originalWndProc, hwnd, uMsg, wParam, lParam);
+            return DefSubclassProc(native, message, wparam, lparam);
         }
-
-        void CreateTrayIcon(HWND hWnd)
-        {
-            memset(&nid, 0, sizeof(nid));
-            nid.cbSize = sizeof(NOTIFYICONDATA);
-            nid.hWnd = hWnd;
-            nid.uID = 1;
-            nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-            nid.uCallbackMessage = WM_USER + 1;
-            nid.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-            strcpy_s(nid.szTip, "File Backup");
-            Shell_NotifyIcon(NIM_ADD, &nid);
-
-            hMenu = CreatePopupMenu();
-            AppendMenu(hMenu, MF_STRING, ID_TRAY_EXIT, "Exit");
-            AppendMenu(hMenu, MF_STRING, ID_TRAY_HIDE, "Hide");
-            AppendMenu(hMenu, MF_STRING, ID_TRAY_RECOVER, "Recover");
-        }
-
-        void CleanupTrayIcon()
-        {
-            Shell_NotifyIcon(NIM_DELETE, &nid);
-        }
-
-    private:
-        static bool init;
-        static HMENU hMenu;
-        static NOTIFYICONDATA nid;
-        static WNDPROC originalWndProc;
     };
 
-    bool TrayIcon::Impl::init = false;
-    HMENU TrayIcon::Impl::hMenu = nullptr;
-    NOTIFYICONDATA TrayIcon::Impl::nid;
-    WNDPROC TrayIcon::Impl::originalWndProc = nullptr;
-
-    TrayIcon::TrayIcon(lux::window::LuxWindow& window)
+    TrayIcon::CreateResult TrayIcon::create(LuxWindow& window) noexcept
     {
-        _impl = std::make_unique<Impl>(window);
+        const auto native = static_cast<HWND>(window.nativeHandle());
+        DWORD_PTR existing{};
+        if (GetWindowSubclass(native, Impl::windowProc, subclass_id, &existing))
+        {
+            return lux::cxx::unexpected(ETrayError::ALREADY_ATTACHED);
+        }
+        Menu menu(CreatePopupMenu());
+        if (!menu)
+        {
+            return lux::cxx::unexpected(ETrayError::MENU_CREATION_FAILED);
+        }
+        const bool has_items = AppendMenuW(menu.get(), MF_STRING, exit_command, L"Exit") &&
+                               AppendMenuW(menu.get(), MF_STRING, hide_command, L"Hide") &&
+                               AppendMenuW(menu.get(), MF_STRING, restore_command, L"Restore");
+        if (!has_items)
+        {
+            return lux::cxx::unexpected(ETrayError::MENU_ITEM_FAILED);
+        }
+        // LoadIconW's stock icon is shared by Windows and must not be destroyed by this owner.
+        const auto stock_icon = LoadIconW(nullptr, MAKEINTRESOURCEW(32512));
+        if (!stock_icon)
+        {
+            return lux::cxx::unexpected(ETrayError::ICON_UNAVAILABLE);
+        }
+        auto descriptor = std::make_unique<NOTIFYICONDATAW>();
+        descriptor->cbSize = sizeof(NOTIFYICONDATAW);
+        descriptor->hWnd = native;
+        descriptor->uID = 1;
+        descriptor->uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+        descriptor->uCallbackMessage = tray_message;
+        descriptor->hIcon = stock_icon;
+        GetWindowTextW(native, descriptor->szTip, static_cast<int>(std::size(descriptor->szTip)));
+        if (!Shell_NotifyIconW(NIM_ADD, descriptor.get()))
+        {
+            return lux::cxx::unexpected(ETrayError::REGISTRATION_FAILED);
+        }
+        auto prepared = std::make_shared<Impl>(window, std::move(menu), Icon(descriptor.release()));
+        if (!SetWindowSubclass(native, Impl::windowProc, subclass_id, reinterpret_cast<DWORD_PTR>(prepared.get())))
+        {
+            return lux::cxx::unexpected(ETrayError::CALLBACK_REGISTRATION_FAILED);
+        }
+        prepared->attached_window = native;
+        window.setExitBehavior(EExitBehavior::HIDE);
+        return std::unique_ptr<TrayIcon>(new TrayIcon(std::move(prepared)));
     }
 
-    TrayIcon::TrayIcon(TrayIcon&&) noexcept = default;
-    TrayIcon& TrayIcon::operator=(TrayIcon&&) noexcept = default;
+    TrayIcon::TrayIcon(std::shared_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
-    TrayIcon::~TrayIcon() = default;
-}
+    TrayIcon::~TrayIcon() noexcept
+    {
+        impl_->detach();
+    }
+} // namespace lux::window

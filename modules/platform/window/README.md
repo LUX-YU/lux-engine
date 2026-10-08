@@ -34,3 +34,14 @@ qualification, separate from native keyboard/mouse and IME testing.
 `window.lifecycle` 验证真实 owner 实现的构造失败、唯一 Runtime 和精确释放次数。
 `window_lifecycle_test --desktop` 另外执行隐藏的真实 GLFW 窗口、原生创建/Win32 回调故障注入、派生候选回滚及重建。
 故障接线只编入测试目标；正式 DLL 和安装头没有测试开关。自动 composition 消息不代表系统 IME 人工资格。
+### Tray registration
+
+`TrayIcon::create(window)` either returns the complete Win32 tray owner or an exact native-stage error.
+Menu, shell registration and subclass belong to that instance. A second tray on the same window is rejected;
+different windows are independent. The owner never changes GLFW's native userdata or replaces its window procedure.
+The previous exit policy is restored on tray destruction; while the tray is attached its close policy is HIDE.
+Destroying the native window first revokes the callback and shell registration. A reentrant menu callback retains
+only its physical state until return, and cannot use the revoked window. The stock Windows icon is borrowed.
+
+`window_tray_lifecycle_test` uses production source and native failure injection. It is registered only in the
+explicit desktop test mode. The window-only installed consumer separately exercises the actual SDK DLL.

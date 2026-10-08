@@ -1,8 +1,13 @@
-#include <lux/engine/window/GlfwRuntime.hpp>
-#include <lux/engine/window/LuxWindow.hpp>
 #include <cassert>
 #include <iostream>
+#include <lux/engine/window/GlfwRuntime.hpp>
+#include <lux/engine/window/LuxWindow.hpp>
+#include <lux/engine/window/TrayIcon.hpp>
 #include <type_traits>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#endif
 
 namespace
 {
@@ -35,7 +40,7 @@ namespace
     static_assert(!std::is_default_constructible_v<GlfwRuntime>);
     static_assert(!std::is_constructible_v<LuxWindow, InitParameter>);
     static_assert(!std::is_copy_constructible_v<LuxWindow> && !std::is_move_constructible_v<LuxWindow>);
-}
+} // namespace
 
 int main()
 {
@@ -63,6 +68,28 @@ int main()
     auto window = LuxWindow::create({320, 240, "Installed window"});
     assert(window);
     (*window)->hide(true);
+#ifdef __TRAY_ENABLED__
+    const auto native = static_cast<HWND>((*window)->nativeHandle());
+    const auto userdata = GetWindowLongPtrW(native, GWLP_USERDATA);
+    auto tray = TrayIcon::create(**window);
+    assert(tray && GetWindowLongPtrW(native, GWLP_USERDATA) == userdata);
+    auto other_tray = TrayIcon::create(**window);
+    assert(!other_tray && other_tray.error() == ETrayError::ALREADY_ATTACHED);
+    auto second = LuxWindow::create({320, 240, "Independent installed tray"});
+    assert(second);
+    (*second)->hide(true);
+    other_tray = TrayIcon::create(**second);
+    assert(other_tray);
+    tray->reset();
+    assert(GetWindowLongPtrW(native, GWLP_USERDATA) == userdata);
+    tray = TrayIcon::create(**window);
+    assert(tray);
+    second->reset(); // Native teardown revokes a still-owned tray's borrowed target.
+    other_tray->reset();
+#endif
     window->reset();
+#ifdef __TRAY_ENABLED__
+    tray->reset();
+#endif
     std::cout << "installed complete owner, derived factory rollback and recreate PASS\n";
 }

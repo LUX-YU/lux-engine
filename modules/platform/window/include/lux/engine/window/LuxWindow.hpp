@@ -207,6 +207,7 @@ namespace lux::window
         virtual void newFrame();
 
     private:
+        friend class TrayIcon;
         void recordInput(VWindowInputEvent);
         void placementChanged() noexcept;
         void subscribeKeyEvent();

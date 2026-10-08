@@ -146,4 +146,32 @@ if(BUILD_TESTING AND NOT ANDROID)
     add_test(NAME window.placement COMMAND window_placement_test)
     set_tests_properties(window.placement PROPERTIES TIMEOUT 20)
     # --desktop is an explicit real-window mode, never part of CPU default CTest.
+    if(WIN32)
+        add_executable(
+            window_tray_lifecycle_test
+            test/tray.cpp
+            test/TrayProduction.cpp
+            src/LuxWindow.glfw.cpp
+            src/GlfwRuntime.cpp
+            src/WindowPlacement.cpp
+        )
+        target_include_directories(window_tray_lifecycle_test PRIVATE include ${LUX_GENERATE_HEADER_DIR})
+        target_link_libraries(
+            window_tray_lifecycle_test PRIVATE
+            glfw Vulkan::Headers lux::cxx::compile_time comctl32 shell32
+        )
+        target_compile_definitions(
+            window_tray_lifecycle_test PRIVATE
+            LUX_PLATFORM_WINDOW_LIBRARY __PLATFORM_WIN32__ __TRAY_ENABLED__
+        )
+        if(MSVC)
+            target_compile_options(window_tray_lifecycle_test PRIVATE /UNDEBUG /utf-8)
+        else()
+            target_compile_options(window_tray_lifecycle_test PRIVATE -UNDEBUG)
+        endif()
+        if(LUX_EDITOR_BUILD_DESKTOP_TESTS)
+            add_test(NAME window.tray_lifecycle COMMAND window_tray_lifecycle_test)
+            set_tests_properties(window.tray_lifecycle PROPERTIES TIMEOUT 30 LABELS desktop)
+        endif()
+    endif()
 endif()

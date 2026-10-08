@@ -103,6 +103,39 @@ endif()
 target_link_libraries(window PUBLIC lux::cxx::compile_time)
 
 if(BUILD_TESTING AND NOT ANDROID)
+    # Compile the real owners against instrumented native calls. No hooks enter the installed component.
+    add_executable(
+        window_lifecycle_test
+        test/lifecycle.cpp
+        src/LuxWindow.glfw.cpp
+        src/GlfwRuntime.cpp
+        src/WindowPlacement.cpp
+    )
+    target_include_directories(
+        window_lifecycle_test PRIVATE
+        include
+        ${LUX_GENERATE_HEADER_DIR}
+    )
+    target_compile_definitions(window_lifecycle_test PRIVATE LUX_PLATFORM_WINDOW_LIBRARY)
+    target_link_libraries(window_lifecycle_test PRIVATE glfw Vulkan::Headers lux::cxx::compile_time)
+    if(WIN32)
+        target_compile_definitions(window_lifecycle_test PRIVATE __PLATFORM_WIN32__)
+        target_link_libraries(window_lifecycle_test PRIVATE comctl32)
+    endif()
+    if(MSVC)
+        target_compile_options(
+            window_lifecycle_test PRIVATE /UNDEBUG /utf-8
+            "/FI${CMAKE_CURRENT_SOURCE_DIR}/test/LifecycleRemap.hpp"
+        )
+    else()
+        target_compile_options(
+            window_lifecycle_test PRIVATE -UNDEBUG
+            -include "${CMAKE_CURRENT_SOURCE_DIR}/test/LifecycleRemap.hpp"
+        )
+    endif()
+    add_test(NAME window.lifecycle COMMAND window_lifecycle_test)
+    set_tests_properties(window.lifecycle PROPERTIES TIMEOUT 20)
+
     add_executable(window_placement_test test/placement.cpp)
     target_link_libraries(window_placement_test PRIVATE window)
     if(MSVC)

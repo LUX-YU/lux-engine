@@ -7,6 +7,7 @@ namespace lux::ui
 {
     class Root;
 }
+
 namespace lux::editor
 {
     struct WindowMetrics final
@@ -20,19 +21,22 @@ namespace lux::editor
     class EditorWindow final : public window::LuxWindow
     {
     public:
-        [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorWindow>>
-        create(const window::InitParameter&) noexcept;
+        [[nodiscard]] static FrameworkResult<std::unique_ptr<EditorWindow>> create(const window::
+                                                                                       InitParameter&) noexcept;
         ~EditorWindow() override;
         EditorWindow(const EditorWindow&) = delete;
         EditorWindow& operator=(const EditorWindow&) = delete;
         EditorWindow(EditorWindow&&) = delete;
         EditorWindow& operator=(EditorWindow&&) = delete;
         [[nodiscard]] ui::Root& uiRoot() noexcept;
+
         [[nodiscard]] input::Input& input() noexcept
         {
             return input_;
         }
+
         [[nodiscard]] FrameworkResult<void> sampleInput() noexcept;
+
         [[nodiscard]] const WindowMetrics& metrics() const noexcept
         {
             return metrics_;
@@ -43,7 +47,7 @@ namespace lux::editor
         using LuxWindow::on_framebuffer_resize;
         using LuxWindow::on_minimized;
         using LuxWindow::on_resize;
-        explicit EditorWindow(const window::InitParameter&);
+        EditorWindow(NativeWindowOwner, std::unique_ptr<ui::Root>) noexcept;
         void metricsChanged() noexcept;
         WindowMetrics metrics_;
         input::Input input_;

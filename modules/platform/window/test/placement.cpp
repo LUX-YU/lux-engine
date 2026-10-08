@@ -1,11 +1,11 @@
-#include <lux/engine/window/LuxWindow.hpp>
-#include <lux/engine/window/GlfwRuntime.hpp>
 #include <array>
 #include <cassert>
 #include <chrono>
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <lux/engine/window/GlfwRuntime.hpp>
+#include <lux/engine/window/LuxWindow.hpp>
 #include <string_view>
 
 namespace
@@ -49,14 +49,15 @@ namespace
 
     void desktop()
     {
-        GlfwRuntime runtime;
-        assert(runtime.valid());
+        auto runtime = GlfwRuntime::create();
+        assert(runtime);
         auto displays = LuxWindow::displays();
         assert(displays && !displays->empty());
         auto resolved = resolveWindowPlacement({{}, WindowSize{800, 600}}, *displays);
         assert(resolved);
-        LuxWindow window(800, 600, "EC3 window placement qualification");
-        assert(window.isInitialized());
+        auto created = LuxWindow::create({800, 600, "Window placement qualification"});
+        assert(created);
+        auto& window = **created;
         unsigned notifications{};
         window.on_placement_changed = [&](const WindowPlacementEvent&) { ++notifications; };
         auto adopted = window.applyPlacement(resolved->placement);
@@ -70,7 +71,9 @@ namespace
                 auto actual = window.state();
                 assert(actual);
                 if (actual->placement.mode == mode)
+                {
                     return *actual;
+                }
                 assert(std::chrono::steady_clock::now() < deadline);
                 LuxWindow::waitEvents(0.01);
             }
@@ -110,5 +113,7 @@ int main(int argc, char** argv)
 {
     purePolicy();
     if (argc == 2 && std::string_view{argv[1]} == "--desktop")
+    {
         desktop();
+    }
 }

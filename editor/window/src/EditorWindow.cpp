@@ -6,42 +6,14 @@
 
 namespace lux::editor
 {
-    EditorWindow::EditorWindow(const window::InitParameter& config) : LuxWindow(config) {}
-
-    EditorWindow::~EditorWindow() = default;
-
-    FrameworkResult<std::unique_ptr<EditorWindow>> EditorWindow::create(const window::InitParameter& config) noexcept
+    EditorWindow::EditorWindow(NativeWindowOwner native, std::unique_ptr<ui::Root> root) noexcept
+        : LuxWindow(std::move(native)), root_(std::move(root))
     {
-        if (auto registered = registerEditorUiErrors(); !registered)
-        {
-            return cxx::unexpected(registered.error());
-        }
-        static window::GlfwRuntime runtime;
-        if (!runtime.valid())
-        {
-            return cxx::unexpected(error::Error{Errors::EditorGlfwInitializationFailed, {}});
-        }
-        auto window = std::unique_ptr<EditorWindow>{new EditorWindow(config)};
-        if (!window->isInitialized())
-        {
-            return cxx::unexpected(error::Error{
-                Errors::EditorNativeWindowCreationFailed,
-                {static_cast<std::uint64_t>(window->initError())}
-            });
-        }
-        auto root = ui::Root::create();
-        if (!root)
-        {
-            return cxx::unexpected(
-                error::Error{Errors::EditorRootInitializationFailed, {static_cast<std::uint64_t>(root.error())}}
-            );
-        }
-        window->root_ = std::move(*root);
-        window->root_->bindWindow(window.get());
-        window->size(window->metrics_.width, window->metrics_.height);
-        window->framebufferSize(window->metrics_.framebuffer_width, window->metrics_.framebuffer_height);
-        window->metrics_.minimized = window->minimized();
-        window->on_resize = [owner = window.get()](const window::WindowResizeEvent& event) noexcept
+        root_->bindWindow(this);
+        size(metrics_.width, metrics_.height);
+        framebufferSize(metrics_.framebuffer_width, metrics_.framebuffer_height);
+        metrics_.minimized = minimized();
+        on_resize = [owner = this](const window::WindowResizeEvent& event) noexcept
         {
             auto& metrics = owner->metrics_;
             const bool changed = metrics.width != event.width || metrics.height != event.height;
@@ -52,7 +24,7 @@ namespace lux::editor
                 owner->metricsChanged();
             }
         };
-        window->on_framebuffer_resize = [owner = window.get()](const window::FramebufferResizeEvent& event) noexcept
+        on_framebuffer_resize = [owner = this](const window::FramebufferResizeEvent& event) noexcept
         {
             auto& metrics = owner->metrics_;
             const bool changed = metrics.framebuffer_width != event.width || metrics.framebuffer_height != event.height;
@@ -63,7 +35,7 @@ namespace lux::editor
                 owner->metricsChanged();
             }
         };
-        window->on_minimized = [owner = window.get()](const window::WindowMinimizedEvent& event) noexcept
+        on_minimized = [owner = this](const window::WindowMinimizedEvent& event) noexcept
         {
             if (owner->metrics_.minimized != event.minimized)
             {
@@ -71,7 +43,41 @@ namespace lux::editor
                 owner->metricsChanged();
             }
         };
-        return window;
+    }
+
+    EditorWindow::~EditorWindow() = default;
+
+    FrameworkResult<std::unique_ptr<EditorWindow>> EditorWindow::create(const window::InitParameter& config) noexcept
+    {
+        if (auto registered = registerEditorUiErrors(); !registered)
+        {
+            return cxx::unexpected(registered.error());
+        }
+        static std::unique_ptr<window::GlfwRuntime> runtime;
+        if (!runtime)
+        {
+            auto created = window::GlfwRuntime::create();
+            if (!created)
+            {
+                return cxx::unexpected(error::Error{Errors::EditorGlfwInitializationFailed, {}});
+            }
+            runtime = std::move(*created);
+        }
+        auto native = prepareNative(config);
+        if (!native)
+        {
+            return cxx::unexpected(
+                error::Error{Errors::EditorNativeWindowCreationFailed, {static_cast<std::uint64_t>(native.error())}}
+            );
+        }
+        auto root = ui::Root::create();
+        if (!root)
+        {
+            return cxx::unexpected(
+                error::Error{Errors::EditorRootInitializationFailed, {static_cast<std::uint64_t>(root.error())}}
+            );
+        }
+        return std::unique_ptr<EditorWindow>(new EditorWindow(std::move(*native), std::move(*root)));
     }
 
     void EditorWindow::metricsChanged() noexcept

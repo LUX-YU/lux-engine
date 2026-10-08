@@ -5,8 +5,8 @@
  * Purpose today: let the Android cross-configure/build proceed past the
  * window module so the remaining dependency walls (vcpkg triplets, host-tool
  * call sites) surface in order. Every method is a well-defined no-op; no
- * windowing library is touched (the GLFWwindow* member in the header is only
- * a forward-declared pointer and stays null).
+ * windowing library is touched. Desktop creation explicitly returns UNSUPPORTED_PLATFORM;
+ * native Android surfaces continue through the activity/surface adapter.
  *
  * The REAL backend (ANativeWindow surface + vkCreateAndroidSurfaceKHR +
  * GameActivity/ALooper pump + APP_CMD_INIT/TERM_WINDOW lifecycle) lands
@@ -25,6 +25,7 @@
 #endif
 #include <vulkan/vulkan.h>
 
+#include <exception>
 #include <utility>
 
 namespace lux::window
@@ -57,35 +58,41 @@ namespace lux::window
         return nullptr;
     }
 
-    LuxWindow::LuxWindow(int width, int height, std::string title) : _parameter{width, height, std::move(title)} {}
-
-    LuxWindow::LuxWindow(const InitParameter& parameter) : _parameter{parameter} {}
-
-    LuxWindow::~LuxWindow() = default;
-
-    bool LuxWindow::init()
+    struct LuxWindow::NativeWindowState final
     {
-        // No surface yet on Android at construction time: the window becomes
-        // real only at APP_CMD_INIT_WINDOW. The skeleton reports success so
-        // bring-up code paths can be exercised in unit contexts.
-        _init = true;
-        return true;
+    };
+
+    void LuxWindow::NativeWindowDeleter::operator()(NativeWindowState* state) const noexcept
+    {
+        delete state;
     }
 
-    bool LuxWindow::isInitialized() const
+    LuxWindow::CreateResult LuxWindow::create(InitParameter) noexcept
     {
-        return _init;
+        return lux::cxx::unexpected(EWindowInitError::UNSUPPORTED_PLATFORM);
     }
+
+    LuxWindow::NativeWindowResult LuxWindow::prepareNative(InitParameter) noexcept
+    {
+        return lux::cxx::unexpected(EWindowInitError::UNSUPPORTED_PLATFORM);
+    }
+
+    LuxWindow::LuxWindow(NativeWindowOwner) noexcept
+    {
+        std::terminate(); // No desktop window can be constructed by this adapter.
+    }
+
+    LuxWindow::~LuxWindow() noexcept = default;
 
     const char* LuxWindow::title() const
     {
-        return _parameter.title.c_str();
+        return "";
     }
 
     void LuxWindow::size(std::uint32_t& width, std::uint32_t& height) const
     {
-        width = static_cast<std::uint32_t>(_parameter.width);
-        height = static_cast<std::uint32_t>(_parameter.height);
+        width = 0;
+        height = 0;
     }
 
     bool LuxWindow::shouldClose()
@@ -128,7 +135,7 @@ namespace lux::window
 
     void LuxWindow::setExitBehavior(EExitBehavior behavior)
     {
-        _exit_behavior = behavior;
+        exit_behavior_ = behavior;
     }
 
     void LuxWindow::exit() {}
@@ -142,7 +149,7 @@ namespace lux::window
 
     float LuxWindow::lastFrameDelayTime() const
     {
-        return _delta_time;
+        return delta_time_;
     }
 
     void LuxWindow::framebufferSize(std::uint32_t& width, std::uint32_t& height) const
@@ -185,6 +192,7 @@ namespace lux::window
     void LuxWindow::waitEvents() {}
 
     void LuxWindow::waitEvents(double) {}
+
     void LuxWindow::wakeEvents() noexcept {}
 
     double LuxWindow::timeAfterFirstInitialization()

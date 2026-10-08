@@ -1,8 +1,8 @@
 #pragma once
 
+#include <cstdint>
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/window/visibility.h>
-#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
@@ -17,27 +17,33 @@ namespace lux::window
         int x{}, y{}, width{}, height{};
         bool operator==(const WindowRect&) const = default;
     };
+
     struct WindowSize final
     {
         int width{}, height{};
     };
+
     struct ContentScale final
     {
         float x{1.f}, y{1.f};
     };
+
     struct WindowInsets final
     {
         int left{8}, top{32}, right{8}, bottom{8};
     };
+
     struct DisplayMode final
     {
         int width{}, height{}, refresh_rate{};
     };
+
     struct DisplayHint final
     {
         std::string name;
         WindowRect work_area;
     };
+
     struct DisplayInfo final
     {
         DisplayHint hint;
@@ -53,12 +59,14 @@ namespace lux::window
         MAXIMIZED,
         FULLSCREEN
     };
+
     struct WindowPlacement final
     {
         WindowRect normal;
         EWindowMode mode{EWindowMode::ORDINARY};
         DisplayHint display;
     };
+
     struct WindowPlacementRequest final
     {
         std::optional<WindowPlacement> saved;
@@ -66,6 +74,7 @@ namespace lux::window
         std::optional<EWindowMode> mode;
         std::optional<DisplayHint> display;
     };
+
     struct WindowState final
     {
         WindowPlacement placement;
@@ -78,20 +87,22 @@ namespace lux::window
     {
         INVALID_REQUEST,
         NO_DISPLAY,
-        NOT_INITIALIZED,
-        UNSUPPORTED,
+        UNSUPPORTED = 3,
         PLATFORM
     };
+
     struct WindowPlacementFailure final
     {
         EWindowPlacementError code;
         std::string detail;
     };
+
     struct ResolvedWindowPlacement final
     {
         WindowPlacement placement;
         bool adjusted{};
     };
+
     using WindowPlacementResult = lux::cxx::expected<ResolvedWindowPlacement, WindowPlacementFailure>;
 
     // Pure, bounded policy. Insets reserve the outer decoration inside the work

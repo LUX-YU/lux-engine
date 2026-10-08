@@ -1,13 +1,14 @@
 #pragma once
-#include <memory>
-#include <functional>
 #include <cstdint>
-#include <string>
-#include <span>
-#include <vector>
+#include <functional>
+#include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/window/WindowEvents.hpp>
 #include <lux/engine/window/WindowPlacement.hpp>
 #include <lux/engine/window/visibility.h>
+#include <memory>
+#include <span>
+#include <string>
+#include <vector>
 
 struct GLFWwindow;
 
@@ -31,9 +32,10 @@ namespace lux::window
 
     enum class EWindowInitError : std::uint8_t
     {
-        NONE,
-        VULKAN_UNAVAILABLE,
-        BACKEND_CREATE_FAILED
+        VULKAN_UNAVAILABLE = 1,
+        BACKEND_CREATE_FAILED,
+        CALLBACK_REGISTRATION_FAILED,
+        UNSUPPORTED_PLATFORM
     };
 
     enum class EExitBehavior
@@ -47,34 +49,15 @@ namespace lux::window
     class LUX_PLATFORM_WINDOW_PUBLIC LuxWindow
     {
     public:
-        /**
-         * @brief Every constructor runs init() and records its result.
-         *
-         * A constructor cannot report failure, so the caller MUST check
-         * isInitialized() before using the window — a non-initialized
-         * LuxWindow has no native handle and every operation on it is a
-         * no-op. GLFW must already be up (see GlfwRuntime).
-         */
-        LuxWindow(int width, int height, std::string title);
+        using CreateResult = lux::cxx::expected<std::unique_ptr<LuxWindow>, EWindowInitError>;
+        // The platform runtime must outlive this complete native-window owner.
+        [[nodiscard]] static CreateResult create(InitParameter) noexcept;
+        virtual ~LuxWindow() noexcept;
 
-        explicit LuxWindow(const InitParameter& parameter);
-
-        /**
-         * @brief Idempotent; already run by the constructors. Public only so a
-         *        window whose first bring-up failed can be retried in place.
-         *        Failure is available through initError(); the platform layer
-         *        never chooses a logging sink.
-         */
-        [[nodiscard]] virtual bool init();
-
-        [[nodiscard]] bool isInitialized() const;
-
-        [[nodiscard]] EWindowInitError initError() const noexcept
-        {
-            return init_error_;
-        }
-
-        virtual ~LuxWindow();
+        LuxWindow(const LuxWindow&) = delete;
+        LuxWindow& operator=(const LuxWindow&) = delete;
+        LuxWindow(LuxWindow&&) = delete;
+        LuxWindow& operator=(LuxWindow&&) = delete;
 
         [[nodiscard]] const char* title() const;
 
@@ -143,9 +126,8 @@ namespace lux::window
 
         /// Vulkan instance extensions the window backend needs for surface
         /// creation (e.g. VK_KHR_surface + the platform surface extension).
-        /// Idempotently initializes the backend runtime so it is valid to
-        /// call before any window exists. The pointed-to strings have static
-        /// lifetime (owned by the backend); empty on failure.
+        /// Requires an existing platform runtime, but not a window. Strings
+        /// are borrowed until runtime destruction; empty on backend failure.
         [[nodiscard]] static std::span<const char* const> requiredVulkanInstanceExtensions();
 
         // On Android there is deliberately NO way to hand a native window to
@@ -210,6 +192,18 @@ namespace lux::window
         EventSlot<FileDropEvent> on_file_drop;
 
     protected:
+        struct NativeWindowState;
+
+        struct NativeWindowDeleter final
+        {
+            LUX_PLATFORM_WINDOW_PUBLIC void operator()(NativeWindowState*) const noexcept;
+        };
+
+        using NativeWindowOwner = std::unique_ptr<NativeWindowState, NativeWindowDeleter>;
+        using NativeWindowResult = lux::cxx::expected<NativeWindowOwner, EWindowInitError>;
+        // Derived factories prepare all fallible native work before publishing their owner.
+        [[nodiscard]] static NativeWindowResult prepareNative(InitParameter) noexcept;
+        explicit LuxWindow(NativeWindowOwner) noexcept;
         virtual void newFrame();
 
     private:
@@ -231,16 +225,13 @@ namespace lux::window
 
         void subscribeDropCallback();
 
-        static void window_close_callback(GLFWwindow* window);
+        static void windowCloseCallback(GLFWwindow* window);
 
-        float _delta_time{0};
-        float _last_frame_time{0};
+        float delta_time_{0};
+        float last_frame_time_{0};
 
-        GLFWwindow* _glfw_window{nullptr};
-        InitParameter _parameter;
-        bool _init{false};
-        EWindowInitError init_error_{EWindowInitError::NONE};
-        EExitBehavior _exit_behavior{EExitBehavior::EXIT};
+        NativeWindowOwner native_;
+        EExitBehavior exit_behavior_{EExitBehavior::EXIT};
 
         std::uint64_t input_sequence_{};
         bool composing_{};

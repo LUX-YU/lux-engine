@@ -384,10 +384,7 @@ namespace lux::render
             {
                 return {};
             }
-            // ensureGlobalMeshResources 成功 ⇒ 注册表里有一个**已初始化**的实例:
-            // 它走 ensure<T>(init_args),只在 init 成功后才发布。此前它是
-            // emplace → init,失败时把未初始化的对象留在(无 erase 的)注册表里,
-            // 于是这里必须复查 isInitialized(),否则 allocateOnly() 会崩。
+            // Complete backing resources are acquired before the global instance is published.
             auto& mesh_res = rctx->globalRegistry().must<MeshResources>();
             auto vdata = std::span<const std::byte>(
                 reinterpret_cast<const std::byte*>(mesh.vertices.data()),
@@ -483,7 +480,7 @@ namespace lux::render
                 return;
             }
             auto* mesh_res = rctx->globalRegistry().find<MeshResources>();
-            if (mesh_res && mesh_res->isInitialized())
+            if (mesh_res)
             {
                 mesh_res->destroy(handle_cast<MeshHandle>(handle));
             }

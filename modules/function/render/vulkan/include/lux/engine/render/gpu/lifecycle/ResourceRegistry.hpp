@@ -8,10 +8,10 @@
  *
  * Usage:
  *   ResourceRegistry reg;
- *   reg.emplace<MeshResources>();              // returns ResourceHandle<MeshResources>
- *   reg.find<MeshResources>()->init(...);      // type-based singleton lookup
- *   auto ds = reg.descriptorSetOf<MeshResources>();
- *   reg.shutdown();
+ *   auto candidate = MeshResources::create(info);
+ *   if (!candidate) return unexpected(candidate.error());
+ *   auto mesh = reg.insert(std::move(*candidate)); // complete owner, then publication
+ *   auto* same = reg.find<MeshResources>();
  *
  * Resources are discovered by type via find<T>() — no index bookkeeping
  * needed by the caller.  For the rare multi-instance case, emplace()
@@ -181,7 +181,17 @@ namespace lux::render
         /// @return A ResourceHandle<T> for direct O(1) access.
         template <typename T, typename... Args> TResourceHandle<T> emplace(Args&&... args)
         {
-            return TResourceHandle<T>{this, publishOwned<T>(new T(std::forward<Args>(args)...))};
+            return insert(std::make_unique<T>(std::forward<Args>(args)...));
+        }
+
+        /// Publish a complete resource from its fallible factory. A null owner is a contract violation.
+        template <typename T> TResourceHandle<T> insert(std::unique_ptr<T> resource) noexcept
+        {
+            if (!resource)
+            {
+                renderFatal("ResourceRegistry::insert(): missing resource owner");
+            }
+            return TResourceHandle<T>{this, publishOwned<T>(resource.release())};
         }
 
         // ── ensure<T> — idempotent get-or-create, in TWO constrained flavours ──
@@ -240,9 +250,7 @@ namespace lux::render
             if (auto r = detail::invokeInit(*owned, std::forward<Args>(init_args)...); !r)
                 return lux::cxx::unexpected<RenderError>(r.error()); // never published
 
-            T* raw = owned.release();
-            publishOwned<T>(raw);
-            return raw;
+            return insert(std::move(owned)).get();
         }
 
         // ── Type-based discovery (singleton fast path) ──────────────────

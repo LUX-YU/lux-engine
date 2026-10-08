@@ -193,24 +193,20 @@ namespace lux::render
 
         /**
          * @brief Add a new segment with the given capacity.
-         * @return The index of the new segment, or kInvalidSegment on failure.
+         * @return The index, an admission failure, or the exact native creation error.
          */
-        uint16_t addSegment(uint64_t capacity)
+        [[nodiscard]] Expected<uint16_t> addSegment(uint64_t capacity) noexcept
         {
-            if (capacity == 0)
-            {
-                return kInvalidSegment;
-            }
             const bool is_configured_limit = max_segments_ > 0 && segments_.size() >= max_segments_;
             const bool is_identity_limit = segments_.size() >= kInvalidSegment;
             if (is_configured_limit || is_identity_limit)
             {
-                return kInvalidSegment;
+                return renderFailure<err::memory::CapacityExhausted>();
             }
             auto candidate = ArenaAllocator::create(capacity);
             if (!candidate)
             {
-                return kInvalidSegment;
+                return lux::cxx::unexpected(candidate.error());
             }
             const auto idx = static_cast<uint16_t>(segments_.size());
             segments_.push_back(std::make_unique<ArenaAllocator>(std::move(*candidate)));

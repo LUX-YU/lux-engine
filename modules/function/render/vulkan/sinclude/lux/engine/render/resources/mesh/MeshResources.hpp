@@ -1,7 +1,6 @@
 #pragma once
 #include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/cxx/concurrent/LockFreeQueue.hpp>
-#include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
 #include <lux/engine/render/core/FrameServices.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
@@ -142,7 +141,7 @@ namespace lux::render
         uint16_t ibo_segment{0};
     };
 
-    class LUX_FUNCTION_PUBLIC MeshResources final : public TGPUResourceBase<MeshResources, EGPUResourceType::MESH>
+    class LUX_FUNCTION_PUBLIC MeshResources final
     {
     public:
         struct ArenaTelemetry final
@@ -155,9 +154,9 @@ namespace lux::render
             float fragmentation{0.0f};
         };
 
-        struct InitInfo
+        struct CreateInfo
         {
-            DeviceContext* device;
+            DeviceContext* device{};
             VkDeviceSize vertex_arena_bytes{64ull * 1024 * 1024};
             VkDeviceSize index_arena_bytes{32ull * 1024 * 1024};
             bool enable_device_address{true};
@@ -181,12 +180,14 @@ namespace lux::render
             };
         };
 
-        // ---------- Lifecycle ----------
-        ~MeshResources();
+        using CreateResult = Expected<std::unique_ptr<MeshResources>>;
 
-        [[nodiscard]] bool init(const InitInfo& ci);
-
-        void shutdown();
+        [[nodiscard]] static CreateResult create(const CreateInfo& info) noexcept;
+        ~MeshResources() noexcept;
+        MeshResources(const MeshResources&) = delete;
+        MeshResources& operator=(const MeshResources&) = delete;
+        MeshResources(MeshResources&&) = delete;
+        MeshResources& operator=(MeshResources&&) = delete;
 
         // ---------- Render-thread FIF retirement ----------
 
@@ -443,22 +444,15 @@ namespace lux::render
         // Segment table SSBO
         VkBuffer segmentsBuffer() const
         {
-            return segments_ssbo_->buffer();
+            return segments_ssbo_.buffer();
         }
         uint32_t segmentsBaseForSlice(uint32_t slice) const
         {
-            return segments_ssbo_->baseIndexForSlice(slice);
+            return segments_ssbo_.baseIndexForSlice(slice);
         }
         void writeSegmentsDescriptor(VkDescriptorSet set, uint32_t binding) const
         {
-            segments_ssbo_->writeDescriptor(set, binding);
-        }
-
-        // ========== IGPUResource Interface Implementation ==========
-
-        bool isInitialized() const
-        {
-            return initialized_;
+            segments_ssbo_.writeDescriptor(set, binding);
         }
 
         [[nodiscard]] ArenaTelemetry vboTelemetry() const noexcept
@@ -472,6 +466,9 @@ namespace lux::render
         }
 
     private:
+        struct Geometry;
+        MeshResources(const CreateInfo& info, Geometry&& geometry, SlicedSSBO<MeshInfoGpu>&& segments) noexcept;
+
         [[nodiscard]] static ArenaTelemetry arenaTelemetry(const ChainedArenaAllocator& arena) noexcept
         {
             const auto capacity = arena.totalCapacity();
@@ -501,15 +498,20 @@ namespace lux::render
         );
 
         /// Allocate a new GPU buffer segment and add it to the vector / chained arena.
-        bool addBufferSegment(
+        [[nodiscard]] static Expected<std::uint16_t> addBufferSegment(
+            DeviceContext& device,
             VkDeviceSize bytes,
             VkBufferUsageFlags usage,
             std::vector<VmaBuffer>& buffers,
             ChainedArenaAllocator& arena
-        );
+        ) noexcept;
         void rollbackUnpublishedSegments(std::uint16_t vbo_segment_count, std::uint16_t ibo_segment_count) noexcept;
 
-        [[nodiscard]] Expected<VmaBuffer> createGeometryBuffer(VkDeviceSize bytes, VkBufferUsageFlags usage);
+        [[nodiscard]] static Expected<VmaBuffer> createGeometryBuffer(
+            DeviceContext& device,
+            VkDeviceSize bytes,
+            VkBufferUsageFlags usage
+        ) noexcept;
 
         /// create() 与 allocateOnly() 的公共前段:校验 → index_type 推断 →
         /// VBO/IBO 子分配(含 IBO 失败时回滚 VBO 的事务处理)→
@@ -548,7 +550,7 @@ namespace lux::render
         }
 
     private:
-        DeviceContext* device_ctx_{nullptr};
+        DeviceContext& device_;
 
         // Per-segment VBO/IBO GPU buffers (index 0 = initial segment)
         std::vector<VmaBuffer> vbo_buffers_;
@@ -567,7 +569,7 @@ namespace lux::render
 
         // Segment table SSBO (geometry segment info; material related fields filled by upper layer later or use default
         // on GPU side)
-        std::optional<SlicedSSBO<MeshInfoGpu>> segments_ssbo_;
+        SlicedSSBO<MeshInfoGpu> segments_ssbo_;
 
         static constexpr std::size_t kMeshRecordsPerPage = 4096u;
         TStableRecordPages<MeshCpuRecord, kMeshRecordsPerPage> cpu_records_;
@@ -631,8 +633,7 @@ namespace lux::render
     /// 依赖**,而层规则只看 include,一条都看不见。函数体里没有一个协议词汇,
     /// 它做的全是 L3 的事,所以归位到这里。
     ///
-    /// 失败时对象留在注册表里但**未初始化**(注册表无 erase,重 emplace 会漏槽;
-    /// 全局竞技场分配失败等同致命,不重试)。所有消费者经 isInitialized() 守卫。
+    /// 完整候选成功后才登记资源与维护钩子;失败不留下可查找对象,后续请求可以重试。
     [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<void> ensureGlobalMeshResources(RenderContext& ctx);
 
 } // namespace lux::render

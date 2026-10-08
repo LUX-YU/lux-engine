@@ -32,116 +32,110 @@ namespace lux::render
         };
     }
 
-    bool MeshResources::init(const InitInfo& ci)
+    struct MeshResources::Geometry
     {
-        device_ctx_ = ci.device;
+        std::vector<VmaBuffer> vertices;
+        std::vector<VmaBuffer> indices;
+        ChainedArenaAllocator vertex_arena;
+        ChainedArenaAllocator index_arena;
+        VkBufferUsageFlags vertex_usage{};
+        VkBufferUsageFlags index_usage{};
+    };
 
-        initialized_ = true;
-
-        vbo_segment_cap_ = ci.vertex_arena_bytes;
-        ibo_segment_cap_ = ci.index_arena_bytes;
-        geometry_capacity_bytes_ = ci.geometry_capacity_bytes;
-        if (geometry_capacity_bytes_ < ci.vertex_arena_bytes + ci.index_arena_bytes)
+    MeshResources::CreateResult MeshResources::create(const CreateInfo& info) noexcept
+    {
+        const bool is_invalid_device = !info.device || !info.device->vmaAllocator();
+        const bool is_invalid_geometry = info.vertex_arena_bytes == 0 || info.index_arena_bytes == 0;
+        const bool is_invalid_frames = info.frames_in_flight == 0;
+        const bool is_invalid_table =
+            !info.segments_ssbo_cfg.deferred_queue ||
+            (info.segments_ssbo_cfg.device_context && info.segments_ssbo_cfg.device_context != info.device);
+        const bool is_invalid_configuration =
+            is_invalid_device || is_invalid_geometry || is_invalid_frames || is_invalid_table;
+        if (is_invalid_configuration)
         {
-            shutdown();
-            return false;
+            return renderFailure<err::memory::InvalidMeshConfiguration>();
         }
 
-        // VK_BUFFER_USAGE_STORAGE_BUFFER_BIT is required so the VBO can be
-        // exposed via the VertexPoolRegistry bindless SSBO array (R1.4 of
-        // render-refactor). Mesh shaders read vertices via vertex attributes
-        // today AND via storage buffer indexing after R5; both are valid
-        // simultaneously, the bit just opts in to the SSBO view.
-        vbo_usage_flags_ = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-                           VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                           (ci.enable_device_address ? VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT : 0);
-        ibo_usage_flags_ = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                           (ci.enable_device_address ? VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT : 0);
-
-        // Each unpublished buffer remains locally owned until its virtual range exists.
-        if (!addBufferSegment(ci.vertex_arena_bytes, vbo_usage_flags_, vbo_buffers_, vbo_arena_))
+        const bool is_geometry_over_budget =
+            info.vertex_arena_bytes > info.geometry_capacity_bytes ||
+            info.index_arena_bytes > info.geometry_capacity_bytes - info.vertex_arena_bytes;
+        const bool is_capacity_exhausted = info.mesh_max_count == 0 || is_geometry_over_budget;
+        if (is_capacity_exhausted)
         {
-            shutdown();
-            return false;
-        }
-        if (!addBufferSegment(ci.index_arena_bytes, ibo_usage_flags_, ibo_buffers_, ibo_arena_))
-        {
-            shutdown();
-            return false;
+            return renderFailure<err::memory::CapacityExhausted>();
         }
 
-        // PERF-01: Create reusable transfer command pool + fence
-        // NOTE: removed – all Vulkan queue ops now happen on the render thread
-        //       (see retireFrameStagingBuffers).
+        Geometry geometry;
+        // The vertex pool exposes the same geometry as storage-buffer data.
+        const auto address_usage = info.enable_device_address ? VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT : 0u;
+        geometry.vertex_usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+                                VK_BUFFER_USAGE_TRANSFER_DST_BIT | address_usage;
+        geometry.index_usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | address_usage;
+        auto vertices = addBufferSegment(
+            *info.device,
+            info.vertex_arena_bytes,
+            geometry.vertex_usage,
+            geometry.vertices,
+            geometry.vertex_arena
+        );
+        if (!vertices)
+        {
+            return lux::cxx::unexpected(vertices.error());
+        }
+        auto indices = addBufferSegment(
+            *info.device,
+            info.index_arena_bytes,
+            geometry.index_usage,
+            geometry.indices,
+            geometry.index_arena
+        );
+        if (!indices)
+        {
+            return lux::cxx::unexpected(indices.error());
+        }
 
-        // Reserve the per-frame-in-flight retirement rings
-        retired_ranges_.resize(ci.frames_in_flight);
-        retired_segment_slots_.resize(ci.frames_in_flight);
-
-        // Reserve the page-pointer table and scalar metadata. Record storage
-        // itself is allocated in stable 4096-record pages.
-        cpu_records_.reserve(ci.mesh_max_count);
-        gpu_records_.reserve(ci.mesh_max_count);
-        gens_.reserve(ci.mesh_max_count);
-        instance_refcounts_.reserve(ci.mesh_max_count);
-        destroy_requested_.reserve(ci.mesh_max_count);
-        mesh_max_count_ = ci.mesh_max_count; // enforced in create()/allocateOnly() (C-4)
-
-        // Segment table (read-only, MeshResources handles the geometry part)
-        SSBOInitConfig seg_cfg = ci.segments_ssbo_cfg;
-        if (!seg_cfg.device_context)
-            seg_cfg.device_context = device_ctx_;
-        if (seg_cfg.initial_dense_capacity == 0)
-            seg_cfg.initial_dense_capacity = 16384;
-        if (seg_cfg.slices == 0)
-            seg_cfg.slices = 1;
-        seg_cfg.allow_shader_write = false;
-        auto segments = SlicedSSBO<MeshInfoGpu>::create(seg_cfg);
+        auto table_info = info.segments_ssbo_cfg;
+        table_info.device_context = info.device;
+        if (table_info.initial_dense_capacity == 0)
+        {
+            table_info.initial_dense_capacity = 16384;
+        }
+        if (table_info.slices == 0)
+        {
+            table_info.slices = 1;
+        }
+        table_info.allow_shader_write = false;
+        auto segments = SlicedSSBO<MeshInfoGpu>::create(table_info);
         if (!segments)
-        {
-            shutdown();
-            return false;
-        }
-        segments_ssbo_.emplace(std::move(*segments));
+            return lux::cxx::unexpected(segments.error());
 
-        return true;
+        return std::unique_ptr<MeshResources>(new MeshResources(info, std::move(geometry), std::move(*segments)));
     }
 
-    MeshResources::~MeshResources()
+    MeshResources::MeshResources(
+        const CreateInfo& info,
+        Geometry&& geometry,
+        SlicedSSBO<MeshInfoGpu>&& segments
+    ) noexcept
+        : device_(*info.device), vbo_buffers_(std::move(geometry.vertices)), ibo_buffers_(std::move(geometry.indices)),
+          vbo_segment_cap_(info.vertex_arena_bytes), ibo_segment_cap_(info.index_arena_bytes),
+          vbo_usage_flags_(geometry.vertex_usage), ibo_usage_flags_(geometry.index_usage),
+          vbo_arena_(std::move(geometry.vertex_arena)), ibo_arena_(std::move(geometry.index_arena)),
+          geometry_capacity_bytes_(info.geometry_capacity_bytes), segments_ssbo_(std::move(segments)),
+          mesh_max_count_(info.mesh_max_count), retired_ranges_(info.frames_in_flight),
+          retired_segment_slots_(info.frames_in_flight)
     {
-        if (initialized_)
-            shutdown();
+        // Stable record pages keep published CPU/GPU addresses unchanged as the mesh count grows.
+        cpu_records_.reserve(info.mesh_max_count);
+        gpu_records_.reserve(info.mesh_max_count);
+        gens_.reserve(info.mesh_max_count);
+        instance_refcounts_.reserve(info.mesh_max_count);
+        destroy_requested_.reserve(info.mesh_max_count);
     }
 
-    void MeshResources::shutdown()
-    {
-        if (!initialized_)
-            return;
-        initialized_ = false;
-
-        cpu_records_.clear();
-        gpu_records_.clear();
-        gens_.clear();
-        free_.clear();
-        instance_refcounts_.clear();
-        destroy_requested_.clear();
-        segments_ssbo_.reset();
-
-        vbo_buffers_.clear();
-        ibo_buffers_.clear();
-
-        // Arena ranges awaiting FIF retirement: the arenas are torn down below,
-        // so just drop the bookkeeping (GPU is idle at shutdown).
-        retired_ranges_.clear();
-
-        vbo_arena_.clear();
-        ibo_arena_.clear();
-        vbo_segment_cap_ = ibo_segment_cap_ = 0;
-        vbo_usage_flags_ = ibo_usage_flags_ = 0;
-        ibo_topology_serial_ = 0u;
-        geometry_capacity_bytes_ = 0u;
-        last_capacity_shortfall_.reset();
-    }
+    // The existing render shutdown safe point precedes registry destruction.
+    MeshResources::~MeshResources() noexcept = default;
 
     // ---------- create ----------
     // Fill the per-LOD index sub-ranges on a freshly-built GPU record from the
@@ -252,7 +246,7 @@ namespace lux::render
         }
         if (growth_bytes != 0u)
         {
-            VRAMBudgetGuard budget(device_ctx_->vmaAllocator());
+            VRAMBudgetGuard budget(device_.vmaAllocator());
             if (!budget.canAllocate(growth_bytes))
             {
                 const auto snapshot = budget.snapshot();
@@ -328,7 +322,7 @@ namespace lux::render
             seg.bounds_max[0] = seg.bounds_max[1] = seg.bounds_max[2] = -FLT_MAX;
         }
 
-        gpu.segment_slot = segments_ssbo_->add(seg);
+        gpu.segment_slot = segments_ssbo_.add(seg);
         if (!gpu.segment_slot.isValid())
         {
             vbo_arena_.free({vrExp->segment, vrExp->range.offset, vrExp->range.size, vrExp->alloc_handle});
@@ -338,9 +332,9 @@ namespace lux::render
                 lux::render::kClassicMeshRecordsCapacity,
                 static_cast<std::uint64_t>(cpu_records_.size()) + 1u,
                 mesh_max_count_,
-                sizeof(MeshInfoGpu) * segments_ssbo_->slices(),
+                sizeof(MeshInfoGpu) * segments_ssbo_.slices(),
                 mesh_max_count_ > cpu_records_.size()
-                    ? (mesh_max_count_ - cpu_records_.size()) * sizeof(MeshInfoGpu) * segments_ssbo_->slices()
+                    ? (mesh_max_count_ - cpu_records_.size()) * sizeof(MeshInfoGpu) * segments_ssbo_.slices()
                     : 0u,
                 lux::render::ECapacityPlanReason::BUDGET_REJECT
             );
@@ -385,10 +379,10 @@ namespace lux::render
 
         // Restore the real index_count in the segment table so the GPU cull
         // shader starts generating draw commands for this mesh.
-        if (auto* seg = segments_ssbo_->get(gpu.segment_slot))
+        if (auto* seg = segments_ssbo_.get(gpu.segment_slot))
         {
             seg->index_count = gpu.index_count;
-            segments_ssbo_->touch(gpu.segment_slot);
+            segments_ssbo_.touch(gpu.segment_slot);
         }
 
         gpu.ready = true;
@@ -500,7 +494,7 @@ namespace lux::render
                 return renderFailure<err::memory::OutOfMemory>();
             }
 
-            VRAMBudgetGuard budget(device_ctx_->vmaAllocator());
+            VRAMBudgetGuard budget(device_.vmaAllocator());
             if (!budget.canAllocate(grow_bytes))
             {
                 const auto snapshot = budget.snapshot();
@@ -518,18 +512,14 @@ namespace lux::render
             auto& bufs = is_vbo ? vbo_buffers_ : ibo_buffers_;
             const VkBufferUsageFlags usage = is_vbo ? vbo_usage_flags_ : ibo_usage_flags_;
 
-            if (!addBufferSegment(grow_bytes, usage, bufs, arena))
+            auto segment = addBufferSegment(device_, grow_bytes, usage, bufs, arena);
+            if (!segment)
             {
-                const auto snapshot = budget.snapshot();
-                setCapacityShortfall(
-                    lux::render::kClassicMeshGeometryBytesCapacity,
-                    committed_geometry + grow_bytes,
-                    geometry_capacity_bytes_,
-                    grow_bytes,
-                    snapshot.total_budget > snapshot.total_usage ? snapshot.total_budget - snapshot.total_usage : 0u,
-                    lux::render::ECapacityPlanReason::BUDGET_REJECT
-                );
-                return renderFailure<err::memory::OutOfMemory>();
+                return lux::cxx::unexpected(segment.error());
+            }
+            if (!is_vbo)
+            {
+                ++ibo_topology_serial_;
             }
 
             alloc = arena.allocate(need, alignment);
@@ -539,17 +529,18 @@ namespace lux::render
         return SegmentedRange{BufferRange{alloc.offset, alloc.size}, alloc.segment_index, alloc.handle};
     }
 
-    Expected<VmaBuffer> MeshResources::createGeometryBuffer(VkDeviceSize bytes, VkBufferUsageFlags usage)
+    Expected<VmaBuffer> MeshResources::createGeometryBuffer(
+        DeviceContext& device,
+        VkDeviceSize bytes,
+        VkBufferUsageFlags usage
+    ) noexcept
     {
-        auto vma = device_ctx_->vmaAllocator();
+        auto vma = device.vmaAllocator();
 
         VkBufferCreateInfo bi{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         bi.size = bytes;
         bi.usage = usage;
-        const std::array queue_families{
-            device_ctx_->graphicsQueueFamilyIndex(),
-            device_ctx_->transferQueueFamilyIndex()
-        };
+        const std::array queue_families{device.graphicsQueueFamilyIndex(), device.transferQueueFamilyIndex()};
         if (queue_families[0] != queue_families[1])
         {
             // Mesh arenas are append-heavy, long-lived buffers consumed by the
@@ -576,30 +567,26 @@ namespace lux::render
         return VmaBuffer::create(vma, bi, ai);
     }
 
-    bool MeshResources::addBufferSegment(
+    Expected<std::uint16_t> MeshResources::addBufferSegment(
+        DeviceContext& device,
         VkDeviceSize bytes,
         VkBufferUsageFlags usage,
         std::vector<VmaBuffer>& buffers,
         ChainedArenaAllocator& arena
-    )
+    ) noexcept
     {
-        auto buffer = createGeometryBuffer(bytes, usage);
+        auto buffer = createGeometryBuffer(device, bytes, usage);
         if (!buffer)
         {
-            return false;
+            return lux::cxx::unexpected(buffer.error());
         }
         const auto index = arena.addSegment(bytes);
-        if (index == ChainedArenaAllocator::kInvalidSegment)
+        if (!index)
         {
-            return false;
+            return lux::cxx::unexpected(index.error());
         }
         buffers.push_back(std::move(*buffer));
-        const bool is_ibo_growth = &arena == &ibo_arena_ && index != 0;
-        if (is_ibo_growth)
-        {
-            ++ibo_topology_serial_;
-        }
-        return true;
+        return *index;
     }
 
     void MeshResources::rollbackUnpublishedSegments(
@@ -642,7 +629,7 @@ namespace lux::render
         // 段表槽:fence 已等过,复用它不再会撞上在途帧读旧条目。
         auto& seg_slots = retired_segment_slots_[fi];
         for (const auto& sh : seg_slots)
-            segments_ssbo_->remove(sh); // 无效句柄由 remove 自身的 isAlive 守卫过滤
+            segments_ssbo_.remove(sh); // 无效句柄由 remove 自身的 isAlive 守卫过滤
         seg_slots.clear();
     }
 
@@ -775,8 +762,8 @@ namespace lux::render
     //
     // 从 L6 的 assembly/meshstack/MeshStackOperationHandlers.cpp 搬来。它长在那里
     // 的唯一原因是历史:当初从 RenderServer.cpp 搬出去时跟着 handler 一起走了。
-    // 但它的函数体里没有一个协议词汇 —— 建 InitInfo、emplace、挂每帧维护钩子、
-    // init、接延迟销毁队列,全是 L3 的事。留在 L6 的代价是 L4 的
+    // 但它的函数体里没有一个协议词汇 —— 准备完整候选、登记、挂每帧维护钩子、
+    // 借用延迟销毁队列,全是 L3 的事。留在 L6 的代价是 L4 的
     // StandardMeshStackFeature 必须前向声明它,形成一条 **L4→L6 向上两层的
     // 链接期依赖**,而层规则只看 include,一条都看不见。
     Expected<void> ensureGlobalMeshResources(RenderContext& ctx)
@@ -785,7 +772,7 @@ namespace lux::render
         if (greg.find<MeshResources>())
             return {};
 
-        MeshResources::InitInfo info{
+        MeshResources::CreateInfo info{
             .device = &ctx.deviceContext(),
             .vertex_arena_bytes = 64ull * 1024 * 1024,
             .index_arena_bytes = 32ull * 1024 * 1024,
@@ -805,19 +792,14 @@ namespace lux::render
                     .clear_on_remove = false,
                 },
         };
-        // ensure<T>(init_args):构造 + init + **只在成功时发布**。此前是 emplace →
-        // find → init,失败时那个未初始化的对象留在注册表里(无 erase API,重新
-        // emplace 会漏一个槽),于是「不重试」成了唯一选择,而每个消费者都得自己
-        // 守 isInitialized()。现在失败什么都不留,下一次调用自然重试。
-        auto mr_r = greg.ensure<MeshResources>(info);
-        if (!mr_r)
-            return lux::cxx::unexpected<RenderError>(mr_r.error());
-        auto* mr = *mr_r;
+        auto candidate = MeshResources::create(info);
+        if (!candidate)
+        {
+            return lux::cxx::unexpected(candidate.error());
+        }
+        auto* mr = greg.insert(std::move(*candidate)).get();
 
-        // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。登记必须在 ensure
-        // 成功**之后**:失败即不发布意味着失败对象随即销毁,而注册表没有
-        // removeBeginFrameHook —— 早登记的钩子捕获的裸指针会成为每帧一次的
-        // use-after-free。
+        // Only published resources may be borrowed by frame/transfer callbacks.
         greg.addBeginFrameHook(EUploadPhase::UPLOAD, [mr](const FrameStamp& s) { mr->onFrameBeginMaintenance(s); });
         ctx.globalTransferScheduler().contributors().add(makeTransferContributor(mr, /*priority=*/0));
         return {};

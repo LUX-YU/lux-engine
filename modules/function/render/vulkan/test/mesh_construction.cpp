@@ -235,7 +235,7 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
-    MeshResources::InitInfo info{};
+    MeshResources::CreateInfo info{};
     info.device = &device;
     info.vertex_arena_bytes = 4096;
     info.index_arena_bytes = 4096;
@@ -246,28 +246,90 @@ int main(int argc, char** argv)
     if (check_ssbo)
     {
         fail_buffer = 3;
-        MeshResources mesh;
-        const auto accepted = mesh.init(info);
-        std::printf("mesh segment table failure: accepted=%d live_buffers=%zu\n", accepted, buffers.size());
+        const auto accepted = MeshResources::create(info);
+        std::printf(
+            "mesh segment table failure: accepted=%d live_buffers=%zu\n",
+            static_cast<bool>(accepted),
+            buffers.size()
+        );
         std::fflush(stdout);
-        assert(!accepted);
+        assert(!accepted && isError<err::device::VulkanCallFailed>(accepted.error()));
+        assert(accepted.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
         assert(buffers.empty() && virtual_blocks.empty() && retirement.pendingCount() == 0);
         return 0;
+    }
+    static_assert(!std::is_default_constructible_v<MeshResources>);
+    static_assert(!std::is_copy_constructible_v<MeshResources>);
+    static_assert(!std::is_move_constructible_v<MeshResources>);
+    for (unsigned invalid = 0; invalid < 8; ++invalid)
+    {
+        auto bad = info;
+        switch (invalid)
+        {
+        case 0:
+            bad.device = nullptr;
+            break;
+        case 1:
+            bad.segments_ssbo_cfg.deferred_queue = nullptr;
+            break;
+        case 2:
+            bad.vertex_arena_bytes = 0;
+            break;
+        case 3:
+            bad.index_arena_bytes = 0;
+            break;
+        case 4:
+            bad.frames_in_flight = 0;
+            break;
+        case 5:
+            bad.mesh_max_count = 0;
+            break;
+        case 6:
+            bad.geometry_capacity_bytes = 8191;
+            break;
+        case 7:
+            bad.vertex_arena_bytes = std::numeric_limits<VkDeviceSize>::max();
+            bad.geometry_capacity_bytes = bad.vertex_arena_bytes;
+            break;
+        }
+        const auto native_attempts = buffer_attempts;
+        const auto arena_attempts = virtual_attempts;
+        auto rejected = MeshResources::create(bad);
+        assert(!rejected);
+        if (invalid < 5)
+        {
+            assert(isError<err::memory::InvalidMeshConfiguration>(rejected.error()));
+        }
+        else
+        {
+            assert(isError<err::memory::CapacityExhausted>(rejected.error()));
+        }
+        assert(buffer_attempts == native_attempts && virtual_attempts == arena_attempts);
+        assert(buffers.empty() && virtual_blocks.empty() && retirement.pendingCount() == 0);
     }
     for (unsigned failure = 1; failure <= 4; ++failure)
     {
         buffer_attempts = virtual_attempts = 0;
         fail_buffer = failure <= 2 ? failure : 0;
         fail_virtual = failure > 2 ? failure - 2 : 0;
-        MeshResources mesh;
-        assert(!mesh.init(info));
+        ResourceRegistry registry;
+        const auto rejected = MeshResources::create(info);
+        assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
+        assert(rejected.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+        assert(registry.size() == 0 && !registry.find<MeshResources>());
         assert(buffers.empty() && virtual_blocks.empty());
         assert(retirement.pendingCount() == 0);
     }
     fail_buffer = fail_virtual = 0;
     {
-        MeshResources mesh;
-        assert(mesh.init(info));
+        ResourceRegistry registry;
+        auto candidate = MeshResources::create(info);
+        assert(candidate && registry.size() == 0 && !registry.find<MeshResources>());
+        auto* address = candidate->get();
+        const auto handle = registry.insert(std::move(*candidate));
+        assert(!*candidate && handle.get() == address);
+        assert(registry.size() == 1 && registry.find<MeshResources>() == address);
+        auto& mesh = *handle;
         assert(buffers.size() == 3 && virtual_blocks.size() == 2);
         assert(mesh.iboTopologySerial() == 0);
         const auto vertex = mesh.vertexBuffer();
@@ -284,16 +346,22 @@ int main(int argc, char** argv)
             fail_buffer = failure <= 2 ? failure : 0;
             fail_virtual = failure > 2 ? failure - 2 : 0;
             const auto rejected = mesh.allocateOnly(mesh_info);
-            assert(!rejected);
+            assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
+            assert(rejected.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
             assert(mesh.vertexBuffer() == vertex && mesh.indexBuffer() == index);
             assert(mesh.vboSegmentCount() == 1 && mesh.iboSegmentCount() == 1);
+            assert(mesh.iboTopologySerial() == 0 && !mesh.lastCapacityShortfall());
             assert(buffers.size() == 3 && virtual_blocks.size() == 2);
         }
         fail_buffer = fail_virtual = 0;
         const auto accepted = mesh.allocateOnly(mesh_info);
         assert(accepted);
         assert(mesh.vboSegmentCount() == 2 && mesh.iboSegmentCount() == 2);
+        assert(mesh.iboTopologySerial() == 1 && mesh.alive(accepted->handle));
         assert(mesh.destroy(accepted->handle));
+        assert(!mesh.alive(accepted->handle));
+        mesh.retireFrameStagingBuffers(0);
+        assert(mesh.vboTelemetry().used_bytes == 0 && mesh.iboTelemetry().used_bytes == 0);
     }
     // Only the published segment table is deferred; unpublished geometry cleaned synchronously.
     assert(virtual_blocks.empty() && buffers.size() == 1);

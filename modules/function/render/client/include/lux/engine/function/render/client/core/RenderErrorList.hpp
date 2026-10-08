@@ -197,6 +197,15 @@ namespace lux::render::err
     // ── 显存与容量 ───────────────────────────────────────────────────────
     namespace memory
     {
+        struct InvalidMeshConfiguration
+        {
+            static constexpr const char* name = "memory.invalid_mesh_configuration";
+            static constexpr const char* message =
+                "Mesh storage requires one device, retirement queue and nonzero geometry and frames";
+            static constexpr ERecovery recovery = ERecovery::BUG;
+            static constexpr ErrorArgs args{};
+        };
+
         struct InvalidBufferConfiguration
         {
             static constexpr const char* name = "memory.invalid_buffer_configuration";
@@ -1361,6 +1370,7 @@ namespace lux::render::err
     X(::lux::render::err::shader::ReflectionOutOfSyncWithSpirv)                                                        \
     X(::lux::render::err::memory::GpuAllocationFailed)                                                                 \
     X(::lux::render::err::memory::OutOfMemory)                                                                         \
+    X(::lux::render::err::memory::InvalidMeshConfiguration)                                                            \
     X(::lux::render::err::memory::InvalidBufferConfiguration)                                                          \
     X(::lux::render::err::memory::CapacityExhausted)                                                                   \
     X(::lux::render::err::asset::Invalid)                                                                              \

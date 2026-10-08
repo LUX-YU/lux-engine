@@ -67,7 +67,9 @@ int main()
         fail_create = true;
         auto rejected = ArenaAllocator::create(4096);
         assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
-        assert(segments.addSegment(4096) == ChainedArenaAllocator::kInvalidSegment);
+        const auto failed_segment = segments.addSegment(4096);
+        assert(!failed_segment && isError<err::device::VulkanCallFailed>(failed_segment.error()));
+        assert(failed_segment.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
         assert(segments.segmentCount() == 0 && segments.totalCapacity() == 0 && live.empty());
 
         fail_create = false;
@@ -97,17 +99,22 @@ int main()
         }
         assert(live.empty() && created == destroyed);
 
-        assert(segments.addSegment(4096) == 0);
+        const auto first_segment = segments.addSegment(4096);
+        assert(first_segment && *first_segment == 0);
         const auto allocation = segments.allocate(64, 3);
         assert(allocation.valid() && allocation.offset % 3 == 0);
         fail_create = true;
-        assert(segments.addSegment(4096) == ChainedArenaAllocator::kInvalidSegment);
+        const auto failed_growth = segments.addSegment(4096);
+        assert(!failed_growth && isError<err::device::VulkanCallFailed>(failed_growth.error()));
+        assert(failed_growth.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
         assert(segments.segmentCount() == 1 && segments.totalCapacity() == 4096);
         assert(segments.segment(0)->findHandleAt(allocation.offset) == allocation.handle);
         fail_create = false;
-        assert(segments.addSegment(8192) == 1);
+        const auto second_segment = segments.addSegment(8192);
+        assert(second_segment && *second_segment == 1);
         const auto attempts = attempted;
-        assert(segments.addSegment(1024) == ChainedArenaAllocator::kInvalidSegment && attempted == attempts);
+        const auto full = segments.addSegment(1024);
+        assert(!full && isError<err::memory::CapacityExhausted>(full.error()) && attempted == attempts);
         assert(segments.removeLastEmptySegment() && live.size() == 1);
         segments.free(allocation);
         assert(segments.totalUsedBytes() == 0);

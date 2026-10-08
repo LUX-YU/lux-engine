@@ -38,7 +38,7 @@ namespace lux::render
         // path involved (the data is always GPU-generated, never copied
         // from CPU).
         void* dummy_mapped = nullptr;
-        const bool ok = createGpuBufferVmaBuffer(
+        const auto result = createGpuBufferVmaBuffer(
             device_ctx_->vmaAllocator(),
             capacity_bytes_,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -47,7 +47,8 @@ namespace lux::render
             &alloc_,
             &dummy_mapped
         );
-        if (!ok)
+        const bool allocation_failed = result != VK_SUCCESS;
+        if (allocation_failed)
         {
             buffer_ = VK_NULL_HANDLE;
             alloc_ = nullptr;

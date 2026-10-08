@@ -102,6 +102,7 @@ namespace lux::render
             Canvas2DInstanceArena::InitInfo ii{};
             ii.textures = &renderContext().globalRegistry().must<TextureResources>();
             ii.device_context = &ctx.deviceContext();
+            ii.deferred_queue = &ctx.deferredDestroyQueue();
             ii.descriptor_svc = &ctx.descriptorService();
             ii.arena = &scene.descriptorArena();
             ii.initial_capacity = cfg_.initial_capacity;
@@ -118,10 +119,9 @@ namespace lux::render
             // 一个悬垂裸指针。
             if (fresh)
             {
-                arena_->setDeferredQueue(&ctx.deferredDestroyQueue());
                 scene.transferScheduler().contributors().add(makeTransferContributor(arena_, /*priority=*/1));
             }
-            // init() 本身返回 void(不可失败),真正的成败看它建出来的描述符集。
+            // ensure has checked construction; retain the descriptor contract check.
             if (!arena_->initialized() || arena_->descriptorSet(ECanvas2DKind::IMAGE) == VK_NULL_HANDLE)
                 return renderFailure<err::device::VulkanObjectCreationFailed>();
         }

@@ -33,6 +33,7 @@ namespace lux::render
         LightResources::InitInfo li{};
         li.ssbo_config = SSBOInitConfig{
             .device_context = &ctx.deviceContext(),
+            .deferred_queue = &ctx.deferredDestroyQueue(),
             .initial_dense_capacity = 256,
             .slices = ctx.framesInFlight(),
             .clear_on_remove = true,
@@ -74,7 +75,6 @@ namespace lux::render
             light_res->onFrameBeginMaintenance(s);
         });
 
-        light_res->setDeferredQueue(&ctx.deferredDestroyQueue());
 
         // Register the light SSBO as a per-scene transfer contributor (priority 6)
         // so its slices flush before this scene's draw passes bind set 3. The scene

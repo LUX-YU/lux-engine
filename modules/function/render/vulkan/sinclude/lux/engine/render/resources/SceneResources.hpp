@@ -186,6 +186,7 @@ namespace lux::render
         struct InitInfo
         {
             DeviceContext& device_context;
+            DeferredDestroyQueue& deferred_queue;
             uint32_t slices;                      ///< frames_in_flight
             uint32_t initial_scene_capacity;      ///< initial SceneGlobal SoA capacity (e.g. 4–8)
             uint32_t initial_view_capacity;       ///< initial View SoA capacity (e.g. 4–8)
@@ -252,15 +253,26 @@ namespace lux::render
             // Initialise both SoA GPU buffers
             GpuBufferCreateInfo bci{};
             bci.device_context = device_ctx_;
+            bci.deferred_queue = &info.deferred_queue;
             bci.slices = slices_;
             bci.buffer_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
             bci.allow_shader_write = false;
 
             bci.initial_capacity = std::max(1u, info.initial_scene_capacity);
-            scene_buf_.init(bci);
+            auto scene_buf = SceneGlobalBuffer::create(bci);
+            if (!scene_buf)
+            {
+                return false;
+            }
+            scene_buf_.emplace(std::move(*scene_buf));
 
             bci.initial_capacity = std::max(1u, info.initial_view_capacity);
-            view_buf_.init(bci);
+            auto view_buf = ViewBuffer::create(bci);
+            if (!view_buf)
+            {
+                return false;
+            }
+            view_buf_.emplace(std::move(*view_buf));
 
             writeDescriptorAll();
             initialized_ = true;
@@ -269,25 +281,20 @@ namespace lux::render
 
         void shutdown()
         {
-            scene_buf_.destroy();
-            view_buf_.destroy();
+            scene_buf_.reset();
+            view_buf_.reset();
             initialized_ = false;
         }
 
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-        {
-            scene_buf_.setDeferredQueue(q);
-            view_buf_.setDeferredQueue(q);
-        }
 
         // ── Scene slot lifecycle (one slot per RenderScene) ───────────────────
 
         [[nodiscard]] SlotHandle allocateScene()
         {
             assert(initialized_ && "SceneResources not initialised");
-            const uint32_t old_gen = scene_buf_.bufferGeneration();
-            SlotHandle h = scene_buf_.allocate();
-            if (scene_buf_.bufferGeneration() != old_gen)
+            const uint32_t old_gen = scene_buf_->bufferGeneration();
+            SlotHandle h = scene_buf_->allocate();
+            if (scene_buf_->bufferGeneration() != old_gen)
             {
                 ds_revision_.bump();
             }
@@ -296,7 +303,7 @@ namespace lux::render
 
         void freeScene(const SlotHandle& slot)
         {
-            scene_buf_.free(slot);
+            scene_buf_->free(slot);
         }
 
         // ── View slot lifecycle (one slot per View) ───────────────────────────
@@ -304,9 +311,9 @@ namespace lux::render
         [[nodiscard]] SlotHandle allocateView()
         {
             assert(initialized_ && "SceneResources not initialised");
-            const uint32_t old_gen = view_buf_.bufferGeneration();
-            SlotHandle h = view_buf_.allocate();
-            if (view_buf_.bufferGeneration() != old_gen)
+            const uint32_t old_gen = view_buf_->bufferGeneration();
+            SlotHandle h = view_buf_->allocate();
+            if (view_buf_->bufferGeneration() != old_gen)
             {
                 ds_revision_.bump();
             }
@@ -315,7 +322,7 @@ namespace lux::render
 
         void freeView(const SlotHandle& slot)
         {
-            view_buf_.free(slot);
+            view_buf_->free(slot);
         }
 
         // ── Batch pre-allocation ─────────────────────────────────────────────
@@ -323,12 +330,12 @@ namespace lux::render
         /// Pre-reserve scene-global slots to avoid mid-frame reallocation.
         [[nodiscard]] bool reserveScenes(uint32_t count)
         {
-            const uint32_t old_gen = scene_buf_.bufferGeneration();
-            if (!scene_buf_.reserve(count))
+            const uint32_t old_gen = scene_buf_->bufferGeneration();
+            if (!scene_buf_->reserve(count))
             {
                 return false;
             }
-            if (scene_buf_.bufferGeneration() != old_gen)
+            if (scene_buf_->bufferGeneration() != old_gen)
             {
                 ds_revision_.bump();
             }
@@ -338,12 +345,12 @@ namespace lux::render
         /// Pre-reserve view slots to avoid mid-frame reallocation.
         [[nodiscard]] bool reserveViews(uint32_t count)
         {
-            const uint32_t old_gen = view_buf_.bufferGeneration();
-            if (!view_buf_.reserve(count))
+            const uint32_t old_gen = view_buf_->bufferGeneration();
+            if (!view_buf_->reserve(count))
             {
                 return false;
             }
-            if (view_buf_.bufferGeneration() != old_gen)
+            if (view_buf_->bufferGeneration() != old_gen)
             {
                 ds_revision_.bump();
             }
@@ -364,12 +371,12 @@ namespace lux::render
 
         void writeSceneGlobal(const SlotHandle& slot, const SceneGlobalGpuData& data)
         {
-            scene_buf_.write(current_slice_, slot, data);
+            scene_buf_->write(current_slice_, slot, data);
         }
 
         void writeView(const SlotHandle& slot, const ViewGpuData& data)
         {
-            view_buf_.write(current_slice_, slot, data);
+            view_buf_->write(current_slice_, slot, data);
         }
 
         /// Write view data using an explicit slice index instead of current_slice_.
@@ -377,7 +384,7 @@ namespace lux::render
         /// when beginFrame() was last called (e.g. updateView() before beginFrame()).
         void writeView(const SlotHandle& slot, const ViewGpuData& data, uint32_t slice)
         {
-            view_buf_.write(slice, slot, data);
+            view_buf_->write(slice, slot, data);
         }
 
         /// Write RAW per-view GPU-data bytes into the view SoA slot — domain-neutral:
@@ -389,17 +396,17 @@ namespace lux::render
             assert(size == sizeof(ViewGpuData) && "view data stride mismatch");
             ViewGpuData tmp;
             std::memcpy(&tmp, bytes, sizeof(tmp));
-            view_buf_.write(slice, slot, tmp);
+            view_buf_->write(slice, slot, tmp);
         }
 
         /// Flush dirty ranges and emit pipeline barriers for both buffers.
         void endFrame(VkCommandBuffer cb)
         {
-            scene_buf_.flush(current_slice_);
-            view_buf_.flush(current_slice_);
+            scene_buf_->flush(current_slice_);
+            view_buf_->flush(current_slice_);
 
-            auto bar0 = scene_buf_.getBarrier(current_slice_);
-            auto bar1 = view_buf_.getBarrier(current_slice_);
+            auto bar0 = scene_buf_->getBarrier(current_slice_);
+            auto bar1 = view_buf_->getBarrier(current_slice_);
 
             VkBufferMemoryBarrier2 barriers[2];
             int b_count = 0;
@@ -420,8 +427,8 @@ namespace lux::render
                 vkCmdPipelineBarrier2(cb, &dep);
             }
 
-            scene_buf_.resetDirtySlice(current_slice_);
-            view_buf_.resetDirtySlice(current_slice_);
+            scene_buf_->resetDirtySlice(current_slice_);
+            view_buf_->resetDirtySlice(current_slice_);
         }
 
         void onFrameBeginMaintenance(const FrameStamp& stamp)
@@ -434,20 +441,20 @@ namespace lux::render
         /// Flush dirty ranges and submit host-write barriers to the scheduler.
         void submitTransfers(TransferScheduler& scheduler)
         {
-            scene_buf_.flush(current_slice_);
-            view_buf_.flush(current_slice_);
+            scene_buf_->flush(current_slice_);
+            view_buf_->flush(current_slice_);
 
-            if (auto bar0 = scene_buf_.getBarrier(current_slice_))
+            if (auto bar0 = scene_buf_->getBarrier(current_slice_))
             {
                 scheduler.submitExtraPostBarrier(*bar0);
             }
-            if (auto bar1 = view_buf_.getBarrier(current_slice_))
+            if (auto bar1 = view_buf_->getBarrier(current_slice_))
             {
                 scheduler.submitExtraPostBarrier(*bar1);
             }
 
-            scene_buf_.resetDirtySlice(current_slice_);
-            view_buf_.resetDirtySlice(current_slice_);
+            scene_buf_->resetDirtySlice(current_slice_);
+            view_buf_->resetDirtySlice(current_slice_);
         }
 
         // ── Descriptor set access ─────────────────────────────────────────────
@@ -467,8 +474,8 @@ namespace lux::render
     private:
         void writeDescriptorForSet(uint32_t set_index)
         {
-            scene_buf_.writeDescriptorSlice(descriptor_sets_[set_index], binding_scene_global_, set_index);
-            view_buf_.writeDescriptorSlice(descriptor_sets_[set_index], binding_view_data_, set_index);
+            scene_buf_->writeDescriptorSlice(descriptor_sets_[set_index], binding_scene_global_, set_index);
+            view_buf_->writeDescriptorSlice(descriptor_sets_[set_index], binding_view_data_, set_index);
 
             // Transitional dual write: the same descriptor is also written into
             // this set's region of the domain set.
@@ -483,8 +490,8 @@ namespace lux::render
             // the per-set write above.
             if (VkDescriptorSet dds = domain_.setFor(set_index); dds != VK_NULL_HANDLE)
             {
-                scene_buf_.writeDescriptorSlice(dds, domain_.binding(binding_scene_global_), set_index);
-                view_buf_.writeDescriptorSlice(dds, domain_.binding(binding_view_data_), set_index);
+                scene_buf_->writeDescriptorSlice(dds, domain_.binding(binding_scene_global_), set_index);
+                view_buf_->writeDescriptorSlice(dds, domain_.binding(binding_view_data_), set_index);
             }
         }
 
@@ -506,8 +513,8 @@ namespace lux::render
         uint32_t binding_scene_global_{0};
         uint32_t binding_view_data_{1};
 
-        SceneGlobalBuffer scene_buf_;
-        ViewBuffer view_buf_;
+        std::optional<SceneGlobalBuffer> scene_buf_;
+        std::optional<ViewBuffer> view_buf_;
 
         std::vector<VkDescriptorSet> descriptor_sets_; // size = FIF, both bindings bound
     };

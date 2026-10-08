@@ -197,6 +197,14 @@ namespace lux::render::err
     // ── 显存与容量 ───────────────────────────────────────────────────────
     namespace memory
     {
+        struct InvalidBufferConfiguration
+        {
+            static constexpr const char* name = "memory.invalid_buffer_configuration";
+            static constexpr const char* message = "GPU buffer requires a device, retirement queue and valid capacity";
+            static constexpr ERecovery recovery = ERecovery::BUG;
+            static constexpr ErrorArgs args{};
+        };
+
         struct GpuAllocationFailed
         {
             static constexpr const char* name = "memory.gpu_allocation_failed";
@@ -1353,6 +1361,7 @@ namespace lux::render::err
     X(::lux::render::err::shader::ReflectionOutOfSyncWithSpirv)                                                        \
     X(::lux::render::err::memory::GpuAllocationFailed)                                                                 \
     X(::lux::render::err::memory::OutOfMemory)                                                                         \
+    X(::lux::render::err::memory::InvalidBufferConfiguration)                                                          \
     X(::lux::render::err::memory::CapacityExhausted)                                                                   \
     X(::lux::render::err::asset::Invalid)                                                                              \
     X(::lux::render::err::asset::UnsupportedFormat)                                                                    \

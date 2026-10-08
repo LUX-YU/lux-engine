@@ -278,7 +278,7 @@ namespace lux::render
         template <ELightSetBindings SetBinding> void uploadSlice(VkCommandBuffer cmd, uint32_t slice)
         {
             using LightType = typename TLightSetBindingsMapGpu<SetBinding>::type;
-            auto& ssbo = std::get<SlicedSSBO<LightType>>(ssbos_);
+            auto& ssbo = std::get<SlicedSSBO<LightType>>(*ssbos_);
             ssbo.uploadDataSlice(cmd, slice);
         }
 
@@ -366,7 +366,7 @@ namespace lux::render
                 if (auto b = ssbo.uploadDataSliceDeferred(current_frame_))
                     scheduler.submitExtraPostBarrier(*b);
             };
-            std::apply([&](auto&... ssbo) { (submit(ssbo), ...); }, ssbos_);
+            std::apply([&](auto&... ssbo) { (submit(ssbo), ...); }, *ssbos_);
         }
 
         /// Post-transfer hook (makeTransferContributorWithPost): first call
@@ -426,13 +426,13 @@ namespace lux::render
         /// Return the number of live lights of the given GPU type.
         template <typename LightGPUType> [[nodiscard]] uint32_t lightCount() const noexcept
         {
-            return std::get<SlicedSSBO<LightGPUType>>(ssbos_).count();
+            return std::get<SlicedSSBO<LightGPUType>>(*ssbos_).count();
         }
 
         /// Invoke `fn(uint32_t slot, const LightGPUType&)` for every alive light of the given GPU type.
         template <typename LightGPUType, typename Fn> void forEachLight(Fn&& fn) const
         {
-            const auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(ssbos_);
+            const auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(*ssbos_);
             const uint32_t n = ssbo.count();
             for (uint32_t i = 0; i < n; ++i)
             {
@@ -445,12 +445,6 @@ namespace lux::render
     public:
         // Modify (overwrite in place) from a descriptor
         RenderError modify(LightHandle handle, const VLightDescriptor& desc);
-
-        /// Late-bind centralized deferred destroy queue to all internal SSBOs.
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-        {
-            std::apply([q](auto&... ssbo) { (ssbo.setDeferredQueue(q), ...); }, ssbos_);
-        }
 
     private:
         /// Domain-set handle for a given slice; returns NULL when no domain
@@ -468,7 +462,7 @@ namespace lux::render
         template <ELightSetBindings SetBinding> void writeDescriptorOnSet(uint32_t set_index) const
         {
             using LightGPUType = typename TLightSetBindingsMapGpu<SetBinding>::type;
-            const auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(ssbos_);
+            const auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(*ssbos_);
             if (VkDescriptorSet ds = domainSetFor(set_index); ds != VK_NULL_HANDLE)
                 ssbo.writeDescriptor(ds, domain_.binding(static_cast<uint32_t>(SetBinding)));
         }
@@ -477,7 +471,7 @@ namespace lux::render
         template <ELightSetBindings SetBinding> void refreshDescriptor(uint32_t slice = 0)
         {
             using LightGPUType = typename TLightSetBindingsMapGpu<SetBinding>::type;
-            auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(ssbos_);
+            auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(*ssbos_);
             if (VkDescriptorSet ds = domainSetFor(current_frame_); ds != VK_NULL_HANDLE)
                 ssbo.writeDescriptorTight(ds, domain_.binding(static_cast<uint32_t>(SetBinding)), slice);
         }
@@ -486,7 +480,7 @@ namespace lux::render
         template <ELightSetBindings SetBinding> void refreshDescriptorOnSet(uint32_t set_index, uint32_t slice = 0)
         {
             using LightGPUType = typename TLightSetBindingsMapGpu<SetBinding>::type;
-            auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(ssbos_);
+            auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(*ssbos_);
             if (VkDescriptorSet ds = domainSetFor(set_index); ds != VK_NULL_HANDLE)
                 ssbo.writeDescriptorTight(ds, domain_.binding(static_cast<uint32_t>(SetBinding)), slice);
         }
@@ -498,7 +492,7 @@ namespace lux::render
             SlicedSSBO<SpotLightGPU>,
             SlicedSSBO<AreaLightGPU>>;
 
-        SSBOList ssbos_;
+        std::optional<SSBOList> ssbos_;
 
         /// Dual-write target: per-slice domain-set handles plus the
         /// in-domain binding offset.

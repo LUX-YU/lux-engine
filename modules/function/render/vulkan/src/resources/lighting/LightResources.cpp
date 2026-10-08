@@ -66,7 +66,7 @@ namespace lux::render
             }
             return true;
         };
-        return std::apply([&](const auto&... ssbo) { return (can_rebase(ssbo) && ...); }, ssbos_);
+        return std::apply([&](const auto&... ssbo) { return (can_rebase(ssbo) && ...); }, *ssbos_);
     }
 
     void LightResources::rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept
@@ -85,7 +85,7 @@ namespace lux::render
                 }
             }
         };
-        std::apply([&](auto&... ssbo) { (rebase(ssbo), ...); }, ssbos_);
+        std::apply([&](auto&... ssbo) { (rebase(ssbo), ...); }, *ssbos_);
     }
 
     LightHandle LightResources::allocateGlobalHandle()
@@ -125,13 +125,13 @@ namespace lux::render
         switch (record->binding)
         {
         case ELightSetBindings::LIGHT_DIRECTIONAL:
-            return std::get<SlicedSSBO<DirectionalLightGPU>>(ssbos_).hostValue(index).intensity;
+            return std::get<SlicedSSBO<DirectionalLightGPU>>(*ssbos_).hostValue(index).intensity;
         case ELightSetBindings::LIGHT_POINT:
-            return std::get<SlicedSSBO<PointLightGPU>>(ssbos_).hostValue(index).intensity;
+            return std::get<SlicedSSBO<PointLightGPU>>(*ssbos_).hostValue(index).intensity;
         case ELightSetBindings::LIGHT_SPOT:
-            return std::get<SlicedSSBO<SpotLightGPU>>(ssbos_).hostValue(index).intensity;
+            return std::get<SlicedSSBO<SpotLightGPU>>(*ssbos_).hostValue(index).intensity;
         case ELightSetBindings::LIGHT_AREA:
-            return std::get<SlicedSSBO<AreaLightGPU>>(ssbos_).hostValue(index).intensity;
+            return std::get<SlicedSSBO<AreaLightGPU>>(*ssbos_).hostValue(index).intensity;
         default:
             return std::nullopt;
         }
@@ -150,13 +150,13 @@ namespace lux::render
         switch (record->binding)
         {
         case ELightSetBindings::LIGHT_DIRECTIONAL:
-            return modify(std::get<SlicedSSBO<DirectionalLightGPU>>(ssbos_));
+            return modify(std::get<SlicedSSBO<DirectionalLightGPU>>(*ssbos_));
         case ELightSetBindings::LIGHT_POINT:
-            return modify(std::get<SlicedSSBO<PointLightGPU>>(ssbos_));
+            return modify(std::get<SlicedSSBO<PointLightGPU>>(*ssbos_));
         case ELightSetBindings::LIGHT_SPOT:
-            return modify(std::get<SlicedSSBO<SpotLightGPU>>(ssbos_));
+            return modify(std::get<SlicedSSBO<SpotLightGPU>>(*ssbos_));
         case ELightSetBindings::LIGHT_AREA:
-            return modify(std::get<SlicedSSBO<AreaLightGPU>>(ssbos_));
+            return modify(std::get<SlicedSSBO<AreaLightGPU>>(*ssbos_));
         default:
             return false;
         }
@@ -298,10 +298,27 @@ namespace lux::render
         frames_in_flight_ = info.ssbo_config.slices;
 
         // Initialize SlicedSSBO for each light type
-        std::get<SlicedSSBO<DirectionalLightGPU>>(ssbos_).init(info.ssbo_config);
-        std::get<SlicedSSBO<PointLightGPU>>(ssbos_).init(info.ssbo_config);
-        std::get<SlicedSSBO<SpotLightGPU>>(ssbos_).init(info.ssbo_config);
-        std::get<SlicedSSBO<AreaLightGPU>>(ssbos_).init(info.ssbo_config);
+        auto directional = SlicedSSBO<DirectionalLightGPU>::create(info.ssbo_config);
+        if (!directional)
+        {
+            return false;
+        }
+        auto point = SlicedSSBO<PointLightGPU>::create(info.ssbo_config);
+        if (!point)
+        {
+            return false;
+        }
+        auto spot = SlicedSSBO<SpotLightGPU>::create(info.ssbo_config);
+        if (!spot)
+        {
+            return false;
+        }
+        auto area = SlicedSSBO<AreaLightGPU>::create(info.ssbo_config);
+        if (!area)
+        {
+            return false;
+        }
+        ssbos_.emplace(std::move(*directional), std::move(*point), std::move(*spot), std::move(*area));
 
         // 不再分配 per-set 实例 —— 描述符只写场景域集,绑定也从域集取
         //(useEngineSet)。写目标即下面这组域集句柄。
@@ -542,7 +559,7 @@ namespace lux::render
                     for (uint32_t i = 0; i < kShadowCascadeSlots; ++i)
                         gpu.cascade_splits[i] = d.cascade_splits[i];
 
-                    auto local_slot = std::get<SlicedSSBO<DirectionalLightGPU>>(ssbos_).add(gpu);
+                    auto local_slot = std::get<SlicedSSBO<DirectionalLightGPU>>(*ssbos_).add(gpu);
                     LightHandle h = allocateGlobalHandle();
                     binding_map_.insert(
                         h,
@@ -572,7 +589,7 @@ namespace lux::render
                     gpu.attenuation_linear = d.attenuation_linear;
                     gpu.attenuation_quadratic = d.attenuation_quadratic;
 
-                    auto local_slot = std::get<SlicedSSBO<PointLightGPU>>(ssbos_).add(gpu);
+                    auto local_slot = std::get<SlicedSSBO<PointLightGPU>>(*ssbos_).add(gpu);
                     LightHandle h = allocateGlobalHandle();
                     binding_map_.insert(
                         h,
@@ -605,7 +622,7 @@ namespace lux::render
                     gpu.inner_cone_angle = d.inner_cone_angle;
                     gpu.outer_cone_angle = d.outer_cone_angle;
 
-                    auto local_slot = std::get<SlicedSSBO<SpotLightGPU>>(ssbos_).add(gpu);
+                    auto local_slot = std::get<SlicedSSBO<SpotLightGPU>>(*ssbos_).add(gpu);
                     LightHandle h = allocateGlobalHandle();
                     binding_map_.insert(
                         h,
@@ -631,7 +648,7 @@ namespace lux::render
                     );
                     gpu.size = to_aligned2(d.size);
 
-                    auto local_slot = std::get<SlicedSSBO<AreaLightGPU>>(ssbos_).add(gpu);
+                    auto local_slot = std::get<SlicedSSBO<AreaLightGPU>>(*ssbos_).add(gpu);
                     LightHandle h = allocateGlobalHandle();
                     binding_map_.insert(
                         h,
@@ -665,16 +682,16 @@ namespace lux::render
         switch (binding)
         {
         case ELightSetBindings::LIGHT_DIRECTIONAL:
-            std::get<SlicedSSBO<DirectionalLightGPU>>(ssbos_).remove(rec->local_slot);
+            std::get<SlicedSSBO<DirectionalLightGPU>>(*ssbos_).remove(rec->local_slot);
             break;
         case ELightSetBindings::LIGHT_POINT:
-            std::get<SlicedSSBO<PointLightGPU>>(ssbos_).remove(rec->local_slot);
+            std::get<SlicedSSBO<PointLightGPU>>(*ssbos_).remove(rec->local_slot);
             break;
         case ELightSetBindings::LIGHT_SPOT:
-            std::get<SlicedSSBO<SpotLightGPU>>(ssbos_).remove(rec->local_slot);
+            std::get<SlicedSSBO<SpotLightGPU>>(*ssbos_).remove(rec->local_slot);
             break;
         case ELightSetBindings::LIGHT_AREA:
-            std::get<SlicedSSBO<AreaLightGPU>>(ssbos_).remove(rec->local_slot);
+            std::get<SlicedSSBO<AreaLightGPU>>(*ssbos_).remove(rec->local_slot);
             break;
         default:
             break;
@@ -718,7 +735,7 @@ namespace lux::render
                     gpu.cascade_count = d.cascade_count;
                     for (uint32_t i = 0; i < kShadowCascadeSlots; ++i)
                         gpu.cascade_splits[i] = d.cascade_splits[i];
-                    auto& ssbo = std::get<SlicedSSBO<DirectionalLightGPU>>(ssbos_);
+                    auto& ssbo = std::get<SlicedSSBO<DirectionalLightGPU>>(*ssbos_);
                     return ssbo.modify(local_slot, gpu) ? RenderError{} : renderError<err::resource::ModifyFailed>();
                 }
                 else if constexpr (std::is_same_v<T, PointLightDesc>)
@@ -740,7 +757,7 @@ namespace lux::render
                     gpu.attenuation_constant = d.attenuation_constant;
                     gpu.attenuation_linear = d.attenuation_linear;
                     gpu.attenuation_quadratic = d.attenuation_quadratic;
-                    auto& ssbo = std::get<SlicedSSBO<PointLightGPU>>(ssbos_);
+                    auto& ssbo = std::get<SlicedSSBO<PointLightGPU>>(*ssbos_);
                     return ssbo.modify(local_slot, gpu) ? RenderError{} : renderError<err::resource::ModifyFailed>();
                 }
                 else if constexpr (std::is_same_v<T, SpotLightDesc>)
@@ -765,7 +782,7 @@ namespace lux::render
                     gpu.attenuation_quadratic = d.attenuation_quadratic;
                     gpu.inner_cone_angle = d.inner_cone_angle;
                     gpu.outer_cone_angle = d.outer_cone_angle;
-                    auto& ssbo = std::get<SlicedSSBO<SpotLightGPU>>(ssbos_);
+                    auto& ssbo = std::get<SlicedSSBO<SpotLightGPU>>(*ssbos_);
                     return ssbo.modify(local_slot, gpu) ? RenderError{} : renderError<err::resource::ModifyFailed>();
                 }
                 else if constexpr (std::is_same_v<T, AreaLightDesc>)
@@ -783,7 +800,7 @@ namespace lux::render
                         d.shadow_normal_bias
                     );
                     gpu.size = to_aligned2(d.size);
-                    auto& ssbo = std::get<SlicedSSBO<AreaLightGPU>>(ssbos_);
+                    auto& ssbo = std::get<SlicedSSBO<AreaLightGPU>>(*ssbos_);
                     return ssbo.modify(local_slot, gpu) ? RenderError{} : renderError<err::resource::ModifyFailed>();
                 }
             },

@@ -384,7 +384,7 @@ namespace lux::render
         for (auto& frame : mip_feedback_frames_)
         {
             void* mapped = nullptr;
-            if (!createGpuBufferVmaBuffer(
+            if (createGpuBufferVmaBuffer(
                     dc_->vmaAllocator(),
                     bytes,
                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
@@ -392,7 +392,7 @@ namespace lux::render
                     &frame.buffer,
                     &frame.allocation,
                     &mapped
-                ) ||
+                ) != VK_SUCCESS ||
                 frame.buffer == VK_NULL_HANDLE || mapped == nullptr)
             {
                 shutdownMipFeedback();

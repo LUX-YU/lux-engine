@@ -24,11 +24,16 @@ namespace lux::render
         return key;
     }
 
-    void MeshSectionTable::init(DeviceContext* device_context, uint32_t initial_capacity)
+    bool MeshSectionTable::init(DeviceContext* device_context, uint32_t initial_capacity)
     {
         cpu_only_mode_ = (device_context == nullptr);
         if (!cpu_only_mode_)
-            stream_.init(device_context, initial_capacity);
+        {
+            if (!stream_.init(device_context, initial_capacity))
+            {
+                return false;
+            }
+        }
         else
             cpu_sections_.assign(initial_capacity, MeshSectionRecord{});
 
@@ -41,6 +46,7 @@ namespace lux::render
         dedup_map_.reserve(initial_capacity);
         count_ = 0u;
         full_rebuild_ = !cpu_only_mode_;
+        return true;
     }
 
     void MeshSectionTable::shutdown()

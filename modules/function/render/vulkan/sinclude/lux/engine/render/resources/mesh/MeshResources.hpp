@@ -443,15 +443,15 @@ namespace lux::render
         // Segment table SSBO
         VkBuffer segmentsBuffer() const
         {
-            return segments_ssbo_.buffer();
+            return segments_ssbo_->buffer();
         }
         uint32_t segmentsBaseForSlice(uint32_t slice) const
         {
-            return segments_ssbo_.baseIndexForSlice(slice);
+            return segments_ssbo_->baseIndexForSlice(slice);
         }
         void writeSegmentsDescriptor(VkDescriptorSet set, uint32_t binding) const
         {
-            segments_ssbo_.writeDescriptor(set, binding);
+            segments_ssbo_->writeDescriptor(set, binding);
         }
 
         // ========== IGPUResource Interface Implementation ==========
@@ -469,12 +469,6 @@ namespace lux::render
         [[nodiscard]] ArenaTelemetry iboTelemetry() const noexcept
         {
             return arenaTelemetry(ibo_arena_);
-        }
-
-        /// Late-bind centralized deferred destroy queue to segments SSBO.
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-        {
-            segments_ssbo_.setDeferredQueue(q);
         }
 
     private:
@@ -573,7 +567,7 @@ namespace lux::render
 
         // Segment table SSBO (geometry segment info; material related fields filled by upper layer later or use default
         // on GPU side)
-        SlicedSSBO<MeshInfoGpu> segments_ssbo_;
+        std::optional<SlicedSSBO<MeshInfoGpu>> segments_ssbo_;
 
         static constexpr std::size_t kMeshRecordsPerPage = 4096u;
         TStableRecordPages<MeshCpuRecord, kMeshRecordsPerPage> cpu_records_;

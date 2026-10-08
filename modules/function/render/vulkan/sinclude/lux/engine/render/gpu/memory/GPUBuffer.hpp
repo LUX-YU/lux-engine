@@ -20,7 +20,7 @@
 namespace lux::render
 {
     // Out-of-line VMA helper to keep vk_mem_alloc.h out of sinclude headers.
-    LUX_FUNCTION_PUBLIC bool createGpuBufferVmaBuffer(
+    LUX_FUNCTION_PUBLIC VkResult createGpuBufferVmaBuffer(
         VmaAllocator allocator,
         VkDeviceSize size,
         VkBufferUsageFlags usage,
@@ -224,7 +224,6 @@ namespace lux::render
     protected:
         void initHostMirror(uint32_t, uint32_t, bool) {}
         void resizeHostMirror(uint32_t, uint32_t) {}
-        void clearHostMirror() {}
         void moveHostMirror(THostMirrorPolicy&&) noexcept {}
     };
 
@@ -264,15 +263,6 @@ namespace lux::render
             std::fill(hm_slice_epoch_.begin(), hm_slice_epoch_.end(), hm_global_epoch_);
         }
 
-        void clearHostMirror()
-        {
-            hm_values_.clear();
-            hm_elem_epoch_.clear();
-            hm_listed_ticket_.clear();
-            hm_slice_epoch_.clear();
-            hm_dirty_indices_.clear();
-        }
-
         void moveHostMirror(THostMirrorPolicy&& o) noexcept
         {
             hm_values_ = std::move(o.hm_values_);
@@ -281,6 +271,7 @@ namespace lux::render
             hm_slice_epoch_ = std::move(o.hm_slice_epoch_);
             hm_dirty_indices_ = std::move(o.hm_dirty_indices_);
             hm_listed_ticket_ = std::move(o.hm_listed_ticket_);
+            hm_upload_scratch_ = std::move(o.hm_upload_scratch_);
             hm_current_ticket_ = o.hm_current_ticket_;
             hm_clear_on_remove_ = o.hm_clear_on_remove_;
         }
@@ -317,15 +308,6 @@ namespace lux::render
         // dropped the queue pointer) and the buffer's ONLY destruction path is the
         // FIF-gated queue — no inline vmaDestroyBuffer. (C1)
         TFifOwnedAllocated<VkBuffer> buffer_owned_;
-
-    public:
-        /// Late-bind centralized deferred destroy queue (called after RenderContext creation).
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-        {
-            buffer_owned_.setQueue(q);
-        }
-
-    protected:
         uint32_t stride_ = 0;
         uint32_t capacity_ = 0;
         uint32_t count_ = 0;
@@ -338,30 +320,37 @@ namespace lux::render
         std::vector<uint32_t> generations_;
         std::vector<uint32_t> free_;
 
-        /// Move the current buffer+allocation into the deferred destroy queue.
-        void retireCurrentBuffer()
+        struct Allocation
         {
-            buffer_owned_.reset();
-        }
+            TFifOwnedAllocated<VkBuffer> owner;
+            void* mapped{};
+        };
 
-        [[nodiscard]] bool createVmaBuffer(
+        [[nodiscard]] static Expected<Allocation> prepareAllocation(
+            DeviceContext& device,
+            DeferredDestroyQueue& queue,
             VkDeviceSize size,
             VkBufferUsageFlags usage,
-            bool cpu_writable,
-            VkBuffer* pBuffer,
-            VmaAllocation* pAllocation,
-            void** ppMapped
-        )
+            bool cpu_writable
+        ) noexcept
         {
-            return createGpuBufferVmaBuffer(
-                device_ctx_->vmaAllocator(),
+            VkBuffer buffer{};
+            VmaAllocation allocation{};
+            void* mapped{};
+            const auto result = createGpuBufferVmaBuffer(
+                device.vmaAllocator(),
                 size,
                 usage,
                 cpu_writable,
-                pBuffer,
-                pAllocation,
-                ppMapped
+                &buffer,
+                &allocation,
+                &mapped
             );
+            if (result != VK_SUCCESS)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(result));
+            }
+            return Allocation{TFifOwnedAllocated<VkBuffer>{queue, buffer, allocation}, mapped};
         }
     };
 
@@ -386,92 +375,54 @@ namespace lux::render
         );
 
     public:
-        TGpuBuffer() = default;
-        explicit TGpuBuffer(const GpuBufferCreateInfo& ci)
+        [[nodiscard]] static Expected<TGpuBuffer> create(const GpuBufferCreateInfo& ci) noexcept
         {
-            init(ci);
-        }
-        ~TGpuBuffer()
-        {
-            destroy();
+            const bool has_dependencies = ci.device_context && ci.deferred_queue;
+            const bool has_capacity = ci.initial_capacity != 0;
+            const bool has_slices = !IsSliced || ci.slices != 0;
+            if (!has_dependencies || !has_capacity || !has_slices)
+            {
+                return renderFailure<err::memory::InvalidBufferConfiguration>();
+            }
+            const auto capacity = nextGrowCapacity(0, ci.initial_capacity);
+            const auto slices = IsSliced ? ci.slices : 1u;
+            const bool exceeds_addressable_size =
+                capacity == 0 || VkDeviceSize(capacity) > std::numeric_limits<VkDeviceSize>::max() / sizeof(T) / slices;
+            if (exceeds_addressable_size)
+            {
+                return renderFailure<err::memory::InvalidBufferConfiguration>();
+            }
+            const auto size = VkDeviceSize(capacity) * sizeof(T) * slices;
+            auto allocation = prepareAllocation(
+                *ci.device_context,
+                *ci.deferred_queue,
+                size,
+                usageFlags(ci.buffer_usage),
+                IsCpuWritable
+            );
+            if (!allocation)
+            {
+                return lux::cxx::unexpected(allocation.error());
+            }
+            return TGpuBuffer(ci, std::move(*allocation), capacity);
         }
 
-        // Move only
+        ~TGpuBuffer() = default;
         TGpuBuffer(const TGpuBuffer&) = delete;
         TGpuBuffer& operator=(const TGpuBuffer&) = delete;
-        TGpuBuffer(TGpuBuffer&& o) noexcept
+
+        TGpuBuffer(TGpuBuffer&& other) noexcept
         {
-            moveFrom(std::move(o));
+            moveFrom(std::move(other));
         }
-        TGpuBuffer& operator=(TGpuBuffer&& o) noexcept
+
+        TGpuBuffer& operator=(TGpuBuffer&& other) noexcept
         {
-            if (this != &o)
+            if (this != &other)
             {
-                destroy();
-                moveFrom(std::move(o));
+                moveFrom(std::move(other));
             }
             return *this;
-        }
-
-        // ---------- Init / Destroy ----------
-        void init(const GpuBufferCreateInfo& ci)
-        {
-            assert(ci.device_context && "DeviceContext null");
-            assert(!device_ctx_ && "Init called twice");
-
-            device_ctx_ = ci.device_context;
-            // Only override the destroy queue when the create-info actually carries
-            // one. A queue may already have been late-bound via setDeferredQueue()
-            // BEFORE init() — e.g. InstanceResources binds the scene's
-            // DeferredDestroyQueue at scene construction but defers its streams'
-            // init() to feature attachment (PagedGpuStream::init leaves
-            // ci.deferred_queue null). Unconditionally assigning here would reset
-            // queue_ back to null, making the FifOwnedAllocated retire a silent
-            // no-op → the buffer leaks at teardown (VUID-vkDestroyDevice-05137).
-            if (ci.deferred_queue)
-                buffer_owned_.setQueue(ci.deferred_queue);
-            allow_shader_write_ = ci.allow_shader_write;
-            buffer_usage_ = ci.buffer_usage;
-            stride_ = static_cast<uint32_t>(sizeof(T));
-
-            this->initSlices(ci.slices);      // Call SlicePolicy
-            this->resetDirty(this->slices()); // Call DirtyPolicy
-
-            if constexpr (HasMirror)
-            {
-                this->initHostMirror(std::max(1u, ci.initial_capacity), this->slices(), ci.clear_on_remove);
-            }
-
-            if (ci.initial_capacity > 0)
-            {
-                [[maybe_unused]] bool ok = reserve(ci.initial_capacity, false);
-                assert(ok && "GpuBuffer: initial reserve failed (VMA allocation)");
-            }
-        }
-
-        void destroy() noexcept
-        {
-            // Retire through the FIF queue (the queue outlives this buffer — it is
-            // RenderContext's first-declared / last-destroyed member). (C1)
-            buffer_owned_.reset();
-
-            if constexpr (IsCpuWritable)
-            {
-                this->mapped_ = nullptr; // Call MapPolicy
-            }
-
-            alive_.clear();
-            generations_.clear();
-            free_.clear();
-            capacity_ = 0;
-            count_ = 0;
-
-            this->resetDirty(this->slices());
-
-            if constexpr (HasMirror)
-            {
-                this->clearHostMirror();
-            }
         }
 
         // ---------- Slot Management ----------
@@ -675,27 +626,28 @@ namespace lux::render
 
             const uint32_t old_cap = capacity_;
             const uint32_t new_cap = nextGrowCapacity(old_cap, min_capacity);
-            VkDeviceSize new_size = VkDeviceSize(new_cap) * stride_ * this->slices();
-
-            // 1. Prepare creation params
-            VkBuffer new_buf = VK_NULL_HANDLE;
-            VmaAllocation new_alloc = VK_NULL_HANDLE;
-            void* new_ptr = nullptr;
-
-            VkBufferUsageFlags usage = buffer_usage_ ? buffer_usage_ : VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-            usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-            if constexpr (!IsCpuWritable)
-                usage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-
-            if (!this->createVmaBuffer(
-                    new_size,
-                    usage,
-                    IsCpuWritable,
-                    &new_buf,
-                    &new_alloc,
-                    IsCpuWritable ? &new_ptr : nullptr
-                ))
+            const bool exceeds_addressable_size =
+                new_cap == 0 ||
+                VkDeviceSize(new_cap) > std::numeric_limits<VkDeviceSize>::max() / stride_ / this->slices();
+            if (exceeds_addressable_size)
+            {
                 return false;
+            }
+            const VkDeviceSize new_size = VkDeviceSize(new_cap) * stride_ * this->slices();
+            auto candidate = prepareAllocation(
+                *device_ctx_,
+                buffer_owned_.queue(),
+                new_size,
+                usageFlags(buffer_usage_),
+                IsCpuWritable
+            );
+            if (!candidate)
+            {
+                return false;
+            }
+            const auto new_buf = candidate->owner.get();
+            const auto new_alloc = candidate->owner.alloc();
+            void* const new_ptr = candidate->mapped;
 
             // 2. Migration (Only for CPU_TO_GPU)
             if constexpr (IsCpuWritable)
@@ -791,9 +743,8 @@ namespace lux::render
                 }
             }
 
-            // 3. Swap — adopt() retires the old buffer (in-flight command buffers
-            // may still reference it) and takes ownership of the new one atomically.
-            buffer_owned_.adopt(new_buf, new_alloc);
+            // 3. Move the complete candidate; the old owner retires through the same queue.
+            buffer_owned_ = std::move(candidate->owner);
             capacity_ = new_cap;
             buffer_gen_++;
 
@@ -1269,7 +1220,13 @@ namespace lux::render
         static uint32_t nextGrowCapacity(uint32_t old_cap, uint32_t min_required)
         {
             constexpr uint32_t kAlign = 64;
-            const uint32_t raw = std::max(min_required, old_cap * 2);
+            constexpr auto maximum = std::numeric_limits<uint32_t>::max() - (kAlign - 1);
+            if (min_required > maximum)
+            {
+                return 0;
+            }
+            const auto doubled = old_cap > maximum / 2 ? maximum : old_cap * 2;
+            const uint32_t raw = std::max(min_required, doubled);
             const uint32_t aligned = (raw + kAlign - 1) & ~(kAlign - 1);
             return std::max(aligned, kAlign);
         }
@@ -1320,13 +1277,52 @@ namespace lux::render
             vkCmdPipelineBarrier2(cmd, &dep);
         }
 
-        // Move implementation
+        static VkBufferUsageFlags usageFlags(VkBufferUsageFlags requested) noexcept
+        {
+            auto usage = requested ? requested : VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+            if constexpr (!IsCpuWritable)
+            {
+                usage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+            }
+            return usage;
+        }
+
+        TGpuBuffer(const GpuBufferCreateInfo& ci, Allocation&& allocation, uint32_t capacity) noexcept
+        {
+            device_ctx_ = ci.device_context;
+            buffer_owned_ = std::move(allocation.owner);
+            allow_shader_write_ = ci.allow_shader_write;
+            buffer_usage_ = ci.buffer_usage;
+            stride_ = sizeof(T);
+            capacity_ = capacity;
+            buffer_gen_ = 2;
+            this->initSlices(ci.slices);
+            this->resetDirty(this->slices());
+            alive_.resize(capacity, 0);
+            generations_.resize(capacity, 1);
+            free_.reserve(capacity);
+            for (uint32_t i = capacity; i-- > 0;)
+            {
+                free_.push_back(i);
+            }
+            if constexpr (IsCpuWritable)
+            {
+                this->mapped_ = allocation.mapped;
+                const auto size = VkDeviceSize(capacity) * stride_ * this->slices();
+                std::memset(this->mapped_, 0, static_cast<size_t>(size));
+                vmaFlushAllocation(device_ctx_->vmaAllocator(), buffer_owned_.alloc(), 0, size);
+            }
+            if constexpr (HasMirror)
+            {
+                this->initHostMirror(capacity, this->slices(), ci.clear_on_remove);
+                std::fill(this->hm_slice_epoch_.begin(), this->hm_slice_epoch_.end(), this->hm_global_epoch_);
+            }
+        }
+
+        // Transfer the allocation together with its retirement owner.
         void moveFrom(TGpuBuffer&& o) noexcept
         {
-            // Move Base. buffer_owned_ carries (buffer, allocation, queue) as ONE
-            // unit — this is what closes the old moveFrom leak, where the queue
-            // pointer was NOT transferred so a moved-into buffer's later
-            // retireCurrentBuffer() silently no-op'd and leaked the old buffer. (C1)
             device_ctx_ = o.device_ctx_;
             buffer_owned_ = std::move(o.buffer_owned_);
             stride_ = o.stride_;
@@ -1394,7 +1390,7 @@ namespace lux::render
         bool allow_shader_write = false;
         bool clear_on_remove = false;
 
-        /// Implicit conversion so callers can pass SSBOInitConfig to init().
+        /// Conversion into the complete buffer factory input.
         operator GpuBufferCreateInfo() const
         {
             return GpuBufferCreateInfo{

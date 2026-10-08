@@ -372,5 +372,19 @@ if(BUILD_TESTING)
     if(LUX_RENDER_BUILD_GPU_TESTS)
         add_test(NAME render.mesh_geometry_ownership COMMAND render_mesh_construction_test)
         set_tests_properties(render.mesh_geometry_ownership PROPERTIES TIMEOUT 30 LABELS gpu)
+        add_test(
+            NAME render.gpu_buffer_construction
+            COMMAND render_mesh_construction_test --buffer
+        )
+
+        add_test(
+            NAME render.mesh_segment_construction
+            COMMAND render_mesh_construction_test --ssbo
+        )
+
+        set_tests_properties(
+            render.gpu_buffer_construction render.mesh_segment_construction
+            PROPERTIES TIMEOUT 30 LABELS gpu
+        )
     endif()
 endif()

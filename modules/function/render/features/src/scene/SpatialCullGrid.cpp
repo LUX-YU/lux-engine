@@ -58,7 +58,7 @@ namespace lux::render
                         &buf,
                         &alloc,
                         &mapped
-                    ) &&
+                    ) == VK_SUCCESS &&
                     buf != VK_NULL_HANDLE && mapped != nullptr)
                 {
                     std::memset(mapped, 0xFF, static_cast<std::size_t>(init_size));
@@ -313,7 +313,7 @@ namespace lux::render
             VkBuffer buf{VK_NULL_HANDLE};
             VmaAllocation alloc{nullptr};
             void* mapped{nullptr};
-            if (!createGpuBufferVmaBuffer(
+            if (createGpuBufferVmaBuffer(
                     device_ctx_->vmaAllocator(),
                     alloc_size,
                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
@@ -321,7 +321,7 @@ namespace lux::render
                     &buf,
                     &alloc,
                     &mapped
-                ) ||
+                ) != VK_SUCCESS ||
                 buf == VK_NULL_HANDLE || mapped == nullptr)
             {
                 // Leave the slot null rather than publishing a half-built handle.

@@ -67,11 +67,12 @@ namespace lux::render
             shutdown();
     }
 
-    void InstanceResources::init(const InitInfo& info)
+    bool InstanceResources::init(const InitInfo& info)
     {
         if (initialized_)
-            return; // idempotent: safe to call from multiple Features
+            return true; // idempotent: safe to call from multiple Features
         initialized_ = true;
+        setDeferredQueue(info.deferred_queue);
 
         device_ctx_ = info.device_context;
         descriptor_svc_ = info.descriptor_svc;
@@ -93,7 +94,7 @@ namespace lux::render
         if (!streams_ready)
         {
             shutdown();
-            return;
+            return false;
         }
         if (sparse_bda_ && !page_table_.publish(
                                0u,
@@ -106,15 +107,20 @@ namespace lux::render
                            ))
         {
             shutdown();
-            return;
+            return false;
         }
-        alive_slot_stream_.init(device_ctx_, max_capacity_);
-        dynamic_slot_stream_.init(device_ctx_, max_capacity_);
-        mesh_section_table_.init(device_ctx_, capacity_);
+        const bool slot_streams_ready = alive_slot_stream_.init(device_ctx_, max_capacity_) &&
+                                        dynamic_slot_stream_.init(device_ctx_, max_capacity_) &&
+                                        mesh_section_table_.init(device_ctx_, capacity_);
+        if (!slot_streams_ready)
+        {
+            shutdown();
+            return false;
+        }
         if (!local_bsphere_.reserve(capacity_))
         {
             shutdown();
-            return;
+            return false;
         }
         dense_dynamic_slots_.clear();
         dynamic_positions_.assign(capacity_, kInvalidDynamicPosition);
@@ -154,6 +160,7 @@ namespace lux::render
         // 阶段 C:不再分配 per-set 实例 —— 描述符只写场景域集,绑定也
         // 从域集取(useEngineSet)。layout 注册保留:域布局要按它建。
         refreshDescriptorSet();
+        return true;
     }
 
     void InstanceResources::shutdown()
@@ -252,7 +259,7 @@ namespace lux::render
             VkBuffer buf{VK_NULL_HANDLE};
             VmaAllocation alloc{nullptr};
             void* mapped{nullptr};
-            createGpuBufferVmaBuffer(
+            const auto allocation_result = createGpuBufferVmaBuffer(
                 device_ctx_->vmaAllocator(),
                 required,
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -264,7 +271,9 @@ namespace lux::render
 
             // On allocation failure leave the slot null instead of publishing a
             // half-built (already-retired) handle to the render graph.
-            if (buf == VK_NULL_HANDLE || mapped == nullptr)
+            const bool allocation_failed =
+                allocation_result != VK_SUCCESS || buf == VK_NULL_HANDLE || mapped == nullptr;
+            if (allocation_failed)
             {
                 if (buf != VK_NULL_HANDLE)
                     vmaDestroyBuffer(device_ctx_->vmaAllocator(), buf, alloc);

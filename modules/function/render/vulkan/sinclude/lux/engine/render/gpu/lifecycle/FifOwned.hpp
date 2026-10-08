@@ -152,15 +152,16 @@ namespace lux::render
      * Same contract as FifOwned, plus it owns the allocation so the (handle,
      * allocation, queue) triple moves as ONE unit — which structurally closes the
      * GpuBuffer moveFrom leak (a move that forgot to carry the queue pointer left
-     * a later retire as a silent no-op). The queue may be late-bound (setQueue)
-     * before the first handle is adopted, matching GpuBuffer's setDeferredQueue.
+     * a later retire as a silent no-op). A nonempty allocation always arrives with
+     * its retirement queue; neither half can be rebound independently.
      */
     template <class H> class TFifOwnedAllocated
     {
     public:
         TFifOwnedAllocated() = default;
-        TFifOwnedAllocated(DeferredDestroyQueue* queue, H handle, VmaAllocation alloc) noexcept
-            : queue_(queue), handle_(handle), alloc_(alloc)
+
+        TFifOwnedAllocated(DeferredDestroyQueue& queue, H handle, VmaAllocation alloc) noexcept
+            : queue_(&queue), handle_(handle), alloc_(alloc)
         {}
 
         TFifOwnedAllocated(const TFifOwnedAllocated&) = delete;
@@ -189,20 +190,9 @@ namespace lux::render
             retire();
         }
 
-        /// Late-bind the destroy queue. Must be set before the first adopt().
-        void setQueue(DeferredDestroyQueue* q) noexcept
+        [[nodiscard]] DeferredDestroyQueue& queue() const noexcept
         {
-            queue_ = q;
-        }
-
-        /// Retire the currently-held handle (if any) and take ownership of a new
-        /// one. Used by the resize/migration path after the new buffer is created
-        /// and the old one's data has been copied out.
-        void adopt(H handle, VmaAllocation alloc) noexcept
-        {
-            retire();
-            handle_ = handle;
-            alloc_ = alloc;
+            return *queue_;
         }
 
         [[nodiscard]] H get() const noexcept
@@ -227,8 +217,10 @@ namespace lux::render
     private:
         void retire() noexcept
         {
-            if (handle_ != VK_NULL_HANDLE && queue_ != nullptr)
+            if (handle_ != VK_NULL_HANDLE)
+            {
                 TFifRetireAllocTraits<H>::retire(*queue_, handle_, alloc_);
+            }
             handle_ = VK_NULL_HANDLE;
             alloc_ = VK_NULL_HANDLE;
         }

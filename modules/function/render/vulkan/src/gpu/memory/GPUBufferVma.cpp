@@ -4,7 +4,7 @@
 namespace lux::render
 {
 
-    bool createGpuBufferVmaBuffer(
+    VkResult createGpuBufferVmaBuffer(
         VmaAllocator allocator,
         VkDeviceSize size,
         VkBufferUsageFlags usage,
@@ -26,12 +26,15 @@ namespace lux::render
                        : 0;
 
         VmaAllocationInfo info{};
-        if (vmaCreateBuffer(allocator, &bi, &ai, pBuffer, pAllocation, &info) != VK_SUCCESS)
-            return false;
+        const auto result = vmaCreateBuffer(allocator, &bi, &ai, pBuffer, pAllocation, &info);
+        if (result != VK_SUCCESS)
+        {
+            return result;
+        }
 
         if (ppMapped)
             *ppMapped = info.pMappedData;
-        return true;
+        return VK_SUCCESS;
     }
 
     void destroyGpuBufferVmaBuffer(VmaAllocator allocator, VkBuffer buffer, VmaAllocation allocation)

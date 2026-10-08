@@ -658,7 +658,7 @@ namespace lux::render
         for (auto& slot : pick_gpu_slots_)
         {
             VmaAllocation allocation{nullptr};
-            if (!createGpuBufferVmaBuffer(
+            if (createGpuBufferVmaBuffer(
                     device.vmaAllocator(),
                     sizeof(std::uint32_t),
                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -666,7 +666,7 @@ namespace lux::render
                     &slot.buffer,
                     &allocation,
                     &slot.mapped
-                ) ||
+                ) != VK_SUCCESS ||
                 slot.buffer == VK_NULL_HANDLE || slot.mapped == nullptr)
             {
                 slot.allocation = allocation;
@@ -720,7 +720,7 @@ namespace lux::render
         for (auto& frame : candidate)
         {
             VmaAllocation cluster_allocation{nullptr};
-            if (!createGpuBufferVmaBuffer(
+            if (createGpuBufferVmaBuffer(
                     pick_device_->vmaAllocator(),
                     cluster_bytes,
                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -728,7 +728,7 @@ namespace lux::render
                     &frame.cluster_buffer,
                     &cluster_allocation,
                     &frame.cluster_mapped
-                ))
+                ) != VK_SUCCESS)
             {
                 retireGpuCullFrames(candidate);
                 return false;
@@ -736,7 +736,7 @@ namespace lux::render
             frame.cluster_allocation = cluster_allocation;
 
             VmaAllocation instance_allocation{nullptr};
-            if (!createGpuBufferVmaBuffer(
+            if (createGpuBufferVmaBuffer(
                     pick_device_->vmaAllocator(),
                     instance_bytes,
                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -744,7 +744,7 @@ namespace lux::render
                     &frame.instance_buffer,
                     &instance_allocation,
                     &frame.instance_mapped
-                ))
+                ) != VK_SUCCESS)
             {
                 frame.instance_allocation = instance_allocation;
                 retireGpuCullFrames(candidate);
@@ -753,7 +753,7 @@ namespace lux::render
             frame.instance_allocation = instance_allocation;
 
             VmaAllocation dispatch_allocation{nullptr};
-            if (!createGpuBufferVmaBuffer(
+            if (createGpuBufferVmaBuffer(
                     pick_device_->vmaAllocator(),
                     sizeof(CandidateDispatchState),
                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT |
@@ -762,7 +762,7 @@ namespace lux::render
                     &frame.candidate_dispatch_buffer,
                     &dispatch_allocation,
                     &frame.candidate_dispatch_mapped
-                ))
+                ) != VK_SUCCESS)
             {
                 frame.candidate_dispatch_allocation = dispatch_allocation;
                 retireGpuCullFrames(candidate);

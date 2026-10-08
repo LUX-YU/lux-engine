@@ -124,12 +124,12 @@ namespace lux::render
         /// wanted-mip pass, so no duplicate material-to-texture index is needed.
         [[nodiscard]] VkDeviceAddress graphMaterialAddress(uint32_t frame_slot) const noexcept
         {
-            return graph_ssbo_.deviceAddress(frame_slot);
+            return graph_ssbo_->deviceAddress(frame_slot);
         }
 
         [[nodiscard]] uint32_t graphMaterialCapacity() const noexcept
         {
-            return graph_ssbo_.capacity();
+            return graph_ssbo_->capacity();
         }
 
         [[nodiscard]] VariantBucketDesc variantBucket(uint32_t bucket_id) const noexcept
@@ -196,11 +196,11 @@ namespace lux::render
                 if (auto b = ssbo.uploadDataSliceDeferred(current_frame_))
                     scheduler.submitExtraPostBarrier(*b);
             };
-            submit(unlit_ssbo_);
-            submit(legacy_lit_ssbo_);
-            submit(pbr_ssbo_);
-            submit(stylized_ssbo_);
-            submit(graph_ssbo_);
+            submit(*unlit_ssbo_);
+            submit(*legacy_lit_ssbo_);
+            submit(*pbr_ssbo_);
+            submit(*stylized_ssbo_);
+            submit(*graph_ssbo_);
         }
 
         void onFrameBeginMaintenance(const FrameStamp& stamp)
@@ -208,16 +208,6 @@ namespace lux::render
             current_frame_ = stamp.slotIndex();
             if (ds_revision_.needsWrite(current_frame_))
                 refreshDescriptors(current_frame_);
-        }
-
-        /// Late-bind centralized deferred destroy queue to all internal SSBOs.
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-        {
-            unlit_ssbo_.setDeferredQueue(q);
-            legacy_lit_ssbo_.setDeferredQueue(q);
-            pbr_ssbo_.setDeferredQueue(q);
-            stylized_ssbo_.setDeferredQueue(q);
-            graph_ssbo_.setDeferredQueue(q);
         }
 
     private:
@@ -255,11 +245,11 @@ namespace lux::render
         void refreshAllDescriptorsOnSet(uint32_t set_index, uint32_t slice);
 
         // --- 5 family SSBOs (binding = ELightingTechnique ordinal) ---
-        SlicedSSBO<UnlitFamilyGPU> unlit_ssbo_;
-        SlicedSSBO<LegacyLitFamilyGPU> legacy_lit_ssbo_;
-        SlicedSSBO<PbrFamilyGPU> pbr_ssbo_;
-        SlicedSSBO<StylizedFamilyGPU> stylized_ssbo_;
-        SlicedSSBO<GraphFamilyGPU> graph_ssbo_;
+        std::optional<SlicedSSBO<UnlitFamilyGPU>> unlit_ssbo_;
+        std::optional<SlicedSSBO<LegacyLitFamilyGPU>> legacy_lit_ssbo_;
+        std::optional<SlicedSSBO<PbrFamilyGPU>> pbr_ssbo_;
+        std::optional<SlicedSSBO<StylizedFamilyGPU>> stylized_ssbo_;
+        std::optional<SlicedSSBO<GraphFamilyGPU>> graph_ssbo_;
 
         // Per-frame descriptor sets (one per frame-in-flight)
         std::vector<VkDescriptorSet> descriptor_sets_;

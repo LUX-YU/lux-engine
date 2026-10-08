@@ -156,14 +156,18 @@ namespace lux::render
         template <class Record> class TKindStore final : public IKindStore
         {
         public:
-            void init(DeviceContext* dev, std::uint32_t cap, std::uint32_t max_cap)
+            bool init(DeviceContext* dev, std::uint32_t cap, std::uint32_t max_cap)
             {
                 device_ctx_ = dev;
                 max_capacity_ = std::min(std::max(max_cap, 1u), kCanvas2DSlotMask + 1u);
                 capacity_ = std::min(std::max(cap, 1u), max_capacity_);
-                records_.init(dev, capacity_);
-                order_.init(dev, capacity_);
+                const bool buffers_ready = records_.init(dev, capacity_) && order_.init(dev, capacity_);
+                if (!buffers_ready)
+                {
+                    return false;
+                }
                 slots_.resize(capacity_);
+                return true;
             }
 
             void shutdown()
@@ -452,6 +456,7 @@ namespace lux::render
     public:
         struct InitInfo
         {
+            DeferredDestroyQueue* deferred_queue{};
             const TextureResources* textures{};
             DeviceContext* device_context{nullptr};
             DescriptorService* descriptor_svc{nullptr};
@@ -470,11 +475,12 @@ namespace lux::render
         }
 
         /// Idempotent (the feature calls it at every attach; the first one builds).
-        void init(const InitInfo& info)
+        bool init(const InitInfo& info)
         {
             textures_ = info.textures;
             if (initialized_)
-                return;
+                return true;
+            setDeferredQueue(info.deferred_queue);
             device_ctx_ = info.device_context;
             svc_ = info.descriptor_svc;
             group_count_ = 1u + std::min(info.offscreen_groups, kMaxCanvas2DGroups);
@@ -501,17 +507,27 @@ namespace lux::render
                 );
             }
 
-            images_.init(device_ctx_, info.initial_capacity, info.max_capacity);
+            if (!images_.init(device_ctx_, info.initial_capacity, info.max_capacity))
+            {
+                return false;
+            }
             images_.createSet(svc_, ds_layout_id_, info.arena);
             // Fields are FEW per scene (a handful of chunk quads) — a small store.
-            fields_.init(device_ctx_, 64, 4096);
+            if (!fields_.init(device_ctx_, 64, 4096))
+            {
+                return false;
+            }
             fields_.createSet(svc_, ds_layout_id_, info.arena);
             // Tilemaps too: one instance per whole map (A2-02).
-            tiles_.init(device_ctx_, 64, 4096);
+            if (!tiles_.init(device_ctx_, 64, 4096))
+            {
+                return false;
+            }
             tiles_.createSet(svc_, ds_layout_id_, info.arena);
             initialized_ =
                 (images_.descriptorSet() != VK_NULL_HANDLE && fields_.descriptorSet() != VK_NULL_HANDLE &&
                  tiles_.descriptorSet() != VK_NULL_HANDLE);
+            return initialized_;
         }
 
         void setDeferredQueue(DeferredDestroyQueue* q) noexcept

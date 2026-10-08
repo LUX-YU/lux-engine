@@ -96,7 +96,13 @@ namespace lux::render
         if (seg_cfg.slices == 0)
             seg_cfg.slices = 1;
         seg_cfg.allow_shader_write = false;
-        segments_ssbo_.init(seg_cfg);
+        auto segments = SlicedSSBO<MeshInfoGpu>::create(seg_cfg);
+        if (!segments)
+        {
+            shutdown();
+            return false;
+        }
+        segments_ssbo_.emplace(std::move(*segments));
 
         return true;
     }
@@ -119,7 +125,7 @@ namespace lux::render
         free_.clear();
         instance_refcounts_.clear();
         destroy_requested_.clear();
-        segments_ssbo_.destroy();
+        segments_ssbo_.reset();
 
         vbo_buffers_.clear();
         ibo_buffers_.clear();
@@ -322,7 +328,7 @@ namespace lux::render
             seg.bounds_max[0] = seg.bounds_max[1] = seg.bounds_max[2] = -FLT_MAX;
         }
 
-        gpu.segment_slot = segments_ssbo_.add(seg);
+        gpu.segment_slot = segments_ssbo_->add(seg);
         if (!gpu.segment_slot.isValid())
         {
             vbo_arena_.free({vrExp->segment, vrExp->range.offset, vrExp->range.size, vrExp->alloc_handle});
@@ -332,9 +338,9 @@ namespace lux::render
                 lux::render::kClassicMeshRecordsCapacity,
                 static_cast<std::uint64_t>(cpu_records_.size()) + 1u,
                 mesh_max_count_,
-                sizeof(MeshInfoGpu) * segments_ssbo_.slices(),
+                sizeof(MeshInfoGpu) * segments_ssbo_->slices(),
                 mesh_max_count_ > cpu_records_.size()
-                    ? (mesh_max_count_ - cpu_records_.size()) * sizeof(MeshInfoGpu) * segments_ssbo_.slices()
+                    ? (mesh_max_count_ - cpu_records_.size()) * sizeof(MeshInfoGpu) * segments_ssbo_->slices()
                     : 0u,
                 lux::render::ECapacityPlanReason::BUDGET_REJECT
             );
@@ -379,10 +385,10 @@ namespace lux::render
 
         // Restore the real index_count in the segment table so the GPU cull
         // shader starts generating draw commands for this mesh.
-        if (auto* seg = segments_ssbo_.get(gpu.segment_slot))
+        if (auto* seg = segments_ssbo_->get(gpu.segment_slot))
         {
             seg->index_count = gpu.index_count;
-            segments_ssbo_.touch(gpu.segment_slot);
+            segments_ssbo_->touch(gpu.segment_slot);
         }
 
         gpu.ready = true;
@@ -636,7 +642,7 @@ namespace lux::render
         // 段表槽:fence 已等过,复用它不再会撞上在途帧读旧条目。
         auto& seg_slots = retired_segment_slots_[fi];
         for (const auto& sh : seg_slots)
-            segments_ssbo_.remove(sh); // 无效句柄由 remove 自身的 isAlive 守卫过滤
+            segments_ssbo_->remove(sh); // 无效句柄由 remove 自身的 isAlive 守卫过滤
         seg_slots.clear();
     }
 
@@ -792,6 +798,7 @@ namespace lux::render
             .segments_ssbo_cfg =
                 SSBOInitConfig{
                     .device_context = &ctx.deviceContext(),
+                    .deferred_queue = &ctx.deferredDestroyQueue(),
                     .initial_dense_capacity = 16384,
                     .slices = ctx.framesInFlight(),
                     .allow_shader_write = false,
@@ -813,7 +820,6 @@ namespace lux::render
         // use-after-free。
         greg.addBeginFrameHook(EUploadPhase::UPLOAD, [mr](const FrameStamp& s) { mr->onFrameBeginMaintenance(s); });
         ctx.globalTransferScheduler().contributors().add(makeTransferContributor(mr, /*priority=*/0));
-        mr->setDeferredQueue(&ctx.deferredDestroyQueue());
         return {};
     }
 

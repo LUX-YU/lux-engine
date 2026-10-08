@@ -27,7 +27,7 @@ namespace lux::render
     public:
         static constexpr uint32_t kInvalidSectionId = ~0u;
 
-        void init(DeviceContext* device_context, uint32_t initial_capacity);
+        [[nodiscard]] bool init(DeviceContext* device_context, uint32_t initial_capacity);
         void shutdown();
 
         /// 注册(或按内容复用)一条段记录。

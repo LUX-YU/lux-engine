@@ -126,7 +126,7 @@ namespace lux::render
         device_ = &device;
         deferred_destroy_ = &deferred_destroy;
         VmaAllocation full_allocation{nullptr};
-        if (!createGpuBufferVmaBuffer(
+        if (createGpuBufferVmaBuffer(
                 device.vmaAllocator(),
                 static_cast<VkDeviceSize>(fullPageStride()) * capacity_pages_,
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -134,7 +134,7 @@ namespace lux::render
                 &full_page_buffer_,
                 &full_allocation,
                 reinterpret_cast<void**>(&full_page_mapped_)
-            ) ||
+            ) != VK_SUCCESS ||
             full_page_buffer_ == VK_NULL_HANDLE || !full_page_mapped_)
         {
             full_page_allocation_ = full_allocation;
@@ -144,7 +144,7 @@ namespace lux::render
         full_page_allocation_ = full_allocation;
 
         VmaAllocation fallback_allocation{nullptr};
-        if (!createGpuBufferVmaBuffer(
+        if (createGpuBufferVmaBuffer(
                 device.vmaAllocator(),
                 static_cast<VkDeviceSize>(fallbackPageStride()) * fallback_capacity_pages_,
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -152,7 +152,7 @@ namespace lux::render
                 &fallback_page_buffer_,
                 &fallback_allocation,
                 reinterpret_cast<void**>(&fallback_page_mapped_)
-            ) ||
+            ) != VK_SUCCESS ||
             fallback_page_buffer_ == VK_NULL_HANDLE || !fallback_page_mapped_)
         {
             fallback_page_allocation_ = fallback_allocation;
@@ -167,7 +167,7 @@ namespace lux::render
         for (auto& slot : page_metadata_slots_)
         {
             VmaAllocation metadata_allocation{nullptr};
-            if (!createGpuBufferVmaBuffer(
+            if (createGpuBufferVmaBuffer(
                     device.vmaAllocator(),
                     static_cast<VkDeviceSize>(sizeof(GpuPageMeta)) * fallback_capacity_pages_,
                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -175,7 +175,7 @@ namespace lux::render
                     &slot.buffer,
                     &metadata_allocation,
                     reinterpret_cast<void**>(&slot.mapped)
-                ) ||
+                ) != VK_SUCCESS ||
                 slot.buffer == VK_NULL_HANDLE || !slot.mapped)
             {
                 slot.allocation = metadata_allocation;
@@ -195,7 +195,7 @@ namespace lux::render
         for (auto& slot : selection_count_slots_)
         {
             VmaAllocation count_allocation{nullptr};
-            if (!createGpuBufferVmaBuffer(
+            if (createGpuBufferVmaBuffer(
                     device.vmaAllocator(),
                     sizeof(std::uint32_t),
                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
@@ -203,7 +203,7 @@ namespace lux::render
                     &slot.buffer,
                     &count_allocation,
                     reinterpret_cast<void**>(&slot.mapped)
-                ) ||
+                ) != VK_SUCCESS ||
                 slot.buffer == VK_NULL_HANDLE || !slot.mapped)
             {
                 slot.allocation = count_allocation;

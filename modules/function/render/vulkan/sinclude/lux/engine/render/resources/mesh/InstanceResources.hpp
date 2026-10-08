@@ -146,6 +146,7 @@ namespace lux::render
 
         struct InitInfo
         {
+            DeferredDestroyQueue* deferred_queue{};
             DeviceContext* device_context{nullptr};
             DescriptorService* descriptor_svc{nullptr}; // layouts (global)
             SceneDescriptorArena* arena{nullptr};       // set allocation (per-scene)
@@ -161,7 +162,7 @@ namespace lux::render
         InstanceResources(const InstanceResources&) = delete;
         InstanceResources& operator=(const InstanceResources&) = delete;
 
-        void init(const InitInfo& info);
+        bool init(const InitInfo& info);
         void shutdown();
 
         enum class ESourceBindResult : std::uint8_t

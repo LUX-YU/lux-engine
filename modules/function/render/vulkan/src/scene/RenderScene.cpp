@@ -128,6 +128,7 @@ namespace lux::render
             });
             SceneResources::InitInfo si{
                 .device_context = rctx.deviceContext(),
+                .deferred_queue = rctx.deferredDestroyQueue(),
                 .slices = rctx.framesInFlight(),
                 .initial_scene_capacity = 8,
                 .initial_view_capacity = 8,
@@ -141,8 +142,10 @@ namespace lux::render
                 .domain_sets = scene_domain_sets_->setsFor(rdesc::EBindFrequency::GLOBAL),
                 .domain_binding_offset = engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::SCENE)),
             };
-            sr->init(si);
-            sr->setDeferredQueue(&rctx.deferredDestroyQueue());
+            if (!sr->init(si))
+            {
+                renderFatal("RenderScene: mandatory scene buffers could not be constructed");
+            }
         }
 
         // (LightResources is NOT created here. It is owned by LightFeature, which

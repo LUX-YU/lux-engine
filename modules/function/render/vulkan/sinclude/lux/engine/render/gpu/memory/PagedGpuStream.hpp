@@ -23,21 +23,28 @@ namespace lux::render
             VkDeviceSize size{0};
         };
 
-        void init(DeviceContext* device_context, uint32_t capacity, VkBufferUsageFlags extra_usage = 0)
+        [[nodiscard]] bool init(DeviceContext* device_context, uint32_t capacity, VkBufferUsageFlags extra_usage = 0)
         {
             GpuBufferCreateInfo ci{};
             ci.device_context = device_context;
+            ci.deferred_queue = deferred_queue_;
             ci.initial_capacity = capacity;
             ci.buffer_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | extra_usage;
-            gpu_buf_.init(ci);
+            auto buffer = Buffer::create(ci);
+            if (!buffer)
+            {
+                return false;
+            }
+            gpu_buf_.emplace(std::move(*buffer));
 
             cpu_data_.resize(capacity);
             page_flags_.assign(pageCountForCapacity(capacity), 0u);
+            return true;
         }
 
         void shutdown()
         {
-            gpu_buf_.destroy();
+            gpu_buf_.reset();
             cpu_data_.clear();
             dirty_pages_.clear();
             page_flags_.clear();
@@ -79,10 +86,14 @@ namespace lux::render
 
         [[nodiscard]] bool reserve(uint32_t new_capacity)
         {
-            if (new_capacity <= gpu_buf_.capacity())
+            if (new_capacity <= gpu_buf_->capacity())
+            {
                 return true;
-            if (!gpu_buf_.reserve(new_capacity, false))
+            }
+            if (!gpu_buf_->reserve(new_capacity, false))
+            {
                 return false;
+            }
 
             cpu_data_.resize(new_capacity);
             page_flags_.resize(pageCountForCapacity(new_capacity), 0u);
@@ -197,16 +208,16 @@ namespace lux::render
 
         [[nodiscard]] VkBuffer buffer() const noexcept
         {
-            return gpu_buf_.buffer();
+            return gpu_buf_ ? gpu_buf_->buffer() : VK_NULL_HANDLE;
         }
         [[nodiscard]] uint32_t capacity() const noexcept
         {
-            return gpu_buf_.capacity();
+            return gpu_buf_ ? gpu_buf_->capacity() : 0;
         }
 
         void setDeferredQueue(DeferredDestroyQueue* q) noexcept
         {
-            gpu_buf_.setDeferredQueue(q);
+            deferred_queue_ = q;
         }
 
     private:
@@ -230,7 +241,9 @@ namespace lux::render
         };
 
         std::vector<T> cpu_data_;
-        TGpuBuffer<T, EGpuBufferType::GPU_ONLY, false> gpu_buf_;
+        using Buffer = TGpuBuffer<T, EGpuBufferType::GPU_ONLY, false>;
+        std::optional<Buffer> gpu_buf_;
+        DeferredDestroyQueue* deferred_queue_{};
         std::vector<uint32_t> dirty_pages_;
         std::vector<uint8_t> page_flags_;
         std::vector<Run> runs_scratch_; ///< per-call reused; see Run above

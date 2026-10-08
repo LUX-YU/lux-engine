@@ -111,6 +111,7 @@ namespace lux::render
         const bool fresh_inst = (reg.find<InstanceResources>() == nullptr);
         InstanceResources::InitInfo si{};
         si.device_context = &ctx.deviceContext();
+        si.deferred_queue = &ctx.deferredDestroyQueue();
         si.descriptor_svc = &ctx.descriptorService();
         si.arena = &sc.descriptorArena();
         const auto instance_capacity = ctx.capacityPlan().effective(lux::render::kActiveInstancesCapacity);
@@ -139,7 +140,6 @@ namespace lux::render
             reg.addBeginFrameHook(EUploadPhase::UPLOAD, [inst](const FrameStamp& s) {
                 inst->onFrameBeginMaintenance(s);
             });
-            inst->setDeferredQueue(&ctx.deferredDestroyQueue());
             sc.transferScheduler().contributors().add(makeTransferContributor(inst, /*priority=*/0));
         }
 

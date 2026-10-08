@@ -54,7 +54,7 @@ namespace lux::render
 
         for (std::uint32_t i = 0; i < kMaxFramesInFlight; ++i)
         {
-            if (!createGpuBufferVmaBuffer(
+            if (createGpuBufferVmaBuffer(
                     device_ctx_->vmaAllocator(),
                     palette_bytes,
                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -62,7 +62,7 @@ namespace lux::render
                     &bone_palette_buffers_[i],
                     &bone_palette_allocs_[i],
                     &bone_palette_mapped_[i]
-                ))
+                ) != VK_SUCCESS)
             {
                 destroyPalettes();
                 return false;
@@ -114,7 +114,7 @@ namespace lux::render
 
         for (std::uint32_t i = 0; i < kMaxFramesInFlight; ++i)
         {
-            if (!createGpuBufferVmaBuffer(
+            if (createGpuBufferVmaBuffer(
                     device_ctx_->vmaAllocator(),
                     dispatch_params_bytes,
                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
@@ -122,7 +122,7 @@ namespace lux::render
                     &dispatch_params_buffers_[i],
                     &dispatch_params_allocs_[i],
                     &dispatch_params_mapped_[i]
-                ))
+                ) != VK_SUCCESS)
             {
                 destroyDispatchRings();
                 if (output_registered_)

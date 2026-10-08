@@ -623,19 +623,11 @@ namespace lux::render
         /// 特性容器、查询与每(特性,视图)状态账本(纯数据;事务编排留在本类)。
         RenderFeatureSet feature_set_;
 
-        /// 编译图、图基础设施和图相关退休；构造时直接使用配置中的名称。
-        ///
-        /// ⚠️ **必须声明在 view_set_ 之前**:视图持有的图资源(录制上下文 + 物理资源)
-        /// 归它所有,`~SceneViewSet()` 要把它们还回来。逆序析构 ⇒ view_set_ 先死、
-        /// 本成员还在。此前两者顺序正好相反,于是 SceneViewSet 的析构**不可能**做
-        /// 清理(它拿不到一个还活着的图缓存),只能靠外部记得调 shutdown() ——
-        /// 漏了不崩,是静默泄漏。
+        /// Graph backing precedes views so view destruction can return its resources.
         std::unique_ptr<SceneGraphCache> graph_cache_;
 
-        /// 视图集合与生命周期。声明在 resources_ 与 graph_cache_ 之后:
-        /// 构造需要前者(每视图 GPU 槽从其中的 SceneResources 取);后者由构造体内的
-        /// setGraphCache() 接上,并由上面那条注释保证它活得比本成员久。
-        SceneViewSet view_set_{resources_};
+        /// Borrows complete scene resources and graph cache; owns every scene view.
+        SceneViewSet view_set_;
         SlotHandle scene_global_slot_{}; ///< SceneResources scene SoA slot
         FrameRetireScheduler::OwnerToken retire_owner_token_{0};
 

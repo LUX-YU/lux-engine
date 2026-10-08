@@ -155,9 +155,6 @@ namespace lux::render
         /// 把当前编译图的可读转储写入 @p os(未编译时写一行说明)。
         void dump(std::ostream& os) const;
 
-        /// 显式清理(顺序敏感);析构亦调用,可重复调用。
-        void shutdown();
-
     private:
         /// 收走所有视图的 RGResourceState 进退休队列,配上它们所属的图描述。
         void retireAllViewResources(std::span<View* const> views, const RGGraphDescription* source_graph) noexcept;

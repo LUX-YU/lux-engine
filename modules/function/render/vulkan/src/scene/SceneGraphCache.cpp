@@ -31,13 +31,20 @@ namespace lux::render
 
     SceneGraphCache::~SceneGraphCache()
     {
-        shutdown();
+        // Retired resources return while their graph descriptions and mandatory
+        // recorder/allocator backing are still alive. Members then destroy in reverse order.
+        for (auto& retired : retired_view_resources_)
+        {
+            recorder_->deallocateRecordContext(retired.state->record_ctx);
+            allocator_->deallocate(retired.state->physical_resources);
+        }
     }
 
     RGVulkanResourceAllocator& SceneGraphCache::allocator() noexcept
     {
         return *allocator_;
     }
+
     RGVulkanRecorder& SceneGraphCache::recorder() noexcept
     {
         return *recorder_;
@@ -374,12 +381,15 @@ namespace lux::render
             if (oldest.retire_frame > completed_serial)
                 break;
 
-            if (recorder_)
-                recorder_->deallocateRecordContext(oldest.state->record_ctx);
-            if (allocator_ && oldest.source_graph)
+            recorder_->deallocateRecordContext(oldest.state->record_ctx);
+            if (oldest.source_graph)
+            {
                 allocator_->deallocateToPool(oldest.state->physical_resources, *oldest.source_graph);
-            else if (allocator_)
+            }
+            else
+            {
                 allocator_->deallocate(oldest.state->physical_resources);
+            }
             retired_view_resources_.pop_front();
         }
 
@@ -411,30 +421,4 @@ namespace lux::render
             os << "[SceneGraphCache] '" << debug_name_
                << "' has no compiled render graph yet (not rendered, or compile failed).\n";
     }
-
-    void SceneGraphCache::shutdown()
-    {
-        // 退休图:unique_ptr 自析构即可。
-        retired_graphs_.clear();
-
-        // 退休的每视图资源:必须在 recorder_/allocator_ 还活着时归还。
-        for (auto& retired : retired_view_resources_)
-        {
-            if (retired.state)
-            {
-                if (recorder_)
-                    recorder_->deallocateRecordContext(retired.state->record_ctx);
-                if (allocator_)
-                    allocator_->deallocate(retired.state->physical_resources);
-            }
-        }
-        retired_view_resources_.clear();
-
-        state_.graph.reset();
-        state_.valid = false;
-
-        recorder_.reset();
-        allocator_.reset();
-    }
-
 } // namespace lux::render

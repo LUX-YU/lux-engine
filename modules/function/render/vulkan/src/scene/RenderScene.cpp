@@ -140,7 +140,8 @@ namespace lux::render
         : render_ctx_(std::move(ctx)), config_(cfg), pipeline_config_(cfg.pipeline),
           scene_descriptor_arena_(std::move(backing.arena)), scene_domain_sets_(std::move(backing.domains)),
           graph_cache_(std::make_unique<SceneGraphCache>(*render_ctx_, cfg.scene_name)),
-          transfer_scheduler_(std::move(backing.transfers)), debug_name_(cfg.scene_name)
+          view_set_(*backing.resources, *graph_cache_), transfer_scheduler_(std::move(backing.transfers)),
+          debug_name_(cfg.scene_name)
     {
         retire_owner_token_ = static_cast<FrameRetireScheduler::OwnerToken>(reinterpret_cast<uintptr_t>(this));
         auto* resources = resources_.insert(std::move(backing.resources)).get();
@@ -150,7 +151,6 @@ namespace lux::render
         );
         scene_global_slot_ = resources->allocateScene();
         transfer_scheduler_.contributors().add(makeTransferContributor(resources, 10));
-        view_set_.setGraphCache(*graph_cache_);
         feature_set_.markCacheDirty();
     }
 

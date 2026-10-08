@@ -1,6 +1,5 @@
 #include <lux/engine/render/scene/SceneViewSet.hpp>
 
-#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
 #include <lux/engine/render/graph/RGVulkanRecorder.hpp>
 #include <lux/engine/render/graph/RGVulkanResourceAllocator.hpp>
 #include <lux/engine/render/resources/SceneResources.hpp>
@@ -10,16 +9,20 @@
 
 namespace lux::render
 {
-    SceneViewSet::SceneViewSet(ResourceRegistry& registry) noexcept : registry_(registry) {}
+    SceneViewSet::SceneViewSet(SceneResources& resources, SceneGraphCache& graph_cache) noexcept
+        : resources_(resources), graph_cache_(graph_cache)
+    {
+    }
 
     SceneViewSet::~SceneViewSet()
     {
-        // 自己收自己的尾。此前是 `= default` —— 不是疏忽,是 shutdown() 当时需要一个
-        // **兄弟对象**(SceneGraphCache*)做参数,析构里根本拿不到,于是清理只能靠外部
-        // 记得调,而跳过它不崩、是静默泄漏(录制上下文 + 物理资源都不还)。
-        // 图缓存改成构造后接上的成员之后,这条限制就没了。shutdown() 幂等,
-        // 场景按成员声明顺序保证此时 registry 与 graph cache 仍有效。
-        shutdown();
+        // Renderer has already established the scene's GPU retirement boundary.
+        // Graph services and scene resources outlive this collection.
+        for (const auto& view : views_.values())
+        {
+            releaseViewGraphResources(*view);
+            destroyViewUBO(*view);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -91,17 +94,14 @@ namespace lux::render
     //  每视图 GPU 槽
     // ─────────────────────────────────────────────────────────────────────
 
-    // SceneResources 由 RenderScene 构造函数无条件 emplace 进同一个 resources_,
-    // 而视图生命周期全在构造之后 —— 故用 must<>:原先的判空是死守卫,且它把
-    // "槽位分配失败"静默成了"view_slot 保持无效",后者要到渲染期才炸。
     void SceneViewSet::initViewUBO(View& view)
     {
-        view.view_slot = registry_.must<SceneResources>().allocateView();
+        view.view_slot = resources_.allocateView();
     }
 
     void SceneViewSet::destroyViewUBO(View& view)
     {
-        registry_.must<SceneResources>().freeView(view.view_slot);
+        resources_.freeView(view.view_slot);
     }
 
     void SceneViewSet::releaseViewGraphResources(View& view) noexcept
@@ -110,11 +110,8 @@ namespace lux::render
         {
             return;
         }
-        if (graph_cache_)
-        {
-            graph_cache_->recorder().deallocateRecordContext(view.resource_state->record_ctx);
-            graph_cache_->allocator().deallocate(view.resource_state->physical_resources);
-        }
+        graph_cache_.recorder().deallocateRecordContext(view.resource_state->record_ctx);
+        graph_cache_.allocator().deallocate(view.resource_state->physical_resources);
         view.resource_state.reset();
     }
 
@@ -174,7 +171,6 @@ namespace lux::render
     }
 
     void SceneViewSet::collectDestroyed(uint64_t frame_id, uint64_t completed_serial)
-
     {
         for (auto& pd : pending_destroys_)
         {
@@ -207,24 +203,6 @@ namespace lux::render
             }
             pending_destroys_.pop_front();
         }
-    }
-
-    void SceneViewSet::shutdown()
-    {
-        for (auto& v : views_.values())
-        {
-            if (!v)
-            {
-                continue;
-            }
-            releaseViewGraphResources(*v);
-            destroyViewUBO(*v);
-        }
-        views_.clear();
-        pending_destroys_.clear();
-        active_dense_.clear();
-        all_dense_.clear();
-        cache_dirty_ = false;
     }
 
 } // namespace lux::render

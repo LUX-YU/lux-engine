@@ -9,6 +9,12 @@
 #include <lux/engine/render/gpu/lifecycle/CommandBufferOwner.hpp>
 #include <type_traits>
 
+template <class T>
+concept HasShutdown = requires(T& value) { value.shutdown(); };
+
+template <class T>
+concept HasGraphSetter = requires(T& value, lux::render::SceneGraphCache& graph) { value.setGraphCache(graph); };
+
 struct LifetimeCounts
 {
     unsigned allocated{}, released{}, detached{}, destroyed{};
@@ -58,6 +64,10 @@ int main()
     static_assert(!std::is_copy_constructible_v<TransferScheduler>);
     static_assert(std::is_nothrow_move_constructible_v<TransferScheduler>);
     static_assert(!std::is_constructible_v<RenderScene, std::shared_ptr<RenderContext>>);
+    static_assert(!std::is_constructible_v<SceneViewSet, ResourceRegistry&>);
+    static_assert(std::is_nothrow_constructible_v<SceneViewSet, SceneResources&, SceneGraphCache&>);
+    static_assert(!HasShutdown<SceneViewSet> && !HasShutdown<SceneGraphCache>);
+    static_assert(!HasGraphSetter<SceneViewSet>);
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     auto instance_owner = InstanceContext::create({});
     assert(instance_owner);

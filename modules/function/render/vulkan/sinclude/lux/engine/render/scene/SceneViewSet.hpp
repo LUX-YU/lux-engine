@@ -32,7 +32,7 @@
 namespace lux::render
 {
     class SceneGraphCache;
-    class ResourceRegistry;
+    class SceneResources;
 
     struct ViewCreateInfo
     {
@@ -43,20 +43,9 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC SceneViewSet
     {
     public:
-        /// @param registry 场景资源注册表 —— 每视图 GPU 槽从其中的 SceneResources 取。
-        explicit SceneViewSet(ResourceRegistry& registry) noexcept;
+        /// Both complete resource providers must outlive this collection.
+        SceneViewSet(SceneResources& resources, SceneGraphCache& graph_cache) noexcept;
         ~SceneViewSet();
-
-        /// 接上图缓存 —— 视图持有的录制上下文与物理资源归它所有,释放必须还给它。
-        ///
-        /// 为什么是 setter 而不是构造参数:`RenderScene::graph_cache_` 是
-        /// `unique_ptr`,在**构造体内**建立(它的构造需要 debug_name_,而后者按声明序
-        /// 在它之后初始化)。所以本对象构造时它还不存在,只能建好之后接上。
-        /// RenderScene 的构造体内紧跟着 make_unique 调用本方法。
-        void setGraphCache(SceneGraphCache& cache) noexcept
-        {
-            graph_cache_ = &cache;
-        }
 
         SceneViewSet(const SceneViewSet&) = delete;
         SceneViewSet& operator=(const SceneViewSet&) = delete;
@@ -99,13 +88,6 @@ namespace lux::render
         /// @param completed_serial **栅栏证实**的完成水位;戳记被越过才释放。
         void collectDestroyed(uint64_t frame_id, uint64_t completed_serial);
 
-        /// 场景 teardown:释放全部视图的图资源与 GPU 槽并清空容器。幂等。
-        ///
-        /// 此前签名是 `shutdown(SceneGraphCache*)` —— 清理需要一个**兄弟对象**做参数,
-        /// 于是 `~SceneViewSet() = default` 成了唯一可能,而跳过 shutdown() 不崩、
-        /// 只是静默泄漏。图缓存改成构造后接上的成员之后,析构就能自己收尾了。
-        void shutdown();
-
         void markCacheDirty() noexcept
         {
             cache_dirty_ = true;
@@ -126,10 +108,9 @@ namespace lux::render
 
         using ViewSet = lux::cxx::SlotKeyAutoSparseSet<ViewHandle, std::unique_ptr<View>>;
 
-        ResourceRegistry& registry_;
-        /// 非拥有。由 setGraphCache 在 RenderScene 构造体内接上;RenderScene 里
-        /// graph_cache_ 声明在 view_set_ **之前**,所以逆序析构时它还活着。
-        SceneGraphCache* graph_cache_{nullptr};
+        SceneResources& resources_;
+        // Both construction dependencies outlive this collection.
+        SceneGraphCache& graph_cache_;
         ViewSet views_;
         std::deque<PendingDestroy> pending_destroys_;
 

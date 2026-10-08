@@ -24,66 +24,76 @@ namespace lux::render
         return key;
     }
 
-    bool MeshSectionTable::init(DeviceContext* device_context, uint32_t initial_capacity)
+    Expected<MeshSectionTable>
+    MeshSectionTable::create(DeviceContext& device, DeferredDestroyQueue& retirement, uint32_t initial_capacity) noexcept
     {
-        cpu_only_mode_ = (device_context == nullptr);
-        if (!cpu_only_mode_)
+        auto stream = Stream::create(device, retirement, initial_capacity);
+        if (!stream)
         {
-            if (!stream_.init(device_context, initial_capacity))
+            return lux::cxx::unexpected(stream.error());
+        }
+        return MeshSectionTable{VStorage{std::move(*stream)}, initial_capacity};
+    }
+
+    MeshSectionTable MeshSectionTable::createCpu(uint32_t initial_capacity) noexcept
+    {
+        return MeshSectionTable{VStorage{std::vector<MeshSectionRecord>(initial_capacity)}, initial_capacity};
+    }
+
+    MeshSectionTable::MeshSectionTable(VStorage storage, uint32_t capacity) noexcept
+        : storage_(std::move(storage)), alive_(capacity), segments_(capacity),
+          index_types_(capacity, VK_INDEX_TYPE_UINT32), ref_counts_(capacity)
+    {
+        dedup_map_.reserve(capacity);
+    }
+
+    Expected<void> MeshSectionTable::ensureCapacity(uint32_t required) noexcept
+    {
+        if (required <= alive_.size())
+        {
+            return {};
+        }
+        if (auto* stream = std::get_if<Stream>(&storage_))
+        {
+            const auto previous = stream->buffer();
+            auto resized = stream->reserve(required);
+            if (!resized)
             {
-                return false;
+                return resized;
             }
+            full_rebuild_ = full_rebuild_ || previous != stream->buffer();
         }
         else
-            cpu_sections_.assign(initial_capacity, MeshSectionRecord{});
-
-        alive_.assign(initial_capacity, 0u);
-        segments_.assign(initial_capacity, 0u);
-        index_types_.assign(initial_capacity, VK_INDEX_TYPE_UINT32);
-        ref_counts_.assign(initial_capacity, 0u);
-        free_ids_.clear();
-        dedup_map_.clear();
-        dedup_map_.reserve(initial_capacity);
-        count_ = 0u;
-        full_rebuild_ = !cpu_only_mode_;
-        return true;
-    }
-
-    void MeshSectionTable::shutdown()
-    {
-        if (!cpu_only_mode_)
-            stream_.shutdown();
-        cpu_sections_.clear();
-        alive_.clear();
-        segments_.clear();
-        index_types_.clear();
-        ref_counts_.clear();
-        free_ids_.clear();
-        dedup_map_.clear();
-        count_ = 0u;
-        full_rebuild_ = true;
-        cpu_only_mode_ = false;
-    }
-
-    bool MeshSectionTable::ensureCapacity(uint32_t required)
-    {
-        const uint32_t current_capacity =
-            cpu_only_mode_ ? static_cast<uint32_t>(cpu_sections_.size()) : stream_.capacity();
-
-        if (required <= current_capacity)
-            return true;
-
-        if (!cpu_only_mode_ && !stream_.reserve(required))
-            return false;
-
-        if (cpu_only_mode_)
-            cpu_sections_.resize(required, MeshSectionRecord{});
-
+        {
+            std::get<std::vector<MeshSectionRecord>>(storage_).resize(required);
+        }
         alive_.resize(required, 0u);
         segments_.resize(required, 0u);
         index_types_.resize(required, VK_INDEX_TYPE_UINT32);
         ref_counts_.resize(required, 0u);
-        return true;
+        return {};
+    }
+
+    void MeshSectionTable::writeRecord(uint32_t id, const MeshSectionRecord& value) noexcept
+    {
+        if (auto* stream = std::get_if<Stream>(&storage_))
+        {
+            stream->at(id) = value;
+            stream->markDirty(id);
+        }
+        else
+        {
+            std::get<std::vector<MeshSectionRecord>>(storage_)[id] = value;
+        }
+    }
+
+    const MeshSectionRecord& MeshSectionTable::record(uint32_t id) const noexcept
+    {
+        if (const auto* stream = std::get_if<Stream>(&storage_))
+        {
+            return stream->at(id);
+        }
+        return std::get<std::vector<MeshSectionRecord>>(storage_)[id];
     }
 
     uint32_t MeshSectionTable::registerSection(
@@ -142,15 +152,7 @@ namespace lux::render
         if (id >= index_types_.size())
             index_types_.resize(id + 1u, VK_INDEX_TYPE_UINT32);
         index_types_[id] = index_type;
-        if (cpu_only_mode_)
-        {
-            cpu_sections_[id] = section;
-        }
-        else
-        {
-            stream_.at(id) = section;
-            stream_.markDirty(id);
-        }
+        writeRecord(id, section);
         dedup_map_.insert_or_assign(key, id);
         return id;
     }
@@ -167,7 +169,7 @@ namespace lux::render
         if (remaining_refs > 0u)
             return;
 
-        const MeshSectionRecord& section = cpu_only_mode_ ? cpu_sections_[section_id] : stream_.at(section_id);
+        const MeshSectionRecord& section = record(section_id);
         const uint16_t seg = section_id < segments_.size() ? segments_[section_id] : 0u;
         const VkIndexType index_type =
             section_id < index_types_.size() ? index_types_[section_id] : VK_INDEX_TYPE_UINT32;
@@ -185,15 +187,7 @@ namespace lux::render
         free_ids_.push_back(section_id);
 
         // Keep a safe zeroed section for stale GPU references.
-        if (cpu_only_mode_)
-        {
-            cpu_sections_[section_id] = MeshSectionRecord{};
-        }
-        else
-        {
-            stream_.at(section_id) = MeshSectionRecord{};
-            stream_.markDirty(section_id);
-        }
+        writeRecord(section_id, MeshSectionRecord{});
 
         // Keep count_ as a dense high-watermark to avoid uploading dead tail slots.
         if (section_id + 1u == count_)
@@ -217,22 +211,25 @@ namespace lux::render
         if (section_id >= alive_.size() || alive_[section_id] == 0u)
             return kNullSection;
 
-        if (cpu_only_mode_)
-            return cpu_sections_[section_id];
-
-        return stream_.at(section_id);
+        return record(section_id);
     }
 
     void MeshSectionTable::submitTransfers(TransferScheduler& scheduler)
     {
-        if (cpu_only_mode_ || count_ == 0u)
+        auto* stream = std::get_if<Stream>(&storage_);
+        const bool has_no_upload = !stream || count_ == 0u;
+        if (has_no_upload)
+        {
             return;
+        }
 
-        if (!full_rebuild_ && !stream_.hasDirtyPages())
+        if (!full_rebuild_ && !stream->hasDirtyPages())
+        {
             return;
+        }
 
         chunks_.clear();
-        const VkDeviceSize total_bytes = stream_.collectUploadChunks(count_, full_rebuild_, chunks_);
+        const VkDeviceSize total_bytes = stream->collectUploadChunks(count_, full_rebuild_, chunks_);
         if (total_bytes == 0u)
             return;
 
@@ -248,7 +245,7 @@ namespace lux::render
             scheduler.submitBufferCopy({
                 .src = stg.buffer,
                 .src_offset = stg.srcOffset + offset,
-                .dst = stream_.buffer(),
+                .dst = stream->buffer(),
                 .dst_offset = chunk.dst_offset,
                 .size = chunk.size,
                 .domain = EBufferDomain::STORAGE_CS,
@@ -261,7 +258,7 @@ namespace lux::render
         // already-uploaded pages do not re-upload every subsequent frame — without
         // this the incremental page-dirty design is defeated (pages stay dirty
         // forever -> full re-upload each frame).
-        stream_.clearDirtyState();
+        stream->clearDirtyState();
         if (full_rebuild_)
             full_rebuild_ = false;
     }

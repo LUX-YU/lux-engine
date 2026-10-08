@@ -392,7 +392,7 @@ namespace lux::render
         void unregisterMeshSection(uint32_t section_id);
         [[nodiscard]] const MeshSectionRecord& meshSectionAt(std::uint32_t section_id) const noexcept
         {
-            return mesh_section_table_.at(section_id);
+            return mesh_section_table_->at(section_id);
         }
 
         // ─── MDC table (Mesh Draw Command dedup) ───────────────────────
@@ -436,9 +436,6 @@ namespace lux::render
         void setDeferredQueue(DeferredDestroyQueue* q) noexcept
         {
             deferred_queue_ = q;
-            alive_slot_stream_.setDeferredQueue(q);
-            dynamic_slot_stream_.setDeferredQueue(q);
-            mesh_section_table_.setDeferredQueue(q);
         }
 
     private:
@@ -467,9 +464,9 @@ namespace lux::render
         std::optional<TSparseInstanceStream<InstanceTransformPrev>> prev_transform_stream_;
         std::optional<TSparseInstanceStream<InstanceProperty>> property_stream_;
         std::optional<TSparseInstanceStream<InstanceCullMeta>> cull_meta_stream_;
-        TPagedGpuStream<uint32_t> alive_slot_stream_;
-        TPagedGpuStream<uint32_t> dynamic_slot_stream_;
-        MeshSectionTable mesh_section_table_;
+        std::optional<TPagedGpuStream<uint32_t>> alive_slot_stream_;
+        std::optional<TPagedGpuStream<uint32_t>> dynamic_slot_stream_;
+        std::optional<MeshSectionTable> mesh_section_table_;
         MdcTable mdc_table_;
 
         // Per-stream upload-chunk scratch, reused across ticks (cleared at the top

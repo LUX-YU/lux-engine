@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 #include <vulkan/vulkan.h>
 
@@ -27,8 +28,16 @@ namespace lux::render
     public:
         static constexpr uint32_t kInvalidSectionId = ~0u;
 
-        [[nodiscard]] bool init(DeviceContext* device_context, uint32_t initial_capacity);
-        void shutdown();
+        [[nodiscard]] static Expected<MeshSectionTable>
+        create(DeviceContext& device, DeferredDestroyQueue& retirement, uint32_t initial_capacity) noexcept;
+
+        [[nodiscard]] static MeshSectionTable createCpu(uint32_t initial_capacity) noexcept;
+
+        ~MeshSectionTable() noexcept = default;
+        MeshSectionTable(const MeshSectionTable&) = delete;
+        MeshSectionTable& operator=(const MeshSectionTable&) = delete;
+        MeshSectionTable(MeshSectionTable&&) noexcept = default;
+        MeshSectionTable& operator=(MeshSectionTable&&) noexcept = default;
 
         /// 注册(或按内容复用)一条段记录。
         ///
@@ -50,18 +59,17 @@ namespace lux::render
         [[nodiscard]] const MeshSectionRecord& at(uint32_t section_id) const noexcept;
         [[nodiscard]] VkBuffer buffer() const noexcept
         {
-            return stream_.buffer();
-        }
-        [[nodiscard]] bool hasWork() const noexcept
-        {
-            return !cpu_only_mode_ && (full_rebuild_ || stream_.hasDirtyPages());
-        }
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-        {
-            stream_.setDeferredQueue(q);
+            const auto* stream = std::get_if<Stream>(&storage_);
+            return stream ? stream->buffer() : VK_NULL_HANDLE;
         }
 
-        bool ensureCapacity(uint32_t required);
+        [[nodiscard]] bool hasWork() const noexcept
+        {
+            const auto* stream = std::get_if<Stream>(&storage_);
+            return stream && (full_rebuild_ || stream->hasDirtyPages());
+        }
+
+        [[nodiscard]] Expected<void> ensureCapacity(uint32_t required) noexcept;
 
         /// Transfer subsystem path — submit copy requests to scheduler.
         void submitTransfers(TransferScheduler& scheduler);
@@ -110,7 +118,14 @@ namespace lux::render
             VkIndexType index_type
         ) noexcept;
 
-        TPagedGpuStream<MeshSectionRecord> stream_;
+        using Stream = TPagedGpuStream<MeshSectionRecord>;
+        using VStorage = std::variant<std::vector<MeshSectionRecord>, Stream>;
+
+        MeshSectionTable(VStorage storage, uint32_t capacity) noexcept;
+        void writeRecord(uint32_t id, const MeshSectionRecord& value) noexcept;
+        [[nodiscard]] const MeshSectionRecord& record(uint32_t id) const noexcept;
+
+        VStorage storage_;
         // Upload-chunk scratch reused across ticks (cleared at submitTransfers
         // entry; collectUploadChunks only appends). Single set is correct —
         // produced + consumed synchronously within one render-thread tick. (P-5)
@@ -125,8 +140,6 @@ namespace lux::render
         std::unordered_map<SectionKey, uint32_t, SectionKeyHash> dedup_map_;
         uint32_t count_{0};
         bool full_rebuild_{true};
-        bool cpu_only_mode_{false};
-        std::vector<MeshSectionRecord> cpu_sections_;
     };
 
 } // namespace lux::render

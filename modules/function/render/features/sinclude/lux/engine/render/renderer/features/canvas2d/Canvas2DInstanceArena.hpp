@@ -1,4 +1,6 @@
 #pragma once
+
+#include <optional>
 // ============================================================================
 //  Canvas2DInstanceArena.hpp — the scene's multi-KIND GPU-resident 2D instance
 //  store (Canvas2D v2 + C2D-R6a; the implementation §3.1/§3.7).
@@ -156,30 +158,31 @@ namespace lux::render
         template <class Record> class TKindStore final : public IKindStore
         {
         public:
-            bool init(DeviceContext* dev, std::uint32_t cap, std::uint32_t max_cap)
+            bool init(DeviceContext* dev, DeferredDestroyQueue& retirement, std::uint32_t cap, std::uint32_t max_cap)
             {
                 device_ctx_ = dev;
                 max_capacity_ = std::min(std::max(max_cap, 1u), kCanvas2DSlotMask + 1u);
                 capacity_ = std::min(std::max(cap, 1u), max_capacity_);
-                const bool buffers_ready = records_.init(dev, capacity_) && order_.init(dev, capacity_);
-                if (!buffers_ready)
+                auto records = TPagedGpuStream<Record>::create(*dev, retirement, capacity_);
+                if (!records)
                 {
                     return false;
                 }
+                auto order = TPagedGpuStream<std::uint32_t>::create(*dev, retirement, capacity_);
+                if (!order)
+                {
+                    return false;
+                }
+                records_.emplace(std::move(*records));
+                order_.emplace(std::move(*order));
                 slots_.resize(capacity_);
                 return true;
             }
 
             void shutdown()
             {
-                records_.shutdown();
-                order_.shutdown();
-            }
-
-            void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-            {
-                records_.setDeferredQueue(q);
-                order_.setDeferredQueue(q);
+                records_.reset();
+                order_.reset();
             }
 
             // ── typed op entry points ────────────────────────────────────────
@@ -209,8 +212,8 @@ namespace lux::render
                 s.visible = visible;
                 s.key_hi = key_hi;
                 s.group = group;
-                records_.at(slot) = r;
-                records_.markDirty(slot);
+                records_->at(slot) = r;
+                records_->markDirty(slot);
                 out_slot = slot;
                 out_gen = s.gen;
                 return ECanvas2DCreateStatus::OK;
@@ -244,11 +247,11 @@ namespace lux::render
 
             [[nodiscard]] Record* resolveRecord(std::uint32_t slot, std::uint32_t gen)
             {
-                return resolve(slot, gen) ? &records_.at(slot) : nullptr;
+                return resolve(slot, gen) ? &records_->at(slot) : nullptr;
             }
             void markRecordDirty(std::uint32_t slot)
             {
-                records_.markDirty(slot);
+                records_->markDirty(slot);
             }
 
             /// Returns true when the key actually changed (order rebuild needed).
@@ -283,8 +286,8 @@ namespace lux::render
             [[nodiscard]] std::uint32_t appendOrdered(std::uint32_t slot) override
             {
                 const std::uint32_t pos = order_cursor_++;
-                order_.at(pos) = slot;
-                order_.markDirty(pos);
+                order_->at(pos) = slot;
+                order_->markDirty(pos);
                 return pos;
             }
 
@@ -292,8 +295,8 @@ namespace lux::render
             {
                 const bool full = full_reupload_;
                 const bool is_empty = slot_count_ == 0;
-                const bool has_dirty_records = records_.hasDirtyPages();
-                const bool has_dirty_order = order_.hasDirtyPages();
+                const bool has_dirty_records = records_->hasDirtyPages();
+                const bool has_dirty_order = order_->hasDirtyPages();
                 const bool is_clean_incremental_upload = !full && !has_dirty_records && !has_dirty_order;
                 const bool has_nothing_to_submit = is_empty || is_clean_incremental_upload;
                 if (has_nothing_to_submit)
@@ -301,11 +304,11 @@ namespace lux::render
 
                 rec_chunks_.clear();
                 ord_chunks_.clear();
-                const VkDeviceSize rec_bytes = (full || records_.hasDirtyPages())
-                                                   ? records_.collectUploadChunks(slot_count_, full, rec_chunks_)
+                const VkDeviceSize rec_bytes = (full || records_->hasDirtyPages())
+                                                   ? records_->collectUploadChunks(slot_count_, full, rec_chunks_)
                                                    : 0u;
-                const VkDeviceSize ord_bytes = ((full || order_.hasDirtyPages()) && order_cursor_ > 0)
-                                                   ? order_.collectUploadChunks(order_cursor_, full, ord_chunks_)
+                const VkDeviceSize ord_bytes = ((full || order_->hasDirtyPages()) && order_cursor_ > 0)
+                                                   ? order_->collectUploadChunks(order_cursor_, full, ord_chunks_)
                                                    : 0u;
                 const VkDeviceSize total = rec_bytes + ord_bytes;
                 if (total == 0u)
@@ -335,10 +338,10 @@ namespace lux::render
                         offset += c.size;
                     }
                 };
-                emit(records_.buffer(), rec_chunks_);
-                emit(order_.buffer(), ord_chunks_);
-                records_.clearDirtyState();
-                order_.clearDirtyState();
+                emit(records_->buffer(), rec_chunks_);
+                emit(order_->buffer(), ord_chunks_);
+                records_->clearDirtyState();
+                order_->clearDirtyState();
                 full_reupload_ = false;
             }
 
@@ -346,7 +349,7 @@ namespace lux::render
             {
                 for (std::uint32_t slot = 0u; slot < slot_count_; ++slot)
                 {
-                    if (slots_[slot].alive && !canRebaseRenderPageDelta2D(records_.at(slot).page_delta, origin_delta))
+                    if (slots_[slot].alive && !canRebaseRenderPageDelta2D(records_->at(slot).page_delta, origin_delta))
                     {
                         return false;
                     }
@@ -360,8 +363,8 @@ namespace lux::render
                 {
                     if (!slots_[slot].alive)
                         continue;
-                    rebaseRenderPageDelta2D(records_.at(slot).page_delta, origin_delta);
-                    records_.markDirty(slot);
+                    rebaseRenderPageDelta2D(records_->at(slot).page_delta, origin_delta);
+                    records_->markDirty(slot);
                 }
             }
 
@@ -410,8 +413,10 @@ namespace lux::render
                 nc = std::min(nc, max_capacity_);
                 if (nc < required)
                     return false;
-                if (!records_.reserve(nc) || !order_.reserve(nc))
+                if (!records_->reserve(nc) || !order_->reserve(nc))
+                {
                     return false;
+                }
                 slots_.resize(nc);
                 capacity_ = nc;
                 full_reupload_ = true; // reserve() discards GPU contents
@@ -424,8 +429,8 @@ namespace lux::render
                 if (ds_ == VK_NULL_HANDLE)
                     return;
                 std::array<VkDescriptorBufferInfo, 2> infos{};
-                infos[0] = {records_.buffer(), 0, VK_WHOLE_SIZE};
-                infos[1] = {order_.buffer(), 0, VK_WHOLE_SIZE};
+                infos[0] = {records_->buffer(), 0, VK_WHOLE_SIZE};
+                infos[1] = {order_->buffer(), 0, VK_WHOLE_SIZE};
                 std::array<VkWriteDescriptorSet, 2> writes{};
                 for (std::uint32_t i = 0; i < 2; ++i)
                 {
@@ -439,8 +444,8 @@ namespace lux::render
                 vkUpdateDescriptorSets(device_ctx_->logicalDevice(), 2, writes.data(), 0, nullptr);
             }
 
-            TPagedGpuStream<Record> records_;
-            TPagedGpuStream<std::uint32_t> order_;
+            std::optional<TPagedGpuStream<Record>> records_;
+            std::optional<TPagedGpuStream<std::uint32_t>> order_;
             std::vector<Slot> slots_;
             std::vector<std::uint32_t> free_;
             std::vector<typename TPagedGpuStream<Record>::UploadChunk> rec_chunks_;
@@ -487,7 +492,11 @@ namespace lux::render
             textures_ = info.textures;
             if (initialized_)
                 return {};
-            setDeferredQueue(info.deferred_queue);
+            const bool is_missing_backing = !info.device_context || !info.deferred_queue;
+            if (is_missing_backing)
+            {
+                return renderFailure<err::internal::InvalidArgument>();
+            }
             device_ctx_ = info.device_context;
             svc_ = info.descriptor_svc;
             group_count_ = 1u + std::min(info.offscreen_groups, kMaxCanvas2DGroups);
@@ -514,7 +523,7 @@ namespace lux::render
                 );
             }
 
-            if (!images_.init(device_ctx_, info.initial_capacity, info.max_capacity))
+            if (!images_.init(device_ctx_, *info.deferred_queue, info.initial_capacity, info.max_capacity))
             {
                 return renderFailure<err::feature::ResourceInitFailed>();
             }
@@ -523,7 +532,7 @@ namespace lux::render
                 return lux::cxx::unexpected(created.error());
             }
             // Fields are FEW per scene (a handful of chunk quads) — a small store.
-            if (!fields_.init(device_ctx_, 64, 4096))
+            if (!fields_.init(device_ctx_, *info.deferred_queue, 64, 4096))
             {
                 return renderFailure<err::feature::ResourceInitFailed>();
             }
@@ -532,7 +541,7 @@ namespace lux::render
                 return lux::cxx::unexpected(created.error());
             }
             // Tilemaps too: one instance per whole map (A2-02).
-            if (!tiles_.init(device_ctx_, 64, 4096))
+            if (!tiles_.init(device_ctx_, *info.deferred_queue, 64, 4096))
             {
                 return renderFailure<err::feature::ResourceInitFailed>();
             }
@@ -542,13 +551,6 @@ namespace lux::render
             }
             initialized_ = true;
             return {};
-        }
-
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-        {
-            images_.setDeferredQueue(q);
-            fields_.setDeferredQueue(q);
-            tiles_.setDeferredQueue(q);
         }
 
         // ── image-kind op entry points (wire-typed; handlers stay unchanged) ──

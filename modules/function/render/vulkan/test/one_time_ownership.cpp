@@ -890,11 +890,73 @@ void checkSparsePageTable(lux::render::DeviceContext& device, lux::render::Defer
 void checkPagedCapacity(lux::render::DeviceContext& device, lux::render::DeferredDestroyQueue& retirement)
 {
     using namespace lux::render;
+    using Stream = TPagedGpuStream<uint32_t>;
+    static_assert(std::is_same_v<decltype(std::declval<Stream&>().cpuData()), std::span<uint32_t>>);
+    static_assert(!std::is_default_constructible_v<Stream>);
+    static_assert(!std::is_copy_constructible_v<Stream>);
+    static_assert(std::is_nothrow_move_constructible_v<Stream>);
+    static_assert(std::is_nothrow_move_assignable_v<Stream>);
+    static_assert(!std::is_default_constructible_v<MeshSectionTable>);
+    static_assert(!std::is_copy_constructible_v<MeshSectionTable>);
+    failure = EFailure::BUFFER;
+    auto rejected_stream = Stream::create(device, retirement, 8);
+    auto rejected_table = MeshSectionTable::create(device, retirement, 8);
+    assert(!rejected_stream && !rejected_table && buffers.empty());
+    assert(isError<err::device::VulkanCallFailed>(rejected_stream.error()));
+    assert(isError<err::device::VulkanCallFailed>(rejected_table.error()));
+    assert(rejected_stream.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+    assert(rejected_table.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+    assert(retirement.pendingCount() == 0);
+    failure = EFailure::NONE;
+    assert(!Stream::create(device, retirement, UINT32_MAX));
+    assert(!MeshSectionTable::create(device, retirement, UINT32_MAX));
+    assert(buffers.empty());
+    {
+        DeferredDestroyQueue other;
+        other.init(device.vmaAllocator(), device.logicalDevice());
+        retirement.beginFrame(9);
+        other.beginFrame(12);
+        auto source = Stream::create(device, retirement, 2);
+        auto destination = Stream::create(device, other, 4);
+        assert(source && destination);
+        source->at(1) = 101;
+        source->markDirty(1);
+        const auto source_buffer = source->buffer();
+        const auto replaced_buffer = destination->buffer();
+        *destination = std::move(*source);
+        assert(destination->buffer() == source_buffer && destination->at(1) == 101);
+        assert(destination->capacity() == 2 && destination->hasDirtyPages());
+        assert(other.pendingCount() == 1 && retirement.pendingCount() == 0);
+        other.collect(11);
+        assert(buffers.contains(replaced_buffer));
+        other.collect(12);
+        assert(!buffers.contains(replaced_buffer) && buffers.contains(source_buffer));
+    }
+    assert(retirement.pendingCount() == 1);
+    retirement.collect(9);
+    assert(buffers.empty());
+    {
+        auto cpu = MeshSectionTable::createCpu(0);
+        assert(cpu.buffer() == VK_NULL_HANDLE && !cpu.hasWork());
+        const MeshSectionRecord value{11, 12, 13, 14};
+        assert(cpu.registerSection(value, 1, VK_INDEX_TYPE_UINT16) == 0);
+        assert(cpu.registerSection(value, 1, VK_INDEX_TYPE_UINT16) == 0);
+        assert(cpu.registerSection(value, 2, VK_INDEX_TYPE_UINT16) == 1);
+        assert(cpu.registerSection(value, 1, VK_INDEX_TYPE_UINT32) == 2);
+        cpu.unregisterSection(0);
+        assert(cpu.at(0).first_index == 11);
+        cpu.unregisterSection(0);
+        assert(cpu.at(0).first_index == 0 && cpu.at(1).first_index == 11);
+        assert(cpu.registerSection(value, 3) == 0);
+        assert(cpu.ensureCapacity(4096) && !cpu.hasWork() && buffers.empty());
+        auto moved = std::move(cpu);
+        assert(moved.at(0).first_index == 11 && moved.at(2).index_count == 12);
+    }
     retirement.beginFrame(13);
     {
-        TPagedGpuStream<uint32_t> stream;
-        stream.setDeferredQueue(&retirement);
-        assert(stream.init(&device, 2));
+        auto created = TPagedGpuStream<uint32_t>::create(device, retirement, 2);
+        assert(created);
+        auto stream = std::move(*created);
         assert(stream.capacity() == 2 && stream.cpuData().size() == 2);
         const auto original = stream.buffer();
         stream.at(0) = 17;
@@ -946,9 +1008,9 @@ void checkPagedCapacity(lux::render::DeviceContext& device, lux::render::Deferre
     retirement.collect(13);
     assert(buffers.empty());
     {
-        MeshSectionTable table;
-        table.setDeferredQueue(&retirement);
-        assert(table.init(&device, 2));
+        auto created = MeshSectionTable::create(device, retirement, 2);
+        assert(created);
+        auto table = std::move(*created);
         for (unsigned i = 0; i < 130; ++i)
         {
             MeshSectionRecord value{i * 3, 3, static_cast<int32_t>(i), i + 1};
@@ -958,26 +1020,31 @@ void checkPagedCapacity(lux::render::DeviceContext& device, lux::render::Deferre
             table.unregisterSection(id); // retain the first reference
             assert(table.at(id).vertex_count == i + 1);
         }
+        TransferScheduler scheduler;
+        assert(scheduler.init({device.vmaAllocator(), 16 * 1024, 1}));
+        assert(table.hasWork());
+        table.submitTransfers(scheduler);
+        assert(scheduler.hasWork() && !table.hasWork());
         const auto original_buffer = table.buffer();
         failure = EFailure::BUFFER;
         assert(!table.ensureCapacity(4096));
         assert(table.buffer() == original_buffer && table.at(129).first_index == 387);
         failure = EFailure::NONE;
         assert(table.ensureCapacity(4096));
-        assert(table.at(129).first_index == 387);
+        assert(table.at(129).first_index == 387 && table.hasWork());
+        table.submitTransfers(scheduler);
+        assert(!table.hasWork());
         for (unsigned i = 0; i < 130; ++i)
         {
             table.unregisterSection(i);
         }
-        table.shutdown();
         retirement.collect(12);
         assert(buffers.contains(original_buffer));
     }
     retirement.collect(13);
     assert(buffers.empty() && retirement.pendingCount() == 0);
-    std::puts(
-        "Paged stream: CPU/native capacity agreement, failed growth, dirty runs, compaction and real mesh sections PASS"
-    );
+    std::puts("Paged/mesh complete backing: exact failure, CPU/native extent, cross-queue move, CPU-only variant, "
+              "transfer re-upload and retirement PASS");
 }
 
 void checkSceneResources(

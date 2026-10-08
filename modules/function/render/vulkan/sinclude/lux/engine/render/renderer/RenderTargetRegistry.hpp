@@ -14,15 +14,15 @@
  * 线程:仅渲染线程。
  */
 
-#include <lux/engine/function/render/client/core/FeatureHandle.hpp> // RenderTargetId / ViewHandle
-#include <lux/engine/function/render/client/core/RenderSceneId.hpp>
-#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
-#include <lux/engine/function/render/client/RenderTargetLayout.hpp>
 #include <lux/engine/function/render/client/RenderProgram.hpp>
-#include <lux/engine/render/targets/RenderTargetBinding.hpp>
+#include <lux/engine/function/render/client/RenderTargetLayout.hpp>
+#include <lux/engine/function/render/client/core/FeatureHandle.hpp> // RenderTargetId / ViewHandle
+#include <lux/engine/function/render/client/core/RenderResourceHandle.hpp>
+#include <lux/engine/function/render/client/core/RenderSceneId.hpp>
+#include <lux/engine/function/visibility.h>
 #include <lux/engine/render/targets/OffscreenImagePool.hpp>
 #include <lux/engine/render/targets/PresentContext.hpp>
-#include <lux/engine/function/visibility.h>
+#include <lux/engine/render/targets/RenderTargetBinding.hpp>
 
 #include <lux/cxx/container/BasicSparseSet.hpp> // SlotKeyAutoSparseSet
 #include <lux/cxx/container/SmallVector.hpp>
@@ -139,24 +139,6 @@ namespace lux::render
         using Entry = RenderTargetEntry;
         using Set = lux::cxx::SlotKeyAutoSparseSet<RenderTargetId, Entry>;
 
-        /// 池创建扩展点:返回 nullptr = 不接管,本类造默认 OffscreenImagePool。
-        /// UI 层经此把 SAMPLED 目标的池换成自带 ImGui 描述符的子类。
-        using MakeTargetPoolFn = std::unique_ptr<OffscreenImagePool> (*)(
-            RenderTargetRegistry& reg,
-            const RenderTargetLayout& layout,
-            VkExtent2D extent,
-            uint32_t target_flags
-        );
-
-        /// 池退休扩展点:取走 pool 并返回 true = 接管(调用方自管退休列表);
-        /// 返回 false = 本类按 fence 水位延迟释放。
-        using RetireTargetPoolFn = bool (*)(
-            RenderTargetRegistry& reg,
-            std::unique_ptr<OffscreenImagePool>& pool,
-            uint32_t target_flags,
-            uint64_t retire_serial
-        );
-
         RenderTargetRegistry() = default;
         ~RenderTargetRegistry() = default;
 
@@ -176,25 +158,10 @@ namespace lux::render
         {
             return *res_ctx_;
         }
+
         [[nodiscard]] uint32_t framesInFlight() const noexcept
         {
             return frames_in_flight_;
-        }
-
-        /// 池回调的用户数据(UI 在此挂它的 UIState)。
-        void setUserData(void* user) noexcept
-        {
-            user_ = user;
-        }
-        [[nodiscard]] void* userData() const noexcept
-        {
-            return user_;
-        }
-
-        void setPoolCallbacks(MakeTargetPoolFn make, RetireTargetPoolFn retire) noexcept
-        {
-            make_pool_cb_ = make;
-            retire_pool_cb_ = retire;
         }
 
         // ── 容器 ────────────────────────────────────────────────────────
@@ -202,6 +169,7 @@ namespace lux::render
         {
             return targets_;
         }
+
         [[nodiscard]] const Set& all() const noexcept
         {
             return targets_;
@@ -211,14 +179,17 @@ namespace lux::render
         {
             return targets_.insert(std::move(e));
         }
+
         [[nodiscard]] Entry* tryGet(RenderTargetId key) noexcept
         {
             return targets_.tryGet(key);
         }
+
         void erase(RenderTargetId key)
         {
             targets_.erase(key);
         }
+
         void clear()
         {
             targets_.clear();
@@ -230,6 +201,7 @@ namespace lux::render
         {
             surface_target_ = id;
         }
+
         [[nodiscard]] RenderTargetId surfaceTargetId() const noexcept
         {
             return surface_target_;
@@ -239,6 +211,7 @@ namespace lux::render
         {
             return surface_target_.isValid() ? targets_.tryGet(surface_target_) : nullptr;
         }
+
         [[nodiscard]] PresentContext* surfacePresent() noexcept;
         [[nodiscard]] SwapchainProvider* swapchainProvider() noexcept;
 
@@ -251,14 +224,13 @@ namespace lux::render
         bool detachLayerAndReapIfEmpty(RenderTargetId key, RenderSceneId s, ViewHandle v, uint64_t retire_serial);
 
         // ── 池的创建与退休 ──────────────────────────────────────────────
-        [[nodiscard]] std::unique_ptr<OffscreenImagePool> makeTargetPool(
+        [[nodiscard]] Expected<std::unique_ptr<OffscreenImagePool>> makeTargetPool(
             const RenderTargetLayout& layout,
-            VkExtent2D extent,
-            uint32_t target_flags
-        );
+            VkExtent2D extent
+        ) noexcept;
 
         /// **统一销毁门控**:所有 target 池的退休都必须走这里 —— 直接 vkDestroy
-        /// 或直接进延迟表都会绕开扩展点接管的描述符退休语义。
+        /// 或直接释放都会绕开原有 fence 完成水位。
         void retireTargetPool(Entry& t, uint64_t retire_serial);
 
         /// 老化回收已越过 GPU 完成水位的延迟池。
@@ -270,10 +242,6 @@ namespace lux::render
     private:
         ResourceContext* res_ctx_{nullptr};
         uint32_t frames_in_flight_{0};
-        void* user_{nullptr};
-
-        MakeTargetPoolFn make_pool_cb_{nullptr};
-        RetireTargetPoolFn retire_pool_cb_{nullptr};
 
         Set targets_;
         RenderTargetId surface_target_{};

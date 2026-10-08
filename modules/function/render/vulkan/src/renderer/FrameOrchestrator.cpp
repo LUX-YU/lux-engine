@@ -223,7 +223,8 @@ namespace lux::render
         const auto& keys = targets.all().keys();
         target_order_.clear();
         target_marks_.assign(keys.size(), 0);
-        auto visit = [&](auto&& self, std::size_t index) -> Expected<void> {
+        auto visit = [&](auto&& self, std::size_t index) -> Expected<void>
+        {
             if (target_marks_[index] == 2)
             {
                 return {};
@@ -301,7 +302,8 @@ namespace lux::render
         const auto& stamp = current_stamp_;
         produced_targets_.clear();
 
-        auto bindInputs = [&](RenderScene& scene) -> Expected<void> {
+        auto bindInputs = [&](RenderScene& scene) -> Expected<void>
+        {
             for (auto* feature : scene.enabledFeatures())
             {
                 sampled_images_.clear();
@@ -357,7 +359,8 @@ namespace lux::render
         // 一条合成链的执行:逐层按位置算相位,再按层的形态分发。
         // 链只算**决策**,不接管**执行** —— 场景层的 BeginRendering/屏障由渲染图
         // 拥有,自定义层由它自己的录制回调拥有;链能统一的是"你是第几层"。
-        auto runChain = [&](const RenderTargetEntry& t, RenderTargetBinding& binding) -> Expected<bool> {
+        auto runChain = [&](const RenderTargetEntry& t, RenderTargetBinding& binding) -> Expected<bool>
+        {
             const size_t n = t.layers.size();
             bool recorded = false;
             for (size_t i = 0; i < n; ++i)
@@ -411,7 +414,8 @@ namespace lux::render
         // 无条件比较自动按新布局重编图模板,SceneGraphCache 照常导入。
         // 稳态成本 = 每目标每 tick 一次掩码比较;命中(装了新声明槽位的特性)才动重建。
         // v1 仅离屏目标(编辑器主视图即是);纯 Surface 路径的额外槽待池侧配套。
-        auto amendTargetSlots = [&](RenderTargetEntry& t) -> bool {
+        auto amendTargetSlots = [&](RenderTargetEntry& t) -> bool
+        {
             using Layer = RenderTargetEntry::CompositeLayer;
             auto prepared_layout = t.layout;
             uint32_t need = 0;
@@ -480,8 +484,11 @@ namespace lux::render
                     current_stamp_.serial
                 );
             }
-            if (!t.pool->tryApplyLayout(prepared_layout))
+            auto applied = t.pool->applyLayout(prepared_layout);
+            if (!applied)
             {
+                auto& render_context = renderer.renderContext();
+                render_context.reportError(applied.error(), RenderErrorEvent::kNoScene, current_stamp_.serial);
                 return false;
             }
             t.layout = prepared_layout;
@@ -563,13 +570,17 @@ namespace lux::render
             auto ended = driver->endFrame(st.rt, st.surface_present);
             // Submission is the fact, including when a later Present failed.
             if (driver->lastSubmittedSerial() == current_stamp_.serial)
+            {
                 for (auto id : produced_targets_)
+                {
                     if (auto* target = targets.tryGet(id))
                     {
                         target->produced_serial = current_stamp_.serial;
                         target->produced_slot = current_stamp_.slotIndex();
                         target->produced_revision = target->pool->backingRevision();
                     }
+                }
+            }
             if (!ended)
             {
                 return lux::cxx::unexpected<RenderError>(ended.error());

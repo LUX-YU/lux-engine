@@ -48,6 +48,7 @@ namespace lux::window
 namespace lux::render
 {
     class OffscreenImagePool;
+
     // FeatureTypeRecord + the feature-type registry moved down to the
     // Renderer-owned FeatureTypeRegistry (renderer/FeatureTypeRegistry.hpp), so
     // dependency resolution can reach factories. The comm layer registers types
@@ -214,6 +215,7 @@ namespace lux::render
         {
             return targets_registry_;
         }
+
         [[nodiscard]] const RenderTargetRegistry& targets() const noexcept
         {
             return targets_registry_;
@@ -224,10 +226,12 @@ namespace lux::render
         {
             return targets_registry_.surfaceTarget();
         }
+
         PresentContext* surfacePresent() noexcept
         {
             return targets_registry_.surfacePresent();
         }
+
         SwapchainProvider* swapchainProvider() noexcept
         {
             return targets_registry_.swapchainProvider();
@@ -239,15 +243,6 @@ namespace lux::render
         }
 
         bool detachLayerAndReapIfEmpty(RenderTargetId key, RenderSceneId s, ViewHandle v, uint64_t retire_serial);
-
-        std::unique_ptr<OffscreenImagePool> makeTargetPool(
-            const RenderTargetLayout& layout,
-            VkExtent2D extent,
-            uint32_t target_flags
-        )
-        {
-            return targets_registry_.makeTargetPool(layout, extent, target_flags);
-        }
 
         void retireTargetPool(RenderTargetEntry& t, uint64_t retire_serial);
 
@@ -275,7 +270,9 @@ namespace lux::render
             /// ——同样要等 fence 水位)。
             std::function<void()> on_teardown;
         };
+
         std::vector<PendingResourceRelease> pending_resource_releases_;
+
         RenderTargetId findOffscreenKeyByView(RenderSceneId s, ViewHandle v) const noexcept
         {
             return targets_registry_.findOffscreenKeyByView(s, v);
@@ -346,6 +343,7 @@ namespace lux::render
             uint32_t status{0};     ///< 0 = success; non-zero = failed upload
             RTextureHandle texture; // Resolved once when publishing the deferred reply.
         };
+
         std::vector<DeferredReplyEntry> pending_deferred_replies_;
 
         struct ActiveUpload
@@ -356,6 +354,7 @@ namespace lux::render
             std::uint32_t resource_gen{0};
             EUploadLifecycleState state{EUploadLifecycleState::ACCEPTED};
         };
+
         std::vector<ActiveUpload> active_uploads_;
         UploadLifecycleSnapshot upload_lifecycle_{};
         static constexpr std::size_t kRecentUploadTerminals = 256;
@@ -369,6 +368,7 @@ namespace lux::render
             std::vector<DeferredReplyEntry> replies;
             std::vector<StagingBuffer> staging;
         };
+
         std::vector<PendingGraphicsFinalize> pending_graphics_finalizes_;
         std::vector<DeferredReplyEntry> graphics_finalize_reply_batch_;
         std::vector<StagingBuffer> graphics_finalize_staging_batch_;
@@ -420,6 +420,7 @@ namespace lux::render
             uint64_t needed{0};
             ReadbackTargetReply reply{};
         };
+
         std::vector<PendingReadback> pending_readbacks_;
 
         /// Callback invoked before a scene is destroyed — lets subclasses
@@ -436,6 +437,7 @@ namespace lux::render
         {
             recent_upload_terminals_.fill(UINT32_MAX);
         }
+
         ~Impl();
 
         /// Two-phase init: creates the full Vulkan stack.

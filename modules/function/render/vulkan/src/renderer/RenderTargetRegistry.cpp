@@ -24,10 +24,18 @@ namespace lux::render
         const auto& keys = targets_.keys();
         const auto& vals = targets_.values();
         for (size_t i = 0; i < vals.size(); ++i)
+        {
             if (vals[i].kind == Entry::EKind::OFFSCREEN)
+            {
                 for (const auto& l : vals[i].layers)
+                {
                     if (l.scene_id == s && l.view_id == v)
+                    {
                         return keys[i];
+                    }
+                }
+            }
+        }
         return {};
     }
 
@@ -46,15 +54,19 @@ namespace lux::render
     {
         auto* t = targets_.tryGet(key);
         if (!t)
+        {
             return false;
+        }
 
         bool removed = false;
         for (size_t i = t->layers.size(); i-- > 0;)
+        {
             if (t->layers[i].scene_id == s && t->layers[i].view_id == v)
             {
                 t->layers.erase(t->layers.begin() + i);
                 removed = true;
             }
+        }
 
         if (removed && t->layers.empty() && t->kind == Entry::EKind::OFFSCREEN)
         {
@@ -64,24 +76,20 @@ namespace lux::render
         return removed;
     }
 
-    std::unique_ptr<OffscreenImagePool> RenderTargetRegistry::makeTargetPool(
+    Expected<std::unique_ptr<OffscreenImagePool>> RenderTargetRegistry::makeTargetPool(
         const RenderTargetLayout& layout,
-        VkExtent2D extent,
-        uint32_t target_flags
-    )
+        VkExtent2D extent
+    ) noexcept
     {
-        if (make_pool_cb_)
-            if (auto pool = make_pool_cb_(*this, layout, extent, target_flags))
-                return pool;
-        return std::make_unique<OffscreenImagePool>(*res_ctx_, layout, extent, frames_in_flight_);
+        return OffscreenImagePool::create(*res_ctx_, layout, extent, frames_in_flight_);
     }
 
     void RenderTargetRegistry::retireTargetPool(Entry& t, uint64_t retire_serial)
     {
         if (!t.pool)
+        {
             return;
-        if (retire_pool_cb_ && retire_pool_cb_(*this, t.pool, t.flags, retire_serial))
-            return;
+        }
         deferred_pools_.emplace_back(retire_serial, std::move(t.pool));
     }
 

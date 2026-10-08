@@ -11,21 +11,21 @@
  * Thread model: all methods are render-thread only.
  */
 
-#include <lux/engine/function/visibility.h>
 #include <lux/engine/function/render/client/RenderTargetLayout.hpp>
-#include <lux/engine/render/targets/RenderTargetBinding.hpp>
 #include <lux/engine/function/render/client/core/RenderTypes.hpp>
+#include <lux/engine/function/visibility.h>
+#include <lux/engine/render/targets/RenderTargetBinding.hpp>
 
-#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 #include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
+#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 
 #include <vulkan/vulkan.h>
 
 #include <array>
 #include <cstdint>
-#include <vector>
 #include <memory>
 #include <span>
+#include <vector>
 
 namespace lux::render
 {
@@ -34,17 +34,17 @@ namespace lux::render
     // =============================================================================
     // OffscreenImagePool
     // =============================================================================
-    class LUX_FUNCTION_PUBLIC OffscreenImagePool
+    class LUX_FUNCTION_PUBLIC OffscreenImagePool final
     {
     public:
-        OffscreenImagePool(
+        [[nodiscard]] static Expected<std::unique_ptr<OffscreenImagePool>> create(
             ResourceContext& res_ctx,
             const RenderTargetLayout& layout,
             VkExtent2D extent,
             uint32_t frames_in_flight
-        );
+        ) noexcept;
 
-        virtual ~OffscreenImagePool();
+        ~OffscreenImagePool() noexcept;
 
         OffscreenImagePool(const OffscreenImagePool&) = delete;
         OffscreenImagePool& operator=(const OffscreenImagePool&) = delete;
@@ -60,10 +60,12 @@ namespace lux::render
         {
             return layout_;
         }
+
         [[nodiscard]] VkExtent2D extent() const noexcept
         {
             return binding_.extent;
         }
+
         [[nodiscard]] uint32_t framesInFlight() const noexcept
         {
             return frames_in_flight_;
@@ -79,39 +81,33 @@ namespace lux::render
 
         /// Resize all images.  Old images are retired and will be GC'd after
         /// enough frames have elapsed (see collectRetired()).
-        virtual void resize(VkExtent2D new_extent);
-        [[nodiscard]] bool tryResize(VkExtent2D new_extent) noexcept;
-        [[nodiscard]] bool tryApplyLayout(const RenderTargetLayout& layout) noexcept;
-        [[nodiscard]] bool valid() const noexcept
-        {
-            return backing_revision_ != 0;
-        }
+        [[nodiscard]] Expected<void> resize(VkExtent2D new_extent) noexcept;
+        [[nodiscard]] Expected<void> applyLayout(const RenderTargetLayout& layout) noexcept;
+
         [[nodiscard]] uint64_t backingRevision() const noexcept
         {
             return backing_revision_;
         }
+
         [[nodiscard]] bool recorded(uint32_t slot) const noexcept
         {
             return slot < recorded_slots_.size() && recorded_slots_[slot] != 0;
         }
+
         void markRecorded(uint32_t slot, bool recorded = true) noexcept
         {
             if (slot < recorded_slots_.size())
+            {
                 recorded_slots_[slot] = recorded ? 1 : 0;
+            }
         }
+
         using RetireViews = void (*)(void*, std::span<const VkImageView>) noexcept;
+
         void setViewRetirementObserver(std::shared_ptr<void> owner, RetireViews callback) noexcept
         {
             retire_owner_ = std::move(owner);
             retire_views_ = callback;
-        }
-
-        /// 应用新布局(额外输出槽进出)并按当前尺寸重建全部影像。
-        /// 走 resize 的虚路径 —— 子类(UIOffscreenImagePool)的描述符刷新
-        /// 自动搭车;旧影像照旧经 retire/GC 回收。
-        void applyLayout(const RenderTargetLayout& l)
-        {
-            static_cast<void>(tryApplyLayout(l));
         }
 
         /// Call each frame after GPU submit to GC retired images. @p frame_id
@@ -122,7 +118,7 @@ namespace lux::render
         /// unsound, serials advance on ticks that never submit.
         void collectRetired(uint64_t frame_id, uint64_t completed_serial);
 
-    protected:
+    private:
         ResourceContext& res_ctx_;
         RenderTargetLayout layout_;
         uint32_t frames_in_flight_;
@@ -138,17 +134,36 @@ namespace lux::render
             std::array<std::vector<ImageViewOwner>, kTargetSlotCount> slot_views;
             uint64_t retire_frame{0};
         };
+
         std::vector<RetiredImages> retired_images_;
 
-    private:
-        uint64_t backing_revision_{};
+        struct PreparedBacking
+        {
+            RetiredImages images;
+            RenderTargetBinding binding;
+        };
+
+        OffscreenImagePool(
+            ResourceContext& res_ctx,
+            const RenderTargetLayout& layout,
+            uint32_t frames_in_flight,
+            PreparedBacking&& backing
+        ) noexcept;
+
+        [[nodiscard]] static Expected<PreparedBacking> prepareBacking(
+            ResourceContext& res_ctx,
+            const RenderTargetLayout& layout,
+            VkExtent2D extent,
+            uint32_t frames_in_flight
+        ) noexcept;
+
+        uint64_t backing_revision_{1};
         std::vector<std::uint8_t> recorded_slots_;
         std::shared_ptr<void> retire_owner_;
         RetireViews retire_views_{};
         void notifyViewRetirement(std::span<const ImageViewOwner> views) noexcept;
-        bool rebuild(const RenderTargetLayout& layout, VkExtent2D extent) noexcept;
-        bool allocate(VkExtent2D extent);
-        void release();
+        Expected<void> rebuild(const RenderTargetLayout& layout, VkExtent2D extent) noexcept;
+        void release() noexcept;
     };
 
 } // namespace lux::render

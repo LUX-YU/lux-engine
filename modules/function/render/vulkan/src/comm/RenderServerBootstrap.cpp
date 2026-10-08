@@ -1015,15 +1015,15 @@ namespace lux::render
             entry.kind = GeneralRenderServer::Impl::RenderTargetEntry::EKind::OFFSCREEN;
             entry.flags = p.flags;
             entry.layout = layout;
-            // 经扩展点创建:UI 层对 SAMPLED 目标返回 UIOffscreenImagePool
-            //(ImGui 描述符),其余走基类池。
-            entry.pool = im.makeTargetPool(layout, vk_extent, p.flags);
-            if (!entry.pool || !entry.pool->valid())
+            auto pool = im.targets_registry_.makeTargetPool(layout, vk_extent);
+            if (!pool)
             {
+                im.render_ctx_->reportError(pool.error());
                 reply.status = 1;
                 replyToCurrent<CreateOffscreenTargetPayload>(ctx, reply);
                 return;
             }
+            entry.pool = std::move(*pool);
             reply.target = im.targets_registry_.insert(std::move(entry));
             if ((p.flags & kTargetFlagSampled) != 0)
             {
@@ -1296,8 +1296,10 @@ namespace lux::render
             }
             else
             {
-                if (!t->pool->tryResize(clampTargetExtent(im, p.new_extent)))
+                auto resized = t->pool->resize(clampTargetExtent(im, p.new_extent));
+                if (!resized)
                 {
+                    im.render_ctx_->reportError(resized.error());
                     reply.status = 3;
                 }
                 const auto extent = t->pool->extent();

@@ -1,13 +1,11 @@
-#include <lux/engine/render/targets/OffscreenImagePool.hpp>
-#include <lux/engine/render/gpu/VulkanContext.hpp>
-#include <lux/cxx/core/Format.hpp>
 #include <lux/cxx/container/SmallVector.hpp>
+#include <lux/cxx/core/Format.hpp>
+#include <lux/engine/render/gpu/VulkanContext.hpp>
+#include <lux/engine/render/targets/OffscreenImagePool.hpp>
 #include <vk_mem_alloc.h>
 
-#include <cassert>
-#include <cstdio>
+#include <algorithm>
 #include <limits>
-#include <new>
 #include <utility>
 
 namespace lux::render
@@ -17,24 +15,37 @@ namespace lux::render
     // Construction / Destruction (RAII)
     // =============================================================================
 
-    OffscreenImagePool::OffscreenImagePool(
+    Expected<std::unique_ptr<OffscreenImagePool>> OffscreenImagePool::create(
         ResourceContext& res_ctx,
         const RenderTargetLayout& layout,
         VkExtent2D extent,
         uint32_t frames_in_flight
-    )
-        : res_ctx_(res_ctx), layout_(layout), frames_in_flight_(frames_in_flight)
+    ) noexcept
     {
+        auto backing = prepareBacking(res_ctx, layout, extent, frames_in_flight);
+        if (!backing)
         {
-            recorded_slots_.resize(frames_in_flight);
-            if (extent.width != 0 && extent.height != 0 && frames_in_flight != 0 && allocate(extent))
-                backing_revision_ = 1;
+            return lux::cxx::unexpected(backing.error());
         }
-
-        // No explicit layout transition — RG inserts correct barriers on first use.
+        return std::unique_ptr<OffscreenImagePool>(
+            new OffscreenImagePool(res_ctx, layout, frames_in_flight, std::move(*backing))
+        );
     }
 
-    OffscreenImagePool::~OffscreenImagePool()
+    OffscreenImagePool::OffscreenImagePool(
+        ResourceContext& res_ctx,
+        const RenderTargetLayout& layout,
+        uint32_t frames_in_flight,
+        PreparedBacking&& backing
+    ) noexcept
+        : res_ctx_(res_ctx), layout_(layout), frames_in_flight_(frames_in_flight),
+          slot_images_(std::move(backing.images.slot_images)), slot_views_(std::move(backing.images.slot_views)),
+          binding_(std::move(backing.binding)), recorded_slots_(frames_in_flight)
+    {
+        binding_.layout = &layout_;
+    }
+
+    OffscreenImagePool::~OffscreenImagePool() noexcept
     {
         // Clean up any retired images still in the queue
         for (auto& retired : retired_images_)
@@ -53,46 +64,50 @@ namespace lux::render
     // Resize
     // =============================================================================
 
-    void OffscreenImagePool::resize(VkExtent2D new_extent)
+    Expected<void> OffscreenImagePool::resize(VkExtent2D new_extent) noexcept
     {
-        static_cast<void>(tryResize(new_extent));
-    }
-
-    bool OffscreenImagePool::tryResize(VkExtent2D new_extent) noexcept
-    {
-        if (valid() && new_extent.width == extent().width && new_extent.height == extent().height)
-            return true;
+        const bool is_same_extent = new_extent.width == extent().width && new_extent.height == extent().height;
+        if (is_same_extent)
+        {
+            return {};
+        }
         return rebuild(layout_, new_extent);
     }
 
-    bool OffscreenImagePool::tryApplyLayout(const RenderTargetLayout& layout) noexcept
+    Expected<void> OffscreenImagePool::applyLayout(const RenderTargetLayout& layout) noexcept
     {
+        if (layout.slots == layout_.slots)
+        {
+            return {};
+        }
         return rebuild(layout, extent());
     }
 
-    bool OffscreenImagePool::rebuild(const RenderTargetLayout& layout, VkExtent2D extent) noexcept
+    Expected<void> OffscreenImagePool::rebuild(const RenderTargetLayout& layout, VkExtent2D extent) noexcept
     {
-        if (extent.width == 0 || extent.height == 0 || backing_revision_ == std::numeric_limits<uint64_t>::max())
-            return false;
+        if (backing_revision_ == std::numeric_limits<uint64_t>::max())
         {
-            OffscreenImagePool prepared{res_ctx_, layout, extent, frames_in_flight_};
-            if (!prepared.valid())
-                return false;
-            // Every allocation, including the retirement slot, precedes commit.
-            retired_images_.reserve(retired_images_.size() + 1);
-            RetiredImages retired;
-            retired.slot_images.swap(slot_images_);
-            retired.slot_views.swap(slot_views_);
-            slot_images_.swap(prepared.slot_images_);
-            slot_views_.swap(prepared.slot_views_);
-            std::swap(binding_, prepared.binding_);
-            layout_ = layout;
-            binding_.layout = &layout_;
-            ++backing_revision_;
-            recorded_slots_.swap(prepared.recorded_slots_);
-            retired_images_.push_back(std::move(retired));
-            return true;
+            return renderFailure<err::memory::CapacityExhausted>();
         }
+        auto candidate = prepareBacking(res_ctx_, layout, extent, frames_in_flight_);
+        if (!candidate)
+        {
+            return lux::cxx::unexpected(candidate.error());
+        }
+        // Every allocation, including the retirement slot, precedes commit.
+        retired_images_.reserve(retired_images_.size() + 1);
+        RetiredImages retired;
+        retired.slot_images.swap(slot_images_);
+        retired.slot_views.swap(slot_views_);
+        slot_images_.swap(candidate->images.slot_images);
+        slot_views_.swap(candidate->images.slot_views);
+        binding_ = std::move(candidate->binding);
+        layout_ = layout;
+        binding_.layout = &layout_;
+        ++backing_revision_;
+        std::fill(recorded_slots_.begin(), recorded_slots_.end(), 0);
+        retired_images_.push_back(std::move(retired));
+        return {};
     }
 
     // =============================================================================
@@ -109,7 +124,9 @@ namespace lux::render
         for (size_t si = 0; si < kTargetSlotCount; ++si)
         {
             if (!layout_.hasSlot(static_cast<ETargetSlot>(si)))
+            {
                 continue;
+            }
 
             auto& src = binding_.slot_images[si];
             auto& dst = b.slot_images[si];
@@ -128,26 +145,52 @@ namespace lux::render
     // Image allocation / release
     // =============================================================================
 
-    bool OffscreenImagePool::allocate(VkExtent2D extent)
+    Expected<OffscreenImagePool::PreparedBacking> OffscreenImagePool::prepareBacking(
+        ResourceContext& res_ctx,
+        const RenderTargetLayout& layout,
+        VkExtent2D extent,
+        uint32_t frames_in_flight
+    ) noexcept
     {
-        auto& dev_ctx = res_ctx_.deviceContext();
+        const bool is_invalid_extent = extent.width == 0 || extent.height == 0;
+        if (is_invalid_extent || frames_in_flight == 0)
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
+        for (const auto& slot : layout.slots)
+        {
+            if (!slot)
+            {
+                continue;
+            }
+            const bool is_invalid_format = toVkFormat(slot->format) == VK_FORMAT_UNDEFINED;
+            const bool is_invalid_usage = toVkImageUsage(slot->usage) == 0;
+            if (is_invalid_format || is_invalid_usage)
+            {
+                return renderFailure<err::internal::InvalidArgument>();
+            }
+        }
+        PreparedBacking prepared;
+        auto& dev_ctx = res_ctx.deviceContext();
         VmaAllocator vma = dev_ctx.vmaAllocator();
         VkDevice dev = dev_ctx.logicalDevice();
         const auto name_object = reinterpret_cast<PFN_vkSetDebugUtilsObjectNameEXT>(
             vkGetInstanceProcAddr(dev_ctx.instanceContext().instance().handle(), "vkSetDebugUtilsObjectNameEXT")
         );
 
-        binding_.layout = &layout_;
-        binding_.extent = extent;
-        binding_.is_presentable = false;
+        prepared.binding.layout = nullptr;
+        prepared.binding.extent = extent;
+        prepared.binding.is_presentable = false;
 
         for (size_t si = 0; si < kTargetSlotCount; ++si)
         {
             const auto slot_enum = static_cast<ETargetSlot>(si);
-            if (!layout_.hasSlot(slot_enum))
+            if (!layout.hasSlot(slot_enum))
+            {
                 continue;
+            }
 
-            const RenderTargetSlotDesc& desc = layout_.slot(slot_enum);
+            const RenderTargetSlotDesc& desc = layout.slot(slot_enum);
 
             VkImageCreateInfo ci{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
             ci.imageType = VK_IMAGE_TYPE_2D;
@@ -172,20 +215,17 @@ namespace lux::render
             vi.subresourceRange.baseArrayLayer = 0;
             vi.subresourceRange.layerCount = 1;
 
-            auto& images = slot_images_[si];
-            auto& views = slot_views_[si];
-            views.clear();
-            images.clear();
-            images.reserve(frames_in_flight_);
-            views.reserve(frames_in_flight_);
+            auto& images = prepared.images.slot_images[si];
+            auto& views = prepared.images.slot_views[si];
+            images.reserve(frames_in_flight);
+            views.reserve(frames_in_flight);
 
-            for (uint32_t f = 0; f < frames_in_flight_; ++f)
+            for (uint32_t f = 0; f < frames_in_flight; ++f)
             {
                 auto image = VmaImage::create(vma, ci, aci);
                 if (!image)
                 {
-                    release();
-                    return false;
+                    return lux::cxx::unexpected(image.error());
                 }
                 images.emplace_back(std::move(image.value()));
                 vi.image = images.back().image();
@@ -203,8 +243,7 @@ namespace lux::render
                 auto view = ImageViewOwner::create(dev, vi);
                 if (!view)
                 {
-                    release();
-                    return false;
+                    return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(view.error()));
                 }
                 views.push_back(std::move(*view));
                 if (name_object != nullptr)
@@ -219,21 +258,19 @@ namespace lux::render
             }
 
             // Populate binding slot
-            auto& bs = binding_.slot_images[si];
-            bs.images.clear();
-            bs.views.clear();
-            bs.images.reserve(frames_in_flight_);
-            bs.views.reserve(frames_in_flight_);
-            for (uint32_t f = 0; f < frames_in_flight_; ++f)
+            auto& bs = prepared.binding.slot_images[si];
+            bs.images.reserve(frames_in_flight);
+            bs.views.reserve(frames_in_flight);
+            for (uint32_t f = 0; f < frames_in_flight; ++f)
             {
                 bs.images.push_back(images[f].image());
                 bs.views.push_back(views[f].get());
             }
         }
-        return true;
+        return prepared;
     }
 
-    void OffscreenImagePool::release()
+    void OffscreenImagePool::release() noexcept
     {
         for (size_t si = 0; si < kTargetSlotCount; ++si)
         {

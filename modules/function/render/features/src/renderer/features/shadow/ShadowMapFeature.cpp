@@ -343,9 +343,15 @@ namespace lux::render
 
     lux::render::Expected<void> ShadowMapFeature::initAndAttachTo(RenderScene& scene)
     {
-        if (initialized_)
+        const bool is_wrong_phase = featureState() != EFeatureState::ATTACHING;
+        const bool is_wrong_scene = !is_wrong_phase && &renderScene() != &scene;
+        const bool is_unauthorized_attachment = is_wrong_phase || is_wrong_scene;
+        if (is_unauthorized_attachment)
         {
-            return {};
+            return renderFailure<err::feature::AttachmentNotAuthorized>(
+                static_cast<uint32_t>(featureState()),
+                static_cast<uint32_t>(is_wrong_scene)
+            );
         }
 
         auto& ctx = renderContext();
@@ -431,7 +437,6 @@ namespace lux::render
         }
         shadow_res_->setCurrentTechnique(techniques_[static_cast<uint32_t>(active_technique_)].get());
 
-        initialized_ = true;
         return {};
     }
 
@@ -508,9 +513,7 @@ namespace lux::render
 
     void ShadowMapFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)
     {
-        // (无 initialized_ 判空:每帧方法只在**已安装**的 feature 上跑,而
-        //  RenderScene::beginInstall 明写"attach 失败:此时还没有登记/插入任何东西,
-        //  直接丢掉这个半装的特性"—— 装进来的一定 attach 成功过,initialized_ 恒真。)
+        // RenderScene invokes frame callbacks only after successful attachment.
 
         // Swap: move current → prev, then clear current for this frame.
         std::swap(per_view_shadow_, prev_view_shadow_);
@@ -584,8 +587,6 @@ namespace lux::render
 
     void ShadowMapFeature::addPasses(RGBuilder& builder)
     {
-        // (无 initialized_ 判空 —— 同 onFrameBegin 的理由。)
-
         RGTextureDescription shadow_tex_desc{};
         shadow_tex_desc.width = shadow_res_->atlasResolution();
         shadow_tex_desc.height = shadow_res_->atlasResolution();
@@ -778,8 +779,7 @@ namespace lux::render
             .setKernelFn(
                 [this, shadow_slices, shadow_config, spot_shadow_map, point_shadow_map](const PassRecordContext& pctx)
                 {
-                    // (原有 `if (!shadow_res_) return;` 已删:本 pass 只在 addPasses 里注册,
-                    //  而 addPasses 开头就守了 initialized_。)
+                    // Only the installed feature contributes this pass and its retained resources.
                     const uint32_t view_handle = (pctx.view != nullptr) ? pctx.view->handle.index : 0u;
                     const uint32_t scene_key = renderScene().sceneGlobalSlot().index;
 
@@ -1216,10 +1216,7 @@ namespace lux::render
         const ViewFrameData* cam_fd = cam ? cam->find(view.handle.index) : nullptr;
         const ViewFrameData vfd = cam_fd ? *cam_fd : ViewFrameData{};
 
-        // (原先是 `(shadow_res_ != nullptr) ? shadow_res_->shadowMapCapacity() : UINT32_MAX`
-        //  —— 同一个文件里另有五处 shadow_res_->shadowMapCapacity() 裸调用;本函数只
-        //  由 onFrameBegin 调用,那里已经守 initialized_,而 initialized_ 蕴含
-        //  shadow_res_ 非空(两者在 initAndAttachTo 里顺序赋值、其间无早退)。)
+        // Successful attachment establishes the shared shadow resources before frame callbacks.
         const uint32_t map_capacity = shadow_res_->shadowMapCapacity();
         const uint32_t spot_count = std::min(light_res->lightCount<SpotLightGPU>(), map_capacity);
         const uint32_t point_count = std::min(light_res->lightCount<PointLightGPU>(), map_capacity);

@@ -906,6 +906,15 @@ namespace lux::render::err
             static constexpr ErrorArgs args{EErrorArg::FEATURE_TYPE};
         };
 
+        struct AttachmentNotAuthorized
+        {
+            static constexpr const char* name = "feature.attachment_not_authorized";
+            static constexpr const char* message =
+                "Feature attachment requires its owning scene's ATTACHING phase: state {0}, scene mismatch {1}";
+            static constexpr ERecovery recovery = ERecovery::BUG;
+            static constexpr ErrorArgs args{EErrorArg::UINT, EErrorArg::UINT};
+        };
+
         struct ConflictsWithInstalled
         {
             static constexpr const char* name = "feature.conflicts_with_installed";
@@ -1526,6 +1535,7 @@ namespace lux::render::err
     X(::lux::render::err::feature::TypeNotRegistered)                                                                  \
     X(::lux::render::err::feature::FeatureTypeInUse)                                                                   \
     X(::lux::render::err::feature::AlreadyInstalled)                                                                   \
+    X(::lux::render::err::feature::AttachmentNotAuthorized)                                                           \
     X(::lux::render::err::feature::ConflictsWithInstalled)                                                             \
     X(::lux::render::err::feature::DependencyMissing)                                                                  \
     X(::lux::render::err::feature::LevelProfileMissing)                                                                \

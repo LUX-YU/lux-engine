@@ -177,7 +177,6 @@ namespace lux::render
         const PerViewShadowState* resolveViewState(uint32_t view_handle) const;
         uint64_t computeLightConfigHash(LightResources* light_res) const;
 
-        bool initialized_{false};
         Config cfg_{};
         /// Live mirror of the quality knobs for the editor settings panel
         /// (paramData). Initialized from cfg_ at construction; applyParams refreshes

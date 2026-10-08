@@ -46,6 +46,14 @@ int main()
         config.shadow_config.evsm_atlas_page_count = 1;
         config.shadow_config.max_shadow_slices = 4;
         config.shadow_config.default_technique = EShadowTechnique::EVSM;
+        {
+            ShadowMapFeature detached(config);
+            const auto rejected = detached.initAndAttachTo(scene);
+            assert(!rejected && isError<err::feature::AttachmentNotAuthorized>(rejected.error()));
+            assert(rejected.error().args[0] == static_cast<uint32_t>(EFeatureState::CONSTRUCTED));
+            assert(rejected.error().args[1] == 0);
+            assert(scene.resources().find<ShadowResources>() == nullptr);
+        }
         auto installed = scene.addFeature<ShadowMapFeature>(config);
         assert(installed);
         auto& feature = *scene.getFeatureAs<ShadowMapFeature>(*installed);
@@ -54,6 +62,13 @@ int main()
         const auto& original = static_cast<const EVSMShadowTechnique&>(feature.currentTechnique()).resources();
         assert(original.pageResolution() == 16 && shadow.atlasPageResolution() == 16);
         const auto* technique_identity = &feature.currentTechnique();
+        const auto repeat_attach = feature.initAndAttachTo(scene);
+        std::printf("Repeated Shadow attachment accepted=%d\n", static_cast<bool>(repeat_attach));
+        assert(!repeat_attach && isError<err::feature::AttachmentNotAuthorized>(repeat_attach.error()));
+        assert(repeat_attach.error().args[0] == static_cast<uint32_t>(feature.featureState()));
+        assert(repeat_attach.error().args[1] == 0);
+        assert(&feature.currentTechnique() == technique_identity);
+        assert(original.pageResolution() == 16 && shadow.atlasPageResolution() == 16);
 #if defined(LUX_SHADOW_NATIVE_FAULTS)
         const auto original_atlas = shadow.atlasImage();
         const auto original_evsm = original.momentImage();

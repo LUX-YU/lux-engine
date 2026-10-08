@@ -704,10 +704,12 @@ namespace lux::render
         const auto old_page_count = transform_stream_->pageCount();
         const auto new_page_count = (new_cap - 1u) / kInstanceSlotsPerPage + 1u;
 
-        // Pre-flight only the new physical pages. Existing pages remain in
-        // place and were already admitted by the immutable capacity plan.
+        // Sparse growth preserves accepted pages; flat growth prepares full replacements while
+        // the previous buffers remain alive. Budget the actual candidate allocation in each mode.
+        if (new_page_count > old_page_count)
         {
-            const VkDeviceSize bytes_needed = VkDeviceSize(new_page_count - old_page_count) * kInstanceSlotsPerPage *
+            const auto allocated_pages = sparse_bda_ ? new_page_count - old_page_count : new_page_count;
+            const VkDeviceSize bytes_needed = VkDeviceSize(allocated_pages) * kInstanceSlotsPerPage *
                                               (sizeof(InstanceTransform) + sizeof(InstanceTransformPrev) +
                                                sizeof(InstanceProperty) + sizeof(InstanceCullMeta));
             VRAMBudgetGuard budget(device_ctx_->vmaAllocator());
@@ -715,47 +717,53 @@ namespace lux::render
                 return false;
         }
 
-        const bool streams_ready = transform_stream_->reserve(new_cap) && prev_transform_stream_->reserve(new_cap) &&
-                                   property_stream_->reserve(new_cap) && cull_meta_stream_->reserve(new_cap);
-        if (!streams_ready)
+        // No field becomes visible or retires old backing until every candidate and the
+        // sparse page-table entry are ready. There are no callbacks or waits before commit.
+        auto transform = transform_stream_->prepareGrowth(new_cap);
+        if (!transform)
         {
-            transform_stream_->rollbackPages(old_page_count);
-            prev_transform_stream_->rollbackPages(old_page_count);
-            property_stream_->rollbackPages(old_page_count);
-            cull_meta_stream_->rollbackPages(old_page_count);
+            return false;
+        }
+        auto previous = prev_transform_stream_->prepareGrowth(new_cap);
+        if (!previous)
+        {
+            return false;
+        }
+        auto property = property_stream_->prepareGrowth(new_cap);
+        if (!property)
+        {
+            return false;
+        }
+        auto cull = cull_meta_stream_->prepareGrowth(new_cap);
+        if (!cull)
+        {
             return false;
         }
 
-        if (!local_bsphere_.reserve(new_cap))
+        if (sparse_bda_ && new_page_count > old_page_count)
         {
-            transform_stream_->rollbackPages(old_page_count);
-            prev_transform_stream_->rollbackPages(old_page_count);
-            property_stream_->rollbackPages(old_page_count);
-            cull_meta_stream_->rollbackPages(old_page_count);
-            return false;
-        }
-
-        if (sparse_bda_)
-        {
+            // Allocation admits one slot at a time, so growth crosses at most one physical page.
             const auto page_index = new_page_count - 1u;
-            if (!page_table_->publish(
-                    page_index,
-                    GpuInstancePageAddresses{
-                        .transform = transform_stream_->pageAddress(page_index),
-                        .previous_transform = prev_transform_stream_->pageAddress(page_index),
-                        .property = property_stream_->pageAddress(page_index),
-                        .cull_meta = cull_meta_stream_->pageAddress(page_index),
-                    }
-                ))
+            const auto accepted = page_table_->publish(
+                page_index,
+                GpuInstancePageAddresses{
+                    .transform = transform_stream_->pageAddress(*transform, page_index),
+                    .previous_transform = prev_transform_stream_->pageAddress(*previous, page_index),
+                    .property = property_stream_->pageAddress(*property, page_index),
+                    .cull_meta = cull_meta_stream_->pageAddress(*cull, page_index),
+                }
+            );
+            if (!accepted)
             {
-                transform_stream_->rollbackPages(old_page_count);
-                prev_transform_stream_->rollbackPages(old_page_count);
-                property_stream_->rollbackPages(old_page_count);
-                cull_meta_stream_->rollbackPages(old_page_count);
                 return false;
             }
         }
 
+        transform_stream_->commitGrowth(std::move(*transform));
+        prev_transform_stream_->commitGrowth(std::move(*previous));
+        property_stream_->commitGrowth(std::move(*property));
+        cull_meta_stream_->commitGrowth(std::move(*cull));
+        (void)local_bsphere_.reserve(new_cap);
         dynamic_positions_.resize(new_cap, kInvalidDynamicPosition);
         registry_.resizeCapacity(new_cap);
 

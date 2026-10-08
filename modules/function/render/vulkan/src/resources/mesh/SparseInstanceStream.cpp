@@ -1,6 +1,5 @@
 #include <lux/engine/render/resources/mesh/SparseInstanceStream.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
-#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 
 #include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
@@ -308,11 +307,23 @@ namespace lux::render
         }
     }
 
-    Expected<void> SparseInstanceStreamStorage::reserve(std::uint32_t new_capacity) noexcept
+    Expected<void> SparseInstanceStreamStorage::reserve(std::uint32_t capacity) noexcept
+    {
+        auto candidate = prepareGrowth(capacity);
+        if (!candidate)
+        {
+            return lux::cxx::unexpected(candidate.error());
+        }
+        commitGrowth(std::move(*candidate));
+        return {};
+    }
+
+    Expected<SparseInstanceStreamStorage::Growth>
+    SparseInstanceStreamStorage::prepareGrowth(std::uint32_t new_capacity) noexcept
     {
         if (new_capacity <= capacity())
         {
-            return {};
+            return Growth{};
         }
         constexpr auto max_capacity = UINT32_MAX - (kInstanceSlotsPerPage - 1u);
         if (new_capacity > max_capacity)
@@ -340,33 +351,29 @@ namespace lux::render
             }
             flat = std::move(candidate->buffer);
         }
+        // Prepare storage without changing extent, accepted descriptors or dirty bytes.
         pages_.reserve(required_pages);
-        dirty_upload_flags_.resize(required_pages * (kInstanceSlotsPerPage / kUploadSlotsPerPage), 0);
-        for (auto& page : *candidates)
+        dirty_upload_flags_.reserve(required_pages * (kInstanceSlotsPerPage / kUploadSlotsPerPage));
+        return Growth{std::move(*candidates), std::move(flat)};
+    }
+
+    void SparseInstanceStreamStorage::commitGrowth(Growth growth) noexcept
+    {
+        for (auto& page : growth.pages)
         {
             pages_.push_back(std::move(page));
         }
-        if (flat)
+        dirty_upload_flags_.resize(pages_.size() * (kInstanceSlotsPerPage / kUploadSlotsPerPage), 0);
+        if (growth.flat)
         {
-            const auto allocation = flat.release();
+            const auto allocation = growth.flat.release();
             flat_buffer_ = TFifOwnedAllocated<VkBuffer>{retirement_, allocation.buffer, allocation.allocation};
         }
-        return {};
     }
 
-    void SparseInstanceStreamStorage::rollbackPages(std::uint32_t page_count) noexcept
+    VkDeviceAddress SparseInstanceStreamStorage::pageAddress(const Growth& growth, std::uint32_t index) const noexcept
     {
-        if (page_count == 0)
-        {
-            renderFatal("Cannot roll complete instance storage back to zero backing");
-        }
-        if (page_count >= pages_.size())
-        {
-            return;
-        }
-        pages_.resize(page_count);
-        dirty_upload_flags_.resize(page_count * (kInstanceSlotsPerPage / kUploadSlotsPerPage));
-        std::erase_if(dirty_upload_pages_, [&](std::uint32_t page) { return page >= dirty_upload_flags_.size(); });
+        return index < pages_.size() ? pages_[index].address : growth.pages[index - pages_.size()].address;
     }
 
     std::byte* SparseInstanceStreamStorage::at(std::uint32_t index) noexcept

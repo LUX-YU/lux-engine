@@ -482,6 +482,9 @@ namespace
 #define vkGetBufferDeviceAddress trackedBufferAddress
 #include "../src/resources/mesh/SparseInstanceStream.cpp"
 #undef vkGetBufferDeviceAddress
+#include "../src/resources/mesh/InstanceResources.cpp"
+#include "../src/resources/mesh/InstanceSlotRegistry.cpp"
+#include "../src/resources/mesh/MdcTable.cpp"
 #include "../src/resources/lighting/LightResources.cpp"
 #include "../src/resources/hzb/HzbResources.cpp"
 #include "../src/resources/vertex/VertexPoolRegistry.cpp"
@@ -771,15 +774,13 @@ void checkSparseStorage(lux::render::DeviceContext& device, lux::render::Deferre
             assert(
                 sparse ? chunks[0].destination != chunks[2].destination : chunks[0].destination == chunks[2].destination
             );
-            // These new pages have not been published by the aggregate. Rollback releases them immediately.
+            // reserve is now a complete acceptance, not a provisional append followed by public rollback.
+            // Aggregate rejection/prefix cleanup is exercised through actual InstanceResources below.
             stream.markDirty(2 * kInstanceSlotsPerPage);
-            stream.rollbackPages(1);
-            assert(stream.capacity() == kInstanceSlotsPerPage && stream.pageCount() == 1);
-            assert(!stream.hasDirtyPages() && stream.at(0) == 71);
-            assert(buffers.size() == (sparse ? 1u : 2u));
-            assert(retirement.pendingCount() == (sparse ? 0u : 1u));
             assert(stream.reserve(kInstanceSlotsPerPage + 1));
-            assert(stream.pageCount() == 2 && stream.at(0) == 71);
+            assert(stream.pageCount() == 3 && stream.at(0) == 71 && stream.hasDirtyPages());
+            assert(buffers.size() == (sparse ? 3u : 2u));
+            assert(retirement.pendingCount() == (sparse ? 0u : 1u));
         }
         const auto retained = buffers.size();
         assert(retained > 0 && retirement.pendingCount() == retained);
@@ -788,8 +789,10 @@ void checkSparseStorage(lux::render::DeviceContext& device, lux::render::Deferre
         retirement.collect(37);
         assert(buffers.empty() && retirement.pendingCount() == 0);
     }
-    std::puts("Sparse/flat field storage: complete backing, exact failures, stable CPU pages, strong growth, rollback "
-              "and retirement PASS");
+    std::puts(
+        "Sparse/flat field storage: complete backing, exact failures, stable CPU pages, strong growth, acceptance "
+        "and retirement PASS"
+    );
 }
 
 void checkSparsePageTable(lux::render::DeviceContext& device, lux::render::DeferredDestroyQueue& retirement)
@@ -1252,6 +1255,178 @@ void checkSceneResources(
     );
 }
 
+void checkInstanceGrowth(
+    lux::render::DeviceContext& device,
+    lux::render::GeneralDescriptorSetLayout& layouts,
+    lux::render::DeferredDestroyQueue& retirement
+)
+{
+    using namespace lux::render;
+    retirement.flushAll();
+    assert(buffers.empty());
+    auto arena = SceneDescriptorArena::create(device.logicalDevice(), {});
+    assert(arena);
+    std::array<VkDescriptorSet, 2> targets{};
+    for (auto& target : targets)
+    {
+        auto allocated = (*arena)->allocate(layouts.getLayout(EDescriptorSetSlot::INSTANCE));
+        assert(allocated);
+        target = *allocated;
+    }
+    DescriptorService descriptors(device.logicalDevice(), VK_NULL_HANDLE);
+    for (const bool sparse : {false, true})
+    {
+        retirement.beginFrame(83);
+        {
+            InstanceResources instances;
+            InstanceResources::InitInfo info{};
+            info.device_context = &device;
+            info.deferred_queue = &retirement;
+            info.descriptor_svc = &descriptors;
+            info.initial_capacity = kInstanceSlotsPerPage;
+            info.max_capacity = 2 * kInstanceSlotsPerPage;
+            info.sparse_bda = sparse;
+            assert(instances.init(info));
+            trace_buffer_writes = true;
+            buffer_writes.clear();
+            assert(instances.setDomainWriteTarget(targets, 0));
+            assert(buffer_writes.size() == 4);
+            const auto original_descriptor_buffer = buffer_writes[0].buffer;
+            RenderObjectHandle first;
+            for (std::uint32_t index = 0; index < info.initial_capacity; ++index)
+            {
+                const auto object = instances.allocateObject();
+                assert(object.index == index);
+                if (index == 0)
+                {
+                    first = object;
+                }
+            }
+            const auto slot = instances.resolveSlot(first);
+            instances.propertyAt(slot).rgba8 = 0x1a2b3c4du;
+            instances.markPropertyDirty(slot);
+            {
+                TransferScheduler scheduler;
+                assert(scheduler.init({device.vmaAllocator(), 8 * 1024 * 1024, 1}));
+                instances.submitTransfers(scheduler);
+                assert(scheduler.hasWork() && !instances.needsFullRebuild());
+            }
+            instances.propertyAt(slot).rgba8 = 0x5a6b7c8du;
+            instances.markPropertyDirty(slot);
+            const auto* stable_cpu = &instances.propertyAt(slot);
+            const auto old_buffers = std::array{
+                instances.transformBuffer(),
+                instances.prevTransformBuffer(),
+                instances.propertyBuffer(),
+                instances.cullMetaBuffer()
+            };
+            const auto accepted_buffers = buffers;
+            const auto original_writes = descriptor_writes;
+            const auto original_leaves = instances.pageTableLeafCount();
+            std::map<VkBuffer, std::vector<std::byte>> mapped_bytes;
+            for (const auto& [buffer, allocation] : buffers)
+            {
+                VmaAllocationInfo mapped{};
+                vmaGetAllocationInfo(allocation.first, allocation.second, &mapped);
+                if (mapped.pMappedData)
+                {
+                    auto* data = static_cast<const std::byte*>(mapped.pMappedData);
+                    mapped_bytes.emplace(buffer, std::vector<std::byte>(data, data + mapped.size));
+                }
+            }
+            const auto assert_unchanged = [&]
+            {
+                assert(instances.capacity() == info.initial_capacity);
+                assert(
+                    instances.slotCount() == info.initial_capacity && instances.aliveCount() == info.initial_capacity
+                );
+                assert(instances.residentPageCount() == 1 && instances.pageTableLeafCount() == original_leaves);
+                assert(instances.isAlive(first) && instances.handleForSlot(slot) == first);
+                assert(&instances.propertyAt(slot) == stable_cpu && stable_cpu->rgba8 == 0x5a6b7c8du);
+                assert(instances.transformBuffer() == old_buffers[0]);
+                assert(instances.prevTransformBuffer() == old_buffers[1]);
+                assert(instances.propertyBuffer() == old_buffers[2]);
+                assert(instances.cullMetaBuffer() == old_buffers[3]);
+                assert(!instances.needsFullRebuild() && instances.slotLayoutSerial() == 1);
+                assert(buffers == accepted_buffers && retirement.pendingCount() == 0);
+                assert(descriptor_writes == original_writes && buffer_writes.size() == 4);
+                for (const auto& [buffer, bytes] : mapped_bytes)
+                {
+                    const auto& allocation = buffers.at(buffer);
+                    VmaAllocationInfo mapped{};
+                    vmaGetAllocationInfo(allocation.first, allocation.second, &mapped);
+                    assert(std::memcmp(bytes.data(), mapped.pMappedData, bytes.size()) == 0);
+                }
+            };
+            for (auto boundary : {EFailure::BUFFER, EFailure::ADDRESS, EFailure::FLUSH})
+            {
+                if (!sparse && boundary != EFailure::BUFFER)
+                {
+                    continue;
+                }
+                const unsigned attempts = boundary == EFailure::FLUSH ? 1 : 4;
+                for (unsigned index = 0; index < attempts; ++index)
+                {
+                    failure = boundary;
+                    skip_rejections = index;
+                    const auto before_rejections = rejections;
+                    assert(!instances.allocateObject());
+                    assert(rejections > before_rejections);
+                    failure = EFailure::NONE;
+                    assert_unchanged();
+                }
+            }
+            // Dirty bytes must survive all rejected candidates and still reach the original upload path.
+            {
+                TransferScheduler scheduler;
+                assert(scheduler.init({device.vmaAllocator(), 8 * 1024 * 1024, 1}));
+                instances.submitTransfers(scheduler);
+                assert(scheduler.hasWork() && !instances.needsFullRebuild());
+            }
+            const auto grown = instances.allocateObject();
+            assert(grown && grown.index == info.initial_capacity);
+            assert(instances.capacity() == info.max_capacity && instances.residentPageCount() == 2);
+            assert(instances.isAlive(first) && instances.handleForSlot(slot) == first);
+            assert(&instances.propertyAt(slot) == stable_cpu && stable_cpu->rgba8 == 0x5a6b7c8du);
+            assert(instances.slotLayoutSerial() == 1);
+            if (sparse)
+            {
+                assert(retirement.pendingCount() == 0 && buffers.size() == accepted_buffers.size() + 4);
+                assert(buffer_writes.size() == 4 && !instances.needsFullRebuild());
+                assert(buffer_writes[0].buffer == original_descriptor_buffer);
+            }
+            else
+            {
+                assert(retirement.pendingCount() == 4 && buffers.size() == accepted_buffers.size() + 4);
+                assert(instances.needsFullRebuild() && buffer_writes.size() == 8);
+                for (unsigned slice = 0; slice < targets.size(); ++slice)
+                {
+                    assert(buffer_writes[4 + slice * 2].set == targets[slice]);
+                    assert(buffer_writes[4 + slice * 2].buffer == instances.transformBuffer());
+                    assert(buffer_writes[5 + slice * 2].buffer == instances.propertyBuffer());
+                }
+                for (const auto buffer : old_buffers)
+                {
+                    assert(buffers.contains(buffer));
+                }
+            }
+            instances.freeObject(first);
+            const auto reused = instances.allocateObject();
+            assert(reused.index == first.index && reused.gen != first.gen && !instances.isAlive(first));
+            trace_buffer_writes = false;
+            buffer_writes.clear();
+        }
+        const auto retained = buffers.size();
+        assert(retained > 0 && retirement.pendingCount() == retained);
+        retirement.collect(82);
+        assert(buffers.size() == retained);
+        retirement.collect(83);
+        assert(buffers.empty() && retirement.pendingCount() == 0);
+    }
+    std::puts("Instance aggregate: all field failures preserve accepted buffers, descriptors, dirty bytes, mapped "
+              "page table and identities; successful retry commits together, original retirement PASS");
+}
+
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -1278,6 +1453,11 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkInstanceGrowth(device, layouts, retirement);
+    if (argc == 2 && std::string_view(argv[1]) == "--instance-growth")
+    {
+        return 0;
+    }
     checkSparseStorage(device, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--sparse-storage")
     {

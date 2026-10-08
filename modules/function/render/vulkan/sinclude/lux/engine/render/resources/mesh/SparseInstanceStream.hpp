@@ -129,8 +129,6 @@ namespace lux::render
         SparseInstanceStreamStorage& operator=(SparseInstanceStreamStorage&&) = delete;
 
         [[nodiscard]] Expected<void> reserve(std::uint32_t new_capacity) noexcept;
-        /// Remove only an unpublished tail; retain the nonempty original prefix.
-        void rollbackPages(std::uint32_t page_count) noexcept;
 
         [[nodiscard]] std::byte* at(std::uint32_t index) noexcept;
         [[nodiscard]] const std::byte* at(std::uint32_t index) const noexcept;
@@ -176,6 +174,20 @@ namespace lux::render
             VmaBuffer gpu;
             VkDeviceAddress address{};
         };
+
+        template <class T> friend class TSparseInstanceStream;
+
+        // Only the enclosing instance aggregate may span preparation across its four fields.
+        // These candidates are unpublished and release native allocations immediately on rejection.
+        struct Growth final
+        {
+            std::vector<Page> pages;
+            VmaBuffer flat;
+        };
+
+        [[nodiscard]] Expected<Growth> prepareGrowth(std::uint32_t capacity) noexcept;
+        void commitGrowth(Growth growth) noexcept;
+        [[nodiscard]] VkDeviceAddress pageAddress(const Growth& growth, std::uint32_t index) const noexcept;
 
         [[nodiscard]] static Expected<std::vector<Page>>
         preparePages(
@@ -235,11 +247,6 @@ namespace lux::render
         [[nodiscard]] Expected<void> reserve(std::uint32_t capacity) noexcept
         {
             return storage_.reserve(capacity);
-        }
-
-        void rollbackPages(std::uint32_t pages) noexcept
-        {
-            storage_.rollbackPages(pages);
         }
 
         [[nodiscard]] T& at(std::uint32_t index) noexcept
@@ -302,6 +309,24 @@ namespace lux::render
         }
 
     private:
+        friend class InstanceResources;
+        using Growth = SparseInstanceStreamStorage::Growth;
+
+        [[nodiscard]] Expected<Growth> prepareGrowth(std::uint32_t capacity) noexcept
+        {
+            return storage_.prepareGrowth(capacity);
+        }
+
+        void commitGrowth(Growth growth) noexcept
+        {
+            storage_.commitGrowth(std::move(growth));
+        }
+
+        [[nodiscard]] VkDeviceAddress pageAddress(const Growth& growth, std::uint32_t index) const noexcept
+        {
+            return storage_.pageAddress(growth, index);
+        }
+
         explicit TSparseInstanceStream(SparseInstanceStreamStorage storage) noexcept : storage_(std::move(storage)) {}
 
         SparseInstanceStreamStorage storage_;

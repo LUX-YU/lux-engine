@@ -532,7 +532,7 @@ namespace lux::render
         // RECORD_ONLY batches are then submitted by this render thread before
         // the device-idle boundary; no queue mutex is involved.
         {
-            transfer_pipeline_->shutdown();
+            transfer_pipeline_->stopAndDrain();
 
             // Drain the sole transfer-result SPSC. drainResults also submits
             // RECORD_ONLY batches on the graphics queue and returns their

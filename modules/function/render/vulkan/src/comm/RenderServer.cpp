@@ -443,7 +443,7 @@ namespace lux::render
         }
 
         {
-            im.transfer_pipeline_->shutdown();
+            im.transfer_pipeline_->stopAndDrain();
             (void)im.processUploadCompletions();
             const auto upload_idle = im.dev_ctx_->logicalDevice().waitIdle();
             if (upload_idle == VK_ERROR_DEVICE_LOST)

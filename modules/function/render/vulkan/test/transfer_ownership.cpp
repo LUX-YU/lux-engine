@@ -3,10 +3,28 @@
 #include <vulkan/vulkan.h>
 
 #include <cassert>
+#include <cstdio>
+#include <system_error>
+#include <thread>
+#include <type_traits>
 #include <unordered_map>
+#include <utility>
 
 namespace
 {
+#if defined(LUX_TRANSFER_THREAD_FAILURE_TEST)
+    bool reject_thread{};
+
+    template <class F> std::thread makeTransferThread(F&& function)
+    {
+        if (reject_thread)
+        {
+            throw std::system_error(std::make_error_code(std::errc::resource_unavailable_try_again));
+        }
+        return std::thread(std::forward<F>(function));
+    }
+#endif
+
     std::unordered_map<VkSemaphore, VkDevice> semaphores;
     std::unordered_map<VkCommandPool, VkDevice> pools;
     unsigned attempts{}, fail_at{};
@@ -77,7 +95,11 @@ namespace
 #define vkCreateCommandPool createPool
 #define vkDestroyCommandPool destroyPool
 #include <lux/engine/render/gpu/VulkanContext.hpp>
+#if defined(LUX_TRANSFER_THREAD_FAILURE_TEST)
+#include "GpuTransferPipelineThreadFailure.cpp"
+#else
 #include "../src/resources/lifecycle/GpuTransferPipeline.cpp"
+#endif
 #undef vkDestroyCommandPool
 #undef vkCreateCommandPool
 #undef vkDestroySemaphore
@@ -93,6 +115,10 @@ int main()
     auto device_owner = DeviceContext::create(instance, EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED);
     assert(device_owner);
     auto& device = **device_owner;
+    static_assert(noexcept(GpuTransferPipeline::create(std::declval<const GpuTransferPipeline::Config&>())));
+    static_assert(!std::is_default_constructible_v<GpuTransferPipeline>);
+    static_assert(!std::is_move_constructible_v<GpuTransferPipeline>);
+    static_assert(!std::is_copy_constructible_v<GpuTransferPipeline>);
     GpuTransferPipeline::Config config;
     config.device_ctx = &device;
     config.batch_slot_count = 3;
@@ -107,12 +133,45 @@ int main()
         assert(attempts == boundary && semaphores.empty() && pools.empty());
     }
     fail_at = 0;
+#if defined(LUX_TRANSFER_THREAD_FAILURE_TEST)
+    reject_thread = true;
+    try
+    {
+        const auto failure = GpuTransferPipeline::create(config);
+        assert(!failure && isError<err::upload::WorkerStartFailed>(failure.error()));
+        assert(failure.error().args[0] == static_cast<std::uint32_t>(std::errc::resource_unavailable_try_again));
+        assert(failure.error().args[1] == 0u);
+        assert(semaphores.empty() && pools.empty());
+        std::puts("PASS thread acquisition failure returned after complete native cleanup");
+    }
+    catch (const std::system_error& error)
+    {
+        std::fprintf(
+            stderr,
+            "FAIL thread acquisition escaped factory: code=%d semaphores=%zu pools=%zu\n",
+            error.code().value(),
+            semaphores.size(),
+            pools.size()
+        );
+        return 1;
+    }
+    reject_thread = false;
+#endif
     for (unsigned iteration = 0; iteration < 128; ++iteration)
     {
         {
             auto pipeline = GpuTransferPipeline::create(config);
             assert(pipeline && (*pipeline)->timelineSemaphore() != VK_NULL_HANDLE);
             assert(semaphores.size() == 1 && pools.size() == config.batch_slot_count);
+            if (iteration == 0)
+            {
+                (*pipeline)->stopAndDrain();
+                (*pipeline)->stopAndDrain();
+                assert(!(*pipeline)->submitMeshTransfer(MeshTransferTask{}));
+                TransferCompletion completion{};
+                assert((*pipeline)->drainResults(&completion, 1) == 0);
+                assert(semaphores.size() == 1 && pools.size() == config.batch_slot_count);
+            }
         }
         assert(semaphores.empty() && pools.empty());
     }

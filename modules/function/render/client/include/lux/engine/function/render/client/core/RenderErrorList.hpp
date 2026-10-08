@@ -1035,6 +1035,15 @@ namespace lux::render::err
     // 「版本不对」的话,对方还得自己去猜是哪一边旧了。
     namespace upload
     {
+        struct WorkerStartFailed
+        {
+            static constexpr const char* name = "upload.worker_start_failed";
+            static constexpr const char* message = "GPU transfer worker creation failed: code {0}, category {1}";
+            static constexpr ERecovery recovery = ERecovery::RETRYABLE;
+            // Category: 0 = generic, 1 = system, 2 = other foreign category.
+            static constexpr ErrorArgs args{EErrorArg::UINT, EErrorArg::UINT};
+        };
+
         struct StateTransitionInvalid
         {
             static constexpr const char* name = "upload.state_transition_invalid";
@@ -1555,4 +1564,5 @@ namespace lux::render::err
     X(::lux::render::err::frame::TimelineQueryFailed)                                                                  \
     X(::lux::render::err::scene::InvalidTime)                                                                          \
     X(::lux::render::err::internal::InvalidArgument)                                                                   \
+    X(::lux::render::err::upload::WorkerStartFailed)                                                                   \
     X(::lux::render::err::internal::Unspecified)

@@ -1,6 +1,8 @@
-#include <lux/engine/render/resources/lifecycle/GpuTransferPipeline.hpp>
-#include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
+#include <lux/engine/render/gpu/VulkanContext.hpp>
+#include <lux/engine/render/resources/lifecycle/GpuTransferState.hpp>
+#include <new>
+#include <system_error>
 
 #include <vk_mem_alloc.h>
 
@@ -32,79 +34,106 @@ namespace lux::render
     // =========================================================================
     //  Construction / Destruction
     // =========================================================================
-    GpuTransferPipeline::GpuTransferPipeline(const Config& cfg)
+    GpuTransferPipeline::State::State(
+        const Config& cfg,
+        SemaphoreOwner semaphore,
+        std::unique_ptr<CmdPoolSlot[]> pools,
+        std::uint32_t pool_count
+    ) noexcept
         : jobs_(cfg.queue_capacity), results_(std::max(cfg.result_capacity, cfg.queue_capacity + 1u)),
-          notify_work_(cfg.notify_work), notify_work_state_(cfg.notify_work_state), lifecycle_(cfg.lifecycle),
-          lifecycle_state_(cfg.lifecycle_state)
-    {}
-
-    Expected<std::unique_ptr<GpuTransferPipeline>> GpuTransferPipeline::create(const Config& config)
+          transfer_queue_(cfg.device_ctx->transferQueue().handle()),
+          graphics_queue_(cfg.device_ctx->graphicsQueue().handle()),
+          transfer_queue_mutex_(&cfg.device_ctx->transferQueueMutex()),
+          graphics_queue_mutex_(&cfg.device_ctx->graphicsQueueMutex()),
+          transfer_family_(cfg.device_ctx->transferQueueFamilyIndex()),
+          graphics_family_(cfg.device_ctx->graphicsQueueFamilyIndex()),
+          needs_ownership_transfer_(transfer_family_ != graphics_family_), timeline_sem_(std::move(semaphore)),
+          cmd_pools_(std::move(pools)), cmd_pool_count_(pool_count),
+          mode_(
+              cfg.device_ctx->hasTransferQueue() && transfer_queue_ != graphics_queue_
+                  ? EGpuTransferMode::DEDICATED_QUEUE
+                  : EGpuTransferMode::RECORD_ONLY
+          ),
+          can_record_transfer_(cfg.device_ctx->hasTransferQueue()), notify_work_(cfg.notify_work),
+          notify_work_state_(cfg.notify_work_state), lifecycle_(cfg.lifecycle), lifecycle_state_(cfg.lifecycle_state),
+          vma_(cfg.device_ctx->vmaAllocator()), device_(cfg.device_ctx->logicalDevice().handle()),
+          device_context_(*cfg.device_ctx)
     {
-        if (config.device_ctx == nullptr)
-            return renderFailure<err::device::VulkanObjectCreationFailed>();
-
-        auto pipeline = std::unique_ptr<GpuTransferPipeline>(new GpuTransferPipeline(config));
-        auto initialized = pipeline->initialize(config);
-        if (!initialized)
-            return lux::cxx::unexpected<RenderError>(initialized.error());
-        return pipeline;
     }
 
-    Expected<void> GpuTransferPipeline::initialize(const Config& cfg)
+    GpuTransferPipeline::GpuTransferPipeline(std::unique_ptr<State> state, std::thread worker) noexcept
+        : state_(std::move(state)), transfer_thread_(std::move(worker))
     {
-        device_context_ = cfg.device_ctx;
-        transfer_queue_ = cfg.device_ctx->transferQueue().handle();
-        graphics_queue_ = cfg.device_ctx->graphicsQueue().handle();
-        transfer_queue_mutex_ = &cfg.device_ctx->transferQueueMutex();
-        graphics_queue_mutex_ = &cfg.device_ctx->graphicsQueueMutex();
-        transfer_family_ = cfg.device_ctx->transferQueueFamilyIndex();
-        graphics_family_ = cfg.device_ctx->graphicsQueueFamilyIndex();
-        needs_ownership_transfer_ = transfer_family_ != graphics_family_;
-        vma_ = cfg.device_ctx->vmaAllocator();
-        device_ = cfg.device_ctx->logicalDevice().handle();
-        can_record_transfer_ = cfg.device_ctx->hasTransferQueue();
-        mode_ = can_record_transfer_ && transfer_queue_ != graphics_queue_ ? EGpuTransferMode::DEDICATED_QUEUE
-                                                                           : EGpuTransferMode::RECORD_ONLY;
+    }
 
-        // Timeline semaphore
+    Expected<std::unique_ptr<GpuTransferPipeline>> GpuTransferPipeline::create(const Config& cfg) noexcept
+    {
+        if (cfg.device_ctx == nullptr)
+        {
+            return renderFailure<err::device::VulkanObjectCreationFailed>();
+        }
+        const auto device = cfg.device_ctx->logicalDevice().handle();
         VkSemaphoreTypeCreateInfo timeline_ci{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
         timeline_ci.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
         timeline_ci.initialValue = 0;
         VkSemaphoreCreateInfo sem_ci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
         sem_ci.pNext = &timeline_ci;
-        auto semaphore = SemaphoreOwner::create(device_, sem_ci);
+        auto semaphore = SemaphoreOwner::create(device, sem_ci);
         if (!semaphore)
         {
             return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(semaphore.error()));
         }
-        timeline_sem_ = std::move(*semaphore);
-
-        cmd_pool_count_ = std::max(2u, cfg.batch_slot_count);
-        cmd_pools_ = std::make_unique<CmdPoolSlot[]>(cmd_pool_count_);
-        for (uint32_t i = 0; i < cmd_pool_count_; ++i)
+        const auto pool_count = std::max(2u, cfg.batch_slot_count);
+        auto pools = std::make_unique<State::CmdPoolSlot[]>(pool_count);
+        for (uint32_t i = 0; i < pool_count; ++i)
         {
             VkCommandPoolCreateInfo pool_ci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
             pool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-            pool_ci.queueFamilyIndex = transfer_family_;
-            auto pool = CommandPoolOwner::create(device_, pool_ci);
+            pool_ci.queueFamilyIndex = cfg.device_ctx->transferQueueFamilyIndex();
+            auto pool = CommandPoolOwner::create(device, pool_ci);
             if (!pool)
             {
                 return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(pool.error()));
             }
-            cmd_pools_[i].pool = std::move(*pool);
+            pools[i].pool = std::move(*pool);
         }
-
-        stop_requested_.store(false, std::memory_order_release);
-        transfer_thread_ = std::thread([this] { workerLoop(TransferStopToken{&stop_requested_}); });
-        return {};
+        auto state = std::make_unique<State>(cfg, std::move(*semaphore), std::move(pools), pool_count);
+        // Foreign thread acquisition is the only remaining fallible boundary.
+        // Its closure borrows complete address-stable state, never a semantic pipeline prefix.
+        try
+        {
+            auto run_worker = [state = state.get()]() noexcept
+            {
+                state->workerLoop(State::TransferStopToken{&state->stop_requested_});
+            };
+            auto worker = std::thread(run_worker);
+            return std::unique_ptr<GpuTransferPipeline>(new GpuTransferPipeline(std::move(state), std::move(worker)));
+        }
+        catch (const std::bad_alloc&)
+        {
+            std::terminate();
+        }
+        catch (const std::system_error& error)
+        {
+            const auto& category = error.code().category();
+            const std::uint32_t domain = category == std::generic_category()  ? 0u
+                                         : category == std::system_category() ? 1u
+                                                                              : 2u;
+            return renderFailure<err::upload::WorkerStartFailed>(
+                static_cast<std::uint32_t>(error.code().value()),
+                domain
+            );
+        }
     }
 
     GpuTransferPipeline::~GpuTransferPipeline()
     {
-        shutdown();
+        stopAndDrain();
+    }
 
-        if (device_context_ != nullptr)
-            (void)device_context_->waitIdle();
+    GpuTransferPipeline::State::~State()
+    {
+        (void)device_context_.waitIdle();
 
         for (; shutdown_completion_cursor_ < shutdown_completions_.size(); ++shutdown_completion_cursor_)
             freeUnsubmittedCompletion(shutdown_completions_[shutdown_completion_cursor_]);
@@ -120,21 +149,23 @@ namespace lux::render
         }
     }
 
-    void GpuTransferPipeline::shutdown()
+    void GpuTransferPipeline::stopAndDrain() noexcept
     {
-        if (shutdown_complete_)
+        if (state_->shutdown_complete_)
+        {
             return;
+        }
 
-        accepting_.store(false, std::memory_order_release);
-        stop_requested_.store(true, std::memory_order_release);
-        job_epoch_.fetch_add(1, std::memory_order_release);
-        job_epoch_.notify_one();
-        result_space_epoch_.fetch_add(1, std::memory_order_release);
-        result_space_epoch_.notify_one();
+        state_->accepting_.store(false, std::memory_order_release);
+        state_->stop_requested_.store(true, std::memory_order_release);
+        state_->job_epoch_.fetch_add(1, std::memory_order_release);
+        state_->job_epoch_.notify_one();
+        state_->result_space_epoch_.fetch_add(1, std::memory_order_release);
+        state_->result_space_epoch_.notify_one();
 
         std::vector<TransferCompletion> drained;
         TransferCompletion buffer[32]{};
-        while (worker_running_.load(std::memory_order_acquire))
+        while (state_->worker_running_.load(std::memory_order_acquire))
         {
             const uint32_t count = drainResults(buffer, 32);
             for (uint32_t i = 0; i < count; ++i)
@@ -142,9 +173,11 @@ namespace lux::render
             if (count != 0)
                 continue;
 
-            const auto epoch = worker_epoch_.load(std::memory_order_acquire);
-            if (worker_running_.load(std::memory_order_acquire))
-                worker_epoch_.wait(epoch, std::memory_order_relaxed);
+            const auto epoch = state_->worker_epoch_.load(std::memory_order_acquire);
+            if (state_->worker_running_.load(std::memory_order_acquire))
+            {
+                state_->worker_epoch_.wait(epoch, std::memory_order_relaxed);
+            }
         }
         if (transfer_thread_.joinable())
             transfer_thread_.join();
@@ -157,16 +190,76 @@ namespace lux::render
                 drained.push_back(std::move(buffer[i]));
         } while (count != 0);
 
-        shutdown_completions_ = std::move(drained);
-        shutdown_completion_cursor_ = 0;
-        shutdown_complete_ = true;
+        state_->shutdown_completions_ = std::move(drained);
+        state_->shutdown_completion_cursor_ = 0;
+        state_->shutdown_complete_ = true;
+    }
+
+    VkSemaphore GpuTransferPipeline::timelineSemaphore() const noexcept
+    {
+        return state_->timeline_sem_.get();
+    }
+
+    uint32_t GpuTransferPipeline::transferFamily() const noexcept
+    {
+        return state_->transfer_family_;
+    }
+
+    uint32_t GpuTransferPipeline::graphicsFamily() const noexcept
+    {
+        return state_->graphics_family_;
+    }
+
+    EGpuTransferMode GpuTransferPipeline::mode() const noexcept
+    {
+        return state_->mode_;
+    }
+
+    std::uint64_t GpuTransferPipeline::stagingCopiedBytes() const noexcept
+    {
+        return state_->staging_copied_bytes_.load(std::memory_order_relaxed);
+    }
+
+    bool GpuTransferPipeline::submitMeshTransfer(MeshTransferTask task)
+    {
+        return state_->submitMeshTransfer(std::move(task));
+    }
+
+    bool GpuTransferPipeline::submitTextureTransfer(TextureTransferTask task)
+    {
+        return state_->submitTextureTransfer(std::move(task));
+    }
+
+    bool GpuTransferPipeline::submitCubeTransfer(CubeTransferTask task)
+    {
+        return state_->submitCubeTransfer(std::move(task));
+    }
+
+    uint32_t GpuTransferPipeline::drainResults(TransferCompletion* out, uint32_t max)
+    {
+        return state_->drainResults(out, max);
+    }
+
+    std::optional<std::uint64_t> GpuTransferPipeline::submitGraphicsFinalize(VkCommandBuffer command_buffer)
+    {
+        return state_->submitGraphicsFinalize(command_buffer);
+    }
+
+    void GpuTransferPipeline::releaseAfterGraphicsAcquire(uint32_t batch_slot) noexcept
+    {
+        state_->releaseAfterGraphicsAcquire(batch_slot);
+    }
+
+    bool GpuTransferPipeline::needsQueueFamilyOwnershipTransfer() const noexcept
+    {
+        return state_->needsQueueFamilyOwnershipTransfer();
     }
 
     // =========================================================================
     //  Fixed batch slots
     // =========================================================================
 
-    BatchSlotLease GpuTransferPipeline::acquireBatchSlot()
+    BatchSlotLease GpuTransferPipeline::State::acquireBatchSlot()
     {
         for (;;)
         {
@@ -206,7 +299,7 @@ namespace lux::render
         }
     }
 
-    void GpuTransferPipeline::releaseBatchSlot(BatchSlotLease slot) noexcept
+    void GpuTransferPipeline::State::releaseBatchSlot(BatchSlotLease slot) noexcept
     {
         auto& state = cmd_pools_[slot.index].state;
         state.store(EBatchSlotState::FREE, std::memory_order_release);
@@ -215,7 +308,7 @@ namespace lux::render
         worker_epoch_.notify_all();
     }
 
-    void GpuTransferPipeline::releaseAfterGraphicsAcquire(uint32_t batch_slot) noexcept
+    void GpuTransferPipeline::State::releaseAfterGraphicsAcquire(uint32_t batch_slot) noexcept
     {
         if (batch_slot >= cmd_pool_count_)
             renderFatal("GpuTransferPipeline retained batch slot is invalid");
@@ -227,7 +320,7 @@ namespace lux::render
         releaseBatchSlot({slot.pool.get(), batch_slot});
     }
 
-    bool GpuTransferPipeline::retireOneSubmittedSlot()
+    bool GpuTransferPipeline::State::retireOneSubmittedSlot()
     {
         for (uint32_t i = 0; i < cmd_pool_count_; ++i)
         {
@@ -255,7 +348,7 @@ namespace lux::render
         return false;
     }
 
-    bool GpuTransferPipeline::retireGraphicsFinalize()
+    bool GpuTransferPipeline::State::retireGraphicsFinalize()
     {
         const uint64_t wait_value = graphics_finalize_timeline_.exchange(0, std::memory_order_acq_rel);
         if (wait_value == 0)
@@ -277,7 +370,7 @@ namespace lux::render
     //  Internal helpers
     // =========================================================================
 
-    GpuTransferPipeline::StagingResult GpuTransferPipeline::allocStagingBuffer(VkDeviceSize bytes)
+    GpuTransferPipeline::State::StagingResult GpuTransferPipeline::State::allocStagingBuffer(VkDeviceSize bytes)
     {
         VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         bci.size = bytes;
@@ -296,7 +389,7 @@ namespace lux::render
         return {buf, alloc, info.pMappedData};
     }
 
-    uint32_t GpuTransferPipeline::drainResults(TransferCompletion* out, uint32_t max)
+    uint32_t GpuTransferPipeline::State::drainResults(TransferCompletion* out, uint32_t max)
     {
         if (max == 0)
             return 0;
@@ -400,7 +493,7 @@ namespace lux::render
         return count;
     }
 
-    std::optional<std::uint64_t> GpuTransferPipeline::submitGraphicsFinalize(VkCommandBuffer command_buffer)
+    std::optional<std::uint64_t> GpuTransferPipeline::State::submitGraphicsFinalize(VkCommandBuffer command_buffer)
     {
         const uint64_t timeline_value = timeline_counter_.fetch_add(1, std::memory_order_relaxed) + 1u;
 
@@ -449,7 +542,7 @@ namespace lux::render
         return timeline_value;
     }
 
-    void GpuTransferPipeline::freeUnsubmittedCompletion(TransferCompletion& c)
+    void GpuTransferPipeline::State::freeUnsubmittedCompletion(TransferCompletion& c)
     {
         using ECompletionKind = TransferCompletion::EKind;
         const bool is_texture_completion = c.kind == ECompletionKind::TEXTURE_2D ||
@@ -480,7 +573,7 @@ namespace lux::render
     static_assert(pixelFormatMipBytes(EPixelFormat::RGBA8_UNORM, 0, 4) == 0);        // zero extent → invalid
     static_assert(!pixelFormatBlockInfo(static_cast<EPixelFormat>(0xFF)).supported); // unknown → reject
 
-    std::optional<VkFormat> GpuTransferPipeline::toVkFormat(EPixelFormat fmt)
+    std::optional<VkFormat> GpuTransferPipeline::State::toVkFormat(EPixelFormat fmt)
     {
         switch (fmt)
         {
@@ -513,7 +606,7 @@ namespace lux::render
         return std::nullopt;
     }
 
-    void GpuTransferPipeline::pushFailure(
+    void GpuTransferPipeline::State::pushFailure(
         TransferCompletion::EKind kind,
         uint32_t request_id,
         uint32_t slot_index,
@@ -534,7 +627,7 @@ namespace lux::render
         (void)publishResult(std::move(tc));
     }
 
-    void GpuTransferPipeline::notifyLifecycle(
+    void GpuTransferPipeline::State::notifyLifecycle(
         std::uint32_t request_id,
         TransferCompletion::EKind kind,
         std::uint32_t resource_handle,
@@ -546,12 +639,12 @@ namespace lux::render
             lifecycle_(lifecycle_state_, request_id, kind, resource_handle, resource_gen, state);
     }
 
-    bool GpuTransferPipeline::needsQueueFamilyOwnershipTransfer() const noexcept
+    bool GpuTransferPipeline::State::needsQueueFamilyOwnershipTransfer() const noexcept
     {
         return needs_ownership_transfer_;
     }
 
-    bool GpuTransferPipeline::publishResult(VGpuTransferResult result)
+    bool GpuTransferPipeline::State::publishResult(VGpuTransferResult result)
     {
         while (results_.tryPush(std::move(result)) != lux::cxx::EQueuePushResult::ACCEPTED)
         {
@@ -583,7 +676,7 @@ namespace lux::render
         return true;
     }
 
-    void GpuTransferPipeline::publishRecorded(RecordedBatch batch)
+    void GpuTransferPipeline::State::publishRecorded(RecordedBatch batch)
     {
         batch.completion.gpu_copy_recorded = true;
         auto& slot = cmd_pools_[batch.slot.index];
@@ -671,7 +764,7 @@ namespace lux::render
         (void)publishResult(std::move(batch.completion));
     }
 
-    void GpuTransferPipeline::workerLoop(TransferStopToken stop_token)
+    void GpuTransferPipeline::State::workerLoop(TransferStopToken stop_token)
     {
         worker_running_.store(true, std::memory_order_release);
         for (;;)
@@ -714,7 +807,7 @@ namespace lux::render
         worker_epoch_.notify_all();
     }
 
-    bool GpuTransferPipeline::submitMeshTransfer(MeshTransferTask task)
+    bool GpuTransferPipeline::State::submitMeshTransfer(MeshTransferTask task)
     {
         const auto request_id = task.request_id;
         const auto resource_handle = task.mesh_index;
@@ -757,7 +850,7 @@ namespace lux::render
         return true;
     }
 
-    bool GpuTransferPipeline::submitTextureTransfer(TextureTransferTask task)
+    bool GpuTransferPipeline::State::submitTextureTransfer(TextureTransferTask task)
     {
         const auto request_id = task.request_id;
         const auto resource_handle = task.slot_index;
@@ -779,7 +872,7 @@ namespace lux::render
         return true;
     }
 
-    bool GpuTransferPipeline::submitCubeTransfer(CubeTransferTask task)
+    bool GpuTransferPipeline::State::submitCubeTransfer(CubeTransferTask task)
     {
         const auto request_id = task.request_id;
         const auto resource_handle = task.slot_index;
@@ -826,7 +919,7 @@ namespace lux::render
     //  Mesh transfer
     // =========================================================================
 
-    void GpuTransferPipeline::processMeshTransfer(MeshTransferTask task, TransferStopToken st)
+    void GpuTransferPipeline::State::processMeshTransfer(MeshTransferTask task, TransferStopToken st)
     {
         if (can_record_transfer_)
         {
@@ -997,7 +1090,7 @@ namespace lux::render
     //  Texture transfer
     // =========================================================================
 
-    void GpuTransferPipeline::processTextureTransfer(TextureTransferTask task, TransferStopToken st)
+    void GpuTransferPipeline::State::processTextureTransfer(TextureTransferTask task, TransferStopToken st)
     {
         const auto completion_kind = task.replacement
             ? TransferCompletion::EKind::TEXTURE_2D_REPLACEMENT
@@ -1412,7 +1505,7 @@ namespace lux::render
     //  Cube texture transfer
     // =========================================================================
 
-    void GpuTransferPipeline::processCubeTransfer(CubeTransferTask task, TransferStopToken st)
+    void GpuTransferPipeline::State::processCubeTransfer(CubeTransferTask task, TransferStopToken st)
     {
         constexpr uint32_t kFaceCount = 6;
 

@@ -430,22 +430,11 @@ namespace lux::render
         // ShadowMapFeature lazily emplaces a ShadowResources into the scene
         // registry. No global atlas exists anymore.
 
-        // ShaderResources — emplaced AND init'ed here, like TextureResources above.
-        // It used to be published bare and init'ed after RenderContext, on the
-        // stated grounds that init "needs VkDevice". It does — but the device has
-        // been up since res_ctx_->init() far above; the old code just asked
-        // RenderContext for it (RenderContext::device() returns exactly this same
-        // res_ctx.deviceContext().logicalDevice()). So the deferral was an
-        // accident of where it looked, not a real ordering constraint — and it
-        // was the last GPU resource in the module that could not be initialized
-        // at publish time.
-        {
-            auto& shaders = *global_reg->emplace<ShaderResources>();
-            shaders.init(ShaderResources::InitInfo{
-                .device = device_ctx.logicalDevice(),
-                .sparse_instance_pages = device_caps.buffer_device_address && device_caps.shader_int64,
-            });
-        }
+        // Publish the complete device-bound cache; shader modules are acquired lazily.
+        global_reg->emplace<ShaderResources>(
+            device_ctx.logicalDevice(),
+            device_caps.buffer_device_address && device_caps.shader_int64
+        );
 
         // 5. Build RenderContext
         RenderContext::CreateInfo ci{};
@@ -470,8 +459,6 @@ namespace lux::render
 
         // 6. Build Renderer
         renderer_ = std::make_unique<Renderer>(render_ctx_);
-
-        // (7. ShaderResources 的 init 已移到它的 emplace 处 —— 见上面的说明。)
 
         // 7b. Inject centralized DeferredDestroyQueue into global GPU resources.
         //     Resources were created before RenderContext, so we do a late bind.

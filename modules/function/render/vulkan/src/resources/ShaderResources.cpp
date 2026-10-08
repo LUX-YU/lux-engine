@@ -1,6 +1,7 @@
 #include <cstring>
 #include <lux/engine/description/Shader.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>
 #include <lux/engine/render/gpu/pipeline/SpirvPatcher.hpp>
 #include <lux/engine/render/resources/ShaderResources.hpp>
@@ -27,35 +28,13 @@ namespace lux::render
         }
     } // namespace
 
-    void ShaderResources::init(const InitInfo& info)
+    ShaderResources::ShaderResources(VkDevice device, bool sparse_instance_pages) noexcept
+        : device_(device), sparse_instance_pages_(sparse_instance_pages)
     {
-        device_ = info.device;
-        sparse_instance_pages_ = info.sparse_instance_pages;
-        records_.clear();
-        gens_.clear();
-        refcount_.clear();
-        slot_hash_.clear();
-        free_.clear();
-        spirv_cache_.clear();
-        initialized_ = true;
-    }
-
-    void ShaderResources::shutdown()
-    {
-        if (!initialized_)
+        if (device == VK_NULL_HANDLE)
         {
-            return;
+            renderFatal("ShaderResources requires a live device");
         }
-        initialized_ = false;
-
-        records_.clear();
-        gens_.clear();
-        refcount_.clear();
-        slot_hash_.clear();
-        free_.clear();
-        spirv_cache_.clear();
-        device_ = VK_NULL_HANDLE;
-        sparse_instance_pages_ = false;
     }
 
     ShaderHandle ShaderResources::add(const lux::rdesc::Shader& spirv, const lux::rdesc::ShaderInfo& info)

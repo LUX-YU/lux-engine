@@ -196,8 +196,8 @@ namespace lux::render
         //
         // The split is only honest because the module has no resource left that
         // structurally CANNOT be initialized at publish time: HzbResources was
-        // per-view-ized (its extent-dependent part moved to ensureView) and
-        // ShaderResources now inits at its emplace site.
+        // per-view-ized (its extent-dependent part moved to ensureView).
+        // ShaderResources instead establishes its device binding in construction.
 
         /// Init-free resources — plain per-scene/per-process state (layout tables,
         /// producer registries, transient CPU mailboxes). Cannot fail, so it keeps

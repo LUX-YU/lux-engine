@@ -3,6 +3,8 @@
 #include <array>
 #include <cassert>
 #include <cstdio>
+#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
+#include <type_traits>
 #include <unordered_map>
 
 namespace
@@ -54,14 +56,16 @@ namespace
 int main()
 {
     using namespace lux::render;
+    static_assert(!std::is_default_constructible_v<ShaderResources>);
+    static_assert(std::is_nothrow_constructible_v<ShaderResources, VkDevice, bool>);
+    static_assert(!detail::THasInit<ShaderResources>::value);
+    static_assert(!detail::THasShutdown<ShaderResources>::value);
     const std::array<uint32_t, 5> words{0x07230203, 0x10000, 0, 1, 0};
     const auto bytes = std::as_bytes(std::span(words));
     const lux::rdesc::ShaderInfo reflection{};
     {
-        ShaderResources source;
-        ShaderResources destination;
-        source.init({first_device});
-        destination.init({second_device});
+        ShaderResources source(first_device, true);
+        ShaderResources destination(second_device, false);
         reject_create = true;
         assert(source.add(bytes, reflection).isNull() && live.empty());
         reject_create = false;
@@ -80,6 +84,7 @@ int main()
             return 1;
         }
         assert(destination.get(same) != nullptr);
+        assert(destination.sparseInstancePages());
         assert(destination.spirvBytes(same).size() == bytes.size());
         ShaderResources moved(std::move(destination));
         moved.remove(same);
@@ -90,4 +95,18 @@ int main()
         assert(moved.get(same) == nullptr && live.size() == 1);
     }
     assert(live.empty() && destroyed == 3);
+    {
+        ResourceRegistry registry;
+        const auto attempt_count = attempts;
+        const auto resource = registry.emplace<ShaderResources>(first_device, false);
+        assert(resource.get() == registry.find<ShaderResources>());
+        assert(!resource.get()->sparseInstancePages());
+        assert(live.empty() && attempts == attempt_count);
+        reject_create = true;
+        assert(resource.get()->add(bytes, reflection).isNull() && live.empty());
+        reject_create = false;
+        const auto handle = resource.get()->add(bytes, reflection);
+        assert(!handle.isNull() && live.size() == 1);
+    }
+    assert(live.empty() && destroyed == 4);
 }

@@ -14,7 +14,6 @@
  *   sr.remove(h);
  */
 
-#include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
 #include <lux/engine/render/gpu/ShaderObject.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/function/render/client/core/Errors.hpp> // Expected / renderFailure
@@ -34,30 +33,17 @@ namespace lux::rdesc
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC ShaderResources final : public TGPUResourceBase<ShaderResources, EGPUResourceType::SHADER>
+    class LUX_FUNCTION_PUBLIC ShaderResources final
     {
     public:
-        struct InitInfo
-        {
-            VkDevice device{VK_NULL_HANDLE};
-            bool sparse_instance_pages{false};
-        };
-
-        ShaderResources() = default;
+        /// Borrows a live device. Modules remain lazy cache entries, created by add().
+        ShaderResources(VkDevice device, bool sparse_instance_pages) noexcept;
         ~ShaderResources() noexcept = default;
 
         ShaderResources(const ShaderResources&) = delete;
         ShaderResources& operator=(const ShaderResources&) = delete;
         ShaderResources(ShaderResources&&) = default;
         ShaderResources& operator=(ShaderResources&&) = default;
-
-        /// CANNOT FAIL — and that is why it returns void rather than bool.
-        /// The body records the VkDevice and clears the bookkeeping containers;
-        /// it makes no Vulkan call. Modules are created later, in add(), which
-        /// does report failure. (Recorded explicitly so the "give every init a
-        /// return value" sweep does not hand this one a constant-true bool.)
-        void init(const InitInfo& info);
-        void shutdown();
 
         [[nodiscard]] bool sparseInstancePages() const noexcept
         {
@@ -143,8 +129,8 @@ namespace lux::render
             uint32_t slot{0};
         };
 
-        VkDevice device_{VK_NULL_HANDLE};
-        bool sparse_instance_pages_{false};
+        VkDevice device_;
+        bool sparse_instance_pages_;
         std::vector<ShaderObject> records_;
         std::vector<uint32_t> gens_;         ///< generation counter per slot
         std::vector<uint32_t> refcount_;     ///< owners per slot (parallel to records_); 0 = dead

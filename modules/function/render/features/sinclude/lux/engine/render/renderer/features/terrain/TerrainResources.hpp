@@ -1,12 +1,15 @@
 #pragma once
 #include <lux/engine/function/render/features/visibility.h>
 
+#include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/function/render/features/terrain/TerrainOperation.hpp>
-#include <lux/engine/render/core/FrameRetireScheduler.hpp>
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/render/core/FrameRetireScheduler.hpp>
+#include <lux/engine/render/gpu/VmaFwd.hpp>
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -31,6 +34,7 @@ namespace lux::render
             float transition[4]{};
             float actual_height_bounds[4]{};
         };
+
         static_assert(sizeof(GpuPageMeta) == 96u);
 
         struct alignas(16) GpuTerrainPatch final
@@ -38,6 +42,7 @@ namespace lux::render
             std::uint32_t page_lod_xy[4]{};
             std::uint32_t slots_flags[4]{};
         };
+
         static_assert(sizeof(GpuTerrainPatch) == 32u);
 
         struct ViewOrigin final
@@ -64,15 +69,23 @@ namespace lux::render
             bool transition_active{false};
         };
 
-        explicit TerrainResources(std::uint32_t capacity_pages = 128u);
-        ~TerrainResources();
+        struct CreateInfo
+        {
+            DeviceContext& device;
+            DeferredDestroyQueue& retirement;
+            FrameRetireScheduler& callbacks;
+            std::uint32_t capacity_pages;
+            std::uint32_t frames_in_flight;
+        };
 
-        [[nodiscard]] bool initializeGpuCache(
-            DeviceContext& device,
-            DeferredDestroyQueue& deferred_destroy,
-            std::uint32_t frames_in_flight
-        );
-        void shutdownGpuCache() noexcept;
+        using CreateResult = Expected<std::unique_ptr<TerrainResources>>;
+        [[nodiscard]] static CreateResult create(const CreateInfo& info) noexcept;
+        ~TerrainResources() noexcept;
+
+        TerrainResources(const TerrainResources&) = delete;
+        TerrainResources& operator=(const TerrainResources&) = delete;
+        TerrainResources(TerrainResources&&) = delete;
+        TerrainResources& operator=(TerrainResources&&) = delete;
 
         [[nodiscard]] bool accepts(TerrainWireId id, std::uint64_t revision) const noexcept;
         [[nodiscard]] bool upsert(const UploadTerrainPagePayload& header, std::span<const std::byte> page_data);
@@ -92,12 +105,14 @@ namespace lux::render
             float scene_time,
             std::uint64_t demotion_delay_frames = 120u
         ) noexcept;
+
         void beginFrame() noexcept
         {
             ++frame_serial_;
         }
 
         [[nodiscard]] TerrainPageCacheStatsReply stats() const noexcept;
+
         [[nodiscard]] std::uint32_t capacityPages() const noexcept
         {
             return capacity_pages_;
@@ -107,35 +122,32 @@ namespace lux::render
         [[nodiscard]] static std::size_t fallbackPageBytes() noexcept;
         [[nodiscard]] static std::size_t fullPageStride() noexcept;
         [[nodiscard]] static std::size_t fallbackPageStride() noexcept;
-        [[nodiscard]] VkBuffer fullPageBuffer() const noexcept
-        {
-            return full_page_buffer_;
-        }
-        [[nodiscard]] VkBuffer fallbackPageBuffer() const noexcept
-        {
-            return fallback_page_buffer_;
-        }
+        [[nodiscard]] VkBuffer fullPageBuffer() const noexcept;
+        [[nodiscard]] VkBuffer fallbackPageBuffer() const noexcept;
+
         [[nodiscard]] VkBuffer pageMetadataBuffer() const noexcept
         {
             return pageMetadataBuffer(0u);
         }
+
         [[nodiscard]] std::uint32_t pageMetadataBufferCount() const noexcept;
         [[nodiscard]] VkBuffer pageMetadataBuffer(std::uint32_t index) const noexcept;
+
         [[nodiscard]] std::uint32_t fallbackCapacityPages() const noexcept
         {
             return fallback_capacity_pages_;
         }
+
         [[nodiscard]] std::uint32_t selectionCountBufferCount() const noexcept;
         [[nodiscard]] VkBuffer selectionCountBuffer(std::uint32_t index) const noexcept;
         void markSelectionSubmitted(std::uint32_t frame_index) noexcept;
         void onSelectionFrameBegin(std::uint32_t frame_index) noexcept;
-        void setRetireScheduler(FrameRetireScheduler* scheduler, FrameRetireScheduler::OwnerToken owner_token) noexcept
-        {
-            retire_scheduler_ = scheduler;
-            retire_owner_token_ = owner_token;
-        }
 
     private:
+        struct Backing;
+        TerrainResources(const CreateInfo& info, std::unique_ptr<Backing> backing) noexcept;
+        [[nodiscard]] FrameRetireScheduler::OwnerToken ownerToken() const noexcept;
+
         [[nodiscard]] static std::string key(TerrainWireId id);
         [[nodiscard]] bool promote(Page& page) noexcept;
         [[nodiscard]] bool ensureFallback(Page& page) noexcept;
@@ -157,34 +169,10 @@ namespace lux::render
         std::uint32_t capacity_pages_{0u};
         std::uint32_t fallback_capacity_pages_{0u};
         std::uint64_t frame_serial_{1u};
-        DeviceContext* device_{nullptr};
-        DeferredDestroyQueue* deferred_destroy_{nullptr};
-        VkBuffer full_page_buffer_{VK_NULL_HANDLE};
-        void* full_page_allocation_{nullptr};
-        std::byte* full_page_mapped_{nullptr};
-        VkBuffer fallback_page_buffer_{VK_NULL_HANDLE};
-        void* fallback_page_allocation_{nullptr};
-        std::byte* fallback_page_mapped_{nullptr};
-        struct PageMetadataSlot final
-        {
-            VkBuffer buffer{VK_NULL_HANDLE};
-            void* allocation{nullptr};
-            GpuPageMeta* mapped{nullptr};
-        };
-        std::vector<PageMetadataSlot> page_metadata_slots_;
+        VmaAllocator allocator_;
+        FrameRetireScheduler& retire_scheduler_;
+        std::unique_ptr<Backing> backing_;
         std::vector<GpuPageMeta> page_metadata_cpu_;
-        struct SelectionCountSlot final
-        {
-            VkBuffer buffer{VK_NULL_HANDLE};
-            void* allocation{nullptr};
-            std::uint32_t* mapped{nullptr};
-            bool submitted{false};
-        };
-        std::vector<SelectionCountSlot> selection_count_slots_;
-        FrameRetireScheduler* retire_scheduler_{nullptr};
-        FrameRetireScheduler::OwnerToken retire_owner_token_{0u};
-        std::vector<std::uint32_t> retiring_slots_;
-        std::vector<std::uint32_t> retiring_fallback_slots_;
         std::uint32_t latest_selected_patch_count_{0u};
         bool selected_patch_count_valid_{false};
         bool debug_view_surface_valid_{false};

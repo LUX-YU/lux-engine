@@ -28,28 +28,33 @@ namespace lux::render
 {
     TerrainFeature::TerrainFeature(Config config)
         : RenderFeature(RenderFeature::Config{config.name}), config_(std::move(config))
-    {}
+    {
+    }
 
     Expected<void> TerrainFeature::initAndAttachTo(RenderScene& scene)
     {
-        if (config_.page_capacity == 0u || config_.maximum_selected_patches == 0u)
+        const bool is_invalid_capacity = config_.page_capacity == 0u || config_.maximum_selected_patches == 0u;
+        if (is_invalid_capacity)
         {
             return renderFailure<err::feature::ResourceInitFailed>();
         }
-        resources_ = &scene.resources().ensure<TerrainResources>(config_.page_capacity);
         auto& context = renderContext();
-        resources_->setRetireScheduler(
-            &contextView().retireScheduler(),
-            static_cast<FrameRetireScheduler::OwnerToken>(reinterpret_cast<std::uintptr_t>(resources_))
-        );
-        if (!resources_->initializeGpuCache(
+        resources_ = scene.resources().find<TerrainResources>();
+        if (!resources_)
+        {
+            const TerrainResources::CreateInfo info{
                 context.deviceContext(),
                 context.deferredDestroyQueue(),
+                context.retireScheduler(),
+                config_.page_capacity,
                 context.framesInFlight()
-            ))
-        {
-            resources_ = nullptr;
-            return renderFailure<err::feature::ResourceInitFailed>();
+            };
+            auto candidate = TerrainResources::create(info);
+            if (!candidate)
+            {
+                return lux::cxx::unexpected(candidate.error());
+            }
+            resources_ = scene.resources().insert(std::move(*candidate)).get();
         }
 
         auto& shaders = context.globalRegistry().must<ShaderResources>();
@@ -132,10 +137,7 @@ namespace lux::render
 
     void TerrainFeature::onDetachFromScene(RenderScene&)
     {
-        if (resources_)
-        {
-            resources_->shutdownGpuCache();
-        }
+        // The scene owns the cache; detaching this feature only ends its borrow.
         resources_ = nullptr;
         cameras_ = nullptr;
         wanted_views_.clear();
@@ -189,19 +191,22 @@ namespace lux::render
         wanted_views_.clear();
         if (cameras_)
         {
-            renderScene().forEachActiveView([this](View& view) {
-                const auto* camera = cameras_->find(view.handle.index);
-                if (!camera)
+            renderScene().forEachActiveView(
+                [this](View& view)
                 {
-                    return;
+                    const auto* camera = cameras_->find(view.handle.index);
+                    if (!camera)
+                    {
+                        return;
+                    }
+                    wanted_views_.push_back(TerrainResources::ViewOrigin{
+                        camera->render_origin,
+                        camera->coordinate_page_size,
+                        static_cast<float>(std::max(view.current_extent.height, 1u)) *
+                            std::fabs(camera->camera_view.proj.data()[5]) * 0.5f
+                    });
                 }
-                wanted_views_.push_back(TerrainResources::ViewOrigin{
-                    camera->render_origin,
-                    camera->coordinate_page_size,
-                    static_cast<float>(std::max(view.current_extent.height, 1u)) *
-                        std::fabs(camera->camera_view.proj.data()[5]) * 0.5f
-                });
-            });
+            );
         }
         resources_->reconcileWanted(
             wanted_views_,
@@ -219,28 +224,30 @@ namespace lux::render
         }
 
         const auto import_buffer =
-            [&builder](std::string_view name, VkBuffer buffer, std::uint64_t size, std::uint32_t stride) {
-                RGBufferDescription description{};
-                description.size = size;
-                description.stride = stride;
-                description.element_count = stride == 0u ? 0u : static_cast<std::uint32_t>(size / stride);
-                description.usage = static_cast<ERGBufferUsageFlags>(ERGBufferUsageBits::STORAGE);
-                description.memory_usage = ERGMemoryUsage::CPU_TO_GPU;
-                RGImportedBufferInfo imported{};
-                imported.initial_access = VK_ACCESS_2_HOST_WRITE_BIT;
-                imported.initial_stage = VK_PIPELINE_STAGE_2_HOST_BIT;
-                imported.final_access = VK_ACCESS_2_HOST_WRITE_BIT;
-                imported.final_stage = VK_PIPELINE_STAGE_2_HOST_BIT;
-                imported.buffer_getter = [buffer](VkBuffer* output, std::uint32_t capacity) {
-                    if (!output || capacity == 0u || buffer == VK_NULL_HANDLE)
-                    {
-                        return 0u;
-                    }
-                    output[0] = buffer;
-                    return 1u;
-                };
-                return builder.importBuffer(name, description, imported);
+            [&builder](std::string_view name, VkBuffer buffer, std::uint64_t size, std::uint32_t stride)
+        {
+            RGBufferDescription description{};
+            description.size = size;
+            description.stride = stride;
+            description.element_count = stride == 0u ? 0u : static_cast<std::uint32_t>(size / stride);
+            description.usage = static_cast<ERGBufferUsageFlags>(ERGBufferUsageBits::STORAGE);
+            description.memory_usage = ERGMemoryUsage::CPU_TO_GPU;
+            RGImportedBufferInfo imported{};
+            imported.initial_access = VK_ACCESS_2_HOST_WRITE_BIT;
+            imported.initial_stage = VK_PIPELINE_STAGE_2_HOST_BIT;
+            imported.final_access = VK_ACCESS_2_HOST_WRITE_BIT;
+            imported.final_stage = VK_PIPELINE_STAGE_2_HOST_BIT;
+            imported.buffer_getter = [buffer](VkBuffer* output, std::uint32_t capacity)
+            {
+                if (!output || capacity == 0u || buffer == VK_NULL_HANDLE)
+                {
+                    return 0u;
+                }
+                output[0] = buffer;
+                return 1u;
             };
+            return builder.importBuffer(name, description, imported);
+        };
         RGBufferDescription metadata_description{};
         metadata_description.size =
             static_cast<std::uint64_t>(sizeof(TerrainResources::GpuPageMeta)) * resources_->fallbackCapacityPages();
@@ -253,7 +260,8 @@ namespace lux::render
         metadata_import.initial_stage = VK_PIPELINE_STAGE_2_HOST_BIT;
         metadata_import.final_access = VK_ACCESS_2_HOST_WRITE_BIT;
         metadata_import.final_stage = VK_PIPELINE_STAGE_2_HOST_BIT;
-        metadata_import.buffer_getter = [resources = resources_](VkBuffer* output, std::uint32_t capacity) {
+        metadata_import.buffer_getter = [resources = resources_](VkBuffer* output, std::uint32_t capacity)
+        {
             const auto count = std::min(capacity, resources->pageMetadataBufferCount());
             for (std::uint32_t index = 0u; index < count; ++index)
             {
@@ -288,7 +296,8 @@ namespace lux::render
         count_import.initial_stage = VK_PIPELINE_STAGE_2_HOST_BIT;
         count_import.final_access = VK_ACCESS_2_HOST_READ_BIT;
         count_import.final_stage = VK_PIPELINE_STAGE_2_HOST_BIT;
-        count_import.buffer_getter = [resources = resources_](VkBuffer* output, std::uint32_t capacity) {
+        count_import.buffer_getter = [resources = resources_](VkBuffer* output, std::uint32_t capacity)
+        {
             const auto count = std::min(capacity, resources->selectionCountBufferCount());
             for (std::uint32_t index = 0u; index < count; ++index)
             {
@@ -331,91 +340,96 @@ namespace lux::render
             .write(selection, ERGBufferRole::STORAGE)
             .write(selected_count, ERGBufferRole::STORAGE)
             .write(indirect, ERGBufferRole::STORAGE)
-            .setKernelFn([this, indirect, selected_count, maximum_patches](const PassRecordContext& context) {
-                const auto indirect_buffer = context.resolveBufferHandle(indirect);
-                const auto count_buffer = context.resolveBufferHandle(selected_count);
-                if (indirect_buffer == VK_NULL_HANDLE || count_buffer == VK_NULL_HANDLE ||
-                    context.pipeline_layout == VK_NULL_HANDLE)
+            .setKernelFn(
+                [this, indirect, selected_count, maximum_patches](const PassRecordContext& context)
                 {
-                    return;
-                }
-                synchronizeBeforeBufferTransferWrites(context.cmd, std::array{indirect_buffer, count_buffer});
-                vkCmdFillBuffer(context.cmd, indirect_buffer, 0u, sizeof(VkDrawIndirectCommand), 0u);
-                vkCmdFillBuffer(context.cmd, count_buffer, 0u, sizeof(std::uint32_t), 0u);
-                std::array<VkBufferMemoryBarrier2, 2u> barriers{};
-                for (auto& barrier : barriers)
-                {
-                    barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
-                    barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-                    barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-                    barrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-                    barrier.dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
-                    barrier.offset = 0u;
-                    barrier.size = VK_WHOLE_SIZE;
-                }
-                barriers[0].buffer = indirect_buffer;
-                barriers[1].buffer = count_buffer;
-                VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-                dependency.bufferMemoryBarrierCount = static_cast<std::uint32_t>(barriers.size());
-                dependency.pBufferMemoryBarriers = barriers.data();
-                vkCmdPipelineBarrier2(context.cmd, &dependency);
+                    const auto indirect_buffer = context.resolveBufferHandle(indirect);
+                    const auto count_buffer = context.resolveBufferHandle(selected_count);
+                    if (indirect_buffer == VK_NULL_HANDLE || count_buffer == VK_NULL_HANDLE ||
+                        context.pipeline_layout == VK_NULL_HANDLE)
+                    {
+                        return;
+                    }
+                    synchronizeBeforeBufferTransferWrites(context.cmd, std::array{indirect_buffer, count_buffer});
+                    vkCmdFillBuffer(context.cmd, indirect_buffer, 0u, sizeof(VkDrawIndirectCommand), 0u);
+                    vkCmdFillBuffer(context.cmd, count_buffer, 0u, sizeof(std::uint32_t), 0u);
+                    std::array<VkBufferMemoryBarrier2, 2u> barriers{};
+                    for (auto& barrier : barriers)
+                    {
+                        barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2;
+                        barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+                        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+                        barrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+                        barrier.dstAccessMask =
+                            VK_ACCESS_2_SHADER_STORAGE_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+                        barrier.offset = 0u;
+                        barrier.size = VK_WHOLE_SIZE;
+                    }
+                    barriers[0].buffer = indirect_buffer;
+                    barriers[1].buffer = count_buffer;
+                    VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+                    dependency.bufferMemoryBarrierCount = static_cast<std::uint32_t>(barriers.size());
+                    dependency.pBufferMemoryBarriers = barriers.data();
+                    vkCmdPipelineBarrier2(context.cmd, &dependency);
 
-                struct alignas(16) SelectPush final
-                {
-                    std::uint32_t page_capacity{0u};
-                    std::uint32_t maximum_patches{0u};
-                    std::uint32_t view_index{0u};
-                    std::uint32_t full_page_capacity{0u};
-                    std::int32_t camera_page[4]{};
-                    float camera_local_page_size[4]{};
-                    float viewport_projection[4]{};
-                    float view_rotation_row_0[4]{};
-                    float view_rotation_row_1[4]{};
-                    float view_rotation_row_2[4]{};
-                };
-                static_assert(sizeof(SelectPush) == 112u);
-                SelectPush push{};
-                push.page_capacity = resources_->fallbackCapacityPages();
-                push.maximum_patches = maximum_patches;
-                push.view_index = context.frame.view_index;
-                push.full_page_capacity = resources_->capacityPages();
-                auto* cameras = renderScene().resources().find<ViewCameraResource>();
-                const auto* camera = context.view && cameras ? cameras->find(context.view->handle.index) : nullptr;
-                if (camera)
-                {
-                    for (std::size_t axis = 0u; axis < 3u; ++axis)
+                    struct alignas(16) SelectPush final
                     {
-                        push.camera_page[axis] = camera->render_origin.page_delta[axis];
-                        push.camera_local_page_size[axis] = camera->render_origin.local[axis];
-                    }
-                    push.camera_local_page_size[3] = camera->coordinate_page_size;
-                    push.viewport_projection[0] = static_cast<float>(std::max(context.view->current_extent.height, 1u));
-                    push.viewport_projection[1] = std::fabs(camera->camera_view.proj.data()[5]);
-                    push.viewport_projection[2] = 64.0f;
-                    push.viewport_projection[3] = std::fabs(camera->camera_view.proj.data()[0]);
-                    for (std::size_t column = 0u; column < 3u; ++column)
+                        std::uint32_t page_capacity{0u};
+                        std::uint32_t maximum_patches{0u};
+                        std::uint32_t view_index{0u};
+                        std::uint32_t full_page_capacity{0u};
+                        std::int32_t camera_page[4]{};
+                        float camera_local_page_size[4]{};
+                        float viewport_projection[4]{};
+                        float view_rotation_row_0[4]{};
+                        float view_rotation_row_1[4]{};
+                        float view_rotation_row_2[4]{};
+                    };
+                    static_assert(sizeof(SelectPush) == 112u);
+                    SelectPush push{};
+                    push.page_capacity = resources_->fallbackCapacityPages();
+                    push.maximum_patches = maximum_patches;
+                    push.view_index = context.frame.view_index;
+                    push.full_page_capacity = resources_->capacityPages();
+                    auto* cameras = renderScene().resources().find<ViewCameraResource>();
+                    const auto* camera = context.view && cameras ? cameras->find(context.view->handle.index) : nullptr;
+                    if (camera)
                     {
-                        push.view_rotation_row_0[column] = camera->camera_view.view(0, column);
-                        push.view_rotation_row_1[column] = camera->camera_view.view(1, column);
-                        push.view_rotation_row_2[column] = camera->camera_view.view(2, column);
+                        for (std::size_t axis = 0u; axis < 3u; ++axis)
+                        {
+                            push.camera_page[axis] = camera->render_origin.page_delta[axis];
+                            push.camera_local_page_size[axis] = camera->render_origin.local[axis];
+                        }
+                        push.camera_local_page_size[3] = camera->coordinate_page_size;
+                        push.viewport_projection[0] =
+                            static_cast<float>(std::max(context.view->current_extent.height, 1u));
+                        push.viewport_projection[1] = std::fabs(camera->camera_view.proj.data()[5]);
+                        push.viewport_projection[2] = 64.0f;
+                        push.viewport_projection[3] = std::fabs(camera->camera_view.proj.data()[0]);
+                        for (std::size_t column = 0u; column < 3u; ++column)
+                        {
+                            push.view_rotation_row_0[column] = camera->camera_view.view(0, column);
+                            push.view_rotation_row_1[column] = camera->camera_view.view(1, column);
+                            push.view_rotation_row_2[column] = camera->camera_view.view(2, column);
+                        }
                     }
+                    else
+                    {
+                        push.maximum_patches = 0u;
+                        push.camera_local_page_size[3] = 1024.0f;
+                    }
+                    vkCmdPushConstants(
+                        context.cmd,
+                        context.pipeline_layout,
+                        VK_SHADER_STAGE_COMPUTE_BIT,
+                        0u,
+                        sizeof(push),
+                        &push
+                    );
+                    vkCmdDispatch(context.cmd, 1u, 1u, 1u);
+                    resources_->markSelectionSubmitted(context.frame.frame_index);
                 }
-                else
-                {
-                    push.maximum_patches = 0u;
-                    push.camera_local_page_size[3] = 1024.0f;
-                }
-                vkCmdPushConstants(
-                    context.cmd,
-                    context.pipeline_layout,
-                    VK_SHADER_STAGE_COMPUTE_BIT,
-                    0u,
-                    sizeof(push),
-                    &push
-                );
-                vkCmdDispatch(context.cmd, 1u, 1u, 1u);
-                resources_->markSelectionSubmitted(context.frame.frame_index);
-            });
+            );
 
         const auto patch_descriptors = builder.createTransientDS(
             "TerrainPatchRasterDS",
@@ -460,33 +474,36 @@ namespace lux::render
             .after("TerrainPatchSelect")
             .before(kDeferredGBufferDrawPassName)
             .stage(ERenderStage::GEOMETRY_STAGE)
-            .setKernelFn([indirect](const PassRecordContext& context) {
-                const auto buffer = context.resolveBufferHandle(indirect);
-                if (buffer == VK_NULL_HANDLE || context.pipeline_layout == VK_NULL_HANDLE)
+            .setKernelFn(
+                [indirect](const PassRecordContext& context)
                 {
-                    return;
+                    const auto buffer = context.resolveBufferHandle(indirect);
+                    if (buffer == VK_NULL_HANDLE || context.pipeline_layout == VK_NULL_HANDLE)
+                    {
+                        return;
+                    }
+                    struct RasterPush final
+                    {
+                        std::uint32_t scene_index{0u};
+                        std::uint32_t view_index{0u};
+                        std::uint32_t full_stride{0u};
+                        std::uint32_t fallback_stride{0u};
+                    };
+                    RasterPush push{};
+                    push.scene_index = context.frame.scene_index;
+                    push.view_index = context.frame.view_index;
+                    push.full_stride = static_cast<std::uint32_t>(TerrainResources::fullPageStride());
+                    push.fallback_stride = static_cast<std::uint32_t>(TerrainResources::fallbackPageStride());
+                    vkCmdPushConstants(
+                        context.cmd,
+                        context.pipeline_layout,
+                        VK_SHADER_STAGE_VERTEX_BIT,
+                        0u,
+                        sizeof(push),
+                        &push
+                    );
+                    vkCmdDrawIndirect(context.cmd, buffer, 0u, 1u, sizeof(VkDrawIndirectCommand));
                 }
-                struct RasterPush final
-                {
-                    std::uint32_t scene_index{0u};
-                    std::uint32_t view_index{0u};
-                    std::uint32_t full_stride{0u};
-                    std::uint32_t fallback_stride{0u};
-                };
-                RasterPush push{};
-                push.scene_index = context.frame.scene_index;
-                push.view_index = context.frame.view_index;
-                push.full_stride = static_cast<std::uint32_t>(TerrainResources::fullPageStride());
-                push.fallback_stride = static_cast<std::uint32_t>(TerrainResources::fallbackPageStride());
-                vkCmdPushConstants(
-                    context.cmd,
-                    context.pipeline_layout,
-                    VK_SHADER_STAGE_VERTEX_BIT,
-                    0u,
-                    sizeof(push),
-                    &push
-                );
-                vkCmdDrawIndirect(context.cmd, buffer, 0u, 1u, sizeof(VkDrawIndirectCommand));
-            });
+            );
     }
 } // namespace lux::render

@@ -532,6 +532,7 @@ namespace
 #include "../../features/src/renderer/features/shadow/EVSMShadowResources.cpp"
 #define vkGetBufferDeviceAddress trackedBufferAddress
 #include "../../features/src/scene/SpatialCullGrid.cpp"
+#include "../../features/src/renderer/features/terrain/TerrainResources.cpp"
 #undef vkGetBufferDeviceAddress
 #include "../src/resources/hzb/HzbResources.cpp"
 #include "../src/resources/vertex/VertexPoolRegistry.cpp"
@@ -2910,6 +2911,198 @@ void checkStreamUploads(
               "growth rejection/retry, preserved prefix/append, stale generation and in-flight retirement PASS");
 }
 
+void checkTerrainConstruction(
+    lux::render::DeviceContext& device,
+    lux::render::ResourceContext& resources,
+    lux::render::DeferredDestroyQueue& retirement
+)
+{
+    using namespace lux::render;
+    static_assert(!std::is_default_constructible_v<TerrainResources>);
+    static_assert(!std::is_copy_constructible_v<TerrainResources>);
+    static_assert(!std::is_move_constructible_v<TerrainResources>);
+    const auto original_buffers = buffers.size();
+    FrameRetireScheduler callbacks;
+    retirement.beginFrame(600);
+    const TerrainResources::CreateInfo info{device, retirement, callbacks, 2, 2};
+    for (auto kind : {EFailure::BUFFER, EFailure::MAPPED, EFailure::FLUSH})
+    {
+        for (unsigned boundary = 0; boundary != 6; ++boundary)
+        {
+            ResourceRegistry unpublished;
+            failure = kind;
+            skip_rejections = boundary;
+            auto candidate = TerrainResources::create(info);
+            failure = EFailure::NONE;
+            if (candidate)
+            {
+                (void)unpublished.insert(std::move(*candidate));
+            }
+            assert(!candidate && isError<err::device::VulkanCallFailed>(candidate.error()));
+            const auto status = kind == EFailure::BUFFER ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_ERROR_MEMORY_MAP_FAILED;
+            assert(candidate.error().args[0] == encodeVkResult(status));
+            assert(!unpublished.find<TerrainResources>());
+            assert(buffers.size() == original_buffers && retirement.pendingCount() == 0);
+            assert(callbacks.pendingCount() == 0);
+        }
+    }
+    for (unsigned invalid = 0; invalid != 4; ++invalid)
+    {
+        auto config = info;
+        if (invalid == 0)
+        {
+            config.capacity_pages = 0;
+        }
+        if (invalid == 1)
+        {
+            config.capacity_pages = UINT32_MAX;
+        }
+        if (invalid == 2)
+        {
+            config.frames_in_flight = 0;
+        }
+        if (invalid == 3)
+        {
+            config.frames_in_flight = kMaxFramesInFlight + 1;
+        }
+        auto rejected = TerrainResources::create(config);
+        assert(!rejected && isError<err::memory::InvalidBufferConfiguration>(rejected.error()));
+        assert(buffers.size() == original_buffers);
+    }
+    auto candidate = TerrainResources::create(info);
+    assert(candidate && buffers.size() == original_buffers + 6);
+    auto registry = std::make_unique<ResourceRegistry>();
+    auto& terrain = *registry->insert(std::move(*candidate)).get();
+    assert(terrain.pageMetadataBufferCount() == 2 && terrain.selectionCountBufferCount() == 2);
+    assert(!terrain.pageMetadataBuffer(2) && !terrain.selectionCountBuffer(2));
+    auto mapped = [&](VkBuffer buffer)
+    {
+        VmaAllocationInfo mapping{};
+        vmaGetAllocationInfo(device.vmaAllocator(), buffers.at(buffer).second, &mapping);
+        assert(mapping.pMappedData);
+        return static_cast<const std::byte*>(mapping.pMappedData);
+    };
+    const auto full = terrain.fullPageBuffer();
+    const auto fallback = terrain.fallbackPageBuffer();
+    assert(mapped(full)[0] == std::byte{} && mapped(fallback)[0] == std::byte{});
+    std::vector<std::byte> payload(TerrainResources::expectedPageBytes());
+    const auto height_count = kTerrainWireSampleEdge * kTerrainWireSampleEdge;
+    const auto fallback_edge = kTerrainWireQuadEdge / 2u + 1u;
+    const TerrainWirePageDataHeader payload_header{
+        height_count,
+        height_count * 4u,
+        (height_count + 7u) / 8u,
+        kTerrainWireMinMaxNodeCount,
+        fallback_edge * fallback_edge,
+        {}
+    };
+    std::memcpy(payload.data(), &payload_header, sizeof(payload_header));
+    payload[sizeof(payload_header)] = std::byte{42};
+    UploadTerrainPagePayload page{};
+    page.scene_id = RenderSceneId{1, 1};
+    page.id.bytes[0] = 1;
+    page.revision = 1;
+    assert(terrain.upsert(page, payload));
+    assert(!terrain.upsert(page, payload)); // A repeated revision remains rejected.
+    const auto first = *terrain.find(page.id);
+    assert(first.cache_slot != UINT32_MAX && first.fallback_slot != UINT32_MAX);
+    const auto full_offset = first.cache_slot * TerrainResources::fullPageStride();
+    assert(std::memcmp(mapped(full) + full_offset, payload.data(), payload.size()) == 0);
+    terrain.onSelectionFrameBegin(0);
+    TerrainResources::GpuPageMeta meta{};
+    std::memcpy(&meta, mapped(terrain.pageMetadataBuffer(0)) + first.fallback_slot * sizeof(meta), sizeof(meta));
+    assert(meta.origin_full_slot[3] == static_cast<int32_t>(first.cache_slot));
+    assert((meta.fallback_flags[1] & 3u) == 3u);
+    std::array<std::byte, sizeof(TerrainResources::GpuPageMeta)> untouched{};
+    assert(
+        std::memcmp(
+            mapped(terrain.pageMetadataBuffer(1)) + first.fallback_slot * sizeof(meta),
+            untouched.data(),
+            sizeof(meta)
+        ) == 0
+    );
+    auto replacement = payload;
+    replacement[sizeof(payload_header)] = std::byte{73};
+    page.revision = 2;
+    assert(terrain.upsert(page, replacement));
+    const auto second = *terrain.find(page.id);
+    assert(second.cache_slot != first.cache_slot && second.fallback_slot != first.fallback_slot);
+    assert(std::memcmp(mapped(full) + full_offset, payload.data(), payload.size()) == 0);
+    assert(
+        std::memcmp(
+            mapped(full) + second.cache_slot * TerrainResources::fullPageStride(),
+            replacement.data(),
+            replacement.size()
+        ) == 0
+    );
+    assert(callbacks.pendingCount() == 2);
+    callbacks.collect(599);
+    assert(callbacks.pendingCount() == 2);
+    callbacks.collect(600);
+    assert(callbacks.pendingCount() == 0);
+    const std::int64_t origin_delta[3]{1, 0, 0};
+    assert(terrain.canRebaseSceneOrigin(origin_delta));
+    terrain.rebaseSceneOrigin(origin_delta);
+    terrain.onSelectionFrameBegin(1);
+    std::memcpy(&meta, mapped(terrain.pageMetadataBuffer(1)) + second.fallback_slot * sizeof(meta), sizeof(meta));
+    assert(meta.origin_full_slot[0] == terrain.find(page.id)->header.origin.page_delta[0]);
+    assert(terrain.remove(page.id, 3) && !terrain.find(page.id));
+    assert(!terrain.accepts(page.id, 2) && callbacks.pendingCount() == 2);
+    callbacks.collect(600);
+    page.revision = 4;
+    assert(terrain.upsert(page, payload));
+    assert(terrain.stats().resident_pages == 1 && terrain.stats().full_resolution_pages == 1);
+
+    // The real GPU writes the selection counter. Consume only the completed frame's result.
+    auto command = CommandBufferOwner::create(device.logicalDevice(), resources.commandPool());
+    assert(command);
+    VkCommandBufferBeginInfo begin_info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    assert(begin(command->get(), &begin_info) == VK_SUCCESS);
+    vkCmdFillBuffer(command->get(), terrain.selectionCountBuffer(1), 0, sizeof(std::uint32_t), 37);
+    VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+    barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+    barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    barrier.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+    barrier.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+    VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    dependency.memoryBarrierCount = 1;
+    dependency.pMemoryBarriers = &barrier;
+    vkCmdPipelineBarrier2(command->get(), &dependency);
+    assert(end(command->get()) == VK_SUCCESS);
+    VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    auto fence = FenceOwner::create(device.logicalDevice(), fence_info);
+    assert(fence);
+    const auto cmd = command->get();
+    VkSubmitInfo submission{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    submission.commandBufferCount = 1;
+    submission.pCommandBuffers = &cmd;
+    assert(submit(device.graphicsQueue(), 1, &submission, fence->get()) == VK_SUCCESS);
+    terrain.markSelectionSubmitted(1);
+    const auto handle = fence->get();
+    assert(wait(device.logicalDevice(), 1, &handle, VK_TRUE, UINT64_MAX) == VK_SUCCESS);
+    terrain.onSelectionFrameBegin(1);
+    assert(terrain.stats().selected_patch_count_valid && terrain.stats().selected_patch_count == 37);
+    assert(terrain.remove(page.id, 5));
+    // Submit another native use, then release the semantic cache before the fence is observed.
+    assert(vkResetCommandBuffer(command->get(), 0) == VK_SUCCESS);
+    assert(begin(command->get(), &begin_info) == VK_SUCCESS);
+    vkCmdFillBuffer(command->get(), terrain.selectionCountBuffer(0), 0, sizeof(std::uint32_t), 91);
+    assert(end(command->get()) == VK_SUCCESS);
+    assert(vkResetFences(device.logicalDevice(), 1, &handle) == VK_SUCCESS);
+    assert(submit(device.graphicsQueue(), 1, &submission, handle) == VK_SUCCESS);
+    registry.reset();
+    assert(callbacks.pendingCount() == 0);
+    retirement.collect(599);
+    assert(buffers.size() == original_buffers + 6);
+    assert(wait(device.logicalDevice(), 1, &handle, VK_TRUE, UINT64_MAX) == VK_SUCCESS);
+    retirement.collect(600);
+    assert(buffers.size() == original_buffers);
+    std::puts(
+        "Terrain complete construction: six allocation/map/flush boundaries, no partial publication, "
+        "immutable revisions, metadata frame isolation, rebase/reuse, GPU count readback and serial retirement PASS"
+    );
+}
+
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -2941,6 +3134,11 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkTerrainConstruction(device, resources, retirement);
+    if (argc == 2 && std::string_view(argv[1]) == "--terrain")
+    {
+        return 0;
+    }
     checkStreamConstruction(device, retirement);
     checkStreamUploads(device, resources, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--stream")

@@ -1,8 +1,12 @@
 #include <lux/engine/render/renderer/features/terrain/TerrainResources.hpp>
 
+#include <lux/engine/function/render/client/core/RenderTypes.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
+#include <lux/engine/render/gpu/lifecycle/FifOwned.hpp>
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
+#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
+#include <vk_mem_alloc.h>
 
 #include <algorithm>
 #include <cmath>
@@ -39,14 +43,175 @@ namespace lux::render
                    static_cast<std::size_t>(kWeightBytes) * 2u + kHoleBytes +
                    static_cast<std::size_t>(kTerrainWireMinMaxNodeCount) * sizeof(std::uint16_t) * 2u;
         }
+
+        struct TerrainMappedCandidate
+        {
+            VmaBuffer owner;
+            void* mapped;
+        };
+
+        struct TerrainFrameCandidate
+        {
+            TerrainMappedCandidate metadata;
+            TerrainMappedCandidate selection;
+        };
+
+        Expected<TerrainMappedCandidate> createTerrainBuffer(
+            VmaAllocator allocator,
+            VkDeviceSize bytes,
+            VkBufferUsageFlags usage
+        ) noexcept
+        {
+            VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+            info.size = bytes;
+            info.usage = usage;
+            VmaAllocationCreateInfo allocation_info{};
+            allocation_info.usage = VMA_MEMORY_USAGE_AUTO;
+            allocation_info.flags =
+                VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+            VmaBuffer::Allocation allocation{allocator};
+            VmaAllocationInfo mapping{};
+            const auto status = vmaCreateBuffer(
+                allocator,
+                &info,
+                &allocation_info,
+                &allocation.buffer,
+                &allocation.allocation,
+                &mapping
+            );
+            if (status != VK_SUCCESS)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(status));
+            }
+            auto owner = VmaBuffer::adopt(allocation);
+            if (!mapping.pMappedData)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(VK_ERROR_MEMORY_MAP_FAILED));
+            }
+            std::memset(mapping.pMappedData, 0, static_cast<std::size_t>(bytes));
+            const auto flushed = vmaFlushAllocation(allocator, allocation.allocation, 0, bytes);
+            if (flushed != VK_SUCCESS)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(flushed));
+            }
+            return TerrainMappedCandidate{std::move(owner), mapping.pMappedData};
+        }
     } // namespace
 
-    TerrainResources::TerrainResources(std::uint32_t capacity_pages)
-        : capacity_pages_(std::max(capacity_pages, 1u)), fallback_capacity_pages_(std::max(capacity_pages_ * 4u, 1u))
+    struct TerrainResources::Backing
+    {
+        struct Buffer
+        {
+            Buffer(DeferredDestroyQueue& retirement, TerrainMappedCandidate candidate) noexcept
+                : mapped(candidate.mapped)
+            {
+                const auto allocation = candidate.owner.release();
+                owner = TFifOwnedAllocated<VkBuffer>{retirement, allocation.buffer, allocation.allocation};
+            }
+
+            TFifOwnedAllocated<VkBuffer> owner;
+            void* mapped;
+        };
+
+        struct Frame
+        {
+            Buffer metadata;
+            Buffer selection;
+            bool submitted{false};
+        };
+
+        Backing(
+            DeferredDestroyQueue& retirement,
+            TerrainMappedCandidate full_candidate,
+            TerrainMappedCandidate fallback_candidate,
+            std::vector<TerrainFrameCandidate> frame_candidates
+        ) noexcept
+            : full(retirement, std::move(full_candidate)), fallback(retirement, std::move(fallback_candidate))
+        {
+            frames.reserve(frame_candidates.size());
+            for (auto& candidate : frame_candidates)
+            {
+                frames.push_back(Frame{
+                    Buffer{retirement, std::move(candidate.metadata)},
+                    Buffer{retirement, std::move(candidate.selection)}
+                });
+            }
+        }
+
+        Buffer full;
+        Buffer fallback;
+        std::vector<Frame> frames;
+    };
+
+    TerrainResources::CreateResult TerrainResources::create(const CreateInfo& info) noexcept
+    {
+        const bool is_invalid_capacity =
+            info.capacity_pages == 0 ||
+            info.capacity_pages > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()) / 4u;
+        const bool is_invalid_frames = info.frames_in_flight == 0 || info.frames_in_flight > kMaxFramesInFlight;
+        const bool is_invalid_configuration = is_invalid_capacity || is_invalid_frames;
+        if (is_invalid_configuration)
+        {
+            return renderFailure<err::memory::InvalidBufferConfiguration>();
+        }
+        const auto fallback_capacity = info.capacity_pages * 4u;
+        auto full = createTerrainBuffer(
+            info.device.vmaAllocator(),
+            static_cast<VkDeviceSize>(fullPageStride()) * info.capacity_pages,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+        );
+        if (!full)
+        {
+            return lux::cxx::unexpected(full.error());
+        }
+        auto fallback = createTerrainBuffer(
+            info.device.vmaAllocator(),
+            static_cast<VkDeviceSize>(fallbackPageStride()) * fallback_capacity,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+        );
+        if (!fallback)
+        {
+            return lux::cxx::unexpected(fallback.error());
+        }
+        std::vector<TerrainFrameCandidate> frames;
+        frames.reserve(info.frames_in_flight);
+        for (std::uint32_t index = 0; index != info.frames_in_flight; ++index)
+        {
+            auto metadata = createTerrainBuffer(
+                info.device.vmaAllocator(),
+                static_cast<VkDeviceSize>(sizeof(GpuPageMeta)) * fallback_capacity,
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+            );
+            if (!metadata)
+            {
+                return lux::cxx::unexpected(metadata.error());
+            }
+            auto selection = createTerrainBuffer(
+                info.device.vmaAllocator(),
+                sizeof(std::uint32_t),
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+            );
+            if (!selection)
+            {
+                return lux::cxx::unexpected(selection.error());
+            }
+            frames.push_back(TerrainFrameCandidate{std::move(*metadata), std::move(*selection)});
+        }
+        auto backing =
+            std::make_unique<Backing>(info.retirement, std::move(*full), std::move(*fallback), std::move(frames));
+        return std::unique_ptr<TerrainResources>(new TerrainResources(info, std::move(backing)));
+    }
+
+    TerrainResources::TerrainResources(const CreateInfo& info, std::unique_ptr<Backing> backing) noexcept
+        : capacity_pages_(info.capacity_pages), fallback_capacity_pages_(info.capacity_pages * 4u),
+          allocator_(info.device.vmaAllocator()), retire_scheduler_(info.callbacks), backing_(std::move(backing)),
+          page_metadata_cpu_(fallback_capacity_pages_)
     {
         free_slots_.reserve(capacity_pages_);
         for (std::uint32_t index = capacity_pages_; index != 0u; --index)
+        {
             free_slots_.push_back(index - 1u);
+        }
         free_fallback_slots_.reserve(fallback_capacity_pages_);
         for (std::uint32_t index = fallback_capacity_pages_; index != 0u; --index)
         {
@@ -54,9 +219,24 @@ namespace lux::render
         }
     }
 
-    TerrainResources::~TerrainResources()
+    TerrainResources::~TerrainResources() noexcept
     {
-        shutdownGpuCache();
+        retire_scheduler_.purge(ownerToken());
+    }
+
+    FrameRetireScheduler::OwnerToken TerrainResources::ownerToken() const noexcept
+    {
+        return static_cast<FrameRetireScheduler::OwnerToken>(reinterpret_cast<std::uintptr_t>(this));
+    }
+
+    VkBuffer TerrainResources::fullPageBuffer() const noexcept
+    {
+        return backing_->full.owner.get();
+    }
+
+    VkBuffer TerrainResources::fallbackPageBuffer() const noexcept
+    {
+        return backing_->fallback.owner.get();
     }
 
     bool TerrainResources::canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept
@@ -115,184 +295,12 @@ namespace lux::render
         return align16(fallbackPageBytes());
     }
 
-    bool TerrainResources::initializeGpuCache(
-        DeviceContext& device,
-        DeferredDestroyQueue& deferred_destroy,
-        std::uint32_t frames_in_flight
-    )
-    {
-        if (device_ != nullptr)
-            return device_ == &device;
-        device_ = &device;
-        deferred_destroy_ = &deferred_destroy;
-        VmaAllocation full_allocation{nullptr};
-        if (createGpuBufferVmaBuffer(
-                device.vmaAllocator(),
-                static_cast<VkDeviceSize>(fullPageStride()) * capacity_pages_,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                true,
-                &full_page_buffer_,
-                &full_allocation,
-                reinterpret_cast<void**>(&full_page_mapped_)
-            ) != VK_SUCCESS ||
-            full_page_buffer_ == VK_NULL_HANDLE || !full_page_mapped_)
-        {
-            full_page_allocation_ = full_allocation;
-            shutdownGpuCache();
-            return false;
-        }
-        full_page_allocation_ = full_allocation;
-
-        VmaAllocation fallback_allocation{nullptr};
-        if (createGpuBufferVmaBuffer(
-                device.vmaAllocator(),
-                static_cast<VkDeviceSize>(fallbackPageStride()) * fallback_capacity_pages_,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                true,
-                &fallback_page_buffer_,
-                &fallback_allocation,
-                reinterpret_cast<void**>(&fallback_page_mapped_)
-            ) != VK_SUCCESS ||
-            fallback_page_buffer_ == VK_NULL_HANDLE || !fallback_page_mapped_)
-        {
-            fallback_page_allocation_ = fallback_allocation;
-            shutdownGpuCache();
-            return false;
-        }
-        fallback_page_allocation_ = fallback_allocation;
-
-        const auto slot_count = std::max(frames_in_flight, 1u);
-        page_metadata_cpu_.assign(fallback_capacity_pages_, GpuPageMeta{});
-        page_metadata_slots_.resize(slot_count);
-        for (auto& slot : page_metadata_slots_)
-        {
-            VmaAllocation metadata_allocation{nullptr};
-            if (createGpuBufferVmaBuffer(
-                    device.vmaAllocator(),
-                    static_cast<VkDeviceSize>(sizeof(GpuPageMeta)) * fallback_capacity_pages_,
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                    true,
-                    &slot.buffer,
-                    &metadata_allocation,
-                    reinterpret_cast<void**>(&slot.mapped)
-                ) != VK_SUCCESS ||
-                slot.buffer == VK_NULL_HANDLE || !slot.mapped)
-            {
-                slot.allocation = metadata_allocation;
-                shutdownGpuCache();
-                return false;
-            }
-            slot.allocation = metadata_allocation;
-            std::memset(slot.mapped, 0, sizeof(GpuPageMeta) * fallback_capacity_pages_);
-            flushGpuBufferVmaAllocation(
-                device.vmaAllocator(),
-                metadata_allocation,
-                0u,
-                static_cast<VkDeviceSize>(sizeof(GpuPageMeta)) * fallback_capacity_pages_
-            );
-        }
-        selection_count_slots_.resize(slot_count);
-        for (auto& slot : selection_count_slots_)
-        {
-            VmaAllocation count_allocation{nullptr};
-            if (createGpuBufferVmaBuffer(
-                    device.vmaAllocator(),
-                    sizeof(std::uint32_t),
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                    true,
-                    &slot.buffer,
-                    &count_allocation,
-                    reinterpret_cast<void**>(&slot.mapped)
-                ) != VK_SUCCESS ||
-                slot.buffer == VK_NULL_HANDLE || !slot.mapped)
-            {
-                slot.allocation = count_allocation;
-                shutdownGpuCache();
-                return false;
-            }
-            slot.allocation = count_allocation;
-            *slot.mapped = 0u;
-            flushGpuBufferVmaAllocation(device.vmaAllocator(), count_allocation, 0u, sizeof(std::uint32_t));
-        }
-        std::memset(full_page_mapped_, 0, fullPageStride() * capacity_pages_);
-        std::memset(fallback_page_mapped_, 0, fallbackPageStride() * fallback_capacity_pages_);
-        flushGpuBufferVmaAllocation(
-            device.vmaAllocator(),
-            full_allocation,
-            0u,
-            static_cast<VkDeviceSize>(fullPageStride()) * capacity_pages_
-        );
-        flushGpuBufferVmaAllocation(
-            device.vmaAllocator(),
-            fallback_allocation,
-            0u,
-            static_cast<VkDeviceSize>(fallbackPageStride()) * fallback_capacity_pages_
-        );
-        for (auto& [_, page] : pages_)
-        {
-            uploadFallback(page);
-            uploadFull(page);
-            uploadMetadata(page);
-        }
-        return true;
-    }
-
-    void TerrainResources::shutdownGpuCache() noexcept
-    {
-        if (retire_scheduler_ && retire_owner_token_ != 0u)
-        {
-            retire_scheduler_->purge(retire_owner_token_);
-            free_slots_.insert(free_slots_.end(), retiring_slots_.begin(), retiring_slots_.end());
-            free_fallback_slots_
-                .insert(free_fallback_slots_.end(), retiring_fallback_slots_.begin(), retiring_fallback_slots_.end());
-        }
-        retiring_slots_.clear();
-        retiring_fallback_slots_.clear();
-        if (device_)
-        {
-            const auto retire = [this](VkBuffer buffer, void* allocation) {
-                if (buffer == VK_NULL_HANDLE)
-                    return;
-                if (deferred_destroy_)
-                {
-                    deferred_destroy_->retireBuffer(buffer, static_cast<VmaAllocation>(allocation));
-                }
-                else
-                {
-                    destroyGpuBufferVmaBuffer(device_->vmaAllocator(), buffer, static_cast<VmaAllocation>(allocation));
-                }
-            };
-            retire(full_page_buffer_, full_page_allocation_);
-            retire(fallback_page_buffer_, fallback_page_allocation_);
-            for (auto& slot : page_metadata_slots_)
-                retire(slot.buffer, slot.allocation);
-            for (auto& slot : selection_count_slots_)
-            {
-                retire(slot.buffer, slot.allocation);
-                slot = {};
-            }
-        }
-        full_page_buffer_ = VK_NULL_HANDLE;
-        full_page_allocation_ = nullptr;
-        full_page_mapped_ = nullptr;
-        fallback_page_buffer_ = VK_NULL_HANDLE;
-        fallback_page_allocation_ = nullptr;
-        fallback_page_mapped_ = nullptr;
-        page_metadata_slots_.clear();
-        page_metadata_cpu_.clear();
-        selection_count_slots_.clear();
-        latest_selected_patch_count_ = 0u;
-        selected_patch_count_valid_ = false;
-        device_ = nullptr;
-        deferred_destroy_ = nullptr;
-        retire_scheduler_ = nullptr;
-        retire_owner_token_ = 0u;
-    }
-
     bool TerrainResources::accepts(TerrainWireId id, std::uint64_t revision) const noexcept
     {
         if (!id.valid() || revision == 0u)
+        {
             return false;
+        }
         const auto found = latest_revision_.find(key(id));
         return found == latest_revision_.end() || revision > found->second;
     }
@@ -320,12 +328,16 @@ namespace lux::render
                 }
             }
             if (!oldest)
+            {
                 return false;
+            }
             demote(*oldest);
             // Slot reuse is fence-proven, not immediate. The old page may
             // still be sampled by an in-flight TerrainGBuffer draw.
             if (free_slots_.empty())
+            {
                 return false;
+            }
         }
         page.cache_slot = free_slots_.back();
         free_slots_.pop_back();
@@ -338,7 +350,9 @@ namespace lux::render
     bool TerrainResources::ensureFallback(Page& page) noexcept
     {
         if (page.fallback_slot != kInvalidSlot)
+        {
             return true;
+        }
         if (free_fallback_slots_.empty())
         {
             Page* oldest = nullptr;
@@ -360,10 +374,14 @@ namespace lux::render
                 }
             }
             if (!oldest)
+            {
                 return false;
+            }
             releaseFallback(*oldest);
             if (free_fallback_slots_.empty())
+            {
                 return false;
+            }
         }
         page.fallback_slot = free_fallback_slots_.back();
         free_fallback_slots_.pop_back();
@@ -374,49 +392,39 @@ namespace lux::render
 
     void TerrainResources::uploadFull(Page& page) noexcept
     {
-        const bool is_missing_device = device_ == nullptr;
-        const bool is_missing_mapping = full_page_mapped_ == nullptr;
         const bool is_missing_slot = page.cache_slot == kInvalidSlot;
         const bool is_empty_data = page.data.empty();
-        const bool is_invalid_upload = is_missing_device || is_missing_mapping || is_missing_slot || is_empty_data;
+        const bool is_invalid_upload = is_missing_slot || is_empty_data;
         if (is_invalid_upload)
         {
             return;
         }
         const auto offset = static_cast<std::size_t>(page.cache_slot) * fullPageStride();
-        std::memcpy(full_page_mapped_ + offset, page.data.data(), page.data.size());
-        flushGpuBufferVmaAllocation(
-            device_->vmaAllocator(),
-            static_cast<VmaAllocation>(full_page_allocation_),
-            offset,
-            fullPageStride()
-        );
+        std::memcpy(static_cast<std::byte*>(backing_->full.mapped) + offset, page.data.data(), page.data.size());
+        flushGpuBufferVmaAllocation(allocator_, backing_->full.owner.alloc(), offset, fullPageStride());
     }
 
     void TerrainResources::uploadFallback(Page& page) noexcept
     {
-        const bool is_missing_device = device_ == nullptr;
-        const bool is_missing_mapping = fallback_page_mapped_ == nullptr;
         const bool is_missing_slot = page.fallback_slot == kInvalidSlot;
         const bool has_valid_data = page.data.size() >= fallbackOffset() + fallbackPageBytes();
-        const bool is_invalid_upload = is_missing_device || is_missing_mapping || is_missing_slot || !has_valid_data;
+        const bool is_invalid_upload = is_missing_slot || !has_valid_data;
         if (is_invalid_upload)
         {
             return;
         }
         const auto offset = static_cast<std::size_t>(page.fallback_slot) * fallbackPageStride();
-        std::memcpy(fallback_page_mapped_ + offset, page.data.data() + fallbackOffset(), fallbackPageBytes());
-        flushGpuBufferVmaAllocation(
-            device_->vmaAllocator(),
-            static_cast<VmaAllocation>(fallback_page_allocation_),
-            offset,
-            fallbackPageStride()
+        std::memcpy(
+            static_cast<std::byte*>(backing_->fallback.mapped) + offset,
+            page.data.data() + fallbackOffset(),
+            fallbackPageBytes()
         );
+        flushGpuBufferVmaAllocation(allocator_, backing_->fallback.owner.alloc(), offset, fallbackPageStride());
     }
 
     void TerrainResources::uploadMetadata(Page& page) noexcept
     {
-        if (!device_ || page_metadata_cpu_.empty() || page.fallback_slot == kInvalidSlot)
+        if (page.fallback_slot == kInvalidSlot)
         {
             return;
         }
@@ -448,7 +456,7 @@ namespace lux::render
 
     void TerrainResources::clearMetadata(std::uint32_t slot) noexcept
     {
-        if (!device_ || page_metadata_cpu_.empty() || slot >= fallback_capacity_pages_)
+        if (slot >= fallback_capacity_pages_)
         {
             return;
         }
@@ -457,70 +465,51 @@ namespace lux::render
 
     std::uint32_t TerrainResources::pageMetadataBufferCount() const noexcept
     {
-        return static_cast<std::uint32_t>(page_metadata_slots_.size());
+        return static_cast<std::uint32_t>(backing_->frames.size());
     }
 
     VkBuffer TerrainResources::pageMetadataBuffer(std::uint32_t index) const noexcept
     {
-        return index < page_metadata_slots_.size() ? page_metadata_slots_[index].buffer : VK_NULL_HANDLE;
+        return index < backing_->frames.size() ? backing_->frames[index].metadata.owner.get() : VK_NULL_HANDLE;
     }
 
     std::uint32_t TerrainResources::selectionCountBufferCount() const noexcept
     {
-        return static_cast<std::uint32_t>(selection_count_slots_.size());
+        return static_cast<std::uint32_t>(backing_->frames.size());
     }
 
     VkBuffer TerrainResources::selectionCountBuffer(std::uint32_t index) const noexcept
     {
-        return index < selection_count_slots_.size() ? selection_count_slots_[index].buffer : VK_NULL_HANDLE;
+        return index < backing_->frames.size() ? backing_->frames[index].selection.owner.get() : VK_NULL_HANDLE;
     }
 
     void TerrainResources::markSelectionSubmitted(std::uint32_t frame_index) noexcept
     {
-        if (selection_count_slots_.empty())
-            return;
-        selection_count_slots_[frame_index % selection_count_slots_.size()].submitted = true;
+        backing_->frames[frame_index % backing_->frames.size()].submitted = true;
     }
 
     void TerrainResources::onSelectionFrameBegin(std::uint32_t frame_index) noexcept
     {
-        if (!device_)
-            return;
-        if (!page_metadata_slots_.empty() && !page_metadata_cpu_.empty())
+        auto& frame = backing_->frames[frame_index % backing_->frames.size()];
+        const auto bytes = static_cast<VkDeviceSize>(sizeof(GpuPageMeta) * page_metadata_cpu_.size());
+        std::memcpy(frame.metadata.mapped, page_metadata_cpu_.data(), static_cast<std::size_t>(bytes));
+        flushGpuBufferVmaAllocation(allocator_, frame.metadata.owner.alloc(), 0u, bytes);
+        if (!frame.submitted)
         {
-            auto& metadata = page_metadata_slots_[frame_index % page_metadata_slots_.size()];
-            if (metadata.mapped)
-            {
-                const auto bytes = static_cast<VkDeviceSize>(sizeof(GpuPageMeta) * page_metadata_cpu_.size());
-                std::memcpy(metadata.mapped, page_metadata_cpu_.data(), static_cast<std::size_t>(bytes));
-                flushGpuBufferVmaAllocation(
-                    device_->vmaAllocator(),
-                    static_cast<VmaAllocation>(metadata.allocation),
-                    0u,
-                    bytes
-                );
-            }
+            return;
         }
-        if (selection_count_slots_.empty())
-            return;
-        auto& slot = selection_count_slots_[frame_index % selection_count_slots_.size()];
-        if (!slot.submitted || !slot.mapped)
-            return;
-        invalidateGpuBufferVmaAllocation(
-            device_->vmaAllocator(),
-            static_cast<VmaAllocation>(slot.allocation),
-            0u,
-            sizeof(std::uint32_t)
-        );
-        latest_selected_patch_count_ = *slot.mapped;
+        invalidateGpuBufferVmaAllocation(allocator_, frame.selection.owner.alloc(), 0u, sizeof(std::uint32_t));
+        latest_selected_patch_count_ = *static_cast<const std::uint32_t*>(frame.selection.mapped);
         selected_patch_count_valid_ = true;
-        slot.submitted = false;
+        frame.submitted = false;
     }
 
     void TerrainResources::demote(Page& page) noexcept
     {
         if (page.cache_slot == kInvalidSlot)
+        {
             return;
+        }
         const auto slot = page.cache_slot;
         page.cache_slot = kInvalidSlot;
         uploadMetadata(page);
@@ -530,7 +519,9 @@ namespace lux::render
     void TerrainResources::releaseFallback(Page& page) noexcept
     {
         if (page.fallback_slot == kInvalidSlot)
+        {
             return;
+        }
         const auto slot = page.fallback_slot;
         clearMetadata(slot);
         page.fallback_slot = kInvalidSlot;
@@ -539,30 +530,20 @@ namespace lux::render
 
     void TerrainResources::deferFullSlotReturn(std::uint32_t slot) noexcept
     {
-        if (!retire_scheduler_ || !deferred_destroy_ || retire_owner_token_ == 0u)
-        {
-            free_slots_.push_back(slot);
-            return;
-        }
-        retiring_slots_.push_back(slot);
-        retire_scheduler_->defer(deferred_destroy_->currentSerial(), retire_owner_token_, [this, slot] {
-            std::erase(retiring_slots_, slot);
-            free_slots_.push_back(slot);
-        });
+        retire_scheduler_.defer(
+            backing_->full.owner.queue().currentSerial(),
+            ownerToken(),
+            [this, slot] { free_slots_.push_back(slot); }
+        );
     }
 
     void TerrainResources::deferFallbackSlotReturn(std::uint32_t slot) noexcept
     {
-        if (!retire_scheduler_ || !deferred_destroy_ || retire_owner_token_ == 0u)
-        {
-            free_fallback_slots_.push_back(slot);
-            return;
-        }
-        retiring_fallback_slots_.push_back(slot);
-        retire_scheduler_->defer(deferred_destroy_->currentSerial(), retire_owner_token_, [this, slot] {
-            std::erase(retiring_fallback_slots_, slot);
-            free_fallback_slots_.push_back(slot);
-        });
+        retire_scheduler_.defer(
+            backing_->fallback.owner.queue().currentSerial(),
+            ownerToken(),
+            [this, slot] { free_fallback_slots_.push_back(slot); }
+        );
     }
 
     bool TerrainResources::upsert(const UploadTerrainPagePayload& header, std::span<const std::byte> page_data)
@@ -601,8 +582,12 @@ namespace lux::render
             return false;
         }
         for (const auto value : header.origin.local)
+        {
             if (!std::isfinite(value))
+            {
                 return false;
+            }
+        }
         for (std::uint8_t index = 0u; index < header.child_count; ++index)
         {
             if (!header.children[index].valid() || header.children[index] == header.id)
@@ -610,8 +595,12 @@ namespace lux::render
                 return false;
             }
             for (std::uint8_t other = 0u; other < index; ++other)
+            {
                 if (header.children[index] == header.children[other])
+                {
                     return false;
+                }
+            }
         }
 
         const auto page_key = key(header.id);
@@ -644,7 +633,9 @@ namespace lux::render
         if (actual_quantized_min > actual_quantized_max)
         {
             if (previous)
+            {
                 pages_.emplace(page_key, std::move(*previous));
+            }
             return false;
         }
         const auto quantization_extent = header.height_max - header.height_min;
@@ -677,7 +668,8 @@ namespace lux::render
         }
         pages_.emplace(page_key, std::move(page));
         auto& stored = pages_.at(page_key);
-        const auto rollback = [&]() {
+        const auto rollback = [&]()
+        {
             auto current = pages_.find(page_key);
             if (current != pages_.end())
             {
@@ -707,7 +699,9 @@ namespace lux::render
         }
         uploadFallback(stored);
         if (stored.cache_slot != kInvalidSlot)
+        {
             uploadFull(stored);
+        }
         uploadMetadata(stored);
         if (!promote(stored))
         {
@@ -722,7 +716,9 @@ namespace lux::render
                 deferFallbackSlotReturn(previous->fallback_slot);
             }
             if (previous->cache_slot != kInvalidSlot)
+            {
                 deferFullSlotReturn(previous->cache_slot);
+            }
         }
         latest_revision_[page_key] = header.revision;
         return true;
@@ -731,15 +727,21 @@ namespace lux::render
     bool TerrainResources::remove(TerrainWireId id, std::uint64_t revision) noexcept
     {
         if (!id.valid() || revision == 0u)
+        {
             return false;
+        }
         const auto page_key = key(id);
         auto& latest = latest_revision_[page_key];
         if (revision <= latest)
+        {
             return true;
+        }
         latest = revision;
         const auto found = pages_.find(page_key);
         if (found == pages_.end())
+        {
             return true;
+        }
         demote(found->second);
         releaseFallback(found->second);
         pages_.erase(found);
@@ -766,7 +768,9 @@ namespace lux::render
     ) noexcept
     {
         if (!std::isfinite(scene_time))
+        {
             return;
+        }
 
         for (auto& [_, page] : pages_)
         {
@@ -782,9 +786,12 @@ namespace lux::render
         std::unordered_map<std::string, bool> desired;
         desired.reserve(pages_.size());
         for (const auto& [page_key, _] : pages_)
+        {
             desired.emplace(page_key, false);
+        }
 
-        const auto projectedError = [&views](const Page& page) noexcept {
+        const auto projectedError = [&views](const Page& page) noexcept
+        {
             float maximum = 0.0f;
             const auto extent = static_cast<double>(page.header.sample_spacing) * kTerrainWireQuadEdge;
             for (const auto& view : views)
@@ -833,7 +840,8 @@ namespace lux::render
             }
             return maximum;
         };
-        const auto select = [this, &desired, &projectedError](auto&& self, Page& page) -> void {
+        const auto select = [this, &desired, &projectedError](auto&& self, Page& page) -> void
+        {
             // Stage asynchronous refinement one hierarchy level at a time.
             // Descending again while this page is only partly visible can
             // retire the sole coarse fallback before the newly arrived
@@ -875,7 +883,9 @@ namespace lux::render
             }
         }
         for (auto& [page_key, page] : pages_)
+        {
             setDrawable(page, desired[page_key], scene_time);
+        }
 
         debug_view_surface_valid_ = false;
         debug_view_surface_level_ = 0u;
@@ -924,7 +934,8 @@ namespace lux::render
                 const auto z0 = static_cast<std::uint32_t>(std::floor(sample_z));
                 const auto x1 = std::min(x0 + 1u, kTerrainWireQuadEdge);
                 const auto z1 = std::min(z0 + 1u, kTerrainWireQuadEdge);
-                const auto loadHeight = [&page](std::uint32_t sx, std::uint32_t sz) noexcept {
+                const auto loadHeight = [&page](std::uint32_t sx, std::uint32_t sz) noexcept
+                {
                     const auto index = static_cast<std::size_t>(sz) * kTerrainWireSampleEdge + sx;
                     std::uint16_t quantized{0u};
                     std::memcpy(
@@ -960,6 +971,7 @@ namespace lux::render
             std::string_view stable_key;
             bool drawable{false};
         };
+
         std::vector<Candidate> candidates;
         candidates.reserve(pages_.size());
         const auto finite_radius =
@@ -992,16 +1004,26 @@ namespace lux::render
                 candidates.push_back({&page, closest, page_key, desired[page_key] || page.transition_active});
             }
         }
-        std::ranges::sort(candidates, [](const Candidate& left, const Candidate& right) {
-            if (left.drawable != right.drawable)
-                return left.drawable > right.drawable;
-            if (left.distance_squared != right.distance_squared)
-                return left.distance_squared < right.distance_squared;
-            return left.stable_key < right.stable_key;
-        });
+        std::ranges::sort(
+            candidates,
+            [](const Candidate& left, const Candidate& right)
+            {
+                if (left.drawable != right.drawable)
+                {
+                    return left.drawable > right.drawable;
+                }
+                if (left.distance_squared != right.distance_squared)
+                {
+                    return left.distance_squared < right.distance_squared;
+                }
+                return left.stable_key < right.stable_key;
+            }
+        );
         const auto wanted_count = std::min<std::size_t>(candidates.size(), capacity_pages_);
         for (std::size_t index = 0u; index < wanted_count; ++index)
+        {
             (void)promote(*candidates[index].page);
+        }
 
         for (auto& [_, page] : pages_)
         {
@@ -1016,7 +1038,9 @@ namespace lux::render
     float TerrainResources::coverageAt(const Page& page, float scene_time) const noexcept
     {
         if (!page.transition_active || page.transition_duration <= 0.0f)
+        {
             return page.transition_end_coverage;
+        }
         const auto progress =
             std::clamp((scene_time - page.transition_start_time) / page.transition_duration, 0.0f, 1.0f);
         return std::lerp(page.transition_start_coverage, page.transition_end_coverage, progress);
@@ -1025,7 +1049,9 @@ namespace lux::render
     void TerrainResources::setDrawable(Page& page, bool drawable, float scene_time) noexcept
     {
         if (page.drawable_target == drawable)
+        {
             return;
+        }
         const auto current = coverageAt(page, scene_time);
         page.drawable_target = drawable;
         page.transition_start_time = scene_time;
@@ -1056,15 +1082,21 @@ namespace lux::render
         result.gpu_capacity_bytes =
             static_cast<std::uint64_t>(capacity_pages_) * fullPageStride() +
             static_cast<std::uint64_t>(fallback_capacity_pages_) * fallbackPageStride() +
-            static_cast<std::uint64_t>(fallback_capacity_pages_) * sizeof(GpuPageMeta) * page_metadata_slots_.size();
+            static_cast<std::uint64_t>(fallback_capacity_pages_) * sizeof(GpuPageMeta) * backing_->frames.size();
         for (const auto& [_, page] : pages_)
         {
             if (page.header.hierarchy_level == 0u)
+            {
                 ++result.fine_pages;
+            }
             else
+            {
                 ++result.hlod_pages;
+            }
             if (page.transition_active)
+            {
                 ++result.transition_pages;
+            }
             if (page.transition_active || page.transition_end_coverage > 0.0f)
             {
                 ++result.drawable_pages;
@@ -1075,11 +1107,17 @@ namespace lux::render
             }
             result.cpu_resident_bytes += page.data.size();
             if (page.fallback_slot != kInvalidSlot)
-                result.gpu_resident_bytes += fallbackPageStride() + sizeof(GpuPageMeta) * page_metadata_slots_.size();
+            {
+                result.gpu_resident_bytes += fallbackPageStride() + sizeof(GpuPageMeta) * backing_->frames.size();
+            }
             else
+            {
                 ++result.gpu_unavailable_pages;
+            }
             if (page.cache_slot == kInvalidSlot && page.fallback_slot != kInvalidSlot)
+            {
                 ++result.fallback_pages;
+            }
             if (page.cache_slot != kInvalidSlot)
             {
                 ++result.full_resolution_pages;

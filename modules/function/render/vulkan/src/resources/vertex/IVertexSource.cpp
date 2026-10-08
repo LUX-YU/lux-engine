@@ -7,8 +7,15 @@
  */
 
 #include <lux/engine/render/resources/vertex/IVertexSource.hpp>
+#include <lux/engine/render/resources/vertex/VertexRegistration.hpp>
 
 namespace lux::render
 {
-    IVertexSource::~IVertexSource() = default;
-}
+    IVertexSource::~IVertexSource()
+    {
+        if (registration_)
+        {
+            registration_->revoke(true);
+        }
+    }
+} // namespace lux::render

@@ -287,7 +287,8 @@ void checkStaticPools(lux::render::DeviceContext& device, lux::render::MeshResou
     auto registry = VertexPoolRegistry::create(device, targets, 0);
     assert(registry);
     StaticVertexSource independent(mesh, 0, 1);
-    assert((*registry)->registerSource(independent) == 0);
+    auto independent_registration = (*registry)->registerSource(independent);
+    assert(independent_registration && independent_registration->poolId() == 0);
     descriptor_writes.clear();
     const auto allocation_count = buffer_attempts;
     const auto arena_count = virtual_attempts;
@@ -339,24 +340,27 @@ void checkStaticPools(lux::render::DeviceContext& device, lux::render::MeshResou
         assert(!pools.handleForMesh(small->handle).valid());
 
         std::vector<std::unique_ptr<StaticVertexSource>> fillers;
+        std::vector<VertexSourceRegistration> registrations;
         for (std::uint32_t slot = 4; slot < kVertexPoolMaxCount; ++slot)
         {
             auto source = std::make_unique<StaticVertexSource>(mesh, 0, 1);
-            assert((*registry)->registerSource(*source) == slot);
+            auto registration = (*registry)->registerSource(*source);
+            assert(registration && registration->poolId() == slot);
+            registrations.push_back(std::move(*registration));
             fillers.push_back(std::move(source));
         }
         const auto before_retry = descriptor_writes.size();
         assert(pools.ensureRegistered(1, 2) == ~0u);
         assert(pools.ensureRegistered(1, 2) == ~0u);
         assert(descriptor_writes.size() == before_retry);
-        (*registry)->unregisterSource(4);
+        registrations[0] = {};
         assert(pools.ensureRegistered(1, 2) == 4);
         assert(descriptor_writes.size() == before_retry + targets.size());
         assert(pools.ensureRegistered(1, 2) == 4);
         assert(descriptor_writes.size() == before_retry + targets.size());
         for (std::uint32_t slot = 5; slot < kVertexPoolMaxCount; ++slot)
         {
-            (*registry)->unregisterSource(slot);
+            registrations[slot - 4] = {};
         }
     }
     assert((*registry)->isRegistered(0) && independent.bindlessPoolId() == 0);
@@ -364,7 +368,7 @@ void checkStaticPools(lux::render::DeviceContext& device, lux::render::MeshResou
     {
         assert(!(*registry)->isRegistered(slot));
     }
-    (*registry)->unregisterSource(0);
+    *independent_registration = {};
     assert(independent.bindlessPoolId() == ~0u);
     assert(buffer_attempts == allocation_count && virtual_attempts == arena_count);
     std::puts("Static vertex pools: native descriptors, segment/layout identity, capacity retry and revoke PASS");

@@ -377,6 +377,11 @@ if(BUILD_TESTING)
     endif()
     if(LUX_RENDER_BUILD_GPU_TESTS)
         add_test(NAME render.one_time_ownership COMMAND render_one_time_ownership_test)
+        add_test(
+            NAME render.vertex_registration_lifetime
+            COMMAND render_one_time_ownership_test --vertex-leases
+        )
+        set_tests_properties(render.vertex_registration_lifetime PROPERTIES TIMEOUT 30 LABELS "gpu;lifecycle")
         set_tests_properties(render.one_time_ownership PROPERTIES TIMEOUT 30 LABELS gpu)
     endif()
 

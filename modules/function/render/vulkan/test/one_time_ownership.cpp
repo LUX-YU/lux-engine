@@ -3510,6 +3510,79 @@ void checkRetirementOwner(lux::render::DeviceContext& device)
     );
 }
 
+void checkVertexRegistrationLifetime(lux::render::DeviceContext& device, std::span<const VkDescriptorSet> targets)
+{
+    using namespace lux::render;
+    static_assert(!std::is_copy_constructible_v<VertexSourceRegistration>);
+    static_assert(!std::is_copy_assignable_v<VertexSourceRegistration>);
+    static_assert(std::is_nothrow_move_constructible_v<VertexSourceRegistration>);
+    static_assert(std::is_nothrow_move_assignable_v<VertexSourceRegistration>);
+    static_assert(sizeof(VertexSourceHandle) == 12);
+    const auto initial_buffers = buffers.size();
+    auto owner = VertexPoolRegistry::create(device, targets, 0);
+    auto other_owner = VertexPoolRegistry::create(device, targets, 0);
+    assert(owner && other_owner);
+    auto source = TransientVertexSource::create({&device, 4096, 0, 16});
+    auto peer = TransientVertexSource::create({&device, 4096, 0, 16});
+    assert(source && peer);
+    auto first = (*owner)->registerSource(**source);
+    auto second = (*owner)->registerSource(**peer);
+    assert(first && second && first->poolId() == 0 && second->poolId() == 1);
+    const auto before_duplicate = descriptor_writes;
+    auto duplicate = (*owner)->registerSource(**source);
+    auto cross_duplicate = (*other_owner)->registerSource(**source);
+    assert(!duplicate && isError<err::descriptor::VertexSourceAlreadyRegistered>(duplicate.error()));
+    assert(!cross_duplicate && isError<err::descriptor::VertexSourceAlreadyRegistered>(cross_duplicate.error()));
+    assert(descriptor_writes == before_duplicate && first->poolId() == 0 && second->poolId() == 1);
+    assert(!(*other_owner)->isRegistered(0));
+    VertexSourceRegistration moved(std::move(*first));
+    assert(!*first && moved.poolId() == 0);
+    moved = std::move(moved);
+    assert(moved.poolId() == 0);
+    moved = std::move(*second);
+    assert(!*second && moved.poolId() == 1 && (*source)->bindlessPoolId() == ~0u);
+    assert(!(*owner)->isRegistered(0) && (*owner)->isRegistered(1));
+    auto reused = (*owner)->registerSource(**source);
+    assert(reused && reused->poolId() == 0);
+    *first = {};
+    assert(reused->poolId() == 0 && (*owner)->isRegistered(0));
+    // Source owner disappears first. No base-destructor call reaches a derived virtual.
+    source->reset();
+    assert(!*reused && reused->poolId() == ~0u && !(*owner)->isRegistered(0));
+    assert(buffers.size() == initial_buffers + 1);
+    auto replacement_source = TransientVertexSource::create({&device, 4096, 0, 16});
+    assert(replacement_source);
+    auto replacement = (*owner)->registerSource(**replacement_source);
+    assert(replacement && replacement->poolId() == 0);
+    *reused = {};
+    assert((*owner)->isRegistered(0) && replacement->poolId() == 0);
+    // Registry owner disappears first. Surviving sources and leases both observe revocation.
+    owner->reset();
+    assert(!moved && !*replacement && moved.poolId() == ~0u && replacement->poolId() == ~0u);
+    assert((*peer)->bindlessPoolId() == ~0u && (*replacement_source)->bindlessPoolId() == ~0u);
+    auto new_registration = (*other_owner)->registerSource(**peer);
+    assert(new_registration && new_registration->poolId() == 0);
+    moved = {};
+    *replacement = {};
+    assert((*other_owner)->isRegistered(0) && (*peer)->bindlessPoolId() == 0);
+    const auto before_invalid_refresh = descriptor_writes;
+    moved.refresh();
+    replacement->refresh();
+    assert(descriptor_writes == before_invalid_refresh);
+    for (unsigned count = 0; count < 1000; ++count)
+    {
+        auto registration = (*other_owner)->registerSource(**replacement_source);
+        assert(registration && registration->poolId() == 1);
+    }
+    assert(!(*other_owner)->isRegistered(1));
+    *new_registration = {};
+    peer->reset();
+    replacement_source->reset();
+    assert(buffers.size() == initial_buffers);
+    std::puts("Vertex registration lifetime: exact duplicate errors, move/replacement, source/registry-first death, "
+              "stale slot reuse, bounded churn and original native backing release PASS");
+}
+
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -3671,6 +3744,11 @@ int main(int argc, char** argv)
         allocation.descriptorSetCount = 2;
         allocation.pSetLayouts = set_layouts.data();
         assert(allocateSets(device.logicalDevice(), &allocation, targets.data()) == VK_SUCCESS);
+        if (argc == 2 && std::string_view(argv[1]) == "--vertex-leases")
+        {
+            checkVertexRegistrationLifetime(device, targets);
+            return 0;
+        }
         const auto original_targets = targets;
         const auto original_writes = descriptor_writes;
         for (unsigned index = 0; index < 3; ++index)
@@ -3703,6 +3781,7 @@ int main(int argc, char** argv)
             assert(descriptor_writes == original_writes);
             targets.fill(VK_NULL_HANDLE); // The accepted write target owns its small handle array.
             std::array<std::unique_ptr<TransientVertexSource>, kVertexPoolMaxCount + 1> sources;
+            std::array<VertexSourceRegistration, kVertexPoolMaxCount> registrations;
             for (auto& source : sources)
             {
                 auto candidate_source = TransientVertexSource::create({&device, 4096, 0, 16});
@@ -3713,7 +3792,9 @@ int main(int argc, char** argv)
             trace_buffer_writes = true;
             for (unsigned id = 0; id < kVertexPoolMaxCount; ++id)
             {
-                assert(original->registerSource(*sources[id]) == id);
+                auto registered = original->registerSource(*sources[id]);
+                assert(registered && registered->poolId() == id);
+                registrations[id] = std::move(*registered);
                 assert(original->isRegistered(id) && sources[id]->bindlessPoolId() == id);
                 for (unsigned fi = 0; fi < 2; ++fi)
                 {
@@ -3723,20 +3804,23 @@ int main(int argc, char** argv)
                 }
             }
             const auto writes_at_capacity = buffer_writes.size();
-            assert(original->registerSource(*sources.back()) == ~0u);
+            auto full = original->registerSource(*sources.back());
+            assert(!full && isError<err::frame::VertexPoolRegistryFull>(full.error()));
             assert(sources.back()->bindlessPoolId() == ~0u && buffer_writes.size() == writes_at_capacity);
-            original->unregisterSource(3);
+            registrations[3] = {};
             assert(!original->isRegistered(3) && sources[3]->bindlessPoolId() == ~0u);
-            assert(original->registerSource(*sources.back()) == 3);
-            original->refreshSource(3);
+            auto replacement = original->registerSource(*sources.back());
+            assert(replacement && replacement->poolId() == 3);
+            registrations[3] = std::move(*replacement);
+            registrations[3].refresh();
             assert(buffer_writes.size() == writes_at_capacity + 4);
             assert(buffer_writes.back().buffer == sources.back()->buffer());
-            original->refreshSource(~0u);
-            original->unregisterSource(~0u);
+            VertexSourceRegistration empty;
+            empty.refresh();
             assert(!original->isRegistered(~0u));
             for (unsigned id = 0; id < kVertexPoolMaxCount; ++id)
             {
-                original->unregisterSource(id);
+                registrations[id] = {};
             }
             for (const auto& source : sources)
             {
@@ -3793,7 +3877,8 @@ int main(int argc, char** argv)
         {
             auto source = TransientVertexSource::create({&device, 4096, 0, 16});
             assert(source && (*source)->buffer() && (*source)->layout() == 0);
-            assert((*vertices)->registerSource(**source) == 0);
+            auto registration = (*vertices)->registerSource(**source);
+            assert(registration && registration->poolId() == 0);
             auto first = (*source)->allocate(10);
             auto second = (*source)->allocate(246);
             assert(first.valid() && first.pool_id == 0 && first.vertex_base == 0 && first.vertex_count == 10);
@@ -3801,7 +3886,7 @@ int main(int argc, char** argv)
             assert(!(*source)->allocate(1).valid() && !(*source)->allocate(UINT32_MAX).valid());
             (*source)->beginFrame();
             assert((*source)->allocate(256).vertex_base == 0);
-            (*vertices)->unregisterSource(0);
+            *registration = {};
         }
         assert(buffers.empty());
         SkinningResources::CreateInfo config{};
@@ -3876,18 +3961,21 @@ int main(int argc, char** argv)
         }
         {
             std::array<std::unique_ptr<TransientVertexSource>, kVertexPoolMaxCount> occupied;
+            std::array<VertexSourceRegistration, kVertexPoolMaxCount> registrations;
             for (unsigned id = 0; id < occupied.size(); ++id)
             {
                 auto source = TransientVertexSource::create({&device, 4096, 0, 16});
                 assert(source);
                 occupied[id] = std::move(*source);
-                assert((*vertices)->registerSource(*occupied[id]) == id);
+                auto registered = (*vertices)->registerSource(*occupied[id]);
+                assert(registered && registered->poolId() == id);
+                registrations[id] = std::move(*registered);
             }
             const auto old_writes = descriptor_writes;
             auto failed = SkinningResources::create(config);
             assert(!failed && isError<err::frame::VertexPoolRegistryFull>(failed.error()));
             assert(buffers.size() == occupied.size() && descriptor_writes == old_writes);
-            (*vertices)->unregisterSource(7);
+            registrations[7] = {};
             {
                 auto retry = SkinningResources::create(config);
                 assert(retry && (*retry)->outputPoolId() == 7);
@@ -3896,7 +3984,7 @@ int main(int argc, char** argv)
             assert(!(*vertices)->isRegistered(7) && buffers.size() == occupied.size());
             for (unsigned id = 0; id < occupied.size(); ++id)
             {
-                (*vertices)->unregisterSource(id);
+                registrations[id] = {};
             }
         }
         assert(buffers.empty());

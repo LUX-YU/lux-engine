@@ -491,6 +491,14 @@ namespace lux::render::err
             static constexpr ErrorArgs args{};
         };
 
+        struct VertexSourceAlreadyRegistered
+        {
+            static constexpr const char* name = "descriptor.vertex_source_already_registered";
+            static constexpr const char* message = "Vertex source already has a live registration";
+            static constexpr ERecovery recovery = ERecovery::BUG;
+            static constexpr ErrorArgs args{};
+        };
+
         struct DomainWriteTargetEmpty
         {
             static constexpr const char* name = "descriptor.domain_write_target_empty";
@@ -1478,6 +1486,7 @@ namespace lux::render::err
     X(::lux::render::err::pipeline::VariantBudgetExhausted)                                                            \
     X(::lux::render::err::pipeline::GraphicsCreationFailed)                                                            \
     X(::lux::render::err::descriptor::InvalidVertexPoolTarget)                                                         \
+    X(::lux::render::err::descriptor::VertexSourceAlreadyRegistered)                                                \
     X(::lux::render::err::descriptor::DomainWriteTargetEmpty)                                                          \
     X(::lux::render::err::graph::CompiledGraphInvalid)                                                                 \
     X(::lux::render::err::graph::DependencyCycle)                                                                      \

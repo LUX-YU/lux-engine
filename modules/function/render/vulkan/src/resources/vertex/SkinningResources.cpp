@@ -14,8 +14,10 @@
 
 namespace lux::render
 {
-    Expected<SkinningResources::MappedBuffer>
-    SkinningResources::createMappedBuffer(DeviceContext& device, VkDeviceSize size) noexcept
+    Expected<SkinningResources::MappedBuffer> SkinningResources::createMappedBuffer(
+        DeviceContext& device,
+        VkDeviceSize size
+    ) noexcept
     {
         VkBuffer buffer{};
         VmaAllocation allocation{};
@@ -84,12 +86,19 @@ namespace lux::render
         }
         // Only complete backing may become visible through the vertex source table.
         // The unique owner keeps the source address stable through semantic adoption.
-        if (info.vertex_pool_registry->registerSource(**output) == ~0u)
+        auto registration = info.vertex_pool_registry->registerSource(**output);
+        if (!registration)
         {
-            return renderFailure<err::frame::VertexPoolRegistryFull>(kVertexPoolMaxCount);
+            return lux::cxx::unexpected(registration.error());
         }
         return std::unique_ptr<SkinningResources>(
-            new SkinningResources(info, std::move(palettes), std::move(dispatch_params), std::move(*output))
+            new SkinningResources(
+                info,
+                std::move(palettes),
+                std::move(dispatch_params),
+                std::move(*output),
+                std::move(*registration)
+            )
         );
     }
 
@@ -97,19 +106,16 @@ namespace lux::render
         const CreateInfo& info,
         BufferRing palettes,
         BufferRing dispatch_params,
-        std::unique_ptr<TransientVertexSource> output
+        std::unique_ptr<TransientVertexSource> output,
+        VertexSourceRegistration registration
     ) noexcept
-        : vertex_pool_registry_(*info.vertex_pool_registry), bone_palettes_(std::move(palettes)),
-          max_bones_(info.max_bones), error_sink_(info.error_sink), dispatch_params_(std::move(dispatch_params)),
-          max_dispatches_(info.max_dispatches), output_pool_(std::move(output))
+        : bone_palettes_(std::move(palettes)), max_bones_(info.max_bones), error_sink_(info.error_sink),
+          dispatch_params_(std::move(dispatch_params)), max_dispatches_(info.max_dispatches),
+          output_pool_(std::move(output)), output_registration_(std::move(registration))
     {
     }
 
-    SkinningResources::~SkinningResources() noexcept
-    {
-        // Preserve the original scene safe point and revoke the source before member buffers disappear.
-        vertex_pool_registry_.unregisterSource(output_pool_->bindlessPoolId());
-    }
+    SkinningResources::~SkinningResources() noexcept = default;
 
     void SkinningResources::beginFrame() noexcept
     {
@@ -128,7 +134,9 @@ namespace lux::render
         }
         const std::uint32_t fi = current_fi_;
         if (bone_count > max_bones_ - palette_cursors_[fi])
+        {
             return ~0u; // full this frame
+        }
 
         const std::uint32_t base = palette_cursors_[fi];
         auto* dst = static_cast<BoneMatrixGpu*>(bone_palettes_[fi].data) + base;
@@ -152,7 +160,9 @@ namespace lux::render
 
         const VertexSourceHandle out = output_pool_->allocate(vertex_count);
         if (!out.valid())
+        {
             return kInvalidVertexSourceHandle; // output pool exhausted
+        }
 
         dispatches_.push_back(Dispatch{in_pool_id, in_base, out.vertex_base, vertex_count, palette_base, bone_count});
         return out;
@@ -171,11 +181,13 @@ namespace lux::render
         if (dispatch_count > max_dispatches_)
         {
             if (error_sink_ != nullptr)
+            {
                 error_sink_->emit(
                     renderError<err::frame::SkinningDispatchParamsOverflow>(dispatch_count, max_dispatches_),
                     RenderErrorEvent::kNoScene,
                     last_frame_serial_
                 );
+            }
             return 0u;
         }
 

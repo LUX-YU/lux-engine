@@ -5,6 +5,9 @@
 #include <lux/engine/render/core/RenderErrorSink.hpp>
 #include <lux/engine/render/resources/vertex/IVertexSource.hpp>
 #include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp>
+#include <lux/engine/render/resources/vertex/VertexRegistration.hpp>
+
+#include <utility>
 
 #include <lux/engine/render/gpu/VulkanContext.hpp> // DeviceContext
 
@@ -43,60 +46,119 @@ namespace lux::render
     {
     }
 
-    std::uint32_t VertexPoolRegistry::registerSource(IVertexSource& source) noexcept
+    detail::VertexRegistration::VertexRegistration(
+        VertexPoolRegistry& owner,
+        IVertexSource& target,
+        std::uint32_t id
+    ) noexcept
+        : registry(&owner), source(&target), slot(id)
     {
-        for (std::uint32_t i = 0; i < kVertexPoolMaxCount; ++i)
+    }
+
+    detail::VertexRegistration::~VertexRegistration() noexcept
+    {
+        revoke();
+    }
+
+    void detail::VertexRegistration::revoke(bool source_destroying) noexcept
+    {
+        if (!registry)
         {
-            if (slots_[i] == nullptr)
+            return;
+        }
+        registry->slots_[slot] = nullptr;
+        auto* target = std::exchange(source, nullptr);
+        target->registration_ = nullptr;
+        registry = nullptr;
+        if (!source_destroying)
+        {
+            target->setBindlessPoolId(~0u);
+        }
+    }
+
+    VertexSourceRegistration::VertexSourceRegistration() noexcept = default;
+
+    VertexSourceRegistration::VertexSourceRegistration(
+        std::unique_ptr<detail::VertexRegistration> registration
+    ) noexcept
+        : registration_(std::move(registration))
+    {
+    }
+
+    VertexSourceRegistration::~VertexSourceRegistration() noexcept = default;
+
+    VertexSourceRegistration::VertexSourceRegistration(VertexSourceRegistration&&) noexcept = default;
+
+    VertexSourceRegistration& VertexSourceRegistration::operator=(VertexSourceRegistration&& other) noexcept
+    {
+        if (this != &other)
+        {
+            registration_ = std::move(other.registration_);
+        }
+        return *this;
+    }
+
+    VertexSourceRegistration::operator bool() const noexcept
+    {
+        return registration_ && registration_->registry;
+    }
+
+    std::uint32_t VertexSourceRegistration::poolId() const noexcept
+    {
+        return *this ? registration_->slot : ~0u;
+    }
+
+    void VertexSourceRegistration::refresh() noexcept
+    {
+        if (*this)
+        {
+            registration_->registry->writeDescriptor(registration_->slot, *registration_->source);
+        }
+    }
+
+    VertexPoolRegistry::~VertexPoolRegistry() noexcept
+    {
+        for (auto* registration : slots_)
+        {
+            if (registration)
             {
-                slots_[i] = &source;
-                source.setBindlessPoolId(i);
-                writeDescriptor(i, source);
-                return i;
+                registration->revoke();
             }
         }
-        // 注册表满 = 这个顶点源什么都渲染不出来。没有调用方可以处置(要么这一帧
-        // 已经在飞,要么调用方拿到 ~0u 之外也做不了别的),所以走自发上报。
-        // 同键在一批内合并计数,不必像原先那样自己写一份幂次限流防刷屏。
-        if (error_sink_ != nullptr)
+    }
+
+    Expected<VertexSourceRegistration> VertexPoolRegistry::registerSource(IVertexSource& source) noexcept
+    {
+        if (source.registration_)
+        {
+            return renderFailure<err::descriptor::VertexSourceAlreadyRegistered>();
+        }
+        for (std::uint32_t slot = 0; slot < kVertexPoolMaxCount; ++slot)
+        {
+            if (!slots_[slot])
+            {
+                auto registration = std::make_unique<detail::VertexRegistration>(*this, source, slot);
+                slots_[slot] = registration.get();
+                source.registration_ = registration.get();
+                source.setBindlessPoolId(slot);
+                writeDescriptor(slot, source);
+                return VertexSourceRegistration(std::move(registration));
+            }
+        }
+        if (error_sink_)
+        {
             error_sink_->emit(
                 renderError<err::frame::VertexPoolRegistryFull>(kVertexPoolMaxCount),
                 RenderErrorEvent::kNoScene,
                 0
             );
-        return ~0u; // registry full
-    }
-
-    void VertexPoolRegistry::unregisterSource(std::uint32_t pool_id) noexcept
-    {
-        if (pool_id >= kVertexPoolMaxCount)
-        {
-            return;
         }
-
-        if (slots_[pool_id])
-        {
-            // Tell the source it no longer has a pool id. Stale handles
-            // referring to this slot will now look invalid via
-            // VertexSourceHandle::valid().
-            slots_[pool_id]->setBindlessPoolId(~0u);
-            slots_[pool_id] = nullptr;
-        }
-    }
-
-    void VertexPoolRegistry::refreshSource(std::uint32_t pool_id) noexcept
-    {
-        if (pool_id >= kVertexPoolMaxCount)
-        {
-            return;
-        }
-        if (slots_[pool_id])
-            writeDescriptor(pool_id, *slots_[pool_id]);
+        return renderFailure<err::frame::VertexPoolRegistryFull>(kVertexPoolMaxCount);
     }
 
     bool VertexPoolRegistry::isRegistered(std::uint32_t pool_id) const noexcept
     {
-        return pool_id < kVertexPoolMaxCount && slots_[pool_id] != nullptr;
+        return pool_id < kVertexPoolMaxCount && slots_[pool_id];
     }
 
     void VertexPoolRegistry::writeDescriptor(std::uint32_t pool_id, IVertexSource& source) noexcept
@@ -104,13 +166,8 @@ namespace lux::render
         VkBuffer buf = source.buffer();
         if (buf == VK_NULL_HANDLE)
         {
-            // Source isn't ready — skip the write. Caller is expected to
-            // re-register once the buffer is valid (or the source itself
-            // calls back when init completes). We just bail
-            // silently; the slot stays "registered" but its descriptor
-            // remains the previous tenant (or VK_NULL_HANDLE if first
-            // time) — UPDATE_AFTER_BIND + PARTIALLY_BOUND keep this safe
-            // as long as no shader indexes into it.
+            // The slot remains reserved. Its owner refreshes after backing becomes ready;
+            // no shader may address it until a valid descriptor has been published.
             return;
         }
 

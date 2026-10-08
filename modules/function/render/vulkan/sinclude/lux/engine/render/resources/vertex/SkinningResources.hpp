@@ -34,6 +34,7 @@
 #include <vulkan/vulkan.h>
 
 #include <lux/engine/render/resources/vertex/TransientVertexSource.hpp>
+#include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp>
 #include <lux/engine/function/render/features/core/VertexLayoutTypes.hpp>
 #include <lux/engine/function/render/client/core/RenderTypes.hpp> // kMaxFramesInFlight
 #include <lux/engine/function/visibility.h>
@@ -215,10 +216,9 @@ namespace lux::render
             const CreateInfo& info,
             BufferRing palettes,
             BufferRing dispatch_params,
-            std::unique_ptr<TransientVertexSource> output
+            std::unique_ptr<TransientVertexSource> output,
+            VertexSourceRegistration registration
         ) noexcept;
-
-        VertexPoolRegistry& vertex_pool_registry_;
 
         // Input vertex pool: ownership lives in the per-scene
         // StaticVertexPoolSet. SkinningResources no longer touches it; the
@@ -253,6 +253,7 @@ namespace lux::render
         // one-frame-ahead skin under GPU overlap, not corruption; the fix (ring the
         // output pool per frame-in-flight) is deferred. See TransientVertexSource.hpp.
         std::unique_ptr<TransientVertexSource> output_pool_;
+        VertexSourceRegistration output_registration_;
 
         std::vector<Dispatch> dispatches_;
         std::uint64_t last_frame_serial_{~0ull}; ///< beginFrameIfNew key

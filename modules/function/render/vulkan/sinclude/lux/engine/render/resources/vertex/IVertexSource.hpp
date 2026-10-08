@@ -46,6 +46,11 @@
 
 namespace lux::render
 {
+    namespace detail
+    {
+        struct VertexRegistration;
+    }
+
     /// Categorical hint about how the source produces its data.
     /// Used by the registry to decide lifecycle / barrier semantics, NOT by
     /// shader code (which is uniform across kinds — that's the whole point).
@@ -155,6 +160,12 @@ namespace lux::render
         // 分配槽位。kind() / layout() / bindlessPoolId() 当前也没有多态调用点，但它们
         // **没有撒谎**(每个实现都诚实返回自己的值)，且 kind() 的用途是给注册表决定
         // barrier 语义——留给上面文件头写明的第三个规划实现 VirtualGeometrySource。
+    private:
+        friend class VertexPoolRegistry;
+        friend struct detail::VertexRegistration;
+
+        // Non-owning endpoint. Base destruction revokes without calling derived virtuals.
+        detail::VertexRegistration* registration_{};
     };
 
 } // namespace lux::render

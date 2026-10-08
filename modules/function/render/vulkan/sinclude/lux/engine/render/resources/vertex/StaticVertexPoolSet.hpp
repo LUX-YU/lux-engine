@@ -32,16 +32,7 @@ namespace lux::render
         {
         }
 
-        ~StaticVertexPoolSet()
-        {
-            for (auto& [key, entry] : entries_)
-            {
-                if (entry.pool_id != ~0u)
-                {
-                    vertex_pool_registry_.unregisterSource(entry.pool_id);
-                }
-            }
-        }
+        ~StaticVertexPoolSet() = default;
 
         StaticVertexPoolSet(const StaticVertexPoolSet&) = delete;
         StaticVertexPoolSet& operator=(const StaticVertexPoolSet&) = delete;
@@ -69,17 +60,22 @@ namespace lux::render
             const VkBuffer current = entry.source->buffer();
             if (current == VK_NULL_HANDLE)
                 return ~0u;
-            if (entry.pool_id == ~0u)
+            if (!entry.registration)
             {
-                entry.pool_id = vertex_pool_registry_.registerSource(*entry.source);
+                auto registration = vertex_pool_registry_.registerSource(*entry.source);
+                if (!registration)
+                {
+                    return ~0u;
+                }
+                entry.registration = std::move(*registration);
                 entry.registered_buffer = current;
             }
             else if (current != entry.registered_buffer)
             {
-                vertex_pool_registry_.refreshSource(entry.pool_id);
+                entry.registration.refresh();
                 entry.registered_buffer = current;
             }
-            return entry.pool_id;
+            return entry.registration.poolId();
         }
 
         [[nodiscard]] VertexSourceHandle handleForMesh(MeshHandle mesh) noexcept
@@ -114,7 +110,7 @@ namespace lux::render
         struct Entry final
         {
             std::unique_ptr<StaticVertexSource> source;
-            std::uint32_t pool_id{~0u};
+            VertexSourceRegistration registration;
             VkBuffer registered_buffer{VK_NULL_HANDLE};
         };
 

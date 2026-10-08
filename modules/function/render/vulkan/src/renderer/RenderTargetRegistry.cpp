@@ -7,6 +7,23 @@
 
 namespace lux::render
 {
+    Expected<std::unique_ptr<RenderTargetRegistry>> RenderTargetRegistry::create(
+        ResourceContext& resources,
+        uint32_t frames_in_flight
+    ) noexcept
+    {
+        if (frames_in_flight == 0)
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
+        return std::unique_ptr<RenderTargetRegistry>(new RenderTargetRegistry(resources, frames_in_flight));
+    }
+
+    RenderTargetRegistry::RenderTargetRegistry(ResourceContext& resources, uint32_t frames_in_flight) noexcept
+        : res_ctx_(resources), frames_in_flight_(frames_in_flight)
+    {
+    }
+
     PresentContext* RenderTargetRegistry::surfacePresent() noexcept
     {
         auto* st = surfaceTarget();
@@ -81,7 +98,7 @@ namespace lux::render
         VkExtent2D extent
     ) noexcept
     {
-        return OffscreenImagePool::create(*res_ctx_, layout, extent, frames_in_flight_);
+        return OffscreenImagePool::create(res_ctx_, layout, extent, frames_in_flight_);
     }
 
     void RenderTargetRegistry::retireTargetPool(Entry& t, uint64_t retire_serial)
@@ -96,15 +113,6 @@ namespace lux::render
     void RenderTargetRegistry::collectRetiredPools(uint64_t gpu_completed)
     {
         std::erase_if(deferred_pools_, [&](const auto& e) { return e.first <= gpu_completed; });
-    }
-
-    void RenderTargetRegistry::shutdown()
-    {
-        // 设备空闲时调用(关服路径)——顺序:先放延迟池,再拆 target 本体
-        // (Surface 的 PresentContext 析构会逆序拆 sems → swapchain → surface)。
-        deferred_pools_.clear();
-        targets_.clear();
-        surface_target_ = {};
     }
 
 } // namespace lux::render

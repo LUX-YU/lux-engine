@@ -139,7 +139,12 @@ namespace lux::render
         using Entry = RenderTargetEntry;
         using Set = lux::cxx::SlotKeyAutoSparseSet<RenderTargetId, Entry>;
 
-        RenderTargetRegistry() = default;
+        [[nodiscard]] static Expected<std::unique_ptr<RenderTargetRegistry>> create(
+            ResourceContext& resources,
+            uint32_t frames_in_flight
+        ) noexcept;
+        /// Destroy at the owner's GPU safe point, after closing any PresentContext.
+        /// Deferred pools are declared last and release before live target entries.
         ~RenderTargetRegistry() = default;
 
         RenderTargetRegistry(const RenderTargetRegistry&) = delete;
@@ -147,16 +152,9 @@ namespace lux::render
         RenderTargetRegistry(RenderTargetRegistry&&) = delete;
         RenderTargetRegistry& operator=(RenderTargetRegistry&&) = delete;
 
-        /// 造默认池要用到设备资源上下文与在飞帧数,故在设备就绪后注入。
-        void init(ResourceContext& res_ctx, uint32_t frames_in_flight) noexcept
-        {
-            res_ctx_ = &res_ctx;
-            frames_in_flight_ = frames_in_flight;
-        }
-
         [[nodiscard]] ResourceContext& resourceContext() const noexcept
         {
-            return *res_ctx_;
+            return res_ctx_;
         }
 
         [[nodiscard]] uint32_t framesInFlight() const noexcept
@@ -236,12 +234,11 @@ namespace lux::render
         /// 老化回收已越过 GPU 完成水位的延迟池。
         void collectRetiredPools(uint64_t gpu_completed);
 
-        /// 设备空闲时的整体清理(关服路径)。
-        void shutdown();
-
     private:
-        ResourceContext* res_ctx_{nullptr};
-        uint32_t frames_in_flight_{0};
+        RenderTargetRegistry(ResourceContext& resources, uint32_t frames_in_flight) noexcept;
+
+        ResourceContext& res_ctx_;
+        uint32_t frames_in_flight_;
 
         Set targets_;
         RenderTargetId surface_target_{};

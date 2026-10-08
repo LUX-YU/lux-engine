@@ -28,10 +28,10 @@ namespace lux::render
         uint64_t retire_serial
     )
     {
-        const auto* target = targets_registry_.tryGet(key);
+        const auto* target = targets_registry_->tryGet(key);
         const auto texture = target ? target->texture : RTextureHandle{};
-        const auto removed = targets_registry_.detachLayerAndReapIfEmpty(key, scene, view, retire_serial);
-        if (!targets_registry_.tryGet(key))
+        const auto removed = targets_registry_->detachLayerAndReapIfEmpty(key, scene, view, retire_serial);
+        if (!targets_registry_->tryGet(key))
         {
             render_ctx_->globalRegistry().must<TextureResources>().unpublish(texture);
         }
@@ -42,7 +42,7 @@ namespace lux::render
     {
         render_ctx_->globalRegistry().must<TextureResources>().unpublish(target.texture);
         target.texture = {};
-        targets_registry_.retireTargetPool(target, retire_serial);
+        targets_registry_->retireTargetPool(target, retire_serial);
     }
 
     namespace detail
@@ -80,8 +80,8 @@ namespace lux::render
                 Entry entry{};
                 entry.kind = Entry::EKind::SURFACE;
                 entry.layout = layout;
-                impl.targets_registry_.setSurfaceTarget(impl.targets_registry_.insert(std::move(entry)));
-                target = impl.targets_registry_.surfaceTarget();
+                impl.targets_registry_->setSurfaceTarget(impl.targets_registry_->insert(std::move(entry)));
+                target = impl.targets_registry_->surfaceTarget();
             }
 
             target->layout = layout;
@@ -360,7 +360,7 @@ namespace lux::render
 
     bool GeneralRenderServer::hasSwapchainBinding() const noexcept
     {
-        const auto* target = impl_->targets_registry_.surfaceTarget();
+        const auto* target = impl_->targets_registry_->surfaceTarget();
         return target && !target->layers.empty();
     }
 

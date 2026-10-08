@@ -207,39 +207,39 @@ namespace lux::render
         // RenderTargetRegistry —— 那些词汇(渲染目标、合成层、图像池、呈现上下文)
         // 全是渲染层的,没有一个属于线协议;它们住在这里还直接卡住了帧编排的下沉。
         // 本层保留一个持有者与若干转发,调用点照旧。
-        RenderTargetRegistry targets_registry_;
+        std::unique_ptr<RenderTargetRegistry> targets_registry_;
 
         using RenderTargetEntry = RenderTargetRegistry::Entry;
 
         [[nodiscard]] RenderTargetRegistry& targets() noexcept
         {
-            return targets_registry_;
+            return *targets_registry_;
         }
 
         [[nodiscard]] const RenderTargetRegistry& targets() const noexcept
         {
-            return targets_registry_;
+            return *targets_registry_;
         }
 
         // ── 兼容转发(逐步收敛到直接用 targets()) ────────────────────────
         RenderTargetEntry* surfaceTarget() noexcept
         {
-            return targets_registry_.surfaceTarget();
+            return targets_registry_->surfaceTarget();
         }
 
         PresentContext* surfacePresent() noexcept
         {
-            return targets_registry_.surfacePresent();
+            return targets_registry_->surfacePresent();
         }
 
         SwapchainProvider* swapchainProvider() noexcept
         {
-            return targets_registry_.swapchainProvider();
+            return targets_registry_->swapchainProvider();
         }
 
         RenderTargetEntry* findOffscreenByView(RenderSceneId s, ViewHandle v) noexcept
         {
-            return targets_registry_.findOffscreenByView(s, v);
+            return targets_registry_->findOffscreenByView(s, v);
         }
 
         bool detachLayerAndReapIfEmpty(RenderTargetId key, RenderSceneId s, ViewHandle v, uint64_t retire_serial);
@@ -275,7 +275,7 @@ namespace lux::render
 
         RenderTargetId findOffscreenKeyByView(RenderSceneId s, ViewHandle v) const noexcept
         {
-            return targets_registry_.findOffscreenKeyByView(s, v);
+            return targets_registry_->findOffscreenKeyByView(s, v);
         }
 
         RenderSceneId current_bulk_scene_{};

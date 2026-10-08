@@ -107,6 +107,7 @@ namespace
 #define vkDestroyImageView destroyView
 #include "../src/gpu/VulkanContext.cpp"
 #include "../src/targets/OffscreenImagePool.cpp"
+#include "../src/renderer/RenderTargetRegistry.cpp"
 #undef vkDestroyImageView
 #undef vkCreateImageView
 // clang-format on
@@ -309,6 +310,54 @@ int main()
         assert(empty && (*empty)->backingRevision() == 1);
         assert(images.empty() && views.empty());
     }
+    // Actual registry producer and original target/serial ownership, without a server shim.
+    {
+        static_assert(!std::is_default_constructible_v<RenderTargetRegistry>);
+        static_assert(!std::is_move_constructible_v<RenderTargetRegistry>);
+        attempts = 0;
+        auto invalid = RenderTargetRegistry::create(resources, 0);
+        assert(!invalid && isError<err::internal::InvalidArgument>(invalid.error()));
+        assert(attempts == 0 && images.empty() && views.empty());
+        auto owner = RenderTargetRegistry::create(resources, 2);
+        assert(owner);
+        auto& registry = **owner;
+        assert(&registry.resourceContext() == &resources && registry.framesInFlight() == 2);
+        attempts = 0;
+        fail_at = 3;
+        auto failed = registry.makeTargetPool(layout, {8, 8});
+        assert(!failed && isError<err::device::VulkanCallFailed>(failed.error()));
+        assert(failed.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+        assert(registry.all().values().empty() && images.empty() && views.empty());
+        fail_at = 0;
+        auto pool = registry.makeTargetPool(layout, {8, 8});
+        assert(pool);
+        RenderTargetEntry entry;
+        entry.layout = layout;
+        entry.pool = std::move(*pool);
+        const auto first = registry.insert(std::move(entry));
+        assert(first.isValid() && registry.tryGet(first));
+        registry.retireTargetPool(*registry.tryGet(first), 30);
+        registry.erase(first);
+        assert(!registry.tryGet(first) && images.size() == 4);
+        pool = registry.makeTargetPool(layout, {4, 4});
+        assert(pool);
+        RenderTargetEntry replacement;
+        replacement.layout = layout;
+        replacement.pool = std::move(*pool);
+        const auto second = registry.insert(std::move(replacement));
+        assert(second.isValid() && second != first && !registry.tryGet(first));
+        assert(registry.tryGet(second)->pool->extent().width == 4);
+        registry.collectRetiredPools(29);
+        assert(images.size() == 8 && views.size() == 8);
+        registry.collectRetiredPools(30);
+        assert(images.size() == 4 && views.size() == 4);
+        registry.retireTargetPool(*registry.tryGet(second), 40);
+        registry.erase(second);
+        assert(images.size() == 4 && !registry.tryGet(second));
+        // Original owner-safe teardown disposes the remaining retirement prefix.
+        owner->reset();
+    }
+    assert(images.empty() && views.empty());
     std::puts("offscreen: 8 create + 8 resize + 12 layout native failures; exact errors, retry, retention, serial "
               "retirement PASS");
 }

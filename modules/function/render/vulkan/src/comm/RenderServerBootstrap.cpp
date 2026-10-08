@@ -308,8 +308,14 @@ namespace lux::render
         {
             return lux::cxx::unexpected(resources.error());
         }
+        auto targets = RenderTargetRegistry::create(**resources, frames_in_flight_);
+        if (!targets)
+        {
+            return lux::cxx::unexpected(targets.error());
+        }
+        // These mandatory dependencies are adopted together before later construction.
         res_ctx_ = std::move(*resources);
-        targets_registry_.init(*res_ctx_, frames_in_flight_);
+        targets_registry_ = std::move(*targets);
 
         auto& device_ctx = *dev_ctx_;
         VkDescriptorPool dp = res_ctx_->descriptorPool();
@@ -614,7 +620,7 @@ namespace lux::render
                 }
             }
         }
-        for (auto& target : targets_registry_.all().values())
+        for (auto& target : targets_registry_->all().values())
         {
             if (target.present)
             {
@@ -636,7 +642,7 @@ namespace lux::render
         // Destroy target pools + Surface presentation state before device teardown.
         // Member RAII enforces swapchain → semaphores → surface.
         pending_resource_releases_.clear();
-        targets_registry_.shutdown();
+        targets_registry_.reset();
 
         // Destroy FrameDriver (waits idle + frees sync objects)
         frame_driver_.reset();
@@ -825,10 +831,10 @@ namespace lux::render
             // 设计不变量③);Offscreen target 因此空链的,池按 fence 水位
             // 延迟释放后整个 target 消亡;Surface target 只摘层不消亡。
             {
-                const auto keys = im.targets_registry_.all().keys(); // 拷贝:循环内 erase
+                const auto keys = im.targets_registry_->all().keys(); // 拷贝:循环内 erase
                 for (const auto key : keys)
                 {
-                    auto* t = im.targets_registry_.tryGet(key);
+                    auto* t = im.targets_registry_->tryGet(key);
                     if (!t)
                     {
                         continue;
@@ -846,7 +852,7 @@ namespace lux::render
                         t->kind == GeneralRenderServer::Impl::RenderTargetEntry::EKind::OFFSCREEN)
                     {
                         im.retireTargetPool(*t, retire_serial);
-                        im.targets_registry_.erase(key);
+                        im.targets_registry_->erase(key);
                     }
                 }
             }
@@ -955,7 +961,7 @@ namespace lux::render
             // fence 水位延迟释放——拉平此前 base 路径"立即析构"的
             // in-flight 风险(设计消亡清单:立即析构 → 统一 fence 门控)。
             // 摘除被拒也照跑:合成链上不该再有这个 view 的层(幂等清扫)。
-            const auto keys = im.targets_registry_.all().keys();
+            const auto keys = im.targets_registry_->all().keys();
             for (const auto key : keys)
             {
                 im.detachLayerAndReapIfEmpty(key, p.scene_id, p.view, im.current_stamp_.serial);
@@ -1015,7 +1021,7 @@ namespace lux::render
             entry.kind = GeneralRenderServer::Impl::RenderTargetEntry::EKind::OFFSCREEN;
             entry.flags = p.flags;
             entry.layout = layout;
-            auto pool = im.targets_registry_.makeTargetPool(layout, vk_extent);
+            auto pool = im.targets_registry_->makeTargetPool(layout, vk_extent);
             if (!pool)
             {
                 im.render_ctx_->reportError(pool.error());
@@ -1024,11 +1030,11 @@ namespace lux::render
                 return;
             }
             entry.pool = std::move(*pool);
-            reply.target = im.targets_registry_.insert(std::move(entry));
+            reply.target = im.targets_registry_->insert(std::move(entry));
             if ((p.flags & kTargetFlagSampled) != 0)
             {
                 reply.texture = im.render_ctx_->globalRegistry().must<TextureResources>().publishOutput(reply.target);
-                im.targets_registry_.tryGet(reply.target)->texture = reply.texture;
+                im.targets_registry_->tryGet(reply.target)->texture = reply.texture;
             }
             replyToCurrent<CreateOffscreenTargetPayload>(ctx, reply);
         }
@@ -1056,7 +1062,7 @@ namespace lux::render
                 return;
             }
             reply.target = *r;
-            const auto extent = im.targets_registry_.tryGet(*r)->present->provider()->extent();
+            const auto extent = im.targets_registry_->tryGet(*r)->present->provider()->extent();
             reply.extent = {extent.width, extent.height};
             replyToCurrent<CreateSurfaceTargetPayload>(ctx, reply);
         }
@@ -1064,7 +1070,7 @@ namespace lux::render
         void handleDestroyTarget(Ctx& ctx, const DestroyTargetPayload& p)
         {
             auto& im = impl(ctx);
-            auto* t = im.targets_registry_.tryGet(p.target);
+            auto* t = im.targets_registry_->tryGet(p.target);
             if (!t)
             {
                 // 幂等:不存在也回执,宿主的关窗等待不至于挂死。
@@ -1077,9 +1083,9 @@ namespace lux::render
                 // 两阶段销毁前半程:立即停止呈现(surface_target_ 清空 →
                 // 后续 tick 走离屏路径,不再 acquire),呈现机件随在途账本
                 // 移出 entry,等 fence 水位证明在飞帧全部走完(见 tick GC)。
-                if (p.target == im.targets_registry_.surfaceTargetId())
+                if (p.target == im.targets_registry_->surfaceTargetId())
                 {
-                    im.targets_registry_.setSurfaceTarget({});
+                    im.targets_registry_->setSurfaceTarget({});
                 }
                 t->layers.clear();
                 GeneralRenderServer::Impl::PendingResourceRelease rel{};
@@ -1091,7 +1097,7 @@ namespace lux::render
                 rel.retire_serial = im.frame_driver_ ? im.frame_driver_->lastSubmittedSerial() : 0;
                 rel.request_id = ctx.currentRequestId();
                 rel.ctx = std::move(t->present);
-                im.targets_registry_.erase(p.target);
+                im.targets_registry_->erase(p.target);
                 im.pending_resource_releases_.push_back(std::move(rel));
                 return; // 回执延迟——TargetReleased 由 GC 步进送出
             }
@@ -1099,14 +1105,14 @@ namespace lux::render
             // Offscreen:池经统一退休入口(UI 池路由到 UI 侧退休列表,
             // 其余按 fence 水位延迟拆);受理即回执,客户端无需等待。
             im.retireTargetPool(*t, im.frame_driver_ ? im.frame_driver_->lastSubmittedSerial() : 0);
-            im.targets_registry_.erase(p.target);
+            im.targets_registry_->erase(p.target);
             replyToCurrent<DestroyTargetPayload>(ctx, TargetReleasedReply{p.target, 0u});
         }
 
         void handleSetLayer(Ctx& ctx, const SetLayerPayload& p)
         {
             auto& im = impl(ctx);
-            auto* t = im.targets_registry_.tryGet(p.target);
+            auto* t = im.targets_registry_->tryGet(p.target);
             auto* sc = im.renderer_->getScene(p.scene_id);
             if (!t || t->frozen || !sc || !sc->getView(p.view))
             {
@@ -1131,8 +1137,8 @@ namespace lux::render
         void handleSwitchViewTarget(Ctx& ctx, const SwitchViewTargetPayload& p)
         {
             auto& im = impl(ctx);
-            auto* previous = im.targets_registry_.tryGet(p.previous);
-            auto* next = im.targets_registry_.tryGet(p.next);
+            auto* previous = im.targets_registry_->tryGet(p.previous);
+            auto* next = im.targets_registry_->tryGet(p.next);
             auto* scene = im.renderer_->getScene(p.scene);
             const auto reject = [&]
             {
@@ -1218,7 +1224,7 @@ namespace lux::render
         void handleRemoveLayer(Ctx& ctx, const RemoveLayerPayload& p)
         {
             auto& im = impl(ctx);
-            auto* t = im.targets_registry_.tryGet(p.target);
+            auto* t = im.targets_registry_->tryGet(p.target);
             if (!t || p.order >= t->layers.size())
             {
                 return;
@@ -1229,7 +1235,7 @@ namespace lux::render
         void handleResizeTarget(Ctx& ctx, const ResizeTargetPayload& p)
         {
             auto& im = impl(ctx);
-            auto* t = im.targets_registry_.tryGet(p.target);
+            auto* t = im.targets_registry_->tryGet(p.target);
             TargetResizedReply reply{};
             reply.target = p.target;
 #if defined(LUX_RENDER_LIFECYCLE_DIAGNOSTICS)
@@ -1362,7 +1368,7 @@ namespace lux::render
         {
             OffscreenImagePool* pool = nullptr;
             std::uint32_t image_slot{};
-            if (auto* t = im.targets_registry_.tryGet(j.target);
+            if (auto* t = im.targets_registry_->tryGet(j.target);
                 t && t->kind == GeneralRenderServer::Impl::RenderTargetEntry::EKind::OFFSCREEN)
             {
                 pool = t->pool.get();

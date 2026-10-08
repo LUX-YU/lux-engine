@@ -1272,8 +1272,8 @@ namespace lux::render
         e.kind = RenderTargetEntry::EKind::SURFACE;
         e.layout = (*pc)->provider()->layout();
         e.present = std::move(*pc);
-        targets_registry_.setSurfaceTarget(targets_registry_.insert(std::move(e)));
-        return targets_registry_.surfaceTargetId();
+        targets_registry_->setSurfaceTarget(targets_registry_->insert(std::move(e)));
+        return targets_registry_->surfaceTargetId();
     }
 
     Expected<void> GeneralRenderServer::attachToWindow(lux::window::LuxWindow& window)
@@ -1541,7 +1541,7 @@ namespace lux::render
         }
         im.renderer_->setGpuCompletedSerial(gpu_completed);
         im.renderer_->collectRetiredScenes(gpu_completed);
-        im.targets_registry_.collectRetiredPools(gpu_completed);
+        im.targets_registry_->collectRetiredPools(gpu_completed);
         for (auto& r : im.pending_resource_releases_)
         {
             if (r.torn_down || gpu_completed < r.retire_serial)
@@ -1645,7 +1645,7 @@ namespace lux::render
         renderer_->setGpuCompletedSerial(gpu_completed);
         frame_orchestrator_.beginFrame(*renderer_);
         std::erase_if(async_deferred_staging_, [&](const auto& e) { return e.first <= gpu_completed; });
-        targets_registry_.collectRetiredPools(gpu_completed);
+        targets_registry_->collectRetiredPools(gpu_completed);
 
         VRAMBudgetGuard budget(dev_ctx_->vmaAllocator());
         auto snap = budget.snapshot();

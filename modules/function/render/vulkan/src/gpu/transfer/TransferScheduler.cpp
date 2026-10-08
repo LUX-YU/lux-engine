@@ -1,5 +1,5 @@
-#include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
+#include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
 #include <vk_mem_alloc.h>
 
 #include <algorithm>
@@ -64,13 +64,18 @@ namespace lux::render
     bool TransferScheduler::init(const Config& cfg)
     {
         if (initialized_)
+        {
             return false;
+        }
         allocator_ = cfg.allocator;
         frames_in_flight_ = cfg.frames_in_flight;
 
-        if (!ring_.init(cfg.allocator, cfg.ring_capacity, cfg.frames_in_flight))
+        auto ring = StagingRingBuffer::create(cfg.allocator, cfg.ring_capacity, cfg.frames_in_flight);
+        if (!ring)
+        {
             return false;
-
+        }
+        ring_.emplace(std::move(*ring));
         deferred_staging_.resize(frames_in_flight_);
         initialized_ = true;
         return true;
@@ -79,11 +84,15 @@ namespace lux::render
     void TransferScheduler::shutdown()
     {
         if (!initialized_)
+        {
             return;
+        }
 
         // Flush all deferred staging buffers.
         for (auto& slot : deferred_staging_)
+        {
             slot.clear();
+        }
         overflow_staging_.clear();
 
         ring_ = {};
@@ -97,12 +106,16 @@ namespace lux::render
     StagingAlloc TransferScheduler::allocateStaging(VkDeviceSize bytes)
     {
         if (!initialized_)
+        {
             renderFatal("TransferScheduler::allocateStaging() before initialization");
+        }
 
         // Fast path: ring sub-allocation.
-        auto sub = ring_.suballocate(bytes);
+        auto sub = ring_->suballocate(bytes);
         if (sub)
+        {
             return {sub.buffer, /*allocation=*/nullptr, sub.mapped, sub.offset};
+        }
 
         // Overflow: dedicated VMA staging buffer.
         VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -117,7 +130,9 @@ namespace lux::render
         VkBuffer buf = VK_NULL_HANDLE;
         VmaAllocation alloc = nullptr;
         if (vmaCreateBuffer(allocator_, &bci, &aci, &buf, &alloc, &info) != VK_SUCCESS)
+        {
             return {};
+        }
 
         overflow_staging_.emplace_back(allocator_, buf, alloc);
         return {buf, alloc, info.pMappedData, /*srcOffset=*/0};
@@ -193,9 +208,12 @@ namespace lux::render
         std::stable_sort(
             buffer_copies_.begin(),
             buffer_copies_.end(),
-            [](const BufferCopyRequest& a, const BufferCopyRequest& b) {
+            [](const BufferCopyRequest& a, const BufferCopyRequest& b)
+            {
                 if (a.dst != b.dst)
+                {
                     return a.dst < b.dst;
+                }
                 return a.priority < b.priority;
             }
         );
@@ -205,9 +223,13 @@ namespace lux::render
         for (const auto& c : buffer_copies_)
         {
             if (c.domain == EBufferDomain::TRANSFER_DST)
+            {
                 continue; // New buffer, no reader yet.
+            }
             if (c.dst == prev_buf && c.domain == prev_domain)
+            {
                 continue; // Already emitted.
+            }
 
             auto sa = domainToStageAccess(c.domain);
 
@@ -235,18 +257,24 @@ namespace lux::render
         for (const auto& c : image_copies_)
         {
             if (c.domain == EBufferDomain::TRANSFER_DST && c.old_layout == VK_IMAGE_LAYOUT_UNDEFINED)
+            {
                 continue; // Brand-new image.
+            }
 
             bool seen = false;
             for (const auto& e : pre_image_barriers_)
+            {
                 if (e.image == c.dst && e.subresourceRange.baseMipLevel == c.subresource.mipLevel &&
                     e.subresourceRange.baseArrayLayer == c.subresource.baseArrayLayer)
                 {
                     seen = true;
                     break;
                 }
+            }
             if (seen)
+            {
                 continue;
+            }
 
             auto sa = domainToStageAccess(c.domain);
 
@@ -277,7 +305,9 @@ namespace lux::render
         buildPreBarriers();
 
         if (pre_buffer_barriers_.empty() && pre_image_barriers_.empty())
+        {
             return;
+        }
 
         VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
         dep.bufferMemoryBarrierCount = static_cast<uint32_t>(pre_buffer_barriers_.size());
@@ -315,7 +345,9 @@ namespace lux::render
             for (const auto& c : buffer_copies_)
             {
                 if (c.priority >= 0)
+                {
                     break;
+                }
                 VkBufferCopy2 region{VK_STRUCTURE_TYPE_BUFFER_COPY_2};
                 region.srcOffset = c.src_offset;
                 region.dstOffset = c.dst_offset;
@@ -347,7 +379,9 @@ namespace lux::render
             for (const auto& c : buffer_copies_)
             {
                 if (c.priority < 0)
+                {
                     continue;
+                }
                 VkBufferCopy2 region{VK_STRUCTURE_TYPE_BUFFER_COPY_2};
                 region.srcOffset = c.src_offset;
                 region.dstOffset = c.dst_offset;
@@ -395,7 +429,8 @@ namespace lux::render
         // disjoint-or-identical in content, so hazards only fire across batches —
         // rare, and each extra barrier is cheap next to the copies themselves.
         std::size_t ordered_until = 0; // copies [0, ordered_until) are barrier-ordered
-        const auto overlaps = [](const ImageCopyRequest& a, const ImageCopyRequest& b) noexcept {
+        const auto overlaps = [](const ImageCopyRequest& a, const ImageCopyRequest& b) noexcept
+        {
             return a.dst == b.dst && a.subresource.mipLevel == b.subresource.mipLevel &&
                    a.subresource.baseArrayLayer == b.subresource.baseArrayLayer &&
                    a.offset.x < b.offset.x + static_cast<int32_t>(b.extent.width) &&
@@ -409,7 +444,9 @@ namespace lux::render
 
             bool hazard = false;
             for (std::size_t p = ordered_until; p < ci && !hazard; ++p)
+            {
                 hazard = overlaps(image_copies_[p], c);
+            }
             if (hazard)
             {
                 VkMemoryBarrier2 mem{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
@@ -455,18 +492,27 @@ namespace lux::render
         // ── Buffer post-barriers: TRANSFER_WRITE→READ ───────────────────
         // Re-sort by dst for dedup (may have been reordered by priority sort).
         auto sorted = buffer_copies_;
-        std::sort(sorted.begin(), sorted.end(), [](const BufferCopyRequest& a, const BufferCopyRequest& b) {
-            if (a.dst != b.dst)
-                return a.dst < b.dst;
-            return static_cast<uint8_t>(a.domain) < static_cast<uint8_t>(b.domain);
-        });
+        std::sort(
+            sorted.begin(),
+            sorted.end(),
+            [](const BufferCopyRequest& a, const BufferCopyRequest& b)
+            {
+                if (a.dst != b.dst)
+                {
+                    return a.dst < b.dst;
+                }
+                return static_cast<uint8_t>(a.domain) < static_cast<uint8_t>(b.domain);
+            }
+        );
 
         VkBuffer prev_buf = VK_NULL_HANDLE;
         EBufferDomain prev_domain{};
         for (const auto& c : sorted)
         {
             if (c.dst == prev_buf && c.domain == prev_domain)
+            {
                 continue;
+            }
 
             auto sa = domainToStageAccess(c.domain);
 
@@ -497,12 +543,14 @@ namespace lux::render
 
             VkImageMemoryBarrier2* existing = nullptr;
             for (auto& e : post_image_barriers_)
+            {
                 if (e.image == c.dst && e.subresourceRange.baseMipLevel == c.subresource.mipLevel &&
                     e.subresourceRange.baseArrayLayer == c.subresource.baseArrayLayer)
                 {
                     existing = &e;
                     break;
                 }
+            }
 
             VkImageMemoryBarrier2 b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
             b.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
@@ -523,9 +571,13 @@ namespace lux::render
             };
 
             if (existing)
+            {
                 *existing = b;
+            }
             else
+            {
                 post_image_barriers_.push_back(b);
+            }
         }
 
         // ── QFOT acquire barriers ───────────────────────────────────────
@@ -573,10 +625,14 @@ namespace lux::render
 
         // Merge host-write and other extra barriers into the post batch.
         for (const auto& b : extra_post_barriers_)
+        {
             post_buffer_barriers_.push_back(b);
+        }
 
         if (post_buffer_barriers_.empty() && post_image_barriers_.empty())
+        {
             return;
+        }
 
         VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
         dep.bufferMemoryBarrierCount = static_cast<uint32_t>(post_buffer_barriers_.size());
@@ -600,7 +656,7 @@ namespace lux::render
         extra_post_barriers_.clear();
         last_barrier_count_ = 0;
         last_copy_count_ = 0;
-        ring_.resetSlot(frame_slot);
+        ring_->resetSlot(frame_slot);
     }
 
     void TransferScheduler::retireStaging(uint32_t frame_slot)

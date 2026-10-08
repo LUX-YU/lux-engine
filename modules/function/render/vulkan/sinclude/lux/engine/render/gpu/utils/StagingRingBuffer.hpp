@@ -11,8 +11,10 @@
  * NOT thread-safe — intended for the render thread only (Path A staging).
  */
 
-#include <lux/engine/render/gpu/VmaFwd.hpp>
+#include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/render/gpu/VmaFwd.hpp>
+#include <lux/engine/render/gpu/memory/StagingBuffer.hpp>
 
 #include <cstdint>
 
@@ -34,17 +36,16 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC StagingRingBuffer
     {
     public:
-        StagingRingBuffer() = default;
-
-        /// Create the ring buffer. Returns false on VMA allocation failure.
+        /// Create complete coherent mapped backing, or return the exact native/configuration error.
         /// @param frames_in_flight  Number of FIF slots; the ring is partitioned
         ///        so that each slot owns capacity/FIF bytes that never overlap.
-        [[nodiscard]] bool init(VmaAllocator allocator, VkDeviceSize capacity, uint32_t frames_in_flight = 1);
+        [[nodiscard]] static Expected<StagingRingBuffer>
+        create(VmaAllocator allocator, VkDeviceSize capacity, uint32_t frames_in_flight = 1) noexcept;
 
-        ~StagingRingBuffer();
+        ~StagingRingBuffer() noexcept = default;
 
-        StagingRingBuffer(StagingRingBuffer&& o) noexcept;
-        StagingRingBuffer& operator=(StagingRingBuffer&& o) noexcept;
+        StagingRingBuffer(StagingRingBuffer&&) noexcept = default;
+        StagingRingBuffer& operator=(StagingRingBuffer&&) noexcept = default;
 
         StagingRingBuffer(const StagingRingBuffer&) = delete;
         StagingRingBuffer& operator=(const StagingRingBuffer&) = delete;
@@ -62,25 +63,20 @@ namespace lux::render
         /// Each slot gets capacity/frames_in_flight bytes of non-overlapping space.
         void resetSlot(uint32_t frame_slot) noexcept;
 
-        [[nodiscard]] bool valid() const noexcept
-        {
-            return buffer_ != VK_NULL_HANDLE;
-        }
         [[nodiscard]] VkDeviceSize capacity() const noexcept
         {
             return capacity_;
         }
+
         [[nodiscard]] VkDeviceSize used() const noexcept
         {
             return head_ - partition_start_;
         }
 
     private:
-        void destroy() noexcept;
+        StagingRingBuffer(StagingBuffer backing, void* mapped, VkDeviceSize capacity, uint32_t frames) noexcept;
 
-        VmaAllocator allocator_{nullptr};
-        VkBuffer buffer_{VK_NULL_HANDLE};
-        VmaAllocation allocation_{nullptr};
+        StagingBuffer backing_;
         void* base_ptr_{nullptr};
         VkDeviceSize capacity_{0};
         VkDeviceSize head_{0};

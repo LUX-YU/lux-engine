@@ -1,106 +1,79 @@
 #include <lux/engine/render/gpu/utils/StagingRingBuffer.hpp>
 #include <vk_mem_alloc.h>
 
-#include <algorithm>
-#include <cstring>
+#include <bit>
+#include <cstddef>
 #include <utility>
 
 namespace lux::render
 {
-    bool StagingRingBuffer::init(VmaAllocator allocator, VkDeviceSize capacity, uint32_t frames_in_flight)
+    Expected<StagingRingBuffer> StagingRingBuffer::create(
+        VmaAllocator allocator,
+        VkDeviceSize capacity,
+        uint32_t frames_in_flight
+    ) noexcept
     {
-        destroy();
-
-        if (frames_in_flight == 0)
-            frames_in_flight = 1;
-
-        VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        bci.size = capacity;
-        bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-
-        VmaAllocationCreateInfo aci{};
-        aci.usage = VMA_MEMORY_USAGE_AUTO;
-        aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-        VmaAllocationInfo info{};
-        VkBuffer buf = VK_NULL_HANDLE;
-        VmaAllocation alloc = nullptr;
-        if (vmaCreateBuffer(allocator, &bci, &aci, &buf, &alloc, &info) != VK_SUCCESS)
-            return false;
-
-        allocator_ = allocator;
-        buffer_ = buf;
-        allocation_ = alloc;
-        base_ptr_ = info.pMappedData;
-        capacity_ = capacity;
-        frames_in_flight_ = frames_in_flight;
-        partition_start_ = 0;
-        partition_end_ = capacity / frames_in_flight;
-        head_ = 0;
-        return true;
-    }
-
-    StagingRingBuffer::~StagingRingBuffer()
-    {
-        destroy();
-    }
-
-    StagingRingBuffer::StagingRingBuffer(StagingRingBuffer&& o) noexcept
-        : allocator_(o.allocator_), buffer_(o.buffer_), allocation_(o.allocation_), base_ptr_(o.base_ptr_),
-          capacity_(o.capacity_), head_(o.head_), partition_start_(o.partition_start_),
-          partition_end_(o.partition_end_), frames_in_flight_(o.frames_in_flight_)
-    {
-        o.allocator_ = nullptr;
-        o.buffer_ = VK_NULL_HANDLE;
-        o.allocation_ = nullptr;
-        o.base_ptr_ = nullptr;
-        o.capacity_ = 0;
-        o.head_ = 0;
-        o.partition_start_ = 0;
-        o.partition_end_ = 0;
-        o.frames_in_flight_ = 1;
-    }
-
-    StagingRingBuffer& StagingRingBuffer::operator=(StagingRingBuffer&& o) noexcept
-    {
-        if (this != &o)
+        const bool has_allocator = allocator != nullptr;
+        const bool has_partitions = frames_in_flight != 0 && capacity >= frames_in_flight;
+        const bool is_invalid_config = !has_allocator || !has_partitions;
+        if (is_invalid_config)
         {
-            destroy();
-            allocator_ = o.allocator_;
-            buffer_ = o.buffer_;
-            allocation_ = o.allocation_;
-            base_ptr_ = o.base_ptr_;
-            capacity_ = o.capacity_;
-            head_ = o.head_;
-            partition_start_ = o.partition_start_;
-            partition_end_ = o.partition_end_;
-            frames_in_flight_ = o.frames_in_flight_;
-            o.allocator_ = nullptr;
-            o.buffer_ = VK_NULL_HANDLE;
-            o.allocation_ = nullptr;
-            o.base_ptr_ = nullptr;
-            o.capacity_ = 0;
-            o.head_ = 0;
-            o.partition_start_ = 0;
-            o.partition_end_ = 0;
-            o.frames_in_flight_ = 1;
+            return renderFailure<err::internal::InvalidArgument>();
         }
-        return *this;
+        VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        buffer_info.size = capacity;
+        buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        VmaAllocationCreateInfo allocation_info{};
+        allocation_info.usage = VMA_MEMORY_USAGE_AUTO;
+        allocation_info.flags =
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        // Callers write returned spans directly; no later noncoherent flush protocol exists.
+        allocation_info.requiredFlags = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+        VmaAllocationInfo mapping{};
+        VkBuffer buffer{};
+        VmaAllocation allocation{};
+        const auto status = vmaCreateBuffer(allocator, &buffer_info, &allocation_info, &buffer, &allocation, &mapping);
+        if (status != VK_SUCCESS)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(status));
+        }
+        StagingBuffer backing(allocator, buffer, allocation);
+        if (!mapping.pMappedData)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(VK_ERROR_MEMORY_MAP_FAILED));
+        }
+        return StagingRingBuffer(std::move(backing), mapping.pMappedData, capacity, frames_in_flight);
+    }
+
+    StagingRingBuffer::StagingRingBuffer(
+        StagingBuffer backing,
+        void* mapped,
+        VkDeviceSize capacity,
+        uint32_t frames
+    ) noexcept
+        : backing_(std::move(backing)), base_ptr_(mapped), capacity_(capacity), partition_end_(capacity / frames),
+          frames_in_flight_(frames)
+    {
     }
 
     StagingSubAlloc StagingRingBuffer::suballocate(VkDeviceSize bytes, VkDeviceSize alignment)
     {
-        if (buffer_ == VK_NULL_HANDLE || bytes == 0)
+        const bool has_backing = backing_.valid();
+        const bool is_invalid_request = bytes == 0 || !std::has_single_bit(alignment);
+        if (!has_backing || is_invalid_request)
+        {
             return {};
-
-        // Align head_ up to the requested alignment.
-        VkDeviceSize aligned_head = (head_ + alignment - 1) & ~(alignment - 1);
-        if (aligned_head + bytes > partition_end_)
-            return {}; // overflow — caller falls back to dedicated alloc
-
-        void* ptr = static_cast<std::byte*>(base_ptr_) + aligned_head;
+        }
+        const auto padding = (alignment - (head_ & (alignment - 1))) & (alignment - 1);
+        const auto available = partition_end_ - head_;
+        const bool exceeds_partition = padding > available || bytes > available - padding;
+        if (exceeds_partition)
+        {
+            return {};
+        }
+        const auto aligned_head = head_ + padding;
         head_ = aligned_head + bytes;
-        return {buffer_, aligned_head, ptr};
+        return {backing_.buffer(), aligned_head, static_cast<std::byte*>(base_ptr_) + aligned_head};
     }
 
     void StagingRingBuffer::reset() noexcept
@@ -110,28 +83,10 @@ namespace lux::render
 
     void StagingRingBuffer::resetSlot(uint32_t frame_slot) noexcept
     {
-        const VkDeviceSize part_size = capacity_ / frames_in_flight_;
-        const uint32_t slot = frame_slot % frames_in_flight_;
+        const auto part_size = capacity_ / frames_in_flight_;
+        const auto slot = frame_slot % frames_in_flight_;
         partition_start_ = part_size * slot;
         partition_end_ = partition_start_ + part_size;
         head_ = partition_start_;
     }
-
-    void StagingRingBuffer::destroy() noexcept
-    {
-        if (buffer_ != VK_NULL_HANDLE && allocator_ != nullptr)
-        {
-            vmaDestroyBuffer(allocator_, buffer_, allocation_);
-        }
-        allocator_ = nullptr;
-        buffer_ = VK_NULL_HANDLE;
-        allocation_ = nullptr;
-        base_ptr_ = nullptr;
-        capacity_ = 0;
-        head_ = 0;
-        partition_start_ = 0;
-        partition_end_ = 0;
-        frames_in_flight_ = 1;
-    }
-
 } // namespace lux::render

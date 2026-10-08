@@ -15,12 +15,13 @@
  * Thread safety: render-thread only.
  */
 
-#include <lux/engine/render/gpu/transfer/TransferTypes.hpp>
-#include <lux/engine/render/gpu/transfer/TransferContributor.hpp>
-#include <lux/engine/render/gpu/utils/StagingRingBuffer.hpp>
-#include <lux/engine/render/gpu/memory/StagingBuffer.hpp>
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/render/gpu/memory/StagingBuffer.hpp>
+#include <lux/engine/render/gpu/transfer/TransferContributor.hpp>
+#include <lux/engine/render/gpu/transfer/TransferTypes.hpp>
+#include <lux/engine/render/gpu/utils/StagingRingBuffer.hpp>
 
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -131,11 +132,14 @@ namespace lux::render
         {
             return last_barrier_count_;
         }
+
         [[nodiscard]] uint32_t lastCopyCount() const noexcept
         {
             return last_copy_count_;
         }
+
         [[nodiscard]] bool hasWork() const noexcept;
+
         [[nodiscard]] bool isInitialized() const noexcept
         {
             return initialized_;
@@ -151,7 +155,7 @@ namespace lux::render
         uint32_t frames_in_flight_{2};
 
         // Staging memory
-        StagingRingBuffer ring_;
+        std::optional<StagingRingBuffer> ring_;
         std::vector<StagingBuffer> overflow_staging_;              ///< Current frame overflow
         std::vector<std::vector<StagingBuffer>> deferred_staging_; ///< Per-FIF ring for retirement
 

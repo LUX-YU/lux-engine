@@ -493,6 +493,7 @@ namespace
 #include <cassert>
 #include "../src/gpu/memory/VmaTypes.cpp"
 #include "../src/gpu/memory/StagingBuffer.cpp"
+#include "../src/gpu/utils/StagingRingBuffer.cpp"
 #define vkAllocateCommandBuffers allocate
 #define vkFreeCommandBuffers freeCommands
 #define vkBeginCommandBuffer begin
@@ -3105,6 +3106,64 @@ void checkTerrainConstruction(
     );
 }
 
+void checkStagingRing(lux::render::DeviceContext& device)
+{
+    using namespace lux::render;
+    static_assert(!std::is_default_constructible_v<StagingRingBuffer>);
+    static_assert(!std::is_copy_constructible_v<StagingRingBuffer>);
+    static_assert(std::is_nothrow_move_constructible_v<StagingRingBuffer>);
+    static_assert(std::is_nothrow_move_assignable_v<StagingRingBuffer>);
+    const auto original_buffers = buffers.size();
+    assert(!StagingRingBuffer::create(nullptr, 4096, 2));
+    assert(!StagingRingBuffer::create(device.vmaAllocator(), 4096, 0));
+    assert(!StagingRingBuffer::create(device.vmaAllocator(), 1, 2));
+    for (const auto boundary : {EFailure::BUFFER, EFailure::MAPPED})
+    {
+        failure = boundary;
+        const auto rejected = StagingRingBuffer::create(device.vmaAllocator(), 4096, 2);
+        assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
+        const auto expected = boundary == EFailure::BUFFER ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_ERROR_MEMORY_MAP_FAILED;
+        assert(rejected.error().args[0] == encodeVkResult(expected));
+        assert(buffers.size() == original_buffers);
+    }
+    failure = EFailure::NONE;
+    {
+        auto made = StagingRingBuffer::create(device.vmaAllocator(), 4097, 2);
+        assert(made);
+        auto ring = std::move(*made);
+        const auto first = ring.suballocate(256);
+        assert(first && first.offset == 0);
+        std::memset(first.mapped, 0x36, 256);
+        const auto used = ring.used();
+        assert(!ring.suballocate(std::numeric_limits<VkDeviceSize>::max()));
+        assert(!ring.suballocate(1, 0));
+        assert(!ring.suballocate(1, 3));
+        assert(!ring.suballocate(1, VkDeviceSize{1} << 63));
+        assert(ring.used() == used);
+        assert(ring.suballocate(1792) && !ring.suballocate(1));
+        ring.resetSlot(1);
+        const auto second = ring.suballocate(2048);
+        assert(second && second.buffer == first.buffer && second.offset == 2048);
+        std::memset(second.mapped, 0x72, 2048);
+        assert(static_cast<const unsigned char*>(first.mapped)[0] == 0x36);
+        assert(!ring.suballocate(1));
+        auto another = StagingRingBuffer::create(device.vmaAllocator(), 4096, 1);
+        assert(another && buffers.size() == original_buffers + 2);
+        *another = std::move(ring);
+        assert(buffers.size() == original_buffers + 1);
+        assert(!ring.suballocate(1));
+        another->resetSlot(2);
+        const auto reused = another->suballocate(256);
+        assert(reused && reused.buffer == first.buffer && reused.offset == 0);
+        assert(static_cast<const unsigned char*>(reused.mapped)[0] == 0x36);
+        another->reset();
+        assert(another->used() == 0);
+    }
+    assert(buffers.size() == original_buffers);
+    std::puts("Staging ring: complete mapped backing, exact native errors, partition isolation, overflow rejection, "
+              "move replacement and release PASS");
+}
+
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -3117,6 +3176,11 @@ int main(int argc, char** argv)
     InstanceContext instance({});
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
+    checkStagingRing(device);
+    if (argc == 2 && std::string_view(argv[1]) == "--staging")
+    {
+        return 0;
+    }
     auto resources_owner = ResourceContext::create(device);
     assert(resources_owner);
     auto& resources = **resources_owner;

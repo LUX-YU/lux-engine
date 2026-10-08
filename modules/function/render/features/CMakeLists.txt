@@ -855,7 +855,25 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_NATIVE_TESTS)
         render_hzb_lifetime_test
         render_features_builtin_embed
     )
+    add_executable(
+        render_vertex_registration_gpu_test
+        test/vertex_registration_gpu.cpp
+    )
+    target_include_directories(
+        render_vertex_registration_gpu_test
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/sinclude"
+            "${CMAKE_CURRENT_BINARY_DIR}/builtin_shaders"
+    )
+    target_link_libraries(
+        render_vertex_registration_gpu_test
+        PRIVATE render_features GPUOpen::VulkanMemoryAllocator
+    )
+    lux_editor_test_options(render_vertex_registration_gpu_test)
+    add_dependencies(render_vertex_registration_gpu_test render_features_builtin_embed)
     if(LUX_RENDER_BUILD_GPU_TESTS)
+        add_test(NAME render.vertex_registration_gpu COMMAND render_vertex_registration_gpu_test)
+        set_tests_properties(render.vertex_registration_gpu PROPERTIES TIMEOUT 60 LABELS "gpu;lifecycle")
         add_test(NAME render.hzb_lifetime COMMAND render_hzb_lifetime_test)
         set_tests_properties(render.hzb_lifetime PROPERTIES TIMEOUT 60 LABELS gpu)
         add_test(NAME render.scene_construction COMMAND render_scene_construction_test)

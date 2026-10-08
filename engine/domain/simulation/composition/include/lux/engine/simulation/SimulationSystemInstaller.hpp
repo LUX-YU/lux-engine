@@ -64,11 +64,12 @@ namespace lux::simulation
             static_assert(is_broadcast_route || is_entity_targeted_route);
 
             {
-                auto channel = std::make_unique<Channel>();
-                if (channel->prepare(capacity, copy) != EEndpointMutationError::NONE)
+                auto created = Channel::create(capacity, copy);
+                if (!created)
                     return lux::cxx::unexpected(
                         SimulationSystemBuildFailure{ESimulationSystemBuildError::CONSTRUCTION_FAILURE, owner}
                     );
+                auto channel = std::move(*created);
                 constexpr auto route = std::is_same_v<Route, SimulationBroadcastRoute>
                                            ? EEventRoute::SIMULATION_BROADCAST
                                            : EEventRoute::ENTITY_TARGETED;
@@ -81,20 +82,17 @@ namespace lux::simulation
                     capacity.producers,
                     capacity.owner_occurrences != 0U,
                     [](void* context) noexcept { delete static_cast<Channel*>(context); },
-                    [](void* context) noexcept { return static_cast<Channel*>(context)->sealPrepared(); },
+                    [](void* context) noexcept { return static_cast<Channel*>(context)->sealForDispatch(); },
                     [](void* context) noexcept { return static_cast<Channel*>(context)->failed(); },
-                    [](void* context) noexcept { static_cast<Channel*>(context)->resetPrepared(); },
-                    [](void* context) noexcept { static_cast<Channel*>(context)->discardPrepared(); },
+                    [](void* context) noexcept { static_cast<Channel*>(context)->resetAfterDispatch(); },
+                    [](void* context) noexcept { static_cast<Channel*>(context)->discardPending(); },
                     [](void* context, bool active) noexcept {
                         static_cast<Channel*>(context)->script_consumption_ = active;
                     }
                 );
                 if (!stored)
                     return lux::cxx::unexpected(stored.error());
-                channel->composed_ = true;
-                channel->execution_owner_ = stored->owner;
-                channel->delivery_system_ = owner;
-                channel->delivery_hook_ = stored->hook;
+                channel->composition_.emplace(typename Channel::Composition{stored->owner, owner, stored->hook});
                 return channel.release();
             }
         }

@@ -16,7 +16,6 @@ namespace lux::simulation
     enum class EEndpointMutationError : std::uint8_t
     {
         NONE,
-        NOT_PREPARED,
         CAPACITY_EXCEEDED,
         INVALID_CALLBACK,
         INVALID_TARGET,

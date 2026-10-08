@@ -50,3 +50,14 @@ lux_engine_install_components(
     NAMESPACE    lux::engine::simulation
     COMPONENTS   simulation_composition
 )
+
+if(BUILD_TESTING)
+    add_executable(simulation_hook_channel_test test/channel.cpp)
+    target_link_libraries(simulation_hook_channel_test PRIVATE simulation_composition)
+    if(MSVC)
+        target_compile_options(simulation_hook_channel_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(simulation_hook_channel_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME simulation.hook_channel COMMAND simulation_hook_channel_test)
+endif()

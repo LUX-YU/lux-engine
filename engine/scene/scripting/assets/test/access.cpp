@@ -6,6 +6,7 @@
 
 #include <cassert>
 #include <atomic>
+#include <cstdlib>
 #include <iostream>
 #include <semaphore>
 #include <thread>
@@ -136,6 +137,11 @@ int main()
             const auto handle = reply->value->handle();
             const auto description = (*first)->describeAsset(handle);
             assert(description && description->id == id && description->image_bytes == image.size());
+            assert(description->has_image && !description->decoded);
+            const auto typed_read = (*first)->withAsset<asset::SkeletonAsset>(handle, [](const auto&) noexcept {
+                std::abort();
+            });
+            assert(!typed_read && typed_read.error() == EScriptAssetError::TYPE_MISMATCH);
             assert((*second)->describeAsset(handle).error() == EScriptAssetError::INVALID_HANDLE);
             auto bytes = (*first)->copyAssetBytes(handle, 0, 8);
             const bool matches = bytes && bytes->size == 8 &&
@@ -156,6 +162,10 @@ int main()
         assert(typed->value && typed->value->succeeded() && !weak_code.expired());
         const auto typed_handle = typed->value->handle();
         assert(typed_handle != replies.back()->value->handle());
+        const auto typed_description = (*first)->describeAsset(typed_handle);
+        assert(typed_description && typed_description->decoded && !typed_description->has_image);
+        assert(typed_description->type == asset::SkeletonAsset::asset_type && typed_description->image_bytes == 0);
+        assert((*first)->copyAssetBytes(typed_handle, 0, 0).error() == EScriptAssetError::TYPE_MISMATCH);
         bool inspected{};
         assert((*first)->withAsset<asset::SkeletonAsset>(typed_handle, [&](const auto& value) noexcept {
             inspected = value.id() == id && value.data().bones.size() == 1;

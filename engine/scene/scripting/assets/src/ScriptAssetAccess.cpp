@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <limits>
 #include <thread>
+#include <variant>
 #include <vector>
 
 namespace lux::scene::script
@@ -63,16 +64,17 @@ namespace lux::scene::script
             ScriptAssetReadOutcome outcome;
         };
 
+        // Completion delivery can remain pending after the owned result is ready.
+        using VResult = std::variant<std::monostate, lux::asset::AssetBlob, std::shared_ptr<const HeldAsset>>;
+
         struct Record final
         {
             ScriptAssetHandle handle;
             lux::asset::AssetId id;
             lux::process::TaskId task;
             std::size_t reserved{};
-            lux::asset::AssetBlob image;
-            std::shared_ptr<const HeldAsset> asset;
+            VResult result;
             std::optional<Pending> pending;
-            bool ready{};
         };
 
         State(std::shared_ptr<AccessState> access, lux::simulation::script::ScriptInstanceId instance)
@@ -103,8 +105,7 @@ namespace lux::scene::script
                 return;
             }
             // Erase only empty owners. Their destructors may enter native capabilities again.
-            auto image = std::move(record->image);
-            auto asset = std::move(record->asset);
+            auto result = std::move(record->result);
             auto pending = std::move(record->pending);
             bytes -= record->reserved;
             records.erase(handle.slot);
@@ -199,7 +200,7 @@ namespace lux::scene::script
             {
                 return unexpected(EScriptAssetError::INVALID_HANDLE);
             }
-            if (!record->ready)
+            if (std::holds_alternative<std::monostate>(record->result))
             {
                 return unexpected(EScriptAssetError::NOT_READY);
             }
@@ -517,8 +518,7 @@ namespace lux::scene::script
                 {
                     return;
                 }
-                record->image = std::move(*result);
-                record->ready = true;
+                record->result.emplace<lux::asset::AssetBlob>(std::move(*result));
                 record->pending.emplace(completion, ScriptAssetReadOutcome::success(handle));
                 state->deliver(handle);
             }
@@ -565,8 +565,7 @@ namespace lux::scene::script
         {
             return;
         }
-        record->asset = std::move(asset);
-        record->ready = true;
+        record->result.emplace<std::shared_ptr<const HeldAsset>>(std::move(asset));
         record->pending.emplace(completion, ScriptAssetReadOutcome::success(handle));
         state->deliver(handle);
     }
@@ -580,13 +579,12 @@ namespace lux::scene::script
         {
             return unexpected(record.error());
         }
-        return ScriptAssetDescription{
-            (*record)->id,
-            (*record)->asset ? (*record)->asset->asset->type() : lux::asset::AssetTypeId{},
-            (*record)->image.bytes.size(),
-            static_cast<bool>((*record)->asset),
-            !(*record)->asset
-        };
+        if (const auto* image = std::get_if<lux::asset::AssetBlob>(&(*record)->result))
+        {
+            return ScriptAssetDescription{(*record)->id, {}, image->bytes.size(), false, true};
+        }
+        const auto& asset = std::get<std::shared_ptr<const HeldAsset>>((*record)->result);
+        return ScriptAssetDescription{(*record)->id, asset->asset->type(), 0, true, false};
     }
 
     lux::cxx::expected<AssetByteChunk, EScriptAssetError> ScriptAssetScope::copyAssetBytes(
@@ -600,11 +598,12 @@ namespace lux::scene::script
         {
             return unexpected(record.error());
         }
-        if ((*record)->asset)
+        const auto* image = std::get_if<lux::asset::AssetBlob>(&(*record)->result);
+        if (image == nullptr)
         {
             return unexpected(EScriptAssetError::TYPE_MISMATCH);
         }
-        const auto& bytes = (*record)->image.bytes;
+        const auto& bytes = image->bytes;
         const bool is_invalid_start = offset > bytes.size();
         const bool is_invalid_range = is_invalid_start || count > AssetByteChunk::Capacity ||
                                       count > bytes.size() - static_cast<std::size_t>(offset);
@@ -641,11 +640,12 @@ namespace lux::scene::script
         {
             return unexpected(record.error());
         }
-        if (!(*record)->asset)
+        const auto* asset = std::get_if<std::shared_ptr<const HeldAsset>>(&(*record)->result);
+        if (asset == nullptr)
         {
             return unexpected(EScriptAssetError::TYPE_MISMATCH);
         }
-        return (*record)->asset;
+        return *asset;
     }
 
     std::size_t ScriptAssetScope::retainedResults() const noexcept

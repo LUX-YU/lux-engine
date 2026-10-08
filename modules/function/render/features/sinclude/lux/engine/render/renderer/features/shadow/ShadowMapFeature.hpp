@@ -106,7 +106,7 @@ namespace lux::render
         /// Integer fields: value 0 means "keep current".
         /// non_directional_shadow_max_distance: <0 keeps current, 0 disables limit.
         /// Returns true if atlas config actually changed and resources were rebuilt.
-        [[nodiscard]] bool updateQuality(
+        [[nodiscard]] Expected<bool> updateQuality(
             uint32_t atlas_page_resolution,
             uint32_t atlas_page_count,
             uint32_t max_shadow_slices,

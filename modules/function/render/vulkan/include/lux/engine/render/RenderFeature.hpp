@@ -272,7 +272,8 @@ namespace lux::render
             UNSUPPORTED,     ///< feature exposes no params (default)
             HOT,             ///< applied live; nothing to rebuild, visible next frame
             NEEDS_RECOMPILE, ///< caller must RenderScene::invalidateGraph()
-            NEEDS_RECREATE   ///< feature recreated GPU resources internally (GPU-idle)
+            NEEDS_RECREATE,  ///< feature recreated GPU resources internally (GPU-idle)
+            REJECTED         ///< rejected with an exact error through the render sink; accepted params remain unchanged
         };
 
         /// Fully-qualified reflected type name of this feature's param struct,

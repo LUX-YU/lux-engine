@@ -208,7 +208,7 @@ namespace lux::render
         device_ = ctx.deviceContext().logicalDevice();
 
         auto* shadow_res = scene.resources().find<ShadowResources>();
-        max_shadow_slices_ = (shadow_res && shadow_res->isInitialized()) ? shadow_res->maxSlices() : kMaxShadowSlices;
+        max_shadow_slices_ = shadow_res ? shadow_res->maxSlices() : kMaxShadowSlices;
 
         // Shared instance storage: OWNED (ensure<>d AND init()ed) by
         // StandardMeshStack. MeshShadow only find<>s it, so installing MeshShadow
@@ -385,7 +385,7 @@ namespace lux::render
         if (shadow_res_cache_ == nullptr)
             shadow_res_cache_ = renderScene().resources().find<ShadowResources>();
         auto* shadow_res = shadow_res_cache_;
-        if (!shadow_res || !shadow_res->isInitialized())
+        if (!shadow_res)
         {
             shadow_mdc_count_ = 0;
             shadow_total_visible_capacity_ = 0;
@@ -740,7 +740,7 @@ namespace lux::render
     {
         // Resolve shadow resources from registry
         auto* shadow_res = renderScene().resources().find<ShadowResources>();
-        if (!shadow_res || !shadow_res->isInitialized())
+        if (!shadow_res)
             return;
 
         // Current shadow technique (published by ShadowMapFeature) drives the
@@ -1118,7 +1118,7 @@ namespace lux::render
         auto& ctx = renderContext();
         auto* shadow_res = renderScene().resources().find<ShadowResources>();
         VkDescriptorSetLayout shadow_set0 =
-            (shadow_res && shadow_res->isInitialized()) ? shadow_res->descriptorSetLayout() : VK_NULL_HANDLE;
+            shadow_res ? shadow_res->descriptorSetLayout() : VK_NULL_HANDLE;
         if (shadow_set0 == VK_NULL_HANDLE)
             return;
 

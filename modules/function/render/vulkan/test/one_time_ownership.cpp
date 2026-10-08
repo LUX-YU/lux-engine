@@ -31,7 +31,8 @@ namespace
         SUBMIT,
         WAIT,
         ADDRESS,
-        LAYOUT
+        LAYOUT,
+        DEVICE_IDLE
     };
 
     struct CommandOrigin
@@ -455,6 +456,8 @@ namespace
     VkResult trackedDeviceWaitIdle(VkDevice device)
     {
         ++idle_calls;
+        if (reject(EFailure::DEVICE_IDLE))
+            return VK_ERROR_DEVICE_LOST;
         const auto result = vkDeviceWaitIdle(device);
         if (result == VK_SUCCESS)
         {
@@ -517,6 +520,7 @@ namespace
 #include "../src/resources/mesh/InstanceSlotRegistry.cpp"
 #include "../src/resources/mesh/MdcTable.cpp"
 #include "../src/resources/lighting/LightResources.cpp"
+#include "../src/resources/lighting/ShadowResources.cpp"
 #include "../src/resources/hzb/HzbResources.cpp"
 #include "../src/resources/vertex/VertexPoolRegistry.cpp"
 #include "../src/resources/vertex/TransientVertexSource.cpp"
@@ -2095,6 +2099,213 @@ void checkCanvasConstruction(
               "accepted identity, retry, dirty uploads, ordering and original retirement PASS");
 }
 
+void checkShadowRebuild(
+    lux::render::DeviceContext& device,
+    lux::render::GeneralDescriptorSetLayout& layouts,
+    lux::render::DeferredDestroyQueue& retirement
+)
+{
+    using namespace lux::render;
+    DescriptorService descriptors(device.logicalDevice());
+    auto arena = SceneDescriptorArena::create(device.logicalDevice(), {});
+    assert(arena);
+    const std::array light_layouts{
+        layouts.getLayout(TGetBindingSet<ELightSetBindings>::value),
+        layouts.getLayout(TGetBindingSet<ELightSetBindings>::value)
+    };
+    auto light_sets = (*arena)->allocateBatch(light_layouts);
+    assert(light_sets);
+    LightResources::CreateInfo light_info{};
+    light_info.ssbo_config = SSBOInitConfig{
+        .device_context = &device,
+        .deferred_queue = &retirement,
+        .initial_dense_capacity = 16,
+        .slices = 2
+    };
+    light_info.descriptor_svc = &descriptors;
+    light_info.domain_sets = *light_sets;
+    auto light = LightResources::create(light_info);
+    assert(light);
+    const std::array bindings{
+        VkDescriptorSetLayoutBinding{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_ALL_GRAPHICS},
+        VkDescriptorSetLayoutBinding{1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_ALL_GRAPHICS},
+        VkDescriptorSetLayoutBinding{2, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_ALL_GRAPHICS}
+    };
+    auto layout = descriptors.registerLayout({.bindings = bindings});
+    assert(layout);
+    {
+        static_assert(!std::is_default_constructible_v<ShadowResources>);
+        static_assert(!std::is_copy_constructible_v<ShadowResources>);
+        static_assert(!std::is_move_constructible_v<ShadowResources>);
+        const ShadowResources::CreateInfo info{device, descriptors, **arena, *light_sets, 0, *layout, 2, 16, 1, 4};
+        const auto base_buffers = buffers.size();
+        const auto base_images = images.size();
+        const auto base_views = views.size();
+        const auto base_sets = sets.size();
+        for (unsigned invalid = 0; invalid < 9; ++invalid)
+        {
+            auto bad = info;
+            auto invalid_sets = *light_sets;
+            switch (invalid)
+            {
+            case 0:
+                bad.frames_in_flight = 0;
+                break;
+            case 1:
+                bad.frames_in_flight = kMaxFramesInFlight + 1;
+                break;
+            case 2:
+                bad.domain_sets = std::span(*light_sets).first(1);
+                break;
+            case 3:
+                invalid_sets[1] = VK_NULL_HANDLE;
+                bad.domain_sets = invalid_sets;
+                break;
+            case 4:
+                bad.domain_binding_offset = UINT32_MAX;
+                break;
+            case 5:
+                bad.layout_id = kInvalidDescriptorLayoutId;
+                break;
+            case 6:
+                bad.atlas_page_resolution = 0;
+                break;
+            case 7:
+                bad.atlas_page_count = 0;
+                break;
+            case 8:
+                bad.max_shadow_slices = 0;
+                break;
+            }
+            const auto writes = descriptor_writes;
+            auto candidate = ShadowResources::create(bad);
+            assert(!candidate && isError<err::internal::InvalidArgument>(candidate.error()));
+            assert(writes == descriptor_writes && buffers.size() == base_buffers && images.size() == base_images);
+        }
+        // The first sampler request must reject before it can enter the shared cache.
+        for (const auto boundary :
+             {EFailure::SAMPLER,
+              EFailure::IMAGE,
+              EFailure::VIEW,
+              EFailure::BUFFER,
+              EFailure::MAPPED,
+              EFailure::FLUSH,
+              EFailure::SET})
+        {
+            const unsigned count = boundary == EFailure::BUFFER || boundary == EFailure::MAPPED
+                                       ? 8
+                                       : (boundary == EFailure::FLUSH ? 6 : 1);
+            for (unsigned index = 0; index < count; ++index)
+            {
+                failure = boundary;
+                skip_rejections = index;
+                set_failure_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+                const auto writes = descriptor_writes;
+                const auto rejected = rejections;
+                auto candidate = ShadowResources::create(info);
+                failure = EFailure::NONE;
+                assert(!candidate && rejections == rejected + 1);
+                assert(isError<err::device::VulkanCallFailed>(candidate.error()));
+                const auto expected = boundary == EFailure::MAPPED || boundary == EFailure::FLUSH
+                                          ? VK_ERROR_MEMORY_MAP_FAILED
+                                          : VK_ERROR_OUT_OF_DEVICE_MEMORY;
+                assert(candidate.error().args[0] == encodeVkResult(expected));
+                assert(descriptor_writes == writes && buffers.size() == base_buffers);
+                assert(images.size() == base_images && views.size() == base_views && sets.size() == base_sets);
+            }
+        }
+        auto owner = ShadowResources::create(info);
+        assert(owner);
+        auto& shadow = **owner;
+        ShadowSliceGPU slice{};
+        slice.light_vp.setIdentity();
+        slice.light_vp(0, 0) = 17.0f;
+        ShadowConfigGPU config{};
+        config.total_slices = 1;
+        shadow.setCachedData(7, 9, {&slice, 1}, {}, {}, config);
+        const auto snapshot = shadow.findViewCache(7, 9);
+        const auto image = shadow.atlasImage();
+        const auto buffer = shadow.sliceBuffer();
+        const auto set = shadow.descriptorSet(0);
+        const auto accepted_buffers = buffers.size();
+        const auto accepted_images = images.size();
+        const auto accepted_sets = sets.size();
+        const auto accepted_views = views.size();
+        for (const auto boundary :
+             {EFailure::IMAGE,
+              EFailure::VIEW,
+              EFailure::BUFFER,
+              EFailure::MAPPED,
+              EFailure::FLUSH,
+              EFailure::DEVICE_IDLE})
+        {
+            const unsigned count = boundary == EFailure::BUFFER || boundary == EFailure::MAPPED
+                                       ? 8
+                                       : (boundary == EFailure::FLUSH ? 10 : 1);
+            for (unsigned index = 0; index < count; ++index)
+            {
+                const auto writes = descriptor_writes;
+                const auto idle = idle_calls;
+                const auto rejected = rejections;
+                failure = boundary;
+                skip_rejections = index;
+                const auto replaced = shadow.rebuild(32, 2, 8);
+                failure = EFailure::NONE;
+                assert(!replaced && rejections == rejected + 1);
+                const auto expected =
+                    boundary == EFailure::MAPPED || boundary == EFailure::FLUSH
+                        ? VK_ERROR_MEMORY_MAP_FAILED
+                        : (boundary == EFailure::DEVICE_IDLE ? VK_ERROR_DEVICE_LOST : VK_ERROR_OUT_OF_DEVICE_MEMORY);
+                assert(isError<err::device::VulkanCallFailed>(replaced.error()));
+                assert(replaced.error().args[0] == encodeVkResult(expected));
+                assert(images.contains(image) && buffers.contains(buffer));
+                assert(shadow.atlasImage() == image && shadow.sliceBuffer() == buffer);
+                assert(shadow.descriptorSet(0) == set && shadow.findViewCache(7, 9) == snapshot);
+                assert(shadow.atlasPageResolution() == 16 && shadow.atlasPageCount() == 1 && shadow.maxSlices() == 4);
+                assert(images.size() == accepted_images && buffers.size() == accepted_buffers);
+                assert(sets.size() == accepted_sets && views.size() == accepted_views && writes == descriptor_writes);
+                assert(idle_calls == idle + (boundary == EFailure::DEVICE_IDLE ? 1u : 0u));
+            }
+        }
+        assert(shadow.rebuild(32, 2, 8));
+        assert(!images.contains(image) && !buffers.contains(buffer));
+        assert(shadow.atlasPageResolution() == 32 && shadow.atlasPageCount() == 2 && shadow.maxSlices() == 8);
+        assert(shadow.descriptorSet(0) == set && sets.size() == accepted_sets);
+        assert(!shadow.findViewCache(7, 9) && snapshot->slices.size() == 1);
+        assert(images.size() == accepted_images && buffers.size() == accepted_buffers);
+        for (uint32_t fi = 0; fi < shadow.framesInFlight(); ++fi)
+        {
+            const auto read = [&](VkBuffer buffer)
+            {
+                VmaAllocationInfo mapping{};
+                const auto& origin = buffers.at(buffer);
+                vmaGetAllocationInfo(origin.first, origin.second, &mapping);
+                assert(mapping.pMappedData);
+                return mapping.pMappedData;
+            };
+            const auto* copied_slice = static_cast<const ShadowSliceGPU*>(read(shadow.sliceBuffer(fi)));
+            const auto* copied_config = static_cast<const ShadowConfigGPU*>(read(shadow.configBuffer(fi)));
+            assert(copied_slice->light_vp(0, 0) == 17.0f && copied_config->total_slices == 1);
+            const auto* spot = static_cast<const int32_t*>(read(shadow.spotMapBuffer(fi)));
+            const auto* point = static_cast<const int32_t*>(read(shadow.pointMapBuffer(fi)));
+            assert(spot[0] == -1 && point[shadow.shadowMapCapacity() - 1] == -1);
+        }
+        assert(snapshot->slices[0].light_vp(0, 0) == 17.0f);
+        const auto writes = descriptor_writes;
+        const auto idle = idle_calls;
+        const auto rebuilt_image = shadow.atlasImage();
+        for (unsigned frame = 0; frame < 30; ++frame)
+        {
+            assert(shadow.rebuild(32, 2, 8));
+        }
+        assert(descriptor_writes == writes && idle_calls == idle && shadow.atlasImage() == rebuilt_image);
+        std::puts("Shadow complete construction and replacement: exact native errors, no partial publication, accepted "
+                  "backing/cache retention, retry and stable descriptors PASS");
+    }
+    light->reset();
+    retirement.flushAll();
+}
+
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -2126,6 +2337,11 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkShadowRebuild(device, layouts, retirement);
+    if (argc == 2 && std::string_view(argv[1]) == "--shadow")
+    {
+        return 0;
+    }
     checkCanvasConstruction(device, resources, layouts, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--canvas")
     {

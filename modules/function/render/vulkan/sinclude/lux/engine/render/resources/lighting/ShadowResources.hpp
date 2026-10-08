@@ -9,88 +9,69 @@
  * to a specific shadow pass implementation.
  */
 
-#include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
-#include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
-#include <lux/engine/render/gpu/VmaFwd.hpp>
-#include <lux/engine/render/core/FrameServices.hpp>
-#include <lux/engine/function/render/features/resources/lighting/ShadowMapTypes.hpp>
-#include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
 #include <lux/engine/function/render/client/core/RenderTypes.hpp>
+#include <lux/engine/function/render/features/resources/lighting/ShadowMapTypes.hpp>
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/render/core/FrameServices.hpp>
+#include <lux/engine/render/gpu/VmaFwd.hpp>
+#include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
+#include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
 
 #include <vulkan/vulkan.h>
 
 #include <cstdint>
-#include <array>
-#include <span>
 #include <memory>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
 namespace lux::render
 {
-    class LightResources;
     class DeviceContext;
     class SceneDescriptorArena;
     class IShadowTechnique;
 
-    class LUX_FUNCTION_PUBLIC ShadowResources final : public TGPUResourceBase<ShadowResources, EGPUResourceType::SHADOW>
+    class LUX_FUNCTION_PUBLIC ShadowResources final
     {
     public:
-        /// Sets the domain-set dual-write target.
-        ///
-        /// Note that what's passed is the **Light** domain set and Light's
-        /// in-domain offset: this class writes bindings b4-b10 (the shadow
-        /// block) of the Light set. Its own shadow set is feature-private and
-        /// does not participate in the merge.
-        [[nodiscard]] Expected<void> setDomainWriteTarget(
-            std::span<const VkDescriptorSet> sets,
-            uint32_t binding_offset
-        );
-
-        struct InitInfo
+        struct CreateInfo
         {
-            VkDevice device = VK_NULL_HANDLE;
-            DeviceContext* device_context = nullptr;
-            VmaAllocator allocator = VK_NULL_HANDLE;
-            uint32_t atlas_page_resolution = kDefaultShadowAtlasPageResolution;
-            uint32_t atlas_page_count = kDefaultShadowAtlasPageCount;
-            uint32_t max_shadow_slices = kDefaultMaxShadowSlices;
-            uint32_t frames_in_flight = 2;
-            DescriptorLayoutId ds_layout_id = kInvalidDescriptorLayoutId;
-            DescriptorService* descriptor_svc = nullptr; // layouts (global)
-            SceneDescriptorArena* arena = nullptr;       // set allocation (per-scene)
-            LightResources* light_resources = nullptr;
+            DeviceContext& device;
+            DescriptorService& descriptors;
+            SceneDescriptorArena& arena;
+            std::span<const VkDescriptorSet> domain_sets;
+            uint32_t domain_binding_offset{};
+            DescriptorLayoutId layout_id{kInvalidDescriptorLayoutId};
+            uint32_t frames_in_flight{2};
+            uint32_t atlas_page_resolution{kDefaultShadowAtlasPageResolution};
+            uint32_t atlas_page_count{kDefaultShadowAtlasPageCount};
+            uint32_t max_shadow_slices{kDefaultMaxShadowSlices};
         };
 
-        ShadowResources() = default;
-        ~ShadowResources()
-        {
-            if (initialized_)
-                shutdown();
-        }
+        using CreateResult = Expected<std::unique_ptr<ShadowResources>>;
+
+        [[nodiscard]] static CreateResult create(const CreateInfo& info) noexcept;
+        ~ShadowResources() noexcept;
 
         ShadowResources(const ShadowResources&) = delete;
         ShadowResources& operator=(const ShadowResources&) = delete;
+        ShadowResources(ShadowResources&&) = delete;
+        ShadowResources& operator=(ShadowResources&&) = delete;
 
-        Expected<void> init(const InitInfo& info);
-        void shutdown();
+        /// Prepare complete replacement backing, then adopt at the existing GPU-idle boundary.
+        /// Rejection preserves accepted backing, descriptor bindings and immutable cache snapshots.
+        [[nodiscard]] Expected<void> rebuild(
+            uint32_t atlas_page_resolution,
+            uint32_t atlas_page_count,
+            uint32_t max_shadow_slices
+        ) noexcept;
 
-        /// Full rebuild with new page/slice settings.
-        /// Destroys all GPU resources and recreates them. Requires GPU idle.
-        [[nodiscard]] bool tryRebuild(
-            uint32_t new_atlas_page_resolution,
-            uint32_t new_atlas_page_count,
-            uint32_t new_max_shadow_slices
-        );
-
-        // ── GPUResourceBase hooks (shadowed, no virtual) ──────────────────────
+        // Per-frame private descriptor sets; allocated once for this resource lifetime.
         [[nodiscard]] VkDescriptorSet descriptorSet(uint32_t frame_slot) const noexcept
         {
-            if (shadow_ds_per_fif_.empty())
-                return VK_NULL_HANDLE;
             return shadow_ds_per_fif_[frame_slot % shadow_ds_per_fif_.size()];
         }
+
         /// DSResolverFn-compatible. view_id unused: the shadow set is per-FIF,
         /// shared by every view of the scene (the atlas is scene-wide).
         static VkDescriptorSet resolveDS(const void* resource, uint32_t frame_slot, uint32_t /*view_id*/)
@@ -98,7 +79,7 @@ namespace lux::render
             return static_cast<const ShadowResources*>(resource)->descriptorSet(frame_slot);
         }
 
-        // Legacy entry kept for generic registry access paths.
+        // Generic registry query; rendering selects a frame through descriptorSet/resolveDS.
         // Do not use for rendering logic; use descriptorSet(frame_slot)/resolveDS.
         VkDescriptorSet getDescriptorSet() const
         {
@@ -106,69 +87,44 @@ namespace lux::render
         }
 
         // ── Accessors for downstream features (ShadowMapFeature, etc.) ───────
-        [[nodiscard]] VkImage atlasImage() const noexcept
-        {
-            return shadow_atlas_image_;
-        }
-        [[nodiscard]] VkImageView atlasView() const noexcept
-        {
-            return shadow_atlas_view_;
-        }
+        [[nodiscard]] VkImage atlasImage() const noexcept;
+        [[nodiscard]] VkImageView atlasView() const noexcept;
+
         [[nodiscard]] VkSampler sampler() const noexcept
         {
             return shadow_sampler_;
         }
-        [[nodiscard]] VmaAllocation atlasAllocation() const noexcept
-        {
-            return shadow_atlas_alloc_;
-        }
+
+        [[nodiscard]] VmaAllocation atlasAllocation() const noexcept;
+
         [[nodiscard]] VkBuffer sliceBuffer() const noexcept
         {
-            return slice_ssbos_[0];
+            return sliceBuffer(0);
         }
+
         [[nodiscard]] VkBuffer configBuffer() const noexcept
         {
-            return config_ubos_[0];
+            return configBuffer(0);
         }
-        [[nodiscard]] VkBuffer sliceBuffer(uint32_t fi) const noexcept
-        {
-            return slice_ssbos_[fi % frames_in_flight_];
-        }
-        [[nodiscard]] VkBuffer configBuffer(uint32_t fi) const noexcept
-        {
-            return config_ubos_[fi % frames_in_flight_];
-        }
-        [[nodiscard]] VkBuffer spotMapBuffer(uint32_t fi) const noexcept
-        {
-            return spot_shadow_map_ssbos_[fi % frames_in_flight_];
-        }
-        [[nodiscard]] VkBuffer pointMapBuffer(uint32_t fi) const noexcept
-        {
-            return point_shadow_map_ssbos_[fi % frames_in_flight_];
-        }
-        [[nodiscard]] uint32_t framesInFlight() const noexcept
-        {
-            return frames_in_flight_;
-        }
-        [[nodiscard]] uint32_t atlasPageResolution() const noexcept
-        {
-            return atlas_page_resolution_;
-        }
-        [[nodiscard]] uint32_t atlasPageCount() const noexcept
-        {
-            return atlas_page_count_;
-        }
+
+        [[nodiscard]] VkBuffer sliceBuffer(uint32_t fi) const noexcept;
+        [[nodiscard]] VkBuffer configBuffer(uint32_t fi) const noexcept;
+        [[nodiscard]] VkBuffer spotMapBuffer(uint32_t fi) const noexcept;
+        [[nodiscard]] VkBuffer pointMapBuffer(uint32_t fi) const noexcept;
+        [[nodiscard]] uint32_t framesInFlight() const noexcept;
+        [[nodiscard]] uint32_t atlasPageResolution() const noexcept;
+        [[nodiscard]] uint32_t atlasPageCount() const noexcept;
+
         [[nodiscard]] uint32_t atlasResolution() const noexcept
         {
-            return atlas_page_resolution_;
+            return atlasPageResolution();
         }
-        [[nodiscard]] uint32_t maxSlices() const noexcept
-        {
-            return max_shadow_slices_;
-        }
+
+        [[nodiscard]] uint32_t maxSlices() const noexcept;
+
         [[nodiscard]] uint32_t shadowMapCapacity() const noexcept
         {
-            return shadow_light_map_capacity_;
+            return kShadowLightMapCapacity;
         }
 
         /// Current shadow technique. Single shared source of truth: published by
@@ -185,6 +141,7 @@ namespace lux::render
         {
             current_technique_ = t;
         }
+
         [[nodiscard]] IShadowTechnique* currentTechnique() const noexcept
         {
             return current_technique_;
@@ -199,14 +156,12 @@ namespace lux::render
         /// The VkDescriptorSetLayout for building pipeline layouts.
         [[nodiscard]] VkDescriptorSetLayout descriptorSetLayout() const noexcept
         {
-            return descriptor_svc_ ? descriptor_svc_->layout(shadow_ds_layout_id_) : VK_NULL_HANDLE;
+            return descriptor_svc_.layout(shadow_ds_layout_id_);
         }
 
         /// Write active slice data to the persistently-mapped SSBO.
-        void flushSliceData(std::span<const ShadowSliceGPU> slices);
 
         /// Write shadow config to the persistently-mapped UBO.
-        void flushConfig(const ShadowConfigGPU& config);
 
         /// Update CPU-side cached shadow data for a specific scene/view key.
         /// Used by per-view upload paths that write via vkCmdUpdateBuffer.
@@ -232,6 +187,7 @@ namespace lux::render
 
         // ── CPU-side readback for decoupled shadow features ──────────────
         [[nodiscard]] ShadowConfigGPU config(uint32_t scene_key, uint32_t view_handle) const noexcept;
+
         [[nodiscard]] DebugUploadSource debugLastUploadSource() const noexcept
         {
             return debug_last_upload_;
@@ -253,6 +209,7 @@ namespace lux::render
             std::vector<int32_t> point_shadow_base_slice;
             ShadowConfigGPU config{};
         };
+
         /// Returns an owning snapshot. The caller MUST hold the returned shared_ptr
         /// for as long as it reads the slices (it pins them against a LATER
         /// setCachedData on this same thread — see the replay note above).
@@ -274,88 +231,41 @@ namespace lux::render
 
     private:
         using ViewCacheKey = uint64_t;
+
         [[nodiscard]] static ViewCacheKey makeViewCacheKey(uint32_t scene_key, uint32_t view_handle) noexcept
         {
             return (static_cast<ViewCacheKey>(scene_key) << 32u) | static_cast<ViewCacheKey>(view_handle);
         }
 
-        /// The atlas retains its existing bool failure contract until its complete-owner migration.
-        [[nodiscard]] bool createShadowAtlas();
+        struct Backing;
+        static constexpr uint32_t kShadowLightMapCapacity = 65536;
 
-        /// Descriptor allocation preserves the native error through resource/feature admission.
-        [[nodiscard]] Expected<void> createDescriptorResources();
+        [[nodiscard]] static Expected<std::unique_ptr<Backing>> createBacking(
+            DeviceContext& device,
+            uint32_t frames,
+            uint32_t resolution,
+            uint32_t pages,
+            uint32_t slices
+        ) noexcept;
 
-        /// Writes the shadow block (b4-b8: slices/atlas/config/spot map/point
-        /// map) into both the per-FIF Light set and (if configured) the
-        /// domain-set copy. Replayable: called once at resource creation, and
-        /// must be called again after setDomainWriteTarget sets its target —
-        /// the dual-write target isn't in place until after init()
-        /// (ShadowMapFeature calls init() before setDomainWriteTarget()).
-        /// Writing only at creation time would leave the domain copy's shadow
-        /// block permanently empty: an empty binding is fully legal under
-        /// PARTIALLY_BOUND, so lighting reads total_slices=0 from the domain
-        /// copy and shadows silently vanish entirely while lighting looks
-        /// normal and validation stays clean (caught on a real run on
-        /// 2026-07-20).
-        void writeShadowBindingsToLightAndDomain();
+        ShadowResources(
+            const CreateInfo& info,
+            DomainWriteTarget domain,
+            VkSampler sampler,
+            std::unique_ptr<Backing> backing,
+            std::vector<VkDescriptorSet> sets
+        ) noexcept;
 
-        // Shared current shadow technique (see setCurrentTechnique/currentTechnique
-        // above). Abstract pointer, owned by ShadowMapFeature; consumers read it
-        // here instead of discovering ShadowMapFeature by type. Nothing in this
-        // resource knows what a concrete technique is.
-        IShadowTechnique* current_technique_{nullptr};
+        void writeDescriptors() noexcept;
 
-        VkDevice device_ = VK_NULL_HANDLE;
-        DeviceContext* device_context_ = nullptr;
-        VmaAllocator allocator_ = VK_NULL_HANDLE;
-
-        // Shadow atlas (2D array depth texture)
-        VkImage shadow_atlas_image_ = VK_NULL_HANDLE;
-        VkImageView shadow_atlas_view_ = VK_NULL_HANDLE;
-        VkSampler shadow_sampler_ = VK_NULL_HANDLE;
-        VmaAllocation shadow_atlas_alloc_ = VK_NULL_HANDLE;
-        uint32_t atlas_page_resolution_{kDefaultShadowAtlasPageResolution};
-        uint32_t atlas_page_count_{kDefaultShadowAtlasPageCount};
-        uint32_t max_shadow_slices_{kDefaultMaxShadowSlices};
-        uint32_t shadow_light_map_capacity_{65536};
-
-        //(这里曾有一个自己的 `uint32_t frames_in_flight_{2};`,遮蔽 GPUResourceBase
-        // 的同名 protected 成员 —— 与 InstanceResources 那个 `initialized_` 同一形状。
-        // 这一处是惰性的:基类那份从没有人读。但同样的遮蔽在 initialized_ 上就是
-        // 真 bug,所以一并按"派生类不重复声明基类成员"收掉。)
-
-        // Per-FIF slice SSBO (per-slice light VP + bias data)
-        std::array<VkBuffer, kMaxFramesInFlight> slice_ssbos_{};
-        std::array<VmaAllocation, kMaxFramesInFlight> slice_ssbo_allocs_{};
-        std::array<void*, kMaxFramesInFlight> slice_ssbo_mapped_{};
-
-        // Per-FIF config UBO
-        std::array<VkBuffer, kMaxFramesInFlight> config_ubos_{};
-        std::array<VmaAllocation, kMaxFramesInFlight> config_ubo_allocs_{};
-        std::array<void*, kMaxFramesInFlight> config_ubo_mapped_{};
-
-        // Per-FIF shadow light mapping buffers (slot-indexed mapping tables).
-        std::array<VkBuffer, kMaxFramesInFlight> spot_shadow_map_ssbos_{};
-        std::array<VmaAllocation, kMaxFramesInFlight> spot_shadow_map_ssbo_allocs_{};
-        std::array<void*, kMaxFramesInFlight> spot_shadow_map_ssbo_mapped_{};
-
-        std::array<VkBuffer, kMaxFramesInFlight> point_shadow_map_ssbos_{};
-        std::array<VmaAllocation, kMaxFramesInFlight> point_shadow_map_ssbo_allocs_{};
-        std::array<void*, kMaxFramesInFlight> point_shadow_map_ssbo_mapped_{};
-
-        // Descriptor sets (per-FIF)
-        DescriptorLayoutId shadow_ds_layout_id_{kInvalidDescriptorLayoutId};
-        std::vector<VkDescriptorSet> shadow_ds_per_fif_{};
-
-        /// Dual-write target — points at the Light domain set, because this
-        /// class writes bindings b4-b10 of the Light set; its own shadow set
-        /// is feature-private and does not participate in the merge.
-        DomainWriteTarget domain_{};
-        DescriptorService* descriptor_svc_ = nullptr;
-        SceneDescriptorArena* arena_ = nullptr;
-
-        // Kept to write shadow bindings into Light descriptor sets
-        LightResources* light_resources_ = nullptr;
+        DeviceContext& device_;
+        DescriptorService& descriptor_svc_;
+        DomainWriteTarget domain_;
+        VkSampler shadow_sampler_{}; // Borrowed from the original descriptor service cache.
+        DescriptorLayoutId shadow_ds_layout_id_;
+        std::vector<VkDescriptorSet> shadow_ds_per_fif_;
+        std::unique_ptr<Backing> backing_; // Always complete; original scene safe point owns destruction.
+        IShadowTechnique* current_technique_{};
 
         // CPU-side cached copies for decoupled shadow features
         // (PerViewCache struct is declared in public above so ShadowMapFeature

@@ -336,7 +336,7 @@ namespace lux::render
         //
         // 此前这里调 shutdown() 有真实危害:runtime removeFeature 这条链
         //(handleRemoveFeature → RenderScene::removeFeature → feature_set_.erase)
-        // **没有 vkDeviceWaitIdle**,而 ShadowResources::shutdown() 是内联销毁、
+        // **没有 vkDeviceWaitIdle**,而 ShadowResources 析构 是内联销毁、
         // 不经 DeferredDestroyQueue —— 此刻 N-1/N-2 帧的命令缓冲可能仍在采样这张
         // 阴影图集。反向依赖守卫也拦不住(MeshShadowFeature 没声明对本特性的依赖)。
         // 进程收尾时它只是与注册表重复(shutdown 幂等),但那条 removeFeature 路径上
@@ -391,45 +391,32 @@ namespace lux::render
         }
         shadow_ds_layout_id_ = *registered;
 
-        // (Plan A): ShadowResources is per-scene now — lazily emplaced into this
-        // scene's registry (only scenes with a shadow feature pay the atlas cost).
-        // Registered AFTER the scene's LightResources (ctor) so reverse-order
-        // shutdown tears Shadow down before Light (Shadow holds a raw Light*).
-        // (原先是手写的 find → 判空 → emplace,外加两层 shadow_res_ 判空。
-        //  ensure<T>() 就是干这个的,LightFeature / StandardMeshStackFeature 已在用;
-        //  而那两层判空是死的 —— emplace<T>().get() 结构上不可能返回空:new 失败会抛,
-        //  之后的 getAs 查的正是刚 emplace 出来的下标。)
         auto& sreg = scene.resources();
-        const bool fresh = (sreg.find<ShadowResources>() == nullptr);
-        // LightResources 一次解析、全程复用:本 feature 的描述符声明了
-        // requires=lux.render.light.v1(ShadowMapOperation.hpp 的 LUX_COMM_CONFIG),
-        // beginInstall 因此保证 LightFeature 已装、它的资源已在注册表里。
-        // 原先 init / EVSM 绑定 / 每帧 onFrameBegin 各查一次、各判一次空。
+        shadow_res_ = sreg.find<ShadowResources>();
+        const bool fresh = shadow_res_ == nullptr;
+        // The declared Light feature dependency establishes the shared domain before attachment.
         light_res_ = &sreg.must<LightResources>();
-
-        ShadowResources::InitInfo init{};
-        init.device = ctx.device();
-        init.device_context = &ctx.deviceContext();
-        init.allocator = ctx.vmaAllocator();
-        init.atlas_page_resolution = cfg_.shadow_config.atlas_page_resolution;
-        init.atlas_page_count = cfg_.shadow_config.atlas_page_count;
-        init.max_shadow_slices = cfg_.shadow_config.max_shadow_slices;
-        init.frames_in_flight = ctx.framesInFlight();
-        init.ds_layout_id = shadow_ds_layout_id_;
-        init.descriptor_svc = &ctx.descriptorService();
-        init.arena = &scene.descriptorArena();
-        init.light_resources = light_res_;
-        // ensure<T>(init_args):构造 + init + 只在成功时发布。ShadowResources::init
-        // 返回 void,但它逐个查 VkResult、失败时 shutdown() 回滚并清掉 initialized_
-        // —— 注册表的 invokeInit 认这个标志,所以「原子近 1GB 的 EVSM 图集没建起来」
-        // 不会再以一个已发布的空资源留在场景里(此前只能靠调用方自己复查
-        // isInitialized(),漏查就是按空图集画阴影)。
-        auto shadow_r = sreg.ensure<ShadowResources>(init);
-        if (!shadow_r)
+        if (fresh)
         {
-            return lux::cxx::unexpected<RenderError>(shadow_r.error());
+            const ShadowResources::CreateInfo info{
+                ctx.deviceContext(),
+                ctx.descriptorService(),
+                scene.descriptorArena(),
+                scene.domainDescriptorSets()->setsFor(rdesc::EBindFrequency::FEATURE),
+                engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::LIGHT)),
+                shadow_ds_layout_id_,
+                ctx.framesInFlight(),
+                cfg_.shadow_config.atlas_page_resolution,
+                cfg_.shadow_config.atlas_page_count,
+                cfg_.shadow_config.max_shadow_slices
+            };
+            auto candidate = ShadowResources::create(info);
+            if (!candidate)
+            {
+                return lux::cxx::unexpected(candidate.error());
+            }
+            shadow_res_ = sreg.insert(std::move(*candidate)).get();
         }
-        shadow_res_ = *shadow_r;
 
         // Publish the current technique (abstract pointer) into the shared resource so
         // MeshShadowFeature drives its caster + post passes polymorphically instead of
@@ -440,27 +427,11 @@ namespace lux::render
         {
             // 视图销毁时逐出该视图的缓存 —— 由**安装点**登记,资源自己不再继承帧接口。
             // 只在首次创建时登记,保证恰好一次(第二个 ShadowMapFeature 拿到同一实例);
-            // 且必须在 ensure 成功**之后** —— 失败即不发布意味着失败对象会被销毁,
+            // 且必须在完整资源发布**之后** —— 失败即不发布意味着失败对象会被销毁,
             // 早登记的钩子捕获的裸指针就成了 use-after-free。
             auto* res = shadow_res_;
-            sreg.addViewDestroyedHook([res](uint32_t scene_key, uint32_t view_id) {
-                res->evictSceneView(scene_key, view_id);
-            });
-
-            // This class writes to bindings b4-b10 of the Light set, so it passes
-            // Light's domain set and Light's in-domain offset (+2) — not its own
-            // shadow set.
-            // 域集由 RenderScene 构造函数无条件建,恒非空(原判空是死的,而且它测的是
-            // "指针在不在",真正会坏的是"set 有没有分配成功"—— 后者在 RenderScene
-            // 构造期就地报错,不在这里)。
-            if (auto accepted = shadow_res_->setDomainWriteTarget(
-                    scene.domainDescriptorSets()->setsFor(rdesc::EBindFrequency::FEATURE),
-                    engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::LIGHT))
-                );
-                !accepted)
-            {
-                return accepted;
-            }
+            sreg.addViewDestroyedHook([res](uint32_t scene_key, uint32_t view_id)
+                                      { res->evictSceneView(scene_key, view_id); });
         }
 
         // EVSM resource allocation (C3b). Allocated ONLY when the scene's default
@@ -509,7 +480,7 @@ namespace lux::render
             if (evsm->resources().isInitialized())
             {
                 {
-                    // 与上面 shadow_res_->setDomainWriteTarget 取同一个来源:
+                    // 与上面 ShadowResources::CreateInfo 取同一个来源:
                     // b9/b10 和 b4-b8 一样住在 **Light 集**里,所以用 Light 的域集
                     // 和 Light 的域内偏移(+2),不是 EVSM 自己的什么集。
                     std::span<const VkDescriptorSet> evsm_domain_sets{};
@@ -1120,15 +1091,14 @@ namespace lux::render
             .setKernel("ShadowViewUpload");
     }
 
-    bool ShadowMapFeature::updateQuality(
+    Expected<bool> ShadowMapFeature::updateQuality(
         uint32_t atlas_page_resolution,
         uint32_t atlas_page_count,
         uint32_t max_shadow_slices,
         float non_directional_shadow_max_distance
     )
     {
-        // (无 initialized_ 判空:这条是操作处理器路径,要先在场景里找到本 feature,
-        //  而只有 attach 成功的 feature 才在场景里。同 onFrameBegin 的理由。)
+        // Only an attached feature receives parameter operations; its resource is already complete.
 
         const uint32_t new_page_resolution =
             (atlas_page_resolution > 0) ? atlas_page_resolution : cfg_.shadow_config.atlas_page_resolution;
@@ -1158,22 +1128,20 @@ namespace lux::render
             needs_rebuild = true;
         }
 
+        if (needs_rebuild)
+        {
+            auto rebuilt = shadow_res_->rebuild(new_page_resolution, new_page_count, new_slice_budget);
+            if (!rebuilt)
+            {
+                return lux::cxx::unexpected(rebuilt.error());
+            }
+            ++shadow_config_serial_;
+        }
         cfg_.shadow_config.non_directional_shadow_max_distance = new_non_directional_max_distance;
         cfg_.shadow_config.atlas_page_resolution = new_page_resolution;
         cfg_.shadow_config.atlas_page_count = new_page_count;
         cfg_.shadow_config.max_shadow_slices = new_slice_budget;
-
-        if (!needs_rebuild)
-        {
-            return false;
-        }
-
-        ++shadow_config_serial_;
-
-        // Requires GPU idle — the caller (operation handler in tick()) guarantees this
-        // because the dispatch happens before rendering.
-        (void)shadow_res_->tryRebuild(new_page_resolution, new_page_count, new_slice_budget);
-        return true;
+        return needs_rebuild;
     }
 
     void ShadowMapFeature::setDirectionalCsmEnabled(bool enabled)
@@ -1191,22 +1159,25 @@ namespace lux::render
 
         ShadowQualityParams next{};
         std::memcpy(&next, src, sizeof(ShadowQualityParams));
-        params_ = next; // refresh the editor-facing mirror
 
         // CSM toggle is a hot per-frame read (no rebuild); the atlas knobs may rebuild
         // GPU resources. updateQuality returns true iff it actually rebuilt the atlas.
-        setDirectionalCsmEnabled(next.enable_directional_csm != 0u);
-        const bool atlas_rebuilt = updateQuality(
+        const auto atlas_rebuilt = updateQuality(
             next.atlas_page_resolution,
             next.atlas_page_count,
             next.max_shadow_slices,
             next.non_directional_shadow_max_distance
         );
 
-        // Strongest verdict wins: a rebuilt atlas needs a graph recompile (the shared
-        // handler calls RenderScene::invalidateGraph on NEEDS_RECOMPILE), matching the
-        // old handleUpdateShadowQuality path.
-        return atlas_rebuilt ? EParamApply::NEEDS_RECOMPILE : EParamApply::HOT;
+        if (!atlas_rebuilt)
+        {
+            renderContext()
+                .reportError(atlas_rebuilt.error(), renderScene().sceneId().index, renderScene().frameSerial());
+            return EParamApply::REJECTED;
+        }
+        setDirectionalCsmEnabled(next.enable_directional_csm != 0u);
+        params_ = next;
+        return *atlas_rebuilt ? EParamApply::NEEDS_RECOMPILE : EParamApply::HOT;
     }
 
     void ShadowMapFeature::setActiveTechnique(EShadowTechnique technique) noexcept

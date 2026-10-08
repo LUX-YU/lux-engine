@@ -102,22 +102,58 @@ namespace lux::render
             }
             page_table_ = std::move(*page_table);
         }
-        const bool streams_ready = transform_stream_.init(device_ctx_, capacity_, sparse_bda_) &&
-                                   prev_transform_stream_.init(device_ctx_, capacity_, sparse_bda_) &&
-                                   property_stream_.init(device_ctx_, capacity_, sparse_bda_) &&
-                                   cull_meta_stream_.init(device_ctx_, capacity_, sparse_bda_);
-        if (!streams_ready)
+        if (!device_ctx_ || !info.deferred_queue)
         {
             shutdown();
             return false;
         }
+        auto transform_stream_candidate = TSparseInstanceStream<InstanceTransform>::create(
+            *device_ctx_,
+            *info.deferred_queue,
+            capacity_,
+            sparse_bda_
+        );
+        if (!transform_stream_candidate)
+        {
+            shutdown();
+            return false;
+        }
+        transform_stream_.emplace(std::move(*transform_stream_candidate));
+        auto prev_transform_stream_candidate = TSparseInstanceStream<InstanceTransformPrev>::create(
+            *device_ctx_,
+            *info.deferred_queue,
+            capacity_,
+            sparse_bda_
+        );
+        if (!prev_transform_stream_candidate)
+        {
+            shutdown();
+            return false;
+        }
+        prev_transform_stream_.emplace(std::move(*prev_transform_stream_candidate));
+        auto property_stream_candidate =
+            TSparseInstanceStream<InstanceProperty>::create(*device_ctx_, *info.deferred_queue, capacity_, sparse_bda_);
+        if (!property_stream_candidate)
+        {
+            shutdown();
+            return false;
+        }
+        property_stream_.emplace(std::move(*property_stream_candidate));
+        auto cull_meta_stream_candidate =
+            TSparseInstanceStream<InstanceCullMeta>::create(*device_ctx_, *info.deferred_queue, capacity_, sparse_bda_);
+        if (!cull_meta_stream_candidate)
+        {
+            shutdown();
+            return false;
+        }
+        cull_meta_stream_.emplace(std::move(*cull_meta_stream_candidate));
         if (sparse_bda_ && !page_table_->publish(
                                0u,
                                GpuInstancePageAddresses{
-                                   .transform = transform_stream_.pageAddress(0u),
-                                   .previous_transform = prev_transform_stream_.pageAddress(0u),
-                                   .property = property_stream_.pageAddress(0u),
-                                   .cull_meta = cull_meta_stream_.pageAddress(0u),
+                                   .transform = transform_stream_->pageAddress(0u),
+                                   .previous_transform = prev_transform_stream_->pageAddress(0u),
+                                   .property = property_stream_->pageAddress(0u),
+                                   .cull_meta = cull_meta_stream_->pageAddress(0u),
                                }
                            ))
         {
@@ -183,10 +219,10 @@ namespace lux::render
         if (!initialized_)
             return;
 
-        transform_stream_.shutdown();
-        prev_transform_stream_.shutdown();
-        property_stream_.shutdown();
-        cull_meta_stream_.shutdown();
+        transform_stream_.reset();
+        prev_transform_stream_.reset();
+        property_stream_.reset();
+        cull_meta_stream_.reset();
         page_table_.reset();
         alive_slot_stream_.shutdown();
         dynamic_slot_stream_.shutdown();
@@ -330,8 +366,8 @@ namespace lux::render
         slot_count_ = registry_.slotCount();
         appendAliveSlot();
 
-        auto& prop = property_stream_.at(slot.index);
-        auto& cull = cull_meta_stream_.at(slot.index);
+        auto& prop = property_stream_->at(slot.index);
+        auto& cull = cull_meta_stream_->at(slot.index);
         cull.bsphere[0] = 0.0f;
         cull.bsphere[1] = 0.0f;
         cull.bsphere[2] = 0.0f;
@@ -380,7 +416,7 @@ namespace lux::render
         {
             (void)unbindSource(source->second, handle);
         }
-        auto& cull = cull_meta_stream_.at(slot.index);
+        auto& cull = cull_meta_stream_->at(slot.index);
         unregisterInstanceLods(cull);
         removeDynamicSlot(slot.index);
 
@@ -394,7 +430,7 @@ namespace lux::render
         // 逐位计数销账:slot 回收后其 flags 不再计入存活位。清零而非仅
         // 记账,避免 allocate 复用残留旧位导致重复计数。标脏保持 CPU/GPU
         // 镜像一致(墓碑槽虽不被绘制,但不留隐式的"下个写者恰好标脏"链)。
-        auto& prop = property_stream_.at(slot.index);
+        auto& prop = property_stream_->at(slot.index);
         accountFlagsDiff(prop.flags, 0u);
         prop.flags = 0u;
         markPropertyDirty(slot);
@@ -440,8 +476,8 @@ namespace lux::render
         slot_count_ = registry_.slotCount();
         appendAliveSlot();
 
-        auto& prop = property_stream_.at(slot.index);
-        auto& cull = cull_meta_stream_.at(slot.index);
+        auto& prop = property_stream_->at(slot.index);
+        auto& cull = cull_meta_stream_->at(slot.index);
         cull.bsphere[0] = 0.0f;
         cull.bsphere[1] = 0.0f;
         cull.bsphere[2] = 0.0f;
@@ -650,7 +686,7 @@ namespace lux::render
         if (new_cap < required)
             return false;
 
-        const auto old_page_count = transform_stream_.pageCount();
+        const auto old_page_count = transform_stream_->pageCount();
         const auto new_page_count = (new_cap - 1u) / kInstanceSlotsPerPage + 1u;
 
         // Pre-flight only the new physical pages. Existing pages remain in
@@ -664,23 +700,23 @@ namespace lux::render
                 return false;
         }
 
-        const bool streams_ready = transform_stream_.reserve(new_cap) && prev_transform_stream_.reserve(new_cap) &&
-                                   property_stream_.reserve(new_cap) && cull_meta_stream_.reserve(new_cap);
+        const bool streams_ready = transform_stream_->reserve(new_cap) && prev_transform_stream_->reserve(new_cap) &&
+                                   property_stream_->reserve(new_cap) && cull_meta_stream_->reserve(new_cap);
         if (!streams_ready)
         {
-            transform_stream_.rollbackPages(old_page_count);
-            prev_transform_stream_.rollbackPages(old_page_count);
-            property_stream_.rollbackPages(old_page_count);
-            cull_meta_stream_.rollbackPages(old_page_count);
+            transform_stream_->rollbackPages(old_page_count);
+            prev_transform_stream_->rollbackPages(old_page_count);
+            property_stream_->rollbackPages(old_page_count);
+            cull_meta_stream_->rollbackPages(old_page_count);
             return false;
         }
 
         if (!local_bsphere_.reserve(new_cap))
         {
-            transform_stream_.rollbackPages(old_page_count);
-            prev_transform_stream_.rollbackPages(old_page_count);
-            property_stream_.rollbackPages(old_page_count);
-            cull_meta_stream_.rollbackPages(old_page_count);
+            transform_stream_->rollbackPages(old_page_count);
+            prev_transform_stream_->rollbackPages(old_page_count);
+            property_stream_->rollbackPages(old_page_count);
+            cull_meta_stream_->rollbackPages(old_page_count);
             return false;
         }
 
@@ -690,17 +726,17 @@ namespace lux::render
             if (!page_table_->publish(
                     page_index,
                     GpuInstancePageAddresses{
-                        .transform = transform_stream_.pageAddress(page_index),
-                        .previous_transform = prev_transform_stream_.pageAddress(page_index),
-                        .property = property_stream_.pageAddress(page_index),
-                        .cull_meta = cull_meta_stream_.pageAddress(page_index),
+                        .transform = transform_stream_->pageAddress(page_index),
+                        .previous_transform = prev_transform_stream_->pageAddress(page_index),
+                        .property = property_stream_->pageAddress(page_index),
+                        .cull_meta = cull_meta_stream_->pageAddress(page_index),
                     }
                 ))
             {
-                transform_stream_.rollbackPages(old_page_count);
-                prev_transform_stream_.rollbackPages(old_page_count);
-                property_stream_.rollbackPages(old_page_count);
-                cull_meta_stream_.rollbackPages(old_page_count);
+                transform_stream_->rollbackPages(old_page_count);
+                prev_transform_stream_->rollbackPages(old_page_count);
+                property_stream_->rollbackPages(old_page_count);
+                cull_meta_stream_->rollbackPages(old_page_count);
                 return false;
             }
         }
@@ -724,16 +760,16 @@ namespace lux::render
 
     void InstanceResources::writeTransform(InstanceSlot slot, const InstanceTransform& xform)
     {
-        prev_transform_stream_.at(slot.index) = transform_stream_.at(slot.index);
+        prev_transform_stream_->at(slot.index) = transform_stream_->at(slot.index);
         markPrevTransformDirty(slot);
-        transform_stream_.at(slot.index) = xform;
+        transform_stream_->at(slot.index) = xform;
         markTransformDirty(slot);
         recomputeWorldBsphere(slot);
     }
 
     void InstanceResources::writePrevTransform(InstanceSlot slot, const InstanceTransformPrev& xform_prev)
     {
-        prev_transform_stream_.at(slot.index) = xform_prev;
+        prev_transform_stream_->at(slot.index) = xform_prev;
         markPrevTransformDirty(slot);
     }
 
@@ -746,7 +782,7 @@ namespace lux::render
     void InstanceResources::recomputeWorldBsphere(InstanceSlot slot)
     {
         const auto& lb = local_bsphere_.at(slot.index);
-        const auto& transform = transform_stream_.at(slot.index);
+        const auto& transform = transform_stream_->at(slot.index);
         const float* M = transform.basis_local; // three basis columns, local xyz in w
 
         // Transform the local center, but retain the result as page + normalized
@@ -766,7 +802,7 @@ namespace lux::render
         float sq2 = M[8] * M[8] + M[9] * M[9] + M[10] * M[10];
         float max_scale = std::sqrt(std::max({sq0, sq1, sq2}));
 
-        auto& meta = cull_meta_stream_.at(slot.index);
+        auto& meta = cull_meta_stream_->at(slot.index);
         for (std::size_t axis = 0; axis < 3; ++axis)
         {
             const double carry_value = std::floor(local[axis] / coordinate_page_size_);
@@ -808,7 +844,7 @@ namespace lux::render
 
     void InstanceResources::setInstanceFlags(InstanceSlot slot, uint32_t flags)
     {
-        auto& prop = property_stream_.at(slot.index);
+        auto& prop = property_stream_->at(slot.index);
         updateDynamicMembership(slot.index, prop.flags, flags);
         accountFlagsDiff(prop.flags, flags);
         prop.flags = flags;
@@ -817,15 +853,15 @@ namespace lux::render
 
     void InstanceResources::writeProperty(InstanceSlot slot, const InstanceProperty& prop)
     {
-        updateDynamicMembership(slot.index, property_stream_.at(slot.index).flags, prop.flags);
-        accountFlagsDiff(property_stream_.at(slot.index).flags, prop.flags);
-        property_stream_.at(slot.index) = prop;
+        updateDynamicMembership(slot.index, property_stream_->at(slot.index).flags, prop.flags);
+        accountFlagsDiff(property_stream_->at(slot.index).flags, prop.flags);
+        property_stream_->at(slot.index) = prop;
         markPropertyDirty(slot);
     }
 
     void InstanceResources::writeCullMeta(InstanceSlot slot, const InstanceCullMeta& meta)
     {
-        auto& current = cull_meta_stream_.at(slot.index);
+        auto& current = cull_meta_stream_->at(slot.index);
         // Overwriting a live registration → release the previous LODs' MDCs +
         // sections first (the new ones were already registered by the caller).
         if (current.lod_count != 0u)
@@ -839,40 +875,40 @@ namespace lux::render
 
     InstanceTransform& InstanceResources::transformAt(InstanceSlot slot) noexcept
     {
-        return transform_stream_.at(slot.index);
+        return transform_stream_->at(slot.index);
     }
 
     InstanceTransformPrev& InstanceResources::prevTransformAt(InstanceSlot slot) noexcept
     {
-        return prev_transform_stream_.at(slot.index);
+        return prev_transform_stream_->at(slot.index);
     }
 
     InstanceProperty& InstanceResources::propertyAt(InstanceSlot slot) noexcept
     {
-        return property_stream_.at(slot.index);
+        return property_stream_->at(slot.index);
     }
 
     const InstanceProperty& InstanceResources::propertyAt(InstanceSlot slot) const noexcept
     {
-        return property_stream_.at(slot.index);
+        return property_stream_->at(slot.index);
     }
 
     InstanceCullMeta& InstanceResources::cullMetaAt(InstanceSlot slot) noexcept
     {
-        return cull_meta_stream_.at(slot.index);
+        return cull_meta_stream_->at(slot.index);
     }
 
     const InstanceCullMeta& InstanceResources::cullMetaAt(InstanceSlot slot) const noexcept
     {
-        return cull_meta_stream_.at(slot.index);
+        return cull_meta_stream_->at(slot.index);
     }
 
     bool InstanceResources::canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept
     {
         for (const auto slot_index : registry_.denseAliveSlots())
         {
-            const auto& current = transform_stream_.at(slot_index);
-            const auto& previous = prev_transform_stream_.at(slot_index);
+            const auto& current = transform_stream_->at(slot_index);
+            const auto& previous = prev_transform_stream_->at(slot_index);
             if (!canRebaseRenderPageDelta(current.page_delta, origin_delta) ||
                 !canRebaseRenderPageDelta(previous.page_delta, origin_delta))
             {
@@ -887,8 +923,8 @@ namespace lux::render
         for (const auto slot_index : registry_.denseAliveSlots())
         {
             const InstanceSlot slot{slot_index};
-            auto& current = transform_stream_.at(slot_index);
-            auto& previous = prev_transform_stream_.at(slot_index);
+            auto& current = transform_stream_->at(slot_index);
+            auto& previous = prev_transform_stream_->at(slot_index);
             rebaseRenderPageDelta(current.page_delta, origin_delta);
             rebaseRenderPageDelta(previous.page_delta, origin_delta);
             markTransformDirty(slot);
@@ -899,27 +935,27 @@ namespace lux::render
 
     void InstanceResources::markTransformDirty(InstanceSlot slot)
     {
-        transform_stream_.markDirty(slot.index);
+        transform_stream_->markDirty(slot.index);
     }
 
     void InstanceResources::markPrevTransformDirty(InstanceSlot slot)
     {
-        prev_transform_stream_.markDirty(slot.index);
+        prev_transform_stream_->markDirty(slot.index);
     }
 
     void InstanceResources::markPropertyDirty(InstanceSlot slot)
     {
-        property_stream_.markDirty(slot.index);
+        property_stream_->markDirty(slot.index);
     }
 
     void InstanceResources::markCullDirty(InstanceSlot slot)
     {
-        cull_meta_stream_.markDirty(slot.index);
+        cull_meta_stream_->markDirty(slot.index);
     }
 
     void InstanceResources::setRenderState(InstanceSlot slot, EGeometryKind geometry_kind, PassMask pass_mask)
     {
-        auto& prop = property_stream_.at(slot.index);
+        auto& prop = property_stream_->at(slot.index);
         prop.pass_and_geometry = static_cast<uint32_t>(pass_mask) | (static_cast<uint32_t>(geometry_kind) << 16u);
         markPropertyDirty(slot);
     }
@@ -1017,7 +1053,7 @@ namespace lux::render
         std::fill(dynamic_positions_.begin(), dynamic_positions_.end(), kInvalidDynamicPosition);
         for (const auto slot_index : registry_.denseAliveSlots())
         {
-            if ((property_stream_.at(slot_index).flags & kInstanceInternalFlagClusterOwned) == 0u)
+            if ((property_stream_->at(slot_index).flags & kInstanceInternalFlagClusterOwned) == 0u)
             {
                 addDynamicSlot(slot_index);
             }
@@ -1032,18 +1068,18 @@ namespace lux::render
         if (slot_count_ == 0)
             return;
 
-        const bool has_work = full_rebuild_ || transform_stream_.hasDirtyPages() ||
-                              prev_transform_stream_.hasDirtyPages() || property_stream_.hasDirtyPages() ||
-                              cull_meta_stream_.hasDirtyPages() || alive_slot_stream_.hasDirtyPages() ||
+        const bool has_work = full_rebuild_ || transform_stream_->hasDirtyPages() ||
+                              prev_transform_stream_->hasDirtyPages() || property_stream_->hasDirtyPages() ||
+                              cull_meta_stream_->hasDirtyPages() || alive_slot_stream_.hasDirtyPages() ||
                               dynamic_slot_stream_.hasDirtyPages() || mesh_section_table_.hasWork();
         if (!has_work)
             return;
 
         const bool full_upload = full_rebuild_;
-        const bool upload_transform = full_upload || transform_stream_.hasDirtyPages();
-        const bool upload_prev_transform = full_upload || prev_transform_stream_.hasDirtyPages();
-        const bool upload_property = full_upload || property_stream_.hasDirtyPages();
-        const bool upload_cull = full_upload || cull_meta_stream_.hasDirtyPages();
+        const bool upload_transform = full_upload || transform_stream_->hasDirtyPages();
+        const bool upload_prev_transform = full_upload || prev_transform_stream_->hasDirtyPages();
+        const bool upload_property = full_upload || property_stream_->hasDirtyPages();
+        const bool upload_cull = full_upload || cull_meta_stream_->hasDirtyPages();
         const bool upload_alive_slots = full_upload || alive_slot_stream_.hasDirtyPages();
         const bool upload_dynamic_slots = full_upload || dynamic_slot_stream_.hasDirtyPages();
         const bool upload_section = full_upload || mesh_section_table_.hasWork();
@@ -1059,15 +1095,15 @@ namespace lux::render
         dynamic_slot_chunks_.clear();
 
         const VkDeviceSize xform_bytes =
-            upload_transform ? transform_stream_.collectUploadChunks(slot_count_, full_upload, xform_chunks_) : 0u;
+            upload_transform ? transform_stream_->collectUploadChunks(slot_count_, full_upload, xform_chunks_) : 0u;
         const VkDeviceSize prev_xform_bytes =
             upload_prev_transform
-                ? prev_transform_stream_.collectUploadChunks(slot_count_, full_upload, prev_xform_chunks_)
+                ? prev_transform_stream_->collectUploadChunks(slot_count_, full_upload, prev_xform_chunks_)
                 : 0u;
         const VkDeviceSize prop_bytes =
-            upload_property ? property_stream_.collectUploadChunks(slot_count_, full_upload, prop_chunks_) : 0u;
+            upload_property ? property_stream_->collectUploadChunks(slot_count_, full_upload, prop_chunks_) : 0u;
         const VkDeviceSize cull_bytes =
-            upload_cull ? cull_meta_stream_.collectUploadChunks(slot_count_, full_upload, cull_chunks_) : 0u;
+            upload_cull ? cull_meta_stream_->collectUploadChunks(slot_count_, full_upload, cull_chunks_) : 0u;
         const uint32_t alive_count = aliveCount();
         const VkDeviceSize alive_slot_bytes =
             (upload_alive_slots && alive_slot_stream_.buffer() != VK_NULL_HANDLE)
@@ -1149,13 +1185,13 @@ namespace lux::render
             // was actually collected (buffer present), so a not-yet-allocated
             // stream keeps its dirty pages for the next attempt.
             if (upload_transform)
-                transform_stream_.clearDirtyState();
+                transform_stream_->clearDirtyState();
             if (upload_prev_transform)
-                prev_transform_stream_.clearDirtyState();
+                prev_transform_stream_->clearDirtyState();
             if (upload_property)
-                property_stream_.clearDirtyState();
+                property_stream_->clearDirtyState();
             if (upload_cull)
-                cull_meta_stream_.clearDirtyState();
+                cull_meta_stream_->clearDirtyState();
             if (upload_alive_slots && alive_slot_stream_.buffer() != VK_NULL_HANDLE)
                 alive_slot_stream_.clearDirtyState();
             if (upload_dynamic_slots && dynamic_slot_stream_.buffer() != VK_NULL_HANDLE)
@@ -1196,8 +1232,8 @@ namespace lux::render
         VkDevice device = device_ctx_->logicalDevice();
 
         std::array<VkDescriptorBufferInfo, 2> buf_infos{};
-        const auto transform_buffer = sparse_bda_ ? page_table_->rootBuffer() : transform_stream_.buffer();
-        const auto property_buffer = sparse_bda_ ? page_table_->rootBuffer() : property_stream_.buffer();
+        const auto transform_buffer = sparse_bda_ ? page_table_->rootBuffer() : transform_stream_->buffer();
+        const auto property_buffer = sparse_bda_ ? page_table_->rootBuffer() : property_stream_->buffer();
         if (transform_buffer == VK_NULL_HANDLE || property_buffer == VK_NULL_HANDLE)
         {
             return;
@@ -1259,22 +1295,22 @@ namespace lux::render
 
     VkBuffer InstanceResources::transformBuffer() const noexcept
     {
-        return sparse_bda_ ? page_table_->rootBuffer() : transform_stream_.buffer();
+        return sparse_bda_ ? page_table_->rootBuffer() : transform_stream_->buffer();
     }
 
     VkBuffer InstanceResources::prevTransformBuffer() const noexcept
     {
-        return sparse_bda_ ? page_table_->rootBuffer() : prev_transform_stream_.buffer();
+        return sparse_bda_ ? page_table_->rootBuffer() : prev_transform_stream_->buffer();
     }
 
     VkBuffer InstanceResources::propertyBuffer() const noexcept
     {
-        return sparse_bda_ ? page_table_->rootBuffer() : property_stream_.buffer();
+        return sparse_bda_ ? page_table_->rootBuffer() : property_stream_->buffer();
     }
 
     VkBuffer InstanceResources::cullMetaBuffer() const noexcept
     {
-        return sparse_bda_ ? page_table_->rootBuffer() : cull_meta_stream_.buffer();
+        return sparse_bda_ ? page_table_->rootBuffer() : cull_meta_stream_->buffer();
     }
 
     VkBuffer InstanceResources::aliveSlotBuffer() const noexcept

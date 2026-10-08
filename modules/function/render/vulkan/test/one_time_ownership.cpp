@@ -647,6 +647,151 @@ void checkHzbDescriptorFailure(lux::render::DeviceContext& device)
     std::puts("HZB descriptor failure: exact allocation error, no ready view, retry and original retirement PASS");
 }
 
+void checkSparseStorage(lux::render::DeviceContext& device, lux::render::DeferredDestroyQueue& retirement)
+{
+    using namespace lux::render;
+    using Storage = SparseInstanceStreamStorage;
+    using Stream = TSparseInstanceStream<std::uint32_t>;
+    static_assert(!std::is_default_constructible_v<Storage>);
+    static_assert(!std::is_copy_constructible_v<Storage>);
+    static_assert(std::is_nothrow_move_constructible_v<Storage>);
+    static_assert(!std::is_move_assignable_v<Storage>);
+    static_assert(!std::is_default_constructible_v<Stream>);
+    static_assert(!std::is_copy_constructible_v<Stream>);
+    static_assert(std::is_nothrow_move_constructible_v<Stream>);
+    retirement.flushAll();
+    assert(buffers.empty());
+    const auto assert_native_error = [](const RenderError& error)
+    {
+        assert(isError<err::device::VulkanCallFailed>(error));
+        assert(error.args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+    };
+    for (bool sparse : {false, true})
+    {
+        for (auto capacity : {0u, UINT32_MAX})
+        {
+            auto rejected = Stream::create(device, retirement, capacity, sparse);
+            assert(!rejected && isError<err::internal::InvalidArgument>(rejected.error()));
+            assert(buffers.empty() && retirement.pendingCount() == 0);
+        }
+        auto bad_stride = Storage::create(device, retirement, 0, 1, sparse);
+        assert(!bad_stride && isError<err::internal::InvalidArgument>(bad_stride.error()));
+        // Every mandatory allocation in the initial three-page extent, including a nonempty prefix.
+        const unsigned acquisitions = sparse ? 3 : 1;
+        for (unsigned index = 0; index < acquisitions; ++index)
+        {
+            failure = EFailure::BUFFER;
+            skip_rejections = index;
+            auto rejected = Stream::create(device, retirement, 2 * kInstanceSlotsPerPage + 1, sparse);
+            assert(!rejected);
+            assert_native_error(rejected.error());
+            assert(buffers.empty() && retirement.pendingCount() == 0);
+        }
+        if (sparse)
+        {
+            for (unsigned index = 0; index < 3; ++index)
+            {
+                failure = EFailure::ADDRESS;
+                skip_rejections = index;
+                auto rejected = Stream::create(device, retirement, 2 * kInstanceSlotsPerPage + 1, true);
+                assert(!rejected && isError<err::memory::BufferDeviceAddressUnavailable>(rejected.error()));
+                assert(buffers.empty() && retirement.pendingCount() == 0);
+            }
+        }
+        failure = EFailure::NONE;
+        retirement.beginFrame(37);
+        {
+            auto candidate = Stream::create(device, retirement, 1, sparse);
+            assert(candidate);
+            Stream stream(std::move(*candidate));
+            assert(stream.sparse() == sparse && stream.capacity() == kInstanceSlotsPerPage);
+            assert(stream.pageCount() == 1 && buffers.size() == 1 && retirement.pendingCount() == 0);
+            const auto first_buffer = stream.buffer();
+            const auto first_address = stream.pageAddress(0);
+            assert(sparse ? first_buffer == VK_NULL_HANDLE && first_address != 0 : first_buffer != VK_NULL_HANDLE);
+            assert(stream.at(0) == 0 && stream.at(kInstanceSlotsPerPage - 1) == 0);
+            stream.at(0) = 71;
+            stream.at(kInstanceSlotsPerPage - 1) = 91;
+            auto* stable_cpu = &stream.at(0);
+            stream.markDirty(0);
+            stream.markDirty(0);
+            stream.markDirty(kInstanceSlotsPerPage - 1);
+            for (unsigned index = 0; index < (sparse ? 2u : 1u); ++index)
+            {
+                failure = EFailure::BUFFER;
+                skip_rejections = index;
+                const auto rejected = stream.reserve(2 * kInstanceSlotsPerPage + 1);
+                assert(!rejected);
+                assert_native_error(rejected.error());
+                assert(stream.pageCount() == 1 && stream.capacity() == kInstanceSlotsPerPage);
+                assert(&stream.at(0) == stable_cpu && stream.at(0) == 71);
+                assert(stream.at(kInstanceSlotsPerPage - 1) == 91 && stream.hasDirtyPages());
+                assert(stream.buffer() == first_buffer && stream.pageAddress(0) == first_address);
+                assert(buffers.size() == 1 && retirement.pendingCount() == 0);
+            }
+            if (sparse)
+            {
+                failure = EFailure::ADDRESS;
+                skip_rejections = 1;
+                assert(!stream.reserve(2 * kInstanceSlotsPerPage + 1));
+                assert(buffers.size() == 1 && stream.pageCount() == 1 && stream.pageAddress(0) == first_address);
+            }
+            failure = EFailure::NONE;
+            assert(!stream.reserve(UINT32_MAX));
+            assert(stream.reserve(0) && stream.reserve(kInstanceSlotsPerPage));
+            assert(buffers.size() == 1 && retirement.pendingCount() == 0);
+            assert(stream.reserve(2 * kInstanceSlotsPerPage + 1));
+            assert(stream.capacity() == 3 * kInstanceSlotsPerPage && stream.pageCount() == 3);
+            assert(&stream.at(0) == stable_cpu && stream.at(0) == 71);
+            assert(stream.at(kInstanceSlotsPerPage) == 0 && stream.at(3 * kInstanceSlotsPerPage - 1) == 0);
+            if (sparse)
+            {
+                assert(stream.pageAddress(0) == first_address && stream.pageAddress(1) != first_address);
+                assert(stream.pageAddress(2) != stream.pageAddress(1) && buffers.size() == 3);
+            }
+            else
+            {
+                assert(stream.buffer() != first_buffer && retirement.pendingCount() == 1);
+                assert(buffers.size() == 2); // Prior published flat allocation is still at the watermark.
+            }
+            std::vector<Stream::UploadChunk> chunks;
+            const auto dirty_bytes = stream.collectUploadChunks(stream.capacity(), false, chunks);
+            assert(dirty_bytes == 2 * 512 * sizeof(std::uint32_t) && chunks.size() == 2);
+            assert(chunks[0].src == reinterpret_cast<const std::byte*>(stable_cpu));
+            assert(chunks[0].destination && chunks[0].destination_offset == 0);
+            assert(chunks[1].destination == chunks[0].destination);
+            assert(chunks[1].destination_offset == (kInstanceSlotsPerPage - 512) * sizeof(std::uint32_t));
+            stream.clearDirtyState();
+            assert(!stream.hasDirtyPages());
+            chunks.clear();
+            const auto full_bytes = stream.collectUploadChunks(2 * kInstanceSlotsPerPage + 7, true, chunks);
+            assert(full_bytes == (2 * kInstanceSlotsPerPage + 7) * sizeof(std::uint32_t) && chunks.size() == 3);
+            assert(chunks[2].size == 7 * sizeof(std::uint32_t));
+            assert(chunks[2].destination_offset == (sparse ? 0 : 2 * kInstanceSlotsPerPage * sizeof(std::uint32_t)));
+            assert(
+                sparse ? chunks[0].destination != chunks[2].destination : chunks[0].destination == chunks[2].destination
+            );
+            // These new pages have not been published by the aggregate. Rollback releases them immediately.
+            stream.markDirty(2 * kInstanceSlotsPerPage);
+            stream.rollbackPages(1);
+            assert(stream.capacity() == kInstanceSlotsPerPage && stream.pageCount() == 1);
+            assert(!stream.hasDirtyPages() && stream.at(0) == 71);
+            assert(buffers.size() == (sparse ? 1u : 2u));
+            assert(retirement.pendingCount() == (sparse ? 0u : 1u));
+            assert(stream.reserve(kInstanceSlotsPerPage + 1));
+            assert(stream.pageCount() == 2 && stream.at(0) == 71);
+        }
+        const auto retained = buffers.size();
+        assert(retained > 0 && retirement.pendingCount() == retained);
+        retirement.collect(36);
+        assert(buffers.size() == retained);
+        retirement.collect(37);
+        assert(buffers.empty() && retirement.pendingCount() == 0);
+    }
+    std::puts("Sparse/flat field storage: complete backing, exact failures, stable CPU pages, strong growth, rollback "
+              "and retirement PASS");
+}
+
 void checkSparsePageTable(lux::render::DeviceContext& device, lux::render::DeferredDestroyQueue& retirement)
 {
     using namespace lux::render;
@@ -1066,6 +1211,11 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkSparseStorage(device, retirement);
+    if (argc == 2 && std::string_view(argv[1]) == "--sparse-storage")
+    {
+        return 0;
+    }
     checkSparsePageTable(device, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--sparse-table")
     {

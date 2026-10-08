@@ -1,5 +1,6 @@
 #include <lux/engine/render/resources/mesh/SparseInstanceStream.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 
 #include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
@@ -194,147 +195,189 @@ namespace lux::render
         );
     }
 
-    SparseInstanceStreamStorage::~SparseInstanceStreamStorage()
+    Expected<std::vector<SparseInstanceStreamStorage::Page>>
+    SparseInstanceStreamStorage::preparePages(
+        DeviceContext& device,
+        std::uint32_t stride,
+        std::uint32_t count,
+        bool sparse_bda
+    ) noexcept
     {
-        shutdown();
+        std::vector<Page> pages;
+        pages.reserve(count);
+        const auto bytes = static_cast<VkDeviceSize>(stride) * kInstanceSlotsPerPage;
+        for (std::uint32_t index = 0; index < count; ++index)
+        {
+            auto cpu = std::make_unique<std::byte[]>(static_cast<std::size_t>(bytes));
+            Page page{std::move(cpu), {}, 0};
+            if (sparse_bda)
+            {
+                auto candidate = createBuffer(
+                    device,
+                    bytes,
+                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                    false
+                );
+                if (!candidate)
+                {
+                    return lux::cxx::unexpected(candidate.error());
+                }
+                page.address = bufferAddress(device, candidate->buffer.buffer());
+                if (page.address == 0)
+                {
+                    return renderFailure<err::memory::BufferDeviceAddressUnavailable>();
+                }
+                page.gpu = std::move(candidate->buffer);
+            }
+            pages.push_back(std::move(page));
+        }
+        return pages;
     }
 
-    bool SparseInstanceStreamStorage::init(
-        DeviceContext* device_context,
+    Expected<SparseInstanceStreamStorage>
+    SparseInstanceStreamStorage::create(
+        DeviceContext& device,
+        DeferredDestroyQueue& retirement,
         std::uint32_t stride,
         std::uint32_t initial_capacity,
         bool sparse_bda
-    )
+    ) noexcept
     {
-        shutdown();
-        device_context_ = device_context;
-        stride_ = stride;
-        sparse_bda_ = sparse_bda;
-        return reserve(initial_capacity);
-    }
-
-    void SparseInstanceStreamStorage::shutdown()
-    {
-        if (device_context_)
+        constexpr auto max_capacity = UINT32_MAX - (kInstanceSlotsPerPage - 1u);
+        const bool is_missing_device = !device.logicalDevice() || !device.vmaAllocator();
+        const bool is_invalid_extent = stride == 0 || initial_capacity == 0 || initial_capacity > max_capacity;
+        const bool is_invalid_configuration = is_missing_device || is_invalid_extent;
+        if (is_invalid_configuration)
         {
-            for (auto& page : gpu_pages_)
-                destroyBuffer(page.buffer, page.allocation, true);
-            destroyBuffer(flat_buffer_, flat_allocation_, true);
+            return renderFailure<err::internal::InvalidArgument>();
         }
-        flat_buffer_ = VK_NULL_HANDLE;
-        flat_allocation_ = nullptr;
-        cpu_pages_.clear();
-        gpu_pages_.clear();
-        dirty_upload_pages_.clear();
-        dirty_upload_flags_.clear();
-        capacity_ = 0u;
-        stride_ = 0u;
-        sparse_bda_ = false;
-        device_context_ = nullptr;
-    }
-
-    bool SparseInstanceStreamStorage::createGpuPage(GpuPage& page)
-    {
-        auto candidate = createBuffer(
-            *device_context_,
-            static_cast<VkDeviceSize>(stride_) * kInstanceSlotsPerPage,
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-            false
-        );
-        if (!candidate)
+        const auto count = (initial_capacity - 1u) / kInstanceSlotsPerPage + 1u;
+        auto pages = preparePages(device, stride, count, sparse_bda);
+        if (!pages)
         {
-            return false;
+            return lux::cxx::unexpected(pages.error());
         }
-        const auto address = bufferAddress(*device_context_, candidate->buffer.buffer());
-        if (address == 0)
+        VmaBuffer flat;
+        if (!sparse_bda)
         {
-            return false;
-        }
-        const auto allocation = candidate->buffer.release();
-        page = GpuPage{allocation.buffer, allocation.allocation, address};
-        return true;
-    }
-
-    bool SparseInstanceStreamStorage::createFlatBuffer(std::uint32_t capacity)
-    {
-        auto candidate = createBuffer(
-            *device_context_,
-            static_cast<VkDeviceSize>(stride_) * capacity,
-            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-            false
-        );
-        if (!candidate)
-        {
-            return false;
-        }
-        destroyBuffer(flat_buffer_, flat_allocation_, true);
-        const auto allocation = candidate->buffer.release();
-        flat_buffer_ = allocation.buffer;
-        flat_allocation_ = allocation.allocation;
-        return true;
-    }
-
-    bool SparseInstanceStreamStorage::reserve(std::uint32_t new_capacity)
-    {
-        if (new_capacity <= capacity_)
-            return true;
-        const auto required_pages = (new_capacity - 1u) / kInstanceSlotsPerPage + 1u;
-        const auto old_pages = static_cast<std::uint32_t>(cpu_pages_.size());
-        cpu_pages_.reserve(required_pages);
-        gpu_pages_.reserve(required_pages);
-        while (cpu_pages_.size() < required_pages)
-        {
-            auto cpu = std::make_unique<std::byte[]>(static_cast<std::size_t>(stride_) * kInstanceSlotsPerPage);
-            std::memset(cpu.get(), 0, static_cast<std::size_t>(stride_) * kInstanceSlotsPerPage);
-            cpu_pages_.push_back(std::move(cpu));
-            if (sparse_bda_)
+            auto candidate = createBuffer(
+                device,
+                static_cast<VkDeviceSize>(count) * kInstanceSlotsPerPage * stride,
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                false
+            );
+            if (!candidate)
             {
-                GpuPage page;
-                if (!createGpuPage(page))
-                {
-                    rollbackPages(old_pages);
-                    return false;
-                }
-                gpu_pages_.push_back(page);
+                return lux::cxx::unexpected(candidate.error());
+            }
+            flat = std::move(candidate->buffer);
+        }
+        return SparseInstanceStreamStorage{device, retirement, stride, sparse_bda, std::move(*pages), std::move(flat)};
+    }
+
+    SparseInstanceStreamStorage::SparseInstanceStreamStorage(
+        DeviceContext& device,
+        DeferredDestroyQueue& retirement,
+        std::uint32_t stride,
+        bool sparse_bda,
+        std::vector<Page> pages,
+        VmaBuffer flat_buffer
+    ) noexcept
+        : device_(device), retirement_(retirement), stride_(stride), sparse_bda_(sparse_bda), pages_(std::move(pages)),
+          dirty_upload_flags_(pages_.size() * (kInstanceSlotsPerPage / kUploadSlotsPerPage))
+    {
+        if (flat_buffer)
+        {
+            const auto allocation = flat_buffer.release();
+            flat_buffer_ = TFifOwnedAllocated<VkBuffer>{retirement_, allocation.buffer, allocation.allocation};
+        }
+    }
+
+    SparseInstanceStreamStorage::~SparseInstanceStreamStorage() noexcept
+    {
+        // Pages accepted by this stream may be in flight. Unpublished candidates and rollback tails
+        // remain local VmaBuffer owners; only the surviving stream pages transfer to serial retirement.
+        for (auto& page : pages_)
+        {
+            if (page.gpu)
+            {
+                const auto allocation = page.gpu.release();
+                retirement_.retireBuffer(allocation.buffer, allocation.allocation);
             }
         }
-
-        const auto rounded_capacity = required_pages * kInstanceSlotsPerPage;
-        if (!sparse_bda_ && !createFlatBuffer(rounded_capacity))
-        {
-            rollbackPages(old_pages);
-            return false;
-        }
-        capacity_ = rounded_capacity;
-        dirty_upload_flags_.resize(required_pages * (kInstanceSlotsPerPage / kUploadSlotsPerPage), 0u);
-        return true;
     }
 
-    void SparseInstanceStreamStorage::rollbackPages(std::uint32_t page_count)
+    Expected<void> SparseInstanceStreamStorage::reserve(std::uint32_t new_capacity) noexcept
     {
-        while (gpu_pages_.size() > page_count)
+        if (new_capacity <= capacity())
         {
-            auto page = gpu_pages_.back();
-            gpu_pages_.pop_back();
-            destroyBuffer(page.buffer, page.allocation, false);
+            return {};
         }
-        while (cpu_pages_.size() > page_count)
-            cpu_pages_.pop_back();
-        capacity_ = page_count * kInstanceSlotsPerPage;
+        constexpr auto max_capacity = UINT32_MAX - (kInstanceSlotsPerPage - 1u);
+        if (new_capacity > max_capacity)
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
+        const auto required_pages = (new_capacity - 1u) / kInstanceSlotsPerPage + 1u;
+        auto candidates = preparePages(device_, stride_, required_pages - pageCount(), sparse_bda_);
+        if (!candidates)
+        {
+            return lux::cxx::unexpected(candidates.error());
+        }
+        VmaBuffer flat;
+        if (!sparse_bda_)
+        {
+            auto candidate = createBuffer(
+                device_,
+                static_cast<VkDeviceSize>(required_pages) * kInstanceSlotsPerPage * stride_,
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+                false
+            );
+            if (!candidate)
+            {
+                return lux::cxx::unexpected(candidate.error());
+            }
+            flat = std::move(candidate->buffer);
+        }
+        pages_.reserve(required_pages);
+        dirty_upload_flags_.resize(required_pages * (kInstanceSlotsPerPage / kUploadSlotsPerPage), 0);
+        for (auto& page : *candidates)
+        {
+            pages_.push_back(std::move(page));
+        }
+        if (flat)
+        {
+            const auto allocation = flat.release();
+            flat_buffer_ = TFifOwnedAllocated<VkBuffer>{retirement_, allocation.buffer, allocation.allocation};
+        }
+        return {};
+    }
+
+    void SparseInstanceStreamStorage::rollbackPages(std::uint32_t page_count) noexcept
+    {
+        if (page_count == 0)
+        {
+            renderFatal("Cannot roll complete instance storage back to zero backing");
+        }
+        if (page_count >= pages_.size())
+        {
+            return;
+        }
+        pages_.resize(page_count);
         dirty_upload_flags_.resize(page_count * (kInstanceSlotsPerPage / kUploadSlotsPerPage));
         std::erase_if(dirty_upload_pages_, [&](std::uint32_t page) { return page >= dirty_upload_flags_.size(); });
     }
 
     std::byte* SparseInstanceStreamStorage::at(std::uint32_t index) noexcept
     {
-        return cpu_pages_[index >> kInstancePageOffsetBits].get() +
+        return pages_[index >> kInstancePageOffsetBits].cpu.get() +
                static_cast<std::size_t>(index & (kInstanceSlotsPerPage - 1u)) * stride_;
     }
 
     const std::byte* SparseInstanceStreamStorage::at(std::uint32_t index) const noexcept
     {
-        return cpu_pages_[index >> kInstancePageOffsetBits].get() +
+        return pages_[index >> kInstancePageOffsetBits].cpu.get() +
                static_cast<std::size_t>(index & (kInstanceSlotsPerPage - 1u)) * stride_;
     }
 
@@ -363,7 +406,7 @@ namespace lux::render
             const auto size = static_cast<VkDeviceSize>(slots) * stride_;
             chunks.push_back(UploadChunk{
                 .src = at(first),
-                .destination = sparse_bda_ ? gpu_pages_[physical_page].buffer : flat_buffer_,
+                .destination = sparse_bda_ ? pages_[physical_page].gpu.buffer() : flat_buffer_.get(),
                 .destination_offset = sparse_bda_ ? static_cast<VkDeviceSize>(page_offset) * stride_
                                                   : static_cast<VkDeviceSize>(first) * stride_,
                 .size = size,
@@ -404,21 +447,12 @@ namespace lux::render
 
     VkBuffer SparseInstanceStreamStorage::pageBuffer(std::uint32_t page_index) const noexcept
     {
-        return page_index < gpu_pages_.size() ? gpu_pages_[page_index].buffer : VK_NULL_HANDLE;
+        return page_index < pages_.size() ? pages_[page_index].gpu.buffer() : VK_NULL_HANDLE;
     }
 
     VkDeviceAddress SparseInstanceStreamStorage::pageAddress(std::uint32_t page_index) const noexcept
     {
-        return page_index < gpu_pages_.size() ? gpu_pages_[page_index].address : 0u;
+        return page_index < pages_.size() ? pages_[page_index].address : 0u;
     }
 
-    void SparseInstanceStreamStorage::destroyBuffer(VkBuffer buffer, VmaAllocation allocation, bool published)
-    {
-        if (buffer == VK_NULL_HANDLE)
-            return;
-        if (published && deferred_queue_)
-            deferred_queue_->retireBuffer(buffer, allocation);
-        else
-            vmaDestroyBuffer(device_context_->vmaAllocator(), buffer, allocation);
-    }
 } // namespace lux::render

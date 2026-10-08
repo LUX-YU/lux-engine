@@ -351,7 +351,7 @@ namespace lux::render
         }
         [[nodiscard]] std::uint32_t residentPageCount() const noexcept
         {
-            return transform_stream_.pageCount();
+            return transform_stream_->pageCount();
         }
         [[nodiscard]] std::uint32_t pageTableLeafCount() const noexcept
         {
@@ -436,10 +436,6 @@ namespace lux::render
         void setDeferredQueue(DeferredDestroyQueue* q) noexcept
         {
             deferred_queue_ = q;
-            transform_stream_.setDeferredQueue(q);
-            prev_transform_stream_.setDeferredQueue(q);
-            property_stream_.setDeferredQueue(q);
-            cull_meta_stream_.setDeferredQueue(q);
             alive_slot_stream_.setDeferredQueue(q);
             dynamic_slot_stream_.setDeferredQueue(q);
             mesh_section_table_.setDeferredQueue(q);
@@ -467,10 +463,10 @@ namespace lux::render
         void unregisterInstanceLods(InstanceCullMeta& cull);
 
         std::unique_ptr<SparseInstancePageTable> page_table_;
-        TSparseInstanceStream<InstanceTransform> transform_stream_;
-        TSparseInstanceStream<InstanceTransformPrev> prev_transform_stream_;
-        TSparseInstanceStream<InstanceProperty> property_stream_;
-        TSparseInstanceStream<InstanceCullMeta> cull_meta_stream_;
+        std::optional<TSparseInstanceStream<InstanceTransform>> transform_stream_;
+        std::optional<TSparseInstanceStream<InstanceTransformPrev>> prev_transform_stream_;
+        std::optional<TSparseInstanceStream<InstanceProperty>> property_stream_;
+        std::optional<TSparseInstanceStream<InstanceCullMeta>> cull_meta_stream_;
         TPagedGpuStream<uint32_t> alive_slot_stream_;
         TPagedGpuStream<uint32_t> dynamic_slot_stream_;
         MeshSectionTable mesh_section_table_;

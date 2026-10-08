@@ -182,6 +182,18 @@ namespace
 
     unsigned descriptor_writes{};
 
+    struct BufferDescriptorWrite
+    {
+        VkDevice device;
+        VkDescriptorSet set;
+        std::uint32_t binding;
+        std::uint32_t index;
+        VkBuffer buffer;
+    };
+
+    bool trace_buffer_writes{};
+    std::vector<BufferDescriptorWrite> buffer_writes;
+
     void updateDescriptors(
         VkDevice device,
         std::uint32_t write_count,
@@ -191,6 +203,18 @@ namespace
     )
     {
         descriptor_writes += write_count;
+        if (trace_buffer_writes)
+        {
+            for (std::uint32_t i = 0; i < write_count; ++i)
+            {
+                const auto& write = writes[i];
+                assert(write.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+                assert(write.descriptorCount == 1 && write.pBufferInfo);
+                buffer_writes.push_back(
+                    {device, write.dstSet, write.dstBinding, write.dstArrayElement, write.pBufferInfo->buffer}
+                );
+            }
+        }
         for (std::uint32_t i = 0; i < copy_count; ++i)
         {
             copied_descriptors += copies[i].descriptorCount;
@@ -430,6 +454,8 @@ namespace
 #include "../src/resources/material/MaterialResources.cpp"
 #include "../src/gpu/descriptor/DescriptorService.cpp"
 #include "../src/resources/lighting/LightResources.cpp"
+#include "../src/resources/vertex/VertexPoolRegistry.cpp"
+#include "../src/resources/vertex/TransientVertexSource.cpp"
 #include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
 #include "../src/gpu/lifecycle/DeferredDestroyQueue.cpp"
 #undef vkWaitForFences
@@ -501,6 +527,112 @@ int main(int argc, char** argv)
 
     const auto baseline_pools = pools.size();
     const auto baseline_sets = sets.size();
+    {
+        static_assert(!std::is_default_constructible_v<VertexPoolRegistry>);
+        static_assert(!std::is_copy_constructible_v<VertexPoolRegistry>);
+        static_assert(!std::is_move_constructible_v<VertexPoolRegistry>);
+        const VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 * kVertexPoolMaxCount};
+        VkDescriptorPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+        pool_info.maxSets = 2;
+        pool_info.poolSizeCount = 1;
+        pool_info.pPoolSizes = &pool_size;
+        auto pool = DescriptorPoolOwner::create(device.logicalDevice(), pool_info);
+        assert(pool);
+        const std::array set_layouts{
+            layouts.getLayout(EDescriptorSetSlot::VERTEX_POOL),
+            layouts.getLayout(EDescriptorSetSlot::VERTEX_POOL)
+        };
+        std::array<VkDescriptorSet, 2> targets{};
+        VkDescriptorSetAllocateInfo allocation{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        allocation.descriptorPool = pool->get();
+        allocation.descriptorSetCount = 2;
+        allocation.pSetLayouts = set_layouts.data();
+        assert(allocateSets(device.logicalDevice(), &allocation, targets.data()) == VK_SUCCESS);
+        const auto original_targets = targets;
+        const auto original_writes = descriptor_writes;
+        for (unsigned index = 0; index < 3; ++index)
+        {
+            auto invalid_targets = targets;
+            if (index == 1)
+            {
+                invalid_targets.fill(VK_NULL_HANDLE);
+            }
+            if (index == 2)
+            {
+                invalid_targets[1] = VK_NULL_HANDLE;
+            }
+            const auto input =
+                index == 0 ? std::span<const VkDescriptorSet>{} : std::span<const VkDescriptorSet>(invalid_targets);
+            ResourceRegistry registry;
+            auto rejected = VertexPoolRegistry::create(device, input, 0);
+            assert(!rejected && isError<err::descriptor::InvalidVertexPoolTarget>(rejected.error()));
+            assert(!registry.find<VertexPoolRegistry>() && descriptor_writes == original_writes);
+        }
+        {
+            DeviceContext inactive(instance);
+            auto rejected = VertexPoolRegistry::create(inactive, targets, 0);
+            assert(!rejected && isError<err::descriptor::InvalidVertexPoolTarget>(rejected.error()));
+        }
+        {
+            ResourceRegistry registry;
+            auto candidate = VertexPoolRegistry::create(device, targets, 0);
+            assert(candidate && !registry.find<VertexPoolRegistry>());
+            auto* original = candidate->get();
+            auto published = registry.insert(std::move(*candidate));
+            assert(published.get() == original && registry.find<VertexPoolRegistry>() == original);
+            assert(descriptor_writes == original_writes);
+            targets.fill(VK_NULL_HANDLE); // The accepted write target owns its small handle array.
+            std::array<TransientVertexSource, kVertexPoolMaxCount + 1> sources;
+            for (auto& source : sources)
+            {
+                assert(source.init({&device, 4096, 0, 16}));
+            }
+            buffer_writes.clear();
+            trace_buffer_writes = true;
+            for (unsigned id = 0; id < kVertexPoolMaxCount; ++id)
+            {
+                assert(original->registerSource(sources[id]) == id);
+                assert(original->isRegistered(id) && sources[id].bindlessPoolId() == id);
+                for (unsigned fi = 0; fi < 2; ++fi)
+                {
+                    const auto& write = buffer_writes[id * 2 + fi];
+                    assert(write.device == device.logicalDevice() && write.set == original_targets[fi]);
+                    assert(write.binding == 0 && write.index == id && write.buffer == sources[id].buffer());
+                }
+            }
+            const auto writes_at_capacity = buffer_writes.size();
+            assert(original->registerSource(sources.back()) == ~0u);
+            assert(sources.back().bindlessPoolId() == ~0u && buffer_writes.size() == writes_at_capacity);
+            original->unregisterSource(3);
+            assert(!original->isRegistered(3) && sources[3].bindlessPoolId() == ~0u);
+            assert(original->registerSource(sources.back()) == 3);
+            original->refreshSource(3);
+            assert(buffer_writes.size() == writes_at_capacity + 4);
+            assert(buffer_writes.back().buffer == sources.back().buffer());
+            original->refreshSource(~0u);
+            original->unregisterSource(~0u);
+            assert(!original->isRegistered(~0u));
+            for (unsigned id = 0; id < kVertexPoolMaxCount; ++id)
+            {
+                original->unregisterSource(id);
+            }
+            for (const auto& source : sources)
+            {
+                assert(source.bindlessPoolId() == ~0u);
+            }
+            trace_buffer_writes = false;
+            buffer_writes.clear();
+        }
+        assert(buffers.empty() && sets.contains(original_targets[0]) && sets.contains(original_targets[1]));
+        std::puts("Vertex pool complete target: rejection before publication, per-frame writes, capacity/reuse, borrow "
+                  "lifetime PASS");
+    }
+    assert(pools.size() == baseline_pools && sets.size() == baseline_sets);
+    if (argc > 1 && std::string_view(argv[1]) == "--vertex-pool")
+    {
+        return 0;
+    }
     for (auto boundary :
          {EFailure::NONE,
           EFailure::POOL,

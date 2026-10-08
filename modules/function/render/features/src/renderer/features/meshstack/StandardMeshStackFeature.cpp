@@ -54,30 +54,23 @@ namespace lux::render
         reg.ensure<VertexProductionRegistry>();
 
         // (2) Bindless vertex-source array (descriptor set 7).
-        const bool fresh = (reg.find<VertexPoolRegistry>() == nullptr);
-        auto vpr_r = reg.ensure<VertexPoolRegistry>(ctx.deviceContext(), ctx.descriptorService(), sc.descriptorArena());
-        if (!vpr_r)
+        auto* vpr = reg.find<VertexPoolRegistry>();
+        if (!vpr)
         {
-            return lux::cxx::unexpected<RenderError>(vpr_r.error());
-        }
-        auto* vpr = *vpr_r;
-        if (fresh)
-        {
-            // 注册表满是每帧的仲裁结果,没有调用方可以处置 —— 接上自发上报通道。
-            vpr->setErrorSink(ctx.errorSink());
-            // The vertex pool lives in the FEATURE domain, with an offset of
-            // +23 (placed after Instance/Light/Material/Particle/Compute).
-            if (auto* domains = sc.domainDescriptorSets())
+            auto* domains = sc.domainDescriptorSets();
+            const auto sets =
+                domains ? domains->setsFor(rdesc::EBindFrequency::FEATURE) : std::span<const VkDescriptorSet>{};
+            auto candidate = VertexPoolRegistry::create(
+                ctx.deviceContext(),
+                sets,
+                engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::VERTEX_POOL)),
+                ctx.errorSink()
+            );
+            if (!candidate)
             {
-                const auto accepted = vpr->setDomainWriteTarget(
-                    domains->setsFor(rdesc::EBindFrequency::FEATURE),
-                    engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::VERTEX_POOL))
-                );
-                if (!accepted)
-                {
-                    return accepted;
-                }
+                return lux::cxx::unexpected(candidate.error());
             }
+            vpr = reg.insert(std::move(*candidate)).get();
         }
 
         // (3) Global static VBO exposed as a bindless pool entry. Needs (2) + the

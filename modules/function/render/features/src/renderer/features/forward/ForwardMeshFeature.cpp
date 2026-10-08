@@ -265,8 +265,10 @@ namespace lux::render
             draw_pass.addPipeline(bucket_pipelines_.pick(b, variant_buckets[b]));
 
         // Bind the bindless vertex pool at set 7 (shared 8-set layout).
-        if (vpr && vpr->isInitialized())
+        if (vpr != nullptr)
+        {
             draw_pass.useEngineSet(EDescriptorSetSlot::VERTEX_POOL);
+        }
 
         // Declare a read on every published compute-vertex producer's output
         // (skinning today; morph/cloth later) so the graph orders

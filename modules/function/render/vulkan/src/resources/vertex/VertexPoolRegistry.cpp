@@ -2,86 +2,50 @@
  * @file VertexPoolRegistry.cpp
  */
 
+#include <lux/engine/render/core/RenderErrorSink.hpp>
+#include <lux/engine/render/resources/vertex/IVertexSource.hpp>
 #include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp>
-#include <lux/engine/render/gpu/descriptor/SceneDescriptorArena.hpp>
 
 #include <lux/engine/render/gpu/VulkanContext.hpp> // DeviceContext
 
 namespace lux::render
 {
-    VertexPoolRegistry::~VertexPoolRegistry()
+    VertexPoolRegistry::CreateResult VertexPoolRegistry::create(
+        DeviceContext& device,
+        std::span<const VkDescriptorSet> sets,
+        std::uint32_t binding_offset,
+        RenderErrorSink* error_sink
+    ) noexcept
     {
-        if (initialized_)
-            shutdown();
-    }
-
-    bool VertexPoolRegistry::init(
-        DeviceContext& device_ctx,
-        DescriptorService& descriptor_svc,
-        SceneDescriptorArena& arena
-    )
-    {
-        if (initialized_)
-            return true;
-
-        device_ctx_ = &device_ctx;
-        descriptor_svc_ = &descriptor_svc;
-
-        // Register the layout with DescriptorService. Must mirror the layout
-        // built by GeneralDescriptorSetLayout for SET 7 so pipelines built
-        // with either source produce compatible pipeline layouts.
-        VkDescriptorSetLayoutBinding binding{};
-        binding.binding = static_cast<uint32_t>(EVertexPoolSetBindings::VERTEX_POOLS);
-        binding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        binding.descriptorCount = kVertexPoolMaxCount;
-        binding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
-
-        VkDescriptorBindingFlags bf =
-            VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
-
-        DescriptorLayoutDesc desc{};
-        desc.bindings = std::span<const VkDescriptorSetLayoutBinding>(&binding, 1);
-        desc.binding_flags = std::span<const VkDescriptorBindingFlags>(&bf, 1);
-        desc.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-        desc.debug_name = "VertexPoolRegistry";
-
-        layout_id_ = descriptor_svc_->registerLayout(desc);
-        if (layout_id_ == kInvalidDescriptorLayoutId)
+        const bool is_invalid_device = device.logicalDevice() == VK_NULL_HANDLE;
+        const bool is_invalid_count = sets.empty() || sets.size() > UINT32_MAX;
+        const bool has_missing_set = std::ranges::any_of(sets, [](VkDescriptorSet set) { return !set; });
+        const bool is_invalid_target = is_invalid_device || is_invalid_count || has_missing_set;
+        if (is_invalid_target)
         {
-            device_ctx_ = nullptr;
-            descriptor_svc_ = nullptr;
-            return false;
+            return renderFailure<err::descriptor::InvalidVertexPoolTarget>();
         }
-
-        // 阶段 C:不再分配 per-set 实例 —— 描述符写进场景的域集,
-        // 绑定也从域集取(useEngineSet)。这里只保留 layout 注册:形状表要用
-        // 它建域布局,而 layout 本身归 DescriptorService 持有。
-        (void)arena;
-
-        slots_.fill(nullptr);
-        initialized_ = true;
-        return true;
+        DomainWriteTarget domain;
+        if (auto accepted = domain.set(sets, binding_offset); !accepted)
+        {
+            return lux::cxx::unexpected(accepted.error());
+        }
+        return std::unique_ptr<VertexPoolRegistry>(
+            new VertexPoolRegistry(device.logicalDevice(), std::move(domain), error_sink)
+        );
     }
 
-    void VertexPoolRegistry::shutdown()
+    VertexPoolRegistry::VertexPoolRegistry(
+        VkDevice device,
+        DomainWriteTarget domain,
+        RenderErrorSink* error_sink
+    ) noexcept
+        : device_(device), domain_(std::move(domain)), error_sink_(error_sink)
     {
-        if (!initialized_)
-            return;
-
-        // Descriptor set is pool-managed by DescriptorService — no manual
-        // free call needed. Layout is owned by DescriptorService too.
-        layout_id_ = kInvalidDescriptorLayoutId;
-        device_ctx_ = nullptr;
-        descriptor_svc_ = nullptr;
-        slots_.fill(nullptr);
-        initialized_ = false;
     }
 
-    std::uint32_t VertexPoolRegistry::registerSource(IVertexSource& source)
+    std::uint32_t VertexPoolRegistry::registerSource(IVertexSource& source) noexcept
     {
-        if (!initialized_)
-            return ~0u;
-
         for (std::uint32_t i = 0; i < kVertexPoolMaxCount; ++i)
         {
             if (slots_[i] == nullptr)
@@ -104,10 +68,12 @@ namespace lux::render
         return ~0u; // registry full
     }
 
-    void VertexPoolRegistry::unregisterSource(std::uint32_t pool_id)
+    void VertexPoolRegistry::unregisterSource(std::uint32_t pool_id) noexcept
     {
-        if (!initialized_ || pool_id >= kVertexPoolMaxCount)
+        if (pool_id >= kVertexPoolMaxCount)
+        {
             return;
+        }
 
         if (slots_[pool_id])
         {
@@ -119,25 +85,22 @@ namespace lux::render
         }
     }
 
-    void VertexPoolRegistry::refreshSource(std::uint32_t pool_id)
+    void VertexPoolRegistry::refreshSource(std::uint32_t pool_id) noexcept
     {
-        if (!initialized_ || pool_id >= kVertexPoolMaxCount)
+        if (pool_id >= kVertexPoolMaxCount)
+        {
             return;
+        }
         if (slots_[pool_id])
             writeDescriptor(pool_id, *slots_[pool_id]);
     }
 
     bool VertexPoolRegistry::isRegistered(std::uint32_t pool_id) const noexcept
     {
-        return initialized_ && pool_id < kVertexPoolMaxCount && slots_[pool_id] != nullptr;
+        return pool_id < kVertexPoolMaxCount && slots_[pool_id] != nullptr;
     }
 
-    VkDescriptorSetLayout VertexPoolRegistry::descriptorSetLayout() const noexcept
-    {
-        return descriptor_svc_ ? descriptor_svc_->layout(layout_id_) : VK_NULL_HANDLE;
-    }
-
-    void VertexPoolRegistry::writeDescriptor(std::uint32_t pool_id, IVertexSource& source)
+    void VertexPoolRegistry::writeDescriptor(std::uint32_t pool_id, IVertexSource& source) noexcept
     {
         VkBuffer buf = source.buffer();
         if (buf == VK_NULL_HANDLE)
@@ -170,26 +133,10 @@ namespace lux::render
         for (uint32_t s = 0; s < domain_.sliceCount(); ++s)
         {
             VkDescriptorSet domain_ds = domain_.setFor(s);
-            if (domain_ds == VK_NULL_HANDLE)
-                continue;
             w.dstSet = domain_ds;
             w.dstBinding = domain_.binding(static_cast<uint32_t>(EVertexPoolSetBindings::VERTEX_POOLS));
-            vkUpdateDescriptorSets(device_ctx_->logicalDevice(), 1, &w, 0, nullptr);
+            vkUpdateDescriptorSets(device_, 1, &w, 0, nullptr);
         }
-    }
-
-    Expected<void> VertexPoolRegistry::setDomainWriteTarget(
-        std::span<const VkDescriptorSet> sets,
-        uint32_t binding_offset
-    )
-    {
-        if (auto accepted = domain_.set(sets, binding_offset); !accepted)
-            return accepted;
-        // 回填已经登记过的槽位:源可能在目标设好之前就注册了(顺序无关)。
-        for (std::uint32_t i = 0; i < kVertexPoolMaxCount; ++i)
-            if (slots_[i])
-                writeDescriptor(i, *slots_[i]);
-        return {};
     }
 
 } // namespace lux::render

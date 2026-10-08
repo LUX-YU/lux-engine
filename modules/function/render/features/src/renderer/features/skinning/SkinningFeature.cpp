@@ -228,8 +228,10 @@ namespace lux::render
         // set 1 = bindless vertex pool: the compute reads its INPUT vertices from
         // it. Required by the compute pipeline layout, so bail if absent.
         auto* vpr = renderScene().resources().find<VertexPoolRegistry>();
-        if (!vpr || !vpr->isInitialized())
+        if (!vpr)
+        {
             return;
+        }
 
         // IMPORTANT: addPasses runs only at graph-COMPILE time (the graph is
         // cached + recompiled on invalidation), NOT per frame. So the compute

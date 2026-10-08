@@ -361,8 +361,10 @@ namespace lux::render
         for (uint32_t b = 1; b < bucket_count; ++b)
             draw_pass.addPipeline(bucket_pipelines_.pick(b, variant_buckets[b]));
 
-        if (vpr && vpr->isInitialized())
+        if (vpr != nullptr)
+        {
             draw_pass.useEngineSet(EDescriptorSetSlot::VERTEX_POOL);
+        }
 
         // Order after skinning (live skeletal silhouette).
         if (auto* vproducers = renderScene().resources().find<VertexProductionRegistry>())

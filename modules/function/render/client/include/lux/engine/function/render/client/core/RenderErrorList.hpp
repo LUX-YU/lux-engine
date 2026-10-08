@@ -456,6 +456,15 @@ namespace lux::render::err
         /// 是未定义行为,画面表现却可能只是「有些东西不见了」,没有任何一层会报错。
         ///
         /// 上游成因通常是场景的域描述符 set 分配失败(池尺寸不足 / 域布局缺失)。
+        struct InvalidVertexPoolTarget
+        {
+            static constexpr const char* name = "descriptor.invalid_vertex_pool_target";
+            static constexpr const char* message =
+                "Vertex pools require a live device and complete descriptor frame targets";
+            static constexpr ERecovery recovery = ERecovery::BUG;
+            static constexpr ErrorArgs args{};
+        };
+
         struct DomainWriteTargetEmpty
         {
             static constexpr const char* name = "descriptor.domain_write_target_empty";
@@ -1430,6 +1439,7 @@ namespace lux::render::err
     X(::lux::render::err::pipeline::ReflectedSetLayoutMissing)                                                         \
     X(::lux::render::err::pipeline::VariantBudgetExhausted)                                                            \
     X(::lux::render::err::pipeline::GraphicsCreationFailed)                                                            \
+    X(::lux::render::err::descriptor::InvalidVertexPoolTarget)                                                         \
     X(::lux::render::err::descriptor::DomainWriteTargetEmpty)                                                          \
     X(::lux::render::err::graph::CompiledGraphInvalid)                                                                 \
     X(::lux::render::err::graph::DependencyCycle)                                                                      \

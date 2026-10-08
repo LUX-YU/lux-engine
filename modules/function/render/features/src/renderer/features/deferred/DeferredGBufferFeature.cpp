@@ -296,8 +296,10 @@ namespace lux::render
             draw_pass.addPipeline(bucket_pipelines_.pick(b, variant_buckets[b]));
 
         // Bind the bindless vertex pool at set 7 (shared 8-set layout).
-        if (vpr && vpr->isInitialized())
+        if (vpr != nullptr)
+        {
             draw_pass.useEngineSet(EDescriptorSetSlot::VERTEX_POOL);
+        }
 
         // Order the GBuffer draw after every compute-vertex producer (skinning,
         // future morph/cloth) so the graph inserts the compute→vertex barrier.

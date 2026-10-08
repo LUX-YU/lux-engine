@@ -751,7 +751,7 @@ namespace lux::render
 
         auto* meshes = renderContext().globalRegistry().find<MeshResources>();
         auto* vertex_pools = renderScene().resources().find<VertexPoolRegistry>();
-        if (!meshes || !vertex_pools || !vertex_pools->isInitialized())
+        if (!meshes || !vertex_pools)
         {
             return;
         }

@@ -191,8 +191,10 @@ namespace lux::render
         const auto bucket_count = static_cast<std::uint32_t>(buckets.size());
         for (std::uint32_t bucket = 1; bucket < bucket_count; ++bucket)
             draw.addPipeline(bucket_pipelines_.pick(bucket, buckets[bucket]));
-        if (vertex_pools != nullptr && vertex_pools->isInitialized())
+        if (vertex_pools != nullptr)
+        {
             draw.useEngineSet(EDescriptorSetSlot::VERTEX_POOL);
+        }
         if (auto* producers = renderScene().resources().find<VertexProductionRegistry>())
         {
             for (const auto& producer : producers->producers())

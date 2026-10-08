@@ -17,10 +17,9 @@ namespace lux::render
         RenderErrorSink* error_sink
     ) noexcept
     {
-        const bool is_invalid_device = device.logicalDevice() == VK_NULL_HANDLE;
         const bool is_invalid_count = sets.empty() || sets.size() > UINT32_MAX;
         const bool has_missing_set = std::ranges::any_of(sets, [](VkDescriptorSet set) { return !set; });
-        const bool is_invalid_target = is_invalid_device || is_invalid_count || has_missing_set;
+        const bool is_invalid_target = is_invalid_count || has_missing_set;
         if (is_invalid_target)
         {
             return renderFailure<err::descriptor::InvalidVertexPoolTarget>();

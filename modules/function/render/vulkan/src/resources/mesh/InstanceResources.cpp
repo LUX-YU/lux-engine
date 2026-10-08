@@ -76,7 +76,6 @@ namespace lux::render
     InstanceResources::CreateResult InstanceResources::create(const CreateInfo& info) noexcept
     {
         constexpr auto maximum_extent = UINT32_MAX - (kInstanceSlotsPerPage - 1u);
-        const bool is_missing_device = !info.device_context.logicalDevice() || !info.device_context.vmaAllocator();
         const bool is_invalid_extent = info.initial_capacity == 0 || info.initial_capacity > info.max_capacity ||
                                        info.max_capacity > maximum_extent;
         const bool is_invalid_page_size = !std::isfinite(info.coordinate_page_size) || info.coordinate_page_size <= 0 ||
@@ -86,7 +85,7 @@ namespace lux::render
             info.domain_sets.empty() || info.domain_sets.size() > kMaxFramesInFlight ||
             std::ranges::any_of(info.domain_sets, [](VkDescriptorSet set) { return !set; });
         const bool is_invalid_binding = info.domain_binding_offset == UINT32_MAX;
-        const bool is_invalid_configuration = is_missing_device || is_invalid_extent || is_invalid_page_size ||
+        const bool is_invalid_configuration = is_invalid_extent || is_invalid_page_size ||
                                               is_incomplete_domain || is_invalid_binding;
         if (is_invalid_configuration)
         {

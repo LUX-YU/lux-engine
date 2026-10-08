@@ -11,7 +11,7 @@ namespace lux::render
 {
     TransientVertexSource::CreateResult TransientVertexSource::create(const CreateInfo& info) noexcept
     {
-        const bool is_missing_device = info.device_context == nullptr || info.device_context->vmaAllocator() == nullptr;
+        const bool is_missing_device = info.device_context == nullptr;
         const bool is_invalid_stride = info.vertex_stride == 0;
         const bool is_invalid_layout = info.layout_id == kInvalidVertexLayoutId;
         const bool is_invalid_capacity = is_invalid_stride || info.capacity_bytes < info.vertex_stride ||

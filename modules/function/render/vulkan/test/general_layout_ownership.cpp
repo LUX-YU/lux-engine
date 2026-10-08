@@ -60,8 +60,9 @@ int main(int argc, char**)
     auto instance_owner = InstanceContext::create({});
     assert(instance_owner);
     auto& instance = **instance_owner;
-    DeviceContext device(instance);
-    assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
+    auto device_owner = DeviceContext::create(instance, EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED);
+    assert(device_owner);
+    auto& device = **device_owner;
     if (argc > 1)
     {
         fail_at = 2;

@@ -14,7 +14,7 @@ namespace lux::render
     SceneResources::CreateResult SceneResources::create(const CreateInfo& info) noexcept
     {
         const bool is_invalid_frames = info.slices == 0 || info.slices > kMaxFramesInFlight;
-        const bool is_missing_backing = !info.arena || !info.set_layout || !info.device_context.logicalDevice();
+        const bool is_missing_backing = !info.arena || !info.set_layout;
         const bool is_empty_capacity = info.initial_scene_capacity == 0 || info.initial_view_capacity == 0;
         const bool is_incomplete_target =
             info.domain_sets.size() != info.slices ||

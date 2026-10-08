@@ -256,20 +256,21 @@ namespace lux::render
             return lux::cxx::unexpected(instance.error());
         }
         inst_ctx_ = std::move(*instance);
-        dev_ctx_ = std::make_unique<DeviceContext>(*inst_ctx_);
 
         frames_in_flight_ = cfg.frames_in_flight;
         frame_orchestrator_ = FrameOrchestrator{cfg.frames_in_flight};
         enable_vsync_ = cfg.enable_vsync;
 
-        if (auto r = dev_ctx_->init(
-                cfg.prefer_discrete_gpu ? EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED
-                                        : EPhysicalDeviceSelectionPolicy::INTEGRATED_GPU_PREFERRED
-            );
-            !r)
+        auto device = DeviceContext::create(
+            *inst_ctx_,
+            cfg.prefer_discrete_gpu ? EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED
+                                    : EPhysicalDeviceSelectionPolicy::INTEGRATED_GPU_PREFERRED
+        );
+        if (!device)
         {
-            return lux::cxx::unexpected(r.error());
+            return lux::cxx::unexpected(device.error());
         }
+        dev_ctx_ = std::move(*device);
 
         // Resolve the session feature tier = min(device-achievable, caller
         // preference). Features read dev_ctx caps()/featureLevel() at attach

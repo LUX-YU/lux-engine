@@ -178,8 +178,9 @@ int main()
         auto instance_owner = InstanceContext::create({}, {}, &allocator);
         assert(instance_owner);
         auto& instance = **instance_owner;
-        DeviceContext device(instance);
-        assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
+        auto device_owner = DeviceContext::create(instance, EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED);
+        assert(device_owner);
+        auto& device = **device_owner;
         for (unsigned failure = 1; failure <= 4; ++failure)
         {
             attempts = 0;

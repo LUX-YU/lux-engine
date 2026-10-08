@@ -3513,8 +3513,9 @@ int main(int argc, char** argv)
     auto instance_owner = InstanceContext::create({});
     assert(instance_owner);
     auto& instance = **instance_owner;
-    DeviceContext device(instance);
-    assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
+    auto device_owner = DeviceContext::create(instance, EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED);
+    assert(device_owner);
+    auto& device = **device_owner;
     checkRetirementOwner(device);
     if (argc == 2 && std::string_view(argv[1]) == "--retirement")
     {
@@ -3620,8 +3621,9 @@ int main(int argc, char** argv)
     static_assert(!std::is_move_constructible_v<BindlessCombinedSet>);
 
     {
-        DeviceContext other_device(instance);
-        assert(other_device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
+        auto other_device_owner = DeviceContext::create(instance, EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED);
+        assert(other_device_owner);
+        auto& other_device = **other_device_owner;
         auto other_resources_owner = ResourceContext::create(other_device);
         assert(other_resources_owner);
         auto& other_resources = **other_resources_owner;
@@ -3680,11 +3682,8 @@ int main(int argc, char** argv)
             assert(!rejected && isError<err::descriptor::InvalidVertexPoolTarget>(rejected.error()));
             assert(!registry.find<VertexPoolRegistry>() && descriptor_writes == original_writes);
         }
-        {
-            DeviceContext inactive(instance);
-            auto rejected = VertexPoolRegistry::create(inactive, targets, 0);
-            assert(!rejected && isError<err::descriptor::InvalidVertexPoolTarget>(rejected.error()));
-        }
+        // An inactive DeviceContext is no longer constructible or passable to a resource factory.
+        static_assert(!std::is_constructible_v<DeviceContext, InstanceContext&>);
         {
             ResourceRegistry registry;
             auto candidate = VertexPoolRegistry::create(device, targets, 0);
@@ -3748,8 +3747,7 @@ int main(int argc, char** argv)
         static_assert(!std::is_move_constructible_v<SkinningResources>);
         auto vertices = VertexPoolRegistry::create(device, original_targets, 0);
         assert(vertices);
-        DeviceContext inactive_device(instance);
-        for (unsigned index = 0; index < 7; ++index)
+        for (unsigned index = 0; index < 6; ++index)
         {
             TransientVertexSource::CreateInfo config{&device, 4096, 0, 16};
             switch (index)
@@ -3771,9 +3769,6 @@ int main(int argc, char** argv)
                 break;
             case 5:
                 config.capacity_bytes = (VkDeviceSize(UINT32_MAX) + 1) * 16;
-                break;
-            case 6:
-                config.device_context = &inactive_device;
                 break;
             }
             auto candidate = TransientVertexSource::create(config);

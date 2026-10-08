@@ -169,12 +169,25 @@ namespace lux::render
     }
 
     // DeviceContext implementation
-    DeviceContext::DeviceContext(InstanceContext& instance_context) : instance_context_(instance_context) {}
-
-    Expected<void> DeviceContext::init(EPhysicalDeviceSelectionPolicy policy)
+    DeviceContext::DeviceContext(InstanceContext& instance_context, Backing backing) noexcept
+        : instance_context_(instance_context), backing_(std::move(backing))
     {
+    }
+
+    DeviceContext::CreateResult DeviceContext::create(
+        InstanceContext& instance_context,
+        EPhysicalDeviceSelectionPolicy policy
+    ) noexcept
+    {
+        const bool is_invalid_policy = policy != EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED &&
+                                       policy != EPhysicalDeviceSelectionPolicy::INTEGRATED_GPU_PREFERRED;
+        if (is_invalid_policy)
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
+        Backing backing;
         // Select physical device
-        auto discovered = instance_context_.instance().listPhysicalDevices();
+        auto discovered = instance_context.instance().listPhysicalDevices();
         if (!discovered)
         {
             return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(discovered.error()));
@@ -187,48 +200,50 @@ namespace lux::render
 
         switch (policy)
         {
-        case EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED: {
+        case EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED:
+        {
             // First try to find a discrete GPU
             for (auto& device : devices)
             {
                 if (device.type() == lux::gapi::EDeviceType::DISCRETE_GPU)
                 {
-                    physical_device_ = std::move(device);
+                    backing.physical_device = std::move(device);
                     break;
                 }
             }
             // If no discrete GPU found, try integrated GPU as fallback
-            if (!physical_device_)
+            if (!backing.physical_device)
             {
                 for (auto& device : devices)
                 {
                     if (device.type() == lux::gapi::EDeviceType::INTEGRATED_GPU)
                     {
-                        physical_device_ = std::move(device);
+                        backing.physical_device = std::move(device);
                         break;
                     }
                 }
             }
             break;
         }
-        case EPhysicalDeviceSelectionPolicy::INTEGRATED_GPU_PREFERRED: {
+        case EPhysicalDeviceSelectionPolicy::INTEGRATED_GPU_PREFERRED:
+        {
             // First try to find an integrated GPU
             for (auto& device : devices)
             {
                 if (device.type() == lux::gapi::EDeviceType::INTEGRATED_GPU)
                 {
-                    physical_device_ = std::move(device);
+                    backing.physical_device = std::move(device);
                     break;
                 }
             }
             // If no integrated GPU found, try discrete GPU as fallback
-            if (!physical_device_)
+            if (!backing.physical_device)
             {
                 for (auto& device : devices)
                 {
                     if (device.type() == lux::gapi::EDeviceType::DISCRETE_GPU)
                     {
-                        physical_device_ = std::move(device);
+                        backing.physical_device = std::move(device);
                         break;
                     }
                 }
@@ -238,12 +253,12 @@ namespace lux::render
         }
 
         // Final fallback: use the first available device if we haven't found a suitable one
-        if (!physical_device_ && !devices.empty())
+        if (!backing.physical_device && !devices.empty())
         {
-            physical_device_ = std::move(devices.front());
+            backing.physical_device = std::move(devices.front());
         }
 
-        if (!physical_device_)
+        if (!backing.physical_device)
         {
             return renderFailure<err::memory::GpuAllocationFailed>();
         }
@@ -288,10 +303,11 @@ namespace lux::render
             feat2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
             feat2.pNext = &feat11;
 
-            vkGetPhysicalDeviceFeatures2(physical_device_, &feat2);
+            vkGetPhysicalDeviceFeatures2(backing.physical_device, &feat2);
 
             std::string missing;
-            auto require = [&](VkBool32 supported, const char* name) {
+            auto require = [&](VkBool32 supported, const char* name)
+            {
                 if (!supported)
                 {
                     missing += ' ';
@@ -366,24 +382,25 @@ namespace lux::render
         // Create logical device
         constexpr uint32_t INVALID_QUEUE_FAMILY_INDEX = std::numeric_limits<uint32_t>::max();
 
-        graphics_queue_family_index_ = physical_device_.findQueueFamilyIndexByFlags(VK_QUEUE_GRAPHICS_BIT);
+        backing.graphics_queue_family_index =
+            backing.physical_device.findQueueFamilyIndexByFlags(VK_QUEUE_GRAPHICS_BIT);
 
-        if (graphics_queue_family_index_ == INVALID_QUEUE_FAMILY_INDEX)
+        if (backing.graphics_queue_family_index == INVALID_QUEUE_FAMILY_INDEX)
         {
             return renderFailure<err::memory::GpuAllocationFailed>();
         }
 
         // Discover dedicated async compute queue (COMPUTE but NOT GRAPHICS)
         {
-            const auto& families = physical_device_.queueFamilyProperties();
+            const auto& families = backing.physical_device.queueFamilyProperties();
             for (uint32_t i = 0; i < static_cast<uint32_t>(families.size()); ++i)
             {
                 const auto& props = families[i].queueFamilyProperties;
                 if ((props.queueFlags & VK_QUEUE_COMPUTE_BIT) && !(props.queueFlags & VK_QUEUE_GRAPHICS_BIT) &&
                     props.queueCount > 0)
                 {
-                    async_compute_queue_family_index_ = i;
-                    has_async_compute_ = true;
+                    backing.async_compute_queue_family_index = i;
+                    backing.has_async_compute = true;
                     break;
                 }
             }
@@ -391,7 +408,7 @@ namespace lux::render
 
         // Discover dedicated transfer queue (TRANSFER but NOT GRAPHICS and NOT COMPUTE)
         {
-            const auto& families = physical_device_.queueFamilyProperties();
+            const auto& families = backing.physical_device.queueFamilyProperties();
             for (uint32_t i = 0; i < static_cast<uint32_t>(families.size()); ++i)
             {
                 const auto& props = families[i].queueFamilyProperties;
@@ -403,8 +420,8 @@ namespace lux::render
                     has_transfer_queue && !has_graphics_queue && !has_compute_queue && has_queues;
                 if (is_dedicated_transfer)
                 {
-                    transfer_queue_family_index_ = i;
-                    has_transfer_ = true;
+                    backing.transfer_queue_family_index = i;
+                    backing.has_transfer = true;
                     break;
                 }
             }
@@ -477,11 +494,17 @@ namespace lux::render
         // vertex input bindings is drawn after a pipeline that did bind vertex buffers.
         // This is a known Validation Layer 1.3.280 bug.
         // 设备扩展列表只枚举一次,robustness2 / local_read / interop 共用。
-        uint32_t device_ext_count = 0;
-        vkEnumerateDeviceExtensionProperties(physical_device_, nullptr, &device_ext_count, nullptr);
-        std::vector<VkExtensionProperties> device_exts(device_ext_count);
-        vkEnumerateDeviceExtensionProperties(physical_device_, nullptr, &device_ext_count, device_exts.data());
-        auto has_device_ext = [&](const char* name) {
+        auto extensions = lux::gapi::vk::detail::enumerateVulkanValues<VkExtensionProperties>(
+            [&](uint32_t* count, VkExtensionProperties* values) noexcept
+            { return vkEnumerateDeviceExtensionProperties(backing.physical_device, nullptr, count, values); }
+        );
+        if (!extensions)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(extensions.error()));
+        }
+        const auto& device_exts = *extensions;
+        auto has_device_ext = [&](const char* name)
+        {
             for (const auto& e : device_exts)
             {
                 if (std::string_view(e.extensionName) == name)
@@ -528,7 +551,7 @@ namespace lux::render
         swapchain_maint1_features.pNext = nullptr;
         swapchain_maint1_features.swapchainMaintenance1 = VK_TRUE;
         bool enable_swapchain_maint1 =
-            instance_context_.isInstanceExtensionEnabled(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME) &&
+            instance_context.isInstanceExtensionEnabled(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME) &&
             has_device_ext(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
         if (enable_swapchain_maint1)
         {
@@ -537,10 +560,10 @@ namespace lux::render
             VkPhysicalDeviceFeatures2 q2{};
             q2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
             q2.pNext = &q;
-            vkGetPhysicalDeviceFeatures2(physical_device_, &q2);
+            vkGetPhysicalDeviceFeatures2(backing.physical_device, &q2);
             enable_swapchain_maint1 = (q.swapchainMaintenance1 == VK_TRUE);
         }
-        supports_swapchain_maintenance1_ = enable_swapchain_maint1;
+        backing.supports_swapchain_maintenance1 = enable_swapchain_maint1;
         // Chain the features: vulkan12 -> vulkan11 -> vulkan13 [-> robustness2] [-> local_read]
         vulkan12_features.pNext = &vulkan11_features;
         vulkan11_features.pNext = &vulkan13_features;
@@ -578,71 +601,106 @@ namespace lux::render
         // Build logical device with all needed queues
         // Vulkan requires unique queue family indices in create infos,
         // so we need to collect unique families and request appropriate counts
-        auto builder = lux::gapi::vk::LogicalDevice::Builder()
-                           .addExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME)
-                           .addExtension(VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME);
+        std::vector<const char*> enabled_extensions{
+            VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+            VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME
+        };
+        auto add_extension = [&](const char* name) { enabled_extensions.push_back(name); };
+#ifdef VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME
+        if (has_device_ext(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME))
+        {
+            add_extension(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
+        }
+#endif
+        if (has_device_ext(VK_EXT_HDR_METADATA_EXTENSION_NAME))
+        {
+            add_extension(VK_EXT_HDR_METADATA_EXTENSION_NAME);
+        }
+        // synchronization2 is core in our required Vulkan 1.3; no redundant
+        // extension alias or second extension enumeration is necessary.
+        std::vector<VkDeviceQueueCreateInfo> queue_infos;
+        auto add_queue = [&](uint32_t family, uint32_t count, const float* priorities)
+        {
+            VkDeviceQueueCreateInfo info{};
+            info.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+            info.queueFamilyIndex = family;
+            info.queueCount = count;
+            info.pQueuePriorities = priorities;
+            queue_infos.push_back(info);
+        };
         if (has_robustness2)
         {
-            builder.addExtension(VK_EXT_ROBUSTNESS_2_EXTENSION_NAME);
+            add_extension(VK_EXT_ROBUSTNESS_2_EXTENSION_NAME);
         }
         if (wl_dynamic_rendering_local_read)
         {
-            builder.addExtension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
+            add_extension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
         }
         if (enable_swapchain_maint1)
         {
-            builder.addExtension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
+            add_extension(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
         }
         if (has_external_interop)
         {
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
-            builder.addExtension(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME)
-                .addExtension(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME);
+            add_extension(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
+            add_extension(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME);
 #else
-            builder.addExtension(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME)
-                .addExtension(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME);
+            add_extension(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME);
+            add_extension(VK_KHR_EXTERNAL_SEMAPHORE_FD_EXTENSION_NAME);
 #endif
         }
-        builder.setEnabledFeatures(&device_features)
-            .setNextChain(&vulkan12_features) // Head of the feature chain
-            .addQueueCreateInfo(graphics_queue_family_index_, 1, queue_priority);
+        add_queue(backing.graphics_queue_family_index, 1, queue_priority);
 
         // Request async compute queue if it's a different family
-        if (has_async_compute_ && async_compute_queue_family_index_ != graphics_queue_family_index_)
+        const bool has_separate_compute = backing.has_async_compute && backing.async_compute_queue_family_index !=
+                                                                           backing.graphics_queue_family_index;
+        if (has_separate_compute)
         {
-            builder.addQueueCreateInfo(async_compute_queue_family_index_, 1, queue_priority);
+            add_queue(backing.async_compute_queue_family_index, 1, queue_priority);
         }
 
         // Request transfer queue if it's a different family (and different from compute)
-        if (has_transfer_ && transfer_queue_family_index_ != graphics_queue_family_index_ &&
-            transfer_queue_family_index_ != async_compute_queue_family_index_)
+        const bool has_separate_transfer =
+            backing.has_transfer && backing.transfer_queue_family_index != backing.graphics_queue_family_index &&
+            backing.transfer_queue_family_index != backing.async_compute_queue_family_index;
+        if (has_separate_transfer)
         {
-            builder.addQueueCreateInfo(transfer_queue_family_index_, 1, queue_priority);
+            add_queue(backing.transfer_queue_family_index, 1, queue_priority);
         }
 
-        logical_device_ = builder.build(physical_device_, instance_context_.allocator());
-
-        if (!logical_device_)
+        VkDeviceCreateInfo device_info{};
+        device_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+        device_info.pNext = &vulkan12_features;
+        device_info.pEnabledFeatures = &device_features;
+        device_info.queueCreateInfoCount = static_cast<uint32_t>(queue_infos.size());
+        device_info.pQueueCreateInfos = queue_infos.data();
+        device_info.enabledExtensionCount = static_cast<uint32_t>(enabled_extensions.size());
+        device_info.ppEnabledExtensionNames = enabled_extensions.data();
+        auto logical_device =
+            lux::gapi::vk::LogicalDevice::create(backing.physical_device, device_info, instance_context.allocator());
+        if (!logical_device)
         {
-            return renderFailure<err::device::VulkanObjectCreationFailed>();
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(logical_device.error()));
         }
+        backing.logical_device = std::move(*logical_device);
 
         // Record the interop gate: the platform external extensions are now enabled on
         // the device (or were unavailable). Consumers query supportsExternalMemory().
-        supports_external_interop_ = has_external_interop;
+        backing.supports_external_interop = has_external_interop;
 
-        graphics_queue_ = logical_device_.getQueue(graphics_queue_family_index_, 0);
+        backing.graphics_queue = backing.logical_device.getQueue(backing.graphics_queue_family_index, 0);
 
         // Retrieve async compute queue
-        if (has_async_compute_)
+        if (backing.has_async_compute)
         {
-            async_compute_queue_ = logical_device_.getQueue(async_compute_queue_family_index_, 0);
+            backing.async_compute_queue = backing.logical_device.getQueue(backing.async_compute_queue_family_index, 0);
         }
 
         // Retrieve transfer queue
-        if (has_transfer_)
+        if (backing.has_transfer)
         {
-            transfer_queue_ = logical_device_.getQueue(transfer_queue_family_index_, 0);
+            backing.transfer_queue = backing.logical_device.getQueue(backing.transfer_queue_family_index, 0);
         }
 
         // ── DeviceCaps snapshot (mobile-adaptation topic ①, item 1-1) ──────
@@ -653,48 +711,51 @@ namespace lux::render
         // results land.
         {
             VkPhysicalDeviceProperties props{};
-            vkGetPhysicalDeviceProperties(physical_device_, &props);
+            vkGetPhysicalDeviceProperties(backing.physical_device, &props);
 
-            caps_.synchronization2 = vulkan13_features.synchronization2 == VK_TRUE;
-            caps_.dynamic_rendering = vulkan13_features.dynamicRendering == VK_TRUE;
-            caps_.descriptor_indexing = vulkan12_features.runtimeDescriptorArray == VK_TRUE &&
-                                        vulkan12_features.descriptorBindingPartiallyBound == VK_TRUE &&
-                                        vulkan12_features.descriptorBindingVariableDescriptorCount == VK_TRUE &&
-                                        vulkan12_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE;
-            caps_.storage_buffer_uab = vulkan12_features.descriptorBindingStorageBufferUpdateAfterBind == VK_TRUE;
-            caps_.uniform_buffer_uab = vulkan12_features.descriptorBindingUniformBufferUpdateAfterBind == VK_TRUE;
-            caps_.draw_indirect_count = vulkan12_features.drawIndirectCount == VK_TRUE;
-            caps_.shader_output_layer = vulkan12_features.shaderOutputLayer == VK_TRUE;
-            caps_.buffer_device_address = vulkan12_features.bufferDeviceAddress == VK_TRUE;
-            caps_.timeline_semaphore = vulkan12_features.timelineSemaphore == VK_TRUE;
-            caps_.shader_draw_parameters = vulkan11_features.shaderDrawParameters == VK_TRUE;
-            caps_.shader_int64 = device_features.shaderInt64 == VK_TRUE;
-            caps_.sampler_anisotropy = device_features.samplerAnisotropy == VK_TRUE;
-            caps_.multi_draw_indirect = device_features.multiDrawIndirect == VK_TRUE;
-            caps_.draw_indirect_first_instance = device_features.drawIndirectFirstInstance == VK_TRUE;
-            caps_.wide_lines = device_features.wideLines == VK_TRUE;
-            caps_.shader_clip_distance = device_features.shaderClipDistance == VK_TRUE;
-            caps_.null_descriptor = has_robustness2;
-            caps_.external_memory_interop = has_external_interop;
-            caps_.dynamic_rendering_local_read = wl_dynamic_rendering_local_read == VK_TRUE;
+            backing.caps.synchronization2 = vulkan13_features.synchronization2 == VK_TRUE;
+            backing.caps.dynamic_rendering = vulkan13_features.dynamicRendering == VK_TRUE;
+            backing.caps.descriptor_indexing =
+                vulkan12_features.runtimeDescriptorArray == VK_TRUE &&
+                vulkan12_features.descriptorBindingPartiallyBound == VK_TRUE &&
+                vulkan12_features.descriptorBindingVariableDescriptorCount == VK_TRUE &&
+                vulkan12_features.descriptorBindingSampledImageUpdateAfterBind == VK_TRUE;
+            backing.caps.storage_buffer_uab =
+                vulkan12_features.descriptorBindingStorageBufferUpdateAfterBind == VK_TRUE;
+            backing.caps.uniform_buffer_uab =
+                vulkan12_features.descriptorBindingUniformBufferUpdateAfterBind == VK_TRUE;
+            backing.caps.draw_indirect_count = vulkan12_features.drawIndirectCount == VK_TRUE;
+            backing.caps.shader_output_layer = vulkan12_features.shaderOutputLayer == VK_TRUE;
+            backing.caps.buffer_device_address = vulkan12_features.bufferDeviceAddress == VK_TRUE;
+            backing.caps.timeline_semaphore = vulkan12_features.timelineSemaphore == VK_TRUE;
+            backing.caps.shader_draw_parameters = vulkan11_features.shaderDrawParameters == VK_TRUE;
+            backing.caps.shader_int64 = device_features.shaderInt64 == VK_TRUE;
+            backing.caps.sampler_anisotropy = device_features.samplerAnisotropy == VK_TRUE;
+            backing.caps.multi_draw_indirect = device_features.multiDrawIndirect == VK_TRUE;
+            backing.caps.draw_indirect_first_instance = device_features.drawIndirectFirstInstance == VK_TRUE;
+            backing.caps.wide_lines = device_features.wideLines == VK_TRUE;
+            backing.caps.shader_clip_distance = device_features.shaderClipDistance == VK_TRUE;
+            backing.caps.null_descriptor = has_robustness2;
+            backing.caps.external_memory_interop = has_external_interop;
+            backing.caps.dynamic_rendering_local_read = wl_dynamic_rendering_local_read == VK_TRUE;
 
-            caps_.max_bound_descriptor_sets = props.limits.maxBoundDescriptorSets;
-            caps_.max_per_stage_storage_buffers = props.limits.maxPerStageDescriptorStorageBuffers;
-            caps_.max_per_stage_sampled_images = props.limits.maxPerStageDescriptorSampledImages;
-            caps_.max_push_constants_size = props.limits.maxPushConstantsSize;
-            caps_.max_image_dimension_2d = props.limits.maxImageDimension2D;
-            caps_.max_image_array_layers = props.limits.maxImageArrayLayers;
-            caps_.max_storage_buffer_range = props.limits.maxStorageBufferRange;
-            caps_.max_color_attachments = props.limits.maxColorAttachments;
+            backing.caps.max_bound_descriptor_sets = props.limits.maxBoundDescriptorSets;
+            backing.caps.max_per_stage_storage_buffers = props.limits.maxPerStageDescriptorStorageBuffers;
+            backing.caps.max_per_stage_sampled_images = props.limits.maxPerStageDescriptorSampledImages;
+            backing.caps.max_push_constants_size = props.limits.maxPushConstantsSize;
+            backing.caps.max_image_dimension_2d = props.limits.maxImageDimension2D;
+            backing.caps.max_image_array_layers = props.limits.maxImageArrayLayers;
+            backing.caps.max_storage_buffer_range = props.limits.maxStorageBufferRange;
+            backing.caps.max_color_attachments = props.limits.maxColorAttachments;
 
-            caps_.has_async_compute = has_async_compute_;
-            caps_.has_dedicated_transfer = has_transfer_;
+            backing.caps.has_async_compute = backing.has_async_compute;
+            backing.caps.has_dedicated_transfer = backing.has_transfer;
 
             // Merged pipeline layouts are exactly 4 sets (the Mali floor); a
             // device below that cannot create ANY of our pipeline layouts, so
             // fail init loudly instead of dying later at layout creation
             // (closes the "maxBoundDescriptorSets never queried" gap).
-            if (caps_.max_bound_descriptor_sets < 4)
+            if (backing.caps.max_bound_descriptor_sets < 4)
             {
                 return renderFailure<err::memory::GpuAllocationFailed>();
             }
@@ -717,21 +778,21 @@ namespace lux::render
             // whitelist) — passing it without the feature is a VMA usage error.
             .flags = wl_buffer_device_address ? VmaAllocatorCreateFlags{VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT}
                                               : VmaAllocatorCreateFlags{0},
-            .physicalDevice = physical_device_,
-            .device = logical_device_,
-            .pAllocationCallbacks = instance_context_.allocator(),
-            .instance = instance_context_.instance(),
+            .physicalDevice = backing.physical_device,
+            .device = backing.logical_device,
+            .pAllocationCallbacks = instance_context.allocator(),
+            .instance = instance_context.instance(),
             .vulkanApiVersion = VK_API_VERSION_1_3, // S-06: match actual API level used
         };
 
         auto allocator = VmaAllocatorOwner::create(vma_info);
         if (!allocator)
         {
-            return renderFailure<err::device::VulkanObjectCreationFailed>();
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(allocator.error()));
         }
-        vma_allocator_ = std::move(*allocator);
+        backing.vma_allocator = std::move(*allocator);
 
-        return {};
+        return std::unique_ptr<DeviceContext>(new DeviceContext(instance_context, std::move(backing)));
     }
 
     VkResult DeviceContext::waitIdle() noexcept
@@ -753,36 +814,20 @@ namespace lux::render
             transfer_lock.lock();
         }
 
-        return vkDeviceWaitIdle(logical_device_.handle());
+        return vkDeviceWaitIdle(backing_.logical_device.handle());
     }
 
     DeviceContext::~DeviceContext()
     {
-        // Destroy VMA allocator
-        if (vma_allocator_)
+        // A published context always has VMA backing. Children must have retired
+        // all allocations at the original owner-safe point; destruction does not wait.
+        VmaTotalStatistics statistics{};
+        vmaCalculateStatistics(backing_.vma_allocator.get(), &statistics);
+        if (statistics.total.statistics.allocationCount > 0)
         {
-            // ── Leak diagnostic (self-gating) ────────────────────────────────
-            // DeviceContext is destroyed LAST (it is created first in the render
-            // server's Impl, so reverse-order member destruction frees it after
-            // every render resource). Therefore ANY VMA allocation still live at
-            // this point is a genuine leak — a buffer/image whose owner forgot to
-            // free it before teardown. Only dumps when something actually leaked,
-            // so it is silent on a clean exit. The detailed map names each live
-            // allocation (render-graph buffers carry names like "ClusterParams"),
-            // which pinpoints the leaking owner without guessing.
-            VmaTotalStatistics vma_stats{};
-            vmaCalculateStatistics(vma_allocator_.get(), &vma_stats);
-            if (vma_stats.total.statistics.allocationCount > 0)
-            {
-                renderFatal("VMA allocations remain live at DeviceContext teardown");
-            }
+            renderFatal("VMA allocations remain live at DeviceContext teardown");
         }
-
-        // The allocator must retire before the currently explicit logical-device release.
-        vma_allocator_.reset();
-
-        // Release logical device
-        logical_device_.release(instance_context_.allocator());
+        // Backing member order releases VMA before its owning logical device.
     }
 
     // ResourceContext implementation
@@ -791,8 +836,10 @@ namespace lux::render
     {
     }
 
-    ResourceContext::CreateResult
-    ResourceContext::create(DeviceContext& device_context, const DescriptorPoolConfig& pool_config) noexcept
+    ResourceContext::CreateResult ResourceContext::create(
+        DeviceContext& device_context,
+        const DescriptorPoolConfig& pool_config
+    ) noexcept
     {
         const VkDevice device = device_context.logicalDevice();
         const auto* allocator = device_context.instanceContext().allocator();

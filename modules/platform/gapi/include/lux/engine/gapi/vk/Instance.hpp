@@ -11,10 +11,10 @@ namespace lux::gapi::vk
 {
     namespace detail
     {
-        // Instance discovery can change between count and fill. Bound retries and
+        // Native discovery can change between count and fill. Bound retries and
         // preserve VK_INCOMPLETE instead of publishing an incomplete discovery set.
         template <class T, class Query>
-        [[nodiscard]] lux::cxx::expected<std::vector<T>, VkResult> enumerateInstanceValues(Query query) noexcept
+        [[nodiscard]] lux::cxx::expected<std::vector<T>, VkResult> enumerateVulkanValues(Query query) noexcept
         {
             for (unsigned attempt = 0; attempt != 3; ++attempt)
             {
@@ -193,7 +193,7 @@ namespace lux::gapi::vk
         [[nodiscard]] static lux::cxx::expected<std::vector<VkExtensionProperties>, VkResult> extensionProperties(
         ) noexcept
         {
-            return detail::enumerateInstanceValues<VkExtensionProperties>(
+            return detail::enumerateVulkanValues<VkExtensionProperties>(
                 [](uint32_t* count, VkExtensionProperties* values) noexcept
                 { return vkEnumerateInstanceExtensionProperties(nullptr, count, values); }
             );
@@ -201,12 +201,12 @@ namespace lux::gapi::vk
 
         [[nodiscard]] static lux::cxx::expected<std::vector<VkLayerProperties>, VkResult> layerProperties() noexcept
         {
-            return detail::enumerateInstanceValues<VkLayerProperties>(vkEnumerateInstanceLayerProperties);
+            return detail::enumerateVulkanValues<VkLayerProperties>(vkEnumerateInstanceLayerProperties);
         }
 
         [[nodiscard]] lux::cxx::expected<std::vector<PhysicalDevice>, VkResult> listPhysicalDevices() const noexcept
         {
-            auto devices = detail::enumerateInstanceValues<VkPhysicalDevice>(
+            auto devices = detail::enumerateVulkanValues<VkPhysicalDevice>(
                 [this](uint32_t* count, VkPhysicalDevice* values) noexcept
                 { return vkEnumeratePhysicalDevices(instance_, count, values); }
             );

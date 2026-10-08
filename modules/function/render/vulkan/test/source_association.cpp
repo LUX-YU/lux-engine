@@ -17,8 +17,9 @@ int main()
     auto instance_owner = InstanceContext::create({});
     assert(instance_owner);
     auto& instance = **instance_owner;
-    DeviceContext device(instance);
-    assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
+    auto device_owner = DeviceContext::create(instance, EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED);
+    assert(device_owner);
+    auto& device = **device_owner;
     DeferredDestroyQueue retire(device);
     DescriptorService descriptors(device.logicalDevice());
     auto layouts = GeneralDescriptorSetLayout::create(device);

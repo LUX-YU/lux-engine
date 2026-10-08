@@ -113,9 +113,12 @@ int main()
     auto instance_owner = InstanceContext::create({});
     assert(instance_owner);
     auto& instance = **instance_owner;
-    DeviceContext first_device(instance), second_device(instance);
-    assert(first_device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
-    assert(second_device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
+    auto first_device_owner = DeviceContext::create(instance, EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED);
+    assert(first_device_owner);
+    auto& first_device = **first_device_owner;
+    auto second_device_owner = DeviceContext::create(instance, EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED);
+    assert(second_device_owner);
+    auto& second_device = **second_device_owner;
     const auto first_allocator = first_device.vmaAllocator();
     const auto second_allocator = second_device.vmaAllocator();
 

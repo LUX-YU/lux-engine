@@ -1,220 +1,93 @@
 #pragma once
-#include "lux/engine/gapi/vk/PhysicalDevice.hpp"
-#include "lux/engine/gapi/vk/DeviceMemory.hpp"
-#include "lux/engine/gapi/vk/Queue.hpp"
-#include <cstring>
+
+#include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/gapi/vk/Queue.hpp>
+#include <memory>
+#include <utility>
 
 namespace lux::gapi::vk
 {
-    class LogicalDeviceBuilder;
-    class LogicalDevice
+    /// Native device owner. Release requires all child resources and submitted
+    /// work to have finished through their original owners; destruction never waits.
+    class LogicalDevice final
     {
     public:
-        using Builder = LogicalDeviceBuilder;
+        LogicalDevice() noexcept = default;
 
-        LogicalDevice() : device(VK_NULL_HANDLE) {}
-
-        LogicalDevice(VkPhysicalDevice pdevice, const VkDeviceCreateInfo& ci, VkAllocationCallbacks* allocator)
+        ~LogicalDevice() noexcept
         {
-            VK_FUNC_INVOKE(vkCreateDevice, "Failed to create LogicalDevice object", pdevice, &ci, allocator, &device);
+            reset();
         }
 
         LogicalDevice(const LogicalDevice&) = delete;
         LogicalDevice& operator=(const LogicalDevice&) = delete;
 
         LogicalDevice(LogicalDevice&& other) noexcept
+            : device_(std::exchange(other.device_, VkDevice{})), allocator_(std::exchange(other.allocator_, nullptr))
         {
-            device = other.device;
-            other.device = VK_NULL_HANDLE;
         }
 
         LogicalDevice& operator=(LogicalDevice&& other) noexcept
         {
-            device = other.device;
-            other.device = VK_NULL_HANDLE;
+            if (this != std::addressof(other))
+            {
+                reset();
+                device_ = std::exchange(other.device_, VkDevice{});
+                allocator_ = std::exchange(other.allocator_, nullptr);
+            }
             return *this;
         }
 
-        void release(VkAllocationCallbacks* allocator = nullptr)
+        [[nodiscard]] static lux::cxx::expected<LogicalDevice, VkResult> create(
+            VkPhysicalDevice physical_device,
+            const VkDeviceCreateInfo& info,
+            const VkAllocationCallbacks* allocator = nullptr
+        ) noexcept
         {
-            if (device != VK_NULL_HANDLE)
+            VkDevice device{};
+            const auto result = vkCreateDevice(physical_device, &info, allocator, &device);
+            if (result != VK_SUCCESS)
             {
-                vkDestroyDevice(device, allocator);
-                device = VK_NULL_HANDLE;
+                return lux::cxx::unexpected(result);
+            }
+            return LogicalDevice(device, allocator);
+        }
+
+        void reset() noexcept
+        {
+            if (device_)
+            {
+                vkDestroyDevice(std::exchange(device_, VkDevice{}), allocator_);
             }
         }
 
-        [[nodiscard]] VkResult waitIdle() noexcept
+        [[nodiscard]] VkResult waitIdle() const noexcept
         {
-            if (device == VK_NULL_HANDLE)
-                return VK_ERROR_INITIALIZATION_FAILED;
-            return vkDeviceWaitIdle(device);
+            return device_ ? vkDeviceWaitIdle(device_) : VK_ERROR_INITIALIZATION_FAILED;
         }
 
-        Queue getQueue(uint32_t queueFamilyIndex, uint32_t queueIndex)
+        [[nodiscard]] Queue getQueue(uint32_t family_index, uint32_t queue_index) const noexcept
         {
-            return Queue{device, queueFamilyIndex, queueIndex};
+            return Queue{device_, family_index, queue_index};
         }
 
-        DeviceMemory allocateMemory(const VkMemoryAllocateInfo& ai, VkAllocationCallbacks* allocator = nullptr)
+        operator VkDevice() const noexcept
         {
-            return DeviceMemory{device, ai, allocator};
+            return device_;
         }
 
-        DeviceMemory allocateMemory(
-            VkDeviceSize size,
-            uint32_t memoryTypeIndex,
-            VkAllocationCallbacks* allocator = nullptr
-        )
+        [[nodiscard]] VkDevice handle() const noexcept
         {
-            VkMemoryAllocateInfo ai{
-                .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                .allocationSize = size,
-                .memoryTypeIndex = memoryTypeIndex
-            };
-
-            return DeviceMemory{device, ai, allocator};
-        }
-
-        inline operator VkDevice() const noexcept
-        {
-            return device;
-        }
-        inline const VkDevice* operator&() const noexcept
-        {
-            return &device;
-        }
-
-        inline VkDevice handle() const noexcept
-        {
-            return device;
-        }
-        inline const VkDevice* handlePtr() const noexcept
-        {
-            return &device;
+            return device_;
         }
 
     private:
-        VkDevice device{VK_NULL_HANDLE};
+        LogicalDevice(VkDevice device, const VkAllocationCallbacks* allocator) noexcept
+            : device_(device), allocator_(allocator)
+        {
+        }
+
+        VkDevice device_{};
+        const VkAllocationCallbacks* allocator_{};
     };
-
-    struct QueueInfo
-    {
-        uint32_t family_index;
-        uint32_t index;
-    };
-
-    class LogicalDeviceBuilder
-    {
-    public:
-        LogicalDeviceBuilder()
-        {
-            // set default values
-            create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-            create_info.pNext = nullptr;
-            create_info.flags = 0;
-            create_info.enabledExtensionCount = 0;
-            create_info.ppEnabledExtensionNames = nullptr;
-            create_info.enabledLayerCount = 0;
-            create_info.ppEnabledLayerNames = nullptr;
-            create_info.pEnabledFeatures = nullptr;
-        }
-
-        // Don't forget to check is physical device has required queue family
-        // auto graphic_queue_family_index = physical_device->findQueueFamilyByFlags(VK_QUEUE_GRAPHICS_BIT);
-        // if (graphic_queue_family_index == UINT32_MAX)
-        // {
-        // 		return VK_ERROR_INITIALIZATION_FAILED;
-        // }
-        // const float queue_priority[] = { 1.0f };
-        // addQueueCreateInfo(graphic_queue_family_index, 1, queue_priority);
-        inline LogicalDeviceBuilder& addQueueCreateInfo(
-            uint32_t queueFamilyIndex,
-            uint32_t queueCount,
-            const float* pQueuePriorities
-        )
-        {
-            VkDeviceQueueCreateInfo create_info{
-                .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                .queueFamilyIndex = queueFamilyIndex,
-                .queueCount = queueCount,
-                .pQueuePriorities = pQueuePriorities
-            };
-
-            create_queue_infos.push_back(create_info);
-            return *this;
-        }
-
-        inline LogicalDeviceBuilder& setEnabledFeatures(const VkPhysicalDeviceFeatures* features)
-        {
-            create_info.pEnabledFeatures = features;
-            return *this;
-        }
-
-        // CRITICAL FIX: Add support for modern Vulkan features through pNext chain
-        inline LogicalDeviceBuilder& setNextChain(const void* pNext)
-        {
-            create_info.pNext = pNext;
-            return *this;
-        }
-
-        inline LogicalDeviceBuilder& addExtension(const char* extension)
-        {
-            device_extensions.push_back(extension);
-            return *this;
-        }
-
-        LogicalDevice build(VkPhysicalDevice pdevice, VkAllocationCallbacks* allocator = nullptr)
-        {
-            device_extensions.push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-
-            uint32_t properties_count;
-            vkEnumerateDeviceExtensionProperties(pdevice, nullptr, &properties_count, nullptr);
-            std::vector<VkExtensionProperties> properties(properties_count);
-            vkEnumerateDeviceExtensionProperties(pdevice, nullptr, &properties_count, properties.data());
-#ifdef VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME
-            if (IsExtensionAvailable(properties, VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME))
-                device_extensions.push_back(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
-#endif
-            // HDR metadata extension
-            for (const auto& ext : properties)
-            {
-                if (strcmp(ext.extensionName, VK_EXT_HDR_METADATA_EXTENSION_NAME) == 0)
-                {
-                    device_extensions.push_back(VK_EXT_HDR_METADATA_EXTENSION_NAME);
-                    break;
-                }
-            }
-
-            // Add modern Vulkan extensions (fixes issue B)
-            if (IsExtensionAvailable(properties, VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME))
-            {
-                device_extensions.push_back(VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME);
-            }
-
-            create_info.queueCreateInfoCount = static_cast<uint32_t>(create_queue_infos.size());
-            create_info.pQueueCreateInfos = create_queue_infos.data();
-            create_info.enabledExtensionCount = static_cast<uint32_t>(device_extensions.size());
-            create_info.ppEnabledExtensionNames = device_extensions.data();
-
-            return LogicalDevice{pdevice, create_info, allocator};
-        }
-
-    private:
-        static bool IsExtensionAvailable(const std::vector<VkExtensionProperties>& properties, const char* extension)
-        {
-            for (const VkExtensionProperties& p : properties)
-            {
-                if (strcmp(p.extensionName, extension) != 0)
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        std::vector<const char*> device_extensions;
-        std::vector<VkDeviceQueueCreateInfo> create_queue_infos;
-        VkDeviceCreateInfo create_info;
-    };
-}
+} // namespace lux::gapi::vk

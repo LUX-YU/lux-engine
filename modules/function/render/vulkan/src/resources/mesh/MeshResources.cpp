@@ -44,7 +44,7 @@ namespace lux::render
 
     MeshResources::CreateResult MeshResources::create(const CreateInfo& info) noexcept
     {
-        const bool is_invalid_device = !info.device || !info.device->vmaAllocator();
+        const bool is_invalid_device = !info.device;
         const bool is_invalid_geometry = info.vertex_arena_bytes == 0 || info.index_arena_bytes == 0;
         const bool is_invalid_frames = info.frames_in_flight == 0;
         const bool is_invalid_table =

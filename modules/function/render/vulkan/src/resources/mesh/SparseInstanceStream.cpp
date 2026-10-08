@@ -63,11 +63,6 @@ namespace lux::render
     SparseInstancePageTable::CreateResult
     SparseInstancePageTable::create(DeviceContext& device, DeferredDestroyQueue& retirement) noexcept
     {
-        const bool is_missing_device = !device.logicalDevice() || !device.vmaAllocator();
-        if (is_missing_device)
-        {
-            return renderFailure<err::internal::InvalidArgument>();
-        }
         auto root = createBuffer(
             device,
             rootBufferBytes(),
@@ -244,10 +239,8 @@ namespace lux::render
     ) noexcept
     {
         constexpr auto max_capacity = UINT32_MAX - (kInstanceSlotsPerPage - 1u);
-        const bool is_missing_device = !device.logicalDevice() || !device.vmaAllocator();
         const bool is_invalid_extent = stride == 0 || initial_capacity == 0 || initial_capacity > max_capacity;
-        const bool is_invalid_configuration = is_missing_device || is_invalid_extent;
-        if (is_invalid_configuration)
+        if (is_invalid_extent)
         {
             return renderFailure<err::internal::InvalidArgument>();
         }

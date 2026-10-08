@@ -99,41 +99,39 @@ namespace lux::render
      * @brief Device-level rendering context (one per GPU device)
      * @details Manages physical device selection and logical device creation
      */
-    class LUX_FUNCTION_PUBLIC DeviceContext
+    class LUX_FUNCTION_PUBLIC DeviceContext final
     {
     public:
-        /**
-         * @brief Construct device context (minimal — call init() to complete)
-         * @param instance_context Reference to instance context
-         */
-        explicit DeviceContext(InstanceContext& instance_context);
+        using CreateResult = Expected<std::unique_ptr<DeviceContext>>;
 
-        /**
-         * @brief Initialize device context: select physical device, create logical device, VMA
-         * @param policy Policy for selecting physical device
-         * @return Expected<void> Success or error code
-         */
-        [[nodiscard]] Expected<void> init(EPhysicalDeviceSelectionPolicy policy);
+        [[nodiscard]] static CreateResult create(
+            InstanceContext& instance_context,
+            EPhysicalDeviceSelectionPolicy policy
+        ) noexcept;
 
         ~DeviceContext();
+        DeviceContext(const DeviceContext&) = delete;
+        DeviceContext& operator=(const DeviceContext&) = delete;
+        DeviceContext(DeviceContext&&) = delete;
+        DeviceContext& operator=(DeviceContext&&) = delete;
 
         /// @brief Get mutable reference to physical device
         lux::gapi::vk::PhysicalDevice& physicalDevice()
         {
-            return physical_device_;
+            return backing_.physical_device;
         }
 
         /// @brief Get immutable reference to physical device
         const lux::gapi::vk::PhysicalDevice& physicalDevice() const
         {
-            return physical_device_;
+            return backing_.physical_device;
         }
 
         /// @brief Physical-GPU UUID (VK_UUID_SIZE bytes) for matching the CUDA device
         ///        in CUDA-Vulkan external-memory interop. See PhysicalDevice::deviceUUID.
         std::array<uint8_t, VK_UUID_SIZE> deviceUUID() const
         {
-            return physical_device_.deviceUUID();
+            return backing_.physical_device.deviceUUID();
         }
 
         /// @brief Whether external-memory/semaphore interop (CUDA zero-copy) is enabled
@@ -142,7 +140,7 @@ namespace lux::render
         ///        callers must fall back to the host-upload path.
         bool supportsExternalMemory() const
         {
-            return supports_external_interop_;
+            return backing_.supports_external_interop;
         }
 
         /// @brief Whether VK_EXT_swapchain_maintenance1 present-scaling is enabled.
@@ -152,15 +150,15 @@ namespace lux::render
         ///        cross-thread (imgui secondary viewport) swapchain creation.
         bool supportsSwapchainMaintenance1() const
         {
-            return supports_swapchain_maintenance1_;
+            return backing_.supports_swapchain_maintenance1;
         }
 
         /// @brief What the created VkDevice actually enabled + key limits.
-        ///        Valid after init() succeeds; the attach-time EFeatureLevel
+        ///        Complete at construction; the attach-time EFeatureLevel
         ///        negotiation reads this (mobile-adaptation topic ①).
         const DeviceCaps& caps() const
         {
-            return caps_;
+            return backing_.caps;
         }
 
         /// @brief Resolve the session feature level = min(device-achievable,
@@ -168,7 +166,7 @@ namespace lux::render
         ///        after device creation; features read featureLevel() at attach.
         void resolveFeatureLevel(EFeatureLevel preferred)
         {
-            const EFeatureLevel achievable = achievableFeatureLevel(caps_);
+            const EFeatureLevel achievable = achievableFeatureLevel(backing_.caps);
             feature_level_ = preferred < achievable ? preferred : achievable;
         }
 
@@ -178,28 +176,28 @@ namespace lux::render
             return feature_level_;
         }
 
-        /// @brief Get mutable reference to logical device
-        lux::gapi::vk::LogicalDevice& logicalDevice()
+        /// @brief Borrow the logical device; native ownership remains in this context.
+        const lux::gapi::vk::LogicalDevice& logicalDevice()
         {
-            return logical_device_;
+            return backing_.logical_device;
         }
 
         /// @brief Get immutable reference to logical device
         const lux::gapi::vk::LogicalDevice& logicalDevice() const
         {
-            return logical_device_;
+            return backing_.logical_device;
         }
 
         /// @brief Get mutable reference to graphics queue
         lux::gapi::vk::Queue& graphicsQueue()
         {
-            return graphics_queue_;
+            return backing_.graphics_queue;
         }
 
         /// @brief Get immutable reference to graphics queue
         const lux::gapi::vk::Queue& graphicsQueue() const
         {
-            return graphics_queue_;
+            return backing_.graphics_queue;
         }
 
         std::mutex& graphicsQueueMutex() noexcept
@@ -210,59 +208,60 @@ namespace lux::render
         /// @brief Get graphics queue family index
         uint32_t graphicsQueueFamilyIndex() const
         {
-            return graphics_queue_family_index_;
+            return backing_.graphics_queue_family_index;
         }
 
         /// @brief Check if a dedicated async compute queue is available
         bool hasAsyncComputeQueue() const
         {
-            return has_async_compute_;
+            return backing_.has_async_compute;
         }
 
         /// @brief Get mutable reference to async compute queue (falls back to graphics queue if unavailable)
         lux::gapi::vk::Queue& asyncComputeQueue()
         {
-            return has_async_compute_ ? async_compute_queue_ : graphics_queue_;
+            return backing_.has_async_compute ? backing_.async_compute_queue : backing_.graphics_queue;
         }
 
         /// @brief Get immutable reference to async compute queue
         const lux::gapi::vk::Queue& asyncComputeQueue() const
         {
-            return has_async_compute_ ? async_compute_queue_ : graphics_queue_;
+            return backing_.has_async_compute ? backing_.async_compute_queue : backing_.graphics_queue;
         }
 
         std::mutex& asyncComputeQueueMutex() noexcept
         {
-            return has_async_compute_ ? async_compute_queue_mutex_ : graphics_queue_mutex_;
+            return backing_.has_async_compute ? async_compute_queue_mutex_ : graphics_queue_mutex_;
         }
 
         /// @brief Get async compute queue family index (falls back to graphics family if unavailable)
         uint32_t asyncComputeQueueFamilyIndex() const
         {
-            return has_async_compute_ ? async_compute_queue_family_index_ : graphics_queue_family_index_;
+            return backing_.has_async_compute ? backing_.async_compute_queue_family_index
+                                              : backing_.graphics_queue_family_index;
         }
 
         /// @brief Check if a dedicated transfer queue is available
         bool hasTransferQueue() const
         {
-            return has_transfer_;
+            return backing_.has_transfer;
         }
 
         /// @brief Get mutable reference to transfer queue (falls back to graphics queue if unavailable)
         lux::gapi::vk::Queue& transferQueue()
         {
-            return has_transfer_ ? transfer_queue_ : graphics_queue_;
+            return backing_.has_transfer ? backing_.transfer_queue : backing_.graphics_queue;
         }
 
         /// @brief Get immutable reference to transfer queue
         const lux::gapi::vk::Queue& transferQueue() const
         {
-            return has_transfer_ ? transfer_queue_ : graphics_queue_;
+            return backing_.has_transfer ? backing_.transfer_queue : backing_.graphics_queue;
         }
 
         std::mutex& transferQueueMutex() noexcept
         {
-            return has_transfer_ ? transfer_queue_mutex_ : graphics_queue_mutex_;
+            return backing_.has_transfer ? transfer_queue_mutex_ : graphics_queue_mutex_;
         }
 
         /// Sole runtime entry for vkDeviceWaitIdle. Vulkan requires the call
@@ -272,7 +271,7 @@ namespace lux::render
         /// @brief Get transfer queue family index (falls back to graphics family if unavailable)
         uint32_t transferQueueFamilyIndex() const
         {
-            return has_transfer_ ? transfer_queue_family_index_ : graphics_queue_family_index_;
+            return backing_.has_transfer ? backing_.transfer_queue_family_index : backing_.graphics_queue_family_index;
         }
 
         /// @brief Get mutable reference to instance context
@@ -290,41 +289,35 @@ namespace lux::render
         /// @brief Borrow the VMA allocator; DeviceContext retains ownership.
         VmaAllocator vmaAllocator() const noexcept
         {
-            return vma_allocator_.get();
+            return backing_.vma_allocator.get();
         }
 
     private:
-        InstanceContext& instance_context_; ///< Reference to instance context
+        struct Backing
+        {
+            lux::gapi::vk::PhysicalDevice physical_device;
+            lux::gapi::vk::LogicalDevice logical_device;
+            VmaAllocatorOwner vma_allocator;
+            lux::gapi::vk::Queue graphics_queue;
+            lux::gapi::vk::Queue async_compute_queue;
+            lux::gapi::vk::Queue transfer_queue;
+            uint32_t graphics_queue_family_index{std::numeric_limits<uint32_t>::max()};
+            uint32_t async_compute_queue_family_index{std::numeric_limits<uint32_t>::max()};
+            uint32_t transfer_queue_family_index{std::numeric_limits<uint32_t>::max()};
+            bool has_async_compute{};
+            bool has_transfer{};
+            bool supports_external_interop{};
+            bool supports_swapchain_maintenance1{};
+            DeviceCaps caps{};
+        };
 
-        VmaAllocatorOwner vma_allocator_;
-        lux::gapi::vk::PhysicalDevice physical_device_; ///< Selected physical device
-        lux::gapi::vk::LogicalDevice logical_device_;   ///< Created logical device
-        lux::gapi::vk::Queue graphics_queue_;           ///< Graphics queue handle
+        DeviceContext(InstanceContext& instance_context, Backing backing) noexcept;
+
+        InstanceContext& instance_context_;
+        Backing backing_;
         std::mutex graphics_queue_mutex_;
-        uint32_t graphics_queue_family_index_{std::numeric_limits<uint32_t>::max()}; ///< Graphics queue family index
-
-        // Async compute queue (dedicated compute-only queue when available)
-        lux::gapi::vk::Queue async_compute_queue_;
         std::mutex async_compute_queue_mutex_;
-        uint32_t async_compute_queue_family_index_ = std::numeric_limits<uint32_t>::max();
-        bool has_async_compute_ = false;
-
-        // Transfer queue (dedicated transfer-only queue when available)
-        lux::gapi::vk::Queue transfer_queue_;
         std::mutex transfer_queue_mutex_;
-        uint32_t transfer_queue_family_index_ = std::numeric_limits<uint32_t>::max();
-        bool has_transfer_ = false;
-
-        // External-memory/semaphore interop (CUDA<->Vulkan zero-copy) enabled — platform
-        // handle path (Win32 handle on Windows / opaque fd on POSIX).
-        bool supports_external_interop_ = false;
-
-        // VK_EXT_swapchain_maintenance1 present-scaling enabled on this device.
-        bool supports_swapchain_maintenance1_ = false;
-
-        // Snapshot of enabled features + limits, filled by init() right after
-        // logical-device creation (see DeviceCaps.hpp for semantics).
-        DeviceCaps caps_{};
 
         // Resolved session tier — min(achievable-from-caps, caller preference).
         // Defaults to Desktop so pre-existing paths that never call
@@ -413,8 +406,8 @@ namespace lux::render
         }
 
         // Convenience methods to reduce chain calls
-        /// @brief Get mutable reference to logical device
-        lux::gapi::vk::LogicalDevice& logicalDevice()
+        /// @brief Borrow the logical device; native ownership remains in this context.
+        const lux::gapi::vk::LogicalDevice& logicalDevice()
         {
             return device_context_.logicalDevice();
         }

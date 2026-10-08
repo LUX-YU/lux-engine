@@ -114,9 +114,12 @@ int main()
     auto instance_owner = InstanceContext::create({});
     assert(instance_owner);
     auto& instance = **instance_owner;
-    DeviceContext device(instance), other_device(instance);
-    assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
-    assert(other_device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
+    auto device_owner = DeviceContext::create(instance, EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED);
+    assert(device_owner);
+    auto& device = **device_owner;
+    auto other_device_owner = DeviceContext::create(instance, EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED);
+    assert(other_device_owner);
+    auto& other_device = **other_device_owner;
     auto resources_owner = ResourceContext::create(device);
     assert(resources_owner);
     auto& resources = **resources_owner;

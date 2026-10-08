@@ -90,8 +90,9 @@ int main()
     auto instance_owner = InstanceContext::create({});
     assert(instance_owner);
     auto& instance = **instance_owner;
-    DeviceContext device(instance);
-    assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
+    auto device_owner = DeviceContext::create(instance, EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED);
+    assert(device_owner);
+    auto& device = **device_owner;
     GpuTransferPipeline::Config config;
     config.device_ctx = &device;
     config.batch_slot_count = 3;

@@ -1,6 +1,7 @@
 #pragma once
 #include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/function/render/features/visibility.h>
+#include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
 #include <lux/engine/render/gpu/lifecycle/FifOwned.hpp>
 
 #include <cstdint>
@@ -44,6 +45,10 @@ namespace lux::render
 
         [[nodiscard]] static CreateResult create(const CreateInfo& info) noexcept;
         ~EVSMShadowResources() noexcept = default;
+
+        /// Publish this complete resource to its validated domain target at the caller's GPU safe point.
+        /// Construction alone never changes the bindings of a previously accepted resource.
+        void bindDescriptors() const noexcept;
 
         EVSMShadowResources(const EVSMShadowResources&) = delete;
         EVSMShadowResources& operator=(const EVSMShadowResources&) = delete;
@@ -122,6 +127,7 @@ namespace lux::render
 
         EVSMShadowResources(
             const CreateInfo& info,
+            DomainWriteTarget domain,
             Atlas moment,
             Atlas scratch,
             VkSampler sampler,
@@ -134,5 +140,7 @@ namespace lux::render
         std::vector<ConfigBuffer> config_ubos_;
         uint32_t atlas_page_resolution_;
         uint32_t atlas_page_count_;
+        VkDevice device_;
+        DomainWriteTarget domain_;
     };
 } // namespace lux::render

@@ -19,18 +19,6 @@ namespace lux::render
     class EVSMShadowTechnique final : public IShadowTechnique
     {
     public:
-        using CreateResult = Expected<std::unique_ptr<EVSMShadowTechnique>>;
-
-        [[nodiscard]] static CreateResult create(const EVSMShadowResources::CreateInfo& info) noexcept
-        {
-            auto resources = EVSMShadowResources::create(info);
-            if (!resources)
-            {
-                return lux::cxx::unexpected(resources.error());
-            }
-            return std::unique_ptr<EVSMShadowTechnique>(new EVSMShadowTechnique(std::move(*resources)));
-        }
-
         ~EVSMShadowTechnique() override = default;
         EVSMShadowTechnique(const EVSMShadowTechnique&) = delete;
         EVSMShadowTechnique& operator=(const EVSMShadowTechnique&) = delete;
@@ -91,9 +79,17 @@ namespace lux::render
         void recordPostFrame(const ShadowFrameContext& ctx) override;
 
     private:
+        friend class ShadowMapFeature;
+
         explicit EVSMShadowTechnique(std::unique_ptr<EVSMShadowResources> resources) noexcept
             : resources_(std::move(resources))
         {
+        }
+
+        void replaceResources(std::unique_ptr<EVSMShadowResources> resources) noexcept
+        {
+            resources->bindDescriptors();
+            resources_.swap(resources);
         }
 
         std::unique_ptr<EVSMShadowResources> resources_;

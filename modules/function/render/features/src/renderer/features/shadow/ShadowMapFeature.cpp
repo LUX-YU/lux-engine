@@ -418,33 +418,16 @@ namespace lux::render
                                       { res->evictSceneView(scene_key, view_id); });
         }
 
-        // PCF-only scenes never allocate EVSM backing. A selected technique is published only when complete.
-        if (active_technique_ == EShadowTechnique::EVSM)
+        // Reinstallation may reuse the scene's atlas with a different requested quality.
+        auto quality = updateQuality(
+            cfg_.shadow_config.atlas_page_resolution,
+            cfg_.shadow_config.atlas_page_count,
+            cfg_.shadow_config.max_shadow_slices,
+            cfg_.shadow_config.non_directional_shadow_max_distance
+        );
+        if (!quality)
         {
-            const EVSMShadowResources::ConfigGPU config{
-                cfg_.shadow_config.evsm_pos_exponent,
-                cfg_.shadow_config.evsm_neg_exponent,
-                cfg_.shadow_config.evsm_bleed_reduction,
-                0.0f
-            };
-            const EVSMShadowResources::CreateInfo info{
-                ctx.deviceContext(),
-                ctx.descriptorService(),
-                ctx.deferredDestroyQueue(),
-                scene.domainDescriptorSets()->setsFor(rdesc::EBindFrequency::FEATURE),
-                engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::LIGHT)),
-                cfg_.shadow_config.atlas_page_resolution,
-                std::max(cfg_.shadow_config.atlas_page_count, cfg_.shadow_config.evsm_atlas_page_count),
-                ctx.framesInFlight(),
-                config
-            };
-            auto technique = EVSMShadowTechnique::create(info);
-            if (!technique)
-            {
-                return lux::cxx::unexpected(technique.error());
-            }
-            (*technique)->ensureBlurPipelines(ctx);
-            techniques_[static_cast<uint32_t>(EShadowTechnique::EVSM)] = std::move(*technique);
+            return lux::cxx::unexpected(quality.error());
         }
         shadow_res_->setCurrentTechnique(techniques_[static_cast<uint32_t>(active_technique_)].get());
 
@@ -457,7 +440,8 @@ namespace lux::render
         // FNV-1a 64-bit hash of shadow-relevant light parameters.
         // Only fields that affect shadow slice computation are included.
         uint64_t h = 14695981039346656037ULL;
-        auto mix = [&](const void* data, size_t len) {
+        auto mix = [&](const void* data, size_t len)
+        {
             const auto* p = static_cast<const uint8_t*>(data);
             for (size_t i = 0; i < len; ++i)
             {
@@ -467,43 +451,52 @@ namespace lux::render
         };
         auto mix_val = [&](auto v) { mix(&v, sizeof(v)); };
 
-        light_res->forEachLight<DirectionalLightGPU>([&](uint32_t, const DirectionalLightGPU& dl) {
-            mix_val(dl.direction.x);
-            mix_val(dl.direction.y);
-            mix_val(dl.direction.z);
-            mix_val(dl.flags);
-            mix_val(dl.shadow_map_size);
-            mix_val(dl.shadow_bias);
-            mix_val(dl.shadow_normal_bias);
-            mix_val(dl.cascade_count);
-            mix(dl.cascade_splits, sizeof(dl.cascade_splits));
-        });
-        light_res->forEachLight<PointLightGPU>([&](uint32_t, const PointLightGPU& pl) {
-            mix(pl.position_page, sizeof(pl.position_page));
-            mix_val(pl.position_local.x);
-            mix_val(pl.position_local.y);
-            mix_val(pl.position_local.z);
-            mix_val(pl.range);
-            mix_val(pl.flags);
-            mix_val(pl.shadow_map_size);
-            mix_val(pl.shadow_bias);
-            mix_val(pl.shadow_normal_bias);
-        });
-        light_res->forEachLight<SpotLightGPU>([&](uint32_t, const SpotLightGPU& sl) {
-            mix(sl.position_page, sizeof(sl.position_page));
-            mix_val(sl.position_local.x);
-            mix_val(sl.position_local.y);
-            mix_val(sl.position_local.z);
-            mix_val(sl.direction.x);
-            mix_val(sl.direction.y);
-            mix_val(sl.direction.z);
-            mix_val(sl.range);
-            mix_val(sl.outer_cone_angle);
-            mix_val(sl.flags);
-            mix_val(sl.shadow_map_size);
-            mix_val(sl.shadow_bias);
-            mix_val(sl.shadow_normal_bias);
-        });
+        light_res->forEachLight<DirectionalLightGPU>(
+            [&](uint32_t, const DirectionalLightGPU& dl)
+            {
+                mix_val(dl.direction.x);
+                mix_val(dl.direction.y);
+                mix_val(dl.direction.z);
+                mix_val(dl.flags);
+                mix_val(dl.shadow_map_size);
+                mix_val(dl.shadow_bias);
+                mix_val(dl.shadow_normal_bias);
+                mix_val(dl.cascade_count);
+                mix(dl.cascade_splits, sizeof(dl.cascade_splits));
+            }
+        );
+        light_res->forEachLight<PointLightGPU>(
+            [&](uint32_t, const PointLightGPU& pl)
+            {
+                mix(pl.position_page, sizeof(pl.position_page));
+                mix_val(pl.position_local.x);
+                mix_val(pl.position_local.y);
+                mix_val(pl.position_local.z);
+                mix_val(pl.range);
+                mix_val(pl.flags);
+                mix_val(pl.shadow_map_size);
+                mix_val(pl.shadow_bias);
+                mix_val(pl.shadow_normal_bias);
+            }
+        );
+        light_res->forEachLight<SpotLightGPU>(
+            [&](uint32_t, const SpotLightGPU& sl)
+            {
+                mix(sl.position_page, sizeof(sl.position_page));
+                mix_val(sl.position_local.x);
+                mix_val(sl.position_local.y);
+                mix_val(sl.position_local.z);
+                mix_val(sl.direction.x);
+                mix_val(sl.direction.y);
+                mix_val(sl.direction.z);
+                mix_val(sl.range);
+                mix_val(sl.outer_cone_angle);
+                mix_val(sl.flags);
+                mix_val(sl.shadow_map_size);
+                mix_val(sl.shadow_bias);
+                mix_val(sl.shadow_normal_bias);
+            }
+        );
 
         // Include light counts so additions/removals are detected.
         mix_val(light_res->lightCount<DirectionalLightGPU>());
@@ -535,53 +528,58 @@ namespace lux::render
         // (now skipped). (P-4 / [M13])
         const uint32_t scene_key = renderScene().sceneGlobalSlot().index;
         auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().resources());
-        renderScene().forEachActiveView([&](View& view) {
-            const ViewFrameData* cam_fd = cam ? cam->find(view.handle.index) : nullptr;
-            ViewFrameData vfd = cam_fd ? *cam_fd : ViewFrameData{};
-            PerViewShadowFingerprint new_fp;
-            new_fp.view_proj = vfd.camera_view.view_proj;
-            new_fp.camera_pos = vfd.camera_transform.position;
-            new_fp.light_config_hash = light_hash;
-            new_fp.shadow_config_serial = shadow_config_serial_;
-
-            const auto* prev_fp = per_view_fingerprint_.tryGet(view.handle.index);
-            const bool has_previous_fingerprint = prev_fp != nullptr;
-            const bool is_same_light =
-                has_previous_fingerprint && prev_fp->light_config_hash == new_fp.light_config_hash;
-            const bool is_same_configuration =
-                has_previous_fingerprint && prev_fp->shadow_config_serial == new_fp.shadow_config_serial;
-            const bool is_same_view = has_previous_fingerprint && prev_fp->view_proj.isApprox(new_fp.view_proj, 1e-5f);
-            const bool is_same_camera =
-                has_previous_fingerprint && (prev_fp->camera_pos - new_fp.camera_pos).squaredNorm() < 1e-8f;
-            const bool is_fingerprint_match = is_same_light && is_same_configuration && is_same_view && is_same_camera;
-            if (is_fingerprint_match)
+        renderScene().forEachActiveView(
+            [&](View& view)
             {
-                // Fingerprint match — reuse last frame's slices by MOVE (prev_view_shadow_
-                // is swapped+cleared next frame, so moving-out is safe) and skip the cache
-                // re-snapshot (it already holds identical data). (P-4)
-                auto* prev_state = prev_view_shadow_.tryGet(view.handle.index);
-                if (prev_state != nullptr)
-                {
-                    per_view_shadow_.insert(view.handle.index, std::move(*prev_state));
-                    return;
-                }
-            }
+                const ViewFrameData* cam_fd = cam ? cam->find(view.handle.index) : nullptr;
+                ViewFrameData vfd = cam_fd ? *cam_fd : ViewFrameData{};
+                PerViewShadowFingerprint new_fp;
+                new_fp.view_proj = vfd.camera_view.view_proj;
+                new_fp.camera_pos = vfd.camera_transform.position;
+                new_fp.light_config_hash = light_hash;
+                new_fp.shadow_config_serial = shadow_config_serial_;
 
-            // Fingerprint mismatch or no previous data — full rebuild + cache refresh.
-            // setCachedData must read state BEFORE it is moved into per_view_shadow_.
-            PerViewShadowState state{};
-            buildSlicesForView(view, light_res_, state);
-            shadow_res_->setCachedData(
-                scene_key,
-                view.handle.index,
-                state.slices,
-                state.spot_shadow_slice_index,
-                state.point_shadow_base_slice,
-                state.config
-            );
-            per_view_shadow_.insert(view.handle.index, std::move(state));
-            per_view_fingerprint_.insert(view.handle.index, new_fp);
-        });
+                const auto* prev_fp = per_view_fingerprint_.tryGet(view.handle.index);
+                const bool has_previous_fingerprint = prev_fp != nullptr;
+                const bool is_same_light =
+                    has_previous_fingerprint && prev_fp->light_config_hash == new_fp.light_config_hash;
+                const bool is_same_configuration =
+                    has_previous_fingerprint && prev_fp->shadow_config_serial == new_fp.shadow_config_serial;
+                const bool is_same_view =
+                    has_previous_fingerprint && prev_fp->view_proj.isApprox(new_fp.view_proj, 1e-5f);
+                const bool is_same_camera =
+                    has_previous_fingerprint && (prev_fp->camera_pos - new_fp.camera_pos).squaredNorm() < 1e-8f;
+                const bool is_fingerprint_match =
+                    is_same_light && is_same_configuration && is_same_view && is_same_camera;
+                if (is_fingerprint_match)
+                {
+                    // Fingerprint match — reuse last frame's slices by MOVE (prev_view_shadow_
+                    // is swapped+cleared next frame, so moving-out is safe) and skip the cache
+                    // re-snapshot (it already holds identical data). (P-4)
+                    auto* prev_state = prev_view_shadow_.tryGet(view.handle.index);
+                    if (prev_state != nullptr)
+                    {
+                        per_view_shadow_.insert(view.handle.index, std::move(*prev_state));
+                        return;
+                    }
+                }
+
+                // Fingerprint mismatch or no previous data — full rebuild + cache refresh.
+                // setCachedData must read state BEFORE it is moved into per_view_shadow_.
+                PerViewShadowState state{};
+                buildSlicesForView(view, light_res_, state);
+                shadow_res_->setCachedData(
+                    scene_key,
+                    view.handle.index,
+                    state.slices,
+                    state.spot_shadow_slice_index,
+                    state.point_shadow_base_slice,
+                    state.config
+                );
+                per_view_shadow_.insert(view.handle.index, std::move(state));
+                per_view_fingerprint_.insert(view.handle.index, new_fp);
+            }
+        );
     }
 
     void ShadowMapFeature::addPasses(RGBuilder& builder)
@@ -598,7 +596,8 @@ namespace lux::render
 
         // Import shadow atlas (single image, shared across FIF — depth writes are idempotent)
         RGImportedResourceInfo import_info{};
-        import_info.image_getter = [this](VkImage* out_images, uint32_t capacity) -> uint32_t {
+        import_info.image_getter = [this](VkImage* out_images, uint32_t capacity) -> uint32_t
+        {
             if (out_images == nullptr || capacity == 0 || shadow_res_ == nullptr)
             {
                 return 0u;
@@ -633,9 +632,11 @@ namespace lux::render
             evsm_tex_desc.usage |= ERGTextureUsageBits::STORAGE;
             evsm_tex_desc.dimension = lux::rdesc::ETextureDimension::TEX_2D_ARRAY;
 
-            auto make_evsm_import = [&](VkImage image) {
+            auto make_evsm_import = [&](VkImage image)
+            {
                 RGImportedResourceInfo info{};
-                info.image_getter = [image](VkImage* out, uint32_t cap) -> uint32_t {
+                info.image_getter = [image](VkImage* out, uint32_t cap) -> uint32_t
+                {
                     if (!out || cap == 0)
                     {
                         return 0u;
@@ -665,7 +666,8 @@ namespace lux::render
         slice_buf_desc.memory_usage = ERGMemoryUsage::CPU_TO_GPU;
 
         RGImportedBufferInfo slice_import{};
-        slice_import.buffer_getter = [this](VkBuffer* out_buffers, uint32_t capacity) -> uint32_t {
+        slice_import.buffer_getter = [this](VkBuffer* out_buffers, uint32_t capacity) -> uint32_t
+        {
             if (out_buffers == nullptr || capacity == 0)
             {
                 return 0u;
@@ -692,7 +694,8 @@ namespace lux::render
         config_buf_desc.memory_usage = ERGMemoryUsage::CPU_TO_GPU;
 
         RGImportedBufferInfo config_import{};
-        config_import.buffer_getter = [this](VkBuffer* out_buffers, uint32_t capacity) -> uint32_t {
+        config_import.buffer_getter = [this](VkBuffer* out_buffers, uint32_t capacity) -> uint32_t
+        {
             if (out_buffers == nullptr || capacity == 0)
             {
                 return 0u;
@@ -719,7 +722,8 @@ namespace lux::render
         spot_map_desc.memory_usage = ERGMemoryUsage::CPU_TO_GPU;
 
         RGImportedBufferInfo spot_map_import{};
-        spot_map_import.buffer_getter = [this](VkBuffer* out_buffers, uint32_t capacity) -> uint32_t {
+        spot_map_import.buffer_getter = [this](VkBuffer* out_buffers, uint32_t capacity) -> uint32_t
+        {
             if (out_buffers == nullptr || capacity == 0)
             {
                 return 0u;
@@ -746,7 +750,8 @@ namespace lux::render
         point_map_desc.memory_usage = ERGMemoryUsage::CPU_TO_GPU;
 
         RGImportedBufferInfo point_map_import{};
-        point_map_import.buffer_getter = [this](VkBuffer* out_buffers, uint32_t capacity) -> uint32_t {
+        point_map_import.buffer_getter = [this](VkBuffer* out_buffers, uint32_t capacity) -> uint32_t
+        {
             if (out_buffers == nullptr || capacity == 0)
             {
                 return 0u;
@@ -771,7 +776,8 @@ namespace lux::render
             .write(spot_shadow_map, ERGBufferRole::STORAGE)
             .write(point_shadow_map, ERGBufferRole::STORAGE)
             .setKernelFn(
-                [this, shadow_slices, shadow_config, spot_shadow_map, point_shadow_map](const PassRecordContext& pctx) {
+                [this, shadow_slices, shadow_config, spot_shadow_map, point_shadow_map](const PassRecordContext& pctx)
+                {
                     // (原有 `if (!shadow_res_) return;` 已删:本 pass 只在 addPasses 里注册,
                     //  而 addPasses 开头就守了 initialized_。)
                     const uint32_t view_handle = (pctx.view != nullptr) ? pctx.view->handle.index : 0u;
@@ -1011,34 +1017,94 @@ namespace lux::render
             }
         }
 
-        bool needs_rebuild = false;
-        if (new_page_resolution != cfg_.shadow_config.atlas_page_resolution)
+        const bool has_changed_extent = new_page_resolution != shadow_res_->atlasPageResolution() ||
+                                        new_page_count != shadow_res_->atlasPageCount();
+        const bool has_changed_slices = new_slice_budget != shadow_res_->maxSlices();
+        const bool needs_rebuild = has_changed_extent || has_changed_slices;
+        constexpr auto evsm_index = static_cast<uint32_t>(EShadowTechnique::EVSM);
+        auto* evsm = static_cast<EVSMShadowTechnique*>(techniques_[evsm_index].get());
+        const auto evsm_pages = std::max(new_page_count, cfg_.shadow_config.evsm_atlas_page_count);
+        const bool needs_evsm = evsm != nullptr || active_technique_ == EShadowTechnique::EVSM;
+        const bool has_changed_evsm =
+            needs_evsm && (!evsm || evsm->resources().pageResolution() != new_page_resolution ||
+                           evsm->resources().pageCount() != evsm_pages);
+        std::unique_ptr<EVSMShadowTechnique> candidate;
+        std::unique_ptr<EVSMShadowResources> candidate_resources;
+        if (has_changed_evsm)
         {
-            needs_rebuild = true;
+            auto& context = renderContext();
+            const EVSMShadowResources::ConfigGPU config{
+                cfg_.shadow_config.evsm_pos_exponent,
+                cfg_.shadow_config.evsm_neg_exponent,
+                cfg_.shadow_config.evsm_bleed_reduction,
+                0.0f
+            };
+            const EVSMShadowResources::CreateInfo info{
+                context.deviceContext(),
+                context.descriptorService(),
+                context.deferredDestroyQueue(),
+                renderScene().domainDescriptorSets()->setsFor(rdesc::EBindFrequency::FEATURE),
+                engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::LIGHT)),
+                new_page_resolution,
+                evsm_pages,
+                context.framesInFlight(),
+                config
+            };
+            auto prepared = EVSMShadowResources::create(info);
+            if (!prepared)
+            {
+                return lux::cxx::unexpected(prepared.error());
+            }
+            if (evsm)
+            {
+                candidate_resources = std::move(*prepared);
+            }
+            else
+            {
+                candidate.reset(new EVSMShadowTechnique(std::move(*prepared)));
+            }
         }
-        if (new_page_count != cfg_.shadow_config.atlas_page_count)
-        {
-            needs_rebuild = true;
-        }
-        if (new_slice_budget != cfg_.shadow_config.max_shadow_slices)
-        {
-            needs_rebuild = true;
-        }
-
         if (needs_rebuild)
         {
+            // EVSM preparation above has not touched accepted descriptors. The original
+            // depth rebuild prepares its own backing and establishes the GPU-idle boundary.
             auto rebuilt = shadow_res_->rebuild(new_page_resolution, new_page_count, new_slice_budget);
             if (!rebuilt)
             {
                 return lux::cxx::unexpected(rebuilt.error());
             }
+        }
+        else if (has_changed_evsm)
+        {
+            // Reinstalling only the technique can still replace descriptors used by old frames.
+            const auto status = renderContext().deviceContext().waitIdle();
+            if (status != VK_SUCCESS)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(status));
+            }
+        }
+        if (candidate)
+        {
+            candidate->ensureBlurPipelines(renderContext());
+            candidate->resources().bindDescriptors();
+            techniques_[evsm_index] = std::move(candidate);
+            shadow_res_->setCurrentTechnique(techniques_[static_cast<uint32_t>(active_technique_)].get());
+        }
+        else if (candidate_resources)
+        {
+            // Keep the existing technique and pipeline handles; only image/config backing changes.
+            evsm->replaceResources(std::move(candidate_resources));
+        }
+        const bool changed_backing = needs_rebuild || has_changed_evsm;
+        if (changed_backing)
+        {
             ++shadow_config_serial_;
         }
         cfg_.shadow_config.non_directional_shadow_max_distance = new_non_directional_max_distance;
         cfg_.shadow_config.atlas_page_resolution = new_page_resolution;
         cfg_.shadow_config.atlas_page_count = new_page_count;
         cfg_.shadow_config.max_shadow_slices = new_slice_budget;
-        return needs_rebuild;
+        return changed_backing;
     }
 
     void ShadowMapFeature::setDirectionalCsmEnabled(bool enabled)
@@ -1161,271 +1227,280 @@ namespace lux::render
         out_state.point_shadow_base_slice.assign(point_count, -1);
 
         bool dir_found = false;
-        light_res->forEachLight<DirectionalLightGPU>([&](uint32_t slot, const DirectionalLightGPU& dl) {
-            if (dir_found || out_state.slices.size() >= max_slices)
+        light_res->forEachLight<DirectionalLightGPU>(
+            [&](uint32_t slot, const DirectionalLightGPU& dl)
             {
-                return;
-            }
-            if ((dl.flags & static_cast<uint32_t>(ELightGpuFlag::CAST_SHADOW)) == 0)
-            {
-                return;
-            }
-
-            const uint32_t requested_cascades = std::clamp(dl.cascade_count, 1u, kMaxShadowCascades);
-            const bool directional_csm_enabled = (cfg_.shadow_config.enable_directional_csm != 0u);
-            const uint32_t cascades = directional_csm_enabled ? requested_cascades : 1u;
-            const uint32_t reserved_non_directional_tiles = (point_count > 0 ? 6u : 0u) + (spot_count > 0 ? 1u : 0u);
-            const uint32_t directional_tile_request = chooseResolutionForRequiredTiles(
-                std::max(dl.shadow_map_size, 1u),
-                cfg_.shadow_config.atlas_page_resolution,
-                cfg_.shadow_config.atlas_page_count,
-                cascades + reserved_non_directional_tiles
-            );
-            Eigen::Vector3f light_dir(dl.direction.x, dl.direction.y, dl.direction.z);
-            if (light_dir.norm() < kEpsilon)
-            {
-                return;
-            }
-
-            const auto& camera = vfd.camera_view;
-            Eigen::Matrix4f rotation_view = camera.view;
-            rotation_view(0, 3) = 0.0f;
-            rotation_view(1, 3) = 0.0f;
-            rotation_view(2, 3) = 0.0f;
-            auto full_frustum_corners = buildFrustumCorners((camera.proj * rotation_view).inverse());
-
-            float camera_near = 0.1f;
-            float camera_far = 0.0f;
-            if (!tryExtractPerspectiveNearFar(camera.proj, camera_near, camera_far))
-            {
-                float max_split = dl.cascade_splits[requested_cascades - 1];
-                if (max_split <= 1.0001f)
+                if (dir_found || out_state.slices.size() >= max_slices)
                 {
-                    max_split = 100.0f;
+                    return;
                 }
-                camera_far = std::max(max_split, camera_near + 50.0f);
-            }
-
-            // In single-slice directional mode, prefer the first cascade distance
-            // as shadow range to keep texel density reasonable (less blurry).
-            float single_slice_far = camera_far;
-            if (!directional_csm_enabled)
-            {
-                // FIRST split (index 0), not the last — reading cascade_splits[N-1]
-                // made single_slice_far converge to ~camera_far, fitting the single
-                // ortho slice to the whole frustum and making it ~15x blurrier than
-                // the intended first-cascade range. (C-5)
-                const float split0 = dl.cascade_splits[0];
-                if (std::isfinite(split0) && split0 > 1.0001f)
+                if ((dl.flags & static_cast<uint32_t>(ELightGpuFlag::CAST_SHADOW)) == 0)
                 {
-                    single_slice_far = std::clamp(split0, camera_near + kMinCascadeDepthSpan, camera_far);
-                }
-            }
-
-            // CSM split interpretation (single-slice mode uses absolute distances).
-            const bool normalized_splits =
-                directional_csm_enabled ? (dl.cascade_splits[cascades - 1] <= 1.0001f) : false;
-            const float depth_span = std::max(camera_far - camera_near, kMinCascadeDepthSpan);
-            Eigen::Matrix4f light_view = makeDirectionalLightView(light_dir);
-
-            out_state.config.dir_split_is_normalized = normalized_splits ? 1.0f : 0.0f;
-            out_state.config.dir_split_near = camera_near;
-            out_state.config.dir_split_far = camera_far;
-
-            uint32_t generated = 0;
-            for (uint32_t c = 0; c < cascades && out_state.slices.size() < max_slices; ++c)
-            {
-                const bool is_last_cascade = (c + 1u == cascades);
-                const float split_prev_cfg =
-                    (c == 0) ? (normalized_splits ? 0.0f : camera_near) : dl.cascade_splits[c - 1];
-                // CSM mode: ensure the final cascade reaches camera_far.
-                // Single-slice mode: clamp to single_slice_far for better texel density.
-                const float split_curr_cfg =
-                    is_last_cascade
-                        ? (normalized_splits ? 1.0f : (directional_csm_enabled ? camera_far : single_slice_far))
-                        : dl.cascade_splits[c];
-
-                float segment_near = 0.0f;
-                float segment_far = 0.0f;
-                if (normalized_splits)
-                {
-                    const float t0 = std::clamp(split_prev_cfg, 0.0f, 1.0f);
-                    const float t1 = std::clamp(split_curr_cfg, 0.0f, 1.0f);
-                    segment_near = camera_near + depth_span * t0;
-                    segment_far = camera_near + depth_span * t1;
-                }
-                else
-                {
-                    segment_near = std::clamp(split_prev_cfg, camera_near, camera_far);
-                    segment_far = std::clamp(split_curr_cfg, segment_near + kMinCascadeDepthSpan, camera_far);
+                    return;
                 }
 
-                if (segment_far - segment_near < kMinCascadeDepthSpan)
-                {
-                    continue;
-                }
-
-                ShadowTileAllocation tile{};
-                if (!allocateTileWithFallback(atlas_packer, directional_tile_request, tile))
-                {
-                    continue;
-                }
-
-                const uint32_t map_resolution = std::max(tile.resolution, 1u);
-                const float t_near = std::clamp((segment_near - camera_near) / depth_span, 0.0f, 1.0f);
-                const float t_far = std::clamp((segment_far - camera_near) / depth_span, 0.0f, 1.0f);
-
-                std::array<Eigen::Vector3f, 8> segment_corners{};
-                for (uint32_t i = 0; i < 4; ++i)
-                {
-                    const Eigen::Vector3f ray = full_frustum_corners[i + 4] - full_frustum_corners[i];
-                    segment_corners[i] = full_frustum_corners[i] + ray * t_near;
-                    segment_corners[i + 4] = full_frustum_corners[i] + ray * t_far;
-                }
-
-                Eigen::Vector3f min_ls(
-                    std::numeric_limits<float>::max(),
-                    std::numeric_limits<float>::max(),
-                    std::numeric_limits<float>::max()
+                const uint32_t requested_cascades = std::clamp(dl.cascade_count, 1u, kMaxShadowCascades);
+                const bool directional_csm_enabled = (cfg_.shadow_config.enable_directional_csm != 0u);
+                const uint32_t cascades = directional_csm_enabled ? requested_cascades : 1u;
+                const uint32_t reserved_non_directional_tiles =
+                    (point_count > 0 ? 6u : 0u) + (spot_count > 0 ? 1u : 0u);
+                const uint32_t directional_tile_request = chooseResolutionForRequiredTiles(
+                    std::max(dl.shadow_map_size, 1u),
+                    cfg_.shadow_config.atlas_page_resolution,
+                    cfg_.shadow_config.atlas_page_count,
+                    cascades + reserved_non_directional_tiles
                 );
-                Eigen::Vector3f max_ls(
-                    std::numeric_limits<float>::lowest(),
-                    std::numeric_limits<float>::lowest(),
-                    std::numeric_limits<float>::lowest()
-                );
-
-                for (const auto& corner_ws : segment_corners)
+                Eigen::Vector3f light_dir(dl.direction.x, dl.direction.y, dl.direction.z);
+                if (light_dir.norm() < kEpsilon)
                 {
-                    const Eigen::Vector3f corner_ls =
-                        (light_view * Eigen::Vector4f(corner_ws.x(), corner_ws.y(), corner_ws.z(), 1.0f)).head<3>();
-                    min_ls = min_ls.cwiseMin(corner_ls);
-                    max_ls = max_ls.cwiseMax(corner_ls);
+                    return;
                 }
 
-                Eigen::Vector3f extent = max_ls - min_ls;
-                if (extent.x() < kMinCascadeDepthSpan || extent.y() < kMinCascadeDepthSpan)
-                {
-                    continue;
-                }
+                const auto& camera = vfd.camera_view;
+                Eigen::Matrix4f rotation_view = camera.view;
+                rotation_view(0, 3) = 0.0f;
+                rotation_view(1, 3) = 0.0f;
+                rotation_view(2, 3) = 0.0f;
+                auto full_frustum_corners = buildFrustumCorners((camera.proj * rotation_view).inverse());
 
-                float units_per_texel_x = 0.0f;
-                float units_per_texel_y = 0.0f;
-                if (map_resolution > 0)
+                float camera_near = 0.1f;
+                float camera_far = 0.0f;
+                if (!tryExtractPerspectiveNearFar(camera.proj, camera_near, camera_far))
                 {
-                    units_per_texel_x = extent.x() / static_cast<float>(map_resolution);
-                    units_per_texel_y = extent.y() / static_cast<float>(map_resolution);
-                }
-
-                // Guard-band XY bounds so camera motion / stabilization rounding does not
-                // create tiny uncovered holes near cascade borders.
-                const float xy_pad_x =
-                    std::max(extent.x() * kCascadeXYPaddingFactor, units_per_texel_x * kCascadeStabilizeGuardTexels);
-                const float xy_pad_y =
-                    std::max(extent.y() * kCascadeXYPaddingFactor, units_per_texel_y * kCascadeStabilizeGuardTexels);
-                min_ls.x() -= xy_pad_x;
-                max_ls.x() += xy_pad_x;
-                min_ls.y() -= xy_pad_y;
-                max_ls.y() += xy_pad_y;
-
-                extent = max_ls - min_ls;
-                Eigen::Vector3f center = (min_ls + max_ls) * 0.5f;
-                if (map_resolution > 0)
-                {
-                    units_per_texel_x = extent.x() / static_cast<float>(map_resolution);
-                    units_per_texel_y = extent.y() / static_cast<float>(map_resolution);
-                    if (units_per_texel_x > kEpsilon)
+                    float max_split = dl.cascade_splits[requested_cascades - 1];
+                    if (max_split <= 1.0001f)
                     {
-                        center.x() = std::floor(center.x() / units_per_texel_x + 0.5f) * units_per_texel_x;
+                        max_split = 100.0f;
                     }
-                    if (units_per_texel_y > kEpsilon)
+                    camera_far = std::max(max_split, camera_near + 50.0f);
+                }
+
+                // In single-slice directional mode, prefer the first cascade distance
+                // as shadow range to keep texel density reasonable (less blurry).
+                float single_slice_far = camera_far;
+                if (!directional_csm_enabled)
+                {
+                    // FIRST split (index 0), not the last — reading cascade_splits[N-1]
+                    // made single_slice_far converge to ~camera_far, fitting the single
+                    // ortho slice to the whole frustum and making it ~15x blurrier than
+                    // the intended first-cascade range. (C-5)
+                    const float split0 = dl.cascade_splits[0];
+                    if (std::isfinite(split0) && split0 > 1.0001f)
                     {
-                        center.y() = std::floor(center.y() / units_per_texel_y + 0.5f) * units_per_texel_y;
+                        single_slice_far = std::clamp(split0, camera_near + kMinCascadeDepthSpan, camera_far);
                     }
                 }
 
-                const float half_x = extent.x() * 0.5f + units_per_texel_x * kCascadeStabilizeGuardTexels;
-                const float half_y = extent.y() * 0.5f + units_per_texel_y * kCascadeStabilizeGuardTexels;
-                min_ls.x() = center.x() - half_x;
-                max_ls.x() = center.x() + half_x;
-                min_ls.y() = center.y() - half_y;
-                max_ls.y() = center.y() + half_y;
+                // CSM split interpretation (single-slice mode uses absolute distances).
+                const bool normalized_splits =
+                    directional_csm_enabled ? (dl.cascade_splits[cascades - 1] <= 1.0001f) : false;
+                const float depth_span = std::max(camera_far - camera_near, kMinCascadeDepthSpan);
+                Eigen::Matrix4f light_view = makeDirectionalLightView(light_dir);
 
-                const float z_span = std::max(max_ls.z() - min_ls.z(), kMinCascadeDepthSpan);
-                const float z_pad = std::max(kCascadeDepthPaddingMin, z_span * kCascadeDepthPaddingFactor);
-                // Pull the NEAR plane far toward the light (only the near side) so tall
-                // casters standing between the light and this cascade segment still write
-                // occluder depth — otherwise the near part of a contact shadow vanishes as
-                // the camera approaches. far_z stays tight (max_ls.z() + z_pad) to keep
-                // depth-bias scale stable. (light-space +Z points away from the light.)
-                const float near_z = min_ls.z() - std::max(z_pad, kDirectionalCasterNearPullback);
-                const float far_z = max_ls.z() + z_pad;
-                if (far_z - near_z < kMinCascadeDepthSpan)
+                out_state.config.dir_split_is_normalized = normalized_splits ? 1.0f : 0.0f;
+                out_state.config.dir_split_near = camera_near;
+                out_state.config.dir_split_far = camera_far;
+
+                uint32_t generated = 0;
+                for (uint32_t c = 0; c < cascades && out_state.slices.size() < max_slices; ++c)
                 {
-                    continue;
+                    const bool is_last_cascade = (c + 1u == cascades);
+                    const float split_prev_cfg =
+                        (c == 0) ? (normalized_splits ? 0.0f : camera_near) : dl.cascade_splits[c - 1];
+                    // CSM mode: ensure the final cascade reaches camera_far.
+                    // Single-slice mode: clamp to single_slice_far for better texel density.
+                    const float split_curr_cfg =
+                        is_last_cascade
+                            ? (normalized_splits ? 1.0f : (directional_csm_enabled ? camera_far : single_slice_far))
+                            : dl.cascade_splits[c];
+
+                    float segment_near = 0.0f;
+                    float segment_far = 0.0f;
+                    if (normalized_splits)
+                    {
+                        const float t0 = std::clamp(split_prev_cfg, 0.0f, 1.0f);
+                        const float t1 = std::clamp(split_curr_cfg, 0.0f, 1.0f);
+                        segment_near = camera_near + depth_span * t0;
+                        segment_far = camera_near + depth_span * t1;
+                    }
+                    else
+                    {
+                        segment_near = std::clamp(split_prev_cfg, camera_near, camera_far);
+                        segment_far = std::clamp(split_curr_cfg, segment_near + kMinCascadeDepthSpan, camera_far);
+                    }
+
+                    if (segment_far - segment_near < kMinCascadeDepthSpan)
+                    {
+                        continue;
+                    }
+
+                    ShadowTileAllocation tile{};
+                    if (!allocateTileWithFallback(atlas_packer, directional_tile_request, tile))
+                    {
+                        continue;
+                    }
+
+                    const uint32_t map_resolution = std::max(tile.resolution, 1u);
+                    const float t_near = std::clamp((segment_near - camera_near) / depth_span, 0.0f, 1.0f);
+                    const float t_far = std::clamp((segment_far - camera_near) / depth_span, 0.0f, 1.0f);
+
+                    std::array<Eigen::Vector3f, 8> segment_corners{};
+                    for (uint32_t i = 0; i < 4; ++i)
+                    {
+                        const Eigen::Vector3f ray = full_frustum_corners[i + 4] - full_frustum_corners[i];
+                        segment_corners[i] = full_frustum_corners[i] + ray * t_near;
+                        segment_corners[i + 4] = full_frustum_corners[i] + ray * t_far;
+                    }
+
+                    Eigen::Vector3f min_ls(
+                        std::numeric_limits<float>::max(),
+                        std::numeric_limits<float>::max(),
+                        std::numeric_limits<float>::max()
+                    );
+                    Eigen::Vector3f max_ls(
+                        std::numeric_limits<float>::lowest(),
+                        std::numeric_limits<float>::lowest(),
+                        std::numeric_limits<float>::lowest()
+                    );
+
+                    for (const auto& corner_ws : segment_corners)
+                    {
+                        const Eigen::Vector3f corner_ls =
+                            (light_view * Eigen::Vector4f(corner_ws.x(), corner_ws.y(), corner_ws.z(), 1.0f)).head<3>();
+                        min_ls = min_ls.cwiseMin(corner_ls);
+                        max_ls = max_ls.cwiseMax(corner_ls);
+                    }
+
+                    Eigen::Vector3f extent = max_ls - min_ls;
+                    if (extent.x() < kMinCascadeDepthSpan || extent.y() < kMinCascadeDepthSpan)
+                    {
+                        continue;
+                    }
+
+                    float units_per_texel_x = 0.0f;
+                    float units_per_texel_y = 0.0f;
+                    if (map_resolution > 0)
+                    {
+                        units_per_texel_x = extent.x() / static_cast<float>(map_resolution);
+                        units_per_texel_y = extent.y() / static_cast<float>(map_resolution);
+                    }
+
+                    // Guard-band XY bounds so camera motion / stabilization rounding does not
+                    // create tiny uncovered holes near cascade borders.
+                    const float xy_pad_x = std::max(
+                        extent.x() * kCascadeXYPaddingFactor,
+                        units_per_texel_x * kCascadeStabilizeGuardTexels
+                    );
+                    const float xy_pad_y = std::max(
+                        extent.y() * kCascadeXYPaddingFactor,
+                        units_per_texel_y * kCascadeStabilizeGuardTexels
+                    );
+                    min_ls.x() -= xy_pad_x;
+                    max_ls.x() += xy_pad_x;
+                    min_ls.y() -= xy_pad_y;
+                    max_ls.y() += xy_pad_y;
+
+                    extent = max_ls - min_ls;
+                    Eigen::Vector3f center = (min_ls + max_ls) * 0.5f;
+                    if (map_resolution > 0)
+                    {
+                        units_per_texel_x = extent.x() / static_cast<float>(map_resolution);
+                        units_per_texel_y = extent.y() / static_cast<float>(map_resolution);
+                        if (units_per_texel_x > kEpsilon)
+                        {
+                            center.x() = std::floor(center.x() / units_per_texel_x + 0.5f) * units_per_texel_x;
+                        }
+                        if (units_per_texel_y > kEpsilon)
+                        {
+                            center.y() = std::floor(center.y() / units_per_texel_y + 0.5f) * units_per_texel_y;
+                        }
+                    }
+
+                    const float half_x = extent.x() * 0.5f + units_per_texel_x * kCascadeStabilizeGuardTexels;
+                    const float half_y = extent.y() * 0.5f + units_per_texel_y * kCascadeStabilizeGuardTexels;
+                    min_ls.x() = center.x() - half_x;
+                    max_ls.x() = center.x() + half_x;
+                    min_ls.y() = center.y() - half_y;
+                    max_ls.y() = center.y() + half_y;
+
+                    const float z_span = std::max(max_ls.z() - min_ls.z(), kMinCascadeDepthSpan);
+                    const float z_pad = std::max(kCascadeDepthPaddingMin, z_span * kCascadeDepthPaddingFactor);
+                    // Pull the NEAR plane far toward the light (only the near side) so tall
+                    // casters standing between the light and this cascade segment still write
+                    // occluder depth — otherwise the near part of a contact shadow vanishes as
+                    // the camera approaches. far_z stays tight (max_ls.z() + z_pad) to keep
+                    // depth-bias scale stable. (light-space +Z points away from the light.)
+                    const float near_z = min_ls.z() - std::max(z_pad, kDirectionalCasterNearPullback);
+                    const float far_z = max_ls.z() + z_pad;
+                    if (far_z - near_z < kMinCascadeDepthSpan)
+                    {
+                        continue;
+                    }
+
+                    ShadowSliceGPU slice{};
+                    slice.light_vp =
+                        makeOrtho(min_ls.x(), max_ls.x(), min_ls.y(), max_ls.y(), near_z, far_z) * light_view;
+                    setShadowSpatialOrigin(slice, vfd.render_origin, vfd.coordinate_page_size);
+                    // `slice.bias` / `slice.slope_bias` feed directly into
+                    // `vkCmdSetDepthBias(constantFactor, _, slopeFactor)` —
+                    // dimensionless multipliers, NOT world-space depths. The
+                    // rasterizer formula is `depth + slope·max(|∂z/∂x|, |∂z/∂y|)
+                    // + constant·depth_eps`. For 24-bit unorm depth `depth_eps`
+                    // is ~6e-8, and a typical floor's per-pixel slope is ~7e-5
+                    // in normalized depth, so `constantFactor` needs to be in
+                    // the single-digit-to-low-hundred range and `slopeFactor`
+                    // in the 1–4 range to push acne-prone receivers cleanly off
+                    // their own recorded depth. The previous mapping
+                    // (`shadow_bias / depth_range`) interpreted the parameter
+                    // as a normalized depth offset and produced ~1e-12 actual
+                    // bias — effectively zero, which is why back-face culling
+                    // surfaced full moiré once front-cull stopped masking it.
+                    //
+                    // We retain `dl.shadow_bias` as the user-facing knob (default
+                    // 0.005 in the component) and scale internally to the
+                    // rasterizer's expected magnitudes. The shader's old
+                    // `current_depth - s.bias` subtraction is now redundant
+                    // (the rasterizer-written depth is already biased) and has
+                    // been removed in `shadow_pcf.glsl / shadow_evsm.glsl`.
+                    //
+                    // The slope-scale multiplier needs **strictly more headroom**
+                    // than the worst-case per-tap correction from the receiver-
+                    // plane bias used inside `sampleShadowPCF`. That correction
+                    // can reach ~2× the per-texel depth slope at a corner tap
+                    // (`x=+1, y=+1`); for the slope-scale rasterizer offset to
+                    // not tie with it (and produce texel-grid moiré through FP
+                    // jitter), the slope factor needs to be comfortably above
+                    // 2×. 4× is the standard safety margin and is what UE / Unity
+                    // ship by default for CSM.
+                    constexpr float kBiasConstantScale = 256.0f; // 0.005 → 1.28
+                    constexpr float kBiasSlopeScale = 800.0f;    // 0.005 → 4.0
+                    slice.bias = dl.shadow_bias * kBiasConstantScale;
+                    slice.slope_bias = std::max(dl.shadow_bias * kBiasSlopeScale, 1e-5f);
+                    // PCF normal-offset bias (depth-format-independent): the shader
+                    // offsets the receiver along its normal by N texels of world space.
+                    // For an ortho cascade the world texel size is constant, so we hand
+                    // it to the shader here (perspective slices derive it from the
+                    // light-axis distance instead — see shadow_pcf.glsl).
+                    slice.normal_bias = std::max(units_per_texel_x, units_per_texel_y);
+                    // Orthographic cascade: NDC z is already linear, so EVSM warps it
+                    // directly (no linearization needed).
+                    slice.shadow_near = near_z;
+                    slice.shadow_far = far_z;
+                    slice.depth_is_perspective = 0u;
+                    assignAtlasTileMetadata(slice, tile);
+
+                    out_state.slices.push_back(slice);
+                    ++generated;
                 }
 
-                ShadowSliceGPU slice{};
-                slice.light_vp = makeOrtho(min_ls.x(), max_ls.x(), min_ls.y(), max_ls.y(), near_z, far_z) * light_view;
-                setShadowSpatialOrigin(slice, vfd.render_origin, vfd.coordinate_page_size);
-                // `slice.bias` / `slice.slope_bias` feed directly into
-                // `vkCmdSetDepthBias(constantFactor, _, slopeFactor)` —
-                // dimensionless multipliers, NOT world-space depths. The
-                // rasterizer formula is `depth + slope·max(|∂z/∂x|, |∂z/∂y|)
-                // + constant·depth_eps`. For 24-bit unorm depth `depth_eps`
-                // is ~6e-8, and a typical floor's per-pixel slope is ~7e-5
-                // in normalized depth, so `constantFactor` needs to be in
-                // the single-digit-to-low-hundred range and `slopeFactor`
-                // in the 1–4 range to push acne-prone receivers cleanly off
-                // their own recorded depth. The previous mapping
-                // (`shadow_bias / depth_range`) interpreted the parameter
-                // as a normalized depth offset and produced ~1e-12 actual
-                // bias — effectively zero, which is why back-face culling
-                // surfaced full moiré once front-cull stopped masking it.
-                //
-                // We retain `dl.shadow_bias` as the user-facing knob (default
-                // 0.005 in the component) and scale internally to the
-                // rasterizer's expected magnitudes. The shader's old
-                // `current_depth - s.bias` subtraction is now redundant
-                // (the rasterizer-written depth is already biased) and has
-                // been removed in `shadow_pcf.glsl / shadow_evsm.glsl`.
-                //
-                // The slope-scale multiplier needs **strictly more headroom**
-                // than the worst-case per-tap correction from the receiver-
-                // plane bias used inside `sampleShadowPCF`. That correction
-                // can reach ~2× the per-texel depth slope at a corner tap
-                // (`x=+1, y=+1`); for the slope-scale rasterizer offset to
-                // not tie with it (and produce texel-grid moiré through FP
-                // jitter), the slope factor needs to be comfortably above
-                // 2×. 4× is the standard safety margin and is what UE / Unity
-                // ship by default for CSM.
-                constexpr float kBiasConstantScale = 256.0f; // 0.005 → 1.28
-                constexpr float kBiasSlopeScale = 800.0f;    // 0.005 → 4.0
-                slice.bias = dl.shadow_bias * kBiasConstantScale;
-                slice.slope_bias = std::max(dl.shadow_bias * kBiasSlopeScale, 1e-5f);
-                // PCF normal-offset bias (depth-format-independent): the shader
-                // offsets the receiver along its normal by N texels of world space.
-                // For an ortho cascade the world texel size is constant, so we hand
-                // it to the shader here (perspective slices derive it from the
-                // light-axis distance instead — see shadow_pcf.glsl).
-                slice.normal_bias = std::max(units_per_texel_x, units_per_texel_y);
-                // Orthographic cascade: NDC z is already linear, so EVSM warps it
-                // directly (no linearization needed).
-                slice.shadow_near = near_z;
-                slice.shadow_far = far_z;
-                slice.depth_is_perspective = 0u;
-                assignAtlasTileMetadata(slice, tile);
-
-                out_state.slices.push_back(slice);
-                ++generated;
+                out_state.config.dir_cascade_count = generated;
+                dir_found = (generated > 0);
+                if (dir_found)
+                {
+                    out_state.config.dir_caster_slot = slot; // shader samples this slot's cascades (C-6)
+                }
             }
-
-            out_state.config.dir_cascade_count = generated;
-            dir_found = (generated > 0);
-            if (dir_found)
-            {
-                out_state.config.dir_caster_slot = slot; // shader samples this slot's cascades (C-6)
-            }
-        });
+        );
 
         const Eigen::Vector3f camera_pos = vfd.camera_transform.position;
         const float coordinate_page_size = vfd.coordinate_page_size;
@@ -1437,6 +1512,7 @@ namespace lux::render
             SpotLightGPU light{};
             float score{0.0f};
         };
+
         struct PointCandidate
         {
             uint32_t slot{0};
@@ -1455,40 +1531,46 @@ namespace lux::render
         spot_candidates.reserve(spot_count);
         point_candidates.reserve(point_count);
 
-        light_res->forEachLight<SpotLightGPU>([&](uint32_t slot, const SpotLightGPU& sl) {
-            if (slot >= map_capacity)
+        light_res->forEachLight<SpotLightGPU>(
+            [&](uint32_t slot, const SpotLightGPU& sl)
             {
-                return;
+                if (slot >= map_capacity)
+                {
+                    return;
+                }
+                if ((sl.flags & static_cast<uint32_t>(ELightGpuFlag::CAST_SHADOW)) == 0u)
+                {
+                    return;
+                }
+                const Eigen::Vector3f pos = lightScenePosition(sl, coordinate_page_size);
+                const float score = scoreShadowCandidate(sl, pos, camera_pos, non_directional_shadow_max_distance);
+                if (score <= 0.0f)
+                {
+                    return;
+                }
+                spot_candidates.push_back({slot, sl, score});
             }
-            if ((sl.flags & static_cast<uint32_t>(ELightGpuFlag::CAST_SHADOW)) == 0u)
+        );
+        light_res->forEachLight<PointLightGPU>(
+            [&](uint32_t slot, const PointLightGPU& pl)
             {
-                return;
+                if (slot >= map_capacity)
+                {
+                    return;
+                }
+                if ((pl.flags & static_cast<uint32_t>(ELightGpuFlag::CAST_SHADOW)) == 0u)
+                {
+                    return;
+                }
+                const Eigen::Vector3f pos = lightScenePosition(pl, coordinate_page_size);
+                const float score = scoreShadowCandidate(pl, pos, camera_pos, non_directional_shadow_max_distance);
+                if (score <= 0.0f)
+                {
+                    return;
+                }
+                point_candidates.push_back({slot, pl, score});
             }
-            const Eigen::Vector3f pos = lightScenePosition(sl, coordinate_page_size);
-            const float score = scoreShadowCandidate(sl, pos, camera_pos, non_directional_shadow_max_distance);
-            if (score <= 0.0f)
-            {
-                return;
-            }
-            spot_candidates.push_back({slot, sl, score});
-        });
-        light_res->forEachLight<PointLightGPU>([&](uint32_t slot, const PointLightGPU& pl) {
-            if (slot >= map_capacity)
-            {
-                return;
-            }
-            if ((pl.flags & static_cast<uint32_t>(ELightGpuFlag::CAST_SHADOW)) == 0u)
-            {
-                return;
-            }
-            const Eigen::Vector3f pos = lightScenePosition(pl, coordinate_page_size);
-            const float score = scoreShadowCandidate(pl, pos, camera_pos, non_directional_shadow_max_distance);
-            if (score <= 0.0f)
-            {
-                return;
-            }
-            point_candidates.push_back({slot, pl, score});
-        });
+        );
 
         // NB: spot_candidates / point_candidates are intentionally NOT sorted — the merged
         // caster_choices below carries (score, index) and the consumer indexes back into
@@ -1502,12 +1584,14 @@ namespace lux::render
             SPOT,
             POINT
         };
+
         struct CasterChoice
         {
             ECasterType type{ECasterType::SPOT};
             uint32_t index{0};
             float score{0.0f};
         };
+
         thread_local std::vector<CasterChoice> caster_choices;
         caster_choices.clear();
         caster_choices.reserve(spot_candidates.size() + point_candidates.size());
@@ -1743,7 +1827,8 @@ namespace lux::render
         // 换位的槽数。
         {
             uint32_t changed_slots = 0;
-            const auto countDiff = [&changed_slots](const std::vector<int32_t>& a, const std::vector<int32_t>& b) {
+            const auto countDiff = [&changed_slots](const std::vector<int32_t>& a, const std::vector<int32_t>& b)
+            {
                 const std::size_t n = std::max(a.size(), b.size());
                 for (std::size_t i = 0; i < n; ++i)
                 {

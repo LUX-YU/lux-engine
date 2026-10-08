@@ -773,4 +773,48 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_NATIVE_TESTS)
     target_link_libraries(render_view_binding_test PRIVATE render_features)
     lux_editor_test_options(render_view_binding_test)
     add_test(NAME render.view_binding COMMAND render_view_binding_test)
+
+    add_executable(
+        render_shadow_lifetime_test
+        test/shadow_lifetime.cpp
+    )
+    target_include_directories(
+        render_shadow_lifetime_test
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/sinclude"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/sinclude"
+    )
+    target_link_libraries(
+        render_shadow_lifetime_test
+        PRIVATE render_features
+    )
+    lux_editor_test_options(render_shadow_lifetime_test)
+    add_executable(
+        render_shadow_quality_faults_test
+        test/shadow_quality_faults.cpp
+    )
+    target_include_directories(
+        render_shadow_quality_faults_test
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/sinclude"
+            "${CMAKE_CURRENT_SOURCE_DIR}/pinclude"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/sinclude"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/pinclude"
+            "${CMAKE_CURRENT_BINARY_DIR}/builtin_shaders"
+    )
+    target_link_libraries(
+        render_shadow_quality_faults_test
+        PRIVATE render_features GPUOpen::VulkanMemoryAllocator
+    )
+    lux_editor_test_options(render_shadow_quality_faults_test)
+    add_dependencies(
+        render_shadow_quality_faults_test
+        render_features_builtin_embed
+    )
+    if(LUX_RENDER_BUILD_GPU_TESTS)
+        add_test(NAME render.shadow_lifetime COMMAND render_shadow_lifetime_test)
+        set_tests_properties(render.shadow_lifetime PROPERTIES TIMEOUT 30 LABELS gpu)
+        add_test(NAME render.shadow_quality_faults COMMAND render_shadow_quality_faults_test)
+        set_tests_properties(render.shadow_quality_faults PROPERTIES TIMEOUT 60 LABELS gpu)
+    endif()
 endif()

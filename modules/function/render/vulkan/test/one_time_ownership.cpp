@@ -2408,7 +2408,9 @@ void checkEvsmConstruction(
         retirement.beginFrame(333 + cycle);
         const auto writes = descriptor_writes;
         auto candidate = EVSMShadowResources::create(info);
-        assert(candidate && descriptor_writes == writes + 4);
+        assert(candidate && descriptor_writes == writes);
+        (*candidate)->bindDescriptors();
+        assert(descriptor_writes == writes + 4);
         auto& owner = **candidate;
         assert(owner.framesInFlight() == 2 && owner.pageResolution() == 16 && owner.pageCount() == 2);
         assert(owner.blurredImage() == owner.momentImage() && owner.blurredView() == owner.momentView());

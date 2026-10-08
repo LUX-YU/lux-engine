@@ -148,46 +148,50 @@ namespace lux::render
             const auto allocation = buffer.release();
             config.emplace_back(info.retirement, allocation.buffer, allocation.allocation);
         }
-        auto result = std::unique_ptr<EVSMShadowResources>(
-            new EVSMShadowResources(info, adopt_atlas(*moment), adopt_atlas(*scratch), *sampler, std::move(config))
-        );
-        const VkDescriptorImageInfo image{*sampler, result->blurredView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
-        for (uint32_t fi = 0; fi < info.frames_in_flight; ++fi)
+        return std::unique_ptr<EVSMShadowResources>(new EVSMShadowResources(
+            info,
+            std::move(domain),
+            adopt_atlas(*moment),
+            adopt_atlas(*scratch),
+            *sampler,
+            std::move(config)
+        ));
+    }
+
+    void EVSMShadowResources::bindDescriptors() const noexcept
+    {
+        const VkDescriptorImageInfo image{sampler_, blurredView(), VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+        for (uint32_t fi = 0; fi < framesInFlight(); ++fi)
         {
-            const VkDescriptorBufferInfo buffer{result->configUBO(fi), 0, sizeof(ConfigGPU)};
+            const VkDescriptorBufferInfo buffer{configUBO(fi), 0, sizeof(ConfigGPU)};
             std::array<VkWriteDescriptorSet, 2> writes{};
             writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writes[0].dstSet = domain.setFor(fi);
-            writes[0].dstBinding = domain.binding(static_cast<uint32_t>(ELightSetBindings::SHADOW_ATLAS_EVSM));
+            writes[0].dstSet = domain_.setFor(fi);
+            writes[0].dstBinding = domain_.binding(static_cast<uint32_t>(ELightSetBindings::SHADOW_ATLAS_EVSM));
             writes[0].descriptorCount = 1;
             writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
             writes[0].pImageInfo = &image;
             writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            writes[1].dstSet = domain.setFor(fi);
-            writes[1].dstBinding = domain.binding(static_cast<uint32_t>(ELightSetBindings::SHADOW_EVSM_CONFIG));
+            writes[1].dstSet = domain_.setFor(fi);
+            writes[1].dstBinding = domain_.binding(static_cast<uint32_t>(ELightSetBindings::SHADOW_EVSM_CONFIG));
             writes[1].descriptorCount = 1;
             writes[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
             writes[1].pBufferInfo = &buffer;
-            vkUpdateDescriptorSets(
-                info.device.logicalDevice(),
-                static_cast<uint32_t>(writes.size()),
-                writes.data(),
-                0,
-                nullptr
-            );
+            vkUpdateDescriptorSets(device_, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
         }
-        return result;
     }
 
     EVSMShadowResources::EVSMShadowResources(
         const CreateInfo& info,
+        DomainWriteTarget domain,
         Atlas moment,
         Atlas scratch,
         VkSampler sampler,
         std::vector<ConfigBuffer> config
     ) noexcept
         : moment_(std::move(moment)), scratch_(std::move(scratch)), sampler_(sampler), config_ubos_(std::move(config)),
-          atlas_page_resolution_(info.atlas_page_resolution), atlas_page_count_(info.atlas_page_count)
+          atlas_page_resolution_(info.atlas_page_resolution), atlas_page_count_(info.atlas_page_count),
+          device_(info.device.logicalDevice()), domain_(std::move(domain))
     {
     }
 } // namespace lux::render

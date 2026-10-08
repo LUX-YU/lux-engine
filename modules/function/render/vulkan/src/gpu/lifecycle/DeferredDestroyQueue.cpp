@@ -1,21 +1,21 @@
+#include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
 #include <vk_mem_alloc.h>
 
 namespace lux::render
 {
 
-    DeferredDestroyQueue::~DeferredDestroyQueue()
+    DeferredDestroyQueue::DeferredDestroyQueue(DeviceContext& device) noexcept
+        : allocator_(device.vmaAllocator()), device_(device.logicalDevice())
+    {
+    }
+
+    DeferredDestroyQueue::~DeferredDestroyQueue() noexcept
     {
         // Owner-of-last-resort: destroy anything still queued (e.g. handles retired
         // by resource FifOwned members during their own teardown, after the explicit
         // flushAll() in ~RenderContext already ran). flushAll() is a no-op when empty.
         flushAll();
-    }
-
-    void DeferredDestroyQueue::init(VmaAllocator allocator, VkDevice device)
-    {
-        allocator_ = allocator;
-        device_ = device;
     }
 
     void DeferredDestroyQueue::beginFrame(uint64_t serial) noexcept
@@ -31,7 +31,9 @@ namespace lux::render
     void DeferredDestroyQueue::retireBuffer(VkBuffer buffer, VmaAllocation allocation, uint64_t serial)
     {
         if (buffer == VK_NULL_HANDLE)
+        {
             return;
+        }
 
         PendingDestroy p{};
         p.retire_serial = serial;
@@ -48,7 +50,9 @@ namespace lux::render
     void DeferredDestroyQueue::retireDescriptorSet(VkDescriptorPool pool, VkDescriptorSet set, uint64_t serial)
     {
         if (set == VK_NULL_HANDLE)
+        {
             return;
+        }
 
         PendingDestroy p{};
         p.retire_serial = serial;
@@ -65,7 +69,9 @@ namespace lux::render
     void DeferredDestroyQueue::retireImage(VkImage image, VmaAllocation allocation, uint64_t serial)
     {
         if (image == VK_NULL_HANDLE)
+        {
             return;
+        }
 
         PendingDestroy p{};
         p.retire_serial = serial;
@@ -82,7 +88,9 @@ namespace lux::render
     void DeferredDestroyQueue::retireImageView(VkImageView view, uint64_t serial)
     {
         if (view == VK_NULL_HANDLE)
+        {
             return;
+        }
 
         PendingDestroy p{};
         p.retire_serial = serial;
@@ -99,7 +107,9 @@ namespace lux::render
     void DeferredDestroyQueue::retireSampler(VkSampler sampler, uint64_t serial)
     {
         if (sampler == VK_NULL_HANDLE)
+        {
             return;
+        }
 
         PendingDestroy p{};
         p.retire_serial = serial;
@@ -116,7 +126,9 @@ namespace lux::render
     void DeferredDestroyQueue::retireRawBuffer(VkBuffer buffer, uint64_t serial)
     {
         if (buffer == VK_NULL_HANDLE)
+        {
             return;
+        }
 
         PendingDestroy p{};
         p.retire_serial = serial;
@@ -133,7 +145,9 @@ namespace lux::render
     void DeferredDestroyQueue::retireDeviceMemory(VkDeviceMemory memory, uint64_t serial)
     {
         if (memory == VK_NULL_HANDLE)
+        {
             return;
+        }
 
         PendingDestroy p{};
         p.retire_serial = serial;
@@ -150,7 +164,9 @@ namespace lux::render
     void DeferredDestroyQueue::retireSemaphore(VkSemaphore semaphore, uint64_t serial)
     {
         if (semaphore == VK_NULL_HANDLE)
+        {
             return;
+        }
 
         PendingDestroy p{};
         p.retire_serial = serial;
@@ -169,7 +185,9 @@ namespace lux::render
         {
             const uint32_t id = retire_order_.front();
             if (id < entries_.size() && entries_[id].active && entries_[id].retire_serial > completed_serial)
+            {
                 break;
+            }
 
             retire_order_.pop_front();
             if (id < entries_.size() && entries_[id].active)
@@ -185,7 +203,9 @@ namespace lux::render
         for (uint32_t id = 0; id < entries_.size(); ++id)
         {
             if (!entries_[id].active)
+            {
                 continue;
+            }
             destroy(entries_[id]);
             releaseEntry(id);
         }

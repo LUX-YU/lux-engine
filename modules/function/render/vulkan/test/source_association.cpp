@@ -17,8 +17,7 @@ int main()
     InstanceContext instance({});
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
-    DeferredDestroyQueue retire;
-    retire.init(device.vmaAllocator(), device.logicalDevice());
+    DeferredDestroyQueue retire(device);
     DescriptorService descriptors(device.logicalDevice());
     auto layouts = GeneralDescriptorSetLayout::create(device);
     auto arena = SceneDescriptorArena::create(device.logicalDevice(), {});
@@ -43,9 +42,8 @@ int main()
 
             std::vector<RenderObjectHandle> handles;
             handles.reserve(count);
-            const auto source = [sparse](std::size_t i) {
-                return static_cast<ERenderEntityId>(sparse ? (1ULL << 50) + i * 1048576ULL : i);
-            };
+            const auto source = [sparse](std::size_t i)
+            { return static_cast<ERenderEntityId>(sparse ? (1ULL << 50) + i * 1048576ULL : i); };
             const auto begin = Clock::now();
             for (std::size_t i = 0; i < count; ++i)
             {

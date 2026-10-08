@@ -49,10 +49,10 @@ namespace lux::render
         CreateInfo info,
         TransferScheduler transfers
     )
-        : resource_ctx_(res_ctx), descriptor_layouts_(std::move(info.descriptor_layouts)),
-          pipeline_mgr_(std::move(info.pipeline_mgr)), global_registry_(std::move(info.global_resources)),
-          frames_in_flight_(info.frames_in_flight), capacity_plan_(info.capacity_plan),
-          texture_sampling_catalog_(builtinTextureSamplingRepresentationCatalog()),
+        : resource_ctx_(res_ctx), deferred_destroy_queue_(res_ctx.deviceContext()),
+          descriptor_layouts_(std::move(info.descriptor_layouts)), pipeline_mgr_(std::move(info.pipeline_mgr)),
+          global_registry_(std::move(info.global_resources)), frames_in_flight_(info.frames_in_flight),
+          capacity_plan_(info.capacity_plan), texture_sampling_catalog_(builtinTextureSamplingRepresentationCatalog()),
           global_transfer_scheduler_(std::move(transfers))
     {
         // create() is the sole construction boundary and has already validated
@@ -73,8 +73,6 @@ namespace lux::render
         // singleton; the FEATURE domain is generated from reflection +
         // contract flags via DescriptorService).
         pipeline_mgr_->setReflectedLayoutEnv(*descriptor_layouts_, *descriptor_service_, *pipeline_layout_service_);
-
-        deferred_destroy_queue_.init(res_ctx.deviceContext().vmaAllocator(), vk_device_);
     }
 
     RenderContext::~RenderContext()

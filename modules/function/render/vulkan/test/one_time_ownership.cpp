@@ -676,8 +676,7 @@ void checkHzbDescriptorFailure(lux::render::DeviceContext& device, std::string_v
     auto sampler = SamplerOwner::create(device.logicalDevice(), sampler_info);
     auto arena = SceneDescriptorArena::create(device.logicalDevice(), {});
     assert(layout && sampler && arena);
-    DeferredDestroyQueue retirement;
-    retirement.init(device.vmaAllocator(), device.logicalDevice());
+    DeferredDestroyQueue retirement(device);
     retirement.beginFrame(7);
     const auto original_images = images.size();
     const auto original_views = views.size();
@@ -772,8 +771,7 @@ void checkHzbConstruction(lux::render::DeviceContext& device, lux::render::Resou
     auto sampler = SamplerOwner::create(device.logicalDevice(), sampler_info);
     auto arena = SceneDescriptorArena::create(device.logicalDevice(), {});
     assert(layout && sampler && arena);
-    DeferredDestroyQueue retirement;
-    retirement.init(device.vmaAllocator(), device.logicalDevice());
+    DeferredDestroyQueue retirement(device);
     retirement.beginFrame(17);
     const auto baseline_images = images.size();
     const auto baseline_views = views.size();
@@ -1227,8 +1225,7 @@ void checkPagedCapacity(lux::render::DeviceContext& device, lux::render::Deferre
     assert(!MeshSectionTable::create(device, retirement, UINT32_MAX));
     assert(buffers.empty());
     {
-        DeferredDestroyQueue other;
-        other.init(device.vmaAllocator(), device.logicalDevice());
+        DeferredDestroyQueue other(device);
         retirement.beginFrame(9);
         other.beginFrame(12);
         auto source = Stream::create(device, retirement, 2);
@@ -3435,6 +3432,75 @@ void checkStagingRing(lux::render::DeviceContext& device)
               "move replacement and release PASS");
 }
 
+void checkRetirementOwner(lux::render::DeviceContext& device)
+{
+    using namespace lux::render;
+    static_assert(!std::is_default_constructible_v<DeferredDestroyQueue>);
+    static_assert(!std::is_copy_constructible_v<DeferredDestroyQueue>);
+    static_assert(!std::is_copy_assignable_v<DeferredDestroyQueue>);
+    static_assert(!std::is_move_constructible_v<DeferredDestroyQueue>);
+    static_assert(!std::is_move_assignable_v<DeferredDestroyQueue>);
+    static_assert(std::is_nothrow_constructible_v<DeferredDestroyQueue, DeviceContext&>);
+    const auto original = buffers.size();
+    auto acquire = [&]() noexcept
+    {
+        VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        info.size = 64;
+        info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        VmaAllocationCreateInfo allocation_info{};
+        allocation_info.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+        auto buffer = VmaBuffer::create(device.vmaAllocator(), info, allocation_info);
+        assert(buffer);
+        return buffer->release();
+    };
+    {
+        DeferredDestroyQueue first(device);
+        DeferredDestroyQueue second(device);
+        auto a = acquire();
+        auto b = acquire();
+        first.retireBuffer(a.buffer, a.allocation, 7);
+        second.retireBuffer(b.buffer, b.allocation, 11);
+        first.collect(6);
+        assert(first.pendingCount() == 1 && second.pendingCount() == 1);
+        assert(buffers.size() == original + 2);
+        second.collect(11);
+        assert(second.pendingCount() == 0 && first.pendingCount() == 1);
+        assert(buffers.size() == original + 1);
+        first.collect(7);
+        assert(first.pendingCount() == 0 && buffers.size() == original);
+        first.beginFrame(13);
+        a = acquire();
+        {
+            TFifOwnedAllocated<VkBuffer> owned(first, a.buffer, a.allocation);
+        }
+        assert(first.pendingCount() == 1 && first.currentSerial() == 13);
+        first.collect(12);
+        assert(buffers.size() == original + 1);
+        first.collect(13);
+        assert(first.pendingCount() == 0 && buffers.size() == original);
+        a = acquire();
+        b = acquire();
+        first.retireBuffer(a.buffer, a.allocation, 23);
+        first.retireBuffer(b.buffer, b.allocation, 21);
+        first.collect(21); // Original conservative FIFO; never free ahead of the front.
+        assert(first.pendingCount() == 2 && buffers.size() == original + 2);
+        first.collect(23);
+        assert(first.pendingCount() == 0 && buffers.size() == original);
+        a = acquire();
+        first.retireBuffer(a.buffer, a.allocation, 24);
+        first.flushAll(); // No commands submitted in this native ownership test.
+        assert(first.pendingCount() == 0 && buffers.size() == original);
+        a = acquire();
+        first.retireBuffer(a.buffer, a.allocation, 300);
+        assert(first.pendingCount() == 1);
+        // The original owner-safe destructor drains resources retired during owner teardown.
+    }
+    assert(buffers.size() == original);
+    std::puts(
+        "Retirement owner: no copy/move/default construction; native queue isolation, FIFO, reuse and final drain PASS"
+    );
+}
+
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -3447,6 +3513,11 @@ int main(int argc, char** argv)
     InstanceContext instance({});
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
+    checkRetirementOwner(device);
+    if (argc == 2 && std::string_view(argv[1]) == "--retirement")
+    {
+        return 0;
+    }
     checkStagingRing(device);
     if (argc == 2 && std::string_view(argv[1]) == "--staging")
     {
@@ -3474,8 +3545,7 @@ int main(int argc, char** argv)
     {
         return 0;
     }
-    DeferredDestroyQueue retirement;
-    retirement.init(device.vmaAllocator(), device.logicalDevice());
+    DeferredDestroyQueue retirement(device);
     checkHzbConstruction(device, resources);
     checkTerrainConstruction(device, resources, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--terrain")

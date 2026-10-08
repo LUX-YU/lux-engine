@@ -143,10 +143,8 @@ void checkBufferConstruction(lux::render::DeviceContext& device)
     static_assert(!std::is_constructible_v<Buffer, GpuBufferCreateInfo>);
     static_assert(!std::is_copy_constructible_v<Buffer>);
     static_assert(std::is_nothrow_move_constructible_v<Buffer>);
-    DeferredDestroyQueue first_queue;
-    DeferredDestroyQueue second_queue;
-    first_queue.init(device.vmaAllocator(), device.logicalDevice());
-    second_queue.init(device.vmaAllocator(), device.logicalDevice());
+    DeferredDestroyQueue first_queue(device);
+    DeferredDestroyQueue second_queue(device);
     first_queue.beginFrame(7);
     second_queue.beginFrame(11);
     GpuBufferCreateInfo
@@ -382,8 +380,7 @@ int main(int argc, char** argv)
         checkBufferConstruction(device);
         return 0;
     }
-    DeferredDestroyQueue retirement;
-    retirement.init(device.vmaAllocator(), device.logicalDevice());
+    DeferredDestroyQueue retirement(device);
     MeshResources::CreateInfo info{};
     info.device = &device;
     info.vertex_arena_bytes = 4096;

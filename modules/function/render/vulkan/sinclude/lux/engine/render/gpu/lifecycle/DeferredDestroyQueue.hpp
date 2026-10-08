@@ -23,19 +23,25 @@
 
 namespace lux::render
 {
-    class LUX_FUNCTION_PUBLIC DeferredDestroyQueue
+    class DeviceContext;
+
+    class LUX_FUNCTION_PUBLIC DeferredDestroyQueue final
     {
     public:
-        DeferredDestroyQueue() = default;
+        /// Borrows an initialized device; that device outlives this queue and its final drain.
+        explicit DeferredDestroyQueue(DeviceContext& device) noexcept;
+
+        DeferredDestroyQueue(const DeferredDestroyQueue&) = delete;
+        DeferredDestroyQueue& operator=(const DeferredDestroyQueue&) = delete;
+        DeferredDestroyQueue(DeferredDestroyQueue&&) = delete;
+        DeferredDestroyQueue& operator=(DeferredDestroyQueue&&) = delete;
 
         /// Destroys anything still queued. The queue is the owner-of-last-resort:
         /// it is declared first in RenderContext (destroyed last), so resources
         /// whose FifOwned members retire during teardown have their handles
         /// actually destroyed here. The VkDevice/allocator are owned by the
         /// (referenced) ResourceContext, which outlives RenderContext. (C1)
-        ~DeferredDestroyQueue();
-
-        void init(VmaAllocator allocator, VkDevice device);
+        ~DeferredDestroyQueue() noexcept;
 
         /// Set the current frame serial.  Called once per tick before any
         /// retire calls.  Subsequent retireXxx() calls tag entries with
@@ -80,6 +86,7 @@ namespace lux::render
         {
             return current_serial_;
         }
+
         [[nodiscard]] size_t pendingCount() const noexcept
         {
             return pending_count_;
@@ -141,7 +148,8 @@ namespace lux::render
             VkSemaphore semaphore;
         };
 
-        union Payload {
+        union Payload
+        {
             BufferPayload buffer;
             RawBufferPayload raw_buffer;
             DescSetPayload desc_set;
@@ -164,8 +172,8 @@ namespace lux::render
         void releaseEntry(uint32_t id);
         void destroy(PendingDestroy& p);
 
-        VmaAllocator allocator_ = VK_NULL_HANDLE;
-        VkDevice device_ = VK_NULL_HANDLE;
+        const VmaAllocator allocator_;
+        const VkDevice device_;
         uint64_t current_serial_ = 0;
 
         std::vector<PendingDestroy> entries_;

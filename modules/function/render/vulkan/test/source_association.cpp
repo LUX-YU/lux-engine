@@ -3,7 +3,9 @@
 #include <cstdio>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
+#include <lux/engine/render/gpu/descriptor/SceneDescriptorArena.hpp>
 #include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
+#include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
 #include <lux/engine/render/resources/lighting/LightResources.hpp>
 #include <lux/engine/render/resources/mesh/InstanceResources.hpp>
 #include <vector>
@@ -12,7 +14,7 @@ int main()
 {
     using namespace lux::render;
     using Clock = std::chrono::steady_clock;
-    InstanceContext instance({VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME});
+    InstanceContext instance({});
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
     DeferredDestroyQueue retire;
@@ -28,14 +30,21 @@ int main()
     pool_info.pPoolSizes = pool_sizes;
     assert(vkCreateDescriptorPool(device.logicalDevice(), &pool_info, nullptr, &pool) == VK_SUCCESS);
     DescriptorService descriptors(device.logicalDevice(), pool);
+    auto layouts = GeneralDescriptorSetLayout::create(device);
+    auto arena = SceneDescriptorArena::create(device.logicalDevice(), {});
+    assert(layouts && arena);
+    const auto allocated = (*arena)->allocate((*layouts)->getLayout(EDescriptorSetSlot::INSTANCE));
+    assert(allocated);
+    const std::array targets{*allocated};
     for (const std::size_t count : {256U, 4096U})
     {
         for (const bool sparse : {false, true})
         {
-            InstanceResources resources;
-            resources.setDeferredQueue(&retire);
-            resources.init({&device, &descriptors, nullptr, 8192, 8192});
-            assert(resources.isInitialized());
+            InstanceResources::CreateInfo info{device, retire, targets};
+            info.initial_capacity = info.max_capacity = 8192;
+            auto owner = InstanceResources::create(info);
+            assert(owner);
+            auto& resources = **owner;
             const auto anonymous = resources.allocateObject();
             assert(anonymous && resources.isAlive(anonymous));
             assert(!resources.findSource(ERenderEntityId{}));
@@ -79,8 +88,9 @@ int main()
             assert(resources.bindSource(source(0), newer) == InstanceResources::ESourceBindResult::INSERTED);
             resources.freeObject(handles.back());
             assert(resources.findSource(source(0)) == newer && resources.aliveCount() == 1);
-            resources.shutdown();
+            resources.freeObject(newer);
             assert(!resources.findSource(source(0)) && resources.aliveCount() == 0);
+            owner->reset();
             // No GPU commands were submitted in this owner test. Integration tests separately
             // establish real View CPU-reference / GPU-completion retirement.
             retire.collect(0);
@@ -115,10 +125,13 @@ int main()
         const auto layout = descriptors.registerLayout({.bindings = bindings, .debug_name = "owner light check"});
         const auto set = descriptors.allocate(layout);
         assert(set);
-        LightResources lights;
-        assert(lights.init(
-            {{&device, &retire, 16, 1}, device.logicalDevice(), device.vmaAllocator(), &descriptors, std::span(&set, 1)}
-        ));
+        LightResources::CreateInfo info{};
+        info.ssbo_config = SSBOInitConfig{&device, &retire, 16, 1};
+        info.descriptor_svc = &descriptors;
+        info.domain_sets = std::span(&set, 1);
+        auto owner = LightResources::create(info);
+        assert(owner);
+        auto& lights = **owner;
         const auto anonymous = lights.submit(PointLightDesc{});
         assert(anonymous && lights.findSource(ERenderEntityId{}).isNull());
         lights.remove(*anonymous);
@@ -128,12 +141,13 @@ int main()
         assert(lights.bindSource(ERenderEntityId{}, *next) == LightResources::ESourceBindResult::INSERTED);
         lights.remove(*anonymous);
         assert(lights.findSource(ERenderEntityId{}) == *next && lights.lightCount(ELightSetBindings::LIGHT_POINT) == 1);
-        lights.shutdown();
+        lights.remove(*next);
         assert(lights.findSource(ERenderEntityId{}).isNull() && lights.lightCount(ELightSetBindings::LIGHT_POINT) == 0);
+        owner->reset();
     }
     retire.collect(0);
     assert(retire.pendingCount() == 0);
     vkDestroyDescriptorPool(device.logicalDevice(), pool, nullptr);
     std::puts("PASS R06/R07 Mesh and Light owners: anonymous allocation/free, complete source keys, stale handles, "
-              "shutdown indices; real GPU allocations, no submitted work");
+              "owner release and empty indices; real GPU allocations, no submitted work");
 }

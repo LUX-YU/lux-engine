@@ -279,6 +279,26 @@ if(BUILD_TESTING)
         set_tests_properties(render.record_context_ownership PROPERTIES TIMEOUT 30 LABELS gpu)
     endif()
 
+    add_executable(
+        render_source_association_test
+        test/source_association.cpp
+    )
+    target_include_directories(
+        render_source_association_test
+        PRIVATE sinclude pinclude
+    )
+    target_compile_definitions(render_source_association_test PRIVATE LUX_FUNCTION_DLL_DISABLE)
+    target_link_libraries(render_source_association_test PRIVATE render_vulkan GPUOpen::VulkanMemoryAllocator)
+    if(MSVC)
+        target_compile_options(render_source_association_test PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(render_source_association_test PRIVATE -UNDEBUG)
+    endif()
+    if(LUX_RENDER_BUILD_GPU_TESTS)
+        add_test(NAME render.source_association COMMAND render_source_association_test)
+        set_tests_properties(render.source_association PROPERTIES TIMEOUT 30 LABELS gpu)
+    endif()
+
     add_executable(render_one_time_ownership_test test/one_time_ownership.cpp)
     target_include_directories(render_one_time_ownership_test PRIVATE sinclude pinclude)
     target_compile_definitions(render_one_time_ownership_test PRIVATE LUX_FUNCTION_DLL_DISABLE)

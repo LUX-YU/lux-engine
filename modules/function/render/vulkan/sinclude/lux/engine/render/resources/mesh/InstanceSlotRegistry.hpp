@@ -25,8 +25,12 @@ namespace lux::render
             return generation + 1u;
         }
 
-        void init(std::uint32_t capacity);
-        void shutdown();
+        explicit InstanceSlotRegistry(std::uint32_t capacity) noexcept;
+        InstanceSlotRegistry(const InstanceSlotRegistry&) = delete;
+        InstanceSlotRegistry& operator=(const InstanceSlotRegistry&) = delete;
+        InstanceSlotRegistry(InstanceSlotRegistry&&) = delete;
+        InstanceSlotRegistry& operator=(InstanceSlotRegistry&&) = delete;
+
         void resizeCapacity(std::uint32_t new_capacity);
 
         [[nodiscard]] bool needsGrowForAllocate() const noexcept;

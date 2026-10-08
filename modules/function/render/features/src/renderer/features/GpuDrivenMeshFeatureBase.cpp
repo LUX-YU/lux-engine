@@ -347,8 +347,8 @@ namespace lux::render
 
         // ---- Three-stream instance storage (from scene registry, shared) ----
         {
-            // InstanceResources is ensure<>d AND init()ed by StandardMeshStack; a
-            // GPU-driven mesh feature only find<>s it. If it is absent (feature
+            // StandardMeshStack publishes complete InstanceResources from its factory;
+            // a GPU-driven mesh feature only borrows it. If it is absent (feature
             // installed without StandardMeshStack), fail the install instead of
             // dereferencing null.
             instance_res_ = renderScene().resources().find<InstanceResources>();

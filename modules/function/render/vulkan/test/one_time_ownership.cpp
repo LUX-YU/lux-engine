@@ -1255,6 +1255,183 @@ void checkSceneResources(
     );
 }
 
+void checkInstanceConstruction(
+    lux::render::DeviceContext& device,
+    lux::render::GeneralDescriptorSetLayout& layouts,
+    lux::render::DeferredDestroyQueue& retirement
+)
+{
+    using namespace lux::render;
+    static_assert(!std::is_default_constructible_v<InstanceResources>);
+    static_assert(!std::is_copy_constructible_v<InstanceResources>);
+    static_assert(!std::is_move_constructible_v<InstanceResources>);
+    static_assert(!std::is_default_constructible_v<InstanceSlotRegistry>);
+    retirement.flushAll();
+    assert(buffers.empty());
+    auto arena = SceneDescriptorArena::create(device.logicalDevice(), {});
+    assert(arena);
+    std::array<VkDescriptorSet, 2> targets{};
+    for (auto& target : targets)
+    {
+        const auto allocated = (*arena)->allocate(layouts.getLayout(EDescriptorSetSlot::INSTANCE));
+        assert(allocated);
+        target = *allocated;
+    }
+    InstanceResources::CreateInfo info{device, retirement, targets};
+    const auto check_invalid = [&]
+    {
+        const auto writes = descriptor_writes;
+        auto rejected = InstanceResources::create(info);
+        assert(!rejected && isError<err::internal::InvalidArgument>(rejected.error()));
+        assert(buffers.empty() && retirement.pendingCount() == 0 && descriptor_writes == writes);
+    };
+    info.domain_sets = {};
+    check_invalid();
+    const std::array incomplete{targets[0], VkDescriptorSet{}};
+    info.domain_sets = incomplete;
+    check_invalid();
+    info.domain_sets = targets;
+    info.domain_binding_offset = UINT32_MAX;
+    check_invalid();
+    info.domain_binding_offset = 0;
+    info.initial_capacity = 0;
+    check_invalid();
+    info.initial_capacity = info.max_capacity + 1;
+    check_invalid();
+    info.initial_capacity = 1;
+    info.max_capacity = UINT32_MAX;
+    check_invalid();
+    info.max_capacity = 3 * kInstanceSlotsPerPage;
+    for (const double size :
+         {0.0,
+          -1.0,
+          std::numeric_limits<double>::infinity(),
+          std::numeric_limits<double>::quiet_NaN(),
+          std::numeric_limits<double>::denorm_min()})
+    {
+        info.coordinate_page_size = size;
+        check_invalid();
+    }
+    info.coordinate_page_size = 1024;
+    info.initial_capacity = 2 * kInstanceSlotsPerPage + 1;
+    for (const bool sparse : {false, true})
+    {
+        info.sparse_bda = sparse;
+        unsigned acquisitions{};
+        {
+            acquisition = 0;
+            fail_acquisition = 0;
+            measure_acquisitions = true;
+            auto complete = InstanceResources::create(info);
+            measure_acquisitions = false;
+            assert(complete);
+            acquisitions = acquisition;
+        }
+        retirement.flushAll();
+        assert(buffers.empty());
+        for (unsigned boundary = 1; boundary <= acquisitions; ++boundary)
+        {
+            ResourceRegistry registry;
+            const auto writes = descriptor_writes;
+            const auto prior_rejections = rejections;
+            acquisition = 0;
+            fail_acquisition = boundary;
+            measure_acquisitions = true;
+            auto rejected = InstanceResources::create(info);
+            measure_acquisitions = false;
+            assert(!rejected && rejections == prior_rejections + 1);
+            assert(registry.find<InstanceResources>() == nullptr && descriptor_writes == writes);
+            if (rejected_boundary == EFailure::ADDRESS)
+            {
+                assert(isError<err::memory::BufferDeviceAddressUnavailable>(rejected.error()));
+            }
+            else
+            {
+                const auto vk_error =
+                    rejected_boundary == EFailure::BUFFER ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_ERROR_MEMORY_MAP_FAILED;
+                assert(isError<err::device::VulkanCallFailed>(rejected.error()));
+                assert(rejected.error().args[0] == encodeVkResult(vk_error));
+            }
+            // Complete leaf owners preserve the existing serial-retirement policy even before registry adoption.
+            assert(retirement.pendingCount() == buffers.size());
+            retirement.flushAll();
+            assert(buffers.empty());
+        }
+        retirement.beginFrame(91);
+        {
+            trace_buffer_writes = true;
+            buffer_writes.clear();
+            auto complete = InstanceResources::create(info);
+            assert(complete && buffer_writes.size() == 4);
+            auto* instances = complete->get();
+            assert(instances->capacity() == info.initial_capacity && instances->maximumCapacity() == info.max_capacity);
+            assert(instances->residentPageCount() == 3 && instances->slotCount() == 0);
+            assert(instances->descriptorWriteCount() == 4);
+            if (sparse)
+            {
+                assert(instances->pageTableLeafCount() == 1);
+                const auto root = buffer_writes[0].buffer;
+                const auto& root_allocation = buffers.at(root);
+                VmaAllocationInfo root_info{};
+                vmaGetAllocationInfo(root_allocation.first, root_allocation.second, &root_info);
+                assert(root_info.pMappedData && static_cast<VkDeviceAddress*>(root_info.pMappedData)[0] != 0);
+                unsigned leaves{};
+                for (const auto& [buffer, allocation] : buffers)
+                {
+                    VmaAllocationInfo mapped{};
+                    vmaGetAllocationInfo(allocation.first, allocation.second, &mapped);
+                    if (buffer == root || !mapped.pMappedData)
+                    {
+                        continue;
+                    }
+                    ++leaves;
+                    const auto* entries = static_cast<const GpuInstancePageAddresses*>(mapped.pMappedData);
+                    for (unsigned page = 0; page < 3; ++page)
+                    {
+                        assert(entries[page].transform && entries[page].previous_transform);
+                        assert(entries[page].property && entries[page].cull_meta);
+                        if (page > 0)
+                        {
+                            assert(entries[page].transform != entries[page - 1].transform);
+                        }
+                    }
+                    assert(entries[3].transform == 0);
+                }
+                assert(leaves == 1);
+            }
+            else
+            {
+                assert(buffer_writes[0].buffer == instances->transformBuffer());
+            }
+            for (unsigned slice = 0; slice < targets.size(); ++slice)
+            {
+                assert(buffer_writes[slice * 2].set == targets[slice]);
+                assert(buffer_writes[slice * 2].binding == 0 && buffer_writes[slice * 2 + 1].binding == 1);
+            }
+            ResourceRegistry registry;
+            const auto inserted = registry.insert(std::move(*complete));
+            assert(inserted.get() == instances && registry.find<InstanceResources>() == instances);
+            const auto object = instances->allocateObject();
+            assert(object && instances->isAlive(object));
+            FrameStamp stamp{};
+            stamp.serial = 91;
+            instances->onFrameBeginMaintenance(stamp);
+            instances->uploadMdcInfo();
+            assert(instances->mdcInfoBuffer());
+            assert(buffers.contains(instances->mdcInfoBufferAt(instances->currentMdcInfoSlot())));
+            trace_buffer_writes = false;
+            buffer_writes.clear();
+        }
+        const auto pending = buffers.size();
+        assert(pending > 0 && pending == retirement.pendingCount());
+        retirement.collect(90);
+        assert(buffers.size() == pending);
+        retirement.collect(91);
+        assert(buffers.empty());
+        std::printf("Instance mandatory construction: sparse=%d native boundaries=%u PASS\n", sparse, acquisitions);
+    }
+}
+
 void checkInstanceGrowth(
     lux::render::DeviceContext& device,
     lux::render::GeneralDescriptorSetLayout& layouts,
@@ -1273,23 +1450,19 @@ void checkInstanceGrowth(
         assert(allocated);
         target = *allocated;
     }
-    DescriptorService descriptors(device.logicalDevice(), VK_NULL_HANDLE);
     for (const bool sparse : {false, true})
     {
         retirement.beginFrame(83);
         {
-            InstanceResources instances;
-            InstanceResources::InitInfo info{};
-            info.device_context = &device;
-            info.deferred_queue = &retirement;
-            info.descriptor_svc = &descriptors;
+            InstanceResources::CreateInfo info{device, retirement, targets};
             info.initial_capacity = kInstanceSlotsPerPage;
             info.max_capacity = 2 * kInstanceSlotsPerPage;
             info.sparse_bda = sparse;
-            assert(instances.init(info));
             trace_buffer_writes = true;
             buffer_writes.clear();
-            assert(instances.setDomainWriteTarget(targets, 0));
+            auto created = InstanceResources::create(info);
+            assert(created);
+            auto& instances = **created;
             assert(buffer_writes.size() == 4);
             const auto original_descriptor_buffer = buffer_writes[0].buffer;
             RenderObjectHandle first;
@@ -1453,6 +1626,11 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkInstanceConstruction(device, layouts, retirement);
+    if (argc == 2 && std::string_view(argv[1]) == "--instance-construction")
+    {
+        return 0;
+    }
     checkInstanceGrowth(device, layouts, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--instance-growth")
     {

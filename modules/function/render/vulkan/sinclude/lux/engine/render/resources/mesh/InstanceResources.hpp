@@ -1,14 +1,14 @@
 #pragma once
-#include <lux/engine/function/render/client/core/RenderSpatialTypes.hpp>
 #include <lux/engine/function/render/client/RenderProgram.hpp>
+#include <lux/engine/function/render/client/core/RenderSpatialTypes.hpp>
+#include <lux/engine/function/render/client/core/RenderTypes.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/function/render/features/resources/mesh/RenderObjectTypes.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/render/core/FrameServices.hpp>
-#include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
 #include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
-#include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
+#include <lux/engine/render/gpu/lifecycle/GPUResourceTypes.hpp>
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
 #include <lux/engine/render/gpu/memory/PagedGpuStream.hpp>
 #include <lux/engine/render/resources/mesh/InstanceSlot.hpp>
@@ -21,7 +21,6 @@
 namespace lux::render
 {
     class TransferScheduler;
-    class SceneDescriptorArena;
 } // namespace lux::render
 
 #include <array>
@@ -132,7 +131,7 @@ namespace lux::render
  * (coalesced consecutive-run copy via staging buffer) unless a full
  * rebuild is forced.
  */
-    class LUX_FUNCTION_PUBLIC InstanceResources : public TGPUResourceBase<InstanceResources, EGPUResourceType::INSTANCE>
+    class LUX_FUNCTION_PUBLIC InstanceResources final
     {
     public:
         struct ResourceBinding final
@@ -144,26 +143,28 @@ namespace lux::render
         void setSubmission(RenderObjectHandle, RenderSubmissionState) noexcept;
         void retainSubmissions(const struct FrameRuntime&) const noexcept;
 
-        struct InitInfo
+        static constexpr EGPUResourceType resource_type = EGPUResourceType::INSTANCE;
+
+        struct CreateInfo
         {
-            DeferredDestroyQueue* deferred_queue{};
-            DeviceContext* device_context{nullptr};
-            DescriptorService* descriptor_svc{nullptr}; // layouts (global)
-            SceneDescriptorArena* arena{nullptr};       // set allocation (per-scene)
+            DeviceContext& device_context;
+            DeferredDestroyQueue& deferred_queue;
+            std::span<const VkDescriptorSet> domain_sets;
+            uint32_t domain_binding_offset{};
             uint32_t initial_capacity{4096};
             uint32_t max_capacity{65536};
             double coordinate_page_size{1024.0};
             bool sparse_bda{false};
         };
 
-        InstanceResources() = default;
-        ~InstanceResources();
+        using CreateResult = Expected<std::unique_ptr<InstanceResources>>;
+        [[nodiscard]] static CreateResult create(const CreateInfo& info) noexcept;
+        ~InstanceResources() noexcept;
 
         InstanceResources(const InstanceResources&) = delete;
         InstanceResources& operator=(const InstanceResources&) = delete;
-
-        bool init(const InitInfo& info);
-        void shutdown();
+        InstanceResources(InstanceResources&&) = delete;
+        InstanceResources& operator=(InstanceResources&&) = delete;
 
         enum class ESourceBindResult : std::uint8_t
         {
@@ -284,30 +285,6 @@ namespace lux::render
             beginFrame();
         }
 
-        // ─── Descriptor set (binding 0 = Transform, binding 1 = Property) ─
-        [[nodiscard]] VkDescriptorSetLayout descriptorSetLayout() const noexcept;
-
-        /// Sets the domain-set dual-write target: per-slice handles plus the
-        /// in-domain binding offset.
-        ///
-        /// A setter is used instead of an InitInfo field because the domain sets
-        /// come from the SCENE (RenderScene::domainDescriptorSets()), not from the
-        /// device-level wiring InitInfo carries — the owner has both in hand, but
-        /// only after it has resolved the scene. It immediately re-writes the
-        /// bindings once set, so call order doesn't affect correctness.
-        ///
-        /// (原注释说"每个 owner 的 init 路径形状不同,所以用 setter 统一" —— 那是
-        ///  init 分散在三个 feature 里时的事实。A-4 把 init 收进了唯一的
-        ///  StandardMeshStackFeature,此处也就只剩一个调用方。)
-        [[nodiscard]] Expected<void> setDomainWriteTarget(
-            std::span<const VkDescriptorSet> sets,
-            uint32_t binding_offset
-        );
-        [[nodiscard]] VkDescriptorSetLayout getDescriptorSetLayout() const noexcept
-        {
-            return descriptorSetLayout();
-        }
-
         // ─── Buffer accessors ───────────────────────────────────────────
         /// 未接线:现役绑定走域描述符集(useEngineSet),不再逐个取裸 VkBuffer。
         [[nodiscard]] VkBuffer transformBuffer() const noexcept;
@@ -351,7 +328,7 @@ namespace lux::render
         }
         [[nodiscard]] std::uint32_t residentPageCount() const noexcept
         {
-            return transform_stream_->pageCount();
+            return transform_stream_.pageCount();
         }
         [[nodiscard]] std::uint32_t pageTableLeafCount() const noexcept
         {
@@ -392,7 +369,7 @@ namespace lux::render
         void unregisterMeshSection(uint32_t section_id);
         [[nodiscard]] const MeshSectionRecord& meshSectionAt(std::uint32_t section_id) const noexcept
         {
-            return mesh_section_table_->at(section_id);
+            return mesh_section_table_.at(section_id);
         }
 
         // ─── MDC table (Mesh Draw Command dedup) ───────────────────────
@@ -432,18 +409,15 @@ namespace lux::render
         /// Called once per graph compile (idempotent within one frame serial).
         void uploadMdcInfo();
 
-        /// Late-bind centralized deferred destroy queue to GPU buffers.
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-        {
-            deferred_queue_ = q;
-        }
-
     private:
         // Both maps describe only the active association. Anonymous and retiring instances need none.
         std::unordered_map<ERenderEntityId, RenderObjectHandle> source_objects_;
         std::unordered_map<std::uint64_t, ERenderEntityId> object_sources_;
 
     private:
+        struct Backing;
+        InstanceResources(const CreateInfo& info, Backing&& backing) noexcept;
+
         static constexpr uint32_t kInvalidObjectId = ~0u;
         [[nodiscard]] bool ensureCapacity(uint32_t required);
         void refreshDescriptorSet();
@@ -460,13 +434,13 @@ namespace lux::render
         void unregisterInstanceLods(InstanceCullMeta& cull);
 
         std::unique_ptr<SparseInstancePageTable> page_table_;
-        std::optional<TSparseInstanceStream<InstanceTransform>> transform_stream_;
-        std::optional<TSparseInstanceStream<InstanceTransformPrev>> prev_transform_stream_;
-        std::optional<TSparseInstanceStream<InstanceProperty>> property_stream_;
-        std::optional<TSparseInstanceStream<InstanceCullMeta>> cull_meta_stream_;
-        std::optional<TPagedGpuStream<uint32_t>> alive_slot_stream_;
-        std::optional<TPagedGpuStream<uint32_t>> dynamic_slot_stream_;
-        std::optional<MeshSectionTable> mesh_section_table_;
+        TSparseInstanceStream<InstanceTransform> transform_stream_;
+        TSparseInstanceStream<InstanceTransformPrev> prev_transform_stream_;
+        TSparseInstanceStream<InstanceProperty> property_stream_;
+        TSparseInstanceStream<InstanceCullMeta> cull_meta_stream_;
+        TPagedGpuStream<uint32_t> alive_slot_stream_;
+        TPagedGpuStream<uint32_t> dynamic_slot_stream_;
+        MeshSectionTable mesh_section_table_;
         MdcTable mdc_table_;
 
         // Per-stream upload-chunk scratch, reused across ticks (cleared at the top
@@ -501,15 +475,6 @@ namespace lux::render
         uint64_t mdc_info_last_upload_serial_{~0ull};
         TStableInstanceCpuPages<std::array<float, 4>> local_bsphere_;
 
-        /// 值成员而非 unique_ptr:InstanceSlotRegistry 的头就在本文件顶部 include
-        /// (无编译防火墙收益),它自己有 init()/shutdown() 管生命周期,而"建了没有"
-        /// 这一状态本类已有 initialized_ 表达。之前用 unique_ptr 等于把同一个状态
-        /// 记了两份,代价是 20 处 `if (!registry_)` / `registry_ ? ... : 回退` ——
-        /// 而它们检测的是"init 了没有",却拿指针空当代理。现在:纯查询路径直接问
-        /// 注册表(空态的答案与原回退逐个相同:isAlive→false、generation→0、
-        /// resolveSlot/handleForSlot→invalid、slotCount→0、denseAlive*→空 span),
-        /// 真正会碰设备/流的路径(allocate / allocateObject / reserve / compact)
-        /// 改守 initialized_ —— 守卫说的就是它真正要守的东西。
         InstanceSlotRegistry registry_;
         static constexpr std::uint32_t kInvalidDynamicPosition = ~0u;
         std::vector<std::uint32_t> dense_dynamic_slots_;
@@ -531,30 +496,13 @@ namespace lux::render
         bool full_rebuild_{true};
         std::uint64_t slot_layout_serial_{1u};
         std::uint64_t descriptor_write_count_{0u};
-        // ⚠️ 这里曾有一个自己的 `bool initialized_{false};` —— 它**遮蔽**了
-        //    GPUResourceBase 的同名 protected 成员(`GPUResourceBase.hpp:74`),
-        //    于是基类的 `isInitialized()`(`:55`)读的是一个**从未被写过**的标志,
-        //    对本类恒返回 false。全仓当时没有一个调用点读它,所以这个洞一直隐形;
-        //    ensure<T>(init_args) 的 void-init 后置检查是第一个读者,它立刻把
-        //    "刚 init 成功的 InstanceResources"判成失败(现场:5 个流共 1.9MB
-        //    VMA 分配随失败对象销毁而泄漏 —— 因为 ~InstanceResources 也守同一个
-        //    恒假的标志)。删掉遮蔽,继承基类那一个。
-
         /// 逐 flag 位的存活实例计数(setInstanceFlags/writeProperty/free 过账)。
         uint32_t flag_counts_[32]{};
         void accountFlagsDiff(uint32_t old_flags, uint32_t new_flags) noexcept;
 
-        // ── Descriptor ──
-        DescriptorLayoutId ds_layout_id_{kInvalidDescriptorLayoutId};
-
-        /// Dual-write target: per-slice domain-set handles plus the
-        /// in-domain binding offset.
-        DomainWriteTarget domain_{};
-
-        DeviceContext* device_ctx_{nullptr};
-        DescriptorService* descriptor_svc_{nullptr};
-        SceneDescriptorArena* arena_{nullptr};
-        DeferredDestroyQueue* deferred_queue_{nullptr};
+        DomainWriteTarget domain_;
+        DeviceContext& device_ctx_;
+        DeferredDestroyQueue& deferred_queue_;
     };
 
 } // namespace lux::render

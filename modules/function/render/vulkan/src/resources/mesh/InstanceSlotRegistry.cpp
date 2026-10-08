@@ -4,25 +4,10 @@
 
 namespace lux::render
 {
-    void InstanceSlotRegistry::init(std::uint32_t capacity)
+    InstanceSlotRegistry::InstanceSlotRegistry(std::uint32_t capacity) noexcept
+        : capacity_(capacity), alive_(capacity, 0u), generations_(capacity, 1u),
+          slot_dense_pos_(capacity, kInvalidDensePos)
     {
-        shutdown();
-        capacity_ = capacity;
-        alive_.assign(capacity_, 0u);
-        generations_.assign(capacity_, 1u);
-        slot_dense_pos_.assign(capacity_, kInvalidDensePos);
-    }
-
-    void InstanceSlotRegistry::shutdown()
-    {
-        slot_count_ = 0u;
-        capacity_ = 0u;
-        retired_count_ = 0u;
-        alive_.clear();
-        generations_.clear();
-        free_slots_.clear();
-        dense_alive_slots_.clear();
-        slot_dense_pos_.clear();
     }
 
     void InstanceSlotRegistry::resizeCapacity(std::uint32_t new_capacity)

@@ -77,68 +77,37 @@ namespace lux::render
         // (3) Mandatory dependencies are complete above; construction only binds their lifetime.
         reg.ensure<StaticVertexPoolSet>(*vpr, ctx.globalRegistry().must<MeshResources>());
 
-        // (4) Per-scene instance streams (transform/cullmeta/property/mdc).
-        //     This feature is the sole ensure<>-er, so it is also the one that
-        //     init()s. It used to DEFER init to whichever mesh feature attached
-        //     next, which meant a scene carrying only StandardMeshStack (no
-        //     GPU-driven mesh, no shadow) left the resource permanently
-        //     uninitialized: allocateObject() then returned invalid, the mesh-stack
-        //     handler read that as CapacityExhausted, and the bridge retried it
-        //     forever under backoff — silently. Deferring also made the effective
-        //     capacity depend on WHICH feature attached first, since init() is
-        //     first-one-wins.
-        //     现在连"忘了 init"这件事本身都写不出来了:InstanceResources 声明了
-        //     init(),ensure<InstanceResources>() 的无参形态编译不过。
-        const bool fresh_inst = (reg.find<InstanceResources>() == nullptr);
-        InstanceResources::InitInfo si{};
-        si.device_context = &ctx.deviceContext();
-        si.deferred_queue = &ctx.deferredDestroyQueue();
-        si.descriptor_svc = &ctx.descriptorService();
-        si.arena = &sc.descriptorArena();
-        const auto instance_capacity = ctx.capacityPlan().effective(lux::render::kActiveInstancesCapacity);
-        if (instance_capacity == 0u || instance_capacity > 0xffffffffull)
+        // (4) Publish only complete streams and descriptor targets. The sole installer
+        // registers maintenance/upload once; a rejected factory leaves no registry entry.
+        if (!reg.find<InstanceResources>())
         {
-            return renderFailure<err::internal::Unspecified>();
-        }
-        si.max_capacity = static_cast<std::uint32_t>(instance_capacity);
-        si.sparse_bda = ctx.capacityPlan().device.buffer_device_address && ctx.capacityPlan().device.shader_int64;
-        // BDA scenes materialize one 16K physical page and grow page-by-page;
-        // the root descriptor remains stable. Legacy keeps the admitted flat
-        // buffer allocation because it cannot dereference the page table.
-        si.initial_capacity = si.sparse_bda ? std::min(si.max_capacity, kInstanceSlotsPerPage) : si.max_capacity;
-        si.coordinate_page_size = sc.spatialTileSize();
-        auto inst_r = reg.ensure<InstanceResources>(si);
-        if (!inst_r)
-        {
-            return lux::cxx::unexpected<RenderError>(inst_r.error());
-        }
-        auto* inst = *inst_r;
-        if (fresh_inst)
-        {
-            // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。写在
-            // fresh_inst 守卫内:InstanceResources 是 ensure<> 出来的,第二个
-            // 网格单元会拿到同一个实例,登记若在守卫外就会每帧驱动两次。
-            reg.addBeginFrameHook(EUploadPhase::UPLOAD, [inst](const FrameStamp& s) {
-                inst->onFrameBeginMaintenance(s);
-            });
-            sc.transferScheduler().contributors().add(makeTransferContributor(inst, /*priority=*/0));
-        }
-
-        // Wiring is idempotent and belongs outside the fresh-resource branch.
-        // A failed feature-install transaction can leave the resource object in
-        // the scene registry while the contribution is retried; skipping this
-        // step on retry leaves the FEATURE-domain Instance bindings forever
-        // unwritten. Re-applying the target also refreshes both descriptors.
-        if (auto* domains = sc.domainDescriptorSets())
-        {
-            const auto accepted = inst->setDomainWriteTarget(
-                domains->setsFor(rdesc::EBindFrequency::FEATURE),
-                engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::INSTANCE))
-            );
-            if (!accepted)
+            const auto instance_capacity = ctx.capacityPlan().effective(lux::render::kActiveInstancesCapacity);
+            const bool is_invalid_capacity = instance_capacity == 0u || instance_capacity > 0xffffffffull;
+            if (is_invalid_capacity)
             {
-                return accepted;
+                return renderFailure<err::internal::InvalidArgument>();
             }
+            const auto* domains = sc.domainDescriptorSets();
+            const auto sets =
+                domains ? domains->setsFor(rdesc::EBindFrequency::FEATURE) : std::span<const VkDescriptorSet>{};
+            InstanceResources::CreateInfo info{ctx.deviceContext(), ctx.deferredDestroyQueue(), sets};
+            info.domain_binding_offset = engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::INSTANCE));
+            info.max_capacity = static_cast<std::uint32_t>(instance_capacity);
+            info.sparse_bda = ctx.capacityPlan().device.buffer_device_address && ctx.capacityPlan().device.shader_int64;
+            info.initial_capacity =
+                info.sparse_bda ? std::min(info.max_capacity, kInstanceSlotsPerPage) : info.max_capacity;
+            info.coordinate_page_size = sc.spatialTileSize();
+            auto candidate = InstanceResources::create(info);
+            if (!candidate)
+            {
+                return lux::cxx::unexpected(candidate.error());
+            }
+            auto* instances = reg.insert(std::move(*candidate)).get();
+            reg.addBeginFrameHook(
+                EUploadPhase::UPLOAD,
+                [instances](const FrameStamp& stamp) { instances->onFrameBeginMaintenance(stamp); }
+            );
+            sc.transferScheduler().contributors().add(makeTransferContributor(instances, /*priority=*/0));
         }
         return {};
     }

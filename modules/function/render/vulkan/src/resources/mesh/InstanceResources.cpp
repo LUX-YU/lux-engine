@@ -1,7 +1,6 @@
 #include <lux/engine/render/resources/mesh/InstanceResources.hpp>
 #include <lux/engine/render/renderer/FrameContext.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
-#include <lux/engine/render/gpu/descriptor/SceneDescriptorArena.hpp>
 #include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
 #include <lux/engine/render/resources/mesh/InstanceSlotRegistry.hpp>
 #include <lux/engine/render/gpu/lifecycle/VRAMBudgetGuard.hpp>
@@ -61,221 +60,165 @@ namespace lux::render
     // =========================================================================
     //  Lifecycle
     // =========================================================================
-    InstanceResources::~InstanceResources()
+    struct InstanceResources::Backing
     {
-        if (initialized_)
-            shutdown();
+        DomainWriteTarget domain;
+        std::unique_ptr<SparseInstancePageTable> page_table;
+        TSparseInstanceStream<InstanceTransform> transform;
+        TSparseInstanceStream<InstanceTransformPrev> previous;
+        TSparseInstanceStream<InstanceProperty> property;
+        TSparseInstanceStream<InstanceCullMeta> cull;
+        TPagedGpuStream<uint32_t> alive;
+        TPagedGpuStream<uint32_t> dynamic;
+        MeshSectionTable sections;
+    };
+
+    InstanceResources::CreateResult InstanceResources::create(const CreateInfo& info) noexcept
+    {
+        constexpr auto maximum_extent = UINT32_MAX - (kInstanceSlotsPerPage - 1u);
+        const bool is_missing_device = !info.device_context.logicalDevice() || !info.device_context.vmaAllocator();
+        const bool is_invalid_extent = info.initial_capacity == 0 || info.initial_capacity > info.max_capacity ||
+                                       info.max_capacity > maximum_extent;
+        const bool is_invalid_page_size = !std::isfinite(info.coordinate_page_size) || info.coordinate_page_size <= 0 ||
+                                          info.coordinate_page_size > std::numeric_limits<float>::max() ||
+                                          static_cast<float>(info.coordinate_page_size) == 0;
+        const bool is_incomplete_domain =
+            info.domain_sets.empty() || info.domain_sets.size() > kMaxFramesInFlight ||
+            std::ranges::any_of(info.domain_sets, [](VkDescriptorSet set) { return !set; });
+        const bool is_invalid_binding = info.domain_binding_offset == UINT32_MAX;
+        const bool is_invalid_configuration = is_missing_device || is_invalid_extent || is_invalid_page_size ||
+                                              is_incomplete_domain || is_invalid_binding;
+        if (is_invalid_configuration)
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
+        DomainWriteTarget domain;
+        if (auto accepted = domain.set(info.domain_sets, info.domain_binding_offset); !accepted)
+        {
+            return lux::cxx::unexpected(accepted.error());
+        }
+        std::unique_ptr<SparseInstancePageTable> page_table;
+        if (info.sparse_bda)
+        {
+            auto candidate = SparseInstancePageTable::create(info.device_context, info.deferred_queue);
+            if (!candidate)
+            {
+                return lux::cxx::unexpected(candidate.error());
+            }
+            page_table = std::move(*candidate);
+        }
+        auto transform = TSparseInstanceStream<InstanceTransform>::create(
+            info.device_context,
+            info.deferred_queue,
+            info.initial_capacity,
+            info.sparse_bda
+        );
+        if (!transform)
+        {
+            return lux::cxx::unexpected(transform.error());
+        }
+        auto previous = TSparseInstanceStream<InstanceTransformPrev>::create(
+            info.device_context,
+            info.deferred_queue,
+            info.initial_capacity,
+            info.sparse_bda
+        );
+        if (!previous)
+        {
+            return lux::cxx::unexpected(previous.error());
+        }
+        auto property = TSparseInstanceStream<InstanceProperty>::create(
+            info.device_context,
+            info.deferred_queue,
+            info.initial_capacity,
+            info.sparse_bda
+        );
+        if (!property)
+        {
+            return lux::cxx::unexpected(property.error());
+        }
+        auto cull = TSparseInstanceStream<InstanceCullMeta>::create(
+            info.device_context,
+            info.deferred_queue,
+            info.initial_capacity,
+            info.sparse_bda
+        );
+        if (!cull)
+        {
+            return lux::cxx::unexpected(cull.error());
+        }
+        if (page_table)
+        {
+            for (uint32_t page = 0; page < transform->pageCount(); ++page)
+            {
+                const auto accepted = page_table->publish(
+                    page,
+                    GpuInstancePageAddresses{
+                        transform->pageAddress(page),
+                        previous->pageAddress(page),
+                        property->pageAddress(page),
+                        cull->pageAddress(page)
+                    }
+                );
+                if (!accepted)
+                {
+                    return lux::cxx::unexpected(accepted.error());
+                }
+            }
+        }
+        auto alive = TPagedGpuStream<uint32_t>::create(info.device_context, info.deferred_queue, info.max_capacity);
+        if (!alive)
+        {
+            return lux::cxx::unexpected(alive.error());
+        }
+        auto dynamic = TPagedGpuStream<uint32_t>::create(info.device_context, info.deferred_queue, info.max_capacity);
+        if (!dynamic)
+        {
+            return lux::cxx::unexpected(dynamic.error());
+        }
+        auto sections = MeshSectionTable::create(info.device_context, info.deferred_queue, info.initial_capacity);
+        if (!sections)
+        {
+            return lux::cxx::unexpected(sections.error());
+        }
+        Backing backing{
+            std::move(domain),
+            std::move(page_table),
+            std::move(*transform),
+            std::move(*previous),
+            std::move(*property),
+            std::move(*cull),
+            std::move(*alive),
+            std::move(*dynamic),
+            std::move(*sections)
+        };
+        return std::unique_ptr<InstanceResources>(new InstanceResources(info, std::move(backing)));
     }
 
-    bool InstanceResources::init(const InitInfo& info)
+    InstanceResources::InstanceResources(const CreateInfo& info, Backing&& backing) noexcept
+        : page_table_(std::move(backing.page_table)), transform_stream_(std::move(backing.transform)),
+          prev_transform_stream_(std::move(backing.previous)), property_stream_(std::move(backing.property)),
+          cull_meta_stream_(std::move(backing.cull)), alive_slot_stream_(std::move(backing.alive)),
+          dynamic_slot_stream_(std::move(backing.dynamic)), mesh_section_table_(std::move(backing.sections)),
+          registry_(info.initial_capacity), dynamic_positions_(info.initial_capacity, kInvalidDynamicPosition),
+          capacity_(info.initial_capacity), max_capacity_(info.max_capacity),
+          coordinate_page_size_(static_cast<float>(info.coordinate_page_size)), sparse_bda_(info.sparse_bda),
+          domain_(std::move(backing.domain)), device_ctx_(info.device_context), deferred_queue_(info.deferred_queue)
     {
-        if (initialized_)
-            return true; // idempotent: safe to call from multiple Features
-        initialized_ = true;
-        setDeferredQueue(info.deferred_queue);
-
-        device_ctx_ = info.device_context;
-        descriptor_svc_ = info.descriptor_svc;
-        arena_ = info.arena;
-        max_capacity_ = info.max_capacity;
-        capacity_ = info.initial_capacity;
-        sparse_bda_ = info.sparse_bda;
-        coordinate_page_size_ = static_cast<float>(info.coordinate_page_size);
-        slot_count_ = 0;
-        slot_layout_serial_ = 1u;
-        full_rebuild_ = true;
-
-        // ── CPU staging + GPU streams ──
-        if (sparse_bda_)
-        {
-            const bool is_missing_backing = !device_ctx_ || !info.deferred_queue;
-            if (is_missing_backing)
-            {
-                shutdown();
-                return false;
-            }
-            auto page_table = SparseInstancePageTable::create(*device_ctx_, *info.deferred_queue);
-            if (!page_table)
-            {
-                shutdown();
-                return false;
-            }
-            page_table_ = std::move(*page_table);
-        }
-        if (!device_ctx_ || !info.deferred_queue)
-        {
-            shutdown();
-            return false;
-        }
-        auto transform_stream_candidate = TSparseInstanceStream<InstanceTransform>::create(
-            *device_ctx_,
-            *info.deferred_queue,
-            capacity_,
-            sparse_bda_
-        );
-        if (!transform_stream_candidate)
-        {
-            shutdown();
-            return false;
-        }
-        transform_stream_.emplace(std::move(*transform_stream_candidate));
-        auto prev_transform_stream_candidate = TSparseInstanceStream<InstanceTransformPrev>::create(
-            *device_ctx_,
-            *info.deferred_queue,
-            capacity_,
-            sparse_bda_
-        );
-        if (!prev_transform_stream_candidate)
-        {
-            shutdown();
-            return false;
-        }
-        prev_transform_stream_.emplace(std::move(*prev_transform_stream_candidate));
-        auto property_stream_candidate =
-            TSparseInstanceStream<InstanceProperty>::create(*device_ctx_, *info.deferred_queue, capacity_, sparse_bda_);
-        if (!property_stream_candidate)
-        {
-            shutdown();
-            return false;
-        }
-        property_stream_.emplace(std::move(*property_stream_candidate));
-        auto cull_meta_stream_candidate =
-            TSparseInstanceStream<InstanceCullMeta>::create(*device_ctx_, *info.deferred_queue, capacity_, sparse_bda_);
-        if (!cull_meta_stream_candidate)
-        {
-            shutdown();
-            return false;
-        }
-        cull_meta_stream_.emplace(std::move(*cull_meta_stream_candidate));
-        if (sparse_bda_ && !page_table_->publish(
-                               0u,
-                               GpuInstancePageAddresses{
-                                   .transform = transform_stream_->pageAddress(0u),
-                                   .previous_transform = prev_transform_stream_->pageAddress(0u),
-                                   .property = property_stream_->pageAddress(0u),
-                                   .cull_meta = cull_meta_stream_->pageAddress(0u),
-                               }
-                           ))
-        {
-            shutdown();
-            return false;
-        }
-        auto alive_slot_stream_candidate =
-            TPagedGpuStream<uint32_t>::create(*device_ctx_, *info.deferred_queue, max_capacity_);
-        if (!alive_slot_stream_candidate)
-        {
-            shutdown();
-            return false;
-        }
-        alive_slot_stream_.emplace(std::move(*alive_slot_stream_candidate));
-        auto dynamic_slot_stream_candidate =
-            TPagedGpuStream<uint32_t>::create(*device_ctx_, *info.deferred_queue, max_capacity_);
-        if (!dynamic_slot_stream_candidate)
-        {
-            shutdown();
-            return false;
-        }
-        dynamic_slot_stream_.emplace(std::move(*dynamic_slot_stream_candidate));
-        auto mesh_section_table_candidate = MeshSectionTable::create(*device_ctx_, *info.deferred_queue, capacity_);
-        if (!mesh_section_table_candidate)
-        {
-            shutdown();
-            return false;
-        }
-        mesh_section_table_.emplace(std::move(*mesh_section_table_candidate));
-        if (!local_bsphere_.reserve(capacity_))
-        {
-            shutdown();
-            return false;
-        }
-        dense_dynamic_slots_.clear();
-        dynamic_positions_.assign(capacity_, kInvalidDynamicPosition);
-        registry_.init(capacity_);
-
-        // ── Descriptor set layout (binding 0 = Transform, binding 1 = Property) ──
-        // Layout must be identical to GeneralDescriptorSetLayout set 1 so that
-        // other features (Skybox, DepthPrepass, Particle) can bind the
-        // descriptor set at set 1 with pipeline layouts built from the
-        // General layout.
-        {
-            std::array<VkDescriptorSetLayoutBinding, 2> bindings{};
-
-            bindings[0].binding = 0;
-            bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            bindings[0].descriptorCount = 1;
-            bindings[0].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-
-            bindings[1].binding = 1;
-            bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-            bindings[1].descriptorCount = 1;
-            bindings[1].stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-
-            std::array<VkDescriptorBindingFlags, 2> bind_flags{
-                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT,
-                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT
-            };
-
-            ds_layout_id_ = descriptor_svc_->registerLayout(
-                {.bindings = bindings,
-                 .binding_flags = bind_flags,
-                 .flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
-                 .debug_name = "InstanceResources"}
-            );
-        }
-
-        // 阶段 C:不再分配 per-set 实例 —— 描述符只写场景域集,绑定也
-        // 从域集取(useEngineSet)。layout 注册保留:域布局要按它建。
+        (void)local_bsphere_.reserve(capacity_);
         refreshDescriptorSet();
-        return true;
     }
 
-    void InstanceResources::shutdown()
+    InstanceResources::~InstanceResources() noexcept
     {
-        if (!initialized_)
-            return;
-
-        transform_stream_.reset();
-        prev_transform_stream_.reset();
-        property_stream_.reset();
-        cull_meta_stream_.reset();
-        page_table_.reset();
-        alive_slot_stream_.reset();
-        dynamic_slot_stream_.reset();
-        mesh_section_table_.reset();
-
+        // Runtime-lazy MDC backing can still be referenced by compiled frames.
         for (uint32_t i = 0; i < kMdcInfoRingSize; ++i)
         {
-            if (mdc_info_buffers_[i] != VK_NULL_HANDLE)
-                vmaDestroyBuffer(device_ctx_->vmaAllocator(), mdc_info_buffers_[i], mdc_info_allocs_[i]);
-            mdc_info_buffers_[i] = VK_NULL_HANDLE;
-            mdc_info_allocs_[i] = nullptr;
-            mdc_info_mapped_[i] = nullptr;
-            mdc_info_sizes_[i] = 0;
+            if (mdc_info_buffers_[i])
+            {
+                deferred_queue_.retireBuffer(mdc_info_buffers_[i], mdc_info_allocs_[i]);
+            }
         }
-        mdc_info_ring_cursor_ = 0;
-        mdc_info_current_slot_ = 0;
-        mdc_info_last_upload_serial_ = ~0ull;
-        mdc_table_.clear();
-
-        // 逐位存活计数清账:shutdown→init 复用同一对象时不得带上一世残账
-        //(否则 Highlight 链在空场景照跑或计数虚高永不跳过)。
-        std::fill(std::begin(flag_counts_), std::end(flag_counts_), 0u);
-
-        // DS and layout are pool-managed by DescriptorService.
-        local_bsphere_.clear();
-        dense_dynamic_slots_.clear();
-        dynamic_positions_.clear();
-        source_objects_.clear();
-        object_sources_.clear();
-        resource_bindings_.clear();
-        fade_retirements_.clear();
-        transparent_hard_cut_count_ = 0u;
-        registry_.shutdown();
-        slot_layout_serial_ = 1u;
-        descriptor_write_count_ = 0u;
-        sparse_bda_ = false;
-
-        initialized_ = false;
     }
 
     // =========================================================================
@@ -311,10 +254,7 @@ namespace lux::render
         {
             if (mdc_info_buffers_[slot] != VK_NULL_HANDLE)
             {
-                if (deferred_queue_)
-                    deferred_queue_->retireBuffer(mdc_info_buffers_[slot], mdc_info_allocs_[slot]);
-                else
-                    vmaDestroyBuffer(device_ctx_->vmaAllocator(), mdc_info_buffers_[slot], mdc_info_allocs_[slot]);
+                deferred_queue_.retireBuffer(mdc_info_buffers_[slot], mdc_info_allocs_[slot]);
             }
 
             mdc_info_buffers_[slot] = VK_NULL_HANDLE;
@@ -326,7 +266,7 @@ namespace lux::render
             VmaAllocation alloc{nullptr};
             void* mapped{nullptr};
             const auto allocation_result = createGpuBufferVmaBuffer(
-                device_ctx_->vmaAllocator(),
+                device_ctx_.vmaAllocator(),
                 required,
                 VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
                 /*cpu_writable=*/true,
@@ -342,7 +282,7 @@ namespace lux::render
             if (allocation_failed)
             {
                 if (buf != VK_NULL_HANDLE)
-                    vmaDestroyBuffer(device_ctx_->vmaAllocator(), buf, alloc);
+                    vmaDestroyBuffer(device_ctx_.vmaAllocator(), buf, alloc);
                 return;
             }
 
@@ -364,9 +304,6 @@ namespace lux::render
 
     InstanceSlot InstanceResources::allocate()
     {
-        if (!initialized_)
-            renderFatal("InstanceResources::allocate() before init()");
-
         if (registry_.needsGrowForAllocate())
         {
             const uint32_t required = registry_.slotCount() + 1u;
@@ -381,8 +318,8 @@ namespace lux::render
         slot_count_ = registry_.slotCount();
         appendAliveSlot();
 
-        auto& prop = property_stream_->at(slot.index);
-        auto& cull = cull_meta_stream_->at(slot.index);
+        auto& prop = property_stream_.at(slot.index);
+        auto& cull = cull_meta_stream_.at(slot.index);
         cull.bsphere[0] = 0.0f;
         cull.bsphere[1] = 0.0f;
         cull.bsphere[2] = 0.0f;
@@ -414,7 +351,7 @@ namespace lux::render
             // The LOD's mesh-section id lives on its MDC entry — read it back BEFORE
             // unregistering the MDC (which may recycle the entry).
             if (mdc < mdc_table_.count())
-                mesh_section_table_->unregisterSection(mdc_table_.entries()[mdc].section_id);
+                mesh_section_table_.unregisterSection(mdc_table_.entries()[mdc].section_id);
             mdc_table_.unregisterInstance(mdc);
         }
         cull.lod_count = 0u;
@@ -431,7 +368,7 @@ namespace lux::render
         {
             (void)unbindSource(source->second, handle);
         }
-        auto& cull = cull_meta_stream_->at(slot.index);
+        auto& cull = cull_meta_stream_.at(slot.index);
         unregisterInstanceLods(cull);
         removeDynamicSlot(slot.index);
 
@@ -445,7 +382,7 @@ namespace lux::render
         // 逐位计数销账:slot 回收后其 flags 不再计入存活位。清零而非仅
         // 记账,避免 allocate 复用残留旧位导致重复计数。标脏保持 CPU/GPU
         // 镜像一致(墓碑槽虽不被绘制,但不留隐式的"下个写者恰好标脏"链)。
-        auto& prop = property_stream_->at(slot.index);
+        auto& prop = property_stream_.at(slot.index);
         accountFlagsDiff(prop.flags, 0u);
         prop.flags = 0u;
         markPropertyDirty(slot);
@@ -462,17 +399,6 @@ namespace lux::render
 
     RenderObjectHandle InstanceResources::allocateObject()
     {
-        // 分配路径只有在**场景活着**的时候才走得到(命令派发先查场景),而活着的
-        // 场景一定已经被 StandardMeshStackFeature init 过。所以这里的未初始化
-        // 只可能是装配错误,不是运行期状况 —— 而返回 invalid 会被上游读成
-        // CapacityExhausted(语义:稍后可能成功),换来一次全程无声的永久重试。
-        //
-        // 维护路径(shouldCompact / compactSlots / onFrameBeginMaintenance)不这么
-        // 处理:它们挂在每帧钩子上,拆场景期间合法地会在资源 shutdown 之后再跑
-        // 一次,那里"没初始化就什么都不做"才是对的。
-        if (!initialized_)
-            renderFatal("InstanceResources::allocateObject() before init()");
-
         if (registry_.needsGrowForAllocate())
         {
             const uint32_t required = registry_.slotCount() + 1u;
@@ -491,8 +417,8 @@ namespace lux::render
         slot_count_ = registry_.slotCount();
         appendAliveSlot();
 
-        auto& prop = property_stream_->at(slot.index);
-        auto& cull = cull_meta_stream_->at(slot.index);
+        auto& prop = property_stream_.at(slot.index);
+        auto& cull = cull_meta_stream_.at(slot.index);
         cull.bsphere[0] = 0.0f;
         cull.bsphere[1] = 0.0f;
         cull.bsphere[2] = 0.0f;
@@ -701,7 +627,7 @@ namespace lux::render
         if (new_cap < required)
             return false;
 
-        const auto old_page_count = transform_stream_->pageCount();
+        const auto old_page_count = transform_stream_.pageCount();
         const auto new_page_count = (new_cap - 1u) / kInstanceSlotsPerPage + 1u;
 
         // Sparse growth preserves accepted pages; flat growth prepares full replacements while
@@ -712,29 +638,29 @@ namespace lux::render
             const VkDeviceSize bytes_needed = VkDeviceSize(allocated_pages) * kInstanceSlotsPerPage *
                                               (sizeof(InstanceTransform) + sizeof(InstanceTransformPrev) +
                                                sizeof(InstanceProperty) + sizeof(InstanceCullMeta));
-            VRAMBudgetGuard budget(device_ctx_->vmaAllocator());
+            VRAMBudgetGuard budget(device_ctx_.vmaAllocator());
             if (!budget.canAllocate(bytes_needed))
                 return false;
         }
 
         // No field becomes visible or retires old backing until every candidate and the
         // sparse page-table entry are ready. There are no callbacks or waits before commit.
-        auto transform = transform_stream_->prepareGrowth(new_cap);
+        auto transform = transform_stream_.prepareGrowth(new_cap);
         if (!transform)
         {
             return false;
         }
-        auto previous = prev_transform_stream_->prepareGrowth(new_cap);
+        auto previous = prev_transform_stream_.prepareGrowth(new_cap);
         if (!previous)
         {
             return false;
         }
-        auto property = property_stream_->prepareGrowth(new_cap);
+        auto property = property_stream_.prepareGrowth(new_cap);
         if (!property)
         {
             return false;
         }
-        auto cull = cull_meta_stream_->prepareGrowth(new_cap);
+        auto cull = cull_meta_stream_.prepareGrowth(new_cap);
         if (!cull)
         {
             return false;
@@ -747,10 +673,10 @@ namespace lux::render
             const auto accepted = page_table_->publish(
                 page_index,
                 GpuInstancePageAddresses{
-                    .transform = transform_stream_->pageAddress(*transform, page_index),
-                    .previous_transform = prev_transform_stream_->pageAddress(*previous, page_index),
-                    .property = property_stream_->pageAddress(*property, page_index),
-                    .cull_meta = cull_meta_stream_->pageAddress(*cull, page_index),
+                    .transform = transform_stream_.pageAddress(*transform, page_index),
+                    .previous_transform = prev_transform_stream_.pageAddress(*previous, page_index),
+                    .property = property_stream_.pageAddress(*property, page_index),
+                    .cull_meta = cull_meta_stream_.pageAddress(*cull, page_index),
                 }
             );
             if (!accepted)
@@ -759,10 +685,10 @@ namespace lux::render
             }
         }
 
-        transform_stream_->commitGrowth(std::move(*transform));
-        prev_transform_stream_->commitGrowth(std::move(*previous));
-        property_stream_->commitGrowth(std::move(*property));
-        cull_meta_stream_->commitGrowth(std::move(*cull));
+        transform_stream_.commitGrowth(std::move(*transform));
+        prev_transform_stream_.commitGrowth(std::move(*previous));
+        property_stream_.commitGrowth(std::move(*property));
+        cull_meta_stream_.commitGrowth(std::move(*cull));
         (void)local_bsphere_.reserve(new_cap);
         dynamic_positions_.resize(new_cap, kInvalidDynamicPosition);
         registry_.resizeCapacity(new_cap);
@@ -783,16 +709,16 @@ namespace lux::render
 
     void InstanceResources::writeTransform(InstanceSlot slot, const InstanceTransform& xform)
     {
-        prev_transform_stream_->at(slot.index) = transform_stream_->at(slot.index);
+        prev_transform_stream_.at(slot.index) = transform_stream_.at(slot.index);
         markPrevTransformDirty(slot);
-        transform_stream_->at(slot.index) = xform;
+        transform_stream_.at(slot.index) = xform;
         markTransformDirty(slot);
         recomputeWorldBsphere(slot);
     }
 
     void InstanceResources::writePrevTransform(InstanceSlot slot, const InstanceTransformPrev& xform_prev)
     {
-        prev_transform_stream_->at(slot.index) = xform_prev;
+        prev_transform_stream_.at(slot.index) = xform_prev;
         markPrevTransformDirty(slot);
     }
 
@@ -805,7 +731,7 @@ namespace lux::render
     void InstanceResources::recomputeWorldBsphere(InstanceSlot slot)
     {
         const auto& lb = local_bsphere_.at(slot.index);
-        const auto& transform = transform_stream_->at(slot.index);
+        const auto& transform = transform_stream_.at(slot.index);
         const float* M = transform.basis_local; // three basis columns, local xyz in w
 
         // Transform the local center, but retain the result as page + normalized
@@ -825,7 +751,7 @@ namespace lux::render
         float sq2 = M[8] * M[8] + M[9] * M[9] + M[10] * M[10];
         float max_scale = std::sqrt(std::max({sq0, sq1, sq2}));
 
-        auto& meta = cull_meta_stream_->at(slot.index);
+        auto& meta = cull_meta_stream_.at(slot.index);
         for (std::size_t axis = 0; axis < 3; ++axis)
         {
             const double carry_value = std::floor(local[axis] / coordinate_page_size_);
@@ -867,7 +793,7 @@ namespace lux::render
 
     void InstanceResources::setInstanceFlags(InstanceSlot slot, uint32_t flags)
     {
-        auto& prop = property_stream_->at(slot.index);
+        auto& prop = property_stream_.at(slot.index);
         updateDynamicMembership(slot.index, prop.flags, flags);
         accountFlagsDiff(prop.flags, flags);
         prop.flags = flags;
@@ -876,15 +802,15 @@ namespace lux::render
 
     void InstanceResources::writeProperty(InstanceSlot slot, const InstanceProperty& prop)
     {
-        updateDynamicMembership(slot.index, property_stream_->at(slot.index).flags, prop.flags);
-        accountFlagsDiff(property_stream_->at(slot.index).flags, prop.flags);
-        property_stream_->at(slot.index) = prop;
+        updateDynamicMembership(slot.index, property_stream_.at(slot.index).flags, prop.flags);
+        accountFlagsDiff(property_stream_.at(slot.index).flags, prop.flags);
+        property_stream_.at(slot.index) = prop;
         markPropertyDirty(slot);
     }
 
     void InstanceResources::writeCullMeta(InstanceSlot slot, const InstanceCullMeta& meta)
     {
-        auto& current = cull_meta_stream_->at(slot.index);
+        auto& current = cull_meta_stream_.at(slot.index);
         // Overwriting a live registration → release the previous LODs' MDCs +
         // sections first (the new ones were already registered by the caller).
         if (current.lod_count != 0u)
@@ -898,40 +824,40 @@ namespace lux::render
 
     InstanceTransform& InstanceResources::transformAt(InstanceSlot slot) noexcept
     {
-        return transform_stream_->at(slot.index);
+        return transform_stream_.at(slot.index);
     }
 
     InstanceTransformPrev& InstanceResources::prevTransformAt(InstanceSlot slot) noexcept
     {
-        return prev_transform_stream_->at(slot.index);
+        return prev_transform_stream_.at(slot.index);
     }
 
     InstanceProperty& InstanceResources::propertyAt(InstanceSlot slot) noexcept
     {
-        return property_stream_->at(slot.index);
+        return property_stream_.at(slot.index);
     }
 
     const InstanceProperty& InstanceResources::propertyAt(InstanceSlot slot) const noexcept
     {
-        return property_stream_->at(slot.index);
+        return property_stream_.at(slot.index);
     }
 
     InstanceCullMeta& InstanceResources::cullMetaAt(InstanceSlot slot) noexcept
     {
-        return cull_meta_stream_->at(slot.index);
+        return cull_meta_stream_.at(slot.index);
     }
 
     const InstanceCullMeta& InstanceResources::cullMetaAt(InstanceSlot slot) const noexcept
     {
-        return cull_meta_stream_->at(slot.index);
+        return cull_meta_stream_.at(slot.index);
     }
 
     bool InstanceResources::canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept
     {
         for (const auto slot_index : registry_.denseAliveSlots())
         {
-            const auto& current = transform_stream_->at(slot_index);
-            const auto& previous = prev_transform_stream_->at(slot_index);
+            const auto& current = transform_stream_.at(slot_index);
+            const auto& previous = prev_transform_stream_.at(slot_index);
             if (!canRebaseRenderPageDelta(current.page_delta, origin_delta) ||
                 !canRebaseRenderPageDelta(previous.page_delta, origin_delta))
             {
@@ -946,8 +872,8 @@ namespace lux::render
         for (const auto slot_index : registry_.denseAliveSlots())
         {
             const InstanceSlot slot{slot_index};
-            auto& current = transform_stream_->at(slot_index);
-            auto& previous = prev_transform_stream_->at(slot_index);
+            auto& current = transform_stream_.at(slot_index);
+            auto& previous = prev_transform_stream_.at(slot_index);
             rebaseRenderPageDelta(current.page_delta, origin_delta);
             rebaseRenderPageDelta(previous.page_delta, origin_delta);
             markTransformDirty(slot);
@@ -958,27 +884,27 @@ namespace lux::render
 
     void InstanceResources::markTransformDirty(InstanceSlot slot)
     {
-        transform_stream_->markDirty(slot.index);
+        transform_stream_.markDirty(slot.index);
     }
 
     void InstanceResources::markPrevTransformDirty(InstanceSlot slot)
     {
-        prev_transform_stream_->markDirty(slot.index);
+        prev_transform_stream_.markDirty(slot.index);
     }
 
     void InstanceResources::markPropertyDirty(InstanceSlot slot)
     {
-        property_stream_->markDirty(slot.index);
+        property_stream_.markDirty(slot.index);
     }
 
     void InstanceResources::markCullDirty(InstanceSlot slot)
     {
-        cull_meta_stream_->markDirty(slot.index);
+        cull_meta_stream_.markDirty(slot.index);
     }
 
     void InstanceResources::setRenderState(InstanceSlot slot, EGeometryKind geometry_kind, PassMask pass_mask)
     {
-        auto& prop = property_stream_->at(slot.index);
+        auto& prop = property_stream_.at(slot.index);
         prop.pass_and_geometry = static_cast<uint32_t>(pass_mask) | (static_cast<uint32_t>(geometry_kind) << 16u);
         markPropertyDirty(slot);
     }
@@ -999,8 +925,8 @@ namespace lux::render
         if (alive.empty())
             return;
         const uint32_t dense_position = static_cast<uint32_t>(alive.size() - 1u);
-        alive_slot_stream_->at(dense_position) = alive.back();
-        alive_slot_stream_->markDirty(dense_position);
+        alive_slot_stream_.at(dense_position) = alive.back();
+        alive_slot_stream_.markDirty(dense_position);
     }
 
     void InstanceResources::repairAliveSlotAfterFree(uint32_t dense_position)
@@ -1010,15 +936,15 @@ namespace lux::render
         {
             return;
         }
-        alive_slot_stream_->at(dense_position) = alive[dense_position];
-        alive_slot_stream_->markDirty(dense_position);
+        alive_slot_stream_.at(dense_position) = alive[dense_position];
+        alive_slot_stream_.markDirty(dense_position);
     }
 
     void InstanceResources::rebuildAliveSlotStream()
     {
         const auto alive = registry_.denseAliveSlots();
         for (uint32_t dense_position = 0u; dense_position < alive.size(); ++dense_position)
-            alive_slot_stream_->at(dense_position) = alive[dense_position];
+            alive_slot_stream_.at(dense_position) = alive[dense_position];
     }
 
     void InstanceResources::addDynamicSlot(std::uint32_t slot_index)
@@ -1030,8 +956,8 @@ namespace lux::render
         const auto position = static_cast<std::uint32_t>(dense_dynamic_slots_.size());
         dense_dynamic_slots_.push_back(slot_index);
         dynamic_positions_[slot_index] = position;
-        dynamic_slot_stream_->at(position) = slot_index;
-        dynamic_slot_stream_->markDirty(position);
+        dynamic_slot_stream_.at(position) = slot_index;
+        dynamic_slot_stream_.markDirty(position);
     }
 
     void InstanceResources::removeDynamicSlot(std::uint32_t slot_index)
@@ -1049,8 +975,8 @@ namespace lux::render
         if (position < dense_dynamic_slots_.size())
         {
             dynamic_positions_[last_slot] = position;
-            dynamic_slot_stream_->at(position) = last_slot;
-            dynamic_slot_stream_->markDirty(position);
+            dynamic_slot_stream_.at(position) = last_slot;
+            dynamic_slot_stream_.markDirty(position);
         }
     }
 
@@ -1076,7 +1002,7 @@ namespace lux::render
         std::fill(dynamic_positions_.begin(), dynamic_positions_.end(), kInvalidDynamicPosition);
         for (const auto slot_index : registry_.denseAliveSlots())
         {
-            if ((property_stream_->at(slot_index).flags & kInstanceInternalFlagClusterOwned) == 0u)
+            if ((property_stream_.at(slot_index).flags & kInstanceInternalFlagClusterOwned) == 0u)
             {
                 addDynamicSlot(slot_index);
             }
@@ -1091,21 +1017,21 @@ namespace lux::render
         if (slot_count_ == 0)
             return;
 
-        const bool has_work = full_rebuild_ || transform_stream_->hasDirtyPages() ||
-                              prev_transform_stream_->hasDirtyPages() || property_stream_->hasDirtyPages() ||
-                              cull_meta_stream_->hasDirtyPages() || alive_slot_stream_->hasDirtyPages() ||
-                              dynamic_slot_stream_->hasDirtyPages() || mesh_section_table_->hasWork();
+        const bool has_work = full_rebuild_ || transform_stream_.hasDirtyPages() ||
+                              prev_transform_stream_.hasDirtyPages() || property_stream_.hasDirtyPages() ||
+                              cull_meta_stream_.hasDirtyPages() || alive_slot_stream_.hasDirtyPages() ||
+                              dynamic_slot_stream_.hasDirtyPages() || mesh_section_table_.hasWork();
         if (!has_work)
             return;
 
         const bool full_upload = full_rebuild_;
-        const bool upload_transform = full_upload || transform_stream_->hasDirtyPages();
-        const bool upload_prev_transform = full_upload || prev_transform_stream_->hasDirtyPages();
-        const bool upload_property = full_upload || property_stream_->hasDirtyPages();
-        const bool upload_cull = full_upload || cull_meta_stream_->hasDirtyPages();
-        const bool upload_alive_slots = full_upload || alive_slot_stream_->hasDirtyPages();
-        const bool upload_dynamic_slots = full_upload || dynamic_slot_stream_->hasDirtyPages();
-        const bool upload_section = full_upload || mesh_section_table_->hasWork();
+        const bool upload_transform = full_upload || transform_stream_.hasDirtyPages();
+        const bool upload_prev_transform = full_upload || prev_transform_stream_.hasDirtyPages();
+        const bool upload_property = full_upload || property_stream_.hasDirtyPages();
+        const bool upload_cull = full_upload || cull_meta_stream_.hasDirtyPages();
+        const bool upload_alive_slots = full_upload || alive_slot_stream_.hasDirtyPages();
+        const bool upload_dynamic_slots = full_upload || dynamic_slot_stream_.hasDirtyPages();
+        const bool upload_section = full_upload || mesh_section_table_.hasWork();
 
         // ── Collect chunks from all dirty instance streams ──────────────
         // Reuse the member scratch (cleared here) instead of fresh per-tick
@@ -1118,24 +1044,24 @@ namespace lux::render
         dynamic_slot_chunks_.clear();
 
         const VkDeviceSize xform_bytes =
-            upload_transform ? transform_stream_->collectUploadChunks(slot_count_, full_upload, xform_chunks_) : 0u;
+            upload_transform ? transform_stream_.collectUploadChunks(slot_count_, full_upload, xform_chunks_) : 0u;
         const VkDeviceSize prev_xform_bytes =
             upload_prev_transform
-                ? prev_transform_stream_->collectUploadChunks(slot_count_, full_upload, prev_xform_chunks_)
+                ? prev_transform_stream_.collectUploadChunks(slot_count_, full_upload, prev_xform_chunks_)
                 : 0u;
         const VkDeviceSize prop_bytes =
-            upload_property ? property_stream_->collectUploadChunks(slot_count_, full_upload, prop_chunks_) : 0u;
+            upload_property ? property_stream_.collectUploadChunks(slot_count_, full_upload, prop_chunks_) : 0u;
         const VkDeviceSize cull_bytes =
-            upload_cull ? cull_meta_stream_->collectUploadChunks(slot_count_, full_upload, cull_chunks_) : 0u;
+            upload_cull ? cull_meta_stream_.collectUploadChunks(slot_count_, full_upload, cull_chunks_) : 0u;
         const uint32_t alive_count = aliveCount();
         const VkDeviceSize alive_slot_bytes =
-            (upload_alive_slots && alive_slot_stream_->buffer() != VK_NULL_HANDLE)
-                ? alive_slot_stream_->collectUploadChunks(alive_count, full_upload, alive_slot_chunks_)
+            (upload_alive_slots && alive_slot_stream_.buffer() != VK_NULL_HANDLE)
+                ? alive_slot_stream_.collectUploadChunks(alive_count, full_upload, alive_slot_chunks_)
                 : 0u;
         const uint32_t dynamic_count = dynamicCount();
         const VkDeviceSize dynamic_slot_bytes =
-            (upload_dynamic_slots && dynamic_slot_stream_->buffer() != VK_NULL_HANDLE)
-                ? dynamic_slot_stream_->collectUploadChunks(dynamic_count, full_upload, dynamic_slot_chunks_)
+            (upload_dynamic_slots && dynamic_slot_stream_.buffer() != VK_NULL_HANDLE)
+                ? dynamic_slot_stream_.collectUploadChunks(dynamic_count, full_upload, dynamic_slot_chunks_)
                 : 0u;
 
         const VkDeviceSize total_instance_bytes =
@@ -1192,8 +1118,8 @@ namespace lux::render
                 emitPagedStreamCopies(prev_xform_chunks_, EBufferDomain::STORAGE_VS);
                 emitPagedStreamCopies(prop_chunks_, EBufferDomain::STORAGE_ALL);
                 emitPagedStreamCopies(cull_chunks_, EBufferDomain::STORAGE_CS);
-                emitFlatStreamCopies(alive_slot_stream_->buffer(), alive_slot_chunks_, EBufferDomain::STORAGE_CS);
-                emitFlatStreamCopies(dynamic_slot_stream_->buffer(), dynamic_slot_chunks_, EBufferDomain::STORAGE_CS);
+                emitFlatStreamCopies(alive_slot_stream_.buffer(), alive_slot_chunks_, EBufferDomain::STORAGE_CS);
+                emitFlatStreamCopies(dynamic_slot_stream_.buffer(), dynamic_slot_chunks_, EBufferDomain::STORAGE_CS);
                 instance_uploaded = true;
             }
         }
@@ -1208,20 +1134,20 @@ namespace lux::render
             // was actually collected (buffer present), so a not-yet-allocated
             // stream keeps its dirty pages for the next attempt.
             if (upload_transform)
-                transform_stream_->clearDirtyState();
+                transform_stream_.clearDirtyState();
             if (upload_prev_transform)
-                prev_transform_stream_->clearDirtyState();
+                prev_transform_stream_.clearDirtyState();
             if (upload_property)
-                property_stream_->clearDirtyState();
+                property_stream_.clearDirtyState();
             if (upload_cull)
-                cull_meta_stream_->clearDirtyState();
-            if (upload_alive_slots && alive_slot_stream_->buffer() != VK_NULL_HANDLE)
+                cull_meta_stream_.clearDirtyState();
+            if (upload_alive_slots && alive_slot_stream_.buffer() != VK_NULL_HANDLE)
             {
-                alive_slot_stream_->clearDirtyState();
+                alive_slot_stream_.clearDirtyState();
             }
-            if (upload_dynamic_slots && dynamic_slot_stream_->buffer() != VK_NULL_HANDLE)
+            if (upload_dynamic_slots && dynamic_slot_stream_.buffer() != VK_NULL_HANDLE)
             {
-                dynamic_slot_stream_->clearDirtyState();
+                dynamic_slot_stream_.clearDirtyState();
             }
         }
 
@@ -1229,8 +1155,8 @@ namespace lux::render
         if (upload_section)
         {
             if (full_upload)
-                mesh_section_table_->markFullRebuild();
-            mesh_section_table_->submitTransfers(scheduler);
+                mesh_section_table_.markFullRebuild();
+            mesh_section_table_.submitTransfers(scheduler);
         }
 
         // Clear full_rebuild_ only when the instance streams actually uploaded;
@@ -1246,23 +1172,11 @@ namespace lux::render
 
     void InstanceResources::refreshDescriptorSet()
     {
-        // 早退守卫:本函数也被 ensureCapacity()/流重建路径调用,而
-        // setDomainWriteTarget() 契约上顺序无关。判据用 device_ctx_ 本身,语义
-        // 直白:没有设备上下文就什么都写不了。
-        //("允许在 init() 之前调用"这一条现在结构上已不可能:资源由
-        // ensure<T>(init_args) 发布,init 成功之前谁也拿不到它的指针。)
-        if (device_ctx_ == nullptr)
-            return;
-
-        VkDevice device = device_ctx_->logicalDevice();
+        VkDevice device = device_ctx_.logicalDevice();
 
         std::array<VkDescriptorBufferInfo, 2> buf_infos{};
-        const auto transform_buffer = sparse_bda_ ? page_table_->rootBuffer() : transform_stream_->buffer();
-        const auto property_buffer = sparse_bda_ ? page_table_->rootBuffer() : property_stream_->buffer();
-        if (transform_buffer == VK_NULL_HANDLE || property_buffer == VK_NULL_HANDLE)
-        {
-            return;
-        }
+        const auto transform_buffer = sparse_bda_ ? page_table_->rootBuffer() : transform_stream_.buffer();
+        const auto property_buffer = sparse_bda_ ? page_table_->rootBuffer() : property_stream_.buffer();
         buf_infos[0] = {transform_buffer, 0, VK_WHOLE_SIZE};
         buf_infos[1] = {property_buffer, 0, VK_WHOLE_SIZE};
 
@@ -1283,8 +1197,6 @@ namespace lux::render
         for (uint32_t s = 0; s < domain_.sliceCount(); ++s)
         {
             VkDescriptorSet domain_ds = domain_.setFor(s);
-            if (domain_ds == VK_NULL_HANDLE)
-                continue;
             for (uint32_t i = 0; i < 2; ++i)
             {
                 writes[i].dstSet = domain_ds;
@@ -1295,62 +1207,43 @@ namespace lux::render
         }
     }
 
-    Expected<void> InstanceResources::setDomainWriteTarget(
-        std::span<const VkDescriptorSet> sets,
-        uint32_t binding_offset
-    )
-    {
-        if (auto accepted = domain_.set(sets, binding_offset); !accepted)
-            return accepted;
-        // 这里立刻写一次:调用方可能在 init() 之后才设目标。未初始化时
-        // refreshDescriptorSet() 自己会早退(判据是 device_ctx_),init() 末尾那次写会
-        // 补上 —— 所以两者的先后顺序不影响正确性。
-        refreshDescriptorSet();
-        return {};
-    }
-
-    VkDescriptorSetLayout InstanceResources::descriptorSetLayout() const noexcept
-    {
-        return descriptor_svc_->layout(ds_layout_id_);
-    }
-
     // =========================================================================
     //  Buffer accessors
     // =========================================================================
 
     VkBuffer InstanceResources::transformBuffer() const noexcept
     {
-        return sparse_bda_ ? page_table_->rootBuffer() : transform_stream_->buffer();
+        return sparse_bda_ ? page_table_->rootBuffer() : transform_stream_.buffer();
     }
 
     VkBuffer InstanceResources::prevTransformBuffer() const noexcept
     {
-        return sparse_bda_ ? page_table_->rootBuffer() : prev_transform_stream_->buffer();
+        return sparse_bda_ ? page_table_->rootBuffer() : prev_transform_stream_.buffer();
     }
 
     VkBuffer InstanceResources::propertyBuffer() const noexcept
     {
-        return sparse_bda_ ? page_table_->rootBuffer() : property_stream_->buffer();
+        return sparse_bda_ ? page_table_->rootBuffer() : property_stream_.buffer();
     }
 
     VkBuffer InstanceResources::cullMetaBuffer() const noexcept
     {
-        return sparse_bda_ ? page_table_->rootBuffer() : cull_meta_stream_->buffer();
+        return sparse_bda_ ? page_table_->rootBuffer() : cull_meta_stream_.buffer();
     }
 
     VkBuffer InstanceResources::aliveSlotBuffer() const noexcept
     {
-        return alive_slot_stream_->buffer();
+        return alive_slot_stream_.buffer();
     }
 
     VkBuffer InstanceResources::dynamicSlotBuffer() const noexcept
     {
-        return dynamic_slot_stream_->buffer();
+        return dynamic_slot_stream_.buffer();
     }
 
     VkBuffer InstanceResources::meshSectionBuffer() const noexcept
     {
-        return mesh_section_table_->buffer();
+        return mesh_section_table_.buffer();
     }
     uint32_t InstanceResources::slotCount() const noexcept
     {
@@ -1363,12 +1256,12 @@ namespace lux::render
         VkIndexType index_type
     )
     {
-        return mesh_section_table_->registerSection(section, ibo_segment, index_type);
+        return mesh_section_table_.registerSection(section, ibo_segment, index_type);
     }
 
     void InstanceResources::unregisterMeshSection(uint32_t section_id)
     {
-        mesh_section_table_->unregisterSection(section_id);
+        mesh_section_table_.unregisterSection(section_id);
     }
 
     std::span<const uint32_t> InstanceResources::denseAliveSlots() const noexcept

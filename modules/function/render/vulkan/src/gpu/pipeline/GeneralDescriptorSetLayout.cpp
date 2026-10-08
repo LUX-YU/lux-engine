@@ -1,67 +1,12 @@
-#include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
-#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>
+#include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
 
 #include <algorithm>
-#include <stdexcept>
 #include <vector>
 
 namespace lux::render
 {
-    GeneralDescriptorSetLayout::~GeneralDescriptorSetLayout()
-    {
-        auto& device = device_context_.logicalDevice();
-        for (auto& layout : layouts_)
-        {
-            if (layout != VK_NULL_HANDLE)
-            {
-                vkDestroyDescriptorSetLayout(device, layout, nullptr);
-                layout = VK_NULL_HANDLE;
-            }
-        }
-        for (auto& layout : domain_layouts_)
-        {
-            if (layout != VK_NULL_HANDLE)
-            {
-                vkDestroyDescriptorSetLayout(device, layout, nullptr);
-                layout = VK_NULL_HANDLE;
-            }
-        }
-    }
-
-    GeneralDescriptorSetLayout& GeneralDescriptorSetLayout::operator=(GeneralDescriptorSetLayout&& other) noexcept
-    {
-        if (this != &other)
-        {
-            // Destroy our own layouts first
-            auto& device = device_context_.logicalDevice();
-            for (auto& layout : layouts_)
-            {
-                if (layout != VK_NULL_HANDLE)
-                {
-                    vkDestroyDescriptorSetLayout(device, layout, nullptr);
-                    layout = VK_NULL_HANDLE;
-                }
-            }
-            for (auto& layout : domain_layouts_)
-            {
-                if (layout != VK_NULL_HANDLE)
-                {
-                    vkDestroyDescriptorSetLayout(device, layout, nullptr);
-                    layout = VK_NULL_HANDLE;
-                }
-            }
-            // Take ownership from other
-            layouts_ = other.layouts_;
-            other.layouts_.fill(VK_NULL_HANDLE);
-            domain_layouts_ = other.domain_layouts_;
-            other.domain_layouts_.fill(VK_NULL_HANDLE);
-            bindless_2d_count_ = other.bindless_2d_count_;
-            bindless_cube_count_ = other.bindless_cube_count_;
-        }
-        return *this;
-    }
-
     bool GeneralDescriptorSetLayout::init()
     {
         auto& device = device_context_.logicalDevice();
@@ -134,12 +79,20 @@ namespace lux::render
             ci.bindingCount = static_cast<uint32_t>(bindings.size());
             ci.pBindings = bindings.data();
             if (shape.update_after_bind)
+            {
                 ci.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+            }
             if (any_flags)
+            {
                 ci.pNext = &bf;
+            }
 
-            if (vkCreateDescriptorSetLayout(device, &ci, nullptr, &layouts_[set_index]) != VK_SUCCESS)
+            auto layout = DescriptorSetLayoutOwner::create(device, ci);
+            if (!layout)
+            {
                 return false;
+            }
+            layouts_[set_index] = std::move(*layout);
         }
 
         return initDomainLayouts(device);
@@ -171,13 +124,17 @@ namespace lux::render
             {
                 const auto& shape = kEngineSetShapes[s];
                 if (shape.frequency != domain)
+                {
                     continue;
+                }
                 expandEngineSet(shape, engineSetDomainOffset(s), bindings, flags);
                 update_after_bind = update_after_bind || shape.update_after_bind;
             }
 
             if (bindings.empty())
+            {
                 continue;
+            }
 
             // Self-check: the number of expanded bindings must equal the
             // domain capacity computed from the constant. A mismatch means
@@ -186,7 +143,9 @@ namespace lux::render
             // Vulkan error at all (each binding is individually legal, it's
             // just sitting in the wrong place).
             if (bindings.size() != domainBindingCount(domain))
+            {
                 return false;
+            }
 
             const bool any_flags =
                 std::any_of(flags.begin(), flags.end(), [](VkDescriptorBindingFlags f) { return f != 0; });
@@ -201,13 +160,20 @@ namespace lux::render
             ci.bindingCount = static_cast<uint32_t>(bindings.size());
             ci.pBindings = bindings.data();
             if (update_after_bind)
+            {
                 ci.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
+            }
             if (any_flags)
+            {
                 ci.pNext = &bf;
+            }
 
-            auto& out = domain_layouts_[static_cast<std::size_t>(domain)];
-            if (vkCreateDescriptorSetLayout(device, &ci, nullptr, &out) != VK_SUCCESS)
+            auto layout = DescriptorSetLayoutOwner::create(device, ci);
+            if (!layout)
+            {
                 return false;
+            }
+            domain_layouts_[static_cast<std::size_t>(domain)] = std::move(*layout);
         }
 
         return true;
@@ -220,7 +186,8 @@ namespace lux::render
         std::vector<VkDescriptorBindingFlags>& flags
     ) const
     {
-        const auto resolveCount = [this](const EngineSetBindingShape& b) -> uint32_t {
+        const auto resolveCount = [this](const EngineSetBindingShape& b) -> uint32_t
+        {
             switch (b.count_source)
             {
             case EBindingCountSource::BINDLESS_2D_TEXTURES:
@@ -261,4 +228,4 @@ namespace lux::render
 
     // (getAllLayouts 已删:零调用点,且每次调用都要堆分配一个 vector 拷贝。
     //  现役取法是按槽位 getLayout(EDescriptorSetSlot)。)
-}
+} // namespace lux::render

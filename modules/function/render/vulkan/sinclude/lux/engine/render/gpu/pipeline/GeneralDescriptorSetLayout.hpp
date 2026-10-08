@@ -1,13 +1,13 @@
 #pragma once
-#include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
-#include <lux/engine/render/gpu/lifecycle/GPUResourceTypes.hpp>
-#include <lux/engine/function/visibility.h>
-#include <vulkan/vulkan.h>
 #include <array>
 #include <cstdint>
-#include <memory>
-#include <vector>
+#include <lux/engine/function/visibility.h>
+#include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
+#include <lux/engine/render/gpu/lifecycle/GPUResourceTypes.hpp>
 #include <optional>
+#include <vector>
+#include <vulkan/vulkan.h>
 
 // The frequency-domain enum only ever appears by value in signatures here,
 // so a forward declaration is enough (see the note on EngineSetShape below:
@@ -54,7 +54,9 @@ namespace lux::render
         for (const auto& m : kSetSlotMappings)
         {
             if (m.set_index == set_index)
+            {
                 return m.resource_type;
+            }
         }
         return std::nullopt;
     }
@@ -80,19 +82,14 @@ namespace lux::render
     {
     public:
         GeneralDescriptorSetLayout(DeviceContext& device_context) : device_context_(device_context) {}
-        ~GeneralDescriptorSetLayout();
 
-        // Non-copyable, movable
-        GeneralDescriptorSetLayout(const GeneralDescriptorSetLayout& other) = delete;
-        GeneralDescriptorSetLayout& operator=(const GeneralDescriptorSetLayout& other) = delete;
+        ~GeneralDescriptorSetLayout() noexcept = default;
 
-        GeneralDescriptorSetLayout(GeneralDescriptorSetLayout&& other) noexcept
-            : device_context_(other.device_context_), layouts_(other.layouts_)
-        {
-            other.layouts_.fill(VK_NULL_HANDLE);
-        }
-
-        GeneralDescriptorSetLayout& operator=(GeneralDescriptorSetLayout&& other) noexcept;
+        // Other services retain references to this shared layout table.
+        GeneralDescriptorSetLayout(const GeneralDescriptorSetLayout&) = delete;
+        GeneralDescriptorSetLayout& operator=(const GeneralDescriptorSetLayout&) = delete;
+        GeneralDescriptorSetLayout(GeneralDescriptorSetLayout&&) = delete;
+        GeneralDescriptorSetLayout& operator=(GeneralDescriptorSetLayout&&) = delete;
 
         /**
          * @brief Initializes all descriptor set layouts.
@@ -106,7 +103,7 @@ namespace lux::render
         VkDescriptorSetLayout getLayout(EDescriptorSetSlot slot) const
         {
             auto idx = static_cast<uint32_t>(slot);
-            return (idx < kDescriptorSetCount) ? layouts_[idx] : VK_NULL_HANDLE;
+            return (idx < kDescriptorSetCount) ? layouts_[idx].get() : VK_NULL_HANDLE;
         }
 
         /**
@@ -117,7 +114,7 @@ namespace lux::render
          */
         VkDescriptorSetLayout getLayout(uint32_t set_index) const
         {
-            return (set_index < kDescriptorSetCount) ? layouts_[set_index] : VK_NULL_HANDLE;
+            return (set_index < kDescriptorSetCount) ? layouts_[set_index].get() : VK_NULL_HANDLE;
         }
 
         // (8 个 "for backward compatibility" 便利访问器全部退役 ——
@@ -169,7 +166,7 @@ namespace lux::render
         [[nodiscard]] VkDescriptorSetLayout getDomainLayout(rdesc::EBindFrequency domain) const noexcept
         {
             const auto i = static_cast<std::size_t>(domain);
-            return i < domain_layouts_.size() ? domain_layouts_[i] : VK_NULL_HANDLE;
+            return i < domain_layouts_.size() ? domain_layouts_[i].get() : VK_NULL_HANDLE;
         }
 
         // ── Bindless capacity: THE single source of truth ────────────────
@@ -183,6 +180,7 @@ namespace lux::render
         {
             return bindless_2d_count_;
         }
+
         [[nodiscard]] uint32_t bindlessCubeCount() const noexcept
         {
             return bindless_cube_count_;
@@ -203,7 +201,7 @@ namespace lux::render
         DeviceContext& device_context_;
 
         /// Descriptor set layouts indexed by EDescriptorSetSlot.
-        std::array<VkDescriptorSetLayout, kDescriptorSetCount> layouts_{};
+        std::array<DescriptorSetLayoutOwner, kDescriptorSetCount> layouts_{};
 
         /// Device-derived bindless capacity (computed during init, reused
         /// by expandEngineSet).
@@ -212,6 +210,6 @@ namespace lux::render
 
         /// The domain-merged layouts, indexed by EBindFrequency (the
         /// PASS_LOCAL slot is always empty).
-        std::array<VkDescriptorSetLayout, 4> domain_layouts_{};
+        std::array<DescriptorSetLayoutOwner, 4> domain_layouts_{};
     };
-}
+} // namespace lux::render

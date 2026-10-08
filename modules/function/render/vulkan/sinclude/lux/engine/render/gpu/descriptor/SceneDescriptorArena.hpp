@@ -19,6 +19,7 @@
  */
 
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 
 #include <vulkan/vulkan.h>
 
@@ -45,14 +46,11 @@ namespace lux::render
         };
 
         SceneDescriptorArena() = default;
-        ~SceneDescriptorArena()
-        {
-            destroy();
-        }
+        ~SceneDescriptorArena() noexcept = default;
 
         SceneDescriptorArena(const SceneDescriptorArena&) = delete;
         SceneDescriptorArena& operator=(const SceneDescriptorArena&) = delete;
-        // Owns raw VkDescriptorPool handles — a default move would double-destroy.
+        // Fixed address: scene resources borrow this arena across generations.
         SceneDescriptorArena(SceneDescriptorArena&&) = delete;
         SceneDescriptorArena& operator=(SceneDescriptorArena&&) = delete;
 
@@ -119,7 +117,7 @@ namespace lux::render
         }
 
     private:
-        [[nodiscard]] VkDescriptorPool createPool() const;
+        [[nodiscard]] DescriptorPoolOwner createPool() const;
         [[nodiscard]] VkResult tryAllocate(
             VkDescriptorPool pool,
             VkDescriptorSetLayout layout,
@@ -129,8 +127,8 @@ namespace lux::render
 
         VkDevice device_{VK_NULL_HANDLE};
         PoolSizeTemplate tmpl_{};
-        std::vector<VkDescriptorPool> pools_{};         ///< last element = current pool
-        std::vector<VkDescriptorPool> retired_pools_{}; ///< earlier generations awaiting FIF-deferred destruction
+        std::vector<DescriptorPoolOwner> pools_{};         ///< last element = current pool
+        std::vector<DescriptorPoolOwner> retired_pools_{}; ///< earlier generations awaiting FIF-deferred destruction
         uint32_t generation_{0};
     };
 

@@ -1,6 +1,6 @@
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
 #include <lux/engine/render/gpu/utils/vk_convert.hpp> // toVk(SamplerDesc)
-#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 
 #include <cassert>
 
@@ -15,17 +15,27 @@ namespace lux::render
         ) noexcept
         {
             if (a.size() != b.size())
+            {
                 return false;
+            }
             for (size_t i = 0; i < a.size(); ++i)
             {
                 if (a[i].binding != b[i].binding)
+                {
                     return false;
+                }
                 if (a[i].descriptorType != b[i].descriptorType)
+                {
                     return false;
+                }
                 if (a[i].descriptorCount != b[i].descriptorCount)
+                {
                     return false;
+                }
                 if (a[i].stageFlags != b[i].stageFlags)
+                {
                     return false;
+                }
             }
             return true;
         }
@@ -37,30 +47,27 @@ namespace lux::render
         {
             // Both empty → equal (no per-binding flags).
             if (stored.empty() && incoming.empty())
+            {
                 return true;
+            }
             if (stored.size() != incoming.size())
+            {
                 return false;
+            }
             for (size_t i = 0; i < stored.size(); ++i)
+            {
                 if (stored[i] != incoming[i])
+                {
                     return false;
+                }
+            }
             return true;
         }
     } // namespace
 
     DescriptorService::DescriptorService(VkDevice device, VkDescriptorPool descriptor_pool)
         : device_(device), descriptor_pool_(descriptor_pool)
-    {}
-
-    DescriptorService::~DescriptorService()
     {
-        for (auto& entry : layouts_)
-        {
-            vkDestroyDescriptorSetLayout(device_, entry.layout, nullptr);
-        }
-        for (auto& [desc, s] : samplers_)
-        {
-            vkDestroySampler(device_, s, nullptr);
-        }
     }
 
     // Shared sampler cache.
@@ -87,16 +94,23 @@ namespace lux::render
     VkSampler DescriptorService::sampler(const SamplerDesc& desc)
     {
         for (const auto& [d, s] : samplers_)
+        {
             if (d == desc)
-                return s;
+            {
+                return s.get();
+            }
+        }
 
         const VkSamplerCreateInfo si = vk_convert::toVk(desc);
 
-        VkSampler s = VK_NULL_HANDLE;
-        if (vkCreateSampler(device_, &si, nullptr, &s) != VK_SUCCESS)
-            return VK_NULL_HANDLE; // fail-closed:调用方照旧走自己的空句柄防御
-        samplers_.emplace_back(desc, s);
-        return s;
+        auto candidate = SamplerOwner::create(device_, si);
+        if (!candidate)
+        {
+            return VK_NULL_HANDLE;
+        }
+        const auto sampler = candidate->get();
+        samplers_.emplace_back(desc, std::move(*candidate));
+        return sampler;
     }
 
     DescriptorLayoutId DescriptorService::registerLayout(const DescriptorLayoutDesc& desc)
@@ -106,7 +120,9 @@ namespace lux::render
             const auto& e = layouts_[i];
             if (e.flags == desc.flags && equalBindings(e.bindings, desc.bindings) &&
                 equalBindingFlags(e.binding_flags, desc.binding_flags))
+            {
                 return static_cast<uint32_t>(i);
+            }
         }
 
         LayoutEntry entry{};
@@ -130,8 +146,12 @@ namespace lux::render
             ci.pNext = &bf;
         }
 
-        if (vkCreateDescriptorSetLayout(device_, &ci, nullptr, &entry.layout) != VK_SUCCESS)
+        auto candidate = DescriptorSetLayoutOwner::create(device_, ci);
+        if (!candidate)
+        {
             renderFatal("DescriptorService::registerLayout failed");
+        }
+        entry.layout = std::move(*candidate);
 
         layouts_.push_back(std::move(entry));
         return static_cast<uint32_t>(layouts_.size() - 1);
@@ -140,11 +160,15 @@ namespace lux::render
     VkDescriptorSetLayout DescriptorService::layout(DescriptorLayoutId id) const noexcept
     {
         if (id == kInvalidDescriptorLayoutId)
+        {
             return VK_NULL_HANDLE;
+        }
         const auto idx = static_cast<size_t>(id);
         if (idx >= layouts_.size())
+        {
             return VK_NULL_HANDLE;
-        return layouts_[idx].layout;
+        }
+        return layouts_[idx].layout.get();
     }
 
     VkDescriptorSet DescriptorService::allocate(DescriptorLayoutId layout_id, uint32_t variable_count) const
@@ -169,7 +193,9 @@ namespace lux::render
 
         VkDescriptorSet set{VK_NULL_HANDLE};
         if (vkAllocateDescriptorSets(device_, &alloc, &set) != VK_SUCCESS)
+        {
             renderFatal("DescriptorService::allocate failed");
+        }
         return set;
     }
 

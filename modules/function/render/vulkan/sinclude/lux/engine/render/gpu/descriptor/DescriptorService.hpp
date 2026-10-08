@@ -1,6 +1,7 @@
 #pragma once
-#include <lux/engine/function/visibility.h>
 #include <lux/engine/function/render/client/core/RenderTypes.hpp> // SamplerDesc(中性采样器描述,缓存键)
+#include <lux/engine/function/visibility.h>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 
 #include <vulkan/vulkan.h>
 
@@ -55,7 +56,7 @@ namespace lux::render
     {
     public:
         DescriptorService(VkDevice device, VkDescriptorPool descriptor_pool);
-        ~DescriptorService();
+        ~DescriptorService() noexcept = default;
 
         DescriptorService(const DescriptorService&) = delete;
         DescriptorService& operator=(const DescriptorService&) = delete;
@@ -76,15 +77,16 @@ namespace lux::render
             std::vector<VkDescriptorSetLayoutBinding> bindings{};
             std::vector<VkDescriptorBindingFlags> binding_flags{};
             VkDescriptorSetLayoutCreateFlags flags{0};
-            VkDescriptorSetLayout layout{VK_NULL_HANDLE};
+            DescriptorSetLayoutOwner layout;
             std::string debug_name{};
         };
 
         VkDevice device_{VK_NULL_HANDLE};
         VkDescriptorPool descriptor_pool_{VK_NULL_HANDLE};
-        std::vector<LayoutEntry> layouts_{};
         /// 采样器缓存。N ≤ 个位数,线性扫描 —— 不为四个条目上哈希。
-        std::vector<std::pair<SamplerDesc, VkSampler>> samplers_{};
+        std::vector<std::pair<SamplerDesc, SamplerOwner>> samplers_{};
+        // Layouts may refer to immutable samplers. Destroy layouts before the sampler cache.
+        std::vector<LayoutEntry> layouts_{};
     };
 
 } // namespace lux::render

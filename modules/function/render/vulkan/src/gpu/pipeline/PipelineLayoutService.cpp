@@ -1,7 +1,5 @@
 #include <lux/engine/render/gpu/pipeline/PipelineLayoutService.hpp>
 
-#include <cstdio>
-
 namespace lux::render
 {
 
@@ -20,24 +18,23 @@ namespace lux::render
         template <class T> bool vectorEquals(std::span<const T> a, const std::vector<T>& b) noexcept
         {
             if (a.size() != b.size())
+            {
                 return false;
+            }
             for (size_t i = 0; i < a.size(); ++i)
+            {
                 if (!isEqual(a[i], b[i]))
+                {
                     return false;
+                }
+            }
             return true;
         }
     } // namespace
 
     PipelineLayoutService::PipelineLayoutService(VkDevice device, uint32_t max_bound_descriptor_sets)
         : device_(device), max_bound_descriptor_sets_(max_bound_descriptor_sets)
-    {}
-
-    PipelineLayoutService::~PipelineLayoutService()
     {
-        for (auto& entry : entries_)
-        {
-            vkDestroyPipelineLayout(device_, entry.layout, nullptr);
-        }
     }
 
     Expected<VkPipelineLayout> PipelineLayoutService::getOrCreate(const PipelineLayoutDesc& desc)
@@ -46,7 +43,9 @@ namespace lux::render
         {
             if (vectorEquals(desc.set_layouts, entry.set_layouts) &&
                 vectorEquals(desc.push_constants, entry.push_constants))
-                return entry.layout;
+            {
+                return entry.layout.get();
+            }
         }
 
         // Fail fast with a readable error instead of tripping
@@ -68,11 +67,15 @@ namespace lux::render
         ci.pushConstantRangeCount = static_cast<uint32_t>(new_entry.push_constants.size());
         ci.pPushConstantRanges = new_entry.push_constants.data();
 
-        if (vkCreatePipelineLayout(device_, &ci, nullptr, &new_entry.layout) != VK_SUCCESS)
+        auto candidate = PipelineLayoutOwner::create(device_, ci);
+        if (!candidate)
+        {
             return renderFailure<err::device::VulkanObjectCreationFailed>();
+        }
+        new_entry.layout = std::move(*candidate);
 
         entries_.push_back(std::move(new_entry));
-        return entries_.back().layout;
+        return entries_.back().layout.get();
     }
 
 } // namespace lux::render

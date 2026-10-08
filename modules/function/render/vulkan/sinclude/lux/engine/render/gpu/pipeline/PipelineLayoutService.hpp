@@ -1,6 +1,7 @@
 #pragma once
-#include <lux/engine/function/visibility.h>
 #include <lux/engine/function/render/client/core/Errors.hpp>
+#include <lux/engine/function/visibility.h>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 
 #include <vulkan/vulkan.h>
 
@@ -27,7 +28,7 @@ namespace lux::render
         ///        violates VUID-VkPipelineLayoutCreateInfo-setLayoutCount-00286
         ///        instead of failing cleanly.
         PipelineLayoutService(VkDevice device, uint32_t max_bound_descriptor_sets);
-        ~PipelineLayoutService();
+        ~PipelineLayoutService() noexcept = default;
 
         PipelineLayoutService(const PipelineLayoutService&) = delete;
         PipelineLayoutService& operator=(const PipelineLayoutService&) = delete;
@@ -48,7 +49,7 @@ namespace lux::render
         {
             std::vector<VkDescriptorSetLayout> set_layouts{};
             std::vector<VkPushConstantRange> push_constants{};
-            VkPipelineLayout layout{VK_NULL_HANDLE};
+            PipelineLayoutOwner layout;
             std::string debug_name{};
         };
 

@@ -40,3 +40,14 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS binary memory)"
     "find_package(lux-engine-function REQUIRED COMPONENTS navigation)"
 )
+
+if(BUILD_TESTING)
+    add_executable(navigation_portal_test test/portal.cpp)
+    target_link_libraries(navigation_portal_test PRIVATE navigation_detour3d)
+    if(MSVC)
+        target_compile_options(navigation_portal_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(navigation_portal_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME navigation.portal COMMAND navigation_portal_test)
+endif()

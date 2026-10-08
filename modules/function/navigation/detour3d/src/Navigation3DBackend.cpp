@@ -167,12 +167,6 @@ namespace lux::navigation::detour3d
             lux::math::Position3d to_position;
         };
 
-        struct PortalPredecessor final
-        {
-            bool present{false};
-            PortalTraversal traversal;
-        };
-
         [[nodiscard]] bool samePortal(const NavigationPortal& left, const NavigationPortal& right) noexcept
         {
             return left.id == right.id && left.first_region == right.first_region &&
@@ -199,9 +193,11 @@ namespace lux::navigation::detour3d
             const RegionMap* required_active
         ) noexcept
         {
-            std::unordered_map<NavigationRegionId, PortalPredecessor, detail::RegionIdHash> predecessors;
+            using Predecessors =
+                std::unordered_map<NavigationRegionId, std::optional<PortalTraversal>, detail::RegionIdHash>;
+            Predecessors predecessors;
             std::deque<NavigationRegionId> frontier;
-            predecessors.emplace(start, PortalPredecessor{});
+            predecessors.emplace(start, std::nullopt);
             frontier.push_back(start);
             while (!frontier.empty() && !predecessors.contains(destination))
             {
@@ -228,7 +224,7 @@ namespace lux::navigation::detour3d
                     }
                     if (predecessors.contains(traversal.to))
                         continue;
-                    predecessors.emplace(traversal.to, PortalPredecessor{true, traversal});
+                    predecessors.emplace(traversal.to, traversal);
                     frontier.push_back(traversal.to);
                 }
             }
@@ -239,10 +235,11 @@ namespace lux::navigation::detour3d
             for (auto current = destination; current != start;)
             {
                 const auto found = predecessors.find(current);
-                if (found == predecessors.end() || !found->second.present)
+                const bool is_missing_predecessor = found == predecessors.end() || !found->second;
+                if (is_missing_predecessor)
                     std::abort();
-                result.push_back(found->second.traversal);
-                current = found->second.traversal.from;
+                result.push_back(*found->second);
+                current = found->second->from;
             }
             std::ranges::reverse(result);
             return result;

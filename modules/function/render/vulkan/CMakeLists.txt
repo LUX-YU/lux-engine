@@ -445,6 +445,29 @@ if(BUILD_TESTING)
         set_tests_properties(render.resource_context_construction PROPERTIES TIMEOUT 30 LABELS gpu)
     endif()
 
+    add_executable(
+        render_readback_lifetime_test
+        test/readback_lifetime.cpp
+        src/comm/RenderServer.cpp
+        src/comm/RenderServerFacade.cpp
+        src/comm/RenderServerHandlers.cpp
+    )
+    target_include_directories(render_readback_lifetime_test PRIVATE sinclude pinclude)
+    target_compile_definitions(render_readback_lifetime_test PRIVATE LUX_FUNCTION_DLL_DISABLE)
+    target_link_libraries(
+        render_readback_lifetime_test
+        PRIVATE render_vulkan render_features GPUOpen::VulkanMemoryAllocator
+    )
+    if(MSVC)
+        target_compile_options(render_readback_lifetime_test PRIVATE /UNDEBUG /utf-8 /bigobj)
+    else()
+        target_compile_options(render_readback_lifetime_test PRIVATE -UNDEBUG)
+    endif()
+    if(LUX_RENDER_BUILD_GPU_TESTS)
+        add_test(NAME render.readback_lifetime COMMAND render_readback_lifetime_test)
+        set_tests_properties(render.readback_lifetime PROPERTIES TIMEOUT 30 LABELS gpu)
+    endif()
+
     add_executable(render_mesh_construction_test test/mesh_construction.cpp)
     target_include_directories(render_mesh_construction_test PRIVATE sinclude pinclude)
     target_compile_definitions(render_mesh_construction_test PRIVATE LUX_FUNCTION_DLL_DISABLE)

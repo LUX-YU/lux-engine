@@ -15,8 +15,11 @@
 #include <lux/engine/render/gpu/RenderContext.hpp>                // RenderContext
 #include <lux/engine/render/gpu/RenderSurface.hpp>                // RenderSurface
 #include <lux/engine/render/gpu/VulkanContext.hpp>                // InstanceContext, DeviceContext, ResourceContext
+#include <lux/engine/render/gpu/lifecycle/CommandBufferOwner.hpp>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 #include <lux/engine/render/gpu/lifecycle/VRAMBudgetGuard.hpp>    // kMaxFramesInFlight
 #include <lux/engine/render/gpu/memory/StagingBuffer.hpp>         // StagingBuffer
+#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 #include <lux/engine/render/renderer/FrameDriver.hpp>             // FrameDriver
 #include <lux/engine/render/renderer/FrameOrchestrator.hpp>
 #include <lux/engine/render/renderer/Renderer.hpp> // Renderer
@@ -420,34 +423,33 @@ namespace lux::render
         // Re-checked each tick via non-blocking vkGetSemaphoreCounterValue.
         std::vector<TransferCompletion> pending_completions_;
 
-        // In-flight async readbacks (ReadbackTargetAsync). Each entry settles
-        // `settle_left` ticks, submits a one-shot image->buffer copy, then is
-        // polled each tick; once the fence signals the pixels are copied into
-        // dst_ptr and a deferred reply (by request_id) is sent. Lives here so it
-        // survives across ticks (unlike the synchronous handleReadbackTarget).
+        // Complete backing for one accepted GPU copy. Release only after its fence
+        // signals, device loss, or the server's original shutdown idle boundary.
+        struct ReadbackCopy
+        {
+            VmaBuffer buffer;
+            CommandBufferOwner command;
+            FenceOwner fence;
+            void* mapped{};
+            VkExtent2D extent{};
+            uint32_t bpp{};
+            VkFormat format{VK_FORMAT_UNDEFINED};
+            uint64_t needed{};
+        };
+
+        // Reply publication and physical GPU completion are independent. A timed-out
+        // copy remains here after its reply is delivered, without touching dst_ptr again.
         struct PendingReadback
         {
             RenderTargetId target{};
             uint64_t dst_ptr{0};
             uint64_t dst_capacity{0};
             ETargetSlot slot{ETargetSlot::SCENE_COLOR}; ///< which output semantic to read
-            uint32_t request_id{0};
+            RequestId request_id{kInvalidRequestId};
             uint32_t settle_left{0}; ///< ticks to render before the copy
             uint32_t deadline{0};    ///< ticks to wait for the fence
-            bool submitted{false};
-            bool done{false}; ///< reply filled, ready to send
-            // GPU state — valid only between submit and completion.
-            VkBuffer buf{VK_NULL_HANDLE};
-            VmaAllocation alloc{nullptr};
-            void* mapped{nullptr};
-            VkFence fence{VK_NULL_HANDLE};
-            VkCommandBuffer cb{VK_NULL_HANDLE};
-            uint32_t width{0};
-            uint32_t height{0};
-            uint32_t bpp{0};
-            VkFormat format{VK_FORMAT_UNDEFINED};
-            uint64_t needed{0};
-            ReadbackTargetReply reply{};
+            std::optional<ReadbackCopy> copy;
+            std::optional<ReadbackTargetReply> reply;
         };
 
         std::vector<PendingReadback> pending_readbacks_;

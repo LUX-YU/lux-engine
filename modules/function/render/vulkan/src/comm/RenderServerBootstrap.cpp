@@ -4,9 +4,7 @@
 #include <lux/engine/function/render/Capacity.hpp>
 #include <lux/engine/function/render/client/RenderProtocol.hpp>
 
-// VMA — readback staging buffer uses raw vmaCreateBuffer/vmaInvalidateAllocation
-// directly (previously pulled in transitively via SkinningResources.hpp, which
-// moved to a feature; include what we use).
+// VMA mapped allocation and visibility operations used by the readback factory.
 #include <vk_mem_alloc.h>
 
 #include <mutex>
@@ -586,30 +584,8 @@ namespace lux::render
             renderFatal("RenderServer failed to wait for device idle during teardown");
         }
 
-        // Free any in-flight async readbacks (GPU is idle after waitIdle above;
-        // their deferred replies are simply dropped — the client gives up on
-        // shutdown). res_ctx_ is still alive here (destroyed in reverse order).
-        {
-            VmaAllocator vma = dev_ctx_->vmaAllocator();
-            VkDevice dev = dev_ctx_->logicalDevice();
-            VkCommandPool pool = res_ctx_->commandPool();
-            for (auto& j : pending_readbacks_)
-            {
-                if (j.fence)
-                {
-                    vkDestroyFence(dev, j.fence, nullptr);
-                }
-                if (j.cb)
-                {
-                    vkFreeCommandBuffers(dev, pool, 1, &j.cb);
-                }
-                if (j.buf)
-                {
-                    vmaDestroyBuffer(vma, j.buf, j.alloc);
-                }
-            }
-            pending_readbacks_.clear();
-        }
+        // The original device-idle/device-loss boundary above authorizes physical release.
+        pending_readbacks_.clear();
 
         // Free deferred staging buffers + deferred offscreen pools (device is
         // idle at shutdown — tags no longer matter).
@@ -1377,7 +1353,10 @@ namespace lux::render
         // Record + submit the copy WITHOUT waiting. On success `j` holds the
         // in-flight buffer/fence/cb + dims; returns 0, else a non-zero status
         // (no GPU resources left allocated on failure).
-        uint32_t submitReadbackCopy(GeneralRenderServer::Impl& im, GeneralRenderServer::Impl::PendingReadback& j)
+        uint32_t submitReadbackCopy(
+            GeneralRenderServer::Impl& im,
+            GeneralRenderServer::Impl::PendingReadback& j
+        ) noexcept
         {
             OffscreenImagePool* pool = nullptr;
             std::uint32_t image_slot{};
@@ -1387,7 +1366,10 @@ namespace lux::render
                 pool = t->pool.get();
                 if (t->frozen)
                 {
-                    if (!t->produced_serial || !pool || t->produced_revision != pool->backingRevision())
+                    const bool has_produced_backing = t->produced_serial && pool;
+                    const bool is_stale_backing =
+                        has_produced_backing && t->produced_revision != pool->backingRevision();
+                    if (!has_produced_backing || is_stale_backing)
                     {
                         return 4;
                     }
@@ -1400,7 +1382,11 @@ namespace lux::render
             }
 
             const RenderTargetLayout rt_layout = pool->layout();
-            const ETargetSlot slot = j.slot; // which output semantic to read
+            const ETargetSlot slot = j.slot;
+            if (static_cast<std::size_t>(slot) >= kTargetSlotCount)
+            {
+                return 2;
+            }
             if (!rt_layout.hasSlot(slot))
             {
                 return 2;
@@ -1411,7 +1397,9 @@ namespace lux::render
             const VkImageLayout from_layout = toVkImageLayout(slot_desc.final_state);
             const uint32_t bpp = readbackBpp(fmt);
             const VkExtent2D ext = pool->extent();
-            if (bpp == 0 || ext.width == 0 || ext.height == 0)
+            const bool is_invalid_extent = ext.width == 0 || ext.height == 0;
+            const bool is_unsupported_format = bpp == 0;
+            if (is_invalid_extent || is_unsupported_format)
             {
                 return 3;
             }
@@ -1425,12 +1413,14 @@ namespace lux::render
             const VkImage image = slot_imgs.images[image_slot];
 
             const uint64_t needed = static_cast<uint64_t>(ext.width) * ext.height * bpp;
-            if (needed > j.dst_capacity || j.dst_ptr == 0)
+            const bool is_invalid_destination = needed > j.dst_capacity || j.dst_ptr == 0;
+            if (is_invalid_destination)
             {
                 return 5;
             }
 
-            // Host-visible, persistently-mapped staging buffer (raw VMA).
+            // Prepare every native owner before submission. Rejected prefixes release
+            // locally; only a successful queue submission is adopted by the pending record.
             VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
             bci.size = needed;
             bci.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -1438,31 +1428,32 @@ namespace lux::render
             VmaAllocationCreateInfo aci{};
             aci.usage = VMA_MEMORY_USAGE_AUTO;
             aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-            VmaAllocator vma = im.dev_ctx_->vmaAllocator();
-            VmaAllocationInfo stg_info{};
-            if (vmaCreateBuffer(vma, &bci, &aci, &j.buf, &j.alloc, &stg_info) != VK_SUCCESS)
+            const VmaAllocator vma = im.dev_ctx_->vmaAllocator();
+            auto buffer = VmaBuffer::create(vma, bci, aci);
+            if (!buffer)
             {
                 return 6;
             }
-            j.mapped = stg_info.pMappedData;
-
-            VkDevice dev = im.dev_ctx_->logicalDevice();
-            VkCommandPool cmd_pool = im.res_ctx_->commandPool();
-
-            VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-            ai.commandPool = cmd_pool;
-            ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-            ai.commandBufferCount = 1;
-            if (vkAllocateCommandBuffers(dev, &ai, &j.cb) != VK_SUCCESS)
+            VmaAllocationInfo allocation_info{};
+            vmaGetAllocationInfo(vma, buffer->allocation(), &allocation_info);
+            if (!allocation_info.pMappedData)
             {
-                vmaDestroyBuffer(vma, j.buf, j.alloc);
-                j.buf = VK_NULL_HANDLE;
-                return 7;
+                return 6;
             }
 
+            const VkDevice dev = im.dev_ctx_->logicalDevice();
+            auto command = CommandBufferOwner::create(dev, im.res_ctx_->commandPool());
+            if (!command)
+            {
+                return 7;
+            }
+            const VkCommandBuffer cb = command->get();
             VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
             bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            vkBeginCommandBuffer(j.cb, &bi);
+            if (vkBeginCommandBuffer(cb, &bi) != VK_SUCCESS)
+            {
+                return 7;
+            }
 
             auto barrier = [&](VkImageLayout oldL,
                                VkImageLayout newL,
@@ -1480,7 +1471,7 @@ namespace lux::render
                 b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
                 b.srcAccessMask = srcA;
                 b.dstAccessMask = dstA;
-                vkCmdPipelineBarrier(j.cb, srcS, dstS, 0, 0, nullptr, 0, nullptr, 1, &b);
+                vkCmdPipelineBarrier(cb, srcS, dstS, 0, 0, nullptr, 0, nullptr, 1, &b);
             };
 
             barrier(
@@ -1499,7 +1490,7 @@ namespace lux::render
             region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
             region.imageOffset = {0, 0, 0};
             region.imageExtent = {ext.width, ext.height, 1};
-            vkCmdCopyImageToBuffer(j.cb, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, j.buf, 1, &region);
+            vkCmdCopyImageToBuffer(cb, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer->buffer(), 1, &region);
 
             barrier(
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -1510,82 +1501,71 @@ namespace lux::render
                 VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
             );
 
-            vkEndCommandBuffer(j.cb);
+            if (vkEndCommandBuffer(cb) != VK_SUCCESS)
+            {
+                return 7;
+            }
 
-            VkFenceCreateInfo fci{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-            vkCreateFence(dev, &fci, nullptr, &j.fence);
+            const VkFenceCreateInfo fci{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+            auto fence = FenceOwner::create(dev, fci);
+            if (!fence)
+            {
+                return 8;
+            }
             VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
             si.commandBufferCount = 1;
-            si.pCommandBuffers = &j.cb;
+            si.pCommandBuffers = &cb;
             VkResult submit_result{VK_ERROR_UNKNOWN};
             {
                 const std::scoped_lock queue_lock(im.dev_ctx_->graphicsQueueMutex());
-                submit_result = vkQueueSubmit(im.dev_ctx_->graphicsQueue(), 1, &si, j.fence);
+                submit_result = vkQueueSubmit(im.dev_ctx_->graphicsQueue(), 1, &si, fence->get());
             }
             if (submit_result != VK_SUCCESS)
             {
-                vkDestroyFence(dev, j.fence, nullptr);
-                j.fence = VK_NULL_HANDLE;
-                vkFreeCommandBuffers(dev, cmd_pool, 1, &j.cb);
-                j.cb = VK_NULL_HANDLE;
-                vmaDestroyBuffer(vma, j.buf, j.alloc);
-                j.buf = VK_NULL_HANDLE;
                 return 8;
             }
 
-            j.width = ext.width;
-            j.height = ext.height;
-            j.bpp = bpp;
-            j.format = fmt;
-            j.needed = needed;
+            j.copy.emplace(
+                std::move(*buffer),
+                std::move(*command),
+                std::move(*fence),
+                allocation_info.pMappedData,
+                ext,
+                bpp,
+                fmt,
+                needed
+            );
             return 0;
         }
 
-        // Free GPU resources without copying (error / timeout paths).
-        void freeReadbackGpu(GeneralRenderServer::Impl& im, GeneralRenderServer::Impl::PendingReadback& j)
-        {
-            VkDevice dev = im.dev_ctx_->logicalDevice();
-            if (j.fence)
-            {
-                vkDestroyFence(dev, j.fence, nullptr);
-                j.fence = VK_NULL_HANDLE;
-            }
-            if (j.cb)
-            {
-                vkFreeCommandBuffers(dev, im.res_ctx_->commandPool(), 1, &j.cb);
-                j.cb = VK_NULL_HANDLE;
-            }
-            if (j.buf)
-            {
-                vmaDestroyBuffer(im.dev_ctx_->vmaAllocator(), j.buf, j.alloc);
-                j.buf = VK_NULL_HANDLE;
-            }
-        }
-
-        // Fence has signaled: make GPU writes visible, copy pixels out, free GPU
-        // resources, and fill `reply`. Assumes submitReadbackCopy succeeded.
-        void finishReadbackCopy(
+        // Called only after fence completion, and before any reply has been published.
+        ReadbackTargetReply finishReadbackCopy(
             GeneralRenderServer::Impl& im,
-            GeneralRenderServer::Impl::PendingReadback& j,
-            ReadbackTargetReply& reply
-        )
+            GeneralRenderServer::Impl::PendingReadback& j
+        ) noexcept
         {
-            VmaAllocator vma = im.dev_ctx_->vmaAllocator();
-            vmaInvalidateAllocation(vma, j.alloc, 0, j.needed);
+            const auto& copy = *j.copy;
+            ReadbackTargetReply reply{};
+            const auto visibility =
+                vmaInvalidateAllocation(im.dev_ctx_->vmaAllocator(), copy.buffer.allocation(), 0, copy.needed);
+            if (visibility != VK_SUCCESS)
+            {
+                reply.status = 10;
+                j.copy.reset();
+                return reply;
+            }
             std::memcpy(
                 reinterpret_cast<void*>(static_cast<std::uintptr_t>(j.dst_ptr)),
-                j.mapped,
-                static_cast<std::size_t>(j.needed)
+                copy.mapped,
+                static_cast<std::size_t>(copy.needed)
             );
-
-            reply.status = 0;
-            reply.width = j.width;
-            reply.height = j.height;
-            reply.bytes_per_pixel = j.bpp;
-            reply.bytes_written = j.needed;
-            reply.format = static_cast<uint32_t>(j.format);
-
-            freeReadbackGpu(im, j);
+            reply.width = copy.extent.width;
+            reply.height = copy.extent.height;
+            reply.bytes_per_pixel = copy.bpp;
+            reply.bytes_written = copy.needed;
+            reply.format = static_cast<uint32_t>(copy.format);
+            j.copy.reset();
+            return reply;
         }
 
         // Synchronous readback: submit + wait + finish, reply in the current
@@ -1601,6 +1581,7 @@ namespace lux::render
             j.slot = static_cast<ETargetSlot>(p.slot);
 
             ReadbackTargetReply reply{};
+            im.pending_readbacks_.reserve(im.pending_readbacks_.size() + 1);
             const uint32_t st = submitReadbackCopy(im, j);
             if (st != 0)
             {
@@ -1611,17 +1592,28 @@ namespace lux::render
 
             // Finite timeout: a GPU stall must never wedge the server thread.
             constexpr uint64_t kReadbackFenceTimeoutNs = 5'000'000'000ull; // 5 s
+            const VkFence fence = j.copy->fence.get();
             const VkResult wres =
-                vkWaitForFences(im.dev_ctx_->logicalDevice(), 1, &j.fence, VK_TRUE, kReadbackFenceTimeoutNs);
-            if (wres != VK_SUCCESS) // VK_TIMEOUT or device-lost: do not hang
+                vkWaitForFences(im.dev_ctx_->logicalDevice(), 1, &fence, VK_TRUE, kReadbackFenceTimeoutNs);
+            if (wres != VK_SUCCESS)
             {
-                freeReadbackGpu(im, j);
                 reply.status = 9;
+                if (wres == VK_ERROR_DEVICE_LOST)
+                {
+                    j.copy.reset();
+                }
+                else
+                {
+                    // Timeout is a client result, not proof of GPU completion. The same
+                    // pending container retains backing, with no deferred reply to send.
+                    j.reply = reply;
+                    im.pending_readbacks_.push_back(std::move(j));
+                }
                 replyToCurrent<ReadbackTargetPayload>(ctx, reply);
                 return;
             }
 
-            finishReadbackCopy(im, j, reply);
+            reply = finishReadbackCopy(im, j);
             replyToCurrent<ReadbackTargetPayload>(ctx, reply);
         }
 
@@ -1642,47 +1634,49 @@ namespace lux::render
             j.deadline = 600; // ticks before a stuck fence is declared failed
             if (p.dst_ptr == 0)
             {
-                j.done = true;
-                j.reply.status = 5;
+                j.reply = ReadbackTargetReply{5};
             } // bad dst
-            im.pending_readbacks_.push_back(j);
+            im.pending_readbacks_.push_back(std::move(j));
             // Deferred — reply is sent later by pollPendingReadbacks().
         }
 
-        // Per-tick state machine for the in-flight async readbacks: settle ->
-        // submit -> poll fence -> finish. Marks `done` + fills `reply` when an
-        // entry resolves; the reply itself is sent by pollPendingReadbacks().
-        void advancePendingReadbacks(GeneralRenderServer::Impl& im)
+        // Poll accepted GPU copies even after their timeout reply has been delivered.
+        // Only the fence/device-loss boundary permits physical backing release.
+        void advancePendingReadbacks(GeneralRenderServer::Impl& im) noexcept
         {
-            if (im.pending_readbacks_.empty())
-            {
-                return;
-            }
-            VkDevice dev = im.dev_ctx_->logicalDevice();
+            const VkDevice dev = im.dev_ctx_->logicalDevice();
             for (auto& j : im.pending_readbacks_)
             {
-                if (j.done)
+                if (!j.copy)
                 {
-                    continue;
-                }
-                if (!j.submitted)
-                {
+                    if (j.reply)
+                    {
+                        continue;
+                    }
                     if (j.settle_left > 0)
                     {
                         --j.settle_left;
                         continue;
                     }
-                    const uint32_t st = submitReadbackCopy(im, j);
-                    j.submitted = true;
-                    if (st != 0)
+                    const uint32_t status = submitReadbackCopy(im, j);
+                    if (status != 0)
                     {
-                        j.reply.status = st;
-                        j.done = true;
+                        j.reply = ReadbackTargetReply{status};
                     }
-                    continue; // poll the fence on a later tick
+                    continue;
                 }
-                const VkResult fs = vkGetFenceStatus(dev, j.fence);
-                if (fs == VK_NOT_READY)
+
+                const VkResult status = vkGetFenceStatus(dev, j.copy->fence.get());
+                const bool is_gpu_settled = status == VK_SUCCESS || status == VK_ERROR_DEVICE_LOST;
+                if (j.reply)
+                {
+                    if (is_gpu_settled)
+                    {
+                        j.copy.reset();
+                    }
+                    continue;
+                }
+                if (status == VK_NOT_READY)
                 {
                     if (j.deadline > 0)
                     {
@@ -1690,23 +1684,28 @@ namespace lux::render
                     }
                     if (j.deadline == 0)
                     {
-                        freeReadbackGpu(im, j);
-                        j.reply.status = 9;
-                        j.done = true;
+                        j.reply = ReadbackTargetReply{9};
                     }
                     continue;
                 }
-                if (fs == VK_SUCCESS)
+                if (status == VK_SUCCESS)
                 {
-                    finishReadbackCopy(im, j, j.reply);
+                    j.reply = finishReadbackCopy(im, j);
                 }
                 else
                 {
-                    freeReadbackGpu(im, j);
-                    j.reply.status = 10;
-                } // device lost
-                j.done = true;
+                    j.reply = ReadbackTargetReply{10};
+                    if (is_gpu_settled)
+                    {
+                        j.copy.reset();
+                    }
+                }
             }
+            std::erase_if(
+                im.pending_readbacks_,
+                [](const auto& pending) noexcept
+                { return pending.reply && !pending.copy && pending.request_id == kInvalidRequestId; }
+            );
         }
 
         // ── Scene activation / bulk-data context ─────────────────────────────
@@ -1788,9 +1787,13 @@ namespace lux::render
 
         const bool any_done = std::ranges::any_of(
             im.pending_readbacks_,
-            [](const Impl::PendingReadback& pending) { return pending.done; }
+            [](const Impl::PendingReadback& pending) noexcept
+            {
+                return pending.reply && pending.request_id != kInvalidRequestId;
+            }
         );
-        if (!any_done || control_server_->hasPendingReplyPublication())
+        const bool is_reply_unavailable = !any_done || control_server_->hasPendingReplyPublication();
+        if (is_reply_unavailable)
         {
             return;
         }
@@ -1806,9 +1809,10 @@ namespace lux::render
         builder.begin();
         for (auto& pending : im.pending_readbacks_)
         {
-            if (pending.done)
+            const bool has_unpublished_reply = pending.reply && pending.request_id != kInvalidRequestId;
+            if (has_unpublished_reply)
             {
-                builder.push<ReadbackTargetReply>(type_ids::ReplyReadbackTarget, pending.reply, 0, pending.request_id);
+                builder.push<ReadbackTargetReply>(type_ids::ReplyReadbackTarget, *pending.reply, 0, pending.request_id);
             }
         }
 
@@ -1817,7 +1821,17 @@ namespace lux::render
             return;
         }
         channelSync().notifyReplyProduced();
-        std::erase_if(im.pending_readbacks_, [](const Impl::PendingReadback& pending) { return pending.done; });
+        for (auto& pending : im.pending_readbacks_)
+        {
+            if (pending.reply)
+            {
+                pending.request_id = kInvalidRequestId;
+            }
+        }
+        std::erase_if(im.pending_readbacks_, [](const Impl::PendingReadback& pending) noexcept
+        {
+            return pending.reply && !pending.copy;
+        });
     }
 
     // ─────────────────────────────────────────────────────────────────────

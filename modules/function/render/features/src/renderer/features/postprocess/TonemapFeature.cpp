@@ -82,7 +82,12 @@ namespace lux::render
             return lux::cxx::unexpected(stages.error());
 
         // ---- HDR 采样器:共享缓存(线性 clamp) ----
-        hdr_sampler_ = ctx.descriptorService().sampler(SamplerDesc::linearClamp());
+        auto hdr_sampler = ctx.descriptorService().sampler(SamplerDesc::linearClamp());
+        if (!hdr_sampler)
+        {
+            return lux::cxx::unexpected(hdr_sampler.error());
+        }
+        hdr_sampler_ = *hdr_sampler;
 
         // 不手写 DS 布局 / 管线布局:模板的 pipeline_layout 留空,由 registerGraphicsTemplate
         // 从着色器反射加 LayoutContract 建出来(set1 = uHDRColor 来自反射;set0 = Scene 片元

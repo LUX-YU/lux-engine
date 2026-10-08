@@ -112,7 +112,12 @@ namespace lux::render
         //  retrieved via templateSetLayout for transient DS allocation.)
 
         // ---- 遮罩采样器:共享缓存(线性 clamp)----
-        mask_sampler_ = ctx.descriptorService().sampler(SamplerDesc::linearClamp());
+        auto mask_sampler = ctx.descriptorService().sampler(SamplerDesc::linearClamp());
+        if (!mask_sampler)
+        {
+            return lux::cxx::unexpected(mask_sampler.error());
+        }
+        mask_sampler_ = *mask_sampler;
 
         // ---- Mask DRAW pipeline (per family, but ALL use the same mask frag) ----
         // Reuses the shared 8-set GPU-driven mesh layout + registerFamilyPipelines so

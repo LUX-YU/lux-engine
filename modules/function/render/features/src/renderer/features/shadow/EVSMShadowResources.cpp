@@ -175,9 +175,12 @@ namespace lux::render
         // every address mode here is clamp-to-edge, so nothing ever samples the
         // border. That dead field was the stated reason this site stayed out of
         // the shared cache.
-        sampler_ = descriptor_svc_->sampler(SamplerDesc::linearClamp());
-        if (sampler_ == VK_NULL_HANDLE)
+        auto sampler = descriptor_svc_->sampler(SamplerDesc::linearClamp());
+        if (!sampler)
+        {
             renderFatal("EVSM moment sampler unavailable");
+        }
+        sampler_ = *sampler;
     }
 
 } // namespace lux::render

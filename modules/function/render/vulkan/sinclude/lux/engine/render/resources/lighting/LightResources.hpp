@@ -1,5 +1,4 @@
 #pragma once
-#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <Eigen/Geometry>
 #include <array>
 #include <cstdint>
@@ -9,19 +8,19 @@
 #include <lux/engine/function/render/client/core/RenderEntityId.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>     // LightHandle
 #include <lux/engine/function/render/features/core/ShadingInputSlot.hpp> // EShadingInputSlot (Light b11)
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/function/render/features/resources/lighting/LightDescriptor.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
-#include <lux/engine/render/core/FrameServices.hpp>
 #include <lux/engine/render/core/LayoutTypes.hpp> // aligned16vec*, ELightSetBindings
-#include <lux/engine/render/gpu/VmaFwd.hpp>
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp> // shared shading-input sampler
 #include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
-#include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
+#include <lux/engine/render/gpu/lifecycle/DescriptorRevision.hpp>
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
+#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
 #include <lux/engine/render/gpu/utils/SlotMetaVector.hpp>
-#include <numbers>
+#include <memory>
 #include <optional>
 #include <span>
 #include <tuple>
@@ -31,7 +30,6 @@
 
 namespace lux::render
 {
-    class SceneDescriptorArena; // per-scene growable descriptor-pool chain
     // ===== Light Common Flags (Extensible) =====
     enum class ELightGpuFlag : uint32_t
     {
@@ -158,7 +156,7 @@ namespace lux::render
         static constexpr ELightSetBindings value = ELightSetBindings::LIGHT_AREA;
     };
 
-    class LUX_FUNCTION_PUBLIC LightResources final : public TGPUResourceBase<LightResources, EGPUResourceType::LIGHT>
+    class LUX_FUNCTION_PUBLIC LightResources final
     {
     public:
         struct SlotRecord
@@ -177,44 +175,23 @@ namespace lux::render
             bool remove_on_completion{false};
         };
 
-        struct InitInfo
+        struct CreateInfo
         {
             SSBOInitConfig ssbo_config;
-
-            /// For the b11 shading-input default texture (1×1 white image +
-            /// sampler). Required: b11 has no PARTIALLY_BOUND, so every
-            /// element must be written at init or validation fires on first
-            /// draw that binds the Light set.
-            VkDevice device{VK_NULL_HANDLE};
-            VmaAllocator allocator{VK_NULL_HANDLE};
-            /// Supplies the shared shading-input sampler. Required.
-            DescriptorService* descriptor_svc{nullptr};
-
-            /// 域集:逐 slice 句柄 + 本 set 在域内的 binding 偏移
-            ///(Light 属 FEATURE 域,偏移非零)。
-            ///
-            /// **必填**。之后域集是唯一写目标 —— 传空不是"行为不变",
-            /// 而是本资源的描述符**一条都不会被写入**(写入循环零次),
-            /// 渲染结果未定义。init 会经 DomainWriteTarget 当场报警。
-            ///(此处旧注释曾写着"if empty, behavior is unchanged",那是
-            /// 双写时代的事实,拆掉 legacy 半边后已经反了。)
-            ///
-            /// 传裸数据而非域集对象 —— 见 SceneResources::InitInfo 的说明。
+            DescriptorService* descriptor_svc{};
+            // Complete per-frame domain targets, borrowed for the resource lifetime.
             std::span<const VkDescriptorSet> domain_sets{};
             uint32_t domain_binding_offset{0};
         };
 
-        LightResources() = default;
-        ~LightResources()
-        {
-            if (initialized_)
-                shutdown();
-        }
+        using CreateResult = Expected<std::unique_ptr<LightResources>>;
+        [[nodiscard]] static CreateResult create(const CreateInfo& info) noexcept;
+        ~LightResources() noexcept;
 
         LightResources(const LightResources&) = delete;
         LightResources& operator=(const LightResources&) = delete;
-
-        bool init(const InitInfo& info);
+        LightResources(LightResources&&) = delete;
+        LightResources& operator=(LightResources&&) = delete;
 
         /**
          * @brief Rewrite all light SSBO descriptors with tight ranges (count-based).
@@ -233,10 +210,10 @@ namespace lux::render
             refreshDescriptor<ELightSetBindings::LIGHT_AREA>(slice);
         }
 
-        /// Refresh descriptors for ALL per-frame sets (called after init or buffer resize).
+        /// Refresh descriptors for ALL per-frame sets (called after construction or buffer resize).
         void refreshDescriptorsAllSets()
         {
-            for (uint32_t i = 0; i < frames_in_flight_; ++i)
+            for (uint32_t i = 0; i < domain_.sliceCount(); ++i)
             {
                 refreshDescriptorOnSet<ELightSetBindings::LIGHT_DIRECTIONAL>(i, i);
                 refreshDescriptorOnSet<ELightSetBindings::LIGHT_POINT>(i, i);
@@ -278,7 +255,7 @@ namespace lux::render
         template <ELightSetBindings SetBinding> void uploadSlice(VkCommandBuffer cmd, uint32_t slice)
         {
             using LightType = typename TLightSetBindingsMapGpu<SetBinding>::type;
-            auto& ssbo = std::get<SlicedSSBO<LightType>>(*ssbos_);
+            auto& ssbo = std::get<SlicedSSBO<LightType>>(ssbos_);
             ssbo.uploadDataSlice(cmd, slice);
         }
 
@@ -289,53 +266,8 @@ namespace lux::render
 
         uint32_t framesInFlight() const noexcept
         {
-            return frames_in_flight_;
+            return domain_.sliceCount();
         }
-
-        // ========== IGPUResource Interface Implementation ==========
-
-        /**
-         * @brief Shutdown and clean up resource
-         */
-        void shutdown()
-        {
-            //(此前这里显式 reset 全部 SSBO,理由写着"赶在 VMA allocator 被销毁
-            // 之前"—— 那个约束**已不存在**:GpuBuffer::destroy() 根本不调
-            // vmaDestroyBuffer,它只把句柄交给 DeferredDestroyQueue;真正的销毁
-            // 发生在 ~RenderContext 的 flushAll(),而该队列是 RenderContext 的首个
-            // 声明成员、因而最后销毁。本对象归注册表所有,shutdown_fn 与 ptr.reset()
-            // 本就在同一时刻发生,显式 reset 一分钱不值。
-            // 附带:这些 reset 也**不能**用于 shutdown→init 复用 —— destroy() 从不清
-            // device_ctx_,再 init 会撞 assert(!device_ctx_ && "Init called twice")。)
-            destroyShadingInputResources();
-            source_lights_.clear();
-            light_sources_.clear();
-            binding_map_.clear();
-            handle_generations_.clear();
-            handle_alive_.clear();
-            free_handle_indices_.clear();
-            intensity_transitions_.clear();
-            live_counts_.fill(0u);
-            initialized_ = false;
-        }
-
-        /**
-         * @brief Check if resource is initialized
-         * @return Whether resource is available
-         */
-        bool isInitialized() const
-        {
-            return initialized_;
-        }
-
-        /**
-         * @brief Get debug info
-         * @return Description string of resource usage
-         */
-        //(阶段 C:getDescriptorSet / recordBind 一并退休 —— 前者是
-        // ResourceRegistry 的可选探测点(GPUResourceBase 已有返回 NULL 的
-        // 默认实现),后者是手工绑定路径,查证零运行时调用。绑定统一走
-        // 渲染图的 useEngineSet。)
 
         /**
          * @brief Upload specified type of light data to GPU
@@ -366,13 +298,13 @@ namespace lux::render
                 if (auto b = ssbo.uploadDataSliceDeferred(current_frame_))
                     scheduler.submitExtraPostBarrier(*b);
             };
-            std::apply([&](auto&... ssbo) { (submit(ssbo), ...); }, *ssbos_);
+            std::apply([&](auto&... ssbo) { (submit(ssbo), ...); }, ssbos_);
         }
 
         /// Post-transfer hook (makeTransferContributorWithPost): first call
         /// clears the b11 default texture to white and transitions it to
-        /// SHADER_READ_ONLY — init has no command buffer, so the one-time GPU
-        /// work rides the first frame's transfer submission.
+        /// SHADER_READ_ONLY. This is pending GPU work on complete native backing,
+        /// recorded by the original transfer scheduler before lighting draws.
         void postTransfer(VkCommandBuffer cmd);
 
         // ── Shading inputs (Light set b11) ──
@@ -380,9 +312,6 @@ namespace lux::render
         /// 把某个着色输入槽指向真实纹理(如 SSAO 输出);传 VK_NULL_HANDLE
         /// 回落到 1×1 白色默认纹理。写域集的全部 per-frame slice
         ///(UPDATE_AFTER_BIND,故在录制之外调用也安全)。
-        ///
-        /// 默认纹理尚未就绪时,view 仍会被记下,待 init 建好默认纹理后一并生效
-        ///(不再静默丢弃 —— 审计 1.4)。
         void provideShadingInput(EShadingInputSlot slot, VkImageView view);
 
         void onFrameBeginMaintenance(const FrameStamp& stamp)
@@ -404,13 +333,10 @@ namespace lux::render
         [[nodiscard]] bool setIntensity(LightHandle handle, float intensity) noexcept;
         void cancelIntensityTransition(LightHandle handle) noexcept;
 
-        /// Create the 1×1 white default image + view + the shared sampler
-        /// for b11. Returns false when device/allocator were not provided.
-        bool createDefaultShadingInputImage();
-        void destroyShadingInputResources() noexcept;
+        struct Backing;
+        LightResources(VkDevice device, Backing&& backing) noexcept;
 
-        /// Write the full b11 element array of one per-frame set (legacy +
-        /// domain twin) from shading_input_views_.
+        /// Write every shading-input slot, using the owned default for absent providers.
         void writeShadingInputDescriptors(uint32_t set_index) const;
 
         // Internal submit — dispatches by descriptor variant type
@@ -426,13 +352,13 @@ namespace lux::render
         /// Return the number of live lights of the given GPU type.
         template <typename LightGPUType> [[nodiscard]] uint32_t lightCount() const noexcept
         {
-            return std::get<SlicedSSBO<LightGPUType>>(*ssbos_).count();
+            return std::get<SlicedSSBO<LightGPUType>>(ssbos_).count();
         }
 
         /// Invoke `fn(uint32_t slot, const LightGPUType&)` for every alive light of the given GPU type.
         template <typename LightGPUType, typename Fn> void forEachLight(Fn&& fn) const
         {
-            const auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(*ssbos_);
+            const auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(ssbos_);
             const uint32_t n = ssbo.count();
             for (uint32_t i = 0; i < n; ++i)
             {
@@ -462,7 +388,7 @@ namespace lux::render
         template <ELightSetBindings SetBinding> void writeDescriptorOnSet(uint32_t set_index) const
         {
             using LightGPUType = typename TLightSetBindingsMapGpu<SetBinding>::type;
-            const auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(*ssbos_);
+            const auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(ssbos_);
             if (VkDescriptorSet ds = domainSetFor(set_index); ds != VK_NULL_HANDLE)
                 ssbo.writeDescriptor(ds, domain_.binding(static_cast<uint32_t>(SetBinding)));
         }
@@ -471,7 +397,7 @@ namespace lux::render
         template <ELightSetBindings SetBinding> void refreshDescriptor(uint32_t slice = 0)
         {
             using LightGPUType = typename TLightSetBindingsMapGpu<SetBinding>::type;
-            auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(*ssbos_);
+            auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(ssbos_);
             if (VkDescriptorSet ds = domainSetFor(current_frame_); ds != VK_NULL_HANDLE)
                 ssbo.writeDescriptorTight(ds, domain_.binding(static_cast<uint32_t>(SetBinding)), slice);
         }
@@ -480,7 +406,7 @@ namespace lux::render
         template <ELightSetBindings SetBinding> void refreshDescriptorOnSet(uint32_t set_index, uint32_t slice = 0)
         {
             using LightGPUType = typename TLightSetBindingsMapGpu<SetBinding>::type;
-            auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(*ssbos_);
+            auto& ssbo = std::get<SlicedSSBO<LightGPUType>>(ssbos_);
             if (VkDescriptorSet ds = domainSetFor(set_index); ds != VK_NULL_HANDLE)
                 ssbo.writeDescriptorTight(ds, domain_.binding(static_cast<uint32_t>(SetBinding)), slice);
         }
@@ -492,23 +418,19 @@ namespace lux::render
             SlicedSSBO<SpotLightGPU>,
             SlicedSSBO<AreaLightGPU>>;
 
-        std::optional<SSBOList> ssbos_;
+        SSBOList ssbos_;
+        DescriptorRevision ds_revision_;
 
-        /// Dual-write target: per-slice domain-set handles plus the
-        /// in-domain binding offset.
+        /// The sole per-slice descriptor targets and their binding offset.
         DomainWriteTarget domain_{};
         uint32_t current_frame_{0};
 
         // ── b11 shading inputs: default texture + current per-slot views ──
-        VkDevice device_{VK_NULL_HANDLE};
-        VmaAllocator allocator_{VK_NULL_HANDLE};
-        VkImage default_input_image_{VK_NULL_HANDLE};
-        VmaAllocation default_input_alloc_{VK_NULL_HANDLE};
-        VkImageView default_input_view_{VK_NULL_HANDLE};
-        // Borrowed from the DescriptorService cache, which owns it until device
-        // teardown — this class must not destroy it.
-        DescriptorService* descriptor_svc_{nullptr};
-        VkSampler shading_input_sampler_{VK_NULL_HANDLE};
+        VkDevice device_;
+        VmaImage default_input_image_;
+        ImageViewOwner default_input_view_;
+        // Borrowed from the original DescriptorService cache, which outlives the scene.
+        VkSampler shading_input_sampler_;
         /// What each slot currently points at (default view unless a
         /// provider overrode it). Kept so a future set rebuild can replay.
         std::array<VkImageView, kShadingInputSlotCount> shading_input_views_{};

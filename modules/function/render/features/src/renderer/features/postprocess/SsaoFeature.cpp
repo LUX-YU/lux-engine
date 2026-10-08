@@ -35,7 +35,12 @@ namespace lux::render
             return lux::cxx::unexpected(stages.error());
 
         // 线性深度采样:最近邻(深度差窗口不能吃跨边缘插值出来的中间值)。
-        input_sampler_ = ctx.descriptorService().sampler(SamplerDesc::nearestClamp());
+        auto input_sampler = ctx.descriptorService().sampler(SamplerDesc::nearestClamp());
+        if (!input_sampler)
+        {
+            return lux::cxx::unexpected(input_sampler.error());
+        }
+        input_sampler_ = *input_sampler;
 
         GraphicsPipelineTemplate tmpl = makeFullscreenTemplate("Ssao", /*push_constant_size=*/8, /*alpha_blend=*/false);
         tmpl.vertex_shader = stages->module(0);

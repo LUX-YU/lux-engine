@@ -34,7 +34,12 @@ namespace lux::render
             return lux::cxx::unexpected(stages.error());
 
         // 深度采样:最近邻(深度不得插值)。缓存句柄,服务持有生命周期。
-        depth_sampler_ = ctx.descriptorService().sampler(SamplerDesc::nearestClamp());
+        auto depth_sampler = ctx.descriptorService().sampler(SamplerDesc::nearestClamp());
+        if (!depth_sampler)
+        {
+            return lux::cxx::unexpected(depth_sampler.error());
+        }
+        depth_sampler_ = *depth_sampler;
 
         // 全屏三角管线:预置。PC 仅共享头 8 字节(near/far 走 uViews)。
         GraphicsPipelineTemplate tmpl =

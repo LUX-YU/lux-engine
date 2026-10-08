@@ -74,7 +74,12 @@ namespace lux::render
         auto layout_id =
             context.descriptorService().registerLayout(storageBufferVertexLayout("StreamingFeedbackVisibleSetLayout"));
         visible_set_layout_ = context.descriptorService().layout(layout_id);
-        mask_sampler_ = context.descriptorService().sampler(SamplerDesc::linearClamp());
+        auto mask_sampler = context.descriptorService().sampler(SamplerDesc::linearClamp());
+        if (!mask_sampler)
+        {
+            return lux::cxx::unexpected(mask_sampler.error());
+        }
+        mask_sampler_ = *mask_sampler;
 
         {
             auto mesh_template = makeOpaqueMeshTemplate();

@@ -91,7 +91,7 @@ namespace lux::render
     // the sweep simply missed them. ShadowResources was the only genuine blocker,
     // and it was a gap in SamplerDesc rather than in the site: compare_op and
     // border_color did not exist, so a comparison sampler was inexpressible here.
-    VkSampler DescriptorService::sampler(const SamplerDesc& desc)
+    Expected<VkSampler> DescriptorService::sampler(const SamplerDesc& desc)
     {
         for (const auto& [d, s] : samplers_)
         {
@@ -106,7 +106,7 @@ namespace lux::render
         auto candidate = SamplerOwner::create(device_, si);
         if (!candidate)
         {
-            return VK_NULL_HANDLE;
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(candidate.error()));
         }
         const auto sampler = candidate->get();
         samplers_.emplace_back(desc, std::move(*candidate));

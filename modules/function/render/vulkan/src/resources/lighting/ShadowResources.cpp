@@ -134,11 +134,12 @@ namespace lux::render
         // SamplerDesc now that compare_op and border_color exist there. Owned by
         // DescriptorService for the device's lifetime, so this class must not
         // destroy it.
-        shadow_sampler_ = descriptor_svc_->sampler(SamplerDesc::shadowCompare());
-        if (shadow_sampler_ == VK_NULL_HANDLE)
+        auto sampler = descriptor_svc_->sampler(SamplerDesc::shadowCompare());
+        if (!sampler)
         {
             return false;
         }
+        shadow_sampler_ = *sampler;
         return true;
     }
 

@@ -257,10 +257,14 @@ int main()
         DescriptorService cache(first_device, VK_NULL_HANDLE);
         const SamplerDesc descriptor{};
         fail_at = attempts + 1;
-        assert(cache.sampler(descriptor) == VK_NULL_HANDLE && live.empty());
+        const auto rejected = cache.sampler(descriptor);
+        assert(!rejected && live.empty());
+        assert(isError<err::device::VulkanCallFailed>(rejected.error()));
+        assert(rejected.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
         fail_at = 0;
         const auto sampler = cache.sampler(descriptor);
-        assert(sampler != VK_NULL_HANDLE && cache.sampler(descriptor) == sampler && live.size() == 1);
+        const auto same = cache.sampler(descriptor);
+        assert(sampler && same && *same == *sampler && live.size() == 1);
         const auto layout = cache.registerLayout({});
         assert(cache.layout(layout) != VK_NULL_HANDLE && cache.registerLayout({}) == layout && live.size() == 2);
     }

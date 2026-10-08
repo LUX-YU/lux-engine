@@ -180,6 +180,8 @@ namespace
         return vkFreeDescriptorSets(device, pool, count, handles);
     }
 
+    unsigned descriptor_writes{};
+
     void updateDescriptors(
         VkDevice device,
         std::uint32_t write_count,
@@ -188,6 +190,7 @@ namespace
         const VkCopyDescriptorSet* copies
     )
     {
+        descriptor_writes += write_count;
         for (std::uint32_t i = 0; i < copy_count; ++i)
         {
             copied_descriptors += copies[i].descriptorCount;
@@ -252,6 +255,11 @@ namespace
 
     void destroyView(VkDevice device, VkImageView view, const VkAllocationCallbacks* a)
     {
+        if (view == VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(device, view, a);
+            return;
+        }
         assert(!submitted && views.at(view).first == device);
         views.erase(view);
         vkDestroyImageView(device, view, a);
@@ -420,6 +428,8 @@ namespace
 #include "../src/gpu/memory/GPUBufferVma.cpp"
 #include "../src/resources/TextureResources.cpp"
 #include "../src/resources/material/MaterialResources.cpp"
+#include "../src/gpu/descriptor/DescriptorService.cpp"
+#include "../src/resources/lighting/LightResources.cpp"
 #include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
 #include "../src/gpu/lifecycle/DeferredDestroyQueue.cpp"
 #undef vkWaitForFences
@@ -450,6 +460,7 @@ namespace
 
 int main(int argc, char** argv)
 {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     using namespace lux::render;
     static_assert(!std::is_copy_constructible_v<CommandBufferOwner>);
     static_assert(!std::is_copy_assignable_v<CommandBufferOwner>);
@@ -563,6 +574,191 @@ int main(int argc, char** argv)
         {
             assert(idle_calls == old_idle_calls + 1);
         }
+    }
+
+    {
+        static_assert(!std::is_default_constructible_v<LightResources>);
+        static_assert(!std::is_copy_constructible_v<LightResources>);
+        static_assert(!std::is_move_constructible_v<LightResources>);
+        const std::array pool_sizes{
+            VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 32},
+            VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 64}
+        };
+        VkDescriptorPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+        pool_info.maxSets = 2;
+        pool_info.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
+        pool_info.pPoolSizes = pool_sizes.data();
+        failure = EFailure::NONE;
+        auto pool = DescriptorPoolOwner::create(device.logicalDevice(), pool_info);
+        assert(pool);
+        const std::array set_layouts{
+            layouts.getLayout(TGetBindingSet<ELightSetBindings>::value),
+            layouts.getLayout(TGetBindingSet<ELightSetBindings>::value)
+        };
+        std::array<VkDescriptorSet, 2> light_sets{};
+        VkDescriptorSetAllocateInfo allocation{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        allocation.descriptorPool = pool->get();
+        allocation.descriptorSetCount = 2;
+        allocation.pSetLayouts = set_layouts.data();
+        assert(allocateSets(device.logicalDevice(), &allocation, light_sets.data()) == VK_SUCCESS);
+        DescriptorService descriptors(device.logicalDevice(), pool->get());
+        LightResources::CreateInfo config{};
+        config.ssbo_config = SSBOInitConfig{
+            .device_context = &device,
+            .deferred_queue = &retirement,
+            .initial_dense_capacity = 16,
+            .slices = 2
+        };
+        config.descriptor_svc = &descriptors;
+        config.domain_sets = light_sets;
+        for (auto boundary : {EFailure::BUFFER, EFailure::MAPPED, EFailure::IMAGE, EFailure::VIEW, EFailure::SAMPLER})
+        {
+            const unsigned attempts = boundary == EFailure::BUFFER || boundary == EFailure::MAPPED ? 4 : 1;
+            for (unsigned index = 0; index < attempts; ++index)
+            {
+                failure = boundary;
+                skip_rejections = index;
+                const auto original_writes = descriptor_writes;
+                const auto original_rejections = rejections;
+                ResourceRegistry registry;
+                auto candidate = LightResources::create(config);
+                assert(!candidate && registry.find<LightResources>() == nullptr);
+                assert(rejections == original_rejections + 1);
+                const auto expected =
+                    boundary == EFailure::MAPPED ? VK_ERROR_MEMORY_MAP_FAILED : VK_ERROR_OUT_OF_DEVICE_MEMORY;
+                assert(isError<err::device::VulkanCallFailed>(candidate.error()));
+                assert(candidate.error().args[0] == encodeVkResult(expected));
+                assert(descriptor_writes == original_writes);
+                assert(images.empty() && views.empty() && samplers.empty());
+                failure = EFailure::NONE;
+                retirement.flushAll();
+                assert(buffers.empty());
+            }
+        }
+        for (unsigned index = 0; index < 7; ++index)
+        {
+            auto bad = config;
+            auto invalid_sets = light_sets;
+            switch (index)
+            {
+            case 0:
+                bad.ssbo_config.device_context = nullptr;
+                break;
+            case 1:
+                bad.descriptor_svc = nullptr;
+                break;
+            case 2:
+                bad.ssbo_config.slices = 0;
+                break;
+            case 3:
+                bad.ssbo_config.slices = kMaxFramesInFlight + 1;
+                break;
+            case 4:
+                bad.domain_sets = std::span(light_sets).first(1);
+                break;
+            case 5:
+                invalid_sets[1] = VK_NULL_HANDLE;
+                bad.domain_sets = invalid_sets;
+                break;
+            case 6:
+                bad.domain_binding_offset = UINT32_MAX;
+                break;
+            }
+            const auto original_writes = descriptor_writes;
+            auto candidate = LightResources::create(bad);
+            assert(!candidate && isError<err::memory::InvalidLightConfiguration>(candidate.error()));
+            assert(descriptor_writes == original_writes);
+            assert(images.empty() && views.empty() && samplers.empty() && buffers.empty());
+        }
+        {
+            ResourceRegistry registry;
+            auto candidate = LightResources::create(config);
+            assert(candidate);
+            auto* original = candidate->get();
+            assert(registry.insert(std::move(*candidate)));
+            assert(registry.find<LightResources>() == original && original->framesInFlight() == 2);
+            assert(images.size() == 1 && views.size() == 1 && samplers.size() == 1 && buffers.size() == 4);
+            original->provideShadingInput(EShadingInputSlot{}, views.begin()->first);
+            original->provideShadingInput(EShadingInputSlot{}, VK_NULL_HANDLE);
+            const VLightDescriptor point = PointLightDesc{};
+            auto light = original->submit(point);
+            assert(light && original->lightCount(ELightSetBindings::LIGHT_POINT) == 1);
+            assert(original->beginFadeIn(*light, 1.0f, 1.0f));
+            original->advanceIntensityTransitions(1.5f);
+            float intensity{};
+            original->forEachLight<PointLightGPU>([&](unsigned, const PointLightGPU& value)
+                                                  { intensity = value.intensity; });
+            assert(intensity > 0.0f);
+            original->remove(*light);
+            auto reused = original->submit(point);
+            assert(reused && reused->index == light->index && reused->gen != light->gen);
+            assert(!original->modify(*light, point).ok());
+            original->remove(*reused);
+            for (const VLightDescriptor data :
+                 {VLightDescriptor{DirectionalLightDesc{}},
+                  point,
+                  VLightDescriptor{SpotLightDesc{}},
+                  VLightDescriptor{AreaLightDesc{}}})
+            {
+                std::vector<LightHandle> live;
+                // TGpuBuffer's minimum capacity is 64; reject the first growth of each family.
+                for (unsigned i = 0; i < 64; ++i)
+                {
+                    auto next = original->submit(data);
+                    assert(next);
+                    live.push_back(*next);
+                }
+                failure = EFailure::BUFFER;
+                skip_rejections = 0;
+                auto rejected = original->submit(data);
+                assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
+                failure = EFailure::NONE;
+                for (const auto handle : live)
+                {
+                    assert(original->modify(handle, data).ok());
+                }
+                auto next = original->submit(data);
+                assert(next);
+                original->remove(*next);
+                for (const auto handle : live)
+                {
+                    original->remove(handle);
+                }
+                retirement.flushAll();
+                assert(buffers.size() == 4);
+            }
+            // Record the original first-frame GPU initialization twice; only its original one-time state applies.
+            auto command = CommandBufferOwner::create(device.logicalDevice(), resources.commandPool());
+            assert(command);
+            VkCommandBufferBeginInfo begin_info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+            assert(begin(command->get(), &begin_info) == VK_SUCCESS);
+            original->postTransfer(command->get());
+            original->postTransfer(command->get());
+            assert(end(command->get()) == VK_SUCCESS);
+            VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+            auto fence = FenceOwner::create(device.logicalDevice(), fence_info);
+            assert(fence);
+            const auto cmd = command->get();
+            VkSubmitInfo submission{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+            submission.commandBufferCount = 1;
+            submission.pCommandBuffers = &cmd;
+            assert(submit(device.graphicsQueue(), 1, &submission, fence->get()) == VK_SUCCESS);
+            const auto fence_handle = fence->get();
+            assert(wait(device.logicalDevice(), 1, &fence_handle, VK_TRUE, UINT64_MAX) == VK_SUCCESS);
+        }
+        assert(images.empty() && views.empty() && samplers.size() == 1);
+        assert(retirement.pendingCount() == 4);
+        retirement.flushAll();
+        assert(buffers.empty());
+        std::puts("Light complete construction: native rejection/cleanup, exact errors, no premature descriptors, "
+                  "registry, handle generations, four-family growth and actual GPU default clear PASS");
+    }
+    assert(images.empty() && views.empty() && samplers.empty());
+    assert(pools.size() == baseline_pools && sets.size() == baseline_sets);
+    if (argc > 1 && std::string_view(argv[1]) == "--light")
+    {
+        return 0;
     }
 
     failure = EFailure::NONE;

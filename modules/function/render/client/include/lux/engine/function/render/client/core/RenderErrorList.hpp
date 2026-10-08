@@ -197,6 +197,15 @@ namespace lux::render::err
     // ── 显存与容量 ───────────────────────────────────────────────────────
     namespace memory
     {
+        struct InvalidLightConfiguration
+        {
+            static constexpr const char* name = "memory.invalid_light_configuration";
+            static constexpr const char* message =
+                "Light storage requires a device, shared sampler and complete frame targets";
+            static constexpr ERecovery recovery = ERecovery::BUG;
+            static constexpr ErrorArgs args{};
+        };
+
         struct InvalidMaterialConfiguration
         {
             static constexpr const char* name = "memory.invalid_material_configuration";
@@ -1397,6 +1406,7 @@ namespace lux::render::err
     X(::lux::render::err::shader::ReflectionOutOfSyncWithSpirv)                                                        \
     X(::lux::render::err::memory::GpuAllocationFailed)                                                                 \
     X(::lux::render::err::memory::OutOfMemory)                                                                         \
+    X(::lux::render::err::memory::InvalidLightConfiguration)                                                           \
     X(::lux::render::err::memory::InvalidMaterialConfiguration)                                                        \
     X(::lux::render::err::memory::InvalidTextureConfiguration)                                                         \
     X(::lux::render::err::memory::InvalidBindlessConfiguration)                                                        \

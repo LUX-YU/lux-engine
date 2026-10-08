@@ -29,8 +29,18 @@ namespace lux::render
         if (!stages)
             return lux::cxx::unexpected(stages.error());
 
-        color_sampler_ = context.descriptorService().sampler(SamplerDesc::linearClamp());
-        depth_sampler_ = context.descriptorService().sampler(SamplerDesc::nearestClamp());
+        auto color_sampler = context.descriptorService().sampler(SamplerDesc::linearClamp());
+        if (!color_sampler)
+        {
+            return lux::cxx::unexpected(color_sampler.error());
+        }
+        color_sampler_ = *color_sampler;
+        auto depth_sampler = context.descriptorService().sampler(SamplerDesc::nearestClamp());
+        if (!depth_sampler)
+        {
+            return lux::cxx::unexpected(depth_sampler.error());
+        }
+        depth_sampler_ = *depth_sampler;
         auto pipeline = makeFullscreenTemplate("Fog", 8u + static_cast<std::uint32_t>(sizeof(RenderState)), false);
         pipeline.vertex_shader = stages->module(0);
         pipeline.fragment_shader = stages->module(1);

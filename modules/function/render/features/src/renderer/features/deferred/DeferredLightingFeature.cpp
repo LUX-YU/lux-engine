@@ -283,7 +283,12 @@ namespace lux::render
         //  reflection, fetched via computeSetLayout after registration.)
 
         // ---- G-buffer 采样器:共享缓存(最近邻 clamp,不得插值)----
-        gbuffer_sampler_ = ctx.descriptorService().sampler(SamplerDesc::nearestClamp());
+        auto gbuffer_sampler = ctx.descriptorService().sampler(SamplerDesc::nearestClamp());
+        if (!gbuffer_sampler)
+        {
+            return lux::cxx::unexpected(gbuffer_sampler.error());
+        }
+        gbuffer_sampler_ = *gbuffer_sampler;
 
         // ---- Fullscreen lighting pipeline ----
         //

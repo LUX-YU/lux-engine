@@ -214,9 +214,12 @@ namespace lux::render
             if (group_sampler_ == VK_NULL_HANDLE)
             {
                 // 共享缓存(线性 clamp);失败语义照旧 fail-closed。
-                group_sampler_ = ctx.descriptorService().sampler(SamplerDesc::linearClamp());
-                if (group_sampler_ == VK_NULL_HANDLE)
-                    return renderFailure<err::device::VulkanObjectCreationFailed>();
+                auto group_sampler = ctx.descriptorService().sampler(SamplerDesc::linearClamp());
+                if (!group_sampler)
+                {
+                    return lux::cxx::unexpected(group_sampler.error());
+                }
+                group_sampler_ = *group_sampler;
             }
 
             ShaderHandle fs_vert{};

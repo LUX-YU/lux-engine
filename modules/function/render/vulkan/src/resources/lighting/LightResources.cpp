@@ -1,7 +1,6 @@
 #include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
 #include <lux/engine/render/resources/lighting/LightResources.hpp>
 #include <vk_mem_alloc.h>
-#include <lux/engine/render/gpu/descriptor/SceneDescriptorArena.hpp>
 #include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
 
 #include <type_traits>
@@ -66,7 +65,7 @@ namespace lux::render
             }
             return true;
         };
-        return std::apply([&](const auto&... ssbo) { return (can_rebase(ssbo) && ...); }, *ssbos_);
+        return std::apply([&](const auto&... ssbo) { return (can_rebase(ssbo) && ...); }, ssbos_);
     }
 
     void LightResources::rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept
@@ -85,7 +84,7 @@ namespace lux::render
                 }
             }
         };
-        std::apply([&](auto&... ssbo) { (rebase(ssbo), ...); }, *ssbos_);
+        std::apply([&](auto&... ssbo) { (rebase(ssbo), ...); }, ssbos_);
     }
 
     LightHandle LightResources::allocateGlobalHandle()
@@ -125,13 +124,13 @@ namespace lux::render
         switch (record->binding)
         {
         case ELightSetBindings::LIGHT_DIRECTIONAL:
-            return std::get<SlicedSSBO<DirectionalLightGPU>>(*ssbos_).hostValue(index).intensity;
+            return std::get<SlicedSSBO<DirectionalLightGPU>>(ssbos_).hostValue(index).intensity;
         case ELightSetBindings::LIGHT_POINT:
-            return std::get<SlicedSSBO<PointLightGPU>>(*ssbos_).hostValue(index).intensity;
+            return std::get<SlicedSSBO<PointLightGPU>>(ssbos_).hostValue(index).intensity;
         case ELightSetBindings::LIGHT_SPOT:
-            return std::get<SlicedSSBO<SpotLightGPU>>(*ssbos_).hostValue(index).intensity;
+            return std::get<SlicedSSBO<SpotLightGPU>>(ssbos_).hostValue(index).intensity;
         case ELightSetBindings::LIGHT_AREA:
-            return std::get<SlicedSSBO<AreaLightGPU>>(*ssbos_).hostValue(index).intensity;
+            return std::get<SlicedSSBO<AreaLightGPU>>(ssbos_).hostValue(index).intensity;
         default:
             return std::nullopt;
         }
@@ -150,13 +149,13 @@ namespace lux::render
         switch (record->binding)
         {
         case ELightSetBindings::LIGHT_DIRECTIONAL:
-            return modify(std::get<SlicedSSBO<DirectionalLightGPU>>(*ssbos_));
+            return modify(std::get<SlicedSSBO<DirectionalLightGPU>>(ssbos_));
         case ELightSetBindings::LIGHT_POINT:
-            return modify(std::get<SlicedSSBO<PointLightGPU>>(*ssbos_));
+            return modify(std::get<SlicedSSBO<PointLightGPU>>(ssbos_));
         case ELightSetBindings::LIGHT_SPOT:
-            return modify(std::get<SlicedSSBO<SpotLightGPU>>(*ssbos_));
+            return modify(std::get<SlicedSSBO<SpotLightGPU>>(ssbos_));
         case ELightSetBindings::LIGHT_AREA:
-            return modify(std::get<SlicedSSBO<AreaLightGPU>>(*ssbos_));
+            return modify(std::get<SlicedSSBO<AreaLightGPU>>(ssbos_));
         default:
             return false;
         }
@@ -293,74 +292,60 @@ namespace lux::render
         gpu.shadow_bias = shadow_bias;
         gpu.shadow_normal_bias = shadow_normal_bias;
     }
-    bool LightResources::init(const InitInfo& info)
-    {
-        frames_in_flight_ = info.ssbo_config.slices;
 
-        // Initialize SlicedSSBO for each light type
+    struct LightResources::Backing
+    {
+        SSBOList ssbos;
+        DomainWriteTarget domain;
+        VmaImage image;
+        ImageViewOwner view;
+        VkSampler sampler;
+    };
+
+    LightResources::CreateResult LightResources::create(const CreateInfo& info) noexcept
+    {
+        const bool is_missing_dependency = !info.ssbo_config.device_context || !info.descriptor_svc;
+        const bool is_invalid_frames = info.ssbo_config.slices == 0 || info.ssbo_config.slices > kMaxFramesInFlight;
+        const bool is_invalid_targets =
+            info.domain_sets.size() != info.ssbo_config.slices ||
+            std::ranges::any_of(info.domain_sets, [](VkDescriptorSet set) { return set == VK_NULL_HANDLE; });
+        const bool is_invalid_offset =
+            info.domain_binding_offset >
+            std::numeric_limits<uint32_t>::max() - static_cast<uint32_t>(ELightSetBindings::SHADING_INPUTS);
+        const bool is_invalid_configuration =
+            is_missing_dependency || is_invalid_frames || is_invalid_targets || is_invalid_offset;
+        if (is_invalid_configuration)
+        {
+            return renderFailure<err::memory::InvalidLightConfiguration>();
+        }
+        DomainWriteTarget domain;
+        if (auto target = domain.set(info.domain_sets, info.domain_binding_offset); !target)
+        {
+            return lux::cxx::unexpected(target.error());
+        }
         auto directional = SlicedSSBO<DirectionalLightGPU>::create(info.ssbo_config);
         if (!directional)
         {
-            return false;
+            return lux::cxx::unexpected(directional.error());
         }
         auto point = SlicedSSBO<PointLightGPU>::create(info.ssbo_config);
         if (!point)
         {
-            return false;
+            return lux::cxx::unexpected(point.error());
         }
         auto spot = SlicedSSBO<SpotLightGPU>::create(info.ssbo_config);
         if (!spot)
         {
-            return false;
+            return lux::cxx::unexpected(spot.error());
         }
         auto area = SlicedSSBO<AreaLightGPU>::create(info.ssbo_config);
         if (!area)
         {
-            return false;
+            return lux::cxx::unexpected(area.error());
         }
-        ssbos_.emplace(std::move(*directional), std::move(*point), std::move(*spot), std::move(*area));
-
-        // 不再分配 per-set 实例 —— 描述符只写场景域集,绑定也从域集取
-        //(useEngineSet)。写目标即下面这组域集句柄。
-        if (!domain_.set(info.domain_sets, info.domain_binding_offset))
-            return false;
-
-        // Write initial tight descriptors for every per-frame slice.
-        // Slice i must point at its own data so GLSL lights.length() stays bounded.
-        for (uint32_t i = 0; i < frames_in_flight_; ++i)
-        {
-            refreshDescriptorOnSet<ELightSetBindings::LIGHT_DIRECTIONAL>(i, i);
-            refreshDescriptorOnSet<ELightSetBindings::LIGHT_POINT>(i, i);
-            refreshDescriptorOnSet<ELightSetBindings::LIGHT_SPOT>(i, i);
-            refreshDescriptorOnSet<ELightSetBindings::LIGHT_AREA>(i, i);
-        }
-
-        // b11 has no PARTIALLY_BOUND — every element of every per-frame set
-        // (and the domain twin) must hold a valid image before the first bind.
-        device_ = info.device;
-        descriptor_svc_ = info.descriptor_svc;
-        allocator_ = info.allocator;
-        if (createDefaultShadingInputImage())
-        {
-            // 不再 fill(default_input_view_):数组语义是"**提供者**给的 view",
-            // NULL 表示该槽没有提供者,writeShadingInputDescriptors 会自己回落到
-            // 默认纹理。fill 会把 init 之前 provideShadingInput 记下的 view 覆盖掉
-            // —— 那正是 1.4 想修的静默丢弃换了个地方发生。
-            for (uint32_t i = 0; i < frames_in_flight_; ++i)
-                writeShadingInputDescriptors(i);
-        }
-
-        initialized_ = true;
-        return true;
-    }
-
-    bool LightResources::createDefaultShadingInputImage()
-    {
-        if (device_ == VK_NULL_HANDLE || allocator_ == VK_NULL_HANDLE)
-            return false;
-
-        VkImageCreateInfo img_ci{};
-        img_ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        auto& context = *info.ssbo_config.device_context;
+        const VkDevice device = context.logicalDevice();
+        VkImageCreateInfo img_ci{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
         img_ci.imageType = VK_IMAGE_TYPE_2D;
         img_ci.format = VK_FORMAT_R8G8B8A8_UNORM;
         img_ci.extent = {1, 1, 1};
@@ -370,68 +355,62 @@ namespace lux::render
         img_ci.tiling = VK_IMAGE_TILING_OPTIMAL;
         img_ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         img_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-
         VmaAllocationCreateInfo alloc_ci{};
         alloc_ci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-
-        if (vmaCreateImage(allocator_, &img_ci, &alloc_ci, &default_input_image_, &default_input_alloc_, nullptr) !=
-            VK_SUCCESS)
-            return false;
-
-        VkImageViewCreateInfo view_ci{};
-        view_ci.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        view_ci.image = default_input_image_;
+        auto image = VmaImage::create(context.vmaAllocator(), img_ci, alloc_ci);
+        if (!image)
+        {
+            return lux::cxx::unexpected(image.error());
+        }
+        VkImageViewCreateInfo view_ci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+        view_ci.image = image->image();
         view_ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        view_ci.format = VK_FORMAT_R8G8B8A8_UNORM;
+        view_ci.format = img_ci.format;
         view_ci.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         view_ci.subresourceRange.levelCount = 1;
         view_ci.subresourceRange.layerCount = 1;
-        if (vkCreateImageView(device_, &view_ci, nullptr, &default_input_view_) != VK_SUCCESS)
+        auto view = ImageViewOwner::create(device, view_ci);
+        if (!view)
         {
-            destroyShadingInputResources();
-            return false;
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(view.error()));
         }
-
-        // One shared sampler for the whole array: shading inputs are
-        // screen-space textures sampled at the pixel's own uv, so bilinear +
-        // clamp covers every slot (a 1×1 default is filter-invariant anyway).
-        // Exactly SamplerDesc::linearClamp(); owned by the DescriptorService
-        // cache, so destroyShadingInputResources() must not destroy it.
-        shading_input_sampler_ = descriptor_svc_->sampler(SamplerDesc::linearClamp());
-        if (shading_input_sampler_ == VK_NULL_HANDLE)
+        auto sampler = info.descriptor_svc->sampler(SamplerDesc::linearClamp());
+        if (!sampler)
         {
-            destroyShadingInputResources();
-            return false;
+            return lux::cxx::unexpected(sampler.error());
         }
-        return true;
+        Backing backing{
+            SSBOList{std::move(*directional), std::move(*point), std::move(*spot), std::move(*area)},
+            std::move(domain),
+            std::move(*image),
+            std::move(*view),
+            *sampler
+        };
+        return std::unique_ptr<LightResources>(new LightResources(device, std::move(backing)));
     }
 
-    void LightResources::destroyShadingInputResources() noexcept
+    LightResources::LightResources(VkDevice device, Backing&& backing) noexcept
+        : ssbos_(std::move(backing.ssbos)), domain_(std::move(backing.domain)), device_(device),
+          default_input_image_(std::move(backing.image)), default_input_view_(std::move(backing.view)),
+          shading_input_sampler_(backing.sampler)
     {
-        // No vkDestroySampler: shading_input_sampler_ is borrowed from the
-        // DescriptorService cache, which keeps it alive until device teardown.
-        vkDestroyImageView(device_, default_input_view_, nullptr);
-        if (default_input_image_ != VK_NULL_HANDLE)
-            vmaDestroyImage(allocator_, default_input_image_, default_input_alloc_);
-        shading_input_sampler_ = VK_NULL_HANDLE;
-        default_input_view_ = VK_NULL_HANDLE;
-        default_input_image_ = VK_NULL_HANDLE;
-        default_input_alloc_ = VK_NULL_HANDLE;
-        shading_input_views_.fill(VK_NULL_HANDLE);
-        default_input_cleared_ = false;
+        refreshDescriptorsAllSets();
+        for (uint32_t index = 0; index < domain_.sliceCount(); ++index)
+        {
+            writeShadingInputDescriptors(index);
+        }
     }
+
+    LightResources::~LightResources() noexcept = default;
 
     void LightResources::writeShadingInputDescriptors(uint32_t set_index) const
     {
-        if (default_input_view_ == VK_NULL_HANDLE)
-            return;
-
         std::array<VkDescriptorImageInfo, kShadingInputSlotCount> infos{};
         for (uint32_t s = 0; s < kShadingInputSlotCount; ++s)
         {
             infos[s].sampler = shading_input_sampler_;
             infos[s].imageView =
-                shading_input_views_[s] != VK_NULL_HANDLE ? shading_input_views_[s] : default_input_view_;
+                shading_input_views_[s] != VK_NULL_HANDLE ? shading_input_views_[s] : default_input_view_.get();
             infos[s].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         }
 
@@ -456,32 +435,25 @@ namespace lux::render
         if (index >= kShadingInputSlotCount)
             return; // 调用方传错槽位 —— 拒绝是对的
 
-        // 先记下来,**再**看默认纹理建好没有。
-        //
-        // 此前这两件事挤在同一个条件里,于是默认纹理没就绪时提供者交进来的
-        // view 被直接丢弃且无任何记录:SSAO 装了、pass 在跑、AO 纹理也产出了,
-        // 但 b11 永远是默认白 —— 表现为"SSAO 没效果",无从查起。
-        // 槽位表是纯 CPU 状态,任何时候记都安全;写描述符才需要默认纹理就绪
-        //(数组里没被提供的元素要拿它填)。createDefaultShadingInputImage()
-        // 成功后 init 会重写一遍全部元素,那时这里记下的 view 就带上了。
         shading_input_views_[index] = view;
-
-        if (default_input_view_ == VK_NULL_HANDLE)
-            return;
-        for (uint32_t i = 0; i < frames_in_flight_; ++i)
+        for (uint32_t i = 0; i < domain_.sliceCount(); ++i)
+        {
             writeShadingInputDescriptors(i);
+        }
     }
 
     void LightResources::postTransfer(VkCommandBuffer cmd)
     {
-        if (default_input_cleared_ || default_input_image_ == VK_NULL_HANDLE)
+        if (default_input_cleared_)
+        {
             return;
+        }
 
         VkImageMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = default_input_image_;
+        barrier.image = default_input_image_.image();
         barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         barrier.subresourceRange.levelCount = 1;
         barrier.subresourceRange.layerCount = 1;
@@ -507,7 +479,14 @@ namespace lux::render
         VkClearColorValue white{};
         white.float32[0] = white.float32[1] = white.float32[2] = white.float32[3] = 1.0f;
         VkImageSubresourceRange range = barrier.subresourceRange;
-        vkCmdClearColorImage(cmd, default_input_image_, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &white, 1, &range);
+        vkCmdClearColorImage(
+            cmd,
+            default_input_image_.image(),
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            &white,
+            1,
+            &range
+        );
 
         barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -557,7 +536,7 @@ namespace lux::render
                     for (uint32_t i = 0; i < kShadowCascadeSlots; ++i)
                         gpu.cascade_splits[i] = d.cascade_splits[i];
 
-                    auto local_slot = std::get<SlicedSSBO<DirectionalLightGPU>>(*ssbos_).add(gpu);
+                    auto local_slot = std::get<SlicedSSBO<DirectionalLightGPU>>(ssbos_).add(gpu);
                     if (!local_slot)
                     {
                         return lux::cxx::unexpected(local_slot.error());
@@ -592,7 +571,7 @@ namespace lux::render
                     gpu.attenuation_linear = d.attenuation_linear;
                     gpu.attenuation_quadratic = d.attenuation_quadratic;
 
-                    auto local_slot = std::get<SlicedSSBO<PointLightGPU>>(*ssbos_).add(gpu);
+                    auto local_slot = std::get<SlicedSSBO<PointLightGPU>>(ssbos_).add(gpu);
                     if (!local_slot)
                     {
                         return lux::cxx::unexpected(local_slot.error());
@@ -630,7 +609,7 @@ namespace lux::render
                     gpu.inner_cone_angle = d.inner_cone_angle;
                     gpu.outer_cone_angle = d.outer_cone_angle;
 
-                    auto local_slot = std::get<SlicedSSBO<SpotLightGPU>>(*ssbos_).add(gpu);
+                    auto local_slot = std::get<SlicedSSBO<SpotLightGPU>>(ssbos_).add(gpu);
                     if (!local_slot)
                     {
                         return lux::cxx::unexpected(local_slot.error());
@@ -661,7 +640,7 @@ namespace lux::render
                     );
                     gpu.size = to_aligned2(d.size);
 
-                    auto local_slot = std::get<SlicedSSBO<AreaLightGPU>>(*ssbos_).add(gpu);
+                    auto local_slot = std::get<SlicedSSBO<AreaLightGPU>>(ssbos_).add(gpu);
                     if (!local_slot)
                     {
                         return lux::cxx::unexpected(local_slot.error());
@@ -700,16 +679,16 @@ namespace lux::render
         switch (binding)
         {
         case ELightSetBindings::LIGHT_DIRECTIONAL:
-            std::get<SlicedSSBO<DirectionalLightGPU>>(*ssbos_).remove(rec->local_slot);
+            std::get<SlicedSSBO<DirectionalLightGPU>>(ssbos_).remove(rec->local_slot);
             break;
         case ELightSetBindings::LIGHT_POINT:
-            std::get<SlicedSSBO<PointLightGPU>>(*ssbos_).remove(rec->local_slot);
+            std::get<SlicedSSBO<PointLightGPU>>(ssbos_).remove(rec->local_slot);
             break;
         case ELightSetBindings::LIGHT_SPOT:
-            std::get<SlicedSSBO<SpotLightGPU>>(*ssbos_).remove(rec->local_slot);
+            std::get<SlicedSSBO<SpotLightGPU>>(ssbos_).remove(rec->local_slot);
             break;
         case ELightSetBindings::LIGHT_AREA:
-            std::get<SlicedSSBO<AreaLightGPU>>(*ssbos_).remove(rec->local_slot);
+            std::get<SlicedSSBO<AreaLightGPU>>(ssbos_).remove(rec->local_slot);
             break;
         default:
             break;
@@ -753,7 +732,7 @@ namespace lux::render
                     gpu.cascade_count = d.cascade_count;
                     for (uint32_t i = 0; i < kShadowCascadeSlots; ++i)
                         gpu.cascade_splits[i] = d.cascade_splits[i];
-                    auto& ssbo = std::get<SlicedSSBO<DirectionalLightGPU>>(*ssbos_);
+                    auto& ssbo = std::get<SlicedSSBO<DirectionalLightGPU>>(ssbos_);
                     return ssbo.modify(local_slot, gpu) ? RenderError{} : renderError<err::resource::ModifyFailed>();
                 }
                 else if constexpr (std::is_same_v<T, PointLightDesc>)
@@ -775,7 +754,7 @@ namespace lux::render
                     gpu.attenuation_constant = d.attenuation_constant;
                     gpu.attenuation_linear = d.attenuation_linear;
                     gpu.attenuation_quadratic = d.attenuation_quadratic;
-                    auto& ssbo = std::get<SlicedSSBO<PointLightGPU>>(*ssbos_);
+                    auto& ssbo = std::get<SlicedSSBO<PointLightGPU>>(ssbos_);
                     return ssbo.modify(local_slot, gpu) ? RenderError{} : renderError<err::resource::ModifyFailed>();
                 }
                 else if constexpr (std::is_same_v<T, SpotLightDesc>)
@@ -800,7 +779,7 @@ namespace lux::render
                     gpu.attenuation_quadratic = d.attenuation_quadratic;
                     gpu.inner_cone_angle = d.inner_cone_angle;
                     gpu.outer_cone_angle = d.outer_cone_angle;
-                    auto& ssbo = std::get<SlicedSSBO<SpotLightGPU>>(*ssbos_);
+                    auto& ssbo = std::get<SlicedSSBO<SpotLightGPU>>(ssbos_);
                     return ssbo.modify(local_slot, gpu) ? RenderError{} : renderError<err::resource::ModifyFailed>();
                 }
                 else if constexpr (std::is_same_v<T, AreaLightDesc>)
@@ -818,7 +797,7 @@ namespace lux::render
                         d.shadow_normal_bias
                     );
                     gpu.size = to_aligned2(d.size);
-                    auto& ssbo = std::get<SlicedSSBO<AreaLightGPU>>(*ssbos_);
+                    auto& ssbo = std::get<SlicedSSBO<AreaLightGPU>>(ssbos_);
                     return ssbo.modify(local_slot, gpu) ? RenderError{} : renderError<err::resource::ModifyFailed>();
                 }
             },

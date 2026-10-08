@@ -60,7 +60,12 @@ namespace lux::render
         // --- 2. HZB sampler:共享缓存(最近邻 + clamp + 全 mip 采样,
         //     max-Z 不得插值)。原先困扰过的裸句柄泄漏
         //     (VUID-vkDestroyDevice-device-05137)由服务统一销毁根治。---
-        hzb_sampler_ = ctx.descriptorService().sampler(SamplerDesc::nearestClampAllMips());
+        auto hzb_sampler = ctx.descriptorService().sampler(SamplerDesc::nearestClampAllMips());
+        if (!hzb_sampler)
+        {
+            return lux::cxx::unexpected(hzb_sampler.error());
+        }
+        hzb_sampler_ = *hzb_sampler;
 
         // --- 3. HzbResources in the scene registry so the cull feature can
         //         find<HzbResources>() and bind its read DS (mirror SkinningResources).

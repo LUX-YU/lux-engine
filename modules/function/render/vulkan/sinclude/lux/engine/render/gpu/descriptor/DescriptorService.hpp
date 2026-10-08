@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/function/render/client/core/RenderTypes.hpp> // SamplerDesc(中性采样器描述,缓存键)
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
@@ -69,7 +70,7 @@ namespace lux::render
         /// 按描述取共享采样器 —— 同描述返回同句柄,生命周期随本服务
         /// (设备关停时统一销毁)。取代各特性 init() 里手写的
         /// VkSamplerCreateInfo + vkCreateSampler + FifOwned 三件套。
-        [[nodiscard]] VkSampler sampler(const SamplerDesc& desc);
+        [[nodiscard]] Expected<VkSampler> sampler(const SamplerDesc& desc);
 
     private:
         struct LayoutEntry

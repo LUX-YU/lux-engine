@@ -15,22 +15,14 @@ namespace lux::render
 
     lux::render::Expected<void> LightFeature::initAndAttachTo(RenderScene& sc)
     {
-        // Feature owns its scene resource (PointCloud/Trajectory pattern): emplace
-        // LightResources here, NOT in the general RenderScene constructor. Must be
-        // attached BEFORE the lighting consumers — ShadowMapFeature caches a raw
-        // LightResources* at its own initAndAttachTo (the editor orders LightFeature
-        // first in the feature list). Idempotent.
-        // ensure<T>: whoever attaches first builds this scene's LightResources; a
-        // second LightFeature receives the same instance. Only the first-time creator
-        // runs init() + registers the transfer contributor below.
         auto& reg = sc.resources();
-        const bool fresh = (reg.find<LightResources>() == nullptr);
+        if (reg.find<LightResources>())
+        {
+            return {}; // Shared scene resource and its hooks are installed once.
+        }
         auto& ctx = renderContext();
 
-        // Mirrors the per-scene init the core RenderScene ctor used to do: per-scene
-        // SSBO + the SHARED light set layout (one handle so all pipelines stay
-        // compatible; only the SETS/buffers are per-scene).
-        LightResources::InitInfo li{};
+        LightResources::CreateInfo li{};
         li.ssbo_config = SSBOInitConfig{
             .device_context = &ctx.deviceContext(),
             .deferred_queue = &ctx.deferredDestroyQueue(),
@@ -39,9 +31,7 @@ namespace lux::render
             .clear_on_remove = true,
         };
         // b11 default shading-input texture (no PARTIALLY_BOUND — must be
-        // written before the first bind, so init needs device + allocator).
-        li.device = ctx.device();
-        li.allocator = ctx.vmaAllocator();
+        // written before the first bind; the buffer configuration identifies the device).
         li.descriptor_svc = &ctx.descriptorService();
         // The Light set lives in the FEATURE domain, with a nonzero offset
         // (+2, to skip past Instance's two bindings). The offset value comes
@@ -54,27 +44,22 @@ namespace lux::render
         }
         // 光照资源建不起来,这个 feature 就无法有意义地工作 —— 装上一个「场景永远无光」
         // 的 LightFeature 只会让问题在别处以「东西不见了」的形式出现,该由上层决定要不
-        // 要退而求其次。ensure<T>(li) 失败时**什么都没发布**,find<LightResources>()
+        // 要退而求其次。create/insert 失败时**什么都没发布**,find<LightResources>()
         // 仍为空,不会留下一个谁也删不掉的半成品。
-        auto light_r = reg.ensure<LightResources>(li);
-        if (!light_r)
+        auto candidate = LightResources::create(li);
+        if (!candidate)
         {
-            return lux::cxx::unexpected<RenderError>(light_r.error());
+            return lux::cxx::unexpected(candidate.error());
         }
-        auto* light_res = *light_r;
-        if (!fresh)
-        {
-            return {}; // 第二个 LightFeature:拿到同一实例,一次性副作用不重做
-        }
+        auto* light_res = reg.insert(std::move(*candidate)).get();
 
         // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。登记必须在
-        // ensure 成功**之后**:此前它写在 init 之前,而"失败即不发布"意味着失败对象
+        // insert 成功**之后**:此前它写在 init 之前,而"失败即不发布"意味着失败对象
         // 会被销毁 —— 早登记的钩子捕获的裸指针就成了每帧一次的 use-after-free
         // (注册表没有 removeBeginFrameHook)。
         reg.addBeginFrameHook(EUploadPhase::UPLOAD, [light_res](const FrameStamp& s) {
             light_res->onFrameBeginMaintenance(s);
         });
-
 
         // Register the light SSBO as a per-scene transfer contributor (priority 6)
         // so its slices flush before this scene's draw passes bind set 3. The scene

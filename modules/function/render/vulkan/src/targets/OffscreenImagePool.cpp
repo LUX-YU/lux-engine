@@ -1,6 +1,7 @@
 #include <lux/engine/render/targets/OffscreenImagePool.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/cxx/core/Format.hpp>
+#include <lux/cxx/container/SmallVector.hpp>
 #include <vk_mem_alloc.h>
 
 #include <cassert>
@@ -35,17 +36,14 @@ namespace lux::render
 
     OffscreenImagePool::~OffscreenImagePool()
     {
-        VkDevice dev = res_ctx_.deviceContext().logicalDevice();
         // Clean up any retired images still in the queue
         for (auto& retired : retired_images_)
         {
             for (size_t si = 0; si < kTargetSlotCount; ++si)
             {
                 notifyViewRetirement(retired.slot_views[si]);
-                for (VkImageView v : retired.slot_views[si])
-                    vkDestroyImageView(dev, v, nullptr);
             }
-            // VmaImage RAII handles VkImage + VmaAllocation destruction
+            // Member order destroys views before their VmaImage allocations.
         }
         retired_images_.clear();
         release();
@@ -176,8 +174,8 @@ namespace lux::render
 
             auto& images = slot_images_[si];
             auto& views = slot_views_[si];
-            images.clear();
             views.clear();
+            images.clear();
             images.reserve(frames_in_flight_);
             views.reserve(frames_in_flight_);
 
@@ -202,19 +200,19 @@ namespace lux::render
                     (void)name_object(dev, &info);
                 }
 
-                VkImageView view = VK_NULL_HANDLE;
-                if (vkCreateImageView(dev, &vi, nullptr, &view) != VK_SUCCESS)
+                auto view = ImageViewOwner::create(dev, vi);
+                if (!view)
                 {
                     release();
                     return false;
                 }
-                views.push_back(view);
+                views.push_back(std::move(*view));
                 if (name_object != nullptr)
                 {
                     const auto name = lux::format("OffscreenTarget.{}.fif{}.View", targetSlotName(slot_enum), f);
                     VkDebugUtilsObjectNameInfoEXT info{VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
                     info.objectType = VK_OBJECT_TYPE_IMAGE_VIEW;
-                    info.objectHandle = reinterpret_cast<std::uint64_t>(view);
+                    info.objectHandle = reinterpret_cast<std::uint64_t>(views.back().get());
                     info.pObjectName = name.c_str();
                     (void)name_object(dev, &info);
                 }
@@ -229,7 +227,7 @@ namespace lux::render
             for (uint32_t f = 0; f < frames_in_flight_; ++f)
             {
                 bs.images.push_back(images[f].image());
-                bs.views.push_back(views[f]);
+                bs.views.push_back(views[f].get());
             }
         }
         return true;
@@ -237,22 +235,28 @@ namespace lux::render
 
     void OffscreenImagePool::release()
     {
-        VkDevice dev = res_ctx_.deviceContext().logicalDevice();
         for (size_t si = 0; si < kTargetSlotCount; ++si)
         {
             notifyViewRetirement(slot_views_[si]);
-            for (VkImageView v : slot_views_[si])
-                vkDestroyImageView(dev, v, nullptr);
             slot_views_[si].clear();
             slot_images_[si].clear(); // VmaImage RAII releases VkImage + VmaAllocation
         }
         binding_ = {};
     }
 
-    void OffscreenImagePool::notifyViewRetirement(std::span<const VkImageView> views) noexcept
+    void OffscreenImagePool::notifyViewRetirement(std::span<const ImageViewOwner> views) noexcept
     {
-        if (retire_views_ != nullptr && !views.empty())
-            retire_views_(retire_owner_.get(), views);
+        const bool has_notification = retire_views_ != nullptr && !views.empty();
+        if (has_notification)
+        {
+            lux::cxx::SmallVector<VkImageView, 4> handles;
+            handles.reserve(views.size());
+            for (const auto& view : views)
+            {
+                handles.push_back(view.get());
+            }
+            retire_views_(retire_owner_.get(), {handles.data(), handles.size()});
+        }
     }
 
     // =============================================================================
@@ -261,7 +265,6 @@ namespace lux::render
 
     void OffscreenImagePool::collectRetired(uint64_t frame_id, uint64_t completed_serial)
     {
-        VkDevice dev = res_ctx_.deviceContext().logicalDevice();
         auto it = retired_images_.begin();
         while (it != retired_images_.end())
         {
@@ -280,9 +283,10 @@ namespace lux::render
                 for (size_t si = 0; si < kTargetSlotCount; ++si)
                 {
                     notifyViewRetirement(it->slot_views[si]);
-                    for (VkImageView v : it->slot_views[si])
-                        vkDestroyImageView(dev, v, nullptr);
-                    // VmaImage RAII releases VkImage + VmaAllocation
+                    // Erase move-assigns later records over this one. Empty the destination
+                    // in dependency order before that memberwise move can release images.
+                    it->slot_views[si].clear();
+                    it->slot_images[si].clear();
                 }
                 it = retired_images_.erase(it);
             }

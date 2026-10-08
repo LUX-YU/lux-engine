@@ -17,6 +17,7 @@
 #include <lux/engine/function/render/client/core/RenderTypes.hpp>
 
 #include <lux/engine/render/gpu/memory/VmaTypes.hpp>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 
 #include <vulkan/vulkan.h>
 
@@ -128,13 +129,13 @@ namespace lux::render
 
         // Per-slot, per-FIF images and views
         std::array<std::vector<VmaImage>, kTargetSlotCount> slot_images_;
-        std::array<std::vector<VkImageView>, kTargetSlotCount> slot_views_;
+        std::array<std::vector<ImageViewOwner>, kTargetSlotCount> slot_views_;
         RenderTargetBinding binding_{};
 
         struct RetiredImages
         {
             std::array<std::vector<VmaImage>, kTargetSlotCount> slot_images;
-            std::array<std::vector<VkImageView>, kTargetSlotCount> slot_views;
+            std::array<std::vector<ImageViewOwner>, kTargetSlotCount> slot_views;
             uint64_t retire_frame{0};
         };
         std::vector<RetiredImages> retired_images_;
@@ -144,7 +145,7 @@ namespace lux::render
         std::vector<std::uint8_t> recorded_slots_;
         std::shared_ptr<void> retire_owner_;
         RetireViews retire_views_{};
-        void notifyViewRetirement(std::span<const VkImageView> views) noexcept;
+        void notifyViewRetirement(std::span<const ImageViewOwner> views) noexcept;
         bool rebuild(const RenderTargetLayout& layout, VkExtent2D extent) noexcept;
         bool allocate(VkExtent2D extent);
         void release();

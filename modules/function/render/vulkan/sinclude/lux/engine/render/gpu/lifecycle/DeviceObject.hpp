@@ -107,4 +107,5 @@ namespace lux::render
     using SemaphoreOwner = detail::TDeviceObject<VkSemaphore, VkSemaphoreCreateInfo, vkCreateSemaphore, vkDestroySemaphore>;
     using CommandPoolOwner = detail::
         TDeviceObject<VkCommandPool, VkCommandPoolCreateInfo, vkCreateCommandPool, vkDestroyCommandPool>;
+    using ImageViewOwner = detail::TDeviceObject<VkImageView, VkImageViewCreateInfo, vkCreateImageView, vkDestroyImageView>;
 } // namespace lux::render

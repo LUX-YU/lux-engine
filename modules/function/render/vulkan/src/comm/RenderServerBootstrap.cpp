@@ -496,7 +496,7 @@ namespace lux::render
 
         // 9. FrameDriver — 帧级设施(per-FIF fence/主 CB/GPU 完成水位),
         // 仅依赖 ResourceContext 与 fif,与窗口/surface 零依赖。曾误放在
-        // attachToWindow 里,导致无窗进程只能空转帧生命周期不能录制;
+        // 旧窗口绑定路径里,导致无窗进程只能空转帧生命周期不能录制;
         // 前移后离屏渲染 + readback 无窗即可用(RenderTarget 一等化的产物)。
         auto frame_driver = FrameDriver::create(*res_ctx_, frames_in_flight_);
         if (!frame_driver)
@@ -1049,18 +1049,20 @@ namespace lux::render
         {
             auto& im = impl(ctx);
             TargetReadyReply reply{};
-            RenderSurface surface;
-            if (p.native_window_handle == 0 || !surface.initFromNative(
-                                                   p.native_window_handle,
-                                                   VkExtent2D{p.extent.width, p.extent.height},
-                                                   im.inst_ctx_->instance()
-                                               ))
+            auto surface = RenderSurface::create(
+                p.native_window_handle,
+                VkExtent2D{p.extent.width, p.extent.height},
+                im.inst_ctx_->instance(),
+                im.inst_ctx_->allocator()
+            );
+            if (!surface)
             {
+                im.render_ctx_->reportError(surface.error());
                 reply.status = 1;
                 replyToCurrent<CreateSurfaceTargetPayload>(ctx, reply);
                 return;
             }
-            auto r = im.createSurfaceTargetInternal(std::move(surface), VkExtent2D{p.extent.width, p.extent.height});
+            auto r = im.createSurfaceTargetInternal(std::move(*surface), VkExtent2D{p.extent.width, p.extent.height});
             if (!r)
             {
                 reply.status = 2;
@@ -1915,7 +1917,7 @@ namespace lux::render
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    //  Construction / tick / attachToWindow
+    //  Construction / tick / surface target commands
     // ─────────────────────────────────────────────────────────────────────
 
 } // namespace lux::render

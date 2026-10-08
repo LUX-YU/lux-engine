@@ -137,7 +137,7 @@ namespace lux::window
         // through here would tie every consumer of LuxWindow to that cycle.
         //
         // The handle goes straight to the surface instead, as a POD payload on
-        // the CreateSurfaceTarget command: see RenderSurface::initFromNative.
+        // the CreateSurfaceTarget command: see RenderSurface::create.
 
 #ifdef __PLATFORM_WIN32__
         // Get windows

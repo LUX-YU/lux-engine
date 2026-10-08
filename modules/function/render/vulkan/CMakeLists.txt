@@ -265,6 +265,46 @@ if(BUILD_TESTING)
         set_tests_properties(render.instance_ownership PROPERTIES TIMEOUT 30 LABELS gpu)
     endif()
 
+    if(WIN32)
+        add_executable(
+            render_surface_construction_test
+            test/surface_construction.cpp
+        )
+        target_include_directories(
+            render_surface_construction_test
+            PRIVATE sinclude pinclude
+        )
+        target_compile_definitions(
+            render_surface_construction_test
+            PRIVATE LUX_FUNCTION_DLL_DISABLE
+        )
+        target_link_libraries(
+            render_surface_construction_test
+            PRIVATE render_vulkan
+        )
+        if(MSVC)
+            target_compile_options(
+                render_surface_construction_test
+                PRIVATE /UNDEBUG /utf-8
+            )
+        else()
+            target_compile_options(
+                render_surface_construction_test
+                PRIVATE -UNDEBUG
+            )
+        endif()
+        if(LUX_RENDER_BUILD_GPU_TESTS)
+            add_test(
+                NAME render.surface_construction
+                COMMAND render_surface_construction_test
+            )
+            set_tests_properties(
+                render.surface_construction
+                PROPERTIES TIMEOUT 30 LABELS gpu
+            )
+        endif()
+    endif()
+
     add_executable(render_offscreen_ownership_test test/offscreen_ownership.cpp)
     target_include_directories(render_offscreen_ownership_test PRIVATE sinclude pinclude)
     target_compile_definitions(render_offscreen_ownership_test PRIVATE LUX_FUNCTION_DLL_DISABLE)

@@ -26,11 +26,6 @@
 #include <lux/engine/function/render/client/core/RenderTypes.hpp>
 #include <lux/engine/function/visibility.h>
 
-namespace lux::window
-{
-    class LuxWindow;
-}
-
 // rdesc::Mesh is a struct (see description/Mesh.hpp) — keyword must match the
 // definition for MSVC name mangling (class-vs-struct => V/U => LNK2019).
 namespace lux::rdesc
@@ -1189,7 +1184,7 @@ namespace lux::render
 
         virtual ~GeneralRenderServer();
 
-        /// Initialize the Vulkan stack. Must be called before tick() or attachToWindow().
+        /// Initialize the Vulkan stack. Must be called before tick().
         [[nodiscard]] Expected<void> init(ServerConfig config = {});
 
         /// Drain one request (non-blocking). Returns false on stop / no work.
@@ -1201,10 +1196,6 @@ namespace lux::render
         /// Blocking full-cycle: drain request + render all enabled views.
         /// Returns false when stop is requested.
         virtual bool tick();
-
-        /// Attach to a window: creates RenderSurface + SwapchainTarget.
-        /// Must be called before any non-offscreen view is added.
-        [[nodiscard]] Expected<void> attachToWindow(lux::window::LuxWindow& window);
 
         // ── Server-side direct initialization (same thread, before tick()) ──
         /// Register a FeatureFactory, returns full registration result including ops.
@@ -1287,7 +1278,7 @@ namespace lux::render
         [[nodiscard]] bool hasSwapchainBinding() const noexcept;
 
         /// Return the default swapchain layout (from SwapchainProvider).
-        /// Only valid after attachToWindow().
+        /// Only valid after an accepted CreateSurfaceTarget command.
         [[nodiscard]] RenderTargetLayout swapchainLayout() const;
 
         // ── Server-side direct resource creation (same thread, init → tick) ──

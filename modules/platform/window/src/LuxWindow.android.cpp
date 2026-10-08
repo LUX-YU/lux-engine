@@ -167,7 +167,7 @@ namespace lux::window
         // times per session — its lifetime matches a surface, not a window
         // object, so a LuxWindow cannot honestly own one.
         //
-        // The real path is RenderSurface::initFromNative(ANativeWindow handle),
+        // The real path is RenderSurface::create(ANativeWindow handle),
         // reached through the CreateSurfaceTarget command. Callers on Android
         // must use it; this returning false is what keeps them from silently
         // going through the desktop-shaped door.

@@ -12,7 +12,7 @@ if(ANDROID)
     # Android backend. Deliberately thin: the Vulkan surface does NOT come from
     # here (see LuxWindow::createVulkanSurface's comment — the native window's
     # lifetime matches a surface, not a window object, so it goes straight to
-    # RenderSurface::initFromNative via the CreateSurfaceTarget command).
+    # RenderSurface::create via the CreateSurfaceTarget command).
     # The event pump is likewise out of scope: that belongs to the app's
     # activity glue, not to an engine library.
     set(WINDOW_SRCS

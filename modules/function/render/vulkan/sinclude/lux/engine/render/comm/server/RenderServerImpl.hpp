@@ -246,9 +246,8 @@ namespace lux::render
 
         void retireTargetPool(RenderTargetEntry& t, uint64_t retire_serial);
 
-        /// surface + swapchain + Surface target entry 一体创建(attach
-        /// 宿主封装与 CreateSurfaceTarget 命令共用)。过渡期所有权在 Impl
-        /// 单实例;失败时接管并销毁传入的 surface。
+        /// Adopt a complete surface candidate into the original PresentContext/target.
+        /// Rejection before adoption leaves the candidate owned by the command caller.
         Expected<RenderTargetId> createSurfaceTargetInternal(RenderSurface&& surface, VkExtent2D extent);
 
         /// 两阶段销毁的在途账本:Surface target 受理销毁后停止呈现,

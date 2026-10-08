@@ -27,9 +27,6 @@
 #include <lux/engine/render/targets/OffscreenImagePool.hpp>
 #include <lux/engine/render/targets/SwapchainProvider.hpp>
 
-// Window
-#include <lux/engine/window/LuxWindow.hpp>
-
 // Resources
 #include <lux/engine/render/resources/TextureResources.hpp>
 // (LightResources include removed — light is feature-owned now; LightFeature
@@ -1254,10 +1251,7 @@ namespace lux::render
         // surface_target_ 仍单指主窗(多窗化尚未做)。
         if (surfacePresent())
         {
-            // 单主窗过渡约束:重复 attach 先拆旧(极少路径;泛化)。
-            // (surface 由本函数按值接收,直接返回就会析构;reset() 只是把释放
-            //  点说清楚 —— 它是我们拒绝了这次 attach,不是忘了处理。)
-            surface.reset();
+            // Candidate ownership remains with the caller until accepted by PresentContext.
             return renderFailure<err::internal::Unspecified>();
         }
 
@@ -1274,29 +1268,6 @@ namespace lux::render
         e.present = std::move(*pc);
         targets_registry_->setSurfaceTarget(targets_registry_->insert(std::move(e)));
         return targets_registry_->surfaceTargetId();
-    }
-
-    Expected<void> GeneralRenderServer::attachToWindow(lux::window::LuxWindow& window)
-    {
-        // 宿主侧封装——与 CreateSurfaceTarget 命令共用同一条内部创建
-        // 路径(surface 创建仍只发生在渲染线程:本函数约定在 tick 循环启动
-        // 前于渲染线程调用;运行期动态开窗走命令面)。
-        RenderSurface surface;
-        if (!surface.init(window, impl_->inst_ctx_->instance()))
-        {
-            return renderFailure<err::internal::Unspecified>();
-        }
-
-        std::uint32_t framebuffer_width = 0;
-        std::uint32_t framebuffer_height = 0;
-        window.framebufferSize(framebuffer_width, framebuffer_height);
-        auto r =
-            impl_->createSurfaceTargetInternal(std::move(surface), VkExtent2D{framebuffer_width, framebuffer_height});
-        if (!r)
-        {
-            return lux::cxx::unexpected(r.error());
-        }
-        return {};
     }
 
     // ── Standalone deferred-reply flush ────────────────────────────────

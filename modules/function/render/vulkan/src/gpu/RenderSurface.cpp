@@ -1,169 +1,117 @@
 #if defined(__ANDROID__) && !defined(VK_USE_PLATFORM_ANDROID_KHR)
-// Must precede vulkan.h: it gates VkAndroidSurfaceCreateInfoKHR and
-// PFN_vkCreateAndroidSurfaceKHR.
 #define VK_USE_PLATFORM_ANDROID_KHR 1
 #endif
-#include <vulkan/vulkan.h>
+#include <lux/engine/gapi/vk/Instance.hpp>
 #include <lux/engine/render/gpu/RenderSurface.hpp>
-#include <lux/engine/window/LuxWindow.hpp>
 
 #if defined(__ANDROID__)
-#include <android/native_window.h> // ANativeWindow_getWidth/Height
+#include <android/native_window.h>
 #endif
 
-#include <cstdint>
 #include <utility>
 
 namespace lux::render
 {
-    RenderSurface::RenderSurface(RenderSurface&& other) noexcept
-        : extent_(other.extent_), surface_(std::exchange(other.surface_, VK_NULL_HANDLE)),
-          instance_(std::exchange(other.instance_, VK_NULL_HANDLE)),
-          allocator_(std::exchange(other.allocator_, nullptr))
+    RenderSurface::RenderSurface(
+        VkSurfaceKHR surface,
+        VkExtent2D extent,
+        VkInstance instance,
+        const VkAllocationCallbacks* allocator
+    ) noexcept
+        : extent_(extent), surface_(surface), instance_(instance), allocator_(allocator)
     {
-        other.extent_ = {0, 0};
+    }
+
+    RenderSurface::~RenderSurface() noexcept
+    {
+        reset();
+    }
+
+    RenderSurface::RenderSurface(RenderSurface&& other) noexcept
+        : extent_(std::exchange(other.extent_, VkExtent2D{})), surface_(std::exchange(other.surface_, VkSurfaceKHR{})),
+          instance_(std::exchange(other.instance_, VkInstance{})), allocator_(std::exchange(other.allocator_, nullptr))
+    {
     }
 
     RenderSurface& RenderSurface::operator=(RenderSurface&& other) noexcept
     {
         if (this != &other)
         {
-            // Release ours FIRST. Overwriting the handle without this leaks the
-            // surface we were holding, with no diagnostic anywhere.
             reset();
-            extent_ = other.extent_;
-            surface_ = std::exchange(other.surface_, VK_NULL_HANDLE);
-            instance_ = std::exchange(other.instance_, VK_NULL_HANDLE);
+            extent_ = std::exchange(other.extent_, VkExtent2D{});
+            surface_ = std::exchange(other.surface_, VkSurfaceKHR{});
+            instance_ = std::exchange(other.instance_, VkInstance{});
             allocator_ = std::exchange(other.allocator_, nullptr);
-            other.extent_ = {0, 0};
         }
         return *this;
     }
 
     void RenderSurface::reset() noexcept
     {
-        if (instance_ != VK_NULL_HANDLE) // surface_ 可为空:规范允许,销毁即 no-op;instance 不可
-            vkDestroySurfaceKHR(instance_, surface_, allocator_);
-        surface_ = VK_NULL_HANDLE;
+        if (surface_)
+        {
+            vkDestroySurfaceKHR(instance_, std::exchange(surface_, VkSurfaceKHR{}), allocator_);
+        }
         instance_ = VK_NULL_HANDLE;
         allocator_ = nullptr;
-        extent_ = {0, 0};
+        extent_ = {};
     }
 
-    RenderSurface RenderSurface::adopt(
-        VkSurfaceKHR surface,
-        VkExtent2D initial_extent,
-        const lux::gapi::vk::Instance& instance,
-        VkAllocationCallbacks* allocator
-    ) noexcept
-    {
-        RenderSurface s;
-        s.surface_ = surface;
-        s.instance_ = instance;
-        s.allocator_ = allocator;
-        s.extent_.width = (initial_extent.width > 0) ? initial_extent.width : 1u;
-        s.extent_.height = (initial_extent.height > 0) ? initial_extent.height : 1u;
-        return s;
-    }
-
-    bool RenderSurface::initFromNative(
+    Expected<RenderSurface> RenderSurface::create(
         std::uint64_t native_window_handle,
         VkExtent2D initial_extent,
         const lux::gapi::vk::Instance& instance,
-        VkAllocationCallbacks* allocator
-    )
+        const VkAllocationCallbacks* allocator
+    ) noexcept
     {
-        reset(); // re-init on a live object must not leak the previous surface
+        const bool is_missing_window = native_window_handle == 0;
+        const bool is_missing_instance = instance.handle() == VK_NULL_HANDLE;
+        const bool is_invalid_input = is_missing_window || is_missing_instance;
+        if (is_invalid_input)
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
+        VkExtent2D extent{
+            initial_extent.width > 0 ? initial_extent.width : 1u,
+            initial_extent.height > 0 ? initial_extent.height : 1u
+        };
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
-        VkWin32SurfaceCreateInfoKHR ci{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
-        ci.hinstance = ::GetModuleHandleW(nullptr);
-        ci.hwnd = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(native_window_handle));
-        VkSurfaceKHR created{VK_NULL_HANDLE};
-        if (vkCreateWin32SurfaceKHR(instance, &ci, allocator, &created) != VK_SUCCESS)
-            return false;
-
-        surface_ = created;
-        instance_ = instance;
-        allocator_ = allocator;
-        extent_.width = (initial_extent.width > 0) ? initial_extent.width : 1u;
-        extent_.height = (initial_extent.height > 0) ? initial_extent.height : 1u;
-        return true;
+        VkWin32SurfaceCreateInfoKHR info{VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR};
+        info.hinstance = ::GetModuleHandleW(nullptr);
+        info.hwnd = reinterpret_cast<HWND>(static_cast<std::uintptr_t>(native_window_handle));
+        VkSurfaceKHR created{};
+        const auto result = vkCreateWin32SurfaceKHR(instance, &info, allocator, &created);
+        if (result != VK_SUCCESS)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(result));
+        }
+        return RenderSurface(created, extent, instance, allocator);
 #elif defined(VK_USE_PLATFORM_ANDROID_KHR)
-        // Android (design §6.3): INIT_WINDOW ≡ createSurfaceRenderTarget
-        // {ANativeWindow}. The handle rides the command payload as a POD, so the
-        // surface is still created only on the render thread — Vulkan puts no
-        // thread affinity on surface creation, and this keeps the Win32 and
-        // Android paths structurally identical.
-        //
-        // This, rather than a method on LuxWindow, is the right seam: the native
-        // window's lifetime equals the SURFACE's lifetime, not the window
-        // object's. Android takes the window away at TERM_WINDOW and hands a new
-        // one back at INIT_WINDOW — several times per session on rotate or
-        // background/foreground. Tying surface creation to a long-lived window
-        // object would force that object (and everything holding it) to be torn
-        // down on every cycle.
+        // The OS owns the native window and may revoke it at TERM_WINDOW.
+        // Its lifetime remains tied to this surface, not a LuxWindow object.
         auto* native = reinterpret_cast<ANativeWindow*>(static_cast<std::uintptr_t>(native_window_handle));
-        if (native == nullptr)
-            return false;
-
-        // Extension entry point: Android's libvulkan.so exports only core
-        // symbols, so a direct reference to vkCreateAndroidSurfaceKHR does not
-        // link. Same treatment as vkGetPhysicalDeviceSurfaceCapabilities2KHR.
-        const auto fn =
-            reinterpret_cast<PFN_vkCreateAndroidSurfaceKHR>(vkGetInstanceProcAddr(instance, "vkCreateAndroidSurfaceKHR")
-            );
-        if (fn == nullptr)
-            return false; // VK_KHR_android_surface not enabled on the instance
-
-        VkAndroidSurfaceCreateInfoKHR ci{VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR};
-        ci.window = native;
-        VkSurfaceKHR created{VK_NULL_HANDLE};
-        if (fn(instance, &ci, allocator, &created) != VK_SUCCESS)
-            return false;
-
-        surface_ = created;
-        instance_ = instance;
-        allocator_ = allocator;
-
-        // The caller's initial_extent is a hint at best on Android — the OS owns
-        // the size. Prefer what the window itself reports; fall back to the hint
-        // only if it is unavailable.
-        const int32_t nw = ANativeWindow_getWidth(native);
-        const int32_t nh = ANativeWindow_getHeight(native);
-        extent_.width = (nw > 0) ? static_cast<uint32_t>(nw) : ((initial_extent.width > 0) ? initial_extent.width : 1u);
-        extent_.height =
-            (nh > 0) ? static_cast<uint32_t>(nh) : ((initial_extent.height > 0) ? initial_extent.height : 1u);
-        return true;
+        const auto create_surface = reinterpret_cast<PFN_vkCreateAndroidSurfaceKHR>(
+            vkGetInstanceProcAddr(instance, "vkCreateAndroidSurfaceKHR")
+        );
+        if (!create_surface)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(VK_ERROR_EXTENSION_NOT_PRESENT));
+        }
+        VkAndroidSurfaceCreateInfoKHR info{VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR};
+        info.window = native;
+        VkSurfaceKHR created{};
+        const auto result = create_surface(instance, &info, allocator, &created);
+        if (result != VK_SUCCESS)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(result));
+        }
+        const int32_t width = ANativeWindow_getWidth(native);
+        const int32_t height = ANativeWindow_getHeight(native);
+        extent.width = width > 0 ? static_cast<uint32_t>(width) : extent.width;
+        extent.height = height > 0 ? static_cast<uint32_t>(height) : extent.height;
+        return RenderSurface(created, extent, instance, allocator);
 #else
-        (void)native_window_handle;
-        (void)initial_extent;
-        (void)instance;
-        (void)allocator;
-        return false;
+        return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(VK_ERROR_EXTENSION_NOT_PRESENT));
 #endif
     }
-
-    bool RenderSurface::init(
-        window::LuxWindow& window,
-        const lux::gapi::vk::Instance& instance,
-        VkAllocationCallbacks* allocator
-    )
-    {
-        reset(); // re-init on a live object must not leak the previous surface
-
-        VkSurfaceKHR created{VK_NULL_HANDLE};
-        if (!window.createVulkanSurface(instance, allocator, &created))
-            return false;
-
-        surface_ = created;
-        instance_ = instance;
-        allocator_ = allocator;
-
-        std::uint32_t framebuffer_width = 0;
-        std::uint32_t framebuffer_height = 0;
-        window.framebufferSize(framebuffer_width, framebuffer_height);
-        extent_.width = framebuffer_width > 0 ? framebuffer_width : 1u;
-        extent_.height = framebuffer_height > 0 ? framebuffer_height : 1u;
-        return true;
-    }
-}
+} // namespace lux::render

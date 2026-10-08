@@ -6,177 +6,109 @@
 
 #include <cstring>
 
+#include <lux/engine/render/core/RenderErrorSink.hpp>
+
 #include <lux/engine/render/gpu/VulkanContext.hpp>    // DeviceContext
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp> // createGpuBufferVmaBuffer
 #include <lux/engine/render/resources/vertex/VertexPoolRegistry.hpp>
 
 namespace lux::render
 {
-    SkinningResources::SkinningResources() = default;
-
-    SkinningResources::~SkinningResources()
+    Expected<SkinningResources::MappedBuffer>
+    SkinningResources::createMappedBuffer(DeviceContext& device, VkDeviceSize size) noexcept
     {
-        if (initialized_)
-            shutdown();
+        VkBuffer buffer{};
+        VmaAllocation allocation{};
+        void* mapped{};
+        const auto allocator = device.vmaAllocator();
+        const auto status = createGpuBufferVmaBuffer(
+            allocator,
+            size,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            true,
+            &buffer,
+            &allocation,
+            &mapped
+        );
+        if (status != VK_SUCCESS)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(status));
+        }
+        MappedBuffer candidate{VmaBuffer::adopt({allocator, buffer, allocation}), mapped};
+        if (!mapped)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(VK_ERROR_MEMORY_MAP_FAILED));
+        }
+        return candidate;
     }
 
-    bool SkinningResources::init(const InitInfo& info)
+    SkinningResources::CreateResult SkinningResources::create(const CreateInfo& info) noexcept
     {
-        if (initialized_)
-            return true;
-        if (!info.device_context || !info.vertex_pool_registry)
-            return false;
-        if (info.vertex_stride == 0 || info.max_bones == 0)
-            return false;
-        if (info.max_dispatches == 0)
-            return false;
-        if (info.layout_id == kInvalidVertexLayoutId)
-            return false;
-
-        device_ctx_ = info.device_context;
-        vertex_pool_registry_ = info.vertex_pool_registry;
-        max_bones_ = info.max_bones;
-        max_dispatches_ = info.max_dispatches;
-
-        // Bone palette: CPU-writable persistent-mapped SSBO, ring-buffered per
-        // frame-in-flight (filled per frame by the upload command; read by the
-        // skinning compute pass). See header for the ring-slot rationale.
-        const VkDeviceSize palette_bytes = VkDeviceSize(max_bones_) * sizeof(BoneMatrixGpu);
-
-        auto destroyPalettes = [this]() noexcept {
-            for (std::uint32_t i = 0; i < kMaxFramesInFlight; ++i)
-                if (bone_palette_buffers_[i] != VK_NULL_HANDLE)
-                    vmaDestroyBuffer(device_ctx_->vmaAllocator(), bone_palette_buffers_[i], bone_palette_allocs_[i]);
-            bone_palette_buffers_.fill(VK_NULL_HANDLE);
-            bone_palette_allocs_.fill(nullptr);
-            bone_palette_mapped_.fill(nullptr);
-        };
-
-        for (std::uint32_t i = 0; i < kMaxFramesInFlight; ++i)
+        const bool is_missing_dependency = !info.device_context || !info.vertex_pool_registry;
+        const bool is_invalid_capacity = info.max_bones == 0 || info.max_dispatches == 0;
+        const bool is_invalid_configuration = is_missing_dependency || is_invalid_capacity;
+        if (is_invalid_configuration)
         {
-            if (createGpuBufferVmaBuffer(
-                    device_ctx_->vmaAllocator(),
-                    palette_bytes,
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                    /*cpu_writable=*/true,
-                    &bone_palette_buffers_[i],
-                    &bone_palette_allocs_[i],
-                    &bone_palette_mapped_[i]
-                ) != VK_SUCCESS)
+            return renderFailure<err::memory::InvalidSkinningConfiguration>();
+        }
+        auto output = TransientVertexSource::create(
+            {info.device_context, info.output_pool_bytes, info.layout_id, info.vertex_stride}
+        );
+        if (!output)
+        {
+            return lux::cxx::unexpected(output.error());
+        }
+        BufferRing palettes;
+        BufferRing dispatch_params;
+        for (auto& palette : palettes)
+        {
+            auto candidate =
+                createMappedBuffer(*info.device_context, VkDeviceSize(info.max_bones) * sizeof(BoneMatrixGpu));
+            if (!candidate)
             {
-                destroyPalettes();
-                return false;
+                return lux::cxx::unexpected(candidate.error());
             }
+            palette = std::move(*candidate);
         }
-
-        // Skinned-vertex output pool + register it for a bindless pool id.
-        TransientVertexSource::InitInfo tvs{};
-        tvs.device_context = device_ctx_;
-        tvs.capacity_bytes = info.output_pool_bytes;
-        tvs.layout_id = info.layout_id;
-        tvs.vertex_stride = info.vertex_stride;
-        if (!output_pool_.init(tvs))
+        for (auto& parameters : dispatch_params)
         {
-            destroyPalettes();
-            return false;
-        }
-
-        if (vertex_pool_registry_->registerSource(output_pool_) == ~0u)
-        {
-            output_pool_.shutdown();
-            destroyPalettes();
-            return false;
-        }
-        output_registered_ = true;
-
-        // Input vertex pool registration lives in the per-scene
-        // StaticVertexPoolSet.
-        // The caller passes the input pool id as a queueDispatch argument and
-        // the compute kernel reads it from the dispatch-params SSBO entry.
-
-        // Dispatch-params SSBO ring — one entry per skinned instance
-        // per frame. CPU writes `SkinDispatchParams[]` here each frame; the
-        // skin compute reads it and binary-searches by gl_WorkGroupID.x.
-        const VkDeviceSize dispatch_params_bytes = VkDeviceSize(max_dispatches_) * sizeof(SkinDispatchParams);
-
-        auto destroyDispatchRings = [this]() noexcept {
-            for (std::uint32_t i = 0; i < kMaxFramesInFlight; ++i)
-                if (dispatch_params_buffers_[i] != VK_NULL_HANDLE)
-                    vmaDestroyBuffer(
-                        device_ctx_->vmaAllocator(),
-                        dispatch_params_buffers_[i],
-                        dispatch_params_allocs_[i]
-                    );
-            dispatch_params_buffers_.fill(VK_NULL_HANDLE);
-            dispatch_params_allocs_.fill(nullptr);
-            dispatch_params_mapped_.fill(nullptr);
-        };
-
-        for (std::uint32_t i = 0; i < kMaxFramesInFlight; ++i)
-        {
-            if (createGpuBufferVmaBuffer(
-                    device_ctx_->vmaAllocator(),
-                    dispatch_params_bytes,
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                    /*cpu_writable=*/true,
-                    &dispatch_params_buffers_[i],
-                    &dispatch_params_allocs_[i],
-                    &dispatch_params_mapped_[i]
-                ) != VK_SUCCESS)
+            auto candidate = createMappedBuffer(
+                *info.device_context,
+                VkDeviceSize(info.max_dispatches) * sizeof(SkinDispatchParams)
+            );
+            if (!candidate)
             {
-                destroyDispatchRings();
-                if (output_registered_)
-                {
-                    vertex_pool_registry_->unregisterSource(output_pool_.bindlessPoolId());
-                    output_registered_ = false;
-                }
-                output_pool_.shutdown();
-                destroyPalettes();
-                return false;
+                return lux::cxx::unexpected(candidate.error());
             }
+            parameters = std::move(*candidate);
         }
-
-        palette_cursors_.fill(0);
-        current_fi_ = 0;
-        dispatches_.clear();
-        initialized_ = true;
-        return true;
+        // Only complete backing may become visible through the vertex source table.
+        // The unique owner keeps the source address stable through semantic adoption.
+        if (info.vertex_pool_registry->registerSource(**output) == ~0u)
+        {
+            return renderFailure<err::frame::VertexPoolRegistryFull>(kVertexPoolMaxCount);
+        }
+        return std::unique_ptr<SkinningResources>(
+            new SkinningResources(info, std::move(palettes), std::move(dispatch_params), std::move(*output))
+        );
     }
 
-    void SkinningResources::shutdown()
+    SkinningResources::SkinningResources(
+        const CreateInfo& info,
+        BufferRing palettes,
+        BufferRing dispatch_params,
+        std::unique_ptr<TransientVertexSource> output
+    ) noexcept
+        : vertex_pool_registry_(*info.vertex_pool_registry), bone_palettes_(std::move(palettes)),
+          max_bones_(info.max_bones), error_sink_(info.error_sink), dispatch_params_(std::move(dispatch_params)),
+          max_dispatches_(info.max_dispatches), output_pool_(std::move(output))
     {
-        if (!initialized_)
-            return;
+    }
 
-        if (output_registered_ && vertex_pool_registry_)
-        {
-            vertex_pool_registry_->unregisterSource(output_pool_.bindlessPoolId());
-            output_registered_ = false;
-        }
-        output_pool_.shutdown();
-
-        for (std::uint32_t i = 0; i < kMaxFramesInFlight; ++i)
-        {
-            if (bone_palette_buffers_[i] != VK_NULL_HANDLE)
-                vmaDestroyBuffer(device_ctx_->vmaAllocator(), bone_palette_buffers_[i], bone_palette_allocs_[i]);
-            if (dispatch_params_buffers_[i] != VK_NULL_HANDLE)
-                vmaDestroyBuffer(device_ctx_->vmaAllocator(), dispatch_params_buffers_[i], dispatch_params_allocs_[i]);
-        }
-        bone_palette_buffers_.fill(VK_NULL_HANDLE);
-        bone_palette_allocs_.fill(nullptr);
-        bone_palette_mapped_.fill(nullptr);
-        dispatch_params_buffers_.fill(VK_NULL_HANDLE);
-        dispatch_params_allocs_.fill(nullptr);
-        dispatch_params_mapped_.fill(nullptr);
-
-        dispatches_.clear();
-        palette_cursors_.fill(0);
-        current_fi_ = 0;
-        max_bones_ = 0;
-        max_dispatches_ = 0;
-        vertex_pool_registry_ = nullptr;
-        device_ctx_ = nullptr;
-        initialized_ = false;
+    SkinningResources::~SkinningResources() noexcept
+    {
+        // Preserve the original scene safe point and revoke the source before member buffers disappear.
+        vertex_pool_registry_.unregisterSource(output_pool_->bindlessPoolId());
     }
 
     void SkinningResources::beginFrame() noexcept
@@ -185,19 +117,21 @@ namespace lux::render
         // before this call; reset only the slot we're about to write.
         palette_cursors_[current_fi_] = 0;
         dispatches_.clear();
-        output_pool_.beginFrame();
+        output_pool_->beginFrame();
     }
 
     std::uint32_t SkinningResources::uploadBonePalette(const BoneMatrixGpu* bones, std::uint32_t bone_count)
     {
-        if (!initialized_ || bones == nullptr || bone_count == 0)
+        if (bones == nullptr || bone_count == 0)
+        {
             return ~0u;
+        }
         const std::uint32_t fi = current_fi_;
         if (bone_count > max_bones_ - palette_cursors_[fi])
             return ~0u; // full this frame
 
         const std::uint32_t base = palette_cursors_[fi];
-        auto* dst = static_cast<BoneMatrixGpu*>(bone_palette_mapped_[fi]) + base;
+        auto* dst = static_cast<BoneMatrixGpu*>(bone_palettes_[fi].data) + base;
         std::memcpy(dst, bones, bone_count * sizeof(BoneMatrixGpu));
         palette_cursors_[fi] += bone_count;
         return base;
@@ -211,10 +145,12 @@ namespace lux::render
         std::uint32_t bone_count
     )
     {
-        if (!initialized_ || vertex_count == 0)
+        if (vertex_count == 0)
+        {
             return kInvalidVertexSourceHandle;
+        }
 
-        const VertexSourceHandle out = output_pool_.allocate(vertex_count);
+        const VertexSourceHandle out = output_pool_->allocate(vertex_count);
         if (!out.valid())
             return kInvalidVertexSourceHandle; // output pool exhausted
 
@@ -224,8 +160,10 @@ namespace lux::render
 
     std::uint32_t SkinningResources::uploadDispatches() noexcept
     {
-        if (!initialized_ || dispatches_.empty())
+        if (dispatches_.empty())
+        {
             return 0u;
+        }
 
         const std::uint32_t fi = current_fi_;
         const std::uint32_t dispatch_count = static_cast<std::uint32_t>(dispatches_.size());
@@ -241,10 +179,7 @@ namespace lux::render
             return 0u;
         }
 
-        auto* dst = static_cast<SkinDispatchParams*>(dispatch_params_mapped_[fi]);
-        if (dst == nullptr)
-            return 0u;
-
+        auto* dst = static_cast<SkinDispatchParams*>(dispatch_params_[fi].data);
         // Running prefix sum of workgroups per dispatch, gl_WorkGroupID.x base
         // for entry `i`. Total workgroups for this frame's batched dispatch:
         //   sum(ceil(vc[j] / kSkinWorkgroupSize), j < dispatch_count)

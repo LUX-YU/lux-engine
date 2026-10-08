@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <map>
 #include <type_traits>
+#include <vector>
 
 namespace
 {
@@ -94,7 +95,8 @@ namespace
         if (result == VK_SUCCESS)
         {
             assert(buffers.emplace(*out, std::pair{allocator, *allocation}).second);
-            if (mapped && reject(EFailure::MAPPED))
+            const bool requested_mapping = (allocation_info->flags & VMA_ALLOCATION_CREATE_MAPPED_BIT) != 0;
+            if (mapped && requested_mapping && reject(EFailure::MAPPED))
             {
                 mapped->pMappedData = nullptr;
             }
@@ -456,6 +458,7 @@ namespace
 #include "../src/resources/lighting/LightResources.cpp"
 #include "../src/resources/vertex/VertexPoolRegistry.cpp"
 #include "../src/resources/vertex/TransientVertexSource.cpp"
+#include "../src/resources/vertex/SkinningResources.cpp"
 #include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
 #include "../src/gpu/lifecycle/DeferredDestroyQueue.cpp"
 #undef vkWaitForFences
@@ -583,33 +586,35 @@ int main(int argc, char** argv)
             assert(published.get() == original && registry.find<VertexPoolRegistry>() == original);
             assert(descriptor_writes == original_writes);
             targets.fill(VK_NULL_HANDLE); // The accepted write target owns its small handle array.
-            std::array<TransientVertexSource, kVertexPoolMaxCount + 1> sources;
+            std::array<std::unique_ptr<TransientVertexSource>, kVertexPoolMaxCount + 1> sources;
             for (auto& source : sources)
             {
-                assert(source.init({&device, 4096, 0, 16}));
+                auto candidate_source = TransientVertexSource::create({&device, 4096, 0, 16});
+                assert(candidate_source);
+                source = std::move(*candidate_source);
             }
             buffer_writes.clear();
             trace_buffer_writes = true;
             for (unsigned id = 0; id < kVertexPoolMaxCount; ++id)
             {
-                assert(original->registerSource(sources[id]) == id);
-                assert(original->isRegistered(id) && sources[id].bindlessPoolId() == id);
+                assert(original->registerSource(*sources[id]) == id);
+                assert(original->isRegistered(id) && sources[id]->bindlessPoolId() == id);
                 for (unsigned fi = 0; fi < 2; ++fi)
                 {
                     const auto& write = buffer_writes[id * 2 + fi];
                     assert(write.device == device.logicalDevice() && write.set == original_targets[fi]);
-                    assert(write.binding == 0 && write.index == id && write.buffer == sources[id].buffer());
+                    assert(write.binding == 0 && write.index == id && write.buffer == sources[id]->buffer());
                 }
             }
             const auto writes_at_capacity = buffer_writes.size();
-            assert(original->registerSource(sources.back()) == ~0u);
-            assert(sources.back().bindlessPoolId() == ~0u && buffer_writes.size() == writes_at_capacity);
+            assert(original->registerSource(*sources.back()) == ~0u);
+            assert(sources.back()->bindlessPoolId() == ~0u && buffer_writes.size() == writes_at_capacity);
             original->unregisterSource(3);
-            assert(!original->isRegistered(3) && sources[3].bindlessPoolId() == ~0u);
-            assert(original->registerSource(sources.back()) == 3);
+            assert(!original->isRegistered(3) && sources[3]->bindlessPoolId() == ~0u);
+            assert(original->registerSource(*sources.back()) == 3);
             original->refreshSource(3);
             assert(buffer_writes.size() == writes_at_capacity + 4);
-            assert(buffer_writes.back().buffer == sources.back().buffer());
+            assert(buffer_writes.back().buffer == sources.back()->buffer());
             original->refreshSource(~0u);
             original->unregisterSource(~0u);
             assert(!original->isRegistered(~0u));
@@ -619,7 +624,7 @@ int main(int argc, char** argv)
             }
             for (const auto& source : sources)
             {
-                assert(source.bindlessPoolId() == ~0u);
+                assert(source->bindlessPoolId() == ~0u);
             }
             trace_buffer_writes = false;
             buffer_writes.clear();
@@ -627,9 +632,210 @@ int main(int argc, char** argv)
         assert(buffers.empty() && sets.contains(original_targets[0]) && sets.contains(original_targets[1]));
         std::puts("Vertex pool complete target: rejection before publication, per-frame writes, capacity/reuse, borrow "
                   "lifetime PASS");
+        static_assert(!std::is_default_constructible_v<TransientVertexSource>);
+        static_assert(!std::is_copy_constructible_v<TransientVertexSource>);
+        static_assert(!std::is_move_constructible_v<TransientVertexSource>);
+        static_assert(!std::is_default_constructible_v<SkinningResources>);
+        static_assert(!std::is_copy_constructible_v<SkinningResources>);
+        static_assert(!std::is_move_constructible_v<SkinningResources>);
+        auto vertices = VertexPoolRegistry::create(device, original_targets, 0);
+        assert(vertices);
+        DeviceContext inactive_device(instance);
+        for (unsigned index = 0; index < 7; ++index)
+        {
+            TransientVertexSource::CreateInfo config{&device, 4096, 0, 16};
+            switch (index)
+            {
+            case 0:
+                config.device_context = nullptr;
+                break;
+            case 1:
+                config.capacity_bytes = 0;
+                break;
+            case 2:
+                config.capacity_bytes = 8;
+                break;
+            case 3:
+                config.vertex_stride = 0;
+                break;
+            case 4:
+                config.layout_id = kInvalidVertexLayoutId;
+                break;
+            case 5:
+                config.capacity_bytes = (VkDeviceSize(UINT32_MAX) + 1) * 16;
+                break;
+            case 6:
+                config.device_context = &inactive_device;
+                break;
+            }
+            auto candidate = TransientVertexSource::create(config);
+            assert(!candidate && isError<err::memory::InvalidTransientVertexConfiguration>(candidate.error()));
+            assert(buffers.empty());
+        }
+        failure = EFailure::BUFFER;
+        auto failed_source = TransientVertexSource::create({&device, 4096, 0, 16});
+        assert(!failed_source && isError<err::device::VulkanCallFailed>(failed_source.error()));
+        assert(failed_source.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+        assert(buffers.empty());
+        failure = EFailure::NONE;
+        {
+            auto source = TransientVertexSource::create({&device, 4096, 0, 16});
+            assert(source && (*source)->buffer() && (*source)->layout() == 0);
+            assert((*vertices)->registerSource(**source) == 0);
+            auto first = (*source)->allocate(10);
+            auto second = (*source)->allocate(246);
+            assert(first.valid() && first.pool_id == 0 && first.vertex_base == 0 && first.vertex_count == 10);
+            assert(second.valid() && second.vertex_base == 10 && second.vertex_count == 246);
+            assert(!(*source)->allocate(1).valid() && !(*source)->allocate(UINT32_MAX).valid());
+            (*source)->beginFrame();
+            assert((*source)->allocate(256).vertex_base == 0);
+            (*vertices)->unregisterSource(0);
+        }
+        assert(buffers.empty());
+        SkinningResources::CreateInfo config{};
+        config.device_context = &device;
+        config.vertex_pool_registry = vertices->get();
+        config.layout_id = 0;
+        config.vertex_stride = 16;
+        config.max_bones = 16;
+        config.max_dispatches = 2;
+        config.output_pool_bytes = 4096;
+        for (auto boundary : {EFailure::BUFFER, EFailure::MAPPED})
+        {
+            const unsigned count = 2 * kMaxFramesInFlight + unsigned(boundary == EFailure::BUFFER);
+            for (unsigned index = 0; index < count; ++index)
+            {
+                const auto old_writes = descriptor_writes;
+                const auto old_rejections = rejections;
+                failure = boundary;
+                skip_rejections = index;
+                ResourceRegistry registry;
+                auto candidate = SkinningResources::create(config);
+                assert(!candidate && !registry.find<SkinningResources>());
+                const auto expected =
+                    boundary == EFailure::MAPPED ? VK_ERROR_MEMORY_MAP_FAILED : VK_ERROR_OUT_OF_DEVICE_MEMORY;
+                assert(isError<err::device::VulkanCallFailed>(candidate.error()));
+                assert(candidate.error().args[0] == encodeVkResult(expected));
+                assert(buffers.empty() && rejections == old_rejections + 1);
+                assert(descriptor_writes == old_writes && !(*vertices)->isRegistered(0));
+            }
+        }
+        failure = EFailure::NONE;
+        for (unsigned index = 0; index < 4; ++index)
+        {
+            auto bad = config;
+            switch (index)
+            {
+            case 0:
+                bad.device_context = nullptr;
+                break;
+            case 1:
+                bad.vertex_pool_registry = nullptr;
+                break;
+            case 2:
+                bad.max_bones = 0;
+                break;
+            case 3:
+                bad.max_dispatches = 0;
+                break;
+            }
+            auto candidate = SkinningResources::create(bad);
+            assert(!candidate && isError<err::memory::InvalidSkinningConfiguration>(candidate.error()));
+            assert(buffers.empty() && !(*vertices)->isRegistered(0));
+        }
+        for (unsigned index = 0; index < 3; ++index)
+        {
+            auto bad = config;
+            if (index == 0)
+            {
+                bad.vertex_stride = 0;
+            }
+            if (index == 1)
+            {
+                bad.output_pool_bytes = 8;
+            }
+            if (index == 2)
+            {
+                bad.layout_id = kInvalidVertexLayoutId;
+            }
+            auto candidate = SkinningResources::create(bad);
+            assert(!candidate && isError<err::memory::InvalidTransientVertexConfiguration>(candidate.error()));
+            assert(buffers.empty() && !(*vertices)->isRegistered(0));
+        }
+        {
+            std::array<std::unique_ptr<TransientVertexSource>, kVertexPoolMaxCount> occupied;
+            for (unsigned id = 0; id < occupied.size(); ++id)
+            {
+                auto source = TransientVertexSource::create({&device, 4096, 0, 16});
+                assert(source);
+                occupied[id] = std::move(*source);
+                assert((*vertices)->registerSource(*occupied[id]) == id);
+            }
+            const auto old_writes = descriptor_writes;
+            auto failed = SkinningResources::create(config);
+            assert(!failed && isError<err::frame::VertexPoolRegistryFull>(failed.error()));
+            assert(buffers.size() == occupied.size() && descriptor_writes == old_writes);
+            (*vertices)->unregisterSource(7);
+            {
+                auto retry = SkinningResources::create(config);
+                assert(retry && (*retry)->outputPoolId() == 7);
+                assert(buffers.size() == occupied.size() + 2 * kMaxFramesInFlight + 1);
+            }
+            assert(!(*vertices)->isRegistered(7) && buffers.size() == occupied.size());
+            for (unsigned id = 0; id < occupied.size(); ++id)
+            {
+                (*vertices)->unregisterSource(id);
+            }
+        }
+        assert(buffers.empty());
+        {
+            ResourceRegistry registry;
+            auto candidate = SkinningResources::create(config);
+            assert(candidate && !registry.find<SkinningResources>());
+            auto* original = candidate->get();
+            auto published = registry.insert(std::move(*candidate));
+            assert(published.get() == original && registry.find<SkinningResources>() == original);
+            assert(original->outputPoolId() == 0 && original->maxDispatches() == 2);
+            assert(buffers.size() == 2 * kMaxFramesInFlight + 1);
+            std::array<BoneMatrixGpu, 16> bones{};
+            bones[0].m[0] = 3.f;
+            for (unsigned frame = 0; frame < kMaxFramesInFlight; ++frame)
+            {
+                original->beginFrameIfNew(frame);
+                assert(original->currentFrameIndex() == frame && original->dispatches().empty());
+                assert(original->uploadBonePalette(bones.data(), 16) == 0);
+                assert(original->uploadBonePalette(bones.data(), 1) == ~0u);
+                assert(original->uploadBonePalette(nullptr, 1) == ~0u);
+                assert(original->queueDispatch(0, 10, 65, 0, 2).vertex_base == 0);
+                assert(original->queueDispatch(0, 80, 64, 2, 2).vertex_base == 65);
+                original->beginFrameIfNew(frame);
+                assert(original->dispatches().size() == 2 && original->uploadDispatches() == 3);
+                const auto& palette_origin = buffers.at(original->bonePaletteBuffer(frame));
+                VmaAllocationInfo palette_info{};
+                vmaGetAllocationInfo(palette_origin.first, palette_origin.second, &palette_info);
+                assert(std::memcmp(palette_info.pMappedData, bones.data(), sizeof(bones)) == 0);
+                const auto& params_origin = buffers.at(original->dispatchParamsBuffer(frame));
+                VmaAllocationInfo params_info{};
+                vmaGetAllocationInfo(params_origin.first, params_origin.second, &params_info);
+                const auto* parameters = static_cast<const SkinDispatchParams*>(params_info.pMappedData);
+                assert(parameters[0].workgroup_start == 0 && parameters[1].workgroup_start == 2);
+                assert(parameters[1].in_base == 80 && parameters[1].out_base == 65 && parameters[1].palette_base == 2);
+                assert(!original->queueDispatch(0, 0, 200, 0, 2).valid());
+                assert(original->dispatches().size() == 2);
+                assert(original->queueDispatch(0, 0, 1, 0, 2).valid());
+                assert(original->uploadDispatches() == 0); // Preserve the original whole-batch capacity rejection.
+            }
+            original->beginFrameIfNew(kMaxFramesInFlight);
+            assert(original->dispatches().empty() && original->uploadBonePalette(bones.data(), 1) == 0);
+        }
+        assert(buffers.empty() && !(*vertices)->isRegistered(0));
+        std::puts("Skinning complete backing: native allocation/mapping rollback, no early registration, capacity "
+                  "retry, rings and dispatch identity PASS");
     }
     assert(pools.size() == baseline_pools && sets.size() == baseline_sets);
-    if (argc > 1 && std::string_view(argv[1]) == "--vertex-pool")
+    const bool vertex_only =
+        argc > 1 && (std::string_view(argv[1]) == "--vertex-pool" || std::string_view(argv[1]) == "--skinning");
+    if (vertex_only)
     {
         return 0;
     }

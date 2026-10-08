@@ -3,17 +3,10 @@
  * @file SkinningResources.hpp
  * @brief Per-scene GPU resources for compute vertex skinning.
  *
- * Owns the two GPU buffers the skinning compute pass needs that aren't
- * already provided elsewhere:
- *
- *   - bone_palette_buffer_  : CPU-writable SSBO of mat4 (one entry per bone
- *                              per skinned instance, packed back-to-back).
- *                              Filled each frame from the bone-palette upload
- *                              command.
- *   - output_pool_          : a TransientVertexSource holding the
- *                              skinned vertex output. Registered with the
- *                              VertexPoolRegistry so it gets a bindless
- *                              pool id that the graphics _vp shaders read.
+ * Owns CPU-mapped bone-palette and dispatch-parameter rings plus a complete
+ * transient output pool. All backing is ready before its source registration
+ * and publication in the scene registry. The registry is borrowed and outlives
+ * this object; destruction revokes the source before member buffers disappear.
  *
  * The *input* vertices come from MeshResources' global VBO, exposed as a
  * StaticVertexSource in the bindless pool. Ownership of that registration
@@ -38,19 +31,17 @@
 #include <memory>
 #include <vector>
 
-#include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
 #include <lux/engine/render/resources/vertex/TransientVertexSource.hpp>
 #include <lux/engine/function/render/features/core/VertexLayoutTypes.hpp>
 #include <lux/engine/function/render/client/core/RenderTypes.hpp> // kMaxFramesInFlight
-#include <lux/engine/render/core/RenderErrorSink.hpp>
-#include <lux/engine/function/render/client/core/RenderErrorList.hpp>
 #include <lux/engine/function/visibility.h>
 
 namespace lux::render
 {
     class DeviceContext;
+    class RenderErrorSink;
     class VertexPoolRegistry;
 
     /// std430 mat4 — one bone's world-space skinning matrix.
@@ -81,13 +72,14 @@ namespace lux::render
     };
     static_assert(sizeof(SkinDispatchParams) == 24);
 
-    class LUX_FUNCTION_PUBLIC SkinningResources
+    class LUX_FUNCTION_PUBLIC SkinningResources final
     {
     public:
-        struct InitInfo
+        struct CreateInfo
         {
             DeviceContext* device_context = nullptr;
             VertexPoolRegistry* vertex_pool_registry = nullptr;
+            RenderErrorSink* error_sink = nullptr;
             VertexLayoutId layout_id = kInvalidVertexLayoutId;
             std::uint32_t vertex_stride = 0;                      ///< sizeof(rdesc::Vertex)
             std::uint32_t max_bones = 64u * 1024;                 ///< palette capacity (entries)
@@ -102,18 +94,19 @@ namespace lux::render
             std::uint32_t in_base;    ///< first input vertex
             std::uint32_t out_base;   ///< first output vertex (transient pool)
             std::uint32_t vertex_count;
-            std::uint32_t palette_base; ///< first bone in bone_palette_buffer_
+            std::uint32_t palette_base; ///< first bone in the current palette buffer
             std::uint32_t bone_count;
         };
 
-        SkinningResources();
-        ~SkinningResources();
+        using CreateResult = Expected<std::unique_ptr<SkinningResources>>;
+        [[nodiscard]] static CreateResult create(const CreateInfo& info) noexcept;
+        ~SkinningResources() noexcept;
 
         SkinningResources(const SkinningResources&) = delete;
         SkinningResources& operator=(const SkinningResources&) = delete;
 
-        bool init(const InitInfo& info);
-        void shutdown();
+        SkinningResources(SkinningResources&&) = delete;
+        SkinningResources& operator=(SkinningResources&&) = delete;
 
         /// Reset per-frame state: palette write cursor, dispatch list, and
         /// the transient output pool arena.
@@ -125,13 +118,6 @@ namespace lux::render
         /// Used because client commands are drained BEFORE the render-thread
         /// frame-begin, so an onBeginFrame reset would wipe the just-appended
         /// dispatches.
-        /// 自发上报的去处(非拥有)。dispatch 参数缓冲装不下本帧的批,是每帧的
-        /// 资源仲裁结果 —— 没有调用方可以处置,但也不能不可见。
-        void setErrorSink(RenderErrorSink* sink) noexcept
-        {
-            error_sink_ = sink;
-        }
-
         void beginFrameIfNew(std::uint64_t frame_serial) noexcept
         {
             if (frame_serial != last_frame_serial_)
@@ -140,6 +126,7 @@ namespace lux::render
                 current_fi_ = static_cast<std::uint32_t>(frame_serial % kMaxFramesInFlight);
                 beginFrame();
             }
+
         }
 
         /// Append a bone palette (one mat4 per bone). Returns the palette
@@ -167,7 +154,7 @@ namespace lux::render
         /// Filled by `uploadDispatches()` from the queued `dispatches_` list.
         [[nodiscard]] VkBuffer dispatchParamsBuffer(std::uint32_t fi) const noexcept
         {
-            return dispatch_params_buffers_[fi % kMaxFramesInFlight];
+            return dispatch_params_[fi % kMaxFramesInFlight].owner.buffer();
         }
 
         /// Convert this frame's queued `dispatches_` into GPU-side
@@ -186,8 +173,9 @@ namespace lux::render
         /// Bone palette buffer for ring slot @p fi (per frame-in-flight).
         [[nodiscard]] VkBuffer bonePaletteBuffer(std::uint32_t fi) const noexcept
         {
-            return bone_palette_buffers_[fi % kMaxFramesInFlight];
+            return bone_palettes_[fi % kMaxFramesInFlight].owner.buffer();
         }
+
         /// Current ring slot (== serial % kMaxFramesInFlight); set by beginFrameIfNew.
         /// Single source of truth shared by the palette write and the skin
         /// descriptor-set resolver so they always reference the same slot.
@@ -195,27 +183,42 @@ namespace lux::render
         {
             return current_fi_;
         }
+
         [[nodiscard]] TransientVertexSource& outputPool() noexcept
         {
-            return output_pool_;
-        }
-        [[nodiscard]] const TransientVertexSource& outputPool() const noexcept
-        {
-            return output_pool_;
-        }
-        [[nodiscard]] std::uint32_t outputPoolId() const noexcept
-        {
-            return output_pool_.bindlessPoolId();
+            return *output_pool_;
         }
 
-        [[nodiscard]] bool initialized() const noexcept
+        [[nodiscard]] const TransientVertexSource& outputPool() const noexcept
         {
-            return initialized_;
+            return *output_pool_;
+        }
+
+        [[nodiscard]] std::uint32_t outputPoolId() const noexcept
+        {
+            return output_pool_->bindlessPoolId();
         }
 
     private:
-        DeviceContext* device_ctx_{nullptr};
-        VertexPoolRegistry* vertex_pool_registry_{nullptr};
+        struct MappedBuffer
+        {
+            VmaBuffer owner;
+            void* data{};
+        };
+
+        using BufferRing = std::array<MappedBuffer, kMaxFramesInFlight>;
+
+        [[nodiscard]] static Expected<MappedBuffer>
+        createMappedBuffer(DeviceContext& device, VkDeviceSize size) noexcept;
+
+        SkinningResources(
+            const CreateInfo& info,
+            BufferRing palettes,
+            BufferRing dispatch_params,
+            std::unique_ptr<TransientVertexSource> output
+        ) noexcept;
+
+        VertexPoolRegistry& vertex_pool_registry_;
 
         // Input vertex pool: ownership lives in the per-scene
         // StaticVertexPoolSet. SkinningResources no longer touches it; the
@@ -228,9 +231,7 @@ namespace lux::render
         // serial % kMaxFramesInFlight — that never collides for any FIF count
         // <= kMaxFramesInFlight (reuse of slot S%k at frame S+k waits on frame
         // S's fence), so no runtime FIF count is needed.
-        std::array<VkBuffer, kMaxFramesInFlight> bone_palette_buffers_{};
-        std::array<VmaAllocation, kMaxFramesInFlight> bone_palette_allocs_{};
-        std::array<void*, kMaxFramesInFlight> bone_palette_mapped_{};
+        BufferRing bone_palettes_;
         std::array<std::uint32_t, kMaxFramesInFlight> palette_cursors_{}; ///< next free bone slot, per fi
         std::uint32_t max_bones_{0};
         RenderErrorSink* error_sink_{nullptr};
@@ -240,9 +241,7 @@ namespace lux::render
         // SkinDispatchParams[dispatch_count] into the current slot each frame;
         // the skinning compute reads it via descriptor binding 2 and
         // binary-searches by gl_WorkGroupID.x to recover its dispatch entry.
-        std::array<VkBuffer, kMaxFramesInFlight> dispatch_params_buffers_{};
-        std::array<VmaAllocation, kMaxFramesInFlight> dispatch_params_allocs_{};
-        std::array<void*, kMaxFramesInFlight> dispatch_params_mapped_{};
+        BufferRing dispatch_params_;
         std::uint32_t max_dispatches_{0};
 
         // Skinned-vertex OUTPUT pool is single-buffered. NOTE: this is a KNOWN
@@ -253,12 +252,10 @@ namespace lux::render
         // bone palette above is per-FIF precisely to avoid this. Impact is a subtle
         // one-frame-ahead skin under GPU overlap, not corruption; the fix (ring the
         // output pool per frame-in-flight) is deferred. See TransientVertexSource.hpp.
-        TransientVertexSource output_pool_;
-        bool output_registered_{false};
+        std::unique_ptr<TransientVertexSource> output_pool_;
 
         std::vector<Dispatch> dispatches_;
         std::uint64_t last_frame_serial_{~0ull}; ///< beginFrameIfNew key
-        bool initialized_{false};
     };
 
 } // namespace lux::render

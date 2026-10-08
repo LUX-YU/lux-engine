@@ -75,14 +75,13 @@ namespace lux::render
                 encodeFeatureType(::lux::render::featureId("lux.render.mesh_stack.v1"))
             );
 
-        if (!renderScene().resources().find<SkinningResources>())
-            renderScene().resources().emplace<SkinningResources>();
-
         auto* skin = skinningResources();
+        if (!skin)
         {
-            SkinningResources::InitInfo si{};
+            SkinningResources::CreateInfo si{};
             si.device_context = &ctx.deviceContext();
             si.vertex_pool_registry = vpr;
+            si.error_sink = ctx.errorSink();
             // The skinning INPUT pool (global VBO) is owned by the per-scene
             // StaticVertexPoolSet; SkinningResources only owns the OUTPUT pool +
             // bone palettes. The dispatch caller passes the input pool id
@@ -101,10 +100,12 @@ namespace lux::render
                                    : makeDefaultVertexLayout().stride; // 88 B fallback
             si.max_bones = cfg.max_bones;
             si.output_pool_bytes = cfg.output_pool_bytes;
-            if (!skin->init(si))
-                return renderFailure<err::feature::ResourceInitFailed>();
-            // 批装不下时的自发上报去处(没有调用方可以处置这类每帧仲裁结果)。
-            skin->setErrorSink(renderContext().errorSink());
+            auto candidate = SkinningResources::create(si);
+            if (!candidate)
+            {
+                return lux::cxx::unexpected(candidate.error());
+            }
+            skin = renderScene().resources().insert(std::move(*candidate)).get();
         }
 
         // --- 2+3. Compute pipeline (reflected layout) ---
@@ -222,8 +223,10 @@ namespace lux::render
     void SkinningFeature::addPasses(RGBuilder& builder)
     {
         auto* skin = skinningResources();
-        if (!skin || !skin->initialized() || skin_ds_[0] == VK_NULL_HANDLE)
+        if (!skin || skin_ds_[0] == VK_NULL_HANDLE)
+        {
             return;
+        }
 
         // set 1 = bindless vertex pool: the compute reads its INPUT vertices from
         // it. Required by the compute pipeline layout, so bail if absent.
@@ -253,8 +256,10 @@ namespace lux::render
             if (out == nullptr || cap == 0)
                 return 0u;
             auto* s = skinningResources();
-            if (!s || !s->initialized())
+            if (!s)
+            {
                 return 0u;
+            }
             out[0] = s->outputPool().buffer();
             return 1u;
         };

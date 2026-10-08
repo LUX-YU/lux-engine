@@ -9,78 +9,49 @@
 
 namespace lux::render
 {
-    TransientVertexSource::~TransientVertexSource()
+    TransientVertexSource::CreateResult TransientVertexSource::create(const CreateInfo& info) noexcept
     {
-        if (initialized_)
-            shutdown();
-    }
-
-    bool TransientVertexSource::init(const InitInfo& info)
-    {
-        if (initialized_)
-            return true;
-        if (info.device_context == nullptr)
-            return false;
-        if (info.vertex_stride == 0)
-            return false;
-        if (info.capacity_bytes == 0)
-            return false;
-        if (info.layout_id == kInvalidVertexLayoutId)
-            return false;
-
-        device_ctx_ = info.device_context;
-        capacity_bytes_ = info.capacity_bytes;
-        layout_id_ = info.layout_id;
-        vertex_stride_ = info.vertex_stride;
-
-        // SkinningFeature (R5) writes via compute → mesh shaders read.
-        // STORAGE_BUFFER_BIT is the only usage we need here; no transfer
-        // path involved (the data is always GPU-generated, never copied
-        // from CPU).
-        void* dummy_mapped = nullptr;
-        const auto result = createGpuBufferVmaBuffer(
-            device_ctx_->vmaAllocator(),
-            capacity_bytes_,
+        const bool is_missing_device = info.device_context == nullptr || info.device_context->vmaAllocator() == nullptr;
+        const bool is_invalid_stride = info.vertex_stride == 0;
+        const bool is_invalid_layout = info.layout_id == kInvalidVertexLayoutId;
+        const bool is_invalid_capacity = is_invalid_stride || info.capacity_bytes < info.vertex_stride ||
+                                         info.capacity_bytes / info.vertex_stride > UINT32_MAX;
+        const bool is_invalid_configuration = is_missing_device || is_invalid_layout || is_invalid_capacity;
+        if (is_invalid_configuration)
+        {
+            return renderFailure<err::memory::InvalidTransientVertexConfiguration>();
+        }
+        VkBuffer buffer{};
+        VmaAllocation allocation{};
+        const auto allocator = info.device_context->vmaAllocator();
+        const auto status = createGpuBufferVmaBuffer(
+            allocator,
+            info.capacity_bytes,
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-            /*cpu_writable=*/false,
-            &buffer_,
-            &alloc_,
-            &dummy_mapped
+            false,
+            &buffer,
+            &allocation,
+            nullptr
         );
-        const bool allocation_failed = result != VK_SUCCESS;
-        if (allocation_failed)
+        if (status != VK_SUCCESS)
         {
-            buffer_ = VK_NULL_HANDLE;
-            alloc_ = nullptr;
-            return false;
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(status));
         }
-
-        total_vertices_ = static_cast<std::uint32_t>(capacity_bytes_ / vertex_stride_);
-        next_vertex_ = 0;
-        initialized_ = true;
-        return true;
+        auto owner = VmaBuffer::adopt({allocator, buffer, allocation});
+        return std::unique_ptr<TransientVertexSource>(new TransientVertexSource(
+            std::move(owner),
+            info.layout_id,
+            static_cast<std::uint32_t>(info.capacity_bytes / info.vertex_stride)
+        ));
     }
 
-    void TransientVertexSource::shutdown()
+    TransientVertexSource::TransientVertexSource(
+        VmaBuffer buffer,
+        VertexLayoutId layout,
+        std::uint32_t total_vertices
+    ) noexcept
+        : buffer_(std::move(buffer)), layout_id_(layout), total_vertices_(total_vertices)
     {
-        if (!initialized_)
-            return;
-
-        if (buffer_ != VK_NULL_HANDLE)
-        {
-            vmaDestroyBuffer(device_ctx_->vmaAllocator(), buffer_, alloc_);
-            buffer_ = VK_NULL_HANDLE;
-            alloc_ = nullptr;
-        }
-
-        device_ctx_ = nullptr;
-        capacity_bytes_ = 0;
-        layout_id_ = kInvalidVertexLayoutId;
-        vertex_stride_ = 0;
-        pool_id_ = ~0u;
-        next_vertex_ = 0;
-        total_vertices_ = 0;
-        initialized_ = false;
     }
 
     void TransientVertexSource::beginFrame() noexcept
@@ -92,7 +63,7 @@ namespace lux::render
 
     VertexSourceHandle TransientVertexSource::allocate(std::uint32_t vertex_count)
     {
-        if (!initialized_ || vertex_count == 0)
+        if (vertex_count == 0)
         {
             return kInvalidVertexSourceHandle;
         }

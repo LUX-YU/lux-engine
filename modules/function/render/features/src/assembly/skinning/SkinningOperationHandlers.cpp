@@ -140,9 +140,7 @@ namespace lux::render
         const bool is_missing_skin = d.skin == nullptr;
         const bool is_missing_instances = d.inst == nullptr;
         const bool is_missing_meshes = d.mesh_res == nullptr;
-        const bool is_uninitialized_skin = !is_missing_skin && !d.skin->initialized();
-        const bool is_invalid_dependencies =
-            is_missing_skin || is_missing_instances || is_missing_meshes || is_uninitialized_skin;
+        const bool is_invalid_dependencies = is_missing_skin || is_missing_instances || is_missing_meshes;
         if (is_invalid_dependencies)
             return;
         d.skin->beginFrameIfNew(d.sc->frameSerial());
@@ -159,9 +157,7 @@ namespace lux::render
         const bool is_missing_skin = d.skin == nullptr;
         const bool is_missing_instances = d.inst == nullptr;
         const bool is_missing_meshes = d.mesh_res == nullptr;
-        const bool is_uninitialized_skin = !is_missing_skin && !d.skin->initialized();
-        const bool is_invalid_dependencies =
-            is_missing_skin || is_missing_instances || is_missing_meshes || is_uninitialized_skin;
+        const bool is_invalid_dependencies = is_missing_skin || is_missing_instances || is_missing_meshes;
         if (is_invalid_dependencies)
             return;
         d.skin->beginFrameIfNew(d.sc->frameSerial());

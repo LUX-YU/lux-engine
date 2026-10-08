@@ -197,6 +197,24 @@ namespace lux::render::err
     // ── 显存与容量 ───────────────────────────────────────────────────────
     namespace memory
     {
+        struct InvalidTransientVertexConfiguration
+        {
+            static constexpr const char* name = "memory.invalid_transient_vertex_configuration";
+            static constexpr const char* message =
+                "Transient vertices require a device, layout, stride and representable nonempty capacity";
+            static constexpr ERecovery recovery = ERecovery::BUG;
+            static constexpr ErrorArgs args{};
+        };
+
+        struct InvalidSkinningConfiguration
+        {
+            static constexpr const char* name = "memory.invalid_skinning_configuration";
+            static constexpr const char* message =
+                "Skinning requires a device, vertex registry and nonempty palette and dispatch capacities";
+            static constexpr ERecovery recovery = ERecovery::BUG;
+            static constexpr ErrorArgs args{};
+        };
+
         struct InvalidLightConfiguration
         {
             static constexpr const char* name = "memory.invalid_light_configuration";
@@ -1415,6 +1433,8 @@ namespace lux::render::err
     X(::lux::render::err::shader::ReflectionOutOfSyncWithSpirv)                                                        \
     X(::lux::render::err::memory::GpuAllocationFailed)                                                                 \
     X(::lux::render::err::memory::OutOfMemory)                                                                         \
+    X(::lux::render::err::memory::InvalidTransientVertexConfiguration)                                                 \
+    X(::lux::render::err::memory::InvalidSkinningConfiguration)                                                        \
     X(::lux::render::err::memory::InvalidLightConfiguration)                                                           \
     X(::lux::render::err::memory::InvalidMaterialConfiguration)                                                        \
     X(::lux::render::err::memory::InvalidTextureConfiguration)                                                         \

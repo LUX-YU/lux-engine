@@ -4,9 +4,9 @@
  * @brief Manages compiled shader modules (VkShaderModule + reflection info).
  *
  * Registered in the ResourceRegistry so that RenderFeatures can
- * resolve ShaderHandle to ShaderObject during init().
+ * resolve ShaderHandle to ShaderObject during feature installation.
  *
- * Usage — must<>, not find<>: RenderServer::init() emplaces this unconditionally
+ * Usage — must<>, not find<>: RenderServer construction publishes this unconditionally
  * before any scene or feature exists, so absence is not a runtime possibility.
  *   auto& sr = registry.must<ShaderResources>();
  *   ShaderHandle h = sr.add(spirv, info);    // compiles SPIR-V → VkShaderModule

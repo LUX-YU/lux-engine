@@ -3,7 +3,9 @@
 #include "../support/ProjectRequests.hpp"
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <lux/engine/RenderContext.hpp>
+#include <lux/engine/error/ErrorRegistry.hpp>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
@@ -295,10 +297,14 @@ int main(int argc, char** argv)
                         [&]() noexcept
                         {
                             assert(counts["B"].draws == draws_before);
-                    std::fprintf(stderr, "Restoring native output after timer\n");
+                            std::fprintf(stderr, "Restoring native output after timer\n");
 #if defined(_WIN32)
                             ShowWindow(static_cast<HWND>(window_identity->nativeHandle()), SW_RESTORE);
-                    std::fprintf(stderr, "Native restore returned, minimized=%d\n", window_identity->metrics().minimized);
+                            std::fprintf(
+                                stderr,
+                                "Native restore returned, minimized=%d\n",
+                                window_identity->metrics().minimized
+                            );
 #endif
                         }
                     );
@@ -334,7 +340,14 @@ int main(int argc, char** argv)
     auto added = root.addPane(std::move(owner));
     assert(added);
     global_handle = root.paneHandle(added->get());
-    assert(fixture::open(*host, a) && host->run());
+    assert(fixture::open(*host, a));
+    const auto result = host->run();
+    if (!result)
+    {
+        const auto diagnostic = error::format(result.error());
+        std::fprintf(stderr, "Public host run failed at phase %u: %s\n", phase, diagnostic.c_str());
+    }
+    assert(result);
     assert(phase == 10 && !host->project() && facts.failed == 2 && counts["A"].panes == 1);
     assert(object::ObjectRuntime::instance().statistics().pending == 0);
     std::puts("PASS public run/Events: global UI, blocked worker replacement, Root rejection, metrics, GPU and shutdown"

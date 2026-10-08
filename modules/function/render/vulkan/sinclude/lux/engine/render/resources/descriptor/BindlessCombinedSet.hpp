@@ -341,11 +341,6 @@ namespace lux::render
         /// Called after TransferScheduler::endTransfers().
         void postTransfer(VkCommandBuffer cmd);
 
-        //(已删 recordBind:唯二调用者是 TextureResources 的两个转发,而那两个
-        // 自身零调用 —— 整条"资源自己绑自己"的链随 GPUResourceBase 的同名钩子
-        // 一起退休。纹理表的绑定走渲染图:bindImmutableDS(Texture, ...),
-        // BINDLESS 域的实例就是这张全局表本身。)
-
         // ========== Query ==========
         VkDescriptorSetLayout descriptorLayout() const
         {

@@ -72,9 +72,12 @@ namespace lux::render
         timeline_ci.initialValue = 0;
         VkSemaphoreCreateInfo sem_ci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
         sem_ci.pNext = &timeline_ci;
-        const auto semaphore_result = vkCreateSemaphore(device_, &sem_ci, nullptr, &timeline_sem_);
-        if (semaphore_result != VK_SUCCESS)
-            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(semaphore_result));
+        auto semaphore = SemaphoreOwner::create(device_, sem_ci);
+        if (!semaphore)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(semaphore.error()));
+        }
+        timeline_sem_ = std::move(*semaphore);
 
         cmd_pool_count_ = std::max(2u, cfg.batch_slot_count);
         cmd_pools_ = std::make_unique<CmdPoolSlot[]>(cmd_pool_count_);
@@ -83,9 +86,12 @@ namespace lux::render
             VkCommandPoolCreateInfo pool_ci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
             pool_ci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
             pool_ci.queueFamilyIndex = transfer_family_;
-            const auto pool_result = vkCreateCommandPool(device_, &pool_ci, nullptr, &cmd_pools_[i].pool);
-            if (pool_result != VK_SUCCESS)
-                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(pool_result));
+            auto pool = CommandPoolOwner::create(device_, pool_ci);
+            if (!pool)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(pool.error()));
+            }
+            cmd_pools_[i].pool = std::move(*pool);
         }
 
         stop_requested_.store(false, std::memory_order_release);
@@ -111,18 +117,6 @@ namespace lux::render
                 freeUnsubmittedCompletion(batch->completion);
             else
                 freeUnsubmittedCompletion(std::get<TransferCompletion>(result));
-        }
-
-        for (uint32_t i = 0; i < cmd_pool_count_; ++i)
-            if (cmd_pools_[i].pool != VK_NULL_HANDLE)
-                vkDestroyCommandPool(device_, cmd_pools_[i].pool, nullptr);
-        cmd_pools_.reset();
-        cmd_pool_count_ = 0;
-
-        if (timeline_sem_ != VK_NULL_HANDLE)
-        {
-            vkDestroySemaphore(device_, timeline_sem_, nullptr);
-            timeline_sem_ = VK_NULL_HANDLE;
         }
     }
 
@@ -186,7 +180,8 @@ namespace lux::render
                     const uint64_t wait_value = slot.last_timeline_value.load(std::memory_order_acquire);
                     VkSemaphoreWaitInfo wait_info{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
                     wait_info.semaphoreCount = 1;
-                    wait_info.pSemaphores = &timeline_sem_;
+                    const auto semaphore = timeline_sem_.get();
+                    wait_info.pSemaphores = &semaphore;
                     wait_info.pValues = &wait_value;
                     if (vkWaitSemaphores(device_, &wait_info, UINT64_MAX) != VK_SUCCESS)
                         renderFatal("GpuTransferPipeline timeline wait failed");
@@ -200,10 +195,10 @@ namespace lux::render
 
                 slot.state.store(EBatchSlotState::RECORDING, std::memory_order_release);
                 slot.last_timeline_value.store(0, std::memory_order_relaxed);
-                if (vkResetCommandPool(device_, slot.pool, 0) != VK_SUCCESS)
+                if (vkResetCommandPool(device_, slot.pool.get(), 0) != VK_SUCCESS)
                     renderFatal("GpuTransferPipeline command-pool reset failed");
                 next_cmd_pool_ = (idx + 1u) % cmd_pool_count_;
-                return {slot.pool, idx};
+                return {slot.pool.get(), idx};
             }
 
             const auto epoch = worker_epoch_.load(std::memory_order_acquire);
@@ -229,7 +224,7 @@ namespace lux::render
         {
             renderFatal("GpuTransferPipeline retained batch slot changed state before acquire");
         }
-        releaseBatchSlot({slot.pool, batch_slot});
+        releaseBatchSlot({slot.pool.get(), batch_slot});
     }
 
     bool GpuTransferPipeline::retireOneSubmittedSlot()
@@ -243,7 +238,8 @@ namespace lux::render
             const uint64_t wait_value = slot.last_timeline_value.load(std::memory_order_acquire);
             VkSemaphoreWaitInfo wait_info{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
             wait_info.semaphoreCount = 1;
-            wait_info.pSemaphores = &timeline_sem_;
+            const auto semaphore = timeline_sem_.get();
+            wait_info.pSemaphores = &semaphore;
             wait_info.pValues = &wait_value;
             if (vkWaitSemaphores(device_, &wait_info, UINT64_MAX) != VK_SUCCESS)
                 renderFatal("GpuTransferPipeline slot retirement failed");
@@ -267,7 +263,8 @@ namespace lux::render
 
         VkSemaphoreWaitInfo wait_info{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
         wait_info.semaphoreCount = 1;
-        wait_info.pSemaphores = &timeline_sem_;
+        const auto semaphore = timeline_sem_.get();
+        wait_info.pSemaphores = &semaphore;
         wait_info.pValues = &wait_value;
         if (vkWaitSemaphores(device_, &wait_info, UINT64_MAX) != VK_SUCCESS)
             renderFatal("GpuTransferPipeline graphics-finalize wait failed");
@@ -337,12 +334,12 @@ namespace lux::render
             // Chain every submission through N-1 so the semaphore value is
             // globally monotonic, not merely monotonically allocated.
             VkSemaphoreSubmitInfo wait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-            wait.semaphore = timeline_sem_;
+            wait.semaphore = timeline_sem_.get();
             wait.value = my_value - 1u;
             wait.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 
             VkSemaphoreSubmitInfo signal{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-            signal.semaphore = timeline_sem_;
+            signal.semaphore = timeline_sem_.get();
             signal.value = my_value;
             // The command buffer may end with a queue-family ownership
             // release barrier.  Signalling at COPY would allow the matching
@@ -408,12 +405,12 @@ namespace lux::render
         const uint64_t timeline_value = timeline_counter_.fetch_add(1, std::memory_order_relaxed) + 1u;
 
         VkSemaphoreSubmitInfo wait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-        wait.semaphore = timeline_sem_;
+        wait.semaphore = timeline_sem_.get();
         wait.value = timeline_value - 1u;
         wait.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 
         VkSemaphoreSubmitInfo signal{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-        signal.semaphore = timeline_sem_;
+        signal.semaphore = timeline_sem_.get();
         signal.value = timeline_value;
         signal.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 
@@ -600,12 +597,12 @@ namespace lux::render
 
         const uint64_t timeline_value = ++timeline_counter_;
         VkSemaphoreSubmitInfo wait{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-        wait.semaphore = timeline_sem_;
+        wait.semaphore = timeline_sem_.get();
         wait.value = timeline_value - 1u;
         wait.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 
         VkSemaphoreSubmitInfo signal{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-        signal.semaphore = timeline_sem_;
+        signal.semaphore = timeline_sem_.get();
         signal.value = timeline_value;
         // Include the terminal queue-family release barrier in the signal's
         // synchronization scope.  The graphics finalize submission waits on
@@ -652,7 +649,8 @@ namespace lux::render
 
         VkSemaphoreWaitInfo wait_info{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
         wait_info.semaphoreCount = 1;
-        wait_info.pSemaphores = &timeline_sem_;
+        const auto semaphore = timeline_sem_.get();
+        wait_info.pSemaphores = &semaphore;
         wait_info.pValues = &timeline_value;
         if (vkWaitSemaphores(device_, &wait_info, UINT64_MAX) != VK_SUCCESS)
             renderFatal("GpuTransferPipeline dedicated-queue wait failed");

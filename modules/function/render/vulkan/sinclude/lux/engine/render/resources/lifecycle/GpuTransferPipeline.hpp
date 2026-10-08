@@ -22,6 +22,7 @@
 #include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/function/render/client/UploadLifecycle.hpp>
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 
 #include <lux/cxx/concurrent/LockFreeQueue.hpp>
 
@@ -330,21 +331,26 @@ namespace lux::render
 
         [[nodiscard]] VkSemaphore timelineSemaphore() const noexcept
         {
-            return timeline_sem_;
+            return timeline_sem_.get();
         }
+
         [[nodiscard]] bool needsQueueFamilyOwnershipTransfer() const noexcept;
+
         [[nodiscard]] uint32_t transferFamily() const noexcept
         {
             return transfer_family_;
         }
+
         [[nodiscard]] uint32_t graphicsFamily() const noexcept
         {
             return graphics_family_;
         }
+
         [[nodiscard]] EGpuTransferMode mode() const noexcept
         {
             return mode_;
         }
+
         [[nodiscard]] std::uint64_t stagingCopiedBytes() const noexcept
         {
             return staging_copied_bytes_.load(std::memory_order_relaxed);
@@ -462,7 +468,7 @@ namespace lux::render
         // waits for N-1 before signalling N because host allocation order alone
         // does not impose execution order between the transfer/graphics queues.
         // Vulkan queue access itself remains single-owner.
-        VkSemaphore timeline_sem_{VK_NULL_HANDLE};
+        SemaphoreOwner timeline_sem_;
         std::atomic<uint64_t> timeline_counter_{0};
 
         // Fixed batch slots. Only the transfer thread records/resets pools; in
@@ -470,7 +476,7 @@ namespace lux::render
         // its queue submit. Slot state is the only cross-thread coordination.
         struct CmdPoolSlot
         {
-            VkCommandPool pool{VK_NULL_HANDLE};
+            CommandPoolOwner pool;
             std::atomic<EBatchSlotState> state{EBatchSlotState::FREE};
             std::atomic<uint64_t> last_timeline_value{0};
         };

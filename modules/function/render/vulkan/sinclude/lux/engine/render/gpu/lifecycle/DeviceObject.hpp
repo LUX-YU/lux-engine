@@ -104,4 +104,7 @@ namespace lux::render
         TDeviceObject<VkDescriptorPool, VkDescriptorPoolCreateInfo, vkCreateDescriptorPool, vkDestroyDescriptorPool>;
     using ShaderModuleOwner = detail::
         TDeviceObject<VkShaderModule, VkShaderModuleCreateInfo, vkCreateShaderModule, vkDestroyShaderModule>;
+    using SemaphoreOwner = detail::TDeviceObject<VkSemaphore, VkSemaphoreCreateInfo, vkCreateSemaphore, vkDestroySemaphore>;
+    using CommandPoolOwner = detail::
+        TDeviceObject<VkCommandPool, VkCommandPoolCreateInfo, vkCreateCommandPool, vkDestroyCommandPool>;
 } // namespace lux::render

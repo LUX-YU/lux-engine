@@ -12,7 +12,9 @@ namespace
         SAMPLER,
         LAYOUT,
         PIPELINE_LAYOUT,
-        POOL
+        POOL,
+        SEMAPHORE,
+        COMMAND_POOL
     };
 
     struct NativeObject
@@ -109,6 +111,36 @@ namespace
         release(device, EKind::POOL, value);
     }
 
+    VkResult createSemaphore(
+        VkDevice device,
+        const VkSemaphoreCreateInfo*,
+        const VkAllocationCallbacks*,
+        VkSemaphore* out
+    )
+    {
+        return acquire(device, EKind::SEMAPHORE, out);
+    }
+
+    void destroySemaphore(VkDevice device, VkSemaphore value, const VkAllocationCallbacks*)
+    {
+        release(device, EKind::SEMAPHORE, value);
+    }
+
+    VkResult createCommandPool(
+        VkDevice device,
+        const VkCommandPoolCreateInfo*,
+        const VkAllocationCallbacks*,
+        VkCommandPool* out
+    )
+    {
+        return acquire(device, EKind::COMMAND_POOL, out);
+    }
+
+    void destroyCommandPool(VkDevice device, VkCommandPool value, const VkAllocationCallbacks*)
+    {
+        release(device, EKind::COMMAND_POOL, value);
+    }
+
     VkResult allocateSets(VkDevice device, const VkDescriptorSetAllocateInfo* info, VkDescriptorSet* out)
     {
         auto& pool = live.at(reinterpret_cast<std::uintptr_t>(info->descriptorPool));
@@ -134,9 +166,17 @@ namespace
 #define vkCreateDescriptorPool createPool
 #define vkDestroyDescriptorPool destroyPool
 #define vkAllocateDescriptorSets allocateSets
+#define vkCreateSemaphore createSemaphore
+#define vkDestroySemaphore destroySemaphore
+#define vkCreateCommandPool createCommandPool
+#define vkDestroyCommandPool destroyCommandPool
 #include "../src/gpu/descriptor/DescriptorService.cpp"
 #include "../src/gpu/pipeline/PipelineLayoutService.cpp"
 #include "../src/gpu/descriptor/SceneDescriptorArena.cpp"
+#undef vkDestroyCommandPool
+#undef vkCreateCommandPool
+#undef vkDestroySemaphore
+#undef vkCreateSemaphore
 #undef vkAllocateDescriptorSets
 #undef vkDestroyDescriptorPool
 #undef vkCreateDescriptorPool
@@ -189,6 +229,8 @@ int main()
     );
     ownerContract<PipelineLayoutOwner>(VkPipelineLayoutCreateInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO});
     ownerContract<DescriptorPoolOwner>(VkDescriptorPoolCreateInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO});
+    ownerContract<SemaphoreOwner>(VkSemaphoreCreateInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO});
+    ownerContract<CommandPoolOwner>(VkCommandPoolCreateInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO});
 
     {
         DescriptorService cache(first_device, VK_NULL_HANDLE);

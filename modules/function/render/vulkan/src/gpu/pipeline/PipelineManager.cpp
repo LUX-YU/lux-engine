@@ -219,26 +219,37 @@ namespace lux::render
         GraphicsPipelineTemplate hint{};
         hint.debug_name = std::move(debug_name);
         for (const auto& e : explicit_set_layouts)
+        {
             hint.explicit_set_layouts.push_back(e);
+        }
 
         lux::cxx::SmallVector<VkDescriptorSetLayout, 8> set_layouts;
         auto layout = buildReflectedPipelineLayout(reflected, hint, set_layouts);
         if (!layout)
+        {
             return lux::cxx::unexpected(layout.error());
+        }
 
-        const ComputePipelineHandle handle = registerComputePipeline(shader, *layout, specialization_values);
-        // registerComputePipeline appended an empty table / empty reflection
-        // for this handle — replace them with what was just built.
-        compute_set_layouts_.back() = std::move(set_layouts);
-        compute_reflections_.back() = reflected;
+        auto candidate = createComputePipeline(shader, *layout, specialization_values);
+        if (!candidate)
+        {
+            return lux::cxx::unexpected(candidate.error());
+        }
+
+        candidate->set_layouts = std::move(set_layouts);
+        candidate->reflection = std::move(reflected);
+        const ComputePipelineHandle handle{static_cast<uint32_t>(compute_pipelines_.size())};
+        compute_pipelines_.push_back(std::move(*candidate));
         return handle;
     }
 
     VkDescriptorSetLayout PipelineManager::computeSetLayout(ComputePipelineHandle handle, uint32_t set) const noexcept
     {
-        if (handle.index >= compute_set_layouts_.size())
+        if (handle.index >= compute_pipelines_.size())
+        {
             return VK_NULL_HANDLE;
-        const auto& layouts = compute_set_layouts_[handle.index];
+        }
+        const auto& layouts = compute_pipelines_[handle.index].set_layouts;
         return set < layouts.size() ? layouts[set] : VK_NULL_HANDLE;
     }
 
@@ -248,10 +259,23 @@ namespace lux::render
         std::span<const GraphicsPipelineTemplate::ShaderSpecializationValue> specialization_values
     )
     {
-        const ComputePipelineHandle handle{static_cast<uint32_t>(compute_pipelines_.size())};
-        compute_set_layouts_.emplace_back();
-        compute_reflections_.emplace_back();
+        auto candidate = createComputePipeline(shader, layout, specialization_values);
+        if (!candidate)
+        {
+            return kInvalidComputePipelineHandle;
+        }
 
+        const ComputePipelineHandle handle{static_cast<uint32_t>(compute_pipelines_.size())};
+        compute_pipelines_.push_back(std::move(*candidate));
+        return handle;
+    }
+
+    Expected<PipelineManager::ComputePipelineRecord> PipelineManager::createComputePipeline(
+        VkShaderModule shader,
+        VkPipelineLayout layout,
+        std::span<const GraphicsPipelineTemplate::ShaderSpecializationValue> specialization_values
+    )
+    {
         std::vector<VkSpecializationMapEntry> spec_entries;
         std::vector<uint32_t> spec_values;
         spec_entries.reserve(specialization_values.size());
@@ -260,7 +284,9 @@ namespace lux::render
         for (const auto& sv : specialization_values)
         {
             if (sv.stage != VK_SHADER_STAGE_COMPUTE_BIT)
+            {
                 continue;
+            }
 
             VkSpecializationMapEntry entry{};
             entry.constantID = sv.constant_id;
@@ -300,23 +326,15 @@ namespace lux::render
         if (!pipeline)
         {
             ++telemetry_.compute_create_failures;
-            // Do not consume a pipeline slot on failure. Returning an
-            // index-valid handle wrapping VK_NULL_HANDLE would make
-            // ComputePipelineHandle::valid() report true and silently feed a
-            // null pipeline into vkCmdBindPipeline/vkCmdDispatch. Return the
-            // sentinel instead so callers' .valid() guards (and the RG
-            // compile-time null check) detect the failure and can retry later.
+            const auto failure = renderError<err::device::VulkanCallFailed>(encodeVkResult(pipeline.error()));
             if (error_sink_ != nullptr)
-                error_sink_->emit(
-                    renderError<err::device::VulkanCallFailed>(encodeVkResult(pipeline.error())),
-                    RenderErrorEvent::kNoScene,
-                    0
-                );
-            return kInvalidComputePipelineHandle;
+            {
+                error_sink_->emit(failure, RenderErrorEvent::kNoScene, 0);
+            }
+            return lux::cxx::unexpected(failure);
         }
 
-        compute_pipelines_.push_back({std::move(*pipeline), layout});
-        return handle;
+        return ComputePipelineRecord{std::move(*pipeline), layout, {}, {}};
     }
 
     VkPipeline PipelineManager::getComputePipeline(ComputePipelineHandle handle) const noexcept
@@ -456,9 +474,11 @@ namespace lux::render
 
     const PipelineReflectedInfo* PipelineManager::computeReflection(ComputePipelineHandle handle) const noexcept
     {
-        if (handle.index >= compute_reflections_.size())
+        if (handle.index >= compute_pipelines_.size())
+        {
             return nullptr;
-        const auto& r = compute_reflections_[handle.index];
+        }
+        const auto& r = compute_pipelines_[handle.index].reflection;
         return r.has_value() ? &*r : nullptr;
     }
 

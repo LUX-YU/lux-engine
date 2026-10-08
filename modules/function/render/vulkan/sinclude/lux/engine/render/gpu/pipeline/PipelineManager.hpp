@@ -567,10 +567,19 @@ namespace lux::render
         {
             ComputePipelineOwner pipeline;
             VkPipelineLayout layout = VK_NULL_HANDLE;
+            lux::cxx::SmallVector<VkDescriptorSetLayout, 8> set_layouts;
+            std::optional<PipelineReflectedInfo> reflection;
         };
+
         std::vector<ComputePipelineRecord> compute_pipelines_;
 
     private:
+        Expected<ComputePipelineRecord> createComputePipeline(
+            VkShaderModule shader,
+            VkPipelineLayout layout,
+            std::span<const GraphicsPipelineTemplate::ShaderSpecializationValue> specialization_values
+        );
+
         Expected<RenderPassOwner> createRenderPass(const RenderPassKey& key);
         Expected<GraphicsPipelineOwner> createPipeline(
             const GraphicsPipelineTemplate& tmpl,
@@ -606,15 +615,10 @@ namespace lux::render
         /// data source for templateSetLayout().
         std::vector<lux::cxx::SmallVector<VkDescriptorSetLayout, 8>> template_set_layouts_;
 
-        /// The equivalent table for compute pipelines (indices aligned with
-        /// compute_pipelines_; empty for legacy pipelines).
-        std::vector<lux::cxx::SmallVector<VkDescriptorSetLayout, 8>> compute_set_layouts_;
-
-        /// Full reflection kept per template / per compute pipeline (input
+        /// Full reflection kept per template (input
         /// to the allocator). has_value()==false means that pipeline's
         /// registration didn't supply shader_infos (the legacy path).
         std::vector<std::optional<PipelineReflectedInfo>> template_reflections_;
-        std::vector<std::optional<PipelineReflectedInfo>> compute_reflections_;
 
         /// Per-template layout version number (incremented by
         /// finalizeTemplateLayout; part of PipelineKey).

@@ -4,7 +4,9 @@
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 
 #include <cassert>
+#include <cstdio>
 #include <map>
+#include <string_view>
 #include <type_traits>
 
 namespace
@@ -123,7 +125,74 @@ namespace
 #undef vkCreateComputePipelines
 // clang-format on
 
-int main()
+namespace
+{
+    void testReflectedPublication(lux::render::DeviceContext& device, bool reflected_failure)
+    {
+        using namespace lux::render;
+        GeneralDescriptorSetLayout shared(device);
+        assert(shared.init());
+        DescriptorService descriptors(device.logicalDevice(), VK_NULL_HANDLE);
+        const auto maximum_sets = device.physicalDevice().properties().properties.limits.maxBoundDescriptorSets;
+        PipelineLayoutService layouts(device.logicalDevice(), maximum_sets);
+        PipelineManager manager(device, false);
+        manager.setReflectedLayoutEnv(shared, descriptors, layouts);
+
+        const auto shader = reinterpret_cast<VkShaderModule>(1);
+        lux::rdesc::ShaderInfo info;
+        info.entry_points.push_back({"main", lux::rdesc::EShaderType::COMPUTE});
+        info.push_constants.push_back({0, 4});
+        reject_compute = true;
+        if (reflected_failure)
+        {
+            const auto failed = manager.registerComputePipelineReflected(shader, info, "rejected");
+            std::printf("reflected failure: accepted=%d live=%zu\n", failed.has_value(), pipelines.size());
+            std::fflush(stdout);
+            assert(!failed && isError<err::device::VulkanCallFailed>(failed.error()));
+            assert(failed.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+        }
+        else
+        {
+            const auto failed = manager.registerComputePipeline(shader, reinterpret_cast<VkPipelineLayout>(2));
+            assert(!failed.valid());
+        }
+        assert(pipelines.empty());
+        assert(manager.computeReflection({0}) == nullptr && manager.computeSetLayout({0}, 0) == VK_NULL_HANDLE);
+
+        reject_compute = false;
+        const auto accepted = manager.registerComputePipelineReflected(shader, info, "accepted");
+        assert(accepted && accepted->index == 0);
+        const auto* reflection = manager.computeReflection(*accepted);
+        std::printf(
+            "retry: index=%u reflection=%d live=%zu\n",
+            accepted->index,
+            reflection != nullptr,
+            pipelines.size()
+        );
+        std::fflush(stdout);
+        assert(reflection && reflection->push_constant_ranges.size() == 1);
+        assert(reflection->push_constant_ranges[0].size == 4);
+        assert(manager.computeSetLayout(*accepted, 0) == shared.getLayout(0));
+        const auto pipeline = manager.getComputePipeline(*accepted);
+        const auto layout = manager.getComputeLayout(*accepted);
+
+        reject_compute = true;
+        info.push_constants[0].size = 8;
+        const auto rejected_again = manager.registerComputePipelineReflected(shader, info, "rejected-again");
+        assert(!rejected_again && pipelines.size() == 1);
+        assert(manager.computeReflection(*accepted)->push_constant_ranges[0].size == 4);
+        assert(manager.getComputePipeline(*accepted) == pipeline && manager.getComputeLayout(*accepted) == layout);
+        assert(manager.computeReflection({1}) == nullptr && manager.computeSetLayout({1}, 0) == VK_NULL_HANDLE);
+        reject_compute = false;
+        const auto second = manager.registerComputePipelineReflected(shader, info, "second");
+        assert(second && second->index == 1 && pipelines.size() == 2);
+        assert(manager.computeReflection(*second)->push_constant_ranges[0].size == 8);
+        assert(manager.computeReflection(*accepted)->push_constant_ranges[0].size == 4);
+        assert(manager.telemetry().compute_create_calls == 4 && manager.telemetry().compute_create_failures == 2);
+    }
+} // namespace
+
+int main(int argc, char** argv)
 {
     using namespace lux::render;
     static_assert(!std::is_copy_constructible_v<PipelineManager>);
@@ -136,6 +205,13 @@ int main()
     InstanceContext instance({});
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
+    if (argc == 2)
+    {
+        const std::string_view mode(argv[1]);
+        assert(mode == "--rejected-reflected" || mode == "--retry-reflected");
+        testReflectedPublication(device, mode == "--rejected-reflected");
+        return 0;
+    }
     const auto shader = reinterpret_cast<VkShaderModule>(1);
     const auto layout = reinterpret_cast<VkPipelineLayout>(2);
 
@@ -196,4 +272,7 @@ int main()
         }
         assert(pipelines.empty() && passes.empty());
     }
+    testReflectedPublication(device, true);
+    testReflectedPublication(device, false);
+    assert(pipelines.empty() && passes.empty());
 }

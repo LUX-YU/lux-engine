@@ -1,5 +1,5 @@
-#include <lux/engine/render/resources/TrajectoryGlobalBuffer.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
+#include <lux/engine/render/resources/TrajectoryGlobalBuffer.hpp>
 
 #include <algorithm>
 #include <cstring>
@@ -13,12 +13,10 @@ namespace lux::render
         TransferScheduler& scheduler
     )
     {
-        if (!isInitialized())
+        if (capacity == 0)
         {
             return false;
         }
-        if (capacity == 0)
-            return false;
 
         if (!slots_.contains(trajectory_id))
         {
@@ -27,29 +25,35 @@ namespace lux::render
             const uint32_t init_cap = std::max(capacity, 64u);
             const uint32_t first = allocOrGrow(init_cap, scheduler);
             if (first == kInvalidId)
+            {
                 return false;
+            }
             slots_.insert(trajectory_id, Slot{first, init_cap, 0});
             return true;
         }
 
         Slot& slot = slots_.at(trajectory_id);
         if (slot.capacity >= capacity)
+        {
             return true;
+        }
 
         const uint32_t grow_cap = std::max(capacity, slot.capacity * 2u);
         // Capture the buffer BEFORE allocOrGrow: if it grows, growBuffer() replaces
-        // buffer_ with a new VkBuffer and submits the whole-buffer old->new copy at
+        // the backing with a new VkBuffer and submits the whole-buffer old->new copy at
         // priority -1. Reading the slot-relocation copy below from the NEW buffer
         // would race that growth copy (both priority -1, no barrier between same-
         // priority copies -> RAW: the relocation could read bytes the growth copy
         // hasn't written yet). The old buffer is only deferred-retired, so it is
         // still alive this frame; relocate FROM it instead — no dependency on the
-        // growth copy. When no grow happens, pre_grow_buffer == buffer_ (a normal
+        // growth copy. When no grow happens, pre_grow_buffer == buffer() (a normal
         // same-buffer, non-overlapping relocation). (#26)
-        const VkBuffer pre_grow_buffer = buffer_;
+        const VkBuffer pre_grow_buffer = buffer();
         const uint32_t first = allocOrGrow(grow_cap, scheduler);
         if (first == kInvalidId)
+        {
             return false;
+        }
 
         // 搬迁已有顶点:轨迹扩容保留数据(与点云侧的丢弃语义相反)。
         const uint32_t old_first = slot.first;
@@ -59,7 +63,7 @@ namespace lux::render
             scheduler.submitBufferCopy({
                 .src = pre_grow_buffer,
                 .src_offset = elemBytes(old_first),
-                .dst = buffer_,
+                .dst = buffer(),
                 .dst_offset = elemBytes(first),
                 .size = elemBytes(old_count),
                 .domain = EBufferDomain::TRANSFER_DST,
@@ -81,14 +85,20 @@ namespace lux::render
     )
     {
         if (data.empty())
+        {
             return 0;
+        }
         if (!slots_.contains(trajectory_id))
+        {
             return 0;
+        }
 
         Slot& slot = slots_.at(trajectory_id);
         const uint32_t remaining = slot.capacity - slot.count;
         if (remaining == 0)
+        {
             return 0;
+        }
 
         const uint32_t to_append = std::min(static_cast<uint32_t>(data.size()), remaining);
         const VkDeviceSize byte_offset = elemBytes(slot.first + slot.count);
@@ -96,13 +106,15 @@ namespace lux::render
 
         StagingAlloc stg = scheduler.allocateStaging(byte_size);
         if (!stg.mapped)
+        {
             return 0;
+        }
 
         std::memcpy(stg.mapped, data.data(), byte_size);
         scheduler.submitBufferCopy({
             .src = stg.buffer,
             .src_offset = stg.srcOffset,
-            .dst = buffer_,
+            .dst = buffer(),
             .dst_offset = byte_offset,
             .size = byte_size,
             .domain = EBufferDomain::VERTEX_INPUT_CS,

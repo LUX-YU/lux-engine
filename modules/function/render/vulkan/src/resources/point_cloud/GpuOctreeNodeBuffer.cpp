@@ -1,76 +1,40 @@
-#include <lux/engine/render/resources/point_cloud/GpuOctreeNodeBuffer.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
+#include <lux/engine/render/resources/point_cloud/GpuOctreeNodeBuffer.hpp>
 #include <vk_mem_alloc.h>
-#include <lux/engine/render/gpu/lifecycle/VRAMBudgetGuard.hpp>
 
 #include <cstring>
 
 namespace lux::render
 {
 
-    // ============================================================================
-    //  init / shutdown
-    // ============================================================================
-
-    bool GpuOctreeNodeBuffer::init(VmaAllocator allocator, uint32_t max_nodes)
+    Expected<VmaBuffer> GpuOctreeNodeBuffer::prepareBacking(VmaAllocator allocator, uint32_t max_nodes) noexcept
     {
-        if (isInitialized())
-            return true;
-        if (!allocator || max_nodes == 0)
-            return false;
-
-        allocator_ = allocator;
-        max_nodes_ = max_nodes;
-
-        // Allocate header (node_count + padding = 16 bytes) followed by the node array.
-        // Layout must match the shader SSBO block in pointcloud_culling.comp:
-        //   { uint node_count; uint padding[3]; GpuOctreeNode nodes[]; }
-        const VkDeviceSize buf_size = kHeaderSize + static_cast<VkDeviceSize>(max_nodes) * sizeof(GpuOctreeNode);
-
-        VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        bci.size = buf_size;
-        bci.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT  // compute shader read
-                    | VK_BUFFER_USAGE_TRANSFER_DST_BIT  // staging target
-                    | VK_BUFFER_USAGE_TRANSFER_SRC_BIT; // expansion copy source
-        bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VmaAllocationCreateInfo aci{};
-        aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-
-        const VkResult res = vmaCreateBuffer(allocator_, &bci, &aci, &buffer_, &allocation_, nullptr);
-        if (res != VK_SUCCESS)
+        const bool is_invalid_configuration = !allocator || max_nodes == 0;
+        if (is_invalid_configuration)
         {
-            buffer_ = VK_NULL_HANDLE;
-            allocation_ = VK_NULL_HANDLE;
-            return false;
+            return renderFailure<err::memory::InvalidBufferConfiguration>();
         }
+        VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        info.size = kHeaderSize + VkDeviceSize(max_nodes) * sizeof(GpuOctreeNode);
+        info.usage =
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        VmaAllocationCreateInfo allocation{};
+        allocation.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+        return VmaBuffer::create(allocator, info, allocation);
+    }
 
+    GpuOctreeNodeBuffer::GpuOctreeNodeBuffer(
+        DeferredDestroyQueue& retirement,
+        uint32_t max_nodes,
+        VmaBuffer backing
+    ) noexcept
+        : max_nodes_(max_nodes)
+    {
+        const auto allocation = backing.release();
+        buffer_owned_ = TFifOwnedAllocated<VkBuffer>{retirement, allocation.buffer, allocation.allocation};
         free_indices_.reserve(64);
         chunk_to_index_.reserve(256);
-        return true;
     }
-
-    void GpuOctreeNodeBuffer::shutdown()
-    {
-        if (!isInitialized())
-            return;
-
-        vmaDestroyBuffer(allocator_, buffer_, allocation_);
-        buffer_ = VK_NULL_HANDLE;
-        allocation_ = VK_NULL_HANDLE;
-
-        allocator_ = nullptr;
-        max_nodes_ = 0;
-
-        chunk_to_index_.clear();
-        free_indices_.clear();
-        pending_zeros_.clear();
-        next_index_ = 0;
-    }
-
-    // ============================================================================
-    //  Slot management helpers
-    // ============================================================================
 
     uint32_t GpuOctreeNodeBuffer::acquireIndex()
     {
@@ -83,7 +47,9 @@ namespace lux::render
         else
         {
             if (next_index_ >= max_nodes_)
+            {
                 return kInvalidIndex;
+            }
             idx = next_index_++;
         }
         // A slot freed earlier THIS frame was queued for GPU zeroing (pending_zeros_);
@@ -107,7 +73,9 @@ namespace lux::render
     void GpuOctreeNodeBuffer::removeNode(uint32_t chunk_id)
     {
         if (!chunk_to_index_.contains(chunk_id))
+        {
             return;
+        }
         const uint32_t index = chunk_to_index_.at(chunk_id);
 
         // Queue the slot for GPU zeroing so the culling shader sees stream_state=0
@@ -125,7 +93,9 @@ namespace lux::render
         const auto& vals = chunk_to_index_.values();
         const std::size_t count = keys.size();
         for (std::size_t i = 0; i < count; ++i)
+        {
             pending_zeros_.push_back(vals[i]);
+        }
         chunk_to_index_.clear();
         free_indices_.clear();
         next_index_ = 0;
@@ -134,7 +104,9 @@ namespace lux::render
     uint32_t GpuOctreeNodeBuffer::getIndex(uint32_t chunk_id) const noexcept
     {
         if (!chunk_to_index_.contains(chunk_id))
+        {
             return kInvalidIndex;
+        }
         return chunk_to_index_.at(chunk_id);
     }
 
@@ -144,11 +116,6 @@ namespace lux::render
 
     uint32_t GpuOctreeNodeBuffer::upsertNode(uint32_t chunk_id, const GpuOctreeNode& node, TransferScheduler& scheduler)
     {
-        if (!isInitialized())
-        {
-            return kInvalidIndex;
-        }
-
         uint32_t index = kInvalidIndex;
         if (chunk_to_index_.contains(chunk_id))
         {
@@ -158,7 +125,9 @@ namespace lux::render
         {
             index = acquireIndex();
             if (index == kInvalidIndex)
+            {
                 return kInvalidIndex;
+            }
             chunk_to_index_.insert(chunk_id, index);
         }
 
@@ -172,7 +141,7 @@ namespace lux::render
             scheduler.submitBufferCopy({
                 .src = stg.buffer,
                 .src_offset = stg.srcOffset,
-                .dst = buffer_,
+                .dst = buffer(),
                 .dst_offset = byte_offset,
                 .size = byte_size,
                 .domain = EBufferDomain::STORAGE_CS,
@@ -185,9 +154,6 @@ namespace lux::render
 
     void GpuOctreeNodeBuffer::flushNodeCount(TransferScheduler& scheduler)
     {
-        if (!isInitialized())
-            return;
-
         const uint32_t new_count = next_index_;
         StagingAlloc hdr = scheduler.allocateStaging(sizeof(uint32_t));
         if (hdr.mapped)
@@ -196,7 +162,7 @@ namespace lux::render
             scheduler.submitBufferCopy({
                 .src = hdr.buffer,
                 .src_offset = hdr.srcOffset,
-                .dst = buffer_,
+                .dst = buffer(),
                 .dst_offset = 0,
                 .size = sizeof(uint32_t),
                 .domain = EBufferDomain::STORAGE_CS,
@@ -207,8 +173,10 @@ namespace lux::render
 
     void GpuOctreeNodeBuffer::flushRemovedNodes(TransferScheduler& scheduler)
     {
-        if (pending_zeros_.empty() || !isInitialized())
+        if (pending_zeros_.empty())
+        {
             return;
+        }
 
         static constexpr GpuOctreeNode kZero{};
         for (const uint32_t index : pending_zeros_)
@@ -222,7 +190,7 @@ namespace lux::render
                 scheduler.submitBufferCopy({
                     .src = stg.buffer,
                     .src_offset = stg.srcOffset,
-                    .dst = buffer_,
+                    .dst = buffer(),
                     .dst_offset = byte_offset,
                     .size = sizeof(GpuOctreeNode),
                     .domain = EBufferDomain::STORAGE_CS,

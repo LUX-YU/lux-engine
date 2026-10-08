@@ -5,22 +5,22 @@
  *        server-side operation handlers for point cloud chunk upload/remove.
  */
 
-#include <lux/engine/render/comm/server/RenderServer.hpp>
-#include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>
+#include <cassert>
 #include <lux/engine/function/render/client/FeatureOpSend.hpp>
-#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
 #include <lux/engine/function/render/client/RenderProgramSession.hpp>
+#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
 #include <lux/engine/function/render/features/genops/PointCloudOperation.ops.hpp>
+#include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>
+#include <lux/engine/render/comm/server/RenderServer.hpp>
 #include <lux/engine/render/renderer/features/point_cloud/IPointCloudFeature.hpp>
-#include <lux/engine/render/renderer/features/point_cloud/PCFeatureSimple.hpp>
 #include <lux/engine/render/renderer/features/point_cloud/PCFeatureGPUDriven.hpp>
 #include <lux/engine/render/renderer/features/point_cloud/PCFeatureLOD.hpp>
+#include <lux/engine/render/renderer/features/point_cloud/PCFeatureSimple.hpp>
 #include <lux/engine/render/renderer/features/point_cloud/PCFeatureSplatting.hpp>
 #include <lux/engine/render/renderer/features/point_cloud/PCFeatureTransient.hpp>
-#include <lux/engine/render/resources/point_cloud/PointCloudGpuData.hpp>
 #include <lux/engine/render/resources/PointCloudResources.hpp>
+#include <lux/engine/render/resources/point_cloud/PointCloudGpuData.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
-#include <cassert>
 
 namespace lux::render
 {
@@ -39,7 +39,7 @@ namespace lux::render
         {
             auto* sc = lookupScene(ctx.user_state, p.scene_id);
             auto* pc_res = sc ? sc->resources().find<PointCloudResources>() : nullptr;
-            if (!pc_res || !pc_res->isInitialized())
+            if (!pc_res)
             {
                 replyToCurrent<UploadPointCloudChunkPayload>(ctx, PointCloudChunkUploadedReply{p.chunk_id, 1u});
                 return;
@@ -60,8 +60,10 @@ namespace lux::render
         {
             auto* sc = lookupScene(ctx.user_state, p.scene_id);
             auto* pc_res = sc ? sc->resources().find<PointCloudResources>() : nullptr;
-            if (!pc_res || !pc_res->isInitialized())
+            if (!pc_res)
+            {
                 return;
+            }
             pc_res->globalBuffer().freeSlot(p.chunk_id);
             pc_res->nodeBuffer().removeNode(p.chunk_id);
         }
@@ -70,7 +72,7 @@ namespace lux::render
         {
             auto* sc = lookupScene(ctx.user_state, p.scene_id);
             auto* pc_res = sc ? sc->resources().find<PointCloudResources>() : nullptr;
-            if (!pc_res || !pc_res->isInitialized())
+            if (!pc_res)
             {
                 replyToCurrent<ClearAllPointCloudPayload>(ctx, GenericOkReply{1u});
                 return;
@@ -83,7 +85,7 @@ namespace lux::render
         {
             auto* sc = lookupScene(ctx.user_state, p.scene_id);
             auto* pc_res = sc ? sc->resources().find<PointCloudResources>() : nullptr;
-            if (!pc_res || !pc_res->isInitialized())
+            if (!pc_res)
             {
                 replyToCurrent<ClearPointCloudChunkPayload>(ctx, GenericOkReply{1u});
                 return;
@@ -96,9 +98,13 @@ namespace lux::render
         {
             auto* sc = lookupScene(ctx.user_state, p.scene_id);
             if (!sc)
+            {
                 return;
+            }
             if (auto* f = sc->getFeatureAs<IPointCloudFeature>(p.feature))
+            {
                 f->setPointSize(p.point_size);
+            }
         }
 
     } // anonymous namespace
@@ -111,6 +117,7 @@ namespace lux::render
         inline static const std::string storage = std::string(Mode) + "." + Op::name;
         inline static const char* name = storage.c_str();
     };
+
     inline constexpr char kSimpleMode[] = "PCSimple";
     inline constexpr char kGPUDrivenMode[] = "PCGPUDriven";
     inline constexpr char kLODMode[] = "PCLOD";
@@ -135,7 +142,9 @@ namespace lux::render
 
         const auto decoded = decodeCommConfig<PCSimpleCommConfig>(param, param_size);
         if (!decoded)
+        {
             return lux::cxx::unexpected(decoded.error());
+        }
         const PCSimpleCommConfig& cc = *decoded;
 
         PCFeatureSimple::Config cfg{};
@@ -167,7 +176,9 @@ namespace lux::render
 
         const auto decoded = decodeCommConfig<PCGPUDrivenCommConfig>(param, param_size);
         if (!decoded)
+        {
             return lux::cxx::unexpected(decoded.error());
+        }
         const PCGPUDrivenCommConfig& cc = *decoded;
 
         PCFeatureGPUDriven::Config cfg{};
@@ -199,7 +210,9 @@ namespace lux::render
 
         const auto decoded = decodeCommConfig<PCLODCommConfig>(param, param_size);
         if (!decoded)
+        {
             return lux::cxx::unexpected(decoded.error());
+        }
         const PCLODCommConfig& cc = *decoded;
 
         PCFeatureLOD::Config cfg{};
@@ -233,7 +246,9 @@ namespace lux::render
 
         const auto decoded = decodeCommConfig<PCSplattingCommConfig>(param, param_size);
         if (!decoded)
+        {
             return lux::cxx::unexpected(decoded.error());
+        }
         const PCSplattingCommConfig& cc = *decoded;
 
         PCFeatureSplatting::Config cfg{};
@@ -302,7 +317,9 @@ namespace lux::render
 
         const auto decoded = decodeCommConfig<PCTransientCommConfig>(param, param_size);
         if (!decoded)
+        {
             return lux::cxx::unexpected(decoded.error());
+        }
         const PCTransientCommConfig& cc = *decoded;
 
         PCFeatureTransient::Config cfg{};

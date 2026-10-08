@@ -17,9 +17,9 @@
  * 线程:全部方法仅渲染线程。
  */
 
+#include <lux/engine/function/visibility.h>
 #include <lux/engine/render/resources/SlotArenaBuffer.hpp>
 #include <lux/engine/render/resources/TrajectoryGpuData.hpp>
-#include <lux/engine/function/visibility.h>
 
 #include <cstdint>
 #include <span>
@@ -34,12 +34,6 @@ namespace lux::render
 
     public:
         static constexpr uint32_t kInvalidTrajectoryId = Base::kInvalidId;
-
-        /// @param max_vertices 缓冲的总顶点容量。
-        bool init(VmaAllocator allocator, uint32_t max_vertices)
-        {
-            return Base::init(allocator, max_vertices);
-        }
 
         /// 确保 @p trajectory_id 至少有 @p capacity 个顶点的槽位。
         ///
@@ -60,6 +54,7 @@ namespace lux::render
         {
             resetSlot(trajectory_id);
         }
+
         void setVertexCount(uint32_t trajectory_id, uint32_t count) noexcept
         {
             setCount(trajectory_id, count);
@@ -69,6 +64,7 @@ namespace lux::render
         {
             return maxElements();
         }
+
         [[nodiscard]] uint32_t usedVertices() const noexcept
         {
             return usedElements();
@@ -78,6 +74,20 @@ namespace lux::render
         template <typename Fn> void forEachTrajectory(Fn&& fn) const
         {
             forEachSlot(std::forward<Fn>(fn));
+        }
+
+    private:
+        friend class TrajectoryResources;
+        using Base::prepareBacking;
+
+        TrajectoryGlobalBuffer(
+            DeferredDestroyQueue& retirement,
+            FrameRetireScheduler& callbacks,
+            uint32_t capacity,
+            VmaBuffer backing
+        ) noexcept
+            : Base(retirement, callbacks, capacity, backing.release())
+        {
         }
     };
 

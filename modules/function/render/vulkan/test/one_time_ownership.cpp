@@ -458,7 +458,9 @@ namespace
     {
         ++idle_calls;
         if (reject(EFailure::DEVICE_IDLE))
+        {
             return VK_ERROR_DEVICE_LOST;
+        }
         const auto result = vkDeviceWaitIdle(device);
         if (result == VK_SUCCESS)
         {
@@ -520,6 +522,11 @@ namespace
 #include "../src/resources/mesh/InstanceResources.cpp"
 #include "../src/resources/mesh/InstanceSlotRegistry.cpp"
 #include "../src/resources/mesh/MdcTable.cpp"
+#include "../src/resources/point_cloud/PointCloudGlobalBuffer.cpp"
+#include "../src/resources/point_cloud/GpuOctreeNodeBuffer.cpp"
+#include "../src/resources/TrajectoryGlobalBuffer.cpp"
+#include <lux/engine/render/resources/PointCloudResources.hpp>
+#include <lux/engine/render/resources/TrajectoryResources.hpp>
 #include "../src/resources/lighting/LightResources.cpp"
 #include "../src/resources/lighting/ShadowResources.cpp"
 #include "../../features/src/renderer/features/shadow/EVSMShadowResources.cpp"
@@ -2638,6 +2645,271 @@ void checkSpatialConstruction(
               "and same-serial retry, mask contents/dedup/cell semantics, GPU submission and original retirement PASS");
 }
 
+void checkStreamConstruction(lux::render::DeviceContext& device, lux::render::DeferredDestroyQueue& retirement)
+{
+    using namespace lux::render;
+    static_assert(!std::is_default_constructible_v<PointCloudResources>);
+    static_assert(!std::is_default_constructible_v<TrajectoryResources>);
+    static_assert(!std::is_default_constructible_v<PointCloudGlobalBuffer>);
+    static_assert(!std::is_default_constructible_v<TrajectoryGlobalBuffer>);
+    static_assert(!std::is_default_constructible_v<GpuOctreeNodeBuffer>);
+    static_assert(!std::is_move_constructible_v<PointCloudResources>);
+    static_assert(!std::is_move_constructible_v<TrajectoryResources>);
+    const auto original_buffers = buffers.size();
+    FrameRetireScheduler callbacks;
+    retirement.beginFrame(500);
+    const PointCloudResources::CreateInfo info{device.vmaAllocator(), retirement, callbacks, 64, 8};
+    for (unsigned boundary = 0; boundary != 2; ++boundary)
+    {
+        failure = EFailure::BUFFER;
+        skip_rejections = boundary;
+        auto rejected = PointCloudResources::create(info);
+        failure = EFailure::NONE;
+        assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
+        assert(rejected.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+        assert(buffers.size() == original_buffers && callbacks.pendingCount() == 0);
+    }
+    for (unsigned invalid = 0; invalid != 3; ++invalid)
+    {
+        auto bad = info;
+        if (invalid == 0)
+        {
+            bad.allocator = nullptr;
+        }
+        if (invalid == 1)
+        {
+            bad.max_points = 0;
+        }
+        if (invalid == 2)
+        {
+            bad.max_nodes = 0;
+        }
+        auto rejected = PointCloudResources::create(bad);
+        assert(!rejected && isError<err::memory::InvalidBufferConfiguration>(rejected.error()));
+        assert(buffers.size() == original_buffers);
+    }
+    failure = EFailure::BUFFER;
+    auto rejected = TrajectoryResources::create({device.vmaAllocator(), retirement, callbacks, 128});
+    failure = EFailure::NONE;
+    assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
+    assert(buffers.size() == original_buffers);
+    auto first = PointCloudResources::create(info);
+    auto second = PointCloudResources::create(info);
+    auto trajectory = TrajectoryResources::create({device.vmaAllocator(), retirement, callbacks, 128});
+    assert(first && second && trajectory);
+    auto registry = std::make_unique<ResourceRegistry>();
+    auto* owner = registry->insert(std::move(*first)).get();
+    assert(registry->find<PointCloudResources>() == owner);
+    auto& global = owner->globalBuffer();
+    const auto global_buffer = global.buffer();
+    const auto nodes = owner->nodeBuffer().buffer();
+    assert(global.reserveSlot(1, 64));
+    global.freeSlot(1);
+    assert(!global.hasSlot(1) && !global.reserveSlot(2, 64));
+    assert((*second)->globalBuffer().reserveSlot(1, 64));
+    (*second)->globalBuffer().freeSlot(1);
+    assert(callbacks.pendingCount() == 2);
+    registry.reset(); // Cancels only this arena's CPU callback, not its peer's.
+    assert(callbacks.pendingCount() == 1);
+    retirement.collect(499);
+    assert(buffers.contains(global_buffer) && buffers.contains(nodes));
+    retirement.beginFrame(501);
+    assert((*trajectory)->globalBuffer().reserveSlot(1, 128));
+    (*trajectory)->globalBuffer().freeSlot(1);
+    callbacks.collect(500);
+    std::printf(
+        "Purged callback slot reuse: pending=%zu (expected 1), peer free=%u (expected 64)\n",
+        callbacks.pendingCount(),
+        64u - (*second)->globalBuffer().usedElements()
+    );
+    assert(callbacks.pendingCount() == 1 && (*second)->globalBuffer().reserveSlot(2, 64));
+    callbacks.collect(501);
+    assert(callbacks.pendingCount() == 0);
+    retirement.collect(500);
+    assert(!buffers.contains(global_buffer) && !buffers.contains(nodes));
+    second->reset();
+    trajectory->reset();
+    retirement.collect(501);
+    assert(buffers.size() == original_buffers && callbacks.pendingCount() == 0);
+    std::puts("Point-cloud/trajectory construction: exact failures, complete backing, own callback cancellation, "
+              "peer callback survival and original native retirement PASS");
+}
+
+void checkStreamUploads(
+    lux::render::DeviceContext& device,
+    lux::render::ResourceContext& resources,
+    lux::render::DeferredDestroyQueue& retirement
+)
+{
+    using namespace lux::render;
+    const auto original_buffers = buffers.size();
+    FrameRetireScheduler callbacks;
+    retirement.beginFrame(510);
+    TransferScheduler scheduler;
+    assert(scheduler.init({device.vmaAllocator(), 256 * 1024, 1}));
+    auto read = [&](VkBuffer source, VkDeviceSize offset, VkDeviceSize size, auto&& after_submit)
+    {
+        VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        info.size = size;
+        info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        VmaAllocationCreateInfo allocation{};
+        allocation.usage = VMA_MEMORY_USAGE_AUTO;
+        allocation.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+        auto destination = VmaBuffer::create(device.vmaAllocator(), info, allocation);
+        assert(destination);
+        auto command = CommandBufferOwner::create(device.logicalDevice(), resources.commandPool());
+        assert(command);
+        VkCommandBufferBeginInfo begin_info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        assert(begin(command->get(), &begin_info) == VK_SUCCESS);
+        scheduler.beginTransfers(command->get());
+        scheduler.recordCopies(command->get());
+        scheduler.endTransfers(command->get());
+        VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+        barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+        barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        dependency.memoryBarrierCount = 1;
+        dependency.pMemoryBarriers = &barrier;
+        vkCmdPipelineBarrier2(command->get(), &dependency);
+        const VkBufferCopy copy{offset, 0, size};
+        vkCmdCopyBuffer(command->get(), source, destination->buffer(), 1, &copy);
+        barrier.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+        barrier.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+        vkCmdPipelineBarrier2(command->get(), &dependency);
+        assert(end(command->get()) == VK_SUCCESS);
+        VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        auto fence = FenceOwner::create(device.logicalDevice(), fence_info);
+        assert(fence);
+        const auto cmd = command->get();
+        VkSubmitInfo submission{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submission.commandBufferCount = 1;
+        submission.pCommandBuffers = &cmd;
+        assert(submit(device.graphicsQueue(), 1, &submission, fence->get()) == VK_SUCCESS);
+        after_submit();
+        const auto handle = fence->get();
+        assert(wait(device.logicalDevice(), 1, &handle, VK_TRUE, UINT64_MAX) == VK_SUCCESS);
+        const auto* mapped = static_cast<const std::byte*>(destination->map());
+        assert(mapped);
+        assert(
+            vmaInvalidateAllocation(device.vmaAllocator(), destination->allocation(), 0, VK_WHOLE_SIZE) == VK_SUCCESS
+        );
+        std::vector<std::byte> result(mapped, mapped + size);
+        destination->unmap();
+        scheduler.resetFrame(0);
+        return result;
+    };
+    auto points = PointCloudResources::create({device.vmaAllocator(), retirement, callbacks, 64, 8});
+    assert(points);
+    std::array<GpuPointVertex, 2> old_points{};
+    std::array<GpuPointVertex, 2> new_points{};
+    old_points[0].x = -11.0f;
+    new_points[0].x = 42.0f;
+    new_points[1].x = 73.0f;
+    (*points)->queueUpload(1, old_points);
+    (*points)->queueClearAll();
+    (*points)->queueUpload(2, new_points);
+    (*points)->submitTransfers(scheduler);
+    assert(!(*points)->globalBuffer().hasSlot(1));
+    const auto slot = (*points)->globalBuffer().getSlot(2);
+    assert(slot && slot->count == 2);
+    auto bytes =
+        read((*points)->globalBuffer().buffer(), slot->first * sizeof(GpuPointVertex), sizeof(new_points), [] {});
+    assert(std::memcmp(bytes.data(), new_points.data(), sizeof(new_points)) == 0);
+    const auto node_index = (*points)->nodeBuffer().getIndex(2);
+    assert(node_index == 0 && (*points)->nodeBuffer().nodeCount() == 1);
+    bytes = read((*points)->nodeBuffer().buffer(), 0, GpuOctreeNodeBuffer::kHeaderSize + sizeof(GpuOctreeNode), [] {});
+    uint32_t node_count{};
+    GpuOctreeNode node{};
+    std::memcpy(&node_count, bytes.data(), sizeof(node_count));
+    std::memcpy(&node, bytes.data() + GpuOctreeNodeBuffer::kHeaderSize, sizeof(node));
+    assert(node_count == 1 && node.point_count == 2 && node.stream_state == 2);
+    assert(node.first_point == slot->first && node.bbox_min[0] == 42.0f && node.bbox_max[0] == 73.0f);
+    (*points)->queueResetChunk(2);
+    (*points)->queueUpload(2, old_points);
+    (*points)->submitTransfers(scheduler);
+    bytes = read((*points)->nodeBuffer().buffer(), GpuOctreeNodeBuffer::kHeaderSize, sizeof(GpuOctreeNode), [] {});
+    std::memcpy(&node, bytes.data(), sizeof(node));
+    assert(node.point_count == 2 && node.stream_state == 2 && node.bbox_min[0] == -11.0f);
+    points->reset();
+    retirement.collect(510);
+    assert(callbacks.pendingCount() == 0);
+
+    auto trajectory = TrajectoryResources::create({device.vmaAllocator(), retirement, callbacks, 128});
+    assert(trajectory);
+    std::array<GpuTrajectoryVertex, 64> initial{};
+    for (unsigned i = 0; i != initial.size(); ++i)
+    {
+        initial[i].x = static_cast<float>(i + 1);
+        initial[i].packed_color = 0x12345678;
+    }
+    const auto id = (*trajectory)->createTrajectory(initial);
+    (*trajectory)->submitTransfers(scheduler);
+    const auto old_buffer = (*trajectory)->globalBuffer().buffer();
+    bytes = read(old_buffer, 0, sizeof(initial), [] {});
+    assert(std::memcmp(bytes.data(), initial.data(), sizeof(initial)) == 0);
+    const auto accepted = (*trajectory)->globalBuffer().getSlot(id.index);
+    assert(accepted && accepted->count == 64);
+    failure = EFailure::BUFFER;
+    assert(!(*trajectory)->globalBuffer().ensureSlotCapacity(id.index, 134, scheduler));
+    failure = EFailure::NONE;
+    const auto retained = (*trajectory)->globalBuffer().getSlot(id.index);
+    assert(retained && retained->first == accepted->first && retained->count == accepted->count);
+    assert((*trajectory)->globalBuffer().buffer() == old_buffer && !scheduler.hasWork());
+    std::array<GpuTrajectoryVertex, 70> appended{};
+    for (unsigned i = 0; i != appended.size(); ++i)
+    {
+        appended[i].x = static_cast<float>(100 + i);
+    }
+    assert((*trajectory)->queueAppend(id, appended));
+    (*trajectory)->submitTransfers(scheduler);
+    const auto grown = (*trajectory)->globalBuffer().getSlot(id.index);
+    assert(grown && grown->count == 134 && grown->first != accepted->first);
+    const auto new_buffer = (*trajectory)->globalBuffer().buffer();
+    assert(new_buffer != old_buffer && buffers.contains(old_buffer));
+    bytes = read(new_buffer, grown->first * sizeof(GpuTrajectoryVertex), sizeof(initial) + sizeof(appended), [] {});
+    assert(std::memcmp(bytes.data(), initial.data(), sizeof(initial)) == 0);
+    assert(std::memcmp(bytes.data() + sizeof(initial), appended.data(), sizeof(appended)) == 0);
+    assert((*trajectory)->queueAppend(id, appended));
+    assert((*trajectory)->queueClear(id));
+    assert((*trajectory)->queueAppend(id, initial));
+    (*trajectory)->submitTransfers(scheduler);
+    const auto replaced = (*trajectory)->globalBuffer().getSlot(id.index);
+    assert(replaced && replaced->count == initial.size());
+    bytes = read(
+        (*trajectory)->globalBuffer().buffer(),
+        replaced->first * sizeof(GpuTrajectoryVertex),
+        sizeof(initial),
+        [] {}
+    );
+    assert(std::memcmp(bytes.data(), initial.data(), sizeof(initial)) == 0);
+    assert((*trajectory)->queueRemove(id) && !(*trajectory)->queueAppend(id, initial));
+    (*trajectory)->submitTransfers(scheduler);
+    const auto next = (*trajectory)->createTrajectory(initial);
+    assert(next.index == id.index && next.gen != id.gen && !(*trajectory)->isHandleAlive(id));
+    (*trajectory)->submitTransfers(scheduler);
+    const auto final_slot = (*trajectory)->globalBuffer().getSlot(next.index);
+    assert(final_slot && final_slot->count == initial.size());
+    const auto final_buffer = (*trajectory)->globalBuffer().buffer();
+    bytes = read(
+        final_buffer,
+        final_slot->first * sizeof(GpuTrajectoryVertex),
+        sizeof(initial),
+        [&]
+        {
+            trajectory->reset(); // Semantic owner disappears while the submitted GPU work still owns its buffers.
+            retirement.collect(509);
+            assert(buffers.contains(final_buffer) && callbacks.pendingCount() == 0);
+        }
+    );
+    assert(std::memcmp(bytes.data(), initial.data(), sizeof(initial)) == 0);
+    retirement.collect(510);
+    assert(buffers.size() == original_buffers);
+    std::puts("Point-cloud/trajectory GPU readback: ordered clear/reset/upload, node reuse, exact vertices, "
+              "growth rejection/retry, preserved prefix/append, stale generation and in-flight retirement PASS");
+}
+
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -2669,6 +2941,12 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkStreamConstruction(device, retirement);
+    checkStreamUploads(device, resources, retirement);
+    if (argc == 2 && std::string_view(argv[1]) == "--stream")
+    {
+        return 0;
+    }
     checkSpatialConstruction(device, resources, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--spatial")
     {

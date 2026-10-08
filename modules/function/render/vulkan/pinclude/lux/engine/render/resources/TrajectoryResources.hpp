@@ -4,17 +4,18 @@
  * @brief GPU resource container for trajectory rendering.
  *
  * Owns the shared vertex buffer used by all trajectory feature modes.
- * Registered in the scene via resources().emplace<TrajectoryResources>().
+ * Published in the scene registry only after complete backing construction.
  */
 
-#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
-#include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
-#include <lux/engine/render/core/FrameServices.hpp>
-#include <lux/engine/render/resources/TrajectoryGlobalBuffer.hpp>
-#include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
-#include <lux/engine/render/resources/TrajectoryGpuData.hpp>
-#include <lux/engine/function/render/client/core/ResourceHandle.hpp> // TrajectoryHandle
 #include <lux/cxx/container/SparseSet.hpp>
+#include <lux/engine/function/render/client/core/ResourceHandle.hpp> // TrajectoryHandle
+#include <lux/engine/function/render/features/resources/ResourceHandles.hpp>
+#include <lux/engine/render/core/FrameServices.hpp>
+#include <lux/engine/render/gpu/lifecycle/GPUResourceTypes.hpp>
+#include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
+#include <lux/engine/render/resources/TrajectoryGlobalBuffer.hpp>
+#include <lux/engine/render/resources/TrajectoryGpuData.hpp>
+#include <memory>
 
 #include <cstdint>
 #include <span>
@@ -23,50 +24,36 @@
 
 namespace lux::render
 {
-    class TrajectoryResources final : public TGPUResourceBase<TrajectoryResources, EGPUResourceType::TRAJECTORY>
-    // (此前还继承 IFrameService,但**一个钩子都没重写** —— 每帧被遍历到,
-    //  执行的是基类空实现。纯死重量,已摘除;零行为变化。)
+    class TrajectoryResources final
     {
     public:
-        TrajectoryResources() = default;
-        ~TrajectoryResources()
+        static constexpr EGPUResourceType resource_type = EGPUResourceType::TRAJECTORY;
+
+        struct CreateInfo
         {
-            shutdown();
+            VmaAllocator allocator;
+            DeferredDestroyQueue& retirement;
+            FrameRetireScheduler& callbacks;
+            uint32_t max_vertices;
+        };
+
+        using CreateResult = Expected<std::unique_ptr<TrajectoryResources>>;
+
+        [[nodiscard]] static CreateResult create(const CreateInfo& info) noexcept
+        {
+            auto global = TrajectoryGlobalBuffer::prepareBacking(info.allocator, info.max_vertices);
+            if (!global)
+            {
+                return lux::cxx::unexpected(global.error());
+            }
+            return std::unique_ptr<TrajectoryResources>(new TrajectoryResources(info, std::move(*global)));
         }
 
+        ~TrajectoryResources() noexcept = default;
         TrajectoryResources(const TrajectoryResources&) = delete;
         TrajectoryResources& operator=(const TrajectoryResources&) = delete;
         TrajectoryResources(TrajectoryResources&&) = delete;
         TrajectoryResources& operator=(TrajectoryResources&&) = delete;
-
-        // ========== Lifecycle ==========
-        bool init(VmaAllocator allocator, uint32_t max_vertices)
-        {
-            if (initialized_)
-                return true;
-
-            if (!global_buf_.init(allocator, max_vertices))
-                return false;
-
-            initialized_ = true;
-            return true;
-        }
-
-        void shutdown()
-        {
-            if (!initialized_)
-                return;
-            global_buf_.shutdown();
-            live_trajectories_.clear();
-            generations_.clear();
-            pending_remove_flags_.clear();
-            initialized_ = false;
-        }
-
-        bool isInitialized() const noexcept
-        {
-            return initialized_;
-        }
 
         // ========== Access ==========
 
@@ -74,26 +61,10 @@ namespace lux::render
         {
             return global_buf_;
         }
+
         const TrajectoryGlobalBuffer& globalBuffer() const noexcept
         {
             return global_buf_;
-        }
-
-        // ========== Deferred Destroy Queue ==========
-
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-        {
-            global_buf_.setDeferredQueue(q);
-        }
-
-        void setRetireScheduler(FrameRetireScheduler* rs) noexcept
-        {
-            global_buf_.setRetireScheduler(rs);
-        }
-
-        void setRetireOwnerToken(FrameRetireScheduler::OwnerToken owner_token) noexcept
-        {
-            global_buf_.setRetireOwnerToken(owner_token);
         }
 
         // ========== Streaming upload queue ==========
@@ -101,9 +72,6 @@ namespace lux::render
         /// Create a trajectory handle and queue initial data upload.
         [[nodiscard]] TrajectoryHandle createTrajectory(std::span<const GpuTrajectoryVertex> data)
         {
-            if (!initialized_)
-                return TrajectoryHandle::invalid();
-
             const uint32_t trajectory_index = live_trajectories_.emplace(static_cast<uint8_t>(1));
             if (trajectory_index >= generations_.size())
             {
@@ -120,7 +88,9 @@ namespace lux::render
         [[nodiscard]] bool queueAppend(TrajectoryHandle trajectory, std::span<const GpuTrajectoryVertex> data)
         {
             if (!isHandleAlive(trajectory))
+            {
                 return false;
+            }
             pending_ops_.push_back({ETrajOpKind::APPEND, trajectory.index, {data.begin(), data.end()}});
             return true;
         }
@@ -129,7 +99,9 @@ namespace lux::render
         [[nodiscard]] bool queueClear(TrajectoryHandle trajectory)
         {
             if (!isHandleAlive(trajectory))
+            {
                 return false;
+            }
             pending_ops_.push_back({ETrajOpKind::CLEAR, trajectory.index, {}});
             return true;
         }
@@ -138,7 +110,9 @@ namespace lux::render
         [[nodiscard]] bool queueRemove(TrajectoryHandle trajectory)
         {
             if (!isHandleAlive(trajectory))
+            {
                 return false;
+            }
 
             pending_remove_flags_[trajectory.index] = 1u;
             pending_ops_.push_back({ETrajOpKind::REMOVE, trajectory.index, {}});
@@ -149,7 +123,9 @@ namespace lux::render
         [[nodiscard]] bool queueReplace(TrajectoryHandle trajectory, std::span<const GpuTrajectoryVertex> data)
         {
             if (!isHandleAlive(trajectory))
+            {
                 return false;
+            }
             pending_ops_.push_back({ETrajOpKind::REPLACE, trajectory.index, {data.begin(), data.end()}});
             return true;
         }
@@ -157,17 +133,27 @@ namespace lux::render
         [[nodiscard]] bool isHandleAlive(TrajectoryHandle trajectory) const noexcept
         {
             if (!trajectory.isValid())
+            {
                 return false;
+            }
 
             const uint32_t trajectory_index = trajectory.index;
             if (trajectory_index >= generations_.size())
+            {
                 return false;
+            }
             if (generations_[trajectory_index] != trajectory.gen)
+            {
                 return false;
+            }
             if (!live_trajectories_.contains(trajectory_index))
+            {
                 return false;
+            }
             if (trajectory_index < pending_remove_flags_.size() && pending_remove_flags_[trajectory_index] != 0u)
+            {
                 return false;
+            }
 
             return true;
         }
@@ -183,6 +169,7 @@ namespace lux::render
         {
             use_transfer_scheduler_ = v;
         }
+
         bool usesTransferScheduler() const noexcept
         {
             return use_transfer_scheduler_;
@@ -207,29 +194,42 @@ namespace lux::render
                     // Atomic clear + re-upload (no flicker); clears even when empty.
                     global_buf_.clearTrajectory(op.trajectory_index);
                     if (count == 0)
+                    {
                         break;
+                    }
                     // Skip the upload if capacity growth failed (C-2).
                     if (!global_buf_.ensureSlotCapacity(op.trajectory_index, count, scheduler))
+                    {
                         break;
+                    }
                     global_buf_.upload(op.trajectory_index, std::span<const GpuTrajectoryVertex>(op.data), scheduler);
                     break;
 
                 case ETrajOpKind::UPLOAD:
                     if (count == 0)
+                    {
                         break;
+                    }
                     if (!global_buf_.ensureSlotCapacity(op.trajectory_index, count, scheduler))
+                    {
                         break; // growth failed — skip, don't write OOB (C-2)
+                    }
                     global_buf_.upload(op.trajectory_index, std::span<const GpuTrajectoryVertex>(op.data), scheduler);
                     break;
 
-                case ETrajOpKind::APPEND: {
+                case ETrajOpKind::APPEND:
+                {
                     if (count == 0)
+                    {
                         break;
+                    }
                     auto existing = global_buf_.getSlot(op.trajectory_index);
                     if (!existing)
                     {
                         if (!global_buf_.ensureSlotCapacity(op.trajectory_index, count, scheduler))
+                        {
                             break; // growth failed — skip, don't write OOB (C-2)
+                        }
                         global_buf_
                             .upload(op.trajectory_index, std::span<const GpuTrajectoryVertex>(op.data), scheduler);
                     }
@@ -237,7 +237,9 @@ namespace lux::render
                     {
                         const uint32_t needed = existing->count + count;
                         if (needed > existing->capacity)
+                        {
                             global_buf_.ensureSlotCapacity(op.trajectory_index, needed, scheduler);
+                        }
                         global_buf_
                             .append(op.trajectory_index, std::span<const GpuTrajectoryVertex>(op.data), scheduler);
                     }
@@ -256,6 +258,11 @@ namespace lux::render
         }
 
     private:
+        TrajectoryResources(const CreateInfo& info, VmaBuffer global) noexcept
+            : global_buf_(info.retirement, info.callbacks, info.max_vertices, std::move(global))
+        {
+        }
+
         enum class ETrajOpKind : uint8_t
         {
             UPLOAD,
@@ -264,6 +271,7 @@ namespace lux::render
             REPLACE,
             REMOVE
         };
+
         struct TrajOp
         {
             ETrajOpKind kind;

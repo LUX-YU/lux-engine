@@ -9,8 +9,9 @@
  * Thread safety: NOT thread-safe.  All calls must be on the render thread.
  */
 
-#include <cstdint>
+#include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <unordered_map>
@@ -56,7 +57,9 @@ namespace lux::render
         {
             auto owner_it = owner_index_.find(owner_token);
             if (owner_it == owner_index_.end())
+            {
                 return;
+            }
 
             auto ids = std::move(owner_it->second);
             owner_index_.erase(owner_it);
@@ -64,12 +67,20 @@ namespace lux::render
             for (uint32_t id : ids)
             {
                 if (id >= entries_.size())
+                {
                     continue;
+                }
                 Entry& entry = entries_[id];
                 if (!entry.active)
+                {
                     continue;
+                }
                 releaseEntry(id, /*owner_already_removed=*/true);
             }
+            // A released index may be reused by the next defer(). Remove its old FIFO
+            // occurrence now, while it is still inactive, so it cannot become a newer
+            // callback at an older position and block unrelated completed entries.
+            std::erase_if(retire_order_, [this](uint32_t id) { return !entries_[id].active; });
         }
 
         /// Execute and remove all callbacks whose serial has been retired.
@@ -82,16 +93,22 @@ namespace lux::render
             {
                 const uint32_t id = retire_order_.front();
                 if (id < entries_.size() && entries_[id].active && entries_[id].retire_serial > completed_serial)
+                {
                     break;
+                }
 
                 retire_order_.pop_front();
                 if (id >= entries_.size() || !entries_[id].active)
+                {
                     continue;
+                }
 
                 Callback cb = std::move(entries_[id].callback);
                 releaseEntry(id, /*owner_already_removed=*/false);
                 if (cb)
+                {
                     cb();
+                }
             }
         }
 
@@ -102,12 +119,16 @@ namespace lux::render
             {
                 Entry& entry = entries_[id];
                 if (!entry.active)
+                {
                     continue;
+                }
 
                 Callback cb = std::move(entry.callback);
                 releaseEntry(id, /*owner_already_removed=*/true);
                 if (cb)
+                {
                     cb();
+                }
             }
             owner_index_.clear();
             retire_order_.clear();
@@ -132,10 +153,14 @@ namespace lux::render
         {
             Entry& entry = entries_[id];
             if (!entry.active)
+            {
                 return;
+            }
 
             if (!owner_already_removed)
+            {
                 detachFromOwnerIndex(id);
+            }
 
             entry.active = false;
             entry.callback = nullptr;
@@ -151,7 +176,9 @@ namespace lux::render
             Entry& entry = entries_[id];
             auto owner_it = owner_index_.find(entry.owner_token);
             if (owner_it == owner_index_.end())
+            {
                 return;
+            }
 
             auto& ids = owner_it->second;
             const size_t pos = entry.owner_pos;
@@ -162,25 +189,33 @@ namespace lux::render
                 ids[pos] = moved;
                 ids.pop_back();
                 if (moved != id)
+                {
                     entries_[moved].owner_pos = pos;
+                }
             }
             else
             {
                 for (size_t i = 0; i < ids.size(); ++i)
                 {
                     if (ids[i] != id)
+                    {
                         continue;
+                    }
                     const uint32_t moved = ids.back();
                     ids[i] = moved;
                     ids.pop_back();
                     if (moved != id)
+                    {
                         entries_[moved].owner_pos = i;
+                    }
                     break;
                 }
             }
 
             if (ids.empty())
+            {
                 owner_index_.erase(owner_it);
+            }
         }
 
         std::vector<Entry> entries_;

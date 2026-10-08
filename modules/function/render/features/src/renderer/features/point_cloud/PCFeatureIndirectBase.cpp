@@ -3,25 +3,25 @@
  * @brief Shared GPU infrastructure for GPU-Driven, LOD, and Splatting features.
  */
 
-#include <lux/engine/render/renderer/features/point_cloud/PCFeatureIndirectBase.hpp>
-#include <lux/engine/render/renderer/features/BufferTransferSynchronization.hpp>
 #include <lux/engine/render/core/FrustumCuller.hpp>
 #include <lux/engine/render/core/ViewFrameData.hpp>
-#include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraResource.hpp>
-#include <lux/engine/render/resources/point_cloud/PointCloudGlobalBuffer.hpp>
-#include <lux/engine/render/resources/point_cloud/GpuOctreeNodeBuffer.hpp>
-#include <lux/engine/render/resources/PointCloudResources.hpp>
 #include <lux/engine/render/gpu/transfer/TransferContributor.hpp> // makeTransferContributor
+#include <lux/engine/render/renderer/features/BufferTransferSynchronization.hpp>
+#include <lux/engine/render/renderer/features/point_cloud/PCFeatureIndirectBase.hpp>
+#include <lux/engine/render/renderer/features/view_camera/ViewCameraResource.hpp>
 #include <lux/engine/render/resources/BuiltinShaderRegistry.hpp>
+#include <lux/engine/render/resources/PointCloudResources.hpp>
+#include <lux/engine/render/resources/point_cloud/GpuOctreeNodeBuffer.hpp>
+#include <lux/engine/render/resources/point_cloud/PointCloudGlobalBuffer.hpp>
+#include <lux/engine/render/scene/RenderScene.hpp>
 
+#include <lux/engine/function/render/graph/RGEnums.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
-#include <lux/engine/render/graph/RGBuilder.hpp>
-#include <lux/engine/function/render/graph/RGEnums.hpp>
-#include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
-#include <lux/engine/render/gpu/pipeline/PipelineLayoutService.hpp>
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
+#include <lux/engine/render/gpu/pipeline/PipelineLayoutService.hpp>
+#include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
+#include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/render/resources/ShaderResources.hpp>
 
 #include <vk_mem_alloc.h>
@@ -47,7 +47,8 @@ namespace lux::render
     )
         : IPointCloudFeature(feature_cfg), pass_label_(pass_label), compute_shader_id_(compute_shader_id),
           max_nodes_(max_nodes)
-    {}
+    {
+    }
 
     lux::render::Expected<void> PCFeatureIndirectBase::initAndAttachTo(RenderScene& /*scene*/)
     {
@@ -57,11 +58,15 @@ namespace lux::render
         auto& shaders = ctx.globalRegistry().must<ShaderResources>();
         auto resolved_cs = resolveShaderStage(shaders, compute_shader_id_, EBuiltinShader::PC_CULLING_COMP);
         if (!resolved_cs)
+        {
             return lux::cxx::unexpected(resolved_cs.error());
+        }
         compute_shader_id_ = *resolved_cs;
         const ShaderObject* cs = shaders.get(compute_shader_id_);
         if (cs == nullptr)
+        {
             return renderFailure<err::shader::HandleStale>();
+        }
 
         // ---- 1. Custom 5-binding descriptor set layout (compute stage) ----
         if (auto layout = createDescriptorLayout(); !layout)
@@ -78,7 +83,9 @@ namespace lux::render
         };
         auto compute_layout = ctx.pipelineLayoutService().getOrCreate(cull_layout_desc);
         if (!compute_layout)
+        {
             return lux::cxx::unexpected(compute_layout.error());
+        }
 
         // PipelineManager takes ownership of compute_layout.
         compute_handle_ = ctx.pipelineManager().registerComputePipeline(cs->module.get(), *compute_layout);
@@ -86,23 +93,24 @@ namespace lux::render
         // ---- 3. Frames in flight ----
         fif_ = ctx.framesInFlight();
 
-        // ---- 4. Shared GPU resources (lazy-init PointCloudResources) ----
-        //
-        // 这里原本是「先 find,没有就 emplace 再 find 再 init,设完三个 setter 之后
-        // 若仍未初始化就用**完全相同的参数**再 init 一次」。两次 init 里第一次成功则
-        // 第二次被跳过、第一次失败则第二次必然同样失败 —— 结构上二选一都是空转,
-        // 而中间三个 setter 已经作用在可能未初始化的对象上了。收敛成一次
-        // ensure<T>(init_args):构造 + init + 只在成功时发布(与 PCFeatureSimple 同形)。
-        // 4M 点位的 VMA 缓冲是真会分配不出来的量级 —— 失败时注册表里什么都没有,
-        // 而不是留下一个已发布的空资源让 attach 照常成功、到绘制期才暴露。
-        auto pc_r =
-            renderScene().resources().ensure<PointCloudResources>(ctx.vmaAllocator(), kMaxGlobalPoints, max_nodes_);
-        if (!pc_r)
-            return lux::cxx::unexpected<RenderError>(pc_r.error());
-        auto* pc_res = *pc_r;
-        pc_res->setDeferredQueue(&ctx.deferredDestroyQueue());
-        pc_res->setRetireScheduler(&ctx.retireScheduler());
-        pc_res->setRetireOwnerToken(renderScene().retireOwnerToken());
+        // The first contributing feature chooses capacity; later features share the same complete owner.
+        auto* pc_res = renderScene().resources().find<PointCloudResources>();
+        if (!pc_res)
+        {
+            const PointCloudResources::CreateInfo info{
+                ctx.vmaAllocator(),
+                ctx.deferredDestroyQueue(),
+                ctx.retireScheduler(),
+                kMaxGlobalPoints,
+                max_nodes_
+            };
+            auto candidate = PointCloudResources::create(info);
+            if (!candidate)
+            {
+                return lux::cxx::unexpected(candidate.error());
+            }
+            pc_res = renderScene().resources().insert(std::move(*candidate)).get();
+        }
         // Register PointCloudResources as a transfer contributor once (idempotent:
         // multiple PC features in one scene share it; only the first attach adds it).
         // The scene core used to do this lazily in recordUploads — the OWNER does it
@@ -200,9 +208,12 @@ namespace lux::render
             desc.usage = static_cast<ERGBufferUsageFlags>(ERGBufferUsageBits::STORAGE);
             desc.memory_usage = ERGMemoryUsage::GPU_ONLY;
             RGImportedBufferInfo imp{};
-            imp.buffer_getter = [this](VkBuffer* out_buffers, uint32_t capacity) -> uint32_t {
+            imp.buffer_getter = [this](VkBuffer* out_buffers, uint32_t capacity) -> uint32_t
+            {
                 if (out_buffers == nullptr || capacity == 0)
+                {
                     return 0u;
+                }
                 out_buffers[0] = node_buf_ ? node_buf_->buffer() : VK_NULL_HANDLE;
                 return 1u;
             };
@@ -233,111 +244,120 @@ namespace lux::render
             .write(params_rg, ERGBufferRole::CONSTANT)
             .write(frustum_rg, ERGBufferRole::CONSTANT)
             .read(node_rg, ERGBufferRole::STORAGE)
-            .setKernelFn([this, params_rg, frustum_rg, out_inst_rg, out_indirect_rg](const PassRecordContext& ctx) {
-                if (!node_buf_ || node_buf_->nodeCount() == 0)
-                    return;
-
-                const uint32_t view_handle = ctx.view ? ctx.view->handle.index : 0;
-                auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().resources());
-
-                // Upload CullingParams UBO
+            .setKernelFn(
+                [this, params_rg, frustum_rg, out_inst_rg, out_indirect_rg](const PassRecordContext& ctx)
                 {
-                    CullingParams cp{};
-                    cp.view_proj_matrix[0] = 1.0f;
-                    cp.view_proj_matrix[5] = 1.0f;
-                    cp.view_proj_matrix[10] = 1.0f;
-                    cp.view_proj_matrix[15] = 1.0f;
-                    cp.camera_direction[2] = -1.0f;
-                    cp.max_instances = max_nodes_;
-                    cp.lod_bias = 1.0f;
-                    cp.pixel_error_threshold = 0.5f;
-                    cp.max_points_per_frame = 10'000'000u;
+                    if (!node_buf_ || node_buf_->nodeCount() == 0)
+                    {
+                        return;
+                    }
 
-                    if (ctx.view)
+                    const uint32_t view_handle = ctx.view ? ctx.view->handle.index : 0;
+                    auto* cam = resolveViewCameraOnce(cam_cache_, renderScene().resources());
+
+                    // Upload CullingParams UBO
+                    {
+                        CullingParams cp{};
+                        cp.view_proj_matrix[0] = 1.0f;
+                        cp.view_proj_matrix[5] = 1.0f;
+                        cp.view_proj_matrix[10] = 1.0f;
+                        cp.view_proj_matrix[15] = 1.0f;
+                        cp.camera_direction[2] = -1.0f;
+                        cp.max_instances = max_nodes_;
+                        cp.lod_bias = 1.0f;
+                        cp.pixel_error_threshold = 0.5f;
+                        cp.max_points_per_frame = 10'000'000u;
+
+                        if (ctx.view)
+                        {
+                            const ViewFrameData* cam_fd = cam ? cam->find(view_handle) : nullptr;
+                            ViewFrameData vfd = cam_fd ? *cam_fd : ViewFrameData{};
+                            const auto& frame = vfd;
+                            std::memcpy(
+                                cp.view_proj_matrix,
+                                frame.camera_view.view_proj.data(),
+                                sizeof(cp.view_proj_matrix)
+                            );
+
+                            cp.camera_position[0] = frame.camera_transform.position.x();
+                            cp.camera_position[1] = frame.camera_transform.position.y();
+                            cp.camera_position[2] = frame.camera_transform.position.z();
+
+                            // inv_view is a 4x4 camera->world matrix.
+                            // Its 3rd column (rows 0..2, col 2) is camera -forward axis.
+                            Eigen::Vector3f cam_forward = -frame.camera_view.inv_view.block<3, 1>(0, 2);
+                            const float n2 = cam_forward.squaredNorm();
+                            if (n2 > 1e-8f)
+                            {
+                                cam_forward /= std::sqrt(n2);
+                            }
+                            else
+                            {
+                                cam_forward = Eigen::Vector3f(0.0f, 0.0f, -1.0f);
+                            }
+
+                            cp.camera_direction[0] = cam_forward.x();
+                            cp.camera_direction[1] = cam_forward.y();
+                            cp.camera_direction[2] = cam_forward.z();
+                        }
+
+                        VkBuffer buf = ctx.resolveBufferHandle(params_rg);
+                        synchronizeBeforeBufferTransferWrites(ctx.cmd, std::array{buf});
+                        vkCmdUpdateBuffer(ctx.cmd, buf, 0, sizeof(cp), &cp);
+                    }
+
+                    // Upload FrustumPlanes UBO
                     {
                         const ViewFrameData* cam_fd = cam ? cam->find(view_handle) : nullptr;
-                        ViewFrameData vfd = cam_fd ? *cam_fd : ViewFrameData{};
-                        const auto& frame = vfd;
-                        std::memcpy(
-                            cp.view_proj_matrix,
-                            frame.camera_view.view_proj.data(),
-                            sizeof(cp.view_proj_matrix)
-                        );
-
-                        cp.camera_position[0] = frame.camera_transform.position.x();
-                        cp.camera_position[1] = frame.camera_transform.position.y();
-                        cp.camera_position[2] = frame.camera_transform.position.z();
-
-                        // inv_view is a 4x4 camera->world matrix.
-                        // Its 3rd column (rows 0..2, col 2) is camera -forward axis.
-                        Eigen::Vector3f cam_forward = -frame.camera_view.inv_view.block<3, 1>(0, 2);
-                        const float n2 = cam_forward.squaredNorm();
-                        if (n2 > 1e-8f)
-                            cam_forward /= std::sqrt(n2);
-                        else
-                            cam_forward = Eigen::Vector3f(0.0f, 0.0f, -1.0f);
-
-                        cp.camera_direction[0] = cam_forward.x();
-                        cp.camera_direction[1] = cam_forward.y();
-                        cp.camera_direction[2] = cam_forward.z();
+                        if (cam_fd)
+                        {
+                            const Frustum* frustum = &cam_fd->frustum;
+                            FrustumPlanes fp{};
+                            static_assert(sizeof(Frustum::Plane) == 4 * sizeof(float));
+                            std::memcpy(fp.planes, frustum->planes.data(), sizeof(fp.planes));
+                            VkBuffer buf = ctx.resolveBufferHandle(frustum_rg);
+                            synchronizeBeforeBufferTransferWrites(ctx.cmd, std::array{buf});
+                            vkCmdUpdateBuffer(ctx.cmd, buf, 0, sizeof(fp), &fp);
+                        }
                     }
 
-                    VkBuffer buf = ctx.resolveBufferHandle(params_rg);
-                    synchronizeBeforeBufferTransferWrites(ctx.cmd, std::array{buf});
-                    vkCmdUpdateBuffer(ctx.cmd, buf, 0, sizeof(cp), &cp);
-                }
-
-                // Upload FrustumPlanes UBO
-                {
-                    const ViewFrameData* cam_fd = cam ? cam->find(view_handle) : nullptr;
-                    if (cam_fd)
+                    // Barrier: transfer → compute
                     {
-                        const Frustum* frustum = &cam_fd->frustum;
-                        FrustumPlanes fp{};
-                        static_assert(sizeof(Frustum::Plane) == 4 * sizeof(float));
-                        std::memcpy(fp.planes, frustum->planes.data(), sizeof(fp.planes));
-                        VkBuffer buf = ctx.resolveBufferHandle(frustum_rg);
-                        synchronizeBeforeBufferTransferWrites(ctx.cmd, std::array{buf});
-                        vkCmdUpdateBuffer(ctx.cmd, buf, 0, sizeof(fp), &fp);
+                        VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+                        barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+                        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+                        barrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+                        barrier.dstAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
+                                                VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+                        VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+                        dep.memoryBarrierCount = 1;
+                        dep.pMemoryBarriers = &barrier;
+                        vkCmdPipelineBarrier2(ctx.cmd, &dep);
                     }
+
+                    // Reset atomic counters in instance buffer and indirect buffer
+                    {
+                        VkBuffer inst_buf = ctx.resolveBufferHandle(out_inst_rg);
+                        VkBuffer indr_buf = ctx.resolveBufferHandle(out_indirect_rg);
+                        synchronizeBeforeBufferTransferWrites(ctx.cmd, std::array{inst_buf, indr_buf});
+                        vkCmdFillBuffer(ctx.cmd, inst_buf, 0, sizeof(uint32_t), 0u);
+                        vkCmdFillBuffer(ctx.cmd, indr_buf, 0, sizeof(uint32_t), 0u);
+
+                        VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+                        barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+                        barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+                        barrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+                        barrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+                        VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+                        dep.memoryBarrierCount = 1;
+                        dep.pMemoryBarriers = &barrier;
+                        vkCmdPipelineBarrier2(ctx.cmd, &dep);
+                    }
+
+                    const uint32_t groups = (node_buf_->nodeHighWaterMark() + 63u) / 64u;
+                    vkCmdDispatch(ctx.cmd, groups, 1, 1);
                 }
-
-                // Barrier: transfer → compute
-                {
-                    VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
-                    barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-                    barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-                    barrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-                    barrier.dstAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_READ_BIT |
-                                            VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
-                    VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-                    dep.memoryBarrierCount = 1;
-                    dep.pMemoryBarriers = &barrier;
-                    vkCmdPipelineBarrier2(ctx.cmd, &dep);
-                }
-
-                // Reset atomic counters in instance buffer and indirect buffer
-                {
-                    VkBuffer inst_buf = ctx.resolveBufferHandle(out_inst_rg);
-                    VkBuffer indr_buf = ctx.resolveBufferHandle(out_indirect_rg);
-                    synchronizeBeforeBufferTransferWrites(ctx.cmd, std::array{inst_buf, indr_buf});
-                    vkCmdFillBuffer(ctx.cmd, inst_buf, 0, sizeof(uint32_t), 0u);
-                    vkCmdFillBuffer(ctx.cmd, indr_buf, 0, sizeof(uint32_t), 0u);
-
-                    VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
-                    barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-                    barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-                    barrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-                    barrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT | VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
-                    VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-                    dep.memoryBarrierCount = 1;
-                    dep.pMemoryBarriers = &barrier;
-                    vkCmdPipelineBarrier2(ctx.cmd, &dep);
-                }
-
-                const uint32_t groups = (node_buf_->nodeHighWaterMark() + 63u) / 64u;
-                vkCmdDispatch(ctx.cmd, groups, 1, 1);
-            })
+            )
             .setKernel("PointCloudCull");
     }
 
@@ -404,11 +424,16 @@ namespace lux::render
             .read(indirect_rg, ERGBufferRole::INDIRECT)
             .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::POINT_CLOUD)))
             .setKernelFn(
-                [this, indirect_rg, push_constant_fn = std::move(push_constant_fn)](const PassRecordContext& ctx) {
+                [this, indirect_rg, push_constant_fn = std::move(push_constant_fn)](const PassRecordContext& ctx)
+                {
                     if (!global_buf_ || global_buf_->buffer() == VK_NULL_HANDLE)
+                    {
                         return;
+                    }
                     if (!node_buf_ || node_buf_->nodeCount() == 0)
+                    {
                         return;
+                    }
 
                     // Mode-specific push constant (offset 8, VK_SHADER_STAGE_VERTEX_BIT).
                     push_constant_fn(ctx);

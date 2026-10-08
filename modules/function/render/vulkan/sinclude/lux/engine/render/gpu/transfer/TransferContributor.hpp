@@ -1,4 +1,6 @@
 #pragma once
+
+#include <vulkan/vulkan.h>
 /**
  * @file TransferContributor.hpp
  * @brief Non-virtual registration mechanism for upload contributors.

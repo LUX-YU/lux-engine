@@ -18,11 +18,12 @@
  * @see PointCloudGlobalBuffer
  */
 
-#include <lux/engine/render/resources/point_cloud/PointCloudGpuData.hpp>
-#include <lux/engine/render/gpu/VmaFwd.hpp>
-#include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
-#include <lux/engine/function/visibility.h>
 #include <lux/cxx/container/SparseSet.hpp>
+#include <lux/engine/function/visibility.h>
+#include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
+#include <lux/engine/render/gpu/lifecycle/FifOwned.hpp>
+#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
+#include <lux/engine/render/resources/point_cloud/PointCloudGpuData.hpp>
 
 #include <vulkan/vulkan.h>
 
@@ -38,57 +39,35 @@ namespace lux::render
     //  GpuOctreeNodeBuffer
     // ============================================================================
 
-    class LUX_FUNCTION_PUBLIC GpuOctreeNodeBuffer
+    class LUX_FUNCTION_PUBLIC GpuOctreeNodeBuffer final
     {
     public:
-        GpuOctreeNodeBuffer() = default;
-        ~GpuOctreeNodeBuffer()
-        {
-            shutdown();
-        }
+        ~GpuOctreeNodeBuffer() noexcept = default;
 
         GpuOctreeNodeBuffer(const GpuOctreeNodeBuffer&) = delete;
         GpuOctreeNodeBuffer& operator=(const GpuOctreeNodeBuffer&) = delete;
         GpuOctreeNodeBuffer(GpuOctreeNodeBuffer&&) = delete;
         GpuOctreeNodeBuffer& operator=(GpuOctreeNodeBuffer&&) = delete;
 
-        // -----------------------------------------------------------------------
-        //  Lifecycle
-        // -----------------------------------------------------------------------
-
-        /**
-         * @brief Allocate the backing SSBO.
-         * @param allocator   VMA allocator
-         * @param max_nodes   Maximum number of nodes the buffer can hold
-         */
-        bool init(VmaAllocator allocator, uint32_t max_nodes);
-        void shutdown();
-
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-        {
-            deferred_queue_ = q;
-        }
-
         /// Byte size of the SSBO header: { uint node_count; uint padding[3]; }
         /// Nodes are stored at kHeaderSize + index * sizeof(GpuOctreeNode).
         static constexpr VkDeviceSize kHeaderSize = 16;
 
-        [[nodiscard]] bool isInitialized() const noexcept
-        {
-            return buffer_ != VK_NULL_HANDLE;
-        }
         [[nodiscard]] VkBuffer buffer() const noexcept
         {
-            return buffer_;
+            return buffer_owned_.get();
         }
+
         [[nodiscard]] uint32_t nodeCount() const noexcept
         {
             return static_cast<uint32_t>(chunk_to_index_.size());
         }
+
         [[nodiscard]] uint32_t maxNodes() const noexcept
         {
             return max_nodes_;
         }
+
         /// High-water mark of allocated SSBO slots (= node_count written to GPU header).
         [[nodiscard]] uint32_t nodeHighWaterMark() const noexcept
         {
@@ -171,18 +150,17 @@ namespace lux::render
         uint32_t acquireIndex();
         void releaseIndex(uint32_t index);
 
-        VmaAllocator allocator_{nullptr};
-        VkBuffer buffer_{VK_NULL_HANDLE};
-        VmaAllocation allocation_{VK_NULL_HANDLE};
-        uint32_t max_nodes_{0};
+        friend class PointCloudResources;
+        static Expected<VmaBuffer> prepareBacking(VmaAllocator allocator, uint32_t max_nodes) noexcept;
+        GpuOctreeNodeBuffer(DeferredDestroyQueue& retirement, uint32_t max_nodes, VmaBuffer backing) noexcept;
+
+        TFifOwnedAllocated<VkBuffer> buffer_owned_;
+        uint32_t max_nodes_;
 
         lux::cxx::OffsetSparseSet<uint32_t, uint32_t> chunk_to_index_; ///< chunk_id -> SSBO slot
         std::vector<uint32_t> free_indices_;                           ///< recycled SSBO slots
         uint32_t next_index_{0};                                       ///< high-water mark
         std::vector<uint32_t> pending_zeros_;                          ///< slots awaiting GPU zero-fill
-
-        // Deferred-destroy list for expanded-away buffers.
-        DeferredDestroyQueue* deferred_queue_{nullptr};
     };
 
 } // namespace lux::render

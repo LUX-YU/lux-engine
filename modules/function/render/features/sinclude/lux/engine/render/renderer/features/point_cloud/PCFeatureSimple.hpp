@@ -5,9 +5,8 @@
  * @brief Point cloud render feature — Simple mode (global SSBO, multi-draw).
  *
  * Shared GPU resources (PointCloudGlobalBuffer) are fetched from
- * GPUResourceRegistry::getResource<PointCloudResources>() during construction.
- * If PointCloudResources is not yet initialized the constructor will
- * auto-initialize it using the values from Config.
+ * the scene ResourceRegistry during feature attachment. If absent, a complete
+ * PointCloudResources candidate is created from Config before registry publication.
  *
  * @see IPointCloudFeature
  * @see PointCloudResources

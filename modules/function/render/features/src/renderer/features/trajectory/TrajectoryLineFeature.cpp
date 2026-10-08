@@ -5,14 +5,14 @@
 
 #include <array>
 #include <lux/engine/render/renderer/features/trajectory/TrajectoryLineFeature.hpp>
-#include <lux/engine/render/resources/TrajectoryGpuData.hpp>
 #include <lux/engine/render/resources/TrajectoryGlobalBuffer.hpp>
+#include <lux/engine/render/resources/TrajectoryGpuData.hpp>
 
-#include <lux/engine/render/resources/TrajectoryResources.hpp>
+#include <lux/engine/function/render/graph/RGEnums.hpp>
 #include <lux/engine/render/gpu/transfer/TransferContributor.hpp> // makeTransferContributor
 #include <lux/engine/render/graph/RGBuilder.hpp>
-#include <lux/engine/function/render/graph/RGEnums.hpp>
 #include <lux/engine/render/renderer/features/TransientPrimitivePipelinePreset.hpp>
+#include <lux/engine/render/resources/TrajectoryResources.hpp>
 
 namespace lux::render
 {
@@ -48,7 +48,8 @@ namespace lux::render
 
     TrajectoryLineFeature::TrajectoryLineFeature(Config cfg)
         : ITrajectoryFeature(RenderFeature::Config{.name = "TrajectoryLine"}), cfg_(std::move(cfg))
-    {}
+    {
+    }
 
     lux::render::Expected<void> TrajectoryLineFeature::initAndAttachTo(RenderScene& /*scene*/)
     {
@@ -64,7 +65,9 @@ namespace lux::render
 
         auto stages = cv.preparePipelineStages(stage_requests);
         if (!stages)
+        {
             return lux::cxx::unexpected(stages.error());
+        }
         // ---- Pipeline ----
         auto tmpl = makeTrajectoryLineTemplate();
         tmpl.descriptor_set_count = 1;
@@ -78,16 +81,18 @@ namespace lux::render
 
         // ---- Shared GPU resources (per-scene, lazy registration) ----
         auto sv = sceneView();
-        // ensure<T>(init_args): the registry inits and publishes only on success, so
-        // a failed VMA allocation leaves NOTHING discoverable instead of a
-        // published-but-empty resource this feature would then attach on top of.
-        auto traj_r = sv.resources().ensure<TrajectoryResources>(cv.vmaAllocator(), cfg_.max_global_vertices);
-        if (!traj_r)
-            return lux::cxx::unexpected<RenderError>(traj_r.error());
-        auto* traj_res = *traj_r;
-        traj_res->setDeferredQueue(&cv.deferredDestroyQueue());
-        traj_res->setRetireScheduler(&cv.retireScheduler());
-        traj_res->setRetireOwnerToken(sv.retireOwnerToken());
+        auto* traj_res = sv.resources().find<TrajectoryResources>();
+        if (!traj_res)
+        {
+            const TrajectoryResources::CreateInfo
+                info{cv.vmaAllocator(), cv.deferredDestroyQueue(), cv.retireScheduler(), cfg_.max_global_vertices};
+            auto candidate = TrajectoryResources::create(info);
+            if (!candidate)
+            {
+                return lux::cxx::unexpected(candidate.error());
+            }
+            traj_res = sv.resources().insert(std::move(*candidate)).get();
+        }
         // Register TrajectoryResources as a transfer contributor once (idempotent).
         // The scene core used to do this lazily in recordUploads — the OWNER does it
         // now, keeping the core scene domain-free.
@@ -112,24 +117,35 @@ namespace lux::render
             .setPipeline(pipeline_handle_)
             .bindSceneDS()
             .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::FORWARD_TRANS)))
-            .setKernelFn([this](const PassRecordContext& ctx) {
-                if (!global_buf_ || global_buf_->buffer() == VK_NULL_HANDLE)
-                    return;
-                if (ctx.view == nullptr)
-                    return;
-
-                // Bind the unified trajectory vertex buffer once at offset 0.
-                VkBuffer vbuf = global_buf_->buffer();
-                VkDeviceSize zero_offset = 0;
-                vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &vbuf, &zero_offset);
-
-                global_buf_->forEachTrajectory([&](uint32_t /*trajectory_id*/,
-                                                   const TrajectoryGlobalBuffer::Slot& slot) {
-                    if (slot.count == 0)
+            .setKernelFn(
+                [this](const PassRecordContext& ctx)
+                {
+                    if (!global_buf_ || global_buf_->buffer() == VK_NULL_HANDLE)
+                    {
                         return;
-                    vkCmdDraw(ctx.cmd, slot.count, 1, slot.first, 0);
-                });
-            })
+                    }
+                    if (ctx.view == nullptr)
+                    {
+                        return;
+                    }
+
+                    // Bind the unified trajectory vertex buffer once at offset 0.
+                    VkBuffer vbuf = global_buf_->buffer();
+                    VkDeviceSize zero_offset = 0;
+                    vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &vbuf, &zero_offset);
+
+                    global_buf_->forEachTrajectory(
+                        [&](uint32_t /*trajectory_id*/, const TrajectoryGlobalBuffer::Slot& slot)
+                        {
+                            if (slot.count == 0)
+                            {
+                                return;
+                            }
+                            vkCmdDraw(ctx.cmd, slot.count, 1, slot.first, 0);
+                        }
+                    );
+                }
+            )
             .setKernel("TrajectoryDraw");
     }
 

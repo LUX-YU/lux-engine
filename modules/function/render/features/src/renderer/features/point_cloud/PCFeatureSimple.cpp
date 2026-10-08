@@ -5,14 +5,15 @@
 
 #include <array>
 #include <lux/engine/render/renderer/features/point_cloud/PCFeatureSimple.hpp>
-#include <lux/engine/render/resources/point_cloud/PointCloudGpuData.hpp>
 #include <lux/engine/render/resources/point_cloud/PointCloudGlobalBuffer.hpp>
+#include <lux/engine/render/resources/point_cloud/PointCloudGpuData.hpp>
 
-#include <lux/engine/render/resources/PointCloudResources.hpp>
+#include <lux/engine/function/render/graph/RGEnums.hpp>
 #include <lux/engine/render/gpu/transfer/TransferContributor.hpp> // makeTransferContributor
 #include <lux/engine/render/graph/RGBuilder.hpp>
-#include <lux/engine/function/render/graph/RGEnums.hpp>
 #include <lux/engine/render/renderer/features/point_cloud/PointCloudPipelinePreset.hpp>
+#include <lux/engine/render/resources/PointCloudResources.hpp>
+
 // makePointCloudTemplate (+ GraphicsPipelineTemplate, vulkan.h)
 
 namespace lux::render
@@ -21,7 +22,8 @@ namespace lux::render
     PCFeatureSimple::PCFeatureSimple(Config cfg)
         : IPointCloudFeature(RenderFeature::Config{.name = "PointCloudSimple"}), point_size_(cfg.initial_point_size),
           cfg_(std::move(cfg))
-    {}
+    {
+    }
 
     lux::render::Expected<void> PCFeatureSimple::initAndAttachTo(RenderScene& /*scene*/)
     {
@@ -37,7 +39,9 @@ namespace lux::render
 
         auto stages = cv.preparePipelineStages(stage_requests);
         if (!stages)
+        {
             return lux::cxx::unexpected(stages.error());
+        }
         const auto& cfg = cfg_;
 
         // ---- Pipeline ----
@@ -53,19 +57,23 @@ namespace lux::render
 
         // ---- Shared GPU resources (per-scene, lazy registration) ----
         auto sv = sceneView();
-        // ensure<T>(init_args):构造 + init + 只在成功时发布。分配失败时注册表里
-        // 什么都没有,不会像以前那样留下一个"已发布但空"的资源让 attach 照常成功、
-        // 到绘制期才以「按未初始化缓冲画」的形式暴露。
-        // ⚠️ 这个类型被两个点云 feature 用**不同容量** ensure —— 命中路径丢弃实参是
-        //    既有行为(谁先到谁定容量),这里保持不变。
-        auto pc_r =
-            sv.resources().ensure<PointCloudResources>(cv.vmaAllocator(), cfg.max_global_points, cfg.max_octree_nodes);
-        if (!pc_r)
-            return lux::cxx::unexpected<RenderError>(pc_r.error());
-        auto* pc_res = *pc_r;
-        pc_res->setDeferredQueue(&cv.deferredDestroyQueue());
-        pc_res->setRetireScheduler(&cv.retireScheduler());
-        pc_res->setRetireOwnerToken(sv.retireOwnerToken());
+        auto* pc_res = sv.resources().find<PointCloudResources>();
+        if (!pc_res)
+        {
+            const PointCloudResources::CreateInfo info{
+                cv.vmaAllocator(),
+                cv.deferredDestroyQueue(),
+                cv.retireScheduler(),
+                cfg.max_global_points,
+                cfg.max_octree_nodes
+            };
+            auto candidate = PointCloudResources::create(info);
+            if (!candidate)
+            {
+                return lux::cxx::unexpected(candidate.error());
+            }
+            pc_res = sv.resources().insert(std::move(*candidate)).get();
+        }
         // Register PointCloudResources as a transfer contributor once (idempotent:
         // shared across PC features; only the first attach adds it). The scene core
         // used to do this lazily in recordUploads — the OWNER does it now.
@@ -90,34 +98,46 @@ namespace lux::render
             .setPipeline(pipeline_handle_)
             .bindSceneDS()
             .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::POINT_CLOUD)))
-            .setKernelFn([this](const PassRecordContext& ctx) {
-                if (!global_buf_ || global_buf_->buffer() == VK_NULL_HANDLE)
-                    return;
-                if (ctx.view == nullptr)
-                    return;
-
-                // Push point_size constant to the vertex shader.
-                const float point_size = point_size_;
-                vkCmdPushConstants(
-                    ctx.cmd,
-                    ctx.pipeline_layout,
-                    ctx.pc_stage_flags,
-                    kViewPushPrefixSize,
-                    sizeof(float),
-                    &point_size
-                );
-
-                // Bind VB once at offset 0; use firstVertex to select per-slot data.
-                VkBuffer vbuf = global_buf_->buffer();
-                VkDeviceSize zero_offset = 0;
-                vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &vbuf, &zero_offset);
-
-                global_buf_->forEachSlot([&](uint32_t /*chunk_id*/, const PointCloudGlobalBuffer::Slot& slot) {
-                    if (slot.count == 0)
+            .setKernelFn(
+                [this](const PassRecordContext& ctx)
+                {
+                    if (!global_buf_ || global_buf_->buffer() == VK_NULL_HANDLE)
+                    {
                         return;
-                    vkCmdDraw(ctx.cmd, slot.count, 1, slot.first, 0);
-                });
-            })
+                    }
+                    if (ctx.view == nullptr)
+                    {
+                        return;
+                    }
+
+                    // Push point_size constant to the vertex shader.
+                    const float point_size = point_size_;
+                    vkCmdPushConstants(
+                        ctx.cmd,
+                        ctx.pipeline_layout,
+                        ctx.pc_stage_flags,
+                        kViewPushPrefixSize,
+                        sizeof(float),
+                        &point_size
+                    );
+
+                    // Bind VB once at offset 0; use firstVertex to select per-slot data.
+                    VkBuffer vbuf = global_buf_->buffer();
+                    VkDeviceSize zero_offset = 0;
+                    vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &vbuf, &zero_offset);
+
+                    global_buf_->forEachSlot(
+                        [&](uint32_t /*chunk_id*/, const PointCloudGlobalBuffer::Slot& slot)
+                        {
+                            if (slot.count == 0)
+                            {
+                                return;
+                            }
+                            vkCmdDraw(ctx.cmd, slot.count, 1, slot.first, 0);
+                        }
+                    );
+                }
+            )
             .setKernel("PointCloudDraw");
     }
 

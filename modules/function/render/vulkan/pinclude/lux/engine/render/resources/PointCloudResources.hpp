@@ -1,11 +1,12 @@
 #pragma once
 
-#include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
 #include <lux/engine/render/core/FrameServices.hpp>
-#include <lux/engine/render/resources/point_cloud/PointCloudGlobalBuffer.hpp>
-#include <lux/engine/render/resources/point_cloud/GpuOctreeNodeBuffer.hpp>
+#include <lux/engine/render/gpu/lifecycle/GPUResourceTypes.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
+#include <lux/engine/render/resources/point_cloud/GpuOctreeNodeBuffer.hpp>
+#include <lux/engine/render/resources/point_cloud/PointCloudGlobalBuffer.hpp>
 #include <lux/engine/render/resources/point_cloud/PointCloudGpuData.hpp>
+#include <memory>
 
 #include <algorithm>
 #include <cstdint>
@@ -24,77 +25,53 @@ namespace lux::render
      *  - PointCloudGlobalBuffer  — unified point SSBO (all chunks, all modes)
      *  - GpuOctreeNodeBuffer     — per-node metadata for compute-cull modes
      *
-     * Registered in GPUResourceRegistry under EGPUResourceType::POINT_CLOUD so
-     * that any PCFeature* can access these buffers via:
+     * Owned by the scene ResourceRegistry and shared by its PCFeature consumers:
      * @code
-     *   auto* pc = ctx.gpuResources().getResource<PointCloudResources>();
+     *   auto* pc = scene.resources().find<PointCloudResources>();
      *   auto& global_buf = pc->globalBuffer();
      * @endcode
      *
-     * Initialization (call once before adding any PCFeature*):
-     * @code
-     *   pc->init(ctx.vmaAllocator(), 4'000'000, 65'536);
-     * @endcode
-     * PCFeature* constructors will auto-initialize with their Config defaults
-     * if this has not been called yet.
+     * Factory prepares both native buffers before one complete registry publication.
+     * Device, retirement queue and callback scheduler must outlive this resource.
      */
     class LUX_FUNCTION_PUBLIC PointCloudResources final
-        : public TGPUResourceBase<PointCloudResources, EGPUResourceType::POINT_CLOUD>
-    // (此前还继承 IFrameService,但**一个钩子都没重写** —— 每帧被遍历到,
-    //  执行的是基类空实现。纯死重量,已摘除;零行为变化。)
     {
     public:
-        PointCloudResources() = default;
-        ~PointCloudResources()
+        static constexpr EGPUResourceType resource_type = EGPUResourceType::POINT_CLOUD;
+
+        struct CreateInfo
         {
-            shutdown();
+            VmaAllocator allocator;
+            DeferredDestroyQueue& retirement;
+            FrameRetireScheduler& callbacks;
+            uint32_t max_points;
+            uint32_t max_nodes;
+        };
+
+        using CreateResult = Expected<std::unique_ptr<PointCloudResources>>;
+
+        [[nodiscard]] static CreateResult create(const CreateInfo& info) noexcept
+        {
+            auto global = PointCloudGlobalBuffer::prepareBacking(info.allocator, info.max_points);
+            if (!global)
+            {
+                return lux::cxx::unexpected(global.error());
+            }
+            auto nodes = GpuOctreeNodeBuffer::prepareBacking(info.allocator, info.max_nodes);
+            if (!nodes)
+            {
+                return lux::cxx::unexpected(nodes.error());
+            }
+            return std::unique_ptr<PointCloudResources>(
+                new PointCloudResources(info, std::move(*global), std::move(*nodes))
+            );
         }
 
-        // Non-copyable, non-movable (wraps Vulkan handles)
+        ~PointCloudResources() noexcept = default;
         PointCloudResources(const PointCloudResources&) = delete;
         PointCloudResources& operator=(const PointCloudResources&) = delete;
         PointCloudResources(PointCloudResources&&) = delete;
         PointCloudResources& operator=(PointCloudResources&&) = delete;
-
-        // ========== Lifecycle ==========
-
-        /**
-         * @brief Allocate the two shared SSBOs.
-         * @param allocator   VMA allocator (from RenderContext::vmaAllocator())
-         * @param max_points  Total point capacity (all chunks combined)
-         * @param max_nodes   Maximum octree node count (for compute-cull modes)
-         */
-        bool init(VmaAllocator allocator, uint32_t max_points, uint32_t max_nodes)
-        {
-            if (initialized_)
-                return true;
-
-            if (!global_buf_.init(allocator, max_points))
-                return false;
-
-            if (!node_buf_.init(allocator, max_nodes))
-            {
-                global_buf_.shutdown();
-                return false;
-            }
-
-            initialized_ = true;
-            return true;
-        }
-
-        void shutdown()
-        {
-            if (!initialized_)
-                return;
-            node_buf_.shutdown();
-            global_buf_.shutdown();
-            initialized_ = false;
-        }
-
-        bool isInitialized() const noexcept
-        {
-            return initialized_;
-        }
 
         // ========== Access ==========
 
@@ -102,6 +79,7 @@ namespace lux::render
         {
             return global_buf_;
         }
+
         const PointCloudGlobalBuffer& globalBuffer() const noexcept
         {
             return global_buf_;
@@ -111,27 +89,10 @@ namespace lux::render
         {
             return node_buf_;
         }
+
         const GpuOctreeNodeBuffer& nodeBuffer() const noexcept
         {
             return node_buf_;
-        }
-
-        // ========== Deferred Destroy Queue ==========
-
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-        {
-            global_buf_.setDeferredQueue(q);
-            node_buf_.setDeferredQueue(q);
-        }
-
-        void setRetireScheduler(FrameRetireScheduler* rs) noexcept
-        {
-            global_buf_.setRetireScheduler(rs);
-        }
-
-        void setRetireOwnerToken(FrameRetireScheduler::OwnerToken owner_token) noexcept
-        {
-            global_buf_.setRetireOwnerToken(owner_token);
         }
 
         // ========== Streaming upload queue ==========
@@ -173,6 +134,7 @@ namespace lux::render
         {
             use_transfer_scheduler_ = v;
         }
+
         bool usesTransferScheduler() const noexcept
         {
             return use_transfer_scheduler_;
@@ -204,16 +166,21 @@ namespace lux::render
                     node_dirty = true;
                     break;
 
-                case EPcOpType::UPLOAD: {
+                case EPcOpType::UPLOAD:
+                {
                     const auto count = static_cast<uint32_t>(op.data.size());
                     if (count == 0)
+                    {
                         break;
+                    }
 
                     // Skip the upload if capacity growth failed (VMA OOM or the
                     // uint32 point ceiling in allocOrGrow) — otherwise upload()
                     // would write past the slot into the neighbouring chunk. (C-2)
                     if (!global_buf_.ensureSlotCapacity(op.chunk_id, count, scheduler))
+                    {
                         break;
+                    }
                     global_buf_.upload(op.chunk_id, std::span<const GpuPointVertex>(op.data), scheduler);
 
                     auto slot_opt = global_buf_.getSlot(op.chunk_id);
@@ -257,10 +224,18 @@ namespace lux::render
             }
 
             if (node_dirty)
+            {
                 node_buf_.flushNodeCount(scheduler);
+            }
         }
 
     private:
+        PointCloudResources(const CreateInfo& info, VmaBuffer global, VmaBuffer nodes) noexcept
+            : global_buf_(info.retirement, info.callbacks, info.max_points, std::move(global)),
+              node_buf_(info.retirement, info.max_nodes, std::move(nodes))
+        {
+        }
+
         enum class EPcOpType : uint8_t
         {
             UPLOAD,

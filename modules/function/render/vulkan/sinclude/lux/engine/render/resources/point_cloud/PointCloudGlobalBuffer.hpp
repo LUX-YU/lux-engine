@@ -22,9 +22,9 @@
  * 线程:全部方法仅渲染线程。
  */
 
+#include <lux/engine/function/visibility.h>
 #include <lux/engine/render/resources/SlotArenaBuffer.hpp>
 #include <lux/engine/render/resources/point_cloud/PointCloudGpuData.hpp>
-#include <lux/engine/function/visibility.h>
 
 #include <cstdint>
 #include <span>
@@ -37,8 +37,7 @@ namespace lux::render
      * @brief 多模式点云特性共用的统一 GPU 点缓冲。
      *
      * @code
-     *   PointCloudGlobalBuffer buf;
-     *   buf.init(allocator, 4'000'000);   // 预留 4M 个点位
+     *   auto& buf = point_cloud_resources.globalBuffer(); // Complete backing owned by the scene resource.
      *
      *   // 叶子变脏时(渲染线程):
      *   buf.ensureSlotCapacity(cid, leaf.alive_count, scheduler);
@@ -51,12 +50,6 @@ namespace lux::render
 
     public:
         static constexpr uint32_t kInvalidChunkId = Base::kInvalidId;
-
-        /// @param max_points 缓冲的总点容量。
-        bool init(VmaAllocator allocator, uint32_t max_points)
-        {
-            return Base::init(allocator, max_points);
-        }
 
         /// 确保 @p chunk_id 至少有 @p capacity 个点的槽位。
         ///
@@ -79,9 +72,24 @@ namespace lux::render
         {
             return maxElements();
         }
+
         [[nodiscard]] uint32_t usedPoints() const noexcept
         {
             return usedElements();
+        }
+
+    private:
+        friend class PointCloudResources;
+        using Base::prepareBacking;
+
+        PointCloudGlobalBuffer(
+            DeferredDestroyQueue& retirement,
+            FrameRetireScheduler& callbacks,
+            uint32_t capacity,
+            VmaBuffer backing
+        ) noexcept
+            : Base(retirement, callbacks, capacity, backing.release())
+        {
         }
     };
 

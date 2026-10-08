@@ -32,7 +32,9 @@ namespace lux::render
         const auto texture = target ? target->texture : RTextureHandle{};
         const auto removed = targets_registry_.detachLayerAndReapIfEmpty(key, scene, view, retire_serial);
         if (!targets_registry_.tryGet(key))
+        {
             render_ctx_->globalRegistry().must<TextureResources>().unpublish(texture);
+        }
         return removed;
     }
 
@@ -212,14 +214,18 @@ namespace lux::render
     )
     {
         if (!impl_->renderer_)
+        {
             return FeatureTypeRegisteredReply{.error = renderError<err::device::VulkanObjectCreationFailed>()};
+        }
         auto& registry = impl_->renderer_->featureTypeRegistry();
         FeatureTypeRecord record{};
         record.factory = factory;
         record.registration_leases.push_back(code_lifetime);
         auto result = registry.add(std::move(record));
         if (!result)
+        {
             return FeatureTypeRegisteredReply{.error = result.error()};
+        }
 
         auto& stored = registry.at(result->type_id);
         if (result->status == EFeatureTypeRegisterStatus::NEW_REGISTRATION && factory.register_ops_fn)
@@ -230,11 +236,13 @@ namespace lux::render
             {
                 // A failing registrar has already undone its own partial prefix.
                 if (registered && factory.unregister_ops_fn)
+                {
                     factory.unregister_ops_fn(
                         &impl_->dispatcher,
                         stored.ops,
                         std::min(*registered, FeatureTypeRegistry::kMaxOps)
                     );
+                }
                 const auto error = registered ? renderError<err::feature::InvalidRegistration>() : registered.error();
                 registry.erase(result->type_id);
                 return FeatureTypeRegisteredReply{.error = error};
@@ -254,7 +262,9 @@ namespace lux::render
             stored.op_count = *registered;
         }
         if (code_lifetime && std::ranges::find(impl_->code_owners_, code_lifetime) == impl_->code_owners_.end())
+        {
             impl_->code_owners_.push_back(std::move(code_lifetime));
+        }
         FeatureTypeRegisteredReply reply{};
         reply.feature_type_id = result->type_id;
         reply.status = static_cast<std::uint32_t>(result->status);
@@ -276,7 +286,7 @@ namespace lux::render
         return results;
     }
 
-    GeneralRenderServer::CreateSceneResult GeneralRenderServer::createScene(
+    Expected<GeneralRenderServer::CreateSceneResult> GeneralRenderServer::createScene(
         std::string_view name,
         std::span<const FeatureInitParam> features,
         lux::rdesc::ETextureFormat lit_color_format
@@ -286,16 +296,21 @@ namespace lux::render
         config.scene_name = std::string(name);
         config.pipeline.lit_color_format = lit_color_format;
         auto scene_result = impl_->renderer_->addScene(std::move(config));
+        if (!scene_result)
+        {
+            return lux::cxx::unexpected(scene_result.error());
+        }
 
         CreateSceneResult result;
-        result.scene_id = scene_result.scene_id;
+        result.scene_id = scene_result->scene_id;
         auto* scene = impl_->renderer_->getScene(result.scene_id);
         result.features.reserve(features.size());
         result.feature_errors.reserve(features.size());
 
         for (const auto& parameter : features)
         {
-            const Expected<FeatureHandle> installed = [&]() -> Expected<FeatureHandle> {
+            const Expected<FeatureHandle> installed = [&]() -> Expected<FeatureHandle>
+            {
                 if (!scene)
                 {
                     return renderFailure<err::scene::NotFound>(result.scene_id.index);

@@ -5,8 +5,10 @@
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 
+#include <array>
 #include <cassert>
 #include <cstdint>
+#include <unordered_set>
 
 namespace shadow_fault
 {
@@ -18,14 +20,22 @@ namespace shadow_fault
         BUFFER,
         MAPPING,
         FLUSH,
-        IDLE
+        IDLE,
+        POOL,
+        SET,
+        COUNT
     };
 
     inline EBoundary boundary{};
     inline unsigned skip{}, rejected{}, writes{};
+    inline bool reject_scene_ring{};
+    inline std::array<unsigned, static_cast<unsigned>(EBoundary::COUNT)> attempts{};
+    inline std::unordered_set<VkBuffer> live_buffers;
+    inline std::unordered_set<VkDescriptorPool> live_pools;
 
     bool rejects(EBoundary attempted)
     {
+        ++attempts[static_cast<unsigned>(attempted)];
         if (boundary != attempted)
         {
             return false;
@@ -78,16 +88,69 @@ namespace shadow_fault
         VmaAllocationInfo* mapping
     )
     {
+        if (reject_scene_ring && info->size == 4 * 1024 * 1024)
+        {
+            ++rejected;
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
         if (rejects(EBoundary::BUFFER))
         {
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         }
         const auto result = vmaCreateBuffer(allocator, info, allocation_info, buffer, allocation, mapping);
+#if defined(LUX_SCENE_NATIVE_FAULTS)
+        if (result == VK_SUCCESS)
+        {
+            assert(live_buffers.insert(*buffer).second);
+        }
+#endif
         if (result == VK_SUCCESS && mapping && rejects(EBoundary::MAPPING))
         {
             mapping->pMappedData = nullptr;
         }
         return result;
+    }
+
+    void destroyBuffer(VmaAllocator allocator, VkBuffer buffer, VmaAllocation allocation)
+    {
+#if defined(LUX_SCENE_NATIVE_FAULTS)
+        assert(live_buffers.erase(buffer) == 1);
+#endif
+        vmaDestroyBuffer(allocator, buffer, allocation);
+    }
+
+    VkResult createPool(
+        VkDevice device,
+        const VkDescriptorPoolCreateInfo* info,
+        const VkAllocationCallbacks* callbacks,
+        VkDescriptorPool* pool
+    )
+    {
+        if (rejects(EBoundary::POOL))
+        {
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        const auto result = vkCreateDescriptorPool(device, info, callbacks, pool);
+        if (result == VK_SUCCESS)
+        {
+            assert(live_pools.insert(*pool).second);
+        }
+        return result;
+    }
+
+    void destroyPool(VkDevice device, VkDescriptorPool pool, const VkAllocationCallbacks* callbacks)
+    {
+        assert(live_pools.erase(pool) == 1);
+        vkDestroyDescriptorPool(device, pool, callbacks);
+    }
+
+    VkResult allocateSets(VkDevice device, const VkDescriptorSetAllocateInfo* info, VkDescriptorSet* sets)
+    {
+        if (rejects(EBoundary::SET))
+        {
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        return vkAllocateDescriptorSets(device, info, sets);
     }
 
     VkResult flush(VmaAllocator allocator, VmaAllocation allocation, VkDeviceSize offset, VkDeviceSize bytes)
@@ -128,11 +191,34 @@ namespace shadow_fault
 #define vmaCreateImage shadow_fault::createImage
 #define vkCreateImageView shadow_fault::createView
 #define vmaCreateBuffer shadow_fault::createBuffer
+#define vmaDestroyBuffer shadow_fault::destroyBuffer
 #define vmaFlushAllocation shadow_fault::flush
 #define vkDeviceWaitIdle shadow_fault::idle
 #define vkUpdateDescriptorSets shadow_fault::update
+#if defined(LUX_SCENE_NATIVE_FAULTS)
+#define vkCreateDescriptorPool shadow_fault::createPool
+#define vkDestroyDescriptorPool shadow_fault::destroyPool
+#define vkAllocateDescriptorSets shadow_fault::allocateSets
+#endif
 #include "../../vulkan/src/gpu/memory/VmaTypes.cpp"
 #include "../../vulkan/src/gpu/VulkanContext.cpp"
+#if defined(LUX_SCENE_NATIVE_FAULTS)
+#include "../../vulkan/src/gpu/lifecycle/DeferredDestroyQueue.cpp"
+#include "../../vulkan/src/gpu/memory/GPUBufferVma.cpp"
+#include "../../vulkan/src/gpu/memory/StagingBuffer.cpp"
+#include "../../vulkan/src/gpu/utils/StagingRingBuffer.cpp"
+#include "../../vulkan/src/gpu/transfer/TransferScheduler.cpp"
+#include "../../vulkan/src/gpu/RenderContext.cpp"
+#include "../../vulkan/src/gpu/descriptor/SceneDescriptorArena.cpp"
+#include "../../vulkan/src/gpu/descriptor/SceneDomainDescriptorSets.cpp"
+#include "../../vulkan/src/resources/SceneResources.cpp"
+#include "../../vulkan/src/scene/SceneGraphCache.cpp"
+#include "../../vulkan/src/scene/RenderScene.cpp"
+#include "../../vulkan/src/renderer/Renderer.cpp"
+#undef vkCreateDescriptorPool
+#undef vkDestroyDescriptorPool
+#undef vkAllocateDescriptorSets
+#endif
 #include "../../vulkan/src/resources/lighting/ShadowResources.cpp"
 #include "../src/renderer/features/shadow/EVSMShadowResources.cpp"
 #include "../src/renderer/features/shadow/EVSMShadowTechnique.cpp"
@@ -141,6 +227,7 @@ namespace shadow_fault
 #undef vmaCreateImage
 #undef vkCreateImageView
 #undef vmaCreateBuffer
+#undef vmaDestroyBuffer
 #undef vmaFlushAllocation
 #undef vkDeviceWaitIdle
 #undef vkUpdateDescriptorSets

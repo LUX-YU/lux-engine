@@ -5,13 +5,13 @@
  *
  * Owns per-scene state: features, views, render-graph infrastructure,
  * and per-scene material pipeline.  Receives a shared RenderContext
- * (GPU resources, pipelines, uploads) via constructor — RAII, no init().
+ * (GPU resources, pipelines, uploads) before publishing the complete scene owner.
  *
  * Usage:
  *   auto ctx = RenderContext::create(res_ctx, std::move(ci));
  *   if (!ctx) return lux::cxx::unexpected(ctx.error());
- *   RenderScene scene(*ctx, {.scene_name = "Main"});
- *   scene.addFeature<ForwardMeshFeature>(config);
+ *   auto scene = RenderScene::create(*ctx, {.scene_name = "Main"});
+ *   if (!scene) return lux::cxx::unexpected(scene.error());
  *   // ... per-frame: beginFrame → updateView →
  *   //                renderer.render(scene, cmd, fi) → endFrame
  *
@@ -101,10 +101,11 @@ namespace lux::render
             std::int64_t scene_origin_page[3]{};
         };
 
-        /// Construct from a fully-initialized RenderContext (RAII).
-        /// Creates per-scene render-graph infrastructure internally.
-        explicit RenderScene(std::shared_ptr<RenderContext> ctx);
-        RenderScene(std::shared_ptr<RenderContext> ctx, const Config& cfg);
+        [[nodiscard]] static Expected<std::unique_ptr<RenderScene>> create(std::shared_ptr<RenderContext> ctx) noexcept;
+
+        [[nodiscard]] static Expected<std::unique_ptr<RenderScene>>
+        create(std::shared_ptr<RenderContext> ctx, const Config& cfg) noexcept;
+
         ~RenderScene();
 
         RenderScene(const RenderScene&) = delete;
@@ -113,23 +114,15 @@ namespace lux::render
         RenderScene& operator=(RenderScene&&) = delete;
 
         // ================================================================
-        //  Shutdown
-        // ================================================================
-
-        /// Explicit cleanup (features, RG infra).  Automatically called by
-        /// the destructor; safe to call multiple times.
-        void shutdownFull();
-
-        // ================================================================
         //  Feature Management
         // ================================================================
 
         /**
-     * @brief Add a feature and return its assigned feature_id.
-     *
-     * The caller must save the returned id for later access via
-     * getFeature() / getFeatureAs<T>().
-     */
+         * @brief Add a feature and return its assigned feature_id.
+         *
+         * The caller must save the returned id for later access via
+         * getFeature() / getFeatureAs<T>().
+         */
         template <typename T, typename... Args> Expected<FeatureHandle> addFeature(Args&&... args)
         {
             return installFeature(std::make_unique<T>(std::forward<Args>(args)...));
@@ -143,18 +136,18 @@ namespace lux::render
         Expected<FeatureHandle> addFeatureErased(std::unique_ptr<RenderFeature> feature);
 
         /**
-     * @brief 装载一个特性(事务性)。addFeature<T> 与插件路径都走这里。
-     *
-     * 三段式,因为**只有中间那段需要具体类型**:
-     *   1. beginInstall  依赖/冲突/多重性/特性等级校验 + attach。类型擦除。
-     *   2. 插入容器      RenderFeatureSet::insert<T> 在这里用 if constexpr 判定
-     *                    "产不产 pass" —— 类型信息到此为止,不再外泄。
-     *   3. finishInstall 置启用态、回填已有视图的每视图状态(失败则整体回滚)。
-     *                    类型擦除。
-     *
-     * 拆成三段而不是把一个 RenderFeature* 标志参数塞进单一函数 —— 后者要调用
-     * 方替容器算它自己的事,签名也说不清那个参数和第一个参数是同一个对象。
-     */
+         * @brief 装载一个特性(事务性)。addFeature<T> 与插件路径都走这里。
+         *
+         * 三段式,因为**只有中间那段需要具体类型**:
+         *   1. beginInstall  依赖/冲突/多重性/特性等级校验 + attach。类型擦除。
+         *   2. 插入容器      RenderFeatureSet::insert<T> 在这里用 if constexpr 判定
+         *                    "产不产 pass" —— 类型信息到此为止,不再外泄。
+         *   3. finishInstall 置启用态、回填已有视图的每视图状态(失败则整体回滚)。
+         *                    类型擦除。
+         *
+         * 拆成三段而不是把一个 RenderFeature* 标志参数塞进单一函数 —— 后者要调用
+         * 方替容器算它自己的事,签名也说不清那个参数和第一个参数是同一个对象。
+         */
         template <typename T> Expected<FeatureHandle> installFeature(std::unique_ptr<T> feature)
         {
             static_assert(std::is_base_of_v<RenderFeature, T>, "只能装入 RenderFeature 及其派生类");
@@ -199,10 +192,12 @@ namespace lux::render
             {
                 scene_.pending_install_descriptor_ = &desc;
             }
+
             ~FeatureInstallScope()
             {
                 scene_.pending_install_descriptor_ = nullptr;
             }
+
             FeatureInstallScope(const FeatureInstallScope&) = delete;
             FeatureInstallScope& operator=(const FeatureInstallScope&) = delete;
 
@@ -299,14 +294,17 @@ namespace lux::render
         {
             return pipeline_config_;
         }
+
         [[nodiscard]] double spatialTileSize() const noexcept
         {
             return config_.coordinate_page_size;
         }
+
         [[nodiscard]] const std::int64_t* sceneOriginPage() const noexcept
         {
             return config_.scene_origin_page;
         }
+
         [[nodiscard]] Expected<void> rebaseSceneOrigin(const std::int64_t scene_origin_page[3]) noexcept;
 
         /// Replace the pipeline configuration.  Invalidates the render graph.
@@ -323,26 +321,32 @@ namespace lux::render
             delta_ns_ = delta_ns;
             simulation_step_ = step;
         }
+
         [[nodiscard]] std::int64_t elapsedNanoseconds() const noexcept
         {
             return elapsed_ns_;
         }
+
         [[nodiscard]] std::int64_t deltaNanoseconds() const noexcept
         {
             return delta_ns_;
         }
+
         [[nodiscard]] std::uint64_t simulationStep() const noexcept
         {
             return simulation_step_;
         }
+
         [[nodiscard]] float simulationTime() const noexcept
         {
             return static_cast<float>(static_cast<double>(elapsed_ns_) * 1e-9);
         }
+
         void setMaintenanceTime(float seconds) noexcept
         {
             maintenance_time_ = seconds;
         }
+
         [[nodiscard]] float maintenanceTime() const noexcept
         {
             return maintenance_time_;
@@ -400,6 +404,7 @@ namespace lux::render
         {
             instance_cull_mask_addr_ = addr;
         }
+
         [[nodiscard]] uint64_t instanceCullMaskAddress() const noexcept
         {
             return instance_cull_mask_addr_;
@@ -444,18 +449,18 @@ namespace lux::render
         [[nodiscard]] const SceneGraphState& graphState() const noexcept;
 
         /**
-     * @brief Compile (or recompile) the scene-level render graph from a target layout.
-     *
-     * Collects addPasses() from all enabled features, produces an
-     * RGCompiledGraph, and updates graph_state_.
-     * Called by Renderer or by external code when the graph is
-     * invalidated (feature change, resize, etc.).
-     *
-     * The layout describes which slots (SceneColor, SceneDepth, …) the target
-     * provides and their format/usage properties.  The slot descriptors are baked
-     * into the compiled graph; actual per-frame VkImage handles are supplied
-     * through RenderRequest::target at record time.
-     */
+         * @brief Compile (or recompile) the scene-level render graph from a target layout.
+         *
+         * Collects addPasses() from all enabled features, produces an
+         * RGCompiledGraph, and updates graph_state_.
+         * Called by Renderer or by external code when the graph is
+         * invalidated (feature change, resize, etc.).
+         *
+         * The layout describes which slots (SceneColor, SceneDepth, …) the target
+         * provides and their format/usage properties.  The slot descriptors are baked
+         * into the compiled graph; actual per-frame VkImage handles are supplied
+         * through RenderRequest::target at record time.
+         */
         void compileGraphTemplate(const RenderTargetLayout& layout);
 
         /// 调试名(诊断打印用;格式异构报错点名)。
@@ -471,6 +476,7 @@ namespace lux::render
         {
             return scene_id_;
         }
+
         void setSceneId(RenderSceneId id) noexcept
         {
             scene_id_ = id;
@@ -497,6 +503,7 @@ namespace lux::render
         {
             return scene_global_slot_;
         }
+
         [[nodiscard]] FrameRetireScheduler::OwnerToken retireOwnerToken() const noexcept
         {
             return retire_owner_token_;
@@ -511,6 +518,7 @@ namespace lux::render
         {
             return resources_;
         }
+
         [[nodiscard]] const ResourceRegistry& resources() const noexcept
         {
             return resources_;
@@ -540,6 +548,9 @@ namespace lux::render
         }
 
     private:
+        struct Backing;
+        RenderScene(std::shared_ptr<RenderContext> ctx, const Config& cfg, Backing backing) noexcept;
+
         /// 只看 FeatureDescriptor 声明的关系:多重性、冲突、必需依赖、特性等级档案。
         /// 四道闸全在 attach 之前,拒绝时没有任何东西要回滚。
         [[nodiscard]] Expected<void> validateDeclaredRelationships(const FeatureDescriptor& desc) const;
@@ -552,7 +563,7 @@ namespace lux::render
 
         // Core feature removal. check_reverse_deps=true (public removeFeature) refuses
         // to remove a feature another installed feature still requires; =false
-        // (removeAllFeatures / shutdownFull) bypasses the guard for bulk teardown.
+        // (removeAllFeatures / destruction) bypasses the guard for bulk teardown.
         Expected<void> removeFeatureInternal(FeatureHandle feature_id, bool check_reverse_deps);
 
         // Set for the duration of a factory create_fn call (see FeatureInstallScope):
@@ -612,9 +623,7 @@ namespace lux::render
         /// 特性容器、查询与每(特性,视图)状态账本(纯数据;事务编排留在本类)。
         RenderFeatureSet feature_set_;
 
-        /// 编译图 + 图基础设施 + 图相关退休。unique_ptr 而非值成员:它的构造需要
-        /// debug_name_,而后者按声明序在本成员之后初始化 —— 值成员会用到未初始化的
-        /// 名字。构造体内建立(正是旧 allocator_/recorder_ 的建立处)。
+        /// 编译图、图基础设施和图相关退休；构造时直接使用配置中的名称。
         ///
         /// ⚠️ **必须声明在 view_set_ 之前**:视图持有的图资源(录制上下文 + 物理资源)
         /// 归它所有,`~SceneViewSet()` 要把它们还回来。逆序析构 ⇒ view_set_ 先死、
@@ -642,7 +651,6 @@ namespace lux::render
         // at beginFrame start. See setInstanceCullMaskAddress().
         uint64_t instance_cull_mask_addr_{0};
 
-        bool initialized_{false};
         std::string debug_name_;
 
         // (活跃视图 / 启用特性的稠密缓存与脏标记,已分别随各自集合迁入

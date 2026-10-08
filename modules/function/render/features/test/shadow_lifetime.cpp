@@ -33,7 +33,9 @@ int main()
     auto context = RenderContext::create(**resources, std::move(info));
     assert(context);
     {
-        RenderScene scene(*context);
+        auto made_scene = RenderScene::create(*context);
+        assert(made_scene);
+        auto& scene = **made_scene;
         assert(scene.addFeature<LightFeature>());
         ShadowMapFeature::Config config;
         config.shadow_config.atlas_page_resolution = 16;

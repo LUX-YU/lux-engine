@@ -24,7 +24,9 @@ namespace lux::render
     Renderer::Renderer(std::shared_ptr<RenderContext> ctx) : ctx_(std::move(ctx))
     {
         if (!ctx_)
+        {
             renderFatal("Renderer: RenderContext must not be null");
+        }
     }
 
     Renderer::~Renderer()
@@ -35,7 +37,7 @@ namespace lux::render
             renderFatal("Renderer failed to wait for device idle during teardown");
         }
         // Member destruction order (reverse of declaration) guarantees
-        // scenes_ is destroyed before ctx_, so ~RenderScene() → shutdownFull()
+        // scenes_ is destroyed before ctx_, so ~RenderScene()
         // runs while the shared RenderContext is still alive.
     }
 
@@ -43,10 +45,15 @@ namespace lux::render
     //  Scene lifecycle
     // ─────────────────────────────────────────────────────────────────────
 
-    AddSceneResult Renderer::addScene(RenderScene::Config config)
+    Expected<AddSceneResult> Renderer::addScene(RenderScene::Config config)
     {
         auto initial_views = std::move(config.initial_views);
-        auto scene = std::make_unique<RenderScene>(ctx_, config);
+        auto prepared = RenderScene::create(ctx_, config);
+        if (!prepared)
+        {
+            return lux::cxx::unexpected(prepared.error());
+        }
+        auto scene = std::move(*prepared);
         auto* scene_ptr = scene.get();
         scene_ptr->bindFeatureTypeRegistry(feature_type_registry_);
         // SlotKeyAutoSparseSet::insert assigns a generational RenderSceneId.
@@ -91,20 +98,23 @@ namespace lux::render
         // arithmetic. Serials advance on ticks that never submit (command-only
         // ticks, the no-views early return right after a DestroyScene), so
         // "frame_serial - retire_serial >= fif" over-claimed completion and the
-        // scene-cycle stress gate caught shutdownFull destroying resources a
+        // scene-cycle stress gate caught scene destruction releasing resources a
         // still-executing command buffer referenced. retire_serial is an upper
         // bound of the scene's last possible GPU use; same-queue FIFO completion
         // makes the watermark monotone over all earlier submissions.
         const uint64_t fif = ctx_->framesInFlight();
         const uint64_t completed = completedSerialOr(frame_serial > fif ? frame_serial - fif : 0);
-        std::erase_if(retired_scenes_, [&](RetiredScene& r) {
-            if (r.retire_serial > completed)
+        std::erase_if(
+            retired_scenes_,
+            [&](RetiredScene& r)
             {
-                return false; // GPU may still reference this scene's resources
+                if (r.retire_serial > completed)
+                {
+                    return false; // GPU may still reference this scene's resources
+                }
+                return true; // drop — the unique_ptr frees the scene
             }
-            r.scene->shutdownFull();
-            return true; // drop — the unique_ptr frees the scene
-        });
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -131,10 +141,7 @@ namespace lux::render
 
         // Retire global transfer scheduler overflow staging from the completed frame.
         auto& global_scheduler = ctx_->globalTransferScheduler();
-        if (global_scheduler.isInitialized())
-        {
-            global_scheduler.retireStaging(stamp.slotIndex());
-        }
+        global_scheduler.retireStaging(stamp.slotIndex());
 
         auto& global_registry = ctx_->globalRegistry();
         // 每帧维护回调由**安装点**登记(见各资源的安装处),这里只按阶段驱动。
@@ -170,24 +177,9 @@ namespace lux::render
 
     void Renderer::record(VkCommandBuffer cmd, const FrameStamp& stamp)
     {
-        // ── Lazy-initialize global transfer scheduler ─────────────────
         auto& global_scheduler = ctx_->globalTransferScheduler();
-        if (!global_scheduler.isInitialized())
-        {
-            TransferScheduler::Config ts_cfg{
-                .allocator = ctx_->vmaAllocator(),
-                .ring_capacity = 4 * 1024 * 1024,
-                .frames_in_flight = ctx_->framesInFlight(),
-            };
-            (void)global_scheduler.init(ts_cfg);
-        }
-
-        // ── Execute global transfer scheduler ─────────────────────────
-        if (global_scheduler.isInitialized())
-        {
-            global_scheduler.resetFrame(stamp.slotIndex());
-            global_scheduler.executeAll(cmd);
-        }
+        global_scheduler.resetFrame(stamp.slotIndex());
+        global_scheduler.executeAll(cmd);
 
         // Per-scene uploads (instance data, point cloud, trajectory, etc.).
         for (auto& scene_ptr : scenes_.values())
@@ -317,7 +309,9 @@ namespace lux::render
         req.target = &binding;
         renderView(scene, gs, view, req, rt, cross_view_index);
         for (const auto* feature : scene.enabledFeatures())
+        {
             feature->retainSubmissions(rt);
+        }
         return true;
     }
 
@@ -383,9 +377,8 @@ namespace lux::render
             scene.graphAllocator(),
             ctx_->framesInFlight(),
             nullptr,
-            [&scene, current_graph_desc](RGResourceState&& retired_state) {
-                scene.retireViewResourceState(std::move(retired_state), current_graph_desc);
-            }
+            [&scene, current_graph_desc](RGResourceState&& retired_state)
+            { scene.retireViewResourceState(std::move(retired_state), current_graph_desc); }
         );
         if (!resized_or_ready)
         {
@@ -411,7 +404,9 @@ namespace lux::render
     )
     {
         if (!gs.graph || !view.resource_state)
+        {
             renderFatal("renderView: graph and view resources must be ready");
+        }
 
         // Guard: view must have a valid slot allocated (skips views whose slot
         // hasn't been assigned yet or are pending GC).
@@ -526,6 +521,7 @@ namespace lux::render
     {
         return *ctx_;
     }
+
     uint32_t Renderer::framesInFlight() const noexcept
     {
         return ctx_->framesInFlight();

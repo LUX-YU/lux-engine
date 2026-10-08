@@ -53,7 +53,7 @@ namespace lux::render
         // ================================================================
 
         /// Blocking convenience: create a scene directly on the render thread.
-        [[nodiscard]] AddSceneResult addScene(RenderScene::Config config);
+        [[nodiscard]] Expected<AddSceneResult> addScene(RenderScene::Config config);
 
         /// Remove a scene by id (render thread).
         void removeScene(RenderSceneId scene_id);
@@ -191,6 +191,7 @@ namespace lux::render
             std::unique_ptr<RenderScene> scene;
             uint64_t retire_serial{0};
         };
+
         std::vector<RetiredScene> retired_scenes_;
 
         // Fence-proven completion watermark (setGpuCompletedSerial). The bool

@@ -21,7 +21,6 @@
 #include <lux/engine/render/gpu/transfer/TransferTypes.hpp>
 #include <lux/engine/render/gpu/utils/StagingRingBuffer.hpp>
 
-#include <optional>
 #include <span>
 #include <vector>
 
@@ -41,19 +40,14 @@ namespace lux::render
             uint32_t frames_in_flight{2};
         };
 
-        TransferScheduler() = default;
-        ~TransferScheduler();
+        [[nodiscard]] static Expected<TransferScheduler> create(const Config& cfg) noexcept;
+
+        ~TransferScheduler() noexcept = default;
 
         TransferScheduler(const TransferScheduler&) = delete;
         TransferScheduler& operator=(const TransferScheduler&) = delete;
-        TransferScheduler(TransferScheduler&&) noexcept;
-        TransferScheduler& operator=(TransferScheduler&&) noexcept;
-
-        /// Initialize the scheduler. Must be called before any other method.
-        [[nodiscard]] bool init(const Config& cfg);
-
-        /// Tear down internal resources.
-        void shutdown();
+        TransferScheduler(TransferScheduler&&) noexcept = default;
+        TransferScheduler& operator=(TransferScheduler&&) noexcept = default;
 
         // =====================================================================
         //  Staging allocation (called by resource classes)
@@ -140,22 +134,18 @@ namespace lux::render
 
         [[nodiscard]] bool hasWork() const noexcept;
 
-        [[nodiscard]] bool isInitialized() const noexcept
-        {
-            return initialized_;
-        }
-
     private:
+        TransferScheduler(const Config& cfg, StagingRingBuffer ring) noexcept;
+
         void buildPreBarriers();
         void buildPostBarriers();
 
         // ── Members ──────────────────────────────────────────────────────────
 
         VmaAllocator allocator_{nullptr};
-        uint32_t frames_in_flight_{2};
 
         // Staging memory
-        std::optional<StagingRingBuffer> ring_;
+        StagingRingBuffer ring_;
         std::vector<StagingBuffer> overflow_staging_;              ///< Current frame overflow
         std::vector<std::vector<StagingBuffer>> deferred_staging_; ///< Per-FIF ring for retirement
 
@@ -177,8 +167,6 @@ namespace lux::render
         // Statistics
         uint32_t last_barrier_count_{0};
         uint32_t last_copy_count_{0};
-
-        bool initialized_{false};
     };
 
 } // namespace lux::render

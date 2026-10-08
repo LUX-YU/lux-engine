@@ -196,7 +196,8 @@ namespace lux::render
             // 传输,渲染线程在 flushErrorEvents() 里排空折进 sink。
             debug_cb = [err_counter = cfg.validation_error_counter,
                         text_sink = cfg.validation_message_sink,
-                        ring = &validation_ring_](const DebugCallbackInfo& info) -> bool {
+                        ring = &validation_ring_](const DebugCallbackInfo& info) -> bool
+            {
                 // Mesh passes deliberately use one fixed vertex-stage superset
                 // interface across builtin and graph-material fragment stages.
                 // Vulkan permits an FS to consume only a subset, but the
@@ -460,16 +461,16 @@ namespace lux::render
             GpuTransferPipeline::Config ucfg{};
             ucfg.device_ctx = dev_ctx_.get();
             ucfg.notify_work_state = server_;
-            ucfg.notify_work = +[](void* state) noexcept {
-                static_cast<GeneralRenderServer*>(state)->channelSync().notifyRequestStateChanged();
-            };
+            ucfg.notify_work = +[](void* state) noexcept
+            { static_cast<GeneralRenderServer*>(state)->channelSync().notifyRequestStateChanged(); };
             ucfg.lifecycle_state = this;
             ucfg.lifecycle = +[](void* state,
                                  std::uint32_t request_id,
                                  TransferCompletion::EKind kind,
                                  std::uint32_t resource_index,
                                  std::uint32_t resource_gen,
-                                 EUploadLifecycleState lifecycle_state) noexcept {
+                                 EUploadLifecycleState lifecycle_state) noexcept
+            {
                 static_cast<Impl*>(state)
                     ->transitionUpload(request_id, kind, resource_index, resource_gen, lifecycle_state);
             };
@@ -779,7 +780,14 @@ namespace lux::render
             auto result = im.renderer_->addScene(std::move(config));
 
             SceneCreatedReply reply{};
-            reply.scene_id = result.scene_id;
+            if (result)
+            {
+                reply.scene_id = result->scene_id;
+            }
+            else
+            {
+                reply.error = result.error();
+            }
             replyToCurrent<CreateScenePayload>(ctx, reply);
         }
 
@@ -798,7 +806,7 @@ namespace lux::render
             // ASYNChronously instead, freed only once the GPU has passed the frames
             // that could touch it:
             //   - the scene's own GPU resources  → removeScene() retires the scene and
-            //     defers shutdownFull() by fif frames (PR-6);
+            //     defers scene destruction until GPU completion;
             //   - the server-side offscreen pools → moved into the per-FIF deferred
             //     ring below (freed when the slot's fence is next waited);
             //   - subclass per-scene pools (UI)   → pre_destroy_scene_cb_ retires them
@@ -1126,7 +1134,8 @@ namespace lux::render
             auto* previous = im.targets_registry_.tryGet(p.previous);
             auto* next = im.targets_registry_.tryGet(p.next);
             auto* scene = im.renderer_->getScene(p.scene);
-            const auto reject = [&] {
+            const auto reject = [&]
+            {
                 replyToCurrent<SwitchViewTargetPayload>(
                     ctx,
                     GenericOkReply{1, renderError<err::comm::RequestInvalid>()}
@@ -1273,7 +1282,9 @@ namespace lux::render
                         provider->requestResize({p.new_extent.width, p.new_extent.height});
                         auto rebuilt = t->present->rebuild();
                         if (!rebuilt)
+                        {
                             reply.status = 3;
+                        }
                         const auto extent = provider->extent();
                         reply.extent = {extent.width, extent.height};
                     }
@@ -1356,7 +1367,9 @@ namespace lux::render
                 if (t->frozen)
                 {
                     if (!t->produced_serial || !pool || t->produced_revision != pool->backingRevision())
+                    {
                         return 4;
+                    }
                     image_slot = t->produced_slot;
                 }
             }
@@ -1435,7 +1448,8 @@ namespace lux::render
                                VkAccessFlags srcA,
                                VkAccessFlags dstA,
                                VkPipelineStageFlags srcS,
-                               VkPipelineStageFlags dstS) {
+                               VkPipelineStageFlags dstS)
+            {
                 VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
                 b.oldLayout = oldL;
                 b.newLayout = newL;
@@ -1751,9 +1765,10 @@ namespace lux::render
         auto& im = *impl_;
         advancePendingReadbacks(im);
 
-        const bool any_done = std::ranges::any_of(im.pending_readbacks_, [](const Impl::PendingReadback& pending) {
-            return pending.done;
-        });
+        const bool any_done = std::ranges::any_of(
+            im.pending_readbacks_,
+            [](const Impl::PendingReadback& pending) { return pending.done; }
+        );
         if (!any_done || control_server_->hasPendingReplyPublication())
         {
             return;

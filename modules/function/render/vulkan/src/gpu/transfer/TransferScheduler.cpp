@@ -1,4 +1,3 @@
-#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
 #include <vk_mem_alloc.h>
 
@@ -12,91 +11,19 @@ namespace lux::render
     //  Lifecycle
     // =====================================================================
 
-    TransferScheduler::~TransferScheduler()
+    Expected<TransferScheduler> TransferScheduler::create(const Config& cfg) noexcept
     {
-        shutdown();
-    }
-
-    TransferScheduler::TransferScheduler(TransferScheduler&& o) noexcept
-        : allocator_{o.allocator_}, frames_in_flight_{o.frames_in_flight_}, ring_{std::move(o.ring_)},
-          overflow_staging_{std::move(o.overflow_staging_)}, deferred_staging_{std::move(o.deferred_staging_)},
-          contributors_{std::move(o.contributors_)}, buffer_copies_{std::move(o.buffer_copies_)},
-          image_copies_{std::move(o.image_copies_)}, qfot_acquires_{std::move(o.qfot_acquires_)},
-          extra_post_barriers_{std::move(o.extra_post_barriers_)},
-          pre_buffer_barriers_{std::move(o.pre_buffer_barriers_)},
-          post_buffer_barriers_{std::move(o.post_buffer_barriers_)},
-          pre_image_barriers_{std::move(o.pre_image_barriers_)},
-          post_image_barriers_{std::move(o.post_image_barriers_)}, last_barrier_count_{o.last_barrier_count_},
-          last_copy_count_{o.last_copy_count_}, initialized_{o.initialized_}
-    {
-        o.allocator_ = nullptr;
-        o.initialized_ = false;
-    }
-
-    TransferScheduler& TransferScheduler::operator=(TransferScheduler&& o) noexcept
-    {
-        if (this != &o)
-        {
-            shutdown();
-            allocator_ = o.allocator_;
-            frames_in_flight_ = o.frames_in_flight_;
-            ring_ = std::move(o.ring_);
-            overflow_staging_ = std::move(o.overflow_staging_);
-            deferred_staging_ = std::move(o.deferred_staging_);
-            contributors_ = std::move(o.contributors_);
-            buffer_copies_ = std::move(o.buffer_copies_);
-            image_copies_ = std::move(o.image_copies_);
-            qfot_acquires_ = std::move(o.qfot_acquires_);
-            extra_post_barriers_ = std::move(o.extra_post_barriers_);
-            pre_buffer_barriers_ = std::move(o.pre_buffer_barriers_);
-            post_buffer_barriers_ = std::move(o.post_buffer_barriers_);
-            pre_image_barriers_ = std::move(o.pre_image_barriers_);
-            post_image_barriers_ = std::move(o.post_image_barriers_);
-            last_barrier_count_ = o.last_barrier_count_;
-            last_copy_count_ = o.last_copy_count_;
-            initialized_ = o.initialized_;
-            o.allocator_ = nullptr;
-            o.initialized_ = false;
-        }
-        return *this;
-    }
-
-    bool TransferScheduler::init(const Config& cfg)
-    {
-        if (initialized_)
-        {
-            return false;
-        }
-        allocator_ = cfg.allocator;
-        frames_in_flight_ = cfg.frames_in_flight;
-
         auto ring = StagingRingBuffer::create(cfg.allocator, cfg.ring_capacity, cfg.frames_in_flight);
         if (!ring)
         {
-            return false;
+            return lux::cxx::unexpected(ring.error());
         }
-        ring_.emplace(std::move(*ring));
-        deferred_staging_.resize(frames_in_flight_);
-        initialized_ = true;
-        return true;
+        return TransferScheduler(cfg, std::move(*ring));
     }
 
-    void TransferScheduler::shutdown()
+    TransferScheduler::TransferScheduler(const Config& cfg, StagingRingBuffer ring) noexcept
+        : allocator_(cfg.allocator), ring_(std::move(ring)), deferred_staging_(cfg.frames_in_flight)
     {
-        if (!initialized_)
-        {
-            return;
-        }
-
-        // Flush all deferred staging buffers.
-        for (auto& slot : deferred_staging_)
-        {
-            slot.clear();
-        }
-        overflow_staging_.clear();
-
-        ring_ = {};
-        initialized_ = false;
     }
 
     // =====================================================================
@@ -105,13 +32,12 @@ namespace lux::render
 
     StagingAlloc TransferScheduler::allocateStaging(VkDeviceSize bytes)
     {
-        if (!initialized_)
+        if (bytes == 0)
         {
-            renderFatal("TransferScheduler::allocateStaging() before initialization");
+            return {};
         }
-
         // Fast path: ring sub-allocation.
-        auto sub = ring_->suballocate(bytes);
+        auto sub = ring_.suballocate(bytes);
         if (sub)
         {
             return {sub.buffer, /*allocation=*/nullptr, sub.mapped, sub.offset};
@@ -125,6 +51,7 @@ namespace lux::render
         VmaAllocationCreateInfo aci{};
         aci.usage = VMA_MEMORY_USAGE_AUTO;
         aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        aci.requiredFlags = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
         VmaAllocationInfo info{};
         VkBuffer buf = VK_NULL_HANDLE;
@@ -134,7 +61,12 @@ namespace lux::render
             return {};
         }
 
-        overflow_staging_.emplace_back(allocator_, buf, alloc);
+        StagingBuffer backing(allocator_, buf, alloc);
+        if (!info.pMappedData)
+        {
+            return {};
+        }
+        overflow_staging_.push_back(std::move(backing));
         return {buf, alloc, info.pMappedData, /*srcOffset=*/0};
     }
 
@@ -656,7 +588,7 @@ namespace lux::render
         extra_post_barriers_.clear();
         last_barrier_count_ = 0;
         last_copy_count_ = 0;
-        ring_->resetSlot(frame_slot);
+        ring_.resetSlot(frame_slot);
     }
 
     void TransferScheduler::retireStaging(uint32_t frame_slot)

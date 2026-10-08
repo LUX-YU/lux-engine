@@ -1,8 +1,8 @@
 #include <lux/engine/render/scene/SceneViewSet.hpp>
 
+#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
 #include <lux/engine/render/graph/RGVulkanRecorder.hpp>
 #include <lux/engine/render/graph/RGVulkanResourceAllocator.hpp>
-#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
 #include <lux/engine/render/resources/SceneResources.hpp>
 #include <lux/engine/render/scene/SceneGraphCache.hpp>
 
@@ -18,7 +18,7 @@ namespace lux::render
         // **兄弟对象**(SceneGraphCache*)做参数,析构里根本拿不到,于是清理只能靠外部
         // 记得调,而跳过它不崩、是静默泄漏(录制上下文 + 物理资源都不还)。
         // 图缓存改成构造后接上的成员之后,这条限制就没了。shutdown() 幂等,
-        // RenderScene::shutdownFull() 已经调过一次。
+        // 场景按成员声明顺序保证此时 registry 与 graph cache 仍有效。
         shutdown();
     }
 
@@ -29,21 +29,27 @@ namespace lux::render
     View* SceneViewSet::get(ViewHandle handle) noexcept
     {
         if (!views_.contains(handle))
+        {
             return nullptr;
+        }
         return views_.at(handle).get();
     }
 
     const View* SceneViewSet::get(ViewHandle handle) const noexcept
     {
         if (!views_.contains(handle))
+        {
             return nullptr;
+        }
         return views_.at(handle).get();
     }
 
     void SceneViewSet::rebuildActiveCacheIfNeeded() const
     {
         if (!cache_dirty_)
+        {
             return;
+        }
         active_dense_.clear();
         active_dense_.reserve(views_.size());
         all_dense_.clear();
@@ -51,10 +57,14 @@ namespace lux::render
         for (const auto& view_ptr : views_.values())
         {
             if (!view_ptr)
+            {
                 continue;
+            }
             all_dense_.push_back(view_ptr.get());
             if (view_ptr->state == ERenderViewState::ACTIVE)
+            {
                 active_dense_.push_back(view_ptr.get());
+            }
         }
         cache_dirty_ = false;
     }
@@ -97,7 +107,9 @@ namespace lux::render
     void SceneViewSet::releaseViewGraphResources(View& view) noexcept
     {
         if (!view.resource_state)
+        {
             return;
+        }
         if (graph_cache_)
         {
             graph_cache_->recorder().deallocateRecordContext(view.resource_state->record_ctx);
@@ -130,7 +142,9 @@ namespace lux::render
     bool SceneViewSet::isRemovable(ViewHandle handle) const noexcept
     {
         if (!views_.contains(handle))
+        {
             return false;
+        }
         // 已在销毁中的视图会在槽表里逗留到 GC 释放它(fif 帧后)。这个窗口内的重复
         // removeView 必须被挡掉,否则会重复释放特性状态、重复通知注册表、并再入队
         // 一条记录 —— 第二条会在 GC 时把同一句柄处理两遍。(5-4)
@@ -140,7 +154,9 @@ namespace lux::render
     void SceneViewSet::markDestroying(ViewHandle handle)
     {
         if (!views_.contains(handle))
+        {
             return;
+        }
         auto& view = *views_.at(handle);
         view.state = ERenderViewState::DESTROYING;
         markCacheDirty();
@@ -152,7 +168,9 @@ namespace lux::render
     {
         rebuildActiveCacheIfNeeded();
         for (auto* view : active_dense_)
+        {
             view->frame_systems_done = false;
+        }
     }
 
     void SceneViewSet::collectDestroyed(uint64_t frame_id, uint64_t completed_serial)
@@ -161,7 +179,9 @@ namespace lux::render
         for (auto& pd : pending_destroys_)
         {
             if (pd.destroy_frame == 0)
+            {
                 pd.destroy_frame = frame_id; // 首见打戳 = 其最后一次 GPU 使用的上界
+            }
         }
 
         while (!pending_destroys_.empty())
@@ -171,7 +191,9 @@ namespace lux::render
             // "frame_id - destroy_frame >= fif" 算术会高估完成度:序号在不提交的
             // tick 上照样前进,可能在 GPU 仍引用时就释放。
             if (oldest.destroy_frame > completed_serial)
+            {
                 break;
+            }
 
             if (views_.contains(oldest.view_id))
             {
@@ -192,7 +214,9 @@ namespace lux::render
         for (auto& v : views_.values())
         {
             if (!v)
+            {
                 continue;
+            }
             releaseViewGraphResources(*v);
             destroyViewUBO(*v);
         }

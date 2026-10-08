@@ -30,6 +30,7 @@ namespace lux::window
 {
     class LuxWindow;
 }
+
 // rdesc::Mesh is a struct (see description/Mesh.hpp) — keyword must match the
 // definition for MSVC name mangling (class-vs-struct => V/U => LNK2019).
 namespace lux::rdesc
@@ -321,6 +322,7 @@ namespace lux::render
         {
             dispatch_error = error;
         }
+
         void clearDispatchError() noexcept
         {
             dispatch_error = RenderError{};
@@ -450,7 +452,9 @@ namespace lux::render
             else
             {
                 if (dom.handlers.size() > std::numeric_limits<std::uint16_t>::max())
+                {
                     return kInvalidTypeId;
+                }
                 idx = static_cast<std::uint16_t>(dom.handlers.size());
                 dom.handlers.emplace_back();
                 dom.generations.push_back(0);
@@ -487,7 +491,9 @@ namespace lux::render
             }
             dom.handlers[idx] = Entry{};
             if (dom.generations[idx] != std::numeric_limits<std::uint16_t>::max())
+            {
                 dom.free_list.push_back(idx);
+            }
         }
 
         /// Convenience: allocate a slot and immediately register a unary handler.
@@ -495,7 +501,9 @@ namespace lux::render
         [[nodiscard]] TypeId allocateAndRegisterUnary(OpCode opcode, const char* name = "")
         {
             if (name != nullptr && name[0] != '\0' && name_index_.contains(name))
+            {
                 return kInvalidTypeId;
+            }
             const TypeId id = allocateSlot(opcode);
             if (id == kInvalidTypeId)
             {
@@ -523,7 +531,9 @@ namespace lux::render
         [[nodiscard]] TypeId allocateAndRegisterBulk(OpCode opcode, const char* name = "")
         {
             if (name != nullptr && name[0] != '\0' && name_index_.contains(name))
+            {
                 return kInvalidTypeId;
+            }
             const TypeId id = allocateSlot(opcode);
             if (id == kInvalidTypeId)
             {
@@ -589,7 +599,8 @@ namespace lux::render
             // 即发即忘的命令没有可路由的目的地 —— 走 on_dispatch_failure 自发汇
             //(每条失败都额外打一份到汇上,等回复的也打:错误事件通道是唯一
             // 会到 stderr/日志的出口,CommandFailedReply 只负责解除等待)。
-            auto emitFailure = [&ctx](const CmdRecord& c, EDispatchFailure code, const RenderError& error) {
+            auto emitFailure = [&ctx](const CmdRecord& c, EDispatchFailure code, const RenderError& error)
+            {
                 if (hasFlag(c.flags, ECmdFlags::EXPECTS_REPLY))
                 {
                     ctx.replies.template push<CommandFailedReply>(
@@ -767,7 +778,8 @@ namespace lux::render
             Dispatcher& dispatcher
         )
             : channel_(std::move(channel)), sync_(std::move(sync)), dispatcher_(dispatcher)
-        {}
+        {
+        }
 
         /// Non-blocking: acquire one request frame, dispatch handlers, publish replies.
         bool drainAndDispatch(void* user_state = nullptr)
@@ -1035,7 +1047,8 @@ namespace lux::render
             Dispatcher& dispatcher
         )
             : channel_(std::move(channel)), sync_(std::move(sync)), dispatcher_(dispatcher)
-        {}
+        {
+        }
 
         void setDispatchFailureSink(DispatchFailureSink sink) noexcept
         {
@@ -1228,7 +1241,7 @@ namespace lux::render
         /// Large-world coarse cull is opted into by adding SpatialCullFeature to the
         /// `features` list (kSpatialCullFeatureFactory) — the core scene knows nothing
         /// about it.
-        [[nodiscard]] CreateSceneResult createScene(
+        [[nodiscard]] Expected<CreateSceneResult> createScene(
             std::string_view name,
             std::span<const FeatureInitParam> features = {},
             lux::rdesc::ETextureFormat lit_color_format = lux::rdesc::ETextureFormat::RGBA16_SFLOAT
@@ -1381,9 +1394,9 @@ namespace lux::render
         enum class ETickStage
         {
             NO_TARGET, ///< 无可渲染 target —— 未开帧,直接返回 true,无需收尾
-            SKIPPED,  ///< 已开帧但无命令缓冲(最小化/重建失败)—— 已代为收尾
-            FAILED,   ///< 帧槽 Vulkan 状态失败——已上报并请求停止 device session
-            READY,    ///< 正常,继续 renderRenderTick / endRenderTick
+            SKIPPED,   ///< 已开帧但无命令缓冲(最小化/重建失败)—— 已代为收尾
+            FAILED,    ///< 帧槽 Vulkan 状态失败——已上报并请求停止 device session
+            READY,     ///< 正常,继续 renderRenderTick / endRenderTick
         };
 
         /// 阶段 0:生成帧戳 → 排水请求 → 冲刷延迟回复。返回 false = 通道已停,

@@ -65,163 +65,103 @@ namespace lux::render
     //  Construction / Destruction
     // ─────────────────────────────────────────────────────────────────────
 
-    RenderScene::RenderScene(std::shared_ptr<RenderContext> ctx) : RenderScene(std::move(ctx), Config{}) {}
+    struct RenderScene::Backing
+    {
+        std::unique_ptr<SceneDescriptorArena> arena;
+        std::unique_ptr<SceneDomainDescriptorSets> domains;
+        std::unique_ptr<SceneResources> resources;
+        TransferScheduler transfers;
+    };
 
-    RenderScene::RenderScene(std::shared_ptr<RenderContext> ctx, const Config& cfg)
-        : render_ctx_(std::move(ctx)), config_(cfg), debug_name_(cfg.scene_name)
+    Expected<std::unique_ptr<RenderScene>> RenderScene::create(std::shared_ptr<RenderContext> ctx) noexcept
+    {
+        return create(std::move(ctx), Config{});
+    }
+
+    Expected<std::unique_ptr<RenderScene>> RenderScene::create(
+        std::shared_ptr<RenderContext> ctx,
+        const Config& cfg
+    ) noexcept
+    {
+        if (!ctx)
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
+        auto& rctx = *ctx;
+        SceneDescriptorArena::PoolSizeTemplate sizes{};
+        const auto slices = rctx.framesInFlight();
+        for (const auto domain : SceneDomainDescriptorSets::kPerSceneDomains)
+        {
+            const auto count = domainDescriptorCounts(domain);
+            sizes.max_sets += slices;
+            sizes.storage_buffer += count.storage_buffer * slices;
+            sizes.combined_image_sampler += count.combined_image_sampler * slices;
+            sizes.uniform_buffer += count.uniform_buffer * slices;
+        }
+        auto arena = SceneDescriptorArena::create(rctx.device(), sizes);
+        if (!arena)
+        {
+            return lux::cxx::unexpected(arena.error());
+        }
+        auto domains = SceneDomainDescriptorSets::create(**arena, rctx.descriptorLayouts(), slices);
+        if (!domains)
+        {
+            return lux::cxx::unexpected(domains.error());
+        }
+        const SceneResources::CreateInfo info{
+            .device_context = rctx.deviceContext(),
+            .deferred_queue = rctx.deferredDestroyQueue(),
+            .slices = slices,
+            .initial_scene_capacity = 8,
+            .initial_view_capacity = 8,
+            .arena = arena->get(),
+            .set_layout = rctx.descriptorLayouts().getLayout(EDescriptorSetSlot::SCENE),
+            .domain_sets = (*domains)->setsFor(rdesc::EBindFrequency::GLOBAL),
+            .domain_binding_offset = engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::SCENE))
+        };
+        auto resources = SceneResources::create(info);
+        if (!resources)
+        {
+            return lux::cxx::unexpected(resources.error());
+        }
+        auto transfers = TransferScheduler::create({rctx.vmaAllocator(), 4 * 1024 * 1024, slices});
+        if (!transfers)
+        {
+            return lux::cxx::unexpected(transfers.error());
+        }
+        return std::unique_ptr<RenderScene>(new RenderScene(
+            std::move(ctx),
+            cfg,
+            Backing{std::move(*arena), std::move(*domains), std::move(*resources), std::move(*transfers)}
+        ));
+    }
+
+    RenderScene::RenderScene(std::shared_ptr<RenderContext> ctx, const Config& cfg, Backing backing) noexcept
+        : render_ctx_(std::move(ctx)), config_(cfg), pipeline_config_(cfg.pipeline),
+          scene_descriptor_arena_(std::move(backing.arena)), scene_domain_sets_(std::move(backing.domains)),
+          graph_cache_(std::make_unique<SceneGraphCache>(*render_ctx_, cfg.scene_name)),
+          transfer_scheduler_(std::move(backing.transfers)), debug_name_(cfg.scene_name)
     {
         retire_owner_token_ = static_cast<FrameRetireScheduler::OwnerToken>(reinterpret_cast<uintptr_t>(this));
-        pipeline_config_ = cfg.pipeline;
-
-        auto& rctx = *render_ctx_;
-        auto& res_ctx = rctx.resourceContext();
-
-        // Per-scene growable descriptor-pool chain — backs every per-scene
-        // persistent descriptor set below (light/scene/instance/vertex-pool,
-        // plus shadow/skinning added at feature-attach). Layouts stay GLOBAL;
-        // only set allocation is per-scene, so the chain auto-scales with scene
-        // count and is torn down whole at scene teardown (no leaked sets).
-        // Pool size = original baseline + the domain set's actual requirement.
-        // The requirement is computed from the shape table (domainDescriptorCounts),
-        // not padded by guesswork -- a single FEATURE domain set alone has 34 SSBOs
-        // (including 16 vertex-pool slots), and that gets multiplied again by the
-        // slice count; guessing would eventually undersize it and blow up in a
-        // real scene.
-        {
-            SceneDescriptorArena::PoolSizeTemplate tmpl{};
-            const uint32_t slices = std::max(1u, rctx.framesInFlight());
-            for (const auto domain : SceneDomainDescriptorSets::kPerSceneDomains)
-            {
-                const auto c = domainDescriptorCounts(domain);
-                tmpl.max_sets += slices;
-                tmpl.storage_buffer += c.storage_buffer * slices;
-                tmpl.combined_image_sampler += c.combined_image_sampler * slices;
-                tmpl.uniform_buffer += c.uniform_buffer * slices;
-            }
-            auto arena = SceneDescriptorArena::create(rctx.deviceContext().logicalDevice(), tmpl);
-            if (!arena)
-            {
-                renderFatal("RenderScene: invalid descriptor arena configuration");
-            }
-            scene_descriptor_arena_ = std::move(*arena);
-        }
-
-        // Domain set instances (coexisting alongside the per-set ones during the
-        // transition: build them first and have each owner dual-write into them,
-        // verify the offsets and types line up, then switch the pipelines over).
-        auto domain_sets = SceneDomainDescriptorSets::create(
-            *scene_descriptor_arena_,
-            rctx.descriptorLayouts(),
-            rctx.framesInFlight()
+        auto* resources = resources_.insert(std::move(backing.resources)).get();
+        resources_.addBeginFrameHook(
+            SceneResources::kUploadPhase,
+            [resources](const FrameStamp& stamp) { resources->onFrameBeginMaintenance(stamp); }
         );
-        if (!domain_sets)
-        {
-            // 域集是描述符的唯一写目标,也是管线唯一的绑定来源。分配失败之后本场景的
-            // 所有资源描述符都不会被写入,而绑定一个从未写过的描述符集是未定义行为 ——
-            // 继续跑下去只会让问题在离现场很远的地方以「有些东西不见了」的形式出现。
-            //
-            // 这里用 renderFatal 而不是 assert:assert 在 NDEBUG 下整条消失,而编辑器
-            // 实机跑的正是带 NDEBUG 的 RelWithDebInfo —— 那等于在真正发布的配置里没有
-            // 守卫。常见成因是描述符池尺寸不足或域布局缺失。
-            renderFatal("RenderScene: 域描述符 set 分配失败(池尺寸不足或域布局缺失)");
-        }
-
-        scene_domain_sets_ = std::move(*domain_sets);
-
-        // Publish only complete per-scene resources.
-        {
-            SceneResources::CreateInfo si{
-                .device_context = rctx.deviceContext(),
-                .deferred_queue = rctx.deferredDestroyQueue(),
-                .slices = rctx.framesInFlight(),
-                .initial_scene_capacity = 8,
-                .initial_view_capacity = 8,
-                .arena = scene_descriptor_arena_.get(),
-                .set_layout = rctx.descriptorLayouts().getLayout(EDescriptorSetSlot::SCENE),
-                // The Scene set lives in the GLOBAL domain. The offset comes from an
-                // engine-level constant, sourced from the same place as the domain
-                // layout -- a wrong value gets caught immediately by
-                // vkUpdateDescriptorSets' dstBinding/type validation, without having
-                // to wait until the pipeline switches over to notice.
-                .domain_sets = scene_domain_sets_->setsFor(rdesc::EBindFrequency::GLOBAL),
-                .domain_binding_offset = engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::SCENE)),
-            };
-            auto scene_resources = SceneResources::create(si);
-            if (!scene_resources)
-            {
-                renderFatal("RenderScene: mandatory scene buffers could not be constructed");
-            }
-            auto* sr = resources_.insert(std::move(*scene_resources)).get();
-            resources_.addBeginFrameHook(
-                SceneResources::kUploadPhase,
-                [sr](const FrameStamp& stamp) { sr->onFrameBeginMaintenance(stamp); }
-            );
-        }
-
-        // (LightResources is NOT created here. It is owned by LightFeature, which
-        // emplaces + inits it in initAndAttachTo when the scene opts in by adding
-        // that feature — emplaced before ShadowResources so reverse-order shutdown
-        // tears Shadow down first, ShadowResources holding a raw LightResources*.
-        // A scene without LightFeature renders unlit. The core stays domain-free.)
-
-        // (The standard 3D mesh-stack resources — InstanceResources /
-        // VertexPoolRegistry / StaticVertexPoolSet / VertexProductionRegistry — are NOT
-        // created here. They are owned by StandardMeshStackFeature, which ensures +
-        // inits them in initAndAttachTo when the scene opts into mesh rendering by
-        // adding that feature (BEFORE the mesh consumers cache their pointers). A
-        // scene without it — 2D / headless / compute-only — pays nothing: no ~96MB
-        // vertex/index arenas, no instance SSBO, no Set-7 vertex pool. Core stays
-        // domain-free.)
-
-        // (Large-world SpatialCullGrid is NOT created here. It is owned by
-        // SpatialCullFeature, which emplaces + inits it in initAndAttachTo when the
-        // scene opts in by adding that feature. The general core stays domain-free;
-        // a scene that doesn't add SpatialCullFeature pays nothing.)
-
-        // Acquire a scene-global slot from the per-scene SceneResources.
-        scene_global_slot_ = resources_.must<SceneResources>().allocateScene();
-
-        // ── Unified transfer scheduler ──────────────────────────────────
-        {
-            TransferScheduler::Config ts_cfg{
-                .allocator = rctx.vmaAllocator(),
-                .ring_capacity = 4 * 1024 * 1024, // 4 MiB
-                .frames_in_flight = rctx.framesInFlight(),
-            };
-            (void)transfer_scheduler_.init(ts_cfg);
-
-            // (InstanceResources' transfer contributor is registered by
-            // StandardMeshStackFeature in initAndAttachTo — the scene ctor no longer
-            // knows the mesh stack.)
-
-            // Register SceneResources (HOST_WRITE barriers merged into post-batch).
-            transfer_scheduler_.contributors().add(
-                makeTransferContributor(&resources_.must<SceneResources>(), /*priority=*/10)
-            );
-
-            // (LightResources transfer contributor is registered by LightFeature in
-            // initAndAttachTo — the scene ctor no longer knows light. A scene without
-            // LightFeature contributes no light SSBO flush.)
-        }
-
-        // Per-scene render-graph infrastructure
-        graph_cache_ = std::make_unique<SceneGraphCache>(rctx, debug_name_);
-        // 视图持有的图资源归它所有,释放要还给它。接在这里而不是 view_set_ 的构造
-        // 参数里:本成员是 unique_ptr、在构造体内才建立(它的构造需要 debug_name_)。
-        // 声明序保证了它活得比 view_set_ 久,所以 ~SceneViewSet() 能安全地用它。
+        scene_global_slot_ = resources->allocateScene();
+        transfer_scheduler_.contributors().add(makeTransferContributor(resources, 10));
         view_set_.setGraphCache(*graph_cache_);
-
         feature_set_.markCacheDirty();
-
-        initialized_ = true;
     }
 
     RenderScene::~RenderScene()
     {
-        if (initialized_)
-        {
-            shutdownFull();
-        }
+        // Feature view-state release needs the still-live views, registry and descriptor services.
+        removeAllFeatures();
+        render_ctx_->retireScheduler().purge(retire_owner_token_);
+        resources_.must<SceneResources>().freeScene(scene_global_slot_);
+        // Members release transfers, views, graphs, resources and finally descriptor pools in that order.
+        // Renderer retains this entire owner until the original GPU completion watermark is satisfied.
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -361,8 +301,7 @@ namespace lux::render
         // so we land it here; isEnabled() derives from it.
         raw->lifecycle_state_ = EFeatureState::ENABLED;
 
-        // Enabled-state initialisation for an already-live scene.
-        if (initialized_)
+        // Every published scene is complete; fold existing views into this newly installed feature.
         {
             // Back-fill per-view state for views that ALREADY exist: a feature added
             // to a live scene must observe current views, mirroring addView()'s allocate.
@@ -375,14 +314,18 @@ namespace lux::render
             created.reserve(view_set_.active().size());
 
             const auto views = view_set_.active();
-            const auto failed = std::ranges::find_if_not(views, [&](const auto* view) {
-                if (!ensureFeatureViewState(*raw, view->handle.index))
+            const auto failed = std::ranges::find_if_not(
+                views,
+                [&](const auto* view)
                 {
-                    return false;
+                    if (!ensureFeatureViewState(*raw, view->handle.index))
+                    {
+                        return false;
+                    }
+                    created.push_back(view->handle.index);
+                    return true;
                 }
-                created.push_back(view->handle.index);
-                return true;
-            });
+            );
 
             if (failed != views.end())
             {
@@ -567,14 +510,18 @@ namespace lux::render
                 created.reserve(view_set_.active().size());
 
                 const auto views = view_set_.active();
-                const auto failed = std::ranges::find_if_not(views, [&](const auto* view) {
-                    if (!ensureFeatureViewState(*f, view->handle.index))
+                const auto failed = std::ranges::find_if_not(
+                    views,
+                    [&](const auto* view)
                     {
-                        return false;
+                        if (!ensureFeatureViewState(*f, view->handle.index))
+                        {
+                            return false;
+                        }
+                        created.push_back(view->handle.index);
+                        return true;
                     }
-                    created.push_back(view->handle.index);
-                    return true;
-                });
+                );
 
                 if (failed != views.end())
                 {
@@ -797,7 +744,8 @@ namespace lux::render
 
     void RenderScene::dumpGpuTiming(std::ostream& os) const
     {
-        auto write_json_string = [&os](std::string_view value) {
+        auto write_json_string = [&os](std::string_view value)
+        {
             os << '"';
             for (const char c : value)
             {
@@ -1023,56 +971,6 @@ namespace lux::render
     // ─────────────────────────────────────────────────────────────────────
     //  Shutdown
     // ─────────────────────────────────────────────────────────────────────
-
-    void RenderScene::shutdownFull()
-    {
-        if (!initialized_)
-        {
-            return;
-        }
-
-        // Tear down FEATURES FIRST — before destroying views — so each feature's
-        // per-(feature,view) state is released through the SAME path as explicit
-        // removal. removeAllFeatures() → removeFeature() runs releaseFeatureViewState()
-        // → deallocateViewState() for every owned (feature, view) pair, then detaches
-        // and destroys each feature, all while views_, the scene registry and the
-        // descriptor services are still alive (a feature's per-view eviction may still
-        // reference them — so views must NOT be destroyed first). The previous order
-        // (destroy views, then a bare onDetachFromScene loop that never touched
-        // feature_view_states_) skipped deallocateViewState entirely on whole-scene
-        // teardown — a per-view-state leak for features that create it.
-        removeAllFeatures();
-        feature_set_.clearLedger();
-        feature_set_.clear();
-
-        // 视图集合自行清理:释放每个视图的图资源与 GPU 槽,再清空容器。
-        // 必须在图缓存 shutdown 之前 —— 释放图资源要用它的 recorder/allocator。
-        view_set_.shutdown();
-
-        // 图缓存自行按序清理:退休图 -> 退休视图资源(需 recorder/allocator 尚在)
-        // -> 当前图 -> recorder -> allocator。
-        graph_cache_->shutdown();
-
-        // Drop pending retirement callbacks owned by this scene before
-        // scene-local resources are destroyed.
-        render_ctx_->retireScheduler().purge(retire_owner_token_);
-
-        // Free the scene-global slot, then shutdown per-scene resources.
-        resources_.must<SceneResources>().freeScene(scene_global_slot_);
-
-        // Shutdown transfer scheduler before registry (scheduler references
-        // resources owned by registry).
-        transfer_scheduler_.shutdown();
-        resources_.shutdown();
-
-        // Destroy the per-scene descriptor-pool chain LAST — this frees every
-        // descriptor set the scene allocated in one shot (the per-scene
-        // resources only drop their set handles in shutdown(), they never
-        // vkFreeDescriptorSets). Safe: Renderer::removeScene waitIdle's first.
-        scene_descriptor_arena_.reset();
-
-        initialized_ = false;
-    }
 
     // ─────────────────────────────────────────────────────────────────────
     //  GPU Resource Upload / Frame Commands

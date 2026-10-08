@@ -1,15 +1,15 @@
 #pragma once
+#include <lux/engine/function/render/Capacity.hpp>
+#include <lux/engine/function/render/client/core/Errors.hpp>
+#include <lux/engine/function/visibility.h>
+#include <lux/engine/render/core/FrameRetireScheduler.hpp>
+#include <lux/engine/render/core/RenderErrorSink.hpp> // 自发上报汇集器(非拥有)
+#include <lux/engine/render/gpu/ExternalInterop.hpp>  // 外部内存互操作的返回结构(同层)
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
-#include <lux/engine/render/core/FrameRetireScheduler.hpp>
 #include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
-#include <lux/engine/render/gpu/ExternalInterop.hpp> // 外部内存互操作的返回结构(同层)
-#include <lux/engine/function/render/client/core/Errors.hpp>
-#include <lux/engine/function/render/Capacity.hpp>
-#include <lux/engine/render/core/RenderErrorSink.hpp> // 自发上报汇集器(非拥有)
 #include <lux/engine/render/resources/material/TextureSamplingRepresentationCatalog.hpp>
-#include <lux/engine/function/visibility.h>
 
 #include <cstdint>
 #include <memory>
@@ -46,7 +46,8 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC RenderContext
     {
         struct ConstructionKey final
-        {};
+        {
+        };
 
     public:
         struct CreateInfo
@@ -58,12 +59,15 @@ namespace lux::render
             lux::render::CapacityPlan capacity_plan{};
         };
 
-        [[nodiscard]] static Expected<std::shared_ptr<RenderContext>> create(ResourceContext& res_ctx, CreateInfo info);
+        [[nodiscard]] static Expected<std::shared_ptr<RenderContext>> create(
+            ResourceContext& res_ctx,
+            CreateInfo info
+        ) noexcept;
 
         /// Public only so std::make_shared can construct the control block and
         /// object together. ConstructionKey is private, so create() remains the
         /// sole source-level construction boundary.
-        explicit RenderContext(ConstructionKey, ResourceContext& res_ctx, CreateInfo info);
+        RenderContext(ConstructionKey, ResourceContext& res_ctx, CreateInfo info, TransferScheduler transfers);
 
         ~RenderContext();
 
@@ -178,7 +182,9 @@ namespace lux::render
         ) noexcept
         {
             if (error_sink_ != nullptr)
+            {
                 error_sink_->emit(error, scene_index, frame_serial);
+            }
         }
 
         // ── External-memory interop backing (impl in RenderContext.cpp) ──

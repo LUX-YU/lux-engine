@@ -1,15 +1,15 @@
+#include <lux/engine/function/render/client/core/RenderTypes.hpp> // kMaxFramesInFlight
+#include <lux/engine/render/gpu/ExternalInterop.hpp>              // ExportableBuffer / ExportableTimelineSemaphore
 #include <lux/engine/render/gpu/RenderContext.hpp>
-#include <lux/engine/render/gpu/ExternalInterop.hpp> // ExportableBuffer / ExportableTimelineSemaphore
-#include <lux/engine/render/gpu/VulkanContext.hpp>   // DeviceContext, ResourceContext
-#include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
+#include <lux/engine/render/gpu/VulkanContext.hpp> // DeviceContext, ResourceContext
+#include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
+#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineLayoutService.hpp>
-#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
-#include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>
-#include <lux/engine/function/render/client/core/RenderTypes.hpp> // kMaxFramesInFlight
+#include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
 
-#include <lux/engine/gapi/vk/Semaphore.hpp>      // Semaphore::exportHandle
 #include <lux/engine/gapi/vk/ExternalHandle.hpp> // kOpaqueExternal*Type / ExternalHandle
+#include <lux/engine/gapi/vk/Semaphore.hpp>      // Semaphore::exportHandle
 
 #include <cstring>
 #include <span>
@@ -17,13 +17,15 @@
 
 namespace lux::render
 {
-    Expected<std::shared_ptr<RenderContext>> RenderContext::create(ResourceContext& res_ctx, CreateInfo info)
+    Expected<std::shared_ptr<RenderContext>> RenderContext::create(ResourceContext& res_ctx, CreateInfo info) noexcept
     {
-        if (info.frames_in_flight < 1 || info.frames_in_flight > kMaxFramesInFlight)
+        const bool is_invalid_frames = info.frames_in_flight < 1 || info.frames_in_flight > kMaxFramesInFlight;
+        if (is_invalid_frames)
         {
             return renderFailure<err::device::InvalidFramesInFlight>(info.frames_in_flight, kMaxFramesInFlight);
         }
-        if (!info.pipeline_mgr || !info.descriptor_layouts || !info.global_resources)
+        const bool is_missing_dependency = !info.pipeline_mgr || !info.descriptor_layouts || !info.global_resources;
+        if (is_missing_dependency)
         {
             return renderFailure<err::internal::InvalidArgument>();
         }
@@ -32,14 +34,26 @@ namespace lux::render
         // matching std::vector/string throughout the renderer. Expected covers
         // configuration and Vulkan/domain failures; it is not an OOM recovery
         // mechanism. No exception is used as renderer control flow here.
-        return std::make_shared<RenderContext>(ConstructionKey{}, res_ctx, std::move(info));
+        auto transfers =
+            TransferScheduler::create({res_ctx.deviceContext().vmaAllocator(), 4 * 1024 * 1024, info.frames_in_flight});
+        if (!transfers)
+        {
+            return lux::cxx::unexpected(transfers.error());
+        }
+        return std::make_shared<RenderContext>(ConstructionKey{}, res_ctx, std::move(info), std::move(*transfers));
     }
 
-    RenderContext::RenderContext(ConstructionKey, ResourceContext& res_ctx, CreateInfo info)
+    RenderContext::RenderContext(
+        ConstructionKey,
+        ResourceContext& res_ctx,
+        CreateInfo info,
+        TransferScheduler transfers
+    )
         : resource_ctx_(res_ctx), descriptor_layouts_(std::move(info.descriptor_layouts)),
           pipeline_mgr_(std::move(info.pipeline_mgr)), global_registry_(std::move(info.global_resources)),
           frames_in_flight_(info.frames_in_flight), capacity_plan_(info.capacity_plan),
-          texture_sampling_catalog_(builtinTextureSamplingRepresentationCatalog())
+          texture_sampling_catalog_(builtinTextureSamplingRepresentationCatalog()),
+          global_transfer_scheduler_(std::move(transfers))
     {
         // create() is the sole construction boundary and has already validated
         // the frame ring and all three required owning services.
@@ -65,7 +79,6 @@ namespace lux::render
 
     RenderContext::~RenderContext()
     {
-        global_transfer_scheduler_.shutdown();
         retire_scheduler_.flushAll();
         deferred_destroy_queue_.flushAll();
     }
@@ -76,7 +89,9 @@ namespace lux::render
         // 管线管理器自己也要上报(创建失败、变体预算耗尽),而它比本上下文更早
         // 构造出来 —— 在这里转交,调用方只需接一次线。
         if (pipeline_mgr_)
+        {
             pipeline_mgr_->setErrorSink(sink);
+        }
     }
 
     VkDevice RenderContext::device() const noexcept
@@ -112,9 +127,13 @@ namespace lux::render
             ~ExportableBufferCandidate() noexcept
             {
                 if (buffer != VK_NULL_HANDLE)
+                {
                     vkDestroyBuffer(device_, buffer, nullptr);
+                }
                 if (memory != VK_NULL_HANDLE)
+                {
                     vkFreeMemory(device_, memory, nullptr);
+                }
             }
 
             ExportableBufferCandidate(const ExportableBufferCandidate&) = delete;
@@ -160,7 +179,9 @@ namespace lux::render
                 reinterpret_cast<PFN_vkGetMemoryWin32HandleKHR>(vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleKHR")
                 );
             if (fn == nullptr)
+            {
                 return VK_ERROR_EXTENSION_NOT_PRESENT;
+            }
 
             const VkMemoryGetWin32HandleInfoKHR info{
                 .sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR,
@@ -171,12 +192,16 @@ namespace lux::render
             HANDLE handle = nullptr;
             const VkResult result = fn(device, &info, &handle);
             if (result == VK_SUCCESS)
+            {
                 out_handle = handle;
+            }
             return result;
 #else
             auto fn = reinterpret_cast<PFN_vkGetMemoryFdKHR>(vkGetDeviceProcAddr(device, "vkGetMemoryFdKHR"));
             if (fn == nullptr)
+            {
                 return VK_ERROR_EXTENSION_NOT_PRESENT;
+            }
 
             const VkMemoryGetFdInfoKHR info{
                 .sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
@@ -187,7 +212,9 @@ namespace lux::render
             int fd = -1;
             const VkResult result = fn(device, &info, &fd);
             if (result == VK_SUCCESS)
+            {
                 out_handle = fd;
+            }
             return result;
 #endif
         }
@@ -216,9 +243,13 @@ namespace lux::render
     {
         ExportableBuffer result{};
         if (size == 0)
+        {
             return renderFailure<err::internal::InvalidArgument>();
+        }
         if (!supportsExternalMemory())
+        {
             return result;
+        }
 
         const VkDevice dev = device();
         ExportableBufferCandidate candidate(dev);
@@ -241,7 +272,9 @@ namespace lux::render
             return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(buffer_created));
         }
         if (candidate.buffer == VK_NULL_HANDLE)
+        {
             return renderFailure<err::device::VulkanObjectCreationFailed>();
+        }
 
         VkMemoryRequirements mem_req{};
         vkGetBufferMemoryRequirements(dev, candidate.buffer, &mem_req);
@@ -249,7 +282,9 @@ namespace lux::render
         // 2. DEVICE_LOCAL memory type is mandatory for opaque external import.
         const uint32_t type_index = findMemoryTypeIndex(mem_req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         if (type_index == UINT32_MAX)
+        {
             return renderFailure<err::memory::GpuAllocationFailed>();
+        }
 
         // 3. Dedicated, exportable allocation — bypasses VMA entirely. pNext chain:
         //    VkMemoryAllocateInfo -> Export -> Dedicated(->Win32 on Windows).
@@ -279,7 +314,9 @@ namespace lux::render
             return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(allocated));
         }
         if (candidate.memory == VK_NULL_HANDLE)
+        {
             return renderFailure<err::device::VulkanObjectCreationFailed>();
+        }
 
         const VkResult bound = vkBindBufferMemory(dev, candidate.buffer, candidate.memory, 0);
         if (bound != VK_SUCCESS)
@@ -294,7 +331,9 @@ namespace lux::render
             return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(exported));
         }
         if (handle == lux::gapi::vk::kInvalidExternalHandle)
+        {
             return renderFailure<err::device::VulkanObjectCreationFailed>();
+        }
 
         return candidate.publish(toU64(handle), static_cast<uint64_t>(mem_req.size));
     }
@@ -303,7 +342,9 @@ namespace lux::render
     {
         ExportableTimelineSemaphore result{};
         if (!supportsExternalMemory())
+        {
             return result;
+        }
 
         const VkDevice dev = device();
 
@@ -333,7 +374,9 @@ namespace lux::render
             return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(created));
         }
         if (raw_semaphore == VK_NULL_HANDLE)
+        {
             return renderFailure<err::device::VulkanObjectCreationFailed>();
+        }
 
         // Thin carrier; this function remains the owning transaction until the
         // raw handle is published in the result below.
@@ -346,7 +389,9 @@ namespace lux::render
             return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(exported));
         }
         if (handle == lux::gapi::vk::kInvalidExternalHandle)
+        {
             return renderFailure<err::device::VulkanObjectCreationFailed>();
+        }
 
         result.semaphore = semaphore.release();
         result.external_handle = toU64(handle);

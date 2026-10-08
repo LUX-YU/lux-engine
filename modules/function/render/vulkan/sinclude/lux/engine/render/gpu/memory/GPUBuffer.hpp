@@ -1,21 +1,21 @@
 #pragma once
 
+#include <lux/engine/function/visibility.h>
 #include <lux/engine/gapi/vk/vk.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
-#include <lux/engine/function/visibility.h>
 #include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
 #include <lux/engine/render/gpu/lifecycle/FifOwned.hpp>
 #include <lux/engine/render/gpu/utils/Slot.hpp>
 
-#include <cstdint>
-#include <vector>
-#include <limits>
-#include <cstring>
 #include <algorithm>
 #include <cassert>
-#include <type_traits>
 #include <concepts>
+#include <cstdint>
+#include <cstring>
+#include <limits>
 #include <optional>
+#include <type_traits>
+#include <vector>
 
 namespace lux::render
 {
@@ -88,6 +88,7 @@ namespace lux::render
     {
     protected:
         uint32_t slices_ = 1;
+
         void initSlices(uint32_t n)
         {
             slices_ = std::max(1u, n);
@@ -120,6 +121,7 @@ namespace lux::render
     {
     protected:
         void* mapped_ = nullptr;
+
         T* getMappedPtr() const
         {
             return static_cast<T*>(mapped_);
@@ -151,7 +153,9 @@ namespace lux::render
     {
     protected:
         void resetDirty(uint32_t) {}
+
         void markDirty(uint32_t, VkDeviceSize, VkDeviceSize) {}
+
         DirtyRange getDirty(uint32_t) const
         {
             return {0, 0};
@@ -168,6 +172,7 @@ namespace lux::render
         {
             dirty_state_.assign(slices, {std::numeric_limits<VkDeviceSize>::max(), 0});
         }
+
         void markDirty(uint32_t slice, VkDeviceSize offset, VkDeviceSize size)
         {
             if (slice < dirty_state_.size())
@@ -177,10 +182,12 @@ namespace lux::render
                 d.max = std::max(d.max, offset + size);
             }
         }
+
         DirtyRange getDirty(uint32_t slice) const
         {
             return dirty_state_[slice];
         }
+
         DirtyRange& getDirtyRef(uint32_t slice)
         {
             return dirty_state_[slice];
@@ -197,16 +204,19 @@ namespace lux::render
         {
             dirty_state_ = {std::numeric_limits<VkDeviceSize>::max(), 0};
         }
+
         void markDirty(uint32_t, VkDeviceSize offset, VkDeviceSize size)
         {
             auto& d = dirty_state_;
             d.min = std::min(d.min, offset);
             d.max = std::max(d.max, offset + size);
         }
+
         DirtyRange getDirty(uint32_t) const
         {
             return dirty_state_;
         }
+
         DirtyRange& getDirtyRef(uint32_t)
         {
             return dirty_state_;
@@ -223,7 +233,9 @@ namespace lux::render
     {
     protected:
         void initHostMirror(uint32_t, uint32_t, bool) {}
+
         void resizeHostMirror(uint32_t, uint32_t) {}
+
         void moveHostMirror(THostMirrorPolicy&&) noexcept {}
     };
 
@@ -259,7 +271,9 @@ namespace lux::render
             hm_elem_epoch_.resize(new_cap, 0ull);
             hm_listed_ticket_.resize(new_cap, 0ull);
             if (hm_slice_epoch_.size() != slices)
+            {
                 hm_slice_epoch_.assign(slices, 0ull);
+            }
             std::fill(hm_slice_epoch_.begin(), hm_slice_epoch_.end(), hm_global_epoch_);
         }
 
@@ -279,7 +293,9 @@ namespace lux::render
         void hmPushDirty(uint32_t idx)
         {
             if (idx >= hm_listed_ticket_.size())
+            {
                 return;
+            }
             if (hm_listed_ticket_[idx] != hm_current_ticket_)
             {
                 hm_dirty_indices_.push_back(idx);
@@ -290,8 +306,12 @@ namespace lux::render
         bool hmAllSlicesSynced(uint64_t epoch) const noexcept
         {
             for (auto e : hm_slice_epoch_)
+            {
                 if (e != epoch)
+                {
                     return false;
+                }
+            }
             return true;
         }
     };
@@ -409,6 +429,16 @@ namespace lux::render
             {
                 return lux::cxx::unexpected(allocation.error());
             }
+            if constexpr (IsCpuWritable)
+            {
+                std::memset(allocation->mapped, 0, static_cast<size_t>(size));
+                const auto flushed =
+                    vmaFlushAllocation(ci.device_context->vmaAllocator(), allocation->owner.alloc(), 0, size);
+                if (flushed != VK_SUCCESS)
+                {
+                    return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(flushed));
+                }
+            }
             return TGpuBuffer(ci, std::move(*allocation), capacity);
         }
 
@@ -435,7 +465,9 @@ namespace lux::render
         [[nodiscard]] SlotHandle allocate()
         {
             if (!ensureCapacity())
+            {
                 return SlotHandle{}; // growth failed -> invalid handle (C-1)
+            }
             uint32_t index = 0;
             if (!free_.empty())
             {
@@ -449,9 +481,13 @@ namespace lux::render
             // Track high-water mark: count_ must always be >= (max used index + 1)
             // so that writeDescriptorTight() covers all live slots.
             if (index >= count_)
+            {
                 count_ = index + 1;
+            }
             if (index >= alive_.size())
+            {
                 alive_.resize(index + 1, 0); // Safety
+            }
             alive_[index] = 1;
             return SlotHandle{index, generations_[index]};
         }
@@ -459,7 +495,9 @@ namespace lux::render
         bool free(const SlotHandle& h)
         {
             if (!isAlive(h))
+            {
                 return false;
+            }
             const uint32_t idx = h.index;
             alive_[idx] = 0;
             generations_[idx]++;
@@ -485,7 +523,9 @@ namespace lux::render
             requires IsCpuWritable
         {
             if (!isAlive(h))
+            {
                 return nullptr;
+            }
             return getSlicePtr(slice) + h.index;
         }
 
@@ -502,7 +542,9 @@ namespace lux::render
             T* ptr = mapped(slice, h);
             assert(ptr && "Invalid handle or buffer not mapped");
             if (!ptr)
+            {
                 return;
+            }
             *ptr = value;
 
             VkDeviceSize offset = getSliceByteOffset(slice) + VkDeviceSize(h.index) * stride_;
@@ -513,7 +555,9 @@ namespace lux::render
             requires(IsCpuWritable && IsSliced)
         {
             for (uint32_t s = 0; s < this->slices(); ++s)
+            {
                 write(s, h, value);
+            }
         }
 
         // Overload for single-slice (non-sliced) buffers
@@ -529,11 +573,15 @@ namespace lux::render
             requires IsCpuWritable
         {
             if (!buffer_owned_.valid())
+            {
                 return;
+            }
 
             auto& d = this->getDirtyRef(slice);
             if (d.max <= d.min)
+            {
                 return;
+            }
 
             VkDeviceSize size = d.max - d.min;
             vmaFlushAllocation(device_ctx_->vmaAllocator(), buffer_owned_.alloc(), d.min, size);
@@ -546,11 +594,15 @@ namespace lux::render
             requires IsCpuWritable
         {
             if (!buffer_owned_.valid())
+            {
                 return std::nullopt;
+            }
 
             auto d = this->getDirty(slice);
             if (d.max <= d.min)
+            {
                 return std::nullopt;
+            }
 
             VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
             barrier.buffer = buffer_owned_.get();
@@ -562,7 +614,9 @@ namespace lux::render
             barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
             barrier.dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
             if (allow_shader_write_)
+            {
                 barrier.dstAccessMask |= VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+            }
 
             return barrier;
         }
@@ -591,7 +645,9 @@ namespace lux::render
             requires IsCpuWritable
         {
             if (count == 0)
+            {
                 return;
+            }
             VkDeviceSize offset = getSliceByteOffset(slice) + VkDeviceSize(first_index) * stride_;
             VkDeviceSize size = VkDeviceSize(count) * stride_;
             this->markDirty(slice, offset, size);
@@ -609,7 +665,9 @@ namespace lux::render
             requires(!IsCpuWritable)
         {
             if (count == 0)
+            {
                 return;
+            }
             VkBufferCopy region{};
             region.srcOffset = stagingOffset;
             region.dstOffset = getSliceByteOffset(slice) + VkDeviceSize(dstIndex) * stride_;
@@ -627,7 +685,9 @@ namespace lux::render
         )
         {
             if (min_capacity <= capacity_)
+            {
                 return {};
+            }
 
             const uint32_t old_cap = capacity_;
             const uint32_t new_cap = nextGrowCapacity(old_cap, min_capacity);
@@ -756,7 +816,9 @@ namespace lux::render
             buffer_gen_++;
 
             if constexpr (IsCpuWritable)
+            {
                 this->mapped_ = new_ptr;
+            }
 
             // 4. Update Slots
             alive_.resize(capacity_, 0);
@@ -764,7 +826,9 @@ namespace lux::render
             // Push new slots in reverse order so allocate() (pop_back) yields lowest indices first,
             // keeping live data contiguous and improving GPU cache locality.
             for (uint32_t i = new_cap; i-- > old_cap;)
+            {
                 free_.push_back(i);
+            }
 
             // 5. Reset Dirty (Only CPU_TO_GPU)
             if constexpr (IsCpuWritable)
@@ -785,18 +849,22 @@ namespace lux::render
         {
             return buffer_owned_.get();
         }
+
         [[nodiscard]] uint32_t capacity() const noexcept
         {
             return capacity_;
         }
+
         [[nodiscard]] uint32_t count() const noexcept
         {
             return count_;
         }
+
         [[nodiscard]] uint32_t bufferGeneration() const noexcept
         {
             return buffer_gen_;
         }
+
         [[nodiscard]] uint32_t stride() const noexcept
         {
             return stride_;
@@ -831,7 +899,9 @@ namespace lux::render
         ) const
         {
             if (!buffer_owned_.valid())
+            {
                 return;
+            }
             VkDescriptorBufferInfo info{buffer_owned_.get(), 0, VK_WHOLE_SIZE};
             VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
             w.dstSet = set;
@@ -853,7 +923,9 @@ namespace lux::render
         ) const
         {
             if (!buffer_owned_.valid())
+            {
                 return;
+            }
             const VkDeviceSize offset = getSliceByteOffset(slice);
             const VkDeviceSize size = VkDeviceSize(capacity_) * stride_;
             VkDescriptorBufferInfo info{buffer_owned_.get(), offset, std::max(size, VkDeviceSize(stride_))};
@@ -869,7 +941,9 @@ namespace lux::render
         [[nodiscard]] uint32_t baseIndexForSlice(uint32_t slice) const noexcept
         {
             if (slice >= this->slices())
+            {
                 return 0;
+            }
             return slice * capacity_;
         }
 
@@ -901,9 +975,13 @@ namespace lux::render
             // Track high-water mark: count_ must always be >= (max used index + 1)
             // so that writeDescriptorTight() covers all live slots.
             if (index >= count_)
+            {
                 count_ = index + 1;
+            }
             if (index >= alive_.size())
+            {
                 alive_.resize(index + 1, 0);
+            }
             alive_[index] = 1;
 
             this->hm_values_[index] = v;
@@ -917,7 +995,9 @@ namespace lux::render
             requires HasMirror
         {
             if (!isAlive(h))
+            {
                 return false;
+            }
             const uint32_t idx = h.index;
 
             if (this->hm_clear_on_remove_)
@@ -937,7 +1017,9 @@ namespace lux::render
             requires HasMirror
         {
             if (!isAlive(h))
+            {
                 return false;
+            }
             const uint32_t idx = h.index;
             this->hm_values_[idx] = nv;
             this->hm_elem_epoch_[idx] = ++this->hm_global_epoch_;
@@ -951,7 +1033,9 @@ namespace lux::render
             requires HasMirror
         {
             if (!isSlotAlive(index))
+            {
                 return false;
+            }
             this->hm_values_[index] = value;
             this->hm_elem_epoch_[index] = ++this->hm_global_epoch_;
             this->hmPushDirty(index);
@@ -976,7 +1060,9 @@ namespace lux::render
             requires HasMirror
         {
             if (!isAlive(h))
+            {
                 return false;
+            }
             this->hm_elem_epoch_[h.index] = ++this->hm_global_epoch_;
             this->hmPushDirty(h.index);
             return true;
@@ -990,7 +1076,9 @@ namespace lux::render
         {
             const auto barrier = uploadDataSliceInternal(slice);
             if (barrier)
+            {
                 recordBarrier(cmd, barrier->offset, barrier->size);
+            }
         }
 
         /// Upload changed elements and RETURN the post-write barrier instead of
@@ -1015,7 +1103,9 @@ namespace lux::render
         {
             assert(slice < this->slices() && "slice out of range");
             if (slice >= this->slices())
+            {
                 return std::nullopt;
+            }
 
             const uint64_t since = this->hm_slice_epoch_[slice];
 
@@ -1029,7 +1119,9 @@ namespace lux::render
             // performed by whichever call brought the last slice up to the global
             // epoch, so nothing needed is skipped. (#H8)
             if (since == this->hm_global_epoch_)
+            {
                 return std::nullopt;
+            }
 
             char* base = static_cast<char*>(this->mapped_);
             const VkDeviceSize slice_base = getSliceByteOffset(slice);
@@ -1043,7 +1135,9 @@ namespace lux::render
                 for (uint32_t idx : this->hm_dirty_indices_)
                 {
                     if (idx<capacity_&& this->hm_elem_epoch_[idx]> since)
+                    {
                         filtered.push_back(idx);
+                    }
                 }
             }
             else
@@ -1052,7 +1146,9 @@ namespace lux::render
                 for (uint32_t idx = 0; idx < capacity_; ++idx)
                 {
                     if (alive_[idx] && this->hm_elem_epoch_[idx] > since)
+                    {
                         filtered.push_back(idx);
+                    }
                 }
             }
 
@@ -1114,7 +1210,9 @@ namespace lux::render
                 barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
                 barrier.dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
                 if (allow_shader_write_)
+                {
                     barrier.dstAccessMask |= VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+                }
                 barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                 result = barrier;
@@ -1135,7 +1233,9 @@ namespace lux::render
             requires HasMirror
         {
             if (!buffer_owned_.valid())
+            {
                 return;
+            }
             const VkDeviceSize offset = getSliceByteOffset(slice);
             const VkDeviceSize size = std::max<VkDeviceSize>(VkDeviceSize(count_) * stride_, stride_);
             VkDescriptorBufferInfo info{buffer_owned_.get(), offset, size};
@@ -1153,11 +1253,15 @@ namespace lux::render
             requires HasMirror
         {
             for (auto& g : generations_)
+            {
                 g++;
+            }
             std::fill(alive_.begin(), alive_.end(), 0);
             free_.clear();
             for (uint32_t i = 0; i < capacity_; ++i)
+            {
                 free_.push_back(i);
+            }
             count_ = 0;
 
             std::fill(this->hm_values_.begin(), this->hm_values_.end(), T{});
@@ -1214,7 +1318,9 @@ namespace lux::render
         static uint32_t nextPow2(uint32_t v)
         {
             if (v <= 1)
+            {
                 return 1;
+            }
             --v;
             v |= v >> 1;
             v |= v >> 2;
@@ -1271,7 +1377,9 @@ namespace lux::render
             barrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
             barrier.dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
             if (allow_shader_write_)
+            {
                 barrier.dstAccessMask |= VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+            }
 
             VkDependencyInfo dep{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
             dep.bufferMemoryBarrierCount = 1;
@@ -1311,9 +1419,6 @@ namespace lux::render
             if constexpr (IsCpuWritable)
             {
                 this->mapped_ = allocation.mapped;
-                const auto size = VkDeviceSize(capacity) * stride_ * this->slices();
-                std::memset(this->mapped_, 0, static_cast<size_t>(size));
-                vmaFlushAllocation(device_ctx_->vmaAllocator(), buffer_owned_.alloc(), 0, size);
             }
             if constexpr (HasMirror)
             {
@@ -1339,14 +1444,20 @@ namespace lux::render
 
             // Move Policies
             if constexpr (IsSliced)
+            {
                 this->slices_ = o.slices_;
+            }
             if constexpr (IsCpuWritable)
             {
                 this->mapped_ = o.mapped_;
                 if constexpr (IsSliced)
+                {
                     this->dirty_state_ = std::move(o.dirty_state_);
+                }
                 else
+                {
                     this->dirty_state_ = o.dirty_state_;
+                }
             }
             if constexpr (HasMirror)
             {
@@ -1357,7 +1468,9 @@ namespace lux::render
             o.capacity_ = 0;
             o.count_ = 0;
             if constexpr (IsCpuWritable)
+            {
                 o.mapped_ = nullptr;
+            }
         }
     };
 

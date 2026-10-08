@@ -249,7 +249,7 @@ namespace lux::render
             return renderFailure<err::asset::Invalid>();
         }
 
-        CombinedSlot s{};
+        SampledImage s{};
         s.width = w;
         s.height = h;
         s.format = pickFormat(c, fmt, srgb_override.value_or(srgb_for_color_));
@@ -331,7 +331,7 @@ namespace lux::render
             return lux::cxx::unexpected(room.error());
         }
 
-        CombinedSlot s{};
+        SampledImage s{};
         s.width = static_cast<int>(width);
         s.height = static_cast<int>(height);
         s.format = fmt;
@@ -486,7 +486,7 @@ namespace lux::render
         const int w = faces[0].width(), h = faces[0].height(), c = faces[0].channel();
         assert(w > 0 && h > 0 && w == h && (c == 1 || c == 2 || c == 3 || c == 4));
 
-        CombinedSlot s{};
+        SampledImage s{};
         s.width = w;
         s.height = h;
         s.format = pickFormat(c, fmt);
@@ -790,7 +790,7 @@ namespace lux::render
             return false;
 
         const uint32_t idx = h.index;
-        CombinedSlot& s = slots_[idx];
+        SampledImage& s = slots_[idx];
         if (s.array_layers != 1)
             return false;
 
@@ -882,7 +882,7 @@ namespace lux::render
             return false;
 
         const uint32_t idx = h.index;
-        CombinedSlot& s = slots_[idx];
+        SampledImage& s = slots_[idx];
         if (s.array_layers != 6)
             return false;
 
@@ -943,60 +943,21 @@ namespace lux::render
     }
 
     // ---------- finalizeTransferredTexture ----------
-    void BindlessCombinedSet::finalizeTransferredTexture(
-        uint32_t slot_idx,
-        VkImage image,
-        VmaAllocation alloc,
-        VkImageView view,
-        VkSampler sampler,
-        VkFormat format,
-        uint32_t mip_levels,
-        uint32_t array_layers,
-        int32_t w,
-        int32_t h
-    )
+    void BindlessCombinedSet::finalizeTransferredTexture(uint32_t slot_idx, SampledImage image)
     {
-        CombinedSlot& s = slots_[slot_idx];
-        s.image = VmaImage::adopt({rc_.vmaAllocator(), image, alloc});
-        s.view = ImageViewOwner::adopt(rc_.logicalDevice(), view);
-        s.sampler = SamplerOwner::adopt(rc_.logicalDevice(), sampler);
-        s.format = format;
-        s.mip_levels = mip_levels;
-        s.array_layers = array_layers;
-        s.width = w;
-        s.height = h;
-        writeCombinedDescriptor(slot_idx, view, sampler);
+        slots_[slot_idx] = std::move(image);
+        const auto& slot = slots_[slot_idx];
+        writeCombinedDescriptor(slot_idx, slot.view.get(), slot.sampler.get());
     }
 
-    void BindlessCombinedSet::replaceTransferredTexture(
-        uint32_t slot_idx,
-        VkImage image,
-        VmaAllocation alloc,
-        VkImageView view,
-        VkSampler sampler,
-        VkFormat format,
-        uint32_t mip_levels,
-        uint32_t array_layers,
-        int32_t w,
-        int32_t h
-    )
+    void BindlessCombinedSet::replaceTransferredTexture(uint32_t slot_idx, SampledImage image)
     {
         assert(slot_idx < cur_cap_ && alive_[slot_idx]);
-        CombinedSlot previous = std::move(slots_[slot_idx]);
-        CombinedSlot replacement{};
-        replacement.image = VmaImage::adopt({rc_.vmaAllocator(), image, alloc});
-        replacement.view = ImageViewOwner::adopt(rc_.logicalDevice(), view);
-        replacement.sampler = SamplerOwner::adopt(rc_.logicalDevice(), sampler);
-        replacement.format = format;
-        replacement.mip_levels = mip_levels;
-        replacement.array_layers = array_layers;
-        replacement.width = w;
-        replacement.height = h;
-        slots_[slot_idx] = std::move(replacement);
-
-        // UPDATE_AFTER_BIND changes future descriptor reads while the old GPU
-        // objects remain alive for every already-submitted frame.
-        writeCombinedDescriptor(slot_idx, view, sampler);
+        SampledImage previous = std::move(slots_[slot_idx]);
+        slots_[slot_idx] = std::move(image);
+        const auto& slot = slots_[slot_idx];
+        // Future descriptor reads use the new allocation; submitted frames retain the old one.
+        writeCombinedDescriptor(slot_idx, slot.view.get(), slot.sampler.get());
         retireCombinedDeferred(previous);
     }
 
@@ -1131,7 +1092,7 @@ namespace lux::render
         vkUpdateDescriptorSets(rc_.logicalDevice(), 1, &w, 0, nullptr);
     }
 
-    Expected<void> BindlessCombinedSet::createImageGPU(CombinedSlot& s)
+    Expected<void> BindlessCombinedSet::createImageGPU(SampledImage& s)
     {
         VkImageCreateInfo ici{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
         ici.imageType = VK_IMAGE_TYPE_2D;
@@ -1159,7 +1120,7 @@ namespace lux::render
         return {};
     }
 
-    Expected<void> BindlessCombinedSet::createImageView(CombinedSlot& s)
+    Expected<void> BindlessCombinedSet::createImageView(SampledImage& s)
     {
         VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
         vci.image = s.image.image();
@@ -1175,7 +1136,7 @@ namespace lux::render
         return {};
     }
 
-    Expected<void> BindlessCombinedSet::createSampledImage(CombinedSlot& slot, const VkSamplerCreateInfo& info)
+    Expected<void> BindlessCombinedSet::createSampledImage(SampledImage& slot, const VkSamplerCreateInfo& info)
     {
         auto image = createImageGPU(slot);
         if (!image)
@@ -1196,7 +1157,7 @@ namespace lux::render
         return {};
     }
 
-    void BindlessCombinedSet::retireCombinedDeferred(CombinedSlot& slot)
+    void BindlessCombinedSet::retireCombinedDeferred(SampledImage& slot)
     {
         if (slot.sampler)
         {
@@ -1332,7 +1293,7 @@ namespace lux::render
         vkCmdPipelineBarrier2(cb, &dep);
     }
 
-    void BindlessCombinedSet::genMipsLinear(VkCommandBuffer cb, CombinedSlot& s, VkImageLayout untouched_old_layout)
+    void BindlessCombinedSet::genMipsLinear(VkCommandBuffer cb, SampledImage& s, VkImageLayout untouched_old_layout)
     {
         int32_t w = s.width, h = s.height;
         for (uint32_t i = 1; i < s.mip_levels; ++i)
@@ -1405,7 +1366,7 @@ namespace lux::render
 
     void BindlessCombinedSet::recordTextureUploadInternal(
         VkCommandBuffer cb,
-        BindlessCombinedSet::CombinedSlot& s,
+        SampledImage& s,
         VkBuffer staging,
         bool do_mips,
         const BindlessCombinedSet::TextureCopyPlan* copy_plan,
@@ -1490,7 +1451,7 @@ namespace lux::render
 
     void BindlessCombinedSet::recordCubeTextureUpload(
         VkCommandBuffer cb,
-        CombinedSlot& s,
+        SampledImage& s,
         VkBuffer staging,
         VkDeviceSize face_stride,
         VkImageLayout old_layout

@@ -543,13 +543,8 @@ namespace lux::render
         void finalizeCompletion(TransferCompletion& c, bool needs_qfot, uint32_t src_family, uint32_t dst_family);
         /// Return a reserved-but-failed bindless slot to its free list.
         void reclaimReservedSlot(const TransferCompletion& c);
-        /// Destroy the worker-created GPU objects (image/view/sampler + staging) of a
-        /// texture/cube completion we will NOT finalize — dead/recycled slot or device
-        /// loss — so they are not leaked.
-        void freeCompletionTextureGpu(TransferCompletion& c);
-        /// Destroy ALL GPU objects a not-yet-finalized completion holds, dispatched by
-        /// kind (mesh: staging only; texture/cube: image/view/sampler + staging) so the
-        /// union is never mis-read. Used at teardown and on device loss.
+        /// Release unadopted native owners at the original completed-transfer, device-loss
+        /// or shutdown-idle boundary. Reply and retained-slot identities stay intact.
         void destroyUnfinalizedCompletion(TransferCompletion& c);
         [[nodiscard]] bool pollGraphicsFinalizes(std::uint64_t gpu_value);
         [[nodiscard]] bool submitGraphicsFinalizeBatch();

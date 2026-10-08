@@ -135,17 +135,12 @@ namespace lux::render
     {
         (void)device_context_.waitIdle();
 
-        for (; shutdown_completion_cursor_ < shutdown_completions_.size(); ++shutdown_completion_cursor_)
-            freeUnsubmittedCompletion(shutdown_completions_[shutdown_completion_cursor_]);
         shutdown_completions_.clear();
 
         VGpuTransferResult result{};
         while (results_.tryPop(result) == lux::cxx::EQueuePopResult::VALUE)
         {
-            if (auto* batch = std::get_if<RecordedBatch>(&result))
-                freeUnsubmittedCompletion(batch->completion);
-            else
-                freeUnsubmittedCompletion(std::get<TransferCompletion>(result));
+            // The preceding idle boundary permits automatic native-owner release.
         }
     }
 
@@ -466,7 +461,7 @@ namespace lux::render
                 const auto request_id = batch.completion.request_id;
                 const auto resource_handle = batch.completion.resource_handle;
                 const auto resource_gen = batch.completion.resource_gen;
-                freeUnsubmittedCompletion(batch.completion);
+
                 releaseBatchSlot(batch.slot);
                 TransferCompletion fc{};
                 fc.kind = kind;
@@ -540,22 +535,6 @@ namespace lux::render
         job_epoch_.fetch_add(1, std::memory_order_release);
         job_epoch_.notify_one();
         return timeline_value;
-    }
-
-    void GpuTransferPipeline::State::freeUnsubmittedCompletion(TransferCompletion& c)
-    {
-        using ECompletionKind = TransferCompletion::EKind;
-        const bool is_texture_completion = c.kind == ECompletionKind::TEXTURE_2D ||
-            c.kind == ECompletionKind::TEXTURE_CUBE ||
-            c.kind == ECompletionKind::TEXTURE_2D_REPLACEMENT;
-        if (is_texture_completion)
-        {
-            vkDestroyImageView(device_, c.texture.view, nullptr);
-            vkDestroySampler(device_, c.texture.sampler, nullptr);
-            if (c.texture.image != VK_NULL_HANDLE)
-                vmaDestroyImage(vma_, c.texture.image, c.texture.image_alloc);
-        }
-        c.staging.reset();
     }
 
     // Compile-time verification of the format-size contract the cube-stride bug
@@ -651,13 +630,12 @@ namespace lux::render
             {
                 if (auto* batch = std::get_if<RecordedBatch>(&result))
                 {
-                    freeUnsubmittedCompletion(batch->completion);
                     releaseBatchSlot(batch->slot);
                 }
                 else
                 {
                     auto& completion = std::get<TransferCompletion>(result);
-                    freeUnsubmittedCompletion(completion);
+
                     if (completion.retained_batch_slot != UINT32_MAX)
                     {
                         releaseAfterGraphicsAcquire(completion.retained_batch_slot);
@@ -726,7 +704,7 @@ namespace lux::render
             const auto request_id = batch.completion.request_id;
             const auto resource_handle = batch.completion.resource_handle;
             const auto resource_gen = batch.completion.resource_gen;
-            freeUnsubmittedCompletion(batch.completion);
+
             releaseBatchSlot(batch.slot);
 
             TransferCompletion failure{};
@@ -1161,15 +1139,18 @@ namespace lux::render
         img_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         img_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        VkImage image;
-        VmaAllocation image_alloc;
+        SampledImage sampled;
         VmaAllocationCreateInfo img_aci{};
         img_aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-        if (vmaCreateImage(vma_, &img_ci, &img_aci, &image, &image_alloc, nullptr) != VK_SUCCESS)
+        auto image_owner = VmaImage::create(vma_, img_ci, img_aci);
+        if (!image_owner)
         {
             fail();
             return;
         }
+
+        sampled.image = std::move(*image_owner);
+        const VkImage image = sampled.image.image();
 
         // 2. Image view
         VkImageViewCreateInfo view_ci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
@@ -1177,13 +1158,14 @@ namespace lux::render
         view_ci.viewType = VK_IMAGE_VIEW_TYPE_2D;
         view_ci.format = vk_fmt;
         view_ci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, mip_levels, 0, 1};
-        VkImageView view;
-        if (vkCreateImageView(device_, &view_ci, nullptr, &view) != VK_SUCCESS)
+        auto view_owner = ImageViewOwner::create(device_, view_ci);
+        if (!view_owner)
         {
-            vmaDestroyImage(vma_, image, image_alloc);
             fail();
             return;
         }
+
+        sampled.view = std::move(*view_owner);
 
         // 3. Sampler
         VkSamplerCreateInfo samp_ci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
@@ -1194,22 +1176,19 @@ namespace lux::render
         samp_ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         samp_ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
         samp_ci.maxLod = static_cast<float>(mip_levels);
-        VkSampler sampler;
-        if (vkCreateSampler(device_, &samp_ci, nullptr, &sampler) != VK_SUCCESS)
+        auto sampler_owner = SamplerOwner::create(device_, samp_ci);
+        if (!sampler_owner)
         {
-            vkDestroyImageView(device_, view, nullptr);
-            vmaDestroyImage(vma_, image, image_alloc);
             fail();
             return;
         }
+
+        sampled.sampler = std::move(*sampler_owner);
 
         // 4. Staging buffer + memcpy
         auto stg = allocStagingBuffer(total_bytes);
         if (!stg.mapped)
         {
-            vkDestroySampler(device_, sampler, nullptr);
-            vkDestroyImageView(device_, view, nullptr);
-            vmaDestroyImage(vma_, image, image_alloc);
             fail();
             return;
         }
@@ -1232,9 +1211,6 @@ namespace lux::render
             // release the batch slot (its gate is a prior, already-reached value, so no
             // future waiter hangs), and settle the request as failed.
             const auto fail_cmd = [&] {
-                vkDestroySampler(device_, sampler, nullptr);
-                vkDestroyImageView(device_, view, nullptr);
-                vmaDestroyImage(vma_, image, image_alloc);
                 releaseBatchSlot(batch_slot);
                 fail();
             };
@@ -1443,15 +1419,12 @@ namespace lux::render
             tc.logical_base_mip = task.logical_base_mip;
             tc.staging = std::move(stg.owner);
             tc.stg_size = total_bytes;
-            tc.texture.image = image;
-            tc.texture.image_alloc = image_alloc;
-            tc.texture.view = view;
-            tc.texture.sampler = sampler;
-            tc.texture.format = vk_fmt;
-            tc.texture.mip_levels = mip_levels;
-            tc.texture.array_layers = 1;
-            tc.texture.width = base_width;
-            tc.texture.height = base_height;
+            tc.sampled_image = std::move(sampled);
+            tc.sampled_image.format = vk_fmt;
+            tc.sampled_image.mip_levels = mip_levels;
+            tc.sampled_image.array_layers = 1;
+            tc.sampled_image.width = base_width;
+            tc.sampled_image.height = base_height;
             tc.texture.slot_index = task.slot_index;
             tc.texture.needs_mip_gen = needs_mip_gen;
             tc.texture.uploaded_mip_count = provided_mips;
@@ -1475,15 +1448,12 @@ namespace lux::render
             tc.logical_base_mip = task.logical_base_mip;
             tc.staging = std::move(stg.owner);
             tc.stg_size = total_bytes;
-            tc.texture.image = image;
-            tc.texture.image_alloc = image_alloc;
-            tc.texture.view = view;
-            tc.texture.sampler = sampler;
-            tc.texture.format = vk_fmt;
-            tc.texture.mip_levels = mip_levels;
-            tc.texture.array_layers = 1;
-            tc.texture.width = base_width;
-            tc.texture.height = base_height;
+            tc.sampled_image = std::move(sampled);
+            tc.sampled_image.format = vk_fmt;
+            tc.sampled_image.mip_levels = mip_levels;
+            tc.sampled_image.array_layers = 1;
+            tc.sampled_image.width = base_width;
+            tc.sampled_image.height = base_height;
             tc.texture.slot_index = task.slot_index;
             tc.texture.needs_mip_gen = (runtime_mips && mip_levels > 1);
             tc.texture.uploaded_mip_count = provided_mips;
@@ -1555,15 +1525,18 @@ namespace lux::render
         img_ci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         img_ci.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        VkImage image;
-        VmaAllocation image_alloc;
+        SampledImage sampled;
         VmaAllocationCreateInfo img_aci{};
         img_aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-        if (vmaCreateImage(vma_, &img_ci, &img_aci, &image, &image_alloc, nullptr) != VK_SUCCESS)
+        auto image_owner = VmaImage::create(vma_, img_ci, img_aci);
+        if (!image_owner)
         {
             fail();
             return;
         }
+
+        sampled.image = std::move(*image_owner);
+        const VkImage image = sampled.image.image();
 
         // 2. Image view
         VkImageViewCreateInfo view_ci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
@@ -1571,13 +1544,14 @@ namespace lux::render
         view_ci.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
         view_ci.format = vk_fmt;
         view_ci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, kFaceCount};
-        VkImageView view;
-        if (vkCreateImageView(device_, &view_ci, nullptr, &view) != VK_SUCCESS)
+        auto view_owner = ImageViewOwner::create(device_, view_ci);
+        if (!view_owner)
         {
-            vmaDestroyImage(vma_, image, image_alloc);
             fail();
             return;
         }
+
+        sampled.view = std::move(*view_owner);
 
         // 3. Sampler
         VkSamplerCreateInfo samp_ci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
@@ -1588,22 +1562,19 @@ namespace lux::render
         samp_ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         samp_ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         samp_ci.maxLod = 1.0f;
-        VkSampler sampler;
-        if (vkCreateSampler(device_, &samp_ci, nullptr, &sampler) != VK_SUCCESS)
+        auto sampler_owner = SamplerOwner::create(device_, samp_ci);
+        if (!sampler_owner)
         {
-            vkDestroyImageView(device_, view, nullptr);
-            vmaDestroyImage(vma_, image, image_alloc);
             fail();
             return;
         }
+
+        sampled.sampler = std::move(*sampler_owner);
 
         // 4. Staging buffer
         auto stg = allocStagingBuffer(total_bytes);
         if (!stg.mapped)
         {
-            vkDestroySampler(device_, sampler, nullptr);
-            vkDestroyImageView(device_, view, nullptr);
-            vmaDestroyImage(vma_, image, image_alloc);
             fail();
             return;
         }
@@ -1628,9 +1599,6 @@ namespace lux::render
             // release the batch slot (its gate is a prior, already-reached value, so no
             // future waiter hangs), and settle the request as failed.
             const auto fail_cmd = [&] {
-                vkDestroySampler(device_, sampler, nullptr);
-                vkDestroyImageView(device_, view, nullptr);
-                vmaDestroyImage(vma_, image, image_alloc);
                 releaseBatchSlot(batch_slot);
                 fail();
             };
@@ -1740,15 +1708,12 @@ namespace lux::render
             tc.resource_handle = task.slot_index;
             tc.resource_gen = task.resource_gen;
             tc.staging = std::move(stg.owner);
-            tc.texture.image = image;
-            tc.texture.image_alloc = image_alloc;
-            tc.texture.view = view;
-            tc.texture.sampler = sampler;
-            tc.texture.format = vk_fmt;
-            tc.texture.mip_levels = 1;
-            tc.texture.array_layers = kFaceCount;
-            tc.texture.width = task.face_size;
-            tc.texture.height = task.face_size;
+            tc.sampled_image = std::move(sampled);
+            tc.sampled_image.format = vk_fmt;
+            tc.sampled_image.mip_levels = 1;
+            tc.sampled_image.array_layers = kFaceCount;
+            tc.sampled_image.width = task.face_size;
+            tc.sampled_image.height = task.face_size;
             tc.texture.slot_index = task.slot_index;
             tc.texture.needs_mip_gen = false;
             tc.texture.face_stride = face_stride; // validated per-face size
@@ -1769,15 +1734,12 @@ namespace lux::render
             tc.resource_handle = task.slot_index;
             tc.resource_gen = task.resource_gen;
             tc.staging = std::move(stg.owner);
-            tc.texture.image = image;
-            tc.texture.image_alloc = image_alloc;
-            tc.texture.view = view;
-            tc.texture.sampler = sampler;
-            tc.texture.format = vk_fmt;
-            tc.texture.mip_levels = 1;
-            tc.texture.array_layers = kFaceCount;
-            tc.texture.width = task.face_size;
-            tc.texture.height = task.face_size;
+            tc.sampled_image = std::move(sampled);
+            tc.sampled_image.format = vk_fmt;
+            tc.sampled_image.mip_levels = 1;
+            tc.sampled_image.array_layers = kFaceCount;
+            tc.sampled_image.width = task.face_size;
+            tc.sampled_image.height = task.face_size;
             tc.texture.slot_index = task.slot_index;
             tc.texture.needs_mip_gen = false;
             tc.texture.face_stride = face_stride; // validated per-face size

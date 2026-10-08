@@ -16,6 +16,7 @@
 #include <lux/engine/render/gpu/memory/StagingBuffer.hpp>
 #include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 #include <lux/engine/render/gpu/utils/Slot.hpp>
+#include <lux/engine/render/resources/texture/SampledImage.hpp>
 #include <memory>
 #include <optional>
 #include <span>
@@ -124,35 +125,13 @@ namespace lux::render
          * VkImageView / VkSampler on the transfer queue.  The slot's descriptor
          * is updated in-place via UPDATE_AFTER_BIND.
          */
-        void finalizeTransferredTexture(
-            uint32_t slot_idx,
-            VkImage image,
-            VmaAllocation alloc,
-            VkImageView view,
-            VkSampler sampler,
-            VkFormat format,
-            uint32_t mip_levels,
-            uint32_t array_layers,
-            int32_t w,
-            int32_t h
-        );
+        void finalizeTransferredTexture(uint32_t slot_idx, SampledImage image);
 
         /// Atomically replace the GPU objects behind an already-live descriptor
         /// slot. The slot index/generation remain unchanged. The prior image,
         /// view and sampler are retired through the frames-in-flight destroy
         /// queue after the descriptor points at the replacement.
-        void replaceTransferredTexture(
-            uint32_t slot_idx,
-            VkImage image,
-            VmaAllocation alloc,
-            VkImageView view,
-            VkSampler sampler,
-            VkFormat format,
-            uint32_t mip_levels,
-            uint32_t array_layers,
-            int32_t w,
-            int32_t h
-        );
+        void replaceTransferredTexture(uint32_t slot_idx, SampledImage image);
 
         /**
          * @brief Read the current generation counter for a slot (render OR game thread).
@@ -481,35 +460,6 @@ namespace lux::render
         void writeCombinedDescriptorNull(uint32_t idx);
 
         // ===== Texture GPU Object =====
-        struct CombinedSlot
-        {
-            VmaImage image;
-            ImageViewOwner view;
-            SamplerOwner sampler;
-            VkFormat format{VK_FORMAT_UNDEFINED};
-            uint32_t mip_levels{1};
-            uint32_t array_layers{1};
-            int width{}, height{};
-
-            CombinedSlot() noexcept = default;
-            CombinedSlot(const CombinedSlot&) = delete;
-            CombinedSlot& operator=(const CombinedSlot&) = delete;
-            CombinedSlot(CombinedSlot&&) noexcept = default;
-
-            CombinedSlot& operator=(CombinedSlot&& other) noexcept
-            {
-                CombinedSlot previous(std::move(other));
-                std::swap(image, previous.image);
-                std::swap(view, previous.view);
-                std::swap(sampler, previous.sampler);
-                std::swap(format, previous.format);
-                std::swap(mip_levels, previous.mip_levels);
-                std::swap(array_layers, previous.array_layers);
-                std::swap(width, previous.width);
-                std::swap(height, previous.height);
-                return *this;
-            }
-        };
 
         static uint32_t calcMipLevels(uint32_t w, uint32_t h)
         {
@@ -536,15 +486,15 @@ namespace lux::render
             return VK_FORMAT_R8G8B8A8_UNORM; // fallback
         }
 
-        [[nodiscard]] Expected<void> createImageGPU(CombinedSlot& s);
+        [[nodiscard]] Expected<void> createImageGPU(SampledImage& s);
 
-        [[nodiscard]] Expected<void> createImageView(CombinedSlot& s);
-        [[nodiscard]] Expected<void> createSampledImage(CombinedSlot& slot, const VkSamplerCreateInfo& sampler);
+        [[nodiscard]] Expected<void> createImageView(SampledImage& s);
+        [[nodiscard]] Expected<void> createSampledImage(SampledImage& slot, const VkSamplerCreateInfo& sampler);
 
         /// Retire a slot's GPU objects (image/view/sampler) through the shared
         /// DeferredDestroyQueue so they outlive any in-flight frame that may
         /// still sample them. The queue is bound before the set is created.
-        void retireCombinedDeferred(CombinedSlot& s);
+        void retireCombinedDeferred(SampledImage& s);
 
         [[nodiscard]] Expected<StagingBuffer> createStaging(VkDeviceSize size, const void* data);
 
@@ -564,7 +514,7 @@ namespace lux::render
 
         void genMipsLinear(
             VkCommandBuffer cb,
-            CombinedSlot& s,
+            SampledImage& s,
             VkImageLayout untouched_old_layout = VK_IMAGE_LAYOUT_UNDEFINED
         );
 
@@ -591,7 +541,7 @@ namespace lux::render
         /// Record upload commands for a single texture into an existing command buffer.
         void recordTextureUploadInternal(
             VkCommandBuffer cb,
-            CombinedSlot& s,
+            SampledImage& s,
             VkBuffer staging,
             bool do_mips,
             const TextureCopyPlan* copy_plan,
@@ -601,7 +551,7 @@ namespace lux::render
         /// Record upload commands for a cubemap (6-face) texture.
         void recordCubeTextureUpload(
             VkCommandBuffer cb,
-            CombinedSlot& s,
+            SampledImage& s,
             VkBuffer staging,
             VkDeviceSize face_stride,
             VkImageLayout old_layout = VK_IMAGE_LAYOUT_UNDEFINED
@@ -622,8 +572,7 @@ namespace lux::render
         uint32_t cur_cap_{0};
 
         // host arrays
-        struct CombinedSlot;
-        std::vector<CombinedSlot> slots_;
+        std::vector<SampledImage> slots_;
         std::vector<uint32_t> gen_;
         std::vector<uint8_t> alive_;
         std::vector<uint32_t> free_;

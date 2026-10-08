@@ -75,12 +75,6 @@ namespace lux::render
 
         StagingResult allocStagingBuffer(VkDeviceSize bytes);
 
-        /// Destroy the GPU resources held by a completion that will never be
-        /// finalized (a packet dropped on a closed pending-submit ring, or left
-        /// un-submitted at shutdown). Frees staging + (for textures) the
-        /// per-task image/view/sampler so teardown leaks nothing.
-        void freeUnsubmittedCompletion(TransferCompletion& c);
-
         /// Publish a FAILURE terminal state for a worker task that bailed out
         /// (cancel / invalid data / unknown format / Vulkan/VMA/staging failure).
         /// Carries only the reply identity + reserved slot — NO GPU objects (the

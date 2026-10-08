@@ -568,39 +568,16 @@ namespace lux::render
             {
                 tr.endMipReplacement(handle);
             }
-            freeCompletionTextureGpu(c);
             return EFinalizeDisposition::FAILED;
         }
         const auto install = [&] {
             if (replacement)
             {
-                bcs.replaceTransferredTexture(
-                    c.texture.slot_index,
-                    c.texture.image,
-                    c.texture.image_alloc,
-                    c.texture.view,
-                    c.texture.sampler,
-                    c.texture.format,
-                    c.texture.mip_levels,
-                    c.texture.array_layers,
-                    c.texture.width,
-                    c.texture.height
-                );
+                bcs.replaceTransferredTexture(c.texture.slot_index, std::move(c.sampled_image));
             }
             else
             {
-                bcs.finalizeTransferredTexture(
-                    c.texture.slot_index,
-                    c.texture.image,
-                    c.texture.image_alloc,
-                    c.texture.view,
-                    c.texture.sampler,
-                    c.texture.format,
-                    c.texture.mip_levels,
-                    c.texture.array_layers,
-                    c.texture.width,
-                    c.texture.height
-                );
+                bcs.finalizeTransferredTexture(c.texture.slot_index, std::move(c.sampled_image));
             }
         };
         if (!c.gpu_copy_recorded)
@@ -628,9 +605,9 @@ namespace lux::render
             if (needs_qfot)
             {
                 bcs.pushImageAcquireBarrier(
-                    c.texture.image,
-                    c.texture.mip_levels,
-                    c.texture.array_layers,
+                    c.sampled_image.image.image(),
+                    c.sampled_image.mip_levels,
+                    c.sampled_image.array_layers,
                     c.texture.needs_mip_gen ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
                                             : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                     src_family,
@@ -661,23 +638,11 @@ namespace lux::render
         // freeing GPU objects + staging on drop.
         if (!bcs.isTextureAlive(SlotHandle{c.texture.slot_index, c.resource_gen}))
         {
-            freeCompletionTextureGpu(c);
             return EFinalizeDisposition::FAILED;
         }
         if (!c.gpu_copy_recorded)
         {
-            bcs.finalizeTransferredTexture(
-                c.texture.slot_index,
-                c.texture.image,
-                c.texture.image_alloc,
-                c.texture.view,
-                c.texture.sampler,
-                c.texture.format,
-                c.texture.mip_levels,
-                c.texture.array_layers,
-                c.texture.width,
-                c.texture.height
-            );
+            bcs.finalizeTransferredTexture(c.texture.slot_index, std::move(c.sampled_image));
             BindlessCombinedSet::PendingStagingTexture st{};
             st.stg_buf = c.staging.buffer();
             st.stg_size = c.stg_size;
@@ -695,27 +660,16 @@ namespace lux::render
             if (needs_qfot)
             {
                 bcs.pushImageAcquireBarrier(
-                    c.texture.image,
-                    c.texture.mip_levels,
-                    c.texture.array_layers,
+                    c.sampled_image.image.image(),
+                    c.sampled_image.mip_levels,
+                    c.sampled_image.array_layers,
                     c.texture.needs_mip_gen ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
                                             : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                     src_family,
                     dst_family
                 );
             }
-            bcs.finalizeTransferredTexture(
-                c.texture.slot_index,
-                c.texture.image,
-                c.texture.image_alloc,
-                c.texture.view,
-                c.texture.sampler,
-                c.texture.format,
-                c.texture.mip_levels,
-                c.texture.array_layers,
-                c.texture.width,
-                c.texture.height
-            );
+            bcs.finalizeTransferredTexture(c.texture.slot_index, std::move(c.sampled_image));
         }
         return EFinalizeDisposition::SUCCEEDED;
     }
@@ -816,11 +770,9 @@ namespace lux::render
         }
         else
         {
-            // Failed: the finalizer DROPPED the completion (stale / recycled slot) and
-            // already freed both its GPU objects and its staging buffer. Send a
-            // null-handle failure reply; do NOT retire the (already-destroyed) staging
-            // again — that was the double-free — and do NOT reclaim the slot (it was
-            // recycled by whoever removed it).
+            // The finalizer rejected this stale/recycled slot. Preserve the failure reply;
+            // the unadopted owners are released below at this completed transfer boundary.
+            // The slot belongs to its current generation and must not be reclaimed here.
             if (c.request_id != UINT32_MAX)
             {
                 pending_deferred_replies_.push_back(
@@ -833,6 +785,7 @@ namespace lux::render
                 c.retained_batch_slot = UINT32_MAX;
             }
         }
+        destroyUnfinalizedCompletion(c);
     }
 
     void GeneralRenderServer::Impl::reclaimReservedSlot(const TransferCompletion& c)
@@ -840,7 +793,7 @@ namespace lux::render
         // Return a reserved-but-never-finalized bindless slot to its free list.
         // removeTexture() is the existing recycle path and is safe here: the slot was
         // only reserved (allocateSlotDeferred wrote just the null descriptor), so its
-        // CombinedSlot is still {} and removeTexture retires null GPU objects. Meshes
+        // SampledImage is still {} and removeTexture retires null GPU objects. Meshes
         // carry no bindless slot — their arena range is owned by the mesh resource.
         if (c.kind == TransferCompletion::EKind::MESH_BUFFER)
         {
@@ -872,31 +825,10 @@ namespace lux::render
         }
     }
 
-    void GeneralRenderServer::Impl::freeCompletionTextureGpu(TransferCompletion& c)
-    {
-        auto vma = dev_ctx_->vmaAllocator();
-        VkDevice dev = dev_ctx_->logicalDevice();
-        vkDestroyImageView(dev, c.texture.view, nullptr);
-        vkDestroySampler(dev, c.texture.sampler, nullptr);
-        if (c.texture.image != VK_NULL_HANDLE)
-        {
-            vmaDestroyImage(vma, c.texture.image, c.texture.image_alloc);
-        }
-        c.staging.reset();
-    }
-
     void GeneralRenderServer::Impl::destroyUnfinalizedCompletion(TransferCompletion& c)
     {
-        // MUST branch on kind: reading c.texture.* on a mesh completion mis-reads the
-        // union. Mesh holds only staging; texture/cube hold image/view/sampler + staging.
-        if (c.kind == TransferCompletion::EKind::MESH_BUFFER)
-        {
-            c.staging.reset();
-        }
-        else
-        {
-            freeCompletionTextureGpu(c);
-        }
+        c.sampled_image = {};
+        c.staging.reset();
     }
 
     bool GeneralRenderServer::Impl::pollGraphicsFinalizes(std::uint64_t gpu_value)

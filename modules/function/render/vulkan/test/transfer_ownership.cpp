@@ -1,5 +1,6 @@
 #include <lux/engine/gapi/vk/vk.hpp>
 #include <lux/engine/render/gpu/memory/StagingBuffer.hpp>
+#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 
 #include <vulkan/vulkan.h>
 
@@ -13,6 +14,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
+#define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
 
 namespace
@@ -63,6 +65,112 @@ namespace
         assert(it != staging_allocations.end() && it->second == allocation);
         staging_allocations.erase(it);
         vmaDestroyBuffer(allocator, buffer, allocation);
+    }
+
+    std::atomic<unsigned> texture_failure{};
+    std::atomic<unsigned> texture_rejections{};
+    std::unordered_map<VkImage, VmaAllocation> images;
+    std::unordered_map<VkImageView, VkImage> views;
+    std::unordered_map<VkSampler, VkDevice> samplers;
+
+    VkResult createImage(
+        VmaAllocator allocator,
+        const VkImageCreateInfo* info,
+        const VmaAllocationCreateInfo* allocation_info,
+        VkImage* image,
+        VmaAllocation* allocation,
+        VmaAllocationInfo* mapped
+    )
+    {
+        if (texture_failure.load() == 1)
+        {
+            ++texture_rejections;
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        const auto result = vmaCreateImage(allocator, info, allocation_info, image, allocation, mapped);
+        if (result == VK_SUCCESS)
+        {
+            const std::lock_guard lock(staging_mutex);
+            assert(images.emplace(*image, *allocation).second);
+        }
+        return result;
+    }
+
+    void destroyImage(VmaAllocator allocator, VkImage image, VmaAllocation allocation)
+    {
+        const std::lock_guard lock(staging_mutex);
+        for (const auto& [view, parent] : views)
+        {
+            assert(parent != image);
+        }
+        assert(images.at(image) == allocation);
+        images.erase(image);
+        vmaDestroyImage(allocator, image, allocation);
+    }
+
+    VkResult createView(
+        VkDevice device,
+        const VkImageViewCreateInfo* info,
+        const VkAllocationCallbacks* allocator,
+        VkImageView* view
+    )
+    {
+        if (texture_failure.load() == 2)
+        {
+            ++texture_rejections;
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        const auto result = vkCreateImageView(device, info, allocator, view);
+        if (result == VK_SUCCESS)
+        {
+            const std::lock_guard lock(staging_mutex);
+            assert(views.emplace(*view, info->image).second);
+        }
+        return result;
+    }
+
+    void destroyView(VkDevice device, VkImageView view, const VkAllocationCallbacks* allocator)
+    {
+        if (view == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        const std::lock_guard lock(staging_mutex);
+        assert(views.erase(view) == 1);
+        vkDestroyImageView(device, view, allocator);
+    }
+
+    VkResult createSampler(
+        VkDevice device,
+        const VkSamplerCreateInfo* info,
+        const VkAllocationCallbacks* allocator,
+        VkSampler* sampler
+    )
+    {
+        if (texture_failure.load() == 3)
+        {
+            ++texture_rejections;
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        const auto result = vkCreateSampler(device, info, allocator, sampler);
+        if (result == VK_SUCCESS)
+        {
+            const std::lock_guard lock(staging_mutex);
+            assert(samplers.emplace(*sampler, device).second);
+        }
+        return result;
+    }
+
+    void destroySampler(VkDevice device, VkSampler sampler, const VkAllocationCallbacks* allocator)
+    {
+        if (sampler == VK_NULL_HANDLE)
+        {
+            return;
+        }
+        const std::lock_guard lock(staging_mutex);
+        assert(samplers.at(sampler) == device);
+        samplers.erase(sampler);
+        vkDestroySampler(device, sampler, allocator);
     }
 
     std::unordered_map<VkSemaphore, VkDevice> semaphores;
@@ -130,6 +238,13 @@ namespace
 
 // Run the actual worker and device path. Only creation faults and destruction accounting are injected.
 // clang-format off
+#define vmaCreateImage createImage
+#define vmaDestroyImage destroyImage
+#define vkCreateImageView createView
+#define vkDestroyImageView destroyView
+#define vkCreateSampler createSampler
+#define vkDestroySampler destroySampler
+#include "../src/gpu/memory/VmaTypes.cpp"
 #define vmaCreateBuffer createStaging
 #define vmaDestroyBuffer destroyStaging
 #include "../src/gpu/memory/StagingBuffer.cpp"
@@ -149,6 +264,12 @@ namespace
 #undef vkCreateSemaphore
 #undef vmaDestroyBuffer
 #undef vmaCreateBuffer
+#undef vmaCreateImage
+#undef vmaDestroyImage
+#undef vkCreateImageView
+#undef vkDestroyImageView
+#undef vkCreateSampler
+#undef vkDestroySampler
 // clang-format on
 
 int main()
@@ -164,6 +285,10 @@ int main()
     static_assert(!std::is_default_constructible_v<GpuTransferPipeline>);
     static_assert(!std::is_move_constructible_v<GpuTransferPipeline>);
     static_assert(!std::is_copy_constructible_v<GpuTransferPipeline>);
+    static_assert(!std::is_copy_constructible_v<SampledImage>);
+    static_assert(!std::is_copy_assignable_v<SampledImage>);
+    static_assert(std::is_nothrow_move_constructible_v<SampledImage>);
+    static_assert(std::is_nothrow_move_assignable_v<SampledImage>);
     static_assert(!std::is_copy_constructible_v<TransferCompletion>);
     static_assert(!std::is_copy_assignable_v<TransferCompletion>);
     static_assert(std::is_nothrow_move_constructible_v<TransferCompletion>);
@@ -269,6 +394,97 @@ int main()
         return 1;
     }
 
+    bool leaked_texture = false;
+    for (unsigned boundary = 0; boundary < 4; ++boundary)
+    {
+        for (unsigned kind = 0; kind < 2; ++kind)
+        {
+            texture_failure.store(boundary);
+            texture_rejections.store(0);
+            auto pipeline = GpuTransferPipeline::create(config);
+            assert(pipeline);
+            const auto pixels = std::make_shared<std::array<std::byte, 16>>();
+            {
+                if (kind == 0)
+                {
+                    TextureTransferTask task{};
+                    task.request_id = 55;
+                    task.format = EPixelFormat::RGBA8_UNORM;
+                    task.total_bytes = pixels->size();
+                    task.mips[0] = {pixels, pixels->data(), pixels->size(), 2, 2, 0};
+                    assert((*pipeline)->submitTextureTransfer(std::move(task)));
+                }
+                else
+                {
+                    CubeTransferTask task{};
+                    task.request_id = 55;
+                    task.format = EPixelFormat::RGBA8_UNORM;
+                    task.face_size = 2;
+                    task.face_bytes = pixels->size();
+                    for (auto& face : task.faces)
+                    {
+                        face = {pixels, pixels->data()};
+                    }
+                    assert((*pipeline)->submitCubeTransfer(std::move(task)));
+                }
+                TransferCompletion completion;
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+                while ((*pipeline)->drainResults(&completion, 1) == 0)
+                {
+                    assert(std::chrono::steady_clock::now() < deadline);
+                    std::this_thread::yield();
+                }
+                assert(completion.failed == (boundary != 0));
+                assert(texture_rejections.load() == (boundary != 0 ? 1u : 0u));
+                assert(completion.request_id == 55);
+                assert(completion.failed || completion.gpu_copy_recorded);
+                assert(device.waitIdle() == VK_SUCCESS);
+                if (completion.retained_batch_slot != UINT32_MAX)
+                {
+                    (*pipeline)->releaseAfterGraphicsAcquire(completion.retained_batch_slot);
+                }
+                // GPU work is complete: dropping an unadopted result must release its native ownership.
+                TransferCompletion result = std::move(completion);
+                assert(
+                    !completion.sampled_image.image && !completion.sampled_image.view &&
+                    !completion.sampled_image.sampler
+                );
+            }
+            pipeline->reset();
+            texture_failure.store(0);
+            const std::lock_guard lock(staging_mutex);
+            std::printf(
+                "completed texture boundary=%u kind=%u images=%zu views=%zu samplers=%zu\n",
+                boundary,
+                kind,
+                images.size(),
+                views.size(),
+                samplers.size()
+            );
+            leaked_texture = leaked_texture || !images.empty() || !views.empty() || !samplers.empty();
+            // Keep the failing original run leak-free at fixture shutdown without hiding the result.
+            for (const auto& [view, image] : views)
+            {
+                vkDestroyImageView(device.logicalDevice(), view, nullptr);
+            }
+            for (const auto& [sampler, owner] : samplers)
+            {
+                vkDestroySampler(owner, sampler, nullptr);
+            }
+            for (const auto& [image, allocation] : images)
+            {
+                vmaDestroyImage(device.vmaAllocator(), image, allocation);
+            }
+            views.clear();
+            samplers.clear();
+            images.clear();
+        }
+    }
+    if (leaked_texture)
+    {
+        return 1;
+    }
+
     // Receive an actual submitted mesh copy, move its staging owner through result storage,
     // then release it only after the original transfer completion boundary.
     {
@@ -354,6 +570,43 @@ int main()
         pipeline->reset();
         vmaDestroyBuffer(device.vmaAllocator(), destination, allocation);
         std::puts("PASS submitted copy bytes, move-only completion and exact staging retirement");
+    }
+
+    {
+        auto bounded = config;
+        bounded.result_capacity = 1;
+        bounded.queue_capacity = 16;
+        auto pipeline = GpuTransferPipeline::create(bounded);
+        assert(pipeline);
+        const auto pixels = std::make_shared<std::array<std::byte, 16>>();
+        for (unsigned request = 0; request < 8; ++request)
+        {
+            TextureTransferTask task{};
+            task.request_id = request;
+            task.format = EPixelFormat::RGBA8_UNORM;
+            task.total_bytes = pixels->size();
+            task.mips[0] = {pixels, pixels->data(), pixels->size(), 2, 2, 0};
+            assert((*pipeline)->submitTextureTransfer(std::move(task)));
+        }
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        for (;;)
+        {
+            {
+                const std::lock_guard lock(staging_mutex);
+                if (images.size() >= 2)
+                {
+                    break;
+                }
+            }
+            assert(std::chrono::steady_clock::now() < deadline);
+            std::this_thread::yield();
+        }
+        // The original owner drains its full result ring, joins the worker and waits GPU idle.
+        // No external fixture performs per-completion native cleanup.
+        pipeline->reset();
+        const std::lock_guard lock(staging_mutex);
+        assert(images.empty() && views.empty() && samplers.empty() && staging_allocations.empty());
+        std::puts("PASS full result ring shutdown releases accepted texture owners at the original idle boundary");
     }
 
     for (unsigned iteration = 0; iteration < 128; ++iteration)

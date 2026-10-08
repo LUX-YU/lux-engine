@@ -4666,39 +4666,22 @@ int main(int argc, char** argv)
                 VkSamplerCreateInfo sampler_info{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
                 auto sampler = SamplerOwner::create(device.logicalDevice(), sampler_info);
                 assert(sampler);
-                const auto native_image = image->release();
-                const auto native_view = view->release();
-                const auto native_sampler = sampler->release();
+                const auto native_view = view->get();
+                SampledImage sampled;
+                sampled.image = std::move(*image);
+                sampled.view = std::move(*view);
+                sampled.sampler = std::move(*sampler);
+                sampled.format = image_info.format;
+                sampled.width = sampled.height = 1;
                 if (replace)
                 {
-                    set.replaceTransferredTexture(
-                        slot.index,
-                        native_image.image,
-                        native_image.allocation,
-                        native_view,
-                        native_sampler,
-                        image_info.format,
-                        1,
-                        1,
-                        1,
-                        1
-                    );
+                    set.replaceTransferredTexture(slot.index, std::move(sampled));
                 }
                 else
                 {
-                    set.finalizeTransferredTexture(
-                        slot.index,
-                        native_image.image,
-                        native_image.allocation,
-                        native_view,
-                        native_sampler,
-                        image_info.format,
-                        1,
-                        1,
-                        1,
-                        1
-                    );
+                    set.finalizeTransferredTexture(slot.index, std::move(sampled));
                 }
+                assert(!sampled.image && !sampled.view && !sampled.sampler);
                 return native_view;
             };
             const auto previous = install(false);

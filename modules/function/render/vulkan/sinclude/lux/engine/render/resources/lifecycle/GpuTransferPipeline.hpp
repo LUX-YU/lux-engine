@@ -24,6 +24,7 @@
 #include <lux/engine/function/visibility.h>
 
 #include <lux/engine/render/gpu/memory/StagingBuffer.hpp>
+#include <lux/engine/render/resources/texture/SampledImage.hpp>
 
 #include <vulkan/vulkan.h>
 
@@ -178,6 +179,7 @@ namespace lux::render
         // Unique staging allocation. Submitted results must stay in the original pending queue
         // until its timeline completes; graphics followup moves this owner to that retirement batch.
         StagingBuffer staging;
+        SampledImage sampled_image;
 
         union {
             struct
@@ -193,19 +195,11 @@ namespace lux::render
 
             struct
             {
-                VkImage image;
-                VmaAllocation image_alloc;
-                VkImageView view;
-                VkSampler sampler;
-                VkFormat format;
-                uint32_t mip_levels;
-                uint32_t array_layers;
                 /// Cube only: byte distance between consecutive faces in the staging
                 /// buffer = the (validated, format-correct) per-face byte size. The
                 /// StagingOnly consumer reads face f at f*face_stride, so it MUST NOT
                 /// be re-guessed as width*height*4 at the consumer.
                 VkDeviceSize face_stride;
-                int32_t width, height;
                 uint32_t slot_index;
                 bool needs_mip_gen;
                 uint32_t uploaded_mip_count;

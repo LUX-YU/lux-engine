@@ -106,9 +106,16 @@ int main()
             pending[index] = control->get().createScene({.name = "terminal queued control"});
             assert(pending[index].valid());
             assert(pending[index].then(
-                [&, index](const auto&)
+                [&, index](const Expected<SceneCreatedReply>& outcome) noexcept
                 {
                     ++deliveries[index];
+                    assert(pending[index].isReady());
+                    assert(outcome.has_value() == !pending[index].failed());
+                    if (!outcome)
+                    {
+                        assert(outcome.error().type == pending[index].error().type);
+                        assert(outcome.error().args == pending[index].error().args);
+                    }
                     const auto reentrant = (*stopped)->collectCompletions(1);
                     assert(!reentrant && reentrant.error().code == ERendererError::BUSY);
                 }

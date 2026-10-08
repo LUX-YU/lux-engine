@@ -14,7 +14,9 @@ namespace lux::render
     ) noexcept
     {
         if (!owner || submit == nullptr)
+        {
             return {};
+        }
         auto control = std::make_shared<Control>();
         control->owner = std::move(owner);
         control->submit = submit;
@@ -75,7 +77,9 @@ namespace lux::render
     ) const
     {
         if (pixels.size() > UINT32_MAX)
+        {
             return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
+        }
         const auto byte_count = static_cast<std::uint32_t>(pixels.size());
         const TextureUploadMipInput mip{
             static_cast<std::uint32_t>(std::max(0, width)),
@@ -88,8 +92,8 @@ namespace lux::render
         }
 
         return trySubmit<Texture2DCreatedReply>(
-            [pixels = std::move(pixels), width, height, channels, format, generate_mips, mip](Builder& builder
-            ) mutable {
+            [pixels = std::move(pixels), width, height, channels, format, generate_mips, mip](Builder& builder) mutable
+            {
                 CreateTexture2DPayload payload{};
                 payload.width = width;
                 payload.height = height;
@@ -117,7 +121,9 @@ namespace lux::render
     {
         EPixelFormat translated{};
         if (!toPixelFormat(format, translated))
+        {
             return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
+        }
         return tryCreateTexture2D(std::move(pixels), width, height, channels, translated, generate_mips);
     }
 
@@ -155,7 +161,8 @@ namespace lux::render
         }
 
         return trySubmit<Texture2DCreatedReply>(
-            [mip_levels = std::move(mip_levels), mip_count, channels, format, generate_mips](Builder& builder) mutable {
+            [mip_levels = std::move(mip_levels), mip_count, channels, format, generate_mips](Builder& builder) mutable
+            {
                 CreateTexture2DPayload payload{};
                 payload.width = static_cast<std::int32_t>(mip_levels[0].width);
                 payload.height = static_cast<std::int32_t>(mip_levels[0].height);
@@ -226,7 +233,8 @@ namespace lux::render
 
         return trySubmit<TextureMipRangeReplacedReply>(
             [handle, base_mip, mip_levels = std::move(mip_levels), mip_count, format, generate_mips](Builder& builder
-            ) mutable {
+            ) mutable
+            {
                 ReplaceTexture2DMipRangePayload payload{};
                 payload.handle = handle;
                 payload.format = format;
@@ -269,7 +277,8 @@ namespace lux::render
         }
 
         return trySubmit<CubeTextureCreatedReply>(
-            [faces = std::move(faces), face_size, channels, format](Builder& builder) mutable {
+            [faces = std::move(faces), face_size, channels, format](Builder& builder) mutable
+            {
                 CreateCubeTexturePayload payload{};
                 for (std::size_t i = 0u; i < 6u; ++i)
                 {
@@ -289,14 +298,19 @@ namespace lux::render
     ) const
     {
         if (!validatePersistentTexture2DDesc(desc).ok())
+        {
             return lux::cxx::unexpected(ERenderUploadSubmitError::PAYLOAD_INVALID);
+        }
 
-        return trySubmit<Texture2DCreatedReply>([&desc](Builder& builder) {
-            builder.pushPreparedResource(
-                type_ids::CreatePersistentTexture2D,
-                CreatePersistentTexture2DPayload{.desc = desc}
-            );
-        });
+        return trySubmit<Texture2DCreatedReply>(
+            [&desc](Builder& builder)
+            {
+                builder.pushPreparedResource(
+                    type_ids::CreatePersistentTexture2D,
+                    CreatePersistentTexture2DPayload{.desc = desc}
+                );
+            }
+        );
     }
 
     UploadSubmitResult<TextureRegionsAppliedReply> RenderUploadClient::tryUpdateTextureRegions(
@@ -315,7 +329,8 @@ namespace lux::render
         auto regions = std::make_shared<std::vector<TextureRegionDesc>>(std::move(batch.regions));
         const auto shared_bytes = batch.pixels.size() + regions->size() * sizeof(TextureRegionDesc);
         return trySubmit<TextureRegionsAppliedReply>(
-            [regions = std::move(regions), batch = std::move(batch)](Builder& builder) mutable {
+            [regions = std::move(regions), batch = std::move(batch)](Builder& builder) mutable
+            {
                 UpdateTextureRegionsPayload payload{};
                 payload.handle = batch.dst;
                 payload.content_revision = batch.content_revision;
@@ -338,11 +353,19 @@ namespace lux::render
     ) const
     {
         if (!request.valid())
+        {
             return;
+        }
         auto observation = request.release();
-        observation.then([destroy = std::move(destroy)](const Texture2DCreatedReply& reply) mutable noexcept {
-            if (!reply.handle.isNull() && destroy)
-                destroy(reply.handle);
-        });
+        observation.then(
+            [destroy = std::move(destroy)](const Expected<Texture2DCreatedReply>& reply) mutable noexcept
+            {
+                const bool has_created_texture = reply && !reply->handle.isNull();
+                if (has_created_texture && destroy)
+                {
+                    destroy(reply->handle);
+                }
+            }
+        );
     }
-}
+} // namespace lux::render

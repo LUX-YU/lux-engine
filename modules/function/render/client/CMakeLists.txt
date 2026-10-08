@@ -1,6 +1,7 @@
 find_package(lux-cxx REQUIRED COMPONENTS core compile_time container concurrent memory)
 
-set(RENDER_CLIENT_SRCS
+set(
+    RENDER_CLIENT_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Capacity.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/FeatureParamsClient.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderControlSession.cpp
@@ -58,7 +59,22 @@ component_add_transitive_commands(
 
 # Generic protocol generation is available to external Features. The list of
 # builtin Features and their generated sources belongs to features/.
-component_add_cmake_scripts(render_client
-    ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/engine_render_codegen.cmake)
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/template/
-    DESTINATION share/lux-engine-function/render_client/cmake_scripts/template)
+component_add_cmake_scripts(
+    render_client
+    ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/engine_render_codegen.cmake
+)
+install(
+    DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/template/
+    DESTINATION share/lux-engine-function/render_client/cmake_scripts/template
+)
+
+if(BUILD_TESTING)
+    add_executable(render_request_test test/request.cpp)
+    target_link_libraries(render_request_test PRIVATE render_client)
+    if(MSVC)
+        target_compile_options(render_request_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(render_request_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME render.request COMMAND render_request_test)
+endif()

@@ -1,9 +1,10 @@
 #pragma once
-#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>
-#include <lux/engine/function/render/client/RenderProgram.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/function/render/client/RenderProgram.hpp>
+#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp>
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 namespace lux::render
@@ -13,12 +14,15 @@ namespace lux::render
     template <typename T> class TRenderRequest
     {
     public:
+        using Outcome = Expected<T>;
+
         TRenderRequest() = default;
 
         [[nodiscard]] bool isReady() const noexcept
         {
-            return state_ && state_->ready;
+            return state_ && state_->outcome.has_value();
         }
+
         explicit operator bool() const noexcept
         {
             return isReady();
@@ -26,18 +30,23 @@ namespace lux::render
 
         [[nodiscard]] bool failed() const noexcept
         {
-            return state_ && state_->failed;
+            return isReady() && !state_->outcome->has_value();
         }
 
         [[nodiscard]] RenderError error() const noexcept
         {
-            return state_ ? state_->error : renderError<err::comm::RequestInvalid>();
+            if (!state_)
+            {
+                return renderError<err::comm::RequestInvalid>();
+            }
+            return failed() ? state_->outcome->error() : RenderError{};
         }
 
         [[nodiscard]] bool valid() const noexcept
         {
             return static_cast<bool>(state_);
         }
+
         [[nodiscard]] RequestId requestId() const noexcept
         {
             return state_ ? state_->request_id : kInvalidRequestId;
@@ -46,25 +55,36 @@ namespace lux::render
         [[nodiscard]] Expected<std::reference_wrapper<const T>> tryResult() const noexcept
         {
             if (!state_)
+            {
                 return renderFailure<err::comm::RequestInvalid>();
-            if (!state_->ready)
+            }
+            if (!state_->outcome)
+            {
                 return renderFailure<err::comm::RequestNotReady>();
-            if (state_->failed)
-                return lux::cxx::unexpected<RenderError>(state_->error);
-            return std::cref(state_->value);
+            }
+            if (!*state_->outcome)
+            {
+                return lux::cxx::unexpected<RenderError>(state_->outcome->error());
+            }
+            return std::cref(**state_->outcome);
         }
 
+        // Every terminal outcome is delivered, including failure. Cancellation only
+        // removes this observation; it cannot cancel accepted backend work.
         template <typename F> bool then(F&& fn)
         {
-            if (!state_)
-                return false;
-            if (state_->ready)
+            const auto state = state_;
+            if (!state)
             {
-                fn(state_->value);
+                return false;
+            }
+            if (state->outcome)
+            {
+                fn(*state->outcome);
             }
             else
             {
-                state_->continuation = std::forward<F>(fn);
+                state->continuation = std::forward<F>(fn);
             }
             return true;
         }
@@ -73,19 +93,32 @@ namespace lux::render
         void cancel() noexcept
         {
             if (state_)
+            {
                 state_->continuation.reset();
+            }
         }
 
     private:
         struct State
         {
-            T value{};
-            lux::cxx::move_only_function<void(const T&)> continuation{};
-            bool ready{false};
-            bool failed{false};
-            RenderError error{};
+            std::optional<Outcome> outcome;
+            lux::cxx::move_only_function<void(const Outcome&)> continuation;
             RequestId request_id{kInvalidRequestId};
         };
+
+        static void settle(std::shared_ptr<State> state, Outcome outcome)
+        {
+            if (state->outcome)
+            {
+                return;
+            }
+            state->outcome.emplace(std::move(outcome));
+            auto continuation = std::move(state->continuation);
+            if (continuation)
+            {
+                continuation(*state->outcome);
+            }
+        }
 
         std::shared_ptr<State> state_;
 
@@ -128,14 +161,17 @@ namespace lux::render
         {
             return request_.valid();
         }
+
         [[nodiscard]] bool isReady() const noexcept
         {
             return request_.isReady();
         }
+
         [[nodiscard]] bool failed() const noexcept
         {
             return request_.failed();
         }
+
         [[nodiscard]] RenderError error() const noexcept
         {
             return request_.error();
@@ -158,6 +194,7 @@ namespace lux::render
     {
         using Packet = TReplyPacket<ReplyAlignment>;
         using Callback = ReplyDispatchCallback;
+        using Request = TRenderRequest<Reply>;
 
         struct Result
         {
@@ -169,70 +206,68 @@ namespace lux::render
         {
             auto state = std::make_shared<typename TRenderRequest<Reply>::State>();
 
-            auto settle_failure = [state](RenderError error) {
-                state->error = error;
-                state->failed = true;
-                state->ready = true;
-                auto continuation = std::move(state->continuation);
-                if (continuation)
-                    continuation(state->value);
-            };
+            auto settle_failure = [state](RenderError error) { Request::settle(state, lux::cxx::unexpected(error)); };
 
-            auto on_reply = [state, settle_failure](ReplyPacketView pkt, const ReplyRecord& rec) {
+            auto on_reply = [state](ReplyPacketView pkt, const ReplyRecord& rec)
+            {
                 if (rec.type_id == kReplyCommandFailedTypeId)
                 {
                     auto failure = pkt.template decode<CommandFailedReply>(rec);
                     if (!failure)
-                        settle_failure(failure.error());
+                    {
+                        Request::settle(state, lux::cxx::unexpected(failure.error()));
+                    }
                     else
-                        settle_failure(failure->error);
+                    {
+                        Request::settle(state, lux::cxx::unexpected(failure->error));
+                    }
                     return;
                 }
 
                 auto value = pkt.template decode<Reply>(rec);
                 if (!value)
                 {
-                    settle_failure(value.error());
+                    Request::settle(state, lux::cxx::unexpected(value.error()));
                     return;
                 }
 
-                state->value = *value;
-                state->ready = true;
-                auto continuation = std::move(state->continuation);
-                if (continuation)
-                    continuation(state->value);
+                Request::settle(state, std::move(*value));
             };
 
-            auto prepare_main_adoption =
-                [state](ReplyPacketView pkt, const ReplyRecord& rec) -> Expected<Callback::MainAdoption> {
+            auto prepare_main_adoption = [state](
+                ReplyPacketView pkt,
+                const ReplyRecord& rec
+            ) -> Expected<Callback::MainAdoption>
+            {
                 if (rec.type_id == kReplyCommandFailedTypeId)
                 {
                     auto failure = pkt.template decode<CommandFailedReply>(rec);
                     if (!failure)
+                    {
                         return lux::cxx::unexpected(failure.error());
+                    }
 
                     const auto error = failure->error;
-                    return Callback::MainAdoption{[state, error]() mutable noexcept {
-                        state->error = error;
-                        state->failed = true;
-                        state->ready = true;
-                        auto continuation = std::move(state->continuation);
-                        if (continuation)
-                            continuation(state->value);
-                    }};
+                    return Callback::MainAdoption{
+                        [state, error]() noexcept
+                        {
+                            Request::settle(state, lux::cxx::unexpected(error));
+                        }
+                    };
                 }
 
                 auto decoded = pkt.template decode<Reply>(rec);
                 if (!decoded)
+                {
                     return lux::cxx::unexpected(decoded.error());
+                }
 
-                return Callback::MainAdoption{[state, value = std::move(*decoded)]() mutable noexcept {
-                    state->value = std::move(value);
-                    state->ready = true;
-                    auto continuation = std::move(state->continuation);
-                    if (continuation)
-                        continuation(state->value);
-                }};
+                return Callback::MainAdoption{
+                    [state, value = std::move(*decoded)]() mutable noexcept
+                    {
+                        Request::settle(state, std::move(value));
+                    }
+                };
             };
             return {
                 TRenderRequest<Reply>(state),
@@ -243,24 +278,23 @@ namespace lux::render
         static TRenderRequest<Reply> makeImmediate(Reply value)
         {
             auto state = std::make_shared<typename TRenderRequest<Reply>::State>();
-            state->value = std::move(value);
-            state->ready = true;
+            Request::settle(state, std::move(value));
             return TRenderRequest<Reply>(state);
         }
 
         static TRenderRequest<Reply> makeImmediateFailure(RenderError error)
         {
             auto state = std::make_shared<typename TRenderRequest<Reply>::State>();
-            state->error = error;
-            state->failed = true;
-            state->ready = true;
+            Request::settle(state, lux::cxx::unexpected(error));
             return TRenderRequest<Reply>(state);
         }
 
         static void bindRequestId(TRenderRequest<Reply>& request, RequestId request_id) noexcept
         {
             if (request.state_)
+            {
                 request.state_->request_id = request_id;
+            }
         }
     };
 

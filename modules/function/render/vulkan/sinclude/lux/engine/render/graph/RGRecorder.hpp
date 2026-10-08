@@ -2,6 +2,7 @@
 #include <lux/engine/render/graph/RGCompiledGraph.hpp>
 #include <lux/engine/render/graph/BindingState.hpp>
 #include <lux/engine/render/graph/FrameExtensionRegistry.hpp>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 #include <lux/engine/function/render/client/RenderTargetLayout.hpp>
 #include <lux/engine/function/render/client/core/Errors.hpp>
 #include <vulkan/vulkan.h>
@@ -131,6 +132,13 @@ namespace lux::render
 
     struct RGRecordContext
     {
+        RGRecordContext() = default;
+        ~RGRecordContext() noexcept = default;
+        RGRecordContext(const RGRecordContext&) = delete;
+        RGRecordContext& operator=(const RGRecordContext&) = delete;
+        RGRecordContext(RGRecordContext&&) noexcept = default;
+        RGRecordContext& operator=(RGRecordContext&&) noexcept = default;
+
         uint32_t frames_in_flight{0};
         bool use_dynamic_rendering{false};
         // layout group index -> VkRenderPass (empty when use_dynamic_rendering == true)
@@ -142,10 +150,8 @@ namespace lux::render
         std::vector<VkExtent2D> group_extents;
         // group_index -> layerCount for VkRenderingInfo (>1 for TEX_2D_ARRAY attachments)
         std::vector<uint32_t> group_layer_counts;
-        // resource_index -> whole-image VkImageView (Local RT)
-        std::vector<VkImageView> attachment_views;
-        // Extra view list, for automatic destruction of multi-frame resources or non-cached views
-        std::vector<VkImageView> extra_views;
+        // Owns only views created by this context. Lookup tables below borrow these handles.
+        std::vector<ImageViewOwner> image_views;
         // Pre-created per-frame attachment views [resource_index][frame_index]
         // Populated by allocateRecordContext so PassRecordContext::resolveTextureView
         // is a pure table lookup in the hot path.
@@ -182,15 +188,15 @@ namespace lux::render
         std::vector<VkBufferMemoryBarrier2> buffer_barrier_scratch;
 
         // ========== Multi-queue support (A-01) ==========
-        VkCommandPool compute_cmd_pool = VK_NULL_HANDLE;
-        VkCommandPool transfer_cmd_pool = VK_NULL_HANDLE;
-        VkSemaphore timeline_semaphore = VK_NULL_HANDLE;
+        CommandPoolOwner compute_cmd_pool;
+        CommandPoolOwner transfer_cmd_pool;
+        SemaphoreOwner timeline_semaphore;
         std::vector<VkCommandBuffer> compute_cmd_bufs;  ///< [frame_index]
         std::vector<VkCommandBuffer> transfer_cmd_bufs; ///< [frame_index]
         RGMultiQueueSubmitInfo multi_queue_submit;      ///< Populated by record()
 
         // ========== Transient descriptor sets (per-view per-frame) ==========
-        VkDescriptorPool transient_ds_pool = VK_NULL_HANDLE;
+        DescriptorPoolOwner transient_ds_pool;
         // [transient_ds_index][frame_index] -> VkDescriptorSet
         std::vector<std::vector<VkDescriptorSet>> transient_descriptor_sets;
 
@@ -208,7 +214,7 @@ namespace lux::render
         // One disjoint range per frame-in-flight slot. Results are adopted when
         // that slot is reused after its fence has retired (normally >=3 frames),
         // before vkCmdResetQueryPool records the next sample.
-        VkQueryPool timestamp_pool = VK_NULL_HANDLE;
+        QueryPoolOwner timestamp_pool;
         uint32_t timestamp_pass_capacity{0};
         float timestamp_period_nanoseconds{0.0f};
         std::vector<uint64_t> timestamp_frame_ids;

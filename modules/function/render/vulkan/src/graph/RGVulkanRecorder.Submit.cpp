@@ -24,7 +24,7 @@ namespace lux::render
         ctx.multi_queue_submit.is_multi_queue = true;
 
         auto add_semaphore_infos = [&](RGQueueSubmission& sub, const std::vector<uint32_t>& order) {
-            if (ctx.timeline_semaphore == VK_NULL_HANDLE)
+            if (!ctx.timeline_semaphore)
                 return;
             for (uint32_t pi : order)
             {
@@ -32,7 +32,7 @@ namespace lux::render
                 for (const auto& sig : cp.signal_dependencies)
                 {
                     VkSemaphoreSubmitInfo ssi{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-                    ssi.semaphore = ctx.timeline_semaphore;
+                    ssi.semaphore = ctx.timeline_semaphore.get();
                     ssi.value = sig.signal_value;
                     ssi.stageMask = sig.signal_stage;
                     sub.signal_semaphores.push_back(ssi);
@@ -40,7 +40,7 @@ namespace lux::render
                 for (const auto& w : cp.wait_dependencies)
                 {
                     VkSemaphoreSubmitInfo wsi{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
-                    wsi.semaphore = ctx.timeline_semaphore;
+                    wsi.semaphore = ctx.timeline_semaphore.get();
                     wsi.value = w.signal_value;
                     wsi.stageMask = w.wait_stage;
                     sub.wait_semaphores.push_back(wsi);

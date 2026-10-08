@@ -480,7 +480,7 @@ namespace lux::render
             uint32_t frame_index
         ) noexcept
         {
-            return context.timestamp_pool != VK_NULL_HANDLE && context.timestamp_pass_capacity > 0 &&
+            return context.timestamp_pool && context.timestamp_pass_capacity > 0 &&
                    frame_index < context.timestamp_frame_ids.size() &&
                    graph.compiled_passes.size() <= context.timestamp_pass_capacity &&
                    !graph.multi_queue_info.has_async_work;
@@ -504,7 +504,7 @@ namespace lux::render
             vkCmdWriteTimestamp2(
                 command_buffer,
                 begin ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT : VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
-                context.timestamp_pool,
+                context.timestamp_pool.get(),
                 base + pass_index * 2u + (begin ? 0u : 1u)
             );
         }
@@ -668,9 +668,6 @@ namespace lux::render
         }
 
         RGRecordContext record_context{};
-        // Ensure partially-created Vulkan objects are released on any early return.
-        auto cleanup_guard = lux::cxx::scope_exit([this, &record_context]() { freeRecordContext(record_context); });
-
         record_context.frames_in_flight = frames_in_flight;
         record_context.use_dynamic_rendering = use_dynamic_rendering_;
         // Initialize per-frame binding states
@@ -707,13 +704,12 @@ namespace lux::render
                 VkQueryPoolCreateInfo query_info{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
                 query_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
                 query_info.queryCount = pass_count * 2u * frames_in_flight;
-                if (vkCreateQueryPool(
-                        context_.logicalDevice(),
-                        &query_info,
-                        context_.instanceContext().allocator(),
-                        &record_context.timestamp_pool
-                    ) == VK_SUCCESS)
+                auto query_pool = QueryPoolOwner::create(
+                    context_.logicalDevice(), query_info, context_.instanceContext().allocator()
+                );
+                if (query_pool)
                 {
+                    record_context.timestamp_pool = std::move(*query_pool);
                     record_context.timestamp_pass_capacity = pass_count;
                     record_context.timestamp_period_nanoseconds =
                         physical.properties().properties.limits.timestampPeriod;
@@ -752,13 +748,12 @@ namespace lux::render
             VkSemaphoreCreateInfo sem_ci{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
             sem_ci.pNext = &timeline_ci;
 
-            if (vkCreateSemaphore(
-                    device,
-                    &sem_ci,
-                    context_.instanceContext().allocator(),
-                    &record_context.timeline_semaphore
-                ) != VK_SUCCESS)
+            auto semaphore = SemaphoreOwner::create(device, sem_ci, context_.instanceContext().allocator());
+            if (!semaphore)
+            {
                 return renderFailure<err::device::VulkanObjectCreationFailed>();
+            }
+            record_context.timeline_semaphore = std::move(*semaphore);
 
             // Async compute command pool + per-frame command buffers
             if (!compiled_graph.multi_queue_info.compute_order.empty())
@@ -767,17 +762,16 @@ namespace lux::render
                 pool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
                 pool_ci.queueFamilyIndex = dev_ctx.asyncComputeQueueFamilyIndex();
 
-                if (vkCreateCommandPool(
-                        device,
-                        &pool_ci,
-                        context_.instanceContext().allocator(),
-                        &record_context.compute_cmd_pool
-                    ) != VK_SUCCESS)
+                auto pool = CommandPoolOwner::create(device, pool_ci, context_.instanceContext().allocator());
+                if (!pool)
+                {
                     return renderFailure<err::device::VulkanObjectCreationFailed>();
+                }
+                record_context.compute_cmd_pool = std::move(*pool);
 
                 record_context.compute_cmd_bufs.resize(frames_in_flight, VK_NULL_HANDLE);
                 VkCommandBufferAllocateInfo alloc_ci{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-                alloc_ci.commandPool = record_context.compute_cmd_pool;
+                alloc_ci.commandPool = record_context.compute_cmd_pool.get();
                 alloc_ci.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
                 alloc_ci.commandBufferCount = frames_in_flight;
 
@@ -794,17 +788,16 @@ namespace lux::render
                 pool_ci.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
                 pool_ci.queueFamilyIndex = dev_ctx.transferQueueFamilyIndex();
 
-                if (vkCreateCommandPool(
-                        device,
-                        &pool_ci,
-                        context_.instanceContext().allocator(),
-                        &record_context.transfer_cmd_pool
-                    ) != VK_SUCCESS)
+                auto pool = CommandPoolOwner::create(device, pool_ci, context_.instanceContext().allocator());
+                if (!pool)
+                {
                     return renderFailure<err::device::VulkanObjectCreationFailed>();
+                }
+                record_context.transfer_cmd_pool = std::move(*pool);
 
                 record_context.transfer_cmd_bufs.resize(frames_in_flight, VK_NULL_HANDLE);
                 VkCommandBufferAllocateInfo alloc_ci{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-                alloc_ci.commandPool = record_context.transfer_cmd_pool;
+                alloc_ci.commandPool = record_context.transfer_cmd_pool.get();
                 alloc_ci.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
                 alloc_ci.commandBufferCount = frames_in_flight;
 
@@ -841,13 +834,12 @@ namespace lux::render
             pool_ci.poolSizeCount = static_cast<uint32_t>(pool_sizes.size());
             pool_ci.pPoolSizes = pool_sizes.data();
 
-            if (vkCreateDescriptorPool(
-                    device,
-                    &pool_ci,
-                    context_.instanceContext().allocator(),
-                    &record_context.transient_ds_pool
-                ) != VK_SUCCESS)
+            auto pool = DescriptorPoolOwner::create(device, pool_ci, context_.instanceContext().allocator());
+            if (!pool)
+            {
                 return renderFailure<err::device::VulkanObjectCreationFailed>();
+            }
+            record_context.transient_ds_pool = std::move(*pool);
 
             // Allocate sets and write descriptors
             record_context.transient_descriptor_sets.resize(tds_descs.size());
@@ -859,7 +851,7 @@ namespace lux::render
                 // Allocate all frames at once
                 std::vector<VkDescriptorSetLayout> layouts(frames_in_flight, tds_descs[di].layout);
                 VkDescriptorSetAllocateInfo alloc_ci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-                alloc_ci.descriptorPool = record_context.transient_ds_pool;
+                alloc_ci.descriptorPool = record_context.transient_ds_pool.get();
                 alloc_ci.descriptorSetCount = frames_in_flight;
                 alloc_ci.pSetLayouts = layouts.data();
 
@@ -987,60 +979,13 @@ namespace lux::render
             record_context.buffer_barrier_scratch.reserve(max_buf);
         }
 
-        cleanup_guard.release();
         return record_context;
     }
 
     bool RGVulkanRecorder::deallocateRecordContext(RGRecordContext& record_context)
     {
-        freeRecordContext(record_context);
+        record_context = {};
         return true;
-    }
-
-    void RGVulkanRecorder::freeRecordContext(RGRecordContext& record_context)
-    {
-        destroyImageViews(record_context);
-
-        // A-01: Destroy multi-queue resources
-        VkDevice device = context_.logicalDevice();
-        const VkAllocationCallbacks* alloc = context_.instanceContext().allocator();
-
-        if (record_context.compute_cmd_pool != VK_NULL_HANDLE)
-        {
-            // Command buffers are freed implicitly when the pool is destroyed
-            vkDestroyCommandPool(device, record_context.compute_cmd_pool, alloc);
-            record_context.compute_cmd_pool = VK_NULL_HANDLE;
-            record_context.compute_cmd_bufs.clear();
-        }
-        if (record_context.transfer_cmd_pool != VK_NULL_HANDLE)
-        {
-            vkDestroyCommandPool(device, record_context.transfer_cmd_pool, alloc);
-            record_context.transfer_cmd_pool = VK_NULL_HANDLE;
-            record_context.transfer_cmd_bufs.clear();
-        }
-        if (record_context.timeline_semaphore != VK_NULL_HANDLE)
-        {
-            vkDestroySemaphore(device, record_context.timeline_semaphore, alloc);
-            record_context.timeline_semaphore = VK_NULL_HANDLE;
-        }
-
-        if (record_context.timestamp_pool != VK_NULL_HANDLE)
-        {
-            vkDestroyQueryPool(device, record_context.timestamp_pool, alloc);
-            record_context.timestamp_pool = VK_NULL_HANDLE;
-        }
-        record_context.timestamp_frame_ids.clear();
-        record_context.timestamp_result_scratch.clear();
-        record_context.latest_gpu_timing.reset();
-        record_context.gpu_timing_history.clear();
-
-        // Destroy transient descriptor set pool (sets freed implicitly)
-        if (record_context.transient_ds_pool != VK_NULL_HANDLE)
-        {
-            vkDestroyDescriptorPool(device, record_context.transient_ds_pool, alloc);
-            record_context.transient_ds_pool = VK_NULL_HANDLE;
-            record_context.transient_descriptor_sets.clear();
-        }
     }
 
     // ================================

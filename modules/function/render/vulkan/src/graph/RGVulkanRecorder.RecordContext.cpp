@@ -146,9 +146,14 @@ namespace lux::render
                     vi.subresourceRange.levelCount = level_count;
                     vi.subresourceRange.baseArrayLayer = 0;
                     vi.subresourceRange.layerCount = layer_count;
-                    VkImageView v = VK_NULL_HANDLE;
-                    vkCreateImageView(device, &vi, context_.instanceContext().allocator(), &v);
-                    return v;
+                    auto view = ImageViewOwner::create(device, vi, context_.instanceContext().allocator());
+                    if (!view)
+                    {
+                        return VK_NULL_HANDLE;
+                    }
+                    const auto handle = view->get();
+                    record_context.image_views.push_back(std::move(*view));
+                    return handle;
                 };
 
                 for (uint32_t frame = 0; frame < frames_in_flight; ++frame)
@@ -186,38 +191,6 @@ namespace lux::render
             }
         }
         return std::nullopt;
-    }
-
-    void RGVulkanRecorder::destroyImageViews(RGRecordContext& record_context)
-    {
-        VkDevice device = context_.logicalDevice();
-
-        for (auto& frame_vec : record_context.per_frame_views)
-        {
-            for (VkImageView v : frame_vec)
-            {
-                vkDestroyImageView(device, v, context_.instanceContext().allocator());
-            }
-        }
-        record_context.per_frame_views.clear();
-
-        for (auto& res_vec : record_context.per_frame_views_by_mip)
-            for (auto& frame_vec : res_vec)
-                for (VkImageView v : frame_vec)
-                    vkDestroyImageView(device, v, context_.instanceContext().allocator());
-        record_context.per_frame_views_by_mip.clear();
-
-        for (VkImageView view : record_context.attachment_views)
-        {
-            vkDestroyImageView(device, view, context_.instanceContext().allocator());
-        }
-        record_context.attachment_views.clear();
-
-        for (VkImageView view : record_context.extra_views)
-        {
-            vkDestroyImageView(device, view, context_.instanceContext().allocator());
-        }
-        record_context.extra_views.clear();
     }
 
     //(已删:RGVulkanRecorder::resolveImageView —— 全仓零调用、非虚,

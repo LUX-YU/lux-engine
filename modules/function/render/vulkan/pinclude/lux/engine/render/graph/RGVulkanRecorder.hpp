@@ -1,7 +1,6 @@
 #pragma once
 #include <lux/engine/render/graph/RGRecorder.hpp>
 #include <lux/engine/function/visibility.h>
-#include <lux/cxx/core/scope_exit.hpp>
 #include <vulkan/vulkan.h>
 #include <vector>
 #if !defined(NDEBUG)
@@ -40,9 +39,6 @@ namespace lux::render
             ResourceRegistry* gpu_mgr = nullptr
         ) override;
 
-        // Provide a helper interface for manual destruction by the upper layer when needed
-        void freeRecordContext(RGRecordContext& record_context);
-
     private:
         struct ExecutionReplayState;
 
@@ -58,8 +54,6 @@ namespace lux::render
             const RGCompiledGraph& graph,
             VkExtent2D extent
         );
-
-        void destroyImageViews(RGRecordContext& record_context);
 
         void recordPassContent(
             VkCommandBuffer cmd,

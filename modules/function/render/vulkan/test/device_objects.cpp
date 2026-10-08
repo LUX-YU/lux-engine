@@ -23,6 +23,7 @@ namespace
         EKind kind;
         uint32_t capacity{};
         uint32_t used{};
+        const VkAllocationCallbacks* allocator{};
     };
 
     std::unordered_map<std::uintptr_t, NativeObject> live;
@@ -114,15 +115,21 @@ namespace
     VkResult createSemaphore(
         VkDevice device,
         const VkSemaphoreCreateInfo*,
-        const VkAllocationCallbacks*,
+        const VkAllocationCallbacks* allocator,
         VkSemaphore* out
     )
     {
-        return acquire(device, EKind::SEMAPHORE, out);
+        const auto result = acquire(device, EKind::SEMAPHORE, out);
+        if (result == VK_SUCCESS)
+        {
+            live.at(reinterpret_cast<std::uintptr_t>(*out)).allocator = allocator;
+        }
+        return result;
     }
 
-    void destroySemaphore(VkDevice device, VkSemaphore value, const VkAllocationCallbacks*)
+    void destroySemaphore(VkDevice device, VkSemaphore value, const VkAllocationCallbacks* allocator)
     {
+        assert(live.at(reinterpret_cast<std::uintptr_t>(value)).allocator == allocator);
         release(device, EKind::SEMAPHORE, value);
     }
 
@@ -231,6 +238,20 @@ int main()
     ownerContract<DescriptorPoolOwner>(VkDescriptorPoolCreateInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO});
     ownerContract<SemaphoreOwner>(VkSemaphoreCreateInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO});
     ownerContract<CommandPoolOwner>(VkCommandPoolCreateInfo{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO});
+
+    {
+        VkAllocationCallbacks first_callbacks{}, second_callbacks{};
+        const VkSemaphoreCreateInfo info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        auto first = SemaphoreOwner::create(first_device, info, &first_callbacks);
+        auto second = SemaphoreOwner::create(second_device, info, &second_callbacks);
+        assert(first && second && live.size() == 2);
+        *second = std::move(*first);
+        assert(!*first && live.size() == 1);
+        SemaphoreOwner moved(std::move(*second));
+        assert(!*second);
+        moved.reset();
+        assert(live.empty());
+    }
 
     {
         DescriptorService cache(first_device, VK_NULL_HANDLE);

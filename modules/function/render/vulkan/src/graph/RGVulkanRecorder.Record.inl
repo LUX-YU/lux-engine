@@ -65,7 +65,7 @@
                 result.assign(static_cast<std::size_t>(query_count) * 2u, 0u);
                 const VkResult query_result = vkGetQueryPoolResults(
                     context_.logicalDevice(),
-                    record_context.timestamp_pool,
+                    record_context.timestamp_pool.get(),
                     query_base,
                     query_count,
                     result.size() * sizeof(uint64_t),
@@ -126,7 +126,7 @@
 
             vkCmdResetQueryPool(
                 cmd,
-                record_context.timestamp_pool,
+                record_context.timestamp_pool.get(),
                 query_base,
                 query_count
             );

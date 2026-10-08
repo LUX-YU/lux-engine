@@ -16,8 +16,9 @@ namespace lux::render
             { Destroy(device, handle, nullptr) } -> std::same_as<void>;
         };
 
-        /// Owns one native object allocated with Vulkan's default allocation callbacks.
-        /// Device is borrowed and must outlive the owner. get() never transfers ownership.
+        /// Owns one native object with the exact allocation callbacks used at creation.
+        /// Device and optional callback context are borrowed and must outlive the owner.
+        /// get() never transfers ownership.
         /// Destruction requires a GPU-safe point: in-flight objects must be moved as owners
         /// into the existing retirement container before their semantic owner disappears.
         template <class Handle, class Info, auto Create, auto Destroy>
@@ -27,15 +28,16 @@ namespace lux::render
         public:
             using CreateResult = lux::cxx::expected<TDeviceObject, VkResult>;
 
-            [[nodiscard]] static CreateResult create(VkDevice device, const Info& info) noexcept
+            [[nodiscard]] static CreateResult
+            create(VkDevice device, const Info& info, const VkAllocationCallbacks* allocator = nullptr) noexcept
             {
                 Handle handle{};
-                const auto result = Create(device, &info, nullptr, &handle);
+                const auto result = Create(device, &info, allocator, &handle);
                 if (result != VK_SUCCESS)
                 {
                     return lux::cxx::unexpected(result);
                 }
-                return TDeviceObject(device, handle);
+                return TDeviceObject(device, handle, allocator);
             }
 
             TDeviceObject() noexcept = default;
@@ -49,7 +51,8 @@ namespace lux::render
             TDeviceObject& operator=(const TDeviceObject&) = delete;
 
             TDeviceObject(TDeviceObject&& other) noexcept
-                : device_(std::exchange(other.device_, {})), handle_(std::exchange(other.handle_, {}))
+                : device_(std::exchange(other.device_, {})), handle_(std::exchange(other.handle_, {})),
+                  allocator_(std::exchange(other.allocator_, nullptr))
             {
             }
 
@@ -60,6 +63,7 @@ namespace lux::render
                     reset();
                     device_ = std::exchange(other.device_, {});
                     handle_ = std::exchange(other.handle_, {});
+                    allocator_ = std::exchange(other.allocator_, nullptr);
                 }
                 return *this;
             }
@@ -78,17 +82,22 @@ namespace lux::render
             {
                 if (handle_ != VK_NULL_HANDLE)
                 {
-                    Destroy(device_, handle_, nullptr);
+                    Destroy(device_, handle_, allocator_);
                     handle_ = VK_NULL_HANDLE;
                     device_ = VK_NULL_HANDLE;
+                    allocator_ = nullptr;
                 }
             }
 
         private:
-            TDeviceObject(VkDevice device, Handle handle) noexcept : device_(device), handle_(handle) {}
+            TDeviceObject(VkDevice device, Handle handle, const VkAllocationCallbacks* allocator) noexcept
+                : device_(device), handle_(handle), allocator_(allocator)
+            {
+            }
 
             VkDevice device_{};
             Handle handle_{};
+            const VkAllocationCallbacks* allocator_{};
         };
     } // namespace detail
 
@@ -108,4 +117,5 @@ namespace lux::render
     using CommandPoolOwner = detail::
         TDeviceObject<VkCommandPool, VkCommandPoolCreateInfo, vkCreateCommandPool, vkDestroyCommandPool>;
     using ImageViewOwner = detail::TDeviceObject<VkImageView, VkImageViewCreateInfo, vkCreateImageView, vkDestroyImageView>;
+    using QueryPoolOwner = detail::TDeviceObject<VkQueryPool, VkQueryPoolCreateInfo, vkCreateQueryPool, vkDestroyQueryPool>;
 } // namespace lux::render

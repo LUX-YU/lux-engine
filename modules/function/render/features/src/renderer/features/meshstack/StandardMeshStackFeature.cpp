@@ -1,4 +1,5 @@
 #include <lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp>
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>
 #include <lux/engine/render/renderer/features/meshstack/StandardMeshStackFeature.hpp>
 
 #include <lux/engine/function/render/features/core/VertexLayoutTypes.hpp> // kDefaultVertexLayoutId

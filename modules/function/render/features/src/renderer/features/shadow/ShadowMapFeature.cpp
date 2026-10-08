@@ -1,3 +1,4 @@
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>
 #include <lux/engine/render/renderer/features/shadow/ShadowMapFeature.hpp>
 
 #include <lux/engine/function/render/features/shadow/ShadowMapOperation.hpp> // kShadowViewUploadPassName

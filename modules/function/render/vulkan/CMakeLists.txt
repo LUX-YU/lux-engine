@@ -74,6 +74,7 @@ set(RENDER_VULKAN_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/resources/point_cloud/GpuOctreeNodeBuffer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/resources/point_cloud/PointCloudGlobalBuffer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/resources/ShaderResources.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/resources/SceneResources.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/resources/TextureResources.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/resources/TrajectoryGlobalBuffer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/resources/vertex/IVertexSource.cpp

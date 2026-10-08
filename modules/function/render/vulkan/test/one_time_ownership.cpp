@@ -198,6 +198,7 @@ namespace
         std::uint32_t binding;
         std::uint32_t index;
         VkBuffer buffer;
+        VkDeviceSize offset;
     };
 
     bool trace_buffer_writes{};
@@ -220,7 +221,12 @@ namespace
                 assert(write.descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
                 assert(write.descriptorCount == 1 && write.pBufferInfo);
                 buffer_writes.push_back(
-                    {device, write.dstSet, write.dstBinding, write.dstArrayElement, write.pBufferInfo->buffer}
+                    {device,
+                     write.dstSet,
+                     write.dstBinding,
+                     write.dstArrayElement,
+                     write.pBufferInfo->buffer,
+                     write.pBufferInfo->offset}
                 );
             }
         }
@@ -463,6 +469,8 @@ namespace
 #include "../src/resources/material/MaterialResources.cpp"
 #include "../src/gpu/descriptor/DescriptorService.cpp"
 #include "../src/gpu/descriptor/SceneDescriptorArena.cpp"
+#include "../src/gpu/descriptor/SceneDomainDescriptorSets.cpp"
+#include "../src/resources/SceneResources.cpp"
 #include "../src/resources/lighting/LightResources.cpp"
 #include "../src/resources/hzb/HzbResources.cpp"
 #include "../src/resources/vertex/VertexPoolRegistry.cpp"
@@ -628,6 +636,211 @@ void checkHzbDescriptorFailure(lux::render::DeviceContext& device)
     std::puts("HZB descriptor failure: exact allocation error, no ready view, retry and original retirement PASS");
 }
 
+void checkSceneResources(
+    lux::render::DeviceContext& device,
+    const lux::render::GeneralDescriptorSetLayout& layouts,
+    lux::render::DeferredDestroyQueue& retirement
+)
+{
+    using namespace lux::render;
+    static_assert(!std::is_default_constructible_v<SceneResources>);
+    static_assert(!std::is_copy_constructible_v<SceneResources>);
+    static_assert(!std::is_move_constructible_v<SceneResources>);
+    static_assert(!std::is_default_constructible_v<SceneDomainDescriptorSets>);
+    static_assert(!std::is_copy_constructible_v<SceneDomainDescriptorSets>);
+    static_assert(!std::is_move_constructible_v<SceneDomainDescriptorSets>);
+    const auto original_pools = pools.size();
+    const auto original_sets = sets.size();
+    SceneDescriptorArena::PoolSizeTemplate sizes;
+    for (const auto domain : SceneDomainDescriptorSets::kPerSceneDomains)
+    {
+        const auto counts = domainDescriptorCounts(domain);
+        sizes.storage_buffer += counts.storage_buffer * 2;
+        sizes.combined_image_sampler += counts.combined_image_sampler * 2;
+        sizes.uniform_buffer += counts.uniform_buffer * 2;
+    }
+    for (unsigned frames : {0u, kMaxFramesInFlight + 1u})
+    {
+        auto arena = SceneDescriptorArena::create(device.logicalDevice(), sizes);
+        assert(arena);
+        assert(!SceneDomainDescriptorSets::create(**arena, layouts, frames));
+        assert((*arena)->poolCount() == 0);
+    }
+    // Reject each actual domain allocation, retain its successful prefix only in the arena.
+    for (unsigned boundary = 0; boundary < 4; ++boundary)
+    {
+        auto arena = SceneDescriptorArena::create(device.logicalDevice(), sizes);
+        failure = EFailure::SET;
+        set_failure_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        skip_rejections = boundary;
+        auto rejected = SceneDomainDescriptorSets::create(**arena, layouts, 2);
+        assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
+        assert(rejected.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+        assert(sets.size() == original_sets + boundary);
+        failure = EFailure::NONE;
+        auto retry = SceneDomainDescriptorSets::create(**arena, layouts, 2);
+        assert(retry);
+        for (const auto domain : SceneDomainDescriptorSets::kPerSceneDomains)
+        {
+            assert((*retry)->setsFor(domain).size() == 2);
+            assert((*retry)->set(domain, 0) && (*retry)->set(domain, 1));
+            assert(!(*retry)->set(domain, 2));
+        }
+    }
+    assert(pools.size() == original_pools && sets.size() == original_sets);
+    {
+        auto arena = SceneDescriptorArena::create(device.logicalDevice(), sizes);
+        auto domains = SceneDomainDescriptorSets::create(**arena, layouts, 2);
+        assert(domains);
+        const auto targets = (*domains)->setsFor(lux::rdesc::EBindFrequency::GLOBAL);
+        SceneResources::CreateInfo info{
+            .device_context = device,
+            .deferred_queue = retirement,
+            .slices = 2,
+            .initial_scene_capacity = 2,
+            .initial_view_capacity = 2,
+            .arena = arena->get(),
+            .set_layout = layouts.getLayout(EDescriptorSetSlot::SCENE),
+            .domain_sets = targets,
+            .domain_binding_offset = engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::SCENE))
+        };
+        const std::array partial{targets[0], VkDescriptorSet{}};
+        for (unsigned invalid = 0; invalid < 10; ++invalid)
+        {
+            auto bad = info;
+            switch (invalid)
+            {
+            case 0:
+                bad.slices = 0;
+                break;
+            case 1:
+                bad.slices = kMaxFramesInFlight + 1;
+                break;
+            case 2:
+                bad.initial_scene_capacity = 0;
+                break;
+            case 3:
+                bad.initial_view_capacity = 0;
+                break;
+            case 4:
+                bad.arena = nullptr;
+                break;
+            case 5:
+                bad.set_layout = VK_NULL_HANDLE;
+                break;
+            case 6:
+                bad.domain_sets = partial;
+                break;
+            case 7:
+                bad.domain_sets = targets.first(1);
+                break;
+            case 8:
+                bad.binding_view_data = bad.binding_scene_global;
+                break;
+            case 9:
+                bad.domain_binding_offset = UINT32_MAX;
+                break;
+            }
+            const auto writes = descriptor_writes;
+            const auto set_count = sets.size();
+            auto rejected = SceneResources::create(bad);
+            assert(!rejected && isError<err::internal::InvalidArgument>(rejected.error()));
+            assert(descriptor_writes == writes && sets.size() == set_count && buffers.empty());
+        }
+        retirement.beginFrame(11);
+        for (auto boundary : {EFailure::BUFFER, EFailure::MAPPED, EFailure::SET})
+        {
+            for (unsigned prefix = 0; prefix < 2; ++prefix)
+            {
+                const auto writes = descriptor_writes;
+                ResourceRegistry registry;
+                failure = boundary;
+                skip_rejections = prefix;
+                set_failure_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+                auto rejected = SceneResources::create(info);
+                assert(!rejected && !registry.find<SceneResources>() && descriptor_writes == writes);
+                assert(isError<err::device::VulkanCallFailed>(rejected.error()));
+                const auto native_error =
+                    boundary == EFailure::MAPPED ? VK_ERROR_MEMORY_MAP_FAILED : VK_ERROR_OUT_OF_DEVICE_MEMORY;
+                assert(rejected.error().args[0] == encodeVkResult(native_error));
+                // Complete leaf buffers still use the original serial retirement queue.
+                const auto retained = buffers.size();
+                retirement.collect(10);
+                assert(buffers.size() == retained);
+                retirement.collect(11);
+                assert(buffers.empty());
+                failure = EFailure::NONE;
+            }
+        }
+        set_failure_result = VK_ERROR_OUT_OF_POOL_MEMORY;
+        trace_buffer_writes = true;
+        buffer_writes.clear();
+        auto candidate = SceneResources::create(info);
+        assert(candidate && buffer_writes.size() == 8 && buffers.size() == 2);
+        ResourceRegistry registry;
+        auto published = registry.insert(std::move(*candidate));
+        auto& scene = *published.get();
+        const auto global = scene.allocateScene();
+        const auto view = scene.allocateView();
+        assert(global.isValid() && view.isValid());
+        for (unsigned frame = 0; frame < 2; ++frame)
+        {
+            assert(scene.getDescriptorSet(frame) && sets.contains(scene.getDescriptorSet(frame)));
+            scene.beginFrame(frame);
+            scene.writeSceneGlobal(global, SceneGlobalGpuData{1, 2, frame, 3});
+            ViewGpuData data{};
+            data.viewport[0] = 640;
+            scene.writeView(view, data);
+            scene.writeViewData(view, &data, sizeof(data), frame);
+        }
+        assert(buffer_writes.size() == 8); // stable frame does not rewrite descriptors
+        for (unsigned frame = 0; frame < 2; ++frame)
+        {
+            const auto& scene_write = buffer_writes[frame * 4];
+            const auto& view_write = buffer_writes[frame * 4 + 1];
+            assert(buffer_writes[frame * 4 + 2].set == targets[frame]);
+            assert(buffer_writes[frame * 4 + 3].set == targets[frame]);
+            VmaAllocationInfo scene_mapping{}, view_mapping{};
+            const auto& scene_origin = buffers.at(scene_write.buffer);
+            const auto& view_origin = buffers.at(view_write.buffer);
+            vmaGetAllocationInfo(scene_origin.first, scene_origin.second, &scene_mapping);
+            vmaGetAllocationInfo(view_origin.first, view_origin.second, &view_mapping);
+            const auto* scene_data = reinterpret_cast<const SceneGlobalGpuData*>(
+                static_cast<const std::byte*>(scene_mapping.pMappedData) + scene_write.offset
+            );
+            const auto* view_data = reinterpret_cast<const ViewGpuData*>(
+                static_cast<const std::byte*>(view_mapping.pMappedData) + view_write.offset
+            );
+            assert(scene_data[global.index].frame_number == frame && scene_data[global.index].time_sec == 1);
+            assert(view_data[view.index].viewport[0] == 640);
+        }
+        scene.freeScene(global);
+        scene.freeView(view);
+        const auto next_global = scene.allocateScene();
+        const auto next_view = scene.allocateView();
+        assert(next_global.index == global.index && next_global.gen != global.gen);
+        assert(next_view.index == view.index && next_view.gen != view.gen);
+        assert(scene.reserveScenes(128) && scene.reserveViews(128));
+        buffer_writes.clear();
+        scene.beginFrame(0);
+        scene.beginFrame(0);
+        scene.beginFrame(1);
+        assert(buffer_writes.size() == 8);
+        trace_buffer_writes = false;
+        registry.shutdown();
+        assert(retirement.pendingCount() != 0);
+        retirement.collect(10);
+        assert(!buffers.empty());
+        retirement.collect(11);
+        assert(buffers.empty());
+        assert(sets.contains(targets[0]) && sets.contains(targets[1]));
+    }
+    assert(pools.size() == original_pools && sets.size() == original_sets && buffers.empty());
+    std::puts(
+        "Scene backing: complete domain targets, exact failures, retry, publication, revisions and retirement PASS"
+    );
+}
+
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -654,6 +867,11 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkSceneResources(device, layouts, retirement);
+    if (argc == 2 && std::string_view(argv[1]) == "--scene-resources")
+    {
+        return 0;
+    }
     static_assert(!std::is_default_constructible_v<BindlessCombinedSet>);
     static_assert(!std::is_copy_constructible_v<BindlessCombinedSet>);
     static_assert(!std::is_move_constructible_v<BindlessCombinedSet>);

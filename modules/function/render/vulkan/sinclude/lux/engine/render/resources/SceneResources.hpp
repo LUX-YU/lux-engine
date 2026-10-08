@@ -19,7 +19,7 @@
 #include <lux/engine/render/core/FrameServices.hpp>
 #include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
 #include <lux/engine/render/gpu/descriptor/SceneDescriptorArena.hpp>
-#include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
+#include <lux/engine/render/gpu/lifecycle/DescriptorRevision.hpp>
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
 
@@ -30,7 +30,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstring>
-#include <optional>
+#include <memory>
 #include <span>
 #include <string>
 #include <vector>
@@ -175,7 +175,7 @@ namespace lux::render
     //  SceneResources
     // =========================================================================
 
-    class SceneResources final : public TGPUResourceBase<SceneResources, EGPUResourceType::SCENE>
+    class LUX_FUNCTION_PUBLIC SceneResources final
     {
     public:
         static constexpr EUploadPhase kUploadPhase = EUploadPhase::POST_UPLOAD;
@@ -183,7 +183,7 @@ namespace lux::render
         using SceneGlobalBuffer = DynamicSSBO<SceneGlobalGpuData>;
         using ViewBuffer = DynamicSSBO<ViewGpuData>;
 
-        struct InitInfo
+        struct CreateInfo
         {
             DeviceContext& device_context;
             DeferredDestroyQueue& deferred_queue;
@@ -195,111 +195,26 @@ namespace lux::render
             uint32_t binding_scene_global = static_cast<uint32_t>(ESceneSetBindings::GLOBAL);
             uint32_t binding_view_data = static_cast<uint32_t>(ESceneSetBindings::VIEW);
 
-            /// Transitional: per-slice handles into the domain set, plus this
-            /// set's binding offset within the domain. When provided, writes go
-            /// to both targets (see writeDescriptorForSet); when empty, behavior
-            /// is unchanged.
-            ///
-            /// Passed as plain data rather than a domain-set object: the resource
-            /// object only needs to know which sets to write into — it doesn't
-            /// need to know about SceneDomainDescriptorSets, so the whole
-            /// EngineSetShapes → LayoutContract chain doesn't get dragged into
-            /// this header.
+            /// Complete per-frame domain targets. The scene arena owns these sets.
             std::span<const VkDescriptorSet> domain_sets{};
             uint32_t domain_binding_offset{0};
         };
 
-        SceneResources() = default;
-        ~SceneResources()
-        {
-            if (initialized_)
-            {
-                shutdown();
-            }
-        }
+        using CreateResult = Expected<std::unique_ptr<SceneResources>>;
+        [[nodiscard]] static CreateResult create(const CreateInfo& info) noexcept;
 
         SceneResources(const SceneResources&) = delete;
         SceneResources& operator=(const SceneResources&) = delete;
-
-        Expected<void> init(const InitInfo& info)
-        {
-            device_ctx_ = &info.device_context;
-            slices_ = std::max(1u, info.slices);
-            frames_in_flight_ = slices_;
-            binding_scene_global_ = info.binding_scene_global;
-            binding_view_data_ = info.binding_view_data;
-            // Copied rather than stored as a span: although the domain-set
-            // object's internal array doesn't change after init, storing a span
-            // would hide a lifetime dependency inside a pointer — copying at
-            // most 3 handles is a negligible cost.
-            if (auto accepted = domain_.set(info.domain_sets, info.domain_binding_offset); !accepted)
-            {
-                return lux::cxx::unexpected(accepted.error());
-            }
-
-            // Allocate one descriptor set per frame-in-flight from the scene's
-            // growable descriptor arena (one at a time so a mid-batch pool grow
-            // is fine). Non-fatal on failure (returns false).
-            descriptor_sets_.resize(slices_, VK_NULL_HANDLE);
-            if (!info.arena)
-            {
-                return renderFailure<err::internal::InvalidArgument>();
-            }
-            for (uint32_t i = 0; i < slices_; ++i)
-            {
-                auto allocated = info.arena->allocate(info.set_layout);
-                if (!allocated)
-                {
-                    return lux::cxx::unexpected(allocated.error());
-                }
-                descriptor_sets_[i] = *allocated;
-            }
-
-            // Initialise both SoA GPU buffers
-            GpuBufferCreateInfo bci{};
-            bci.device_context = device_ctx_;
-            bci.deferred_queue = &info.deferred_queue;
-            bci.slices = slices_;
-            bci.buffer_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-            bci.allow_shader_write = false;
-
-            bci.initial_capacity = std::max(1u, info.initial_scene_capacity);
-            auto scene_buf = SceneGlobalBuffer::create(bci);
-            if (!scene_buf)
-            {
-                return lux::cxx::unexpected(scene_buf.error());
-            }
-            scene_buf_.emplace(std::move(*scene_buf));
-
-            bci.initial_capacity = std::max(1u, info.initial_view_capacity);
-            auto view_buf = ViewBuffer::create(bci);
-            if (!view_buf)
-            {
-                return lux::cxx::unexpected(view_buf.error());
-            }
-            view_buf_.emplace(std::move(*view_buf));
-
-            writeDescriptorAll();
-            initialized_ = true;
-            return {};
-        }
-
-        void shutdown()
-        {
-            scene_buf_.reset();
-            view_buf_.reset();
-            initialized_ = false;
-        }
-
+        SceneResources(SceneResources&&) = delete;
+        SceneResources& operator=(SceneResources&&) = delete;
 
         // ── Scene slot lifecycle (one slot per RenderScene) ───────────────────
 
         [[nodiscard]] SlotHandle allocateScene()
         {
-            assert(initialized_ && "SceneResources not initialised");
-            const uint32_t old_gen = scene_buf_->bufferGeneration();
-            SlotHandle h = scene_buf_->allocate();
-            if (scene_buf_->bufferGeneration() != old_gen)
+            const uint32_t old_gen = scene_buf_.bufferGeneration();
+            SlotHandle h = scene_buf_.allocate();
+            if (scene_buf_.bufferGeneration() != old_gen)
             {
                 ds_revision_.bump();
             }
@@ -308,17 +223,16 @@ namespace lux::render
 
         void freeScene(const SlotHandle& slot)
         {
-            scene_buf_->free(slot);
+            scene_buf_.free(slot);
         }
 
         // ── View slot lifecycle (one slot per View) ───────────────────────────
 
         [[nodiscard]] SlotHandle allocateView()
         {
-            assert(initialized_ && "SceneResources not initialised");
-            const uint32_t old_gen = view_buf_->bufferGeneration();
-            SlotHandle h = view_buf_->allocate();
-            if (view_buf_->bufferGeneration() != old_gen)
+            const uint32_t old_gen = view_buf_.bufferGeneration();
+            SlotHandle h = view_buf_.allocate();
+            if (view_buf_.bufferGeneration() != old_gen)
             {
                 ds_revision_.bump();
             }
@@ -327,7 +241,7 @@ namespace lux::render
 
         void freeView(const SlotHandle& slot)
         {
-            view_buf_->free(slot);
+            view_buf_.free(slot);
         }
 
         // ── Batch pre-allocation ─────────────────────────────────────────────
@@ -335,12 +249,12 @@ namespace lux::render
         /// Pre-reserve scene-global slots to avoid mid-frame reallocation.
         [[nodiscard]] bool reserveScenes(uint32_t count)
         {
-            const uint32_t old_gen = scene_buf_->bufferGeneration();
-            if (!scene_buf_->reserve(count))
+            const uint32_t old_gen = scene_buf_.bufferGeneration();
+            if (!scene_buf_.reserve(count))
             {
                 return false;
             }
-            if (scene_buf_->bufferGeneration() != old_gen)
+            if (scene_buf_.bufferGeneration() != old_gen)
             {
                 ds_revision_.bump();
             }
@@ -350,12 +264,12 @@ namespace lux::render
         /// Pre-reserve view slots to avoid mid-frame reallocation.
         [[nodiscard]] bool reserveViews(uint32_t count)
         {
-            const uint32_t old_gen = view_buf_->bufferGeneration();
-            if (!view_buf_->reserve(count))
+            const uint32_t old_gen = view_buf_.bufferGeneration();
+            if (!view_buf_.reserve(count))
             {
                 return false;
             }
-            if (view_buf_->bufferGeneration() != old_gen)
+            if (view_buf_.bufferGeneration() != old_gen)
             {
                 ds_revision_.bump();
             }
@@ -376,12 +290,12 @@ namespace lux::render
 
         void writeSceneGlobal(const SlotHandle& slot, const SceneGlobalGpuData& data)
         {
-            scene_buf_->write(current_slice_, slot, data);
+            scene_buf_.write(current_slice_, slot, data);
         }
 
         void writeView(const SlotHandle& slot, const ViewGpuData& data)
         {
-            view_buf_->write(current_slice_, slot, data);
+            view_buf_.write(current_slice_, slot, data);
         }
 
         /// Write view data using an explicit slice index instead of current_slice_.
@@ -389,7 +303,7 @@ namespace lux::render
         /// when beginFrame() was last called (e.g. updateView() before beginFrame()).
         void writeView(const SlotHandle& slot, const ViewGpuData& data, uint32_t slice)
         {
-            view_buf_->write(slice, slot, data);
+            view_buf_.write(slice, slot, data);
         }
 
         /// Write RAW per-view GPU-data bytes into the view SoA slot — domain-neutral:
@@ -401,17 +315,17 @@ namespace lux::render
             assert(size == sizeof(ViewGpuData) && "view data stride mismatch");
             ViewGpuData tmp;
             std::memcpy(&tmp, bytes, sizeof(tmp));
-            view_buf_->write(slice, slot, tmp);
+            view_buf_.write(slice, slot, tmp);
         }
 
         /// Flush dirty ranges and emit pipeline barriers for both buffers.
         void endFrame(VkCommandBuffer cb)
         {
-            scene_buf_->flush(current_slice_);
-            view_buf_->flush(current_slice_);
+            scene_buf_.flush(current_slice_);
+            view_buf_.flush(current_slice_);
 
-            auto bar0 = scene_buf_->getBarrier(current_slice_);
-            auto bar1 = view_buf_->getBarrier(current_slice_);
+            auto bar0 = scene_buf_.getBarrier(current_slice_);
+            auto bar1 = view_buf_.getBarrier(current_slice_);
 
             VkBufferMemoryBarrier2 barriers[2];
             int b_count = 0;
@@ -432,8 +346,8 @@ namespace lux::render
                 vkCmdPipelineBarrier2(cb, &dep);
             }
 
-            scene_buf_->resetDirtySlice(current_slice_);
-            view_buf_->resetDirtySlice(current_slice_);
+            scene_buf_.resetDirtySlice(current_slice_);
+            view_buf_.resetDirtySlice(current_slice_);
         }
 
         void onFrameBeginMaintenance(const FrameStamp& stamp)
@@ -446,27 +360,27 @@ namespace lux::render
         /// Flush dirty ranges and submit host-write barriers to the scheduler.
         void submitTransfers(TransferScheduler& scheduler)
         {
-            scene_buf_->flush(current_slice_);
-            view_buf_->flush(current_slice_);
+            scene_buf_.flush(current_slice_);
+            view_buf_.flush(current_slice_);
 
-            if (auto bar0 = scene_buf_->getBarrier(current_slice_))
+            if (auto bar0 = scene_buf_.getBarrier(current_slice_))
             {
                 scheduler.submitExtraPostBarrier(*bar0);
             }
-            if (auto bar1 = view_buf_->getBarrier(current_slice_))
+            if (auto bar1 = view_buf_.getBarrier(current_slice_))
             {
                 scheduler.submitExtraPostBarrier(*bar1);
             }
 
-            scene_buf_->resetDirtySlice(current_slice_);
-            view_buf_->resetDirtySlice(current_slice_);
+            scene_buf_.resetDirtySlice(current_slice_);
+            view_buf_.resetDirtySlice(current_slice_);
         }
 
         // ── Descriptor set access ─────────────────────────────────────────────
 
         [[nodiscard]] VkDescriptorSet getDescriptorSet() const
         {
-            return descriptor_sets_.empty() ? VK_NULL_HANDLE : descriptor_sets_[current_slice_];
+            return descriptor_sets_[current_slice_];
         }
 
         [[nodiscard]] VkDescriptorSet getDescriptorSet(uint32_t slice) const
@@ -474,52 +388,21 @@ namespace lux::render
             return (slice < descriptor_sets_.size()) ? descriptor_sets_[slice] : VK_NULL_HANDLE;
         }
 
-        // ── Misc ──────────────────────────────────────────────────────────────
-
     private:
-        void writeDescriptorForSet(uint32_t set_index)
-        {
-            scene_buf_->writeDescriptorSlice(descriptor_sets_[set_index], binding_scene_global_, set_index);
-            view_buf_->writeDescriptorSlice(descriptor_sets_[set_index], binding_view_data_, set_index);
+        struct Backing;
+        SceneResources(const CreateInfo& info, Backing&& backing) noexcept;
+        void writeDescriptorForSet(uint32_t set_index) noexcept;
 
-            // Transitional dual write: the same descriptor is also written into
-            // this set's region of the domain set.
-            //
-            // Dual-writing rather than switching outright lets "did we compute
-            // the offset correctly" be verified independently: vkUpdateDescriptorSets
-            // validates against the target layout whether dstBinding exists and
-            // whether the descriptor type matches — a wrong offset shows up as a
-            // validation error instead of only being discovered later, once the
-            // pipeline has switched over and rendering breaks. Once the switch is
-            // complete, this block collapses into a single write, together with
-            // the per-set write above.
-            if (VkDescriptorSet dds = domain_.setFor(set_index); dds != VK_NULL_HANDLE)
-            {
-                scene_buf_->writeDescriptorSlice(dds, domain_.binding(binding_scene_global_), set_index);
-                view_buf_->writeDescriptorSlice(dds, domain_.binding(binding_view_data_), set_index);
-            }
-        }
-
-        void writeDescriptorAll()
-        {
-            for (uint32_t i = 0; i < slices_; ++i)
-            {
-                writeDescriptorForSet(i);
-            }
-        }
-
-        /// Dual-write target for the transition period: per-slice handles into
-        /// the domain set, plus the binding offset within the domain.
+        /// Domain targets and canonical targets are both used by current render consumers.
         DomainWriteTarget domain_{};
 
-        DeviceContext* device_ctx_{nullptr};
-        uint32_t slices_{1};
+        DescriptorRevision ds_revision_{};
         uint32_t current_slice_{0};
         uint32_t binding_scene_global_{0};
         uint32_t binding_view_data_{1};
 
-        std::optional<SceneGlobalBuffer> scene_buf_;
-        std::optional<ViewBuffer> view_buf_;
+        SceneGlobalBuffer scene_buf_;
+        ViewBuffer view_buf_;
 
         std::vector<VkDescriptorSet> descriptor_sets_; // size = FIF, both bindings bound
     };

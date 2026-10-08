@@ -1,3 +1,4 @@
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>
 #include <lux/engine/render/renderer/features/light/LightFeature.hpp>
 
 #include <lux/engine/render/gpu/RenderContext.hpp>

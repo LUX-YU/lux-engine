@@ -1,39 +1,45 @@
+#include <lux/engine/function/render/client/core/RenderTypes.hpp>
+#include <lux/engine/render/gpu/descriptor/SceneDescriptorArena.hpp>
 #include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
 
 namespace lux::render
 {
-
-    Expected<void> SceneDomainDescriptorSets::init(
-        SceneDescriptorArena& arena,
-        const GeneralDescriptorSetLayout& layouts,
-        uint32_t slices
-    )
+    SceneDomainDescriptorSets::CreateResult
+    SceneDomainDescriptorSets::create(
+        SceneDescriptorArena& arena, const GeneralDescriptorSetLayout& layouts, uint32_t slices
+    ) noexcept
     {
-        clear();
-        slices_ = std::max(1u, slices);
-
+        const bool is_invalid_frames = slices == 0 || slices > kMaxFramesInFlight;
+        if (is_invalid_frames)
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
         for (const auto domain : kPerSceneDomains)
         {
-            const VkDescriptorSetLayout layout = layouts.getDomainLayout(domain);
-            if (layout == VK_NULL_HANDLE)
-                return renderFailure<err::internal::InvalidArgument>();
-
-            auto& v = sets_[static_cast<std::size_t>(domain)];
-            v.resize(slices_, VK_NULL_HANDLE);
-            for (uint32_t i = 0; i < slices_; ++i)
+            if (!layouts.getDomainLayout(domain))
             {
-                auto allocated = arena.allocate(layout, 0u);
-                if (!allocated)
-                {
-                    clear();
-                    return lux::cxx::unexpected(allocated.error());
-                }
-                v[i] = *allocated;
+                return renderFailure<err::internal::InvalidArgument>();
             }
         }
-
-        return {};
+        Sets sets;
+        for (const auto domain : kPerSceneDomains)
+        {
+            auto& handles = sets[static_cast<std::size_t>(domain)];
+            handles.reserve(slices);
+            for (uint32_t i = 0; i < slices; ++i)
+            {
+                auto allocated = arena.allocate(layouts.getDomainLayout(domain));
+                if (!allocated)
+                {
+                    return lux::cxx::unexpected(allocated.error());
+                }
+                handles.push_back(*allocated);
+            }
+        }
+        return std::unique_ptr<SceneDomainDescriptorSets>(new SceneDomainDescriptorSets(std::move(sets)));
     }
+
+    SceneDomainDescriptorSets::SceneDomainDescriptorSets(Sets&& sets) noexcept : sets_(std::move(sets)) {}
 
 } // namespace lux::render

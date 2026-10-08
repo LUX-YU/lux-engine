@@ -4,6 +4,7 @@
 #include <lux/engine/render/gpu/RenderContext.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/descriptor/SceneDomainDescriptorSets.hpp>
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
 #include <lux/engine/render/gpu/transfer/TransferContributor.hpp>
@@ -108,8 +109,12 @@ namespace lux::render
         // Domain set instances (coexisting alongside the per-set ones during the
         // transition: build them first and have each owner dual-write into them,
         // verify the offsets and types line up, then switch the pipelines over).
-        scene_domain_sets_ = std::make_unique<SceneDomainDescriptorSets>();
-        if (!scene_domain_sets_->init(*scene_descriptor_arena_, rctx.descriptorLayouts(), rctx.framesInFlight()))
+        auto domain_sets = SceneDomainDescriptorSets::create(
+            *scene_descriptor_arena_,
+            rctx.descriptorLayouts(),
+            rctx.framesInFlight()
+        );
+        if (!domain_sets)
         {
             // 域集是描述符的唯一写目标,也是管线唯一的绑定来源。分配失败之后本场景的
             // 所有资源描述符都不会被写入,而绑定一个从未写过的描述符集是未定义行为 ——
@@ -121,17 +126,11 @@ namespace lux::render
             renderFatal("RenderScene: 域描述符 set 分配失败(池尺寸不足或域布局缺失)");
         }
 
-        // Register per-scene SceneResources in resources_.
+        scene_domain_sets_ = std::move(*domain_sets);
+
+        // Publish only complete per-scene resources.
         {
-            // 一次 emplace 拿到句柄,下面全程复用 —— 原先 emplace 之后又 find 两遍
-            // (还判了一次空),同一个刚建出来的对象查三次。
-            auto* sr = resources_.emplace<SceneResources>().get();
-            // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。PostUpload:
-            // 它要在其余资源之后推进(与改动前 kUploadPhase 声明的阶段一致)。
-            resources_.addBeginFrameHook(SceneResources::kUploadPhase, [sr](const FrameStamp& s) {
-                sr->onFrameBeginMaintenance(s);
-            });
-            SceneResources::InitInfo si{
+            SceneResources::CreateInfo si{
                 .device_context = rctx.deviceContext(),
                 .deferred_queue = rctx.deferredDestroyQueue(),
                 .slices = rctx.framesInFlight(),
@@ -147,10 +146,16 @@ namespace lux::render
                 .domain_sets = scene_domain_sets_->setsFor(rdesc::EBindFrequency::GLOBAL),
                 .domain_binding_offset = engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::SCENE)),
             };
-            if (!sr->init(si))
+            auto scene_resources = SceneResources::create(si);
+            if (!scene_resources)
             {
                 renderFatal("RenderScene: mandatory scene buffers could not be constructed");
             }
+            auto* sr = resources_.insert(std::move(*scene_resources)).get();
+            resources_.addBeginFrameHook(
+                SceneResources::kUploadPhase,
+                [sr](const FrameStamp& stamp) { sr->onFrameBeginMaintenance(stamp); }
+            );
         }
 
         // (LightResources is NOT created here. It is owned by LightFeature, which

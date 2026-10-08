@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <new>
 #include <stdexcept>
 #include <thread>
 #include <utility>
@@ -243,6 +242,34 @@ namespace lux::scene
         using ActiveRecords = lux::cxx::SlotMap<std::unique_ptr<ActiveRecord>>;
         using TimerOperation = stdexec::connect_result_t<process::TimerSender, TimerReceiver>;
 
+        struct ActiveTimer final
+        {
+            ActiveTimer(
+                process::ExecutionRuntime& execution,
+                process::CompletionWork::Request wake,
+                std::atomic_bool& completed,
+                std::optional<process::ETimerError>& error,
+                SteadyClock::time_point deadline
+            ) noexcept
+                : deadline(deadline), operation(stdexec::connect(
+                      execution.timer().after(deadline - SteadyClock::now()),
+                      TimerReceiver{stop.get_token(), std::move(wake), &completed, &error}
+                  ))
+            {
+            }
+
+            ActiveTimer(const ActiveTimer&) = delete;
+            ActiveTimer& operator=(const ActiveTimer&) = delete;
+            ActiveTimer(ActiveTimer&&) = delete;
+            ActiveTimer& operator=(ActiveTimer&&) = delete;
+            ~ActiveTimer() noexcept = default;
+
+            const SteadyClock::time_point deadline;
+            // The connected operation and its callback are destroyed before their stop source.
+            stdexec::inplace_stop_source stop;
+            TimerOperation operation;
+        };
+
         Impl(process::ExecutionRuntime& execution, task::TaskExecutor executor, std::uint64_t domain)
             : execution_(execution), executor_(std::move(executor)), domain_(domain),
               wake_(execution, this, +[](void*) noexcept {})
@@ -255,16 +282,16 @@ namespace lux::scene
             {
                 std::terminate();
             }
-            if (timer_active_)
+            if (timer_)
             {
-                timer_stop_->request_stop();
+                timer_->stop.request_stop();
                 const auto joined = execution_.waitUntil([this]() noexcept
                                                          { return timer_completed_.load(std::memory_order_acquire); });
                 if (!joined)
                 {
                     std::terminate();
                 }
-                reclaimTimer();
+                timer_.reset();
             }
             wake_.cancel();
             closing_ = true;
@@ -573,30 +600,17 @@ namespace lux::scene
             return rejected(ESceneRuntimeError::INVALID_ID, ticket.scene);
         }
 
-        [[nodiscard]] TimerOperation* timerOperation() noexcept
-        {
-            return std::launder(reinterpret_cast<TimerOperation*>(timer_storage_));
-        }
-
-        void reclaimTimer() noexcept
-        {
-            std::destroy_at(timerOperation());
-            timer_stop_.reset();
-            timer_active_ = false;
-            armed_deadline_.reset();
-        }
-
         [[nodiscard]] SceneRuntimeResult<void> armTimer(std::optional<SteadyClock::time_point> deadline) noexcept
         {
-            if (timer_active_ && timer_completed_.load(std::memory_order_acquire))
+            if (timer_ && timer_completed_.load(std::memory_order_acquire))
             {
-                reclaimTimer();
+                timer_.reset();
             }
-            if (timer_active_)
+            if (timer_)
             {
-                if (deadline != armed_deadline_)
+                if (deadline != timer_->deadline)
                 {
-                    timer_stop_->request_stop();
+                    timer_->stop.request_stop();
                 }
                 return {}; // Cancellation completion wakes the owner; never reuse an in-flight operation.
             }
@@ -608,16 +622,9 @@ namespace lux::scene
             {
                 return {};
             }
-            timer_stop_.emplace();
             timer_completed_.store(false, std::memory_order_relaxed);
-            timer_active_ = true;
-            armed_deadline_ = deadline;
-            const auto delay = *deadline - SteadyClock::now();
-            ::new (static_cast<void*>(timer_storage_)) TimerOperation(stdexec::connect(
-                execution_.timer().after(delay),
-                TimerReceiver{timer_stop_->get_token(), wake_.requester(), &timer_completed_, &timer_error_}
-            ));
-            stdexec::start(*timerOperation());
+            timer_.emplace(execution_, wake_.requester(), timer_completed_, timer_error_, *deadline);
+            stdexec::start(timer_->operation);
             if (timer_completed_.load(std::memory_order_acquire) && timer_error_)
             {
                 return rejected(*timer_error_);
@@ -884,12 +891,9 @@ namespace lux::scene
         std::vector<SceneRuntimeFailure> failures_;
         bool busy_{}, closing_{};
         process::CompletionWork wake_;
-        std::optional<stdexec::inplace_stop_source> timer_stop_;
         std::atomic_bool timer_completed_{false};
         std::optional<process::ETimerError> timer_error_;
-        std::optional<SteadyClock::time_point> armed_deadline_;
-        alignas(TimerOperation) std::byte timer_storage_[sizeof(TimerOperation)];
-        bool timer_active_{};
+        std::optional<ActiveTimer> timer_;
     };
 
     SceneRuntime::SceneRuntime(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}

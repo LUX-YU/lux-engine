@@ -327,6 +327,29 @@ int main()
     std::cout << "MEASURE SceneRuntime paused_turns=10000 elapsed_us="
               << std::chrono::duration<double, std::micro>(elapsed).count() << " business_tasks=0\n";
     assert((*runtime)->resumeSimulation(timed->id()) && (*runtime)->driveFrame());
+    // Repeated cancellation and rearming must retain the original completion owner.
+    for (unsigned cycle = 0; cycle < 8; ++cycle)
+    {
+        assert((*runtime)->pauseSimulation(timed->id()));
+        assert((*runtime)->driveFrame());
+        assert(execution->collectCompletions());
+        const auto previous_step = time(**runtime, timed->id()).step_index;
+        assert((*runtime)->resumeSimulation(timed->id()));
+        const auto limit = std::chrono::steady_clock::now() + 2s;
+        while (time(**runtime, timed->id()).step_index == previous_step)
+        {
+            const auto epoch = execution->wakeEpoch();
+            assert(execution->collectCompletions());
+            assert((*runtime)->driveFrame());
+            assert(std::chrono::steady_clock::now() < limit);
+            if (time(**runtime, timed->id()).step_index == previous_step)
+            {
+                execution->waitForWork(epoch, limit);
+            }
+        }
+        assert(execution->taskInfos().empty());
+    }
+
 
     auto callback_owned = builder.build();
     assert(callback_owned);

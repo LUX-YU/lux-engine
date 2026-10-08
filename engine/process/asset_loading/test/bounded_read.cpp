@@ -23,7 +23,8 @@ int main(int argc, char** argv)
     assert((*provider)->open(id, image.size())->bytes.size() == image.size());
     assert((*provider)->open(id, image.size() - 1).error() == asset::EAssetStorageError::LIMIT_EXCEEDED);
     asset::AssetVfs vfs;
-    assert(vfs.mount({"/Game", *provider}) != asset::kInvalidMountId);
+    auto mount = vfs.mount({"/Game", *provider});
+    assert(mount);
     auto runtime = process::ExecutionRuntime::create({1, 64, 64, {32}, process::BlockingSchedulerConfig{1, 64}});
     assert(runtime);
     process::TaskScope tasks{*runtime};

@@ -46,7 +46,59 @@ namespace lux::asset
         {
             return state ? state->published.load(std::memory_order_acquire) : nullptr;
         }
+
+        void revoke(const std::shared_ptr<detail::AssetVfsState>& state, MountId id) noexcept
+        {
+            // Drop the old snapshot after unlocking: provider destructors may call back
+            // into the control plane. Already accepted reads own an independent snapshot.
+            std::shared_ptr<const detail::MountTable> previous;
+            {
+                std::lock_guard lock{state->control_mutex};
+                previous = state->published.load(std::memory_order_acquire);
+                auto next = std::make_shared<detail::MountTable>();
+                next->mounts.reserve(previous->mounts.size() - 1U);
+                for (const auto& mount : previous->mounts)
+                {
+                    if (mount.id != id)
+                    {
+                        next->mounts.push_back(mount);
+                    }
+                }
+                state->published.store(std::move(next), std::memory_order_release);
+            }
+        }
     } // namespace
+
+    MountLease::MountLease(std::shared_ptr<detail::AssetVfsState> state, MountId id) noexcept
+        : state_(std::move(state)), id_(id)
+    {
+    }
+
+    MountLease::~MountLease() noexcept
+    {
+        if (id_ != kInvalidMountId)
+        {
+            const auto id = std::exchange(id_, kInvalidMountId);
+            const auto state = std::move(state_);
+            revoke(state, id);
+        }
+    }
+
+    MountLease::MountLease(MountLease&& other) noexcept
+        : state_(std::move(other.state_)), id_(std::exchange(other.id_, kInvalidMountId))
+    {
+    }
+
+    MountLease& MountLease::operator=(MountLease&& other) noexcept
+    {
+        if (this != &other)
+        {
+            MountLease previous{std::move(*this)};
+            state_ = std::move(other.state_);
+            id_ = std::exchange(other.id_, kInvalidMountId);
+        }
+        return *this;
+    }
 
     AssetVfsView::AssetVfsView(std::shared_ptr<detail::AssetVfsState> state) noexcept : state_(std::move(state)) {}
 
@@ -93,7 +145,9 @@ namespace lux::asset
         }
 
         lux::cxx::expected<AssetBlob, EAssetStorageError> open(
-            const std::shared_ptr<detail::AssetVfsState>& state, AssetId id, std::size_t max_bytes
+            const std::shared_ptr<detail::AssetVfsState>& state,
+            AssetId id,
+            std::size_t max_bytes
         )
         {
             const auto table = snapshot(state);
@@ -113,7 +167,8 @@ namespace lux::asset
         }
 
         void enumerate(
-            const std::shared_ptr<detail::AssetVfsState>& state, const std::function<void(const ProviderEntry&)>& fn
+            const std::shared_ptr<detail::AssetVfsState>& state,
+            const std::function<void(const ProviderEntry&)>& fn
         )
         {
             const auto table = snapshot(state);
@@ -126,18 +181,21 @@ namespace lux::asset
             std::unordered_set<std::string> claimed_paths;
             for (const auto& mount : table->mounts)
             {
-                mount.provider->enumerate([&](const ProviderEntry& entry) {
-                    if (!claimed_ids.insert(entry.id).second || entry.tombstone)
+                mount.provider->enumerate(
+                    [&](const ProviderEntry& entry)
                     {
-                        return;
+                        if (!claimed_ids.insert(entry.id).second || entry.tombstone)
+                        {
+                            return;
+                        }
+                        auto absolute = entry;
+                        absolute.vpath = mount.root + "/" + entry.vpath;
+                        if (claimed_paths.insert(absolute.vpath).second)
+                        {
+                            fn(absolute);
+                        }
                     }
-                    auto absolute = entry;
-                    absolute.vpath = mount.root + "/" + entry.vpath;
-                    if (claimed_paths.insert(absolute.vpath).second)
-                    {
-                        fn(absolute);
-                    }
-                });
+                );
             }
         }
 
@@ -166,75 +224,96 @@ namespace lux::asset
 
     } // namespace
 
-    AssetId AssetVfsView::resolve(std::string_view path) const { return asset::resolve(state_, path); }
+    AssetId AssetVfsView::resolve(std::string_view path) const
+    {
+        return asset::resolve(state_, path);
+    }
+
     lux::cxx::expected<AssetBlob, EAssetStorageError> AssetVfsView::open(AssetId id, std::size_t limit) const
     {
         return asset::open(state_, id, limit);
     }
+
     void AssetVfsView::enumerate(const std::function<void(const ProviderEntry&)>& visitor) const
     {
         asset::enumerate(state_, visitor);
     }
-    std::optional<std::string> AssetVfsView::pathOf(AssetId id) const { return asset::pathOf(state_, id); }
 
-    AssetId AssetVfs::resolve(std::string_view path) const { return asset::resolve(state_, path); }
+    std::optional<std::string> AssetVfsView::pathOf(AssetId id) const
+    {
+        return asset::pathOf(state_, id);
+    }
+
+    AssetId AssetVfs::resolve(std::string_view path) const
+    {
+        return asset::resolve(state_, path);
+    }
+
     lux::cxx::expected<AssetBlob, EAssetStorageError> AssetVfs::open(AssetId id, std::size_t limit) const
     {
         return asset::open(state_, id, limit);
     }
+
     void AssetVfs::enumerate(const std::function<void(const ProviderEntry&)>& visitor) const
     {
         asset::enumerate(state_, visitor);
     }
-    std::optional<std::string> AssetVfs::pathOf(AssetId id) const { return asset::pathOf(state_, id); }
+
+    std::optional<std::string> AssetVfs::pathOf(AssetId id) const
+    {
+        return asset::pathOf(state_, id);
+    }
 
     AssetVfs::AssetVfs() : state_(std::make_shared<detail::AssetVfsState>()) {}
 
     AssetVfs::~AssetVfs() = default;
 
-    MountId AssetVfs::mount(MountDesc desc)
+    MountResult AssetVfs::mount(MountDesc desc) noexcept
     {
-        const auto mounted = replaceMounts({}, std::span(&desc, 1));
-        return mounted ? mounted->front() : kInvalidMountId;
+        auto mounted = replaceMounts({}, std::span(&desc, 1));
+        if (!mounted)
+        {
+            return lux::cxx::unexpected(mounted.error());
+        }
+        return std::move(mounted->front());
     }
 
-    lux::cxx::expected<std::vector<MountId>, EMountUpdateError> AssetVfs::replaceMounts(
-        std::span<const MountId> removed,
-        std::span<const MountDesc> added
-    )
+    MountBatchResult AssetVfs::replaceMounts(std::span<MountLease> removed, std::span<const MountDesc> added) noexcept
     {
         for (const auto& descriptor : added)
         {
-            if (!descriptor.provider || !VirtualPath::isLegalRoot(descriptor.root))
+            const bool is_invalid_descriptor = !descriptor.provider || !VirtualPath::isLegalRoot(descriptor.root);
+            if (is_invalid_descriptor)
             {
                 return lux::cxx::unexpected(EMountUpdateError::INVALID_DESCRIPTOR);
             }
         }
 
+        std::shared_ptr<const detail::MountTable> current;
         std::lock_guard lock{state_->control_mutex};
-        const auto current = state_->published.load(std::memory_order_acquire);
+        current = state_->published.load(std::memory_order_acquire);
         std::unordered_set<MountId> retiring;
         retiring.reserve(removed.size());
-        for (const auto id : removed)
+        for (const auto& lease : removed)
         {
-            if (!retiring.insert(id).second)
-            {
-                return lux::cxx::unexpected(EMountUpdateError::DUPLICATE_MOUNT);
-            }
-            if (std::ranges::find(current->mounts, id, &detail::Mount::id) == current->mounts.end())
+            const bool is_unknown_mount = lease.state_ != state_ || lease.id_ == kInvalidMountId;
+            if (is_unknown_mount)
             {
                 return lux::cxx::unexpected(EMountUpdateError::UNKNOWN_MOUNT);
             }
+            retiring.insert(lease.id_);
         }
         const bool ids_exhausted = added.size() > std::numeric_limits<MountId>::max() - state_->next_id;
         const bool sequences_exhausted = added.size() > UINT64_MAX - state_->next_sequence;
-        if (ids_exhausted || sequences_exhausted)
+        const bool is_exhausted = ids_exhausted || sequences_exhausted;
+        if (is_exhausted)
         {
             return lux::cxx::unexpected(EMountUpdateError::CAPACITY);
         }
-        if (removed.empty() && added.empty())
+        const bool is_noop = removed.empty() && added.empty();
+        if (is_noop)
         {
-            return std::vector<MountId>{};
+            return std::vector<MountLease>{};
         }
 
         auto next = std::make_shared<detail::MountTable>();
@@ -246,45 +325,33 @@ namespace lux::asset
                 next->mounts.push_back(mount);
             }
         }
-        std::vector<MountId> result;
+        std::vector<MountLease> result;
         result.reserve(added.size());
         auto next_id = state_->next_id;
         auto sequence = state_->next_sequence;
         for (const auto& descriptor : added)
         {
-            result.push_back(next_id);
+            result.push_back(MountLease{state_, next_id});
             next->mounts.push_back({next_id++, descriptor.root, descriptor.provider, descriptor.priority, sequence++});
         }
-        std::ranges::sort(next->mounts, [](const detail::Mount& left, const detail::Mount& right) {
-            return left.priority > right.priority ||
-                   (left.priority == right.priority && left.sequence > right.sequence);
-        });
+        std::ranges::sort(
+            next->mounts,
+            [](const detail::Mount& left, const detail::Mount& right)
+            {
+                return left.priority > right.priority ||
+                       (left.priority == right.priority && left.sequence > right.sequence);
+            }
+        );
 
         state_->next_id = next_id;
         state_->next_sequence = sequence;
         state_->published.store(std::move(next), std::memory_order_release);
+        for (auto& lease : removed)
+        {
+            lease.id_ = kInvalidMountId;
+            lease.state_.reset();
+        }
         return result;
-    }
-
-    void AssetVfs::unmount(MountId id)
-    {
-        if (id == kInvalidMountId)
-        {
-            return;
-        }
-
-        std::lock_guard lock{state_->control_mutex};
-        const auto current = state_->published.load(std::memory_order_acquire);
-        const auto found =
-            std::ranges::find_if(current->mounts, [id](const detail::Mount& mount) noexcept { return mount.id == id; });
-        if (found == current->mounts.end())
-        {
-            return;
-        }
-
-        auto next = std::make_shared<detail::MountTable>(*current);
-        std::erase_if(next->mounts, [id](const detail::Mount& mount) noexcept { return mount.id == id; });
-        state_->published.store(std::move(next), std::memory_order_release);
     }
 
     AssetVfsView AssetVfs::view() const noexcept

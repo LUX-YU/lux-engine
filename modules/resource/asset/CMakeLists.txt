@@ -77,3 +77,15 @@ component_add_transitive_commands(
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity description)"
 )
+
+if(BUILD_TESTING)
+    add_executable(asset_mount_lifetime_test test/mount_lifetime.cpp)
+    target_link_libraries(asset_mount_lifetime_test PRIVATE asset)
+    if(MSVC)
+        target_compile_options(asset_mount_lifetime_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(asset_mount_lifetime_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME asset.mount_lifetime COMMAND asset_mount_lifetime_test)
+    set_tests_properties(asset.mount_lifetime PROPERTIES TIMEOUT 30 LABELS "native;lifecycle")
+endif()

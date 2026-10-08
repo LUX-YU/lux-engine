@@ -114,6 +114,7 @@ namespace
         ))};
         process::TaskScope files{execution};
         asset::AssetVfs vfs;
+        asset::MountLease mount;
         std::shared_ptr<process::asset_loading::VfsAssetReadEndpoint> endpoint;
         std::shared_ptr<const lux::script::ScriptArtifactAsset> artifact;
         const std::array<lux::script::lua::ScriptAbilityLuaContribution, 3> contributions{
@@ -168,7 +169,7 @@ namespace
                 std::fprintf(stderr, "Pak publication failed: %s\n", publication_error.c_str());
             assert(published);
             const auto provider = take(asset::PakAssetProvider::loadFromFile(pak_file));
-            assert(vfs.mount({"/Game", provider}) != asset::kInvalidMountId);
+            mount = take(vfs.mount({"/Game", provider}));
             assert(vfs.view().resolve("/Game/scripts/assets") == ScriptId);
             endpoint = take(process::asset_loading::VfsAssetReadEndpoint::create(
                 vfs.view().capture(), take(execution.blocking()), files, {4}

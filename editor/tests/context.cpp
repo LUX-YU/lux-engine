@@ -253,9 +253,10 @@ int main(int argc, char** argv)
         assert(first_context && second_context);
         auto& a = **first_context;
         auto& b = **second_context;
-        assert(a.assets().mount({"/Game", *lower, 0}));
-        assert(b.assets().mount({"/Game", *lower, 0}));
-        const auto mounted = a.assets().mount({"/Game", *higher, 1});
+        auto a_mount = a.assets().mount({"/Game", *lower, 0});
+        auto b_mount = b.assets().mount({"/Game", *lower, 0});
+        assert(a_mount && b_mount);
+        auto mounted = a.assets().mount({"/Game", *higher, 1});
         assert(mounted);
         auto frozen = a.assets().view().capture();
         higher->reset();
@@ -270,7 +271,7 @@ int main(int argc, char** argv)
         a.assets().enumerate([&](const auto& value) { direct.push_back(value); });
         a.assets().view().enumerate([&](const auto& value) { view.push_back(value); });
         assert(direct.size() == 1 && view.size() == 1 && direct[0].vpath == view[0].vpath);
-        a.assets().unmount(mounted);
+        *mounted = {};
         assert(a.assets().open(id)->bytes.size() == low.size());
         assert(frozen.open(id)->bytes.size() == high.size());
         assert(!lifetime.expired());

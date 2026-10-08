@@ -86,7 +86,7 @@ namespace lux::render
 
         [[nodiscard]] bool reserve(uint32_t new_capacity)
         {
-            if (new_capacity <= gpu_buf_->capacity())
+            if (new_capacity <= cpu_data_.size())
             {
                 return true;
             }
@@ -210,9 +210,12 @@ namespace lux::render
         {
             return gpu_buf_ ? gpu_buf_->buffer() : VK_NULL_HANDLE;
         }
+
+        /// Addressable records have both CPU storage and GPU backing. Native rounding
+        /// does not make additional CPU records available to this stream's consumers.
         [[nodiscard]] uint32_t capacity() const noexcept
         {
-            return gpu_buf_ ? gpu_buf_->capacity() : 0;
+            return static_cast<uint32_t>(cpu_data_.size());
         }
 
         void setDeferredQueue(DeferredDestroyQueue* q) noexcept

@@ -471,6 +471,8 @@ namespace
 #include "../src/gpu/descriptor/SceneDescriptorArena.cpp"
 #include "../src/gpu/descriptor/SceneDomainDescriptorSets.cpp"
 #include "../src/resources/SceneResources.cpp"
+#include <lux/engine/render/gpu/memory/PagedGpuStream.hpp>
+#include "../src/resources/mesh/MeshSectionTable.cpp"
 #include "../src/resources/lighting/LightResources.cpp"
 #include "../src/resources/hzb/HzbResources.cpp"
 #include "../src/resources/vertex/VertexPoolRegistry.cpp"
@@ -634,6 +636,99 @@ void checkHzbDescriptorFailure(lux::render::DeviceContext& device)
     arena->reset();
     assert(sets.size() == original_sets && retirement.pendingCount() == 0);
     std::puts("HZB descriptor failure: exact allocation error, no ready view, retry and original retirement PASS");
+}
+
+void checkPagedCapacity(lux::render::DeviceContext& device, lux::render::DeferredDestroyQueue& retirement)
+{
+    using namespace lux::render;
+    retirement.beginFrame(13);
+    {
+        TPagedGpuStream<uint32_t> stream;
+        stream.setDeferredQueue(&retirement);
+        assert(stream.init(&device, 2));
+        assert(stream.capacity() == 2 && stream.cpuData().size() == 2);
+        const auto original = stream.buffer();
+        stream.at(0) = 17;
+        stream.markDirty(0);
+        failure = EFailure::BUFFER;
+        const auto previous_rejections = rejections;
+        assert(stream.reserve(8)); // within existing native allocation, still grows CPU records
+        assert(rejections == previous_rejections && stream.buffer() == original);
+        assert(stream.capacity() == 8 && stream.cpuData().size() == 8 && stream.at(0) == 17);
+        stream.at(7) = 71;
+        stream.markDirty(7);
+        assert(!stream.reserve(65));
+        assert(stream.capacity() == 8 && stream.buffer() == original && stream.at(7) == 71);
+        assert(stream.hasDirtyPages());
+        failure = EFailure::NONE;
+        assert(stream.reserve(65) && stream.capacity() == 65 && stream.buffer() != original);
+        assert(stream.at(0) == 17 && stream.at(7) == 71);
+        assert(stream.reserve(80) && stream.capacity() == 80 && stream.cpuData().size() == 80);
+        stream.at(79) = 79;
+        stream.markDirty(79);
+        assert(stream.reserve(1025));
+        stream.at(512) = 512;
+        stream.at(1024) = 1024;
+        stream.markDirty(512);
+        stream.markDirty(1024);
+        stream.markDirty(1024);
+        std::vector<TPagedGpuStream<uint32_t>::UploadChunk> chunks;
+        assert(stream.collectUploadChunks(1025, false, chunks) == 1025 * sizeof(uint32_t));
+        assert(
+            chunks.size() == 1 && chunks[0].dst_offset == 0 &&
+            chunks[0].src == reinterpret_cast<const uint8_t*>(stream.cpuData().data())
+        );
+        stream.clearDirtyState();
+        assert(!stream.hasDirtyPages());
+        chunks.clear();
+        assert(stream.collectUploadChunks(1025, false, chunks) == 0 && chunks.empty());
+        assert(stream.collectUploadChunks(1025, true, chunks) == 1025 * sizeof(uint32_t));
+        std::vector<uint32_t> remap(1025, ~0u);
+        remap[7] = 0;
+        remap[1024] = 1;
+        stream.compact(remap, 2);
+        assert(stream.at(0) == 71 && stream.at(1) == 1024 && !stream.hasDirtyPages());
+        const auto accepted_buffer = stream.buffer();
+        assert(!stream.reserve(UINT32_MAX));
+        assert(stream.capacity() == 1025 && stream.buffer() == accepted_buffer && stream.at(0) == 71);
+        retirement.collect(12);
+        assert(buffers.contains(original));
+    }
+    retirement.collect(13);
+    assert(buffers.empty());
+    {
+        MeshSectionTable table;
+        table.setDeferredQueue(&retirement);
+        assert(table.init(&device, 2));
+        for (unsigned i = 0; i < 130; ++i)
+        {
+            MeshSectionRecord value{i * 3, 3, static_cast<int32_t>(i), i + 1};
+            const auto id = table.registerSection(value, 0, VK_INDEX_TYPE_UINT32);
+            assert(id == i && table.at(id).first_index == value.first_index);
+            assert(table.registerSection(value, 0, VK_INDEX_TYPE_UINT32) == id);
+            table.unregisterSection(id); // retain the first reference
+            assert(table.at(id).vertex_count == i + 1);
+        }
+        const auto original_buffer = table.buffer();
+        failure = EFailure::BUFFER;
+        assert(!table.ensureCapacity(4096));
+        assert(table.buffer() == original_buffer && table.at(129).first_index == 387);
+        failure = EFailure::NONE;
+        assert(table.ensureCapacity(4096));
+        assert(table.at(129).first_index == 387);
+        for (unsigned i = 0; i < 130; ++i)
+        {
+            table.unregisterSection(i);
+        }
+        table.shutdown();
+        retirement.collect(12);
+        assert(buffers.contains(original_buffer));
+    }
+    retirement.collect(13);
+    assert(buffers.empty() && retirement.pendingCount() == 0);
+    std::puts(
+        "Paged stream: CPU/native capacity agreement, failed growth, dirty runs, compaction and real mesh sections PASS"
+    );
 }
 
 void checkSceneResources(
@@ -867,6 +962,11 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkPagedCapacity(device, retirement);
+    if (argc == 2 && std::string_view(argv[1]) == "--paged-capacity")
+    {
+        return 0;
+    }
     checkSceneResources(device, layouts, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--scene-resources")
     {

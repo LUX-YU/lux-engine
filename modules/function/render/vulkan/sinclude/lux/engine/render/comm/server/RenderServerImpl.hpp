@@ -171,6 +171,59 @@ namespace lux::render
         std::atomic<std::uint32_t> dropped_{0};
     };
 
+    /// Stable callback state owned before the transfer worker; keeps the original upload ledger.
+    class UploadLifecycleTracker final
+    {
+    public:
+        UploadLifecycleTracker(RenderErrorSink& sink, const FrameStamp& stamp) noexcept
+            : error_sink_(sink), current_stamp_(stamp)
+        {
+            recent_upload_terminals_.fill(UINT32_MAX);
+        }
+
+        UploadLifecycleTracker(const UploadLifecycleTracker&) = delete;
+        UploadLifecycleTracker& operator=(const UploadLifecycleTracker&) = delete;
+        UploadLifecycleTracker(UploadLifecycleTracker&&) = delete;
+        UploadLifecycleTracker& operator=(UploadLifecycleTracker&&) = delete;
+
+        struct ActiveUpload
+        {
+            std::uint32_t request_id{UINT32_MAX};
+            TransferCompletion::EKind kind{};
+            std::uint32_t resource_index{0};
+            std::uint32_t resource_gen{0};
+            EUploadLifecycleState state{EUploadLifecycleState::ACCEPTED};
+        };
+
+        [[nodiscard]] std::span<const ActiveUpload> active() const noexcept
+        {
+            return active_uploads_;
+        }
+
+        [[nodiscard]] UploadLifecycleSnapshot snapshot() const noexcept
+        {
+            return upload_lifecycle_;
+        }
+
+        void transition(
+            std::uint32_t request_id,
+            TransferCompletion::EKind kind,
+            std::uint32_t resource_index,
+            std::uint32_t resource_gen,
+            EUploadLifecycleState state
+        ) noexcept;
+        [[nodiscard]] bool observe(const TransferCompletion& completion) noexcept;
+
+    private:
+        RenderErrorSink& error_sink_;
+        const FrameStamp& current_stamp_;
+        std::vector<ActiveUpload> active_uploads_;
+        UploadLifecycleSnapshot upload_lifecycle_{};
+        static constexpr std::size_t kRecentUploadTerminals = 256;
+        std::array<std::uint32_t, kRecentUploadTerminals> recent_upload_terminals_{};
+        std::size_t recent_upload_terminal_cursor_{0};
+    };
+
     // ─────────────────────────────────────────────────────────────────────
     //  GeneralRenderServer::Impl — owns the full Vulkan stack
     // ─────────────────────────────────────────────────────────────────────
@@ -179,11 +232,17 @@ namespace lux::render
         // Code also backs deferred GPU/resource callbacks, beyond the factory registry.
         std::vector<std::shared_ptr<const void>> code_owners_;
 
+        // Stable diagnostic/clock/ledger allocations outlive every native callback and worker.
+        std::unique_ptr<RenderErrorSink> error_sink_;
+        std::unique_ptr<ValidationEventRing> validation_ring_;
+        std::unique_ptr<FrameOrchestrator> frame_orchestrator_;
+        std::unique_ptr<UploadLifecycleTracker> upload_tracker_;
+
         // Back-pointer to the owning server — set in constructor.
         // Allows anonymous-namespace handlers to call server public methods.
         GeneralRenderServer* server_{nullptr};
 
-        // Vulkan infrastructure — created lazily by init()
+        // Complete native backing, adopted only after every fallible preparation succeeds.
         std::unique_ptr<InstanceContext> inst_ctx_;
         std::unique_ptr<DeviceContext> dev_ctx_;
         std::unique_ptr<ResourceContext> res_ctx_;
@@ -280,8 +339,6 @@ namespace lux::render
         RenderSceneId current_bulk_scene_{};
 
         // Frame timing — single authoritative clock
-        FrameOrchestrator frame_orchestrator_{2};
-        FrameStamp current_stamp_{};
         std::atomic<std::uint64_t>* gpu_completed_serial_{};
 
         // Per-tick scene/view batch, reused across ticks (cleared at tick start)
@@ -292,7 +349,7 @@ namespace lux::render
         uint32_t frames_in_flight_{2};
         bool enable_vsync_{true};
 
-        // Single-owner GPU transfer pipeline (built by init; handlers publish
+        // Single-owner GPU transfer pipeline (fully prepared before server adoption; handlers publish
         // low-level jobs, this render owner drains results).
         std::unique_ptr<GpuTransferPipeline> transfer_pipeline_;
 
@@ -345,21 +402,6 @@ namespace lux::render
 
         std::vector<DeferredReplyEntry> pending_deferred_replies_;
 
-        struct ActiveUpload
-        {
-            std::uint32_t request_id{UINT32_MAX};
-            TransferCompletion::EKind kind{};
-            std::uint32_t resource_index{0};
-            std::uint32_t resource_gen{0};
-            EUploadLifecycleState state{EUploadLifecycleState::ACCEPTED};
-        };
-
-        std::vector<ActiveUpload> active_uploads_;
-        UploadLifecycleSnapshot upload_lifecycle_{};
-        static constexpr std::size_t kRecentUploadTerminals = 256;
-        std::array<std::uint32_t, kRecentUploadTerminals> recent_upload_terminals_{};
-        std::size_t recent_upload_terminal_cursor_{0};
-
         struct PendingGraphicsFinalize
         {
             std::uint64_t timeline_value{0};
@@ -373,18 +415,6 @@ namespace lux::render
         std::vector<StagingBuffer> graphics_finalize_staging_batch_;
         std::vector<std::uint32_t> graphics_finalize_slot_batch_;
         bool graphics_finalize_required_{false};
-
-        /// 本 tick 汇集到的自发上报(没有请求可回的那些失败)。定长、无分配;
-        /// 由 flushErrorEvents() 每 tick 打包推出并清空。
-        ///
-        /// **只被渲染线程碰。** 它按键做线性合并,不是线程安全结构。来自其它线程的
-        /// 校验层消息先进 validation_ring_,由 flushErrorEvents() 折进来。
-        RenderErrorSink error_sink_;
-
-        /// 校验层消息的跨线程入口。校验回调在发起 Vulkan 调用的那个线程上跑,
-        /// 而上传走单一 transfer 线程 —— 生产者不止渲染线程一个。
-        /// 每生产者一条 SPSC 环,渲染线程在 flushErrorEvents() 里排空。
-        ValidationEventRing validation_ring_;
 
         // Completions whose GPU timeline value hasn't been reached yet.
         // Re-checked each tick via non-blocking vkGetSemaphoreCounterValue.
@@ -432,15 +462,28 @@ namespace lux::render
         /// Impl does not own or destroy this — the subclass manages its lifetime.
         void* extension_{nullptr};
 
-        Impl()
+    private:
+        struct Construction
         {
-            recent_upload_terminals_.fill(UINT32_MAX);
-        }
+            std::unique_ptr<RenderErrorSink> error_sink;
+            std::unique_ptr<ValidationEventRing> validation_ring;
+            std::unique_ptr<FrameOrchestrator> frame_orchestrator;
+            std::unique_ptr<UploadLifecycleTracker> upload_tracker;
+            std::unique_ptr<InstanceContext> inst_ctx;
+            std::unique_ptr<DeviceContext> dev_ctx;
+            std::unique_ptr<ResourceContext> res_ctx;
+            std::shared_ptr<RenderContext> render_ctx;
+            std::unique_ptr<Renderer> renderer;
+            std::unique_ptr<RenderTargetRegistry> targets_registry;
+            std::unique_ptr<GpuTransferPipeline> transfer_pipeline;
+            std::unique_ptr<FrameDriver> frame_driver;
+        };
 
+        Impl(Construction&& backing, const ServerConfig& config) noexcept;
+
+    public:
+        [[nodiscard]] static Expected<ImplOwner> create(ServerConfig config, RenderChannelSync& sync) noexcept;
         ~Impl();
-
-        /// Two-phase init: creates the full Vulkan stack.
-        Expected<void> init(ServerConfig cfg);
 
         /// Begin a tick frame: retire slot-local staging, advance renderer frame state,
         /// and update VRAM budget flags.
@@ -458,14 +501,6 @@ namespace lux::render
 
         /// Flush deferred replies + drain/process upload completions (non-blocking).
         [[nodiscard]] bool processUploadCompletions();
-        void transitionUpload(
-            std::uint32_t request_id,
-            TransferCompletion::EKind kind,
-            std::uint32_t resource_index,
-            std::uint32_t resource_gen,
-            EUploadLifecycleState state
-        ) noexcept;
-        [[nodiscard]] bool observeTransferResult(const TransferCompletion& completion) noexcept;
         void settleUploadReply(const DeferredReplyEntry& reply) noexcept;
         [[nodiscard]] UploadLifecycleSnapshot uploadLifecycle() const noexcept;
         void failActiveUploadsForShutdown() noexcept;

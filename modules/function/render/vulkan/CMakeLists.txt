@@ -465,4 +465,5 @@ if(BUILD_TESTING)
             PROPERTIES TIMEOUT 30 LABELS gpu
         )
     endif()
+    include(test/TransferStopRace.cmake)
 endif()

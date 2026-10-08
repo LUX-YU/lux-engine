@@ -166,16 +166,24 @@ namespace lux::render
         return result;
     }
 
-    Expected<void> GeneralRenderServer::Impl::init(ServerConfig cfg)
+    Expected<GeneralRenderServer::ImplOwner> GeneralRenderServer::Impl::create(
+        ServerConfig cfg,
+        RenderChannelSync& sync
+    ) noexcept
     {
-        gpu_completed_serial_ = cfg.gpu_completed_serial;
-        // Validate the fixed-size frame ring before publishing any Vulkan
-        // infrastructure into Impl. An invalid configuration must leave the
-        // object in its pristine, trivially destructible state.
-        if (cfg.frames_in_flight < 1 || cfg.frames_in_flight > kMaxFramesInFlight)
+        // Reject invalid input before acquiring native backing; no semantic Impl exists yet.
+        const bool is_invalid_frame_count = cfg.frames_in_flight < 1 || cfg.frames_in_flight > kMaxFramesInFlight;
+        if (is_invalid_frame_count)
         {
             return renderFailure<err::device::InvalidFramesInFlight>(cfg.frames_in_flight, kMaxFramesInFlight);
         }
+
+        Construction backing;
+        backing.error_sink = std::make_unique<RenderErrorSink>();
+        backing.validation_ring = std::make_unique<ValidationEventRing>();
+        backing.frame_orchestrator = std::make_unique<FrameOrchestrator>(cfg.frames_in_flight);
+        backing.upload_tracker =
+            std::make_unique<UploadLifecycleTracker>(*backing.error_sink, backing.frame_orchestrator->stamp());
 
         // 0. Prepare complete Vulkan instance backing before adoption.
         DebugCallback debug_cb = nullptr;
@@ -190,13 +198,13 @@ namespace lux::render
             // 就原样交给应用,不装就丢弃。渲染库不替应用决定这些文字去哪 ——
             // 但也不能因为"库里不该打印"就让全文无处可去,那是把可诊断性一起删了。
             //
-            // 写的是 validation_ring_ 而不是 error_sink_:本回调**在发起 Vulkan
+            // 写的是 backing.validation_ring 而不是 backing.error_sink:本回调**在发起 Vulkan
             // 调用的那个线程上跑**,而上传走单一 transfer 线程 —— sink
             // 是按键线性合并的非原子结构,多线程写它就是数据竞争。环负责跨线程
             // 传输,渲染线程在 flushErrorEvents() 里排空折进 sink。
             debug_cb = [err_counter = cfg.validation_error_counter,
                         text_sink = cfg.validation_message_sink,
-                        ring = &validation_ring_](const DebugCallbackInfo& info) -> bool
+                        ring = backing.validation_ring.get()](const DebugCallbackInfo& info) -> bool
             {
                 // Mesh passes deliberately use one fixed vertex-stage superset
                 // interface across builtin and graph-material fragment stages.
@@ -255,14 +263,10 @@ namespace lux::render
         {
             return lux::cxx::unexpected(instance.error());
         }
-        inst_ctx_ = std::move(*instance);
-
-        frames_in_flight_ = cfg.frames_in_flight;
-        frame_orchestrator_ = FrameOrchestrator{cfg.frames_in_flight};
-        enable_vsync_ = cfg.enable_vsync;
+        backing.inst_ctx = std::move(*instance);
 
         auto device = DeviceContext::create(
-            *inst_ctx_,
+            *backing.inst_ctx,
             cfg.prefer_discrete_gpu ? EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED
                                     : EPhysicalDeviceSelectionPolicy::INTEGRATED_GPU_PREFERRED
         );
@@ -270,7 +274,7 @@ namespace lux::render
         {
             return lux::cxx::unexpected(device.error());
         }
-        dev_ctx_ = std::move(*device);
+        backing.dev_ctx = std::move(*device);
 
         // Resolve the session feature tier = min(device-achievable, caller
         // preference). Features read dev_ctx caps()/featureLevel() at attach
@@ -279,10 +283,10 @@ namespace lux::render
         //  删掉了:这些现在都可查 —— GeneralRenderServer::deviceCaps() 与 comm 的
         //  QueryDeviceCaps 回执都带 feature_level 与完整 DeviceCaps。当时非打不可,
         //  是因为除了那一行之外没有任何办法知道自己跑在哪一档上。)
-        dev_ctx_->resolveFeatureLevel(cfg.preferred_level);
+        backing.dev_ctx->resolveFeatureLevel(cfg.preferred_level);
 
-        const auto vram = VRAMBudgetGuard(dev_ctx_->vmaAllocator()).snapshot();
-        const auto& device_caps = dev_ctx_->caps();
+        const auto vram = VRAMBudgetGuard(backing.dev_ctx->vmaAllocator()).snapshot();
+        const auto& device_caps = backing.dev_ctx->caps();
         const CapacityDeviceFacts capacity_caps{
             .vram_budget_bytes = vram.total_budget,
             .vram_usage_bytes = vram.total_usage,
@@ -309,23 +313,23 @@ namespace lux::render
         // SceneDescriptorArena, so the shared pool only serves the few GLOBAL
         // sets (MaterialResources × FIF; Texture/Bindless own their pools).
         // Default sizing suffices — no per-scene-count bump needed.
-        auto resources = ResourceContext::create(*dev_ctx_);
+        auto resources = ResourceContext::create(*backing.dev_ctx);
         if (!resources)
         {
             return lux::cxx::unexpected(resources.error());
         }
-        auto targets = RenderTargetRegistry::create(**resources, frames_in_flight_);
+        auto targets = RenderTargetRegistry::create(**resources, cfg.frames_in_flight);
         if (!targets)
         {
             return lux::cxx::unexpected(targets.error());
         }
         // These mandatory dependencies are adopted together before later construction.
-        res_ctx_ = std::move(*resources);
-        targets_registry_ = std::move(*targets);
+        backing.res_ctx = std::move(*resources);
+        backing.targets_registry = std::move(*targets);
 
-        auto& device_ctx = *dev_ctx_;
-        VkDescriptorPool dp = res_ctx_->descriptorPool();
-        VkCommandPool cp = res_ctx_->commandPool();
+        auto& device_ctx = *backing.dev_ctx;
+        VkDescriptorPool dp = backing.res_ctx->descriptorPool();
+        VkCommandPool cp = backing.res_ctx->commandPool();
         uint32_t fif = cfg.frames_in_flight;
 
         // 1. Descriptor layouts
@@ -389,14 +393,14 @@ namespace lux::render
         ci.frames_in_flight = fif;
         ci.capacity_plan = *capacity_plan;
 
-        auto render_context = RenderContext::create(*res_ctx_, std::move(ci));
+        auto render_context = RenderContext::create(*backing.res_ctx, std::move(ci));
         if (!render_context)
         {
             return lux::cxx::unexpected<RenderError>(render_context.error());
         }
-        render_ctx_ = std::move(*render_context);
-        // 自发上报的去处。汇集器随 Impl 存活,覆盖 render_ctx_ 的生命周期。
-        render_ctx_->setErrorSink(&error_sink_);
+        backing.render_ctx = std::move(*render_context);
+        // 自发上报的去处。汇集器随 Impl 存活,覆盖 backing.render_ctx 的生命周期。
+        backing.render_ctx->setErrorSink(backing.error_sink.get());
         // TextureResources
         {
             // Bindless capacity comes FROM THE LAYOUT, not from a second
@@ -416,8 +420,8 @@ namespace lux::render
             const uint32_t cube_max = layouts.bindlessCubeCount();
 
             BindlessSetCreateInfo bc{};
-            bc.resource_context = res_ctx_.get();
-            bc.deferred_queue = &render_ctx_->deferredDestroyQueue();
+            bc.resource_context = backing.res_ctx.get();
+            bc.deferred_queue = &backing.render_ctx->deferredDestroyQueue();
             bc.descriptor_set_layout = layouts.getLayout(EDescriptorSetSlot::TEXTURE);
             bc.set_index = TGetBindingSet<ETextureSetBindings>::value;
             bc.binding = 0;
@@ -452,30 +456,30 @@ namespace lux::render
             {
                 return lux::cxx::unexpected(textures.error());
             }
-            auto* tex = render_ctx_->globalRegistry().insert(std::move(*textures)).get();
+            auto* tex = backing.render_ctx->globalRegistry().insert(std::move(*textures)).get();
             // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。
-            render_ctx_->globalRegistry().addBeginFrameHook(
+            backing.render_ctx->globalRegistry().addBeginFrameHook(
                 EUploadPhase::UPLOAD,
                 [tex](const FrameStamp& s) { tex->onFrameBeginMaintenance(s); }
             );
         }
 
-        render_ctx_->globalTransferScheduler().contributors().add(makeTransferContributorWithPost(
-            &render_ctx_->globalRegistry().must<TextureResources>(),
+        backing.render_ctx->globalTransferScheduler().contributors().add(makeTransferContributorWithPost(
+            &backing.render_ctx->globalRegistry().must<TextureResources>(),
             /*priority=*/10
         ));
 
         // 6. Build Renderer
-        renderer_ = std::make_unique<Renderer>(render_ctx_);
+        backing.renderer = std::make_unique<Renderer>(backing.render_ctx);
 
         // 8. Single-owner GPU transfer pipeline
         {
             GpuTransferPipeline::Config ucfg{};
-            ucfg.device_ctx = dev_ctx_.get();
-            ucfg.notify_work_state = server_;
-            ucfg.notify_work = +[](void* state) noexcept
-            { static_cast<GeneralRenderServer*>(state)->channelSync().notifyRequestStateChanged(); };
-            ucfg.lifecycle_state = this;
+            ucfg.device_ctx = backing.dev_ctx.get();
+            ucfg.notify_work_state = &sync;
+            ucfg.notify_work =
+                +[](void* state) noexcept { static_cast<RenderChannelSync*>(state)->notifyRequestStateChanged(); };
+            ucfg.lifecycle_state = backing.upload_tracker.get();
             ucfg.lifecycle = +[](void* state,
                                  std::uint32_t request_id,
                                  TransferCompletion::EKind kind,
@@ -483,45 +487,50 @@ namespace lux::render
                                  std::uint32_t resource_gen,
                                  EUploadLifecycleState lifecycle_state) noexcept
             {
-                static_cast<Impl*>(state)
-                    ->transitionUpload(request_id, kind, resource_index, resource_gen, lifecycle_state);
+                static_cast<UploadLifecycleTracker*>(state)
+                    ->transition(request_id, kind, resource_index, resource_gen, lifecycle_state);
             };
             auto pipeline = GpuTransferPipeline::create(ucfg);
             if (!pipeline)
             {
                 return lux::cxx::unexpected<RenderError>(pipeline.error());
             }
-            transfer_pipeline_ = std::move(*pipeline);
+            backing.transfer_pipeline = std::move(*pipeline);
         }
 
         // 9. FrameDriver — 帧级设施(per-FIF fence/主 CB/GPU 完成水位),
         // 仅依赖 ResourceContext 与 fif,与窗口/surface 零依赖。曾误放在
         // 旧窗口绑定路径里,导致无窗进程只能空转帧生命周期不能录制;
         // 前移后离屏渲染 + readback 无窗即可用(RenderTarget 一等化的产物)。
-        auto frame_driver = FrameDriver::create(*res_ctx_, frames_in_flight_);
+        auto frame_driver = FrameDriver::create(*backing.res_ctx, cfg.frames_in_flight);
         if (!frame_driver)
         {
             return lux::cxx::unexpected<RenderError>(frame_driver.error());
         }
-        frame_driver_ = std::move(*frame_driver);
+        backing.frame_driver = std::move(*frame_driver);
 
-        return {};
+        return ImplOwner(new Impl(std::move(backing), cfg), +[](Impl* value) noexcept { delete value; });
+    }
+
+    GeneralRenderServer::Impl::Impl(Construction&& backing, const ServerConfig& config) noexcept
+        : error_sink_(std::move(backing.error_sink)), validation_ring_(std::move(backing.validation_ring)),
+          frame_orchestrator_(std::move(backing.frame_orchestrator)),
+          upload_tracker_(std::move(backing.upload_tracker)), inst_ctx_(std::move(backing.inst_ctx)),
+          dev_ctx_(std::move(backing.dev_ctx)), res_ctx_(std::move(backing.res_ctx)),
+          render_ctx_(std::move(backing.render_ctx)), renderer_(std::move(backing.renderer)),
+          frame_driver_(std::move(backing.frame_driver)), targets_registry_(std::move(backing.targets_registry)),
+          gpu_completed_serial_(config.gpu_completed_serial), frames_in_flight_(config.frames_in_flight),
+          enable_vsync_(config.enable_vsync), transfer_pipeline_(std::move(backing.transfer_pipeline))
+    {
     }
 
     GeneralRenderServer::Impl::~Impl()
     {
-        if (!res_ctx_)
-        {
-            // No rendering work or dependent owners exist before pool construction succeeds.
-            // Instance/device members release any startup prefix through their own RAII.
-            return;
-        }
         bool device_lost_during_teardown = false;
 
         // Close admission and join the single transfer owner first. Recorded
         // RECORD_ONLY batches are then submitted by this render thread before
         // the device-idle boundary; no queue mutex is involved.
-        if (transfer_pipeline_)
         {
             transfer_pipeline_->shutdown();
 
@@ -701,10 +710,7 @@ namespace lux::render
     void forEachSceneOnServer(void* user_state, void (*fn)(RenderScene&))
     {
         auto& im = *static_cast<GeneralRenderServer::Impl*>(user_state);
-        if (im.renderer_)
-        {
-            im.renderer_->forEachScene([fn](RenderScene& s) { fn(s); });
-        }
+        im.renderer_->forEachScene([fn](RenderScene& s) { fn(s); });
     }
 
     // (serverUploadMesh / serverDestroyMesh + the concatMeshLods helper moved to the
@@ -880,7 +886,7 @@ namespace lux::render
             auto rebased = scene->rebaseSceneOrigin(payload.scene_origin_page);
             if (!rebased)
             {
-                im.error_sink_.emit(rebased.error(), payload.scene_id.index, im.current_stamp_.serial);
+                im.error_sink_->emit(rebased.error(), payload.scene_id.index, im.frame_orchestrator_->stamp().serial);
             }
         }
 
@@ -890,19 +896,19 @@ namespace lux::render
             auto* scene = im.renderer_->getScene(p.scene_id);
             if (!scene)
             {
-                im.error_sink_.emit(
+                im.error_sink_->emit(
                     renderError<err::scene::NotFound>(p.scene_id.index),
                     p.scene_id.index,
-                    im.current_stamp_.serial
+                    im.frame_orchestrator_->stamp().serial
                 );
                 return;
             }
             if (p.delta_ns < 0 || p.elapsed_ns < p.delta_ns)
             {
-                im.error_sink_.emit(
+                im.error_sink_->emit(
                     renderError<err::scene::InvalidTime>(p.scene_id.index),
                     p.scene_id.index,
-                    im.current_stamp_.serial
+                    im.frame_orchestrator_->stamp().serial
                 );
                 return;
             }
@@ -970,7 +976,7 @@ namespace lux::render
             const auto keys = im.targets_registry_->all().keys();
             for (const auto key : keys)
             {
-                im.detachLayerAndReapIfEmpty(key, p.scene_id, p.view, im.current_stamp_.serial);
+                im.detachLayerAndReapIfEmpty(key, p.scene_id, p.view, im.frame_orchestrator_->stamp().serial);
             }
 
             // 回执在级联摘层之后 —— code==0 代表「视图摘了,层也摘了」。

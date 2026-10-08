@@ -91,7 +91,7 @@ namespace lux::render
             const auto offscreen = impl.findOffscreenKeyByView(scene_id, view);
             if (offscreen.isValid())
             {
-                impl.detachLayerAndReapIfEmpty(offscreen, scene_id, view, impl.current_stamp_.serial);
+                impl.detachLayerAndReapIfEmpty(offscreen, scene_id, view, impl.frame_orchestrator_->stamp().serial);
             }
             return {};
         }
@@ -124,17 +124,12 @@ namespace lux::render
 
     Expected<DeviceCaps> GeneralRenderServer::deviceCaps() const noexcept
     {
-        if (!impl_->dev_ctx_)
-        {
-            return renderFailure<err::device::VulkanObjectCreationFailed>();
-        }
         return impl_->dev_ctx_->caps();
     }
 
     const lux::render::CapacityPlan& GeneralRenderServer::capacityPlan() const noexcept
     {
-        static const lux::render::CapacityPlan empty{};
-        return impl_->render_ctx_ ? impl_->render_ctx_->capacityPlan() : empty;
+        return impl_->render_ctx_->capacityPlan();
     }
 
     SwapchainProvider* GeneralRenderServer::swapchainProvider() noexcept
@@ -144,7 +139,7 @@ namespace lux::render
 
     const FrameStamp& GeneralRenderServer::currentStamp() const noexcept
     {
-        return impl_->current_stamp_;
+        return impl_->frame_orchestrator_->stamp();
     }
 
     uint32_t GeneralRenderServer::framesInFlight() const noexcept
@@ -154,7 +149,7 @@ namespace lux::render
 
     uint64_t GeneralRenderServer::gpuCompletedSerial() const noexcept
     {
-        return impl_->frame_driver_ ? impl_->frame_driver_->gpuCompletedSerial() : impl_->current_stamp_.serial;
+        return impl_->frame_driver_->gpuCompletedSerial();
     }
 
     void GeneralRenderServer::setExtension(void* extension, PreDestroySceneCallback pre_destroy) noexcept
@@ -213,10 +208,6 @@ namespace lux::render
         std::shared_ptr<const void> code_lifetime
     )
     {
-        if (!impl_->renderer_)
-        {
-            return FeatureTypeRegisteredReply{.error = renderError<err::device::VulkanObjectCreationFailed>()};
-        }
         auto& registry = impl_->renderer_->featureTypeRegistry();
         FeatureTypeRecord record{};
         record.factory = factory;

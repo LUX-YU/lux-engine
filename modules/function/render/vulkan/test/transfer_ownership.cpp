@@ -107,7 +107,7 @@ int main()
         assert(attempts == boundary && semaphores.empty() && pools.empty());
     }
     fail_at = 0;
-    for (unsigned iteration = 0; iteration < 16; ++iteration)
+    for (unsigned iteration = 0; iteration < 128; ++iteration)
     {
         {
             auto pipeline = GpuTransferPipeline::create(config);

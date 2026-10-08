@@ -1175,17 +1175,19 @@ namespace lux::render
         using Channel = TRenderServer<>::Channel;
         using Dispatcher = TRenderServer<>::Dispatcher;
 
-        GeneralRenderServer(
+        [[nodiscard]] static Expected<std::unique_ptr<GeneralRenderServer>> create(
             std::shared_ptr<Channel> frame_channel,
             std::shared_ptr<TRenderControlChannel<>> control_channel,
             std::shared_ptr<TRenderUploadChannel<>> upload_channel,
-            std::shared_ptr<RenderChannelSync> sync
-        );
+            std::shared_ptr<RenderChannelSync> sync,
+            ServerConfig config = {}
+        ) noexcept;
 
+        GeneralRenderServer(const GeneralRenderServer&) = delete;
+        GeneralRenderServer& operator=(const GeneralRenderServer&) = delete;
+        GeneralRenderServer(GeneralRenderServer&&) = delete;
+        GeneralRenderServer& operator=(GeneralRenderServer&&) = delete;
         virtual ~GeneralRenderServer();
-
-        /// Initialize the Vulkan stack. Must be called before tick().
-        [[nodiscard]] Expected<void> init(ServerConfig config = {});
 
         /// Drain one request (non-blocking). Returns false on stop / no work.
         bool drainRequest();
@@ -1330,13 +1332,16 @@ namespace lux::render
         class Impl;
 
     protected:
+        using ImplOwner = std::unique_ptr<Impl, void (*)(Impl*)>;
+        [[nodiscard]] static Expected<ImplOwner> prepare(ServerConfig config, RenderChannelSync& sync) noexcept;
+
         GeneralRenderServer(
             std::shared_ptr<Channel> frame_channel,
             std::shared_ptr<TRenderControlChannel<>> control_channel,
             std::shared_ptr<TRenderUploadChannel<>> upload_channel,
             std::shared_ptr<RenderChannelSync> sync,
-            std::unique_ptr<Impl> impl
-        );
+            ImplOwner impl
+        ) noexcept;
 
         /// Try to flush pending upload-completion replies without a request.
         /// Opens a standalone reply-only frame, publishes, and returns.
@@ -1448,7 +1453,7 @@ namespace lux::render
 
         [[nodiscard]] bool drainProgram(bool blocking, ERenderProgramKind& kind);
 
-        std::unique_ptr<Impl> impl_;
+        ImplOwner impl_;
         std::unique_ptr<RenderControlServer> control_server_;
         std::unique_ptr<RenderUploadServer> upload_server_;
     };

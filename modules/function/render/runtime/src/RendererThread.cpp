@@ -11,10 +11,17 @@ namespace lux::render::detail
         class RuntimeServer final : public GeneralRenderServer
         {
         public:
-            explicit RuntimeServer(RendererThread& state)
-                : GeneralRenderServer(state.frames, state.controls, state.uploads, state.sync),
-                  statistics_(*state.statistics), sync_(state.sync)
+            [[nodiscard]] static Expected<std::unique_ptr<RuntimeServer>> create(
+                RendererThread& state,
+                ServerConfig config
+            ) noexcept
             {
+                auto prepared = prepare(std::move(config), *state.sync);
+                if (!prepared)
+                {
+                    return lux::cxx::unexpected(prepared.error());
+                }
+                return std::unique_ptr<RuntimeServer>(new RuntimeServer(state, std::move(*prepared)));
             }
 
             bool tick() override
@@ -49,6 +56,12 @@ namespace lux::render::detail
             }
 
         private:
+            RuntimeServer(RendererThread& state, ImplOwner backing) noexcept
+                : GeneralRenderServer(state.frames, state.controls, state.uploads, state.sync, std::move(backing)),
+                  statistics_(*state.statistics), sync_(state.sync)
+            {
+            }
+
             RenderStatistics& statistics_;
             std::shared_ptr<RenderChannelSync> sync_;
             void publishCompletion() noexcept
@@ -76,7 +89,6 @@ namespace lux::render::detail
                 [&state, config, diagnostics = std::move(diagnostics)]
                 {
                     {
-                        RuntimeServer server(state);
                         ServerConfig server_config;
                         for (const auto& extension : config.instance_extensions)
                         {
@@ -87,16 +99,16 @@ namespace lux::render::detail
                         server_config.validation_error_counter = &state.statistics->validation_errors;
                         server_config.gpu_completed_serial = &state.statistics->completed;
                         server_config.validation_message_sink = diagnostics;
-                        auto initialized = server.init(std::move(server_config));
-                        if (!initialized)
+                        auto server = RuntimeServer::create(state, std::move(server_config));
+                        if (!server)
                         {
-                            state.startup_error = initialized.error();
+                            state.startup_error = server.error();
                         }
-                        state.startup.store(initialized ? 1 : 2, std::memory_order_release);
+                        state.startup.store(server ? 1 : 2, std::memory_order_release);
                         state.startup.notify_all();
-                        if (initialized)
+                        if (server)
                         {
-                            while (server.tick())
+                            while ((*server)->tick())
                             {
                             }
                         }

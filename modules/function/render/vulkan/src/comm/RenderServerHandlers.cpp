@@ -280,13 +280,6 @@ namespace lux::render
             reply.version = kDeviceCapsVersion;
             reply.needed = static_cast<uint32_t>(sizeof(DeviceCaps));
 
-            if (im.dev_ctx_ == nullptr)
-            {
-                reply.error = renderError<err::device::VulkanObjectCreationFailed>();
-                replyToCurrent<QueryDeviceCapsPayload>(ctx, reply);
-                return;
-            }
-
             reply.feature_level = static_cast<uint32_t>(im.dev_ctx_->featureLevel());
 
             if (p.dst_ptr == 0 || p.dst_capacity < sizeof(DeviceCaps))

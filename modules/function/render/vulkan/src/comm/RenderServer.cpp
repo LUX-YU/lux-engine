@@ -76,28 +76,48 @@ namespace lux::render
 
     void registerServerHandlers(GeneralRenderServer::Dispatcher& dispatcher);
 
-    GeneralRenderServer::GeneralRenderServer(
+    Expected<GeneralRenderServer::ImplOwner> GeneralRenderServer::prepare(
+        ServerConfig config,
+        RenderChannelSync& sync
+    ) noexcept
+    {
+        return Impl::create(std::move(config), sync);
+    }
+
+    Expected<std::unique_ptr<GeneralRenderServer>> GeneralRenderServer::create(
         std::shared_ptr<Channel> frame_channel,
         std::shared_ptr<TRenderControlChannel<>> control_channel,
         std::shared_ptr<TRenderUploadChannel<>> upload_channel,
-        std::shared_ptr<RenderChannelSync> sync
-    )
-        : GeneralRenderServer(
-              std::move(frame_channel),
-              std::move(control_channel),
-              std::move(upload_channel),
-              std::move(sync),
-              std::make_unique<Impl>()
-          )
-    {}
+        std::shared_ptr<RenderChannelSync> sync,
+        ServerConfig config
+    ) noexcept
+    {
+        const bool has_channels = frame_channel && control_channel && upload_channel && sync;
+        if (!has_channels)
+        {
+            return renderFailure<err::internal::Unspecified>();
+        }
+        auto prepared = prepare(std::move(config), *sync);
+        if (!prepared)
+        {
+            return lux::cxx::unexpected(prepared.error());
+        }
+        return std::unique_ptr<GeneralRenderServer>(new GeneralRenderServer(
+            std::move(frame_channel),
+            std::move(control_channel),
+            std::move(upload_channel),
+            std::move(sync),
+            std::move(*prepared)
+        ));
+    }
 
     GeneralRenderServer::GeneralRenderServer(
         std::shared_ptr<Channel> frame_channel,
         std::shared_ptr<TRenderControlChannel<>> control_channel,
         std::shared_ptr<TRenderUploadChannel<>> upload_channel,
         std::shared_ptr<RenderChannelSync> sync,
-        std::unique_ptr<Impl> impl
-    )
+        ImplOwner impl
+    ) noexcept
         : TRenderServer<>(frame_channel, sync, impl->dispatcher), impl_(std::move(impl)),
           control_server_(std::make_unique<RenderControlServer>(std::move(control_channel), sync, impl_->dispatcher)),
           upload_server_(
@@ -105,17 +125,6 @@ namespace lux::render
           )
     {
         impl_->server_ = this;
-    }
-
-    GeneralRenderServer::~GeneralRenderServer() = default;
-
-    Expected<void> GeneralRenderServer::init(ServerConfig config)
-    {
-        auto result = impl_->init(std::move(config));
-        if (!result)
-        {
-            return result;
-        }
         registerServerHandlers(impl_->dispatcher);
 
         // 分发失败接进自发错误通道。CommandFailedReply 只负责解除等回复请求的
@@ -123,20 +132,21 @@ namespace lux::render
         // 失败此前是彻底的黑洞 —— 这里是它们唯一的出口。
         setDispatchFailureSink(+[](void* user_state, EDispatchFailure, const RenderError& error) noexcept {
             auto& im = *static_cast<GeneralRenderServer::Impl*>(user_state);
-            im.error_sink_.emit(error, RenderErrorEvent::kNoScene, im.current_stamp_.serial);
+            im.error_sink_->emit(error, RenderErrorEvent::kNoScene, im.frame_orchestrator_->stamp().serial);
         });
         control_server_->setDispatchFailureSink(+[](void* user_state, EDispatchFailure, const RenderError& error
                                                  ) noexcept {
             auto& im = *static_cast<GeneralRenderServer::Impl*>(user_state);
-            im.error_sink_.emit(error, RenderErrorEvent::kNoScene, im.current_stamp_.serial);
+            im.error_sink_->emit(error, RenderErrorEvent::kNoScene, im.frame_orchestrator_->stamp().serial);
         });
         upload_server_->setDispatchFailureSink(+[](void* user_state, EDispatchFailure, const RenderError& error
                                                 ) noexcept {
             auto& im = *static_cast<GeneralRenderServer::Impl*>(user_state);
-            im.error_sink_.emit(error, RenderErrorEvent::kNoScene, im.current_stamp_.serial);
+            im.error_sink_->emit(error, RenderErrorEvent::kNoScene, im.frame_orchestrator_->stamp().serial);
         });
-        return {};
     }
+
+    GeneralRenderServer::~GeneralRenderServer() = default;
 
     bool GeneralRenderServer::drainRequest()
     {
@@ -156,7 +166,7 @@ namespace lux::render
             kind = program.kind;
             if (kind == ERenderProgramKind::FRAME)
             {
-                impl_->current_stamp_ = impl_->frame_orchestrator_.beginTick(0);
+                (void)impl_->frame_orchestrator_->beginTick(0);
             }
         };
         if (!acquireAndExecute(blocking, impl_.get(), before_execute))
@@ -167,9 +177,7 @@ namespace lux::render
         return finalizeReplies(blocking);
     }
 
-    // ── Per-kind completion finalization ──────────────────────────────────
-
-    void GeneralRenderServer::Impl::transitionUpload(
+    void UploadLifecycleTracker::transition(
         std::uint32_t request_id,
         TransferCompletion::EKind kind,
         std::uint32_t resource_index,
@@ -272,7 +280,7 @@ namespace lux::render
         upload_lifecycle_.active = active_uploads_.size();
     }
 
-    bool GeneralRenderServer::Impl::observeTransferResult(const TransferCompletion& completion) noexcept
+    bool UploadLifecycleTracker::observe(const TransferCompletion& completion) noexcept
     {
         if (completion.request_id == UINT32_MAX)
         {
@@ -326,7 +334,7 @@ namespace lux::render
             return false;
         }
 
-        transitionUpload(
+        transition(
             completion.request_id,
             completion.kind,
             completion.resource_handle,
@@ -336,9 +344,11 @@ namespace lux::render
         return true;
     }
 
+    // ── Per-kind completion finalization ──────────────────────────────────
+
     void GeneralRenderServer::Impl::settleUploadReply(const DeferredReplyEntry& reply) noexcept
     {
-        transitionUpload(
+        upload_tracker_->transition(
             reply.request_id,
             reply.kind,
             reply.resource_index,
@@ -349,12 +359,8 @@ namespace lux::render
 
     UploadLifecycleSnapshot GeneralRenderServer::Impl::uploadLifecycle() const noexcept
     {
-        auto snapshot = upload_lifecycle_;
-        snapshot.active = active_uploads_.size();
-        if (transfer_pipeline_)
-        {
-            snapshot.staging_copied_bytes = transfer_pipeline_->stagingCopiedBytes();
-        }
+        auto snapshot = upload_tracker_->snapshot();
+        snapshot.staging_copied_bytes = transfer_pipeline_->stagingCopiedBytes();
         return snapshot;
     }
 
@@ -369,7 +375,7 @@ namespace lux::render
         // result. Preserve exactly-once reply semantics and reclaim only the
         // generation recorded by that entry. Generation checks in the
         // resource stores prevent a late request from touching a reused slot.
-        for (const auto& upload : active_uploads_)
+        for (const auto& upload : upload_tracker_->active())
         {
             const bool already_has_reply = std::any_of(
                 pending_deferred_replies_.begin(),
@@ -436,7 +442,6 @@ namespace lux::render
             channelSync().work_epoch.wait(observed, std::memory_order_acquire);
         }
 
-        if (im.transfer_pipeline_)
         {
             im.transfer_pipeline_->shutdown();
             (void)im.processUploadCompletions();
@@ -475,18 +480,18 @@ namespace lux::render
         }
 
         im.failActiveUploadsForShutdown();
-        while (!im.active_uploads_.empty())
+        while (!im.upload_tracker_->active().empty())
         {
-            const auto before = im.active_uploads_.size();
+            const auto before = im.upload_tracker_->active().size();
             flushDeferredRepliesOnly();
-            if (im.active_uploads_.size() < before)
+            if (im.upload_tracker_->active().size() < before)
             {
                 continue;
             }
 
             const auto observed = channelSync().work_epoch.load(std::memory_order_acquire);
             flushDeferredRepliesOnly();
-            if (im.active_uploads_.size() < before)
+            if (im.upload_tracker_->active().size() < before)
             {
                 continue;
             }
@@ -966,10 +971,10 @@ namespace lux::render
                 transfer_pipeline_->releaseAfterGraphicsAcquire(slot);
             }
             graphics_finalize_slot_batch_.clear();
-            error_sink_.emit(
+            error_sink_->emit(
                 renderError<err::device::VulkanObjectCreationFailed>(),
                 RenderErrorEvent::kNoScene,
-                current_stamp_.serial
+                frame_orchestrator_->stamp().serial
             );
         };
 
@@ -1024,7 +1029,7 @@ namespace lux::render
 
         for (const auto& reply : graphics_finalize_reply_batch_)
         {
-            transitionUpload(
+            upload_tracker_->transition(
                 reply.request_id,
                 reply.kind,
                 reply.resource_index,
@@ -1057,13 +1062,12 @@ namespace lux::render
         //    submitted completions haven't retired yet, so defer them into
         //    pending_completions_ exactly like freshly drained ones; step 3
         //    re-checks them against the timeline and finalizes once retired.
-        if (transfer_pipeline_)
         {
             const uint32_t fn = transfer_pipeline_->drainResults(completion_buf_, kMaxDrainBatch);
             for (uint32_t i = 0; i < fn; ++i)
             {
                 auto& completion = completion_buf_[i];
-                if (observeTransferResult(completion))
+                if (upload_tracker_->observe(completion))
                 {
                     pending_completions_.push_back(completion);
                 }
@@ -1073,11 +1077,6 @@ namespace lux::render
                 }
             }
             made_progress = fn != 0;
-        }
-
-        if (!transfer_pipeline_)
-        {
-            return made_progress;
         }
 
         // 2. Query GPU timeline value (non-blocking).
@@ -1098,10 +1097,10 @@ namespace lux::render
             //
             // 走自发上报而不是原先的 log-once:上报通道按同键合并计数,持续查不动
             // 会带着累加的 occurrences 一直出现,而 log-once 只说第一次。
-            error_sink_.emit(
+            error_sink_->emit(
                 renderError<err::frame::TimelineQueryFailed>(encodeVkResult(sem_res)),
                 RenderErrorEvent::kNoScene,
-                current_stamp_.serial
+                frame_orchestrator_->stamp().serial
             );
             if (sem_res == VK_ERROR_DEVICE_LOST)
             {
@@ -1134,7 +1133,7 @@ namespace lux::render
                     for (uint32_t i = 0; i < dn; ++i)
                     {
                         auto& completion = completion_buf_[i];
-                        if (observeTransferResult(completion))
+                        if (upload_tracker_->observe(completion))
                         {
                             abort_completion(completion);
                         }
@@ -1223,7 +1222,7 @@ namespace lux::render
         for (uint32_t i = 0; i < n; ++i)
         {
             auto& c = completion_buf_[i];
-            if (!observeTransferResult(c))
+            if (!upload_tracker_->observe(c))
             {
                 destroyUnfinalizedCompletion(c);
                 continue;
@@ -1386,23 +1385,26 @@ namespace lux::render
 
     void GeneralRenderServer::reportError(const RenderError& error, std::uint32_t scene_index) noexcept
     {
-        impl_->error_sink_.emit(error, scene_index, impl_->current_stamp_.serial);
+        impl_->error_sink_->emit(error, scene_index, impl_->frame_orchestrator_->stamp().serial);
     }
 
     void GeneralRenderServer::flushErrorEvents()
     {
-        auto& sink = impl_->error_sink_;
+        auto& sink = *impl_->error_sink_;
 
         // 先把其它线程投进来的校验层消息折进 sink。排空发生在渲染线程,所以
         // sink 自始至终只有一个写者 —— 合并计数的线性扫描因此是安全的。
-        auto& ring = impl_->validation_ring_;
-        ring.drain([&sink, serial = impl_->current_stamp_.serial](const ValidationEvent& e) {
-            sink.emit(
-                renderError<err::validation::LayerReport>(e.severity, e.fingerprint),
-                RenderErrorEvent::kNoScene,
-                serial
-            );
-        });
+        auto& ring = *impl_->validation_ring_;
+        ring.drain(
+            [&sink, serial = impl_->frame_orchestrator_->stamp().serial](const ValidationEvent& e)
+            {
+                sink.emit(
+                    renderError<err::validation::LayerReport>(e.severity, e.fingerprint),
+                    RenderErrorEvent::kNoScene,
+                    serial
+                );
+            }
+        );
         if (const std::uint32_t lost = ring.dropped(); lost != 0)
         {
             // 环满/槽位耗尽丢掉的那些。它们没有各自的类型与实参可言,只报一条
@@ -1410,7 +1412,7 @@ namespace lux::render
             sink.emit(
                 renderError<err::validation::EventsDropped>(lost),
                 RenderErrorEvent::kNoScene,
-                impl_->current_stamp_.serial
+                impl_->frame_orchestrator_->stamp().serial
             );
             ring.clearDropped();
         }
@@ -1463,16 +1465,13 @@ namespace lux::render
     bool GeneralRenderServer::stepPendingResourceReleases()
     {
         auto& im = *impl_;
-        if (im.frame_driver_)
+        if (auto completed = im.frame_driver_->pollCompletions(); !completed)
         {
-            if (auto completed = im.frame_driver_->pollCompletions(); !completed)
-            {
-                return stopAfterFrameError(completed.error(), 2u);
-            }
+            return stopAfterFrameError(completed.error(), 2u);
         }
         if (im.gpu_completed_serial_)
         {
-            const auto completed = im.frame_driver_ ? im.frame_driver_->gpuCompletedSerial() : 0;
+            const auto completed = im.frame_driver_->gpuCompletedSerial();
             if (im.gpu_completed_serial_->exchange(completed, std::memory_order_acq_rel) != completed)
                 channelSync().notifyReplyProduced();
         }
@@ -1490,8 +1489,7 @@ namespace lux::render
         // 回执、不再提交任何帧,服务端等请求、客户端等回执,两端互等死锁
         // (桌面 player 优雅退出实测挂死;Android TERM_WINDOW 同构)。
         // Surface 销毁是窗口生命周期事件,频率极低,阻塞几毫秒可接受。
-        uint64_t gpu_completed = im.frame_driver_ ? im.frame_driver_->gpuCompletedSerial() : im.current_stamp_.serial;
-        if (im.frame_driver_)
+        uint64_t gpu_completed = im.frame_driver_->gpuCompletedSerial();
         {
             const bool watermark_short = std::any_of(
                 im.pending_resource_releases_.begin(),
@@ -1611,10 +1609,9 @@ namespace lux::render
         // beginFrame collects deferred destroys, then free our own tagged
         // deferred lists against the same watermark. (Serial arithmetic is NOT
         // sound here: serials advance on non-submitting ticks.)
-        const uint64_t gpu_completed = frame_driver_ ? frame_driver_->gpuCompletedSerial()
-                                                     : current_stamp_.serial; // driverless ⇒ no GPU work ever submitted
+        const uint64_t gpu_completed = frame_driver_->gpuCompletedSerial();
         renderer_->setGpuCompletedSerial(gpu_completed);
-        frame_orchestrator_.beginFrame(*renderer_);
+        frame_orchestrator_->beginFrame(*renderer_);
         std::erase_if(async_deferred_staging_, [&](const auto& e) { return e.first <= gpu_completed; });
         targets_registry_->collectRetiredPools(gpu_completed);
 
@@ -1642,12 +1639,12 @@ namespace lux::render
         {
             for (auto& sb : staging_pending_this_tick_)
             {
-                async_deferred_staging_.emplace_back(current_stamp_.serial, std::move(sb));
+                async_deferred_staging_.emplace_back(frame_orchestrator_->stamp().serial, std::move(sb));
             }
             staging_pending_this_tick_.clear();
         }
 
-        frame_orchestrator_.endFrame(*renderer_);
+        frame_orchestrator_->endFrame(*renderer_);
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -1729,7 +1726,7 @@ namespace lux::render
             // minimized window, paused host). Complete its passive use facts before
             // sleeping; otherwise Main would wait for GPU retirement while this
             // thread waits for a future Program. Only the render owner waits here.
-            if (im.frame_driver_ && im.frame_driver_->lastSubmittedSerial() > im.frame_driver_->gpuCompletedSerial())
+            if (im.frame_driver_->lastSubmittedSerial() > im.frame_driver_->gpuCompletedSerial())
             {
                 auto finished = im.frame_driver_->waitAllFences();
                 if (!finished)
@@ -1765,7 +1762,7 @@ namespace lux::render
     GeneralRenderServer::ETickStage GeneralRenderServer::beginRenderTick(FrameTickState& fs)
     {
         auto& im = *impl_;
-        auto& orch = im.frame_orchestrator_;
+        auto& orch = *im.frame_orchestrator_;
         auto prepared = orch.prepareTargets(im.targets(), *im.renderer_);
         if (!prepared)
         {
@@ -1791,8 +1788,6 @@ namespace lux::render
             return ETickStage::NO_TARGET; // 未开帧,无需收尾记账
         }
 
-        im.current_stamp_ = orch.stamp(); // beginRenderFrame 里已 patch image_index
-
         // 栅栏已等到(FrameDriver::beginFrame 内),此刻才可退休本槽的
         // staging/上传记账并推进场景帧态。
         im.beginTickFrame();
@@ -1809,7 +1804,7 @@ namespace lux::render
     bool GeneralRenderServer::renderRenderTick(FrameTickState& fs)
     {
         auto& im = *impl_;
-        auto recorded = im.frame_orchestrator_.renderTargets(im.targets(), *im.renderer_, im.scene_view_batch_, fs);
+        auto recorded = im.frame_orchestrator_->renderTargets(im.targets(), *im.renderer_, im.scene_view_batch_, fs);
         if (!recorded)
         {
             return stopAfterFrameError(recorded.error(), 1u);
@@ -1820,7 +1815,7 @@ namespace lux::render
     bool GeneralRenderServer::endRenderTick(FrameTickState& fs)
     {
         auto& im = *impl_;
-        auto ended = im.frame_orchestrator_.endRenderFrame(im.targets(), im.frame_driver_.get(), fs);
+        auto ended = im.frame_orchestrator_->endRenderFrame(im.targets(), im.frame_driver_.get(), fs);
         if (!ended)
         {
             return stopAfterFrameError(ended.error(), 1u);

@@ -694,6 +694,9 @@ namespace lux::render
                 continue;
             }
 
+            // Observe the wake epoch before the predicates it protects. A close between
+            // this observation and wait changes the epoch; it cannot be consumed and lost.
+            const auto epoch = job_epoch_.load(std::memory_order_acquire);
             if (stop_token.stopRequested() || !accepting_.load(std::memory_order_acquire))
                 break;
 
@@ -702,7 +705,6 @@ namespace lux::render
             if (retireGraphicsFinalize())
                 continue;
 
-            const auto epoch = job_epoch_.load(std::memory_order_acquire);
             if (!jobs_.empty())
                 continue;
             job_epoch_.wait(epoch, std::memory_order_relaxed);

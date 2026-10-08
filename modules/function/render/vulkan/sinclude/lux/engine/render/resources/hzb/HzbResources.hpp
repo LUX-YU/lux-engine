@@ -15,22 +15,11 @@
  *                 being written breaks the cull→draw→build→cull cycle (cull runs
  *                 before this frame's depth exists).
  *
- * ── Two-phase construction ───────────────────────────────────────────────────
- *
- *   init(InitInfo)                — publish time. Device / allocator / arena /
- *                                   read layout / sampler. NO extent: at feature
- *                                   attach no view has been sized yet.
- *   ensureView(view_id, w, h)     — first sight of a view, and on resize.
- *                                   Idempotent when the extent is unchanged.
- *   evictView(view_id)            — the view is gone; free its images. Wired to
- *                                   ResourceRegistry::addViewDestroyedHook by
- *                                   the install point. NOT optional: view ids
- *                                   are RECYCLED (SlotKeyAutoSparseSet pushes
- *                                   the index back with a bumped generation, and
- *                                   feature-facing per-view keys are the bare
- *                                   index — RenderScene.hpp), so a stale entry
- *                                   would be silently adopted by the next view
- *                                   that lands on the same index.
+ * create() fixes the device, retirement and optional read-side dependencies.
+ * Images are a per-view capability acquired by ensureView(). Replacement is
+ * prepared in full before adoption; a rejected resize preserves the accepted
+ * pair and its descriptors. evictView() releases a recycled view index through
+ * the original GPU retirement queue.
  *
  * The RenderGraph only builds a mip-0 view per resource, so the build (one
  * 2×2-max downsample dispatch per level) needs per-mip views this resource
@@ -45,46 +34,41 @@
  *                         那条路径**不等 GPU**(它自己的每视图 GPU 槽同样延迟
  *                         回收)。此刻 N-1/N-2 帧的命令缓冲仍可能在采样本金字塔,
  *                         其每 mip 构建描述符集也仍引用这些 image view。
- * 两条都走 DeferredDestroyQueue(InitInfo::deferred_queue),按帧序号退役,由
+ * 两条都走 DeferredDestroyQueue(CreateInfo::retirement),按帧序号退役,由
  * 栅栏证实的完成水位放行 —— 就地销毁曾是 VUID-vkDestroyImageView-imageView-01026
  * / VUID-vkDestroyImage-image-01000 的来源。
  */
 
 #include <lux/engine/function/render/client/core/Errors.hpp>
-#include <lux/engine/render/gpu/VmaFwd.hpp> // VmaAllocator / VmaAllocation fwd
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/render/gpu/lifecycle/FifOwned.hpp>
 
 #include <lux/cxx/container/BasicSparseSet.hpp>
 
 #include <vulkan/vulkan.h>
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace lux::render
 {
+    class DeviceContext;
     class SceneDescriptorArena;
     class DeferredDestroyQueue;
 
     class LUX_FUNCTION_PUBLIC HzbResources
     {
     public:
-        /// Publish-time wiring. Deliberately extent-free — see the file header.
-        struct InitInfo
+        /// Device and retirement outlive the resource. The optional read side
+        /// is either entirely absent or supplies all three dependencies.
+        struct CreateInfo
         {
-            VkDevice device{VK_NULL_HANDLE};
-            VmaAllocator allocator{VK_NULL_HANDLE};
-            // Stage C read side (optional — omit for build-only use, e.g. the test):
-            SceneDescriptorArena* arena{nullptr};              ///< allocates the per-slot read DS
-            VkDescriptorSetLayout read_layout{VK_NULL_HANDLE}; ///< set 1 {COMBINED_IMAGE_SAMPLER, UNIFORM_BUFFER}
-            VkSampler sampler{VK_NULL_HANDLE};                 ///< nearest+clamp, for HZB sampling
-            /// 退役队列。**在飞帧场景下不是可选项** —— evictView() 由
-            /// RenderScene::removeView 的视图销毁钩子驱动,而那条路径**不**等待
-            /// GPU 空闲(它自己的每视图 GPU 槽同样是延迟回收的,见
-            /// RenderScene::removeView 的注释)。就地 vkDestroyImageView /
-            /// vmaDestroyImage 会砸掉 N-1/N-2 帧命令缓冲仍在引用的金字塔。
-            /// 留空只适用于**销毁前自行 waitIdle** 的独立用法(无头测试)。
-            DeferredDestroyQueue* deferred_queue{nullptr};
+            DeviceContext& device;
+            DeferredDestroyQueue& retirement;
+            SceneDescriptorArena* arena{};
+            VkDescriptorSetLayout read_layout{};
+            VkSampler sampler{};
         };
 
         // Camera params the cull shader reads to project a bounding sphere into
@@ -99,21 +83,12 @@ namespace lux::render
             float origin_local_page_size[4]{0.0f, 0.0f, 0.0f, 1024.0f};
         };
 
-        HzbResources() = default;
-        ~HzbResources();
+        [[nodiscard]] static Expected<std::unique_ptr<HzbResources>> create(const CreateInfo& info) noexcept;
+        ~HzbResources() = default;
         HzbResources(const HzbResources&) = delete;
         HzbResources& operator=(const HzbResources&) = delete;
-
-        /// Publish-time bring-up: records the device-level wiring. Allocates NO
-        /// images — those are per view, see ensureView().
-        bool init(const InitInfo& info);
-        void destroy();
-
-        /// Device-level readiness (init() ran). Says nothing about any view.
-        [[nodiscard]] bool initialized() const noexcept
-        {
-            return device_ != VK_NULL_HANDLE;
-        }
+        HzbResources(HzbResources&&) = delete;
+        HzbResources& operator=(HzbResources&&) = delete;
 
         // ── Per-view lifecycle ───────────────────────────────────────────────
         /// Create (or re-create at a new extent) this view's TWO mip-chain
@@ -121,11 +96,11 @@ namespace lux::render
         /// unchanged. The caller still vkDeviceWaitIdle's before a RE-create
         /// (resize is rare). 注意那条 waitIdle 已不是**释放**的安全前提 ——
         /// 旧句柄一律退役到 deferred_queue,不再就地销毁。
-        Expected<void> ensureView(uint32_t view_id, uint32_t width, uint32_t height);
+        Expected<void> ensureView(uint32_t view_id, uint32_t width, uint32_t height) noexcept;
 
         /// Free everything this view owns. Wired to the registry's
         /// view-destroyed hook — see the file header on id recycling.
-        void evictView(uint32_t view_id);
+        void evictView(uint32_t view_id) noexcept;
 
         /// True once ensureView() succeeded for this view.
         [[nodiscard]] bool viewReady(uint32_t view_id) const noexcept;
@@ -140,6 +115,7 @@ namespace lux::render
         [[nodiscard]] uint32_t mipCount(uint32_t view_id) const noexcept;
         [[nodiscard]] uint32_t width(uint32_t view_id) const noexcept;
         [[nodiscard]] uint32_t height(uint32_t view_id) const noexcept;
+
         [[nodiscard]] static constexpr VkFormat format() noexcept
         {
             return VK_FORMAT_R32_SFLOAT;
@@ -204,15 +180,12 @@ namespace lux::render
     private:
         struct Slot
         {
-            VkImage image{VK_NULL_HANDLE};
-            VmaAllocation alloc{VK_NULL_HANDLE};
-            VkImageView full_view{VK_NULL_HANDLE};
-            std::vector<VkImageView> mip_views;
-            // Read side (set 1):
-            VkDescriptorSet read_ds{VK_NULL_HANDLE}; ///< arena-owned (not freed here)
-            VkBuffer ubo{VK_NULL_HANDLE};
-            VmaAllocation ubo_alloc{VK_NULL_HANDLE};
-            void* ubo_mapped{nullptr};
+            TFifOwnedAllocated<VkImage> image;
+            TFifOwnedAllocated<VkBuffer> ubo;
+            TFifOwned<VkImageView> full_view;
+            std::vector<TFifOwned<VkImageView>> mip_views;
+            VkDescriptorSet read_ds{}; ///< Borrowed from the scene arena.
+            void* ubo_mapped{};
         };
 
         /// One view's pyramid pair + the geometry both slots share.
@@ -229,6 +202,7 @@ namespace lux::render
                 const uint32_t w = width >> level;
                 return w ? w : 1u;
             }
+
             [[nodiscard]] uint32_t mipHeight(uint32_t level) const noexcept
             {
                 const uint32_t h = height >> level;
@@ -236,20 +210,19 @@ namespace lux::render
             }
         };
 
-        Expected<void> initSlot(Slot& s, const ViewSlots& geom);
-        void destroySlot(Slot& s);
-        void destroyViewSlots(ViewSlots& vs);
+        explicit HzbResources(const CreateInfo& info) noexcept;
+        Expected<void> prepareSlot(Slot& slot, const ViewSlots& geometry) noexcept;
+        [[nodiscard]] ViewSlots* findView(uint32_t view_id) noexcept;
+        [[nodiscard]] const ViewSlots* findView(uint32_t view_id) const noexcept;
 
-        /// ⚠️ erase() is swap-with-last — never rely on dense order here.
-        lux::cxx::BasicSparseSet<uint32_t, ViewSlots> views_;
-
-        // Device-level wiring, recorded once by init().
-        VkDevice device_{VK_NULL_HANDLE};
-        VmaAllocator allocator_{VK_NULL_HANDLE};
-        DeferredDestroyQueue* destroy_queue_{nullptr};
-        SceneDescriptorArena* arena_{nullptr};
-        VkDescriptorSetLayout read_layout_{VK_NULL_HANDLE};
-        VkSampler sampler_{VK_NULL_HANDLE};
+        DeviceContext& device_;
+        DeferredDestroyQueue& retirement_;
+        SceneDescriptorArena* arena_;
+        VkDescriptorSetLayout read_layout_;
+        VkSampler sampler_;
+        // Stable per-view owners: replacing a pair destroys its views before
+        // images, even when the sparse set swaps dense positions on erase.
+        lux::cxx::BasicSparseSet<uint32_t, std::unique_ptr<ViewSlots>> views_;
     };
 
 } // namespace lux::render

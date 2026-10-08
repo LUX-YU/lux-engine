@@ -5,27 +5,27 @@
 
 #include <lux/engine/render/core/RenderErrorSink.hpp>
 
-#include <lux/engine/render/renderer/features/hzb/HzbFeature.hpp>
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp> // sampler cache
+#include <lux/engine/render/renderer/features/hzb/HzbFeature.hpp>
 
 #include <array>
 #include <cstring>
 #include <mutex>
 #include <span>
 
+#include <lux/engine/function/render/features/deferred/DeferredGBufferOperation.hpp>
+#include <lux/engine/function/render/graph/RGEnums.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
+#include <lux/engine/render/gpu/VulkanContext.hpp>
+#include <lux/engine/render/gpu/pipeline/PipelineLayoutService.hpp>
+#include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
+#include <lux/engine/render/graph/PassRecordContext.hpp>
+#include <lux/engine/render/graph/RGBuilder.hpp>
+#include <lux/engine/render/renderer/features/view_camera/ViewCameraResource.hpp>
+#include <lux/engine/render/resources/BuiltinShaderRegistry.hpp> // resolveShaderStage
+#include <lux/engine/render/resources/ShaderResources.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/render/scene/View.hpp>
-#include <lux/engine/render/renderer/features/view_camera/ViewCameraResource.hpp>
-#include <lux/engine/render/graph/RGBuilder.hpp>
-#include <lux/engine/function/render/graph/RGEnums.hpp>
-#include <lux/engine/render/graph/PassRecordContext.hpp>
-#include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
-#include <lux/engine/render/gpu/pipeline/PipelineLayoutService.hpp>
-#include <lux/engine/render/gpu/VulkanContext.hpp>
-#include <lux/engine/render/resources/ShaderResources.hpp>
-#include <lux/engine/render/resources/BuiltinShaderRegistry.hpp> // resolveShaderStage
-#include <lux/engine/function/render/features/deferred/DeferredGBufferOperation.hpp>
 
 namespace lux::render
 {
@@ -74,28 +74,25 @@ namespace lux::render
         }
         hzb_sampler_ = *hzb_sampler;
 
-        // --- 3. HzbResources in the scene registry so the cull feature can
-        //         find<HzbResources>() and bind its read DS (mirror SkinningResources).
-        //         init() takes the DEVICE-level wiring only; the images are per
-        //         view and per extent, created in onFrameBegin → rebuildViewAt. ---
-        // ensure<T>(init_args):构造 + init + 只在成功时发布。原先同一个对象查了
-        // 三次(find 判空 → emplace → 再 find),且 init 失败时对象已经进了注册表。
+        // The scene owns one complete resource; extents remain per-view capabilities.
         auto& sreg = renderScene().resources();
-        const bool fresh_hzb = (sreg.find<HzbResources>() == nullptr);
-
-        HzbResources::InitInfo ri{};
-        ri.device = ctx.deviceContext().logicalDevice();
-        ri.allocator = ctx.deviceContext().vmaAllocator();
-        // 金字塔的释放必须延迟到 GPU 过水位:下面登记的视图销毁钩子跑在
-        // RenderScene::removeView 里,那条路径不等设备空闲。
-        ri.deferred_queue = &ctx.deferredDestroyQueue();
-        ri.arena = &renderScene().descriptorArena();
-        ri.read_layout = read_layout_;
-        ri.sampler = hzb_sampler_;
-        auto hzb_r = sreg.ensure<HzbResources>(ri);
-        if (!hzb_r)
-            return lux::cxx::unexpected<RenderError>(hzb_r.error());
-        hzb_res_ = *hzb_r;
+        hzb_res_ = sreg.find<HzbResources>();
+        const bool fresh_hzb = hzb_res_ == nullptr;
+        if (fresh_hzb)
+        {
+            auto resource = HzbResources::create(
+                {.device = ctx.deviceContext(),
+                 .retirement = ctx.deferredDestroyQueue(),
+                 .arena = &renderScene().descriptorArena(),
+                 .read_layout = read_layout_,
+                 .sampler = hzb_sampler_}
+            );
+            if (!resource)
+            {
+                return lux::cxx::unexpected(resource.error());
+            }
+            hzb_res_ = sreg.insert(std::move(*resource)).get();
+        }
 
         if (fresh_hzb)
         {
@@ -105,10 +102,13 @@ namespace lux::render
             // 同一个 index 的视图静默捡走。由**安装点**登记,只在首次创建时登记。
             auto* res = hzb_res_;
             auto* sets = &mip_sets_;
-            sreg.addViewDestroyedHook([res, sets](uint32_t /*scene_key*/, uint32_t view_id) {
-                res->evictView(view_id);
-                sets->erase(view_id); // 描述符集由场景 arena 拥有,这里只丢句柄
-            });
+            sreg.addViewDestroyedHook(
+                [res, sets](uint32_t /*scene_key*/, uint32_t view_id)
+                {
+                    res->evictView(view_id);
+                    sets->erase(view_id); // 描述符集由场景 arena 拥有,这里只丢句柄
+                }
+            );
         }
 
         // --- 4. Compute pipeline (set0, set1-depth) + push constant ---
@@ -116,30 +116,37 @@ namespace lux::render
             auto& shaders = ctx.globalRegistry().must<ShaderResources>();
             auto cs_h = resolveShaderStage(shaders, cfg_.compute_shader, EBuiltinShader::HZB_DOWNSAMPLE_COMP);
             if (!cs_h)
+            {
                 return lux::cxx::unexpected(cs_h.error());
+            }
             const ShaderObject* cs = shaders.get(*cs_h);
             if (cs == nullptr)
+            {
                 return renderFailure<err::shader::HandleStale>();
+            }
 
             // The build pipeline's layout is built via reflection (set0 =
             // src/dst per-mip, set1 = depth source; both are pass-local,
             // with no contract resources).
-            auto pipeline = ctx.pipelineManager().registerComputePipelineReflected(
-                cs->module.get(),
-                cs->info,
-                "HzbBuild"
-            );
+            auto pipeline =
+                ctx.pipelineManager().registerComputePipelineReflected(cs->module.get(), cs->info, "HzbBuild");
             if (!pipeline)
+            {
                 return lux::cxx::unexpected(pipeline.error());
+            }
             compute_pipeline_ = *pipeline;
             set0_layout_ = ctx.pipelineManager().computeSetLayout(compute_pipeline_, 0);
             set1_layout_ = ctx.pipelineManager().computeSetLayout(compute_pipeline_, 1);
             // 反射没给出这两套 set = 着色器与本 feature 对布局的预期不一致。
             // 继续下去会在录制期绑一个空布局。
             if (set0_layout_ == VK_NULL_HANDLE)
+            {
                 return renderFailure<err::pipeline::ReflectedSetLayoutMissing>(0u);
+            }
             if (set1_layout_ == VK_NULL_HANDLE)
+            {
                 return renderFailure<err::pipeline::ReflectedSetLayoutMissing>(1u);
+            }
         }
         return {};
     }
@@ -147,15 +154,21 @@ namespace lux::render
     void HzbFeature::rebuildViewAt(uint32_t view_id, uint32_t width, uint32_t height)
     {
         if (hzb_res_ == nullptr || width == 0u || height == 0u)
+        {
             return;
+        }
         // Nothing to do when this view already has a pyramid at this extent.
         if (hzb_res_->viewReady(view_id) && hzb_res_->width(view_id) == width && hzb_res_->height(view_id) == height)
+        {
             return;
+        }
 
         auto& ctx = renderContext();
         VkDevice device = ctx.deviceContext().logicalDevice();
         if (ctx.deviceContext().waitIdle() != VK_SUCCESS)
+        {
             return;
+        }
 
         if (auto ready = hzb_res_->ensureView(view_id, width, height); !ready)
         {
@@ -244,7 +257,9 @@ namespace lux::render
     void HzbFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)
     {
         if (hzb_res_ == nullptr)
+        {
             return;
+        }
 
         // onFrameBegin fires once per frame, scene-wide → the feature-local counter
         // IS the absolute frame index; its parity picks the build (current) slot.
@@ -260,41 +275,48 @@ namespace lux::render
         // view — then overwrote the same images from each view's depth, so the
         // pyramid ended up holding the LAST view's depth at the FIRST view's size,
         // and both views culled against it.)
-        renderScene().forEachActiveView([&](const View& v) {
-            const uint32_t view_id = v.handle.index;
-            const uint32_t vw = v.current_extent.width;
-            const uint32_t vh = v.current_extent.height;
-            if (vw == 0u || vh == 0u)
-                return;
-
-            // (Re)build this view's two images on first use / extent change.
-            rebuildViewAt(view_id, vw, vh);
-            if (!hzb_res_->viewReady(view_id))
-                return;
-
-            hzb_res_->setCurrent(view_id, frame_counter_);
-
-            // Upload THIS frame's camera params into the CURRENT slot. Next frame
-            // the cull reads the PREVIOUS slot = this frame's HZB + view_proj.
-            HzbResources::ViewParams vp{};
-            const auto* cam_fd = cam ? cam->find(view_id) : nullptr;
-            if (cam_fd != nullptr)
+        renderScene().forEachActiveView(
+            [&](const View& v)
             {
-                const Eigen::Matrix4f relative_vp = viewRelativeViewProjection(*cam_fd);
-                std::memcpy(vp.view_proj, relative_vp.data(), sizeof(vp.view_proj));
-                for (std::size_t axis = 0; axis < 3; ++axis)
+                const uint32_t view_id = v.handle.index;
+                const uint32_t vw = v.current_extent.width;
+                const uint32_t vh = v.current_extent.height;
+                if (vw == 0u || vh == 0u)
                 {
-                    vp.origin_page[axis] = cam_fd->render_origin.page_delta[axis];
-                    vp.origin_local_page_size[axis] = cam_fd->render_origin.local[axis];
+                    return;
                 }
-                vp.origin_local_page_size[3] = cam_fd->coordinate_page_size;
+
+                // (Re)build this view's two images on first use / extent change.
+                rebuildViewAt(view_id, vw, vh);
+                if (!hzb_res_->viewReady(view_id))
+                {
+                    return;
+                }
+
+                hzb_res_->setCurrent(view_id, frame_counter_);
+
+                // Upload THIS frame's camera params into the CURRENT slot. Next frame
+                // the cull reads the PREVIOUS slot = this frame's HZB + view_proj.
+                HzbResources::ViewParams vp{};
+                const auto* cam_fd = cam ? cam->find(view_id) : nullptr;
+                if (cam_fd != nullptr)
+                {
+                    const Eigen::Matrix4f relative_vp = viewRelativeViewProjection(*cam_fd);
+                    std::memcpy(vp.view_proj, relative_vp.data(), sizeof(vp.view_proj));
+                    for (std::size_t axis = 0; axis < 3; ++axis)
+                    {
+                        vp.origin_page[axis] = cam_fd->render_origin.page_delta[axis];
+                        vp.origin_local_page_size[axis] = cam_fd->render_origin.local[axis];
+                    }
+                    vp.origin_local_page_size[3] = cam_fd->coordinate_page_size;
+                }
+                vp.params[0] = static_cast<float>(hzb_res_->width(view_id));
+                vp.params[1] = static_cast<float>(hzb_res_->height(view_id));
+                vp.params[2] = static_cast<float>(hzb_res_->mipCount(view_id)); // >= 1 → ready
+                vp.params[3] = 0.0f;
+                hzb_res_->writeViewParams(view_id, hzb_res_->curIndex(view_id), vp);
             }
-            vp.params[0] = static_cast<float>(hzb_res_->width(view_id));
-            vp.params[1] = static_cast<float>(hzb_res_->height(view_id));
-            vp.params[2] = static_cast<float>(hzb_res_->mipCount(view_id)); // >= 1 → ready
-            vp.params[3] = 0.0f;
-            hzb_res_->writeViewParams(view_id, hzb_res_->curIndex(view_id), vp);
-        });
+        );
     }
 
     void HzbFeature::addPasses(RGBuilder& builder)
@@ -303,7 +325,9 @@ namespace lux::render
         // images are created per-frame in onFrameBegin, so the kernel checks
         // readiness at record time (the graph is compiled only once).
         if (!compute_pipeline_.valid())
+        {
             return;
+        }
 
         // set 1 = SceneDepth (SAMPLED), bound by the graph. The mip-0 source.
         auto depth_tds = builder.createTransientDS(
@@ -330,30 +354,41 @@ namespace lux::render
             // contribution can reverse the inferred RAW direction and make
             // HZB consume an UNDEFINED imported depth image.
             .after(kDeferredGBufferDrawPassName)
-            .setKernelFn([this](const PassRecordContext& pctx) {
-                // Recording runs once per active view, so this kernel builds THAT
-                // view's pyramid. (It used to build the one scene-wide pair, which
-                // meant N views overwrote each other's pyramid every frame.)
-                if (pctx.pipeline_layout == VK_NULL_HANDLE || hzb_res_ == nullptr || pctx.view == nullptr)
-                    return;
-                const uint32_t view_id = pctx.view->handle.index;
-                if (!hzb_res_->viewReady(view_id))
-                    return; // this view's images not built yet
-                const auto* ms = mip_sets_.tryGet(view_id);
-                if (ms == nullptr)
-                    return;
-                const uint32_t slot = hzb_res_->curIndex(view_id);
-                if (ms->slot[slot].empty())
-                    return;
-                hzb_res_->recordBuild(
-                    pctx.cmd,
-                    pctx.pipeline_layout,
-                    view_id,
-                    slot,
-                    ms->slot[slot].data(),
-                    static_cast<uint32_t>(ms->slot[slot].size())
-                );
-            });
+            .setKernelFn(
+                [this](const PassRecordContext& pctx)
+                {
+                    // Recording runs once per active view, so this kernel builds THAT
+                    // view's pyramid. (It used to build the one scene-wide pair, which
+                    // meant N views overwrote each other's pyramid every frame.)
+                    if (pctx.pipeline_layout == VK_NULL_HANDLE || hzb_res_ == nullptr || pctx.view == nullptr)
+                    {
+                        return;
+                    }
+                    const uint32_t view_id = pctx.view->handle.index;
+                    if (!hzb_res_->viewReady(view_id))
+                    {
+                        return; // this view's images not built yet
+                    }
+                    const auto* ms = mip_sets_.tryGet(view_id);
+                    if (ms == nullptr)
+                    {
+                        return;
+                    }
+                    const uint32_t slot = hzb_res_->curIndex(view_id);
+                    if (ms->slot[slot].empty())
+                    {
+                        return;
+                    }
+                    hzb_res_->recordBuild(
+                        pctx.cmd,
+                        pctx.pipeline_layout,
+                        view_id,
+                        slot,
+                        ms->slot[slot].data(),
+                        static_cast<uint32_t>(ms->slot[slot].size())
+                    );
+                }
+            );
     }
 
 } // namespace lux::render

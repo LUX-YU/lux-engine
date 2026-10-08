@@ -232,6 +232,8 @@ namespace
         VkDeviceSize offset;
     };
 
+    bool trace_hzb_reads{};
+    std::map<VkDescriptorSet, std::pair<VkImage, VkBuffer>> hzb_reads;
     bool trace_buffer_writes{};
     std::vector<BufferDescriptorWrite> buffer_writes;
 
@@ -244,6 +246,23 @@ namespace
     )
     {
         descriptor_writes += write_count;
+        if (trace_hzb_reads)
+        {
+            for (std::uint32_t i = 0; i < write_count; ++i)
+            {
+                const auto& write = writes[i];
+                assert(write.descriptorCount == 1);
+                if (write.descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                {
+                    hzb_reads[write.dstSet].first = views.at(write.pImageInfo->imageView).second;
+                }
+                else
+                {
+                    assert(write.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+                    hzb_reads[write.dstSet].second = write.pBufferInfo->buffer;
+                }
+            }
+        }
         if (trace_buffer_writes)
         {
             for (std::uint32_t i = 0; i < write_count; ++i)
@@ -642,7 +661,7 @@ void checkSceneDescriptorArena(lux::render::DeviceContext& device, VkDescriptorS
     std::puts("Scene descriptor arena: native allocation errors, bounded growth, retry and generation retirement PASS");
 }
 
-void checkHzbDescriptorFailure(lux::render::DeviceContext& device)
+void checkHzbDescriptorFailure(lux::render::DeviceContext& device, std::string_view probe = {})
 {
     using namespace lux::render;
     const std::array bindings{
@@ -665,15 +684,48 @@ void checkHzbDescriptorFailure(lux::render::DeviceContext& device)
     const auto original_buffers = buffers.size();
     const auto original_sets = sets.size();
     {
-        HzbResources hzb;
-        assert(hzb.init(
-            {.device = device.logicalDevice(),
-             .allocator = device.vmaAllocator(),
+        auto resource = HzbResources::create(
+            {.device = device,
+             .retirement = retirement,
              .arena = arena->get(),
              .read_layout = layout->get(),
-             .sampler = sampler->get(),
-             .deferred_queue = &retirement}
-        ));
+             .sampler = sampler->get()}
+        );
+        assert(resource);
+        auto& hzb = **resource;
+        if (probe == "--hzb-before-mapping")
+        {
+            failure = EFailure::MAPPED;
+            const auto result = hzb.ensureView(17, 8, 8);
+            failure = EFailure::NONE;
+            std::printf("HZB missing mapping: accepted=%d ready=%d\n", bool(result), hzb.viewReady(17));
+            std::fflush(stdout);
+            assert(!result && !hzb.viewReady(17));
+            resource->reset();
+            retirement.collect(7);
+            return;
+        }
+        if (probe == "--hzb-before-resize")
+        {
+            assert(hzb.ensureView(17, 8, 8));
+            const auto accepted = HzbResources::resolveHzbReadDS(&hzb, 0, 17);
+            failure = EFailure::IMAGE;
+            const auto result = hzb.ensureView(17, 16, 16);
+            failure = EFailure::NONE;
+            std::printf(
+                "HZB rejected resize: accepted=%d ready=%d extent=%u old_descriptor=%d\n",
+                bool(result),
+                hzb.viewReady(17),
+                hzb.width(17),
+                HzbResources::resolveHzbReadDS(&hzb, 0, 17) == accepted
+            );
+            std::fflush(stdout);
+            assert(!result && hzb.viewReady(17) && hzb.width(17) == 8);
+            assert(HzbResources::resolveHzbReadDS(&hzb, 0, 17) == accepted);
+            resource->reset();
+            retirement.collect(7);
+            return;
+        }
         failure = EFailure::SET;
         set_failure_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
         const auto rejected = hzb.ensureView(17, 8, 8);
@@ -700,6 +752,214 @@ void checkHzbDescriptorFailure(lux::render::DeviceContext& device)
     arena->reset();
     assert(sets.size() == original_sets && retirement.pendingCount() == 0);
     std::puts("HZB descriptor failure: exact allocation error, no ready view, retry and original retirement PASS");
+}
+
+void checkHzbConstruction(lux::render::DeviceContext& device, lux::render::ResourceContext& resources)
+{
+    using namespace lux::render;
+    static_assert(!std::is_default_constructible_v<HzbResources>);
+    static_assert(!std::is_copy_constructible_v<HzbResources>);
+    static_assert(!std::is_move_constructible_v<HzbResources>);
+    const std::array bindings{
+        VkDescriptorSetLayoutBinding{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT},
+        VkDescriptorSetLayoutBinding{1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT}
+    };
+    VkDescriptorSetLayoutCreateInfo layout_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    layout_info.bindingCount = static_cast<std::uint32_t>(bindings.size());
+    layout_info.pBindings = bindings.data();
+    auto layout = DescriptorSetLayoutOwner::create(device.logicalDevice(), layout_info);
+    VkSamplerCreateInfo sampler_info{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    auto sampler = SamplerOwner::create(device.logicalDevice(), sampler_info);
+    auto arena = SceneDescriptorArena::create(device.logicalDevice(), {});
+    assert(layout && sampler && arena);
+    DeferredDestroyQueue retirement;
+    retirement.init(device.vmaAllocator(), device.logicalDevice());
+    retirement.beginFrame(17);
+    const auto baseline_images = images.size();
+    const auto baseline_views = views.size();
+    const auto baseline_buffers = buffers.size();
+    const auto baseline_sets = sets.size();
+    for (unsigned mask = 1; mask < 7; ++mask)
+    {
+        HzbResources::CreateInfo info{device, retirement};
+        info.arena = (mask & 1) ? arena->get() : nullptr;
+        info.read_layout = (mask & 2) ? layout->get() : VK_NULL_HANDLE;
+        info.sampler = (mask & 4) ? sampler->get() : VK_NULL_HANDLE;
+        const auto rejected = HzbResources::create(info);
+        assert(!rejected && isError<err::internal::InvalidArgument>(rejected.error()));
+        assert(images.size() == baseline_images && sets.size() == baseline_sets);
+    }
+    {
+        auto build_only = HzbResources::create({device, retirement});
+        assert(build_only && (*build_only)->ensureView(3, 8, 4));
+        assert((*build_only)->mipCount(3) == 4);
+        assert(!HzbResources::resolveHzbReadDS(build_only->get(), 0, 3));
+        assert(buffers.size() == baseline_buffers && sets.size() == baseline_sets);
+    }
+    retirement.collect(17);
+    assert(images.size() == baseline_images && views.size() == baseline_views);
+    trace_hzb_reads = true;
+    auto resource = HzbResources::create({device, retirement, arena->get(), layout->get(), sampler->get()});
+    assert(resource);
+    auto& hzb = **resource;
+    assert(!hzb.ensureView(7, 0, 8) && !hzb.viewReady(7));
+    assert(hzb.ensureView(7, 8, 8));
+    assert(hzb.ensureView(11, 4, 2));
+    hzb.setCurrent(7, 1);
+    const auto accepted = HzbResources::resolveHzbReadDS(&hzb, 0, 7);
+    hzb.setCurrent(7, 0);
+    const auto other_slot = HzbResources::resolveHzbReadDS(&hzb, 3, 7);
+    assert(accepted && other_slot && accepted != other_slot);
+    hzb.setCurrent(7, 1);
+    const auto other_view = HzbResources::resolveHzbReadDS(&hzb, 0, 11);
+    assert(other_view != accepted && other_view != other_slot);
+    const auto read_params = [&](VkDescriptorSet descriptor)
+    {
+        const auto buffer = hzb_reads.at(descriptor).second;
+        const auto allocation = buffers.at(buffer);
+        VmaAllocationInfo info{};
+        vmaGetAllocationInfo(allocation.first, allocation.second, &info);
+        assert(info.pMappedData);
+        VkMemoryPropertyFlags properties{};
+        vmaGetAllocationMemoryProperties(allocation.first, allocation.second, &properties);
+        assert(properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        HzbResources::ViewParams value{};
+        std::memcpy(&value, info.pMappedData, sizeof(value));
+        return value;
+    };
+    assert(read_params(accepted).params[2] == 0 && read_params(other_slot).params[2] == 0);
+    HzbResources::ViewParams params{};
+    params.params[2] = 4;
+    params.origin_page[0] = 321;
+    hzb.writeViewParams(7, 0, params);
+    assert(read_params(accepted).origin_page[0] == 321);
+    assert(read_params(other_slot).origin_page[0] == 0 && read_params(other_view).params[2] == 0);
+    const auto accepted_images = images;
+    const auto accepted_views = views;
+    const auto accepted_buffers = buffers;
+    const auto accepted_writes = descriptor_writes;
+    assert(hzb.ensureView(7, 8, 8) && descriptor_writes == accepted_writes);
+    set_failure_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    unsigned checked = 0;
+    for (auto boundary : {EFailure::IMAGE, EFailure::VIEW, EFailure::BUFFER, EFailure::MAPPED, EFailure::SET})
+    {
+        const unsigned count = boundary == EFailure::VIEW ? 12 : 2;
+        for (unsigned occurrence = 0; occurrence < count; ++occurrence)
+        {
+            failure = boundary;
+            skip_rejections = occurrence;
+            const auto previous_rejections = rejections;
+            const auto rejected = hzb.ensureView(7, 16, 16);
+            failure = EFailure::NONE;
+            assert(!rejected && rejections == previous_rejections + 1 && skip_rejections == 0);
+            assert(isError<err::device::VulkanCallFailed>(rejected.error()));
+            const auto expected =
+                boundary == EFailure::MAPPED ? VK_ERROR_MEMORY_MAP_FAILED : VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            assert(rejected.error().args[0] == encodeVkResult(expected));
+            assert(hzb.viewReady(7) && hzb.width(7) == 8 && hzb.height(7) == 8 && hzb.mipCount(7) == 4);
+            assert(hzb.curIndex(7) == 1 && hzb.prevIndex(7) == 0);
+            assert(HzbResources::resolveHzbReadDS(&hzb, 1, 7) == accepted);
+            assert(HzbResources::resolveHzbReadDS(&hzb, 2, 11) == other_view);
+            assert(read_params(accepted).origin_page[0] == 321);
+            retirement.collect(17);
+            assert(images == accepted_images && views == accepted_views && buffers == accepted_buffers);
+            ++checked;
+        }
+    }
+    assert(checked == 20);
+    set_failure_result = VK_ERROR_OUT_OF_POOL_MEMORY;
+    assert(hzb.ensureView(7, 16, 16));
+    assert(hzb.width(7) == 16 && hzb.mipCount(7) == 5 && hzb.curIndex(7) == 0);
+    const auto replacement = HzbResources::resolveHzbReadDS(&hzb, 0, 7);
+    assert(replacement != accepted && replacement != other_slot && read_params(replacement).params[2] == 0);
+    const auto old_image = hzb_reads.at(accepted).first;
+    assert(images.contains(old_image));
+    retirement.collect(16);
+    assert(images.contains(old_image));
+    retirement.collect(17);
+    assert(!images.contains(old_image) && hzb.width(11) == 4 && hzb.height(11) == 2);
+
+    // Exercise actual native clear/copy and destroy the semantic owner while the submit is in flight.
+    VkBufferCreateInfo readback_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+    readback_info.size = sizeof(float);
+    readback_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    VmaAllocationCreateInfo allocation_info{};
+    allocation_info.usage = VMA_MEMORY_USAGE_AUTO;
+    allocation_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+    auto readback = VmaBuffer::create(device.vmaAllocator(), readback_info, allocation_info);
+    assert(readback);
+    auto command = CommandBufferOwner::create(device.logicalDevice(), resources.commandPool());
+    assert(command);
+    VkCommandBufferBeginInfo begin_info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    assert(begin(command->get(), &begin_info) == VK_SUCCESS);
+    hzb.recordInitToGeneral(command->get(), 7);
+    VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    vkCmdPipelineBarrier(
+        command->get(),
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,
+        1,
+        &barrier,
+        0,
+        nullptr,
+        0,
+        nullptr
+    );
+    VkBufferImageCopy copy{};
+    copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 4, 0, 1};
+    copy.imageExtent = {1, 1, 1};
+    const auto replacement_image = hzb_reads.at(replacement).first;
+    vkCmdCopyImageToBuffer(command->get(), replacement_image, VK_IMAGE_LAYOUT_GENERAL, readback->buffer(), 1, &copy);
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+    vkCmdPipelineBarrier(
+        command->get(),
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_HOST_BIT,
+        0,
+        1,
+        &barrier,
+        0,
+        nullptr,
+        0,
+        nullptr
+    );
+    assert(end(command->get()) == VK_SUCCESS);
+    VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    auto fence = FenceOwner::create(device.logicalDevice(), fence_info);
+    assert(fence);
+    const auto cmd = command->get();
+    VkSubmitInfo submission{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    submission.commandBufferCount = 1;
+    submission.pCommandBuffers = &cmd;
+    assert(submit(device.graphicsQueue(), 1, &submission, fence->get()) == VK_SUCCESS);
+    retirement.beginFrame(18);
+    resource->reset();
+    assert(submitted && retirement.pendingCount() != 0);
+    retirement.collect(17);
+    assert(images.contains(replacement_image));
+    const auto fence_handle = fence->get();
+    assert(wait(device.logicalDevice(), 1, &fence_handle, VK_TRUE, UINT64_MAX) == VK_SUCCESS);
+    const auto* mapped = static_cast<const float*>(readback->map());
+    assert(mapped);
+    assert(vmaInvalidateAllocation(device.vmaAllocator(), readback->allocation(), 0, VK_WHOLE_SIZE) == VK_SUCCESS);
+    assert(*mapped == 1.0f);
+    readback->unmap();
+    retirement.collect(18);
+    assert(!images.contains(replacement_image));
+    readback = VmaBuffer{};
+    assert(images.size() == baseline_images && views.size() == baseline_views && buffers.size() == baseline_buffers);
+    arena->reset();
+    assert(sets.size() == baseline_sets && retirement.pendingCount() == 0);
+    trace_hzb_reads = false;
+    hzb_reads.clear();
+    std::puts(
+        "HZB complete construction: optional read-side contract, 20 native rejection boundaries, accepted resize "
+        "preservation, coherent params, view/slot isolation, native far-depth readback and in-flight retirement PASS"
+    );
 }
 
 void checkSparseStorage(lux::render::DeviceContext& device, lux::render::DeferredDestroyQueue& retirement)
@@ -3204,13 +3464,19 @@ int main(int argc, char** argv)
         return 0;
     }
     checkSceneDescriptorArena(device, layouts.getLayout(EDescriptorSetSlot::SCENE));
-    checkHzbDescriptorFailure(device);
+    const std::string_view hzb_probe = argc == 2 ? argv[1] : "";
+    checkHzbDescriptorFailure(device, hzb_probe);
+    if (hzb_probe.starts_with("--hzb-before-"))
+    {
+        return 0;
+    }
     if (argc == 2 && std::string_view(argv[1]) == "--scene-arena")
     {
         return 0;
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkHzbConstruction(device, resources);
     checkTerrainConstruction(device, resources, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--terrain")
     {

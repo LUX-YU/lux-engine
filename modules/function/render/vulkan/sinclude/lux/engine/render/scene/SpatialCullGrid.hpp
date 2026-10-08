@@ -3,8 +3,8 @@
  * @file SpatialCullGrid.hpp
  * @brief Cell-level spatial cull grid (spatial-cell-grid coarse cull).
  *
- * Slices space into uniform 2D XY cells (a spatial hash: worldPos -> cellId —
- * **not a tree**; each cell spans full Z height), and activates/dormants
+ * Slices space into uniform 2D XZ cells (a spatial hash: worldPos -> cellId —
+ * **not a tree**; each cell spans full Y height), and activates/dormants
  * cells by their distance to the cull source (the main camera). Instances in
  * a dormant cell are kept out of the per-frame GPU cull dispatch via a
  * per-slot active mask — this is what actually keeps down the "number of
@@ -27,7 +27,10 @@
  * a per-instance octree, two-level GPU cull, and frustum-level cell culling).
  */
 
+#include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/render/gpu/lifecycle/FifOwned.hpp>
+#include <memory>
 
 #include <array>
 #include <cstdint>
@@ -36,9 +39,6 @@
 #include <vector>
 
 #include <vulkan/vulkan.h>
-
-struct VmaAllocation_T;
-using VmaAllocation = VmaAllocation_T*;
 
 namespace lux::render
 {
@@ -49,30 +49,33 @@ namespace lux::render
     // =========================================================================
     //  SpatialCullGrid
     // =========================================================================
-    class LUX_FUNCTION_PUBLIC SpatialCullGrid
+    /// Complete ring owner. Device and retirement queue must outlive the grid.
+    class LUX_FUNCTION_PUBLIC SpatialCullGrid final
     {
     public:
-        struct InitInfo
+        struct CreateInfo
         {
-            DeviceContext* device_context{nullptr};
-            DeferredDestroyQueue* deferred_queue{nullptr};
+            DeviceContext& device;
+            DeferredDestroyQueue& retirement;
             uint32_t frames_in_flight{2};    ///< Determines the mask ring's slot count (FIF+1)
             uint32_t initial_capacity{4096}; ///< Pre-allocated per-slot mask element count
             float cell_size{128.0f};         ///< Cell edge length (world units; engine default ~128m)
             float cull_distance{512.0f};     ///< Cull distance (a cell beyond this from the camera -> dormant)
         };
 
-        SpatialCullGrid() = default;
-        ~SpatialCullGrid();
+        using CreateResult = Expected<std::unique_ptr<SpatialCullGrid>>;
+
+        [[nodiscard]] static CreateResult create(const CreateInfo& info) noexcept;
+        ~SpatialCullGrid() noexcept = default;
 
         SpatialCullGrid(const SpatialCullGrid&) = delete;
         SpatialCullGrid& operator=(const SpatialCullGrid&) = delete;
 
-        void init(const InitInfo& info);
-        void shutdown();
+        SpatialCullGrid(SpatialCullGrid&&) = delete;
+        SpatialCullGrid& operator=(SpatialCullGrid&&) = delete;
 
-        /// World-space XY of one alive instance (cell assignment only uses
-        /// the bsphere center's XY; cells span full Z). The low-level update
+        /// Two ground-plane coordinates of one alive instance (x/y here map
+        /// to the world bsphere center's X/Z; cells span full Y). The low-level update
         /// overload consumes this directly, so SpatialCullGrid isn't tightly
         /// coupled to the concrete InstanceResources type (and headless GPU
         /// tests don't need to construct a full InstanceResources).
@@ -94,22 +97,26 @@ namespace lux::render
         /// the current behavior).
         /// Naturally friendly to dynamic instances: cell membership uses a
         /// hash, so a moving instance is an O(1) rehash (rebuilt every frame).
-        void update(uint64_t serial, std::span<const std::array<float, 3>> cameras, const InstanceResources& instances);
+        [[nodiscard]] Expected<void> update(
+            uint64_t serial,
+            std::span<const std::array<float, 3>> cameras,
+            const InstanceResources& instances
+        ) noexcept;
 
         /// Low-level update: fed directly with alive instances' (slot, world
         /// xy). The convenience overload extracts bsphere data from
         /// InstanceResources and delegates here; serial de-duplication, ring
         /// advance, and mask upload all happen in this function.
-        void update(
+        [[nodiscard]] Expected<void> update(
             uint64_t serial,
             std::span<const std::array<float, 3>> cameras,
             std::span<const InstanceXY> alive,
             uint32_t slot_count
-        );
+        ) noexcept;
 
         /// Current frame's per-slot active mask buffer (uint per slot;
-        /// active=1 / dormant=0). Kept for tests / compatibility. After
-        /// init(), always returns a valid buffer (pre-filled all-active).
+        /// active=1 / dormant=0). Always valid, pre-filled all-active at construction.
+        /// A rejected update preserves the last accepted mask; callers must not use it for the rejected frame.
         [[nodiscard]] VkBuffer activeMaskBuffer() const noexcept;
 
         /// GPU device address (buffer-device-address) of the current frame's
@@ -118,8 +125,7 @@ namespace lux::render
         /// through buffer_reference — replacing a fixed descriptor binding 8
         /// so that coarse culling is opt-in: when SpatialCullGrid doesn't
         /// exist, the caller passes 0 and the shader skips the mask read
-        /// (= everything active). Returns 0 (sentinel) if not init'd or the
-        /// current slot is empty.
+        /// (= everything active). Every constructed ring slot has a valid device address.
         [[nodiscard]] uint64_t activeMaskAddress() const noexcept;
 
         /// Number of slots covered by the mask (= instances.slotCount() from the last update()).
@@ -131,12 +137,13 @@ namespace lux::render
         /// Reads back the current ring slot's host-mapped mask (active=1 /
         /// dormant=0), for tests to verify GPU upload contents only.
         /// host-coherent mapping, so what's read matches exactly what this
-        /// frame's cull dispatch sees. Returns null if not init'd.
+        /// frame's cull dispatch sees.
         [[nodiscard]] const uint32_t* gpuMaskMappedForTest() const noexcept;
 
         // ── Runtime-tunable ──
         void setCellSize(float s) noexcept;
         void setCullDistance(float r) noexcept;
+
         void setEnabled(bool e) noexcept
         {
             enabled_ = e;
@@ -146,10 +153,12 @@ namespace lux::render
         {
             return enabled_;
         }
+
         [[nodiscard]] float cellSize() const noexcept
         {
             return cell_size_;
         }
+
         [[nodiscard]] float cullDistance() const noexcept
         {
             return cull_distance_;
@@ -176,14 +185,17 @@ namespace lux::render
         {
             return stat_active_instances_;
         }
+
         [[nodiscard]] uint32_t totalInstanceCount() const noexcept
         {
             return stat_total_instances_;
         }
+
         [[nodiscard]] uint32_t activeCellCount() const noexcept
         {
             return stat_active_cells_;
         }
+
         [[nodiscard]] uint32_t totalCellCount() const noexcept
         {
             return stat_total_cells_;
@@ -197,13 +209,13 @@ namespace lux::render
             int32_t y{0};
             bool operator==(const CellKey&) const noexcept = default;
         };
+
         struct CellKeyHash
         {
             std::size_t operator()(const CellKey& k) const noexcept
             {
-                return std::hash<std::uint64_t>{
-                }((static_cast<std::uint64_t>(static_cast<std::uint32_t>(k.x)) << 32) | static_cast<std::uint32_t>(k.y)
-                );
+                const auto packed = (uint64_t(static_cast<uint32_t>(k.x)) << 32) | static_cast<uint32_t>(k.y);
+                return std::hash<uint64_t>{}(packed);
             }
         };
 
@@ -212,16 +224,23 @@ namespace lux::render
             std::span<const InstanceXY> alive,
             uint32_t slot_count
         );
-        void uploadMask(); ///< Grows the current ring slot's buffer if needed, then memcpy's mask_
-        void destroyRing() noexcept;
 
-        DeviceContext* device_ctx_{nullptr};
-        DeferredDestroyQueue* deferred_queue_{nullptr};
+        struct RingSlot
+        {
+            TFifOwnedAllocated<VkBuffer> buffer;
+            void* mapped;
+            VkDeviceSize size;
+            VkDeviceAddress address;
+        };
+
+        SpatialCullGrid(const CreateInfo& info, std::vector<RingSlot> ring) noexcept;
+
+        DeviceContext& device_;
+        DeferredDestroyQueue& retirement_;
 
         float cell_size_{128.0f};
         float cull_distance_{512.0f};
         bool enabled_{true};
-        bool initialized_{false};
 
         // ── CPU mask + cell-active cache (rebuilt every frame) ──
         std::vector<uint32_t> mask_;                                    ///< per-slot active flag
@@ -236,11 +255,7 @@ namespace lux::render
         // slot was last written at least (FIF+1) frames ago -> the GPU is
         // idle with it, so writing it can't tear an in-flight frame. See the
         // InstanceResources mdc_info ring for the same pattern.
-        std::vector<VkBuffer> ring_buffers_;
-        std::vector<VmaAllocation> ring_allocs_;
-        std::vector<void*> ring_mapped_;
-        std::vector<VkDeviceSize> ring_sizes_;
-        uint32_t ring_cursor_{0};
+        std::vector<RingSlot> ring_;
         uint32_t current_slot_{0};
         uint64_t last_upload_serial_{~0ull};
 

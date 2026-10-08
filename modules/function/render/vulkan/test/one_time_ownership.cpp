@@ -523,6 +523,9 @@ namespace
 #include "../src/resources/lighting/LightResources.cpp"
 #include "../src/resources/lighting/ShadowResources.cpp"
 #include "../../features/src/renderer/features/shadow/EVSMShadowResources.cpp"
+#define vkGetBufferDeviceAddress trackedBufferAddress
+#include "../../features/src/scene/SpatialCullGrid.cpp"
+#undef vkGetBufferDeviceAddress
 #include "../src/resources/hzb/HzbResources.cpp"
 #include "../src/resources/vertex/VertexPoolRegistry.cpp"
 #include "../src/resources/vertex/TransientVertexSource.cpp"
@@ -2473,6 +2476,168 @@ void checkEvsmConstruction(
               "config, retry and real GPU submission/serial retirement PASS");
 }
 
+void checkSpatialConstruction(
+    lux::render::DeviceContext& device,
+    lux::render::ResourceContext& resources,
+    lux::render::DeferredDestroyQueue& retirement
+)
+{
+    using namespace lux::render;
+    static_assert(!std::is_default_constructible_v<SpatialCullGrid>);
+    static_assert(!std::is_copy_constructible_v<SpatialCullGrid>);
+    static_assert(!std::is_move_constructible_v<SpatialCullGrid>);
+    const auto original_buffers = buffers.size();
+    const SpatialCullGrid::CreateInfo info{device, retirement, 2, 2, 128.0f, 512.0f};
+    for (unsigned invalid = 0; invalid != 6; ++invalid)
+    {
+        auto rejected = info;
+        switch (invalid)
+        {
+        case 0:
+            rejected.frames_in_flight = 0;
+            break;
+        case 1:
+            rejected.frames_in_flight = UINT32_MAX;
+            break;
+        case 2:
+            rejected.initial_capacity = 0;
+            break;
+        case 3:
+            rejected.cell_size = 0;
+            break;
+        case 4:
+            rejected.cull_distance = std::numeric_limits<float>::infinity();
+            break;
+        case 5:
+            rejected.cell_size = std::numeric_limits<float>::quiet_NaN();
+            break;
+        }
+        auto result = SpatialCullGrid::create(rejected);
+        assert(!result && isError<err::memory::InvalidBufferConfiguration>(result.error()));
+        assert(buffers.size() == original_buffers);
+    }
+    for (const auto boundary : {EFailure::BUFFER, EFailure::MAPPED, EFailure::ADDRESS})
+    {
+        for (unsigned index = 0; index != 3; ++index)
+        {
+            retirement.beginFrame(420);
+            ResourceRegistry registry;
+            failure = boundary;
+            skip_rejections = index;
+            auto rejected = SpatialCullGrid::create(info);
+            failure = EFailure::NONE;
+            assert(!rejected && !registry.find<SpatialCullGrid>());
+            if (boundary == EFailure::ADDRESS)
+            {
+                assert(isError<err::memory::InvalidBufferConfiguration>(rejected.error()));
+            }
+            else
+            {
+                assert(isError<err::device::VulkanCallFailed>(rejected.error()));
+                const auto expected =
+                    boundary == EFailure::BUFFER ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_ERROR_MEMORY_MAP_FAILED;
+                assert(rejected.error().args[0] == encodeVkResult(expected));
+            }
+            assert(buffers.size() == original_buffers); // Unpublished prefixes release immediately.
+        }
+    }
+    auto owner = SpatialCullGrid::create(info);
+    assert(owner && buffers.size() == original_buffers + 3);
+    auto registry = std::make_unique<ResourceRegistry>();
+    auto& grid = *registry->insert(std::move(*owner));
+    assert(registry->find<SpatialCullGrid>() == &grid);
+    const auto initial = grid.activeMaskBuffer();
+    assert(initial && grid.activeMaskAddress() != 0 && grid.gpuMaskMappedForTest()[0] == UINT32_MAX);
+    for (const auto& [buffer, origin] : buffers)
+    {
+        VkMemoryPropertyFlags properties{};
+        vmaGetAllocationMemoryProperties(origin.first, origin.second, &properties);
+        // The only buffers alive in this isolated check are the complete coherent ring.
+        assert((properties & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0);
+    }
+    const std::array<std::array<float, 3>, 1> cameras{{{0.0f, 0.0f, 0.0f}}};
+    const std::array<SpatialCullGrid::InstanceXY, 2> alive{{{0, 0, 0}, {1, 4096, 4096}}};
+    assert(grid.update(1, cameras, alive, 2));
+    const auto accepted = grid.activeMaskBuffer();
+    const auto accepted_address = grid.activeMaskAddress();
+    assert(accepted != initial && grid.gpuMaskMappedForTest()[0] == 1 && grid.gpuMaskMappedForTest()[1] == 0);
+    assert(grid.activeInstanceCount() == 1 && grid.totalInstanceCount() == 2);
+    for (const auto boundary : {EFailure::BUFFER, EFailure::MAPPED, EFailure::ADDRESS})
+    {
+        failure = boundary;
+        auto rejected = grid.update(2, {}, {}, 16);
+        failure = EFailure::NONE;
+        assert(!rejected);
+        assert(grid.activeMaskBuffer() == accepted && grid.activeMaskAddress() == accepted_address);
+        assert(grid.maskSlotCount() == 2 && grid.activeInstanceCount() == 1 && grid.totalInstanceCount() == 2);
+        assert(grid.gpuMaskMappedForTest()[0] == 1 && grid.gpuMaskMappedForTest()[1] == 0);
+        assert(buffers.size() == original_buffers + 3);
+    }
+    assert(grid.update(2, cameras, alive, 16)); // Same serial retries, instead of caching a failed update.
+    const auto grown = grid.activeMaskBuffer();
+    assert(grown != accepted && grid.maskSlotCount() == 16 && grid.activeInstanceCount() == 1);
+    assert(grid.gpuMaskMappedForTest()[15] == 1 && grid.gpuMaskMappedForTest()[1] == 0);
+    assert(buffers.size() == original_buffers + 4); // Replaced slot awaits its original queue.
+    acquisition = 0;
+    fail_acquisition = 0;
+    measure_acquisitions = true;
+    assert(grid.update(2, {}, {}, 4096));
+    measure_acquisitions = false;
+    assert(acquisition == 0 && grid.activeMaskBuffer() == grown && grid.maskSlotCount() == 16);
+    assert(grid.update(3, {}, alive, 2)); // Empty camera list conservatively includes all instances.
+    assert(grid.activeMaskBuffer() == initial && grid.activeInstanceCount() == 2);
+    grid.setEnabled(false);
+    assert(grid.update(4, cameras, alive, 2));
+    assert(grid.activeMaskBuffer() == accepted && grid.gpuMaskMappedForTest()[1] == 1);
+    grid.setEnabled(true);
+    grid.setCellSize(64.0f);
+    grid.setCullDistance(32.0f);
+    assert(grid.update(5, cameras, alive, 2));
+    assert(grid.activeInstanceCount() == 1 && grid.totalCellCount() == 2);
+    // Pure original coarse-cell contract, including negative coordinates and multiple views.
+    int32_t x{}, y{};
+    SpatialCullGrid::cellCoord(-1, -65, 64, x, y);
+    assert(x == -1 && y == -2);
+    const std::array two_cameras{std::array{0.0f, 5000.0f, 0.0f}, std::array{4096.0f, 0.0f, 4096.0f}};
+    assert(grid.update(6, two_cameras, alive, 2));
+    assert(grid.activeInstanceCount() == 2);
+    auto command = CommandBufferOwner::create(device.logicalDevice(), resources.commandPool());
+    assert(command);
+    VkCommandBufferBeginInfo begin_info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    assert(begin(command->get(), &begin_info) == VK_SUCCESS);
+    VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+    barrier.srcStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+    barrier.srcAccessMask = VK_ACCESS_2_HOST_WRITE_BIT;
+    barrier.dstStageMask = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    barrier.dstAccessMask = VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.buffer = grid.activeMaskBuffer();
+    barrier.size = VK_WHOLE_SIZE;
+    VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    dependency.bufferMemoryBarrierCount = 1;
+    dependency.pBufferMemoryBarriers = &barrier;
+    vkCmdPipelineBarrier2(command->get(), &dependency);
+    assert(end(command->get()) == VK_SUCCESS);
+    VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    auto fence = FenceOwner::create(device.logicalDevice(), fence_info);
+    assert(fence);
+    const auto cmd = command->get();
+    VkSubmitInfo submission{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    submission.commandBufferCount = 1;
+    submission.pCommandBuffers = &cmd;
+    assert(submit(device.graphicsQueue(), 1, &submission, fence->get()) == VK_SUCCESS);
+    registry.reset();
+    retirement.collect(419);
+    assert(buffers.size() == original_buffers + 4);
+    const auto fence_handle = fence->get();
+    assert(wait(device.logicalDevice(), 1, &fence_handle, VK_TRUE, UINT64_MAX) == VK_SUCCESS);
+    retirement.collect(420);
+    assert(buffers.size() == original_buffers);
+    std::puts("Spatial grid: complete coherent ring, all native-prefix failures, registry publication, strong growth "
+              "and same-serial retry, mask contents/dedup/cell semantics, GPU submission and original retirement PASS");
+}
+
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -2504,6 +2669,11 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkSpatialConstruction(device, resources, retirement);
+    if (argc == 2 && std::string_view(argv[1]) == "--spatial")
+    {
+        return 0;
+    }
     checkEvsmConstruction(device, resources, layouts, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--evsm")
     {

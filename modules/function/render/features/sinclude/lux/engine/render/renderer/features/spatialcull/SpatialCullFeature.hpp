@@ -8,7 +8,7 @@
  * core (RenderScene / GpuDrivenMeshFeatureBase) knows nothing about SpatialCullGrid;
  * it only knows a domain-neutral primitive — the per-frame "instance cull-mask
  * GPU address" on the scene (RenderScene::instanceCullMaskAddress). This feature:
- *   - initAndAttachTo: emplaces + inits the SpatialCullGrid in the scene registry
+ *   - initAndAttachTo: constructs and publishes the complete SpatialCullGrid in the scene registry
  *     (the PointCloud/Trajectory feature-owned-resource pattern).
  *   - onFrameBegin:    classifies cells active/dormant from the active-view
  *     cameras, uploads the per-slot mask, and publishes its GPU address into the
@@ -26,9 +26,9 @@
  * Contract C2 — scene resources are feature-owned; C4 — domain-neutral scene primitives).
  */
 
-#include <lux/engine/render/RenderFeature.hpp>
 #include <lux/engine/function/render/features/spatialcull/SpatialCullParams.hpp>
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/render/RenderFeature.hpp>
 
 #include <array>
 #include <cstddef>
@@ -64,14 +64,17 @@ namespace lux::render
         {
             return "lux::render::SpatialCullParams";
         }
+
         [[nodiscard]] void* paramData() noexcept override
         {
             return &params_;
         }
+
         [[nodiscard]] std::size_t paramSize() const noexcept override
         {
             return sizeof(SpatialCullParams);
         }
+
         EParamApply applyParams(const void* src, std::size_t size) override;
 
     private:

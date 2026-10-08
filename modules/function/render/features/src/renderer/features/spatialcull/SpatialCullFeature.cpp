@@ -1,13 +1,13 @@
-#include <lux/engine/render/renderer/features/spatialcull/SpatialCullFeature.hpp>
 #include <lux/engine/function/render/features/genops/SpatialCullOperation.ops.hpp>
+#include <lux/engine/render/renderer/features/spatialcull/SpatialCullFeature.hpp>
 
-#include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/render/scene/View.hpp>
+#include <lux/engine/render/gpu/RenderContext.hpp>
 #include <lux/engine/render/renderer/features/view_camera/ViewCameraResource.hpp>
-#include <lux/engine/render/scene/SpatialCullGrid.hpp>
 #include <lux/engine/render/resources/mesh/InstanceResources.hpp>
 #include <lux/engine/render/resources/mesh/MeshCullCandidateSource.hpp>
-#include <lux/engine/render/gpu/RenderContext.hpp>
+#include <lux/engine/render/scene/RenderScene.hpp>
+#include <lux/engine/render/scene/SpatialCullGrid.hpp>
+#include <lux/engine/render/scene/View.hpp>
 
 #include <cstring>
 #include <utility>
@@ -16,29 +16,31 @@ namespace lux::render
 {
     SpatialCullFeature::SpatialCullFeature(Config cfg)
         : RenderFeature(RenderFeature::Config{std::move(cfg.name)}), params_{cfg.cell_size, cfg.cull_distance}
-    {}
+    {
+    }
 
     lux::render::Expected<void> SpatialCullFeature::initAndAttachTo(RenderScene& sc)
     {
-        // Feature owns its scene resource (PointCloud/Trajectory pattern): emplace
-        // the SpatialCullGrid here, NOT in the general RenderScene constructor.
-        // ensure<>:本 feature 自建自有,句柄存成员,onFrameBegin 不再每帧重查。
         auto& reg = sc.resources();
         auto& ctx = renderContext();
-
-        SpatialCullGrid::InitInfo gi{};
-        gi.device_context = &ctx.deviceContext();
-        gi.deferred_queue = &ctx.deferredDestroyQueue();
-        gi.frames_in_flight = ctx.framesInFlight();
-        gi.cell_size = params_.cell_size;
-        gi.cull_distance = params_.cull_distance;
-
-        // ensure<T>(init_args) — the registry constructs + inits and publishes
-        // only on success, so grid_ is never a half-built instance.
-        auto grid = reg.ensure<SpatialCullGrid>(gi);
-        if (!grid)
-            return lux::cxx::unexpected<RenderError>(grid.error());
-        grid_ = *grid;
+        grid_ = reg.find<SpatialCullGrid>();
+        if (!grid_)
+        {
+            const SpatialCullGrid::CreateInfo info{
+                ctx.deviceContext(),
+                ctx.deferredDestroyQueue(),
+                ctx.framesInFlight(),
+                4096,
+                params_.cell_size,
+                params_.cull_distance
+            };
+            auto candidate = SpatialCullGrid::create(info);
+            if (!candidate)
+            {
+                return lux::cxx::unexpected(candidate.error());
+            }
+            grid_ = reg.insert(std::move(*candidate)).get();
+        }
         return {};
     }
 
@@ -70,34 +72,52 @@ namespace lux::render
             return;
         }
         if (inst_cache_ == nullptr)
+        {
             inst_cache_ = reg.find<InstanceResources>();
+        }
         auto* inst = inst_cache_;
         auto* cam = resolveViewCameraOnce(cam_cache_, reg);
         if (inst == nullptr)
+        {
             return;
+        }
 
         // Cull sources = the active views' world camera positions. Pull them
         // through the scene's general view accessor (no domain knowledge here).
         camera_scratch_.clear();
-        renderScene().forEachActiveView([this, cam](View& v) {
-            const auto* cam_fd = cam ? cam->find(v.handle.index) : nullptr;
-            if (!cam_fd)
-                return;
-            const auto& p = cam_fd->camera_transform.position;
-            camera_scratch_.push_back({p.x(), p.y(), p.z()});
-        });
+        renderScene().forEachActiveView(
+            [this, cam](View& v)
+            {
+                const auto* cam_fd = cam ? cam->find(v.handle.index) : nullptr;
+                if (!cam_fd)
+                {
+                    return;
+                }
+                const auto& p = cam_fd->camera_transform.position;
+                camera_scratch_.push_back({p.x(), p.y(), p.z()});
+            }
+        );
 
         // Classify cells + upload the per-slot mask for THIS frame, then publish its
         // GPU address into the scene's domain-neutral primitive. The mesh cull reads
         // that address (0 = no mask) — it never names SpatialCullGrid.
-        grid_->update(renderScene().frameSerial(), camera_scratch_, *inst);
+        if (auto updated = grid_->update(renderScene().frameSerial(), camera_scratch_, *inst); !updated)
+        {
+            renderContext().reportError(updated.error(), renderScene().sceneId().index, renderScene().frameSerial());
+            // A previous frame's mask can hide newly active slots or have insufficient capacity.
+            // The original zero-address contract disables only this optional coarse filter.
+            renderScene().setInstanceCullMaskAddress(0ull);
+            return;
+        }
         renderScene().setInstanceCullMaskAddress(grid_->activeMaskAddress());
     }
 
     RenderFeature::EParamApply SpatialCullFeature::applyParams(const void* src, std::size_t size)
     {
         if (src == nullptr || size != sizeof(SpatialCullParams))
+        {
             return EParamApply::UNSUPPORTED;
+        }
         std::memcpy(&params_, src, sizeof(SpatialCullParams));
         // Push to the live grid; it re-classifies cells on the next onFrameBegin
         // with the new edge length / distance — no graph rebuild, so HOT.

@@ -122,8 +122,7 @@ namespace lux::simulation::script::detail
                 runnable_backing_bytes_ += bucket.runnable.backingBytes();
             }
             for (auto& bucket : events_)
-                if (bucket.handlers.prepare(bucket.capacity) == EEndpointMutationError::ALLOCATION_FAILURE)
-                    return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
+                (void)bucket.handlers.prepare(bucket.capacity);
             return {};
         }
     }

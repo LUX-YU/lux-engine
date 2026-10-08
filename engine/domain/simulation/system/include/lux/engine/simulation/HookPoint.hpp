@@ -6,8 +6,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
-#include <new>
-#include <type_traits>
 
 namespace lux::simulation
 {
@@ -20,7 +18,6 @@ namespace lux::simulation
         NONE,
         NOT_PREPARED,
         CAPACITY_EXCEEDED,
-        ALLOCATION_FAILURE,
         INVALID_CALLBACK,
         INVALID_TARGET,
         INVALID_TOKEN,
@@ -60,50 +57,46 @@ namespace lux::simulation
     public:
         using Callback = void (*)(void*, Parameters...) noexcept;
 
-        THookPoint() = default;
+        explicit THookPoint(std::size_t handler_capacity) noexcept
+            : handlers_(handler_capacity), handler_capacity_(handler_capacity)
+        {
+        }
+
         THookPoint(const THookPoint&) = delete;
         THookPoint& operator=(const THookPoint&) = delete;
         THookPoint(THookPoint&&) = delete;
         THookPoint& operator=(THookPoint&&) = delete;
         ~THookPoint() = default;
 
-        [[nodiscard]] EEndpointMutationError prepare(std::size_t handler_capacity) noexcept
-        {
-            if (dispatch_active_)
-                return EEndpointMutationError::DISPATCH_ACTIVE;
-
-            handlers_.clear();
-            handlers_.reserve(handler_capacity);
-            handler_capacity_ = handler_capacity;
-            prepared_ = true;
-            return EEndpointMutationError::NONE;
-        }
-
         [[nodiscard]] EndpointConnectResult connect(void* context, Callback callback) noexcept
         {
-            if (!prepared_)
-                return {{}, EEndpointMutationError::NOT_PREPARED};
             if (dispatch_active_)
+            {
                 return {{}, EEndpointMutationError::DISPATCH_ACTIVE};
+            }
             if (callback == nullptr)
+            {
                 return {{}, EEndpointMutationError::INVALID_CALLBACK};
+            }
             if (handlers_.size() >= handler_capacity_)
+            {
                 return {{}, EEndpointMutationError::CAPACITY_EXCEEDED};
+            }
 
-            const auto inserted = handlers_.tryEmplace(Handler{context, callback});
-            if (!inserted)
-                return {{}, EEndpointMutationError::ALLOCATION_FAILURE};
-            return {toToken(*inserted), EEndpointMutationError::NONE};
+            const auto inserted = handlers_.emplace(Handler{context, callback});
+            return {toToken(inserted), EEndpointMutationError::NONE};
         }
 
         [[nodiscard]] EEndpointMutationError disconnect(EndpointConnectionToken token) noexcept
         {
-            if (!prepared_)
-                return EEndpointMutationError::NOT_PREPARED;
             if (dispatch_active_)
+            {
                 return EEndpointMutationError::DISPATCH_ACTIVE;
+            }
             if (!token.valid() || !handlers_.erase(toKey(token)))
+            {
                 return EEndpointMutationError::INVALID_TOKEN;
+            }
             return EEndpointMutationError::NONE;
         }
 
@@ -112,10 +105,16 @@ namespace lux::simulation
             const bool wrong_owner = binding_owner_ != nullptr && invocation.owner_ != binding_owner_;
             const bool wrong_endpoint =
                 binding_system_.valid() && (invocation.system_ != binding_system_ || invocation.hook_ != binding_hook_);
-            if (wrong_owner || wrong_endpoint || (binding_system_.valid() && !invocation.scriptCapable()))
+            const bool is_non_script_hook = binding_system_.valid() && !invocation.scriptCapable();
+            const bool is_invalid_invocation = wrong_owner || wrong_endpoint || is_non_script_hook;
+            if (is_invalid_invocation)
+            {
                 return 0U;
-            if (!prepared_ || dispatch_active_)
+            }
+            if (dispatch_active_)
+            {
                 return 0U;
+            }
 
             dispatch_active_ = true;
             std::size_t calls{};
@@ -156,8 +155,7 @@ namespace lux::simulation
         }
 
         HandlerStorage handlers_;
-        std::size_t handler_capacity_{};
-        bool prepared_{};
+        const std::size_t handler_capacity_;
         bool dispatch_active_{};
         const void* binding_owner_{};
         lux::system::SystemInstanceId binding_system_;
@@ -167,5 +165,10 @@ namespace lux::simulation
 
     template <class... Parameters>
     class THookPoint<void(Parameters...) noexcept> final : public THookPoint<void(Parameters...)>
-    {};
-}
+    {
+        using Base = THookPoint<void(Parameters...)>;
+
+    public:
+        using Base::Base;
+    };
+} // namespace lux::simulation

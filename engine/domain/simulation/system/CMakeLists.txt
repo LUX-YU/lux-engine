@@ -50,3 +50,14 @@ lux_engine_install_components(
     NAMESPACE    lux::engine::simulation
     COMPONENTS   system
 )
+
+if(BUILD_TESTING)
+    add_executable(simulation_hook_point_test test/point.cpp)
+    target_link_libraries(simulation_hook_point_test PRIVATE system)
+    if(MSVC)
+        target_compile_options(simulation_hook_point_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(simulation_hook_point_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME simulation.hook_point COMMAND simulation_hook_point_test)
+endif()

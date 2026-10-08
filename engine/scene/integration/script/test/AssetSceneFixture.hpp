@@ -44,8 +44,11 @@ namespace
         inline static constexpr SimulationSystemDescription Description{
             {.canonical_name = "lux.ec2.AssetSceneProbe", .version = 1, .supported_world_types = WorldTypes}, Hooks
         };
-        THookPoint<void()> hook;
+        THookPoint<void()> hook{2};
         TScriptHookEndpoint<void()> endpoint;
+        EndpointConnectionToken native_token;
+        const HookInvocation* invocation{};
+        std::size_t native_calls{};
         bool started{};
 
         Probe(ecs::Registry& registry, system::SystemInstanceId id) : endpoint(id, {1}, hook)
@@ -55,7 +58,16 @@ namespace
             const auto entity = registry.create();
             assert(entity == ecs::Entity{0});
             registry.emplace<std::int32_t>(entity, 7);
-            assert(hook.prepare(1) == EEndpointMutationError::NONE);
+            const auto connected = hook.connect(this, [](void* context) noexcept {
+                auto& self = *static_cast<Probe*>(context);
+                ++self.native_calls;
+                const auto nested = self.hook.connect(nullptr, [](void*) noexcept {});
+                assert(nested.error == EEndpointMutationError::DISPATCH_ACTIVE);
+                assert(self.hook.disconnect(self.native_token) == EEndpointMutationError::DISPATCH_ACTIVE);
+                assert(self.invocation && self.hook.dispatch(*self.invocation) == 0);
+            });
+            assert(connected);
+            native_token = connected.token;
         }
     };
 
@@ -75,9 +87,12 @@ namespace
                 if (!task) return task;
                 return installer.addSystemHookTask<Probe>(description.instanceId(), {1},
                     [](Probe& probe, const HookInvocation& invocation) noexcept {
-                        if (!probe.started && probe.hook.handlerCount() != 0)
+                        if (!probe.started && probe.hook.handlerCount() == 2)
                         {
-                            assert(probe.hook.dispatch(invocation) == 1);
+                            probe.invocation = &invocation;
+                            assert(probe.hook.dispatch(invocation) == 2);
+                            probe.invocation = nullptr;
+                            assert(probe.native_calls == 1);
                             probe.started = true;
                         }
                     });

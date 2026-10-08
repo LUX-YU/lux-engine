@@ -316,12 +316,12 @@ namespace lux::render
         uint32_t fif = cfg.frames_in_flight;
 
         // 1. Descriptor layouts
-        auto descriptor_layouts = std::make_unique<GeneralDescriptorSetLayout>(device_ctx);
-        if (!descriptor_layouts->init())
+        auto descriptor_layouts = GeneralDescriptorSetLayout::create(device_ctx);
+        if (!descriptor_layouts)
         {
-            return renderFailure<err::internal::Unspecified>();
+            return lux::cxx::unexpected(descriptor_layouts.error());
         }
-        auto& layouts = *descriptor_layouts;
+        auto& layouts = **descriptor_layouts;
 
         // 2. Pipeline manager (variants only use normalized constants; no compiler instance needs injecting)
         auto pipeline_mgr = std::make_unique<PipelineManager>(device_ctx, cfg.use_dynamic_rendering);
@@ -439,7 +439,7 @@ namespace lux::render
         // 5. Build RenderContext
         RenderContext::CreateInfo ci{};
         ci.pipeline_mgr = std::move(pipeline_mgr);
-        ci.descriptor_layouts = std::move(descriptor_layouts);
+        ci.descriptor_layouts = std::move(*descriptor_layouts);
         ci.global_resources = std::move(global_reg);
         ci.frames_in_flight = fif;
         ci.capacity_plan = *capacity_plan;

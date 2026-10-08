@@ -1,18 +1,16 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
 #include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 #include <lux/engine/render/gpu/lifecycle/GPUResourceTypes.hpp>
+#include <memory>
 #include <optional>
-#include <vector>
 #include <vulkan/vulkan.h>
 
-// The frequency-domain enum only ever appears by value in signatures here,
-// so a forward declaration is enough (see the note on EngineSetShape below:
-// this header is transitively included by a huge number of translation
-// units, so it shouldn't drag in the whole LayoutContract chain).
+// Domain values are sufficient here; shape expansion stays in the implementation.
 namespace lux::rdesc
 {
     enum class EBindFrequency : uint8_t;
@@ -63,25 +61,12 @@ namespace lux::render
 
     class DeviceContext;
 
-    /// Only appears by reference here, so a forward declaration is enough.
-    ///
-    /// Why not #include EngineSetShapes.hpp: this header is transitively
-    /// included by a huge number of translation units (ecs / editor /
-    /// etc.); pulling it in would drag along the entire LayoutContract
-    /// chain and significantly widen those TUs' include surface. **Tested:
-    /// widening it causes compile failures elsewhere** — the source is
-    /// UTF-8 without a BOM, and MSVC interprets the Chinese-comment bytes
-    /// using codepage 936; some byte sequences end in a byte that decodes
-    /// as a backslash, which inside a `//` comment triggers a line
-    /// continuation and swallows the next line of code. The real fix is
-    /// adding `/utf-8` (or a BOM) repo-wide, which is a separate piece of
-    /// work; until then, don't widen the include surface.
-    struct EngineSetShape;
-
     class LUX_FUNCTION_PUBLIC GeneralDescriptorSetLayout
     {
     public:
-        GeneralDescriptorSetLayout(DeviceContext& device_context) : device_context_(device_context) {}
+        using CreateResult = Expected<std::unique_ptr<GeneralDescriptorSetLayout>>;
+
+        [[nodiscard]] static CreateResult create(DeviceContext& device_context) noexcept;
 
         ~GeneralDescriptorSetLayout() noexcept = default;
 
@@ -92,18 +77,12 @@ namespace lux::render
         GeneralDescriptorSetLayout& operator=(GeneralDescriptorSetLayout&&) = delete;
 
         /**
-         * @brief Initializes all descriptor set layouts.
-         * @return True if initialization is successful, false otherwise.
-         */
-        bool init();
-
-        /**
          * @brief Retrieves a descriptor set layout by slot enum.
          */
         VkDescriptorSetLayout getLayout(EDescriptorSetSlot slot) const
         {
             auto idx = static_cast<uint32_t>(slot);
-            return (idx < kDescriptorSetCount) ? layouts_[idx].get() : VK_NULL_HANDLE;
+            return (idx < kDescriptorSetCount) ? storage_.layouts[idx].get() : VK_NULL_HANDLE;
         }
 
         /**
@@ -114,7 +93,7 @@ namespace lux::render
          */
         VkDescriptorSetLayout getLayout(uint32_t set_index) const
         {
-            return (set_index < kDescriptorSetCount) ? layouts_[set_index].get() : VK_NULL_HANDLE;
+            return (set_index < kDescriptorSetCount) ? storage_.layouts[set_index].get() : VK_NULL_HANDLE;
         }
 
         // (8 个 "for backward compatibility" 便利访问器全部退役 ——
@@ -122,27 +101,6 @@ namespace lux::render
         //  (唯一"引用"是别处一句注释),其余 4 个各只有一个调用点,已就地内联为
         //  getLayout(EDescriptorSetSlot::X)。按名字的每槽访问器是同一信息的第二份
         //  记录 —— 通用访问器 + 槽位枚举本来就够。)
-
-        /// Resolves an engine set's shape into an array of Vulkan bindings,
-        /// with binding numbers shifted as a whole by `binding_offset`,
-        /// appending to the given output arrays.
-        ///
-        /// Why this is public: the domain-merged layout has to expand
-        /// several sets of the same domain into one array, using the
-        /// within-domain offsets that LayoutPlan provides. There are two
-        /// details in this resolution that only this function knows —
-        /// bindless capacity is device-derived, and Material is a template
-        /// entry expanded by family count — and letting the domain-merge
-        /// code re-implement the resolution would eventually diverge on
-        /// exactly those two points. A divergence like that shows up as
-        /// misaligned descriptors, with no Vulkan error at all. So there is
-        /// only ever this one implementation.
-        void expandEngineSet(
-            const EngineSetShape& shape,
-            uint32_t binding_offset,
-            std::vector<VkDescriptorSetLayoutBinding>& bindings,
-            std::vector<VkDescriptorBindingFlags>& flags
-        ) const;
 
         /// The domain-merged layout: the layout obtained by folding all
         /// engine sets of the same frequency domain into one set.
@@ -166,7 +124,7 @@ namespace lux::render
         [[nodiscard]] VkDescriptorSetLayout getDomainLayout(rdesc::EBindFrequency domain) const noexcept
         {
             const auto i = static_cast<std::size_t>(domain);
-            return i < domain_layouts_.size() ? domain_layouts_[i].get() : VK_NULL_HANDLE;
+            return i < storage_.domain_layouts.size() ? storage_.domain_layouts[i].get() : VK_NULL_HANDLE;
         }
 
         // ── Bindless capacity: THE single source of truth ────────────────
@@ -178,12 +136,12 @@ namespace lux::render
         // and nothing at all on one that doesn't, which is how it hides.
         [[nodiscard]] uint32_t bindless2DCount() const noexcept
         {
-            return bindless_2d_count_;
+            return storage_.bindless_2d_count;
         }
 
         [[nodiscard]] uint32_t bindlessCubeCount() const noexcept
         {
-            return bindless_cube_count_;
+            return storage_.bindless_cube_count;
         }
 
         /// Addressable-range ceilings, applied on top of the device budget.
@@ -194,22 +152,16 @@ namespace lux::render
         static constexpr uint32_t kBindlessCubeCeiling = 256u;
 
     private:
-        /// Builds the three domain layouts (GLOBAL / BINDLESS / FEATURE).
-        /// Called at the end of init.
-        bool initDomainLayouts(VkDevice device);
+        struct LayoutStorage
+        {
+            std::array<DescriptorSetLayoutOwner, kDescriptorSetCount> layouts;
+            std::array<DescriptorSetLayoutOwner, 4> domain_layouts;
+            uint32_t bindless_2d_count{};
+            uint32_t bindless_cube_count{};
+        };
 
-        DeviceContext& device_context_;
+        explicit GeneralDescriptorSetLayout(LayoutStorage&& storage) noexcept;
 
-        /// Descriptor set layouts indexed by EDescriptorSetSlot.
-        std::array<DescriptorSetLayoutOwner, kDescriptorSetCount> layouts_{};
-
-        /// Device-derived bindless capacity (computed during init, reused
-        /// by expandEngineSet).
-        uint32_t bindless_2d_count_{1};
-        uint32_t bindless_cube_count_{1};
-
-        /// The domain-merged layouts, indexed by EBindFrequency (the
-        /// PASS_LOCAL slot is always empty).
-        std::array<DescriptorSetLayoutOwner, 4> domain_layouts_{};
+        LayoutStorage storage_;
     };
 } // namespace lux::render

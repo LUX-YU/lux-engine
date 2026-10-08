@@ -1,6 +1,7 @@
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 
 #include <cassert>
+#include <cstdio>
 #include <type_traits>
 #include <unordered_map>
 
@@ -46,19 +47,30 @@ namespace
 #undef vkCreateDescriptorSetLayout
 // clang-format on
 
-int main()
+int main(int argc, char**)
 {
     using namespace lux::render;
     static_assert(!std::is_move_constructible_v<GeneralDescriptorSetLayout>);
+    static_assert(!std::is_constructible_v<GeneralDescriptorSetLayout, DeviceContext&>);
     static_assert(!std::is_move_assignable_v<GeneralDescriptorSetLayout>);
     static_assert(std::is_nothrow_destructible_v<GeneralDescriptorSetLayout>);
     InstanceContext instance({});
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
+    if (argc > 1)
+    {
+        fail_at = 2;
+        auto candidate = GeneralDescriptorSetLayout::create(device);
+        std::printf("layout rejection: accepted=%d live=%zu\n", candidate.has_value(), live.size());
+        std::fflush(stdout);
+        assert(!candidate && live.empty() && destroyed == 1);
+        return 0;
+    }
     unsigned layout_count{};
     {
-        GeneralDescriptorSetLayout layouts(device);
-        assert(layouts.init());
+        auto owner = GeneralDescriptorSetLayout::create(device);
+        assert(owner);
+        const auto& layouts = **owner;
         layout_count = attempts;
         assert(layout_count > kDescriptorSetCount && live.size() == layout_count);
         assert(layouts.bindless2DCount() > 1 && layouts.bindlessCubeCount() > 1);
@@ -77,9 +89,10 @@ int main()
         fail_at = boundary;
         const auto before = destroyed;
         {
-            GeneralDescriptorSetLayout candidate(device);
-            assert(!candidate.init());
-            assert(attempts == boundary && live.size() == boundary - 1);
+            auto candidate = GeneralDescriptorSetLayout::create(device);
+            assert(!candidate && isError<err::device::VulkanCallFailed>(candidate.error()));
+            assert(candidate.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+            assert(attempts == boundary && live.empty());
         }
         assert(live.empty() && destroyed == before + boundary - 1);
     }

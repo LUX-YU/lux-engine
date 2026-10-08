@@ -181,8 +181,9 @@ int main()
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
     ResourceContext resources(device);
     assert(resources.init());
-    GeneralDescriptorSetLayout layouts(device);
-    assert(layouts.init());
+    auto layout_owner = GeneralDescriptorSetLayout::create(device);
+    assert(layout_owner);
+    auto& layouts = **layout_owner;
 
     {
         DeviceContext other_device(instance);

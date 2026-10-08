@@ -3,229 +3,166 @@
 #include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
 
 #include <algorithm>
+#include <span>
+#include <utility>
 #include <vector>
 
 namespace lux::render
 {
-    bool GeneralDescriptorSetLayout::init()
+    namespace
     {
-        auto& device = device_context_.logicalDevice();
+        void expandEngineSet(
+            const EngineSetShape& shape,
+            uint32_t binding_offset,
+            uint32_t bindless_2d_count,
+            uint32_t bindless_cube_count,
+            std::vector<VkDescriptorSetLayoutBinding>& bindings,
+            std::vector<VkDescriptorBindingFlags>& flags
+        )
+        {
+            const auto resolveCount = [&](const EngineSetBindingShape& binding) -> uint32_t
+            {
+                switch (binding.count_source)
+                {
+                case EBindingCountSource::BINDLESS_2D_TEXTURES:
+                    return bindless_2d_count;
+                case EBindingCountSource::BINDLESS_CUBE_TEXTURES:
+                    return bindless_cube_count;
+                case EBindingCountSource::VERTEX_POOL_SLOTS:
+                    return kVertexPoolMaxCount;
+                case EBindingCountSource::MATERIAL_FAMILIES:
+                    return 1u;
+                case EBindingCountSource::FIXED:
+                default:
+                    return binding.count;
+                }
+            };
 
-        // Shape is data, not code — the per-set binding definitions live in
-        // EngineSetShapes.hpp (kEngineSetShapes), and all that's left here is
-        // a single generic build loop. An engine set's shape must be
-        // declared by the engine itself: the reflection union at
-        // graph-compile time only sees the subset of bindings this graph
-        // actually uses, while the set instance is always allocated with the
-        // full shape (binding a full set with a subset layout is
-        // VUID-00358); and binding 0 of the Scene set isn't declared by any
-        // shader at all.
+            for (const auto& binding : shape.bindings)
+            {
+                const bool is_family_template =
+                    shape.expand_by_count_source && binding.count_source == EBindingCountSource::MATERIAL_FAMILIES;
+                const uint32_t repeat = is_family_template ? kMaterialFamilyBindingCount : 1u;
+                for (uint32_t i = 0; i < repeat; ++i)
+                {
+                    VkDescriptorSetLayoutBinding value{};
+                    value.binding = binding_offset + binding.binding + i;
+                    value.descriptorType = binding.type;
+                    value.descriptorCount = resolveCount(binding);
+                    value.stageFlags = binding.stages;
+                    bindings.push_back(value);
+                    flags.push_back(binding.binding_flags);
+                }
+            }
+        }
 
-        // Bindless capacity is derived from the device limits (aligned with
-        // the UPDATE_AFTER_BIND pool limit), reserving headroom for the CIS
-        // bindings of other sets in the same pipeline layout (e.g. the Light
-        // set's SHADOW_ATLAS).
-        const auto& idx_props = device_context_.physicalDevice().descriptorIndexingProperties();
+        Expected<DescriptorSetLayoutOwner> createLayout(
+            VkDevice device,
+            std::span<const VkDescriptorSetLayoutBinding> bindings,
+            std::span<const VkDescriptorBindingFlags> flags,
+            bool update_after_bind
+        ) noexcept
+        {
+            const bool has_binding_flags =
+                std::any_of(flags.begin(), flags.end(), [](VkDescriptorBindingFlags flag) { return flag != 0; });
+            VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags{
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO
+            };
+            binding_flags.bindingCount = static_cast<uint32_t>(flags.size());
+            binding_flags.pBindingFlags = flags.data();
+
+            VkDescriptorSetLayoutCreateInfo info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+            info.bindingCount = static_cast<uint32_t>(bindings.size());
+            info.pBindings = bindings.data();
+            info.flags = update_after_bind ? VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT : 0;
+            info.pNext = has_binding_flags ? &binding_flags : nullptr;
+            auto layout = DescriptorSetLayoutOwner::create(device, info);
+            if (!layout)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(layout.error()));
+            }
+            return std::move(*layout);
+        }
+    } // namespace
+
+    GeneralDescriptorSetLayout::GeneralDescriptorSetLayout(LayoutStorage&& storage) noexcept
+        : storage_(std::move(storage))
+    {
+    }
+
+    GeneralDescriptorSetLayout::CreateResult GeneralDescriptorSetLayout::create(DeviceContext& device_context) noexcept
+    {
+        LayoutStorage candidate;
+        const VkDevice device = device_context.logicalDevice();
+        const auto& index_properties = device_context.physicalDevice().descriptorIndexingProperties();
         const uint32_t raw_budget = std::min(
-            idx_props.maxDescriptorSetUpdateAfterBindSampledImages,
-            idx_props.maxPerStageDescriptorUpdateAfterBindSampledImages
+            index_properties.maxDescriptorSetUpdateAfterBindSampledImages,
+            index_properties.maxPerStageDescriptorUpdateAfterBindSampledImages
         );
         constexpr uint32_t kNonTextureReserve = 8;
         const uint32_t budget = (raw_budget > kNonTextureReserve) ? (raw_budget - kNonTextureReserve) : raw_budget;
-        const uint32_t kCubeMaxCount = std::min(kBindlessCubeCeiling, budget);
-        const uint32_t uncapped_2d = (budget > kCubeMaxCount) ? (budget - kCubeMaxCount) : 1u;
-        // The ceiling is part of THIS derivation, not a caller's afterthought.
-        // It used to live only in RenderServer, which meant the layout declared
-        // the full device budget while the descriptor pool was sized for the
-        // capped one. On a driver that accounts pool capacity strictly, that is
-        // vkAllocateDescriptorSets -> VK_ERROR_OUT_OF_POOL_MEMORY: Adreno 830
-        // reports ~16.7M UAB sampled images, so the layout asked for 16,776,952
-        // descriptors out of a pool holding 65,792. Desktop NVIDIA hid it by
-        // not accounting per-type strictly.
-        const uint32_t k2DMaxCount = std::min(uncapped_2d, kBindlessTex2DCeiling);
+        candidate.bindless_cube_count = std::min(kBindlessCubeCeiling, budget);
+        const uint32_t uncapped_2d =
+            (budget > candidate.bindless_cube_count) ? (budget - candidate.bindless_cube_count) : 1u;
+        candidate.bindless_2d_count = std::min(uncapped_2d, kBindlessTex2DCeiling);
 
-        // The device-derived bindless capacity is kept as a member — the
-        // domain-merged layout must use these exact same values, AND every
-        // other consumer (descriptor pool sizing above all) must read them
-        // from here rather than recompute. If both paths recomputed it
-        // independently, they would sooner or later drift apart on some
-        // detail, and the symptom of that drift is a misaligned descriptor
-        // with no Vulkan error at all.
-        //
-        // That is not hypothetical any more: RenderServer did recompute it,
-        // the two derivations differed by exactly this ceiling, and it took a
-        // phone to notice.
-        bindless_2d_count_ = k2DMaxCount;
-        bindless_cube_count_ = kCubeMaxCount;
-
+        // One device-derived capacity governs both canonical and merged layouts, and is
+        // retained for pool sizing. Applying the ceiling only at the pool caller used to
+        // under-budget the actual layout on drivers that account descriptors strictly.
         for (const auto& shape : kEngineSetShapes)
         {
-            const uint32_t set_index = static_cast<uint32_t>(shape.slot);
-
             std::vector<VkDescriptorSetLayoutBinding> bindings;
             std::vector<VkDescriptorBindingFlags> flags;
-            expandEngineSet(shape, 0u, bindings, flags);
-
-            const bool any_flags =
-                std::any_of(flags.begin(), flags.end(), [](VkDescriptorBindingFlags f) { return f != 0; });
-
-            VkDescriptorSetLayoutBindingFlagsCreateInfo bf{
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO
-            };
-            bf.bindingCount = static_cast<uint32_t>(flags.size());
-            bf.pBindingFlags = flags.data();
-
-            VkDescriptorSetLayoutCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-            ci.bindingCount = static_cast<uint32_t>(bindings.size());
-            ci.pBindings = bindings.data();
-            if (shape.update_after_bind)
-            {
-                ci.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-            }
-            if (any_flags)
-            {
-                ci.pNext = &bf;
-            }
-
-            auto layout = DescriptorSetLayoutOwner::create(device, ci);
+            expandEngineSet(shape, 0u, candidate.bindless_2d_count, candidate.bindless_cube_count, bindings, flags);
+            auto layout = createLayout(device, bindings, flags, shape.update_after_bind);
             if (!layout)
             {
-                return false;
+                return lux::cxx::unexpected(layout.error());
             }
-            layouts_[set_index] = std::move(*layout);
+            candidate.layouts[static_cast<uint32_t>(shape.slot)] = std::move(*layout);
         }
 
-        return initDomainLayouts(device);
-    }
-
-    bool GeneralDescriptorSetLayout::initDomainLayouts(VkDevice device)
-    {
-        // The three mergeable domains. PASS_LOCAL is the domain for
-        // single-pipeline private sets, and it is never merged.
-        constexpr rdesc::EBindFrequency kMergeable[] = {
-            rdesc::EBindFrequency::GLOBAL,
-            rdesc::EBindFrequency::BINDLESS,
-            rdesc::EBindFrequency::FEATURE,
-        };
-
+        constexpr rdesc::EBindFrequency kMergeable[] =
+            {rdesc::EBindFrequency::GLOBAL, rdesc::EBindFrequency::BINDLESS, rdesc::EBindFrequency::FEATURE};
         for (const auto domain : kMergeable)
         {
             std::vector<VkDescriptorSetLayoutBinding> bindings;
             std::vector<VkDescriptorBindingFlags> flags;
             bool update_after_bind = false;
-
-            // Expand in ascending canonical-set-number order, shifting each
-            // binding number to its own intra-domain offset. The offset is
-            // taken from an engine-level constant (not accumulated from
-            // whichever sets this particular call happens to see) — a domain
-            // set is one scene-level instance, so it must be the same layout
-            // for every graph.
-            for (uint32_t s = 0; s < kEngineSetShapes.size(); ++s)
+            // Domain offsets come from the engine contract, never from the subset seen
+            // by a particular graph. PASS_LOCAL remains a per-pipeline layout.
+            for (uint32_t slot = 0; slot < kEngineSetShapes.size(); ++slot)
             {
-                const auto& shape = kEngineSetShapes[s];
+                const auto& shape = kEngineSetShapes[slot];
                 if (shape.frequency != domain)
                 {
                     continue;
                 }
-                expandEngineSet(shape, engineSetDomainOffset(s), bindings, flags);
+                expandEngineSet(
+                    shape,
+                    engineSetDomainOffset(slot),
+                    candidate.bindless_2d_count,
+                    candidate.bindless_cube_count,
+                    bindings,
+                    flags
+                );
                 update_after_bind = update_after_bind || shape.update_after_bind;
             }
-
             if (bindings.empty())
             {
                 continue;
             }
-
-            // Self-check: the number of expanded bindings must equal the
-            // domain capacity computed from the constant. A mismatch means
-            // the expansion and the offset-allocation algorithm have drifted
-            // apart — that would misalign every intra-domain offset, with no
-            // Vulkan error at all (each binding is individually legal, it's
-            // just sitting in the wrong place).
             if (bindings.size() != domainBindingCount(domain))
             {
-                return false;
+                return renderFailure<err::internal::Unspecified>();
             }
-
-            const bool any_flags =
-                std::any_of(flags.begin(), flags.end(), [](VkDescriptorBindingFlags f) { return f != 0; });
-
-            VkDescriptorSetLayoutBindingFlagsCreateInfo bf{
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO
-            };
-            bf.bindingCount = static_cast<uint32_t>(flags.size());
-            bf.pBindingFlags = flags.data();
-
-            VkDescriptorSetLayoutCreateInfo ci{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-            ci.bindingCount = static_cast<uint32_t>(bindings.size());
-            ci.pBindings = bindings.data();
-            if (update_after_bind)
-            {
-                ci.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-            }
-            if (any_flags)
-            {
-                ci.pNext = &bf;
-            }
-
-            auto layout = DescriptorSetLayoutOwner::create(device, ci);
+            auto layout = createLayout(device, bindings, flags, update_after_bind);
             if (!layout)
             {
-                return false;
+                return lux::cxx::unexpected(layout.error());
             }
-            domain_layouts_[static_cast<std::size_t>(domain)] = std::move(*layout);
+            candidate.domain_layouts[static_cast<std::size_t>(domain)] = std::move(*layout);
         }
-
-        return true;
+        return std::unique_ptr<GeneralDescriptorSetLayout>(new GeneralDescriptorSetLayout(std::move(candidate)));
     }
-
-    void GeneralDescriptorSetLayout::expandEngineSet(
-        const EngineSetShape& shape,
-        uint32_t binding_offset,
-        std::vector<VkDescriptorSetLayoutBinding>& bindings,
-        std::vector<VkDescriptorBindingFlags>& flags
-    ) const
-    {
-        const auto resolveCount = [this](const EngineSetBindingShape& b) -> uint32_t
-        {
-            switch (b.count_source)
-            {
-            case EBindingCountSource::BINDLESS_2D_TEXTURES:
-                return bindless_2d_count_;
-            case EBindingCountSource::BINDLESS_CUBE_TEXTURES:
-                return bindless_cube_count_;
-            case EBindingCountSource::VERTEX_POOL_SLOTS:
-                return kVertexPoolMaxCount;
-            case EBindingCountSource::MATERIAL_FAMILIES:
-                return 1u; // expanded into N bindings, each with count 1
-            case EBindingCountSource::FIXED:
-            default:
-                return b.count;
-            }
-        };
-
-        for (const auto& b : shape.bindings)
-        {
-            // expand_by_count_source: a template entry is expanded into N
-            // identically-shaped bindings driven by the constant (Material's
-            // per-family SSBO).
-            const uint32_t repeat =
-                (shape.expand_by_count_source && b.count_source == EBindingCountSource::MATERIAL_FAMILIES)
-                    ? kMaterialFamilyBindingCount
-                    : 1u;
-            for (uint32_t i = 0; i < repeat; ++i)
-            {
-                VkDescriptorSetLayoutBinding vb{};
-                vb.binding = binding_offset + b.binding + i;
-                vb.descriptorType = b.type;
-                vb.descriptorCount = resolveCount(b);
-                vb.stageFlags = b.stages;
-                bindings.push_back(vb);
-                flags.push_back(b.binding_flags);
-            }
-        }
-    }
-
-    // (getAllLayouts 已删:零调用点,且每次调用都要堆分配一个 vector 拷贝。
-    //  现役取法是按槽位 getLayout(EDescriptorSetSlot)。)
 } // namespace lux::render

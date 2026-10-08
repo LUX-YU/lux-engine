@@ -130,8 +130,9 @@ namespace
     void testReflectedPublication(lux::render::DeviceContext& device, bool reflected_failure)
     {
         using namespace lux::render;
-        GeneralDescriptorSetLayout shared(device);
-        assert(shared.init());
+        auto shared_owner = GeneralDescriptorSetLayout::create(device);
+        assert(shared_owner);
+        auto& shared = **shared_owner;
         DescriptorService descriptors(device.logicalDevice(), VK_NULL_HANDLE);
         const auto maximum_sets = device.physicalDevice().properties().properties.limits.maxBoundDescriptorSets;
         PipelineLayoutService layouts(device.logicalDevice(), maximum_sets);

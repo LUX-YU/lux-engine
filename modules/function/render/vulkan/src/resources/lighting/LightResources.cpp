@@ -536,8 +536,6 @@ namespace lux::render
 
     Expected<LightHandle> LightResources::submitDescriptor(const VLightDescriptor& desc)
     {
-        ds_revision_.bump();
-
         return std::visit(
             [this](const auto& d) -> Expected<LightHandle> {
                 using T = std::decay_t<decltype(d)>;
@@ -560,12 +558,17 @@ namespace lux::render
                         gpu.cascade_splits[i] = d.cascade_splits[i];
 
                     auto local_slot = std::get<SlicedSSBO<DirectionalLightGPU>>(*ssbos_).add(gpu);
+                    if (!local_slot)
+                    {
+                        return lux::cxx::unexpected(local_slot.error());
+                    }
+                    ds_revision_.bump();
                     LightHandle h = allocateGlobalHandle();
                     binding_map_.insert(
                         h,
                         SlotRecord{
                             .binding = ELightSetBindings::LIGHT_DIRECTIONAL,
-                            .local_slot = local_slot,
+                            .local_slot = *local_slot,
                         }
                     );
                     ++live_counts_[static_cast<std::size_t>(ELightSetBindings::LIGHT_DIRECTIONAL)];
@@ -590,12 +593,17 @@ namespace lux::render
                     gpu.attenuation_quadratic = d.attenuation_quadratic;
 
                     auto local_slot = std::get<SlicedSSBO<PointLightGPU>>(*ssbos_).add(gpu);
+                    if (!local_slot)
+                    {
+                        return lux::cxx::unexpected(local_slot.error());
+                    }
+                    ds_revision_.bump();
                     LightHandle h = allocateGlobalHandle();
                     binding_map_.insert(
                         h,
                         SlotRecord{
                             .binding = ELightSetBindings::LIGHT_POINT,
-                            .local_slot = local_slot,
+                            .local_slot = *local_slot,
                         }
                     );
                     ++live_counts_[static_cast<std::size_t>(ELightSetBindings::LIGHT_POINT)];
@@ -623,12 +631,17 @@ namespace lux::render
                     gpu.outer_cone_angle = d.outer_cone_angle;
 
                     auto local_slot = std::get<SlicedSSBO<SpotLightGPU>>(*ssbos_).add(gpu);
+                    if (!local_slot)
+                    {
+                        return lux::cxx::unexpected(local_slot.error());
+                    }
+                    ds_revision_.bump();
                     LightHandle h = allocateGlobalHandle();
                     binding_map_.insert(
                         h,
                         SlotRecord{
                             .binding = ELightSetBindings::LIGHT_SPOT,
-                            .local_slot = local_slot,
+                            .local_slot = *local_slot,
                         }
                     );
                     ++live_counts_[static_cast<std::size_t>(ELightSetBindings::LIGHT_SPOT)];
@@ -649,12 +662,17 @@ namespace lux::render
                     gpu.size = to_aligned2(d.size);
 
                     auto local_slot = std::get<SlicedSSBO<AreaLightGPU>>(*ssbos_).add(gpu);
+                    if (!local_slot)
+                    {
+                        return lux::cxx::unexpected(local_slot.error());
+                    }
+                    ds_revision_.bump();
                     LightHandle h = allocateGlobalHandle();
                     binding_map_.insert(
                         h,
                         SlotRecord{
                             .binding = ELightSetBindings::LIGHT_AREA,
-                            .local_slot = local_slot,
+                            .local_slot = *local_slot,
                         }
                     );
                     ++live_counts_[static_cast<std::size_t>(ELightSetBindings::LIGHT_AREA)];

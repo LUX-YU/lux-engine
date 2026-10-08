@@ -158,7 +158,9 @@ void checkBufferConstruction(lux::render::DeviceContext& device)
         const auto original = buffer->buffer();
         const auto generation = buffer->bufferGeneration();
         fail_buffer = buffer_attempts + 1;
-        assert(!buffer->reserve(65));
+        const auto rejected = buffer->reserve(65);
+        assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
+        assert(rejected.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
         assert(buffer->buffer() == original && buffer->bufferGeneration() == generation);
         assert(buffer->capacity() == 64 && buffer->isAlive(slot));
         assert(*buffer->mapped(0, slot) == 17 && *buffer->mapped(1, slot) == 29);
@@ -195,7 +197,9 @@ void checkBufferConstruction(lux::render::DeviceContext& device)
     {
         auto mirror = SlicedSSBO<std::uint32_t>::create(info);
         assert(mirror);
-        const auto slot = mirror->add(41);
+        const auto added = mirror->add(41);
+        assert(added);
+        const auto slot = *added;
         const auto epoch = mirror->globalEpoch();
         assert(mirror->hostValue(slot.index) == 41);
         assert(mirror->uploadDataSliceDeferred(0));

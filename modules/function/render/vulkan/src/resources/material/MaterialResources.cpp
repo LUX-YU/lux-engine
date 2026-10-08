@@ -282,8 +282,6 @@ namespace lux::render
         bool double_sided
     )
     {
-        ds_revision_.bump();
-
         GraphFamilyGPU gpu{};
         if (!packGraphGpu(data, gpu))
             return renderFailure<err::resource::NotFound>();
@@ -291,7 +289,12 @@ namespace lux::render
         // shader-side two-sided handling; the load-bearing effect is the cull tier.
         if (double_sided)
             gpu.flags |= static_cast<uint32_t>(EMaterialGpuFlag::DOUBLE_SIDED);
-        const SlotHandle local_slot = graph_ssbo_.add(gpu);
+        auto local_slot = graph_ssbo_.add(gpu);
+        if (!local_slot)
+        {
+            return lux::cxx::unexpected(local_slot.error());
+        }
+        ds_revision_.bump();
 
         const MaterialHandle ret = allocateGlobalHandle();
         // A graph material with its own baked shader gets its OWN bucket/PSO (R1);
@@ -307,7 +310,7 @@ namespace lux::render
             SlotRecord{
                 .family = ELightingTechnique::GRAPH,
                 .shading_model = EShadingModel::GRAPH,
-                .local_slot = local_slot,
+                .local_slot = *local_slot,
                 .feature_mask = 0u,
                 .variant_bucket = bucket,
                 .packed_material_type = packMaterialType(EShadingModel::GRAPH),

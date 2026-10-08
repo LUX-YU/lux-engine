@@ -620,14 +620,14 @@ namespace lux::render
         }
 
         // ---------- Capacity ----------
-        [[nodiscard]] bool reserve(
+        [[nodiscard]] Expected<void> reserve(
             uint32_t min_capacity,
             bool preserve_data = true,
             VkCommandBuffer cmd = VK_NULL_HANDLE
         )
         {
             if (min_capacity <= capacity_)
-                return true;
+                return {};
 
             const uint32_t old_cap = capacity_;
             const uint32_t new_cap = nextGrowCapacity(old_cap, min_capacity);
@@ -636,7 +636,7 @@ namespace lux::render
                 VkDeviceSize(new_cap) > std::numeric_limits<VkDeviceSize>::max() / stride_ / this->slices();
             if (exceeds_addressable_size)
             {
-                return false;
+                return renderFailure<err::memory::InvalidBufferConfiguration>();
             }
             const VkDeviceSize new_size = VkDeviceSize(new_cap) * stride_ * this->slices();
             auto candidate = prepareAllocation(
@@ -648,7 +648,7 @@ namespace lux::render
             );
             if (!candidate)
             {
-                return false;
+                return lux::cxx::unexpected(candidate.error());
             }
             const auto new_buf = candidate->owner.get();
             const auto new_alloc = candidate->owner.alloc();
@@ -664,7 +664,6 @@ namespace lux::render
                     if (new_ptr)
                     {
                         std::memset(new_ptr, 0, static_cast<size_t>(new_size));
-                        vmaFlushAllocation(device_ctx_->vmaAllocator(), new_alloc, 0, new_size);
                     }
                 }
                 else if (preserve_data && old_cap > 0)
@@ -689,7 +688,6 @@ namespace lux::render
                                 );
                             }
                         }
-                        vmaFlushAllocation(device_ctx_->vmaAllocator(), new_alloc, 0, new_size);
                     }
                     else if (this->mapped_)
                     {
@@ -708,8 +706,12 @@ namespace lux::render
                         // paths do — resetDirty() below clears the dirty ranges, so
                         // without this the preserved region is never flushed and the
                         // GPU reads stale data on non-coherent host memory. (P1#8)
-                        vmaFlushAllocation(device_ctx_->vmaAllocator(), new_alloc, 0, new_size);
                     }
+                }
+                const auto flushed = vmaFlushAllocation(device_ctx_->vmaAllocator(), new_alloc, 0, new_size);
+                if (flushed != VK_SUCCESS)
+                {
+                    return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(flushed));
                 }
             }
             else
@@ -775,7 +777,7 @@ namespace lux::render
             {
                 this->resizeHostMirror(new_cap, this->slices());
             }
-            return true;
+            return {};
         }
 
         // ---------- Getters ----------
@@ -879,11 +881,13 @@ namespace lux::render
         // =====================================================================
 
         /// Allocate slot + store value in host mirror, mark epoch-dirty.
-        SlotHandle add(const T& v)
+        [[nodiscard]] Expected<SlotHandle> add(const T& v)
             requires HasMirror
         {
-            if (!ensureCapacity())
-                return SlotHandle{}; // growth failed -> invalid handle (C-1)
+            if (auto capacity = ensureCapacity(); !capacity)
+            {
+                return lux::cxx::unexpected(capacity.error());
+            }
             uint32_t index = 0;
             if (!free_.empty())
             {
@@ -1236,21 +1240,14 @@ namespace lux::render
             return std::max(aligned, kAlign);
         }
 
-        /// @return false if a new slot is needed but the buffer could not grow
-        /// (VMA allocation failed under memory pressure). Callers MUST stop and
-        /// return an invalid handle — continuing would index past the slot arrays
-        /// (generations_/hm_values_/hm_elem_epoch_ are NOT grown on the failure
-        /// path), an OOB read/write the release build's missing assert would let
-        /// through. (C-1)
-        [[nodiscard]] bool ensureCapacity()
+        [[nodiscard]] Expected<void> ensureCapacity()
         {
-            if (!free_.empty())
-                return true;
-            if (count_ < capacity_)
-                return true;
-            const bool ok = reserve(nextGrowCapacity(capacity_, capacity_ + 1), true);
-            assert(ok && "GpuBuffer: ensureCapacity failed to grow buffer");
-            return ok;
+            const bool has_slot = !free_.empty() || count_ < capacity_;
+            if (has_slot)
+            {
+                return {};
+            }
+            return reserve(capacity_ + 1, true);
         }
 
         void recordBarrier(VkCommandBuffer cmd, VkDeviceSize offset, VkDeviceSize size) const

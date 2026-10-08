@@ -399,6 +399,9 @@ namespace
 #define vkDestroyImageView destroyView
 #define vkCreateSampler createSampler
 #define vkDestroySampler destroySampler
+// Production code uses the shipping NDEBUG policy; interception and test assertions remain active.
+#define NDEBUG
+#include <cassert>
 #include "../src/gpu/memory/VmaTypes.cpp"
 #include "../src/gpu/memory/StagingBuffer.cpp"
 #define vkAllocateCommandBuffers allocate
@@ -442,6 +445,8 @@ namespace
 #undef vkCreateSampler
 #undef vkDestroySampler
 // clang-format on
+#undef NDEBUG
+#include <cassert>
 
 int main(int argc, char** argv)
 {
@@ -703,6 +708,51 @@ int main(int argc, char** argv)
             assert(original->modifyGraph(*reused, data).ok());
             original->remove(*reused);
             assert(!original->slotRecord(*reused));
+            std::vector<MaterialHandle> live;
+            const auto old_capacity = original->graphMaterialCapacity();
+            for (unsigned index = 0; index < old_capacity; ++index)
+            {
+                auto next = original->submitGraph(data);
+                assert(next);
+                live.push_back(*next);
+            }
+            const auto old_address = original->graphMaterialAddress(0);
+            const auto old_buckets = original->variantBucketCount();
+            for (auto boundary : {EFailure::BUFFER, EFailure::MAPPED, EFailure::FLUSH})
+            {
+                failure = boundary;
+                skip_rejections = 0;
+                const auto rejected = original->submitGraph(data, {}, {}, 77);
+                assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
+                const auto expected =
+                    boundary == EFailure::BUFFER ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_ERROR_MEMORY_MAP_FAILED;
+                assert(rejected.error().args[0] == encodeVkResult(expected));
+                assert(original->graphMaterialCapacity() == old_capacity);
+                assert(original->graphMaterialAddress(0) == old_address);
+                assert(original->variantBucketCount() == old_buckets);
+                for (const auto h : live)
+                {
+                    assert(original->slotRecord(h) && original->slotRecord(h)->local_slot.isValid());
+                    assert(original->modifyGraph(h, data).ok());
+                }
+                failure = EFailure::NONE;
+                retirement.flushAll();
+                assert(buffers.size() == texture_buffer_count + 5);
+            }
+            const auto admitted = original->submitGraph(data, {}, {}, 77);
+            assert(admitted && admitted->index == live.back().index + 1);
+            assert(original->graphMaterialCapacity() > old_capacity);
+            assert(original->variantBucketCount() == old_buckets + 1);
+            for (const auto h : live)
+            {
+                assert(original->modifyGraph(h, data).ok());
+                original->remove(h);
+            }
+            original->remove(*admitted);
+            assert(retirement.pendingCount() == 1);
+            retirement.flushAll();
+            std::puts("Material growth: allocation/map/flush failures preserve handles, capacity and buckets; retry "
+                      "publishes once PASS");
         }
         assert(retirement.pendingCount() == 5 && buffers.size() == texture_buffer_count + 5);
         retirement.flushAll();

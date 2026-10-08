@@ -322,24 +322,15 @@ namespace lux::render
             seg.bounds_max[0] = seg.bounds_max[1] = seg.bounds_max[2] = -FLT_MAX;
         }
 
-        gpu.segment_slot = segments_ssbo_.add(seg);
-        if (!gpu.segment_slot.isValid())
+        auto segment_slot = segments_ssbo_.add(seg);
+        if (!segment_slot)
         {
             vbo_arena_.free({vrExp->segment, vrExp->range.offset, vrExp->range.size, vrExp->alloc_handle});
             ibo_arena_.free({irExp->segment, irExp->range.offset, irExp->range.size, irExp->alloc_handle});
             rollbackUnpublishedSegments(old_vbo_segments, old_ibo_segments);
-            setCapacityShortfall(
-                lux::render::kClassicMeshRecordsCapacity,
-                static_cast<std::uint64_t>(cpu_records_.size()) + 1u,
-                mesh_max_count_,
-                sizeof(MeshInfoGpu) * segments_ssbo_.slices(),
-                mesh_max_count_ > cpu_records_.size()
-                    ? (mesh_max_count_ - cpu_records_.size()) * sizeof(MeshInfoGpu) * segments_ssbo_.slices()
-                    : 0u,
-                lux::render::ECapacityPlanReason::BUDGET_REJECT
-            );
-            return renderFailure<err::memory::OutOfMemory>();
+            return lux::cxx::unexpected(segment_slot.error());
         }
+        gpu.segment_slot = *segment_slot;
 
         // 5) Handle allocation — slot reuse from free list or new push_back
         uint32_t id;

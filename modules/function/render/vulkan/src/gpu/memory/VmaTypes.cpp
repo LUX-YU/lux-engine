@@ -1,8 +1,47 @@
 #include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 #include <vk_mem_alloc.h>
+#include <utility>
 
 namespace lux::render
 {
+    VmaAllocatorOwner::CreateResult VmaAllocatorOwner::create(const VmaAllocatorCreateInfo& info) noexcept
+    {
+        VmaAllocator allocator{};
+        const auto result = vmaCreateAllocator(&info, &allocator);
+        if (result != VK_SUCCESS)
+        {
+            return lux::cxx::unexpected(result);
+        }
+        return VmaAllocatorOwner(allocator);
+    }
+
+    VmaAllocatorOwner::~VmaAllocatorOwner() noexcept
+    {
+        reset();
+    }
+
+    VmaAllocatorOwner::VmaAllocatorOwner(VmaAllocatorOwner&& other) noexcept
+        : allocator_(std::exchange(other.allocator_, nullptr))
+    {
+    }
+
+    VmaAllocatorOwner& VmaAllocatorOwner::operator=(VmaAllocatorOwner&& other) noexcept
+    {
+        if (this != &other)
+        {
+            reset();
+            allocator_ = std::exchange(other.allocator_, nullptr);
+        }
+        return *this;
+    }
+
+    void VmaAllocatorOwner::reset() noexcept
+    {
+        if (allocator_)
+        {
+            vmaDestroyAllocator(std::exchange(allocator_, nullptr));
+        }
+    }
 
     // =====================================================================
     //  VmaBuffer

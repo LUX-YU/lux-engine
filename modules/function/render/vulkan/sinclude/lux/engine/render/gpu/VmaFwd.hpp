@@ -13,6 +13,7 @@ using VmaPool = VmaPool_T*;
 
 struct VmaAllocationCreateInfo;
 struct VmaAllocationInfo;
+struct VmaAllocatorCreateInfo;
 
 struct VmaVirtualAllocation_T;
 using VmaVirtualAllocation = VmaVirtualAllocation_T*;

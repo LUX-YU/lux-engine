@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file VmaTypes.hpp
- * @brief Move-only RAII wrappers for VMA-allocated buffers and images.
+ * @brief Move-only RAII owners for VMA allocators, buffers and images.
  *
  * These types own a single VMA allocation and automatically destroy it
  * in the destructor.  They provide map/unmap/flush helpers and an
@@ -16,6 +16,40 @@
 
 namespace lux::render
 {
+    /// Owns a VMA allocator. Its native state retains the creation device and allocation callbacks;
+    /// the instance/device and callback context must outlive it, and all allocations must retire first.
+    class LUX_FUNCTION_PUBLIC VmaAllocatorOwner final
+    {
+    public:
+        using CreateResult = lux::cxx::expected<VmaAllocatorOwner, VkResult>;
+
+        [[nodiscard]] static CreateResult create(const VmaAllocatorCreateInfo& info) noexcept;
+
+        VmaAllocatorOwner() noexcept = default;
+        ~VmaAllocatorOwner() noexcept;
+
+        VmaAllocatorOwner(const VmaAllocatorOwner&) = delete;
+        VmaAllocatorOwner& operator=(const VmaAllocatorOwner&) = delete;
+        VmaAllocatorOwner(VmaAllocatorOwner&& other) noexcept;
+        VmaAllocatorOwner& operator=(VmaAllocatorOwner&& other) noexcept;
+
+        [[nodiscard]] VmaAllocator get() const noexcept
+        {
+            return allocator_;
+        }
+
+        explicit operator bool() const noexcept
+        {
+            return allocator_ != nullptr;
+        }
+
+        void reset() noexcept;
+
+    private:
+        explicit VmaAllocatorOwner(VmaAllocator allocator) noexcept : allocator_(allocator) {}
+
+        VmaAllocator allocator_{};
+    };
 
     // =====================================================================
     //  VmaBuffer — move-only RAII wrapper for VMA-allocated VkBuffer

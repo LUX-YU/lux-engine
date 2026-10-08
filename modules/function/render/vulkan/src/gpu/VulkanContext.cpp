@@ -660,10 +660,12 @@ namespace lux::render
             .vulkanApiVersion = VK_API_VERSION_1_3, // S-06: match actual API level used
         };
 
-        if (vmaCreateAllocator(&vma_info, &vma_allocator_) != VK_SUCCESS)
+        auto allocator = VmaAllocatorOwner::create(vma_info);
+        if (!allocator)
         {
             return renderFailure<err::device::VulkanObjectCreationFailed>();
         }
+        vma_allocator_ = std::move(*allocator);
 
         return {};
     }
@@ -705,15 +707,15 @@ namespace lux::render
             // allocation (render-graph buffers carry names like "ClusterParams"),
             // which pinpoints the leaking owner without guessing.
             VmaTotalStatistics vma_stats{};
-            vmaCalculateStatistics(vma_allocator_, &vma_stats);
+            vmaCalculateStatistics(vma_allocator_.get(), &vma_stats);
             if (vma_stats.total.statistics.allocationCount > 0)
             {
                 renderFatal("VMA allocations remain live at DeviceContext teardown");
             }
-
-            vmaDestroyAllocator(vma_allocator_);
-            vma_allocator_ = nullptr;
         }
+
+        // The allocator must retire before the currently explicit logical-device release.
+        vma_allocator_.reset();
 
         // Release logical device
         logical_device_.release(instance_context_.allocator());

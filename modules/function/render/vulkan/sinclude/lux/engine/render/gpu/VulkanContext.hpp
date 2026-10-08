@@ -1,7 +1,7 @@
 #pragma once
 #include "lux/engine/gapi/vk/vk.hpp" // platform::gapi
 #include "lux/engine/function/visibility.h"
-#include <lux/engine/render/gpu/VmaFwd.hpp>
+#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 #include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/function/render/client/core/DeviceCaps.hpp>
 #include <lux/engine/function/render/client/core/EFeatureLevel.hpp>
@@ -304,29 +304,16 @@ namespace lux::render
             return instance_context_;
         }
 
-        /// @brief Get VMA allocator
-        VmaAllocator vmaAllocator()
+        /// @brief Borrow the VMA allocator; DeviceContext retains ownership.
+        VmaAllocator vmaAllocator() const noexcept
         {
-            return vma_allocator_;
-        }
-
-        /// @brief Get VMA allocator (const)
-        const VmaAllocator& vmaAllocator() const
-        {
-            return vma_allocator_;
+            return vma_allocator_.get();
         }
 
     private:
         InstanceContext& instance_context_; ///< Reference to instance context
 
-        // Default-initialized: vmaCreateAllocator only assigns vma_allocator_ at the
-        // very end of init(); if init() fails early (no physical device, missing
-        // feature, logical-device creation failure) the destructor's
-        // `if (vma_allocator_) vmaDestroyAllocator(...)` would otherwise read an
-        // indeterminate pointer and call vmaDestroyAllocator on garbage during the
-        // graceful-failure path. graphics_queue_family_index_ is likewise read by
-        // ResourceContext::init via graphicsQueueFamilyIndex(). (#28)
-        VmaAllocator vma_allocator_{nullptr};
+        VmaAllocatorOwner vma_allocator_;
         lux::gapi::vk::PhysicalDevice physical_device_; ///< Selected physical device
         lux::gapi::vk::LogicalDevice logical_device_;   ///< Created logical device
         lux::gapi::vk::Queue graphics_queue_;           ///< Graphics queue handle

@@ -99,9 +99,8 @@ namespace lux::render
 
         // ========== Async slot allocation API (A1 – render thread finalize only) ==========
         //
-        // Slot index allocation is now owned by TextureResources (fresh_head_ + recycled SPSC).
-        // BCS is purely a render-thread data structure: the caller pre-allocates a slot index
-        // and adopts the completed native resources through finalizeTransferredTexture().
+        // This table allocates slots on the render thread. Async producers carry a reserved
+        // slot until their completed native resources reach finalizeTransferredTexture().
         // On removal, the caller calls removeTexture(), which retires the GPU objects
         // through the deferred-destroy queue and holds the index back until that
         // retire serial is GPU-complete (recycleCompletedSlots).
@@ -272,7 +271,6 @@ namespace lux::render
 
         /// Flush all pending texture uploads in a single GPU submission.
         /// Must be called before rendering if addTexture() was used since last flush.
-        /// Also auto-called by beginFrame().
         [[nodiscard]] Expected<void> flushUploads();
 
         /// Record pending texture uploads into an external command buffer.

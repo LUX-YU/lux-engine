@@ -97,6 +97,27 @@ namespace lux::render
     public:
         VmaBuffer() = default;
 
+        struct Allocation
+        {
+            VmaAllocator allocator{};
+            VkBuffer buffer{};
+            VmaAllocation allocation{};
+        };
+
+        [[nodiscard]] static VmaBuffer adopt(Allocation allocation) noexcept
+        {
+            VmaBuffer result;
+            result.allocator_ = allocation.allocator;
+            result.buffer_ = allocation.buffer;
+            result.allocation_ = allocation.allocation;
+            return result;
+        }
+
+        [[nodiscard]] Allocation release() noexcept
+        {
+            return {std::exchange(allocator_, {}), std::exchange(buffer_, {}), std::exchange(allocation_, {})};
+        }
+
         [[nodiscard]] static Expected<VmaBuffer> create(
             VmaAllocator allocator,
             const VkBufferCreateInfo& buffer_info,

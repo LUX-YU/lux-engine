@@ -426,27 +426,20 @@ namespace lux::render
             sampler_ci.compareEnable = VK_FALSE;
             sampler_ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
 
-            TextureResources::InitInfo info{};
-            info.device_context = &device_ctx;
-            info.graphics_queue = device_ctx.graphicsQueue();
-            info.upload_cmd_pool = cp;
+            TextureResources::CreateInfo info{};
             info.combined_ci = bc;
             // Same rule as tex2d_max: the cube table's pool share is charged
             // against the layout's binding-1 count, so take it from there
-            // instead of leaving InitInfo's default to agree by coincidence.
+            // instead of leaving CreateInfo's default to agree by coincidence.
             info.cube_max_capacity = cube_max;
-            info.slices = fif;
             info.default_sampler_ci = sampler_ci;
             info.fallback_pixel = std::nullopt;
-            // init() 的 bool 返回值此前被忽略 —— 而资源注册表没有 erase,失败 init
-            // 的对象仍留在表里、指针非空,所以下游任何"非空判断"都发现不了它。
-            // 这里是唯一能判定初始化成败的地方。(下游的判空已随 must<> 收敛删除:
-            // 它们检测的是"注册了没有",而真正会坏的是"init 成不成功"——测错了对象。)
-            auto* tex = render_ctx_->globalRegistry().emplace<TextureResources>().get();
-            if (!tex->init(info))
+            auto textures = TextureResources::create(info);
+            if (!textures)
             {
-                return renderFailure<err::internal::Unspecified>();
+                return lux::cxx::unexpected(textures.error());
             }
+            auto* tex = render_ctx_->globalRegistry().insert(std::move(*textures)).get();
             // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。
             render_ctx_->globalRegistry().addBeginFrameHook(
                 EUploadPhase::UPLOAD,

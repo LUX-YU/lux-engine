@@ -1,13 +1,13 @@
 #pragma once
-#include <lux/engine/render/gpu/lifecycle/GPUResourceBase.hpp>
-#include <lux/engine/render/core/FrameServices.hpp>
-#include <lux/engine/render/resources/descriptor/BindlessCombinedSet.hpp>
-#include <lux/engine/function/render/client/resources/ops/TextureResourceOperation.hpp> // U2-00 region protocol
-#include <lux/engine/function/render/client/core/ResourceHandle.hpp>
-#include <lux/engine/function/render/client/core/FeatureHandle.hpp>
-#include <lux/engine/function/render/client/core/Errors.hpp>
-#include <lux/engine/function/render/client/core/FrameStamp.hpp>
 #include <lux/engine/description/Texture.hpp>
+#include <lux/engine/function/render/client/core/Errors.hpp>
+#include <lux/engine/function/render/client/core/FeatureHandle.hpp>
+#include <lux/engine/function/render/client/core/FrameStamp.hpp>
+#include <lux/engine/function/render/client/core/ResourceHandle.hpp>
+#include <lux/engine/function/render/client/resources/ops/TextureResourceOperation.hpp> // U2-00 region protocol
+#include <lux/engine/render/core/FrameServices.hpp>
+#include <lux/engine/render/gpu/lifecycle/FifOwned.hpp>
+#include <lux/engine/render/resources/descriptor/BindlessCombinedSet.hpp>
 
 #include <span>
 #include <array>
@@ -41,7 +41,6 @@ namespace lux::render
     };
 
     class LUX_FUNCTION_PUBLIC TextureResources final
-        : public TGPUResourceBase<TextureResources, EGPUResourceType::TEXTURE>
     {
     public:
         enum class ERemoteKind : std::uint8_t
@@ -66,12 +65,8 @@ namespace lux::render
         [[nodiscard]] RTextureHandle remoteTexture(TextureHandle local, bool cube = false) const noexcept;
         void unpublish(RTextureHandle remote) noexcept;
 
-        struct InitInfo
+        struct CreateInfo
         {
-            DeviceContext* device_context;
-            VkQueue graphics_queue{VK_NULL_HANDLE};
-            VkCommandPool upload_cmd_pool{VK_NULL_HANDLE};
-
             // bindless combined (please configure set/binding, e.g. set=2,binding=0)
             BindlessSetCreateInfo combined_ci;
 
@@ -79,22 +74,18 @@ namespace lux::render
             // Must not exceed kCubeMaxCount (256) in GeneralDescriptorSetLayout.
             uint32_t cube_max_capacity{256};
 
-            uint32_t slices{1}; // Record frame count (if needed internally)
-
             VkSamplerCreateInfo default_sampler_ci{};
             std::optional<lux::rdesc::Texture> fallback_pixel; // If none, create 1x1 white texture
         };
 
-        TextureResources() = default;
-        ~TextureResources()
-        {
-            if (initialized_)
-                shutdown();
-        }
+        using CreateResult = Expected<std::unique_ptr<TextureResources>>;
 
-        bool init(const InitInfo& info);
-
-        void shutdown();
+        [[nodiscard]] static CreateResult create(const CreateInfo& info) noexcept;
+        ~TextureResources() noexcept;
+        TextureResources(const TextureResources&) = delete;
+        TextureResources& operator=(const TextureResources&) = delete;
+        TextureResources(TextureResources&&) = delete;
+        TextureResources& operator=(TextureResources&&) = delete;
 
         // Manual creation: from CPU pixels
         Expected<TextureHandle> submit(
@@ -220,17 +211,6 @@ namespace lux::render
             return *combined_cube_;
         }
 
-        // ========== IGPUResource Interface Implementation ==========
-
-        /**
-         * @brief Check if resource is initialized
-         * @return Whether resource is available
-         */
-        bool isInitialized() const
-        {
-            return initialized_;
-        }
-
         /**
          * @brief Get descriptor set
          * @return Descriptor set handle
@@ -302,22 +282,14 @@ namespace lux::render
             combined_cube_->postTransfer(cmd);
         }
 
-        /**
-         * @brief Record command to bind descriptor set
-         * @param cb Command buffer
-         * @param bind_point Pipeline bind point
-         * @param pipeline_layout Pipeline layout
-         * @param set_index Descriptor set index
-         */
     private:
+        struct Backing;
+        TextureResources(const CreateInfo& info, Backing&& backing) noexcept;
         struct TextureMipState;
         struct RemoteTextureTag;
         lux::cxx::SlotMap<RemoteTexture, RemoteTextureTag> remote_textures_;
         std::vector<RTextureHandle> remote_2d_, remote_cube_;
         static lux::rdesc::Texture makeDefaultWhite();
-        void createSharedPoolAndSet(VkDescriptorSetLayout layout, uint32_t tex2d_max, uint32_t cube_max);
-        [[nodiscard]] bool initMipFeedback(std::uint32_t frames_in_flight, std::uint32_t capacity);
-        void shutdownMipFeedback() noexcept;
         void adoptMipFeedback(const FrameStamp& stamp) noexcept;
         void markMipDemand(std::uint32_t slot_index) noexcept;
         void clearMipDemand(std::uint32_t slot_index) noexcept;
@@ -331,8 +303,7 @@ namespace lux::render
 
         struct MipFeedbackFrame final
         {
-            VkBuffer buffer{VK_NULL_HANDLE};
-            VmaAllocation allocation{nullptr};
+            TFifOwnedAllocated<VkBuffer> buffer;
             std::uint32_t* mapped{nullptr};
             std::uint64_t last_submit_serial{0u};
         };
@@ -352,29 +323,21 @@ namespace lux::render
         };
 
     private:
-        DeviceContext* dc_{nullptr};
-        VkQueue queue_{VK_NULL_HANDLE};
-        VkCommandPool upload_pool_{VK_NULL_HANDLE};
-
-        // Shared pool/set for both bindings in set 2
-        VkDescriptorPool shared_pool_{VK_NULL_HANDLE};
-        VkDescriptorSet shared_set_{VK_NULL_HANDLE};
+        DeviceContext& dc_;
+        // Pool outlives both borrowed descriptor-set users.
+        DescriptorPoolOwner shared_pool_;
 
         std::unique_ptr<BindlessCombinedSet> combined_;      ///< binding 0 — sampler2D[]
         std::unique_ptr<BindlessCombinedSet> combined_cube_; ///< binding 1 — samplerCube[]
-        BindlessSetCreateInfo combined_ci_{};
         VkSamplerCreateInfo default_sampler_ci_{};
 
         uint32_t fallback_bindless_index_{0};
-        uint32_t slices_{1};
         uint32_t current_fi_{0};
-        DeferredDestroyQueue* deferred_queue_{nullptr};
         std::vector<MipFeedbackFrame> mip_feedback_frames_;
         std::vector<TextureMipState> mip_states_;
         TextureMipFeedbackSnapshot mip_feedback_snapshot_{};
         std::vector<std::uint32_t> mip_demand_slots_;
         std::uint32_t mip_feedback_capacity_{0u};
 
-        bool initialized_{false};
     };
 }

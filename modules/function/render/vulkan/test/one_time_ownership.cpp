@@ -48,9 +48,22 @@ namespace
     EFailure failure{};
     unsigned rejections{}, idle_calls{}, copied_descriptors{}, skip_rejections{};
     bool submitted{};
+    unsigned acquisition{}, fail_acquisition{};
+    bool measure_acquisitions{};
+    EFailure rejected_boundary{};
 
     bool reject(EFailure boundary)
     {
+        if (measure_acquisitions)
+        {
+            ++acquisition;
+            if (acquisition == fail_acquisition)
+            {
+                ++rejections;
+                rejected_boundary = boundary;
+                return true;
+            }
+        }
         if (failure != boundary)
         {
             return false;
@@ -401,6 +414,9 @@ namespace
 #undef vkDeviceWaitIdle
 #include "../src/gpu/pipeline/GeneralDescriptorSetLayout.cpp"
 #include "../src/resources/descriptor/BindlessCombinedSet.cpp"
+#include "../src/gpu/memory/GPUBufferVma.cpp"
+#include "../src/resources/TextureResources.cpp"
+#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
 #include "../src/gpu/lifecycle/DeferredDestroyQueue.cpp"
 #undef vkWaitForFences
 #undef vkQueueSubmit
@@ -550,6 +566,118 @@ int main(int argc, char** argv)
     info.descriptor_set_layout = layouts.getLayout(TGetBindingSet<ETextureSetBindings>::value);
     info.layout_max_capacity = layouts.bindless2DCount();
     info.initial_capacity = 8;
+    {
+        static_assert(!std::is_default_constructible_v<TextureResources>);
+        static_assert(!std::is_copy_constructible_v<TextureResources>);
+        static_assert(!std::is_move_constructible_v<TextureResources>);
+        TextureResources::CreateInfo config{};
+        config.combined_ci = info;
+        config.combined_ci.frames_in_flight = 2;
+        config.cube_max_capacity = layouts.bindlessCubeCount();
+        acquisition = fail_acquisition = 0;
+        measure_acquisitions = true;
+        {
+            auto candidate = TextureResources::create(config);
+            assert(candidate);
+            assert((*candidate)->descriptorSet());
+            assert((*candidate)->bindlessSet2D().count() == 1);
+            assert((*candidate)->mipFeedbackAddress(0) && (*candidate)->mipFeedbackAddress(1));
+            assert((*candidate)->mipFeedbackAddress(0) != (*candidate)->mipFeedbackAddress(1));
+        }
+        const auto boundary_count = acquisition;
+        measure_acquisitions = false;
+        assert(boundary_count > 25 && retirement.pendingCount() == 2 && buffers.size() == 2);
+        retirement.flushAll();
+        for (unsigned point = 1; point <= boundary_count; ++point)
+        {
+            ResourceRegistry registry;
+            acquisition = 0;
+            fail_acquisition = point;
+            rejected_boundary = EFailure::NONE;
+            const auto old_rejections = rejections;
+            measure_acquisitions = true;
+            auto candidate = TextureResources::create(config);
+            measure_acquisitions = false;
+            assert(!candidate && registry.find<TextureResources>() == nullptr);
+            assert(rejections == old_rejections + 1);
+            const auto expected =
+                rejected_boundary == EFailure::SET
+                    ? VK_ERROR_OUT_OF_POOL_MEMORY
+                    : (rejected_boundary == EFailure::WAIT
+                           ? VK_ERROR_OUT_OF_HOST_MEMORY
+                           : (rejected_boundary == EFailure::MAPPED || rejected_boundary == EFailure::FLUSH
+                                  ? VK_ERROR_MEMORY_MAP_FAILED
+                                  : VK_ERROR_OUT_OF_DEVICE_MEMORY));
+            assert(isError<err::device::VulkanCallFailed>(candidate.error()));
+            assert(candidate.error().args[0] == encodeVkResult(expected));
+            assert(pools.size() == baseline_pools && sets.size() == baseline_sets);
+            assert(images.empty() && views.empty() && samplers.empty() && buffers.empty());
+            assert(commands.empty() && fences.empty() && retirement.pendingCount() == 0);
+        }
+        for (unsigned invalid = 0; invalid < 6; ++invalid)
+        {
+            auto bad = config;
+            switch (invalid)
+            {
+            case 0:
+                bad.combined_ci.resource_context = nullptr;
+                break;
+            case 1:
+                bad.combined_ci.deferred_queue = nullptr;
+                break;
+            case 2:
+                bad.combined_ci.descriptor_set_layout = VK_NULL_HANDLE;
+                break;
+            case 3:
+                bad.combined_ci.frames_in_flight = 0;
+                break;
+            case 4:
+                bad.cube_max_capacity = 0;
+                break;
+            case 5:
+                bad.combined_ci.layout_max_capacity = UINT32_MAX;
+                break;
+            }
+            auto rejected = TextureResources::create(bad);
+            assert(!rejected && isError<err::memory::InvalidTextureConfiguration>(rejected.error()));
+        }
+        {
+            auto bad = config;
+            bad.fallback_pixel = lux::rdesc::Texture{};
+            auto rejected = TextureResources::create(bad);
+            assert(!rejected && isError<err::asset::Invalid>(rejected.error()));
+            assert(buffers.empty() && images.empty() && retirement.pendingCount() == 0);
+        }
+        {
+            ResourceRegistry registry;
+            auto candidate = TextureResources::create(config);
+            assert(candidate && registry.find<TextureResources>() == nullptr);
+            const auto original = candidate->get();
+            auto published = registry.insert(std::move(*candidate));
+            assert(published.get() == original && registry.find<TextureResources>() == original);
+            assert(original->mipFeedbackCapacity() == config.combined_ci.layout_max_capacity);
+            const auto fallback = original->fallbackBindlessIndex();
+            const TextureHandle handle{fallback, original->bindlessSet2D().genAt(fallback)};
+            const auto remote = original->publishTexture(handle);
+            assert(remote.isValid() && original->resolveTexture(remote) == handle);
+            assert(original->imageView(handle) && original->sampler(handle));
+            original->unpublish(remote);
+            assert(!original->resolve(remote));
+        }
+        assert(retirement.pendingCount() == 2 && buffers.size() == 2);
+        retirement.flushAll();
+        assert(buffers.empty() && images.empty() && views.empty() && samplers.empty());
+        assert(pools.size() == baseline_pools && sets.size() == baseline_sets);
+        std::printf(
+            "TextureResources complete factory: %u native boundaries, exact errors, unpublished rollback and registry "
+            "adoption PASS\n",
+            boundary_count
+        );
+        if (argc > 1 && std::string_view(argv[1]) == "--texture-resource")
+        {
+            return 0;
+        }
+    }
     {
         const std::array<std::byte, 4> pixels{};
         lux::rdesc::TextureInfo texture_info{};

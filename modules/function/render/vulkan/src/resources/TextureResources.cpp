@@ -1,185 +1,181 @@
-#include <lux/engine/render/resources/TextureResources.hpp>
-#include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
-#include <lux/engine/render/gpu/utils/FormatMap.hpp>
-#include <cassert>
 #include <algorithm>
+#include <cassert>
 #include <cstring>
 #include <limits>
+#include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
+#include <lux/engine/render/gpu/utils/FormatMap.hpp>
+#include <lux/engine/render/resources/TextureResources.hpp>
+#include <vk_mem_alloc.h>
 
 namespace lux::render
 {
-    // ------------------------------------------------------------------
-    // Shared descriptor pool + set for both sampler2D[] (binding 0) and
-    // samplerCube[] (binding 1) in the same descriptor set (set 2).
-    // ------------------------------------------------------------------
-    void TextureResources::createSharedPoolAndSet(VkDescriptorSetLayout layout, uint32_t tex2d_max, uint32_t cube_max)
+    struct TextureResources::Backing
     {
-        auto& device = dc_->logicalDevice();
-        // Exactly ONE set is ever allocated here — both BCS instances run in
-        // external-set mode where the set never reallocates (retired-set arrays
-        // were replaced by the DeferredDestroyQueue; the old kRetiredSetsMax
-        // constant no longer exists). The previous 5x reservation
-        // ((tex2d_max+cube_max)*5, maxSets=5) was dead budget. (P-1)
-        constexpr uint32_t kRetiredMax = 0;
+        struct FeedbackFrame
+        {
+            VmaBuffer buffer;
+            std::uint32_t* mapped{};
+        };
 
-        // Pool sized for the single active set's two bindings.
-        VkDescriptorPoolSize ps{};
-        ps.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        ps.descriptorCount = (tex2d_max + cube_max) * (kRetiredMax + 1);
+        DescriptorPoolOwner pool;
+        VkDescriptorSet set{};
+        std::unique_ptr<BindlessCombinedSet> textures;
+        std::unique_ptr<BindlessCombinedSet> cubes;
+        std::vector<FeedbackFrame> feedback;
+        VkSamplerCreateInfo sampler{};
+        std::uint32_t fallback_index{};
+    };
 
-        VkDescriptorPoolCreateInfo pci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-        pci.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        pci.maxSets = kRetiredMax + 1;
-        pci.poolSizeCount = 1;
-        pci.pPoolSizes = &ps;
-        VK_CHECK(vkCreateDescriptorPool(device, &pci, nullptr, &shared_pool_));
+    TextureResources::CreateResult TextureResources::create(const CreateInfo& info) noexcept
+    {
+        const auto& config = info.combined_ci;
+        const bool is_missing_binding =
+            !config.resource_context || !config.deferred_queue || !config.descriptor_set_layout;
+        const bool is_invalid_capacity =
+            config.layout_max_capacity == 0 || info.cube_max_capacity == 0 ||
+            config.layout_max_capacity > std::numeric_limits<std::uint32_t>::max() - info.cube_max_capacity;
+        const bool is_invalid_configuration = is_missing_binding || is_invalid_capacity || config.frames_in_flight == 0;
+        if (is_invalid_configuration)
+        {
+            return renderFailure<err::memory::InvalidTextureConfiguration>();
+        }
 
-        // Allocate one set — variable descriptor count applies to binding 1 (cube)
-        uint32_t var_count = cube_max;
-        VkDescriptorSetVariableDescriptorCountAllocateInfo vci{
+        auto& resources = *config.resource_context;
+        const VkDevice device = resources.logicalDevice();
+        Backing backing;
+        VkDescriptorPoolSize size{
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+            config.layout_max_capacity + info.cube_max_capacity
+        };
+        VkDescriptorPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+        pool_info.flags =
+            VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+        pool_info.maxSets = 1;
+        pool_info.poolSizeCount = 1;
+        pool_info.pPoolSizes = &size;
+        auto pool = DescriptorPoolOwner::create(device, pool_info);
+        if (!pool)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(pool.error()));
+        }
+        backing.pool = std::move(*pool);
+
+        // Counts come from the actual layout. Only the highest binding (cube) is variable.
+        VkDescriptorSetVariableDescriptorCountAllocateInfo counts{
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO
         };
-        vci.descriptorSetCount = 1;
-        vci.pDescriptorCounts = &var_count;
+        counts.descriptorSetCount = 1;
+        counts.pDescriptorCounts = &info.cube_max_capacity;
+        VkDescriptorSetAllocateInfo allocation{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        allocation.descriptorPool = backing.pool.get();
+        allocation.descriptorSetCount = 1;
+        allocation.pSetLayouts = &config.descriptor_set_layout;
+        allocation.pNext = &counts;
+        VK_EXPECT(vkAllocateDescriptorSets(device, &allocation, &backing.set));
 
-        VkDescriptorSetAllocateInfo ai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-        ai.descriptorPool = shared_pool_;
-        ai.descriptorSetCount = 1;
-        ai.pSetLayouts = &layout;
-        ai.pNext = &vci;
-        // These counts MUST match the Texture set layout's binding counts —
-        // the driver charges the pool against the layout, not against what we
-        // intended. They come from GeneralDescriptorSetLayout::bindless2DCount
-        // / bindlessCubeCount for exactly that reason; deriving them a second
-        // time here would reintroduce the mismatch that made this call return
-        // VK_ERROR_OUT_OF_POOL_MEMORY on Adreno.
-        VK_CHECK(vkAllocateDescriptorSets(device, &ai, &shared_set_));
-    }
-
-    bool TextureResources::init(const InitInfo& info)
-    {
-        assert(info.device_context && info.graphics_queue && info.upload_cmd_pool);
-
-        // Set BEFORE any allocation: shutdown() early-outs on this flag, so a
-        // failure partway through would otherwise leave the shared pool/set and
-        // whichever bindless set already succeeded unreclaimable. Flag first,
-        // and let every failure path reclaim through shutdown().
-        initialized_ = true;
-
-        dc_ = info.device_context;
-        queue_ = info.graphics_queue;
-        upload_pool_ = info.upload_cmd_pool;
-        slices_ = info.slices;
-
-        combined_ci_ = info.combined_ci;
-        deferred_queue_ = combined_ci_.deferred_queue;
-
-        default_sampler_ci_ = info.default_sampler_ci;
-        if (default_sampler_ci_.sType != VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO)
+        auto textures = config;
+        textures.external_pool = backing.pool.get();
+        textures.external_set = backing.set;
+        textures.initial_capacity = config.layout_max_capacity;
+        auto texture_set = BindlessCombinedSet::create(textures);
+        if (!texture_set)
         {
-            default_sampler_ci_ = {};
-            default_sampler_ci_.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-            default_sampler_ci_.magFilter = VK_FILTER_LINEAR;
-            default_sampler_ci_.minFilter = VK_FILTER_LINEAR;
-            default_sampler_ci_.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-            default_sampler_ci_.addressModeU = default_sampler_ci_.addressModeV = default_sampler_ci_.addressModeW =
-                VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            default_sampler_ci_.maxLod = VK_LOD_CLAMP_NONE;
+            return lux::cxx::unexpected(texture_set.error());
         }
+        backing.textures = std::move(*texture_set);
 
-        // -- Create shared pool + set for dual-binding texture set --
-        const uint32_t tex2d_max = combined_ci_.layout_max_capacity;
-        const uint32_t cube_max = info.cube_max_capacity;
-        createSharedPoolAndSet(combined_ci_.descriptor_set_layout, tex2d_max, cube_max);
-
-        // -- Init 2D texture bindless set (binding 0, external set) --
-        BindlessSetCreateInfo ci_2d = combined_ci_;
-        ci_2d.external_pool = shared_pool_;
-        ci_2d.external_set = shared_set_;
-        ci_2d.initial_capacity = tex2d_max; // fixed (no reallocation in external mode)
-        ci_2d.layout_max_capacity = tex2d_max;
-        ci_2d.frames_in_flight = slices_;
-        auto set_2d = BindlessCombinedSet::create(ci_2d);
-        if (!set_2d)
+        auto cubes = textures;
+        cubes.binding = static_cast<std::uint32_t>(ETextureSetBindings::CUBE_TEXTURES);
+        cubes.view_type = VK_IMAGE_VIEW_TYPE_CUBE;
+        cubes.generate_mipmaps = false;
+        cubes.initial_capacity = cubes.layout_max_capacity = info.cube_max_capacity;
+        auto cube_set = BindlessCombinedSet::create(cubes);
+        if (!cube_set)
         {
-            shutdown();
-            return false;
+            return lux::cxx::unexpected(cube_set.error());
         }
+        backing.cubes = std::move(*cube_set);
 
-        combined_ = std::move(*set_2d);
-
-        // -- Init cube texture bindless set (binding 1, external set) --
-        BindlessSetCreateInfo ci_cube = combined_ci_;
-        ci_cube.binding = static_cast<uint32_t>(ETextureSetBindings::CUBE_TEXTURES);
-        ci_cube.view_type = VK_IMAGE_VIEW_TYPE_CUBE;
-        ci_cube.generate_mipmaps = false;
-        ci_cube.initial_capacity = cube_max;
-        ci_cube.layout_max_capacity = cube_max;
-        ci_cube.external_pool = shared_pool_;
-        ci_cube.external_set = shared_set_;
-        ci_cube.frames_in_flight = slices_;
-        auto set_cube = BindlessCombinedSet::create(ci_cube);
-        if (!set_cube)
+        const VkDeviceSize bytes = (static_cast<VkDeviceSize>(config.layout_max_capacity) + 1) * sizeof(std::uint32_t);
+        backing.feedback.reserve(config.frames_in_flight);
+        for (std::uint32_t index = 0; index < config.frames_in_flight; ++index)
         {
-            shutdown();
-            return false;
-        }
-
-        combined_cube_ = std::move(*set_cube);
-
-        if (!initMipFeedback(slices_, tex2d_max))
-        {
-            shutdown();
-            return false;
-        }
-
-        // Fallback texture (2D)
-        lux::rdesc::Texture fb = info.fallback_pixel.value_or(makeDefaultWhite());
-        auto fallback = combined_->addTexture(fb, &default_sampler_ci_);
-        if (!fallback)
-        {
-            shutdown();
-            return false;
-        }
-        // Flush immediately so the fallback texture is ready before any rendering
-        if (!combined_->flushUploads())
-        {
-            shutdown();
-            return false;
-        }
-
-        fallback_bindless_index_ = fallback->index;
-        noteTextureResident(fallback->index);
-
-        return true; // initialized_ was set at the top — see the note there
-    }
-
-    void TextureResources::shutdown()
-    {
-        if (!initialized_)
-            return;
-        initialized_ = false;
-
-        shutdownMipFeedback();
-        remote_textures_.clear();
-        remote_2d_.clear();
-        remote_cube_.clear();
-        combined_.reset();
-        combined_cube_.reset();
-
-        // Destroy shared pool (after BindlessCombinedSet instances release references)
-        if (shared_pool_ && dc_)
-        {
-            auto& device = dc_->logicalDevice();
-            if (shared_set_)
+            VkBuffer buffer{};
+            VmaAllocation buffer_allocation{};
+            void* mapped{};
+            const auto status = createGpuBufferVmaBuffer(
+                resources.vmaAllocator(),
+                bytes,
+                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+                true,
+                &buffer,
+                &buffer_allocation,
+                &mapped
+            );
+            if (status != VK_SUCCESS)
             {
-                vkFreeDescriptorSets(device, shared_pool_, 1, &shared_set_);
-                shared_set_ = VK_NULL_HANDLE;
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(status));
             }
-            vkDestroyDescriptorPool(device, shared_pool_, nullptr);
-            shared_pool_ = VK_NULL_HANDLE;
+            auto owner = VmaBuffer::adopt({resources.vmaAllocator(), buffer, buffer_allocation});
+            if (!mapped)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(VK_ERROR_MEMORY_MAP_FAILED));
+            }
+            auto* words = static_cast<std::uint32_t*>(mapped);
+            std::fill_n(words, config.layout_max_capacity, std::numeric_limits<std::uint32_t>::max());
+            words[config.layout_max_capacity] = 0;
+            VK_EXPECT(vmaFlushAllocation(resources.vmaAllocator(), buffer_allocation, 0, bytes));
+            backing.feedback.push_back({std::move(owner), words});
         }
+
+        backing.sampler = info.default_sampler_ci;
+        if (backing.sampler.sType != VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO)
+        {
+            backing.sampler = {};
+            backing.sampler.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+            backing.sampler.magFilter = backing.sampler.minFilter = VK_FILTER_LINEAR;
+            backing.sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+            backing.sampler.addressModeU = backing.sampler.addressModeV = backing.sampler.addressModeW =
+                VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            backing.sampler.maxLod = VK_LOD_CLAMP_NONE;
+        }
+        const auto fallback = info.fallback_pixel.value_or(makeDefaultWhite());
+        auto slot = backing.textures->addTexture(fallback, &backing.sampler);
+        if (!slot)
+        {
+            return lux::cxx::unexpected(slot.error());
+        }
+        auto uploaded = backing.textures->flushUploads();
+        if (!uploaded)
+        {
+            return lux::cxx::unexpected(uploaded.error());
+        }
+        backing.fallback_index = slot->index;
+        return std::unique_ptr<TextureResources>(new TextureResources(info, std::move(backing)));
     }
+
+    TextureResources::TextureResources(const CreateInfo& info, Backing&& backing) noexcept
+        : dc_(info.combined_ci.resource_context->deviceContext()), shared_pool_(std::move(backing.pool)),
+          combined_(std::move(backing.textures)), combined_cube_(std::move(backing.cubes)),
+          default_sampler_ci_(backing.sampler), fallback_bindless_index_(backing.fallback_index),
+          mip_states_(info.combined_ci.layout_max_capacity),
+          mip_feedback_capacity_(info.combined_ci.layout_max_capacity)
+    {
+        mip_feedback_frames_.reserve(backing.feedback.size());
+        for (auto& frame : backing.feedback)
+        {
+            const auto allocation = frame.buffer.release();
+            TFifOwnedAllocated<VkBuffer> buffer(
+                *info.combined_ci.deferred_queue,
+                allocation.buffer,
+                allocation.allocation
+            );
+            mip_feedback_frames_.push_back({std::move(buffer), frame.mapped, 0});
+        }
+        noteTextureResident(fallback_bindless_index_);
+    }
+
+    TextureResources::~TextureResources() noexcept = default;
 
     Expected<TextureHandle> TextureResources::submit(
         const lux::rdesc::Texture& cpu,
@@ -248,9 +244,8 @@ namespace lux::render
             return renderFailure<err::internal::InvalidArgument>();
 
         const VkSamplerCreateInfo& sci = opt_sampler ? *opt_sampler : default_sampler_ci_;
-        const auto sh =
-            combined_
-                ->addPersistentTexture(desc.width, desc.height, desc.mip_levels, persistentVkFormat(desc.format), &sci);
+        const auto format = persistentVkFormat(desc.format);
+        const auto sh = combined_->addPersistentTexture(desc.width, desc.height, desc.mip_levels, format, &sci);
         if (!sh)
         {
             return lux::cxx::unexpected(sh.error());
@@ -394,60 +389,6 @@ namespace lux::render
         }
         TextureHandle h{sh->index, sh->gen};
         return h;
-    }
-
-    bool TextureResources::initMipFeedback(std::uint32_t frames_in_flight, std::uint32_t capacity)
-    {
-        mip_feedback_capacity_ = std::max(capacity, 1u);
-        mip_states_.assign(mip_feedback_capacity_, {});
-        mip_feedback_frames_.assign(std::max(frames_in_flight, 1u), {});
-        // One extra word is the workgroup aggregation fallback counter. It is
-        // deliberately outside the public texture-slot capacity so material
-        // indices can never address it as a wanted-mip entry.
-        const VkDeviceSize bytes = static_cast<VkDeviceSize>(mip_feedback_capacity_ + 1u) * sizeof(std::uint32_t);
-        for (auto& frame : mip_feedback_frames_)
-        {
-            void* mapped = nullptr;
-            if (createGpuBufferVmaBuffer(
-                    dc_->vmaAllocator(),
-                    bytes,
-                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                    true,
-                    &frame.buffer,
-                    &frame.allocation,
-                    &mapped
-                ) != VK_SUCCESS ||
-                frame.buffer == VK_NULL_HANDLE || mapped == nullptr)
-            {
-                shutdownMipFeedback();
-                return false;
-            }
-            frame.mapped = static_cast<std::uint32_t*>(mapped);
-            std::fill_n(frame.mapped, mip_feedback_capacity_, std::numeric_limits<std::uint32_t>::max());
-            frame.mapped[mip_feedback_capacity_] = 0u;
-            flushGpuBufferVmaAllocation(dc_->vmaAllocator(), frame.allocation, 0u, bytes);
-        }
-        return true;
-    }
-
-    void TextureResources::shutdownMipFeedback() noexcept
-    {
-        for (auto& frame : mip_feedback_frames_)
-        {
-            if (frame.buffer != VK_NULL_HANDLE)
-            {
-                if (deferred_queue_)
-                    deferred_queue_->retireBuffer(frame.buffer, frame.allocation);
-                else if (dc_)
-                    destroyGpuBufferVmaBuffer(dc_->vmaAllocator(), frame.buffer, frame.allocation);
-            }
-            frame = {};
-        }
-        mip_feedback_frames_.clear();
-        mip_states_.clear();
-        mip_demand_slots_.clear();
-        mip_feedback_capacity_ = 0u;
-        mip_feedback_snapshot_ = {};
     }
 
     void TextureResources::noteTextureResident(std::uint32_t slot_index, std::uint32_t logical_base_mip) noexcept
@@ -626,14 +567,10 @@ namespace lux::render
 
     VkDeviceAddress TextureResources::mipFeedbackAddress(std::uint32_t frame_slot) const noexcept
     {
-        if (!dc_ || mip_feedback_frames_.empty())
-            return 0u;
         const auto& frame = mip_feedback_frames_[frame_slot % mip_feedback_frames_.size()];
-        if (frame.buffer == VK_NULL_HANDLE)
-            return 0u;
         VkBufferDeviceAddressInfo info{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
-        info.buffer = frame.buffer;
-        return vkGetBufferDeviceAddress(dc_->logicalDevice(), &info);
+        info.buffer = frame.buffer.get();
+        return vkGetBufferDeviceAddress(dc_.logicalDevice(), &info);
     }
 
     std::uint64_t TextureResources::mipBytes(const TextureMipState& state, std::uint32_t base_mip) const noexcept
@@ -649,14 +586,12 @@ namespace lux::render
 
     void TextureResources::adoptMipFeedback(const FrameStamp& stamp) noexcept
     {
-        if (mip_feedback_frames_.empty() || mip_feedback_capacity_ == 0u)
-            return;
         auto& frame = mip_feedback_frames_[stamp.slotIndex() % mip_feedback_frames_.size()];
         const bool sample = frame.last_submit_serial != 0u && (stamp.serial % 4u) == 0u;
-        if (sample && frame.mapped)
+        if (sample)
         {
-            const VkDeviceSize bytes = static_cast<VkDeviceSize>(mip_feedback_capacity_ + 1u) * sizeof(std::uint32_t);
-            invalidateGpuBufferVmaAllocation(dc_->vmaAllocator(), frame.allocation, 0u, bytes);
+            const VkDeviceSize bytes = (static_cast<VkDeviceSize>(mip_feedback_capacity_) + 1u) * sizeof(std::uint32_t);
+            invalidateGpuBufferVmaAllocation(dc_.vmaAllocator(), frame.buffer.alloc(), 0u, bytes);
 
             TextureMipFeedbackSnapshot next{};
             next.sample_serial = stamp.serial;
@@ -716,7 +651,7 @@ namespace lux::render
             mip_feedback_snapshot_ = next;
             std::fill_n(frame.mapped, mip_feedback_capacity_, std::numeric_limits<std::uint32_t>::max());
             frame.mapped[mip_feedback_capacity_] = 0u;
-            flushGpuBufferVmaAllocation(dc_->vmaAllocator(), frame.allocation, 0u, bytes);
+            flushGpuBufferVmaAllocation(dc_.vmaAllocator(), frame.buffer.alloc(), 0u, bytes);
         }
         // The buffer belongs to a fence-safe FIF slot at this point. Mark the
         // serial that will consume it; a later reuse can adopt all atomicMin

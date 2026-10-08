@@ -241,7 +241,13 @@ namespace lux::render
             return lux::cxx::unexpected(room.error());
         }
         const int w = tex.width(), h = tex.height(), c = tex.channel();
-        assert(w > 0 && h > 0 && (c == 1 || c == 2 || c == 3 || c == 4));
+        const bool is_invalid_extent = w <= 0 || h <= 0;
+        const bool is_invalid_channels = c < 1 || c > 4;
+        const bool is_invalid_texture = is_invalid_extent || is_invalid_channels || tex.size() == 0;
+        if (is_invalid_texture)
+        {
+            return renderFailure<err::asset::Invalid>();
+        }
 
         CombinedSlot s{};
         s.width = w;

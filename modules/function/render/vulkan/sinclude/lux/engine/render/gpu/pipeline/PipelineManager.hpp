@@ -5,6 +5,7 @@
 #include <lux/engine/render/gpu/pipeline/RenderPassKey.hpp>
 #include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>
 #include <lux/engine/render/gpu/pipeline/ShaderPermutation.hpp>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 #include <lux/engine/function/visibility.h>
 
 #include <cstdint>
@@ -312,6 +313,11 @@ namespace lux::render
         explicit PipelineManager(DeviceContext& device_ctx, bool use_dynamic_rendering = false);
         ~PipelineManager();
 
+        PipelineManager(const PipelineManager&) = delete;
+        PipelineManager& operator=(const PipelineManager&) = delete;
+        PipelineManager(PipelineManager&&) = delete;
+        PipelineManager& operator=(PipelineManager&&) = delete;
+
         /**
          * @brief Registers a graphics pipeline template and returns a handle.
          *
@@ -504,11 +510,6 @@ namespace lux::render
             return static_cast<uint32_t>(pipeline_templates_.size());
         }
 
-        /**
-         * @brief Explicitly destroys all managed resources.
-         */
-        void destroyAll();
-
         // (setPermutationCompiler/permutationCompiler removed: variants now
         //  only use specialization constants, and ShaderPermutationCompiler
         //  has been slimmed down to a pure static utility, so instance
@@ -548,11 +549,11 @@ namespace lux::render
         std::vector<GraphicsPipelineTemplate> pipeline_templates_;
         std::vector<std::vector<ShaderFeatureMask>> template_variant_masks_;
         std::vector<uint64_t> template_variant_fallback_counts_;
-        std::unordered_map<RenderPassKey, VkRenderPass, RenderPassKeyHasher, RenderPassKeyEqual> render_pass_cache_;
+        std::unordered_map<RenderPassKey, RenderPassOwner, RenderPassKeyHasher, RenderPassKeyEqual> render_pass_cache_;
 
         struct PipelineRecord
         {
-            VkPipeline pipeline = VK_NULL_HANDLE;
+            GraphicsPipelineOwner pipeline;
             VkRenderPass render_pass = VK_NULL_HANDLE;
             GraphicsPipelineHandle template_handle;
             RenderPassKey render_pass_key{};
@@ -564,14 +565,14 @@ namespace lux::render
         // Compute pipeline storage
         struct ComputePipelineRecord
         {
-            VkPipeline pipeline = VK_NULL_HANDLE;
+            ComputePipelineOwner pipeline;
             VkPipelineLayout layout = VK_NULL_HANDLE;
         };
         std::vector<ComputePipelineRecord> compute_pipelines_;
 
     private:
-        Expected<VkRenderPass> create_render_pass_internal(const RenderPassKey& key);
-        Expected<VkPipeline> create_pipeline_internal(
+        Expected<RenderPassOwner> createRenderPass(const RenderPassKey& key);
+        Expected<GraphicsPipelineOwner> createPipeline(
             const GraphicsPipelineTemplate& tmpl,
             VkRenderPass render_pass,
             uint32_t subpass_index,

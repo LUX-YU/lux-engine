@@ -198,55 +198,7 @@ namespace lux::render
         : device_ctx_(&device_ctx), use_dynamic_rendering_(use_dynamic_rendering)
     {}
 
-    PipelineManager::~PipelineManager()
-    {
-        destroyAll();
-    }
-
-    void PipelineManager::destroyAll()
-    {
-        // Destroy pipelines first
-        for (auto& kv : pipeline_cache_)
-        {
-            if (kv.second.pipeline != VK_NULL_HANDLE)
-            {
-                vkDestroyPipeline(device_ctx_->logicalDevice(), kv.second.pipeline, nullptr);
-                kv.second.pipeline = VK_NULL_HANDLE;
-            }
-        }
-        pipeline_cache_.clear();
-
-        // Destroy compute pipelines
-        for (auto& rec : compute_pipelines_)
-        {
-            if (rec.pipeline != VK_NULL_HANDLE)
-            {
-                vkDestroyPipeline(device_ctx_->logicalDevice(), rec.pipeline, nullptr);
-                rec.pipeline = VK_NULL_HANDLE;
-            }
-        }
-        compute_pipelines_.clear();
-        compute_set_layouts_.clear();
-        compute_reflections_.clear();
-
-        pipeline_templates_.clear();
-        template_set_layouts_.clear();
-        template_reflections_.clear();
-        template_layout_epochs_.clear();
-        template_variant_masks_.clear();
-        template_variant_fallback_counts_.clear();
-
-        // Then destroy render passes
-        for (auto& kv : render_pass_cache_)
-        {
-            if (kv.second != VK_NULL_HANDLE)
-            {
-                vkDestroyRenderPass(device_ctx_->logicalDevice(), kv.second, nullptr);
-                kv.second = VK_NULL_HANDLE;
-            }
-        }
-        render_pass_cache_.clear();
-    }
+    PipelineManager::~PipelineManager() = default;
 
     // -------------------------------------------------------------------------
     // Compute pipeline management
@@ -335,10 +287,8 @@ namespace lux::render
         ci.stage.pName = "main";
         ci.stage.pSpecializationInfo = spec_entries.empty() ? nullptr : &spec_info;
 
-        VkPipeline vk_pipeline = VK_NULL_HANDLE;
         const auto create_started = std::chrono::steady_clock::now();
-        const VkResult res =
-            vkCreateComputePipelines(device_ctx_->logicalDevice(), VK_NULL_HANDLE, 1, &ci, nullptr, &vk_pipeline);
+        auto pipeline = ComputePipelineOwner::create(device_ctx_->logicalDevice(), ci);
         const auto create_nanoseconds = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - create_started)
                 .count()
@@ -347,7 +297,7 @@ namespace lux::render
         telemetry_.compute_create_nanoseconds += create_nanoseconds;
         telemetry_.compute_create_max_nanoseconds =
             std::max(telemetry_.compute_create_max_nanoseconds, create_nanoseconds);
-        if (res != VK_SUCCESS)
+        if (!pipeline)
         {
             ++telemetry_.compute_create_failures;
             // Do not consume a pipeline slot on failure. Returning an
@@ -358,14 +308,14 @@ namespace lux::render
             // compile-time null check) detect the failure and can retry later.
             if (error_sink_ != nullptr)
                 error_sink_->emit(
-                    renderError<err::device::VulkanCallFailed>(encodeVkResult(res)),
+                    renderError<err::device::VulkanCallFailed>(encodeVkResult(pipeline.error())),
                     RenderErrorEvent::kNoScene,
                     0
                 );
             return kInvalidComputePipelineHandle;
         }
 
-        compute_pipelines_.push_back({vk_pipeline, layout});
+        compute_pipelines_.push_back({std::move(*pipeline), layout});
         return handle;
     }
 
@@ -373,7 +323,7 @@ namespace lux::render
     {
         if (!handle.valid() || handle.index >= compute_pipelines_.size())
             return VK_NULL_HANDLE;
-        return compute_pipelines_[handle.index].pipeline;
+        return compute_pipelines_[handle.index].pipeline.get();
     }
 
     VkPipelineLayout PipelineManager::getComputeLayout(ComputePipelineHandle handle) const noexcept
@@ -1010,16 +960,17 @@ namespace lux::render
         if (it != render_pass_cache_.end())
         {
             ++telemetry_.render_pass_cache_hits;
-            return it->second;
+            return it->second.get();
         }
 
         ++telemetry_.render_pass_cache_misses;
 
-        auto render_pass = create_render_pass_internal(key);
+        auto render_pass = createRenderPass(key);
         if (!render_pass)
             return VK_NULL_HANDLE;
-        render_pass_cache_.emplace(key, *render_pass);
-        return *render_pass;
+        const auto handle = render_pass->get();
+        render_pass_cache_.emplace(key, std::move(*render_pass));
+        return handle;
     }
 
     VkPipeline PipelineManager::getOrCreatePipeline(
@@ -1097,7 +1048,7 @@ namespace lux::render
         if (it != pipeline_cache_.end())
         {
             ++telemetry_.graphics_cache_hits;
-            return it->second.pipeline;
+            return it->second.pipeline.get();
         }
         ++telemetry_.graphics_cache_misses;
         // In dynamic rendering mode, no VkRenderPass is needed for pipeline creation.
@@ -1108,8 +1059,7 @@ namespace lux::render
         }
 
         const auto create_started = std::chrono::steady_clock::now();
-        VkPipeline pipeline = create_pipeline_internal(tmpl, render_pass, key.subpass_index, render_pass_key, features)
-                                  .value_or(VK_NULL_HANDLE);
+        auto pipeline = createPipeline(tmpl, render_pass, key.subpass_index, render_pass_key, features);
         const auto create_nanoseconds = static_cast<std::uint64_t>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - create_started)
                 .count()
@@ -1118,7 +1068,7 @@ namespace lux::render
         telemetry_.graphics_create_max_nanoseconds =
             std::max(telemetry_.graphics_create_max_nanoseconds, create_nanoseconds);
 
-        if (pipeline == VK_NULL_HANDLE)
+        if (!pipeline)
         {
             ++telemetry_.graphics_create_failures;
             // Do NOT cache a failed creation. An unconditional emplace would make
@@ -1139,22 +1089,23 @@ namespace lux::render
         }
 
         PipelineRecord record{};
-        record.pipeline = pipeline;
+        const auto handle = pipeline->get();
+        record.pipeline = std::move(*pipeline);
         record.render_pass = render_pass;
         record.template_handle = template_handle;
         record.render_pass_key = render_pass_key;
         record.subpass_index = key.subpass_index;
 
-        pipeline_cache_.emplace(key, record);
+        pipeline_cache_.emplace(key, std::move(record));
 
-        return pipeline;
+        return handle;
     }
 
     // (variantBudgetStats + VariantBudgetStats 已删:零调用点。两个统计成员
     //  template_variant_masks_ / template_variant_fallback_counts_ 保留 —— 变体
     //  预算超限的告警路径仍在读它们(见本文件 fallback_count 的幂次告警)。)
 
-    Expected<VkRenderPass> PipelineManager::create_render_pass_internal(const RenderPassKey& key)
+    Expected<RenderPassOwner> PipelineManager::createRenderPass(const RenderPassKey& key)
     {
         // Build attachment descriptions
         std::vector<VkAttachmentDescription> attachments;
@@ -1260,15 +1211,14 @@ namespace lux::render
         info.dependencyCount = static_cast<uint32_t>(dependencies.size());
         info.pDependencies = dependencies.empty() ? nullptr : dependencies.data();
 
-        VkRenderPass render_pass = VK_NULL_HANDLE;
-        VkResult res = vkCreateRenderPass(device_ctx_->logicalDevice(), &info, nullptr, &render_pass);
-        if (res != VK_SUCCESS)
-            return renderFailure<err::device::RenderPassCreationFailed>(encodeVkResult(res));
+        auto render_pass = RenderPassOwner::create(device_ctx_->logicalDevice(), info);
+        if (!render_pass)
+            return renderFailure<err::device::RenderPassCreationFailed>(encodeVkResult(render_pass.error()));
 
-        return render_pass;
+        return std::move(*render_pass);
     }
 
-    Expected<VkPipeline> PipelineManager::create_pipeline_internal(
+    Expected<GraphicsPipelineOwner> PipelineManager::createPipeline(
         const GraphicsPipelineTemplate& tmpl,
         VkRenderPass render_pass,
         uint32_t subpass_index,
@@ -1282,7 +1232,7 @@ namespace lux::render
         const bool is_invalid_template = is_missing_layout || is_missing_vertex_shader || is_missing_fragment_shader;
         if (is_invalid_template)
         {
-            renderFatal("PipelineManager::create_pipeline_internal received an incomplete template");
+            renderFatal("PipelineManager::createPipeline received an incomplete template");
         }
 
         // 1) Shader stages
@@ -1561,13 +1511,11 @@ namespace lux::render
             info.subpass = subpass_index;
         }
 
-        VkPipeline pipeline = VK_NULL_HANDLE;
-        VkResult res =
-            vkCreateGraphicsPipelines(device_ctx_->logicalDevice(), VK_NULL_HANDLE, 1, &info, nullptr, &pipeline);
-        if (res != VK_SUCCESS)
-            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(res));
+        auto pipeline = GraphicsPipelineOwner::create(device_ctx_->logicalDevice(), info);
+        if (!pipeline)
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(pipeline.error()));
 
-        return pipeline;
+        return std::move(*pipeline);
     }
 
 } // namespace lux::render

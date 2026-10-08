@@ -10,6 +10,19 @@ namespace lux::render
 {
     namespace detail
     {
+        // PipelineManager creates one pipeline per call, without a native pipeline cache.
+        // The single-output contract lets the regular device owner keep the same factory shape.
+        template <auto Create, class Info>
+        VkResult createSinglePipeline(
+            VkDevice device,
+            const Info* info,
+            const VkAllocationCallbacks* allocator,
+            VkPipeline* output
+        ) noexcept
+        {
+            return Create(device, VK_NULL_HANDLE, 1, info, allocator, output);
+        }
+
         template <class Handle, class Info, auto Create, auto Destroy>
         concept DeviceObjectApi = requires(VkDevice device, const Info* info, Handle* output, Handle handle) {
             { Create(device, info, nullptr, output) } -> std::same_as<VkResult>;
@@ -106,17 +119,35 @@ namespace lux::render
         VkDescriptorSetLayout,
         VkDescriptorSetLayoutCreateInfo,
         vkCreateDescriptorSetLayout,
-        vkDestroyDescriptorSetLayout>;
-    using PipelineLayoutOwner = detail::
-        TDeviceObject<VkPipelineLayout, VkPipelineLayoutCreateInfo, vkCreatePipelineLayout, vkDestroyPipelineLayout>;
-    using DescriptorPoolOwner = detail::
-        TDeviceObject<VkDescriptorPool, VkDescriptorPoolCreateInfo, vkCreateDescriptorPool, vkDestroyDescriptorPool>;
-    using ShaderModuleOwner = detail::
-        TDeviceObject<VkShaderModule, VkShaderModuleCreateInfo, vkCreateShaderModule, vkDestroyShaderModule>;
-    using SemaphoreOwner = detail::TDeviceObject<VkSemaphore, VkSemaphoreCreateInfo, vkCreateSemaphore, vkDestroySemaphore>;
-    using CommandPoolOwner = detail::
-        TDeviceObject<VkCommandPool, VkCommandPoolCreateInfo, vkCreateCommandPool, vkDestroyCommandPool>;
-    using ImageViewOwner = detail::TDeviceObject<VkImageView, VkImageViewCreateInfo, vkCreateImageView, vkDestroyImageView>;
-    using QueryPoolOwner = detail::TDeviceObject<VkQueryPool, VkQueryPoolCreateInfo, vkCreateQueryPool, vkDestroyQueryPool>;
+        vkDestroyDescriptorSetLayout
+    >;
+    using PipelineLayoutOwner =
+        detail::TDeviceObject<VkPipelineLayout, VkPipelineLayoutCreateInfo, vkCreatePipelineLayout, vkDestroyPipelineLayout>;
+    using DescriptorPoolOwner =
+        detail::TDeviceObject<VkDescriptorPool, VkDescriptorPoolCreateInfo, vkCreateDescriptorPool, vkDestroyDescriptorPool>;
+    using ShaderModuleOwner =
+        detail::TDeviceObject<VkShaderModule, VkShaderModuleCreateInfo, vkCreateShaderModule, vkDestroyShaderModule>;
+    using SemaphoreOwner =
+        detail::TDeviceObject<VkSemaphore, VkSemaphoreCreateInfo, vkCreateSemaphore, vkDestroySemaphore>;
+    using CommandPoolOwner =
+        detail::TDeviceObject<VkCommandPool, VkCommandPoolCreateInfo, vkCreateCommandPool, vkDestroyCommandPool>;
+    using ImageViewOwner =
+        detail::TDeviceObject<VkImageView, VkImageViewCreateInfo, vkCreateImageView, vkDestroyImageView>;
+    using QueryPoolOwner =
+        detail::TDeviceObject<VkQueryPool, VkQueryPoolCreateInfo, vkCreateQueryPool, vkDestroyQueryPool>;
     using FenceOwner = detail::TDeviceObject<VkFence, VkFenceCreateInfo, vkCreateFence, vkDestroyFence>;
+    using RenderPassOwner =
+        detail::TDeviceObject<VkRenderPass, VkRenderPassCreateInfo, vkCreateRenderPass, vkDestroyRenderPass>;
+    using GraphicsPipelineOwner = detail::TDeviceObject<
+        VkPipeline,
+        VkGraphicsPipelineCreateInfo,
+        detail::createSinglePipeline<vkCreateGraphicsPipelines, VkGraphicsPipelineCreateInfo>,
+        vkDestroyPipeline
+    >;
+    using ComputePipelineOwner = detail::TDeviceObject<
+        VkPipeline,
+        VkComputePipelineCreateInfo,
+        detail::createSinglePipeline<vkCreateComputePipelines, VkComputePipelineCreateInfo>,
+        vkDestroyPipeline
+    >;
 } // namespace lux::render

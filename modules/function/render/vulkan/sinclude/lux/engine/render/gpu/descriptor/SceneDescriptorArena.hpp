@@ -12,24 +12,25 @@
  *
  * allocate() draws from the current pool and, on exhaustion
  * (VK_ERROR_OUT_OF_POOL_MEMORY / VK_ERROR_FRAGMENTED_POOL), spins up a new pool
- * and retries — so multi-scene allocation auto-scales without a hand-tuned
- * global cap. destroy() tears down the whole chain at scene teardown, which
- * also frees every set the scene allocated (the per-scene resources never call
- * vkFreeDescriptorSets themselves).
+ * and retries once. Only a successful candidate joins the chain. The arena
+ * owns every pool until the original generation or scene safe point; its
+ * destruction frees all remaining sets. Resource users borrow those sets.
  */
 
+#include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 
 #include <vulkan/vulkan.h>
 
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace lux::render
 {
 
-    class LUX_FUNCTION_PUBLIC SceneDescriptorArena
+    class LUX_FUNCTION_PUBLIC SceneDescriptorArena final
     {
     public:
         /// Per-pool capacity template. Sized so a fully-featured scene fits in ONE
@@ -45,7 +46,10 @@ namespace lux::render
             uint32_t sampler = 0;
         };
 
-        SceneDescriptorArena() = default;
+        using CreateResult = Expected<std::unique_ptr<SceneDescriptorArena>>;
+
+        /// Establish the mandatory device/template binding. Native pools remain lazy.
+        [[nodiscard]] static CreateResult create(VkDevice device, const PoolSizeTemplate& sizes) noexcept;
         ~SceneDescriptorArena() noexcept = default;
 
         SceneDescriptorArena(const SceneDescriptorArena&) = delete;
@@ -54,22 +58,11 @@ namespace lux::render
         SceneDescriptorArena(SceneDescriptorArena&&) = delete;
         SceneDescriptorArena& operator=(SceneDescriptorArena&&) = delete;
 
-        /// Store device + template. No pool is created until the first allocate().
-        void init(VkDevice device, const PoolSizeTemplate& tmpl) noexcept
-        {
-            device_ = device;
-            tmpl_ = tmpl;
-        }
-
-        /// Allocate one descriptor set of `layout` from the current pool, growing
-        /// the chain on exhaustion. `variable_count` > 0 sizes the last
-        /// VARIABLE_DESCRIPTOR_COUNT binding (bindless arrays). A template that
-        /// cannot satisfy one fresh allocation is a fatal assembly invariant.
-        [[nodiscard]] VkDescriptorSet allocate(VkDescriptorSetLayout layout, uint32_t variable_count = 0);
-
-        /// Destroy every pool in the chain (frees all sets allocated from them).
-        /// Idempotent — safe to call from shutdownFull() and again from the dtor.
-        void destroy() noexcept;
+        /// Allocate from the current pool, or prepare one fresh pool after capacity exhaustion.
+        /// Publish that pool only after its first allocation succeeds. A failed candidate
+        /// is reclaimed immediately, preserving all existing sets and the exact native error.
+        [[nodiscard]] Expected<VkDescriptorSet>
+        allocate(VkDescriptorSetLayout layout, uint32_t variable_count = 0) noexcept;
 
         [[nodiscard]] std::size_t poolCount() const noexcept
         {
@@ -117,7 +110,8 @@ namespace lux::render
         }
 
     private:
-        [[nodiscard]] DescriptorPoolOwner createPool() const;
+        SceneDescriptorArena(VkDevice device, const PoolSizeTemplate& sizes) noexcept;
+        [[nodiscard]] DescriptorPoolOwner::CreateResult createPool() const noexcept;
         [[nodiscard]] VkResult tryAllocate(
             VkDescriptorPool pool,
             VkDescriptorSetLayout layout,
@@ -125,8 +119,8 @@ namespace lux::render
             VkDescriptorSet& out
         ) const noexcept;
 
-        VkDevice device_{VK_NULL_HANDLE};
-        PoolSizeTemplate tmpl_{};
+        VkDevice device_;
+        PoolSizeTemplate tmpl_;
         std::vector<DescriptorPoolOwner> pools_{};         ///< last element = current pool
         std::vector<DescriptorPoolOwner> retired_pools_{}; ///< earlier generations awaiting FIF-deferred destruction
         uint32_t generation_{0};

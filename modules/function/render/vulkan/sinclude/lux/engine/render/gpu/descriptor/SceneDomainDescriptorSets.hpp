@@ -57,9 +57,8 @@ namespace lux::render
         };
 
         /// Allocates one set per domain per frames-in-flight slice.
-        /// Returns false on failure (pool exhausted / layout missing); the
-        /// caller decides whether that's fatal.
-        bool init(SceneDescriptorArena& arena, const GeneralDescriptorSetLayout& layouts, uint32_t slices);
+        /// Preserve the allocation error; the containing scene decides its admission policy.
+        Expected<void> init(SceneDescriptorArena& arena, const GeneralDescriptorSetLayout& layouts, uint32_t slices);
 
         /// Gets the set for a given domain and slice. Returns VK_NULL_HANDLE if not allocated.
         [[nodiscard]] VkDescriptorSet set(rdesc::EBindFrequency domain, uint32_t slice) const noexcept

@@ -42,7 +42,7 @@ namespace lux::render
         destroy();
     }
 
-    bool HzbResources::initSlot(Slot& s, const ViewSlots& geom)
+    Expected<void> HzbResources::initSlot(Slot& s, const ViewSlots& geom)
     {
         const uint32_t width_ = geom.width;
         const uint32_t height_ = geom.height;
@@ -71,7 +71,7 @@ namespace lux::render
         {
             s.image = VK_NULL_HANDLE;
             s.alloc = VK_NULL_HANDLE;
-            return false;
+            return renderFailure<err::feature::ResourceInitFailed>();
         }
 
         auto makeView = [this, &s](uint32_t base, uint32_t count) -> VkImageView {
@@ -96,10 +96,10 @@ namespace lux::render
             s.mip_views[i] = makeView(i, 1u);
 
         if (s.full_view == VK_NULL_HANDLE)
-            return false;
+            return renderFailure<err::feature::ResourceInitFailed>();
         for (VkImageView v : s.mip_views)
             if (v == VK_NULL_HANDLE)
-                return false;
+                return renderFailure<err::feature::ResourceInitFailed>();
 
         // Read side (set 1): a mapped view-param UBO + a combined-sampler/UBO
         // descriptor for the cull pass. Only when the caller wired the read side
@@ -116,12 +116,15 @@ namespace lux::render
             baci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT;
             VmaAllocationInfo bainfo{};
             if (vmaCreateBuffer(allocator_, &buf_ci, &baci, &s.ubo, &s.ubo_alloc, &bainfo) != VK_SUCCESS)
-                return false;
+                return renderFailure<err::feature::ResourceInitFailed>();
             s.ubo_mapped = bainfo.pMappedData;
 
-            s.read_ds = arena_->allocate(read_layout_);
-            if (s.read_ds == VK_NULL_HANDLE)
-                return false;
+            auto descriptor = arena_->allocate(read_layout_);
+            if (!descriptor)
+            {
+                return lux::cxx::unexpected(descriptor.error());
+            }
+            s.read_ds = *descriptor;
 
             VkDescriptorImageInfo ii{};
             ii.sampler = sampler_;
@@ -146,7 +149,7 @@ namespace lux::render
             w[1].pBufferInfo = &bi;
             vkUpdateDescriptorSets(device_, 2u, w.data(), 0u, nullptr);
         }
-        return true;
+        return {};
     }
 
     void HzbResources::destroySlot(Slot& s)
@@ -235,7 +238,7 @@ namespace lux::render
         sampler_ = VK_NULL_HANDLE;
     }
 
-    bool HzbResources::ensureView(uint32_t view_id, uint32_t width, uint32_t height)
+    Expected<void> HzbResources::ensureView(uint32_t view_id, uint32_t width, uint32_t height)
     {
         const bool is_missing_device = device_ == VK_NULL_HANDLE;
         const bool is_missing_allocator = allocator_ == VK_NULL_HANDLE;
@@ -243,12 +246,12 @@ namespace lux::render
         const bool is_missing_height = height == 0u;
         const bool is_invalid_view = is_missing_device || is_missing_allocator || is_missing_width || is_missing_height;
         if (is_invalid_view)
-            return false;
+            return renderFailure<err::internal::InvalidArgument>();
 
         if (ViewSlots* existing = views_.tryGet(view_id))
         {
             if (existing->width == width && existing->height == height && existing->slots[0].image != VK_NULL_HANDLE)
-                return true;             // idempotent: same extent, already built
+                return {};               // idempotent: same extent, already built
             destroyViewSlots(*existing); // 旧句柄退役到队列(见头文件"回收纪律")
         }
 
@@ -259,12 +262,14 @@ namespace lux::render
         vs.cur = 0u;
 
         for (Slot& s : vs.slots)
-            if (!initSlot(s, vs))
+        {
+            if (auto ready = initSlot(s, vs); !ready)
             {
                 destroyViewSlots(vs);
-                return false;
+                return ready;
             }
-        return true;
+        }
+        return {};
     }
 
     void HzbResources::evictView(uint32_t view_id)

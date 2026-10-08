@@ -3,6 +3,8 @@
  * @brief Hi-Z occlusion pyramid build feature — see HzbFeature.hpp.
  */
 
+#include <lux/engine/render/core/RenderErrorSink.hpp>
+
 #include <lux/engine/render/renderer/features/hzb/HzbFeature.hpp>
 #include <lux/engine/render/gpu/descriptor/DescriptorService.hpp> // sampler cache
 
@@ -150,8 +152,14 @@ namespace lux::render
         if (ctx.deviceContext().waitIdle() != VK_SUCCESS)
             return;
 
-        if (!hzb_res_->ensureView(view_id, width, height))
+        if (auto ready = hzb_res_->ensureView(view_id, width, height); !ready)
+        {
+            if (auto* sink = ctx.errorSink())
+            {
+                sink->emit(ready.error(), RenderErrorEvent::kNoScene, 0);
+            }
             return;
+        }
 
         // Re-point THIS VIEW's per-mip build descriptors at the new images.
         const uint32_t n = hzb_res_->mipCount(view_id);
@@ -162,7 +170,22 @@ namespace lux::render
         {
             ms.slot[slot].assign(n, VK_NULL_HANDLE);
             for (uint32_t i = 0u; i < n; ++i)
-                ms.slot[slot][i] = renderScene().descriptorArena().allocate(l0);
+            {
+                auto descriptor = renderScene().descriptorArena().allocate(l0);
+                if (!descriptor)
+                {
+                    // This resize boundary has already waited for GPU use. Keep no
+                    // ready pyramid backed by incomplete build descriptors; retry next frame.
+                    hzb_res_->evictView(view_id);
+                    mip_sets_.erase(view_id);
+                    if (auto* sink = ctx.errorSink())
+                    {
+                        sink->emit(descriptor.error(), RenderErrorEvent::kNoScene, 0);
+                    }
+                    return;
+                }
+                ms.slot[slot][i] = *descriptor;
+            }
             hzb_res_->writeBuildDescriptors(device, view_id, slot, ms.slot[slot].data(), n);
         }
 

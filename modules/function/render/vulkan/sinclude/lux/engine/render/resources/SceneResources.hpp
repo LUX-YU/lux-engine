@@ -221,7 +221,7 @@ namespace lux::render
         SceneResources(const SceneResources&) = delete;
         SceneResources& operator=(const SceneResources&) = delete;
 
-        bool init(const InitInfo& info)
+        Expected<void> init(const InitInfo& info)
         {
             device_ctx_ = &info.device_context;
             slices_ = std::max(1u, info.slices);
@@ -232,9 +232,9 @@ namespace lux::render
             // object's internal array doesn't change after init, storing a span
             // would hide a lifetime dependency inside a pointer — copying at
             // most 3 handles is a negligible cost.
-            if (!domain_.set(info.domain_sets, info.domain_binding_offset))
+            if (auto accepted = domain_.set(info.domain_sets, info.domain_binding_offset); !accepted)
             {
-                return false;
+                return lux::cxx::unexpected(accepted.error());
             }
 
             // Allocate one descriptor set per frame-in-flight from the scene's
@@ -243,11 +243,16 @@ namespace lux::render
             descriptor_sets_.resize(slices_, VK_NULL_HANDLE);
             if (!info.arena)
             {
-                return false;
+                return renderFailure<err::internal::InvalidArgument>();
             }
             for (uint32_t i = 0; i < slices_; ++i)
             {
-                descriptor_sets_[i] = info.arena->allocate(info.set_layout);
+                auto allocated = info.arena->allocate(info.set_layout);
+                if (!allocated)
+                {
+                    return lux::cxx::unexpected(allocated.error());
+                }
+                descriptor_sets_[i] = *allocated;
             }
 
             // Initialise both SoA GPU buffers
@@ -262,7 +267,7 @@ namespace lux::render
             auto scene_buf = SceneGlobalBuffer::create(bci);
             if (!scene_buf)
             {
-                return false;
+                return lux::cxx::unexpected(scene_buf.error());
             }
             scene_buf_.emplace(std::move(*scene_buf));
 
@@ -270,13 +275,13 @@ namespace lux::render
             auto view_buf = ViewBuffer::create(bci);
             if (!view_buf)
             {
-                return false;
+                return lux::cxx::unexpected(view_buf.error());
             }
             view_buf_.emplace(std::move(*view_buf));
 
             writeDescriptorAll();
             initialized_ = true;
-            return true;
+            return {};
         }
 
         void shutdown()

@@ -162,7 +162,14 @@ namespace lux::render
             if (skin_layout == VK_NULL_HANDLE)
                 return renderFailure<err::pipeline::ReflectedSetLayoutMissing>(0u);
             for (auto& ds : skin_ds_)
-                ds = renderScene().descriptorArena().allocate(skin_layout);
+            {
+                auto descriptor = renderScene().descriptorArena().allocate(skin_layout);
+                if (!descriptor)
+                {
+                    return lux::cxx::unexpected(descriptor.error());
+                }
+                ds = *descriptor;
+            }
         }
 
         // --- 4. Write each per-FIF skin descriptor set:

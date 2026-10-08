@@ -521,7 +521,7 @@ namespace lux::render
         /// skinning). Layouts stay global; only set allocation is per-scene.
         [[nodiscard]] SceneDescriptorArena& descriptorArena() noexcept
         {
-            return scene_descriptor_arena_;
+            return *scene_descriptor_arena_;
         }
 
         /// The descriptor set merged by bind-frequency domain. During the
@@ -594,7 +594,7 @@ namespace lux::render
         // ── Per-scene descriptor-pool chain (growable; backs all per-scene
         //    persistent descriptor sets). Declared BEFORE resources_ so it
         //    is destroyed AFTER it during member destruction (reverse order). ──
-        SceneDescriptorArena scene_descriptor_arena_;
+        std::unique_ptr<SceneDescriptorArena> scene_descriptor_arena_;
         /// The descriptor set merged by bind-frequency domain.
         /// Held via unique_ptr rather than as a value member: its definition
         /// pulls in the whole EngineSetShapes -> LayoutContract chain, and

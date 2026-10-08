@@ -12,7 +12,7 @@
 
 namespace lux::render
 {
-    void ShadowResources::init(const InitInfo& info)
+    Expected<void> ShadowResources::init(const InitInfo& info)
     {
         device_ = info.device;
         device_context_ = info.device_context;
@@ -33,11 +33,18 @@ namespace lux::render
         // path run the full shutdown().
         initialized_ = true;
 
-        // 失败不在这里出声:render 层的诊断出口是 RenderErrorSink 的结构化错误,
-        // 不是终端(no_terminal_io 门禁)。调用方 ShadowMapFeature::initAndAttachTo
-        // 查 isInitialized() 并回 renderFailure<ResourceInitFailed>。
-        if (!createShadowAtlas() || !createDescriptorResources())
-            shutdown(); // reclaims whatever succeeded, and clears initialized_
+        if (!createShadowAtlas())
+        {
+            shutdown();
+            return renderFailure<err::feature::ResourceInitFailed>();
+        }
+        auto descriptors = createDescriptorResources();
+        if (!descriptors)
+        {
+            shutdown();
+            return descriptors;
+        }
+        return {};
     }
 
     void ShadowResources::shutdown()
@@ -143,12 +150,12 @@ namespace lux::render
         return true;
     }
 
-    bool ShadowResources::createDescriptorResources()
+    Expected<void> ShadowResources::createDescriptorResources()
     {
         // Write shadow resources to Light descriptor sets at bindings 4-8
         if (!light_resources_)
         {
-            return false;
+            return renderFailure<err::feature::ResourceInitFailed>();
         }
 
         const VkDeviceSize slice_buffer_size = static_cast<VkDeviceSize>(sizeof(ShadowSliceGPU)) * max_shadow_slices_;
@@ -178,7 +185,7 @@ namespace lux::render
                         &alloc_info
                     ) != VK_SUCCESS)
                 {
-                    return false;
+                    return renderFailure<err::feature::ResourceInitFailed>();
                 }
                 slice_ssbo_mapped_[fi] = alloc_info.pMappedData;
             }
@@ -204,7 +211,7 @@ namespace lux::render
                         &alloc_info
                     ) != VK_SUCCESS)
                 {
-                    return false;
+                    return renderFailure<err::feature::ResourceInitFailed>();
                 }
                 config_ubo_mapped_[fi] = alloc_info.pMappedData;
             }
@@ -230,7 +237,7 @@ namespace lux::render
                         &alloc_info
                     ) != VK_SUCCESS)
                 {
-                    return false;
+                    return renderFailure<err::feature::ResourceInitFailed>();
                 }
                 spot_shadow_map_ssbo_mapped_[fi] = alloc_info.pMappedData;
             }
@@ -256,7 +263,7 @@ namespace lux::render
                         &alloc_info
                     ) != VK_SUCCESS)
                 {
-                    return false;
+                    return renderFailure<err::feature::ResourceInitFailed>();
                 }
                 point_shadow_map_ssbo_mapped_[fi] = alloc_info.pMappedData;
             }
@@ -277,7 +284,12 @@ namespace lux::render
         shadow_ds_per_fif_.resize(frames_in_flight_, VK_NULL_HANDLE);
         for (uint32_t fi = 0; fi < frames_in_flight_; ++fi)
         {
-            shadow_ds_per_fif_[fi] = arena_->allocate(descriptor_svc_->layout(shadow_ds_layout_id_));
+            auto descriptor = arena_->allocate(descriptor_svc_->layout(shadow_ds_layout_id_));
+            if (!descriptor)
+            {
+                return lux::cxx::unexpected(descriptor.error());
+            }
+            shadow_ds_per_fif_[fi] = *descriptor;
 
             VkDescriptorBufferInfo slice_buf_info{};
             slice_buf_info.buffer = slice_ssbos_[fi];
@@ -315,7 +327,7 @@ namespace lux::render
         }
 
         writeShadowBindingsToLightAndDomain();
-        return true;
+        return {};
     }
 
     void ShadowResources::writeShadowBindingsToLightAndDomain()
@@ -479,9 +491,10 @@ namespace lux::render
         info.arena = saved_arena;
         info.light_resources = saved_light_res;
 
-        init(info);
-        if (!initialized_)
+        if (!init(info))
+        {
             return false;
+        }
 
         if (saved_slice_count > 0 && !saved_slices.empty())
         {

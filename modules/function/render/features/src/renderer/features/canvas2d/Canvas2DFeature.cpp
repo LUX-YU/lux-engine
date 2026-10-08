@@ -68,9 +68,14 @@ namespace lux::render
 
     // Out-of-line: needs the complete SceneDescriptorArena type (kept out of the
     // arena header so it stays a plain resource header).
-    VkDescriptorSet Canvas2DInstanceArena::allocateSet(SceneDescriptorArena* arena, VkDescriptorSetLayout layout)
+    Expected<VkDescriptorSet>
+    Canvas2DInstanceArena::allocateSet(SceneDescriptorArena* arena, VkDescriptorSetLayout layout)
     {
-        return arena ? arena->allocate(layout) : VK_NULL_HANDLE;
+        if (!arena)
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
+        return arena->allocate(layout);
     }
 
     Canvas2DFeature::Canvas2DFeature(Config cfg) : RenderFeature(RenderFeature::Config{cfg.name}), cfg_(std::move(cfg))

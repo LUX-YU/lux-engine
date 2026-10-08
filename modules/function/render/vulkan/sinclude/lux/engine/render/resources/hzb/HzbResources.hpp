@@ -1,4 +1,5 @@
 #pragma once
+
 /**
  * @file HzbResources.hpp
  * @brief Hi-Z (max-Z) depth pyramid — PER VIEW, double-buffered R32_SFLOAT chains.
@@ -48,6 +49,8 @@
  * 栅栏证实的完成水位放行 —— 就地销毁曾是 VUID-vkDestroyImageView-imageView-01026
  * / VUID-vkDestroyImage-image-01000 的来源。
  */
+
+#include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/render/gpu/VmaFwd.hpp> // VmaAllocator / VmaAllocation fwd
 #include <lux/engine/function/visibility.h>
 
@@ -118,7 +121,7 @@ namespace lux::render
         /// unchanged. The caller still vkDeviceWaitIdle's before a RE-create
         /// (resize is rare). 注意那条 waitIdle 已不是**释放**的安全前提 ——
         /// 旧句柄一律退役到 deferred_queue,不再就地销毁。
-        bool ensureView(uint32_t view_id, uint32_t width, uint32_t height);
+        Expected<void> ensureView(uint32_t view_id, uint32_t width, uint32_t height);
 
         /// Free everything this view owns. Wired to the registry's
         /// view-destroyed hook — see the file header on id recycling.
@@ -233,7 +236,7 @@ namespace lux::render
             }
         };
 
-        bool initSlot(Slot& s, const ViewSlots& geom);
+        Expected<void> initSlot(Slot& s, const ViewSlots& geom);
         void destroySlot(Slot& s);
         void destroyViewSlots(ViewSlots& vs);
 

@@ -1,4 +1,3 @@
-#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/render/gpu/descriptor/SceneDescriptorArena.hpp>
 
 #include <array>
@@ -6,7 +5,27 @@
 namespace lux::render
 {
 
-    DescriptorPoolOwner SceneDescriptorArena::createPool() const
+    SceneDescriptorArena::CreateResult
+    SceneDescriptorArena::create(VkDevice device, const PoolSizeTemplate& sizes) noexcept
+    {
+        const bool has_descriptors = sizes.storage_buffer || sizes.combined_image_sampler || sizes.uniform_buffer ||
+                                     sizes.sampled_image || sizes.storage_image || sizes.sampler;
+        const bool is_invalid_device = device == VK_NULL_HANDLE;
+        const bool is_invalid_capacity = sizes.max_sets == 0 || !has_descriptors;
+        const bool is_invalid_configuration = is_invalid_device || is_invalid_capacity;
+        if (is_invalid_configuration)
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
+        return std::unique_ptr<SceneDescriptorArena>(new SceneDescriptorArena(device, sizes));
+    }
+
+    SceneDescriptorArena::SceneDescriptorArena(VkDevice device, const PoolSizeTemplate& sizes) noexcept
+        : device_(device), tmpl_(sizes)
+    {
+    }
+
+    DescriptorPoolOwner::CreateResult SceneDescriptorArena::createPool() const noexcept
     {
         std::array<VkDescriptorPoolSize, 6> sizes{};
         uint32_t n = 0;
@@ -33,12 +52,7 @@ namespace lux::render
         ci.poolSizeCount = n;
         ci.pPoolSizes = sizes.data();
 
-        auto pool = DescriptorPoolOwner::create(device_, ci);
-        if (!pool)
-        {
-            renderFatal("SceneDescriptorArena: vkCreateDescriptorPool failed");
-        }
-        return std::move(*pool);
+        return DescriptorPoolOwner::create(device_, ci);
     }
 
     VkResult SceneDescriptorArena::tryAllocate(
@@ -67,35 +81,39 @@ namespace lux::render
         return vkAllocateDescriptorSets(device_, &alloc, &out);
     }
 
-    VkDescriptorSet SceneDescriptorArena::allocate(VkDescriptorSetLayout layout, uint32_t variable_count)
+    Expected<VkDescriptorSet>
+    SceneDescriptorArena::allocate(VkDescriptorSetLayout layout, uint32_t variable_count) noexcept
     {
-        if (pools_.empty())
+        if (layout == VK_NULL_HANDLE)
         {
-            pools_.push_back(createPool());
+            return renderFailure<err::internal::InvalidArgument>();
         }
-
         VkDescriptorSet set = VK_NULL_HANDLE;
-        VkResult r = tryAllocate(pools_.back().get(), layout, variable_count, set);
-        if (r == VK_SUCCESS)
+        if (!pools_.empty())
         {
-            return set;
-        }
-
-        // Pool is full / fragmented — grow the chain and retry on a fresh pool.
-        if (r == VK_ERROR_OUT_OF_POOL_MEMORY || r == VK_ERROR_FRAGMENTED_POOL)
-        {
-            pools_.push_back(createPool());
-            r = tryAllocate(pools_.back().get(), layout, variable_count, set);
-            if (r == VK_SUCCESS)
+            const auto result = tryAllocate(pools_.back().get(), layout, variable_count, set);
+            if (result == VK_SUCCESS)
             {
                 return set;
             }
+            const bool is_pool_capacity = result == VK_ERROR_OUT_OF_POOL_MEMORY || result == VK_ERROR_FRAGMENTED_POOL;
+            if (!is_pool_capacity)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(result));
+            }
         }
-
-        // A brand-new pool still cannot satisfy ONE allocation → the per-pool
-        // template is too small for this layout. Fail loudly (no infinite grow).
-        renderFatal("SceneDescriptorArena::allocate: a fresh pool cannot hold a single set "
-                    "(PoolSizeTemplate too small for the requested layout)");
+        auto candidate = createPool();
+        if (!candidate)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(candidate.error()));
+        }
+        const auto result = tryAllocate(candidate->get(), layout, variable_count, set);
+        if (result != VK_SUCCESS)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(result));
+        }
+        pools_.push_back(std::move(*candidate));
+        return set;
     }
 
     std::size_t SceneDescriptorArena::beginGeneration() noexcept
@@ -118,14 +136,6 @@ namespace lux::render
     void SceneDescriptorArena::releaseRetired() noexcept
     {
         retired_pools_.clear();
-    }
-
-    void SceneDescriptorArena::destroy() noexcept
-    {
-        pools_.clear();
-        // Retired pools are also owned by this arena — reclaim them together when
-        // the scene is destroyed, or they leak.
-        releaseRetired();
     }
 
 } // namespace lux::render

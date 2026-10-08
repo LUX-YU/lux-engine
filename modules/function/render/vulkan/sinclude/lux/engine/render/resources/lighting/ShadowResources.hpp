@@ -73,7 +73,7 @@ namespace lux::render
         ShadowResources(const ShadowResources&) = delete;
         ShadowResources& operator=(const ShadowResources&) = delete;
 
-        void init(const InitInfo& info);
+        Expected<void> init(const InitInfo& info);
         void shutdown();
 
         /// Full rebuild with new page/slice settings.
@@ -279,11 +279,12 @@ namespace lux::render
             return (static_cast<ViewCacheKey>(scene_key) << 32u) | static_cast<ViewCacheKey>(view_handle);
         }
 
-        /// false = a Vulkan/VMA allocation failed. Both used to be void and
-        /// discarded every VkResult, which is why isInitialized() was constant
-        /// true and tryRebuild's `if (!initialized_) return false;` was dead.
+        /// The atlas retains its existing bool failure contract until its complete-owner migration.
         [[nodiscard]] bool createShadowAtlas();
-        [[nodiscard]] bool createDescriptorResources();
+
+        /// Descriptor allocation preserves the native error through resource/feature admission.
+        [[nodiscard]] Expected<void> createDescriptorResources();
+
         /// Writes the shadow block (b4-b8: slices/atlas/config/spot map/point
         /// map) into both the per-FIF Light set and (if configured) the
         /// domain-set copy. Replayable: called once at resource creation, and

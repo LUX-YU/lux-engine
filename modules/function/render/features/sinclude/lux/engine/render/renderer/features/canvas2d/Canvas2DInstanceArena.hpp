@@ -366,13 +366,20 @@ namespace lux::render
             }
 
             // ── descriptor set (binding 0 = records, binding 1 = order) ────────
-            void createSet(DescriptorService* svc, DescriptorLayoutId layout, SceneDescriptorArena* arena)
+            Expected<void> createSet(DescriptorService* svc, DescriptorLayoutId layout, SceneDescriptorArena* arena)
             {
+                auto allocated = Canvas2DInstanceArena::allocateSet(arena, svc->layout(layout));
+                if (!allocated)
+                {
+                    return lux::cxx::unexpected(allocated.error());
+                }
                 svc_ = svc;
                 ds_layout_id_ = layout;
-                ds_ = Canvas2DInstanceArena::allocateSet(arena, svc->layout(layout));
+                ds_ = *allocated;
                 refreshSet();
+                return {};
             }
+
             [[nodiscard]] VkDescriptorSet descriptorSet() const noexcept
             {
                 return ds_;
@@ -475,11 +482,11 @@ namespace lux::render
         }
 
         /// Idempotent (the feature calls it at every attach; the first one builds).
-        bool init(const InitInfo& info)
+        Expected<void> init(const InitInfo& info)
         {
             textures_ = info.textures;
             if (initialized_)
-                return true;
+                return {};
             setDeferredQueue(info.deferred_queue);
             device_ctx_ = info.device_context;
             svc_ = info.descriptor_svc;
@@ -509,25 +516,32 @@ namespace lux::render
 
             if (!images_.init(device_ctx_, info.initial_capacity, info.max_capacity))
             {
-                return false;
+                return renderFailure<err::feature::ResourceInitFailed>();
             }
-            images_.createSet(svc_, ds_layout_id_, info.arena);
+            if (auto created = images_.createSet(svc_, ds_layout_id_, info.arena); !created)
+            {
+                return lux::cxx::unexpected(created.error());
+            }
             // Fields are FEW per scene (a handful of chunk quads) — a small store.
             if (!fields_.init(device_ctx_, 64, 4096))
             {
-                return false;
+                return renderFailure<err::feature::ResourceInitFailed>();
             }
-            fields_.createSet(svc_, ds_layout_id_, info.arena);
+            if (auto created = fields_.createSet(svc_, ds_layout_id_, info.arena); !created)
+            {
+                return lux::cxx::unexpected(created.error());
+            }
             // Tilemaps too: one instance per whole map (A2-02).
             if (!tiles_.init(device_ctx_, 64, 4096))
             {
-                return false;
+                return renderFailure<err::feature::ResourceInitFailed>();
             }
-            tiles_.createSet(svc_, ds_layout_id_, info.arena);
-            initialized_ =
-                (images_.descriptorSet() != VK_NULL_HANDLE && fields_.descriptorSet() != VK_NULL_HANDLE &&
-                 tiles_.descriptorSet() != VK_NULL_HANDLE);
-            return initialized_;
+            if (auto created = tiles_.createSet(svc_, ds_layout_id_, info.arena); !created)
+            {
+                return lux::cxx::unexpected(created.error());
+            }
+            initialized_ = true;
+            return {};
         }
 
         void setDeferredQueue(DeferredDestroyQueue* q) noexcept
@@ -824,7 +838,7 @@ namespace lux::render
         }
 
         /// Defined next to the feature (needs the complete SceneDescriptorArena type).
-        static VkDescriptorSet allocateSet(SceneDescriptorArena* arena, VkDescriptorSetLayout layout);
+        static Expected<VkDescriptorSet> allocateSet(SceneDescriptorArena* arena, VkDescriptorSetLayout layout);
 
     private:
         [[nodiscard]] std::array<IKindStore*, 3> stores() noexcept

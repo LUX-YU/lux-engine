@@ -52,6 +52,8 @@ namespace
     unsigned acquisition{}, fail_acquisition{};
     bool measure_acquisitions{};
     EFailure rejected_boundary{};
+    VkResult set_failure_result{VK_ERROR_OUT_OF_POOL_MEMORY};
+    bool reject_set_once{};
 
     bool reject(EFailure boundary)
     {
@@ -158,7 +160,12 @@ namespace
     {
         if (reject(EFailure::SET))
         {
-            return VK_ERROR_OUT_OF_POOL_MEMORY;
+            if (reject_set_once)
+            {
+                reject_set_once = false;
+                failure = EFailure::NONE;
+            }
+            return set_failure_result;
         }
         const auto result = vkAllocateDescriptorSets(device, info, out);
         if (result == VK_SUCCESS)
@@ -455,7 +462,9 @@ namespace
 #include "../src/resources/TextureResources.cpp"
 #include "../src/resources/material/MaterialResources.cpp"
 #include "../src/gpu/descriptor/DescriptorService.cpp"
+#include "../src/gpu/descriptor/SceneDescriptorArena.cpp"
 #include "../src/resources/lighting/LightResources.cpp"
+#include "../src/resources/hzb/HzbResources.cpp"
 #include "../src/resources/vertex/VertexPoolRegistry.cpp"
 #include "../src/resources/vertex/TransientVertexSource.cpp"
 #include "../src/resources/vertex/SkinningResources.cpp"
@@ -487,6 +496,138 @@ namespace
 #undef NDEBUG
 #include <cassert>
 
+void checkSceneDescriptorArena(lux::render::DeviceContext& device, VkDescriptorSetLayout layout)
+{
+    using namespace lux::render;
+    static_assert(!std::is_default_constructible_v<SceneDescriptorArena>);
+    static_assert(!std::is_copy_constructible_v<SceneDescriptorArena>);
+    static_assert(!std::is_move_constructible_v<SceneDescriptorArena>);
+    const auto original_pools = pools.size();
+    const auto original_sets = sets.size();
+    auto no_device = SceneDescriptorArena::create(VK_NULL_HANDLE, {});
+    assert(!no_device && isError<err::internal::InvalidArgument>(no_device.error()));
+    SceneDescriptorArena::PoolSizeTemplate empty{};
+    empty.max_sets = 0;
+    auto no_capacity = SceneDescriptorArena::create(device.logicalDevice(), empty);
+    assert(!no_capacity && isError<err::internal::InvalidArgument>(no_capacity.error()));
+    empty.max_sets = 1;
+    empty.storage_buffer = empty.combined_image_sampler = empty.uniform_buffer = 0;
+    auto no_descriptors = SceneDescriptorArena::create(device.logicalDevice(), empty);
+    assert(!no_descriptors && isError<err::internal::InvalidArgument>(no_descriptors.error()));
+    auto candidate = SceneDescriptorArena::create(device.logicalDevice(), {});
+    assert(candidate && pools.size() == original_pools && sets.size() == original_sets);
+    auto& arena = **candidate;
+    const auto no_layout = arena.allocate(VK_NULL_HANDLE);
+    assert(!no_layout && isError<err::internal::InvalidArgument>(no_layout.error()));
+    failure = EFailure::POOL;
+    const auto failed_pool = arena.allocate(layout);
+    assert(!failed_pool && isError<err::device::VulkanCallFailed>(failed_pool.error()));
+    assert(failed_pool.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+    assert(arena.poolCount() == 0 && pools.size() == original_pools && sets.size() == original_sets);
+    failure = EFailure::SET;
+    const auto failed_set = arena.allocate(layout);
+    assert(!failed_set && isError<err::device::VulkanCallFailed>(failed_set.error()));
+    assert(failed_set.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_POOL_MEMORY));
+    assert(arena.poolCount() == 0 && pools.size() == original_pools && sets.size() == original_sets);
+    failure = EFailure::NONE;
+    const auto first = arena.allocate(layout);
+    assert(first && *first != VK_NULL_HANDLE && arena.poolCount() == 1);
+    const auto first_pool = sets.at(*first);
+
+    failure = EFailure::SET;
+    set_failure_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    const auto before_failure = rejections;
+    const auto no_growth = arena.allocate(layout);
+    assert(!no_growth && no_growth.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+    assert(rejections == before_failure + 1 && arena.poolCount() == 1);
+    assert(sets.at(*first) == first_pool && pools.size() == original_pools + 1);
+
+    set_failure_result = VK_ERROR_FRAGMENTED_POOL;
+    const auto before_retry = rejections;
+    const auto failed_growth = arena.allocate(layout);
+    assert(!failed_growth && failed_growth.error().args[0] == encodeVkResult(VK_ERROR_FRAGMENTED_POOL));
+    assert(rejections == before_retry + 2 && arena.poolCount() == 1);
+    assert(pools.size() == original_pools + 1 && sets.size() == original_sets + 1);
+    assert(sets.at(*first) == first_pool);
+
+    reject_set_once = true;
+    const auto grown = arena.allocate(layout);
+    assert(grown && *grown != VK_NULL_HANDLE && arena.poolCount() == 2);
+    assert(sets.at(*grown) != first_pool && sets.at(*first) == first_pool);
+    assert(arena.beginGeneration() == 2 && arena.generation() == 1);
+    assert(arena.poolCount() == 0 && arena.retiredPoolCount() == 2);
+    assert(sets.contains(*first) && sets.contains(*grown));
+    const auto current = arena.allocate(layout);
+    assert(current && arena.poolCount() == 1 && arena.retiredPoolCount() == 2);
+    arena.releaseRetired();
+    assert(!sets.contains(*first) && !sets.contains(*grown) && sets.contains(*current));
+    assert(arena.retiredPoolCount() == 0 && pools.size() == original_pools + 1);
+    candidate->reset();
+    assert(pools.size() == original_pools && sets.size() == original_sets);
+    set_failure_result = VK_ERROR_OUT_OF_POOL_MEMORY;
+    std::puts("Scene descriptor arena: native allocation errors, bounded growth, retry and generation retirement PASS");
+}
+
+void checkHzbDescriptorFailure(lux::render::DeviceContext& device)
+{
+    using namespace lux::render;
+    const std::array bindings{
+        VkDescriptorSetLayoutBinding{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_COMPUTE_BIT},
+        VkDescriptorSetLayoutBinding{1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT}
+    };
+    VkDescriptorSetLayoutCreateInfo layout_info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+    layout_info.bindingCount = static_cast<std::uint32_t>(bindings.size());
+    layout_info.pBindings = bindings.data();
+    auto layout = DescriptorSetLayoutOwner::create(device.logicalDevice(), layout_info);
+    VkSamplerCreateInfo sampler_info{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    auto sampler = SamplerOwner::create(device.logicalDevice(), sampler_info);
+    auto arena = SceneDescriptorArena::create(device.logicalDevice(), {});
+    assert(layout && sampler && arena);
+    DeferredDestroyQueue retirement;
+    retirement.init(device.vmaAllocator(), device.logicalDevice());
+    retirement.beginFrame(7);
+    const auto original_images = images.size();
+    const auto original_views = views.size();
+    const auto original_buffers = buffers.size();
+    const auto original_sets = sets.size();
+    {
+        HzbResources hzb;
+        assert(hzb.init(
+            {.device = device.logicalDevice(),
+             .allocator = device.vmaAllocator(),
+             .arena = arena->get(),
+             .read_layout = layout->get(),
+             .sampler = sampler->get(),
+             .deferred_queue = &retirement}
+        ));
+        failure = EFailure::SET;
+        set_failure_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        const auto rejected = hzb.ensureView(17, 8, 8);
+        assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
+        assert(rejected.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+        assert(!hzb.viewReady(17) && (*arena)->poolCount() == 0 && sets.size() == original_sets);
+        assert(retirement.pendingCount() != 0);
+        retirement.collect(6);
+        assert(images.size() > original_images && buffers.size() > original_buffers);
+        retirement.collect(7);
+        assert(
+            images.size() == original_images && views.size() == original_views && buffers.size() == original_buffers
+        );
+        failure = EFailure::NONE;
+        set_failure_result = VK_ERROR_OUT_OF_POOL_MEMORY;
+        assert(hzb.ensureView(17, 8, 8) && hzb.viewReady(17));
+        assert(sets.size() == original_sets + 2 && (*arena)->poolCount() == 1);
+        assert(hzb.ensureView(17, 8, 8) && sets.size() == original_sets + 2);
+        hzb.evictView(17);
+        assert(!hzb.viewReady(17) && retirement.pendingCount() != 0);
+        retirement.collect(7);
+    }
+    assert(images.size() == original_images && views.size() == original_views && buffers.size() == original_buffers);
+    arena->reset();
+    assert(sets.size() == original_sets && retirement.pendingCount() == 0);
+    std::puts("HZB descriptor failure: exact allocation error, no ready view, retry and original retirement PASS");
+}
+
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -505,6 +646,12 @@ int main(int argc, char** argv)
     auto layout_owner = GeneralDescriptorSetLayout::create(device);
     assert(layout_owner);
     auto& layouts = **layout_owner;
+    checkSceneDescriptorArena(device, layouts.getLayout(EDescriptorSetSlot::SCENE));
+    checkHzbDescriptorFailure(device);
+    if (argc == 2 && std::string_view(argv[1]) == "--scene-arena")
+    {
+        return 0;
+    }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
     static_assert(!std::is_default_constructible_v<BindlessCombinedSet>);

@@ -97,14 +97,19 @@ namespace lux::render
                 tmpl.combined_image_sampler += c.combined_image_sampler * slices;
                 tmpl.uniform_buffer += c.uniform_buffer * slices;
             }
-            scene_descriptor_arena_.init(rctx.deviceContext().logicalDevice(), tmpl);
+            auto arena = SceneDescriptorArena::create(rctx.deviceContext().logicalDevice(), tmpl);
+            if (!arena)
+            {
+                renderFatal("RenderScene: invalid descriptor arena configuration");
+            }
+            scene_descriptor_arena_ = std::move(*arena);
         }
 
         // Domain set instances (coexisting alongside the per-set ones during the
         // transition: build them first and have each owner dual-write into them,
         // verify the offsets and types line up, then switch the pipelines over).
         scene_domain_sets_ = std::make_unique<SceneDomainDescriptorSets>();
-        if (!scene_domain_sets_->init(scene_descriptor_arena_, rctx.descriptorLayouts(), rctx.framesInFlight()))
+        if (!scene_domain_sets_->init(*scene_descriptor_arena_, rctx.descriptorLayouts(), rctx.framesInFlight()))
         {
             // 域集是描述符的唯一写目标,也是管线唯一的绑定来源。分配失败之后本场景的
             // 所有资源描述符都不会被写入,而绑定一个从未写过的描述符集是未定义行为 ——
@@ -132,7 +137,7 @@ namespace lux::render
                 .slices = rctx.framesInFlight(),
                 .initial_scene_capacity = 8,
                 .initial_view_capacity = 8,
-                .arena = &scene_descriptor_arena_,
+                .arena = scene_descriptor_arena_.get(),
                 .set_layout = rctx.descriptorLayouts().getLayout(EDescriptorSetSlot::SCENE),
                 // The Scene set lives in the GLOBAL domain. The offset comes from an
                 // engine-level constant, sourced from the same place as the domain
@@ -1059,7 +1064,7 @@ namespace lux::render
         // descriptor set the scene allocated in one shot (the per-scene
         // resources only drop their set handles in shutdown(), they never
         // vkFreeDescriptorSets). Safe: Renderer::removeScene waitIdle's first.
-        scene_descriptor_arena_.destroy();
+        scene_descriptor_arena_.reset();
 
         initialized_ = false;
     }

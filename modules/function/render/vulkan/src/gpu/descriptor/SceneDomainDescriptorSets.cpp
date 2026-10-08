@@ -4,7 +4,7 @@
 namespace lux::render
 {
 
-    bool SceneDomainDescriptorSets::init(
+    Expected<void> SceneDomainDescriptorSets::init(
         SceneDescriptorArena& arena,
         const GeneralDescriptorSetLayout& layouts,
         uint32_t slices
@@ -17,22 +17,23 @@ namespace lux::render
         {
             const VkDescriptorSetLayout layout = layouts.getDomainLayout(domain);
             if (layout == VK_NULL_HANDLE)
-                return false;
+                return renderFailure<err::internal::InvalidArgument>();
 
             auto& v = sets_[static_cast<std::size_t>(domain)];
             v.resize(slices_, VK_NULL_HANDLE);
             for (uint32_t i = 0; i < slices_; ++i)
             {
-                v[i] = arena.allocate(layout, 0u);
-                if (v[i] == VK_NULL_HANDLE)
+                auto allocated = arena.allocate(layout, 0u);
+                if (!allocated)
                 {
                     clear();
-                    return false;
+                    return lux::cxx::unexpected(allocated.error());
                 }
+                v[i] = *allocated;
             }
         }
 
-        return true;
+        return {};
     }
 
 } // namespace lux::render

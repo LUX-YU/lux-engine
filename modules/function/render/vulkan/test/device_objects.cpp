@@ -282,18 +282,22 @@ int main()
     }
     assert(live.empty());
     {
-        SceneDescriptorArena arena;
         SceneDescriptorArena::PoolSizeTemplate size{};
         size.max_sets = 1;
-        arena.init(first_device, size);
+        auto candidate = SceneDescriptorArena::create(first_device, size);
+        assert(candidate);
+        auto& arena = **candidate;
         const auto layout = reinterpret_cast<VkDescriptorSetLayout>(3);
-        assert(arena.allocate(layout) != VK_NULL_HANDLE);
-        assert(arena.allocate(layout) != VK_NULL_HANDLE);
+        const auto first = arena.allocate(layout);
+        const auto second = arena.allocate(layout);
+        assert(first && *first != VK_NULL_HANDLE);
+        assert(second && *second != VK_NULL_HANDLE);
         assert(arena.poolCount() == 2 && live.size() == 2);
         const auto before = destroyed;
         assert(arena.beginGeneration() == 2 && arena.poolCount() == 0 && arena.retiredPoolCount() == 2);
         assert(destroyed == before && live.size() == 2);
-        assert(arena.allocate(layout) != VK_NULL_HANDLE && live.size() == 3);
+        const auto third = arena.allocate(layout);
+        assert(third && *third != VK_NULL_HANDLE && live.size() == 3);
         arena.releaseRetired();
         assert(destroyed == before + 2 && live.size() == 1);
     }

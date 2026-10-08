@@ -66,18 +66,6 @@ namespace lux::render
         }
     } // namespace
 
-    // Out-of-line: needs the complete SceneDescriptorArena type (kept out of the
-    // arena header so it stays a plain resource header).
-    Expected<VkDescriptorSet>
-    Canvas2DInstanceArena::allocateSet(SceneDescriptorArena* arena, VkDescriptorSetLayout layout)
-    {
-        if (!arena)
-        {
-            return renderFailure<err::internal::InvalidArgument>();
-        }
-        return arena->allocate(layout);
-    }
-
     Canvas2DFeature::Canvas2DFeature(Config cfg) : RenderFeature(RenderFeature::Config{cfg.name}), cfg_(std::move(cfg))
     {}
 
@@ -102,33 +90,27 @@ namespace lux::render
         // feature detach so a late command always lands somewhere stable). First
         // attach wires the deferred-destroy queue + the transfer contributor.
         {
-            const bool fresh = (scene.resources().find<Canvas2DInstanceArena>() == nullptr);
-
-            Canvas2DInstanceArena::InitInfo ii{};
-            ii.textures = &renderContext().globalRegistry().must<TextureResources>();
-            ii.device_context = &ctx.deviceContext();
-            ii.deferred_queue = &ctx.deferredDestroyQueue();
-            ii.descriptor_svc = &ctx.descriptorService();
-            ii.arena = &scene.descriptorArena();
-            ii.initial_capacity = cfg_.initial_capacity;
-            ii.max_capacity = cfg_.max_capacity;
-            ii.offscreen_groups = cfg_.offscreen_groups;
-
-            auto arena_r = scene.resources().ensure<Canvas2DInstanceArena>(ii);
-            if (!arena_r)
-                return lux::cxx::unexpected<RenderError>(arena_r.error());
-            arena_ = *arena_r;
-
-            // 一次性副作用登记在 ensure 成功之后 —— 见 LightFeature 里的同款说明:
-            // "失败即不发布"意味着失败对象会被销毁,提前登记的钩子/贡献者会捕获到
-            // 一个悬垂裸指针。
-            if (fresh)
+            arena_ = scene.resources().find<Canvas2DInstanceArena>();
+            if (!arena_)
             {
+                const Canvas2DInstanceArena::CreateInfo info{
+                    ctx.deviceContext(),
+                    ctx.deferredDestroyQueue(),
+                    ctx.globalRegistry().must<TextureResources>(),
+                    ctx.descriptorService(),
+                    scene.descriptorArena(),
+                    cfg_.initial_capacity,
+                    cfg_.max_capacity,
+                    cfg_.offscreen_groups
+                };
+                auto candidate = Canvas2DInstanceArena::create(info);
+                if (!candidate)
+                {
+                    return lux::cxx::unexpected(candidate.error());
+                }
+                arena_ = scene.resources().insert(std::move(*candidate)).get();
                 scene.transferScheduler().contributors().add(makeTransferContributor(arena_, /*priority=*/1));
             }
-            // ensure has checked construction; retain the descriptor contract check.
-            if (!arena_->initialized() || arena_->descriptorSet(ECanvas2DKind::IMAGE) == VK_NULL_HANDLE)
-                return renderFailure<err::device::VulkanObjectCreationFailed>();
         }
 
         // Shaders + vertex-pulling pipelines — one per KIND, all sharing ONE pipeline

@@ -300,7 +300,10 @@ if(BUILD_TESTING)
     endif()
 
     add_executable(render_one_time_ownership_test test/one_time_ownership.cpp)
-    target_include_directories(render_one_time_ownership_test PRIVATE sinclude pinclude)
+    target_include_directories(
+        render_one_time_ownership_test
+        PRIVATE sinclude pinclude ../features/include ../features/sinclude
+    )
     target_compile_definitions(render_one_time_ownership_test PRIVATE LUX_FUNCTION_DLL_DISABLE)
     target_link_libraries(render_one_time_ownership_test PRIVATE render_vulkan GPUOpen::VulkanMemoryAllocator)
     if(MSVC)

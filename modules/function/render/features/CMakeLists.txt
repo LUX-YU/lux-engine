@@ -104,6 +104,7 @@ set(RENDER_FEATURE_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/UtilityKernels.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/features/BuiltinShaderContextView.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/features/canvas2d/Canvas2DFeature.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/features/canvas2d/Canvas2DInstanceArena.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/features/deferred/DeferredGBufferFeature.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/features/deferred/DeferredLightingFeature.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/renderer/features/DepthPrepassFeature.cpp

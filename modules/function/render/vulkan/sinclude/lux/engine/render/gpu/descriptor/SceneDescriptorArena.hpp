@@ -25,6 +25,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <vector>
 
 namespace lux::render
@@ -63,6 +64,12 @@ namespace lux::render
         /// is reclaimed immediately, preserving all existing sets and the exact native error.
         [[nodiscard]] Expected<VkDescriptorSet>
         allocate(VkDescriptorSetLayout layout, uint32_t variable_count = 0) noexcept;
+
+        /// One native allocation for a complete fixed-count resource family. No prefix
+        /// survives rejection; the successful sets retain this arena's generation lifetime.
+        [[nodiscard]] Expected<std::vector<VkDescriptorSet>> allocateBatch(
+            std::span<const VkDescriptorSetLayout> layouts
+        ) noexcept;
 
         [[nodiscard]] std::size_t poolCount() const noexcept
         {
@@ -112,11 +119,16 @@ namespace lux::render
     private:
         SceneDescriptorArena(VkDevice device, const PoolSizeTemplate& sizes) noexcept;
         [[nodiscard]] DescriptorPoolOwner::CreateResult createPool() const noexcept;
+        [[nodiscard]] Expected<void> allocateInto(
+            std::span<const VkDescriptorSetLayout> layouts,
+            std::span<VkDescriptorSet> sets,
+            std::span<const uint32_t> variable_counts = {}
+        ) noexcept;
         [[nodiscard]] VkResult tryAllocate(
             VkDescriptorPool pool,
-            VkDescriptorSetLayout layout,
-            uint32_t variable_count,
-            VkDescriptorSet& out
+            std::span<const VkDescriptorSetLayout> layouts,
+            std::span<VkDescriptorSet> sets,
+            std::span<const uint32_t> variable_counts
         ) const noexcept;
 
         VkDevice device_;

@@ -38,8 +38,7 @@ namespace lux::render
             auto* sc = lookupScene(ctx.user_state, scene);
             if (!sc)
                 return nullptr;
-            auto* arena = sc->resources().find<Canvas2DInstanceArena>();
-            return (arena && arena->initialized()) ? arena : nullptr;
+            return sc->resources().find<Canvas2DInstanceArena>();
         }
     } // namespace
 

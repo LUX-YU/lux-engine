@@ -505,6 +505,7 @@ namespace
 #include "../src/resources/material/MaterialResources.cpp"
 #include "../src/gpu/descriptor/DescriptorService.cpp"
 #include "../src/gpu/descriptor/SceneDescriptorArena.cpp"
+#include "../../features/src/renderer/features/canvas2d/Canvas2DInstanceArena.cpp"
 #include "../src/gpu/descriptor/SceneDomainDescriptorSets.cpp"
 #include "../src/resources/SceneResources.cpp"
 #include <lux/engine/render/gpu/memory/PagedGpuStream.hpp>
@@ -1810,6 +1811,290 @@ void checkInstanceGrowth(
               "page table and identities; successful retry commits together, original retirement PASS");
 }
 
+void checkCanvasConstruction(
+    lux::render::DeviceContext& device,
+    lux::render::ResourceContext& resources,
+    lux::render::GeneralDescriptorSetLayout& layouts,
+    lux::render::DeferredDestroyQueue& retirement
+)
+{
+    using namespace lux::render;
+    static_assert(!std::is_default_constructible_v<Canvas2DInstanceArena>);
+    static_assert(!std::is_copy_constructible_v<Canvas2DInstanceArena>);
+    static_assert(!std::is_move_constructible_v<Canvas2DInstanceArena>);
+    const auto initial_buffers = buffers.size();
+    const auto initial_sets = sets.size();
+    {
+        TextureResources::CreateInfo texture_info{};
+        texture_info.combined_ci.resource_context = &resources;
+        texture_info.combined_ci.deferred_queue = &retirement;
+        texture_info.combined_ci.descriptor_set_layout = layouts.getLayout(TGetBindingSet<ETextureSetBindings>::value);
+        texture_info.combined_ci.layout_max_capacity = layouts.bindless2DCount();
+        texture_info.combined_ci.initial_capacity = 8;
+        texture_info.cube_max_capacity = layouts.bindlessCubeCount();
+        auto textures = TextureResources::create(texture_info);
+        assert(textures);
+        DescriptorService descriptors(device.logicalDevice());
+        auto arena = SceneDescriptorArena::create(device.logicalDevice(), {});
+        assert(arena);
+        const auto texture_buffers = buffers.size();
+        const auto texture_sets = sets.size();
+        const Canvas2DInstanceArena::CreateInfo info{device, retirement, **textures, descriptors, **arena, 256, 512, 2};
+        retirement.beginFrame(111);
+        for (unsigned invalid = 0; invalid < 4; ++invalid)
+        {
+            auto bad = info;
+            switch (invalid)
+            {
+            case 0:
+                bad.initial_capacity = 0;
+                break;
+            case 1:
+                bad.max_capacity = 0;
+                break;
+            case 2:
+                bad.initial_capacity = bad.max_capacity + 1;
+                break;
+            case 3:
+                bad.max_capacity = UINT32_MAX;
+                break;
+            }
+            const auto native_layouts = layout_creations;
+            auto rejected = Canvas2DInstanceArena::create(bad);
+            assert(!rejected && isError<err::internal::InvalidArgument>(rejected.error()));
+            assert(layout_creations == native_layouts && buffers.size() == texture_buffers);
+        }
+        for (const auto boundary : {EFailure::LAYOUT, EFailure::BUFFER, EFailure::POOL, EFailure::SET})
+        {
+            const unsigned attempts = boundary == EFailure::BUFFER ? 6 : 1;
+            for (unsigned prefix = 0; prefix < attempts; ++prefix)
+            {
+                const auto writes = descriptor_writes;
+                const auto previous_rejections = rejections;
+                ResourceRegistry registry;
+                failure = boundary;
+                skip_rejections = prefix;
+                set_failure_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+                auto rejected = Canvas2DInstanceArena::create(info);
+                failure = EFailure::NONE;
+                assert(!rejected && rejections == previous_rejections + 1);
+                assert(isError<err::device::VulkanCallFailed>(rejected.error()));
+                assert(rejected.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+                assert(!registry.find<Canvas2DInstanceArena>() && descriptor_writes == writes);
+                assert(sets.size() == texture_sets && (*arena)->poolCount() == 0);
+                retirement.collect(110);
+                retirement.collect(111);
+                assert(buffers.size() == texture_buffers);
+            }
+        }
+        trace_buffer_writes = true;
+        buffer_writes.clear();
+        ResourceRegistry registry;
+        auto complete = Canvas2DInstanceArena::create(info);
+        assert(complete && !registry.find<Canvas2DInstanceArena>());
+        auto& canvas = *registry.insert(std::move(*complete));
+        assert(registry.find<Canvas2DInstanceArena>() == &canvas);
+        assert(buffer_writes.size() == 6 && sets.size() == texture_sets + 3);
+        const auto initial_writes = buffer_writes;
+        const auto image_set = canvas.descriptorSet(ECanvas2DKind::IMAGE);
+        const auto field_set = canvas.descriptorSet(ECanvas2DKind::PIXEL_FIELD);
+        const auto tile_set = canvas.descriptorSet(ECanvas2DKind::TILE);
+        assert(image_set && field_set && tile_set);
+        assert(image_set != field_set && field_set != tile_set && image_set != tile_set);
+        assert(sets.at(image_set) == sets.at(field_set) && sets.at(image_set) == sets.at(tile_set));
+
+        Image2DHandle image, first_image;
+        PixelFieldInstanceHandle field, first_field;
+        Tile2DInstanceHandle tile, first_tile;
+        PixelField2DInstanceData field_data{};
+        field_data.m[4] = 42.0f;
+        Tile2DInstanceData tile_data{};
+        tile_data.m[4] = 73.0f;
+        Image2DInstanceData image_data{};
+        image_data.tint = 0x12345678u;
+        for (unsigned i = 0; i < 256; ++i)
+        {
+            assert(canvas.add(image_data, float(i), true, image, 1) == ECanvas2DCreateStatus::OK);
+            if (i == 0)
+            {
+                first_image = image;
+            }
+        }
+        for (unsigned i = 0; i < 64; ++i)
+        {
+            assert(canvas.addField(field_data, float(i), true, field) == ECanvas2DCreateStatus::OK);
+            assert(canvas.addTile(tile_data, float(i), true, tile) == ECanvas2DCreateStatus::OK);
+            if (i == 0)
+            {
+                first_field = field;
+                first_tile = tile;
+            }
+        }
+        const auto add_kind = [&](unsigned kind)
+        {
+            switch (kind)
+            {
+            case 0:
+                return canvas.add(image_data, 0.5f, true, image, 1);
+            case 1:
+                return canvas.addField(field_data, 0.5f, true, field);
+            default:
+                return canvas.addTile(tile_data, 0.5f, true, tile);
+            }
+        };
+        for (unsigned kind = 0; kind < 3; ++kind)
+        {
+            const auto old_record = initial_writes[kind * 2].buffer;
+            const auto old_order = initial_writes[kind * 2 + 1].buffer;
+            const auto writes = descriptor_writes;
+            const auto live = canvas.liveCount();
+            const auto rebuilds = canvas.orderRebuilds();
+            for (unsigned prefix = 0; prefix < 2; ++prefix)
+            {
+                failure = EFailure::BUFFER;
+                skip_rejections = prefix;
+                assert(add_kind(kind) == ECanvas2DCreateStatus::CAPACITY_EXHAUSTED);
+                failure = EFailure::NONE;
+                assert(descriptor_writes == writes && canvas.liveCount() == live);
+                assert(canvas.orderRebuilds() == rebuilds);
+                // Only unpublished candidates can retire; accepted descriptors must still reference live backing.
+                retirement.collect(111);
+                assert(buffers.contains(old_record) && buffers.contains(old_order));
+                assert(canvas.descriptorSet(ECanvas2DKind::IMAGE) == image_set);
+                assert(canvas.descriptorSet(ECanvas2DKind::PIXEL_FIELD) == field_set);
+                assert(canvas.descriptorSet(ECanvas2DKind::TILE) == tile_set);
+            }
+            assert(add_kind(kind) == ECanvas2DCreateStatus::OK);
+            assert(canvas.liveCount() == live + 1 && descriptor_writes == writes + 2);
+            assert(buffer_writes[buffer_writes.size() - 2].buffer != old_record);
+            assert(buffer_writes.back().buffer != old_order);
+            assert(buffers.contains(old_record) && buffers.contains(old_order));
+            retirement.collect(110);
+            assert(buffers.contains(old_record) && buffers.contains(old_order));
+            retirement.collect(111);
+            assert(!buffers.contains(old_record) && !buffers.contains(old_order));
+        }
+        // Previously accepted identities survive replacement, and removal/reuse keeps the original generation rule.
+        canvas.remove(first_image);
+        assert(canvas.add(image_data, 0.0f, true, image, 1) == ECanvas2DCreateStatus::OK);
+        assert(image.index == first_image.index && image.gen != first_image.gen);
+        canvas.removeField(first_field);
+        assert(canvas.addField(field_data, 0.0f, true, field) == ECanvas2DCreateStatus::OK);
+        assert(field.index == first_field.index && field.gen != first_field.gen);
+        canvas.removeTile(first_tile);
+        assert(canvas.addTile(tile_data, 0.0f, true, tile) == ECanvas2DCreateStatus::OK);
+        assert(tile.index == first_tile.index && tile.gen != first_tile.gen);
+        {
+            TransferScheduler scheduler;
+            assert(scheduler.init({device.vmaAllocator(), 256 * 1024, 1}));
+            canvas.submitTransfers(scheduler);
+            assert(scheduler.hasWork() && canvas.orderRebuilds() == 1);
+            // Execute the real upload and read back the accepted records/order after all rejected candidates.
+            VkBufferCreateInfo readback_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+            readback_info.size = 240;
+            readback_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            VmaAllocationCreateInfo allocation_info{};
+            allocation_info.usage = VMA_MEMORY_USAGE_AUTO;
+            allocation_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT;
+            auto readback = VmaBuffer::create(device.vmaAllocator(), readback_info, allocation_info);
+            assert(readback);
+            auto command = CommandBufferOwner::create(device.logicalDevice(), resources.commandPool());
+            assert(command);
+            VkCommandBufferBeginInfo begin_info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+            assert(begin(command->get(), &begin_info) == VK_SUCCESS);
+            scheduler.beginTransfers(command->get());
+            scheduler.recordCopies(command->get());
+            scheduler.endTransfers(command->get());
+            VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+            barrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+            barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+            barrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+            barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+            VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+            dependency.memoryBarrierCount = 1;
+            dependency.pMemoryBarriers = &barrier;
+            vkCmdPipelineBarrier2(command->get(), &dependency);
+            for (unsigned kind = 0; kind < 3; ++kind)
+            {
+                const auto set = canvas.descriptorSet(static_cast<ECanvas2DKind>(kind));
+                std::array<VkBuffer, 2> current{};
+                for (const auto& write : buffer_writes)
+                {
+                    if (write.set == set)
+                    {
+                        current[write.binding] = write.buffer;
+                    }
+                }
+                assert(current[0] && current[1]);
+                const VkDeviceSize stride = kind == 0 ? 56 : 64;
+                const VkBufferCopy record_copy{stride, kind * 80u, stride};
+                const VkBufferCopy order_copy{0, kind * 80u + 64, 12};
+                vkCmdCopyBuffer(command->get(), current[0], readback->buffer(), 1, &record_copy);
+                vkCmdCopyBuffer(command->get(), current[1], readback->buffer(), 1, &order_copy);
+            }
+            barrier.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+            barrier.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
+            vkCmdPipelineBarrier2(command->get(), &dependency);
+            assert(end(command->get()) == VK_SUCCESS);
+            VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+            auto fence = FenceOwner::create(device.logicalDevice(), fence_info);
+            assert(fence);
+            const auto cmd = command->get();
+            VkSubmitInfo submission{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+            submission.commandBufferCount = 1;
+            submission.pCommandBuffers = &cmd;
+            assert(submit(device.graphicsQueue(), 1, &submission, fence->get()) == VK_SUCCESS);
+            const auto fence_handle = fence->get();
+            assert(wait(device.logicalDevice(), 1, &fence_handle, VK_TRUE, UINT64_MAX) == VK_SUCCESS);
+            const auto* mapped = static_cast<const std::byte*>(readback->map());
+            assert(mapped);
+            assert(
+                vmaInvalidateAllocation(device.vmaAllocator(), readback->allocation(), 0, VK_WHOLE_SIZE) == VK_SUCCESS
+            );
+            for (unsigned kind = 0; kind < 3; ++kind)
+            {
+                float transform[6]{};
+                std::memcpy(transform, mapped + kind * 80, sizeof(transform));
+                assert(transform[0] == 1.0f && transform[3] == 1.0f);
+                assert(transform[4] == (kind == 0 ? 0.0f : (kind == 1 ? 42.0f : 73.0f)));
+                std::array<std::uint32_t, 3> order{};
+                std::memcpy(order.data(), mapped + kind * 80 + 64, sizeof(order));
+                assert(order[0] == 0 && order[1] == (kind == 0 ? 256u : 64u) && order[2] == 1);
+            }
+            std::uint32_t tint{};
+            std::memcpy(&tint, mapped + 48, sizeof(tint));
+            assert(tint == image_data.tint);
+            readback->unmap();
+            unsigned drawn = 0;
+            for (const auto& run : canvas.runs())
+            {
+                drawn += run.count;
+            }
+            assert(drawn == canvas.liveCount());
+            const auto rebuilds = canvas.orderRebuilds();
+            scheduler.resetFrame(0);
+            for (unsigned i = 0; i < 30; ++i)
+            {
+                canvas.submitTransfers(scheduler);
+            }
+            assert(!scheduler.hasWork() && canvas.orderRebuilds() == rebuilds);
+            canvas.setEnabled(false);
+            assert(canvas.runs().empty());
+            canvas.setEnabled(true);
+            assert(!canvas.runs().empty());
+        }
+        trace_buffer_writes = false;
+        buffer_writes.clear();
+        set_failure_result = VK_ERROR_OUT_OF_POOL_MEMORY;
+    }
+    retirement.collect(110);
+    assert(buffers.size() > initial_buffers);
+    retirement.collect(111);
+    assert(buffers.size() == initial_buffers && sets.size() == initial_sets);
+    std::puts("Canvas complete backing: six buffer boundaries, atomic descriptor family, three-kind rejected growth, "
+              "accepted identity, retry, dirty uploads, ordering and original retirement PASS");
+}
+
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -1841,6 +2126,11 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkCanvasConstruction(device, resources, layouts, retirement);
+    if (argc == 2 && std::string_view(argv[1]) == "--canvas")
+    {
+        return 0;
+    }
     checkMdcPublication(device, layouts, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--mdc-publication")
     {

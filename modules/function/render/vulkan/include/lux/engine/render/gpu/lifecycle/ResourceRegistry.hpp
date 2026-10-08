@@ -22,14 +22,13 @@
 #include <lux/cxx/compile_time/type_info.hpp> // type_hash (replaces typeid/type_index — no RTTI)
 #include <lux/engine/render/core/FrameServices.hpp>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp> // must<T>() terminates in EVERY config
-#include <lux/engine/function/render/client/core/Errors.hpp>      // Expected<T*> for the initializing ensure<>
 #include <lux/engine/render/core/vk_fwd.hpp>
 // VkDescriptorSet only — no full <vulkan/vulkan.h> (public-surface friendly)
 
 #include <array>
-#include <functional>
-#include <cassert>
+#include <concepts>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <source_location>
 #include <span>
@@ -53,68 +52,6 @@ namespace lux::render
         struct THasGetDescriptorSet<T, std::void_t<decltype(std::declval<const T&>().getDescriptorSet())>>
             : std::true_type
         {};
-
-        template <typename T, typename = void> struct THasShutdown : std::false_type
-        {};
-        template <typename T>
-        struct THasShutdown<T, std::void_t<decltype(std::declval<T&>().shutdown())>> : std::true_type
-        {};
-
-        /// Does T declare an init()? Detected the same way as the two above —
-        /// duck typing, not a base class. This registry deliberately never required
-        /// a common base (it stores unique_ptr<void> + function-pointer thunks), and
-        /// GPUResourceBase would not be a usable predicate anyway: several
-        /// initializable resources do not inherit it (SpatialCullGrid, HzbResources,
-        /// VertexPoolRegistry, StaticVertexPoolSet, Canvas2DInstanceArena), and not every
-        /// one of them even lives on the GPU.
-        ///
-        /// This is the predicate that splits the two ensure<> overloads, so what it
-        /// answers is exactly the question that matters: "can this type be published
-        /// without being initialized?"
-        template <typename T, typename = void> struct THasInit : std::false_type
-        {};
-        template <typename T> struct THasInit<T, std::void_t<decltype(&T::init)>> : std::true_type
-        {};
-
-        template <typename T, typename = void> struct THasIsInitialized : std::false_type
-        {};
-        template <typename T>
-        struct THasIsInitialized<T, std::void_t<decltype(std::declval<const T&>().isInitialized())>> : std::true_type
-        {};
-
-        /// init() comes in three shapes across the module — void, bool, and
-        /// Expected<void>. Normalize at the seam rather than forcing 16 signatures
-        /// to converge first. A bool init that returns false has no error payload to
-        /// offer, so it becomes the generic ResourceInitFailed.
-        template <typename T, typename... Args> Expected<void> invokeInit(T& obj, Args&&... args)
-        {
-            using R = decltype(obj.init(std::forward<Args>(args)...));
-            if constexpr (std::is_void_v<R>)
-            {
-                obj.init(std::forward<Args>(args)...);
-                // 返回 void 的 init 没有返回通道 —— 但**它们不都真的不会失败**。
-                // ShadowResources::init 就是 void 的,它逐个检查 VkResult、失败时回滚
-                // 并让 isInitialized() 保持 false:诚实答案在那个标志里。所以有这个
-                // 标志的类型,由标志裁定成败;没有的(如 ShaderResources,其文档注释
-                // 明写"不会失败")才照字面当作必定成功。
-                if constexpr (THasIsInitialized<T>::value)
-                {
-                    if (!obj.isInitialized())
-                        return renderFailure<err::feature::ResourceInitFailed>();
-                }
-                return {};
-            }
-            else if constexpr (std::is_same_v<R, bool>)
-            {
-                if (!obj.init(std::forward<Args>(args)...))
-                    return renderFailure<err::feature::ResourceInitFailed>();
-                return {};
-            }
-            else
-            {
-                return obj.init(std::forward<Args>(args)...);
-            }
-        }
     } // namespace detail
 
     // Forward declaration so ResourceHandle can reference ResourceRegistry.
@@ -166,7 +103,21 @@ namespace lux::render
         ResourceRegistry() = default;
         ~ResourceRegistry()
         {
-            shutdown();
+            // Dense keys remain in insertion order: registry entries are never removed individually.
+            // Reverse iterate so dependencies registered earlier outlive their consumers.
+            auto ks = slots_.keys();
+            for (auto it = ks.rbegin(); it != ks.rend(); ++it)
+            {
+                auto& s = slots_.at(*it);
+                s.ptr.reset();
+            }
+            slots_.clear();
+            type_map_.clear();
+            for (auto& list : begin_frame_hooks_)
+            {
+                list.clear();
+            }
+            view_destroyed_hooks_.clear();
         }
 
         ResourceRegistry(const ResourceRegistry&) = delete;
@@ -179,7 +130,9 @@ namespace lux::render
         /// Construct a resource of type T in-place and register it.
         /// First registration of a given type is discoverable via find<T>().
         /// @return A ResourceHandle<T> for direct O(1) access.
-        template <typename T, typename... Args> TResourceHandle<T> emplace(Args&&... args)
+        template <typename T, typename... Args>
+            requires std::constructible_from<T, Args...>
+        TResourceHandle<T> emplace(Args&&... args)
         {
             return insert(std::make_unique<T>(std::forward<Args>(args)...));
         }
@@ -194,70 +147,25 @@ namespace lux::render
             return TResourceHandle<T>{this, publishOwned<T>(resource.release())};
         }
 
-        // ── ensure<T> — idempotent get-or-create, in TWO constrained flavours ──
-        //
-        // Which one you get is decided by the TYPE, not by the call site: a resource
-        // that declares init() can only be reached through the initializing overload.
-        // `ensure<InstanceResources>()` is a COMPILE ERROR, not a resource published
-        // in a half-built state — that particular hole cost us a silent infinite
-        // retry (see the A-4 batch: an uninitialized InstanceResources returned an
-        // invalid slot, which the mesh-stack handler read as CapacityExhausted, i.e.
-        // "may succeed later", forever).
-        //
-        // The split is only honest because the module has no resource left that
-        // structurally CANNOT be initialized at publish time: HzbResources was
-        // per-view-ized (its extent-dependent part moved to ensureView).
-        // ShaderResources instead establishes its device binding in construction.
-
-        /// Init-free resources — plain per-scene/per-process state (layout tables,
-        /// producer registries, transient CPU mailboxes). Cannot fail, so it keeps
-        /// returning a REFERENCE: "never null" used to live only in a comment, so
-        /// every call site decided for itself whether to null-check — and they
-        /// disagreed. The type says it here.
+        /// Construct once and retain the first complete instance of T.
+        /// Fallible factories publish their complete result through insert() instead.
+        /// On a hit, constructor arguments are not applied to the existing instance.
         template <typename T, typename... Args>
-            requires(!detail::THasInit<T>::value)
+            requires std::constructible_from<T, Args...>
         T& ensure(Args&&... args)
         {
             if (T* existing = find<T>())
+            {
                 return *existing;
+            }
             return *emplace<T>(std::forward<Args>(args)...).get();
-        }
-
-        /// Initializable resources — @p init_args are MANDATORY and the result is
-        /// checkable.
-        ///
-        /// Publishes ONLY on success: the object is built and initialized off to the
-        /// side, and reaches slots_/type_map_ only once init() returned success. A
-        /// failed init therefore leaves NOTHING discoverable — find<T>() stays null
-        /// instead of handing out a half-built instance the registry can never erase.
-        ///
-        /// No move semantics are involved (the registry stores unique_ptr<void> to a
-        /// heap T, so the address is final the moment `new` returns), and no erase is
-        /// needed (what was never published needs no removal).
-        ///
-        /// @return the registry-owned instance, or the error init() reported. On the
-        ///         hit path @p init_args are DISCARDED — the existing instance was
-        ///         configured by whoever got here first. Probe find<T>() beforehand
-        ///         if you need to know which.
-        template <typename T, typename... Args>
-            requires detail::THasInit<T>::value
-        [[nodiscard]] Expected<T*> ensure(Args&&... init_args)
-        {
-            if (T* existing = find<T>())
-                return existing;
-
-            auto owned = std::make_unique<T>();
-            if (auto r = detail::invokeInit(*owned, std::forward<Args>(init_args)...); !r)
-                return lux::cxx::unexpected<RenderError>(r.error()); // never published
-
-            return insert(std::move(owned)).get();
         }
 
         // ── Type-based discovery (singleton fast path) ──────────────────
 
         /// A resource whose presence is a structural invariant, not a runtime question.
         ///
-        /// Use for: the global singletons RenderServer::init() emplaces unconditionally
+        /// Use for: the global singletons the render-server factory constructs unconditionally
         /// before any scene or feature exists (ShaderResources / TextureResources /
         /// VertexLayoutRegistry), and resources the caller itself just
         /// emplace<>/ensure<>d. The registry has no erase and type_map_ keeps the FIRST
@@ -268,10 +176,6 @@ namespace lux::render
         /// ensureGlobal*) absent IS a legal state, so find<T>() + a real null-check is
         /// the correct shape — EXCEPT right after a successful ensureGlobal*() in the
         /// same function, which is just the "caller itself ensured it" case above.
-        /// That distinction only became true when those two moved to the initializing
-        /// ensure<T>: before it, a failed init still left the object published, so
-        /// success of ensureGlobal* did not imply a usable instance and every caller
-        /// had to re-check isInitialized().
         ///
         /// Why this exists: find<T>() returning T* gave callers no way to express "this
         /// one is guaranteed", so ~26 sites grew `if (!x) return;` guards on conditions
@@ -400,29 +304,6 @@ namespace lux::render
 
         // ── Lifecycle ───────────────────────────────────────────────────
 
-        /// Shutdown all resources in reverse registration order, then free.
-        void shutdown()
-        {
-            // Copy keys — dense array order is insertion order (no erase before shutdown).
-            // Reverse iterate for "later registrations shutdown first".
-            auto ks = slots_.keys();
-            for (auto it = ks.rbegin(); it != ks.rend(); ++it)
-            {
-                auto& s = slots_.at(*it);
-                if (s.ptr)
-                {
-                    if (s.shutdown_fn)
-                        s.shutdown_fn(s.ptr.get());
-                    s.ptr.reset();
-                }
-            }
-            slots_.clear();
-            type_map_.clear();
-            for (auto& list : begin_frame_hooks_)
-                list.clear();
-            view_destroyed_hooks_.clear();
-        }
-
         [[nodiscard]] size_t size() const noexcept
         {
             return slots_.size();
@@ -435,12 +316,10 @@ namespace lux::render
         {
             ErasedPtr ptr{nullptr, +[](void*) {}};
             VkDescriptorSet (*ds_getter)(const void*){nullptr};
-            void (*shutdown_fn)(void*){nullptr};
         };
 
         /// Take ownership of an already-constructed T and make it discoverable.
-        /// The single publication point — emplace<T> reaches it right after
-        /// constructing, the initializing ensure<T> only after init() succeeded.
+        /// The single publication point for direct construction and fallible factory owners.
         /// @return the slot index.
         template <typename T> uint32_t publishOwned(T* raw)
         {
@@ -451,10 +330,6 @@ namespace lux::render
                 s.ds_getter = [](const void* p) -> VkDescriptorSet {
                     return static_cast<const T*>(p)->getDescriptorSet();
                 };
-            }
-            if constexpr (detail::THasShutdown<T>::value)
-            {
-                s.shutdown_fn = [](void* p) { static_cast<T*>(p)->shutdown(); };
             }
             const auto idx = static_cast<uint32_t>(slots_.emplace(std::move(s)));
 

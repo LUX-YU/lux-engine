@@ -6,9 +6,21 @@
 #include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
 #include <type_traits>
 #include <unordered_map>
+#include <utility>
 
 namespace
 {
+    template <class T>
+    concept HasInit = requires { &T::init; };
+    template <class T>
+    concept HasShutdown = requires(T& value) { value.shutdown(); };
+
+    template <class T, class... Args>
+    concept CanEnsure = requires(lux::render::ResourceRegistry& registry, Args&&... args)
+    {
+        registry.ensure<T>(std::forward<Args>(args)...);
+    };
+
     const auto first_device = reinterpret_cast<VkDevice>(1);
     const auto second_device = reinterpret_cast<VkDevice>(2);
     std::unordered_map<VkShaderModule, VkDevice> live;
@@ -58,8 +70,10 @@ int main()
     using namespace lux::render;
     static_assert(!std::is_default_constructible_v<ShaderResources>);
     static_assert(std::is_nothrow_constructible_v<ShaderResources, VkDevice, bool>);
-    static_assert(!detail::THasInit<ShaderResources>::value);
-    static_assert(!detail::THasShutdown<ShaderResources>::value);
+    static_assert(!HasInit<ShaderResources>);
+    static_assert(!HasShutdown<ShaderResources>);
+    static_assert(!CanEnsure<ShaderResources>);
+    static_assert(CanEnsure<ShaderResources, VkDevice, bool>);
     const std::array<uint32_t, 5> words{0x07230203, 0x10000, 0, 1, 0};
     const auto bytes = std::as_bytes(std::span(words));
     const lux::rdesc::ShaderInfo reflection{};

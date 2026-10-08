@@ -1501,57 +1501,58 @@ void checkSceneResources(
         buffer_writes.clear();
         auto candidate = SceneResources::create(info);
         assert(candidate && buffer_writes.size() == 8 && buffers.size() == 2);
-        ResourceRegistry registry;
-        auto published = registry.insert(std::move(*candidate));
-        auto& scene = *published.get();
-        const auto global = scene.allocateScene();
-        const auto view = scene.allocateView();
-        assert(global.isValid() && view.isValid());
-        for (unsigned frame = 0; frame < 2; ++frame)
         {
-            assert(scene.getDescriptorSet(frame) && sets.contains(scene.getDescriptorSet(frame)));
-            scene.beginFrame(frame);
-            scene.writeSceneGlobal(global, SceneGlobalGpuData{1, 2, frame, 3});
-            ViewGpuData data{};
-            data.viewport[0] = 640;
-            scene.writeView(view, data);
-            scene.writeViewData(view, &data, sizeof(data), frame);
+            ResourceRegistry registry;
+            auto published = registry.insert(std::move(*candidate));
+            auto& scene = *published.get();
+            const auto global = scene.allocateScene();
+            const auto view = scene.allocateView();
+            assert(global.isValid() && view.isValid());
+            for (unsigned frame = 0; frame < 2; ++frame)
+            {
+                assert(scene.getDescriptorSet(frame) && sets.contains(scene.getDescriptorSet(frame)));
+                scene.beginFrame(frame);
+                scene.writeSceneGlobal(global, SceneGlobalGpuData{1, 2, frame, 3});
+                ViewGpuData data{};
+                data.viewport[0] = 640;
+                scene.writeView(view, data);
+                scene.writeViewData(view, &data, sizeof(data), frame);
+            }
+            assert(buffer_writes.size() == 8); // stable frame does not rewrite descriptors
+            for (unsigned frame = 0; frame < 2; ++frame)
+            {
+                const auto& scene_write = buffer_writes[frame * 4];
+                const auto& view_write = buffer_writes[frame * 4 + 1];
+                assert(buffer_writes[frame * 4 + 2].set == targets[frame]);
+                assert(buffer_writes[frame * 4 + 3].set == targets[frame]);
+                VmaAllocationInfo scene_mapping{}, view_mapping{};
+                const auto& scene_origin = buffers.at(scene_write.buffer);
+                const auto& view_origin = buffers.at(view_write.buffer);
+                vmaGetAllocationInfo(scene_origin.first, scene_origin.second, &scene_mapping);
+                vmaGetAllocationInfo(view_origin.first, view_origin.second, &view_mapping);
+                const auto* scene_data = reinterpret_cast<const SceneGlobalGpuData*>(
+                    static_cast<const std::byte*>(scene_mapping.pMappedData) + scene_write.offset
+                );
+                const auto* view_data = reinterpret_cast<const ViewGpuData*>(
+                    static_cast<const std::byte*>(view_mapping.pMappedData) + view_write.offset
+                );
+                assert(scene_data[global.index].frame_number == frame && scene_data[global.index].time_sec == 1);
+                assert(view_data[view.index].viewport[0] == 640);
+            }
+            scene.freeScene(global);
+            scene.freeView(view);
+            const auto next_global = scene.allocateScene();
+            const auto next_view = scene.allocateView();
+            assert(next_global.index == global.index && next_global.gen != global.gen);
+            assert(next_view.index == view.index && next_view.gen != view.gen);
+            assert(scene.reserveScenes(128) && scene.reserveViews(128));
+            buffer_writes.clear();
+            scene.beginFrame(0);
+            scene.beginFrame(0);
+            scene.beginFrame(1);
+            assert(buffer_writes.size() == 8);
+            trace_buffer_writes = false;
         }
-        assert(buffer_writes.size() == 8); // stable frame does not rewrite descriptors
-        for (unsigned frame = 0; frame < 2; ++frame)
-        {
-            const auto& scene_write = buffer_writes[frame * 4];
-            const auto& view_write = buffer_writes[frame * 4 + 1];
-            assert(buffer_writes[frame * 4 + 2].set == targets[frame]);
-            assert(buffer_writes[frame * 4 + 3].set == targets[frame]);
-            VmaAllocationInfo scene_mapping{}, view_mapping{};
-            const auto& scene_origin = buffers.at(scene_write.buffer);
-            const auto& view_origin = buffers.at(view_write.buffer);
-            vmaGetAllocationInfo(scene_origin.first, scene_origin.second, &scene_mapping);
-            vmaGetAllocationInfo(view_origin.first, view_origin.second, &view_mapping);
-            const auto* scene_data = reinterpret_cast<const SceneGlobalGpuData*>(
-                static_cast<const std::byte*>(scene_mapping.pMappedData) + scene_write.offset
-            );
-            const auto* view_data = reinterpret_cast<const ViewGpuData*>(
-                static_cast<const std::byte*>(view_mapping.pMappedData) + view_write.offset
-            );
-            assert(scene_data[global.index].frame_number == frame && scene_data[global.index].time_sec == 1);
-            assert(view_data[view.index].viewport[0] == 640);
-        }
-        scene.freeScene(global);
-        scene.freeView(view);
-        const auto next_global = scene.allocateScene();
-        const auto next_view = scene.allocateView();
-        assert(next_global.index == global.index && next_global.gen != global.gen);
-        assert(next_view.index == view.index && next_view.gen != view.gen);
-        assert(scene.reserveScenes(128) && scene.reserveViews(128));
-        buffer_writes.clear();
-        scene.beginFrame(0);
-        scene.beginFrame(0);
-        scene.beginFrame(1);
-        assert(buffer_writes.size() == 8);
-        trace_buffer_writes = false;
-        registry.shutdown();
         assert(retirement.pendingCount() != 0);
         retirement.collect(10);
         assert(!buffers.empty());

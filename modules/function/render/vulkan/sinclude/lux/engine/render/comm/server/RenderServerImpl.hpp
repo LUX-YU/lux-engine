@@ -17,10 +17,10 @@
 #include <lux/engine/render/gpu/VulkanContext.hpp>                // InstanceContext, DeviceContext, ResourceContext
 #include <lux/engine/render/gpu/lifecycle/CommandBufferOwner.hpp>
 #include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
-#include <lux/engine/render/gpu/lifecycle/VRAMBudgetGuard.hpp>    // kMaxFramesInFlight
-#include <lux/engine/render/gpu/memory/StagingBuffer.hpp>         // StagingBuffer
+#include <lux/engine/render/gpu/lifecycle/VRAMBudgetGuard.hpp> // kMaxFramesInFlight
+#include <lux/engine/render/gpu/memory/StagingBuffer.hpp>      // StagingBuffer
 #include <lux/engine/render/gpu/memory/VmaTypes.hpp>
-#include <lux/engine/render/renderer/FrameDriver.hpp>             // FrameDriver
+#include <lux/engine/render/renderer/FrameDriver.hpp> // FrameDriver
 #include <lux/engine/render/renderer/FrameOrchestrator.hpp>
 #include <lux/engine/render/renderer/Renderer.hpp> // Renderer
 #include <lux/engine/render/resources/lifecycle/GpuTransferPipeline.hpp>
@@ -324,15 +324,12 @@ namespace lux::render
             /// 非 0 = 命令面销毁,按此 request_id 延迟回执。
             uint32_t request_id{0};
             bool torn_down{false}; ///< 已拆资源,回执待送(环满重试)
-            /// 受理销毁时从 entry 移入的呈现机件(per-target 所有权);
-            /// fence 水位越过后 reset() 即完成 swapchain→surface 逆序拆。
-            std::unique_ptr<PresentContext> ctx;
-            /// 随拆除一并执行的收尾(副视口顶点环 / ViewportData 释放
-            /// ——同样要等 fence 水位)。
-            std::function<void()> on_teardown;
+            // Prepared before the semantic context is published. Context death
+            // deposits backing here; this sole original release queue settles it.
+            PresentRetirement present;
         };
 
-        std::vector<PendingResourceRelease> pending_resource_releases_;
+        std::vector<std::unique_ptr<PendingResourceRelease>> pending_resource_releases_;
 
         RenderTargetId findOffscreenKeyByView(RenderSceneId s, ViewHandle v) const noexcept
         {

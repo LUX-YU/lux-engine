@@ -168,41 +168,6 @@ namespace lux::render
         return user_state ? static_cast<GeneralRenderServer::Impl*>(user_state)->extension_ : nullptr;
     }
 
-    void GeneralRenderServer::deferSurfaceRelease(
-        RenderTargetId target,
-        std::unique_ptr<PresentContext> context,
-        std::function<void()> on_teardown
-    )
-    {
-        Impl::PendingResourceRelease release{};
-        release.target = target;
-        release.retire_serial = impl_->frame_driver_ ? impl_->frame_driver_->lastSubmittedSerial() : 0;
-        release.ctx = std::move(context);
-        release.on_teardown = std::move(on_teardown);
-        impl_->pending_resource_releases_.push_back(std::move(release));
-    }
-
-    void GeneralRenderServer::flushPendingResourceReleases()
-    {
-        for (auto& release : impl_->pending_resource_releases_)
-        {
-            if (release.ctx)
-            {
-                auto closed = release.ctx->close();
-                if (!closed)
-                {
-                    renderFatal("pending PresentContext close failed during flush");
-                }
-            }
-            release.ctx.reset();
-            if (release.on_teardown)
-            {
-                release.on_teardown();
-            }
-        }
-        impl_->pending_resource_releases_.clear();
-    }
-
     FeatureTypeRegisteredReply GeneralRenderServer::addFeatureFactory(
         const FeatureFactory& factory,
         std::shared_ptr<const void> code_lifetime

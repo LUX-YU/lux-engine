@@ -277,6 +277,43 @@ if(BUILD_TESTING)
 
     if(WIN32)
         add_executable(
+            render_present_retirement_test
+            test/present_retirement.cpp
+        )
+        target_include_directories(
+            render_present_retirement_test
+            PRIVATE sinclude pinclude
+        )
+        target_compile_definitions(
+            render_present_retirement_test
+            PRIVATE LUX_FUNCTION_DLL_DISABLE
+        )
+        target_link_libraries(
+            render_present_retirement_test
+            PRIVATE render_vulkan GPUOpen::VulkanMemoryAllocator
+        )
+        if(MSVC)
+            target_compile_options(
+                render_present_retirement_test
+                PRIVATE /UNDEBUG /utf-8
+            )
+        else()
+            target_compile_options(
+                render_present_retirement_test
+                PRIVATE -UNDEBUG
+            )
+        endif()
+        if(LUX_RENDER_BUILD_GPU_TESTS)
+            add_test(
+                NAME render.present_retirement
+                COMMAND render_present_retirement_test
+            )
+            set_tests_properties(
+                render.present_retirement
+                PROPERTIES TIMEOUT 30 LABELS gpu
+            )
+        endif()
+        add_executable(
             render_surface_construction_test
             test/surface_construction.cpp
         )

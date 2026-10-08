@@ -1439,18 +1439,6 @@ namespace lux::render
         void setExtension(void* extension, PreDestroySceneCallback pre_destroy) noexcept;
         [[nodiscard]] void* extension() const noexcept;
 
-        /// 把一个 Surface target 的呈现机件转入两阶段销毁的在途账本:停止
-        /// 呈现(entry 已除名),等 fence 水位越过 retire_serial 再拆,拆完
-        /// 执行 on_teardown。内部释放不发 TargetReleased 回执。
-        void deferSurfaceRelease(
-            RenderTargetId target,
-            std::unique_ptr<PresentContext> ctx,
-            std::function<void()> on_teardown
-        );
-
-        /// 关服路径:GPU 已 idle 时立即执行并清空全部在途 Surface 拆除。
-        void flushPendingResourceReleases();
-
         [[nodiscard]] bool drainProgram(bool blocking, ERenderProgramKind& kind);
 
         ImplOwner impl_;

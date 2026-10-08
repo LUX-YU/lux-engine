@@ -579,47 +579,19 @@ namespace lux::render
         // idle at shutdown — tags no longer matter).
         async_deferred_staging_.clear();
 
-        // PresentContext has a reportable close boundary. Destructors only
-        // validate that boundary; teardown must never hide queue-wait failure.
+        // Semantic owners disappear first, depositing their backing into the
+        // original prepared release records. Only this backend safe point waits.
+        targets_registry_->clear();
+        const auto reason =
+            device_lost_during_teardown ? EPresentRetirementReason::DEVICE_LOST : EPresentRetirementReason::NORMAL;
         for (auto& release : pending_resource_releases_)
         {
-            if (release.ctx)
+            const auto settled = release->present.settle(reason);
+            if (!settled)
             {
-                auto closed = release.ctx->close();
-                if (!closed)
-                {
-                    if (device_lost_during_teardown)
-                    {
-                        release.ctx->acknowledgeDeviceLoss();
-                    }
-                    else
-                    {
-                        renderFatal("pending PresentContext close failed during shutdown");
-                    }
-                }
+                renderFatal("Present retirement queue wait failed during shutdown");
             }
         }
-        for (auto& target : targets_registry_->all().values())
-        {
-            if (target.present)
-            {
-                auto closed = target.present->close();
-                if (!closed)
-                {
-                    if (device_lost_during_teardown)
-                    {
-                        target.present->acknowledgeDeviceLoss();
-                    }
-                    else
-                    {
-                        renderFatal("target PresentContext close failed during shutdown");
-                    }
-                }
-            }
-        }
-
-        // Destroy target pools + Surface presentation state before device teardown.
-        // Member RAII enforces swapchain → semaphores → surface.
         pending_resource_releases_.clear();
         targets_registry_.reset();
 
@@ -832,10 +804,10 @@ namespace lux::render
                     }
                 }
             }
-            GeneralRenderServer::Impl::PendingResourceRelease release{};
-            release.scene = p.scene_id;
-            release.retire_serial = retire_serial;
-            release.request_id = ctx.currentRequestId();
+            auto release = std::make_unique<GeneralRenderServer::Impl::PendingResourceRelease>();
+            release->scene = p.scene_id;
+            release->retire_serial = retire_serial;
+            release->request_id = ctx.currentRequestId();
             im.pending_resource_releases_.push_back(std::move(release));
         }
 
@@ -900,10 +872,7 @@ namespace lux::render
 
             if (!handle)
             {
-                replyToCurrent<AddViewPayload>(
-                    ctx,
-                    ViewCreatedReply{{}, handle.error()}
-                );
+                replyToCurrent<AddViewPayload>(ctx, ViewCreatedReply{{}, handle.error()});
                 return;
             }
 
@@ -1065,17 +1034,19 @@ namespace lux::render
                     im.targets_registry_->setSurfaceTarget({});
                 }
                 t->layers.clear();
-                GeneralRenderServer::Impl::PendingResourceRelease rel{};
-                rel.target = p.target;
-                // 退休阈值 = 受理时已提交的最后一帧,不是 current serial:
-                // target 此刻已摘除,之后提交的帧不再引用它;而 current serial
-                // 属于本 tick——本 tick 可能因 targets 已空而不提交(关窗正是
-                // 最后一个 target),该 serial 永远无 fence 佐证,水位永不越过。
-                rel.retire_serial = im.frame_driver_ ? im.frame_driver_->lastSubmittedSerial() : 0;
-                rel.request_id = ctx.currentRequestId();
-                rel.ctx = std::move(t->present);
+                const auto release = std::find_if(
+                    im.pending_resource_releases_.begin(),
+                    im.pending_resource_releases_.end(),
+                    [&](const auto& record) { return record->target == p.target; }
+                );
+                if (release == im.pending_resource_releases_.end())
+                {
+                    renderFatal("Surface target has no prepared retirement responsibility");
+                }
+                (*release)->request_id = ctx.currentRequestId();
+                // Erasing the semantic owner transfers only native backing.
+                // Its original record retains the eventual TargetReleased receipt.
                 im.targets_registry_->erase(p.target);
-                im.pending_resource_releases_.push_back(std::move(rel));
                 return; // 回执延迟——TargetReleased 由 GC 步进送出
             }
 
@@ -1776,9 +1747,7 @@ namespace lux::render
         const bool any_done = std::ranges::any_of(
             im.pending_readbacks_,
             [](const Impl::PendingReadback& pending) noexcept
-            {
-                return pending.reply && pending.request_id != kInvalidRequestId;
-            }
+            { return pending.reply && pending.request_id != kInvalidRequestId; }
         );
         const bool is_reply_unavailable = !any_done || control_server_->hasPendingReplyPublication();
         if (is_reply_unavailable)
@@ -1816,10 +1785,10 @@ namespace lux::render
                 pending.request_id = kInvalidRequestId;
             }
         }
-        std::erase_if(im.pending_readbacks_, [](const Impl::PendingReadback& pending) noexcept
-        {
-            return pending.reply && !pending.copy;
-        });
+        std::erase_if(
+            im.pending_readbacks_,
+            [](const Impl::PendingReadback& pending) noexcept { return pending.reply && !pending.copy; }
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────

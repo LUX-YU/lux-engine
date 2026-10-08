@@ -14,22 +14,22 @@
  * 位置不错位(风险表 #2)。
  *
  * 生命周期:swapchain → sems → surface 逆序拆。仅等待 frame fence 盖不住
- * vkQueuePresentKHR,所以拥有者销毁前必须显式 close();close 的 Expected 是
- * vkQueueWaitIdle 失败的唯一可报告出口。析构只验证该结构契约,不承担隐式等待。
+ * vkQueuePresentKHR。语义 owner 析构只交还 backing;原服务器退休记录负责
+ * 呈现队列安全点、错误和最终物理释放。窗口寿命必须覆盖原 TargetReleased 回执。
  *
  * Thread model: render-thread only。
  */
 
-#include <lux/engine/function/visibility.h>
 #include <lux/engine/function/render/client/core/Errors.hpp>
+#include <lux/engine/function/visibility.h>
+#include <lux/engine/gapi/vk/Semaphore.hpp>
 #include <lux/engine/render/gpu/RenderSurface.hpp>
 #include <lux/engine/render/targets/SwapchainProvider.hpp>
-#include <lux/engine/gapi/vk/Semaphore.hpp>
 
-#include <vulkan/vulkan.h>
 #include <cstdint>
 #include <memory>
 #include <vector>
+#include <vulkan/vulkan.h>
 
 namespace lux::render
 {
@@ -41,8 +41,6 @@ namespace lux::render
             VkQueue queue,
             PFN_vkQueueWaitIdle wait_idle
         ) noexcept;
-
-        [[nodiscard]] LUX_FUNCTION_PUBLIC Expected<void> ensurePresentContextOpen(bool closed) noexcept;
 
         struct PresentSemaphoreCreateOps final
         {
@@ -105,56 +103,56 @@ namespace lux::render
         };
     } // namespace detail
 
+    struct PresentBacking;
+
+    enum class EPresentRetirementReason
+    {
+        NORMAL,
+        DEVICE_LOST
+    };
+
+    /// Fixed-address responsibility inside the original server release record.
+    /// It outlives its semantic context and never exposes presentation operations.
+    class LUX_FUNCTION_PUBLIC PresentRetirement final
+    {
+    public:
+        PresentRetirement() noexcept;
+        ~PresentRetirement() noexcept;
+        PresentRetirement(const PresentRetirement&) = delete;
+        PresentRetirement& operator=(const PresentRetirement&) = delete;
+        PresentRetirement(PresentRetirement&&) = delete;
+        PresentRetirement& operator=(PresentRetirement&&) = delete;
+
+        [[nodiscard]] bool pending() const noexcept;
+        [[nodiscard]] Expected<void> settle(EPresentRetirementReason reason) noexcept;
+
+    private:
+        friend class PresentContext;
+        std::unique_ptr<PresentBacking> backing_;
+    };
+
     class LUX_FUNCTION_PUBLIC PresentContext
     {
-        struct ConstructionKey final
-        {};
-
     public:
         /// surface 所有权移交进来;内部建 swapchain + 两套信号量。
         /// 失败时接管并销毁传入的 surface(调用方无需善后)。
         [[nodiscard]] static Expected<std::unique_ptr<PresentContext>> create(
             ResourceContext& res_ctx,
+            PresentRetirement& retirement,
             RenderSurface&& surface,
             VkExtent2D initial_extent,
             bool enable_vsync,
             bool enable_present_scaling = false
         );
 
-        explicit PresentContext(ConstructionKey, ResourceContext& res_ctx, RenderSurface&& surface);
-
         ~PresentContext();
 
         PresentContext(const PresentContext&) = delete;
         PresentContext& operator=(const PresentContext&) = delete;
 
-        [[nodiscard]] SwapchainProvider* provider() noexcept
-        {
-            return closed_ ? nullptr : provider_.get();
-        }
-        [[nodiscard]] const SwapchainProvider* provider() const noexcept
-        {
-            return closed_ ? nullptr : provider_.get();
-        }
-
-        [[nodiscard]] bool needsRebuild() const noexcept
-        {
-            return !closed_ && provider_ && provider_->needsRebuild();
-        }
-
-        /// Complete all presentation work before ownership teardown. Idempotent;
-        /// every published PresentContext must be closed explicitly so a queue
-        /// failure can travel through Expected rather than disappear in a destructor.
-        [[nodiscard]] Expected<void> close() noexcept;
-
-        /// Mark the presentation boundary terminal after Vulkan has reported
-        /// VK_ERROR_DEVICE_LOST. Queue completion cannot be proven in that
-        /// state, but the device-loss error is already the authoritative
-        /// terminal and object destruction is the only legal teardown path.
-        void acknowledgeDeviceLoss() noexcept
-        {
-            closed_ = true;
-        }
+        [[nodiscard]] SwapchainProvider* provider() noexcept;
+        [[nodiscard]] const SwapchainProvider* provider() const noexcept;
+        [[nodiscard]] bool needsRebuild() const noexcept;
 
         /// swapchain 重建(调用方先 waitAllFences——帧级职责);信号量环
         /// 随 imageCount 变化同步重配。
@@ -184,20 +182,10 @@ namespace lux::render
         [[nodiscard]] Expected<void> present(uint32_t image_index, VkSemaphore wait_sem);
 
     private:
-        /// 按当前 imageCount 重配两套信号量(acquire 环 = imageCount+1)。
-        [[nodiscard]] Expected<void> resyncSemaphores();
+        PresentContext(PresentRetirement& retirement, std::unique_ptr<PresentBacking> backing) noexcept;
 
-        ResourceContext& res_ctx_;
-        RenderSurface surface_;
-
-        std::vector<gapi::vk::Semaphore> acquire_ring_;
-        uint32_t acquire_cursor_{0};
-        std::vector<gapi::vk::Semaphore> present_per_image_;
-        // Declared last so reverse member destruction removes the swapchain
-        // before its semaphore sets, then finally the surface.
-        std::unique_ptr<SwapchainProvider> provider_;
-        bool close_required_{false};
-        bool closed_{false};
+        PresentRetirement& retirement_;
+        std::unique_ptr<PresentBacking> backing_;
     };
 
 } // namespace lux::render

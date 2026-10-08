@@ -1169,7 +1169,8 @@ namespace lux::render
             return renderFailure<err::internal::Unspecified>();
         }
 
-        auto pc = PresentContext::create(*res_ctx_, std::move(surface), extent, enable_vsync_);
+        auto release = std::make_unique<PendingResourceRelease>();
+        auto pc = PresentContext::create(*res_ctx_, release->present, std::move(surface), extent, enable_vsync_);
         if (!pc)
         {
             return lux::cxx::unexpected(pc.error());
@@ -1180,7 +1181,9 @@ namespace lux::render
         e.kind = RenderTargetEntry::EKind::SURFACE;
         e.layout = (*pc)->provider()->layout();
         e.present = std::move(*pc);
-        targets_registry_->setSurfaceTarget(targets_registry_->insert(std::move(e)));
+        release->target = targets_registry_->insert(std::move(e));
+        targets_registry_->setSurfaceTarget(release->target);
+        pending_resource_releases_.push_back(std::move(release));
         return targets_registry_->surfaceTargetId();
     }
 
@@ -1388,30 +1391,42 @@ namespace lux::render
         {
             const auto completed = im.frame_driver_->gpuCompletedSerial();
             if (im.gpu_completed_serial_->exchange(completed, std::memory_order_acq_rel) != completed)
+            {
                 channelSync().notifyReplyProduced();
+            }
         }
-        if (im.pending_resource_releases_.empty())
+        const bool has_retirement = std::any_of(
+            im.pending_resource_releases_.begin(),
+            im.pending_resource_releases_.end(),
+            [](const auto& r) { return r->scene.isValid() || r->present.pending() || r->torn_down; }
+        );
+        if (!has_retirement)
         {
             return true;
         }
         // 阶段一:fence 水位越过退休阈值 → 在飞帧全部走完,拆派生链
-        // (sems → swapchain → surface,PresentContext 析构一体完成;呈现
+        // (swapchain → sems → surface,由原退休记录释放;呈现
         // 早在受理时已停——surface_target_ 已清,后续 tick 不再 acquire)。
         //
-        // 水位不足时主动排干,而不是等下个 tick:阈值是"受理时已提交的最后
+        // 水位不足时主动排干,而不是等下个 tick:阈值是"本安全点已提交的最后
         // 一帧",waitAllFences 等的全是已提交帧的 fence,故等待有界(≤ fif 帧)
         // 且等完必然越过阈值。惰性等待依赖后续流量推水位——宿主关窗后 await
         // 回执、不再提交任何帧,服务端等请求、客户端等回执,两端互等死锁
         // (桌面 player 优雅退出实测挂死;Android TERM_WINDOW 同构)。
         // Surface 销毁是窗口生命周期事件,频率极低,阻塞几毫秒可接受。
+        for (auto& release : im.pending_resource_releases_)
+        {
+            if (release->present.pending())
+            {
+                release->retire_serial = im.frame_driver_->lastSubmittedSerial();
+            }
+        }
         uint64_t gpu_completed = im.frame_driver_->gpuCompletedSerial();
         {
             const bool watermark_short = std::any_of(
                 im.pending_resource_releases_.begin(),
                 im.pending_resource_releases_.end(),
-                [&](const Impl::PendingResourceRelease& r) {
-                    return !r.scene.isValid() && !r.torn_down && gpu_completed < r.retire_serial;
-                }
+                [&](const auto& r) { return r->present.pending() && gpu_completed < r->retire_serial; }
             );
             if (watermark_short)
             {
@@ -1426,25 +1441,19 @@ namespace lux::render
         im.renderer_->setGpuCompletedSerial(gpu_completed);
         im.renderer_->collectRetiredScenes(gpu_completed);
         im.targets_registry_->collectRetiredPools(gpu_completed);
-        for (auto& r : im.pending_resource_releases_)
+        for (auto& release : im.pending_resource_releases_)
         {
-            if (r.torn_down || gpu_completed < r.retire_serial)
+            auto& r = *release;
+            const bool is_active_surface = !r.scene.isValid() && !r.present.pending();
+            const bool is_not_ready = r.torn_down || is_active_surface || gpu_completed < r.retire_serial;
+            if (is_not_ready)
             {
                 continue;
             }
-            if (r.ctx)
+            const auto settled = r.present.settle(EPresentRetirementReason::NORMAL);
+            if (!settled)
             {
-                auto closed = r.ctx->close();
-                if (!closed)
-                {
-                    return stopAfterFrameError(closed.error(), 3u);
-                }
-            }
-            r.ctx.reset();
-            if (r.on_teardown)
-            {
-                r.on_teardown(); // 副视口顶点环/vd 等随拆收尾
-                r.on_teardown = nullptr;
+                return stopAfterFrameError(settled.error(), 3u);
             }
             r.torn_down = true;
         }
@@ -1452,8 +1461,9 @@ namespace lux::render
         // 阶段二:按 request_id 送 TargetReleased 延迟回执(环满下帧重试;
         // request_id == 0 的内部释放不发回执,拆完即除名)。
         bool any_reply = false;
-        for (const auto& r : im.pending_resource_releases_)
+        for (const auto& release : im.pending_resource_releases_)
         {
+            const auto& r = *release;
             if (r.torn_down && r.request_id != 0)
             {
                 any_reply = true;
@@ -1477,8 +1487,9 @@ namespace lux::render
 
             TFrameReplyBuilder<64> builder(*slot);
             builder.begin();
-            for (const auto& r : im.pending_resource_releases_)
+            for (const auto& release : im.pending_resource_releases_)
             {
+                const auto& r = *release;
                 if (r.torn_down && r.request_id != 0)
                 {
                     if (r.scene.isValid())
@@ -1508,7 +1519,7 @@ namespace lux::render
             std::remove_if(
                 im.pending_resource_releases_.begin(),
                 im.pending_resource_releases_.end(),
-                [](const Impl::PendingResourceRelease& r) { return r.torn_down; }
+                [](const auto& r) { return r->torn_down; }
             ),
             im.pending_resource_releases_.end()
         );

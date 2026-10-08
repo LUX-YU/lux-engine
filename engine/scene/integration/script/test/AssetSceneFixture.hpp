@@ -115,7 +115,7 @@ namespace
         process::TaskScope files{execution};
         asset::AssetVfs vfs;
         asset::MountLease mount;
-        std::shared_ptr<process::asset_loading::VfsAssetReadEndpoint> endpoint;
+        std::unique_ptr<process::asset_loading::VfsAssetReadEndpoint> endpoint;
         std::shared_ptr<const lux::script::ScriptArtifactAsset> artifact;
         const std::array<lux::script::lua::ScriptAbilityLuaContribution, 3> contributions{
             native::assetAbilityLua(), native::skeletonAbilityLua(),

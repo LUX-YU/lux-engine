@@ -16,11 +16,6 @@ namespace lux::process::asset_loading
     enum class EVfsAssetReadEndpointError : std::uint8_t
     {
         INVALID_ARGUMENT,
-        ALLOCATION_FAILURE,
-        WRONG_THREAD,
-        INVALID_STATE,
-        ALREADY_JOINED,
-        BUSY,
     };
 
     struct VfsAssetReadEndpointConfig final
@@ -29,11 +24,9 @@ namespace lux::process::asset_loading
     };
 
     class LUX_PROCESS_ASSET_LOADING_PUBLIC VfsAssetReadEndpoint final
-        : public AssetReadPort::Endpoint,
-          public std::enable_shared_from_this<VfsAssetReadEndpoint>
     {
     public:
-        using CreateResult = lux::cxx::expected<std::shared_ptr<VfsAssetReadEndpoint>, EVfsAssetReadEndpointError>;
+        using CreateResult = lux::cxx::expected<std::unique_ptr<VfsAssetReadEndpoint>, EVfsAssetReadEndpointError>;
 
         [[nodiscard]] static CreateResult create(
             asset::AssetVfsView vfs,
@@ -42,29 +35,22 @@ namespace lux::process::asset_loading
             VfsAssetReadEndpointConfig config
         ) noexcept;
 
-        // Requests retain their endpoint; last-owner destruction never waits.
-        // TaskScope must outlive admission calls; ExecutionRuntime must outlive accepted operations.
-        // Close endpoint admission before releasing the borrowed scope.
-        ~VfsAssetReadEndpoint() override;
+        // The borrowed scope covers all admission calls; close this owner before releasing it.
+        // Runtime outlives accepted operations. Completion never accesses the scope.
+        // Destruction closes copied ports without waiting; requests own their inputs and completion state.
+        ~VfsAssetReadEndpoint() noexcept;
         VfsAssetReadEndpoint(const VfsAssetReadEndpoint&) = delete;
         VfsAssetReadEndpoint& operator=(const VfsAssetReadEndpoint&) = delete;
+        VfsAssetReadEndpoint(VfsAssetReadEndpoint&&) = delete;
+        VfsAssetReadEndpoint& operator=(VfsAssetReadEndpoint&&) = delete;
 
-        [[nodiscard]] AssetReadPort port() noexcept;
-        void requestStop() noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EVfsAssetReadEndpointError> join() noexcept;
-
-        [[nodiscard]] lux::async::SubmitResult submit(
-            ReadAssetImage operation,
-            void* completion_state,
-            void (*complete)(void*, Outcome&&) noexcept,
-            lux::async::SubmitOptions options
-        ) noexcept override;
+        [[nodiscard]] AssetReadPort port() const noexcept;
 
     private:
         struct Impl;
 
-        explicit VfsAssetReadEndpoint(std::unique_ptr<Impl> impl) noexcept;
+        explicit VfsAssetReadEndpoint(std::shared_ptr<Impl> impl) noexcept;
 
-        std::unique_ptr<Impl> impl_;
+        std::shared_ptr<Impl> impl_;
     };
 } // namespace lux::process::asset_loading

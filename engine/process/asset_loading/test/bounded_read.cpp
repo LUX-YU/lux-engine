@@ -1,9 +1,9 @@
-#include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
-#include <lux/engine/process/asset_loading/AssetReadOverlay.hpp>
-#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
-#include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 #include <cassert>
 #include <fstream>
+#include <lux/engine/process/asset_loading/AssetReadOverlay.hpp>
+#include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 
 using namespace lux;
 using namespace lux::process::asset_loading;
@@ -11,8 +11,8 @@ using namespace lux::process::asset_loading;
 int main(int argc, char** argv)
 {
     assert(argc == 2);
-    const auto root = std::filesystem::path(argv[1]) /
-        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto root =
+        std::filesystem::path(argv[1]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root);
     const asset::AssetId id{*uuids::uuid::from_string("fedcba98-7654-3210-fedc-ba9876543210")};
     const auto image = cxx::SharedBytes<>::copyOf(std::as_bytes(std::span("bounded payload")));
@@ -32,15 +32,19 @@ int main(int argc, char** argv)
     assert(blocking);
     auto endpoint = VfsAssetReadEndpoint::create(vfs.view().capture(), *blocking, tasks, {2});
     assert(endpoint);
+
     struct Reply final
     {
         std::optional<AssetReadPort::Outcome> result;
+
         static void complete(void* target, AssetReadPort::Outcome&& value) noexcept
         {
             static_cast<Reply*>(target)->result = std::move(value);
         }
     };
-    auto request = [&](AssetReadPort port, std::size_t bound) {
+
+    auto request = [&](AssetReadPort port, std::size_t bound)
+    {
         Reply reply;
         assert(port.submit({id, bound}, &reply, &Reply::complete, {}));
         assert(runtime->waitUntil([&]() noexcept { return reply.result.has_value(); }));
@@ -66,9 +70,8 @@ int main(int argc, char** argv)
     }
     assert((*provider)->open(id, 0).error() == asset::EAssetStorageError::LIMIT_EXCEEDED);
     assert((*provider)->open(id, image.size()).error() == asset::EAssetStorageError::CORRUPT_IMAGE);
-    (*endpoint)->requestStop();
+    endpoint->reset();
     assert(tasks.join());
-    assert((*endpoint)->join());
     // An accepted endpoint result owns its transport state after its admission scope disappears.
     // Completion must wake the Runtime directly, never dereference the destroyed TaskScope.
     {
@@ -77,11 +80,10 @@ int main(int argc, char** argv)
         assert(late);
         Reply reply;
         assert((*late)->port().submit({id, image.size()}, &reply, &Reply::complete, {}));
-        (*late)->requestStop();
+        late->reset();
         scope.reset();
         assert(!reply.result);
         assert(runtime->waitUntil([&]() noexcept { return reply.result.has_value(); }));
-        assert((*late)->join());
     }
     runtime->requestStop();
     assert(runtime->join());

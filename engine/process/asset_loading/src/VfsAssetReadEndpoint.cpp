@@ -1,36 +1,24 @@
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
 
-#include <lux/engine/process/TaskScope.hpp>
-#include <lux/engine/process/PortSender.hpp>
-
 #include <stdexec/execution.hpp>
 
-#include <atomic>
-#include <exception>
 #include <mutex>
-#include <new>
-#include <thread>
-#include <type_traits>
+#include <optional>
 #include <utility>
 
 namespace lux::process::asset_loading
 {
     namespace
     {
-        enum class EEndpointState : std::uint8_t
-        {
-            ACTIVE,
-            STOPPING,
-            JOINED,
-        };
-
         [[nodiscard]] lux::async::ESubmitError mapExecutionError(EExecutionError error) noexcept
         {
             if (error == EExecutionError::CAPACITY_EXCEEDED)
             {
                 return lux::async::ESubmitError::QUEUE_FULL;
             }
-            if (error == EExecutionError::STOPPING || error == EExecutionError::ALREADY_JOINED)
+            const bool admission_closed =
+                error == EExecutionError::STOPPING || error == EExecutionError::ALREADY_JOINED;
+            if (admission_closed)
             {
                 return lux::async::ESubmitError::STOPPING;
             }
@@ -42,46 +30,128 @@ namespace lux::process::asset_loading
         }
     } // namespace
 
-    struct VfsAssetReadEndpoint::Impl final
+    // Copied ports retain this private admission endpoint, never the public semantic owner.
+    // A missing admission is final; already accepted requests need only the bounded counter.
+    struct VfsAssetReadEndpoint::Impl final : AssetReadPort::Endpoint, std::enable_shared_from_this<Impl>
     {
-        Impl(
-            asset::AssetVfsView view,
-            BlockingScheduler scheduler,
-            TaskScope& scope,
-            std::size_t requested_capacity
-        ) noexcept
-            : vfs(std::move(view)), blocking(std::move(scheduler)), tasks(scope), execution(scope.execution()),
-              capacity(requested_capacity),
-              owner_thread(std::this_thread::get_id())
-        {}
+        struct Admission final
+        {
+            asset::AssetVfsView vfs;
+            BlockingScheduler blocking;
+            TaskScope& tasks;
+        };
 
         struct Request final
         {
-            std::shared_ptr<VfsAssetReadEndpoint> endpoint;
-            void* completion_state{};
-            void (*complete)(void*, Outcome&&) noexcept {};
+            std::shared_ptr<Impl> state;
+            ExecutionRuntime& execution;
+            void* completion_state;
+            void (*complete)(void*, Outcome&&) noexcept;
 
             void finish(Outcome outcome) noexcept
             {
                 complete(completion_state, std::move(outcome));
-                std::lock_guard lock{endpoint->impl_->mutex};
-                --endpoint->impl_->admitted;
-                endpoint->impl_->execution.wake();
+                {
+                    std::lock_guard lock{state->mutex};
+                    --state->admitted;
+                }
+                execution.wake();
             }
         };
 
-        asset::AssetVfsView vfs;
-        BlockingScheduler blocking;
-        TaskScope& tasks;
-        ExecutionRuntime& execution;
+        Impl(asset::AssetVfsView view, BlockingScheduler scheduler, TaskScope& scope, std::size_t limit) noexcept
+            : admission(std::in_place, std::move(view), std::move(scheduler), scope), capacity(limit)
+        {
+        }
+
+        void revoke() noexcept
+        {
+            // Provider cleanup may re-enter a copied port. Release inputs only after unlocking.
+            std::optional<Admission> removed;
+            {
+                std::lock_guard lock{mutex};
+                removed.emplace(std::move(*admission));
+                admission.reset();
+            }
+        }
+
+        lux::async::SubmitResult submit(
+            ReadAssetImage operation,
+            void* completion_state,
+            void (*complete)(void*, Outcome&&) noexcept,
+            lux::async::SubmitOptions options
+        ) noexcept override
+        {
+            if (operation.id.isNull())
+            {
+                return lux::cxx::unexpected(lux::async::ESubmitError::PAYLOAD_INVALID);
+            }
+            std::optional<Admission> accepted;
+            std::shared_ptr<Request> request;
+            {
+                std::lock_guard lock{mutex};
+                if (!admission)
+                {
+                    return lux::cxx::unexpected(lux::async::ESubmitError::STOPPING);
+                }
+                if (admitted == capacity)
+                {
+                    return lux::cxx::unexpected(lux::async::ESubmitError::QUEUE_FULL);
+                }
+                accepted.emplace(*admission);
+                request = std::make_shared<Request>(
+                    Request{shared_from_this(), accepted->tasks.execution(), completion_state, complete}
+                );
+                ++admitted;
+            }
+            // The caller's scope covers admission calls. Only owned inputs survive submission;
+            // never hold our mutex across Runtime wake callbacks or provider cleanup.
+            const auto started = accepted->tasks.submit(
+                {"Read asset image", "asset", correlatedTask(options.correlation)},
+                [scheduler = accepted->blocking, view = accepted->vfs, operation](TaskReporter) noexcept
+                {
+                    return stdexec::then(
+                        stdexec::schedule(scheduler),
+                        [view, operation]() noexcept { return view.open(operation.id, operation.max_bytes); }
+                    );
+                },
+                [request](auto&& result) noexcept
+                {
+                    using Failure = lux::async::TOperationFailure<asset::EAssetStorageError>;
+                    if (result)
+                    {
+                        request->finish(Outcome{std::move(*result)});
+                    }
+                    else if (auto* error = result.error().domainFailure())
+                    {
+                        request->finish(lux::cxx::unexpected(Failure::domain(*error)));
+                    }
+                    else if (auto* error = result.error().executionFailure())
+                    {
+                        request->finish(lux::cxx::unexpected(Failure::runtime(mapExecutionError(*error))));
+                    }
+                    else
+                    {
+                        request->finish(lux::cxx::unexpected(Failure::runtime(lux::async::ESubmitError::STOPPING)));
+                    }
+                }
+            );
+            if (started)
+            {
+                return {};
+            }
+            std::lock_guard lock{mutex};
+            --admitted;
+            return lux::cxx::unexpected(mapExecutionError(started.error()));
+        }
+
         std::mutex mutex;
-        std::size_t capacity{};
+        std::optional<Admission> admission;
+        const std::size_t capacity;
         std::size_t admitted{};
-        EEndpointState state{EEndpointState::ACTIVE};
-        std::thread::id owner_thread;
     };
 
-    VfsAssetReadEndpoint::VfsAssetReadEndpoint(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
+    VfsAssetReadEndpoint::VfsAssetReadEndpoint(std::shared_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
     VfsAssetReadEndpoint::CreateResult VfsAssetReadEndpoint::create(
         asset::AssetVfsView vfs,
@@ -90,110 +160,24 @@ namespace lux::process::asset_loading
         VfsAssetReadEndpointConfig config
     ) noexcept
     {
-        if (!vfs || !blocking || config.request_capacity == 0U)
+        const bool invalid_dependency = !vfs || !blocking;
+        const bool invalid_capacity = config.request_capacity == 0U;
+        const bool invalid_input = invalid_dependency || invalid_capacity;
+        if (invalid_input)
         {
             return lux::cxx::unexpected(EVfsAssetReadEndpointError::INVALID_ARGUMENT);
         }
-        auto impl = std::make_unique<Impl>(std::move(vfs), std::move(blocking), tasks, config.request_capacity);
-        return std::shared_ptr<VfsAssetReadEndpoint>(new VfsAssetReadEndpoint(std::move(impl)));
+        auto impl = std::make_shared<Impl>(std::move(vfs), std::move(blocking), tasks, config.request_capacity);
+        return std::unique_ptr<VfsAssetReadEndpoint>(new VfsAssetReadEndpoint(std::move(impl)));
     }
 
-    VfsAssetReadEndpoint::~VfsAssetReadEndpoint() = default;
-
-    AssetReadPort VfsAssetReadEndpoint::port() noexcept
+    VfsAssetReadEndpoint::~VfsAssetReadEndpoint() noexcept
     {
-        return AssetReadPort{weak_from_this().lock()};
+        impl_->revoke();
     }
 
-    lux::async::SubmitResult VfsAssetReadEndpoint::submit(
-        ReadAssetImage operation,
-        void* completion_state,
-        void (*complete)(void*, Outcome&&) noexcept,
-        lux::async::SubmitOptions options
-    ) noexcept
+    AssetReadPort VfsAssetReadEndpoint::port() const noexcept
     {
-        if (operation.id.isNull())
-        {
-            return lux::cxx::unexpected(lux::async::ESubmitError::PAYLOAD_INVALID);
-        }
-        {
-            std::lock_guard lock{impl_->mutex};
-            if (impl_->state != EEndpointState::ACTIVE)
-            {
-                return lux::cxx::unexpected(lux::async::ESubmitError::STOPPING);
-            }
-            if (impl_->admitted == impl_->capacity)
-            {
-                return lux::cxx::unexpected(lux::async::ESubmitError::QUEUE_FULL);
-            }
-            ++impl_->admitted;
-        }
-
-        auto request = std::make_shared<Impl::Request>(Impl::Request{shared_from_this(), completion_state, complete});
-        const auto started = impl_->tasks.submit(
-            {"Read asset image", "asset", correlatedTask(options.correlation)},
-            [scheduler = impl_->blocking, endpoint = request->endpoint, operation](TaskReporter) noexcept {
-                return stdexec::then(stdexec::schedule(scheduler), [endpoint, operation]() noexcept {
-                    return endpoint->impl_->vfs.open(operation.id, operation.max_bytes);
-                });
-            },
-            [request](auto&& result) noexcept {
-                using Failure = lux::async::TOperationFailure<asset::EAssetStorageError>;
-                if (result)
-                    request->finish(Outcome{std::move(*result)});
-                else if (auto* error = result.error().domainFailure())
-                    request->finish(lux::cxx::unexpected(Failure::domain(*error)));
-                else if (auto* error = result.error().executionFailure())
-                    request->finish(lux::cxx::unexpected(Failure::runtime(mapExecutionError(*error))));
-                else
-                    request->finish(lux::cxx::unexpected(Failure::runtime(lux::async::ESubmitError::STOPPING)));
-            }
-        );
-        if (started)
-            return {};
-        std::lock_guard lock{impl_->mutex};
-        --impl_->admitted;
-        return lux::cxx::unexpected(mapExecutionError(started.error()));
-    }
-
-    void VfsAssetReadEndpoint::requestStop() noexcept
-    {
-        {
-            std::lock_guard lock{impl_->mutex};
-            if (impl_->state != EEndpointState::ACTIVE)
-            {
-                return;
-            }
-            impl_->state = EEndpointState::STOPPING;
-        }
-    }
-
-    lux::cxx::expected<void, EVfsAssetReadEndpointError> VfsAssetReadEndpoint::join() noexcept
-    {
-        if (impl_->owner_thread != std::this_thread::get_id())
-        {
-            return lux::cxx::unexpected(EVfsAssetReadEndpointError::WRONG_THREAD);
-        }
-        {
-            std::lock_guard lock{impl_->mutex};
-            if (impl_->state == EEndpointState::JOINED)
-            {
-                return lux::cxx::unexpected(EVfsAssetReadEndpointError::ALREADY_JOINED);
-            }
-            if (impl_->state != EEndpointState::STOPPING)
-            {
-                return lux::cxx::unexpected(EVfsAssetReadEndpointError::INVALID_STATE);
-            }
-        }
-
-        {
-            std::lock_guard lock{impl_->mutex};
-            if (impl_->admitted != 0U)
-            {
-                return lux::cxx::unexpected(EVfsAssetReadEndpointError::BUSY);
-            }
-            impl_->state = EEndpointState::JOINED;
-        }
-        return {};
+        return AssetReadPort{impl_};
     }
 } // namespace lux::process::asset_loading

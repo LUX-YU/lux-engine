@@ -1,90 +1,77 @@
 #pragma once
-#include "InputContext.hpp"
-#include <vector>
-#include <algorithm>
-#include <exception>
+
+#include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/function/visibility.h>
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
 
 namespace lux::input
 {
-    /// A non-owning stack of InputContext pointers.
-    /// Contexts are ordered by their priority() value (ascending).
-    /// Within the same priority, insertion order is preserved.
-    /// The last element (highest priority) is processed first.
-    class InputContextStack
+    class InputContext;
+
+    namespace detail
     {
-    public:
-        /// Insert a context in priority order (stable).
-        /// Duplicate pushes of the same pointer are silently ignored.
-        void push(InputContext* ctx)
-        {
-            if (ctx == nullptr)
-            {
-                std::terminate();
-            }
-            if (contains(ctx))
-                return;
-            auto it =
-                std::upper_bound(stack_.begin(), stack_.end(), ctx, [](const InputContext* a, const InputContext* b) {
-                    return a->priority() < b->priority();
-                });
-            stack_.insert(it, ctx);
-        }
+        struct InputActivation;
+        struct InputContextStackState;
+    } // namespace detail
 
-        /// Check whether the stack already contains this context pointer.
-        [[nodiscard]] bool contains(const InputContext* ctx) const noexcept
-        {
-            return std::find(stack_.begin(), stack_.end(), ctx) != stack_.end();
-        }
-
-        /// Remove the topmost context whose pointer equals ctx.
-        bool pop(InputContext* ctx)
-        {
-            for (auto it = stack_.rbegin(); it != stack_.rend(); ++it)
-            {
-                if (*it == ctx)
-                {
-                    stack_.erase(std::next(it).base());
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        /// Remove and return the top-most context.
-        InputContext* pop()
-        {
-            if (stack_.empty())
-                return nullptr;
-            InputContext* top = stack_.back();
-            stack_.pop_back();
-            return top;
-        }
-
-        [[nodiscard]] InputContext* top() noexcept
-        {
-            return stack_.empty() ? nullptr : stack_.back();
-        }
-        [[nodiscard]] const InputContext* top() const noexcept
-        {
-            return stack_.empty() ? nullptr : stack_.back();
-        }
-        [[nodiscard]] bool empty() const noexcept
-        {
-            return stack_.empty();
-        }
-        [[nodiscard]] std::size_t size() const noexcept
-        {
-            return stack_.size();
-        }
-
-        /// Ordered from lowest (index 0) to highest (index size-1) priority.
-        [[nodiscard]] std::span<InputContext* const> active() const noexcept
-        {
-            return stack_;
-        }
-
-    private:
-        std::vector<InputContext*> stack_;
+    enum class EInputActivationError : std::uint8_t
+    {
+        DUPLICATE_CONTEXT
     };
 
+    // One activation owns membership; neither stack nor context is kept alive.
+    // Either endpoint may die first, making the remaining activation empty.
+    // Destruction and all access use the same thread as Input evaluation.
+    class LUX_FUNCTION_PUBLIC InputContextActivation final
+    {
+    public:
+        InputContextActivation() noexcept;
+        ~InputContextActivation() noexcept;
+        InputContextActivation(InputContextActivation&&) noexcept;
+        InputContextActivation& operator=(InputContextActivation&&) noexcept;
+        InputContextActivation(const InputContextActivation&) = delete;
+        InputContextActivation& operator=(const InputContextActivation&) = delete;
+
+        [[nodiscard]] explicit operator bool() const noexcept;
+
+    private:
+        friend class InputContextStack;
+
+        explicit InputContextActivation(std::unique_ptr<detail::InputActivation> activation) noexcept;
+
+        std::unique_ptr<detail::InputActivation> activation_;
+    };
+
+    using ActivationResult = lux::cxx::expected<InputContextActivation, EInputActivationError>;
+
+    // Non-owning action order. Priority belongs to the activation and stays fixed;
+    // equal-priority activations preserve insertion order, with the newest evaluated first.
+    // Returned context borrows last only until the next membership change.
+    class LUX_FUNCTION_PUBLIC InputContextStack final
+    {
+    public:
+        InputContextStack() noexcept;
+        ~InputContextStack() noexcept;
+        InputContextStack(const InputContextStack&) = delete;
+        InputContextStack& operator=(const InputContextStack&) = delete;
+        InputContextStack(InputContextStack&&) = delete;
+        InputContextStack& operator=(InputContextStack&&) = delete;
+
+        [[nodiscard]] ActivationResult activate(InputContext& context, int priority = 0) noexcept;
+        [[nodiscard]] bool contains(const InputContext* context) const noexcept;
+        [[nodiscard]] InputContext* top() noexcept;
+        [[nodiscard]] const InputContext* top() const noexcept;
+        [[nodiscard]] bool empty() const noexcept;
+        [[nodiscard]] std::size_t size() const noexcept;
+
+        // Ordered from lowest to highest priority. index must be less than size().
+        [[nodiscard]] InputContext& operator[](std::size_t index) noexcept;
+        [[nodiscard]] const InputContext& operator[](std::size_t index) const noexcept;
+
+    private:
+        std::shared_ptr<detail::InputContextStackState> state_;
+    };
 } // namespace lux::input

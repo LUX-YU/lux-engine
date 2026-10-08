@@ -1,9 +1,15 @@
 #pragma once
 #include "ActionMap.hpp"
+#include <lux/engine/function/visibility.h>
 #include <string>
 
 namespace lux::input
 {
+    namespace detail
+    {
+        struct InputActivation;
+    }
+
     /// An InputContext owns an ActionMap and declares whether it consumes
     /// keyboard/mouse events so that lower-priority contexts are suppressed.
     ///
@@ -23,18 +29,18 @@ namespace lux::input
     ///   Fine-grained, per-action consumption within the same evaluation round.
     ///   Reserved for future use — same-priority or same-context action conflicts.
     ///
-    class InputContext
+    // Fixed-address action data. Destruction revokes all activations without retaining
+    // any stack or this semantic object. All access uses the Input owner's thread.
+    class LUX_FUNCTION_PUBLIC InputContext final
     {
     public:
-        explicit InputContext(
-            std::string name,
-            bool consumes_keyboard = false,
-            bool consumes_mouse = false,
-            int priority = 0
-        )
-            : name_(std::move(name)), consumes_keyboard_(consumes_keyboard), consumes_mouse_(consumes_mouse),
-              priority_(priority)
-        {}
+        explicit InputContext(std::string name, bool consumes_keyboard = false, bool consumes_mouse = false) noexcept;
+        ~InputContext() noexcept;
+
+        InputContext(const InputContext&) = delete;
+        InputContext& operator=(const InputContext&) = delete;
+        InputContext(InputContext&&) = delete;
+        InputContext& operator=(InputContext&&) = delete;
 
         // ------------------------------------------------------------------ //
         //  Identity                                                           //
@@ -46,32 +52,6 @@ namespace lux::input
         }
 
         // ------------------------------------------------------------------ //
-        //  Enabled flag (disabled contexts are skipped during evaluation)     //
-        // ------------------------------------------------------------------ //
-
-        [[nodiscard]] bool enabled() const noexcept
-        {
-            return enabled_;
-        }
-        void setEnabled(bool v) noexcept
-        {
-            enabled_ = v;
-        }
-
-        // ------------------------------------------------------------------ //
-        //  Priority (higher value = evaluated first)                          //
-        // ------------------------------------------------------------------ //
-
-        [[nodiscard]] int priority() const noexcept
-        {
-            return priority_;
-        }
-        void setPriority(int p) noexcept
-        {
-            priority_ = p;
-        }
-
-        // ------------------------------------------------------------------ //
         //  ActionMap access                                                   //
         // ------------------------------------------------------------------ //
 
@@ -79,6 +59,7 @@ namespace lux::input
         {
             return action_map_;
         }
+
         [[nodiscard]] const ActionMap& actionMap() const noexcept
         {
             return action_map_;
@@ -92,6 +73,7 @@ namespace lux::input
         {
             return consumes_keyboard_;
         }
+
         [[nodiscard]] bool consumesMouse() const noexcept
         {
             return consumes_mouse_;
@@ -101,18 +83,20 @@ namespace lux::input
         {
             consumes_keyboard_ = v;
         }
+
         void setConsumesMouse(bool v) noexcept
         {
             consumes_mouse_ = v;
         }
 
     private:
+        friend struct detail::InputActivation;
+
         std::string name_;
         ActionMap action_map_;
-        bool enabled_ = true;
         bool consumes_keyboard_ = false;
         bool consumes_mouse_ = false;
-        int priority_ = 0;
+        detail::InputActivation* activation_head_{};
     };
 
 } // namespace lux::input

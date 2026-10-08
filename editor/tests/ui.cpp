@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cstdio>
 #include <lux/engine/input/Input.hpp>
+#include <lux/engine/input/InputContext.hpp>
 #include <lux/engine/input/InputSnapshot.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
@@ -112,7 +113,8 @@ int main()
     const auto action = actions.actionRegistry().registerAction({.name = "framework.shortcut"});
     input::InputContext shortcuts{"framework"};
     shortcuts.actionMap().bindKey(action, input::EKey::KEY_A);
-    actions.contexts().push(&shortcuts);
+    const auto shortcut_activation = actions.contexts().activate(shortcuts);
+    assert(shortcut_activation);
     input::InputSnapshot key;
     key.keys_held.set(static_cast<std::size_t>(input::EKey::KEY_A));
     key.keys_just_pressed = key.keys_held;

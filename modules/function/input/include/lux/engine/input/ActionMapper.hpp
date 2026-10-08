@@ -13,6 +13,8 @@
 
 namespace lux::input
 {
+    struct ActionBinding;
+
     /// Processes the InputContextStack each frame to produce ActionState values.
     ///
     /// The update pipeline is split into discrete phases:

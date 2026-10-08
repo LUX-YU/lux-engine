@@ -5,21 +5,25 @@
 # teleop / tools all map input the same way. Extracted from gameplay (it was a
 # self-contained subsystem with zero ECS coupling).
 
-find_package(lux-cxx REQUIRED COMPONENTS container)
+find_package(lux-cxx REQUIRED COMPONENTS container compile_time)
 
-set(LUX_INPUT_SRCS
+set(
+    LUX_INPUT_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/Input.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/InputContextStack.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ActionMapper.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/BindingIdAllocator.cpp
 )
 
 if(ANDROID)
-    list(APPEND LUX_INPUT_SRCS
+    list(
+        APPEND LUX_INPUT_SRCS
         ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/android/InputPlatform.cpp
     )
 else()
     find_package(glfw3 REQUIRED)
-    list(APPEND LUX_INPUT_SRCS
+    list(
+        APPEND LUX_INPUT_SRCS
         ${CMAKE_CURRENT_SOURCE_DIR}/src/platform/glfw/InputPlatform.cpp
     )
 endif()
@@ -48,6 +52,7 @@ target_link_libraries(
     input
     PUBLIC
         lux::cxx::container
+        lux::cxx::compile_time
     PRIVATE
         lux::engine::platform::window
 )
@@ -58,5 +63,17 @@ endif()
 
 component_add_transitive_commands(
     input
-    "find_package (lux-cxx              REQUIRED COMPONENTS container)"
+    "find_package(lux-cxx REQUIRED COMPONENTS container compile_time)"
 )
+
+if(BUILD_TESTING)
+    add_executable(input_activation_test test/activation.cpp)
+    target_link_libraries(input_activation_test PRIVATE input)
+    if(MSVC)
+        target_compile_options(input_activation_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(input_activation_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME input.activation COMMAND input_activation_test)
+    set_tests_properties(input.activation PROPERTIES TIMEOUT 30 LABELS "native;lifecycle")
+endif()

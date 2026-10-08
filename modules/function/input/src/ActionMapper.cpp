@@ -1,4 +1,5 @@
 #include <lux/engine/input/ActionMapper.hpp>
+#include <lux/engine/input/InputContext.hpp>
 #include <lux/engine/input/InputSnapshot.hpp>
 #include <cassert>
 #include <cmath>
@@ -198,15 +199,9 @@ namespace lux::input
             return states_.contains(aid) && states_.at(aid).active();
         };
 
-        auto active = stack.active();
-
-        for (auto it = active.rbegin(); it != active.rend(); ++it)
+        for (auto index = stack.size(); index != 0; --index)
         {
-            InputContext* ctx = *it;
-            if (!ctx)
-                continue;
-            if (!ctx->enabled())
-                continue;
+            auto* ctx = &stack[index - 1U];
 
             const bool skip_kb = kb_consumed;
             const bool skip_mouse = mouse_consumed;

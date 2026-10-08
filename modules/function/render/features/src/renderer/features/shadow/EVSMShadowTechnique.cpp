@@ -58,7 +58,7 @@ namespace lux::render
         if (!blur_h_pipeline_.valid())
         {
             auto h = ctx.pipelineManager()
-                         .registerComputePipelineReflected(blur_h_obj->module, blur_h_obj->info, "EVSMBlurH");
+                         .registerComputePipelineReflected(blur_h_obj->module.get(), blur_h_obj->info, "EVSMBlurH");
             if (!h)
                 return;
             blur_h_pipeline_ = *h;
@@ -66,7 +66,7 @@ namespace lux::render
         if (!blur_v_pipeline_.valid())
         {
             auto v = ctx.pipelineManager()
-                         .registerComputePipelineReflected(blur_v_obj->module, blur_v_obj->info, "EVSMBlurV");
+                         .registerComputePipelineReflected(blur_v_obj->module.get(), blur_v_obj->info, "EVSMBlurV");
             if (!v)
                 return;
             blur_v_pipeline_ = *v;

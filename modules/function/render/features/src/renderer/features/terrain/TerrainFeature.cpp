@@ -65,7 +65,7 @@ namespace lux::render
             return renderFailure<err::shader::HandleStale>();
         }
         const auto select_pipeline = context.pipelineManager().registerComputePipelineReflected(
-            select_object->module,
+            select_object->module.get(),
             select_object->info,
             "TerrainPatchSelect"
         );

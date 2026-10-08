@@ -28,8 +28,8 @@ namespace lux::render
 
         auto tmpl = makeDepthPrepassTemplate();
         tmpl.descriptor_set_count = 2;
-        tmpl.vertex_shader = vs->module;
-        tmpl.fragment_shader = fs->module;
+        tmpl.vertex_shader = vs->module.get();
+        tmpl.fragment_shader = fs->module.get();
 
         // Reflected layout (both set 0 Scene and set 1 Instance are engine_set,
         // routed to the shared table).

@@ -189,4 +189,20 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME render.device_objects COMMAND render_device_objects_test)
     set_tests_properties(render.device_objects PROPERTIES TIMEOUT 30)
+
+    add_executable(
+        render_shader_ownership_test
+        test/shader_ownership.cpp
+        src/gpu/pipeline/SpirvPatcher.cpp
+    )
+    target_include_directories(render_shader_ownership_test PRIVATE sinclude pinclude)
+    target_compile_definitions(render_shader_ownership_test PRIVATE LUX_FUNCTION_DLL_DISABLE)
+    target_link_libraries(render_shader_ownership_test PRIVATE render_vulkan)
+    if(MSVC)
+        target_compile_options(render_shader_ownership_test PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(render_shader_ownership_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME render.shader_ownership COMMAND render_shader_ownership_test)
+    set_tests_properties(render.shader_ownership PROPERTIES TIMEOUT 30)
 endif()

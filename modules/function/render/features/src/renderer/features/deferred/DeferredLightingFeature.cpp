@@ -402,7 +402,7 @@ namespace lux::render
             // sees -> built purely from reflection; PC is also derived from
             // reflection.
             auto h = ctx.pipelineManager()
-                         .registerComputePipelineReflected(shader_obj->module, shader_obj->info, debug_name);
+                         .registerComputePipelineReflected(shader_obj->module.get(), shader_obj->info, debug_name);
             if (!h)
                 return kInvalidComputePipelineHandle;
             cluster_clear_ds_layout_ = ctx.pipelineManager().computeSetLayout(*h, 0);

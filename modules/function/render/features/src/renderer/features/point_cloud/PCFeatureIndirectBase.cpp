@@ -78,7 +78,7 @@ namespace lux::render
             return lux::cxx::unexpected(compute_layout.error());
 
         // PipelineManager takes ownership of compute_layout.
-        compute_handle_ = ctx.pipelineManager().registerComputePipeline(cs->module, *compute_layout);
+        compute_handle_ = ctx.pipelineManager().registerComputePipeline(cs->module.get(), *compute_layout);
 
         // ---- 3. Frames in flight ----
         fif_ = ctx.framesInFlight();

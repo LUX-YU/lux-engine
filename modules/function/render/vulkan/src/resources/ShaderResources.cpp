@@ -1,9 +1,9 @@
-#include <lux/engine/render/gpu/pipeline/SpirvPatcher.hpp>
-#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>
 #include <cstring>
-#include <lux/engine/render/resources/ShaderResources.hpp>
 #include <lux/engine/description/Shader.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
+#include <lux/engine/render/gpu/pipeline/EngineSetShapes.hpp>
+#include <lux/engine/render/gpu/pipeline/SpirvPatcher.hpp>
+#include <lux/engine/render/resources/ShaderResources.hpp>
 
 #include <algorithm>
 #include <ranges>
@@ -27,12 +27,6 @@ namespace lux::render
         }
     } // namespace
 
-    ShaderResources::~ShaderResources()
-    {
-        if (initialized_)
-            shutdown();
-    }
-
     void ShaderResources::init(const InitInfo& info)
     {
         device_ = info.device;
@@ -49,18 +43,11 @@ namespace lux::render
     void ShaderResources::shutdown()
     {
         if (!initialized_)
+        {
             return;
+        }
         initialized_ = false;
 
-        // Destroy all live VkShaderModules
-        for (size_t i = 0; i < records_.size(); ++i)
-        {
-            if (records_[i].module != VK_NULL_HANDLE && device_)
-            {
-                vkDestroyShaderModule(device_, records_[i].module, nullptr);
-                records_[i].module = VK_NULL_HANDLE;
-            }
-        }
         records_.clear();
         gens_.clear();
         refcount_.clear();
@@ -90,14 +77,16 @@ namespace lux::render
         // collisions, below), so remapping 0->1 is safe. (C10)
         std::size_t h = hashSpirv(spirv_bytes);
         if (h == 0)
+        {
             h = 1;
+        }
         if (auto it = spirv_cache_.find(h); it != spirv_cache_.end())
         {
             for (const SpirvCacheRec& rec : it->second)
             {
                 const uint32_t s = rec.slot;
                 const bool has_valid_slot = s < records_.size();
-                const bool has_live_module = has_valid_slot && records_[s].module != VK_NULL_HANDLE;
+                const bool has_live_module = has_valid_slot && static_cast<bool>(records_[s].module);
                 const bool has_matching_size = has_live_module && rec.bytes.size() == spirv_bytes.size();
                 const bool has_matching_bytes =
                     has_matching_size && std::equal(rec.bytes.begin(), rec.bytes.end(), spirv_bytes.begin());
@@ -114,11 +103,13 @@ namespace lux::render
         ci.codeSize = spirv_bytes.size();
         ci.pCode = reinterpret_cast<const uint32_t*>(spirv_bytes.data());
 
-        VkShaderModule sm{VK_NULL_HANDLE};
-        if (vkCreateShaderModule(device_, &ci, nullptr, &sm) != VK_SUCCESS)
+        auto module = ShaderModuleOwner::create(device_, ci);
+        if (!module)
+        {
             return ShaderHandle::invalid();
+        }
 
-        const ShaderHandle handle = add(ShaderObject{sm, info});
+        const ShaderHandle handle = add(ShaderObject{std::move(*module), info});
         if (!handle.isNull())
         {
             const uint32_t s = handle.index;
@@ -153,20 +144,32 @@ namespace lux::render
     std::span<const std::byte> ShaderResources::spirvBytes(ShaderHandle handle) const noexcept
     {
         if (!get(handle))
+        {
             return {};
+        }
         const auto idx = handle.index;
         if (idx >= slot_hash_.size())
+        {
             return {};
+        }
         const std::size_t h = slot_hash_[idx];
         if (h == 0)
+        {
             return {}; // This slot wasn't added via the deduped SPIR-V add() path (a pre-built ShaderObject)
+        }
 
         const auto it = spirv_cache_.find(h);
         if (it == spirv_cache_.end())
+        {
             return {};
+        }
         for (const auto& rec : it->second)
+        {
             if (rec.slot == idx)
+            {
                 return {rec.bytes.data(), rec.bytes.size()};
+            }
+        }
         return {};
     }
 
@@ -177,7 +180,9 @@ namespace lux::render
     {
         const auto src_bytes = spirvBytes(source);
         if (src_bytes.empty())
+        {
             return renderFailure<err::shader::SourceBytesUnavailable>();
+        }
 
         // ── 门禁 1:一个 set 要么整体搬走,要么完全不搬 ────────────────────────
         //
@@ -192,9 +197,13 @@ namespace lux::render
 
             const auto first_unowned = std::ranges::find_if_not(s.bindings, is_owned);
             if (first_unowned == s.bindings.end())
+            {
                 continue; // 整个 set 都在契约里 —— 会被整体搬走
+            }
             if (std::ranges::none_of(s.bindings, is_owned))
+            {
                 continue; // 整个 set 都不在契约里 —— 完全不搬
+            }
 
             // 报第一个缺席者就够定位:补齐契约是一次性动作,不必枚举全部。
             return renderFailure<err::shader::SetPartiallyRelocatable>(s.set, first_unowned->binding);
@@ -217,7 +226,9 @@ namespace lux::render
 
         const auto patched = patchSpirvDescriptorPositions(std::span<uint32_t>{words}, relocs);
         if (!patched.ok)
+        {
             return renderFailure<err::shader::SpirvParseFailed>();
+        }
 
         // ── 门禁 2:反射必须覆盖模块里的每一个描述符 ───────────────────────────
         //
@@ -228,13 +239,17 @@ namespace lux::render
         // 反射对账。
         std::size_t reflected_binding_count = 0;
         for (const auto& s : info.sets)
+        {
             reflected_binding_count += s.bindings.size();
+        }
 
         if (patched.descriptor_count != reflected_binding_count)
+        {
             return renderFailure<err::shader::ReflectionIsSubsetOfModule>(
                 static_cast<std::uint32_t>(patched.descriptor_count),
                 static_cast<std::uint32_t>(reflected_binding_count)
             );
+        }
 
         // ── 门禁 3:该搬的都真搬动了 ──────────────────────────────────────────
         //
@@ -243,14 +258,20 @@ namespace lux::render
         // 仍然宣称搬过了 —— 从此 SPIR-V 与反射各说各话,Vulkan 不报错,binding 只是接错。
         std::size_t expected_moves = 0;
         for (const auto& rl : relocs)
+        {
             if (rl.to_set != rl.from_set || rl.to_binding != rl.from_binding)
+            {
                 ++expected_moves;
+            }
+        }
 
         if (patched.relocated != expected_moves)
+        {
             return renderFailure<err::shader::ReflectionOutOfSyncWithSpirv>(
                 static_cast<std::uint32_t>(expected_moves),
                 static_cast<std::uint32_t>(patched.relocated)
             );
+        }
 
         // ── 纯恒等:就地给源记录打标记,不新增变体 ────────────────────────────
         //
@@ -272,7 +293,9 @@ namespace lux::render
         const auto relocated_info = relocateShaderInfoByName(info);
         const ShaderHandle variant = add(patched_bytes, relocated_info);
         if (variant.isNull())
+        {
             return renderFailure<err::device::VulkanObjectCreationFailed>();
+        }
         return variant;
     }
 
@@ -287,7 +310,9 @@ namespace lux::render
         {
             const ShaderObject* record = get(source);
             if (record == nullptr)
+            {
                 return renderFailure<err::shader::HandleStale>();
+            }
 
             // 反射按值取:addMergedLayoutVariant 内部会 add(),那次调用之后 record 就可能
             // 悬垂,而它需要读原始反射。
@@ -295,7 +320,9 @@ namespace lux::render
 
             auto merged = addMergedLayoutVariant(source, original_info);
             if (!merged)
+            {
                 return lux::cxx::unexpected(merged.error());
+            }
             switched.push_back(*merged);
         }
 
@@ -308,8 +335,10 @@ namespace lux::render
         {
             const ShaderObject* record = get(handle);
             if (record == nullptr)
+            {
                 return renderFailure<err::shader::HandleStale>();
-            prepared.appendStage(handle, record->module, record->info);
+            }
+            prepared.appendStage(handle, record->module.get(), record->info);
         }
         prepared.bindInfoPointers();
         return prepared;
@@ -318,37 +347,50 @@ namespace lux::render
     const ShaderObject* ShaderResources::get(ShaderHandle handle) const noexcept
     {
         if (handle.isNull())
+        {
             return nullptr;
+        }
         const auto idx = handle.index;
         if (idx >= static_cast<uint32_t>(records_.size()))
+        {
             return nullptr;
+        }
         if (handle.gen != gens_[idx])
+        {
             return nullptr;
-        if (records_[idx].module == VK_NULL_HANDLE)
+        }
+        if (!records_[idx].module)
+        {
             return nullptr;
+        }
         return &records_[idx];
     }
 
     void ShaderResources::remove(ShaderHandle handle)
     {
         if (handle.isNull())
+        {
             return;
+        }
         const auto idx = handle.index;
         if (idx >= static_cast<uint32_t>(records_.size()))
-            return;
-        if (handle.gen != gens_[idx])
-            return;
-        if (refcount_[idx] == 0) // already dead
-            return;
-        if (--refcount_[idx] != 0) // still shared by another material/instance
-            return;
-
-        auto& rec = records_[idx];
-        if (rec.module != VK_NULL_HANDLE && device_)
         {
-            vkDestroyShaderModule(device_, rec.module, nullptr);
-            rec = ShaderObject{};
+            return;
         }
+        if (handle.gen != gens_[idx])
+        {
+            return;
+        }
+        if (refcount_[idx] == 0) // already dead
+        {
+            return;
+        }
+        if (--refcount_[idx] != 0) // still shared by another material/instance
+        {
+            return;
+        }
+
+        records_[idx] = ShaderObject{};
 
         // Evict this slot's dedup-cache entry so a future identical SPIR-V re-creates
         // a fresh module rather than aliasing the freed slot.
@@ -362,7 +404,9 @@ namespace lux::render
                     vec.end()
                 );
                 if (vec.empty())
+                {
                     spirv_cache_.erase(it);
+                }
             }
             slot_hash_[idx] = 0;
         }

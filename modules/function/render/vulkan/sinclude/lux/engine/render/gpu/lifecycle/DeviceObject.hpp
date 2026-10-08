@@ -102,4 +102,6 @@ namespace lux::render
         TDeviceObject<VkPipelineLayout, VkPipelineLayoutCreateInfo, vkCreatePipelineLayout, vkDestroyPipelineLayout>;
     using DescriptorPoolOwner = detail::
         TDeviceObject<VkDescriptorPool, VkDescriptorPoolCreateInfo, vkCreateDescriptorPool, vkDestroyDescriptorPool>;
+    using ShaderModuleOwner = detail::
+        TDeviceObject<VkShaderModule, VkShaderModuleCreateInfo, vkCreateShaderModule, vkDestroyShaderModule>;
 } // namespace lux::render

@@ -112,7 +112,11 @@ namespace lux::render
             // The build pipeline's layout is built via reflection (set0 =
             // src/dst per-mip, set1 = depth source; both are pass-local,
             // with no contract resources).
-            auto pipeline = ctx.pipelineManager().registerComputePipelineReflected(cs->module, cs->info, "HzbBuild");
+            auto pipeline = ctx.pipelineManager().registerComputePipelineReflected(
+                cs->module.get(),
+                cs->info,
+                "HzbBuild"
+            );
             if (!pipeline)
                 return lux::cxx::unexpected(pipeline.error());
             compute_pipeline_ = *pipeline;

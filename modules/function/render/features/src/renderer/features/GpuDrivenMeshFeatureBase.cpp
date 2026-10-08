@@ -413,7 +413,7 @@ namespace lux::render
             if (!cull_shader)
                 return renderFailure<err::asset::Invalid>();
             view_cull_pipeline_ =
-                ctx.pipelineManager().registerComputePipeline(cull_shader->module, pl_handle, cull_specs);
+                ctx.pipelineManager().registerComputePipeline(cull_shader->module.get(), pl_handle, cull_specs);
         }
         return {};
     }
@@ -440,7 +440,7 @@ namespace lux::render
         });
         if (!pl) // propagate layout-creation failure, don't .value()-throw
             return lux::cxx::unexpected(pl.error());
-        compact_pipeline_ = ctx.pipelineManager().registerComputePipeline(compact_shader->module, pl.value(), {});
+        compact_pipeline_ = ctx.pipelineManager().registerComputePipeline(compact_shader->module.get(), pl.value(), {});
         return {};
     }
 

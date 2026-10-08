@@ -52,7 +52,7 @@ namespace lux::render
     VkShaderModule RenderContextView::shaderModule(ShaderHandle handle) const
     {
         const auto* obj = ctx_->globalRegistry().must<ShaderResources>().get(handle);
-        return obj ? obj->module : VkShaderModule{};
+        return obj ? obj->module.get() : VkShaderModule{};
     }
 
     const lux::rdesc::ShaderInfo* RenderContextView::shaderInfo(ShaderHandle handle) const

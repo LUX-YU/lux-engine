@@ -1,6 +1,6 @@
 #pragma once
-#include <lux/engine/gapi/vk/vk.hpp>
 #include <lux/engine/description/ShaderInfo.hpp>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 
 namespace lux::render
 {
@@ -8,7 +8,7 @@ namespace lux::render
     /// Managed by ShaderResources.
     struct ShaderObject
     {
-        VkShaderModule module{VK_NULL_HANDLE};
+        ShaderModuleOwner module;
         lux::rdesc::ShaderInfo info{};
     };
 } // namespace lux::render

@@ -44,7 +44,7 @@ namespace lux::render
         };
 
         ShaderResources() = default;
-        ~ShaderResources();
+        ~ShaderResources() noexcept = default;
 
         ShaderResources(const ShaderResources&) = delete;
         ShaderResources& operator=(const ShaderResources&) = delete;

@@ -261,7 +261,7 @@ namespace lux::render
                 {VK_SHADER_STAGE_COMPUTE_BIT, kSpecConstHZBMode, hzb_mode_spec},
             }};
             shadow_cull_pipeline_ =
-                ctx.pipelineManager().registerComputePipeline(shader_obj->module, pl.value(), cull_specs);
+                ctx.pipelineManager().registerComputePipeline(shader_obj->module.get(), pl.value(), cull_specs);
         }
 
         // Shadow compact compute pipeline (replaces finalize for MDC mode)
@@ -330,7 +330,7 @@ namespace lux::render
                     return lux::cxx::unexpected(clear_layout.error());
 
                 shadow_clear_pipeline_ =
-                    ctx.pipelineManager().registerComputePipeline(shader_obj->module, clear_layout.value());
+                    ctx.pipelineManager().registerComputePipeline(shader_obj->module.get(), clear_layout.value());
             }
         }
 

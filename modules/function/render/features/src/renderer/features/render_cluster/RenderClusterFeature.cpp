@@ -82,7 +82,7 @@ namespace lux::render
                 return renderFailure<err::shader::HandleStale>();
             }
             const auto pipeline =
-                context.pipelineManager().registerComputePipelineReflected(object->module, object->info, name);
+                context.pipelineManager().registerComputePipelineReflected(object->module.get(), object->info, name);
             if (!pipeline)
             {
                 return lux::cxx::unexpected(pipeline.error());

@@ -552,18 +552,6 @@ namespace lux::render
                 renderFatal("RenderServer transfer drain wait-idle failed");
             }
 
-            for (auto& pending : pending_graphics_finalizes_)
-            {
-                if (pending.command_buffer != VK_NULL_HANDLE)
-                {
-                    vkFreeCommandBuffers(
-                        dev_ctx_->logicalDevice().handle(),
-                        res_ctx_->commandPool(),
-                        1,
-                        &pending.command_buffer
-                    );
-                }
-            }
             pending_graphics_finalizes_.clear();
             graphics_finalize_reply_batch_.clear();
             graphics_finalize_staging_batch_.clear();

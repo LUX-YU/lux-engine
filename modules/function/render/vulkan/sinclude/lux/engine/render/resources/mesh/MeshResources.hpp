@@ -255,6 +255,10 @@ namespace lux::render
         /// 不创建 transfer 线程的嵌入/工具进程。
         void recordStagingCopies(VkCommandBuffer cmd);
 
+        /// Revoke this unsubmitted graphics-finalize batch before its native owners retire.
+        /// Synchronous owned uploads are unaffected; only call at the server recording boundary.
+        void discardPendingFinalization() noexcept;
+
         /**
          * @brief Allocate VBO/IBO arena ranges + slot without staging transfer.
          *

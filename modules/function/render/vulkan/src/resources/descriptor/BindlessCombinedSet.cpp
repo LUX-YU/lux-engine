@@ -1593,4 +1593,11 @@ namespace lux::render
         pending_mip_gen_slots_.clear();
     }
 
+    void BindlessCombinedSet::discardPendingFinalization() noexcept
+    {
+        pending_staging_textures_.clear();
+        pending_acquire_barriers_.clear();
+        pending_mip_gen_slots_.clear();
+    }
+
 } // namespace lux::render

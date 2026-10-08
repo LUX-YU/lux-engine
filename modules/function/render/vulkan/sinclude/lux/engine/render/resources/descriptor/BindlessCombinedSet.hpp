@@ -324,6 +324,10 @@ namespace lux::render
         /// Record all pending deferred mip-gen operations, then clear the list.
         void recordDeferredMipGens(VkCommandBuffer cmd);
 
+        /// Revoke this unsubmitted graphics-finalize batch before its native owners retire.
+        /// Synchronous owned uploads are unaffected; only call at the server recording boundary.
+        void discardPendingFinalization() noexcept;
+
         // ========== Transfer scheduler integration ==========
 
         /// Submit pending texture uploads to the transfer scheduler.

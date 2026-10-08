@@ -834,16 +834,10 @@ namespace lux::render
     bool GeneralRenderServer::Impl::pollGraphicsFinalizes(std::uint64_t gpu_value)
     {
         const std::size_t before = pending_graphics_finalizes_.size();
-        const VkDevice device = dev_ctx_->logicalDevice().handle();
-        const VkCommandPool pool = res_ctx_->commandPool();
         std::erase_if(pending_graphics_finalizes_, [&](PendingGraphicsFinalize& pending) {
             if (pending.timeline_value > gpu_value)
             {
                 return false;
-            }
-            if (pending.command_buffer != VK_NULL_HANDLE)
-            {
-                vkFreeCommandBuffers(device, pool, 1, &pending.command_buffer);
             }
             pending_deferred_replies_.insert(
                 pending_deferred_replies_.end(),
@@ -866,17 +860,18 @@ namespace lux::render
         const VkDevice device = dev_ctx_->logicalDevice().handle();
         const VkCommandPool pool = res_ctx_->commandPool();
 
-        VkCommandBufferAllocateInfo allocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-        allocate.commandPool = pool;
-        allocate.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocate.commandBufferCount = 1;
-        VkCommandBuffer command_buffer = VK_NULL_HANDLE;
-
+        CommandBufferOwner command;
         const auto fail_batch = [&]() {
-            if (command_buffer != VK_NULL_HANDLE)
+            command.reset();
+            // These borrowed recording lists belong to this render-thread finalize
+            // batch. Revoke them before releasing staging or recycling resource slots.
+            if (auto* mesh = render_ctx_->globalRegistry().find<MeshResources>())
             {
-                vkFreeCommandBuffers(device, pool, 1, &command_buffer);
+                mesh->discardPendingFinalization();
             }
+            auto& textures = render_ctx_->globalRegistry().must<TextureResources>();
+            textures.bindlessSet2D().discardPendingFinalization();
+            textures.bindlessSetCube().discardPendingFinalization();
             for (auto& reply : graphics_finalize_reply_batch_)
             {
                 TransferCompletion completion{};
@@ -901,12 +896,15 @@ namespace lux::render
             );
         };
 
-        if (vkAllocateCommandBuffers(device, &allocate, &command_buffer) != VK_SUCCESS)
+        auto candidate = CommandBufferOwner::create(device, pool);
+        if (!candidate)
         {
             fail_batch();
             return true;
         }
 
+        command = std::move(*candidate);
+        const auto command_buffer = command.get();
         VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         if (vkBeginCommandBuffer(command_buffer, &begin) != VK_SUCCESS)
@@ -963,7 +961,7 @@ namespace lux::render
 
         pending_graphics_finalizes_.push_back(PendingGraphicsFinalize{
             .timeline_value = *timeline,
-            .command_buffer = command_buffer,
+            .command_buffer = std::move(command),
             .replies = std::move(graphics_finalize_reply_batch_),
             .staging = std::move(graphics_finalize_staging_batch_),
         });
@@ -1073,14 +1071,8 @@ namespace lux::render
                 // success impossible: retire CPU/VMA owners, return the resource
                 // handle through the normal destroy path, and fail each request
                 // exactly once.
-                const VkDevice device = dev_ctx_->logicalDevice().handle();
-                const VkCommandPool pool = res_ctx_->commandPool();
                 for (auto& pending : pending_graphics_finalizes_)
                 {
-                    if (pending.command_buffer != VK_NULL_HANDLE)
-                    {
-                        vkFreeCommandBuffers(device, pool, 1, &pending.command_buffer);
-                    }
                     for (auto& reply : pending.replies)
                     {
                         TransferCompletion completion{};

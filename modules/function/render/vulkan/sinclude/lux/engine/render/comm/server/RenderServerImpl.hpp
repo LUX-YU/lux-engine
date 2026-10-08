@@ -408,7 +408,7 @@ namespace lux::render
         struct PendingGraphicsFinalize
         {
             std::uint64_t timeline_value{0};
-            VkCommandBuffer command_buffer{VK_NULL_HANDLE};
+            CommandBufferOwner command_buffer;
             std::vector<DeferredReplyEntry> replies;
             std::vector<StagingBuffer> staging;
         };

@@ -796,4 +796,10 @@ namespace lux::render
         return {};
     }
 
+    void MeshResources::discardPendingFinalization() noexcept
+    {
+        pending_staging_copies_.clear();
+        pending_acquire_barriers_.clear();
+    }
+
 } // namespace lux::render

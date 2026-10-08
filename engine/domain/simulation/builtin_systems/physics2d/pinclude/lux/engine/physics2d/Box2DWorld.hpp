@@ -14,13 +14,19 @@ namespace lux::physics2d::detail
     public:
         using BodyId = std::uint32_t;
 
-        Box2DWorld(double gravity_x, double gravity_y);
+        // Caller supplies validated configuration. Nullopt means the backend's finite world table is full.
+        [[nodiscard]] static std::optional<Box2DWorld> create(
+            double gravity_x,
+            double gravity_y,
+            std::size_t body_capacity
+        ) noexcept;
         ~Box2DWorld() noexcept;
 
         Box2DWorld(const Box2DWorld&) = delete;
         Box2DWorld& operator=(const Box2DWorld&) = delete;
+        Box2DWorld(Box2DWorld&&) noexcept;
+        Box2DWorld& operator=(Box2DWorld&&) noexcept;
 
-        [[nodiscard]] bool prepare(std::size_t body_capacity) noexcept;
         [[nodiscard]] std::optional<BodyId> createBox(
             Eigen::Vector2f center,
             float angle,
@@ -40,6 +46,7 @@ namespace lux::physics2d::detail
 
     private:
         struct Impl;
+        explicit Box2DWorld(std::unique_ptr<Impl>) noexcept;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::physics2d::detail

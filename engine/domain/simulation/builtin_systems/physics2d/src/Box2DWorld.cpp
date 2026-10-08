@@ -3,54 +3,60 @@
 #include <box2d/box2d.h>
 
 #include <cmath>
-#include <limits>
 #include <vector>
 
 namespace lux::physics2d::detail
 {
     struct Box2DWorld::Impl final
     {
-        b2WorldId world{b2_nullWorldId};
+        b2WorldId world;
         std::vector<b2BodyId> bodies;
         std::vector<BodyId> free_bodies;
+
+        Impl(b2WorldId prepared_world, std::size_t body_capacity) noexcept
+            : world(prepared_world), bodies(body_capacity, b2_nullBodyId)
+        {
+            free_bodies.reserve(body_capacity);
+            for (std::size_t index{body_capacity}; index > 0U; --index)
+            {
+                free_bodies.push_back(static_cast<BodyId>(index - 1U));
+            }
+        }
+
+        ~Impl() noexcept
+        {
+            b2DestroyWorld(world);
+        }
 
         [[nodiscard]] b2BodyId body(BodyId id) const noexcept
         {
             if (id >= bodies.size() || !b2Body_IsValid(bodies[id]))
+            {
                 return b2_nullBodyId;
+            }
             return bodies[id];
         }
     };
 
-    Box2DWorld::Box2DWorld(double gravity_x, double gravity_y) : impl_(std::make_unique<Impl>())
+    std::optional<Box2DWorld> Box2DWorld::create(double gravity_x, double gravity_y, std::size_t body_capacity) noexcept
     {
         auto definition = b2DefaultWorldDef();
         definition.gravity = {static_cast<float>(gravity_x), static_cast<float>(gravity_y)};
-        impl_->world = b2CreateWorld(&definition);
+        const auto world = b2CreateWorld(&definition);
+        if (!b2World_IsValid(world))
+        {
+            return std::nullopt;
+        }
+        return Box2DWorld(std::make_unique<Impl>(world, body_capacity));
     }
 
-    Box2DWorld::~Box2DWorld() noexcept
-    {
-        if (impl_ && b2World_IsValid(impl_->world))
-            b2DestroyWorld(impl_->world);
-    }
+    Box2DWorld::Box2DWorld(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
-    bool Box2DWorld::prepare(std::size_t body_capacity) noexcept
-    {
-        if (!impl_ || !b2World_IsValid(impl_->world) || body_capacity == 0U ||
-            body_capacity > std::numeric_limits<BodyId>::max())
-        {
-            return false;
-        }
-        {
-            impl_->bodies.assign(body_capacity, b2_nullBodyId);
-            impl_->free_bodies.clear();
-            impl_->free_bodies.reserve(body_capacity);
-            for (std::size_t index{body_capacity}; index > 0U; --index)
-                impl_->free_bodies.push_back(static_cast<BodyId>(index - 1U));
-            return true;
-        }
-    }
+    Box2DWorld::Box2DWorld(Box2DWorld&&) noexcept = default;
+
+    Box2DWorld& Box2DWorld::operator=(Box2DWorld&&) noexcept = default;
+
+    Box2DWorld::~Box2DWorld() noexcept = default;
 
     std::optional<Box2DWorld::BodyId> Box2DWorld::createBox(
         Eigen::Vector2f center,
@@ -59,8 +65,10 @@ namespace lux::physics2d::detail
         bool dynamic
     ) noexcept
     {
-        if (!impl_ || impl_->free_bodies.empty() || !center.allFinite() || !half_extents.allFinite() ||
-            half_extents.x() <= 0.0F || half_extents.y() <= 0.0F || !std::isfinite(angle))
+        const bool is_invalid_shape = !center.allFinite() || !half_extents.allFinite() || half_extents.x() <= 0.0F ||
+                                      half_extents.y() <= 0.0F || !std::isfinite(angle);
+        const bool has_capacity = !impl_->free_bodies.empty();
+        if (is_invalid_shape || !has_capacity)
         {
             return std::nullopt;
         }
@@ -70,7 +78,9 @@ namespace lux::physics2d::detail
         body_definition.rotation = b2MakeRot(angle);
         const auto body = b2CreateBody(impl_->world, &body_definition);
         if (!b2Body_IsValid(body))
+        {
             return std::nullopt;
+        }
 
         const auto polygon = b2MakeBox(half_extents.x(), half_extents.y());
         auto shape_definition = b2DefaultShapeDef();
@@ -89,9 +99,11 @@ namespace lux::physics2d::detail
 
     void Box2DWorld::destroyBody(BodyId body) noexcept
     {
-        const auto value = impl_ ? impl_->body(body) : b2_nullBodyId;
+        const auto value = impl_->body(body);
         if (!b2Body_IsValid(value))
+        {
             return;
+        }
         b2DestroyBody(value);
         impl_->bodies[body] = b2_nullBodyId;
         impl_->free_bodies.push_back(body);
@@ -99,59 +111,73 @@ namespace lux::physics2d::detail
 
     void Box2DWorld::setTransform(BodyId body, Eigen::Vector2f center, float angle) noexcept
     {
-        const auto value = impl_ ? impl_->body(body) : b2_nullBodyId;
-        if (b2Body_IsValid(value) && center.allFinite() && std::isfinite(angle))
+        const auto value = impl_->body(body);
+        const bool is_valid_transform = center.allFinite() && std::isfinite(angle);
+        if (b2Body_IsValid(value) && is_valid_transform)
+        {
             b2Body_SetTransform(value, {center.x(), center.y()}, b2MakeRot(angle));
+        }
     }
 
     void Box2DWorld::setLinearVelocity(BodyId body, Eigen::Vector2f velocity) noexcept
     {
-        const auto value = impl_ ? impl_->body(body) : b2_nullBodyId;
+        const auto value = impl_->body(body);
         if (b2Body_IsValid(value) && velocity.allFinite())
+        {
             b2Body_SetLinearVelocity(value, {velocity.x(), velocity.y()});
+        }
     }
 
     void Box2DWorld::setGravityScale(BodyId body, float scale) noexcept
     {
-        const auto value = impl_ ? impl_->body(body) : b2_nullBodyId;
+        const auto value = impl_->body(body);
         if (b2Body_IsValid(value) && std::isfinite(scale))
+        {
             b2Body_SetGravityScale(value, scale);
+        }
     }
 
     void Box2DWorld::step(float seconds) noexcept
     {
-        if (impl_ && b2World_IsValid(impl_->world) && std::isfinite(seconds) && seconds > 0.0F)
+        if (std::isfinite(seconds) && seconds > 0.0F)
+        {
             b2World_Step(impl_->world, seconds, 4);
+        }
     }
 
     Eigen::Vector2f Box2DWorld::position(BodyId body) const noexcept
     {
-        const auto value = impl_ ? impl_->body(body) : b2_nullBodyId;
+        const auto value = impl_->body(body);
         if (!b2Body_IsValid(value))
+        {
             return Eigen::Vector2f::Zero();
+        }
         const auto position = b2Body_GetPosition(value);
         return {position.x, position.y};
     }
 
     float Box2DWorld::angle(BodyId body) const noexcept
     {
-        const auto value = impl_ ? impl_->body(body) : b2_nullBodyId;
+        const auto value = impl_->body(body);
         return b2Body_IsValid(value) ? b2Rot_GetAngle(b2Body_GetRotation(value)) : 0.0F;
     }
 
     Eigen::Vector2f Box2DWorld::linearVelocity(BodyId body) const noexcept
     {
-        const auto value = impl_ ? impl_->body(body) : b2_nullBodyId;
+        const auto value = impl_->body(body);
         if (!b2Body_IsValid(value))
+        {
             return Eigen::Vector2f::Zero();
+        }
         const auto velocity = b2Body_GetLinearVelocity(value);
         return {velocity.x, velocity.y};
     }
 
     bool Box2DWorld::overlapsBox(Eigen::Vector2f center, Eigen::Vector2f half_extents) const noexcept
     {
-        if (!impl_ || !b2World_IsValid(impl_->world) || !center.allFinite() || !half_extents.allFinite() ||
-            half_extents.x() <= 0.0F || half_extents.y() <= 0.0F)
+        const bool is_invalid_query =
+            !center.allFinite() || !half_extents.allFinite() || half_extents.x() <= 0.0F || half_extents.y() <= 0.0F;
+        if (is_invalid_query)
         {
             return false;
         }
@@ -165,7 +191,8 @@ namespace lux::physics2d::detail
             impl_->world,
             bounds,
             filter,
-            [](b2ShapeId, void* context) noexcept {
+            [](b2ShapeId, void* context) noexcept
+            {
                 *static_cast<bool*>(context) = true;
                 return false;
             },
@@ -173,4 +200,4 @@ namespace lux::physics2d::detail
         );
         return found;
     }
-}
+} // namespace lux::physics2d::detail

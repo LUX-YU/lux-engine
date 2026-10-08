@@ -5,8 +5,10 @@ find_package(Eigen3 CONFIG REQUIRED)
 # beside the plugin, even when the product does not link/preload Physics2D itself.
 get_target_property(_box2d_type box2d::box2d TYPE)
 if(WIN32 AND _box2d_type STREQUAL "SHARED_LIBRARY")
-    install(IMPORTED_RUNTIME_ARTIFACTS box2d::box2d
-        RUNTIME DESTINATION bin COMPONENT lux_engine_physics2d)
+    install(
+        IMPORTED_RUNTIME_ARTIFACTS box2d::box2d
+        RUNTIME DESTINATION bin COMPONENT lux_engine_physics2d
+    )
 endif()
 
 generate_visibility_header(
@@ -102,15 +104,48 @@ find_package(nlohmann_json CONFIG REQUIRED)
 add_executable(physics2d_description src/Physics2DDescription.cpp)
 lux_classify_target(TARGET physics2d_description LAYER TOOLCHAIN PRODUCT SDK ROLE BUILD_TOOL)
 target_compile_definitions(physics2d_description PRIVATE LUX_ENGINE_PHYSICS2D_SIMULATION_DLL_DISABLE)
-target_include_directories(physics2d_description PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${LUX_GENERATE_HEADER_DIR} ${CMAKE_CURRENT_BINARY_DIR}/type_info)
-target_link_libraries(physics2d_description PRIVATE nlohmann_json::nlohmann_json
-    lux::engine::simulation::system lux::engine::simulation::ecs::transform
-    lux::engine::function::script_core lux::engine::core::serialization)
+target_include_directories(
+    physics2d_description PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${LUX_GENERATE_HEADER_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}/type_info
+)
+
+target_link_libraries(
+    physics2d_description PRIVATE
+    nlohmann_json::nlohmann_json
+    lux::engine::simulation::system
+    lux::engine::simulation::ecs::transform
+    lux::engine::function::script_core
+    lux::engine::core::serialization
+)
 # Codegen labels are metadata-only targets; compilation requires the output-producing targets.
 add_dependencies(physics2d_description physics2d_component_codegen_generate physics2d_configuration_codegen_generate)
 set(_physics_declaration "${CMAKE_CURRENT_BINARY_DIR}/physics2d.declaration.json")
-add_custom_command(OUTPUT "${_physics_declaration}"
+add_custom_command(
+    OUTPUT "${_physics_declaration}"
     COMMAND "$<TARGET_FILE:physics2d_description>" "${CMAKE_CURRENT_SOURCE_DIR}/physics2d.plugin.json" "${_physics_declaration}"
-    DEPENDS physics2d_description physics2d.plugin.json VERBATIM)
+    DEPENDS physics2d_description physics2d.plugin.json
+    VERBATIM
+)
 add_custom_target(physics2d_declaration DEPENDS "${_physics_declaration}")
+
+if(BUILD_TESTING)
+    add_executable(
+        physics2d_lifecycle_test
+        ${PROJECT_SOURCE_DIR}/cmake/installed-consumers/physics2d/main.cpp
+    )
+    target_link_libraries(
+        physics2d_lifecycle_test PRIVATE
+        physics2d_simulation
+        lux::engine::simulation::simulation_composition
+        box2d::box2d
+    )
+    if(MSVC)
+        target_compile_options(physics2d_lifecycle_test PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(physics2d_lifecycle_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME physics2d.lifecycle COMMAND physics2d_lifecycle_test)
+    set_tests_properties(physics2d.lifecycle PROPERTIES TIMEOUT 30)
+endif()

@@ -179,14 +179,7 @@ namespace lux::simulation
             try
             {
                 auto object = std::make_unique<Type>(std::forward<Args>(args)...);
-                auto inserted =
-                    emplaceErased(instance, lux::cxx::typeToken<Type>(), object.get(), [](void* value) noexcept {
-                        delete static_cast<Type*>(value);
-                    });
-                if (!inserted)
-                    return lux::cxx::unexpected(inserted.error());
-                object.release();
-                return static_cast<Type*>(*inserted);
+                return addSystem(instance, std::move(object));
             }
             catch (const std::bad_alloc&)
             {
@@ -198,6 +191,25 @@ namespace lux::simulation
                     SimulationSystemBuildFailure{ESimulationSystemBuildError::CONSTRUCTION_FAILURE, instance}
                 );
             }
+        }
+
+        // Accept only a complete factory result. Rejection leaves the candidate with its caller.
+        template <SimulationSystem Type>
+        [[nodiscard]] lux::cxx::expected<Type*, SimulationSystemBuildFailure>
+        addSystem(lux::system::SystemInstanceId instance, std::unique_ptr<Type>&& object) noexcept
+        {
+            auto inserted = emplaceErased(
+                instance,
+                lux::cxx::typeToken<Type>(),
+                object.get(),
+                [](void* value) noexcept { delete static_cast<Type*>(value); }
+            );
+            if (!inserted)
+            {
+                return lux::cxx::unexpected(inserted.error());
+            }
+            object.release();
+            return static_cast<Type*>(*inserted);
         }
 
         template <SimulationSystem Type> [[nodiscard]] Type* findSystem(lux::system::SystemInstanceId instance) noexcept

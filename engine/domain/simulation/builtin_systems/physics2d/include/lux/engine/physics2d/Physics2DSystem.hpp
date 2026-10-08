@@ -4,9 +4,9 @@
 #include <lux/engine/physics2d/Physics2DComponents.hpp>
 #include <lux/engine/physics2d/abilities/PhysicsQuery2D.hpp>
 #include <lux/engine/physics2d/visibility.h>
-#include <lux/engine/simulation/SimulationTime.hpp>
 #include <lux/engine/simulation/SimulationSystemDescription.hpp>
 #include <lux/engine/simulation/SimulationSystemRegistry.hpp>
+#include <lux/engine/simulation/SimulationTime.hpp>
 #include <lux/engine/simulation/SystemAccessSpec.hpp>
 #include <lux/engine/simulation/ecs/Registry.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
@@ -28,7 +28,6 @@ namespace lux::physics2d
         INVALID_CONFIGURATION,
         CAPACITY_EXCEEDED,
         INVALID_COMPONENT,
-        ALLOCATION_FAILURE,
     };
 
     struct LUX_TYPE_INFO(both) Physics2DSystemConfiguration final
@@ -75,17 +74,19 @@ namespace lux::physics2d
                  .supported_world_types = SupportedWorldTypes}
         };
 
-        Physics2DSystem(
+        using CreateResult = lux::cxx::expected<std::unique_ptr<Physics2DSystem>, EPhysics2DSystemError>;
+        [[nodiscard]] static CreateResult create(
             lux::simulation::ecs::Registry& registry,
             const lux::simulation::SimulationTime& time,
             Physics2DSystemConfiguration configuration
-        );
+        ) noexcept;
         ~Physics2DSystem() noexcept;
 
         Physics2DSystem(const Physics2DSystem&) = delete;
         Physics2DSystem& operator=(const Physics2DSystem&) = delete;
+        Physics2DSystem(Physics2DSystem&&) = delete;
+        Physics2DSystem& operator=(Physics2DSystem&&) = delete;
 
-        [[nodiscard]] lux::cxx::expected<void, EPhysics2DSystemError> prepare() noexcept;
         [[nodiscard]] bool update() noexcept;
 
         [[nodiscard]] bool overlapsBox(
@@ -99,6 +100,7 @@ namespace lux::physics2d
 
     private:
         struct Impl;
+        explicit Physics2DSystem(std::unique_ptr<Impl>) noexcept;
         std::unique_ptr<Impl> impl_;
     };
 
@@ -111,4 +113,4 @@ namespace lux::physics2d
     [[nodiscard]] LUX_ENGINE_PHYSICS2D_SIMULATION_PUBLIC lux::cxx::
         expected<std::vector<std::byte>, EPhysics2DSystemError>
         makePhysics2DSystemConfiguration(const Physics2DSystemConfiguration& configuration) noexcept;
-}
+} // namespace lux::physics2d

@@ -11,6 +11,8 @@
 #include <cassert>
 #include <iostream>
 #include <thread>
+#include <utility>
+#include <vector>
 
 namespace FixtureErrors
 {
@@ -35,11 +37,13 @@ namespace
         SceneInstanceLease* retire_owner{};
         InstanceRetirement* retirement{};
         bool* in_flight{};
+
         ~State()
         {
             assert(!alive);
         }
     };
+
     struct Probe final
     {
         inline static constexpr std::string_view SupportedWorldTypes[]{"*"};
@@ -52,13 +56,16 @@ namespace
         inline static unsigned destroyed{};
         inline static std::weak_ptr<const void> error_code;
         State& state;
+
         explicit Probe(ecs::Registry& registry) : state(registry.ctx().emplace<State>()) {}
+
         ~Probe()
         {
             state.alive = false;
             ++destroyed;
         }
     };
+
     SceneSystemRegistration probeRegistration()
     {
         return {
@@ -341,7 +348,25 @@ int main()
     assert((*runtime)->driveFrame());
     assert(retirement.id() == callback_id && !retirement.complete());
     assert(Probe::destroyed == destroyed_before);
+    const auto active_before_retirement = (*runtime)->instanceCount();
     assert((*runtime)->driveFrame() && !retirement.complete());
+    assert((*runtime)->instanceCount() == active_before_retirement - 1);
+    const auto retired_clock = (*runtime)->borrowClock(callback_id);
+    assert(
+        !retired_clock && std::get<ESceneRuntimeError>(retired_clock.error().cause) == ESceneRuntimeError::INVALID_ID
+    );
+    assert(!(*runtime)->borrowInstance(callback_id));
+    assert(!std::as_const(**runtime).borrowInstance(callback_id));
+    assert(!(*runtime)->pauseSimulation(callback_id) && !(*runtime)->resumeSimulation(callback_id));
+    assert(!(*runtime)->requestStep(callback_id) && !(*runtime)->stepStatus(*callback_step));
+    const auto retained_cancel = (*runtime)->stepStatus(*callback_step, retirement);
+    assert(retained_cancel && retained_cancel->state == ESceneStepState::CANCELLED);
+    assert(std::get<ESceneRuntimeError>(retained_cancel->result.error().cause) == ESceneRuntimeError::STOPPED);
+    auto active_replacement = builder.build();
+    assert(active_replacement && active_replacement->id().slot == callback_id.slot);
+    assert(active_replacement->id().generation != callback_id.generation);
+    assert((*runtime)->borrowClock(active_replacement->id()) && !(*runtime)->retireInstance(callback_id));
+    assert(!retirement.complete() && Probe::destroyed == destroyed_before);
     in_flight = false;
     assert((*runtime)->driveFrame() && retirement.complete());
     assert(Probe::destroyed == destroyed_before + 1 && !(*runtime)->borrowClock(callback_id));
@@ -364,6 +389,8 @@ int main()
     assert(!(*runtime)->stepStatus(*callback_step, retirement));
     *callback_owned = SceneInstanceLease{};
     assert((*runtime)->driveFrame() && Probe::destroyed == destroyed_before + 1);
+    const auto replacement_retirement = active_replacement->retire();
+    assert((*runtime)->driveFrame() && replacement_retirement.complete());
     std::cout << "PASS X06-04 callback lease release is deferred, in-flight drain, outer guard and one destruction\n";
     // Only the result receipt's code pin survives acknowledgement and heavy instance destruction.
     auto code = std::make_shared<int>(42);
@@ -400,6 +427,52 @@ int main()
     assert(error::format(stable_error) == "Pinned failure 731");
     std::cout
         << "PASS R06-R1 result receipt identity/thread checks and copied failure code lifetime after reclamation\n";
+
+    // The retired container may compact/reallocate, but never moves a live scene
+    // or destroys one as a side effect of swapping its owner slot.
+    const auto before_compaction = Probe::destroyed;
+    const auto original_active_count = (*runtime)->instanceCount();
+    bool slow_pending{true}, fast_pending{true};
+    auto slow_scene = builder.build();
+    auto fast_scene = builder.build();
+    assert(slow_scene && fast_scene);
+    assert((*runtime)->pauseSimulation(fast_scene->id()));
+    const auto completed_step = (*runtime)->requestStep(fast_scene->id());
+    assert(completed_step && (*runtime)->driveFrame());
+    assert((*runtime)->stepStatus(*completed_step)->state == ESceneStepState::COMPLETED);
+    (*runtime)->borrowInstance(slow_scene->id())->get().ctx().get<State>().in_flight = &slow_pending;
+    (*runtime)->borrowInstance(fast_scene->id())->get().ctx().get<State>().in_flight = &fast_pending;
+    auto slow_retirement = slow_scene->retire();
+    auto fast_retirement = fast_scene->retire();
+    assert((*runtime)->driveFrame());
+    assert((*runtime)->instanceCount() == original_active_count);
+    assert(!slow_retirement.complete() && !fast_retirement.complete());
+    assert((*runtime)->stepStatus(*completed_step, fast_retirement)->state == ESceneStepState::COMPLETED);
+    assert(Probe::destroyed == before_compaction);
+    fast_pending = false;
+    assert((*runtime)->driveFrame());
+    assert(fast_retirement.complete() && !slow_retirement.complete());
+    assert((*runtime)->stepStatus(*completed_step, fast_retirement)->state == ESceneStepState::COMPLETED);
+    assert((*runtime)->acknowledgeStep(*completed_step, fast_retirement));
+    assert(!(*runtime)->stepStatus(*completed_step, fast_retirement));
+    assert(Probe::destroyed == before_compaction + 1);
+    std::vector<SceneInstanceLease> replacements;
+    for (unsigned index = 0; index < 16; ++index)
+    {
+        auto item = builder.build();
+        assert(item);
+        replacements.push_back(std::move(*item));
+    }
+    assert((*runtime)->driveFrame() && !slow_retirement.complete());
+    assert(!(*runtime)->borrowClock(slow_retirement.id()));
+    slow_pending = false;
+    assert((*runtime)->driveFrame() && slow_retirement.complete());
+    assert(Probe::destroyed == before_compaction + 2);
+    replacements.clear();
+    assert((*runtime)->driveFrame());
+    assert(Probe::destroyed == before_compaction + 18);
+    assert((*runtime)->instanceCount() == original_active_count);
+    std::cout << "PASS LR06 active ID revocation precedes drain; slot reuse, retired compaction and exact release\n";
     runtime->reset(); // Outstanding timer must be cancelled and joined before receiver storage is reclaimed.
     other->reset();
     assert(execution->collectCompletions());

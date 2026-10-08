@@ -25,6 +25,7 @@ namespace lux::scene
                 SceneStepTicket ticket;
                 SceneStepStatus status;
             };
+
             // Only code pins and bounded results survive the heavyweight instance.
             std::shared_ptr<const void> code_lifetime;
             std::array<Step, 32> steps;
@@ -32,6 +33,7 @@ namespace lux::scene
             SceneInstanceId id;
             process::CompletionWork::Request wake;
             std::atomic_bool requested{}, completed{};
+
             void request() noexcept
             {
                 if (!requested.exchange(true, std::memory_order_acq_rel))
@@ -46,18 +48,22 @@ namespace lux::scene
         : lifetime_(std::move(value))
     {
     }
+
     bool InstanceRetirement::complete() const noexcept
     {
         return !lifetime_ || lifetime_->completed.load(std::memory_order_acquire);
     }
+
     SceneInstanceId InstanceRetirement::id() const noexcept
     {
         return lifetime_ ? lifetime_->id : SceneInstanceId{};
     }
+
     SceneInstanceLease::SceneInstanceLease(std::shared_ptr<detail::InstanceLifetime> value) noexcept
         : lifetime_(std::move(value))
     {
     }
+
     SceneInstanceLease::~SceneInstanceLease() noexcept
     {
         if (lifetime_)
@@ -65,7 +71,9 @@ namespace lux::scene
             lifetime_->request();
         }
     }
+
     SceneInstanceLease::SceneInstanceLease(SceneInstanceLease&&) noexcept = default;
+
     SceneInstanceLease& SceneInstanceLease::operator=(SceneInstanceLease&& other) noexcept
     {
         if (this != &other)
@@ -78,14 +86,17 @@ namespace lux::scene
         }
         return *this;
     }
+
     SceneInstanceId SceneInstanceLease::id() const noexcept
     {
         return lifetime_ ? lifetime_->id : SceneInstanceId{};
     }
+
     SceneInstanceLease::operator bool() const noexcept
     {
         return bool(lifetime_);
     }
+
     InstanceRetirement SceneInstanceLease::retire() noexcept
     {
         if (lifetime_)
@@ -103,10 +114,12 @@ namespace lux::scene
         {
             bool& active;
             bool previous;
+
             explicit BusyScope(bool& value) noexcept : active(value), previous(value)
             {
                 active = true;
             }
+
             ~BusyScope() noexcept
             {
                 active = previous;
@@ -121,14 +134,14 @@ namespace lux::scene
 
     struct SceneRuntime::Impl final
     {
-        struct Record final
+        struct ActiveRecord final
         {
             VSimulationClock clock;
             SceneDriver driver;
-            SceneInstance scene;
+            std::unique_ptr<SceneInstance> scene;
             std::optional<EClockError> clock_error;
             std::shared_ptr<detail::InstanceLifetime> lifetime;
-            bool enabled{true}, retiring{}, maintenance_complete{};
+            bool enabled{true};
 
             detail::InstanceLifetime::Step* pendingStep() noexcept
             {
@@ -145,18 +158,38 @@ namespace lux::scene
                 return first;
             }
 
-            Record(
+            ActiveRecord(
                 VSimulationClock value,
                 task::TaskExecutor& executor,
                 std::unique_ptr<SceneInstance::Impl> instance,
                 std::shared_ptr<detail::InstanceLifetime> retirement
             )
-                : clock(std::move(value)), driver(executor), scene(std::move(instance)), lifetime(std::move(retirement))
+                : clock(std::move(value)), driver(executor), scene(new SceneInstance(std::move(instance))),
+                  lifetime(std::move(retirement))
             {
-                scene.registry().ctx().emplace<std::reference_wrapper<const SceneDriveSnapshot>>(
-                    std::cref(scene.progress())
+                scene->registry().ctx().emplace<std::reference_wrapper<const SceneDriveSnapshot>>(
+                    std::cref(scene->progress())
                 );
             }
+        };
+
+        struct RetiredRecord final
+        {
+            explicit RetiredRecord(ActiveRecord& record) noexcept
+                : lifetime(std::move(record.lifetime)), scene(std::move(record.scene)), clock_error(record.clock_error)
+            {
+            }
+
+            RetiredRecord(const RetiredRecord&) = delete;
+            RetiredRecord& operator=(const RetiredRecord&) = delete;
+            RetiredRecord(RetiredRecord&&) noexcept = default;
+            RetiredRecord& operator=(RetiredRecord&&) noexcept = default;
+
+            // Scene/native teardown finishes while its code and result endpoint live.
+            std::shared_ptr<detail::InstanceLifetime> lifetime;
+            std::unique_ptr<SceneInstance> scene;
+            std::optional<EClockError> clock_error;
+            bool maintenance_complete{};
         };
 
         struct TimerReceiver final
@@ -170,15 +203,18 @@ namespace lux::scene
             struct Environment final
             {
                 stdexec::inplace_stop_token stop;
+
                 [[nodiscard]] stdexec::inplace_stop_token query(stdexec::get_stop_token_t) const noexcept
                 {
                     return stop;
                 }
             };
+
             [[nodiscard]] Environment get_env() const noexcept
             {
                 return {stop};
             }
+
             void finish(std::optional<process::ETimerError> failure) noexcept
             {
                 // Once completion is published the owner may reclaim this receiver/operation.
@@ -187,21 +223,24 @@ namespace lux::scene
                 completed->store(true, std::memory_order_release);
                 notification.request();
             }
+
             void set_value() && noexcept
             {
                 finish({});
             }
+
             void set_stopped() && noexcept
             {
                 finish({});
             }
+
             void set_error(process::ETimerError failure) && noexcept
             {
                 finish(failure);
             }
         };
 
-        using Records = lux::cxx::SlotMap<std::unique_ptr<Record>>;
+        using ActiveRecords = lux::cxx::SlotMap<std::unique_ptr<ActiveRecord>>;
         using TimerOperation = stdexec::connect_result_t<process::TimerSender, TimerReceiver>;
 
         Impl(process::ExecutionRuntime& execution, task::TaskExecutor executor, std::uint64_t domain)
@@ -229,7 +268,7 @@ namespace lux::scene
             }
             wake_.cancel();
             closing_ = true;
-            for (auto& record : records_)
+            for (auto& record : active_records_)
             {
                 record->lifetime->request();
             }
@@ -237,14 +276,10 @@ namespace lux::scene
                 [this]() noexcept
                 {
                     BusyScope draining(busy_);
-                    for (auto& record : records_)
-                    {
-                        beginRetirement(*record);
-                        record->maintenance_complete =
-                            record->driver.maintain(record->scene) == ESceneProgress::COMPLETE;
-                    }
+                    beginRetirements();
+                    maintainRetired();
                     collectRetired();
-                    return records_.empty();
+                    return active_records_.empty() && retiring_records_.empty();
                 }
             );
             if (!retired)
@@ -270,7 +305,7 @@ namespace lux::scene
             return {};
         }
 
-        [[nodiscard]] SceneRuntimeResult<Record*> find(SceneInstanceId id) const noexcept
+        [[nodiscard]] SceneRuntimeResult<ActiveRecord*> find(SceneInstanceId id) const noexcept
         {
             const auto allowed = access();
             if (!allowed)
@@ -285,7 +320,7 @@ namespace lux::scene
             {
                 return rejected(ESceneRuntimeError::WRONG_DOMAIN, id);
             }
-            const auto* found = records_.find({id.slot, id.generation});
+            const auto* found = active_records_.find({id.slot, id.generation});
             if (!found || !*found)
             {
                 return rejected(ESceneRuntimeError::INVALID_ID, id);
@@ -313,10 +348,10 @@ namespace lux::scene
                 return rejected(ESceneRuntimeError::INVALID_INPUT);
             }
             BusyScope building(busy_);
-            Records::key_type key;
+            ActiveRecords::key_type key;
             try
             {
-                key = records_.emplace(nullptr);
+                key = active_records_.emplace(nullptr);
             }
             catch (const std::length_error&)
             {
@@ -326,7 +361,7 @@ namespace lux::scene
             const SceneInstanceId id{domain_, key.index, key.gen};
             const auto fail = [&](auto error) -> SceneRuntimeResult<SceneInstanceLease>
             {
-                records_.erase(key);
+                active_records_.erase(key);
                 return rejected(std::move(error), id);
             };
             auto prepared = SceneInstance::prepare(
@@ -355,8 +390,10 @@ namespace lux::scene
             {
                 return fail(reserved.error());
             }
-            failures_.reserve(records_.size());
-            failure_code_owners_.reserve(records_.size());
+            const auto record_count = active_records_.size() + retiring_records_.size();
+            failures_.reserve(record_count);
+            failure_code_owners_.reserve(record_count);
+            retiring_records_.reserve(record_count);
             auto lifetime = std::make_shared<detail::InstanceLifetime>();
             lifetime->id = id;
             lifetime->wake = wake_.requester();
@@ -377,7 +414,8 @@ namespace lux::scene
                 }
             }
             lifetime->code_lifetime = std::move(code);
-            *records_.find(key) = std::make_unique<Record>(input.clock_, executor_, std::move(*prepared), lifetime);
+            *active_records_.find(key) =
+                std::make_unique<ActiveRecord>(input.clock_, executor_, std::move(*prepared), lifetime);
             execution_.wake();
             return SceneInstanceLease(std::move(lifetime));
         }
@@ -404,11 +442,11 @@ namespace lux::scene
                 {
                     return rejected(*record.clock_error, id);
                 }
-                if (!record.scene.progress().result)
+                if (!record.scene->progress().result)
                 {
-                    return rejected(record.scene.progress().result.error(), id);
+                    return rejected(record.scene->progress().result.error(), id);
                 }
-                if (record.scene.stopToken().stop_requested())
+                if (record.scene->stopToken().stop_requested())
                 {
                     return rejected(ESceneRuntimeError::STOPPED, id);
                 }
@@ -437,7 +475,7 @@ namespace lux::scene
             {
                 return rejected(ESceneRuntimeError::WRONG_DOMAIN, id);
             }
-            const auto* found = records_.find({id.slot, id.generation});
+            const auto* found = active_records_.find({id.slot, id.generation});
             if (!found || !*found)
             {
                 return rejected(ESceneRuntimeError::INVALID_ID, id);
@@ -455,8 +493,8 @@ namespace lux::scene
                 return lux::cxx::unexpected(found.error());
             }
             auto& record = **found;
-            const bool stopped =
-                record.lifetime->requested.load(std::memory_order_acquire) || record.scene.stopToken().stop_requested();
+            const bool stopped = record.lifetime->requested.load(std::memory_order_acquire) ||
+                                 record.scene->stopToken().stop_requested();
             if (stopped)
             {
                 return rejected(ESceneRuntimeError::STOPPED, id);
@@ -465,9 +503,9 @@ namespace lux::scene
             {
                 return rejected(ESceneRuntimeError::BUSY, id);
             }
-            if (!record.scene.progress().result)
+            if (!record.scene->progress().result)
             {
-                return rejected(record.scene.progress().result.error(), id);
+                return rejected(record.scene->progress().result.error(), id);
             }
             if (record.clock_error)
             {
@@ -479,7 +517,7 @@ namespace lux::scene
             {
                 return rejected(ESceneRuntimeError::CAPACITY, id);
             }
-            auto target = record.scene.progress().simulation_completed;
+            auto target = record.scene->progress().simulation_completed;
             for (const auto& step : record.lifetime->steps)
             {
                 target = std::max(target, step.ticket.simulation_completed);
@@ -587,45 +625,66 @@ namespace lux::scene
             return {};
         }
 
-        void beginRetirement(Record& record) noexcept
+        void beginRetirements() noexcept
         {
-            if (!record.retiring && record.lifetime->requested.load(std::memory_order_acquire))
+            // A request made by a later maintenance/publication callback belongs
+            // to the next safe point. No active iterator crosses stop callbacks.
+            for (std::size_t index = active_records_.size(); index > 0; --index)
             {
-                record.retiring = true;
-                record.enabled = false;
-                record.scene.requestStop();
-                for (auto& step : record.lifetime->steps)
+                auto& value = active_records_.values()[index - 1];
+                if (!value->lifetime->requested.load(std::memory_order_acquire))
+                {
+                    continue;
+                }
+                auto active = std::move(value);
+                const auto id = active->scene->id();
+                active_records_.erase({id.slot, id.generation});
+                auto& retired = retiring_records_.emplace_back(*active);
+                // The old clock/playback owner ends here; only physical backing
+                // and the original bounded result endpoint enter retirement.
+                active.reset();
+                retired.scene->requestStop();
+                for (auto& step : retired.lifetime->steps)
                 {
                     const bool pending = step.ticket.serial && (step.status.state == ESceneStepState::QUEUED ||
                                                                 step.status.state == ESceneStepState::EXECUTING);
                     if (pending)
                     {
-                        step.status = {
-                            ESceneStepState::CANCELLED,
-                            rejected(ESceneRuntimeError::STOPPED, record.scene.id())
-                        };
+                        step.status = {ESceneStepState::CANCELLED, rejected(ESceneRuntimeError::STOPPED, id)};
                     }
                 }
             }
         }
+
+        void maintainRetired() noexcept
+        {
+            SceneDriver driver(executor_);
+            for (auto& record : retiring_records_)
+            {
+                record.maintenance_complete = driver.maintain(*record.scene) == ESceneProgress::COMPLETE;
+            }
+        }
+
         void collectRetired() noexcept
         {
-            // All traversals and callbacks returned. Revocation precedes destruction;
-            // callbacks may request another record but cannot extend this fixed turn.
-            for (std::size_t index = records_.size(); index > 0; --index)
+            // All traversals/callbacks have returned. Extract the owner before
+            // rearranging the container so plugin teardown never runs in erase.
+            for (std::size_t index = retiring_records_.size(); index > 0; --index)
             {
-                auto& value = records_.values()[index - 1];
-                if (!value->retiring || !value->maintenance_complete)
+                auto& value = retiring_records_[index - 1];
+                if (!value.maintenance_complete)
                 {
                     continue;
                 }
                 auto record = std::move(value);
-                const auto id = record->scene.id();
-                records_.erase({id.slot, id.generation});
-                const auto lifetime = record->lifetime;
-                record.reset();
-                lifetime->code_lifetime.reset(); // Only failure values still needing code retain their narrow pin.
-                lifetime->completed.store(true, std::memory_order_release);
+                if (index != retiring_records_.size())
+                {
+                    value = std::move(retiring_records_.back());
+                }
+                retiring_records_.pop_back();
+                record.scene.reset();
+                record.lifetime->code_lifetime.reset();
+                record.lifetime->completed.store(true, std::memory_order_release);
                 execution_.wake();
             }
         }
@@ -641,18 +700,19 @@ namespace lux::scene
             const auto now = SteadyClock::now();
             failures_.clear();
             failure_code_owners_.clear();
-            for (auto& record : records_)
+            beginRetirements();
+            for (auto& record : active_records_)
             {
-                beginRetirement(*record);
-                record->maintenance_complete = record->driver.maintain(record->scene) == ESceneProgress::COMPLETE;
+                static_cast<void>(record->driver.maintain(*record->scene));
             }
-            for (auto& record : records_)
+            maintainRetired();
+            for (auto& record : active_records_)
             {
                 auto* step = record->pendingStep();
                 const bool step_ready = step && step->status.state == ESceneStepState::QUEUED;
                 const bool may_tick = !record->lifetime->requested.load(std::memory_order_acquire) &&
                                       (record->enabled || step_ready) && !record->clock_error &&
-                                      record->scene.canTick();
+                                      record->scene->canTick();
                 if (!may_tick)
                 {
                     continue;
@@ -674,9 +734,9 @@ namespace lux::scene
                         {
                             return;
                         }
-                        const auto before = record->scene.simulation().time().step_index;
-                        const auto executed = record->driver.tick(record->scene, **sampled);
-                        const auto actual = record->scene.simulation().time();
+                        const auto before = record->scene->simulation().time().step_index;
+                        const auto executed = record->driver.tick(*record->scene, **sampled);
+                        const auto actual = record->scene->simulation().time();
                         if (actual.step_index != before)
                         {
                             clock.adopt(now, actual);
@@ -691,9 +751,9 @@ namespace lux::scene
                 );
             }
             std::optional<SteadyClock::time_point> deadline;
-            for (auto& record : records_)
+            for (auto& record : active_records_)
             {
-                static_cast<void>(record->driver.publish(record->scene));
+                static_cast<void>(record->driver.publish(*record->scene));
                 for (auto& step : record->lifetime->steps)
                 {
                     const bool pending = step.ticket.serial && (step.status.state == ESceneStepState::QUEUED ||
@@ -702,18 +762,18 @@ namespace lux::scene
                     {
                         continue;
                     }
-                    const auto& progress = record->scene.progress();
+                    const auto& progress = record->scene->progress();
                     if (!progress.result)
                     {
                         step.status = {
                             ESceneStepState::FAILED,
-                            rejected(progress.result.error(), record->scene.id()),
+                            rejected(progress.result.error(), record->scene->id()),
                             record->lifetime->code_lifetime
                         };
                     }
                     else if (record->clock_error)
                     {
-                        step.status = {ESceneStepState::FAILED, rejected(*record->clock_error, record->scene.id())};
+                        step.status = {ESceneStepState::FAILED, rejected(*record->clock_error, record->scene->id())};
                     }
                     else if (step.status.state == ESceneStepState::EXECUTING &&
                              progress.publication_completed >= step.ticket.simulation_completed)
@@ -721,18 +781,18 @@ namespace lux::scene
                         step.status.state = ESceneStepState::COMPLETED;
                     }
                 }
-                if (!record->scene.progress().result)
+                if (!record->scene->progress().result)
                 {
                     failure_code_owners_.push_back(record->lifetime->code_lifetime);
-                    failures_.push_back({record->scene.id(), record->scene.progress().result.error()});
+                    failures_.push_back({record->scene->id(), record->scene->progress().result.error()});
                 }
                 else if (record->clock_error)
                 {
-                    failures_.push_back({record->scene.id(), *record->clock_error});
+                    failures_.push_back({record->scene->id(), *record->clock_error});
                 }
                 const bool may_tick = !record->lifetime->requested.load(std::memory_order_acquire) &&
                                       (record->enabled || record->pendingStep()) && !record->clock_error &&
-                                      record->scene.canTick();
+                                      record->scene->canTick();
                 if (may_tick)
                 {
                     const auto next =
@@ -741,6 +801,22 @@ namespace lux::scene
                     {
                         deadline = next;
                     }
+                }
+            }
+            // Retiring systems still receive their original completion/publish
+            // stages, but no clock, simulation tick or ordinary ID lookup.
+            SceneDriver retirement_driver(executor_);
+            for (auto& record : retiring_records_)
+            {
+                static_cast<void>(retirement_driver.publish(*record.scene));
+                if (!record.scene->progress().result)
+                {
+                    failure_code_owners_.push_back(record.lifetime->code_lifetime);
+                    failures_.push_back({record.scene->id(), record.scene->progress().result.error()});
+                }
+                else if (record.clock_error)
+                {
+                    failures_.push_back({record.scene->id(), *record.clock_error});
                 }
             }
             collectRetired();
@@ -764,12 +840,13 @@ namespace lux::scene
             {
                 return rejected(ESceneRuntimeError::STOPPED, id);
             }
-            if (!(**record).scene.atSafePoint())
+            if (!(**record).scene->atSafePoint())
             {
                 return rejected(ESceneRuntimeError::BUSY, id);
             }
-            return std::ref((**record).scene.registry());
+            return std::ref((**record).scene->registry());
         }
+
         SceneRuntimeResult<std::reference_wrapper<const simulation::ecs::Registry>> borrowInstance(SceneInstanceId id
         ) const noexcept
         {
@@ -782,8 +859,9 @@ namespace lux::scene
             {
                 return rejected(ESceneRuntimeError::STOPPED, id);
             }
-            return std::cref((**record).scene.registry());
+            return std::cref((**record).scene->registry());
         }
+
         SceneRuntimeResult<std::reference_wrapper<const VSimulationClock>> borrowClock(SceneInstanceId id
         ) const noexcept
         {
@@ -794,11 +872,13 @@ namespace lux::scene
             }
             return std::cref((**record).clock);
         }
+
         process::ExecutionRuntime& execution_;
         task::TaskExecutor executor_;
         std::uint64_t domain_;
         std::thread::id owner_{std::this_thread::get_id()};
-        Records records_;
+        ActiveRecords active_records_;
+        std::vector<RetiredRecord> retiring_records_;
         // The existing borrowed drive-failure span ends at the next frame, after payload cleanup.
         std::vector<std::shared_ptr<const void>> failure_code_owners_;
         std::vector<SceneRuntimeFailure> failures_;
@@ -813,6 +893,7 @@ namespace lux::scene
     };
 
     SceneRuntime::SceneRuntime(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
+
     SceneRuntime::~SceneRuntime() noexcept = default;
 
     SceneRuntime::CreateResult SceneRuntime::create(
@@ -851,12 +932,14 @@ namespace lux::scene
         description_ = std::move(value);
         return *this;
     }
+
     SceneRuntime::Builder& SceneRuntime::Builder::setWorld(std::shared_ptr<const world::WorldDescription> value
     ) noexcept
     {
         world_ = std::move(value);
         return *this;
     }
+
     SceneRuntime::Builder& SceneRuntime::Builder::setSimulation(
         std::shared_ptr<const simulation::SimulationDescription> value
     ) noexcept
@@ -864,6 +947,7 @@ namespace lux::scene
         simulation_ = std::move(value);
         return *this;
     }
+
     SceneRuntime::Builder& SceneRuntime::Builder::setRegistrations(
         const simulation::ecs::ComponentSchemaSet& components,
         const simulation::SimulationSystemRegistry& simulation_systems,
@@ -875,16 +959,19 @@ namespace lux::scene
         scene_systems_ = scene_systems;
         return *this;
     }
+
     SceneRuntime::Builder& SceneRuntime::Builder::setProviders(std::span<const SceneCapabilityProvider> providers
     ) noexcept
     {
         providers_ = providers;
         return *this;
     }
+
     SceneRuntimeResult<SceneInstanceLease> SceneRuntime::Builder::build() noexcept
     {
         return runtime_.build(*this);
     }
+
     SceneRuntimeResult<SceneInstanceLease> SceneRuntime::build(const Builder& input) noexcept
     {
         return impl_->build(input);
@@ -896,33 +983,40 @@ namespace lux::scene
     {
         return impl_->borrowInstance(id);
     }
+
     SceneRuntimeResult<std::reference_wrapper<const simulation::ecs::Registry>> SceneRuntime::borrowInstance(
         SceneInstanceId id
     ) const noexcept
     {
         return std::as_const(*impl_).borrowInstance(id);
     }
+
     SceneRuntimeResult<std::reference_wrapper<const VSimulationClock>> SceneRuntime::borrowClock(SceneInstanceId id
     ) const noexcept
     {
         return impl_->borrowClock(id);
     }
+
     SceneRuntimeResult<void> SceneRuntime::pauseSimulation(SceneInstanceId id) noexcept
     {
         return impl_->setEnabled(id, false);
     }
+
     SceneRuntimeResult<void> SceneRuntime::resumeSimulation(SceneInstanceId id) noexcept
     {
         return impl_->setEnabled(id, true);
     }
+
     SceneRuntimeResult<InstanceRetirement> SceneRuntime::retireInstance(SceneInstanceId id) noexcept
     {
         return impl_->retireInstance(id);
     }
+
     SceneRuntimeResult<SceneStepTicket> SceneRuntime::requestStep(SceneInstanceId id) noexcept
     {
         return impl_->requestStep(id);
     }
+
     SceneRuntimeResult<SceneStepStatus> SceneRuntime::stepStatus(
         SceneStepTicket ticket,
         const InstanceRetirement& retirement
@@ -936,6 +1030,7 @@ namespace lux::scene
         BusyScope reading(impl_->busy_);
         return (*found)->status;
     }
+
     SceneRuntimeResult<void> SceneRuntime::acknowledgeStep(
         SceneStepTicket ticket,
         const InstanceRetirement& retirement
@@ -955,13 +1050,14 @@ namespace lux::scene
         **found = {};
         return {};
     }
+
     std::size_t SceneRuntime::instanceCount() const noexcept
     {
         if (std::this_thread::get_id() != impl_->owner_)
         {
             std::terminate();
         }
-        return impl_->records_.size();
+        return impl_->active_records_.size();
     }
 
     SceneRuntime::DriveResult SceneRuntime::driveFrame() noexcept

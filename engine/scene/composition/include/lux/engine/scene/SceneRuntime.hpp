@@ -127,6 +127,7 @@ namespace lux::scene
 
     public:
         SceneStepStatus() noexcept = default;
+
         SceneStepStatus(
             ESceneStepState value,
             SceneRuntimeResult<void> outcome,
@@ -135,8 +136,10 @@ namespace lux::scene
             : code_lifetime_(std::move(code)), state(value), result(std::move(outcome))
         {
         }
+
         SceneStepStatus(const SceneStepStatus&) = default;
         SceneStepStatus(SceneStepStatus&&) noexcept = default;
+
         SceneStepStatus& operator=(SceneStepStatus value) noexcept
         {
             using std::swap;
@@ -145,6 +148,7 @@ namespace lux::scene
             swap(result, value.result);
             return *this;
         }
+
         ESceneStepState state{ESceneStepState::QUEUED};
         SceneRuntimeResult<void> result;
     };
@@ -177,7 +181,9 @@ namespace lux::scene
 
         private:
             friend class SceneRuntime;
+
             explicit Builder(SceneRuntime& runtime) noexcept : runtime_(runtime) {}
+
             SceneRuntime& runtime_;
             std::shared_ptr<const SceneDescription> description_;
             std::shared_ptr<const world::WorldDescription> world_;
@@ -200,6 +206,7 @@ namespace lux::scene
         {
             return Builder{*this};
         }
+
         [[nodiscard]] SceneRuntimeResult<std::reference_wrapper<simulation::ecs::Registry>> borrowInstance(
             SceneInstanceId
         ) noexcept;
@@ -221,8 +228,11 @@ namespace lux::scene
             const InstanceRetirement& = {}
         ) noexcept;
         // May be called inside a system callback; no callback or erasure happens here.
+        // At the next driving safe point the active ID is revoked, before physical
+        // completion. Retained step results then require the matching receipt.
         [[nodiscard]] SceneRuntimeResult<InstanceRetirement> retireInstance(SceneInstanceId) noexcept;
         [[nodiscard]] DriveResult driveFrame() noexcept;
+        // Active lookup entries only; retirement completion is proved by its receipt.
         [[nodiscard]] std::size_t instanceCount() const noexcept;
 
     private:

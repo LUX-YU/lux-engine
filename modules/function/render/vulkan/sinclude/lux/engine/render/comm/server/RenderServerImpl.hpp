@@ -427,6 +427,7 @@ namespace lux::render
         // signals, device loss, or the server's original shutdown idle boundary.
         struct ReadbackCopy
         {
+            std::shared_ptr<const VmaImage> source;
             VmaBuffer buffer;
             CommandBufferOwner command;
             FenceOwner fence;

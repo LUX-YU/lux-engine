@@ -38,8 +38,7 @@ namespace lux::render
         uint32_t frames_in_flight,
         PreparedBacking&& backing
     ) noexcept
-        : res_ctx_(res_ctx), layout_(layout), frames_in_flight_(frames_in_flight),
-          slot_images_(std::move(backing.images.slot_images)), slot_views_(std::move(backing.images.slot_views)),
+        : res_ctx_(res_ctx), layout_(layout), frames_in_flight_(frames_in_flight), images_(std::move(backing.images)),
           binding_(std::move(backing.binding)), recorded_slots_(frames_in_flight)
     {
         binding_.layout = &layout_;
@@ -52,12 +51,28 @@ namespace lux::render
         {
             for (size_t si = 0; si < kTargetSlotCount; ++si)
             {
-                notifyViewRetirement(retired.slot_views[si]);
+                notifyViewRetirement(retired.images->slot_views[si]);
             }
             // Member order destroys views before their VmaImage allocations.
         }
         retired_images_.clear();
         release();
+    }
+
+    Expected<std::shared_ptr<const VmaImage>>
+    OffscreenImagePool::retainImage(ETargetSlot slot, uint32_t image_index) const noexcept
+    {
+        const auto slot_index = static_cast<std::size_t>(slot);
+        if (slot_index >= kTargetSlotCount)
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
+        const auto& images = images_->slot_images[slot_index];
+        if (image_index >= images.size())
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
+        return std::shared_ptr<const VmaImage>(images_, &images[image_index]);
     }
 
     // =============================================================================
@@ -96,11 +111,8 @@ namespace lux::render
         }
         // Every allocation, including the retirement slot, precedes commit.
         retired_images_.reserve(retired_images_.size() + 1);
-        RetiredImages retired;
-        retired.slot_images.swap(slot_images_);
-        retired.slot_views.swap(slot_views_);
-        slot_images_.swap(candidate->images.slot_images);
-        slot_views_.swap(candidate->images.slot_views);
+        RetiredImages retired{std::move(images_)};
+        images_ = std::move(candidate->images);
         binding_ = std::move(candidate->binding);
         layout_ = layout;
         binding_.layout = &layout_;
@@ -170,7 +182,7 @@ namespace lux::render
                 return renderFailure<err::internal::InvalidArgument>();
             }
         }
-        PreparedBacking prepared;
+        PreparedBacking prepared{std::make_shared<Images>(), {}};
         auto& dev_ctx = res_ctx.deviceContext();
         VmaAllocator vma = dev_ctx.vmaAllocator();
         VkDevice dev = dev_ctx.logicalDevice();
@@ -215,8 +227,8 @@ namespace lux::render
             vi.subresourceRange.baseArrayLayer = 0;
             vi.subresourceRange.layerCount = 1;
 
-            auto& images = prepared.images.slot_images[si];
-            auto& views = prepared.images.slot_views[si];
+            auto& images = prepared.images->slot_images[si];
+            auto& views = prepared.images->slot_views[si];
             images.reserve(frames_in_flight);
             views.reserve(frames_in_flight);
 
@@ -274,10 +286,9 @@ namespace lux::render
     {
         for (size_t si = 0; si < kTargetSlotCount; ++si)
         {
-            notifyViewRetirement(slot_views_[si]);
-            slot_views_[si].clear();
-            slot_images_[si].clear(); // VmaImage RAII releases VkImage + VmaAllocation
+            notifyViewRetirement(images_->slot_views[si]);
         }
+        images_.reset();
         binding_ = {};
     }
 
@@ -319,11 +330,7 @@ namespace lux::render
             {
                 for (size_t si = 0; si < kTargetSlotCount; ++si)
                 {
-                    notifyViewRetirement(it->slot_views[si]);
-                    // Erase move-assigns later records over this one. Empty the destination
-                    // in dependency order before that memberwise move can release images.
-                    it->slot_views[si].clear();
-                    it->slot_images[si].clear();
+                    notifyViewRetirement(it->images->slot_views[si]);
                 }
                 it = retired_images_.erase(it);
             }

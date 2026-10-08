@@ -1404,13 +1404,12 @@ namespace lux::render
                 return 3;
             }
 
-            const RenderTargetBinding& binding = pool->binding();
-            const SlotImages& slot_imgs = binding.slot(slot);
-            if (image_slot >= slot_imgs.images.size())
+            auto source = pool->retainImage(slot, image_slot);
+            if (!source)
             {
                 return 4;
             }
-            const VkImage image = slot_imgs.images[image_slot];
+            const VkImage image = (*source)->image();
 
             const uint64_t needed = static_cast<uint64_t>(ext.width) * ext.height * bpp;
             const bool is_invalid_destination = needed > j.dst_capacity || j.dst_ptr == 0;
@@ -1526,6 +1525,7 @@ namespace lux::render
             }
 
             j.copy.emplace(
+                std::move(*source),
                 std::move(*buffer),
                 std::move(*command),
                 std::move(*fence),

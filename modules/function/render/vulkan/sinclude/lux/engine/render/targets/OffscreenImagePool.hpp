@@ -77,6 +77,13 @@ namespace lux::render
             return binding_;
         }
 
+        /// Pin this exact backing revision for an independently submitted image read.
+        /// Aliases the original allocation; does not keep the pool or target alive.
+        /// The borrower must retain the pin until its GPU completion boundary, and
+        /// ResourceContext must outlive all pins. No new allocation occurs here.
+        [[nodiscard]] Expected<std::shared_ptr<const VmaImage>>
+        retainImage(ETargetSlot slot, uint32_t image_index) const noexcept;
+
         // ── Resize ──────────────────────────────────────────────
 
         /// Resize all images.  Old images are retired and will be GC'd after
@@ -123,15 +130,20 @@ namespace lux::render
         RenderTargetLayout layout_;
         uint32_t frames_in_flight_;
 
-        // Per-slot, per-FIF images and views
-        std::array<std::vector<VmaImage>, kTargetSlotCount> slot_images_;
-        std::array<std::vector<ImageViewOwner>, kTargetSlotCount> slot_views_;
+        // One immutable native allocation group per backing revision. Frame retirement
+        // and independent readback pins share the actual owners, not the semantic pool.
+        struct Images
+        {
+            std::array<std::vector<VmaImage>, kTargetSlotCount> slot_images;
+            std::array<std::vector<ImageViewOwner>, kTargetSlotCount> slot_views;
+        };
+
+        std::shared_ptr<const Images> images_;
         RenderTargetBinding binding_{};
 
         struct RetiredImages
         {
-            std::array<std::vector<VmaImage>, kTargetSlotCount> slot_images;
-            std::array<std::vector<ImageViewOwner>, kTargetSlotCount> slot_views;
+            std::shared_ptr<const Images> images;
             uint64_t retire_frame{0};
         };
 
@@ -139,7 +151,7 @@ namespace lux::render
 
         struct PreparedBacking
         {
-            RetiredImages images;
+            std::shared_ptr<Images> images;
             RenderTargetBinding binding;
         };
 

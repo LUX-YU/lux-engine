@@ -12,6 +12,28 @@ namespace
     VkBuffer watched_buffer{};
     bool blocked{};
     unsigned early_release{};
+    VkImage watched_image{};
+    unsigned early_image_release{};
+    VkImage completed_image{};
+    unsigned completed_image_release{};
+    VmaAllocator delayed_allocator{};
+    VmaAllocation delayed_allocation{};
+
+    void destroyImage(VmaAllocator allocator, VkImage image, VmaAllocation allocation)
+    {
+        if (image == watched_image)
+        {
+            ++early_image_release;
+            delayed_allocator = allocator;
+            delayed_allocation = allocation;
+            return;
+        }
+        if (image == completed_image)
+        {
+            ++completed_image_release;
+        }
+        vmaDestroyImage(allocator, image, allocation);
+    }
     enum class EFault
     {
         NONE,
@@ -122,8 +144,12 @@ namespace
 #define vkDestroyFence destroyFence
 #define vkFreeCommandBuffers freeCommands
 #define vmaDestroyBuffer destroyBuffer
+#define vmaDestroyImage destroyImage
 #include "../src/comm/RenderServerBootstrap.cpp"
 #include "../src/gpu/memory/VmaTypes.cpp"
+#include "../src/renderer/RenderTargetRegistry.cpp"
+#include "../src/targets/OffscreenImagePool.cpp"
+#undef vmaDestroyImage
 #undef vmaDestroyBuffer
 #undef vkFreeCommandBuffers
 #undef vkDestroyFence
@@ -170,6 +196,9 @@ namespace
         };
         auto pool = OffscreenImagePool::create(*im.res_ctx_, layout, {2, 2}, 1);
         assert(pool);
+        assert(!(*pool)->retainImage(ETargetSlot::COUNT, 0));
+        assert(!(*pool)->retainImage(ETargetSlot::SCENE_DEPTH, 0));
+        assert(!(*pool)->retainImage(ETargetSlot::SCENE_COLOR, 1));
         const auto image = (*pool)->binding().slot(ETargetSlot::SCENE_COLOR).images[0];
         RenderTargetEntry entry;
         entry.layout = layout;
@@ -323,7 +352,7 @@ int main()
     VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     auto fence = FenceOwner::create(device, fence_info);
     assert(fence);
-    pending.copy.emplace(std::move(*backing), std::move(*command), std::move(*fence));
+    pending.copy.emplace(nullptr, std::move(*backing), std::move(*command), std::move(*fence));
     VkSemaphoreTypeCreateInfo type{VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO};
     type.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
     VkSemaphoreCreateInfo semaphore_info{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
@@ -424,8 +453,61 @@ int main()
     assert(im.pending_readbacks_.empty() && !control->responses.tryAcquireRead());
     assert(sync_pixels[0] == 0xAB);
     std::puts("readback: async reply backpressure/exactly once, actual synchronous timeout/no late copy PASS");
+    // An unframed copy has its own fence. The last frame serial remains zero:
+    // collecting target retirement at that watermark must not destroy its source.
+    for (unsigned mode = 0; mode != 2; ++mode)
+    {
+        const auto source_target = mode == 0 ? target : checkReadbackAcquisition(im);
+        auto* target_entry = im.targets_registry_->tryGet(source_target);
+        assert(target_entry);
+        std::array<uint8_t, 16> pixels{};
+        GeneralRenderServer::Impl::PendingReadback job;
+        job.target = source_target;
+        job.dst_ptr = reinterpret_cast<uintptr_t>(pixels.data());
+        job.dst_capacity = pixels.size();
+        submit_gate = gate;
+        submit_gate_value = 3 + mode;
+        assert(submitReadbackCopy(im, job) == 0);
+        submit_gate = VK_NULL_HANDLE;
+        const auto copy_fence = job.copy->fence.get();
+        assert(vkGetFenceStatus(device, copy_fence) == VK_NOT_READY);
+        watched_image = target_entry->pool->binding().slot(ETargetSlot::SCENE_COLOR).images[0];
+        const auto source_image = watched_image;
+        completed_image = source_image;
+        completed_image_release = 0;
+        const std::weak_ptr<const VmaImage> source_owner = job.copy->source;
+        assert(!source_owner.expired());
+        if (mode == 1)
+        {
+            assert(target_entry->pool->resize({4, 4}));
+        }
+        im.targets_registry_->retireTargetPool(*target_entry, 0);
+        im.targets_registry_->erase(source_target);
+        im.targets_registry_->collectRetiredPools(0);
+        assert(!im.targets_registry_->tryGet(source_target));
+        assert(!source_owner.expired() && completed_image_release == 0);
+        std::printf(
+            "blocked readback source mode=%u early image releases=%u (expected 0)\n",
+            mode,
+            early_image_release
+        );
+        signal.value = 3 + mode;
+        assert(vkSignalSemaphore(device, &signal) == VK_SUCCESS);
+        assert(vkWaitForFences(device, 1, &copy_fence, VK_TRUE, 5'000'000'000ull) == VK_SUCCESS);
+        watched_image = VK_NULL_HANDLE;
+        const auto copied = finishReadbackCopy(im, job);
+        assert(source_owner.expired() && completed_image_release == 1);
+        assert(copied.status == 0 && copied.width == 2 && copied.height == 2 && copied.bytes_written == 16);
+        assert(pixels[0] == 255 && pixels[1] == 0 && pixels[2] == 0 && pixels[3] == 255);
+        if (delayed_allocation)
+        {
+            vmaDestroyImage(delayed_allocator, source_image, delayed_allocation);
+            delayed_allocator = nullptr;
+            delayed_allocation = nullptr;
+        }
+    }
     vkDestroySemaphore(device, gate, nullptr);
     server.reset();
     assert(validation_errors.load() == 0);
-    return early_release ? 1 : 0;
+    return early_release || early_image_release ? 1 : 0;
 }

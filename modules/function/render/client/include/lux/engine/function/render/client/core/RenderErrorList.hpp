@@ -197,6 +197,14 @@ namespace lux::render::err
     // ── 显存与容量 ───────────────────────────────────────────────────────
     namespace memory
     {
+        struct BufferDeviceAddressUnavailable
+        {
+            static constexpr const char* name = "memory.buffer_device_address_unavailable";
+            static constexpr const char* message = "A required GPU buffer device address is unavailable";
+            static constexpr ERecovery recovery = ERecovery::BUG;
+            static constexpr ErrorArgs args{};
+        };
+
         struct InvalidTransientVertexConfiguration
         {
             static constexpr const char* name = "memory.invalid_transient_vertex_configuration";
@@ -1433,6 +1441,7 @@ namespace lux::render::err
     X(::lux::render::err::shader::ReflectionOutOfSyncWithSpirv)                                                        \
     X(::lux::render::err::memory::GpuAllocationFailed)                                                                 \
     X(::lux::render::err::memory::OutOfMemory)                                                                         \
+    X(::lux::render::err::memory::BufferDeviceAddressUnavailable)                                                      \
     X(::lux::render::err::memory::InvalidTransientVertexConfiguration)                                                 \
     X(::lux::render::err::memory::InvalidSkinningConfiguration)                                                        \
     X(::lux::render::err::memory::InvalidLightConfiguration)                                                           \

@@ -86,8 +86,23 @@ namespace lux::render
         full_rebuild_ = true;
 
         // ── CPU staging + GPU streams ──
-        const bool streams_ready = (!sparse_bda_ || page_table_.init(device_ctx_)) &&
-                                   transform_stream_.init(device_ctx_, capacity_, sparse_bda_) &&
+        if (sparse_bda_)
+        {
+            const bool is_missing_backing = !device_ctx_ || !info.deferred_queue;
+            if (is_missing_backing)
+            {
+                shutdown();
+                return false;
+            }
+            auto page_table = SparseInstancePageTable::create(*device_ctx_, *info.deferred_queue);
+            if (!page_table)
+            {
+                shutdown();
+                return false;
+            }
+            page_table_ = std::move(*page_table);
+        }
+        const bool streams_ready = transform_stream_.init(device_ctx_, capacity_, sparse_bda_) &&
                                    prev_transform_stream_.init(device_ctx_, capacity_, sparse_bda_) &&
                                    property_stream_.init(device_ctx_, capacity_, sparse_bda_) &&
                                    cull_meta_stream_.init(device_ctx_, capacity_, sparse_bda_);
@@ -96,7 +111,7 @@ namespace lux::render
             shutdown();
             return false;
         }
-        if (sparse_bda_ && !page_table_.publish(
+        if (sparse_bda_ && !page_table_->publish(
                                0u,
                                GpuInstancePageAddresses{
                                    .transform = transform_stream_.pageAddress(0u),
@@ -172,7 +187,7 @@ namespace lux::render
         prev_transform_stream_.shutdown();
         property_stream_.shutdown();
         cull_meta_stream_.shutdown();
-        page_table_.shutdown();
+        page_table_.reset();
         alive_slot_stream_.shutdown();
         dynamic_slot_stream_.shutdown();
         mesh_section_table_.shutdown();
@@ -672,7 +687,7 @@ namespace lux::render
         if (sparse_bda_)
         {
             const auto page_index = new_page_count - 1u;
-            if (!page_table_.publish(
+            if (!page_table_->publish(
                     page_index,
                     GpuInstancePageAddresses{
                         .transform = transform_stream_.pageAddress(page_index),
@@ -1181,8 +1196,8 @@ namespace lux::render
         VkDevice device = device_ctx_->logicalDevice();
 
         std::array<VkDescriptorBufferInfo, 2> buf_infos{};
-        const auto transform_buffer = sparse_bda_ ? page_table_.rootBuffer() : transform_stream_.buffer();
-        const auto property_buffer = sparse_bda_ ? page_table_.rootBuffer() : property_stream_.buffer();
+        const auto transform_buffer = sparse_bda_ ? page_table_->rootBuffer() : transform_stream_.buffer();
+        const auto property_buffer = sparse_bda_ ? page_table_->rootBuffer() : property_stream_.buffer();
         if (transform_buffer == VK_NULL_HANDLE || property_buffer == VK_NULL_HANDLE)
         {
             return;
@@ -1244,28 +1259,34 @@ namespace lux::render
 
     VkBuffer InstanceResources::transformBuffer() const noexcept
     {
-        return sparse_bda_ ? page_table_.rootBuffer() : transform_stream_.buffer();
+        return sparse_bda_ ? page_table_->rootBuffer() : transform_stream_.buffer();
     }
+
     VkBuffer InstanceResources::prevTransformBuffer() const noexcept
     {
-        return sparse_bda_ ? page_table_.rootBuffer() : prev_transform_stream_.buffer();
+        return sparse_bda_ ? page_table_->rootBuffer() : prev_transform_stream_.buffer();
     }
+
     VkBuffer InstanceResources::propertyBuffer() const noexcept
     {
-        return sparse_bda_ ? page_table_.rootBuffer() : property_stream_.buffer();
+        return sparse_bda_ ? page_table_->rootBuffer() : property_stream_.buffer();
     }
+
     VkBuffer InstanceResources::cullMetaBuffer() const noexcept
     {
-        return sparse_bda_ ? page_table_.rootBuffer() : cull_meta_stream_.buffer();
+        return sparse_bda_ ? page_table_->rootBuffer() : cull_meta_stream_.buffer();
     }
+
     VkBuffer InstanceResources::aliveSlotBuffer() const noexcept
     {
         return alive_slot_stream_.buffer();
     }
+
     VkBuffer InstanceResources::dynamicSlotBuffer() const noexcept
     {
         return dynamic_slot_stream_.buffer();
     }
+
     VkBuffer InstanceResources::meshSectionBuffer() const noexcept
     {
         return mesh_section_table_.buffer();

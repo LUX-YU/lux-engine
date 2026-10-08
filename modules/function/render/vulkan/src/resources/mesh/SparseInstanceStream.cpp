@@ -1,4 +1,6 @@
 #include <lux/engine/render/resources/mesh/SparseInstanceStream.hpp>
+#include <lux/engine/render/gpu/VulkanContext.hpp>
+#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 
 #include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
 
@@ -12,21 +14,19 @@ namespace lux::render
 {
     namespace
     {
-        [[nodiscard]] bool createBuffer(
-            DeviceContext& device,
-            VkDeviceSize bytes,
-            VkBufferUsageFlags usage,
-            bool host_visible,
-            VkBuffer& buffer,
-            VmaAllocation& allocation,
-            void** mapped
-        )
+        struct BufferAllocation
+        {
+            VmaBuffer buffer;
+            void* mapped;
+        };
+
+        [[nodiscard]] Expected<BufferAllocation>
+        createBuffer(DeviceContext& device, VkDeviceSize bytes, VkBufferUsageFlags usage, bool host_visible) noexcept
         {
             VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
             buffer_info.size = bytes;
             buffer_info.usage = usage;
             buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
             VmaAllocationCreateInfo allocation_info{};
             allocation_info.usage =
                 host_visible ? VMA_MEMORY_USAGE_AUTO_PREFER_HOST : VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
@@ -35,20 +35,21 @@ namespace lux::render
                 allocation_info.flags =
                     VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
             }
-            VmaAllocationInfo result_info{};
-            const auto result = vmaCreateBuffer(
-                device.vmaAllocator(),
-                &buffer_info,
-                &allocation_info,
-                &buffer,
-                &allocation,
-                &result_info
-            );
-            if (result != VK_SUCCESS)
-                return false;
-            if (mapped)
-                *mapped = result_info.pMappedData;
-            return true;
+            VkBuffer buffer{};
+            VmaAllocation allocation{};
+            VmaAllocationInfo mapped{};
+            const auto status =
+                vmaCreateBuffer(device.vmaAllocator(), &buffer_info, &allocation_info, &buffer, &allocation, &mapped);
+            if (status != VK_SUCCESS)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(status));
+            }
+            auto owner = VmaBuffer::adopt({device.vmaAllocator(), buffer, allocation});
+            if (host_visible && !mapped.pMappedData)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(VK_ERROR_MEMORY_MAP_FAILED));
+            }
+            return BufferAllocation{std::move(owner), mapped.pMappedData};
         }
 
         [[nodiscard]] VkDeviceAddress bufferAddress(DeviceContext& device, VkBuffer buffer)
@@ -59,123 +60,138 @@ namespace lux::render
         }
     } // namespace
 
-    SparseInstancePageTable::~SparseInstancePageTable()
+    SparseInstancePageTable::CreateResult
+    SparseInstancePageTable::create(DeviceContext& device, DeferredDestroyQueue& retirement) noexcept
     {
-        shutdown();
-    }
-
-    bool SparseInstancePageTable::init(DeviceContext* device_context)
-    {
-        shutdown();
-        device_context_ = device_context;
-        void* mapped = nullptr;
-        if (!device_context_ || !createBuffer(
-                                    *device_context_,
-                                    rootBufferBytes(),
-                                    VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                                    true,
-                                    root_buffer_,
-                                    root_allocation_,
-                                    &mapped
-                                ))
+        const bool is_missing_device = !device.logicalDevice() || !device.vmaAllocator();
+        if (is_missing_device)
         {
-            shutdown();
-            return false;
+            return renderFailure<err::internal::InvalidArgument>();
         }
-        root_mapped_ = static_cast<VkDeviceAddress*>(mapped);
-        std::memset(root_mapped_, 0, static_cast<std::size_t>(rootBufferBytes()));
-        vmaFlushAllocation(device_context_->vmaAllocator(), root_allocation_, 0u, rootBufferBytes());
-        leaves_.resize(kInstancePageTableAxisSize);
-        return true;
-    }
-
-    void SparseInstancePageTable::shutdown()
-    {
-        if (device_context_)
-        {
-            for (auto& leaf : leaves_)
-                destroyBuffer(leaf.buffer, leaf.allocation);
-            destroyBuffer(root_buffer_, root_allocation_);
-        }
-        leaves_.clear();
-        root_buffer_ = VK_NULL_HANDLE;
-        root_allocation_ = nullptr;
-        root_mapped_ = nullptr;
-        device_context_ = nullptr;
-    }
-
-    bool SparseInstancePageTable::createLeaf(std::uint32_t root_index)
-    {
-        if (root_index >= leaves_.size())
-            return false;
-        auto& leaf = leaves_[root_index];
-        if (leaf.buffer != VK_NULL_HANDLE)
-            return true;
-        void* mapped = nullptr;
-        if (!createBuffer(
-                *device_context_,
-                sizeof(GpuInstancePageAddresses) * kInstancePageTableAxisSize,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                true,
-                leaf.buffer,
-                leaf.allocation,
-                &mapped
-            ))
-        {
-            return false;
-        }
-        leaf.mapped = static_cast<GpuInstancePageAddresses*>(mapped);
-        std::memset(leaf.mapped, 0, sizeof(GpuInstancePageAddresses) * kInstancePageTableAxisSize);
-        vmaFlushAllocation(device_context_->vmaAllocator(), leaf.allocation, 0u, VK_WHOLE_SIZE);
-        leaf.address = bufferAddress(*device_context_, leaf.buffer);
-        if (leaf.address == 0u)
-        {
-            vmaDestroyBuffer(device_context_->vmaAllocator(), leaf.buffer, leaf.allocation);
-            leaf = {};
-            return false;
-        }
-        root_mapped_[root_index] = leaf.address;
-        vmaFlushAllocation(
-            device_context_->vmaAllocator(),
-            root_allocation_,
-            sizeof(VkDeviceAddress) * root_index,
-            sizeof(VkDeviceAddress)
+        auto root = createBuffer(
+            device,
+            rootBufferBytes(),
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+            true
         );
-        return true;
+        if (!root)
+        {
+            return lux::cxx::unexpected(root.error());
+        }
+        std::memset(root->mapped, 0, static_cast<std::size_t>(rootBufferBytes()));
+        const auto status = vmaFlushAllocation(device.vmaAllocator(), root->buffer.allocation(), 0, rootBufferBytes());
+        if (status != VK_SUCCESS)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(status));
+        }
+        return std::unique_ptr<SparseInstancePageTable>(new SparseInstancePageTable(
+            device,
+            retirement,
+            std::move(root->buffer),
+            static_cast<VkDeviceAddress*>(root->mapped)
+        ));
     }
 
-    bool SparseInstancePageTable::publish(std::uint32_t page_index, const GpuInstancePageAddresses& addresses)
+    SparseInstancePageTable::SparseInstancePageTable(
+        DeviceContext& device,
+        DeferredDestroyQueue& retirement,
+        VmaBuffer buffer,
+        VkDeviceAddress* mapped
+    ) noexcept
+        : device_(device), root_mapped_(mapped), leaves_(kInstancePageTableAxisSize)
+    {
+        const auto allocation = buffer.release();
+        root_buffer_ = TFifOwnedAllocated<VkBuffer>{retirement, allocation.buffer, allocation.allocation};
+    }
+
+    Expected<void>
+    SparseInstancePageTable::publish(std::uint32_t page_index, const GpuInstancePageAddresses& addresses) noexcept
     {
         const auto root_index = page_index >> kInstancePageTableAxisBits;
         const auto leaf_index = page_index & (kInstancePageTableAxisSize - 1u);
-        if (!createLeaf(root_index))
-            return false;
+        if (root_index >= leaves_.size())
+        {
+            return renderFailure<err::internal::InvalidArgument>();
+        }
         auto& leaf = leaves_[root_index];
-        leaf.mapped[leaf_index] = addresses;
-        vmaFlushAllocation(
-            device_context_->vmaAllocator(),
-            leaf.allocation,
-            sizeof(GpuInstancePageAddresses) * leaf_index,
-            sizeof(GpuInstancePageAddresses)
+        if (leaf.buffer.valid())
+        {
+            const auto previous = leaf.mapped[leaf_index];
+            leaf.mapped[leaf_index] = addresses;
+            const auto status = vmaFlushAllocation(
+                device_.vmaAllocator(),
+                leaf.buffer.alloc(),
+                sizeof(GpuInstancePageAddresses) * leaf_index,
+                sizeof(GpuInstancePageAddresses)
+            );
+            if (status != VK_SUCCESS)
+            {
+                leaf.mapped[leaf_index] = previous;
+                // Restore the accepted CPU bytes; this render-thread operation admits no GPU work.
+                (void)vmaFlushAllocation(
+                    device_.vmaAllocator(),
+                    leaf.buffer.alloc(),
+                    sizeof(GpuInstancePageAddresses) * leaf_index,
+                    sizeof(GpuInstancePageAddresses)
+                );
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(status));
+            }
+            return {};
+        }
+        constexpr auto leaf_bytes = sizeof(GpuInstancePageAddresses) * kInstancePageTableAxisSize;
+        auto candidate = createBuffer(
+            device_,
+            leaf_bytes,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+            true
         );
-        return true;
+        if (!candidate)
+        {
+            return lux::cxx::unexpected(candidate.error());
+        }
+        auto* mapped = static_cast<GpuInstancePageAddresses*>(candidate->mapped);
+        std::memset(mapped, 0, leaf_bytes);
+        mapped[leaf_index] = addresses;
+        const auto leaf_status =
+            vmaFlushAllocation(device_.vmaAllocator(), candidate->buffer.allocation(), 0, leaf_bytes);
+        if (leaf_status != VK_SUCCESS)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(leaf_status));
+        }
+        const auto address = bufferAddress(device_, candidate->buffer.buffer());
+        if (address == 0)
+        {
+            return renderFailure<err::memory::BufferDeviceAddressUnavailable>();
+        }
+        root_mapped_[root_index] = address;
+        const auto root_status = vmaFlushAllocation(
+            device_.vmaAllocator(),
+            root_buffer_.alloc(),
+            sizeof(VkDeviceAddress) * root_index,
+            sizeof(VkDeviceAddress)
+        );
+        if (root_status != VK_SUCCESS)
+        {
+            root_mapped_[root_index] = 0;
+            (void)vmaFlushAllocation(
+                device_.vmaAllocator(),
+                root_buffer_.alloc(),
+                sizeof(VkDeviceAddress) * root_index,
+                sizeof(VkDeviceAddress)
+            );
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(root_status));
+        }
+        const auto allocation = candidate->buffer.release();
+        leaf.buffer = TFifOwnedAllocated<VkBuffer>{root_buffer_.queue(), allocation.buffer, allocation.allocation};
+        leaf.mapped = mapped;
+        return {};
     }
 
     std::uint32_t SparseInstancePageTable::leafCount() const noexcept
     {
-        return static_cast<std::uint32_t>(std::count_if(leaves_.begin(), leaves_.end(), [](const Leaf& leaf) {
-            return leaf.buffer != VK_NULL_HANDLE;
-        }));
-    }
-
-    void SparseInstancePageTable::destroyBuffer(VkBuffer buffer, VmaAllocation allocation)
-    {
-        if (buffer == VK_NULL_HANDLE)
-            return;
-        if (deferred_queue_)
-            deferred_queue_->retireBuffer(buffer, allocation);
-        else
-            vmaDestroyBuffer(device_context_->vmaAllocator(), buffer, allocation);
+        return static_cast<std::uint32_t>(
+            std::count_if(leaves_.begin(), leaves_.end(), [](const Leaf& leaf) { return leaf.buffer.valid(); })
+        );
     }
 
     SparseInstanceStreamStorage::~SparseInstanceStreamStorage()
@@ -219,46 +235,43 @@ namespace lux::render
 
     bool SparseInstanceStreamStorage::createGpuPage(GpuPage& page)
     {
-        if (!createBuffer(
-                *device_context_,
-                static_cast<VkDeviceSize>(stride_) * kInstanceSlotsPerPage,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-                    VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-                false,
-                page.buffer,
-                page.allocation,
-                nullptr
-            ))
+        auto candidate = createBuffer(
+            *device_context_,
+            static_cast<VkDeviceSize>(stride_) * kInstanceSlotsPerPage,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+                VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
+            false
+        );
+        if (!candidate)
         {
             return false;
         }
-        page.address = bufferAddress(*device_context_, page.buffer);
-        if (page.address != 0u)
-            return true;
-        vmaDestroyBuffer(device_context_->vmaAllocator(), page.buffer, page.allocation);
-        page = {};
-        return false;
+        const auto address = bufferAddress(*device_context_, candidate->buffer.buffer());
+        if (address == 0)
+        {
+            return false;
+        }
+        const auto allocation = candidate->buffer.release();
+        page = GpuPage{allocation.buffer, allocation.allocation, address};
+        return true;
     }
 
     bool SparseInstanceStreamStorage::createFlatBuffer(std::uint32_t capacity)
     {
-        VkBuffer buffer = VK_NULL_HANDLE;
-        VmaAllocation allocation = nullptr;
-        if (!createBuffer(
-                *device_context_,
-                static_cast<VkDeviceSize>(stride_) * capacity,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-                false,
-                buffer,
-                allocation,
-                nullptr
-            ))
+        auto candidate = createBuffer(
+            *device_context_,
+            static_cast<VkDeviceSize>(stride_) * capacity,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            false
+        );
+        if (!candidate)
         {
             return false;
         }
         destroyBuffer(flat_buffer_, flat_allocation_, true);
-        flat_buffer_ = buffer;
-        flat_allocation_ = allocation;
+        const auto allocation = candidate->buffer.release();
+        flat_buffer_ = allocation.buffer;
+        flat_allocation_ = allocation.allocation;
         return true;
     }
 

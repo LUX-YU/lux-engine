@@ -1,7 +1,8 @@
 #pragma once
 
-#include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/function/render/client/core/Errors.hpp>
+#include <lux/engine/render/gpu/lifecycle/FifOwned.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -16,6 +17,8 @@ using VmaAllocation = VmaAllocation_T*;
 namespace lux::render
 {
     class DeferredDestroyQueue;
+    class DeviceContext;
+    class VmaBuffer;
 
     inline constexpr std::uint32_t kInstanceSlotsPerPage = 16'384u;
     inline constexpr std::uint32_t kInstancePageOffsetBits = 14u;
@@ -56,45 +59,48 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC SparseInstancePageTable final
     {
     public:
-        SparseInstancePageTable() = default;
-        ~SparseInstancePageTable();
+        using CreateResult = Expected<std::unique_ptr<SparseInstancePageTable>>;
+        [[nodiscard]] static CreateResult create(DeviceContext& device, DeferredDestroyQueue& retirement) noexcept;
+
+        ~SparseInstancePageTable() noexcept = default;
+
         SparseInstancePageTable(const SparseInstancePageTable&) = delete;
         SparseInstancePageTable& operator=(const SparseInstancePageTable&) = delete;
+        SparseInstancePageTable(SparseInstancePageTable&&) = delete;
+        SparseInstancePageTable& operator=(SparseInstancePageTable&&) = delete;
 
-        [[nodiscard]] bool init(DeviceContext* device_context);
-        void shutdown();
-        [[nodiscard]] bool publish(std::uint32_t page_index, const GpuInstancePageAddresses& addresses);
+        [[nodiscard]] Expected<void>
+        publish(std::uint32_t page_index, const GpuInstancePageAddresses& addresses) noexcept;
+
         [[nodiscard]] VkBuffer rootBuffer() const noexcept
         {
-            return root_buffer_;
+            return root_buffer_.get();
         }
-        [[nodiscard]] VkDeviceSize rootBufferBytes() const noexcept
+
+        [[nodiscard]] static constexpr VkDeviceSize rootBufferBytes() noexcept
         {
             return sizeof(VkDeviceAddress) * kInstancePageTableAxisSize;
         }
+
         [[nodiscard]] std::uint32_t leafCount() const noexcept;
-        void setDeferredQueue(DeferredDestroyQueue* queue) noexcept
-        {
-            deferred_queue_ = queue;
-        }
 
     private:
         struct Leaf final
         {
-            VkBuffer buffer{VK_NULL_HANDLE};
-            VmaAllocation allocation{nullptr};
-            GpuInstancePageAddresses* mapped{nullptr};
-            VkDeviceAddress address{0u};
+            TFifOwnedAllocated<VkBuffer> buffer;
+            GpuInstancePageAddresses* mapped{};
         };
 
-        [[nodiscard]] bool createLeaf(std::uint32_t root_index);
-        void destroyBuffer(VkBuffer buffer, VmaAllocation allocation);
+        SparseInstancePageTable(
+            DeviceContext& device,
+            DeferredDestroyQueue& retirement,
+            VmaBuffer buffer,
+            VkDeviceAddress* mapped
+        ) noexcept;
 
-        DeviceContext* device_context_{nullptr};
-        DeferredDestroyQueue* deferred_queue_{nullptr};
-        VkBuffer root_buffer_{VK_NULL_HANDLE};
-        VmaAllocation root_allocation_{nullptr};
-        VkDeviceAddress* root_mapped_{nullptr};
+        DeviceContext& device_;
+        TFifOwnedAllocated<VkBuffer> root_buffer_;
+        VkDeviceAddress* root_mapped_;
         std::vector<Leaf> leaves_;
     };
 

@@ -29,7 +29,8 @@ namespace
         END,
         FENCE,
         SUBMIT,
-        WAIT
+        WAIT,
+        ADDRESS
     };
 
     struct CommandOrigin
@@ -418,6 +419,11 @@ namespace
         return result;
     }
 
+    VkDeviceAddress trackedBufferAddress(VkDevice device, const VkBufferDeviceAddressInfo* info)
+    {
+        return reject(EFailure::ADDRESS) ? 0 : vkGetBufferDeviceAddress(device, info);
+    }
+
     VkResult trackedDeviceWaitIdle(VkDevice device)
     {
         ++idle_calls;
@@ -473,6 +479,9 @@ namespace
 #include "../src/resources/SceneResources.cpp"
 #include <lux/engine/render/gpu/memory/PagedGpuStream.hpp>
 #include "../src/resources/mesh/MeshSectionTable.cpp"
+#define vkGetBufferDeviceAddress trackedBufferAddress
+#include "../src/resources/mesh/SparseInstanceStream.cpp"
+#undef vkGetBufferDeviceAddress
 #include "../src/resources/lighting/LightResources.cpp"
 #include "../src/resources/hzb/HzbResources.cpp"
 #include "../src/resources/vertex/VertexPoolRegistry.cpp"
@@ -636,6 +645,101 @@ void checkHzbDescriptorFailure(lux::render::DeviceContext& device)
     arena->reset();
     assert(sets.size() == original_sets && retirement.pendingCount() == 0);
     std::puts("HZB descriptor failure: exact allocation error, no ready view, retry and original retirement PASS");
+}
+
+void checkSparsePageTable(lux::render::DeviceContext& device, lux::render::DeferredDestroyQueue& retirement)
+{
+    using namespace lux::render;
+    static_assert(!std::is_default_constructible_v<SparseInstancePageTable>);
+    static_assert(!std::is_copy_constructible_v<SparseInstancePageTable>);
+    static_assert(!std::is_move_constructible_v<SparseInstancePageTable>);
+    const auto original_buffers = buffers.size();
+    const auto original_pending = retirement.pendingCount();
+    for (const auto boundary : {EFailure::BUFFER, EFailure::MAPPED, EFailure::FLUSH})
+    {
+        failure = boundary;
+        auto rejected = SparseInstancePageTable::create(device, retirement);
+        assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
+        const auto native_error =
+            boundary == EFailure::BUFFER ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_ERROR_MEMORY_MAP_FAILED;
+        assert(rejected.error().args[0] == encodeVkResult(native_error));
+        assert(buffers.size() == original_buffers && retirement.pendingCount() == original_pending);
+        failure = EFailure::NONE;
+    }
+    const auto mapped = [](VkBuffer buffer)
+    {
+        const auto& origin = buffers.at(buffer);
+        VmaAllocationInfo info{};
+        vmaGetAllocationInfo(origin.first, origin.second, &info);
+        return info.pMappedData;
+    };
+    const auto find_leaf = [&](VkDeviceAddress address)
+    {
+        for (const auto& [buffer, allocation] : buffers)
+        {
+            VkBufferDeviceAddressInfo info{VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO};
+            info.buffer = buffer;
+            if (vkGetBufferDeviceAddress(device.logicalDevice(), &info) == address)
+            {
+                return static_cast<GpuInstancePageAddresses*>(mapped(buffer));
+            }
+        }
+        return static_cast<GpuInstancePageAddresses*>(nullptr);
+    };
+    retirement.beginFrame(23);
+    {
+        auto owner = SparseInstancePageTable::create(device, retirement);
+        assert(owner && (*owner)->rootBuffer() && (*owner)->leafCount() == 0);
+        auto* root = static_cast<VkDeviceAddress*>(mapped((*owner)->rootBuffer()));
+        assert(std::all_of(root, root + kInstancePageTableAxisSize, [](auto address) { return address == 0; }));
+        const GpuInstancePageAddresses first{11, 12, 13, 14};
+        for (const auto boundary : {EFailure::BUFFER, EFailure::MAPPED, EFailure::FLUSH, EFailure::ADDRESS})
+        {
+            failure = boundary;
+            auto rejected = (*owner)->publish(0, first);
+            assert(!rejected && (*owner)->leafCount() == 0 && root[0] == 0);
+            assert(buffers.size() == original_buffers + 1 && retirement.pendingCount() == original_pending);
+            if (boundary == EFailure::ADDRESS)
+            {
+                assert(isError<err::memory::BufferDeviceAddressUnavailable>(rejected.error()));
+            }
+            else
+            {
+                assert(isError<err::device::VulkanCallFailed>(rejected.error()));
+            }
+            failure = EFailure::NONE;
+        }
+        failure = EFailure::FLUSH;
+        skip_rejections = 1; // leaf is ready, but root publication fails
+        auto rejected_root = (*owner)->publish(512, first);
+        assert(!rejected_root && (*owner)->leafCount() == 0 && root[1] == 0);
+        assert(buffers.size() == original_buffers + 1);
+        failure = EFailure::NONE;
+        assert((*owner)->publish(0, first));
+        auto* leaf = find_leaf(root[0]);
+        assert(leaf && leaf[0].transform == 11 && leaf[0].cull_meta == 14 && (*owner)->leafCount() == 1);
+        const GpuInstancePageAddresses second{21, 22, 23, 24};
+        failure = EFailure::FLUSH;
+        auto rejected_update = (*owner)->publish(0, second);
+        assert(!rejected_update && leaf[0].transform == 11 && leaf[0].cull_meta == 14);
+        assert((*owner)->leafCount() == 1 && buffers.size() == original_buffers + 2);
+        failure = EFailure::NONE;
+        assert((*owner)->publish(511, second));
+        assert(leaf[511].property == 23 && leaf[0].transform == 11 && (*owner)->leafCount() == 1);
+        assert((*owner)->publish(512, second));
+        assert((*owner)->publish(512 * 512 - 1, second));
+        assert((*owner)->leafCount() == 3 && find_leaf(root[511])[511].previous_transform == 22);
+        assert(!(*owner)->publish(512 * 512, first));
+        assert((*owner)->leafCount() == 3);
+    }
+    assert(buffers.size() == original_buffers + 4 && retirement.pendingCount() == original_pending + 4);
+    retirement.collect(22);
+    assert(buffers.size() == original_buffers + 4);
+    retirement.collect(23);
+    assert(buffers.size() == original_buffers && retirement.pendingCount() == original_pending);
+    std::puts(
+        "Sparse page table: complete root, leaf publication rollback/retry, mapped identity and serial retirement PASS"
+    );
 }
 
 void checkPagedCapacity(lux::render::DeviceContext& device, lux::render::DeferredDestroyQueue& retirement)
@@ -962,6 +1066,11 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkSparsePageTable(device, retirement);
+    if (argc == 2 && std::string_view(argv[1]) == "--sparse-table")
+    {
+        return 0;
+    }
     checkPagedCapacity(device, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--paged-capacity")
     {

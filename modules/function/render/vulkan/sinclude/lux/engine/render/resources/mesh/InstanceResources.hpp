@@ -355,7 +355,7 @@ namespace lux::render
         }
         [[nodiscard]] std::uint32_t pageTableLeafCount() const noexcept
         {
-            return page_table_.leafCount();
+            return page_table_ ? page_table_->leafCount() : 0;
         }
         [[nodiscard]] std::uint64_t descriptorWriteCount() const noexcept
         {
@@ -363,7 +363,8 @@ namespace lux::render
         }
         [[nodiscard]] VkDeviceSize fieldStorageImportBytes(VkDeviceSize flat_stride) const noexcept
         {
-            return sparse_bda_ ? page_table_.rootBufferBytes() : static_cast<VkDeviceSize>(capacity_) * flat_stride;
+            return sparse_bda_ ? SparseInstancePageTable::rootBufferBytes()
+                               : static_cast<VkDeviceSize>(capacity_) * flat_stride;
         }
         /// Stable slots are never compacted. This serial remains constant for
         /// the scene lifetime and lets consumers prove ordinary page growth did
@@ -435,7 +436,6 @@ namespace lux::render
         void setDeferredQueue(DeferredDestroyQueue* q) noexcept
         {
             deferred_queue_ = q;
-            page_table_.setDeferredQueue(q);
             transform_stream_.setDeferredQueue(q);
             prev_transform_stream_.setDeferredQueue(q);
             property_stream_.setDeferredQueue(q);
@@ -466,7 +466,7 @@ namespace lux::render
         // are read back from the MDC entries). Resets cull.lod_count to 0.
         void unregisterInstanceLods(InstanceCullMeta& cull);
 
-        SparseInstancePageTable page_table_;
+        std::unique_ptr<SparseInstancePageTable> page_table_;
         TSparseInstanceStream<InstanceTransform> transform_stream_;
         TSparseInstanceStream<InstanceTransformPrev> prev_transform_stream_;
         TSparseInstanceStream<InstanceProperty> property_stream_;

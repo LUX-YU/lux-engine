@@ -9,6 +9,7 @@
 #include <lux/engine/render/core/FrameServices.hpp>
 #include <lux/engine/render/gpu/descriptor/DomainWriteTarget.hpp>
 #include <lux/engine/render/gpu/lifecycle/GPUResourceTypes.hpp>
+#include <lux/engine/render/gpu/lifecycle/FifOwned.hpp>
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
 #include <lux/engine/render/gpu/memory/PagedGpuStream.hpp>
 #include <lux/engine/render/resources/mesh/InstanceSlot.hpp>
@@ -382,32 +383,32 @@ namespace lux::render
             return mdc_table_;
         }
 
-        /// GPU buffer holding the MdcInfo (offsets) for the LATEST compile.
-        /// CRITICAL: this is a recompile-indexed ring (see uploadMdcInfo). The
+        /// GPU buffer holding the latest successfully published MDC offsets.
+        /// Unchanged layouts share immutable backing; changed layouts use a ring. The
         /// cull pass must capture the slot at COMPILE time via currentMdcInfoSlot()
         /// and read mdcInfoBufferAt(slot) — NOT this accessor — so an in-flight
         /// frame keeps reading the buffer it was recorded with even after a later
         /// recompile rewrites a different ring slot.
         [[nodiscard]] VkBuffer mdcInfoBuffer() const noexcept
         {
-            return mdc_info_buffers_[mdc_info_current_slot_];
+            return mdc_info_buffers_[mdc_info_current_slot_].get();
         }
 
         /// Buffer for a specific ring slot (captured at compile time).
         [[nodiscard]] VkBuffer mdcInfoBufferAt(uint32_t slot) const noexcept
         {
-            return mdc_info_buffers_[slot % kMdcInfoRingSize];
+            return mdc_info_buffers_[slot % kMdcInfoRingSize].get();
         }
 
-        /// Ring slot written by the most recent uploadMdcInfo() (= the current compile).
+        /// Accepted slot to capture only after uploadMdcInfo() succeeds.
         [[nodiscard]] uint32_t currentMdcInfoSlot() const noexcept
         {
             return mdc_info_current_slot_;
         }
 
-        /// Rebuild MDC offsets and upload them into a fresh ring slot.
-        /// Called once per graph compile (idempotent within one frame serial).
-        void uploadMdcInfo();
+        /// Publish complete immutable offsets. Unchanged layouts reuse their accepted backing.
+        /// Failure preserves every accepted slot and leaves this layout eligible for retry.
+        [[nodiscard]] Expected<void> uploadMdcInfo() noexcept;
 
     private:
         // Both maps describe only the active association. Anonymous and retiring instances need none.
@@ -465,11 +466,8 @@ namespace lux::render
         // untouched until their frames retire. Ring size = FIF + 1 guarantees a
         // reused slot is at least FIF+1 frames old even under per-frame recompiles.
         static constexpr uint32_t kMdcInfoRingSize = kMaxFramesInFlight + 1u;
-        std::array<VkBuffer, kMdcInfoRingSize> mdc_info_buffers_{};
-        std::array<VmaAllocation, kMdcInfoRingSize> mdc_info_allocs_{};
-        std::array<VkDeviceSize, kMdcInfoRingSize> mdc_info_sizes_{};
-        std::array<void*, kMdcInfoRingSize> mdc_info_mapped_{};
-        uint32_t mdc_info_ring_cursor_{0};
+        std::array<TFifOwnedAllocated<VkBuffer>, kMdcInfoRingSize> mdc_info_buffers_{};
+        uint64_t mdc_info_layout_serial_{~0ull};
         uint32_t mdc_info_current_slot_{0};
         uint64_t mdc_info_current_serial_{0}; ///< set by onBeginFrame
         uint64_t mdc_info_last_upload_serial_{~0ull};

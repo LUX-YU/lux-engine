@@ -139,6 +139,10 @@ namespace lux::render
 
     void StreamingFeedbackFeature::addPasses(RGBuilder& builder)
     {
+        if (!buildMdcOffsets())
+        {
+            return;
+        }
         auto& context = renderContext();
         RGTextureDescription mask_description =
             RGTextureDescription::Relative(1.0f, 1.0f, lux::rdesc::ETextureFormat::R8_UNORM);

@@ -190,6 +190,10 @@ namespace lux::render
 
     void ForwardMeshFeature::addPasses(RGBuilder& builder)
     {
+        if (!buildMdcOffsets())
+        {
+            return;
+        }
         auto& ctx = renderContext();
 
         // ---- Cull + compact (shared GPU-driven view path; H9 de-dup) ----

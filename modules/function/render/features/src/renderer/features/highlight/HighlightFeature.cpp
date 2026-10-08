@@ -262,6 +262,10 @@ namespace lux::render
 
     void HighlightFeature::addPasses(RGBuilder& builder)
     {
+        if (!buildMdcOffsets())
+        {
+            return;
+        }
         auto& ctx = renderContext();
 
         // ---- R8 highlight mask (transient; format RG-inferred at bake) ----

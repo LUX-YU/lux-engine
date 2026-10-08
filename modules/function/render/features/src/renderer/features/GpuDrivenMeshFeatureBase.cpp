@@ -277,7 +277,6 @@ namespace lux::render
         if (current_serial != last_compiled_mdc_serial_)
         {
             renderScene().invalidateGraph(EGraphInvalidationReason::MDC_STORAGE_GENERATION);
-            last_compiled_mdc_serial_ = current_serial;
         }
 
         const auto* meshes = renderScene().renderContext().globalRegistry().find<MeshResources>();
@@ -577,8 +576,7 @@ namespace lux::render
     // =========================================================================
     void GpuDrivenMeshFeatureBase::addCullAndCompactPasses(RGBuilder& builder, const CullCompactParams& p)
     {
-        // ---- Build MDC offsets for this frame ----
-        buildMdcOffsets();
+        // The concrete feature admits its MDC backing before declaring any passes.
         const uint32_t mdc_count = std::max(mdcCount(), 1u);
 
         const std::string prefix{p.prefix};
@@ -667,7 +665,7 @@ namespace lux::render
             desc.memory_usage = ERGMemoryUsage::GPU_ONLY;
             RGImportedBufferInfo imp{};
             // Capture the ring slot chosen by buildMdcOffsets() for THIS compile
-            // (already ran at the top of addCullAndCompactPasses). A later
+            // (already admitted before declaring this feature's passes). A later
             // recompile writes a different slot, so frames still recorded against
             // this graph keep reading their own slot — no overwrite under the GPU.
             const uint32_t mdc_info_slot = instance_res_->currentMdcInfoSlot();
@@ -794,12 +792,20 @@ namespace lux::render
         addCompactPass(builder, p.compact_pass_name, p.cull_pass_name, cull_tds);
     }
 
-    void GpuDrivenMeshFeatureBase::buildMdcOffsets()
+    bool GpuDrivenMeshFeatureBase::buildMdcOffsets()
     {
-        instance_res_->uploadMdcInfo();
+        if (auto uploaded = instance_res_->uploadMdcInfo(); !uploaded)
+        {
+            if (auto* sink = renderContext().errorSink())
+            {
+                sink->emit(uploaded.error(), RenderErrorEvent::kNoScene, 0);
+            }
+            return false;
+        }
         // Snapshot the LAYOUT serial the offsets were just built from (buildOffsets
         // does not mutate it). onFrameBegin compares against it next frame. (P-7)
         last_compiled_mdc_serial_ = instance_res_->mdcTable().layoutSerial();
+        return true;
     }
 
     uint32_t GpuDrivenMeshFeatureBase::mdcCount() const noexcept

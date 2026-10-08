@@ -200,6 +200,10 @@ namespace lux::render
 
     void DeferredGBufferFeature::addPasses(RGBuilder& builder)
     {
+        if (!buildMdcOffsets())
+        {
+            return;
+        }
         auto& ctx = renderContext();
 
         // ---- Create GBuffer transient textures ----

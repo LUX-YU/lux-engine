@@ -1255,6 +1255,138 @@ void checkSceneResources(
     );
 }
 
+void checkMdcPublication(
+    lux::render::DeviceContext& device,
+    lux::render::GeneralDescriptorSetLayout& layouts,
+    lux::render::DeferredDestroyQueue& retirement
+)
+{
+    using namespace lux::render;
+    retirement.flushAll();
+    assert(buffers.empty());
+    auto arena = SceneDescriptorArena::create(device.logicalDevice(), {});
+    assert(arena);
+    const auto target = (*arena)->allocate(layouts.getLayout(EDescriptorSetSlot::INSTANCE));
+    assert(target);
+    const std::array targets{*target};
+    retirement.beginFrame(101);
+    {
+        auto complete = InstanceResources::create({device, retirement, targets});
+        assert(complete);
+        auto& instances = **complete;
+        FrameStamp stamp{};
+        std::array<VkBuffer, kMaxFramesInFlight + 1> accepted{};
+        std::array<std::vector<uint32_t>, kMaxFramesInFlight + 1> content{};
+        const auto verify_contents = [&]
+        {
+            for (unsigned slot = 0; slot < accepted.size(); ++slot)
+            {
+                assert(instances.mdcInfoBufferAt(slot) == accepted[slot]);
+                if (!accepted[slot])
+                {
+                    continue;
+                }
+                const auto& allocation = buffers.at(accepted[slot]);
+                VmaAllocationInfo info{};
+                vmaGetAllocationInfo(allocation.first, allocation.second, &info);
+                assert(info.pMappedData);
+                assert(
+                    std::memcmp(info.pMappedData, content[slot].data(), content[slot].size() * sizeof(uint32_t)) == 0
+                );
+            }
+        };
+        const auto accept = [&]
+        {
+            assert(instances.uploadMdcInfo());
+            const auto slot = instances.currentMdcInfoSlot();
+            accepted[slot] = instances.mdcInfoBuffer();
+            content[slot] = instances.mdcTable().gpuData();
+            verify_contents();
+        };
+        // First acquisition and replacement both use the same native admission boundaries.
+        const auto reject_upload = [&](EFailure boundary)
+        {
+            const auto buffer = instances.mdcInfoBuffer();
+            const auto slot = instances.currentMdcInfoSlot();
+            const auto count = buffers.size();
+            const auto pending = retirement.pendingCount();
+            const auto serial = instances.mdcTable().layoutSerial();
+            const auto rejected_before = rejections;
+            failure = boundary;
+            const auto rejected = instances.uploadMdcInfo();
+            failure = EFailure::NONE;
+            assert(!rejected && rejections == rejected_before + 1);
+            assert(isError<err::device::VulkanCallFailed>(rejected.error()));
+            const auto expected =
+                boundary == EFailure::BUFFER ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_ERROR_MEMORY_MAP_FAILED;
+            assert(rejected.error().args[0] == encodeVkResult(expected));
+            assert(instances.mdcInfoBuffer() == buffer && instances.currentMdcInfoSlot() == slot);
+            assert(buffers.size() == count && retirement.pendingCount() == pending);
+            assert(instances.mdcTable().layoutSerial() == serial);
+            verify_contents();
+        };
+        for (auto boundary : {EFailure::BUFFER, EFailure::MAPPED, EFailure::FLUSH})
+        {
+            reject_upload(boundary);
+        }
+        accept();
+        for (unsigned i = 1; i < accepted.size(); ++i)
+        {
+            instances.mdcTable().registerInstance(0, 0, i, 0, VK_INDEX_TYPE_UINT32);
+            stamp.serial = i;
+            instances.onFrameBeginMaintenance(stamp);
+            accept();
+        }
+        const auto replaced_slot = (instances.currentMdcInfoSlot() + 1u) % accepted.size();
+        const auto old = accepted[replaced_slot];
+        assert(old && retirement.pendingCount() == 0);
+        instances.mdcTable().registerInstance(0, 0, 100, 0, VK_INDEX_TYPE_UINT32);
+        ++stamp.serial;
+        instances.onFrameBeginMaintenance(stamp);
+        for (auto boundary : {EFailure::BUFFER, EFailure::MAPPED, EFailure::FLUSH})
+        {
+            reject_upload(boundary);
+        }
+        accept();
+        assert(instances.currentMdcInfoSlot() == replaced_slot && instances.mdcInfoBuffer() != old);
+        assert(retirement.pendingCount() == 1 && buffers.contains(old));
+        retirement.collect(100);
+        assert(buffers.contains(old));
+        retirement.collect(101);
+        assert(!buffers.contains(old));
+        retirement.beginFrame(102);
+
+        // Multiple features and later unrelated graph compiles share immutable accepted data.
+        const auto stable = instances.mdcInfoBuffer();
+        measure_acquisitions = true;
+        acquisition = 0;
+        fail_acquisition = 0;
+        for (unsigned i = 0; i < 30; ++i)
+        {
+            stamp.serial++;
+            instances.onFrameBeginMaintenance(stamp);
+            assert(instances.uploadMdcInfo());
+            assert(instances.uploadMdcInfo());
+            assert(instances.mdcInfoBuffer() == stable);
+        }
+        measure_acquisitions = false;
+        assert(acquisition == 0 && retirement.pendingCount() == 0);
+        // Same-sized changed offsets still require a complete candidate, never overwrite old bytes.
+        instances.mdcTable().registerInstance(0, 0, 100, 0, VK_INDEX_TYPE_UINT32);
+        reject_upload(EFailure::FLUSH);
+        accept();
+        assert(instances.mdcInfoBuffer() != stable);
+    }
+    const auto pending = buffers.size();
+    assert(pending > 0 && retirement.pendingCount() == pending);
+    retirement.collect(101);
+    assert(buffers.size() == pending);
+    retirement.collect(102);
+    assert(buffers.empty());
+    std::puts("MDC publication: allocation/map/flush rejection, immutable captured slots, retry, zero stable "
+              "acquisitions and serial retirement PASS");
+}
+
 void checkInstanceConstruction(
     lux::render::DeviceContext& device,
     lux::render::GeneralDescriptorSetLayout& layouts,
@@ -1416,7 +1548,7 @@ void checkInstanceConstruction(
             FrameStamp stamp{};
             stamp.serial = 91;
             instances->onFrameBeginMaintenance(stamp);
-            instances->uploadMdcInfo();
+            assert(instances->uploadMdcInfo());
             assert(instances->mdcInfoBuffer());
             assert(buffers.contains(instances->mdcInfoBufferAt(instances->currentMdcInfoSlot())));
             trace_buffer_writes = false;
@@ -1626,6 +1758,11 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkMdcPublication(device, layouts, retirement);
+    if (argc == 2 && std::string_view(argv[1]) == "--mdc-publication")
+    {
+        return 0;
+    }
     checkInstanceConstruction(device, layouts, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--instance-construction")
     {

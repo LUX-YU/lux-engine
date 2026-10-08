@@ -209,93 +209,66 @@ namespace lux::render
         refreshDescriptorSet();
     }
 
-    InstanceResources::~InstanceResources() noexcept
-    {
-        // Runtime-lazy MDC backing can still be referenced by compiled frames.
-        for (uint32_t i = 0; i < kMdcInfoRingSize; ++i)
-        {
-            if (mdc_info_buffers_[i])
-            {
-                deferred_queue_.retireBuffer(mdc_info_buffers_[i], mdc_info_allocs_[i]);
-            }
-        }
-    }
+    InstanceResources::~InstanceResources() noexcept = default;
 
     // =========================================================================
     //  MDC info upload
     // =========================================================================
 
-    void InstanceResources::uploadMdcInfo()
+    Expected<void> InstanceResources::uploadMdcInfo() noexcept
     {
+        const auto layout_serial = mdc_table_.layoutSerial();
+        const bool has_current_layout =
+            mdc_info_buffers_[mdc_info_current_slot_].valid() && mdc_info_layout_serial_ == layout_serial;
+        if (has_current_layout)
+        {
+            return {};
+        }
         mdc_table_.buildOffsets();
         const auto& gpu_data = mdc_table_.gpuData();
-        assert(!gpu_data.empty() && "buildOffsets must always produce at least a safety sentinel");
-
         const VkDeviceSize required = static_cast<VkDeviceSize>(gpu_data.size()) * sizeof(uint32_t);
 
-        // Advance the ring once per graph compile. Multiple cull passes in the
-        // SAME compile (Forward + Deferred, multiple views) call uploadMdcInfo
-        // with the same frame serial and must share one slot; the next compile
-        // (new serial) takes a fresh slot so in-flight frames keep reading the
-        // slot they were recorded with.
-        if (mdc_info_current_serial_ != mdc_info_last_upload_serial_)
+        // Never modify accepted mapped memory: even a failed flush must leave the old
+        // graph's bytes intact. Allocate only when the MDC layout actually changes.
+        VkBuffer buffer{};
+        VmaAllocation allocation{};
+        void* mapped{};
+        const auto allocated = createGpuBufferVmaBuffer(
+            device_ctx_.vmaAllocator(),
+            required,
+            VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+            true,
+            &buffer,
+            &allocation,
+            &mapped
+        );
+        if (allocated != VK_SUCCESS)
         {
-            mdc_info_ring_cursor_ = (mdc_info_ring_cursor_ + 1u) % kMdcInfoRingSize;
-            mdc_info_last_upload_serial_ = mdc_info_current_serial_;
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(allocated));
         }
-        const uint32_t slot = mdc_info_ring_cursor_;
+        auto candidate = VmaBuffer::adopt({device_ctx_.vmaAllocator(), buffer, allocation});
+        if (!mapped)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(VK_ERROR_MEMORY_MAP_FAILED));
+        }
+        std::memcpy(mapped, gpu_data.data(), required);
+        const auto flushed = vmaFlushAllocation(device_ctx_.vmaAllocator(), allocation, 0, required);
+        if (flushed != VK_SUCCESS)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(flushed));
+        }
+
+        // All passes of a compile share one slot. Only successful publication advances
+        // the ring; previous compiled frames retain the original retirement protection.
+        const auto slot = mdc_info_current_serial_ == mdc_info_last_upload_serial_
+                              ? mdc_info_current_slot_
+                              : (mdc_info_current_slot_ + 1u) % kMdcInfoRingSize;
+        const auto accepted = candidate.release();
+        mdc_info_buffers_[slot] = TFifOwnedAllocated<VkBuffer>{deferred_queue_, accepted.buffer, accepted.allocation};
         mdc_info_current_slot_ = slot;
-
-        // Grow this slot's buffer if the new offsets no longer fit. The slot was
-        // last written kMdcInfoRingSize (>= FIF+1) compiles ago, so its prior
-        // allocation is GPU-idle; still route the free through the deferred queue
-        // for safety.
-        if (required > mdc_info_sizes_[slot])
-        {
-            if (mdc_info_buffers_[slot] != VK_NULL_HANDLE)
-            {
-                deferred_queue_.retireBuffer(mdc_info_buffers_[slot], mdc_info_allocs_[slot]);
-            }
-
-            mdc_info_buffers_[slot] = VK_NULL_HANDLE;
-            mdc_info_allocs_[slot] = nullptr;
-            mdc_info_mapped_[slot] = nullptr;
-            mdc_info_sizes_[slot] = 0;
-
-            VkBuffer buf{VK_NULL_HANDLE};
-            VmaAllocation alloc{nullptr};
-            void* mapped{nullptr};
-            const auto allocation_result = createGpuBufferVmaBuffer(
-                device_ctx_.vmaAllocator(),
-                required,
-                VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
-                /*cpu_writable=*/true,
-                &buf,
-                &alloc,
-                &mapped
-            );
-
-            // On allocation failure leave the slot null instead of publishing a
-            // half-built (already-retired) handle to the render graph.
-            const bool allocation_failed =
-                allocation_result != VK_SUCCESS || buf == VK_NULL_HANDLE || mapped == nullptr;
-            if (allocation_failed)
-            {
-                if (buf != VK_NULL_HANDLE)
-                    vmaDestroyBuffer(device_ctx_.vmaAllocator(), buf, alloc);
-                return;
-            }
-
-            mdc_info_buffers_[slot] = buf;
-            mdc_info_allocs_[slot] = alloc;
-            mdc_info_mapped_[slot] = mapped;
-            mdc_info_sizes_[slot] = required;
-        }
-
-        // Write via persistent mapping. Host-coherent + the implicit host-write
-        // barrier at queue submit make this visible to this frame's cull dispatch.
-        if (mdc_info_mapped_[slot])
-            std::memcpy(mdc_info_mapped_[slot], gpu_data.data(), required);
+        mdc_info_last_upload_serial_ = mdc_info_current_serial_;
+        mdc_info_layout_serial_ = layout_serial;
+        return {};
     }
 
     // =========================================================================

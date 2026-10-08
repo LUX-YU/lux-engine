@@ -158,7 +158,7 @@ namespace lux::render
         // ── MDC-based buffer sizing (the only path; bucket count is dynamic,
         //    bounded by mdcCount(), NOT a fixed kMaxBuckets grid) ──
         /// Rebuild MDC offsets and prepare GPU upload data.  Call once per frame.
-        void buildMdcOffsets();
+        [[nodiscard]] bool buildMdcOffsets();
 
         /// Number of unique MDC entries in the current scene.
         [[nodiscard]] uint32_t mdcCount() const noexcept;

@@ -210,10 +210,10 @@ namespace lux::render
 
         // ── Scene slot lifecycle (one slot per RenderScene) ───────────────────
 
-        [[nodiscard]] SlotHandle allocateScene()
+        [[nodiscard]] Expected<SlotHandle> allocateScene()
         {
             const uint32_t old_gen = scene_buf_.bufferGeneration();
-            SlotHandle h = scene_buf_.allocate();
+            auto h = scene_buf_.allocate();
             if (scene_buf_.bufferGeneration() != old_gen)
             {
                 ds_revision_.bump();
@@ -228,10 +228,10 @@ namespace lux::render
 
         // ── View slot lifecycle (one slot per View) ───────────────────────────
 
-        [[nodiscard]] SlotHandle allocateView()
+        [[nodiscard]] Expected<SlotHandle> allocateView()
         {
             const uint32_t old_gen = view_buf_.bufferGeneration();
-            SlotHandle h = view_buf_.allocate();
+            auto h = view_buf_.allocate();
             if (view_buf_.bufferGeneration() != old_gen)
             {
                 ds_revision_.bump();

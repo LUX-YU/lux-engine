@@ -932,14 +932,13 @@ namespace lux::render
                 .initial_extent = p.extent,
                 .debug_name = p.name,
             };
-            const ViewHandle handle = sc->addView(ci);
+            const auto handle = sc->addView(ci);
 
-            if (!handle.isValid())
+            if (!handle)
             {
-                // addView 只在视图槽位耗尽时交回无效句柄(见 SceneViewSet)。
                 replyToCurrent<AddViewPayload>(
                     ctx,
-                    ViewCreatedReply{{}, renderError<err::memory::CapacityExhausted>()}
+                    ViewCreatedReply{{}, handle.error()}
                 );
                 return;
             }
@@ -952,7 +951,7 @@ namespace lux::render
             // in 3D-specific concepts: the client sends a StandardViewCamera op for
             // this view after addView. AddView is neutral.)
 
-            replyToCurrent<AddViewPayload>(ctx, ViewCreatedReply{handle});
+            replyToCurrent<AddViewPayload>(ctx, ViewCreatedReply{*handle});
         }
 
         void handleRemoveView(Ctx& ctx, const RemoveViewPayload& p)

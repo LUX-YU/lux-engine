@@ -184,7 +184,9 @@ void checkBufferConstruction(lux::render::DeviceContext& device)
     {
         auto buffer = Buffer::create(info);
         assert(buffer && buffer->capacity() == 64 && buffer->slices() == 2);
-        const auto slot = buffer->allocate();
+        const auto slot_result = buffer->allocate();
+        assert(slot_result);
+        const auto slot = *slot_result;
         assert(buffer->isAlive(slot));
         assert(*buffer->mapped(0, slot) == 0 && *buffer->mapped(1, slot) == 0);
         buffer->write(0, slot, 17);
@@ -216,7 +218,7 @@ void checkBufferConstruction(lux::render::DeviceContext& device)
         assert(!destination->buffer() && moved.isAlive(slot));
         assert(moved.free(slot) && !moved.isAlive(slot));
         const auto replacement = moved.allocate();
-        assert(replacement.index == slot.index && replacement.gen != slot.gen);
+        assert(replacement && replacement->index == slot.index && replacement->gen != slot.gen);
     }
     assert(first_queue.pendingCount() == 2 && second_queue.pendingCount() == 1);
     first_queue.collect(6);

@@ -462,11 +462,11 @@ namespace lux::render
 
         // ---------- Slot Management ----------
 
-        [[nodiscard]] SlotHandle allocate()
+        [[nodiscard]] Expected<SlotHandle> allocate()
         {
-            if (!ensureCapacity())
+            if (auto capacity = ensureCapacity(); !capacity)
             {
-                return SlotHandle{}; // growth failed -> invalid handle (C-1)
+                return lux::cxx::unexpected(capacity.error());
             }
             uint32_t index = 0;
             if (!free_.empty())

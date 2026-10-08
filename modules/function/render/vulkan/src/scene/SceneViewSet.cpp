@@ -94,11 +94,6 @@ namespace lux::render
     //  每视图 GPU 槽
     // ─────────────────────────────────────────────────────────────────────
 
-    void SceneViewSet::initViewUBO(View& view)
-    {
-        view.view_slot = resources_.allocateView();
-    }
-
     void SceneViewSet::destroyViewUBO(View& view)
     {
         resources_.freeView(view.view_slot);
@@ -119,9 +114,19 @@ namespace lux::render
     //  生命周期
     // ─────────────────────────────────────────────────────────────────────
 
-    ViewHandle SceneViewSet::add(const ViewCreateInfo& info)
+    Expected<ViewHandle> SceneViewSet::add(const ViewCreateInfo& info) noexcept
     {
+        if (!views_.prepareInsert(1))
+        {
+            return renderFailure<err::memory::CapacityExhausted>();
+        }
+        auto slot = resources_.allocateView();
+        if (!slot)
+        {
+            return lux::cxx::unexpected(slot.error());
+        }
         auto view = std::make_unique<View>();
+        view->view_slot = *slot;
         view->current_extent = info.initial_extent;
         view->debug_name = info.debug_name ? info.debug_name : "View";
 
@@ -131,7 +136,6 @@ namespace lux::render
         new_view->handle = handle;
         new_view->state = ERenderViewState::ACTIVE;
 
-        initViewUBO(*new_view);
         markCacheDirty();
         return handle;
     }

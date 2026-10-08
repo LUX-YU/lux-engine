@@ -334,6 +334,7 @@ namespace shadow_fault
 #include "../../vulkan/src/gpu/descriptor/SceneDomainDescriptorSets.cpp"
 #include "../../vulkan/src/resources/SceneResources.cpp"
 #include "../../vulkan/src/scene/SceneGraphCache.cpp"
+#include "../../vulkan/src/scene/SceneViewSet.cpp"
 #include "../../vulkan/src/scene/RenderScene.cpp"
 #include "../../vulkan/src/renderer/Renderer.cpp"
 #if defined(LUX_HZB_NATIVE_FAULTS)

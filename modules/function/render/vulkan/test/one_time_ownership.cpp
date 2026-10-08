@@ -1505,8 +1505,12 @@ void checkSceneResources(
             ResourceRegistry registry;
             auto published = registry.insert(std::move(*candidate));
             auto& scene = *published.get();
-            const auto global = scene.allocateScene();
-            const auto view = scene.allocateView();
+            const auto global_result = scene.allocateScene();
+            assert(global_result);
+            const auto global = *global_result;
+            const auto view_result = scene.allocateView();
+            assert(view_result);
+            const auto view = *view_result;
             assert(global.isValid() && view.isValid());
             for (unsigned frame = 0; frame < 2; ++frame)
             {
@@ -1541,8 +1545,12 @@ void checkSceneResources(
             }
             scene.freeScene(global);
             scene.freeView(view);
-            const auto next_global = scene.allocateScene();
-            const auto next_view = scene.allocateView();
+            const auto next_global_result = scene.allocateScene();
+            assert(next_global_result);
+            const auto next_global = *next_global_result;
+            const auto next_view_result = scene.allocateView();
+            assert(next_view_result);
+            const auto next_view = *next_view_result;
             assert(next_global.index == global.index && next_global.gen != global.gen);
             assert(next_view.index == view.index && next_view.gen != view.gen);
             assert(scene.reserveScenes(128) && scene.reserveViews(128));

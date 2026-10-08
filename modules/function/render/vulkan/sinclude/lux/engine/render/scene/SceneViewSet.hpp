@@ -19,6 +19,7 @@
  */
 
 #include <lux/engine/function/render/client/core/RenderTypes.hpp> // lux::math::Extent2u
+#include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/render/scene/View.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/cxx/container/BasicSparseSet.hpp> // SlotKeyAutoSparseSet
@@ -68,7 +69,7 @@ namespace lux::render
 
         // ── 生命周期 ────────────────────────────────────────────────────
         /// 建视图 + 分配每视图 GPU 槽。**不**通知特性 —— 调用方在拿到句柄后自行通知。
-        [[nodiscard]] ViewHandle add(const ViewCreateInfo& info);
+        [[nodiscard]] Expected<ViewHandle> add(const ViewCreateInfo& info) noexcept;
 
         /// 该句柄是否可被移除(存在且尚未进入销毁中)。
         /// 幂等守卫:重复 removeView 必须不重复释放特性状态、不重复通知注册表、
@@ -95,7 +96,6 @@ namespace lux::render
 
     private:
         void rebuildActiveCacheIfNeeded() const;
-        void initViewUBO(View& view);
         void destroyViewUBO(View& view);
         /// 释放一个视图持有的图资源(录制上下文 + 物理资源),幂等。
         void releaseViewGraphResources(View& view) noexcept;

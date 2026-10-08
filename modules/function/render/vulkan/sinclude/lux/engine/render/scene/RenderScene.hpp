@@ -360,7 +360,7 @@ namespace lux::render
         //  View Management
         // ================================================================
 
-        [[nodiscard]] ViewHandle addView(const ViewCreateInfo& info);
+        [[nodiscard]] Expected<ViewHandle> addView(const ViewCreateInfo& info);
         /// 返回 false = 幂等守卫拒绝(句柄陈旧 / 已在销毁中),什么都没做。
         /// comm handler 据此回 GenericOkReply 的失败码;服务端内部调用方
         /// (UIRenderServer 的 swapchain 链)对重复摘不在乎,(void) 掉即可。

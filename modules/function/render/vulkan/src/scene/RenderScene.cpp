@@ -71,6 +71,7 @@ namespace lux::render
         std::unique_ptr<SceneDomainDescriptorSets> domains;
         std::unique_ptr<SceneResources> resources;
         TransferScheduler transfers;
+        SlotHandle scene_slot;
     };
 
     Expected<std::unique_ptr<RenderScene>> RenderScene::create(std::shared_ptr<RenderContext> ctx) noexcept
@@ -129,10 +130,15 @@ namespace lux::render
         {
             return lux::cxx::unexpected(transfers.error());
         }
+        auto slot = (*resources)->allocateScene();
+        if (!slot)
+        {
+            return lux::cxx::unexpected(slot.error());
+        }
         return std::unique_ptr<RenderScene>(new RenderScene(
             std::move(ctx),
             cfg,
-            Backing{std::move(*arena), std::move(*domains), std::move(*resources), std::move(*transfers)}
+            Backing{std::move(*arena), std::move(*domains), std::move(*resources), std::move(*transfers), *slot}
         ));
     }
 
@@ -140,7 +146,8 @@ namespace lux::render
         : render_ctx_(std::move(ctx)), config_(cfg), pipeline_config_(cfg.pipeline),
           scene_descriptor_arena_(std::move(backing.arena)), scene_domain_sets_(std::move(backing.domains)),
           graph_cache_(std::make_unique<SceneGraphCache>(*render_ctx_, cfg.scene_name)),
-          view_set_(*backing.resources, *graph_cache_), transfer_scheduler_(std::move(backing.transfers)),
+          view_set_(*backing.resources, *graph_cache_), scene_global_slot_(backing.scene_slot),
+          transfer_scheduler_(std::move(backing.transfers)),
           debug_name_(cfg.scene_name)
     {
         retire_owner_token_ = static_cast<FrameRetireScheduler::OwnerToken>(reinterpret_cast<uintptr_t>(this));
@@ -149,7 +156,6 @@ namespace lux::render
             SceneResources::kUploadPhase,
             [resources](const FrameStamp& stamp) { resources->onFrameBeginMaintenance(stamp); }
         );
-        scene_global_slot_ = resources->allocateScene();
         transfer_scheduler_.contributors().add(makeTransferContributor(resources, 10));
         feature_set_.markCacheDirty();
     }
@@ -586,18 +592,22 @@ namespace lux::render
     // ─────────────────────────────────────────────────────────────────────
     //  View Management
     // ─────────────────────────────────────────────────────────────────────
-    ViewHandle RenderScene::addView(const ViewCreateInfo& info)
+    Expected<ViewHandle> RenderScene::addView(const ViewCreateInfo& info)
     {
         // 视图容器 + 每视图 GPU 槽由 SceneViewSet 负责;特性侧的每视图状态由场景
         // 编排 —— RenderFeature::allocateViewState 的签名要 RenderScene&,让视图集合
         // 反手持有场景引用会造出一条反向依赖,不值当。
-        const ViewHandle handle = view_set_.add(info);
+        auto handle = view_set_.add(info);
+        if (!handle)
+        {
+            return lux::cxx::unexpected(handle.error());
+        }
 
         // 经真相源记录每个已启用特性的每视图状态,好让 removeView()/removeFeature()
         // 对称释放。
         for (auto* feat : feature_set_.enabled())
         {
-            ensureFeatureViewState(*feat, handle.index);
+            ensureFeatureViewState(*feat, handle->index);
         }
 
         return handle;

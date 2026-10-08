@@ -142,6 +142,83 @@ int main()
         );
     }
     {
+        LifetimeCounts counts;
+        auto candidate = RenderScene::create(*context);
+        assert(candidate && (*candidate)->addFeature<LifetimeFeature>(counts));
+        auto& scene = **candidate;
+        std::vector<ViewHandle> accepted_views;
+        // The buffer rounds the requested initial eight slots to 64.
+        for (unsigned i = 0; i != 64; ++i)
+        {
+            const auto view = scene.addView({{16, 16}, "accepted-view"});
+            assert(view && scene.getView(*view) && scene.getView(*view)->view_slot.isValid());
+            accepted_views.push_back(*view);
+        }
+        const auto retained_buffers = shadow_fault::live_buffers;
+        for (auto boundary : {Boundary::BUFFER, Boundary::MAPPING, Boundary::FLUSH})
+        {
+            shadow_fault::boundary = boundary;
+            const auto rejected_before = shadow_fault::rejected;
+            const auto rejected = scene.addView({{16, 16}, "rejected-growth"});
+            shadow_fault::boundary = Boundary::NONE;
+            assert(shadow_fault::rejected == rejected_before + 1);
+            const auto expected = boundary == Boundary::BUFFER
+                                      ? VK_ERROR_OUT_OF_DEVICE_MEMORY
+                                      : VK_ERROR_MEMORY_MAP_FAILED;
+            assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
+            assert(rejected.error().args[0] == encodeVkResult(expected));
+            assert(counts.allocated == 64 && counts.released == 0);
+            for (const auto view : accepted_views)
+            {
+                assert(scene.getView(view) && scene.getView(view)->view_slot.isValid());
+            }
+            queue.flushAll();
+            assert(shadow_fault::live_buffers == retained_buffers);
+        }
+        const auto retried = scene.addView({{16, 16}, "accepted-retry"});
+        assert(retried && retried->index == accepted_views.back().index + 1);
+        assert(scene.getView(*retried)->view_slot.isValid() && counts.allocated == 65);
+        assert(scene.removeView(*retried));
+        assert(counts.released == 1);
+        std::puts("View growth: exact native errors, no feature/ID publication, retained views and retry PASS");
+    }
+    queue.flushAll();
+    assert(shadow_fault::live_buffers.size() == baseline && shadow_fault::live_pools.size() == baseline_pools);
+    {
+        Renderer renderer(*context);
+        const auto existing = renderer.addScene({});
+        assert(existing);
+        const auto* existing_scene = renderer.getScene(existing->scene_id);
+        RenderScene::Config config;
+        config.initial_views.resize(65, {{16, 16}, "initial-view"});
+        for (auto boundary : {Boundary::BUFFER, Boundary::MAPPING, Boundary::FLUSH})
+        {
+            shadow_fault::boundary = boundary;
+            // Scene backing accepts two buffers plus staging; only the two scene buffers flush.
+            shadow_fault::skip = boundary == Boundary::FLUSH ? 2 : 3;
+            const auto rejected_before = shadow_fault::rejected;
+            const auto rejected = renderer.addScene(config);
+            shadow_fault::boundary = Boundary::NONE;
+            assert(shadow_fault::rejected == rejected_before + 1);
+            const auto expected = boundary == Boundary::BUFFER
+                                      ? VK_ERROR_OUT_OF_DEVICE_MEMORY
+                                      : VK_ERROR_MEMORY_MAP_FAILED;
+            assert(!rejected && isError<err::device::VulkanCallFailed>(rejected.error()));
+            assert(rejected.error().args[0] == encodeVkResult(expected));
+            assert(renderer.getScene(existing->scene_id) == existing_scene);
+        }
+        const auto retried = renderer.addScene(config);
+        assert(retried && retried->scene_id.index == existing->scene_id.index + 1);
+        assert(retried->view_handles.size() == 65);
+        for (const auto view : retried->view_handles)
+        {
+            assert(renderer.getScene(retried->scene_id)->getView(view)->view_slot.isValid());
+        }
+        std::puts("Initial views: exact late failure, no Scene ID publication, accepted scene retained and retry PASS");
+    }
+    queue.flushAll();
+    assert(shadow_fault::live_buffers.size() == baseline && shadow_fault::live_pools.size() == baseline_pools);
+    {
         auto created = TransferScheduler::create({device.vmaAllocator(), 256, 2});
         assert(created);
         auto scheduler = std::move(*created);
@@ -172,7 +249,9 @@ int main()
         auto* accepted = renderer.getScene(first->scene_id);
         assert(accepted);
         assert(accepted->addFeature<LifetimeFeature>(counts));
-        const auto view = accepted->addView({{16, 16}, "lifetime-view"});
+        const auto view_result = accepted->addView({{16, 16}, "lifetime-view"});
+        assert(view_result);
+        const auto view = *view_result;
         assert(accepted->getView(view) && counts.allocated == 1);
         shadow_fault::reject_scene_ring = true;
         const auto rejected = renderer.addScene({});

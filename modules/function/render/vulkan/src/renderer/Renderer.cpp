@@ -47,6 +47,10 @@ namespace lux::render
 
     Expected<AddSceneResult> Renderer::addScene(RenderScene::Config config)
     {
+        if (!scenes_.prepareInsert(1))
+        {
+            return renderFailure<err::memory::CapacityExhausted>();
+        }
         auto initial_views = std::move(config.initial_views);
         auto prepared = RenderScene::create(ctx_, config);
         if (!prepared)
@@ -56,17 +60,20 @@ namespace lux::render
         auto scene = std::move(*prepared);
         auto* scene_ptr = scene.get();
         scene_ptr->bindFeatureTypeRegistry(feature_type_registry_);
-        // SlotKeyAutoSparseSet::insert assigns a generational RenderSceneId.
-        auto scene_id = scenes_.insert(std::move(scene));
-        // 回填,好让场景自发上报的诊断说得清是哪个场景(见 RenderScene::sceneId)。
-        scene_ptr->setSceneId(scene_id);
-
-        AddSceneResult result{scene_id};
+        AddSceneResult result{};
         result.view_handles.reserve(initial_views.size());
         for (auto& vi : initial_views)
         {
-            result.view_handles.push_back(scene_ptr->addView(vi));
+            auto view = scene_ptr->addView(vi);
+            if (!view)
+            {
+                return lux::cxx::unexpected(view.error());
+            }
+            result.view_handles.push_back(*view);
         }
+        // Publish only after all mandatory initial views have complete GPU backing.
+        result.scene_id = scenes_.insert(std::move(scene));
+        scene_ptr->setSceneId(result.scene_id);
         return result;
     }
 

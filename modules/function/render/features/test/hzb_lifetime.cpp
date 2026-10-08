@@ -33,7 +33,9 @@ int main()
     auto made_scene = RenderScene::create(*context);
     assert(made_scene);
     auto& scene = **made_scene;
-    const auto view = scene.addView({{8, 8}, "hzb-view"});
+    const auto view_result = scene.addView({{8, 8}, "hzb-view"});
+    assert(view_result);
+    const auto view = *view_result;
     auto installed = scene.addFeature<HzbFeature>();
     assert(installed);
     auto& feature = *scene.getFeatureAs<HzbFeature>(*installed);
@@ -102,7 +104,9 @@ int main()
     assert(checked == 37);
     feature.onFrameBegin({});
     assert(hzb->viewReady(view.index) && hzb->width(view.index) == 16 && errors.empty());
-    const auto second = scene.addView({{4, 2}, "hzb-second"});
+    const auto second_result = scene.addView({{4, 2}, "hzb-second"});
+    assert(second_result);
+    const auto second = *second_result;
     feature.onFrameBegin({});
     assert(hzb->viewReady(second.index) && hzb->width(second.index) == 4);
     assert(scene.removeView(second) && !hzb->viewReady(second.index));
@@ -111,7 +115,9 @@ int main()
     assert(!hzb->viewReady(view.index));
     // The scene must not retain callbacks borrowing the destroyed feature's mip-set map.
     assert(scene.removeView(view));
-    const auto third = scene.addView({{4, 4}, "hzb-reinstalled"});
+    const auto third_result = scene.addView({{4, 4}, "hzb-reinstalled"});
+    assert(third_result);
+    const auto third = *third_result;
     const auto reinstalled = scene.addFeature<HzbFeature>();
     assert(reinstalled);
     scene.getFeatureAs<HzbFeature>(*reinstalled)->onFrameBegin({});

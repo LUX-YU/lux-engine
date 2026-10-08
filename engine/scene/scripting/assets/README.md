@@ -21,8 +21,15 @@ codec inputs and task results. Raw reading uses `portSender`; typed reading uses
 A result token contains a native scope identity and a generation-checked slot. It is an alias,
 not a reference count. Explicit release invalidates every copy. Peer instances, recycled slots and
 revoked scopes reject old tokens. Scope destruction does not wait for IO and does not stop peer
-scopes. The provider's host-boundary destruction revokes all scopes and joins its own TaskScope;
-it must not be destroyed from a callback running inside that same scope.
+scopes. Provider destruction closes admission, requests cancellation and revokes its scopes without
+joining or collecting completions. Accepted tasks own the captured inputs, completion state and code
+needed to finish through the original ExecutionRuntime. The runtime outlives this accepted work;
+its explicit shutdown remains the synchronization boundary.
+
+Completion, wake and result-cleanup callbacks may remove the provider or scope. Synchronous calls
+retain only the private storage needed until that invocation returns. Revocation is immediate;
+these temporary references do not admit new work or keep the public provider alive. An externally
+held revoked scope retains neither result budget nor the provider's read endpoint.
 
 The native completion records a small `ScriptAssetReadOutcome` through the original ScriptAbility
 completion. Expected storage/codec failures are values, not script faults. The original structured

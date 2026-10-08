@@ -6,8 +6,8 @@
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 #include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
-#include <lux/engine/scene/scripting/ScriptAssetAccess.hpp>
 #include <lux/engine/scene/script_runtime/visibility.h>
+#include <lux/engine/scene/scripting/ScriptAssetAccess.hpp>
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/scripting/DeferredScriptHost.hpp>
@@ -25,9 +25,6 @@ namespace lux::scene
     enum class EScriptRealDelayProviderError : std::uint8_t
     {
         INVALID_ARGUMENT,
-        ALLOCATION_FAILURE,
-        STOPPING,
-        INVALID_STATE,
     };
 
     class LUX_ENGINE_SCENE_SCRIPT_RUNTIME_PUBLIC ScriptRealDelayProvider final
@@ -45,27 +42,28 @@ namespace lux::scene
         ~ScriptRealDelayProvider() noexcept;
         ScriptRealDelayProvider(const ScriptRealDelayProvider&) = delete;
         ScriptRealDelayProvider& operator=(const ScriptRealDelayProvider&) = delete;
+        ScriptRealDelayProvider(ScriptRealDelayProvider&&) = delete;
+        ScriptRealDelayProvider& operator=(ScriptRealDelayProvider&&) = delete;
 
+        // Synchronous borrow, valid only during this provider's lifetime. Runtime outlives accepted work.
         [[nodiscard]] simulation::script::ScriptRealDelayEndpoint endpoint() noexcept;
         [[nodiscard]] bool drainCompletions() noexcept;
-        void requestStop() noexcept;
-        [[nodiscard]] lux::cxx::expected<void, EScriptRealDelayProviderError> join() noexcept;
 
     private:
         struct Impl;
-        explicit ScriptRealDelayProvider(std::unique_ptr<Impl> impl) noexcept;
+        explicit ScriptRealDelayProvider(std::shared_ptr<Impl> impl) noexcept;
         [[nodiscard]] lux::script::ScriptAbilityStartResult start(
             std::chrono::nanoseconds duration,
             lux::script::TScriptAbilityCompletion<void> completion
         ) noexcept;
-        std::unique_ptr<Impl> impl_;
+        // Only synchronous calls retain Impl across callbacks. Accepted tasks own individual requests.
+        std::shared_ptr<Impl> impl_;
     };
 
     struct ScriptRuntimeHost final
     {
-        using AssetCapabilityFactory = simulation::script::ScriptApiCapabilityPublication (*)(
-            script::ScriptAssetAccess&
-        ) noexcept;
+        using AssetCapabilityFactory =
+            simulation::script::ScriptApiCapabilityPublication (*)(script::ScriptAssetAccess&) noexcept;
         process::ExecutionRuntime& execution;
         simulation::script::ScriptRuntimeLimits limits;
         scene::script::ScriptSystemCodecLimits codec_limits;
@@ -142,7 +140,7 @@ namespace lux::scene
         std::unique_ptr<scene::script::ScriptSystemDescription> description_;
         std::unique_ptr<simulation::ecs::EcsCommandBuffer> commands_;
         std::unique_ptr<simulation::script::DeferredScriptHost> host_;
-        // System bindings are retired before the native task scope joins at destruction.
+        // System bindings are retired before native admission closes; Runtime collects accepted work.
         std::unique_ptr<script::ScriptAssetAccess> assets_;
         simulation::script::ScriptSystem system_;
         std::optional<simulation::script::ScriptSystem::ExecutionRegion> execution_region_;

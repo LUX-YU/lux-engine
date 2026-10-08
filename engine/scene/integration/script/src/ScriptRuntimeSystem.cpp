@@ -34,18 +34,12 @@ namespace lux::scene
             };
             constexpr error::ErrorId SceneScriptStop = error::errorId(SceneScriptStopDescriptor.name);
         } // namespace Errors
+
         constexpr error::ErrorDescriptor ErrorDescriptors[]{Errors::SceneScriptStopDescriptor};
     } // namespace
 
     struct ScriptRealDelayProvider::Impl final
     {
-        enum class EState : std::uint8_t
-        {
-            ACTIVE,
-            STOPPING,
-            JOINED,
-        };
-
         enum class ETerminal : std::uint8_t
         {
             PENDING,
@@ -66,7 +60,7 @@ namespace lux::scene
             process::TimerClient timer_value,
             std::size_t capacity_value
         ) noexcept
-            : timer(std::move(timer_value)), tasks(execution), capacity(capacity_value)
+            : timer(std::move(timer_value)), capacity(capacity_value), tasks(execution)
         {
         }
 
@@ -74,7 +68,7 @@ namespace lux::scene
         std::mutex mutex;
         std::vector<std::shared_ptr<Request>> requests;
         std::size_t capacity{};
-        EState state{EState::ACTIVE};
+        bool delivering{};
         process::TaskScope tasks;
     };
 
@@ -335,7 +329,7 @@ namespace lux::scene
         }
     } // namespace
 
-    ScriptRealDelayProvider::ScriptRealDelayProvider(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
+    ScriptRealDelayProvider::ScriptRealDelayProvider(std::shared_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
     ScriptRealDelayProvider::CreateResult ScriptRealDelayProvider::create(
         process::ExecutionRuntime& execution,
@@ -343,24 +337,23 @@ namespace lux::scene
         std::size_t capacity
     ) noexcept
     {
-        if (!timer || capacity == 0U)
+        const bool is_invalid_input = !timer || capacity == 0U;
+        if (is_invalid_input)
         {
             return lux::cxx::unexpected(EScriptRealDelayProviderError::INVALID_ARGUMENT);
         }
-        auto impl = std::make_unique<Impl>(execution, std::move(timer), capacity);
+        auto impl = std::make_shared<Impl>(execution, std::move(timer), capacity);
         impl->requests.reserve(capacity);
         return std::unique_ptr<ScriptRealDelayProvider>(new ScriptRealDelayProvider(std::move(impl)));
     }
 
     ScriptRealDelayProvider::~ScriptRealDelayProvider() noexcept
     {
-        if (impl_->state != Impl::EState::JOINED)
+        impl_->tasks.requestStop();
+        std::vector<std::shared_ptr<Impl::Request>> removed;
         {
-            requestStop();
-            if (!join())
-            {
-                std::terminate();
-            }
+            std::lock_guard lock{impl_->mutex};
+            removed.swap(impl_->requests);
         }
     }
 
@@ -369,8 +362,11 @@ namespace lux::scene
         lux::script::TScriptAbilityCompletion<void> completion
     ) noexcept
     {
+        const auto impl = impl_;
         using simulation::script::EScriptDelayStatus;
-        if (duration <= std::chrono::nanoseconds::zero() || !completion.active())
+        const bool is_valid_duration = duration > std::chrono::nanoseconds::zero();
+        const bool has_active_completion = is_valid_duration && completion.active();
+        if (!has_active_completion)
         {
             return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
                 static_cast<std::int32_t>(EScriptDelayStatus::INVALID_DURATION)
@@ -381,26 +377,20 @@ namespace lux::scene
         request->completion = std::move(completion);
 
         {
-            std::lock_guard lock{impl_->mutex};
-            if (impl_->state != Impl::EState::ACTIVE)
-            {
-                return lux::cxx::unexpected(
-                    lux::script::ScriptAbilityOperationError{static_cast<std::int32_t>(EScriptDelayStatus::STOPPING)}
-                );
-            }
-            if (impl_->requests.size() >= impl_->capacity)
+            std::lock_guard lock{impl->mutex};
+            if (impl->requests.size() >= impl->capacity)
             {
                 return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
                     static_cast<std::int32_t>(EScriptDelayStatus::CAPACITY_EXCEEDED)
                 });
             }
-            impl_->requests.push_back(request);
+            impl->requests.push_back(request);
         }
 
         using TimerResult = lux::cxx::expected<void, process::ETimerError>;
-        const auto started = impl_->tasks.submit(
+        const auto started = impl->tasks.submit(
             {"Script delay", "script"},
-            [timer = impl_->timer, duration](process::TaskReporter) noexcept
+            [timer = impl->timer, duration](process::TaskReporter) noexcept
             {
                 auto elapsed = stdexec::then(timer.after(duration), []() noexcept { return TimerResult{}; });
                 return stdexec::upon_error(
@@ -439,8 +429,8 @@ namespace lux::scene
             return {};
         }
 
-        std::lock_guard lock{impl_->mutex};
-        std::erase(impl_->requests, request);
+        std::lock_guard lock{impl->mutex};
+        std::erase(impl->requests, request);
         const auto status = started.error() == process::EExecutionError::STOPPING
                                 ? EScriptDelayStatus::STOPPING
                                 : EScriptDelayStatus::CAPACITY_EXCEEDED;
@@ -459,19 +449,40 @@ namespace lux::scene
 
     bool ScriptRealDelayProvider::drainCompletions() noexcept
     {
+        const auto impl = impl_;
+        {
+            std::lock_guard lock{impl->mutex};
+            if (impl->delivering)
+            {
+                return true;
+            }
+            impl->delivering = true;
+        }
+
+        struct Delivery final
+        {
+            Impl& impl;
+
+            ~Delivery() noexcept
+            {
+                std::lock_guard lock{impl.mutex};
+                impl.delivering = false;
+            }
+        } delivery{*impl};
+
         for (;;)
         {
             std::shared_ptr<Impl::Request> request;
             Impl::ETerminal terminal{Impl::ETerminal::PENDING};
             {
-                std::lock_guard lock{impl_->mutex};
+                std::lock_guard lock{impl->mutex};
                 const auto found = std::find_if(
-                    impl_->requests.begin(),
-                    impl_->requests.end(),
+                    impl->requests.begin(),
+                    impl->requests.end(),
                     [](const auto& value)
                     { return value->terminal.load(std::memory_order_acquire) != Impl::ETerminal::PENDING; }
                 );
-                if (found == impl_->requests.end())
+                if (found == impl->requests.end())
                 {
                     return true;
                 }
@@ -482,56 +493,26 @@ namespace lux::scene
             const auto completed = terminal == Impl::ETerminal::READY
                                        ? request->completion.success()
                                        : request->completion.fail({request->status.load(std::memory_order_acquire)});
-            if (!completed && completed.error() == lux::script::EScriptAbilityCompletionError::BACKPRESSURE)
+            const bool is_backpressure =
+                !completed && completed.error() == lux::script::EScriptAbilityCompletionError::BACKPRESSURE;
+            if (is_backpressure)
             {
                 return true;
             }
 
             {
-                std::lock_guard lock{impl_->mutex};
-                std::erase(impl_->requests, request);
+                std::lock_guard lock{impl->mutex};
+                std::erase(impl->requests, request);
             }
-            if (!completed && completed.error() != lux::script::EScriptAbilityCompletionError::STALE &&
+            const bool is_unexpected_failure =
+                !completed && completed.error() != lux::script::EScriptAbilityCompletionError::STALE &&
                 completed.error() != lux::script::EScriptAbilityCompletionError::STOPPING &&
-                completed.error() != lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED)
+                completed.error() != lux::script::EScriptAbilityCompletionError::ALREADY_COMPLETED;
+            if (is_unexpected_failure)
             {
                 return false;
             }
         }
-    }
-
-    void ScriptRealDelayProvider::requestStop() noexcept
-    {
-        {
-            std::lock_guard lock{impl_->mutex};
-            if (impl_->state != Impl::EState::ACTIVE)
-            {
-                return;
-            }
-            impl_->state = Impl::EState::STOPPING;
-        }
-        impl_->tasks.requestStop();
-    }
-
-    lux::cxx::expected<void, EScriptRealDelayProviderError> ScriptRealDelayProvider::join() noexcept
-    {
-        {
-            std::lock_guard lock{impl_->mutex};
-            if (impl_->state != Impl::EState::STOPPING)
-            {
-                return lux::cxx::unexpected(EScriptRealDelayProviderError::INVALID_STATE);
-            }
-        }
-        if (!impl_->tasks.join())
-        {
-            return lux::cxx::unexpected(EScriptRealDelayProviderError::INVALID_STATE);
-        }
-        {
-            std::lock_guard lock{impl_->mutex};
-            impl_->requests.clear();
-            impl_->state = Impl::EState::JOINED;
-        }
-        return {};
     }
 
     struct ScriptRuntimeSystem::Loader final
@@ -701,7 +682,6 @@ namespace lux::scene
     ScriptRuntimeSystem::~ScriptRuntimeSystem() noexcept
     {
         hook_connection_.reset();
-        real_delay_->requestStop();
         if (!beginCommands())
         {
             std::terminate();
@@ -712,10 +692,6 @@ namespace lux::scene
         }
         endCommands();
         if (!commitCommands())
-        {
-            std::terminate();
-        }
-        if (!real_delay_->join())
         {
             std::terminate();
         }

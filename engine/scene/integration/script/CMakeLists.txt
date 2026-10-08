@@ -42,6 +42,18 @@ lux_engine_install_components(
     COMPONENTS   scene_script_runtime
 )
 
+if(BUILD_TESTING)
+    add_executable(scene_script_delay_lifetime_test test/real_delay_lifetime.cpp)
+    target_link_libraries(scene_script_delay_lifetime_test PRIVATE scene_script_runtime)
+    if(MSVC)
+        target_compile_options(scene_script_delay_lifetime_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(scene_script_delay_lifetime_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME scene.script_delay_lifetime COMMAND scene_script_delay_lifetime_test)
+    set_tests_properties(scene.script_delay_lifetime PROPERTIES TIMEOUT 30 LABELS "native;LR05")
+endif()
+
 if(BUILD_TESTING AND TARGET simulation_script_lua)
     include(${PROJECT_SOURCE_DIR}/engine/toolchain/lua/cmake/lux_package_lua_script.cmake)
     lux_package_lua_script(

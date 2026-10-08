@@ -23,6 +23,8 @@
 #include <lux/engine/function/render/client/UploadLifecycle.hpp>
 #include <lux/engine/function/visibility.h>
 
+#include <lux/engine/render/gpu/memory/StagingBuffer.hpp>
+
 #include <vulkan/vulkan.h>
 
 #include <array>
@@ -173,9 +175,9 @@ namespace lux::render
         uint32_t retained_batch_slot{UINT32_MAX};
         VkDeviceSize stg_size{0};
 
-        // Staging buffer — render thread retires after frame fence.
-        VkBuffer stg_buf{VK_NULL_HANDLE};
-        VmaAllocation stg_alloc{nullptr};
+        // Unique staging allocation. Submitted results must stay in the original pending queue
+        // until its timeline completes; graphics followup moves this owner to that retirement batch.
+        StagingBuffer staging;
 
         union {
             struct
@@ -211,13 +213,12 @@ namespace lux::render
             } texture;
         };
 
-        TransferCompletion()
-        {
-            std::memset(this, 0, sizeof(*this));
-            request_id = UINT32_MAX;
-            retained_batch_slot = UINT32_MAX;
-            requires_queue_family_ownership_transfer = true;
-        }
+        TransferCompletion() noexcept : texture{} {}
+
+        TransferCompletion(const TransferCompletion&) = delete;
+        TransferCompletion& operator=(const TransferCompletion&) = delete;
+        TransferCompletion(TransferCompletion&&) noexcept = default;
+        TransferCompletion& operator=(TransferCompletion&&) noexcept = default;
     };
 
     // =========================================================================

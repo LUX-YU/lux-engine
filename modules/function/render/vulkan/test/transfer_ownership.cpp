@@ -1,14 +1,19 @@
 #include <lux/engine/gapi/vk/vk.hpp>
+#include <lux/engine/render/gpu/memory/StagingBuffer.hpp>
 
 #include <vulkan/vulkan.h>
 
+#include <atomic>
 #include <cassert>
+#include <chrono>
 #include <cstdio>
+#include <mutex>
 #include <system_error>
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
+#include <vk_mem_alloc.h>
 
 namespace
 {
@@ -24,6 +29,41 @@ namespace
         return std::thread(std::forward<F>(function));
     }
 #endif
+
+    std::mutex staging_mutex;
+    std::unordered_map<VkBuffer, VmaAllocation> staging_allocations;
+    std::atomic<bool> reject_mapping{};
+
+    VkResult createStaging(
+        VmaAllocator allocator,
+        const VkBufferCreateInfo* buffer_info,
+        const VmaAllocationCreateInfo* allocation_info,
+        VkBuffer* buffer,
+        VmaAllocation* allocation,
+        VmaAllocationInfo* info
+    )
+    {
+        const auto result = vmaCreateBuffer(allocator, buffer_info, allocation_info, buffer, allocation, info);
+        if (result == VK_SUCCESS)
+        {
+            const std::lock_guard lock(staging_mutex);
+            assert(staging_allocations.emplace(*buffer, *allocation).second);
+            if (reject_mapping.load())
+            {
+                info->pMappedData = nullptr;
+            }
+        }
+        return result;
+    }
+
+    void destroyStaging(VmaAllocator allocator, VkBuffer buffer, VmaAllocation allocation)
+    {
+        const std::lock_guard lock(staging_mutex);
+        const auto it = staging_allocations.find(buffer);
+        assert(it != staging_allocations.end() && it->second == allocation);
+        staging_allocations.erase(it);
+        vmaDestroyBuffer(allocator, buffer, allocation);
+    }
 
     std::unordered_map<VkSemaphore, VkDevice> semaphores;
     std::unordered_map<VkCommandPool, VkDevice> pools;
@@ -90,6 +130,9 @@ namespace
 
 // Run the actual worker and device path. Only creation faults and destruction accounting are injected.
 // clang-format off
+#define vmaCreateBuffer createStaging
+#define vmaDestroyBuffer destroyStaging
+#include "../src/gpu/memory/StagingBuffer.cpp"
 #define vkCreateSemaphore createSemaphore
 #define vkDestroySemaphore destroySemaphore
 #define vkCreateCommandPool createPool
@@ -104,6 +147,8 @@ namespace
 #undef vkCreateCommandPool
 #undef vkDestroySemaphore
 #undef vkCreateSemaphore
+#undef vmaDestroyBuffer
+#undef vmaCreateBuffer
 // clang-format on
 
 int main()
@@ -119,6 +164,10 @@ int main()
     static_assert(!std::is_default_constructible_v<GpuTransferPipeline>);
     static_assert(!std::is_move_constructible_v<GpuTransferPipeline>);
     static_assert(!std::is_copy_constructible_v<GpuTransferPipeline>);
+    static_assert(!std::is_copy_constructible_v<TransferCompletion>);
+    static_assert(!std::is_copy_assignable_v<TransferCompletion>);
+    static_assert(std::is_nothrow_move_constructible_v<TransferCompletion>);
+    static_assert(std::is_nothrow_move_assignable_v<TransferCompletion>);
     GpuTransferPipeline::Config config;
     config.device_ctx = &device;
     config.batch_slot_count = 3;
@@ -157,6 +206,156 @@ int main()
     }
     reject_thread = false;
 #endif
+    bool leaked_staging = false;
+    for (unsigned kind = 0; kind < 3; ++kind)
+    {
+        auto pipeline = GpuTransferPipeline::create(config);
+        assert(pipeline);
+        reject_mapping.store(true);
+        const auto pixels = std::make_shared<std::array<std::byte, 16>>();
+        if (kind == 0)
+        {
+            MeshTransferTask task{};
+            task.vbo_bytes = pixels->size();
+            task.vbo_data = pixels->data();
+            task.data_owner = pixels;
+            task.request_id = kind;
+            assert((*pipeline)->submitMeshTransfer(std::move(task)));
+        }
+        else if (kind == 1)
+        {
+            TextureTransferTask task{};
+            task.format = EPixelFormat::RGBA8_UNORM;
+            task.total_bytes = pixels->size();
+            task.mips[0] = {pixels, pixels->data(), pixels->size(), 2, 2, 0};
+            task.request_id = kind;
+            assert((*pipeline)->submitTextureTransfer(std::move(task)));
+        }
+        else
+        {
+            CubeTransferTask task{};
+            task.format = EPixelFormat::RGBA8_UNORM;
+            task.face_size = 2;
+            task.face_bytes = pixels->size();
+            task.request_id = kind;
+            for (auto& face : task.faces)
+            {
+                face = {pixels, pixels->data()};
+            }
+            assert((*pipeline)->submitCubeTransfer(std::move(task)));
+        }
+        TransferCompletion completion;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while ((*pipeline)->drainResults(&completion, 1) == 0)
+        {
+            assert(std::chrono::steady_clock::now() < deadline);
+            std::this_thread::yield();
+        }
+        assert(completion.failed && completion.request_id == kind);
+        pipeline->reset();
+        reject_mapping.store(false);
+        const std::lock_guard lock(staging_mutex);
+        std::printf("mapping rejection kind=%u live staging=%zu\n", kind, staging_allocations.size());
+        leaked_staging = leaked_staging || !staging_allocations.empty();
+        // Clean up only after the original owner/worker has stopped; preserve the observed failure.
+        for (const auto& [buffer, allocation] : staging_allocations)
+        {
+            vmaDestroyBuffer(device.vmaAllocator(), buffer, allocation);
+        }
+        staging_allocations.clear();
+    }
+    if (leaked_staging)
+    {
+        return 1;
+    }
+
+    // Receive an actual submitted mesh copy, move its staging owner through result storage,
+    // then release it only after the original transfer completion boundary.
+    {
+        VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        buffer_info.size = 16;
+        buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+        const std::uint32_t families[]{device.graphicsQueueFamilyIndex(), device.transferQueueFamilyIndex()};
+        if (families[0] != families[1])
+        {
+            buffer_info.sharingMode = VK_SHARING_MODE_CONCURRENT;
+            buffer_info.queueFamilyIndexCount = 2;
+            buffer_info.pQueueFamilyIndices = families;
+        }
+        VmaAllocationCreateInfo allocation_info{};
+        allocation_info.usage = VMA_MEMORY_USAGE_AUTO;
+        allocation_info.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+        VkBuffer destination{};
+        VmaAllocation allocation{};
+        VmaAllocationInfo mapped{};
+        assert(
+            vmaCreateBuffer(
+                device.vmaAllocator(),
+                &buffer_info,
+                &allocation_info,
+                &destination,
+                &allocation,
+                &mapped
+            ) == VK_SUCCESS
+        );
+        assert(mapped.pMappedData);
+        auto pipeline = GpuTransferPipeline::create(config);
+        assert(pipeline);
+        const auto bytes = std::make_shared<std::array<std::byte, 16>>();
+        bytes->fill(std::byte{0x4d});
+        MeshTransferTask task{};
+        task.vbo_buf = destination;
+        task.vbo_bytes = bytes->size();
+        task.vbo_data = bytes->data();
+        task.data_owner = bytes;
+        task.request_id = 31;
+        assert((*pipeline)->submitMeshTransfer(std::move(task)));
+        TransferCompletion completion;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while ((*pipeline)->drainResults(&completion, 1) == 0)
+        {
+            assert(std::chrono::steady_clock::now() < deadline);
+            std::this_thread::yield();
+        }
+        assert(!completion.failed && completion.gpu_copy_recorded && completion.request_id == 31);
+        if (completion.timeline_value != 0)
+        {
+            const auto semaphore = (*pipeline)->timelineSemaphore();
+            VkSemaphoreWaitInfo wait{VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
+            wait.semaphoreCount = 1;
+            wait.pSemaphores = &semaphore;
+            wait.pValues = &completion.timeline_value;
+            assert(vkWaitSemaphores(device.logicalDevice(), &wait, UINT64_MAX) == VK_SUCCESS);
+        }
+        assert(vmaInvalidateAllocation(device.vmaAllocator(), allocation, 0, 16) == VK_SUCCESS);
+        assert(std::memcmp(mapped.pMappedData, bytes->data(), bytes->size()) == 0);
+        const auto staging = completion.staging.buffer();
+        {
+            std::vector<TransferCompletion> pending;
+            pending.push_back(std::move(completion));
+            assert(!completion.staging.valid());
+            assert(pending.front().staging.buffer() == staging);
+            TransferCompletion adopted = std::move(pending.front());
+            pending.clear();
+            {
+                const std::lock_guard lock(staging_mutex);
+                assert(staging_allocations.size() == 1 && staging_allocations.contains(staging));
+            }
+            // This is the same final move used by the graphics-followup retirement vector.
+            std::vector<StagingBuffer> retirement;
+            retirement.push_back(std::move(adopted.staging));
+            assert(!adopted.staging.valid());
+            retirement.clear();
+        }
+        {
+            const std::lock_guard lock(staging_mutex);
+            assert(staging_allocations.empty());
+        }
+        pipeline->reset();
+        vmaDestroyBuffer(device.vmaAllocator(), destination, allocation);
+        std::puts("PASS submitted copy bytes, move-only completion and exact staging retirement");
+    }
+
     for (unsigned iteration = 0; iteration < 128; ++iteration)
     {
         {

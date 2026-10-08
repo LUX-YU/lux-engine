@@ -69,8 +69,7 @@ namespace lux::render
         // Internal helpers for common worker patterns.
         struct StagingResult
         {
-            VkBuffer buf{VK_NULL_HANDLE};
-            VmaAllocation alloc{nullptr};
+            StagingBuffer owner;
             void* mapped{nullptr};
         };
 

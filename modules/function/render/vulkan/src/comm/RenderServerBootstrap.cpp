@@ -541,7 +541,7 @@ namespace lux::render
                 n = transfer_pipeline_->drainResults(completion_buf_, kMaxDrainBatch);
                 for (uint32_t i = 0; i < n; ++i)
                 {
-                    pending_completions_.push_back(completion_buf_[i]);
+                    pending_completions_.push_back(std::move(completion_buf_[i]));
                 }
             } while (n > 0);
 

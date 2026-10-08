@@ -386,7 +386,7 @@ namespace lux::render
         if (vmaCreateBuffer(vma_, &bci, &aci, &buf, &alloc, &info) != VK_SUCCESS)
             return {};
 
-        return {buf, alloc, info.pMappedData};
+        return {StagingBuffer(vma_, buf, alloc), info.pMappedData};
     }
 
     uint32_t GpuTransferPipeline::State::drainResults(TransferCompletion* out, uint32_t max)
@@ -474,7 +474,7 @@ namespace lux::render
                 fc.request_id = request_id;
                 fc.resource_handle = resource_handle;
                 fc.resource_gen = resource_gen;
-                out[count++] = fc;
+                out[count++] = std::move(fc);
                 continue;
             }
 
@@ -555,8 +555,7 @@ namespace lux::render
             if (c.texture.image != VK_NULL_HANDLE)
                 vmaDestroyImage(vma_, c.texture.image, c.texture.image_alloc);
         }
-        if (c.stg_buf != VK_NULL_HANDLE)
-            vmaDestroyBuffer(vma_, c.stg_buf, c.stg_alloc);
+        c.staging.reset();
     }
 
     // Compile-time verification of the format-size contract the cube-stride bug
@@ -962,7 +961,6 @@ namespace lux::render
             // batch slot, and settle the request as failed; no future waiter
             // may depend on a slot that never reaches SUBMITTED.
             const auto fail_cmd = [&] {
-                vmaDestroyBuffer(vma_, stg.buf, stg.alloc);
                 releaseBatchSlot(batch_slot);
                 fail();
             };
@@ -990,7 +988,7 @@ namespace lux::render
             vbo_region.srcOffset = 0;
             vbo_region.dstOffset = task.vbo_offset;
             vbo_region.size = task.vbo_bytes;
-            vkCmdCopyBuffer(tcb, stg.buf, task.vbo_buf, 1, &vbo_region);
+            vkCmdCopyBuffer(tcb, stg.owner.buffer(), task.vbo_buf, 1, &vbo_region);
 
             // IBO copy
             if (task.ibo_bytes > 0)
@@ -999,7 +997,7 @@ namespace lux::render
                 ibo_region.srcOffset = task.vbo_bytes;
                 ibo_region.dstOffset = task.ibo_offset;
                 ibo_region.size = task.ibo_bytes;
-                vkCmdCopyBuffer(tcb, stg.buf, task.ibo_buf, 1, &ibo_region);
+                vkCmdCopyBuffer(tcb, stg.owner.buffer(), task.ibo_buf, 1, &ibo_region);
             }
 
             // 4. Finish recording — the render thread submits it (no worker submit).
@@ -1017,8 +1015,7 @@ namespace lux::render
             tc.request_id = task.request_id;
             tc.resource_handle = task.mesh_index;
             tc.resource_gen = task.resource_gen;
-            tc.stg_buf = stg.buf;
-            tc.stg_alloc = stg.alloc;
+            tc.staging = std::move(stg.owner);
             tc.mesh.vbo_buf = task.vbo_buf;
             tc.mesh.vbo_offset = task.vbo_offset;
             tc.mesh.vbo_size = task.vbo_bytes;
@@ -1071,8 +1068,7 @@ namespace lux::render
             tc.request_id = task.request_id;
             tc.resource_handle = task.mesh_index;
             tc.resource_gen = task.resource_gen;
-            tc.stg_buf = stg.buf;
-            tc.stg_alloc = stg.alloc;
+            tc.staging = std::move(stg.owner);
             tc.mesh.vbo_buf = task.vbo_buf;
             tc.mesh.vbo_offset = task.vbo_offset;
             tc.mesh.vbo_size = task.vbo_bytes;
@@ -1239,7 +1235,6 @@ namespace lux::render
                 vkDestroySampler(device_, sampler, nullptr);
                 vkDestroyImageView(device_, view, nullptr);
                 vmaDestroyImage(vma_, image, image_alloc);
-                vmaDestroyBuffer(vma_, stg.buf, stg.alloc);
                 releaseBatchSlot(batch_slot);
                 fail();
             };
@@ -1287,7 +1282,7 @@ namespace lux::render
                 copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, uploaded_mips[i].mip_level, 0, 1};
                 copy.imageExtent = {uploaded_mips[i].width, uploaded_mips[i].height, 1};
                 VkCopyBufferToImageInfo2 copy_info{VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2};
-                copy_info.srcBuffer = stg.buf;
+                copy_info.srcBuffer = stg.owner.buffer();
                 copy_info.dstImage = image;
                 copy_info.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
                 copy_info.regionCount = 1;
@@ -1446,8 +1441,7 @@ namespace lux::render
             tc.resource_handle = task.slot_index;
             tc.resource_gen = task.resource_gen;
             tc.logical_base_mip = task.logical_base_mip;
-            tc.stg_buf = stg.buf;
-            tc.stg_alloc = stg.alloc;
+            tc.staging = std::move(stg.owner);
             tc.stg_size = total_bytes;
             tc.texture.image = image;
             tc.texture.image_alloc = image_alloc;
@@ -1479,8 +1473,7 @@ namespace lux::render
             tc.resource_handle = task.slot_index;
             tc.resource_gen = task.resource_gen;
             tc.logical_base_mip = task.logical_base_mip;
-            tc.stg_buf = stg.buf;
-            tc.stg_alloc = stg.alloc;
+            tc.staging = std::move(stg.owner);
             tc.stg_size = total_bytes;
             tc.texture.image = image;
             tc.texture.image_alloc = image_alloc;
@@ -1638,7 +1631,6 @@ namespace lux::render
                 vkDestroySampler(device_, sampler, nullptr);
                 vkDestroyImageView(device_, view, nullptr);
                 vmaDestroyImage(vma_, image, image_alloc);
-                vmaDestroyBuffer(vma_, stg.buf, stg.alloc);
                 releaseBatchSlot(batch_slot);
                 fail();
             };
@@ -1687,7 +1679,7 @@ namespace lux::render
                 region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, f, 1};
                 region.imageExtent = {static_cast<uint32_t>(task.face_size), static_cast<uint32_t>(task.face_size), 1};
                 VkCopyBufferToImageInfo2 ci{VK_STRUCTURE_TYPE_COPY_BUFFER_TO_IMAGE_INFO_2};
-                ci.srcBuffer = stg.buf;
+                ci.srcBuffer = stg.owner.buffer();
                 ci.dstImage = image;
                 ci.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
                 ci.regionCount = 1;
@@ -1747,8 +1739,7 @@ namespace lux::render
             tc.request_id = task.request_id;
             tc.resource_handle = task.slot_index;
             tc.resource_gen = task.resource_gen;
-            tc.stg_buf = stg.buf;
-            tc.stg_alloc = stg.alloc;
+            tc.staging = std::move(stg.owner);
             tc.texture.image = image;
             tc.texture.image_alloc = image_alloc;
             tc.texture.view = view;
@@ -1777,8 +1768,7 @@ namespace lux::render
             tc.request_id = task.request_id;
             tc.resource_handle = task.slot_index;
             tc.resource_gen = task.resource_gen;
-            tc.stg_buf = stg.buf;
-            tc.stg_alloc = stg.alloc;
+            tc.staging = std::move(stg.owner);
             tc.texture.image = image;
             tc.texture.image_alloc = image_alloc;
             tc.texture.view = view;

@@ -513,17 +513,14 @@ namespace lux::render
             // MeshResources gone (teardown) — can't finalize. Free the staging so it is
             // not leaked, and report Failed so the caller neither claims success nor
             // retires the staging again.
-            if (c.stg_buf != VK_NULL_HANDLE)
-            {
-                vmaDestroyBuffer(dev_ctx_->vmaAllocator(), c.stg_buf, c.stg_alloc);
-            }
+            c.staging.reset();
             return EFinalizeDisposition::FAILED;
         }
 
         if (!c.gpu_copy_recorded)
         {
             MeshResources::PendingStagingCopy sc{};
-            sc.stg_buf = c.stg_buf;
+            sc.stg_buf = c.staging.buffer();
             sc.vbo_dst = c.mesh.vbo_buf;
             sc.vbo_stg_offset = 0;
             sc.vbo_dst_offset = c.mesh.vbo_offset;
@@ -610,7 +607,7 @@ namespace lux::render
         {
             install();
             BindlessCombinedSet::PendingStagingTexture st{};
-            st.stg_buf = c.stg_buf;
+            st.stg_buf = c.staging.buffer();
             st.stg_size = c.stg_size;
             st.slot_index = c.texture.slot_index;
             st.do_mips = c.texture.needs_mip_gen;
@@ -682,7 +679,7 @@ namespace lux::render
                 c.texture.height
             );
             BindlessCombinedSet::PendingStagingTexture st{};
-            st.stg_buf = c.stg_buf;
+            st.stg_buf = c.staging.buffer();
             st.stg_size = c.stg_size;
             st.slot_index = c.texture.slot_index;
             st.do_mips = false;
@@ -792,15 +789,15 @@ namespace lux::render
                     pending_deferred_replies_.push_back(reply);
                 }
             }
-            if (c.stg_buf != VK_NULL_HANDLE)
+            if (c.staging.valid())
             {
                 if (needs_graphics_finalize)
                 {
-                    graphics_finalize_staging_batch_.emplace_back(dev_ctx_->vmaAllocator(), c.stg_buf, c.stg_alloc);
+                    graphics_finalize_staging_batch_.push_back(std::move(c.staging));
                 }
                 else
                 {
-                    vmaDestroyBuffer(dev_ctx_->vmaAllocator(), c.stg_buf, c.stg_alloc);
+                    c.staging.reset();
                 }
             }
             graphics_finalize_required_ = graphics_finalize_required_ || needs_graphics_finalize;
@@ -875,7 +872,7 @@ namespace lux::render
         }
     }
 
-    void GeneralRenderServer::Impl::freeCompletionTextureGpu(const TransferCompletion& c)
+    void GeneralRenderServer::Impl::freeCompletionTextureGpu(TransferCompletion& c)
     {
         auto vma = dev_ctx_->vmaAllocator();
         VkDevice dev = dev_ctx_->logicalDevice();
@@ -885,22 +882,16 @@ namespace lux::render
         {
             vmaDestroyImage(vma, c.texture.image, c.texture.image_alloc);
         }
-        if (c.stg_buf != VK_NULL_HANDLE)
-        {
-            vmaDestroyBuffer(vma, c.stg_buf, c.stg_alloc);
-        }
+        c.staging.reset();
     }
 
-    void GeneralRenderServer::Impl::destroyUnfinalizedCompletion(const TransferCompletion& c)
+    void GeneralRenderServer::Impl::destroyUnfinalizedCompletion(TransferCompletion& c)
     {
         // MUST branch on kind: reading c.texture.* on a mesh completion mis-reads the
         // union. Mesh holds only staging; texture/cube hold image/view/sampler + staging.
         if (c.kind == TransferCompletion::EKind::MESH_BUFFER)
         {
-            if (c.stg_buf != VK_NULL_HANDLE)
-            {
-                vmaDestroyBuffer(dev_ctx_->vmaAllocator(), c.stg_buf, c.stg_alloc);
-            }
+            c.staging.reset();
         }
         else
         {
@@ -1069,7 +1060,7 @@ namespace lux::render
                 auto& completion = completion_buf_[i];
                 if (upload_tracker_->observe(completion))
                 {
-                    pending_completions_.push_back(completion);
+                    pending_completions_.push_back(std::move(completion));
                 }
                 else
                 {
@@ -1233,7 +1224,7 @@ namespace lux::render
             }
             else
             {
-                pending_completions_.push_back(c);
+                pending_completions_.push_back(std::move(c));
             }
         }
         made_progress = submitGraphicsFinalizeBatch() || made_progress;

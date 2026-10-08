@@ -546,11 +546,11 @@ namespace lux::render
         /// Destroy the worker-created GPU objects (image/view/sampler + staging) of a
         /// texture/cube completion we will NOT finalize — dead/recycled slot or device
         /// loss — so they are not leaked.
-        void freeCompletionTextureGpu(const TransferCompletion& c);
+        void freeCompletionTextureGpu(TransferCompletion& c);
         /// Destroy ALL GPU objects a not-yet-finalized completion holds, dispatched by
         /// kind (mesh: staging only; texture/cube: image/view/sampler + staging) so the
         /// union is never mis-read. Used at teardown and on device loss.
-        void destroyUnfinalizedCompletion(const TransferCompletion& c);
+        void destroyUnfinalizedCompletion(TransferCompletion& c);
         [[nodiscard]] bool pollGraphicsFinalizes(std::uint64_t gpu_value);
         [[nodiscard]] bool submitGraphicsFinalizeBatch();
     };

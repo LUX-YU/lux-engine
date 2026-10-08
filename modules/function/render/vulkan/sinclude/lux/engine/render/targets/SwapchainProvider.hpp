@@ -19,6 +19,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <utility>
 #include <vector>
@@ -194,7 +195,6 @@ namespace lux::render
             uint32_t image_index = 0;
             VkExtent2D extent = {};
             VkFormat format = VK_FORMAT_UNDEFINED;
-            bool valid = false;
         };
 
         // ── Lifecycle ────────────────────────────────────────────
@@ -215,9 +215,9 @@ namespace lux::render
         // ── Swapchain operations ─────────────────────────────────
 
         /// Acquire the next swapchain image. Explicitly recoverable WSI states
-        /// are successful invalid values; permanent Vulkan failures retain their
+        /// are successful empty optionals; permanent Vulkan failures retain their
         /// VkResult in the Expected error.
-        [[nodiscard]] Expected<AcquiredImage> acquire(VkSemaphore signal_semaphore);
+        [[nodiscard]] Expected<std::optional<AcquiredImage>> acquire(VkSemaphore signal_semaphore);
 
         /// Present the given image.  Returns the VkResult for the caller to decide.
         [[nodiscard]] VkResult present(uint32_t image_index, VkSemaphore wait_semaphore);

@@ -156,11 +156,11 @@ namespace lux::render
                 {
                     return lux::cxx::unexpected<RenderError>(acquired.error());
                 }
-                const auto& acq = *acquired;
-                if (!acq.valid)
+                if (!*acquired)
                 {
                     continue; // 失败已按语义标记重建,跳过本帧
                 }
+                const auto& acq = **acquired;
 
                 FrameTickState::AcquiredSurface s{};
                 s.present = t.present.get();

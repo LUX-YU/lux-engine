@@ -410,7 +410,7 @@ namespace lux::render
         }
 
         // 3. Acquire swapchain image (if presenting).
-        PresentContext::Acquired acquired{};
+        std::optional<PresentContext::Acquired> acquired;
         if (present)
         {
             auto acquired_result = present->acquire();
@@ -419,7 +419,7 @@ namespace lux::render
                 return lux::cxx::unexpected<RenderError>(acquired_result.error());
             }
             acquired = *acquired_result;
-            if (!acquired.valid)
+            if (!acquired)
             {
                 // Only rebuild if the provider explicitly reports rebuild need.
                 if (!present->needsRebuild())
@@ -448,7 +448,7 @@ namespace lux::render
                     return lux::cxx::unexpected<RenderError>(acquired_result.error());
                 }
                 acquired = *acquired_result;
-                if (!acquired.valid)
+                if (!acquired)
                 {
                     return FrameRuntime{};
                 }
@@ -473,14 +473,14 @@ namespace lux::render
 
         if (present)
         {
-            rt.image_index = acquired.image_index;
-            rt.stamp.image_index = acquired.image_index;
-            rt.present_image = acquired.image;
-            rt.present_view = acquired.view;
-            rt.present_extent = acquired.extent;
+            rt.image_index = acquired->image_index;
+            rt.stamp.image_index = acquired->image_index;
+            rt.present_image = acquired->image;
+            rt.present_view = acquired->view;
+            rt.present_extent = acquired->extent;
             rt.is_present_frame = true;
-            rt.present_acquire_sem = acquired.acquire_sem;
-            rt.present_signal_sem = acquired.present_sem;
+            rt.present_acquire_sem = acquired->acquire_sem;
+            rt.present_signal_sem = acquired->present_sem;
         }
 
         return rt;

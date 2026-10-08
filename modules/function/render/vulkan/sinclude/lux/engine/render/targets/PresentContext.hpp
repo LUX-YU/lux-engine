@@ -28,6 +28,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 #include <vulkan/vulkan.h>
 
@@ -163,7 +164,6 @@ namespace lux::render
         /// FrameDriver 不再自持呈现信号量)。
         struct Acquired
         {
-            bool valid{false};
             uint32_t image_index{0};
             VkImage image{VK_NULL_HANDLE};
             VkImageView view{VK_NULL_HANDLE};
@@ -174,8 +174,8 @@ namespace lux::render
 
         /// acquire 下一图像;成功才轮转 acquire 环(可恢复的无图像状态下 sem
         /// 未被消费,原位复用——不错位)。OUT_OF_DATE/SURFACE_LOST 等会标记
-        /// needsRebuild 并返回成功的 invalid 值；其余 VkResult 走 Expected。
-        [[nodiscard]] Expected<Acquired> acquire();
+        /// needsRebuild 并返回成功的空 optional；其余 VkResult 走 Expected。
+        [[nodiscard]] Expected<std::optional<Acquired>> acquire();
 
         /// present + 把 OUT_OF_DATE/SUBOPTIMAL/SURFACE_LOST 归一为重建标记
         ///(可恢复态),其余错误上抛。

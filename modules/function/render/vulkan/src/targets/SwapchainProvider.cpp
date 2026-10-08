@@ -276,10 +276,10 @@ namespace lux::render
 
         // ── Acquire / Present ───────────────────────────────────
 
-        Expected<SwapchainProvider::AcquiredImage> acquire(VkSemaphore signal_semaphore)
+        Expected<std::optional<SwapchainProvider::AcquiredImage>> acquire(VkSemaphore signal_semaphore)
         {
             if (need_rebuild_)
-                return SwapchainProvider::AcquiredImage{};
+                return std::optional<AcquiredImage>{};
 
             constexpr uint64_t kAcquireTimeoutNs = 50ull * 1000ull * 1000ull; // 50 ms
             uint32_t image_index = std::numeric_limits<uint32_t>::max();
@@ -298,12 +298,12 @@ namespace lux::render
             if (disposition->mark_rebuild)
                 need_rebuild_ = true;
             if (!disposition->image_available)
-                return SwapchainProvider::AcquiredImage{};
+                return std::optional<AcquiredImage>{};
 
             if (image_index >= swapchain_images_.size() || image_index >= swapchain_image_views_.size())
             {
                 need_rebuild_ = true;
-                return SwapchainProvider::AcquiredImage{};
+                return std::optional<AcquiredImage>{};
             }
 
             AcquiredImage img{};
@@ -312,8 +312,7 @@ namespace lux::render
             img.image_index = image_index;
             img.extent = extent_;
             img.format = format_;
-            img.valid = true;
-            return img;
+            return std::optional{img};
         }
 
         VkResult present(uint32_t image_index, VkSemaphore wait_semaphore)
@@ -335,8 +334,8 @@ namespace lux::render
             // Caller must have waited all fences before calling.
             need_rebuild_ = false;
 
-            VkExtent2D ext = pending_resize_ ? pending_resize_extent_ : queryExtent();
-            pending_resize_ = false;
+            const auto pending_extent = std::exchange(pending_resize_extent_, std::nullopt);
+            const VkExtent2D ext = pending_extent ? *pending_extent : queryExtent();
 
             if (ext.width == 0 || ext.height == 0)
             {
@@ -364,7 +363,7 @@ namespace lux::render
 
         bool needsRebuild() const noexcept
         {
-            return need_rebuild_ || pending_resize_;
+            return need_rebuild_ || pending_resize_extent_.has_value();
         }
         void markNeedsRebuild() noexcept
         {
@@ -430,7 +429,6 @@ namespace lux::render
                 return;
             if (new_extent.width == extent_.width && new_extent.height == extent_.height)
                 return;
-            pending_resize_ = true;
             pending_resize_extent_ = new_extent;
         }
 
@@ -484,8 +482,7 @@ namespace lux::render
         std::function<Expected<void>()> rebuild_callback_;
         std::function<VkExtent2D()> extent_provider_;
         bool need_rebuild_{false};
-        bool pending_resize_{false};
-        VkExtent2D pending_resize_extent_{};
+        std::optional<VkExtent2D> pending_resize_extent_;
 
         bool vsync_{true};
         bool hdr_{false};
@@ -524,7 +521,7 @@ namespace lux::render
     SwapchainProvider::SwapchainProvider(SwapchainProvider&&) noexcept = default;
     SwapchainProvider& SwapchainProvider::operator=(SwapchainProvider&&) noexcept = default;
 
-    Expected<SwapchainProvider::AcquiredImage> SwapchainProvider::acquire(VkSemaphore signal_semaphore)
+    Expected<std::optional<SwapchainProvider::AcquiredImage>> SwapchainProvider::acquire(VkSemaphore signal_semaphore)
     {
         return impl_->acquire(signal_semaphore);
     }

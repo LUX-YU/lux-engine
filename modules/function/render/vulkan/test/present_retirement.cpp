@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <optional>
 #include <type_traits>
 #include <vector>
 #include <vulkan/vulkan.h>
@@ -16,6 +17,26 @@ namespace
     unsigned semaphore_attempts{};
     unsigned fail_semaphore_at{};
     std::vector<char> destruction;
+    std::optional<VkResult> acquire_result;
+    std::vector<VkSemaphore> acquire_semaphores;
+
+    VkResult VKAPI_CALL acquireImage(
+        VkDevice device,
+        VkSwapchainKHR swapchain,
+        std::uint64_t timeout,
+        VkSemaphore semaphore,
+        VkFence fence,
+        std::uint32_t* image
+    )
+    {
+        acquire_semaphores.push_back(semaphore);
+        if (acquire_result && *acquire_result != VK_SUBOPTIMAL_KHR)
+        {
+            return *acquire_result;
+        }
+        const auto result = vkAcquireNextImageKHR(device, swapchain, timeout, semaphore, fence, image);
+        return result == VK_SUCCESS && acquire_result ? *acquire_result : result;
+    }
 
     VkResult VKAPI_CALL createSemaphore(
         VkDevice device,
@@ -64,14 +85,135 @@ namespace
 #define vkDestroySwapchainKHR destroySwapchain
 #define vkDestroySemaphore destroySemaphore
 #define vkDestroySurfaceKHR destroySurface
+#define vkAcquireNextImageKHR acquireImage
 #include "../src/gpu/RenderSurface.cpp"
 #include "../src/targets/PresentContext.cpp"
 #include "../src/targets/SwapchainProvider.cpp"
+#undef vkAcquireNextImageKHR
 #undef vkDestroySurfaceKHR
 #undef vkDestroySemaphore
 #undef vkDestroySwapchainKHR
 #undef vkQueueWaitIdle
 #undef vkCreateSemaphore
+
+namespace
+{
+    void submitAcquired(
+        lux::render::PresentContext& context,
+        lux::render::DeviceContext& device,
+        const lux::render::PresentContext::Acquired& acquired
+    )
+    {
+        const VkDevice native_device = device.logicalDevice();
+        VkCommandPool pool{};
+        const VkCommandPoolCreateInfo
+            pool_info{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr, 0, device.graphicsQueueFamilyIndex()};
+        assert(vkCreateCommandPool(native_device, &pool_info, nullptr, &pool) == VK_SUCCESS);
+        VkCommandBuffer command{};
+        const VkCommandBufferAllocateInfo
+            allocate{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO, nullptr, pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1};
+        assert(vkAllocateCommandBuffers(native_device, &allocate, &command) == VK_SUCCESS);
+        const VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        assert(vkBeginCommandBuffer(command, &begin) == VK_SUCCESS);
+        VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = acquired.image;
+        barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        vkCmdPipelineBarrier(
+            command,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+            VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+            0,
+            0,
+            nullptr,
+            0,
+            nullptr,
+            1,
+            &barrier
+        );
+        assert(vkEndCommandBuffer(command) == VK_SUCCESS);
+        const VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submit.waitSemaphoreCount = 1;
+        submit.pWaitSemaphores = &acquired.acquire_sem;
+        submit.pWaitDstStageMask = &wait_stage;
+        submit.commandBufferCount = 1;
+        submit.pCommandBuffers = &command;
+        submit.signalSemaphoreCount = 1;
+        submit.pSignalSemaphores = &acquired.present_sem;
+        assert(vkQueueSubmit(device.graphicsQueue(), 1, &submit, VK_NULL_HANDLE) == VK_SUCCESS);
+        assert(context.present(acquired.image_index, acquired.present_sem));
+        assert(vkQueueWaitIdle(device.graphicsQueue()) == VK_SUCCESS);
+        vkDestroyCommandPool(native_device, pool, nullptr);
+    }
+
+    void acquisitionProtocol(lux::render::PresentContext& context, lux::render::DeviceContext& device)
+    {
+        using namespace lux::render;
+        for (const auto result : {VK_TIMEOUT, VK_NOT_READY})
+        {
+            acquire_result = result;
+            const auto empty = context.acquire();
+            assert(empty && !*empty && !context.needsRebuild());
+        }
+        const auto unconsumed = acquire_semaphores.back();
+        assert(acquire_semaphores.front() == unconsumed);
+        acquire_result = VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        const auto failed = context.acquire();
+        assert(!failed && isError<err::device::VulkanCallFailed>(failed.error()));
+        assert(failed.error().args[0] == encodeVkResult(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+        assert(acquire_semaphores.back() == unconsumed);
+        acquire_result.reset();
+        const auto first = context.acquire();
+        assert(first && *first && (*first)->acquire_sem == unconsumed);
+        submitAcquired(context, device, **first);
+        const auto second = context.acquire();
+        assert(second && *second && (*second)->acquire_sem != (*first)->acquire_sem);
+        submitAcquired(context, device, **second);
+
+        acquire_result = VK_SUBOPTIMAL_KHR;
+        const auto suboptimal = context.acquire();
+        assert(suboptimal && *suboptimal && context.needsRebuild());
+        submitAcquired(context, device, **suboptimal);
+        assert(context.rebuild());
+        for (const auto result : {VK_ERROR_OUT_OF_DATE_KHR, VK_ERROR_SURFACE_LOST_KHR})
+        {
+            acquire_result = result;
+            const auto empty = context.acquire();
+            assert(empty && !*empty && context.needsRebuild());
+            const auto calls = acquire_semaphores.size();
+            assert(context.acquire() && acquire_semaphores.size() == calls);
+            assert(context.rebuild());
+        }
+        acquire_result.reset();
+        auto* provider = context.provider();
+        provider->requestResize({0, 0});
+        assert(!context.needsRebuild());
+        unsigned extent_queries{};
+        provider->setExtentProvider(
+            [&]()
+            {
+                ++extent_queries;
+                return VkExtent2D{0, 0};
+            }
+        );
+        provider->requestResize({160, 160});
+        provider->requestResize({192, 192});
+        assert(context.needsRebuild() && context.rebuild());
+        assert(extent_queries == 0 && !context.needsRebuild());
+        provider->markNeedsRebuild();
+        const auto minimized = context.rebuild();
+        assert(!minimized && isError<err::device::SwapchainUnavailable>(minimized.error()));
+        assert(extent_queries == 1);
+        provider->setExtentProvider([]() { return VkExtent2D{128, 128}; });
+        provider->markNeedsRebuild();
+        assert(context.rebuild());
+        std::puts("Real WSI: acquire statuses, semaphore cursor, resize coalescing, zero extent and recovery PASS");
+    }
+} // namespace
 
 int main()
 {
@@ -150,6 +292,10 @@ int main()
         assert(surface);
         auto context = PresentContext::create(**resources, retirement, std::move(*surface), {128, 128}, true);
         assert(context && (*context)->provider() && !retirement.pending());
+        if (mode == 0)
+        {
+            acquisitionProtocol(**context, **device);
+        }
 
         VkCommandPool pool{};
         const VkCommandPoolCreateInfo

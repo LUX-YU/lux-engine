@@ -377,12 +377,11 @@ namespace lux::render
         return backing_->resyncSemaphores();
     }
 
-    Expected<PresentContext::Acquired> PresentContext::acquire()
+    Expected<std::optional<PresentContext::Acquired>> PresentContext::acquire()
     {
-        Acquired out{};
         if (!backing_->provider_ || backing_->acquire_ring_.empty())
         {
-            return out;
+            return std::optional<Acquired>{};
         }
 
         VkSemaphore sem = backing_->acquire_ring_[backing_->acquire_cursor_];
@@ -391,16 +390,17 @@ namespace lux::render
         {
             return lux::cxx::unexpected<RenderError>(acquired.error());
         }
-        if (!acquired->valid)
+        if (!*acquired)
         {
-            return out; // sem 未被消费,环不轮转——原位复用,不错位
+            return std::optional<Acquired>{}; // sem 未被消费,环不轮转——原位复用,不错位
         }
 
-        if (acquired->image_index >= backing_->present_per_image_.size())
+        const auto& image = **acquired;
+        if (image.image_index >= backing_->present_per_image_.size())
         {
             return renderFailure<err::internal::Unspecified>();
         }
-        const VkSemaphore present_sem = backing_->present_per_image_[acquired->image_index];
+        const VkSemaphore present_sem = backing_->present_per_image_[image.image_index];
         if (sem == VK_NULL_HANDLE || present_sem == VK_NULL_HANDLE)
         {
             return renderFailure<err::internal::Unspecified>();
@@ -409,14 +409,14 @@ namespace lux::render
         backing_->acquire_cursor_ =
             (backing_->acquire_cursor_ + 1u) % static_cast<uint32_t>(backing_->acquire_ring_.size());
 
-        out.valid = true;
-        out.image_index = acquired->image_index;
-        out.image = acquired->image;
-        out.view = acquired->view;
-        out.extent = acquired->extent;
+        Acquired out{};
+        out.image_index = image.image_index;
+        out.image = image.image;
+        out.view = image.view;
+        out.extent = image.extent;
         out.acquire_sem = sem;
         out.present_sem = present_sem;
-        return out;
+        return std::optional{out};
     }
 
     Expected<void> PresentContext::present(uint32_t image_index, VkSemaphore wait_sem)

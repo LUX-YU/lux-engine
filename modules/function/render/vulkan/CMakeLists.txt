@@ -161,3 +161,20 @@ target_link_libraries(
 if(ANDROID)
     target_link_libraries(render_vulkan PRIVATE android)
 endif()
+
+if(BUILD_TESTING)
+    add_executable(render_arena_lifecycle_test test/arena_lifecycle.cpp)
+    target_include_directories(render_arena_lifecycle_test PRIVATE sinclude)
+    target_compile_definitions(render_arena_lifecycle_test PRIVATE LUX_FUNCTION_DLL_DISABLE)
+    target_link_libraries(
+        render_arena_lifecycle_test
+        PRIVATE render_client GPUOpen::VulkanMemoryAllocator Vulkan::Vulkan
+    )
+    if(MSVC)
+        target_compile_options(render_arena_lifecycle_test PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(render_arena_lifecycle_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME render.arena_lifecycle COMMAND render_arena_lifecycle_test)
+    set_tests_properties(render.arena_lifecycle PROPERTIES TIMEOUT 30)
+endif()

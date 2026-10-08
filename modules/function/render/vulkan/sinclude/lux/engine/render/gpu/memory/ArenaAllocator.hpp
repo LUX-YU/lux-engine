@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/render/gpu/VmaFwd.hpp>
 
@@ -28,6 +29,7 @@ namespace lux::render
             uint64_t offset{0};
             uint64_t size{0};
             VmaVirtualAllocation handle{VK_NULL_HANDLE}; ///< VMA handle for free()
+
             bool valid() const
             {
                 return size > 0;
@@ -42,9 +44,10 @@ namespace lux::render
             uint64_t size;
         };
 
-        explicit ArenaAllocator(uint64_t total_capacity);
-        ArenaAllocator();
-        ~ArenaAllocator();
+        [[nodiscard]] static Expected<ArenaAllocator> create(uint64_t total_capacity) noexcept;
+
+        ArenaAllocator() noexcept = default;
+        ~ArenaAllocator() noexcept;
 
         // Non-copyable, movable
         ArenaAllocator(const ArenaAllocator&) = delete;
@@ -105,6 +108,8 @@ namespace lux::render
         VmaVirtualAllocation findHandleAt(uint64_t offset) const;
 
     private:
+        ArenaAllocator(VmaVirtualBlock block, uint64_t total_capacity) noexcept;
+
         struct LiveEntry
         {
             uint64_t offset;

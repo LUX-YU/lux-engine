@@ -1,27 +1,37 @@
+#include <lux/engine/function/render/client/core/RenderFatal.hpp>
 #include <lux/engine/render/gpu/memory/ArenaAllocator.hpp>
 #include <vk_mem_alloc.h>
 
 #include <algorithm>
-#include <cassert>
+#include <limits>
 #include <utility>
 
 namespace lux::render
 {
 
-    ArenaAllocator::ArenaAllocator(uint64_t total_capacity) : total_capacity_(total_capacity)
+    Expected<ArenaAllocator> ArenaAllocator::create(uint64_t total_capacity) noexcept
     {
-        if (total_capacity > 0)
+        if (total_capacity == 0)
         {
-            VmaVirtualBlockCreateInfo ci{};
-            ci.size = total_capacity;
-            if (vmaCreateVirtualBlock(&ci, &block_) != VK_SUCCESS)
-                block_ = nullptr;
+            return renderFailure<err::internal::InvalidArgument>();
         }
+        VmaVirtualBlockCreateInfo ci{};
+        ci.size = total_capacity;
+        VmaVirtualBlock block{};
+        const auto result = vmaCreateVirtualBlock(&ci, &block);
+        if (result != VK_SUCCESS)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(result));
+        }
+        return ArenaAllocator(block, total_capacity);
     }
 
-    ArenaAllocator::ArenaAllocator() = default;
+    ArenaAllocator::ArenaAllocator(VmaVirtualBlock block, uint64_t total_capacity) noexcept
+        : block_(block), total_capacity_(total_capacity)
+    {
+    }
 
-    ArenaAllocator::~ArenaAllocator()
+    ArenaAllocator::~ArenaAllocator() noexcept
     {
         if (block_)
         {
@@ -58,8 +68,11 @@ namespace lux::render
 
     ArenaAllocator::Allocation ArenaAllocator::allocate(uint64_t size, uint64_t alignment)
     {
-        if (size == 0 || !block_)
+        const bool is_empty_request = size == 0 || alignment == 0;
+        if (is_empty_request || !block_)
+        {
             return {};
+        }
 
         // VMA virtual blocks require power-of-two alignment.
         // When the caller requests a non-power-of-2 alignment (e.g. lcm(256, stride)),
@@ -67,6 +80,12 @@ namespace lux::render
         const bool is_pow2 = alignment > 0 && (alignment & (alignment - 1)) == 0;
         const uint64_t vma_align = is_pow2 ? alignment : nextPow2(alignment);
         const uint64_t extra = is_pow2 ? 0 : (alignment - 1); // worst-case padding
+        const bool is_invalid_alignment = vma_align == 0;
+        const bool is_size_overflow = size > std::numeric_limits<uint64_t>::max() - extra;
+        if (is_invalid_alignment || is_size_overflow)
+        {
+            return {};
+        }
         const uint64_t alloc_size = size + extra;
 
         VmaVirtualAllocationCreateInfo ci{};
@@ -76,12 +95,16 @@ namespace lux::render
         VmaVirtualAllocation handle{};
         VkDeviceSize raw_offset = 0;
         if (vmaVirtualAllocate(block_, &ci, &handle, &raw_offset) != VK_SUCCESS)
+        {
             return {};
+        }
 
         // Adjust offset so it satisfies the original (possibly non-pow2) alignment.
         uint64_t offset = static_cast<uint64_t>(raw_offset);
         if (!is_pow2 && (offset % alignment) != 0)
+        {
             offset = ((offset + alignment - 1) / alignment) * alignment;
+        }
 
         // Keep live list sorted by offset for planDefragmentation().
         LiveEntry entry{offset, size, handle};
@@ -100,7 +123,9 @@ namespace lux::render
     {
         const auto probe = allocate(size, alignment);
         if (!probe.valid())
+        {
             return false;
+        }
         free(probe);
         return true;
     }
@@ -108,7 +133,9 @@ namespace lux::render
     void ArenaAllocator::free(const Allocation& alloc)
     {
         if (!alloc.valid() || !block_)
+        {
             return;
+        }
 
         vmaVirtualFree(block_, alloc.handle);
 
@@ -120,22 +147,30 @@ namespace lux::render
             [](const LiveEntry& e, uint64_t off) { return e.offset < off; }
         );
         if (it != live_allocs_.end() && it->offset == alloc.offset)
+        {
             live_allocs_.erase(it);
+        }
     }
 
     float ArenaAllocator::fragmentationRatio() const
     {
         if (!block_)
+        {
             return 0.0f;
+        }
 
         VmaDetailedStatistics stats{};
         vmaCalculateVirtualBlockStatistics(block_, &stats);
 
         const uint64_t total_free = total_capacity_ - stats.statistics.allocationBytes;
         if (total_free == 0)
+        {
             return 0.0f;
+        }
         if (stats.statistics.blockCount <= 1 && stats.statistics.allocationCount == 0)
+        {
             return 0.0f;
+        }
 
         // Largest free region vs total free.
         uint64_t largest_free = 0;
@@ -143,14 +178,20 @@ namespace lux::render
         for (const auto& la : live_allocs_)
         {
             if (la.offset > cursor)
+            {
                 largest_free = std::max(largest_free, la.offset - cursor);
+            }
             cursor = la.offset + la.size;
         }
         if (total_capacity_ > cursor)
+        {
             largest_free = std::max(largest_free, total_capacity_ - cursor);
+        }
 
         if (largest_free >= total_free)
+        {
             return 0.0f;
+        }
         return 1.0f - static_cast<float>(largest_free) / static_cast<float>(total_free);
     }
 
@@ -162,7 +203,9 @@ namespace lux::render
         for (const auto& la : live_allocs_)
         {
             if (la.offset != dst_cursor)
+            {
                 ops.push_back(CopyOp{la.offset, dst_cursor, la.size});
+            }
             dst_cursor += la.size;
         }
 
@@ -172,13 +215,17 @@ namespace lux::render
     void ArenaAllocator::applyDefragmentation(const std::vector<CopyOp>& /*ops*/)
     {
         if (!block_)
+        {
             return;
+        }
 
         // Collect sizes of live allocations in order
         std::vector<uint64_t> sizes;
         sizes.reserve(live_allocs_.size());
         for (const auto& la : live_allocs_)
+        {
             sizes.push_back(la.size);
+        }
 
         // Rebuild: clear the block and re-allocate sequentially from 0
         vmaClearVirtualBlock(block_);
@@ -194,11 +241,11 @@ namespace lux::render
             VmaVirtualAllocation handle{};
             VkDeviceSize offset = 0;
             VkResult r = vmaVirtualAllocate(block_, &ci, &handle, &offset);
-            assert(r == VK_SUCCESS && "re-allocation during defrag must succeed");
-            (void)r;
-
-            // After compaction, allocations should be sequential
-            assert(static_cast<uint64_t>(offset) == cursor);
+            const bool has_failed_rebuild = r != VK_SUCCESS || static_cast<uint64_t>(offset) != cursor;
+            if (has_failed_rebuild)
+            {
+                renderFatal("Arena compaction could not rebuild its already-owned ranges");
+            }
             live_allocs_.push_back({cursor, sz, handle});
             cursor += sz;
         }
@@ -212,7 +259,9 @@ namespace lux::render
     uint64_t ArenaAllocator::usedBytes() const
     {
         if (!block_)
+        {
             return 0;
+        }
 
         VmaStatistics stats{};
         vmaGetVirtualBlockStatistics(block_, &stats);
@@ -222,17 +271,23 @@ namespace lux::render
     uint64_t ArenaAllocator::largestFreeBlock() const
     {
         if (!block_)
+        {
             return 0u;
+        }
         uint64_t largest = 0u;
         uint64_t cursor = 0u;
         for (const auto& allocation : live_allocs_)
         {
             if (allocation.offset > cursor)
+            {
                 largest = std::max(largest, allocation.offset - cursor);
+            }
             cursor = std::max(cursor, allocation.offset + allocation.size);
         }
         if (total_capacity_ > cursor)
+        {
             largest = std::max(largest, total_capacity_ - cursor);
+        }
         return largest;
     }
 
@@ -243,19 +298,25 @@ namespace lux::render
 
     VmaVirtualAllocation ArenaAllocator::findHandleAt(uint64_t offset) const
     {
-        auto it =
-            std::lower_bound(live_allocs_.begin(), live_allocs_.end(), offset, [](const LiveEntry& e, uint64_t off) {
-                return e.offset < off;
-            });
+        auto it = std::lower_bound(
+            live_allocs_.begin(),
+            live_allocs_.end(),
+            offset,
+            [](const LiveEntry& e, uint64_t off) { return e.offset < off; }
+        );
         if (it != live_allocs_.end() && it->offset == offset)
+        {
             return it->handle;
+        }
         return VK_NULL_HANDLE;
     }
 
     uint64_t ArenaAllocator::nextPow2(uint64_t v)
     {
         if (v == 0)
+        {
             return 1;
+        }
         --v;
         v |= v >> 1;
         v |= v >> 2;

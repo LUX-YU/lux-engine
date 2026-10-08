@@ -9,9 +9,10 @@
  *
  * Intended for all general-purpose VMA allocations.
  */
-#include <lux/engine/function/visibility.h>
 #include <lux/engine/function/render/client/core/Errors.hpp>
+#include <lux/engine/function/visibility.h>
 #include <lux/engine/render/gpu/VmaFwd.hpp>
+#include <utility>
 #include <vulkan/vulkan.h>
 
 namespace lux::render
@@ -149,6 +150,28 @@ namespace lux::render
     {
     public:
         VmaImage() = default;
+
+        struct Allocation
+        {
+            VmaAllocator allocator{};
+            VkImage image{};
+            VmaAllocation allocation{};
+        };
+
+        [[nodiscard]] static VmaImage adopt(Allocation allocation) noexcept
+        {
+            VmaImage result;
+            result.allocator_ = allocation.allocator;
+            result.image_ = allocation.image;
+            result.allocation_ = allocation.allocation;
+            return result;
+        }
+
+        /// Transfer the native allocation into the original runtime's retirement owner.
+        [[nodiscard]] Allocation release() noexcept
+        {
+            return {std::exchange(allocator_, {}), std::exchange(image_, {}), std::exchange(allocation_, {})};
+        }
 
         [[nodiscard]] static Expected<VmaImage> create(
             VmaAllocator allocator,

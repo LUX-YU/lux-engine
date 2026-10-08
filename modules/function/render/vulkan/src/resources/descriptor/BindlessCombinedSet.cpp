@@ -225,39 +225,9 @@ namespace lux::render
         }
     }
 
-    void BindlessCombinedSet::beginFrame()
-    {
-        flushUploads();
-    }
+    BindlessCombinedSet::~BindlessCombinedSet() noexcept = default;
 
-    BindlessCombinedSet::~BindlessCombinedSet() noexcept
-    {
-        // Dynamic slots/uploads have the existing caller-established GPU safe point.
-        for (auto& pending : pending_uploads_)
-        {
-            destroyStaging(pending.staging);
-        }
-        for (auto& slot : deferred_staging_)
-        {
-            for (auto& staging : slot)
-            {
-                destroyStaging(staging);
-            }
-        }
-        for (auto& staging : one_shot_staging_)
-        {
-            destroyStaging(staging);
-        }
-        for (std::uint32_t index = 0; index < slots_.size(); ++index)
-        {
-            if (alive_[index])
-            {
-                destroyCombined(slots_[index]);
-            }
-        }
-    }
-
-    SlotHandle BindlessCombinedSet::addTexture(
+    Expected<SlotHandle> BindlessCombinedSet::addTexture(
         const rdesc::Texture& tex,
         const VkSamplerCreateInfo* opt_sampler_ci,
         VkFormat fmt,
@@ -265,8 +235,11 @@ namespace lux::render
         std::optional<bool> srgb_override
     )
     {
-        if (!ensureRoom())
-            return SlotHandle{};
+        auto room = ensureRoom();
+        if (!room)
+        {
+            return lux::cxx::unexpected(room.error());
+        }
         const int w = tex.width(), h = tex.height(), c = tex.channel();
         assert(w > 0 && h > 0 && (c == 1 || c == 2 || c == 3 || c == 4));
 
@@ -303,28 +276,33 @@ namespace lux::render
         }
 
         // Create GPU image and staging buffer immediately
-        createImageGPU(s);
-        StagingBuf staging = createStaging(tex.size(), tex.data());
+        const VkSamplerCreateInfo& sampler = opt_sampler_ci ? *opt_sampler_ci : default_sampler_ci_;
+        auto prepared = createSampledImage(s, sampler);
+        if (!prepared)
+        {
+            return lux::cxx::unexpected(prepared.error());
+        }
 
-        // View + sampler can be created now (don't depend on image layout)
-        createImageView(s);
-        VkSamplerCreateInfo sci = opt_sampler_ci ? *opt_sampler_ci : default_sampler_ci_;
-        VK_CHECK(vkCreateSampler(rc_.logicalDevice(), &sci, nullptr, &s.sampler));
+        auto staging = createStaging(tex.size(), tex.data());
+        if (!staging)
+        {
+            return lux::cxx::unexpected(staging.error());
+        }
 
         // Assign slot and write descriptor (UPDATE_AFTER_BIND, valid before upload)
         uint32_t idx = allocIndex();
-        slots_[idx] = s;
+        writeCombinedDescriptor(idx, s.view.get(), s.sampler.get());
+        slots_[idx] = std::move(s);
         alive_[idx] = 1;
-        writeCombinedDescriptor(idx, s.view, s.sampler);
 
         // Defer GPU upload to batch (render-thread only; no lock needed)
         {
-            pending_uploads_.push_back(PendingUpload{staging, idx, do_mips, false, 0, copy_plan});
+            pending_uploads_.push_back(PendingUpload{std::move(*staging), idx, do_mips, false, 0, copy_plan});
         }
-        return {idx, gen_[idx]};
+        return SlotHandle{idx, gen_[idx]};
     }
 
-    SlotHandle BindlessCombinedSet::addPersistentTexture(
+    Expected<SlotHandle> BindlessCombinedSet::addPersistentTexture(
         uint32_t width,
         uint32_t height,
         uint32_t mip_levels,
@@ -340,9 +318,12 @@ namespace lux::render
         const bool is_invalid_descriptor =
             is_missing_width || is_missing_height || is_missing_mips || is_undefined_format;
         if (is_invalid_descriptor)
-            return SlotHandle{};
-        if (!ensureRoom())
-            return SlotHandle{};
+            return renderFailure<err::internal::InvalidArgument>();
+        auto room = ensureRoom();
+        if (!room)
+        {
+            return lux::cxx::unexpected(room.error());
+        }
 
         CombinedSlot s{};
         s.width = static_cast<int>(width);
@@ -350,15 +331,6 @@ namespace lux::render
         s.format = fmt;
         s.mip_levels = std::min<uint32_t>(mip_levels, calcMipLevels(width, height));
         s.array_layers = 1;
-        createImageGPU(s);
-        createImageView(s);
-        VkSamplerCreateInfo sci = opt_sampler_ci ? *opt_sampler_ci : default_sampler_ci_;
-        VK_CHECK(vkCreateSampler(rc_.logicalDevice(), &sci, nullptr, &s.sampler));
-
-        const uint32_t idx = allocIndex();
-        slots_[idx] = s;
-        alive_[idx] = 1;
-        writeCombinedDescriptor(idx, s.view, s.sampler);
 
         // Zero-fill EVERY mip through the normal upload pipeline this frame: the whole
         // image lands in SHADER_READ_ONLY (so later region updates barrier from a
@@ -381,9 +353,25 @@ namespace lux::render
             total += static_cast<VkDeviceSize>(mw) * mh * texel;
         }
         const std::vector<std::byte> zeros(static_cast<size_t>(total)); // value-init = 0
-        StagingBuf staging = createStaging(total, zeros.data());
+        const VkSamplerCreateInfo& sampler = opt_sampler_ci ? *opt_sampler_ci : default_sampler_ci_;
+        auto prepared = createSampledImage(s, sampler);
+        if (!prepared)
+        {
+            return lux::cxx::unexpected(prepared.error());
+        }
+
+        auto staging = createStaging(total, zeros.data());
+        if (!staging)
+        {
+            return lux::cxx::unexpected(staging.error());
+        }
+        const uint32_t idx = allocIndex();
+        writeCombinedDescriptor(idx, s.view.get(), s.sampler.get());
+        slots_[idx] = std::move(s);
+        alive_[idx] = 1;
+
         pending_uploads_.push_back(PendingUpload{
-            staging,
+            std::move(*staging),
             idx,
             /*do_mips=*/false,
             /*is_cube=*/false,
@@ -391,7 +379,7 @@ namespace lux::render
             plan,
             VK_IMAGE_LAYOUT_UNDEFINED,
         });
-        return {idx, gen_[idx]};
+        return SlotHandle{idx, gen_[idx]};
     }
 
     bool BindlessCombinedSet::updateTextureRegions(
@@ -409,6 +397,7 @@ namespace lux::render
         // chunks (TextureCopyPlan's capacity): rows are repacked TIGHTLY into each
         // chunk's staging buffer, so VkBufferImageCopy never needs bufferRowLength
         // (and the wire row_pitch has no texel-alignment constraint).
+        std::vector<PendingUpload> prepared;
         std::size_t next = 0;
         while (next < regions.size())
         {
@@ -450,9 +439,14 @@ namespace lux::render
                 }
             }
 
-            StagingBuf staging = createStaging(total, packed.data());
-            pending_uploads_.push_back(PendingUpload{
-                staging,
+            auto staging = createStaging(total, packed.data());
+
+            if (!staging)
+            {
+                return false;
+            }
+            prepared.push_back(PendingUpload{
+                std::move(*staging),
                 idx,
                 /*do_mips=*/false,
                 /*is_cube=*/false,
@@ -462,18 +456,26 @@ namespace lux::render
             });
             next += count;
         }
+        pending_uploads_.insert(
+            pending_uploads_.end(),
+            std::make_move_iterator(prepared.begin()),
+            std::make_move_iterator(prepared.end())
+        );
         return true;
     }
 
-    SlotHandle BindlessCombinedSet::addCubeTexture(
+    Expected<SlotHandle> BindlessCombinedSet::addCubeTexture(
         const rdesc::Texture faces[6],
         const VkSamplerCreateInfo* opt_sampler_ci,
         VkFormat fmt
     )
     {
         assert(view_type_ == VK_IMAGE_VIEW_TYPE_CUBE && "addCubeTexture() requires a cube-view BindlessCombinedSet");
-        if (!ensureRoom())
-            return SlotHandle{};
+        auto room = ensureRoom();
+        if (!room)
+        {
+            return lux::cxx::unexpected(room.error());
+        }
 
         const int w = faces[0].width(), h = faces[0].height(), c = faces[0].channel();
         assert(w > 0 && h > 0 && w == h && (c == 1 || c == 2 || c == 3 || c == 4));
@@ -485,8 +487,6 @@ namespace lux::render
         s.mip_levels = 1; // cubemap mipmaps not yet supported
         s.array_layers = 6;
 
-        createImageGPU(s);
-
         // Combine all 6 faces into a single contiguous staging buffer
         const VkDeviceSize face_size = faces[0].size();
         const VkDeviceSize total_size = face_size * 6;
@@ -496,40 +496,44 @@ namespace lux::render
             assert(faces[i].width() == w && faces[i].height() == h && faces[i].channel() == c);
             std::memcpy(combined.data() + i * face_size, faces[i].data(), face_size);
         }
-        StagingBuf staging = createStaging(total_size, combined.data());
+        const VkSamplerCreateInfo& sampler = opt_sampler_ci ? *opt_sampler_ci : default_sampler_ci_;
+        auto prepared = createSampledImage(s, sampler);
+        if (!prepared)
+        {
+            return lux::cxx::unexpected(prepared.error());
+        }
 
-        createImageView(s);
-        VkSamplerCreateInfo sci = opt_sampler_ci ? *opt_sampler_ci : default_sampler_ci_;
-        VK_CHECK(vkCreateSampler(rc_.logicalDevice(), &sci, nullptr, &s.sampler));
+        auto staging = createStaging(total_size, combined.data());
+        if (!staging)
+        {
+            return lux::cxx::unexpected(staging.error());
+        }
 
         uint32_t idx = allocIndex();
-        slots_[idx] = s;
+        writeCombinedDescriptor(idx, s.view.get(), s.sampler.get());
+        slots_[idx] = std::move(s);
         alive_[idx] = 1;
-        writeCombinedDescriptor(idx, s.view, s.sampler);
 
         {
-            pending_uploads_.push_back(PendingUpload{staging, idx, false, true, face_size, {}});
+            pending_uploads_.push_back(PendingUpload{std::move(*staging), idx, false, true, face_size, {}});
         }
-        return {idx, gen_[idx]};
+        return SlotHandle{idx, gen_[idx]};
     }
 
-    void BindlessCombinedSet::flushUploads()
+    Expected<void> BindlessCombinedSet::flushUploads()
     {
         if (pending_uploads_.empty())
-            return;
-
-        auto cb_result = beginOneTime(rc_);
-        if (!cb_result)
-            return;
-        const VkCommandBuffer cb = cb_result->get();
-        recordPendingUploads(cb);
-        auto end_result = endOneTime(rc_, std::move(*cb_result));
-        if (!end_result)
-            return;
-        // One-shot path: submission fence wait guarantees staging safety.
-        for (auto& s : one_shot_staging_)
-            destroyStaging(s);
+            return {};
+        auto command = beginOneTime(rc_);
+        if (!command)
+        {
+            return lux::cxx::unexpected(command.error());
+        }
+        recordPendingUploads(command->get());
+        auto completed = endOneTime(rc_, std::move(*command));
+        // endOneTime establishes completion/device-loss safety even if wait itself fails.
         one_shot_staging_.clear();
+        return completed;
     }
 
     void BindlessCombinedSet::flushUploads(VkCommandBuffer cb, uint32_t fi)
@@ -555,9 +559,9 @@ namespace lux::render
         {
             auto& s = slots_[p.slot_index];
             if (p.is_cube)
-                recordCubeTextureUpload(cb, s, p.staging, p.face_stride, p.old_layout);
+                recordCubeTextureUpload(cb, s, p.staging.buffer(), p.face_stride, p.old_layout);
             else
-                recordTextureUploadInternal(cb, s, p.staging, p.do_mips, &p.copy_plan, p.old_layout);
+                recordTextureUploadInternal(cb, s, p.staging.buffer(), p.do_mips, &p.copy_plan, p.old_layout);
         }
 
         // Collect staging into temporary; caller decides where they go.
@@ -568,8 +572,6 @@ namespace lux::render
     void BindlessCombinedSet::retireDeferredStaging(uint32_t fi)
     {
         auto& slot = deferred_staging_[fi % frames_in_flight_];
-        for (auto& s : slot)
-            destroyStaging(s);
         slot.clear();
     }
 
@@ -579,7 +581,7 @@ namespace lux::render
 
     void BindlessCombinedSet::submitTransfers(TransferScheduler& scheduler, uint32_t fi)
     {
-        // ── Process pending_uploads_ (from addTexture / finalizeTexture) ─
+        // ── Process pending_uploads_ (from synchronous texture creation and updates) ─
         if (!pending_uploads_.empty())
         {
             std::vector<PendingUpload> to_flush = std::move(pending_uploads_);
@@ -594,9 +596,9 @@ namespace lux::render
                     for (uint32_t face = 0; face < s.array_layers; ++face)
                     {
                         ImageCopyRequest req{};
-                        req.src = p.staging.buf;
+                        req.src = p.staging.buffer();
                         req.src_offset = static_cast<VkDeviceSize>(face) * p.face_stride;
-                        req.dst = s.image;
+                        req.dst = s.image.image();
                         req.old_layout = p.old_layout;
                         req.new_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                         req.subresource = {image_aspect_, 0, face, 1};
@@ -630,9 +632,9 @@ namespace lux::render
                     {
                         const auto& cr = plan->regions[i];
                         ImageCopyRequest req{};
-                        req.src = p.staging.buf;
+                        req.src = p.staging.buffer();
                         req.src_offset = cr.buffer_offset;
-                        req.dst = s.image;
+                        req.dst = s.image.image();
                         req.old_layout = p.old_layout;
                         req.new_layout = runtime_mips ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
                                                       : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -668,7 +670,7 @@ namespace lux::render
                         ImageCopyRequest req{};
                         req.src = e.stg_buf;
                         req.src_offset = static_cast<VkDeviceSize>(face) * e.face_stride;
-                        req.dst = s.image;
+                        req.dst = s.image.image();
                         req.old_layout = VK_IMAGE_LAYOUT_UNDEFINED;
                         req.new_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
                         req.subresource = {image_aspect_, 0, face, 1};
@@ -699,7 +701,7 @@ namespace lux::render
                         ImageCopyRequest req{};
                         req.src = e.stg_buf;
                         req.src_offset = cr.buffer_offset;
-                        req.dst = s.image;
+                        req.dst = s.image.image();
                         req.old_layout = VK_IMAGE_LAYOUT_UNDEFINED;
                         req.new_layout = runtime_mips ? VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
                                                       : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -771,85 +773,6 @@ namespace lux::render
     // =========================================================================
     // A1: Render-thread slot finalize + recycle API
     // =========================================================================
-
-    void BindlessCombinedSet::finalizeTexture(
-        SlotHandle h,
-        const uint8_t* pixels,
-        std::size_t size,
-        int32_t w,
-        int32_t h_dim,
-        int32_t c,
-        VkFormat fmt_hint,
-        const VkSamplerCreateInfo& sci,
-        bool do_mips,
-        bool srgb
-    )
-    {
-        assert(h.isValid() && h.index < layout_max_cap_);
-
-        const uint32_t idx = h.index;
-
-        CombinedSlot s{};
-        s.width = w;
-        s.height = h_dim;
-        s.format = pickFormat(c, fmt_hint, srgb);
-        const bool effective_mips = do_mips && !isBlockCompressedVkFormat(s.format);
-        s.mip_levels = effective_mips ? calcMipLevels(static_cast<uint32_t>(w), static_cast<uint32_t>(h_dim)) : 1u;
-        s.array_layers = 1;
-
-        createImageGPU(s);
-        createImageView(s);
-        VK_CHECK(vkCreateSampler(rc_.logicalDevice(), &sci, nullptr, &s.sampler));
-
-        slots_[idx] = s;
-        alive_[idx] = 1;
-        writeCombinedDescriptor(idx, s.view, s.sampler); // UPDATE_AFTER_BIND
-
-        StagingBuf staging = createStaging(static_cast<VkDeviceSize>(size), pixels);
-        TextureCopyPlan copy_plan{};
-        copy_plan.count = 1;
-        copy_plan.regions[0].buffer_offset = 0;
-        copy_plan.regions[0].mip_level = 0;
-        copy_plan.regions[0].width = static_cast<uint32_t>(std::max(1, w));
-        copy_plan.regions[0].height = static_cast<uint32_t>(std::max(1, h_dim));
-        pending_uploads_.push_back(PendingUpload{staging, idx, effective_mips, false, 0, copy_plan});
-    }
-
-    void BindlessCombinedSet::finalizeCubeTexture(
-        SlotHandle h,
-        const uint8_t* combined_pixels,
-        std::size_t total_size,
-        int32_t w,
-        int32_t h_dim,
-        int32_t c,
-        VkFormat fmt_hint,
-        const VkSamplerCreateInfo& sci,
-        VkDeviceSize face_stride
-    )
-    {
-        assert(h.isValid() && h.index < layout_max_cap_);
-        assert(view_type_ == VK_IMAGE_VIEW_TYPE_CUBE);
-
-        const uint32_t idx = h.index;
-
-        CombinedSlot s{};
-        s.width = w;
-        s.height = h_dim;
-        s.format = pickFormat(c, fmt_hint, false);
-        s.mip_levels = 1; // no auto mips for cube maps
-        s.array_layers = 6;
-
-        createImageGPU(s);
-        createImageView(s);
-        VK_CHECK(vkCreateSampler(rc_.logicalDevice(), &sci, nullptr, &s.sampler));
-
-        slots_[idx] = s;
-        alive_[idx] = 1;
-        writeCombinedDescriptor(idx, s.view, s.sampler);
-
-        StagingBuf staging = createStaging(static_cast<VkDeviceSize>(total_size), combined_pixels);
-        pending_uploads_.push_back(PendingUpload{staging, idx, false, true, face_stride, {}});
-    }
 
     bool BindlessCombinedSet::updateTextureMips(
         const SlotHandle& h,
@@ -929,9 +852,14 @@ namespace lux::render
             offset += static_cast<VkDeviceSize>(mip.bytes);
         }
 
-        StagingBuf staging = createStaging(total_bytes, packed.data());
+        auto staging = createStaging(total_bytes, packed.data());
+
+        if (!staging)
+        {
+            return false;
+        }
         pending_uploads_.push_back(PendingUpload{
-            std::move(staging),
+            std::move(*staging),
             idx,
             do_runtime_mips,
             false,
@@ -978,9 +906,14 @@ namespace lux::render
             offset += static_cast<VkDeviceSize>(face.bytes);
         }
 
-        StagingBuf staging = createStaging(total_bytes, packed.data());
+        auto staging = createStaging(total_bytes, packed.data());
+
+        if (!staging)
+        {
+            return false;
+        }
         pending_uploads_.push_back(PendingUpload{
-            std::move(staging),
+            std::move(*staging),
             idx,
             false,
             true,
@@ -1018,10 +951,9 @@ namespace lux::render
     )
     {
         CombinedSlot& s = slots_[slot_idx];
-        s.image = image;
-        s.alloc = alloc;
-        s.view = view;
-        s.sampler = sampler;
+        s.image = VmaImage::adopt({rc_.vmaAllocator(), image, alloc});
+        s.view = ImageViewOwner::adopt(rc_.logicalDevice(), view);
+        s.sampler = SamplerOwner::adopt(rc_.logicalDevice(), sampler);
         s.format = format;
         s.mip_levels = mip_levels;
         s.array_layers = array_layers;
@@ -1046,16 +978,15 @@ namespace lux::render
         assert(slot_idx < cur_cap_ && alive_[slot_idx]);
         CombinedSlot previous = std::move(slots_[slot_idx]);
         CombinedSlot replacement{};
-        replacement.image = image;
-        replacement.alloc = alloc;
-        replacement.view = view;
-        replacement.sampler = sampler;
+        replacement.image = VmaImage::adopt({rc_.vmaAllocator(), image, alloc});
+        replacement.view = ImageViewOwner::adopt(rc_.logicalDevice(), view);
+        replacement.sampler = SamplerOwner::adopt(rc_.logicalDevice(), sampler);
         replacement.format = format;
         replacement.mip_levels = mip_levels;
         replacement.array_layers = array_layers;
         replacement.width = w;
         replacement.height = h;
-        slots_[slot_idx] = replacement;
+        slots_[slot_idx] = std::move(replacement);
 
         // UPDATE_AFTER_BIND changes future descriptor reads while the old GPU
         // objects remain alive for every already-submitted frame.
@@ -1151,18 +1082,14 @@ namespace lux::render
         return {};
     }
 
-    bool BindlessCombinedSet::ensureRoom()
+    Expected<void> BindlessCombinedSet::ensureRoom()
     {
-        if (!free_.empty())
-            return true;
-        if (count_ < cur_cap_)
-            return true;
-        if (!pool_owner_)
+        const bool has_room = !free_.empty() || count_ < cur_cap_;
+        if (has_room)
         {
-            // External pool mode: cannot reallocate. Caller must handle.
-            return false;
+            return {};
         }
-        return static_cast<bool>(reserve(count_ + 1));
+        return reserve(count_ + 1);
     }
 
     void BindlessCombinedSet::writeCombinedDescriptor(uint32_t idx, VkImageView view, VkSampler sampler)
@@ -1198,7 +1125,7 @@ namespace lux::render
         vkUpdateDescriptorSets(rc_.logicalDevice(), 1, &w, 0, nullptr);
     }
 
-    void BindlessCombinedSet::createImageGPU(CombinedSlot& s)
+    Expected<void> BindlessCombinedSet::createImageGPU(CombinedSlot& s)
     {
         VkImageCreateInfo ici{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
         ici.imageType = VK_IMAGE_TYPE_2D;
@@ -1217,52 +1144,67 @@ namespace lux::render
         VmaAllocationCreateInfo aci{};
         aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 
-        VK_CHECK(vmaCreateImage(rc_.vmaAllocator(), &ici, &aci, &s.image, &s.alloc, nullptr));
+        auto image = VmaImage::create(rc_.vmaAllocator(), ici, aci);
+        if (!image)
+        {
+            return lux::cxx::unexpected(image.error());
+        }
+        s.image = std::move(*image);
+        return {};
     }
 
-    void BindlessCombinedSet::createImageView(CombinedSlot& s)
+    Expected<void> BindlessCombinedSet::createImageView(CombinedSlot& s)
     {
         VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-        vci.image = s.image;
+        vci.image = s.image.image();
         vci.viewType = view_type_;
         vci.format = s.format;
         vci.subresourceRange = {image_aspect_, 0, s.mip_levels, 0, s.array_layers};
-        VK_CHECK(vkCreateImageView(rc_.logicalDevice(), &vci, nullptr, &s.view));
+        auto view = ImageViewOwner::create(rc_.logicalDevice(), vci);
+        if (!view)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(view.error()));
+        }
+        s.view = std::move(*view);
+        return {};
     }
 
-    void BindlessCombinedSet::destroyCombined(CombinedSlot& s)
+    Expected<void> BindlessCombinedSet::createSampledImage(CombinedSlot& slot, const VkSamplerCreateInfo& info)
     {
-        auto& dev = rc_.logicalDevice();
-        if (s.sampler)
+        auto image = createImageGPU(slot);
+        if (!image)
         {
-            vkDestroySampler(dev, s.sampler, nullptr);
-            s.sampler = VK_NULL_HANDLE;
+            return image;
         }
-        if (s.view)
+        auto view = createImageView(slot);
+        if (!view)
         {
-            vkDestroyImageView(dev, s.view, nullptr);
-            s.view = VK_NULL_HANDLE;
+            return view;
         }
-        if (s.image)
+        auto sampler = SamplerOwner::create(rc_.logicalDevice(), info);
+        if (!sampler)
         {
-            vmaDestroyImage(rc_.vmaAllocator(), s.image, s.alloc);
-            s.image = VK_NULL_HANDLE;
-            s.alloc = VK_NULL_HANDLE;
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(sampler.error()));
         }
+        slot.sampler = std::move(*sampler);
+        return {};
     }
 
-    void BindlessCombinedSet::retireCombinedDeferred(CombinedSlot& s)
+    void BindlessCombinedSet::retireCombinedDeferred(CombinedSlot& slot)
     {
-        if (s.sampler)
-            deferred_queue_.retireSampler(s.sampler);
-        if (s.view)
-            deferred_queue_.retireImageView(s.view);
-        if (s.image)
-            deferred_queue_.retireImage(s.image, s.alloc);
-        s.sampler = VK_NULL_HANDLE;
-        s.view = VK_NULL_HANDLE;
-        s.image = VK_NULL_HANDLE;
-        s.alloc = VK_NULL_HANDLE;
+        if (slot.sampler)
+        {
+            deferred_queue_.retireSampler(slot.sampler.release());
+        }
+        if (slot.view)
+        {
+            deferred_queue_.retireImageView(slot.view.release());
+        }
+        if (slot.image)
+        {
+            const auto allocation = slot.image.release();
+            deferred_queue_.retireImage(allocation.image, allocation.allocation);
+        }
     }
 
     void BindlessCombinedSet::recycleCompletedSlots(uint64_t completed_serial)
@@ -1280,30 +1222,28 @@ namespace lux::render
         pending_recycle_.resize(keep);
     }
 
-    BindlessCombinedSet::StagingBuf BindlessCombinedSet::createStaging(VkDeviceSize size, const void* data)
+    Expected<StagingBuffer> BindlessCombinedSet::createStaging(VkDeviceSize size, const void* data)
     {
-        StagingBuf b{};
-        b.size = size;
-        VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-        bci.size = size;
-        bci.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-        bci.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        VmaAllocationCreateInfo aci{};
-        aci.usage = VMA_MEMORY_USAGE_CPU_ONLY;
-        aci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-
-        VmaAllocationInfo ai{};
-        VK_CHECK(vmaCreateBuffer(rc_.vmaAllocator(), &bci, &aci, &b.buf, &b.alloc, &ai));
-        std::memcpy(ai.pMappedData, data, (size_t)size);
-        return b;
-    }
-
-    void BindlessCombinedSet::destroyStaging(StagingBuf& b)
-    {
-        if (b.buf)
-            vmaDestroyBuffer(rc_.vmaAllocator(), b.buf, b.alloc);
-        b = {};
+        VkBufferCreateInfo buffer_info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+        buffer_info.size = size;
+        buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VmaAllocationCreateInfo allocation_info{};
+        allocation_info.usage = VMA_MEMORY_USAGE_CPU_ONLY;
+        allocation_info.flags =
+            VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+        VmaAllocationInfo mapped{};
+        VkBuffer buffer{};
+        VmaAllocation allocation{};
+        VK_EXPECT(vmaCreateBuffer(rc_.vmaAllocator(), &buffer_info, &allocation_info, &buffer, &allocation, &mapped));
+        StagingBuffer owner(rc_.vmaAllocator(), buffer, allocation);
+        if (!mapped.pMappedData)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(VK_ERROR_MEMORY_MAP_FAILED));
+        }
+        std::memcpy(mapped.pMappedData, data, static_cast<size_t>(size));
+        VK_EXPECT(vmaFlushAllocation(rc_.vmaAllocator(), allocation, 0, size));
+        return owner;
     }
 
     Expected<CommandBufferOwner> BindlessCombinedSet::beginOneTime(ResourceContext& resources)
@@ -1393,7 +1333,7 @@ namespace lux::render
         {
             barrierImage(
                 cb,
-                s.image,
+                s.image.image(),
                 image_aspect_,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -1410,12 +1350,20 @@ namespace lux::render
             bl.dstOffsets[0] = {0, 0, 0};
             bl.dstOffsets[1] = {nw, nh, 1};
 
-            barrierImage(cb, s.image, image_aspect_, untouched_old_layout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, i, 1);
+            barrierImage(
+                cb,
+                s.image.image(),
+                image_aspect_,
+                untouched_old_layout,
+                VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                i,
+                1
+            );
             vkCmdBlitImage(
                 cb,
-                s.image,
+                s.image.image(),
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                s.image,
+                s.image.image(),
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 1,
                 &bl,
@@ -1430,7 +1378,7 @@ namespace lux::render
         {
             barrierImage(
                 cb,
-                s.image,
+                s.image.image(),
                 image_aspect_,
                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -1440,7 +1388,7 @@ namespace lux::render
         }
         barrierImage(
             cb,
-            s.image,
+            s.image.image(),
             image_aspect_,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -1452,7 +1400,7 @@ namespace lux::render
     void BindlessCombinedSet::recordTextureUploadInternal(
         VkCommandBuffer cb,
         BindlessCombinedSet::CombinedSlot& s,
-        BindlessCombinedSet::StagingBuf& staging,
+        VkBuffer staging,
         bool do_mips,
         const BindlessCombinedSet::TextureCopyPlan* copy_plan,
         VkImageLayout old_layout
@@ -1482,7 +1430,7 @@ namespace lux::render
 
         barrierImage(
             cb,
-            s.image,
+            s.image.image(),
             image_aspect_,
             old_layout,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -1513,8 +1461,8 @@ namespace lux::render
         }
         vkCmdCopyBufferToImage(
             cb,
-            staging.buf,
-            s.image,
+            staging,
+            s.image.image(),
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             static_cast<uint32_t>(copies.size()),
             copies.data()
@@ -1525,7 +1473,7 @@ namespace lux::render
         else
             barrierImage(
                 cb,
-                s.image,
+                s.image.image(),
                 image_aspect_,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -1537,7 +1485,7 @@ namespace lux::render
     void BindlessCombinedSet::recordCubeTextureUpload(
         VkCommandBuffer cb,
         CombinedSlot& s,
-        StagingBuf& staging,
+        VkBuffer staging,
         VkDeviceSize face_stride,
         VkImageLayout old_layout
     )
@@ -1545,7 +1493,7 @@ namespace lux::render
         // Transition all 6 layers to TRANSFER_DST
         barrierImage(
             cb,
-            s.image,
+            s.image.image(),
             image_aspect_,
             old_layout,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
@@ -1562,12 +1510,12 @@ namespace lux::render
             regions[face].imageSubresource = {image_aspect_, 0, face, 1};
             regions[face].imageExtent = {(uint32_t)s.width, (uint32_t)s.height, 1};
         }
-        vkCmdCopyBufferToImage(cb, staging.buf, s.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 6, regions.data());
+        vkCmdCopyBufferToImage(cb, staging, s.image.image(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 6, regions.data());
 
         // Transition to SHADER_READ_ONLY
         barrierImage(
             cb,
-            s.image,
+            s.image.image(),
             image_aspect_,
             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
@@ -1628,9 +1576,7 @@ namespace lux::render
         for (auto& e : pending_staging_textures_)
         {
             auto& s = slots_[e.slot_index];
-            StagingBuf stg{};
-            stg.buf = e.stg_buf;
-            stg.size = e.stg_size;
+            const VkBuffer stg = e.stg_buf;
 
             if (e.is_cube)
                 recordCubeTextureUpload(cmd, s, stg, e.face_stride, VK_IMAGE_LAYOUT_UNDEFINED);
@@ -1659,7 +1605,7 @@ namespace lux::render
         else
             barrierImage(
                 cmd,
-                s.image,
+                s.image.image(),
                 image_aspect_,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL

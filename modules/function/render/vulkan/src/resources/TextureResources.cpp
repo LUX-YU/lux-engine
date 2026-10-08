@@ -135,12 +135,21 @@ namespace lux::render
 
         // Fallback texture (2D)
         lux::rdesc::Texture fb = info.fallback_pixel.value_or(makeDefaultWhite());
-        SlotHandle fallback = combined_->addTexture(fb, &default_sampler_ci_);
+        auto fallback = combined_->addTexture(fb, &default_sampler_ci_);
+        if (!fallback)
+        {
+            shutdown();
+            return false;
+        }
         // Flush immediately so the fallback texture is ready before any rendering
-        combined_->flushUploads();
+        if (!combined_->flushUploads())
+        {
+            shutdown();
+            return false;
+        }
 
-        fallback_bindless_index_ = fallback.index;
-        noteTextureResident(fallback.index);
+        fallback_bindless_index_ = fallback->index;
+        noteTextureResident(fallback->index);
 
         return true; // initialized_ was set at the top — see the note there
     }
@@ -181,11 +190,13 @@ namespace lux::render
     {
         const VkSamplerCreateInfo& sci = opt_sampler ? *opt_sampler : default_sampler_ci_;
 
-        SlotHandle sh = combined_->addTexture(cpu, &sci, fmt, generate_mips);
-        if (!sh.isValid())
-            return renderFailure<err::memory::CapacityExhausted>();
-        TextureHandle h{sh.index, sh.gen};
-        noteTextureResident(sh.index);
+        auto sh = combined_->addTexture(cpu, &sci, fmt, generate_mips);
+        if (!sh)
+        {
+            return lux::cxx::unexpected(sh.error());
+        }
+        TextureHandle h{sh->index, sh->gen};
+        noteTextureResident(sh->index);
         return h;
     }
 
@@ -237,15 +248,17 @@ namespace lux::render
             return renderFailure<err::internal::InvalidArgument>();
 
         const VkSamplerCreateInfo& sci = opt_sampler ? *opt_sampler : default_sampler_ci_;
-        const SlotHandle sh =
+        const auto sh =
             combined_
                 ->addPersistentTexture(desc.width, desc.height, desc.mip_levels, persistentVkFormat(desc.format), &sci);
-        if (!sh.isValid())
-            return renderFailure<err::memory::CapacityExhausted>();
+        if (!sh)
+        {
+            return lux::cxx::unexpected(sh.error());
+        }
 
-        persistent_descs_.emplace(sh.index, desc);
-        noteTextureResident(sh.index);
-        return TextureHandle{sh.index, sh.gen};
+        persistent_descs_.emplace(sh->index, desc);
+        noteTextureResident(sh->index);
+        return TextureHandle{sh->index, sh->gen};
     }
 
     ERegionUploadStatus TextureResources::updateTextureRegions(
@@ -374,10 +387,12 @@ namespace lux::render
     {
         const VkSamplerCreateInfo& sci = opt_sampler ? *opt_sampler : default_sampler_ci_;
 
-        SlotHandle sh = combined_cube_->addCubeTexture(faces, &sci, fmt);
-        if (!sh.isValid())
-            return renderFailure<err::memory::CapacityExhausted>();
-        TextureHandle h{sh.index, sh.gen};
+        auto sh = combined_cube_->addCubeTexture(faces, &sci, fmt);
+        if (!sh)
+        {
+            return lux::cxx::unexpected(sh.error());
+        }
+        TextureHandle h{sh->index, sh->gen};
         return h;
     }
 

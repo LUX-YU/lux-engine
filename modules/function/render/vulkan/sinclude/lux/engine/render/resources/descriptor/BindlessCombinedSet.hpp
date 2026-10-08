@@ -13,6 +13,7 @@
 #include <lux/engine/render/gpu/lifecycle/CommandBufferOwner.hpp>
 #include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
 #include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
+#include <lux/engine/render/gpu/memory/StagingBuffer.hpp>
 #include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 #include <lux/engine/render/gpu/utils/Slot.hpp>
 #include <memory>
@@ -88,9 +89,6 @@ namespace lux::render
         BindlessCombinedSet(BindlessCombinedSet&&) = delete;
         BindlessCombinedSet& operator=(BindlessCombinedSet&&) = delete;
 
-        /// PERF-05: Call once per frame to advance frame counter and flush retired descriptor sets.
-        void beginFrame();
-
         /// Recycle slot indices whose removeTexture() retire-serial is now
         /// GPU-complete (completed_serial == current_serial - frames_in_flight).
         /// Indices are held out of the free list until then so an in-flight
@@ -103,7 +101,7 @@ namespace lux::render
         //
         // Slot index allocation is now owned by TextureResources (fresh_head_ + recycled SPSC).
         // BCS is purely a render-thread data structure: the caller pre-allocates a slot index
-        // and calls finalizeTexture() / finalizeCubeTexture() to create GPU objects for it.
+        // and adopts the completed native resources through finalizeTransferredTexture().
         // On removal, the caller calls removeTexture(), which retires the GPU objects
         // through the deferred-destroy queue and holds the index back until that
         // retire serial is GPU-complete (recycleCompletedSlots).
@@ -170,44 +168,6 @@ namespace lux::render
             return gen_[idx];
         }
 
-        /**
-         * @brief Finalize a pre-reserved slot for a 2-D texture (render thread).
-         *
-         * Creates VkImage, VkImageView, VkSampler.  Queues a staging upload.
-         * The slot index must have been reserved by TextureResources::reserveSlot2D().
-         */
-        void finalizeTexture(
-            SlotHandle h,
-            const uint8_t* pixels,
-            std::size_t size,
-            int32_t w,
-            int32_t h_dim,
-            int32_t c,
-            VkFormat fmt_hint,
-            const VkSamplerCreateInfo& sci,
-            bool do_mips,
-            bool srgb
-        );
-
-        /**
-         * @brief Finalize a pre-reserved slot for a cube-map texture (render thread).
-         *
-         * @param combined_pixels  Contiguous buffer of 6 face images in +X/-X/+Y/-Y/+Z/-Z order.
-         * @param total_size       Total byte size of all 6 faces.
-         * @param face_stride      Bytes per individual face.
-         */
-        void finalizeCubeTexture(
-            SlotHandle h,
-            const uint8_t* combined_pixels,
-            std::size_t total_size,
-            int32_t w,
-            int32_t h_dim,
-            int32_t c,
-            VkFormat fmt_hint,
-            const VkSamplerCreateInfo& sci,
-            VkDeviceSize face_stride
-        );
-
         struct TextureUpdateMip
         {
             const std::byte* data{nullptr};
@@ -237,7 +197,7 @@ namespace lux::render
         /// updates can barrier from it uniformly). The slot — and therefore the
         /// bindless index — never changes across region updates. 2D set only;
         /// single-layer (2D_ARRAY views arrive with the chunk-atlas slice).
-        SlotHandle addPersistentTexture(
+        Expected<SlotHandle> addPersistentTexture(
             uint32_t width,
             uint32_t height,
             uint32_t mip_levels,
@@ -286,7 +246,7 @@ namespace lux::render
         // Optional sampler CI; use default if not provided.
         // srgb_override: when set, overrides the member srgb_for_color_ flag
         //   for this texture's format selection (true = sRGB, false = UNORM).
-        SlotHandle addTexture(
+        Expected<SlotHandle> addTexture(
             const rdesc::Texture& tex,
             const VkSamplerCreateInfo* opt_sampler_ci = nullptr,
             VkFormat fmt = VK_FORMAT_UNDEFINED,
@@ -302,7 +262,7 @@ namespace lux::render
          * same dimensions and channel count.  Face order:
          * +X, -X, +Y, -Y, +Z, -Z.
          */
-        SlotHandle addCubeTexture(
+        Expected<SlotHandle> addCubeTexture(
             const rdesc::Texture faces[6],
             const VkSamplerCreateInfo* opt_sampler_ci = nullptr,
             VkFormat fmt = VK_FORMAT_UNDEFINED
@@ -313,7 +273,7 @@ namespace lux::render
         /// Flush all pending texture uploads in a single GPU submission.
         /// Must be called before rendering if addTexture() was used since last flush.
         /// Also auto-called by beginFrame().
-        void flushUploads();
+        [[nodiscard]] Expected<void> flushUploads();
 
         /// Record pending texture uploads into an external command buffer.
         /// Staging buffers are deferred into slot @p fi until retireDeferredStaging(fi)
@@ -438,13 +398,13 @@ namespace lux::render
         /// Per-slot image view (VK_NULL_HANDLE if slot is dead).
         VkImageView slotImageView(uint32_t idx) const noexcept
         {
-            return (idx < cur_cap_ && alive_[idx]) ? slots_[idx].view : VK_NULL_HANDLE;
+            return (idx < cur_cap_ && alive_[idx]) ? slots_[idx].view.get() : VK_NULL_HANDLE;
         }
 
         /// Per-slot sampler (VK_NULL_HANDLE if slot is dead).
         VkSampler slotSampler(uint32_t idx) const noexcept
         {
-            return (idx < cur_cap_ && alive_[idx]) ? slots_[idx].sampler : VK_NULL_HANDLE;
+            return (idx < cur_cap_ && alive_[idx]) ? slots_[idx].sampler.get() : VK_NULL_HANDLE;
         }
 
         [[nodiscard]] uint32_t slotMipLevels(uint32_t idx) const noexcept
@@ -501,7 +461,8 @@ namespace lux::render
         {
             return roundUpPow2(std::max(cur ? cur * 2 : 1u, need));
         }
-        [[nodiscard]] bool ensureRoom();
+
+        [[nodiscard]] Expected<void> ensureRoom();
         static uint32_t allocIndex(std::vector<uint32_t>& free_list, uint32_t& count_ref)
         {
             if (!free_list.empty())
@@ -524,14 +485,32 @@ namespace lux::render
         // ===== Texture GPU Object =====
         struct CombinedSlot
         {
-            VkImage image{VK_NULL_HANDLE};
-            VmaAllocation alloc{VK_NULL_HANDLE};
-            VkImageView view{VK_NULL_HANDLE};
-            VkSampler sampler{VK_NULL_HANDLE};
+            VmaImage image;
+            ImageViewOwner view;
+            SamplerOwner sampler;
             VkFormat format{VK_FORMAT_UNDEFINED};
             uint32_t mip_levels{1};
-            uint32_t array_layers{1}; ///< 1 for 2D, 6 for cube
-            int width{0}, height{0};
+            uint32_t array_layers{1};
+            int width{}, height{};
+
+            CombinedSlot() noexcept = default;
+            CombinedSlot(const CombinedSlot&) = delete;
+            CombinedSlot& operator=(const CombinedSlot&) = delete;
+            CombinedSlot(CombinedSlot&&) noexcept = default;
+
+            CombinedSlot& operator=(CombinedSlot&& other) noexcept
+            {
+                CombinedSlot previous(std::move(other));
+                std::swap(image, previous.image);
+                std::swap(view, previous.view);
+                std::swap(sampler, previous.sampler);
+                std::swap(format, previous.format);
+                std::swap(mip_levels, previous.mip_levels);
+                std::swap(array_layers, previous.array_layers);
+                std::swap(width, previous.width);
+                std::swap(height, previous.height);
+                return *this;
+            }
         };
 
         static uint32_t calcMipLevels(uint32_t w, uint32_t h)
@@ -559,25 +538,17 @@ namespace lux::render
             return VK_FORMAT_R8G8B8A8_UNORM; // fallback
         }
 
-        void createImageGPU(CombinedSlot& s);
+        [[nodiscard]] Expected<void> createImageGPU(CombinedSlot& s);
 
-        void createImageView(CombinedSlot& s);
-
-        void destroyCombined(CombinedSlot& s);
+        [[nodiscard]] Expected<void> createImageView(CombinedSlot& s);
+        [[nodiscard]] Expected<void> createSampledImage(CombinedSlot& slot, const VkSamplerCreateInfo& sampler);
 
         /// Retire a slot's GPU objects (image/view/sampler) through the shared
         /// DeferredDestroyQueue so they outlive any in-flight frame that may
         /// still sample them. The queue is bound before the set is created.
         void retireCombinedDeferred(CombinedSlot& s);
 
-        struct StagingBuf
-        {
-            VkBuffer buf{VK_NULL_HANDLE};
-            VmaAllocation alloc{VK_NULL_HANDLE};
-            VkDeviceSize size{0};
-        };
-        StagingBuf createStaging(VkDeviceSize size, const void* data);
-        void destroyStaging(StagingBuf& b);
+        [[nodiscard]] Expected<StagingBuffer> createStaging(VkDeviceSize size, const void* data);
 
         static Expected<CommandBufferOwner> beginOneTime(ResourceContext& resources);
         static Expected<void> endOneTime(ResourceContext& resources, CommandBufferOwner command);
@@ -623,7 +594,7 @@ namespace lux::render
         void recordTextureUploadInternal(
             VkCommandBuffer cb,
             CombinedSlot& s,
-            StagingBuf& staging,
+            VkBuffer staging,
             bool do_mips,
             const TextureCopyPlan* copy_plan,
             VkImageLayout old_layout = VK_IMAGE_LAYOUT_UNDEFINED
@@ -633,7 +604,7 @@ namespace lux::render
         void recordCubeTextureUpload(
             VkCommandBuffer cb,
             CombinedSlot& s,
-            StagingBuf& staging,
+            VkBuffer staging,
             VkDeviceSize face_stride,
             VkImageLayout old_layout = VK_IMAGE_LAYOUT_UNDEFINED
         );
@@ -677,11 +648,11 @@ namespace lux::render
 
         // ── Pending upload batch (render-thread only after A1) ───────────────────
         //
-        // Populated by addTexture() (init path) and finalizeTexture() / finalizeCubeTexture().
+        // Populated by synchronous texture creation and updates.
         // flushUploads() also runs on the render thread.  No mutex required.
         struct PendingUpload
         {
-            StagingBuf staging;
+            StagingBuffer staging;
             uint32_t slot_index;
             bool do_mips;
             bool is_cube{false};         ///< true for cube textures
@@ -690,8 +661,8 @@ namespace lux::render
             VkImageLayout old_layout{VK_IMAGE_LAYOUT_UNDEFINED};
         };
         std::vector<PendingUpload> pending_uploads_;
-        std::vector<StagingBuf> one_shot_staging_;              ///< temp collection from recordPendingUploads
-        std::vector<std::vector<StagingBuf>> deferred_staging_; ///< per-frame-slot staging awaiting GPU completion
+        std::vector<StagingBuffer> one_shot_staging_;              ///< temp collection from recordPendingUploads
+        std::vector<std::vector<StagingBuffer>> deferred_staging_; ///< per-frame-slot staging awaiting GPU completion
         std::vector<VkImageMemoryBarrier2> pending_acquire_barriers_; ///< QFOT acquire barriers from async uploads
         std::vector<PendingStagingTexture> pending_staging_textures_; ///< StagingOnly texture uploads
         std::vector<uint32_t> pending_mip_gen_slots_;                 ///< QFOT mip fallback

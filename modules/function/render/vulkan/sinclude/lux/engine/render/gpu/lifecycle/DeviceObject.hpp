@@ -86,6 +86,24 @@ namespace lux::render
                 return handle_;
             }
 
+            /// Adopt an existing native allocation at its original device/allocator boundary.
+            [[nodiscard]] static TDeviceObject adopt(
+                VkDevice device,
+                Handle handle,
+                const VkAllocationCallbacks* allocator = nullptr
+            ) noexcept
+            {
+                return TDeviceObject(device, handle, allocator);
+            }
+
+            /// Transfer deletion responsibility; the receiver must retain the same device and callbacks.
+            [[nodiscard]] Handle release() noexcept
+            {
+                device_ = VK_NULL_HANDLE;
+                allocator_ = nullptr;
+                return std::exchange(handle_, {});
+            }
+
             explicit operator bool() const noexcept
             {
                 return handle_ != VK_NULL_HANDLE;

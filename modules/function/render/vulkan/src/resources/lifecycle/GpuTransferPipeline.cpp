@@ -133,7 +133,12 @@ namespace lux::render
 
     GpuTransferPipeline::State::~State()
     {
-        (void)device_context_.waitIdle();
+        const auto idle = device_context_.waitIdle();
+        const bool can_release = idle == VK_SUCCESS || idle == VK_ERROR_DEVICE_LOST;
+        if (!can_release)
+        {
+            renderFatal("Transfer backing wait-idle failed before native release");
+        }
 
         shutdown_completions_.clear();
 

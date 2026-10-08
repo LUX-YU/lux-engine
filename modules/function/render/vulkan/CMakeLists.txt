@@ -247,6 +247,47 @@ if(BUILD_TESTING)
         set_tests_properties(render.transfer_ownership PROPERTIES TIMEOUT 30 LABELS gpu)
     endif()
 
+    add_executable(
+        render_transfer_idle_test
+        test/transfer_idle.cpp
+        src/resources/lifecycle/GpuTransferPipeline.cpp
+    )
+    target_include_directories(
+        render_transfer_idle_test
+        PRIVATE sinclude pinclude
+    )
+    target_compile_definitions(
+        render_transfer_idle_test
+        PRIVATE LUX_FUNCTION_DLL_DISABLE
+    )
+    target_link_libraries(
+        render_transfer_idle_test
+        PRIVATE render_vulkan GPUOpen::VulkanMemoryAllocator
+    )
+    if(MSVC)
+        target_compile_options(
+            render_transfer_idle_test
+            PRIVATE /UNDEBUG /utf-8
+        )
+    else()
+        target_compile_options(
+            render_transfer_idle_test
+            PRIVATE -UNDEBUG
+        )
+    endif()
+    if(LUX_RENDER_BUILD_GPU_TESTS)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(
+            NAME render.transfer_idle
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test/transfer_idle.py
+                    $<TARGET_FILE:render_transfer_idle_test>
+        )
+        set_tests_properties(
+            render.transfer_idle
+            PROPERTIES TIMEOUT 100 LABELS gpu
+        )
+    endif()
+
     add_executable(render_vma_allocator_ownership_test test/vma_allocator_ownership.cpp)
     target_include_directories(render_vma_allocator_ownership_test PRIVATE sinclude pinclude)
     target_compile_definitions(render_vma_allocator_ownership_test PRIVATE LUX_FUNCTION_DLL_DISABLE)

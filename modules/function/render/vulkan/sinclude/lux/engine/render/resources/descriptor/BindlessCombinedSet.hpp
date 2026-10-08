@@ -8,6 +8,7 @@
 #include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
 #include <lux/engine/function/render/client/core/RenderTypes.hpp>
 #include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
+#include <lux/engine/render/gpu/lifecycle/CommandBufferOwner.hpp>
 #include <vector>
 #include <memory>
 #include <optional>
@@ -603,8 +604,8 @@ namespace lux::render
         StagingBuf createStaging(VkDeviceSize size, const void* data);
         void destroyStaging(StagingBuf& b);
 
-        Expected<VkCommandBuffer> beginOneTime();
-        Expected<void> endOneTime(VkCommandBuffer cb);
+        Expected<CommandBufferOwner> beginOneTime();
+        Expected<void> endOneTime(CommandBufferOwner command);
 
         static void barrierImage(
             VkCommandBuffer cb,

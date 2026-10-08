@@ -118,4 +118,5 @@ namespace lux::render
         TDeviceObject<VkCommandPool, VkCommandPoolCreateInfo, vkCreateCommandPool, vkDestroyCommandPool>;
     using ImageViewOwner = detail::TDeviceObject<VkImageView, VkImageViewCreateInfo, vkCreateImageView, vkDestroyImageView>;
     using QueryPoolOwner = detail::TDeviceObject<VkQueryPool, VkQueryPoolCreateInfo, vkCreateQueryPool, vkDestroyQueryPool>;
+    using FenceOwner = detail::TDeviceObject<VkFence, VkFenceCreateInfo, vkCreateFence, vkDestroyFence>;
 } // namespace lux::render

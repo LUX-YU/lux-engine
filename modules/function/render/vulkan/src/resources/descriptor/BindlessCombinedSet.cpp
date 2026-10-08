@@ -1,6 +1,7 @@
 #include <lux/engine/render/resources/descriptor/BindlessCombinedSet.hpp>
 #include <lux/engine/render/gpu/transfer/TransferScheduler.hpp>
 #include <lux/engine/render/gpu/utils/FormatMap.hpp> // vkFormatMipBytes (update validation)
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 #include <vk_mem_alloc.h>
 
 #include <mutex>
@@ -163,7 +164,7 @@ namespace lux::render
             auto cb_res = beginOneTime();
             if (cb_res)
             {
-                VkCommandBuffer cb = cb_res.value();
+                const VkCommandBuffer cb = cb_res->get();
                 barrierImage(
                     cb,
                     fallback_image_,
@@ -171,7 +172,7 @@ namespace lux::render
                     VK_IMAGE_LAYOUT_UNDEFINED,
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
                 );
-                (void)endOneTime(cb);
+                (void)endOneTime(std::move(*cb_res));
             }
         }
 
@@ -521,9 +522,9 @@ namespace lux::render
         auto cb_result = beginOneTime();
         if (!cb_result)
             return;
-        VkCommandBuffer cb = cb_result.value();
+        const VkCommandBuffer cb = cb_result->get();
         recordPendingUploads(cb);
-        auto end_result = endOneTime(cb);
+        auto end_result = endOneTime(std::move(*cb_result));
         if (!end_result)
             return;
         // One-shot path: submission fence wait guarantees staging safety.
@@ -1367,26 +1368,30 @@ namespace lux::render
         b = {};
     }
 
-    Expected<VkCommandBuffer> BindlessCombinedSet::beginOneTime()
+    Expected<CommandBufferOwner> BindlessCombinedSet::beginOneTime()
     {
-        VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-        ai.commandPool = rc_->commandPool();
-        ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        ai.commandBufferCount = 1;
-        VkCommandBuffer cb{};
-        VK_EXPECT(vkAllocateCommandBuffers(rc_->logicalDevice(), &ai, &cb));
+        auto command = CommandBufferOwner::create(rc_->logicalDevice(), rc_->commandPool());
+        if (!command)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(command.error()));
+        }
         VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
         bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        VK_EXPECT(vkBeginCommandBuffer(cb, &bi));
-        return cb;
+        VK_EXPECT(vkBeginCommandBuffer(command->get(), &bi));
+        return std::move(*command);
     }
 
-    Expected<void> BindlessCombinedSet::endOneTime(VkCommandBuffer cb)
+    Expected<void> BindlessCombinedSet::endOneTime(CommandBufferOwner command)
     {
+        const auto cb = command.get();
         VK_EXPECT(vkEndCommandBuffer(cb));
         VkFenceCreateInfo fence_ci{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-        VkFence fence = VK_NULL_HANDLE;
-        VK_EXPECT(vkCreateFence(rc_->logicalDevice(), &fence_ci, nullptr, &fence));
+        auto fence_owner = FenceOwner::create(rc_->logicalDevice(), fence_ci);
+        if (!fence_owner)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(fence_owner.error()));
+        }
+        const auto fence = fence_owner->get();
 
         VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
         si.commandBufferCount = 1;
@@ -1398,16 +1403,22 @@ namespace lux::render
         }
         if (submit_res != VK_SUCCESS)
         {
-            vkDestroyFence(rc_->logicalDevice(), fence, nullptr);
-            return renderFailure<err::internal::Unspecified>();
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(submit_res));
         }
-        VkResult wait_res = vkWaitForFences(rc_->logicalDevice(), 1, &fence, VK_TRUE, UINT64_MAX);
-        vkDestroyFence(rc_->logicalDevice(), fence, nullptr);
+        const auto wait_res = vkWaitForFences(rc_->logicalDevice(), 1, &fence, VK_TRUE, UINT64_MAX);
         if (wait_res != VK_SUCCESS)
         {
-            return renderFailure<err::internal::Unspecified>();
+            // A failed fence wait alone does not authorize destruction of submitted work.
+            // This is already an explicitly synchronous path. Preserve ownership until
+            // device idle or confirmed device loss, as in the renderer shutdown boundary.
+            const auto idle = rc_->deviceContext().waitIdle();
+            const bool can_release = idle == VK_SUCCESS || idle == VK_ERROR_DEVICE_LOST;
+            if (!can_release)
+            {
+                renderFatal("One-time upload could not establish a safe resource release point");
+            }
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(wait_res));
         }
-        vkFreeCommandBuffers(rc_->logicalDevice(), rc_->commandPool(), 1, &cb);
         return {};
     }
 

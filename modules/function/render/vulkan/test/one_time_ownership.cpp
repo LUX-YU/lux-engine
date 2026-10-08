@@ -1,3 +1,4 @@
+#define LUX_ENGINE_FUNCTION_RENDER_FEATURES_DLL_DISABLE
 #include <lux/engine/gapi/vk/vk.hpp>
 #include <lux/engine/render/gpu/VmaFwd.hpp>
 
@@ -521,6 +522,7 @@ namespace
 #include "../src/resources/mesh/MdcTable.cpp"
 #include "../src/resources/lighting/LightResources.cpp"
 #include "../src/resources/lighting/ShadowResources.cpp"
+#include "../../features/src/renderer/features/shadow/EVSMShadowResources.cpp"
 #include "../src/resources/hzb/HzbResources.cpp"
 #include "../src/resources/vertex/VertexPoolRegistry.cpp"
 #include "../src/resources/vertex/TransientVertexSource.cpp"
@@ -2306,6 +2308,171 @@ void checkShadowRebuild(
     retirement.flushAll();
 }
 
+void checkEvsmConstruction(
+    lux::render::DeviceContext& device,
+    lux::render::ResourceContext& resources,
+    lux::render::GeneralDescriptorSetLayout& layouts,
+    lux::render::DeferredDestroyQueue& retirement
+)
+{
+    using namespace lux::render;
+    static_assert(!std::is_default_constructible_v<EVSMShadowResources>);
+    static_assert(!std::is_copy_constructible_v<EVSMShadowResources>);
+    static_assert(!std::is_move_constructible_v<EVSMShadowResources>);
+    DescriptorService descriptors(device.logicalDevice());
+    auto arena = SceneDescriptorArena::create(device.logicalDevice(), {});
+    assert(arena);
+    const std::array light_layouts{
+        layouts.getLayout(TGetBindingSet<ELightSetBindings>::value),
+        layouts.getLayout(TGetBindingSet<ELightSetBindings>::value)
+    };
+    auto domain = (*arena)->allocateBatch(light_layouts);
+    assert(domain);
+    EVSMShadowResources::CreateInfo
+        info{device, descriptors, retirement, *domain, 0, 16, 2, 2, {4.5f, 2.0f, 0.7f, 0.0f}};
+    const auto original_images = images.size();
+    const auto original_views = views.size();
+    const auto original_buffers = buffers.size();
+    retirement.beginFrame(333);
+    for (unsigned invalid = 0; invalid < 7; ++invalid)
+    {
+        auto bad = info;
+        auto invalid_sets = *domain;
+        switch (invalid)
+        {
+        case 0:
+            bad.frames_in_flight = 0;
+            break;
+        case 1:
+            bad.frames_in_flight = kMaxFramesInFlight + 1;
+            break;
+        case 2:
+            bad.atlas_page_resolution = 0;
+            break;
+        case 3:
+            bad.atlas_page_count = 0;
+            break;
+        case 4:
+            bad.domain_sets = std::span(*domain).first(1);
+            break;
+        case 5:
+            invalid_sets[1] = VK_NULL_HANDLE;
+            bad.domain_sets = invalid_sets;
+            break;
+        case 6:
+            bad.domain_binding_offset = UINT32_MAX;
+            break;
+        }
+        const auto writes = descriptor_writes;
+        auto candidate = EVSMShadowResources::create(bad);
+        assert(!candidate && isError<err::internal::InvalidArgument>(candidate.error()));
+        assert(descriptor_writes == writes && images.size() == original_images && buffers.size() == original_buffers);
+    }
+    for (const auto boundary :
+         {EFailure::IMAGE, EFailure::VIEW, EFailure::BUFFER, EFailure::MAPPED, EFailure::FLUSH, EFailure::SAMPLER})
+    {
+        for (unsigned index = 0; index < (boundary == EFailure::SAMPLER ? 1u : 2u); ++index)
+        {
+            const auto rejected = rejections;
+            const auto writes = descriptor_writes;
+            failure = boundary;
+            skip_rejections = index;
+            auto candidate = EVSMShadowResources::create(info);
+            failure = EFailure::NONE;
+            assert(!candidate && rejections == rejected + 1);
+            const auto expected = boundary == EFailure::MAPPED || boundary == EFailure::FLUSH
+                                      ? VK_ERROR_MEMORY_MAP_FAILED
+                                      : VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            assert(isError<err::device::VulkanCallFailed>(candidate.error()));
+            assert(candidate.error().args[0] == encodeVkResult(expected));
+            assert(descriptor_writes == writes);
+            // Unpublished prefixes must not wait for a GPU watermark to release.
+            assert(
+                images.size() == original_images && views.size() == original_views && buffers.size() == original_buffers
+            );
+        }
+    }
+    for (unsigned cycle = 0; cycle < 3; ++cycle)
+    {
+        retirement.beginFrame(333 + cycle);
+        const auto writes = descriptor_writes;
+        auto candidate = EVSMShadowResources::create(info);
+        assert(candidate && descriptor_writes == writes + 4);
+        auto& owner = **candidate;
+        assert(owner.framesInFlight() == 2 && owner.pageResolution() == 16 && owner.pageCount() == 2);
+        assert(owner.blurredImage() == owner.momentImage() && owner.blurredView() == owner.momentView());
+        assert(owner.scratchImage() != owner.momentImage());
+        const auto image = owner.momentImage();
+        const auto view = owner.momentView();
+        const auto buffer = owner.configUBO(0);
+        const auto sampler = owner.sampler();
+        for (uint32_t fi = 0; fi < owner.framesInFlight(); ++fi)
+        {
+            const auto& origin = buffers.at(owner.configUBO(fi));
+            VmaAllocationInfo mapping{};
+            vmaGetAllocationInfo(origin.first, origin.second, &mapping);
+            const auto* config = static_cast<const EVSMShadowResources::ConfigGPU*>(mapping.pMappedData);
+            assert(config->pos_exponent == 4.5f && config->neg_exponent == 2.0f && config->bleed_reduction == 0.7f);
+        }
+        auto command = CommandBufferOwner::create(device.logicalDevice(), resources.commandPool());
+        assert(command);
+        VkCommandBufferBeginInfo begin_info{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        assert(begin(command->get(), &begin_info) == VK_SUCCESS);
+        std::array<VkImageMemoryBarrier2, 2> image_barriers{};
+        const std::array native_images{owner.momentImage(), owner.scratchImage()};
+        for (size_t index = 0; index < image_barriers.size(); ++index)
+        {
+            auto& barrier = image_barriers[index];
+            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+            barrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+            barrier.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+            barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+            barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image = native_images[index];
+            barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, owner.pageCount()};
+        }
+        VkBufferMemoryBarrier2 uniform_barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
+        uniform_barrier.srcStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
+        uniform_barrier.srcAccessMask = VK_ACCESS_2_HOST_WRITE_BIT;
+        uniform_barrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+        uniform_barrier.dstAccessMask = VK_ACCESS_2_UNIFORM_READ_BIT;
+        uniform_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        uniform_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        uniform_barrier.buffer = buffer;
+        uniform_barrier.size = VK_WHOLE_SIZE;
+        VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+        dependency.imageMemoryBarrierCount = static_cast<uint32_t>(image_barriers.size());
+        dependency.pImageMemoryBarriers = image_barriers.data();
+        dependency.bufferMemoryBarrierCount = 1;
+        dependency.pBufferMemoryBarriers = &uniform_barrier;
+        vkCmdPipelineBarrier2(command->get(), &dependency);
+        assert(end(command->get()) == VK_SUCCESS);
+        VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        auto fence = FenceOwner::create(device.logicalDevice(), fence_info);
+        assert(fence);
+        const auto cmd = command->get();
+        VkSubmitInfo submission{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submission.commandBufferCount = 1;
+        submission.pCommandBuffers = &cmd;
+        assert(submit(device.graphicsQueue(), 1, &submission, fence->get()) == VK_SUCCESS);
+        candidate->reset();
+        retirement.collect(332 + cycle);
+        assert(images.contains(image) && views.contains(view) && buffers.contains(buffer));
+        const auto fence_handle = fence->get();
+        assert(wait(device.logicalDevice(), 1, &fence_handle, VK_TRUE, UINT64_MAX) == VK_SUCCESS);
+        retirement.collect(333 + cycle);
+        assert(!images.contains(image) && !views.contains(view) && !buffers.contains(buffer));
+        assert(
+            images.size() == original_images && views.size() == original_views && buffers.size() == original_buffers
+        );
+        assert(samplers.contains(sampler)); // The shared cache, not the resource, owns it.
+    }
+    std::puts("EVSM complete construction: every native prefix rejection, exact errors, no partial descriptors, owned "
+              "config, retry and real GPU submission/serial retirement PASS");
+}
+
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
@@ -2337,6 +2504,11 @@ int main(int argc, char** argv)
     }
     DeferredDestroyQueue retirement;
     retirement.init(device.vmaAllocator(), device.logicalDevice());
+    checkEvsmConstruction(device, resources, layouts, retirement);
+    if (argc == 2 && std::string_view(argv[1]) == "--evsm")
+    {
+        return 0;
+    }
     checkShadowRebuild(device, layouts, retirement);
     if (argc == 2 && std::string_view(argv[1]) == "--shadow")
     {

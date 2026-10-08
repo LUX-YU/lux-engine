@@ -39,7 +39,6 @@ namespace lux::render
     class LightResources;
     class ViewCameraResource;
     class ShadowResources;
-    class EVSMShadowResources;
 
     class LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC ShadowMapFeature : public RenderFeature
     {
@@ -175,28 +174,6 @@ namespace lux::render
         };
 
         void buildSlicesForView(const View& view, LightResources* light_res, PerViewShadowState& out_state);
-        /// 写 EVSM 的 b9(模糊后图集)+ b10(配置 UBO)进 Light 段的域集。
-        /// 在 PCF 与 EVSM 资源都 init 完之后调用一次。
-        ///
-        /// ⚠️ 历史教训(仍然适用,只是形态变了):渲染图编译器对 FEATURE 域槽
-        /// 发的是**域集**绑定(RenderGraphCompiler::computeDescriptorBindingPlan)。
-        /// 这两条曾经只写 legacy per-set 集、漏了域副本,于是着色器从域集的
-        /// `offset+9 / offset+10` 读到从没被写过的 binding —— 而 PARTIALLY_BOUND
-        /// 让空 binding 完全合法,EVSM 阴影**静默消失、零 validation 错误**
-        /// (`6a0a3c0`)。
-        ///
-        /// 拆掉 legacy 半边后域集成了唯一写目标,这类"写了一半"的不对称
-        /// 从形状上不再可能;但**域集为空**仍会让写入循环零次(同样静默),
-        /// 那一层由 DomainWriteTarget 的接收端自查兜住。
-        ///
-        /// @param domain_sets            Light 所在 FEATURE 域的 per-FIF 集
-        /// @param domain_binding_offset  Light 在域内的起始偏移(= +2,跳过 Instance 的两条)
-        void writeEVSMBindings(
-            LightResources& light_res,
-            EVSMShadowResources& evsm_res,
-            std::span<const VkDescriptorSet> domain_sets,
-            uint32_t domain_binding_offset
-        );
         const PerViewShadowState* resolveViewState(uint32_t view_handle) const;
         uint64_t computeLightConfigHash(LightResources* light_res) const;
 

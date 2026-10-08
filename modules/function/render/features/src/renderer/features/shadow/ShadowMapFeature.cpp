@@ -313,11 +313,7 @@ namespace lux::render
         : RenderFeature(RenderFeature::Config{.name = std::string(ShadowMapFeature::kFeatureName)}),
           cfg_(std::move(cfg))
     {
-        // Register all known shadow techniques up-front. Each technique is a
-        // lightweight stub at C2 (id + lightingFragVariant only); resource /
-        // pass-side polymorphism is wired in progressively from C3 onward.
         techniques_[static_cast<uint32_t>(EShadowTechnique::PCF)] = std::make_unique<PCFShadowTechnique>();
-        techniques_[static_cast<uint32_t>(EShadowTechnique::EVSM)] = std::make_unique<EVSMShadowTechnique>();
         active_technique_ = cfg_.shadow_config.default_technique;
 
         // Seed the editor-facing param mirror from the bring-up config so the
@@ -331,23 +327,16 @@ namespace lux::render
 
     ShadowMapFeature::~ShadowMapFeature()
     {
-        // 不在这里关停 shadow_res_ —— 它归**场景注册表**所有(本类只借了个裸指针,
-        // 见 shadow_res_ 的声明),注册表会按注册逆序关停它。
-        //
-        // 此前这里调 shutdown() 有真实危害:runtime removeFeature 这条链
-        //(handleRemoveFeature → RenderScene::removeFeature → feature_set_.erase)
-        // **没有 vkDeviceWaitIdle**,而 ShadowResources 析构 是内联销毁、
-        // 不经 DeferredDestroyQueue —— 此刻 N-1/N-2 帧的命令缓冲可能仍在采样这张
-        // 阴影图集。反向依赖守卫也拦不住(MeshShadowFeature 没声明对本特性的依赖)。
-        // 进程收尾时它只是与注册表重复(shutdown 幂等),但那条 removeFeature 路径上
-        // 是 FifOwned.hpp 文件头点名要根除的缺陷类。
-        //
-        // technique 的资源不同:它们归本类的 unique_ptr 所有,必须自己放。
-        for (auto& t : techniques_)
+        // The scene owns the shared atlas; this feature only revokes its technique borrow.
+        // Accepted EVSM backing retires through the existing queue when the unique technique dies.
+        if (shadow_res_)
         {
-            if (t)
+            for (const auto& technique : techniques_)
             {
-                t->destroyResources();
+                if (technique && shadow_res_->currentTechnique() == technique.get())
+                {
+                    shadow_res_->setCurrentTechnique(nullptr);
+                }
             }
         }
     }
@@ -418,11 +407,6 @@ namespace lux::render
             shadow_res_ = sreg.insert(std::move(*candidate)).get();
         }
 
-        // Publish the current technique (abstract pointer) into the shared resource so
-        // MeshShadowFeature drives its caster + post passes polymorphically instead of
-        // discovering this feature via dynamic_cast.
-        shadow_res_->setCurrentTechnique(techniques_[static_cast<uint32_t>(active_technique_)].get());
-
         if (fresh)
         {
             // 视图销毁时逐出该视图的缓存 —— 由**安装点**登记,资源自己不再继承帧接口。
@@ -434,125 +418,38 @@ namespace lux::render
                                       { res->evictSceneView(scene_key, view_id); });
         }
 
-        // EVSM resource allocation (C3b). Allocated ONLY when the scene's default
-        // shadow technique is EVSM — a PCF-only scene must not pay the ~1 GB
-        // RGBA16F moment+scratch atlas pair (H13). The technique is chosen at config
-        // time; every EVSM consumer gates on activeTechnique()==EVSM /
-        // resources().isInitialized(), so PCF-only scenes never touch these
-        // resources. (A future runtime PCF->EVSM switch would allocate then, in
-        // setActiveTechnique.)
-        // No RTTI: the slot is indexed by enum and id() is the type discriminator → guard on
-        // id() then static_cast.
-        auto* evsm_base = techniques_[static_cast<uint32_t>(EShadowTechnique::EVSM)].get();
-        EVSMShadowTechnique* evsm = (cfg_.shadow_config.default_technique == EShadowTechnique::EVSM && evsm_base &&
-                                     evsm_base->id() == EShadowTechnique::EVSM)
-                                        ? static_cast<EVSMShadowTechnique*>(evsm_base)
-                                        : nullptr;
-        if (evsm)
+        // PCF-only scenes never allocate EVSM backing. A selected technique is published only when complete.
+        if (active_technique_ == EShadowTechnique::EVSM)
         {
-            EVSMShadowTechnique::InitInfo evsm_info{};
-            evsm_info.device = ctx.device();
-            evsm_info.allocator = ctx.vmaAllocator();
-            evsm_info.atlas_page_resolution = cfg_.shadow_config.atlas_page_resolution;
-            // EVSM atlas MUST share PCF atlas_page_count: slice metadata
-            // (atlas_layer in ShadowSliceGPU) is computed once by the shared
-            // ShadowAtlasPacker. If EVSM has fewer pages, slices that landed
-            // on PCF's pages 4..N would write to non-existent EVSM layers →
-            // silently dropped by the rasterizer → moments stay zero →
-            // Chebyshev → 0 → those lights look fully shadowed.
-            // `evsm_atlas_page_count` is kept as a knob but treated as a
-            // **minimum**; if the PCF page count is larger, EVSM grows to match.
-            evsm_info.atlas_page_count =
-                std::max(cfg_.shadow_config.atlas_page_count, cfg_.shadow_config.evsm_atlas_page_count);
-            evsm_info.frames_in_flight = ctx.framesInFlight();
-            evsm_info.descriptor_svc = &ctx.descriptorService();
-            evsm_info.pos_exponent = cfg_.shadow_config.evsm_pos_exponent;
-            evsm_info.neg_exponent = cfg_.shadow_config.evsm_neg_exponent;
-            evsm_info.bleed_reduction = cfg_.shadow_config.evsm_bleed_reduction;
-            evsm->ensureResources(evsm_info);
-
-            // Write EVSM bindings 9 (blurred atlas) and 10 (config UBO) into the
-            // per-FIF light descriptor sets. These bindings are PARTIALLY_BOUND
-            // in the light DS layout (see GeneralDescriptorSetLayout.cpp), so PCF
-            // mode running with bindings 9/10 written is benign — the PCF SPIR-V
-            // simply doesn't reference them. EVSM mode requires them written;
-            // doing the write up-front keeps runtime technique switching cheap.
-            if (evsm->resources().isInitialized())
+            const EVSMShadowResources::ConfigGPU config{
+                cfg_.shadow_config.evsm_pos_exponent,
+                cfg_.shadow_config.evsm_neg_exponent,
+                cfg_.shadow_config.evsm_bleed_reduction,
+                0.0f
+            };
+            const EVSMShadowResources::CreateInfo info{
+                ctx.deviceContext(),
+                ctx.descriptorService(),
+                ctx.deferredDestroyQueue(),
+                scene.domainDescriptorSets()->setsFor(rdesc::EBindFrequency::FEATURE),
+                engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::LIGHT)),
+                cfg_.shadow_config.atlas_page_resolution,
+                std::max(cfg_.shadow_config.atlas_page_count, cfg_.shadow_config.evsm_atlas_page_count),
+                ctx.framesInFlight(),
+                config
+            };
+            auto technique = EVSMShadowTechnique::create(info);
+            if (!technique)
             {
-                {
-                    // 与上面 ShadowResources::CreateInfo 取同一个来源:
-                    // b9/b10 和 b4-b8 一样住在 **Light 集**里,所以用 Light 的域集
-                    // 和 Light 的域内偏移(+2),不是 EVSM 自己的什么集。
-                    std::span<const VkDescriptorSet> evsm_domain_sets{};
-                    uint32_t evsm_domain_offset = 0;
-                    if (auto* domains = scene.domainDescriptorSets())
-                    {
-                        evsm_domain_sets = domains->setsFor(rdesc::EBindFrequency::FEATURE);
-                        evsm_domain_offset = engineSetDomainOffset(static_cast<uint32_t>(EDescriptorSetSlot::LIGHT));
-                    }
-                    writeEVSMBindings(*light_res_, evsm->resources(), evsm_domain_sets, evsm_domain_offset);
-                }
-                // EVSM owns its blur pipelines now — build them via the technique
-                // (moved out of this feature; see EVSMShadowTechnique::ensureBlurPipelines).
-                evsm->ensureBlurPipelines(ctx);
+                return lux::cxx::unexpected(technique.error());
             }
+            (*technique)->ensureBlurPipelines(ctx);
+            techniques_[static_cast<uint32_t>(EShadowTechnique::EVSM)] = std::move(*technique);
         }
+        shadow_res_->setCurrentTechnique(techniques_[static_cast<uint32_t>(active_technique_)].get());
 
         initialized_ = true;
         return {};
-    }
-
-    void ShadowMapFeature::writeEVSMBindings(
-        LightResources& light_res,
-        EVSMShadowResources& evsm_res,
-        std::span<const VkDescriptorSet> domain_sets,
-        uint32_t domain_binding_offset
-    )
-    {
-        const uint32_t fif = evsm_res.framesInFlight();
-
-        VkDescriptorImageInfo atlas_info{};
-        atlas_info.sampler = evsm_res.sampler();
-        atlas_info.imageView = evsm_res.blurredView();
-        atlas_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-        // 阶段 C:域集是唯一写目标(legacy per-set 半边已删)。dstBinding
-        // 一律加域内偏移:Light 段在合并的 FEATURE 域集里从 +2 起手(跳过
-        // Instance 的两条)。循环改由域集长度驱动 —— 此前借 per-set 集的长度
-        // 当计数,那是即将消失的东西。
-        //
-        // 这两条(b9-b10)曾经**只写 legacy 不写域集**,正是 EVSM 阴影静默消失
-        // 的原因(6a0a3c0);现在唯一目标就是域集,那类不对称从形状上不可能了。
-        for (uint32_t fi = 0; fi < static_cast<uint32_t>(domain_sets.size()); ++fi)
-        {
-            VkDescriptorSet ds = domain_sets[fi];
-            if (ds == VK_NULL_HANDLE)
-            {
-                continue;
-            }
-
-            VkDescriptorBufferInfo ubo_info{};
-            ubo_info.buffer = evsm_res.configUBO(fi % fif);
-            ubo_info.offset = 0;
-            ubo_info.range = sizeof(EVSMShadowResources::ConfigGPU);
-
-            std::array<VkWriteDescriptorSet, 2> w{};
-            w[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            w[0].dstSet = ds;
-            w[0].dstBinding = domain_binding_offset + static_cast<uint32_t>(ELightSetBindings::SHADOW_ATLAS_EVSM);
-            w[0].descriptorCount = 1;
-            w[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-            w[0].pImageInfo = &atlas_info;
-
-            w[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            w[1].dstSet = ds;
-            w[1].dstBinding = domain_binding_offset + static_cast<uint32_t>(ELightSetBindings::SHADOW_EVSM_CONFIG);
-            w[1].descriptorCount = 1;
-            w[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-            w[1].pBufferInfo = &ubo_info;
-
-            vkUpdateDescriptorSets(device_, static_cast<uint32_t>(w.size()), w.data(), 0, nullptr);
-        }
     }
 
     uint64_t ShadowMapFeature::computeLightConfigHash(LightResources* light_res) const
@@ -715,7 +612,7 @@ namespace lux::render
         auto shadow_atlas = builder.importTexture(cfg_.shadow_atlas, shadow_tex_desc, import_info);
 
         // ── EVSM atlas imports (C3c) ──────────────────────────────────────────
-        // The 3 RGBA16F atlases live alongside the PCF D32 atlas and follow the
+        // The two RGBA16F atlases live alongside the PCF D32 atlas and follow the
         // same atlas-tile coordinate layout (slice metadata is shared). They are
         // imported here so downstream EVSM caster + blur passes (added when the
         // active technique is EVSM) can reference them. PCF mode never reads
@@ -724,7 +621,7 @@ namespace lux::render
         auto* evsm_tech = (evsm_base2 && evsm_base2->id() == EShadowTechnique::EVSM)
                               ? static_cast<EVSMShadowTechnique*>(evsm_base2)
                               : nullptr;
-        if (evsm_tech && evsm_tech->resources().isInitialized())
+        if (evsm_tech)
         {
             const auto& evsm_res = evsm_tech->resources();
             RGTextureDescription evsm_tex_desc{};

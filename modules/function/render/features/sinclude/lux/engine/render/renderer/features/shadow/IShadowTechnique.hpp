@@ -59,10 +59,6 @@ namespace lux::render
     public:
         virtual ~IShadowTechnique() = default;
 
-        // ── Startup / shutdown (once per technique lifetime). ───────────
-        virtual void buildResources() {}
-        virtual void destroyResources() {}
-
         // ── Per-frame scheduling. Each technique chooses how many and what
         //    kind of GPU passes it emits. ─────────────────────────────────
         virtual void recordFrameSetup(const ShadowFrameContext&) {}

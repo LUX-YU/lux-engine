@@ -414,7 +414,7 @@ namespace lux::render
             .initial_dense_capacity = 512,
             .slices = ctx.framesInFlight(),
         };
-        info.descriptor_pool = ctx.resourceContext().descriptorPool().handle();
+        info.descriptor_pool = ctx.resourceContext().descriptorPool();
         info.set_layout = ctx.descriptorLayouts().getLayout(EDescriptorSetSlot::MATERIAL);
         info.texture_sampling_catalog = &ctx.textureSamplingRepresentations();
         info.textures = &ctx.globalRegistry().must<TextureResources>();

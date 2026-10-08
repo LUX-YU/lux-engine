@@ -335,4 +335,25 @@ if(BUILD_TESTING)
         add_test(NAME render.vma_allocation_ownership COMMAND render_vma_allocation_ownership_test)
         set_tests_properties(render.vma_allocation_ownership PROPERTIES TIMEOUT 30 LABELS gpu)
     endif()
+
+    add_executable(
+        render_resource_context_test
+        test/resource_context_construction.cpp
+        test/resource_context_server.cpp
+    )
+    target_include_directories(render_resource_context_test PRIVATE sinclude pinclude)
+    target_compile_definitions(render_resource_context_test PRIVATE LUX_FUNCTION_DLL_DISABLE)
+    target_link_libraries(
+        render_resource_context_test
+        PRIVATE render_vulkan GPUOpen::VulkanMemoryAllocator
+    )
+    if(MSVC)
+        target_compile_options(render_resource_context_test PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(render_resource_context_test PRIVATE -UNDEBUG)
+    endif()
+    if(LUX_RENDER_BUILD_GPU_TESTS)
+        add_test(NAME render.resource_context_construction COMMAND render_resource_context_test)
+        set_tests_properties(render.resource_context_construction PROPERTIES TIMEOUT 30 LABELS gpu)
+    endif()
 endif()

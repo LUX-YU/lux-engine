@@ -1,7 +1,7 @@
+#include <lux/engine/gapi/vk/vk.hpp>
+
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
-
-#include <lux/engine/render/gpu/VulkanContext.hpp>
 
 #include <cassert>
 #include <unordered_map>
@@ -101,9 +101,9 @@ namespace
 #include "../src/gpu/memory/VmaTypes.cpp"
 #undef vmaDestroyImage
 #undef vmaCreateImage
-#include "../src/gpu/VulkanContext.cpp"
 #define vkCreateImageView createView
 #define vkDestroyImageView destroyView
+#include "../src/gpu/VulkanContext.cpp"
 #include "../src/targets/OffscreenImagePool.cpp"
 #undef vkDestroyImageView
 #undef vkCreateImageView
@@ -115,8 +115,9 @@ int main()
     InstanceContext instance({});
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
-    ResourceContext resources(device);
-    assert(resources.init());
+    auto resources_owner = ResourceContext::create(device);
+    assert(resources_owner);
+    auto& resources = **resources_owner;
 
     RenderTargetLayout layout;
     layout.slots[static_cast<std::size_t>(ETargetSlot::SCENE_COLOR)] = RenderTargetSlotDesc{

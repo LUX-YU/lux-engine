@@ -2,6 +2,7 @@
 #include "lux/engine/gapi/vk/vk.hpp" // platform::gapi
 #include "lux/engine/function/visibility.h"
 #include <lux/engine/render/gpu/memory/VmaTypes.hpp>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 #include <lux/engine/function/render/client/core/Errors.hpp>
 #include <lux/engine/function/render/client/core/DeviceCaps.hpp>
 #include <lux/engine/function/render/client/core/EFeatureLevel.hpp>
@@ -369,74 +370,40 @@ namespace lux::render
         uint32_t max_sets = 256;
     };
 
-    /**
-     * @brief Resource management context (may change dynamically)
-     * @details Manages descriptor pools and command pools for resource allocation
-     */
+    /// Complete descriptor/command pool ownership. The device and its allocation callbacks
+    /// outlive this address-stable context; destruction requires the caller's GPU-safe point.
     class LUX_FUNCTION_PUBLIC ResourceContext
     {
     public:
-        /**
-         * @brief Construct resource context (minimal — call init() to complete)
-         * @param device_context Reference to device context
-         */
-        explicit ResourceContext(DeviceContext& device_context);
+        using CreateResult = Expected<std::unique_ptr<ResourceContext>>;
 
-        /**
-         * @brief Initialize resource context: create descriptor pool, command pools
-         * @param pool_config Descriptor pool capacity
-         * @return Expected<void> Success or error code
-         */
-        [[nodiscard]] Expected<void> init(const DescriptorPoolConfig& pool_config = {});
+        [[nodiscard]] static CreateResult
+        create(DeviceContext& device_context, const DescriptorPoolConfig& pool_config = {}) noexcept;
 
-        ~ResourceContext();
+        ~ResourceContext() = default;
+        ResourceContext(const ResourceContext&) = delete;
+        ResourceContext& operator=(const ResourceContext&) = delete;
+        ResourceContext(ResourceContext&&) = delete;
+        ResourceContext& operator=(ResourceContext&&) = delete;
 
-        /// @brief Get mutable reference to descriptor pool
-        lux::gapi::vk::DescriptorPool& descriptorPool()
+        [[nodiscard]] VkDescriptorPool descriptorPool() const noexcept
         {
-            return descriptor_pool_;
+            return pools_.descriptors.get();
         }
 
-        /// @brief Get immutable reference to descriptor pool
-        const lux::gapi::vk::DescriptorPool& descriptorPool() const
+        [[nodiscard]] VkCommandPool commandPool() const noexcept
         {
-            return descriptor_pool_;
+            return pools_.graphics.get();
         }
 
-        /// @brief Get mutable reference to command pool
-        lux::gapi::vk::CommandPool& commandPool()
+        [[nodiscard]] VkCommandPool computeCommandPool() const noexcept
         {
-            return command_pool_;
+            return pools_.compute.get();
         }
 
-        /// @brief Get immutable reference to command pool
-        const lux::gapi::vk::CommandPool& commandPool() const
+        [[nodiscard]] VkCommandPool transferCommandPool() const noexcept
         {
-            return command_pool_;
-        }
-
-        /// @brief Get mutable reference to compute command pool (for async compute queue)
-        lux::gapi::vk::CommandPool& computeCommandPool()
-        {
-            return compute_command_pool_;
-        }
-
-        /// @brief Get immutable reference to compute command pool
-        const lux::gapi::vk::CommandPool& computeCommandPool() const
-        {
-            return compute_command_pool_;
-        }
-
-        /// @brief Get mutable reference to transfer command pool (for dedicated transfer queue)
-        lux::gapi::vk::CommandPool& transferCommandPool()
-        {
-            return transfer_command_pool_;
-        }
-
-        /// @brief Get immutable reference to transfer command pool
-        const lux::gapi::vk::CommandPool& transferCommandPool() const
-        {
-            return transfer_command_pool_;
+            return pools_.transfer.get();
         }
 
         /// @brief Get mutable reference to instance context
@@ -513,11 +480,17 @@ namespace lux::render
         }
 
     private:
-        DeviceContext& device_context_; ///< Reference to device context
+        struct Pools
+        {
+            DescriptorPoolOwner descriptors;
+            CommandPoolOwner graphics;
+            CommandPoolOwner compute;
+            CommandPoolOwner transfer;
+        };
 
-        lux::gapi::vk::DescriptorPool descriptor_pool_; ///< Descriptor pool for allocating descriptor sets
-        lux::gapi::vk::CommandPool command_pool_; ///< Command pool for allocating command buffers (graphics queue)
-        lux::gapi::vk::CommandPool compute_command_pool_;  ///< Command pool for async compute queue
-        lux::gapi::vk::CommandPool transfer_command_pool_; ///< Command pool for dedicated transfer queue
+        ResourceContext(DeviceContext& device_context, Pools pools) noexcept;
+
+        DeviceContext& device_context_;
+        Pools pools_;
     };
 }

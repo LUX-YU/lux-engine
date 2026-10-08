@@ -251,11 +251,8 @@ namespace lux::render
         }
         inst_ctx_ = std::make_unique<InstanceContext>(cfg.instance_extensions, std::move(debug_cb));
         dev_ctx_ = std::make_unique<DeviceContext>(*inst_ctx_);
-        res_ctx_ = std::make_unique<ResourceContext>(*dev_ctx_);
 
         frames_in_flight_ = cfg.frames_in_flight;
-        // 目标注册表要用设备资源上下文造默认池,设备就绪后立即注入。
-        targets_registry_.init(*res_ctx_, frames_in_flight_);
         frame_orchestrator_ = FrameOrchestrator{cfg.frames_in_flight};
         enable_vsync_ = cfg.enable_vsync;
 
@@ -305,14 +302,17 @@ namespace lux::render
         // SceneDescriptorArena, so the shared pool only serves the few GLOBAL
         // sets (MaterialResources × FIF; Texture/Bindless own their pools).
         // Default sizing suffices — no per-scene-count bump needed.
-        if (auto r = res_ctx_->init(); !r)
+        auto resources = ResourceContext::create(*dev_ctx_);
+        if (!resources)
         {
-            return lux::cxx::unexpected(r.error());
+            return lux::cxx::unexpected(resources.error());
         }
+        res_ctx_ = std::move(*resources);
+        targets_registry_.init(*res_ctx_, frames_in_flight_);
 
         auto& device_ctx = *dev_ctx_;
-        VkDescriptorPool dp = res_ctx_->descriptorPool().handle();
-        VkCommandPool cp = res_ctx_->commandPool().handle();
+        VkDescriptorPool dp = res_ctx_->descriptorPool();
+        VkCommandPool cp = res_ctx_->commandPool();
         uint32_t fif = cfg.frames_in_flight;
 
         // 1. Descriptor layouts
@@ -514,9 +514,11 @@ namespace lux::render
 
     GeneralRenderServer::Impl::~Impl()
     {
-        if (!dev_ctx_)
+        if (!res_ctx_)
         {
-            return; // init() was never called
+            // No rendering work or dependent owners exist before pool construction succeeds.
+            // Instance/device members release any startup prefix through their own RAII.
+            return;
         }
         bool device_lost_during_teardown = false;
 

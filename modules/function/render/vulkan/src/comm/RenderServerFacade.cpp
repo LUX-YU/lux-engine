@@ -383,7 +383,7 @@ namespace lux::render
     {
         auto& resource_context = *impl_->res_ctx_;
         const VkDevice device = resource_context.logicalDevice();
-        const VkCommandPool pool = resource_context.commandPool().handle();
+        const VkCommandPool pool = resource_context.commandPool();
 
         VkCommandBufferAllocateInfo allocation{};
         allocation.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;

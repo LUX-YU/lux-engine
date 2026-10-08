@@ -115,8 +115,9 @@ int main()
     DeviceContext device(instance), other_device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
     assert(other_device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
-    ResourceContext resources(device);
-    assert(resources.init());
+    auto resources_owner = ResourceContext::create(device);
+    assert(resources_owner);
+    auto& resources = **resources_owner;
     {
         VmaPoolCreateInfo info{};
         reject_pool = true;

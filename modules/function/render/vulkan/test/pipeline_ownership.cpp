@@ -1,7 +1,7 @@
+#include <lux/engine/gapi/vk/vk.hpp>
+
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
-
-#include <lux/engine/render/gpu/VulkanContext.hpp>
 
 #include <cassert>
 #include <cstdio>
@@ -111,12 +111,12 @@ namespace
 // Actual pipeline rendering is covered by the separate framework GPU regression.
 // clang-format off
 #include "../src/gpu/memory/VmaTypes.cpp"
-#include "../src/gpu/VulkanContext.cpp"
 #define vkCreateComputePipelines createCompute
 #define vkCreateGraphicsPipelines createGraphics
 #define vkDestroyPipeline destroyPipeline
 #define vkCreateRenderPass createPass
 #define vkDestroyRenderPass destroyPass
+#include "../src/gpu/VulkanContext.cpp"
 #include "../src/gpu/pipeline/PipelineManager.cpp"
 #undef vkDestroyRenderPass
 #undef vkCreateRenderPass

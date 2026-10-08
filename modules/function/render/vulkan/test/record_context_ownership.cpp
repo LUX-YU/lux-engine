@@ -1,7 +1,7 @@
+#include <lux/engine/gapi/vk/vk.hpp>
+
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
-
-#include <lux/engine/render/gpu/VulkanContext.hpp>
 
 #include <cassert>
 #include <map>
@@ -27,10 +27,16 @@ namespace
     std::map<std::pair<EKind, std::uintptr_t>, NativeRecord> live;
     unsigned attempts{}, fail_at{};
     bool reject_query{};
+    bool instrument_pools{};
 
     template <auto Create, class Info, class Handle>
     VkResult acquire(EKind kind, VkDevice device, const Info* info, const VkAllocationCallbacks* allocator, Handle* out)
     {
+        const bool is_pool = kind == EKind::COMMAND_POOL || kind == EKind::DESCRIPTOR_POOL;
+        if (is_pool && !instrument_pools)
+        {
+            return Create(device, info, allocator, out);
+        }
         *out = VK_NULL_HANDLE;
         if (kind == EKind::QUERY)
         {
@@ -57,6 +63,12 @@ namespace
     template <auto Destroy, class Handle>
     void release(EKind kind, VkDevice device, Handle handle, const VkAllocationCallbacks* allocator)
     {
+        const bool is_pool = kind == EKind::COMMAND_POOL || kind == EKind::DESCRIPTOR_POOL;
+        if (is_pool && !instrument_pools)
+        {
+            Destroy(device, handle, allocator);
+            return;
+        }
         const auto found = live.find({kind, reinterpret_cast<std::uintptr_t>(handle)});
         assert(found != live.end());
         assert(found->second.device == device && found->second.allocator == allocator);
@@ -106,7 +118,6 @@ namespace
 // Compile the actual allocation/rollback code, leaving graph execution and submission unchanged.
 // clang-format off
 #include "../src/gpu/memory/VmaTypes.cpp"
-#include "../src/gpu/VulkanContext.cpp"
 #define vkCreateImageView createImageView
 #define vkDestroyImageView destroyImageView
 #define vkCreateQueryPool createQueryPool
@@ -119,6 +130,7 @@ namespace
 #define vkDestroyDescriptorPool destroyDescriptorPool
 #define vkAllocateCommandBuffers allocateCommands
 #define vkAllocateDescriptorSets allocateDescriptors
+#include "../src/gpu/VulkanContext.cpp"
 #include "../src/graph/RGVulkanRecorder.cpp"
 #include "../src/graph/RGVulkanRecorder.RecordContext.cpp"
 #undef vkAllocateDescriptorSets
@@ -147,8 +159,10 @@ int main()
     InstanceContext instance({});
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
-    ResourceContext resources(device);
-    assert(resources.init());
+    auto resources_owner = ResourceContext::create(device);
+    assert(resources_owner);
+    auto& resources = **resources_owner;
+    instrument_pools = true;
     PipelineManager pipelines(device, true);
     RGVulkanRecorder recorder(resources, pipelines);
 
@@ -240,4 +254,5 @@ int main()
         assert(without_timing->image_views.size() == 8);
     }
     assert(live.empty());
+    instrument_pools = false;
 }

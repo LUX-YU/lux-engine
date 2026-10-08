@@ -1,7 +1,7 @@
+#include <lux/engine/gapi/vk/vk.hpp>
+
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
-
-#include <lux/engine/render/gpu/VulkanContext.hpp>
 
 #include <cassert>
 #include <cstdio>
@@ -145,9 +145,6 @@ namespace
 // Actual allocation and descriptor-set implementation; native faults only.
 // clang-format off
 #include "../src/gpu/memory/VmaTypes.cpp"
-#define vkDeviceWaitIdle trackedDeviceWaitIdle
-#include "../src/gpu/VulkanContext.cpp"
-#undef vkDeviceWaitIdle
 #define vkAllocateCommandBuffers allocate
 #define vkFreeCommandBuffers freeCommands
 #define vkBeginCommandBuffer begin
@@ -156,6 +153,9 @@ namespace
 #define vkDestroyFence destroyFence
 #define vkQueueSubmit submit
 #define vkWaitForFences wait
+#define vkDeviceWaitIdle trackedDeviceWaitIdle
+#include "../src/gpu/VulkanContext.cpp"
+#undef vkDeviceWaitIdle
 #include "../src/gpu/pipeline/GeneralDescriptorSetLayout.cpp"
 #include "../src/resources/descriptor/BindlessCombinedSet.cpp"
 #undef vkWaitForFences
@@ -179,8 +179,9 @@ int main()
     InstanceContext instance({});
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
-    ResourceContext resources(device);
-    assert(resources.init());
+    auto resources_owner = ResourceContext::create(device);
+    assert(resources_owner);
+    auto& resources = **resources_owner;
     auto layout_owner = GeneralDescriptorSetLayout::create(device);
     assert(layout_owner);
     auto& layouts = **layout_owner;
@@ -188,8 +189,9 @@ int main()
     {
         DeviceContext other_device(instance);
         assert(other_device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
-        ResourceContext other_resources(other_device);
-        assert(other_resources.init());
+        auto other_resources_owner = ResourceContext::create(other_device);
+        assert(other_resources_owner);
+        auto& other_resources = **other_resources_owner;
         auto first = CommandBufferOwner::create(device.logicalDevice(), resources.commandPool());
         auto second = CommandBufferOwner::create(other_device.logicalDevice(), other_resources.commandPool());
         assert(first && second && commands.size() == 2);

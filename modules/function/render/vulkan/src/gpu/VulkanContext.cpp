@@ -722,62 +722,64 @@ namespace lux::render
     }
 
     // ResourceContext implementation
-    ResourceContext::ResourceContext(DeviceContext& device_context) : device_context_(device_context) {}
-
-    Expected<void> ResourceContext::init(const DescriptorPoolConfig& pool_config)
+    ResourceContext::ResourceContext(DeviceContext& device_context, Pools pools) noexcept
+        : device_context_(device_context), pools_(std::move(pools))
     {
-        // Create descriptor pool
-        descriptor_pool_ =
-            lux::gapi::vk::DescriptorPool::Builder()
-                .setFlags(
-                    VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT
-                )
-                .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLER, pool_config.sampler)
-                .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, pool_config.combined_image_sampler)
-                .addPoolSize(VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, pool_config.sampled_image)
-                .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, pool_config.storage_image)
-                .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, pool_config.uniform_texel_buffer)
-                .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, pool_config.storage_texel_buffer)
-                .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, pool_config.uniform_buffer)
-                .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, pool_config.storage_buffer)
-                .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, pool_config.uniform_buffer_dynamic)
-                .addPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, pool_config.storage_buffer_dynamic)
-                .addPoolSize(VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, pool_config.input_attachment)
-                .setMaxSets(pool_config.max_sets)
-                .build(device_context_.logicalDevice());
-
-        if (!descriptor_pool_)
-        {
-            return renderFailure<err::device::VulkanObjectCreationFailed>();
-        }
-
-        // Create command pool (for graphics queue)
-        command_pool_ = lux::gapi::vk::CommandPool::Builder()
-                            .setQueueFamilyIndex(device_context_.graphicsQueueFamilyIndex())
-                            .build(device_context_.logicalDevice(), device_context_.instanceContext().allocator());
-
-        // Create compute command pool (for async compute queue)
-        compute_command_pool_ =
-            lux::gapi::vk::CommandPool::Builder()
-                .setQueueFamilyIndex(device_context_.asyncComputeQueueFamilyIndex())
-                .build(device_context_.logicalDevice(), device_context_.instanceContext().allocator());
-
-        // Create transfer command pool (for dedicated transfer queue)
-        transfer_command_pool_ =
-            lux::gapi::vk::CommandPool::Builder()
-                .setQueueFamilyIndex(device_context_.transferQueueFamilyIndex())
-                .build(device_context_.logicalDevice(), device_context_.instanceContext().allocator());
-
-        return {};
     }
 
-    ResourceContext::~ResourceContext()
+    ResourceContext::CreateResult
+    ResourceContext::create(DeviceContext& device_context, const DescriptorPoolConfig& pool_config) noexcept
     {
-        // Release resources in reverse creation order
-        transfer_command_pool_.release(device_context_.logicalDevice(), device_context_.instanceContext().allocator());
-        compute_command_pool_.release(device_context_.logicalDevice(), device_context_.instanceContext().allocator());
-        command_pool_.release(device_context_.logicalDevice(), device_context_.instanceContext().allocator());
-        descriptor_pool_.release(device_context_.logicalDevice(), device_context_.instanceContext().allocator());
+        const VkDevice device = device_context.logicalDevice();
+        const auto* allocator = device_context.instanceContext().allocator();
+        const VkDescriptorPoolSize sizes[]{
+            {VK_DESCRIPTOR_TYPE_SAMPLER, pool_config.sampler},
+            {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, pool_config.combined_image_sampler},
+            {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, pool_config.sampled_image},
+            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, pool_config.storage_image},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, pool_config.uniform_texel_buffer},
+            {VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, pool_config.storage_texel_buffer},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, pool_config.uniform_buffer},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, pool_config.storage_buffer},
+            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, pool_config.uniform_buffer_dynamic},
+            {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, pool_config.storage_buffer_dynamic},
+            {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, pool_config.input_attachment}
+        };
+        const VkDescriptorPoolCreateInfo descriptor_info{
+            .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            .flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+            .maxSets = pool_config.max_sets,
+            .poolSizeCount = static_cast<std::uint32_t>(std::size(sizes)),
+            .pPoolSizes = sizes
+        };
+        auto descriptors = DescriptorPoolOwner::create(device, descriptor_info, allocator);
+        if (!descriptors)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(descriptors.error()));
+        }
+
+        Pools pools{.descriptors = std::move(*descriptors)};
+        const std::uint32_t queue_families[]{
+            device_context.graphicsQueueFamilyIndex(),
+            device_context.asyncComputeQueueFamilyIndex(),
+            device_context.transferQueueFamilyIndex()
+        };
+        CommandPoolOwner* command_pools[]{&pools.graphics, &pools.compute, &pools.transfer};
+        for (std::size_t i = 0; i < std::size(queue_families); ++i)
+        {
+            const VkCommandPoolCreateInfo command_info{
+                .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
+                .queueFamilyIndex = queue_families[i]
+            };
+            auto command_pool = CommandPoolOwner::create(device, command_info, allocator);
+            if (!command_pool)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(command_pool.error()));
+            }
+            *command_pools[i] = std::move(*command_pool);
+        }
+        return std::unique_ptr<ResourceContext>(new ResourceContext(device_context, std::move(pools)));
     }
 
     VkBool32 debug_report_callback(

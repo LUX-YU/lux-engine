@@ -1,4 +1,6 @@
-#include <lux/engine/render/gpu/VulkanContext.hpp>
+#include <lux/engine/gapi/vk/vk.hpp>
+
+#include <vulkan/vulkan.h>
 
 #include <cassert>
 #include <unordered_map>
@@ -74,6 +76,7 @@ namespace
 #define vkDestroySemaphore destroySemaphore
 #define vkCreateCommandPool createPool
 #define vkDestroyCommandPool destroyPool
+#include <lux/engine/render/gpu/VulkanContext.hpp>
 #include "../src/resources/lifecycle/GpuTransferPipeline.cpp"
 #undef vkDestroyCommandPool
 #undef vkCreateCommandPool

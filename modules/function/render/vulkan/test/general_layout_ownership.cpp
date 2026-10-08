@@ -1,4 +1,6 @@
-#include <lux/engine/render/gpu/VulkanContext.hpp>
+#include <lux/engine/gapi/vk/vk.hpp>
+
+#include <vulkan/vulkan.h>
 
 #include <cassert>
 #include <cstdio>
@@ -42,6 +44,7 @@ namespace
 // clang-format off
 #define vkCreateDescriptorSetLayout createLayout
 #define vkDestroyDescriptorSetLayout destroyLayout
+#include <lux/engine/render/gpu/VulkanContext.hpp>
 #include "../src/gpu/pipeline/GeneralDescriptorSetLayout.cpp"
 #undef vkDestroyDescriptorSetLayout
 #undef vkCreateDescriptorSetLayout

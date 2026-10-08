@@ -356,4 +356,21 @@ if(BUILD_TESTING)
         add_test(NAME render.resource_context_construction COMMAND render_resource_context_test)
         set_tests_properties(render.resource_context_construction PROPERTIES TIMEOUT 30 LABELS gpu)
     endif()
+
+    add_executable(render_mesh_construction_test test/mesh_construction.cpp)
+    target_include_directories(render_mesh_construction_test PRIVATE sinclude pinclude)
+    target_compile_definitions(render_mesh_construction_test PRIVATE LUX_FUNCTION_DLL_DISABLE)
+    target_link_libraries(
+        render_mesh_construction_test
+        PRIVATE render_vulkan GPUOpen::VulkanMemoryAllocator
+    )
+    if(MSVC)
+        target_compile_options(render_mesh_construction_test PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(render_mesh_construction_test PRIVATE -UNDEBUG)
+    endif()
+    if(LUX_RENDER_BUILD_GPU_TESTS)
+        add_test(NAME render.mesh_geometry_ownership COMMAND render_mesh_construction_test)
+        set_tests_properties(render.mesh_geometry_ownership PROPERTIES TIMEOUT 30 LABELS gpu)
+    endif()
 endif()

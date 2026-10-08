@@ -36,11 +36,6 @@ namespace lux::render
     {
         device_ctx_ = ci.device;
 
-        // Set BEFORE anything is allocated, not after. ~MeshResources() and
-        // shutdown() both early-out on this flag, so a failure partway through
-        // (the second createArena, say) used to leave the FIRST 64 MB arena
-        // unreclaimable by anyone — nothing could free it. Flag first, and every
-        // `return false` below reclaims through shutdown().
         initialized_ = true;
 
         vbo_segment_cap_ = ci.vertex_arena_bytes;
@@ -63,35 +58,17 @@ namespace lux::render
         ibo_usage_flags_ = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT |
                            (ci.enable_device_address ? VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT : 0);
 
-        // VBO segment 0
+        // Each unpublished buffer remains locally owned until its virtual range exists.
+        if (!addBufferSegment(ci.vertex_arena_bytes, vbo_usage_flags_, vbo_buffers_, vbo_arena_))
         {
-            VkBuffer buf;
-            VmaAllocation alloc;
-            if (!createArena(ci.vertex_arena_bytes, vbo_usage_flags_, buf, alloc))
-            {
-                shutdown();
-                return false;
-            }
-            vbo_buffers_.push_back(buf);
-            vbo_allocs_.push_back(alloc);
+            shutdown();
+            return false;
         }
-
-        // IBO segment 0
+        if (!addBufferSegment(ci.index_arena_bytes, ibo_usage_flags_, ibo_buffers_, ibo_arena_))
         {
-            VkBuffer buf;
-            VmaAllocation alloc;
-            if (!createArena(ci.index_arena_bytes, ibo_usage_flags_, buf, alloc))
-            {
-                shutdown();
-                return false;
-            }
-            ibo_buffers_.push_back(buf);
-            ibo_allocs_.push_back(alloc);
+            shutdown();
+            return false;
         }
-
-        // DESIGN-04: Initialize chained free-list arenas with first segment
-        vbo_arena_.addSegment(ci.vertex_arena_bytes);
-        ibo_arena_.addSegment(ci.index_arena_bytes);
 
         // PERF-01: Create reusable transfer command pool + fence
         // NOTE: removed – all Vulkan queue ops now happen on the render thread
@@ -121,7 +98,7 @@ namespace lux::render
         seg_cfg.allow_shader_write = false;
         segments_ssbo_.init(seg_cfg);
 
-        return true; // initialized_ was set at the top — see the note there
+        return true;
     }
 
     MeshResources::~MeshResources()
@@ -136,7 +113,6 @@ namespace lux::render
             return;
         initialized_ = false;
 
-        auto vma = device_ctx_->vmaAllocator();
         cpu_records_.clear();
         gpu_records_.clear();
         gens_.clear();
@@ -145,16 +121,8 @@ namespace lux::render
         destroy_requested_.clear();
         segments_ssbo_.destroy();
 
-        // Destroy all VBO/IBO segments
-        for (size_t i = 0; i < vbo_buffers_.size(); ++i)
-            vmaDestroyBuffer(vma, vbo_buffers_[i], vbo_allocs_[i]);
         vbo_buffers_.clear();
-        vbo_allocs_.clear();
-
-        for (size_t i = 0; i < ibo_buffers_.size(); ++i)
-            vmaDestroyBuffer(vma, ibo_buffers_[i], ibo_allocs_[i]);
         ibo_buffers_.clear();
-        ibo_allocs_.clear();
 
         // Arena ranges awaiting FIF retirement: the arenas are torn down below,
         // so just drop the bookkeeping (GPU is idle at shutdown).
@@ -542,10 +510,9 @@ namespace lux::render
             }
 
             auto& bufs = is_vbo ? vbo_buffers_ : ibo_buffers_;
-            auto& allocs_vec = is_vbo ? vbo_allocs_ : ibo_allocs_;
             const VkBufferUsageFlags usage = is_vbo ? vbo_usage_flags_ : ibo_usage_flags_;
 
-            if (!addBufferSegment(grow_bytes, usage, bufs, allocs_vec, arena))
+            if (!addBufferSegment(grow_bytes, usage, bufs, arena))
             {
                 const auto snapshot = budget.snapshot();
                 setCapacityShortfall(
@@ -566,12 +533,7 @@ namespace lux::render
         return SegmentedRange{BufferRange{alloc.offset, alloc.size}, alloc.segment_index, alloc.handle};
     }
 
-    bool MeshResources::createArena(
-        VkDeviceSize bytes,
-        VkBufferUsageFlags usage,
-        VkBuffer& out,
-        VmaAllocation& out_alloc
-    )
+    Expected<VmaBuffer> MeshResources::createGeometryBuffer(VkDeviceSize bytes, VkBufferUsageFlags usage)
     {
         auto vma = device_ctx_->vmaAllocator();
 
@@ -605,34 +567,32 @@ namespace lux::render
         ai.flags = 0;
         ai.preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
-        VkResult result = vmaCreateBuffer(vma, &bi, &ai, &out, &out_alloc, nullptr);
-        return result == VK_SUCCESS;
+        return VmaBuffer::create(vma, bi, ai);
     }
 
     bool MeshResources::addBufferSegment(
         VkDeviceSize bytes,
         VkBufferUsageFlags usage,
-        std::vector<VkBuffer>& bufs,
-        std::vector<VmaAllocation>& allocs,
+        std::vector<VmaBuffer>& buffers,
         ChainedArenaAllocator& arena
     )
     {
-        VkBuffer buf;
-        VmaAllocation alloc;
-        if (!createArena(bytes, usage, buf, alloc))
-            return false;
-        bufs.push_back(buf);
-        allocs.push_back(alloc);
-        auto idx = arena.addSegment(bytes);
-        if (idx == ChainedArenaAllocator::kInvalidSegment)
+        auto buffer = createGeometryBuffer(bytes, usage);
+        if (!buffer)
         {
-            bufs.pop_back();
-            allocs.pop_back();
-            vmaDestroyBuffer(device_ctx_->vmaAllocator(), buf, alloc);
             return false;
         }
-        if (&arena == &ibo_arena_)
+        const auto index = arena.addSegment(bytes);
+        if (index == ChainedArenaAllocator::kInvalidSegment)
+        {
+            return false;
+        }
+        buffers.push_back(std::move(*buffer));
+        const bool is_ibo_growth = &arena == &ibo_arena_ && index != 0;
+        if (is_ibo_growth)
+        {
             ++ibo_topology_serial_;
+        }
         return true;
     }
 
@@ -641,21 +601,17 @@ namespace lux::render
         std::uint16_t ibo_segment_count
     ) noexcept
     {
-        auto rollback = [this](auto& arena, auto& buffers, auto& allocations, std::uint16_t count) {
+        auto rollback = [](auto& arena, auto& buffers, std::uint16_t count) {
             while (arena.segmentCount() > count)
             {
                 if (!arena.removeLastEmptySegment())
                     break;
-                const auto buffer = buffers.back();
-                const auto allocation = allocations.back();
                 buffers.pop_back();
-                allocations.pop_back();
-                vmaDestroyBuffer(device_ctx_->vmaAllocator(), buffer, allocation);
             }
         };
-        rollback(vbo_arena_, vbo_buffers_, vbo_allocs_, vbo_segment_count);
+        rollback(vbo_arena_, vbo_buffers_, vbo_segment_count);
         const auto before = ibo_arena_.segmentCount();
-        rollback(ibo_arena_, ibo_buffers_, ibo_allocs_, ibo_segment_count);
+        rollback(ibo_arena_, ibo_buffers_, ibo_segment_count);
         ibo_topology_serial_ -= before - ibo_arena_.segmentCount();
     }
 

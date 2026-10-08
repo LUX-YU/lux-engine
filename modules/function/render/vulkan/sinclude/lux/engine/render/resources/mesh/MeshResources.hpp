@@ -5,6 +5,7 @@
 #include <lux/engine/render/core/FrameServices.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
+#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 #include <lux/engine/render/gpu/memory/ArenaAllocator.hpp>
 #include <lux/engine/render/gpu/memory/ChainedArenaAllocator.hpp>
 #include <lux/engine/function/render/features/core/VertexLayoutTypes.hpp> // A-5: lightweight leaf (no gapi/vk/vk.hpp)
@@ -322,12 +323,12 @@ namespace lux::render
         /// Return the VkBuffer for a specific VBO segment (0 = original buffer).
         VkBuffer vertexBuffer(uint16_t segment = 0) const
         {
-            return segment < vbo_buffers_.size() ? vbo_buffers_[segment] : VK_NULL_HANDLE;
+            return segment < vbo_buffers_.size() ? vbo_buffers_[segment].buffer() : VK_NULL_HANDLE;
         }
         /// Return the VkBuffer for a specific IBO segment (0 = original buffer).
         VkBuffer indexBuffer(uint16_t segment = 0) const
         {
-            return segment < ibo_buffers_.size() ? ibo_buffers_[segment] : VK_NULL_HANDLE;
+            return segment < ibo_buffers_.size() ? ibo_buffers_[segment].buffer() : VK_NULL_HANDLE;
         }
         /// Convenience: return VBO for a given mesh handle.
         VkBuffer vertexBufferForMesh(MeshHandle h) const
@@ -509,14 +510,12 @@ namespace lux::render
         bool addBufferSegment(
             VkDeviceSize bytes,
             VkBufferUsageFlags usage,
-            std::vector<VkBuffer>& bufs,
-            std::vector<VmaAllocation>& allocs,
+            std::vector<VmaBuffer>& buffers,
             ChainedArenaAllocator& arena
         );
         void rollbackUnpublishedSegments(std::uint16_t vbo_segment_count, std::uint16_t ibo_segment_count) noexcept;
 
-        /// Legacy helper kept for init() — creates the first segment.
-        bool createArena(VkDeviceSize bytes, VkBufferUsageFlags usage, VkBuffer& out, VmaAllocation& out_alloc);
+        [[nodiscard]] Expected<VmaBuffer> createGeometryBuffer(VkDeviceSize bytes, VkBufferUsageFlags usage);
 
         /// create() 与 allocateOnly() 的公共前段:校验 → index_type 推断 →
         /// VBO/IBO 子分配(含 IBO 失败时回滚 VBO 的事务处理)→
@@ -558,10 +557,8 @@ namespace lux::render
         DeviceContext* device_ctx_{nullptr};
 
         // Per-segment VBO/IBO GPU buffers (index 0 = initial segment)
-        std::vector<VkBuffer> vbo_buffers_;
-        std::vector<VmaAllocation> vbo_allocs_;
-        std::vector<VkBuffer> ibo_buffers_;
-        std::vector<VmaAllocation> ibo_allocs_;
+        std::vector<VmaBuffer> vbo_buffers_;
+        std::vector<VmaBuffer> ibo_buffers_;
 
         VkDeviceSize vbo_segment_cap_{0};       ///< Capacity of each new VBO segment
         VkDeviceSize ibo_segment_cap_{0};       ///< Capacity of each new IBO segment

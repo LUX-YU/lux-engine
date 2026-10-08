@@ -87,7 +87,9 @@ namespace
 int main()
 {
     using namespace lux::render;
-    InstanceContext instance({});
+    auto instance_owner = InstanceContext::create({});
+    assert(instance_owner);
+    auto& instance = **instance_owner;
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
     GpuTransferPipeline::Config config;

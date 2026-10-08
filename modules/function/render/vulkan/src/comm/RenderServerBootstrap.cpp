@@ -177,7 +177,7 @@ namespace lux::render
             return renderFailure<err::device::InvalidFramesInFlight>(cfg.frames_in_flight, kMaxFramesInFlight);
         }
 
-        // 0. Create Vulkan infrastructure (InstanceContext ctor may throw)
+        // 0. Prepare complete Vulkan instance backing before adoption.
         DebugCallback debug_cb = nullptr;
         if (cfg.enable_validation)
         {
@@ -250,7 +250,12 @@ namespace lux::render
                 return false;
             };
         }
-        inst_ctx_ = std::make_unique<InstanceContext>(cfg.instance_extensions, std::move(debug_cb));
+        auto instance = InstanceContext::create(cfg.instance_extensions, std::move(debug_cb));
+        if (!instance)
+        {
+            return lux::cxx::unexpected(instance.error());
+        }
+        inst_ctx_ = std::move(*instance);
         dev_ctx_ = std::make_unique<DeviceContext>(*inst_ctx_);
 
         frames_in_flight_ = cfg.frames_in_flight;

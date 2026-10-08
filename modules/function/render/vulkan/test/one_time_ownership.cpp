@@ -3510,7 +3510,9 @@ int main(int argc, char** argv)
     static_assert(std::is_nothrow_move_constructible_v<CommandBufferOwner>);
     static_assert(std::is_nothrow_move_assignable_v<CommandBufferOwner>);
     static_assert(std::is_nothrow_destructible_v<CommandBufferOwner>);
-    InstanceContext instance({});
+    auto instance_owner = InstanceContext::create({});
+    assert(instance_owner);
+    auto& instance = **instance_owner;
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
     checkRetirementOwner(device);

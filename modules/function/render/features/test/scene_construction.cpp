@@ -59,7 +59,9 @@ int main()
     static_assert(std::is_nothrow_move_constructible_v<TransferScheduler>);
     static_assert(!std::is_constructible_v<RenderScene, std::shared_ptr<RenderContext>>);
     std::setvbuf(stdout, nullptr, _IONBF, 0);
-    InstanceContext instance({});
+    auto instance_owner = InstanceContext::create({});
+    assert(instance_owner);
+    auto& instance = **instance_owner;
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
     auto resources = ResourceContext::create(device);

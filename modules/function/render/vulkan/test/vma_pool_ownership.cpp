@@ -111,7 +111,9 @@ int main()
     static_assert(!std::is_copy_constructible_v<RGVulkanResourceAllocator>);
     static_assert(!std::is_move_constructible_v<RGVulkanResourceAllocator>);
 
-    InstanceContext instance({});
+    auto instance_owner = InstanceContext::create({});
+    assert(instance_owner);
+    auto& instance = **instance_owner;
     DeviceContext device(instance), other_device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
     assert(other_device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));

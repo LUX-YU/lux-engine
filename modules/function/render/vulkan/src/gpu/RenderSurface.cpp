@@ -53,7 +53,7 @@ namespace lux::render
     RenderSurface RenderSurface::adopt(
         VkSurfaceKHR surface,
         VkExtent2D initial_extent,
-        lux::gapi::vk::Instance& instance,
+        const lux::gapi::vk::Instance& instance,
         VkAllocationCallbacks* allocator
     ) noexcept
     {
@@ -69,7 +69,7 @@ namespace lux::render
     bool RenderSurface::initFromNative(
         std::uint64_t native_window_handle,
         VkExtent2D initial_extent,
-        lux::gapi::vk::Instance& instance,
+        const lux::gapi::vk::Instance& instance,
         VkAllocationCallbacks* allocator
     )
     {
@@ -145,7 +145,7 @@ namespace lux::render
 
     bool RenderSurface::init(
         window::LuxWindow& window,
-        lux::gapi::vk::Instance& instance,
+        const lux::gapi::vk::Instance& instance,
         VkAllocationCallbacks* allocator
     )
     {

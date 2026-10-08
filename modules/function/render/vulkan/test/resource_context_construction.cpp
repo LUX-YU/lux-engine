@@ -175,7 +175,9 @@ int main()
     allocator.pfnReallocation = reallocate;
     allocator.pfnFree = freeAllocation;
     {
-        InstanceContext instance({}, {}, &allocator);
+        auto instance_owner = InstanceContext::create({}, {}, &allocator);
+        assert(instance_owner);
+        auto& instance = **instance_owner;
         DeviceContext device(instance);
         assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
         for (unsigned failure = 1; failure <= 4; ++failure)

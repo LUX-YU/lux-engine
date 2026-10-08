@@ -1,398 +1,245 @@
 #pragma once
+
+#include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/gapi/vk/PhysicalDevice.hpp>
 #include <memory>
+#include <utility>
 #include <vector>
-#include <cstdio>
-#include <cstring>
-#include "lux/engine/gapi/vk/Object.hpp"
-#include "lux/engine/gapi/RenderInstance.hpp"
-#include "lux/engine/gapi/vk/PhysicalDevice.hpp"
 #include <vulkan/vulkan.h>
 
 namespace lux::gapi::vk
 {
-    class Instance;
-    class DebugReport
+    namespace detail
+    {
+        // Instance discovery can change between count and fill. Bound retries and
+        // preserve VK_INCOMPLETE instead of publishing an incomplete discovery set.
+        template <class T, class Query>
+        [[nodiscard]] lux::cxx::expected<std::vector<T>, VkResult> enumerateInstanceValues(Query query) noexcept
+        {
+            for (unsigned attempt = 0; attempt != 3; ++attempt)
+            {
+                uint32_t count{};
+                const auto counted = query(&count, nullptr);
+                if (counted != VK_SUCCESS)
+                {
+                    return lux::cxx::unexpected(counted);
+                }
+                if (!count)
+                {
+                    return std::vector<T>{};
+                }
+                std::vector<T> values(count);
+                const auto filled = query(&count, values.data());
+                if (filled == VK_SUCCESS)
+                {
+                    values.resize(count);
+                    return values;
+                }
+                if (filled != VK_INCOMPLETE)
+                {
+                    return lux::cxx::unexpected(filled);
+                }
+            }
+            return lux::cxx::unexpected(VK_INCOMPLETE);
+        }
+    } // namespace detail
+
+    /// Native leaf owner. The instance and allocation callbacks outlive this report.
+    class DebugReport final
     {
     public:
-        DebugReport() : debug_report(VK_NULL_HANDLE) {}
+        DebugReport() noexcept = default;
 
-        // VK_EXT_debug_report is an EXTENSION, so its entry points can legally be
-        // absent — vkGetInstanceProcAddr then returns null and calling it is a
-        // jump to address 0. That is not a hypothetical: the extension only
-        // exists when a validation layer provides it, so every stock Android
-        // device (no layers bundled in a release APK) lands here, and the
-        // extension is deprecated on desktop too in favour of debug_utils.
-        //
-        // Degrading to "no debug report" is the correct behaviour: the callback
-        // is a diagnostic aid, and losing it must not take the renderer down.
-        // The handle stays VK_NULL_HANDLE, which release() already tolerates.
-
-        DebugReport(
-            VkInstance instance,
-            PFN_vkDebugReportCallbackEXT cb,
-            void* user_data = nullptr,
-            VkAllocationCallbacks* allocator = nullptr
-        )
-            : debug_report(VK_NULL_HANDLE)
+        ~DebugReport() noexcept
         {
-            auto vkCreateDebugReportCallbackEXT =
-                (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
-            if (!vkCreateDebugReportCallbackEXT)
-            {
-                std::fprintf(
-                    stderr,
-                    "[Vulkan] VK_EXT_debug_report unavailable "
-                    "(no validation layer present) — continuing without a debug report callback.\n"
-                );
-                return;
-            }
-            VkDebugReportCallbackCreateInfoEXT debug_report_ci = {};
-            debug_report_ci.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
-            debug_report_ci.pNext = nullptr;
-            debug_report_ci.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
-                                    VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
-            debug_report_ci.pfnCallback = cb;
-            debug_report_ci.pUserData = user_data;
-            VK_FUNC_INVOKE(
-                vkCreateDebugReportCallbackEXT,
-                "Failed to create DebugReport instance",
-                instance,
-                &debug_report_ci,
-                allocator,
-                &debug_report
-            );
-        }
-
-        DebugReport(
-            VkInstance instance,
-            VkDebugReportCallbackCreateInfoEXT& ci,
-            VkAllocationCallbacks* allocator = nullptr
-        )
-            : debug_report(VK_NULL_HANDLE)
-        {
-            auto vkCreateDebugReportCallbackEXT =
-                (PFN_vkCreateDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT");
-            if (!vkCreateDebugReportCallbackEXT)
-            {
-                std::fprintf(
-                    stderr,
-                    "[Vulkan] VK_EXT_debug_report unavailable "
-                    "(no validation layer present) — continuing without a debug report callback.\n"
-                );
-                return;
-            }
-            VK_FUNC_INVOKE(
-                vkCreateDebugReportCallbackEXT,
-                "Failed to create DebugReport instance",
-                instance,
-                &ci,
-                allocator,
-                &debug_report
-            );
+            reset();
         }
 
         DebugReport(const DebugReport&) = delete;
         DebugReport& operator=(const DebugReport&) = delete;
 
         DebugReport(DebugReport&& other) noexcept
+            : instance_(std::exchange(other.instance_, VkInstance{})),
+              report_(std::exchange(other.report_, VkDebugReportCallbackEXT{})),
+              allocator_(std::exchange(other.allocator_, nullptr)), destroy_(std::exchange(other.destroy_, nullptr))
         {
-            debug_report = other.debug_report;
-            other.debug_report = VK_NULL_HANDLE;
         }
 
         DebugReport& operator=(DebugReport&& other) noexcept
         {
-            debug_report = other.debug_report;
-            other.debug_report = VK_NULL_HANDLE;
+            if (this != std::addressof(other))
+            {
+                reset();
+                instance_ = std::exchange(other.instance_, VkInstance{});
+                report_ = std::exchange(other.report_, VkDebugReportCallbackEXT{});
+                allocator_ = std::exchange(other.allocator_, nullptr);
+                destroy_ = std::exchange(other.destroy_, nullptr);
+            }
             return *this;
         }
 
-        void release(VkInstance instance, VkAllocationCallbacks* allocator = nullptr)
+        [[nodiscard]] static lux::cxx::expected<DebugReport, VkResult> create(
+            VkInstance instance,
+            const VkDebugReportCallbackCreateInfoEXT& info,
+            const VkAllocationCallbacks* allocator = nullptr
+        ) noexcept
         {
-            if (debug_report)
+            const auto create = reinterpret_cast<PFN_vkCreateDebugReportCallbackEXT>(
+                vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT")
+            );
+            const auto destroy = reinterpret_cast<PFN_vkDestroyDebugReportCallbackEXT>(
+                vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT")
+            );
+            // Optional diagnostics are negotiated by the consumer. An explicitly
+            // requested native report must have both creation and release endpoints.
+            const bool is_unavailable = !create || !destroy;
+            if (is_unavailable)
             {
-                auto vkDestroyDebugReportCallbackEXT = (PFN_vkDestroyDebugReportCallbackEXT
-                )vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
-                // Symmetric null guard: a non-null handle implies create
-                // succeeded, so destroy should exist — but "should" is exactly
-                // what the create path also assumed.
-                if (vkDestroyDebugReportCallbackEXT)
-                    vkDestroyDebugReportCallbackEXT(instance, debug_report, allocator);
-                debug_report = VK_NULL_HANDLE;
+                return lux::cxx::unexpected(VK_ERROR_EXTENSION_NOT_PRESENT);
+            }
+            VkDebugReportCallbackEXT report{};
+            const auto result = create(instance, &info, allocator, &report);
+            if (result != VK_SUCCESS)
+            {
+                return lux::cxx::unexpected(result);
+            }
+            return DebugReport(instance, report, allocator, destroy);
+        }
+
+        void reset() noexcept
+        {
+            if (report_)
+            {
+                destroy_(instance_, std::exchange(report_, VkDebugReportCallbackEXT{}), allocator_);
             }
         }
 
-        inline operator VkDebugReportCallbackEXT() const noexcept
+        [[nodiscard]] VkDebugReportCallbackEXT handle() const noexcept
         {
-            return debug_report;
-        }
-        inline const VkDebugReportCallbackEXT* operator&() const noexcept
-        {
-            return &debug_report;
-        }
-
-        inline VkDebugReportCallbackEXT handle() const noexcept
-        {
-            return debug_report;
-        }
-        inline const VkDebugReportCallbackEXT* handlePtr() const noexcept
-        {
-            return &debug_report;
+            return report_;
         }
 
     private:
-        VkDebugReportCallbackEXT debug_report;
+        DebugReport(
+            VkInstance instance,
+            VkDebugReportCallbackEXT report,
+            const VkAllocationCallbacks* allocator,
+            PFN_vkDestroyDebugReportCallbackEXT destroy
+        ) noexcept
+            : instance_(instance), report_(report), allocator_(allocator), destroy_(destroy)
+        {
+        }
+
+        VkInstance instance_{};
+        VkDebugReportCallbackEXT report_{};
+        const VkAllocationCallbacks* allocator_{};
+        PFN_vkDestroyDebugReportCallbackEXT destroy_{};
     };
 
-    class InstanceBuilder;
-    class Instance
+    /// Native leaf owner. Allocation callbacks and all child-release dependencies
+    /// obey Vulkan lifetime rules; configuration policy belongs to the consumer.
+    class Instance final
     {
     public:
-        using Builder = InstanceBuilder;
+        Instance() noexcept = default;
 
-        Instance() : instance(VK_NULL_HANDLE) {}
-
-        Instance(const VkInstanceCreateInfo& ci, VkAllocationCallbacks* allocator = nullptr)
+        ~Instance() noexcept
         {
-            auto err = vkCreateInstance(&ci, allocator, &instance);
-            // VK_FUNC_INVOKE(vkCreateInstance, "Failed to create Instance object", &ci, allocator, &instance)
+            reset();
         }
 
         Instance(const Instance&) = delete;
         Instance& operator=(const Instance&) = delete;
 
         Instance(Instance&& other) noexcept
+            : instance_(std::exchange(other.instance_, VkInstance{})),
+              allocator_(std::exchange(other.allocator_, nullptr))
         {
-            instance = other.instance;
-            other.instance = VK_NULL_HANDLE;
         }
 
         Instance& operator=(Instance&& other) noexcept
         {
-            instance = other.instance;
-            other.instance = VK_NULL_HANDLE;
+            if (this != std::addressof(other))
+            {
+                reset();
+                instance_ = std::exchange(other.instance_, VkInstance{});
+                allocator_ = std::exchange(other.allocator_, nullptr);
+            }
             return *this;
         }
 
-        void release(VkAllocationCallbacks* allocator = nullptr)
+        [[nodiscard]] static lux::cxx::expected<Instance, VkResult> create(
+            const VkInstanceCreateInfo& info,
+            const VkAllocationCallbacks* allocator = nullptr
+        ) noexcept
         {
-            if (instance != VK_NULL_HANDLE)
+            VkInstance instance{};
+            const auto result = vkCreateInstance(&info, allocator, &instance);
+            if (result != VK_SUCCESS)
             {
-                vkDestroyInstance(instance, allocator);
+                return lux::cxx::unexpected(result);
+            }
+            return Instance(instance, allocator);
+        }
+
+        void reset() noexcept
+        {
+            if (instance_)
+            {
+                vkDestroyInstance(std::exchange(instance_, VkInstance{}), allocator_);
             }
         }
 
-        static std::vector<VkExtensionProperties> extensionProperties()
+        [[nodiscard]] static lux::cxx::expected<std::vector<VkExtensionProperties>, VkResult> extensionProperties(
+        ) noexcept
         {
-            uint32_t properties_count;
-            std::vector<VkExtensionProperties> properties;
-            vkEnumerateInstanceExtensionProperties(nullptr, &properties_count, nullptr);
-            properties.resize(properties_count);
-            vkEnumerateInstanceExtensionProperties(nullptr, &properties_count, properties.data());
-            return properties;
+            return detail::enumerateInstanceValues<VkExtensionProperties>(
+                [](uint32_t* count, VkExtensionProperties* values) noexcept
+                { return vkEnumerateInstanceExtensionProperties(nullptr, count, values); }
+            );
         }
 
-        // only works if the VK_EXT_debug_report extension is enabled
-        // see InstanceBuilder::enableDebugReport()
-        DebugReport createDebugReport(
-            PFN_vkDebugReportCallbackEXT cb,
-            void* user_data = nullptr,
-            VkAllocationCallbacks* allocator = nullptr
-        )
+        [[nodiscard]] static lux::cxx::expected<std::vector<VkLayerProperties>, VkResult> layerProperties() noexcept
         {
-            if (!cb)
-                return DebugReport{};
-
-            VkDebugReportCallbackCreateInfoEXT debug_report_ci = {};
-            debug_report_ci.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
-            debug_report_ci.pNext = nullptr;
-            debug_report_ci.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
-                                    VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
-            debug_report_ci.pfnCallback = cb;
-            debug_report_ci.pUserData = user_data;
-
-            return DebugReport{instance, debug_report_ci, allocator};
+            return detail::enumerateInstanceValues<VkLayerProperties>(vkEnumerateInstanceLayerProperties);
         }
 
-        std::vector<PhysicalDevice> listPhysicalDevices() const
+        [[nodiscard]] lux::cxx::expected<std::vector<PhysicalDevice>, VkResult> listPhysicalDevices() const noexcept
         {
-            VkResult err;
-            uint32_t device_count;
-            vkEnumeratePhysicalDevices(instance, &device_count, nullptr);
-
-            std::vector<VkPhysicalDevice> physical_devices(device_count);
-            vkEnumeratePhysicalDevices(instance, &device_count, physical_devices.data());
-
-            std::vector<PhysicalDevice> ret_physical_devices;
-            for (VkPhysicalDevice& device : physical_devices)
+            auto devices = detail::enumerateInstanceValues<VkPhysicalDevice>(
+                [this](uint32_t* count, VkPhysicalDevice* values) noexcept
+                { return vkEnumeratePhysicalDevices(instance_, count, values); }
+            );
+            if (!devices)
             {
-                PhysicalDevice new_device(device);
-
-                ret_physical_devices.push_back(std::move(new_device));
+                return lux::cxx::unexpected(devices.error());
             }
-
-            return ret_physical_devices;
-        }
-
-        inline operator VkInstance() const
-        {
-            return instance;
-        }
-        inline const VkInstance* operator&() const noexcept
-        {
-            return &instance;
-        }
-
-        inline VkInstance handle() const noexcept
-        {
-            return instance;
-        }
-        inline const VkInstance* handlePtr() const noexcept
-        {
-            return &instance;
-        }
-
-        VkInstance instance{VK_NULL_HANDLE};
-    };
-
-    class InstanceBuilder
-    {
-    public:
-        InstanceBuilder()
-        {
-            app_info.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-            app_info.pApplicationName = "Default";
-            app_info.applicationVersion = VK_MAKE_VERSION(1, 3, 0);
-            app_info.pEngineName = "Default";
-            app_info.engineVersion = VK_MAKE_VERSION(1, 3, 0);
-            app_info.apiVersion = VK_API_VERSION_1_3;
-            app_info.pNext = nullptr;
-            create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-            // Enumerate available extensions
-            create_info.pApplicationInfo = &app_info;
-            create_info.pNext = nullptr;
-            create_info.flags = 0;
-            create_info.enabledLayerCount = 0;
-            create_info.ppEnabledLayerNames = nullptr;
-
-            // enable the VK_KHR_surface extension if it is supported
-            auto supported_extensions = Instance::extensionProperties();
-            for (const auto& ext : supported_extensions)
+            std::vector<PhysicalDevice> result;
+            result.reserve(devices->size());
+            for (auto device : *devices)
             {
-                if (strcmp(ext.extensionName, VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME) == 0)
-                {
-                    extensions.push_back(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
-                    break;
-                }
+                result.push_back(PhysicalDevice(device));
             }
+            return result;
         }
 
-        inline InstanceBuilder& setAppName(const char* name) noexcept
+        operator VkInstance() const noexcept
         {
-            app_info.pApplicationName = name;
-            return *this;
+            return instance_;
         }
 
-        inline InstanceBuilder& setEngineName(const char* name) noexcept
+        [[nodiscard]] VkInstance handle() const noexcept
         {
-            app_info.pEngineName = name;
-            return *this;
-        }
-
-        inline InstanceBuilder& setAppVersion(uint32_t version) noexcept
-        {
-            app_info.applicationVersion = version;
-            return *this;
-        }
-
-        inline InstanceBuilder& setEngineVersion(uint32_t version) noexcept
-        {
-            app_info.engineVersion = version;
-            return *this;
-        }
-
-        inline InstanceBuilder& setApiVersion(uint32_t version) noexcept
-        {
-            app_info.apiVersion = version;
-            return *this;
-        }
-
-        /// Request the validation layer + its debug extensions, IF THE RUNTIME
-        /// HAS THEM. Asking unconditionally is not safe: layers are a runtime
-        /// artifact, not a compile-time one, and vkCreateInstance answers a
-        /// missing one with VK_ERROR_LAYER_NOT_PRESENT — turning "I wanted
-        /// diagnostics" into "no instance at all".
-        ///
-        /// That is not a corner case: a release Android APK bundles no layers,
-        /// so every stock device lands here. It cost a null-pointer crash on
-        /// device to find, because the failure was reported through a path
-        /// (stderr + assert-under-NDEBUG) that neither stops execution nor is
-        /// visible on Android.
-        inline InstanceBuilder& enableDebugReport() noexcept
-        {
-            uint32_t layer_count = 0;
-            vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
-            std::vector<VkLayerProperties> available(layer_count);
-            if (layer_count)
-                vkEnumerateInstanceLayerProperties(&layer_count, available.data());
-
-            bool have_validation = false;
-            for (const auto& p : available)
-                if (std::strcmp(p.layerName, "VK_LAYER_KHRONOS_validation") == 0)
-                {
-                    have_validation = true;
-                    break;
-                }
-
-            if (!have_validation)
-            {
-                std::fprintf(
-                    stderr,
-                    "[Vulkan] VK_LAYER_KHRONOS_validation not installed — "
-                    "continuing WITHOUT validation (%u layers available).\n",
-                    layer_count
-                );
-                return *this;
-            }
-
-            layers.push_back("VK_LAYER_KHRONOS_validation");
-            extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-            // VK_EXT_debug_utils is needed for vkCmdBeginDebugUtilsLabelEXT (pass
-            // name labels in command buffers) and vkSetDebugUtilsObjectNameEXT
-            // (human-readable pipeline/buffer names in validation messages).
-            // It is always available alongside the validation layers on LunarG SDK
-            // 1.1.106+ / Vulkan 1.3 targets.
-            extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-            create_info.enabledLayerCount = 1;
-            create_info.ppEnabledLayerNames = layers.data();
-
-            return *this;
-        }
-
-        inline InstanceBuilder& addExtension(const char* extension) noexcept
-        {
-            extensions.push_back(extension);
-            return *this;
-        }
-
-        inline InstanceBuilder& addExtensions(const std::vector<const char*>& extensions) noexcept
-        {
-            this->extensions.insert(this->extensions.end(), extensions.begin(), extensions.end());
-            return *this;
-        }
-
-        Instance build(VkAllocationCallbacks* allocator = nullptr)
-        {
-            create_info.enabledExtensionCount = (uint32_t)extensions.size();
-            create_info.ppEnabledExtensionNames = extensions.data();
-
-            return Instance{create_info, allocator};
+            return instance_;
         }
 
     private:
-        std::vector<const char*> layers;
-        std::vector<const char*> extensions;
-        VkApplicationInfo app_info;
-        VkInstanceCreateInfo create_info;
+        Instance(VkInstance instance, const VkAllocationCallbacks* allocator) noexcept
+            : instance_(instance), allocator_(allocator)
+        {
+        }
+
+        VkInstance instance_{};
+        const VkAllocationCallbacks* allocator_{};
     };
-}
+} // namespace lux::gapi::vk

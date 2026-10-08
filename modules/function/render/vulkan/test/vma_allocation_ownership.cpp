@@ -110,7 +110,9 @@ int main()
     static_assert(std::is_nothrow_move_assignable_v<VmaImage>);
     static_assert(std::is_nothrow_move_assignable_v<StagingBuffer>);
 
-    InstanceContext instance({});
+    auto instance_owner = InstanceContext::create({});
+    assert(instance_owner);
+    auto& instance = **instance_owner;
     DeviceContext first_device(instance), second_device(instance);
     assert(first_device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
     assert(second_device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));

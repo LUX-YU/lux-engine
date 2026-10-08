@@ -43,74 +43,56 @@ namespace lux::render
         INTEGRATED_GPU_PREFERRED ///< Prefer integrated GPUs, fallback to discrete
     };
 
-    /**
-     * @brief Instance-level rendering context (shared across the application)
-     * @details Manages Vulkan instance creation and validation layers
-     */
-    class LUX_FUNCTION_PUBLIC InstanceContext
+    /// Complete instance and optional validation backing. Callback storage remains
+    /// fixed through native report destruction; children must release before this owner.
+    class LUX_FUNCTION_PUBLIC InstanceContext final
     {
     public:
-        /**
-         * @brief Construct with explicit configuration
-         * @param required_extensions List of required Vulkan extensions
-         * @param debug_callback Optional debug callback for validation layers
-         * @param allocator Optional custom memory allocator
-         */
-        InstanceContext(
+        using CreateResult = Expected<std::unique_ptr<InstanceContext>>;
+
+        [[nodiscard]] static CreateResult create(
             const std::vector<const char*>& required_extensions,
-            DebugCallback debug_callback = nullptr,
+            DebugCallback debug_callback = {},
             VkAllocationCallbacks* allocator = nullptr
-        );
+        ) noexcept;
 
-        ~InstanceContext();
+        ~InstanceContext() = default;
+        InstanceContext(const InstanceContext&) = delete;
+        InstanceContext& operator=(const InstanceContext&) = delete;
+        InstanceContext(InstanceContext&&) = delete;
+        InstanceContext& operator=(InstanceContext&&) = delete;
 
-        /// @brief Get mutable reference to Vulkan instance
-        lux::gapi::vk::Instance& instance()
+        [[nodiscard]] const lux::gapi::vk::Instance& instance() const noexcept
         {
             return instance_;
         }
 
-        /// @brief Get immutable reference to Vulkan instance
-        const lux::gapi::vk::Instance& instance() const
-        {
-            return instance_;
-        }
-
-        /// @brief Get mutable reference to debug report
-        lux::gapi::vk::DebugReport& debugReport()
-        {
-            return debug_report_;
-        }
-
-        /// @brief Get immutable reference to debug report
-        const lux::gapi::vk::DebugReport& debugReport() const
-        {
-            return debug_report_;
-        }
-
-        /// @brief Get custom memory allocator
-        VkAllocationCallbacks* allocator()
+        [[nodiscard]] VkAllocationCallbacks* allocator() noexcept
         {
             return allocator_;
         }
 
-        const VkAllocationCallbacks* allocator() const
+        [[nodiscard]] const VkAllocationCallbacks* allocator() const noexcept
         {
             return allocator_;
         }
 
-        /// @brief Whether the named instance extension was actually enabled at instance
-        ///        creation. Generic query over the enabled-extension set — used e.g. to
-        ///        gate a device extension whose prerequisites are instance-level
-        ///        (VK_EXT_swapchain_maintenance1 needs VK_EXT_surface_maintenance1).
-        bool isInstanceExtensionEnabled(const char* name) const;
+        [[nodiscard]] bool isInstanceExtensionEnabled(const char* name) const noexcept;
 
     private:
-        lux::gapi::vk::Instance instance_;            ///< Vulkan instance handle
-        lux::gapi::vk::DebugReport debug_report_;     ///< Debug report for validation layers
-        DebugCallback debug_callback_;                ///< User-provided debug callback
-        VkAllocationCallbacks* allocator_;            ///< Custom memory allocator
-        std::vector<std::string> enabled_extensions_; ///< instance extensions actually enabled
+        InstanceContext(
+            std::unique_ptr<DebugCallback> callback,
+            lux::gapi::vk::Instance instance,
+            lux::gapi::vk::DebugReport report,
+            VkAllocationCallbacks* allocator,
+            std::vector<std::string> extensions
+        ) noexcept;
+
+        std::unique_ptr<DebugCallback> debug_callback_;
+        lux::gapi::vk::Instance instance_;
+        lux::gapi::vk::DebugReport debug_report_;
+        VkAllocationCallbacks* allocator_;
+        std::vector<std::string> enabled_extensions_;
     };
 
     /**

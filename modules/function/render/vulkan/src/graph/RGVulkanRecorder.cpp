@@ -639,7 +639,7 @@ namespace lux::render
 #if !defined(NDEBUG)
         // Load VK_EXT_debug_utils entry points for pass labeling and pipeline
         // object naming.  Both require the extension to be enabled at instance
-        // creation (InstanceBuilder::enableDebugReport adds it when debug
+        // creation (InstanceContext::create enables it when debug
         // callbacks are active).  Even if the extension is absent, all three
         // pointers are nullptr and every label/name call becomes a no-op.
         const VkInstance vk_inst = context_.instanceContext().instance().handle();

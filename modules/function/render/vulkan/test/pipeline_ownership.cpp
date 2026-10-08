@@ -250,7 +250,9 @@ int main(int argc, char** argv)
     static_assert(!std::is_copy_constructible_v<ComputePipelineOwner>);
     static_assert(std::is_nothrow_move_constructible_v<ComputePipelineOwner>);
 
-    InstanceContext instance({});
+    auto instance_owner = InstanceContext::create({});
+    assert(instance_owner);
+    auto& instance = **instance_owner;
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
     if (argc == 2)

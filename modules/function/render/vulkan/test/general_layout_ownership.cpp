@@ -57,7 +57,9 @@ int main(int argc, char**)
     static_assert(!std::is_constructible_v<GeneralDescriptorSetLayout, DeviceContext&>);
     static_assert(!std::is_move_assignable_v<GeneralDescriptorSetLayout>);
     static_assert(std::is_nothrow_destructible_v<GeneralDescriptorSetLayout>);
-    InstanceContext instance({});
+    auto instance_owner = InstanceContext::create({});
+    assert(instance_owner);
+    auto& instance = **instance_owner;
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
     if (argc > 1)

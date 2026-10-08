@@ -372,7 +372,9 @@ int main(int argc, char** argv)
 {
     using namespace lux::render;
     const bool check_ssbo = argc == 2 && std::string_view(argv[1]) == "--ssbo";
-    InstanceContext instance({});
+    auto instance_owner = InstanceContext::create({});
+    assert(instance_owner);
+    auto& instance = **instance_owner;
     DeviceContext device(instance);
     assert(device.init(EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED));
     if (argc == 2 && std::string_view(argv[1]) == "--buffer")

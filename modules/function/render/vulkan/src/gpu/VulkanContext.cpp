@@ -1,4 +1,5 @@
 #include "lux/engine/render/gpu/VulkanContext.hpp"
+#include <algorithm>
 #include <iomanip>
 #include <limits>
 #include <lux/engine/function/render/client/core/RenderFatal.hpp>
@@ -9,9 +10,9 @@
 namespace lux::render
 {
     /**
- * @brief Vulkan debug report callback function
- * @details Called by Vulkan validation layers to report debug information
- */
+     * @brief Vulkan debug report callback function
+     * @details Called by Vulkan validation layers to report debug information
+     */
     static inline VkBool32 debug_report_callback(
         VkDebugReportFlagsEXT flags,
         VkDebugReportObjectTypeEXT objectType,
@@ -23,90 +24,148 @@ namespace lux::render
         void* pUserData
     );
 
-    // InstanceContext implementation
     InstanceContext::InstanceContext(
+        std::unique_ptr<DebugCallback> callback,
+        lux::gapi::vk::Instance instance,
+        lux::gapi::vk::DebugReport report,
+        VkAllocationCallbacks* allocator,
+        std::vector<std::string> extensions
+    ) noexcept
+        : debug_callback_(std::move(callback)), instance_(std::move(instance)), debug_report_(std::move(report)),
+          allocator_(allocator), enabled_extensions_(std::move(extensions))
+    {
+    }
+
+    InstanceContext::CreateResult InstanceContext::create(
         const std::vector<const char*>& required_extensions,
         DebugCallback debug_callback,
         VkAllocationCallbacks* allocator
-    )
-        : debug_callback_(debug_callback), allocator_(allocator)
+    ) noexcept
     {
-        lux::gapi::vk::Instance::Builder instance_builder;
-        instance_builder.addExtensions(required_extensions);
-        for (const char* e : required_extensions)
+        using lux::gapi::vk::DebugReport;
+        using lux::gapi::vk::Instance;
+        std::vector<std::string> extensions;
+        auto add_extension = [&](const char* name)
         {
-            enabled_extensions_.emplace_back(e);
+            if (std::ranges::find(extensions, name) == extensions.end())
+            {
+                extensions.emplace_back(name);
+            }
+        };
+        for (const char* name : required_extensions)
+        {
+            const bool is_invalid_name = !name || !*name;
+            if (is_invalid_name)
+            {
+                return renderFailure<err::internal::InvalidArgument>();
+            }
+            add_extension(name);
         }
-        // DeviceContext supports swapchains even when startup precedes the
-        // first native window. Its base extension belongs to this backend;
-        // the platform caller supplies only its platform surface extension.
-        if (!isInstanceExtensionEnabled(VK_KHR_SURFACE_EXTENSION_NAME))
+        // DeviceContext supports swapchains before the first native window exists.
+        add_extension(VK_KHR_SURFACE_EXTENSION_NAME);
+        auto available = Instance::extensionProperties();
+        if (!available)
         {
-            instance_builder.addExtension(VK_KHR_SURFACE_EXTENSION_NAME);
-            enabled_extensions_.emplace_back(VK_KHR_SURFACE_EXTENSION_NAME);
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(available.error()));
+        }
+        auto has_extension = [&](const char* name)
+        {
+            return std::ranges::any_of(
+                *available,
+                [name](const auto& entry) { return std::string_view(entry.extensionName) == name; }
+            );
+        };
+        const bool has_maintenance = has_extension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME) &&
+                                     has_extension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+        if (has_maintenance)
+        {
+            add_extension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+            add_extension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+        }
+        if (has_extension(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME))
+        {
+            add_extension(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME);
         }
 
-        // Instance-level prerequisites for VK_EXT_swapchain_maintenance1 (present
-        // scaling): VK_EXT_surface_maintenance1 depends on VK_KHR_get_surface_
-        // capabilities2. Enable-if-present — absent on old drivers → device-level
-        // swapchain_maintenance1 stays off and swapchain creation keeps its
-        // exact-extent path. Adding an unsupported instance extension would fail
-        // vkCreateInstance, so gate on the available list.
+        std::vector<const char*> layers;
+        if (debug_callback)
         {
-            const auto avail = lux::gapi::vk::Instance::extensionProperties();
-            auto has_inst_ext = [&](const char* name) {
-                for (const auto& e : avail)
-                {
-                    if (std::string_view(e.extensionName) == name)
-                    {
-                        return true;
-                    }
-                }
-                return false;
-            };
-            if (has_inst_ext(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME) &&
-                has_inst_ext(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME))
+            auto available_layers = Instance::layerProperties();
+            if (!available_layers)
             {
-                instance_builder.addExtension(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME)
-                    .addExtension(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
-                enabled_extensions_.emplace_back(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
-                enabled_extensions_.emplace_back(VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME);
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(available_layers.error()));
+            }
+            const bool has_validation = std::ranges::any_of(
+                *available_layers,
+                [](const auto& entry) { return std::string_view(entry.layerName) == "VK_LAYER_KHRONOS_validation"; }
+            );
+            // Missing optional validation still permits release/mobile startup.
+            if (has_validation)
+            {
+                layers.push_back("VK_LAYER_KHRONOS_validation");
+                add_extension(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+                add_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
             }
         }
-
-        if (debug_callback_)
+        std::vector<const char*> extension_names;
+        extension_names.reserve(extensions.size());
+        for (const auto& name : extensions)
         {
-            instance_builder.enableDebugReport();
+            extension_names.push_back(name.c_str());
         }
+        VkApplicationInfo application{};
+        application.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+        application.pApplicationName = "Default";
+        application.applicationVersion = VK_MAKE_VERSION(1, 3, 0);
+        application.pEngineName = "Default";
+        application.engineVersion = VK_MAKE_VERSION(1, 3, 0);
+        application.apiVersion = VK_API_VERSION_1_3;
+        VkInstanceCreateInfo info{};
+        info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+        info.pApplicationInfo = &application;
+        info.enabledLayerCount = static_cast<uint32_t>(layers.size());
+        info.ppEnabledLayerNames = layers.data();
+        info.enabledExtensionCount = static_cast<uint32_t>(extension_names.size());
+        info.ppEnabledExtensionNames = extension_names.data();
 
-        instance_ = instance_builder.build(allocator_);
-
-        if (debug_callback_)
+        // Native callbacks can execute during creation and destruction. The storage
+        // precedes both native owners and never moves when the complete context adopts it.
+        auto callback = debug_callback ? std::make_unique<DebugCallback>(std::move(debug_callback)) : nullptr;
+        auto instance = Instance::create(info, allocator);
+        if (!instance)
         {
-            debug_report_ = instance_.createDebugReport(&debug_report_callback, &debug_callback_, allocator_);
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(instance.error()));
         }
-    }
-
-    bool InstanceContext::isInstanceExtensionEnabled(const char* name) const
-    {
-        for (const auto& e : enabled_extensions_)
+        DebugReport report;
+        const bool has_debug_report =
+            callback && std::ranges::find(extensions, VK_EXT_DEBUG_REPORT_EXTENSION_NAME) != extensions.end();
+        if (has_debug_report)
         {
-            if (e == name)
+            VkDebugReportCallbackCreateInfoEXT report_info{};
+            report_info.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
+            report_info.flags = VK_DEBUG_REPORT_ERROR_BIT_EXT | VK_DEBUG_REPORT_WARNING_BIT_EXT |
+                                VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT;
+            report_info.pfnCallback = &debug_report_callback;
+            report_info.pUserData = callback.get();
+            auto created = DebugReport::create(instance->handle(), report_info, allocator);
+            if (!created)
             {
-                return true;
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(created.error()));
             }
+            report = std::move(*created);
         }
-        return false;
+        return std::unique_ptr<InstanceContext>(new InstanceContext(
+            std::move(callback),
+            std::move(*instance),
+            std::move(report),
+            allocator,
+            std::move(extensions)
+        ));
     }
 
-    InstanceContext::~InstanceContext()
+    bool InstanceContext::isInstanceExtensionEnabled(const char* name) const noexcept
     {
-        // Release resources in reverse creation order
-        if (debug_callback_)
-        {
-            debug_report_.release(instance_, allocator_);
-        }
-        instance_.release(allocator_);
+        return std::ranges::find(enabled_extensions_, name) != enabled_extensions_.end();
     }
 
     // DeviceContext implementation
@@ -115,7 +174,12 @@ namespace lux::render
     Expected<void> DeviceContext::init(EPhysicalDeviceSelectionPolicy policy)
     {
         // Select physical device
-        auto devices = instance_context_.instance().listPhysicalDevices();
+        auto discovered = instance_context_.instance().listPhysicalDevices();
+        if (!discovered)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(discovered.error()));
+        }
+        auto& devices = *discovered;
         if (devices.empty())
         {
             return renderFailure<err::memory::GpuAllocationFailed>();

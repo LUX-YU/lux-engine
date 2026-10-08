@@ -69,7 +69,9 @@ int main()
     static_assert(std::is_nothrow_move_assignable_v<VmaAllocatorOwner>);
     static_assert(std::is_nothrow_destructible_v<VmaAllocatorOwner>);
 
-    InstanceContext instance({});
+    auto instance_owner = InstanceContext::create({});
+    assert(instance_owner);
+    auto& instance = **instance_owner;
     reject_creation = true;
     {
         DeviceContext rejected(instance);

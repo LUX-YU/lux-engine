@@ -148,6 +148,10 @@ int main(int argc, char** argv)
         {
             assert(system.requestStop());
             assert(system.processLifecycle(EScriptLifecycleAdmission::RETIRE_ONLY));
+            assert(system.shutdown());
+            access.reset();
+            // Only the already accepted TaskOperation still owns this real DLL result and its code.
+            assert(counts.destroyed == 0 && counts.unloaded == 0 && !weak.expired());
         }
         assert(execution.waitUntil([&]() noexcept {
             assert(execution.dispatchTaskEvents());

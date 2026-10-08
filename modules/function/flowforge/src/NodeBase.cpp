@@ -90,22 +90,20 @@ namespace lux::flowforge
 
     /**
      * @brief Links this Pin to the specified Pin.
-     *        Base class does nothing and returns SUCCESS.
+     *        Delegates topology changes to the owning FlowGraph.
      * @param pin Pointer to the Pin to link to.
-     * @param last A reference to a LastLink object (unused here).
-     * @return Always ELinkError::SUCCESS in the base class.
+     * @return The topology operation result.
      */
-    ELinkError Pin::linkTo(Pin* pin, LastLink& last)
+    ELinkError Pin::linkTo(Pin* pin)
     {
-        last = {};
         return node_->graph()->connect(*this, *pin);
     }
 
     /**
      * @brief Unlinks this Pin from the specified Pin.
-     *        Base class does nothing and returns SUCCESS.
+     *        Delegates topology changes to the owning FlowGraph.
      * @param pin Pointer to the Pin to unlink from.
-     * @return Always ELinkError::SUCCESS in the base class.
+     * @return The topology operation result.
      */
     ELinkError Pin::unlinkFrom(Pin* pin)
     {
@@ -202,12 +200,11 @@ namespace lux::flowforge
 
     /**
      * @brief Links this ExecInPin to another Pin (usually an ExecOutPin).
-     *        If the ExecOutPin was already linked to a different ExecInPin, that link is recorded and removed.
+     *        Existing conflicting links are rejected; replacement is an explicit graph edit.
      * @param pin Pointer to the Pin to link with.
-     * @param last A reference to LastLink for storing replaced link info.
      * @return An ELinkError code describing the result.
      */
-    ELinkError ExecInPin::linkTo(Pin* pin, LastLink& last)
+    ELinkError ExecInPin::linkTo(Pin* pin)
     {
         auto rst = canLink(pin);
         if (rst != ELinkError::SUCCESS)
@@ -215,7 +212,7 @@ namespace lux::flowforge
             return rst;
         }
 
-        return Pin::linkTo(pin, last);
+        return Pin::linkTo(pin);
     }
 
     /**
@@ -293,12 +290,11 @@ namespace lux::flowforge
 
     /**
      * @brief Links this ExecOutPin to another Pin (usually an ExecInPin).
-     *        If already linked, unlinks from the old ExecInPin first.
+     *        Existing conflicting links are rejected; replacement is an explicit graph edit.
      * @param pin Pointer to the other Pin.
-     * @param last A reference to LastLink for storing replaced link info.
      * @return ELinkError describing the result of the link operation.
      */
-    ELinkError ExecOutPin::linkTo(Pin* pin, LastLink& last)
+    ELinkError ExecOutPin::linkTo(Pin* pin)
     {
         auto can_link_result = canLink(pin);
         if (can_link_result != ELinkError::SUCCESS)
@@ -306,7 +302,7 @@ namespace lux::flowforge
             return can_link_result;
         }
 
-        return Pin::linkTo(pin, last);
+        return Pin::linkTo(pin);
     }
 
     /**
@@ -399,12 +395,11 @@ namespace lux::flowforge
 
     /**
      * @brief Links this DataInPin to another Pin (usually a DataOutPin).
-     *        If already linked, unlinks from the old DataOutPin first.
+     *        Existing conflicting links are rejected; replacement is an explicit graph edit.
      * @param pin Pointer to the other Pin.
-     * @param last A reference to LastLink for storing replaced link info.
      * @return ELinkError describing the result of the link operation.
      */
-    ELinkError DataInPin::linkTo(Pin* pin, LastLink& last)
+    ELinkError DataInPin::linkTo(Pin* pin)
     {
         auto rst = canLink(pin);
         if (rst != ELinkError::SUCCESS)
@@ -412,7 +407,7 @@ namespace lux::flowforge
             return rst;
         }
 
-        return Pin::linkTo(pin, last);
+        return Pin::linkTo(pin);
     }
 
     /**
@@ -573,12 +568,11 @@ namespace lux::flowforge
 
     /**
      * @brief Links this DataOutPin to another Pin (usually a DataInPin).
-     *        If the DataInPin is already linked, unlinks it first.
+     *        Existing conflicting links are rejected; replacement is an explicit graph edit.
      * @param pin Pointer to the other Pin.
-     * @param last A reference to LastLink for storing replaced link info.
      * @return ELinkError describing the result of the link operation.
      */
-    ELinkError DataOutPin::linkTo(Pin* pin, LastLink& last)
+    ELinkError DataOutPin::linkTo(Pin* pin)
     {
         auto rst = canLink(pin);
         if (rst != ELinkError::SUCCESS)
@@ -586,7 +580,7 @@ namespace lux::flowforge
             return rst;
         }
 
-        return Pin::linkTo(pin, last);
+        return Pin::linkTo(pin);
     }
 
     /**

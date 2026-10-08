@@ -247,17 +247,6 @@ namespace lux::flowforge
         UNKNOWN      ///< An unknown error occurred.
     };
 
-    /**
-     * @struct LastLink
-     * @brief Stores information about the most recent link changes (for undo or tracking).
-     */
-    struct LastLink
-    {
-        bool exist{false};  ///< Indicates if a previous link existed.
-        PinId in_pin_id{};  ///< ID of the input pin previously linked.
-        PinId out_pin_id{}; ///< ID of the output pin previously linked.
-    };
-
     // Forward declarations
     class Node;
     class ExecInPin;
@@ -325,10 +314,9 @@ namespace lux::flowforge
         /**
          * @brief Links this Pin to another Pin.
          * @param pin The other Pin to link with.
-         * @param last Holds information about any previous link that was replaced.
          * @return An ELinkError indicating success or the type of error.
          */
-        virtual ELinkError linkTo(Pin* pin, LastLink& last);
+        virtual ELinkError linkTo(Pin* pin);
 
         /**
          * @brief Unlinks this Pin from another Pin.
@@ -415,10 +403,9 @@ namespace lux::flowforge
         /**
          * @brief Links this ExecInPin to another Pin (usually an ExecOutPin).
          * @param pin The other Pin to link to.
-         * @param last Holds previous link information if any existed.
          * @return An ELinkError indicating the link result.
          */
-        ELinkError linkTo(Pin* pin, LastLink& last) override;
+        ELinkError linkTo(Pin* pin) override;
 
         /**
          * @brief Unlinks this ExecInPin from the specified Pin (usually an ExecOutPin).
@@ -460,10 +447,9 @@ namespace lux::flowforge
         /**
          * @brief Links this ExecOutPin to another Pin (usually an ExecInPin).
          * @param pin The other Pin to link to.
-         * @param last Holds previous link information if any existed.
          * @return An ELinkError indicating the link result.
          */
-        ELinkError linkTo(Pin* pin, LastLink& last) override;
+        ELinkError linkTo(Pin* pin) override;
 
         /**
          * @brief Unlinks this ExecOutPin from the specified Pin (usually an ExecInPin).
@@ -526,10 +512,9 @@ namespace lux::flowforge
         /**
          * @brief Links this DataInPin to another Pin (usually a DataOutPin).
          * @param pin The other Pin to link with.
-         * @param last Holds previous link information if any existed.
          * @return An ELinkError indicating the link result.
          */
-        ELinkError linkTo(Pin* pin, LastLink& last) override;
+        ELinkError linkTo(Pin* pin) override;
 
         /**
          * @brief Unlinks this DataInPin from the specified Pin (usually a DataOutPin).
@@ -629,10 +614,9 @@ namespace lux::flowforge
         /**
          * @brief Links this DataOutPin to another Pin (usually a DataInPin).
          * @param pin The other Pin to link with.
-         * @param last Holds previous link information if any existed.
          * @return An ELinkError indicating the link result.
          */
-        ELinkError linkTo(Pin* pin, LastLink& last) override;
+        ELinkError linkTo(Pin* pin) override;
 
         /**
          * @brief Unlinks this DataOutPin from the specified Pin (usually a DataInPin).

@@ -13,6 +13,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace lux::render
@@ -72,7 +73,6 @@ namespace lux::render
         void setGpuCompletedSerial(uint64_t serial) noexcept
         {
             gpu_completed_serial_ = serial;
-            has_gpu_completed_serial_ = true;
         }
 
         /// Advance per-frame state across all owned scenes.
@@ -194,15 +194,14 @@ namespace lux::render
 
         std::vector<RetiredScene> retired_scenes_;
 
-        // Fence-proven completion watermark (setGpuCompletedSerial). The bool
+        // Fence-proven completion watermark (setGpuCompletedSerial). Absence
         // gates the driverless fallback: headless no-driver ticks never submit
         // GPU work, so the old arithmetic is vacuously safe there.
-        uint64_t gpu_completed_serial_{0};
-        bool has_gpu_completed_serial_{false};
+        std::optional<uint64_t> gpu_completed_serial_;
 
         [[nodiscard]] uint64_t completedSerialOr(uint64_t fallback) const noexcept
         {
-            return has_gpu_completed_serial_ ? gpu_completed_serial_ : fallback;
+            return gpu_completed_serial_.value_or(fallback);
         }
     };
 

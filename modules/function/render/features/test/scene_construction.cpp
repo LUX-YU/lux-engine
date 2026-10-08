@@ -241,6 +241,28 @@ int main()
         scheduler.retireStaging(0);
         assert(!shadow_fault::live_buffers.contains(overflow.buffer));
     }
+    for (const bool observed : {false, true})
+    {
+        LifetimeCounts counts;
+        Renderer renderer(*context);
+        auto created = renderer.addScene({});
+        assert(created);
+        assert(renderer.getScene(created->scene_id)->addFeature<LifetimeFeature>(counts));
+        if (observed)
+        {
+            renderer.setGpuCompletedSerial(0);
+        }
+        renderer.removeScene(created->scene_id, 1);
+        renderer.collectRetiredScenes(100);
+        if (observed)
+        {
+            // Observed zero must suppress the driverless arithmetic fallback.
+            assert(counts.detached == 0 && counts.destroyed == 0);
+            renderer.setGpuCompletedSerial(1);
+            renderer.collectRetiredScenes(100);
+        }
+        assert(counts.detached == 1 && counts.destroyed == 1);
+    }
     {
         LifetimeCounts counts;
         Renderer renderer(*context);

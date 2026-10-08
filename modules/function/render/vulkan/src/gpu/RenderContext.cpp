@@ -44,17 +44,7 @@ namespace lux::render
         // create() is the sole construction boundary and has already validated
         // the frame ring and all three required owning services.
 
-        // (原先这里有一句 find<TextureResources>() + "未解析到内建 GPU 资源" 断言。
-        //  已删除,理由有三 —— 它既越层又无效:
-        //   1. 越层:RenderContext 是 L1 合成根,不该认识 L3 的纹理域。
-        //   2. 不可能触发:emplace<TextureResources>() 就在同一个 RenderServer::init
-        //      里、构造本对象之前 48 行,不存在"未 emplace"的路径。
-        //   3. 无效:资源注册表没有 erase(失败 init 的对象照样留在表里),所以
-        //      init() 失败时该指针依然非空、断言照样通过 —— 它检测不到它声称要
-        //      检测的东西。真正的缺口是 TextureResources::init() 的 bool 返回值
-        //      被忽略,已在 RenderServer 的 emplace 处补上检查。
-        //  其余全局资源(Mesh/Material/ShadingModel)本就是惰性建的,Light 是每场景
-        //  的 —— 合成根一个都不该在这里解析。)
+        // Domain resources are installed by their assembly after this infrastructure is complete.
 
         vk_device_ = res_ctx.deviceContext().logicalDevice();
         descriptor_service_ = std::make_unique<DescriptorService>(vk_device_, res_ctx.descriptorPool());

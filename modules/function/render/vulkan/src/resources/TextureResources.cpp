@@ -72,6 +72,7 @@ namespace lux::render
         slices_ = info.slices;
 
         combined_ci_ = info.combined_ci;
+        deferred_queue_ = combined_ci_.deferred_queue;
 
         default_sampler_ci_ = info.default_sampler_ci;
         if (default_sampler_ci_.sType != VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO)
@@ -92,20 +93,23 @@ namespace lux::render
         createSharedPoolAndSet(combined_ci_.descriptor_set_layout, tex2d_max, cube_max);
 
         // -- Init 2D texture bindless set (binding 0, external set) --
-        BCInitInfo ci_2d = combined_ci_;
+        BindlessSetCreateInfo ci_2d = combined_ci_;
         ci_2d.external_pool = shared_pool_;
         ci_2d.external_set = shared_set_;
         ci_2d.initial_capacity = tex2d_max; // fixed (no reallocation in external mode)
         ci_2d.layout_max_capacity = tex2d_max;
         ci_2d.frames_in_flight = slices_;
-        if (!combined_.init(ci_2d))
+        auto set_2d = BindlessCombinedSet::create(ci_2d);
+        if (!set_2d)
         {
             shutdown();
             return false;
         }
 
+        combined_ = std::move(*set_2d);
+
         // -- Init cube texture bindless set (binding 1, external set) --
-        BCInitInfo ci_cube = combined_ci_;
+        BindlessSetCreateInfo ci_cube = combined_ci_;
         ci_cube.binding = static_cast<uint32_t>(ETextureSetBindings::CUBE_TEXTURES);
         ci_cube.view_type = VK_IMAGE_VIEW_TYPE_CUBE;
         ci_cube.generate_mipmaps = false;
@@ -114,11 +118,14 @@ namespace lux::render
         ci_cube.external_pool = shared_pool_;
         ci_cube.external_set = shared_set_;
         ci_cube.frames_in_flight = slices_;
-        if (!combined_cube_.init(ci_cube))
+        auto set_cube = BindlessCombinedSet::create(ci_cube);
+        if (!set_cube)
         {
             shutdown();
             return false;
         }
+
+        combined_cube_ = std::move(*set_cube);
 
         if (!initMipFeedback(slices_, tex2d_max))
         {
@@ -128,9 +135,9 @@ namespace lux::render
 
         // Fallback texture (2D)
         lux::rdesc::Texture fb = info.fallback_pixel.value_or(makeDefaultWhite());
-        SlotHandle fallback = combined_.addTexture(fb, &default_sampler_ci_);
+        SlotHandle fallback = combined_->addTexture(fb, &default_sampler_ci_);
         // Flush immediately so the fallback texture is ready before any rendering
-        combined_.flushUploads();
+        combined_->flushUploads();
 
         fallback_bindless_index_ = fallback.index;
         noteTextureResident(fallback.index);
@@ -148,8 +155,8 @@ namespace lux::render
         remote_textures_.clear();
         remote_2d_.clear();
         remote_cube_.clear();
-        combined_.shutdown();
-        combined_cube_.shutdown();
+        combined_.reset();
+        combined_cube_.reset();
 
         // Destroy shared pool (after BindlessCombinedSet instances release references)
         if (shared_pool_ && dc_)
@@ -174,7 +181,7 @@ namespace lux::render
     {
         const VkSamplerCreateInfo& sci = opt_sampler ? *opt_sampler : default_sampler_ci_;
 
-        SlotHandle sh = combined_.addTexture(cpu, &sci, fmt, generate_mips);
+        SlotHandle sh = combined_->addTexture(cpu, &sci, fmt, generate_mips);
         if (!sh.isValid())
             return renderFailure<err::memory::CapacityExhausted>();
         TextureHandle h{sh.index, sh.gen};
@@ -232,7 +239,7 @@ namespace lux::render
         const VkSamplerCreateInfo& sci = opt_sampler ? *opt_sampler : default_sampler_ci_;
         const SlotHandle sh =
             combined_
-                .addPersistentTexture(desc.width, desc.height, desc.mip_levels, persistentVkFormat(desc.format), &sci);
+                ->addPersistentTexture(desc.width, desc.height, desc.mip_levels, persistentVkFormat(desc.format), &sci);
         if (!sh.isValid())
             return renderFailure<err::memory::CapacityExhausted>();
 
@@ -248,8 +255,10 @@ namespace lux::render
     )
     {
         const SlotHandle sh{h.index, h.gen};
-        if (!combined_.isTextureAlive(sh))
+        if (!combined_->isTextureAlive(sh))
+        {
             return ERegionUploadStatus::INVALID_HANDLE;
+        }
         const auto it = persistent_descs_.find(h.index);
         if (it == persistent_descs_.end())
             return ERegionUploadStatus::INVALID_HANDLE; // immutable asset texture — not updatable
@@ -273,14 +282,14 @@ namespace lux::render
                 r.data_offset
             });
 
-        return combined_.updateTextureRegions(sh, updates, pixels, regionTexelBytes(it->second.format))
+        return combined_->updateTextureRegions(sh, updates, pixels, regionTexelBytes(it->second.format))
                    ? ERegionUploadStatus::OK
                    : ERegionUploadStatus::INVALID_HANDLE;
     }
 
     bool TextureResources::remove(TextureHandle h)
     {
-        const bool removed = combined_.removeTexture(SlotHandle{h.index, h.gen});
+        const bool removed = combined_->removeTexture(SlotHandle{h.index, h.gen});
         if (removed)
         {
             unpublish(remoteTexture(h));
@@ -296,7 +305,7 @@ namespace lux::render
 
     bool TextureResources::removeCube(TextureHandle h)
     {
-        const bool removed = combined_cube_.removeTexture(SlotHandle{h.index, h.gen});
+        const bool removed = combined_cube_->removeTexture(SlotHandle{h.index, h.gen});
         if (removed)
             unpublish(remoteTexture(h, true));
         return removed;
@@ -330,7 +339,7 @@ namespace lux::render
         const auto* entry = resolve(remote);
         if (!entry || entry->kind != (cube ? ERemoteKind::CUBE : ERemoteKind::TEXTURE_2D))
             return {};
-        const auto& set = cube ? combined_cube_ : combined_;
+        const auto& set = cube ? *combined_cube_ : *combined_;
         return set.isTextureAlive({entry->local.index, entry->local.gen}) ? entry->local : TextureHandle{};
     }
 
@@ -365,7 +374,7 @@ namespace lux::render
     {
         const VkSamplerCreateInfo& sci = opt_sampler ? *opt_sampler : default_sampler_ci_;
 
-        SlotHandle sh = combined_cube_.addCubeTexture(faces, &sci, fmt);
+        SlotHandle sh = combined_cube_->addCubeTexture(faces, &sci, fmt);
         if (!sh.isValid())
             return renderFailure<err::memory::CapacityExhausted>();
         TextureHandle h{sh.index, sh.gen};
@@ -431,10 +440,10 @@ namespace lux::render
         if (slot_index >= mip_states_.size())
             return;
         auto& state = mip_states_[slot_index];
-        const VkFormat physical_format = combined_.slotFormat(slot_index);
-        const std::uint32_t physical_width = combined_.slotWidth(slot_index);
-        const std::uint32_t physical_height = combined_.slotHeight(slot_index);
-        const std::uint32_t physical_mips = combined_.slotMipLevels(slot_index);
+        const VkFormat physical_format = combined_->slotFormat(slot_index);
+        const std::uint32_t physical_width = combined_->slotWidth(slot_index);
+        const std::uint32_t physical_height = combined_->slotHeight(slot_index);
+        const std::uint32_t physical_mips = combined_->slotMipLevels(slot_index);
         if (!state.alive)
         {
             // Initial creation defines the logical shape. A replacement cannot
@@ -505,7 +514,7 @@ namespace lux::render
     ) noexcept
     {
         const SlotHandle slot{handle.index, handle.gen};
-        if (!combined_.isTextureAlive(slot) || handle.index >= mip_states_.size())
+        if (!combined_->isTextureAlive(slot) || handle.index >= mip_states_.size())
         {
             return false;
         }
@@ -533,7 +542,7 @@ namespace lux::render
         if (handle.index >= mip_states_.size())
             return;
         auto& state = mip_states_[handle.index];
-        if (combined_.isTextureAlive(SlotHandle{handle.index, handle.gen}))
+        if (combined_->isTextureAlive(SlotHandle{handle.index, handle.gen}))
         {
             state.replacement_pending = false;
             if (state.alive && state.target_base_mip != state.resident_base_mip)
@@ -584,7 +593,7 @@ namespace lux::render
             {
                 continue;
             }
-            const auto texture = remoteTexture(TextureHandle{slot, combined_.genAt(slot)});
+            const auto texture = remoteTexture(TextureHandle{slot, combined_->genAt(slot)});
             if (!texture.isValid())
                 continue;
             if (reply.count < limit)

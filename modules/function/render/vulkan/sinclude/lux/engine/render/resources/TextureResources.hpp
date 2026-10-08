@@ -73,7 +73,7 @@ namespace lux::render
             VkCommandPool upload_cmd_pool{VK_NULL_HANDLE};
 
             // bindless combined (please configure set/binding, e.g. set=2,binding=0)
-            BCInitInfo combined_ci;
+            BindlessSetCreateInfo combined_ci;
 
             // Cube texture capacity (binding 1 in same set)
             // Must not exceed kCubeMaxCount (256) in GeneralDescriptorSetLayout.
@@ -116,13 +116,6 @@ namespace lux::render
             const VkSamplerCreateInfo* opt_sampler = nullptr,
             VkFormat fmt = VK_FORMAT_UNDEFINED
         );
-
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-        {
-            deferred_queue_ = q;
-            combined_.setDeferredQueue(q);
-            combined_cube_.setDeferredQueue(q);
-        }
 
         /// Register or replace the authoritative GPU shape of one stable 2D
         /// bindless slot. Called by both synchronous creation and async transfer
@@ -186,24 +179,24 @@ namespace lux::render
         /// Retrieve the VkImageView for a 2D texture (VK_NULL_HANDLE if dead/stale).
         VkImageView imageView(TextureHandle h) const noexcept
         {
-            return combined_.isTextureAlive(SlotHandle{h.index, h.gen}) ? combined_.slotImageView(h.index)
-                                                                        : VK_NULL_HANDLE;
+            return combined_->isTextureAlive(SlotHandle{h.index, h.gen}) ? combined_->slotImageView(h.index)
+                                                                         : VK_NULL_HANDLE;
         }
 
         /// Retrieve the VkSampler for a 2D texture (VK_NULL_HANDLE if dead/stale).
         VkSampler sampler(TextureHandle h) const noexcept
         {
-            return combined_.isTextureAlive(SlotHandle{h.index, h.gen}) ? combined_.slotSampler(h.index)
-                                                                        : VK_NULL_HANDLE;
+            return combined_->isTextureAlive(SlotHandle{h.index, h.gen}) ? combined_->slotSampler(h.index)
+                                                                         : VK_NULL_HANDLE;
         }
 
         VkDescriptorSetLayout descriptorSetLayout() const noexcept
         {
-            return combined_.descriptorLayout();
+            return combined_->descriptorLayout();
         }
         VkDescriptorSet descriptorSet() const noexcept
         {
-            return combined_.descriptorSet();
+            return combined_->descriptorSet();
         }
         uint32_t fallbackBindlessIndex() const noexcept
         {
@@ -212,19 +205,19 @@ namespace lux::render
 
         BindlessCombinedSet& bindlessSet2D() noexcept
         {
-            return combined_;
+            return *combined_;
         }
         const BindlessCombinedSet& bindlessSet2D() const noexcept
         {
-            return combined_;
+            return *combined_;
         }
         BindlessCombinedSet& bindlessSetCube() noexcept
         {
-            return combined_cube_;
+            return *combined_cube_;
         }
         const BindlessCombinedSet& bindlessSetCube() const noexcept
         {
-            return combined_cube_;
+            return *combined_cube_;
         }
 
         // ========== IGPUResource Interface Implementation ==========
@@ -244,7 +237,7 @@ namespace lux::render
          */
         VkDescriptorSet getDescriptorSet() const
         {
-            return combined_.descriptorSet();
+            return combined_->descriptorSet();
         }
 
         /**
@@ -253,7 +246,7 @@ namespace lux::render
          */
         VkDescriptorSetLayout getDescriptorSetLayout() const
         {
-            return combined_.descriptorLayout();
+            return combined_->descriptorLayout();
         }
 
         /**
@@ -265,8 +258,8 @@ namespace lux::render
         void uploadData(VkCommandBuffer cb, const FrameStamp& stamp)
         {
             const uint32_t frame_index = stamp.slotIndex();
-            combined_.flushUploads(cb, frame_index);
-            combined_cube_.flushUploads(cb, frame_index);
+            combined_->flushUploads(cb, frame_index);
+            combined_cube_->flushUploads(cb, frame_index);
         }
 
         void onFrameBeginMaintenance(const FrameStamp& stamp)
@@ -282,15 +275,15 @@ namespace lux::render
             // could still sample the freed slot.
             const uint64_t completed =
                 (stamp.serial > stamp.frames_in_flight) ? stamp.serial - stamp.frames_in_flight : 0;
-            combined_.recycleCompletedSlots(completed);
-            combined_cube_.recycleCompletedSlots(completed);
+            combined_->recycleCompletedSlots(completed);
+            combined_cube_->recycleCompletedSlots(completed);
         }
 
         /// Free staging buffers for frame slot @p fi (call after fence wait).
         void retireDeferredStaging(uint32_t fi)
         {
-            combined_.retireDeferredStaging(fi);
-            combined_cube_.retireDeferredStaging(fi);
+            combined_->retireDeferredStaging(fi);
+            combined_cube_->retireDeferredStaging(fi);
         }
 
         // ========== Transfer scheduler integration ==========
@@ -298,15 +291,15 @@ namespace lux::render
         /// Submit pending texture uploads to the transfer scheduler.
         void submitTransfers(TransferScheduler& scheduler)
         {
-            combined_.submitTransfers(scheduler, current_fi_);
-            combined_cube_.submitTransfers(scheduler, current_fi_);
+            combined_->submitTransfers(scheduler, current_fi_);
+            combined_cube_->submitTransfers(scheduler, current_fi_);
         }
 
         /// Record post-transfer operations (runtime mip generation).
         void postTransfer(VkCommandBuffer cmd)
         {
-            combined_.postTransfer(cmd);
-            combined_cube_.postTransfer(cmd);
+            combined_->postTransfer(cmd);
+            combined_cube_->postTransfer(cmd);
         }
 
         /**
@@ -367,9 +360,9 @@ namespace lux::render
         VkDescriptorPool shared_pool_{VK_NULL_HANDLE};
         VkDescriptorSet shared_set_{VK_NULL_HANDLE};
 
-        BindlessCombinedSet combined_;      ///< binding 0 — sampler2D[]
-        BindlessCombinedSet combined_cube_; ///< binding 1 — samplerCube[]
-        BCInitInfo combined_ci_{};
+        std::unique_ptr<BindlessCombinedSet> combined_;      ///< binding 0 — sampler2D[]
+        std::unique_ptr<BindlessCombinedSet> combined_cube_; ///< binding 1 — samplerCube[]
+        BindlessSetCreateInfo combined_ci_{};
         VkSamplerCreateInfo default_sampler_ci_{};
 
         uint32_t fallback_bindless_index_{0};

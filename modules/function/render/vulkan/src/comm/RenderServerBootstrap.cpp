@@ -329,74 +329,6 @@ namespace lux::render
         // 3. Global resource registry
         auto global_reg = std::make_unique<ResourceRegistry>();
 
-        // TextureResources
-        {
-            // Bindless capacity comes FROM THE LAYOUT, not from a second
-            // derivation off the device limits.
-            //
-            // These numbers size a descriptor pool, and what the driver
-            // charges that pool is the binding counts in the Texture SET
-            // LAYOUT — so any independently-derived value is only ever
-            // accidentally right. This site used to re-derive it and apply a
-            // 64K ceiling the layout did not, which meant the layout declared
-            // the full device budget while the pool was sized for the capped
-            // one: on Adreno 830 (~16.7M UAB sampled images) that is a request
-            // for 16,776,952 descriptors out of a pool of 65,792, i.e.
-            // VK_ERROR_OUT_OF_POOL_MEMORY at startup. Desktop NVIDIA never
-            // complained because it does not account pool capacity per-type.
-            const uint32_t tex2d_max = layouts.bindless2DCount();
-            const uint32_t cube_max = layouts.bindlessCubeCount();
-
-            BCInitInfo bc{};
-            bc.resource_context = res_ctx_.get();
-            bc.descriptor_set_layout = layouts.getLayout(EDescriptorSetSlot::TEXTURE);
-            bc.set_index = TGetBindingSet<ETextureSetBindings>::value;
-            bc.binding = 0;
-            bc.layout_max_capacity = tex2d_max; // device-aware ceiling
-            bc.initial_capacity = 1024;
-            bc.srgb_for_color = true;
-            bc.frames_in_flight = fif;
-
-            VkSamplerCreateInfo sampler_ci{};
-            sampler_ci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-            sampler_ci.magFilter = VK_FILTER_LINEAR;
-            sampler_ci.minFilter = VK_FILTER_LINEAR;
-            sampler_ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            sampler_ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            sampler_ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-            sampler_ci.anisotropyEnable = VK_FALSE;
-            sampler_ci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-            sampler_ci.unnormalizedCoordinates = VK_FALSE;
-            sampler_ci.compareEnable = VK_FALSE;
-            sampler_ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-
-            TextureResources::InitInfo info{};
-            info.device_context = &device_ctx;
-            info.graphics_queue = device_ctx.graphicsQueue();
-            info.upload_cmd_pool = cp;
-            info.combined_ci = bc;
-            // Same rule as tex2d_max: the cube table's pool share is charged
-            // against the layout's binding-1 count, so take it from there
-            // instead of leaving InitInfo's default to agree by coincidence.
-            info.cube_max_capacity = cube_max;
-            info.slices = fif;
-            info.default_sampler_ci = sampler_ci;
-            info.fallback_pixel = std::nullopt;
-            // init() 的 bool 返回值此前被忽略 —— 而资源注册表没有 erase,失败 init
-            // 的对象仍留在表里、指针非空,所以下游任何"非空判断"都发现不了它。
-            // 这里是唯一能判定初始化成败的地方。(下游的判空已随 must<> 收敛删除:
-            // 它们检测的是"注册了没有",而真正会坏的是"init 成不成功"——测错了对象。)
-            auto* tex = global_reg->emplace<TextureResources>().get();
-            if (!tex->init(info))
-            {
-                return renderFailure<err::internal::Unspecified>();
-            }
-            // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。
-            global_reg->addBeginFrameHook(EUploadPhase::UPLOAD, [tex](const FrameStamp& s) {
-                tex->onFrameBeginMaintenance(s);
-            });
-        }
-
         // LightResources is PER-SCENE and FEATURE-OWNED: LightFeature emplaces +
         // init's it in initAndAttachTo (with the SHARED light set layout). The core
         // server/scene no longer touches light — a scene without LightFeature renders
@@ -452,6 +384,76 @@ namespace lux::render
         render_ctx_ = std::move(*render_context);
         // 自发上报的去处。汇集器随 Impl 存活,覆盖 render_ctx_ 的生命周期。
         render_ctx_->setErrorSink(&error_sink_);
+        // TextureResources
+        {
+            // Bindless capacity comes FROM THE LAYOUT, not from a second
+            // derivation off the device limits.
+            //
+            // These numbers size a descriptor pool, and what the driver
+            // charges that pool is the binding counts in the Texture SET
+            // LAYOUT — so any independently-derived value is only ever
+            // accidentally right. This site used to re-derive it and apply a
+            // 64K ceiling the layout did not, which meant the layout declared
+            // the full device budget while the pool was sized for the capped
+            // one: on Adreno 830 (~16.7M UAB sampled images) that is a request
+            // for 16,776,952 descriptors out of a pool of 65,792, i.e.
+            // VK_ERROR_OUT_OF_POOL_MEMORY at startup. Desktop NVIDIA never
+            // complained because it does not account pool capacity per-type.
+            const uint32_t tex2d_max = layouts.bindless2DCount();
+            const uint32_t cube_max = layouts.bindlessCubeCount();
+
+            BindlessSetCreateInfo bc{};
+            bc.resource_context = res_ctx_.get();
+            bc.deferred_queue = &render_ctx_->deferredDestroyQueue();
+            bc.descriptor_set_layout = layouts.getLayout(EDescriptorSetSlot::TEXTURE);
+            bc.set_index = TGetBindingSet<ETextureSetBindings>::value;
+            bc.binding = 0;
+            bc.layout_max_capacity = tex2d_max; // device-aware ceiling
+            bc.initial_capacity = 1024;
+            bc.srgb_for_color = true;
+            bc.frames_in_flight = fif;
+
+            VkSamplerCreateInfo sampler_ci{};
+            sampler_ci.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+            sampler_ci.magFilter = VK_FILTER_LINEAR;
+            sampler_ci.minFilter = VK_FILTER_LINEAR;
+            sampler_ci.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            sampler_ci.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            sampler_ci.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+            sampler_ci.anisotropyEnable = VK_FALSE;
+            sampler_ci.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+            sampler_ci.unnormalizedCoordinates = VK_FALSE;
+            sampler_ci.compareEnable = VK_FALSE;
+            sampler_ci.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+
+            TextureResources::InitInfo info{};
+            info.device_context = &device_ctx;
+            info.graphics_queue = device_ctx.graphicsQueue();
+            info.upload_cmd_pool = cp;
+            info.combined_ci = bc;
+            // Same rule as tex2d_max: the cube table's pool share is charged
+            // against the layout's binding-1 count, so take it from there
+            // instead of leaving InitInfo's default to agree by coincidence.
+            info.cube_max_capacity = cube_max;
+            info.slices = fif;
+            info.default_sampler_ci = sampler_ci;
+            info.fallback_pixel = std::nullopt;
+            // init() 的 bool 返回值此前被忽略 —— 而资源注册表没有 erase,失败 init
+            // 的对象仍留在表里、指针非空,所以下游任何"非空判断"都发现不了它。
+            // 这里是唯一能判定初始化成败的地方。(下游的判空已随 must<> 收敛删除:
+            // 它们检测的是"注册了没有",而真正会坏的是"init 成不成功"——测错了对象。)
+            auto* tex = render_ctx_->globalRegistry().emplace<TextureResources>().get();
+            if (!tex->init(info))
+            {
+                return renderFailure<err::internal::Unspecified>();
+            }
+            // 每帧维护由**安装点**登记 —— 资源自己不再继承帧接口。
+            render_ctx_->globalRegistry().addBeginFrameHook(
+                EUploadPhase::UPLOAD,
+                [tex](const FrameStamp& s) { tex->onFrameBeginMaintenance(s); }
+            );
+        }
+
         render_ctx_->globalTransferScheduler().contributors().add(makeTransferContributorWithPost(
             &render_ctx_->globalRegistry().must<TextureResources>(),
             /*priority=*/10
@@ -459,18 +461,6 @@ namespace lux::render
 
         // 6. Build Renderer
         renderer_ = std::make_unique<Renderer>(render_ctx_);
-
-        // 7b. Inject centralized DeferredDestroyQueue into global GPU resources.
-        //     Resources were created before RenderContext, so we do a late bind.
-        {
-            auto* q = &render_ctx_->deferredDestroyQueue();
-            auto& reg = render_ctx_->globalRegistry();
-            // LightResources is per-scene + feature-owned now; its deferred queue is bound in LightFeature.
-            // MeshResources + MaterialResources are built lazily (ensureGlobalMesh/
-            // MaterialResources) which bind their own deferred queue — nothing to
-            // late-bind here.
-            reg.must<TextureResources>().setDeferredQueue(q);
-        }
 
         // 8. Single-owner GPU transfer pipeline
         {

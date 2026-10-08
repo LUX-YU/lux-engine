@@ -1,23 +1,25 @@
 #pragma once
+#include <array>
+#include <cassert>
+#include <cmath>
+#include <cstring>
+#include <lux/engine/description/Texture.hpp>
+#include <lux/engine/function/render/client/core/RenderTypes.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/gapi/vk/vk.hpp>
-#include <lux/engine/description/Texture.hpp>
-#include <lux/engine/render/gpu/utils/Slot.hpp>
-#include <lux/engine/render/gpu/VulkanContext.hpp>
-#include <lux/engine/render/gpu/VulkanCheck.hpp>
 #include <lux/engine/render/core/DescriptorSetLayoutContract.hpp>
-#include <lux/engine/function/render/client/core/RenderTypes.hpp>
-#include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
+#include <lux/engine/render/gpu/VulkanCheck.hpp>
+#include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/gpu/lifecycle/CommandBufferOwner.hpp>
-#include <vector>
+#include <lux/engine/render/gpu/lifecycle/DeferredDestroyQueue.hpp>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
+#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
+#include <lux/engine/render/gpu/utils/Slot.hpp>
 #include <memory>
 #include <optional>
-#include <array>
 #include <span>
 #include <utility>
-#include <cassert>
-#include <cstring>
-#include <cmath>
+#include <vector>
 
 namespace lux::render
 {
@@ -26,10 +28,11 @@ namespace lux::render
 
 namespace lux::render
 {
-    struct BCInitInfo
+    struct BindlessSetCreateInfo
     {
         // Required - Use shared resources provided by ResourceContext
         ResourceContext* resource_context{};
+        DeferredDestroyQueue* deferred_queue{};
 
         // Externally provided descriptor set layout
         VkDescriptorSetLayout descriptor_set_layout{VK_NULL_HANDLE};
@@ -65,7 +68,7 @@ namespace lux::render
         // External descriptor pool + set mode (optional).
         // When both are non-null, skip internal pool/set creation and write
         // descriptors into the caller-provided set.  The caller owns their
-        // lifetime; shutdown() will NOT destroy them.
+        // lifetime; the set never destroys these borrowed resources.
         VkDescriptorPool external_pool{VK_NULL_HANDLE};
         VkDescriptorSet external_set{VK_NULL_HANDLE};
 
@@ -76,38 +79,14 @@ namespace lux::render
     class LUX_FUNCTION_PUBLIC BindlessCombinedSet
     {
     public:
-        BindlessCombinedSet() = default;
-        ~BindlessCombinedSet()
-        {
-            shutdown();
-        }
+        using CreateResult = Expected<std::unique_ptr<BindlessCombinedSet>>;
 
+        [[nodiscard]] static CreateResult create(const BindlessSetCreateInfo& info) noexcept;
+        ~BindlessCombinedSet() noexcept;
         BindlessCombinedSet(const BindlessCombinedSet&) = delete;
         BindlessCombinedSet& operator=(const BindlessCombinedSet&) = delete;
-
-        BindlessCombinedSet(BindlessCombinedSet&& o) noexcept
-        {
-            // Swap with default-constructed this: source gets rc_=nullptr, preventing double-shutdown
-            swapWith(o);
-        }
-        BindlessCombinedSet& operator=(BindlessCombinedSet&& o) noexcept
-        {
-            if (this != &o)
-            {
-                shutdown();
-                swapWith(o);
-            }
-            return *this;
-        }
-
-        // ========== Deferred Destroy Queue (opt-in) ==========
-        void setDeferredQueue(DeferredDestroyQueue* q) noexcept
-        {
-            deferred_queue_ = q;
-        }
-
-        // ========== Initialization / Shutdown ==========
-        [[nodiscard]] bool init(const BCInitInfo& ci);
+        BindlessCombinedSet(BindlessCombinedSet&&) = delete;
+        BindlessCombinedSet& operator=(BindlessCombinedSet&&) = delete;
 
         /// PERF-05: Call once per frame to advance frame counter and flush retired descriptor sets.
         void beginFrame();
@@ -119,8 +98,6 @@ namespace lux::render
         /// while still sampling it. Call once per frame after the destroy-queue
         /// collect, with the same completed serial.
         void recycleCompletedSlots(uint64_t completed_serial);
-
-        void shutdown();
 
         // ========== Async slot allocation API (A1 – render thread finalize only) ==========
         //
@@ -353,7 +330,7 @@ namespace lux::render
         }
 
         // Can expand capacity without exceeding layout_max_cap_ (reallocate larger DescriptorSet and backfill)
-        void reserve(uint32_t need);
+        [[nodiscard]] Expected<void> reserve(uint32_t need);
 
         // ========== Async acquire barriers (QFOT, render-thread only) ==========
 
@@ -496,17 +473,16 @@ namespace lux::render
         // ===== Upload recording =====
         void recordPendingUploads(VkCommandBuffer cb);
 
-        // ===== features/props =====
-        void queryFeaturesProps();
+        struct Backing;
+        BindlessCombinedSet(const BindlessSetCreateInfo& info, Backing&& backing) noexcept;
 
-        uint32_t clampLayoutMax(uint32_t want) const;
-
-        // ===== layout / pool / set =====
-        void buildPool();
-
-        void allocateSet(uint32_t varCount);
-
-        void reallocateSetAndCopy(uint32_t newCount);
+        [[nodiscard]] static Expected<VkDescriptorSet> allocateSet(
+            ResourceContext& resources,
+            VkDescriptorPool pool,
+            VkDescriptorSetLayout layout,
+            std::uint32_t count
+        ) noexcept;
+        [[nodiscard]] Expected<void> reallocateSetAndCopy(uint32_t new_count);
 
         // ===== Slots and Capacity =====
         static uint32_t roundUpPow2(uint32_t v)
@@ -591,8 +567,7 @@ namespace lux::render
 
         /// Retire a slot's GPU objects (image/view/sampler) through the shared
         /// DeferredDestroyQueue so they outlive any in-flight frame that may
-        /// still sample them. Falls back to immediate destroy only when no
-        /// deferred queue is wired (standalone/tests, which waitIdle).
+        /// still sample them. The queue is bound before the set is created.
         void retireCombinedDeferred(CombinedSlot& s);
 
         struct StagingBuf
@@ -604,8 +579,8 @@ namespace lux::render
         StagingBuf createStaging(VkDeviceSize size, const void* data);
         void destroyStaging(StagingBuf& b);
 
-        Expected<CommandBufferOwner> beginOneTime();
-        Expected<void> endOneTime(CommandBufferOwner command);
+        static Expected<CommandBufferOwner> beginOneTime(ResourceContext& resources);
+        static Expected<void> endOneTime(ResourceContext& resources, CommandBufferOwner command);
 
         static void barrierImage(
             VkCommandBuffer cb,
@@ -664,14 +639,9 @@ namespace lux::render
         );
 
     private:
-        // ctx
-        ResourceContext* rc_{};
-
-        // features / properties
-        VkPhysicalDeviceDescriptorIndexingFeatures features_{};
-        VkPhysicalDeviceRobustness2FeaturesEXT robustness2_features_{};
-        VkPhysicalDeviceDescriptorIndexingProperties indexing_props_{};
-        bool null_desc_supported_{false};
+        ResourceContext& rc_;
+        DeferredDestroyQueue& deferred_queue_;
+        DescriptorPoolOwner pool_owner_;
 
         // layout/pool/set
         VkDescriptorSetLayout set_layout_{VK_NULL_HANDLE};
@@ -679,7 +649,6 @@ namespace lux::render
         VkDescriptorSet descriptor_set_{VK_NULL_HANDLE};
         uint32_t set_index_{0};
         uint32_t binding_{0};
-        VkShaderStageFlags stages_{VK_SHADER_STAGE_ALL};
         uint32_t layout_max_cap_{0};
         uint32_t cur_cap_{0};
 
@@ -695,9 +664,6 @@ namespace lux::render
         // removeTexture() defers index reuse until the retire-serial is GPU-
         // complete: (slot index, retire serial). Drained by recycleCompletedSlots().
         std::vector<std::pair<uint32_t, uint64_t>> pending_recycle_;
-
-        // PERF-05: Frame-delayed descriptor set retirement
-        DeferredDestroyQueue* deferred_queue_{nullptr};
 
         // texture cfg
         VkFormat default_format_{VK_FORMAT_R8G8B8A8_UNORM};
@@ -730,60 +696,11 @@ namespace lux::render
         std::vector<PendingStagingTexture> pending_staging_textures_; ///< StagingOnly texture uploads
         std::vector<uint32_t> pending_mip_gen_slots_;                 ///< QFOT mip fallback
         uint32_t frames_in_flight_{kMaxFramesInFlight};
-        bool owns_pool_{true}; ///< false when using external pool/set
 
-        // Fallback 1x1 magenta texture for writeCombinedDescriptorNull when
-        // nullDescriptor is not supported.
-        VkImage fallback_image_{VK_NULL_HANDLE};
-        VmaAllocation fallback_alloc_{VK_NULL_HANDLE};
-        VkImageView fallback_view_{VK_NULL_HANDLE};
-        VkSampler fallback_sampler_{VK_NULL_HANDLE};
-
-        void swapWith(BindlessCombinedSet& o) noexcept
-        {
-            using std::swap;
-            swap(rc_, o.rc_);
-            swap(features_, o.features_);
-            swap(robustness2_features_, o.robustness2_features_);
-            swap(indexing_props_, o.indexing_props_);
-            swap(null_desc_supported_, o.null_desc_supported_);
-            swap(set_layout_, o.set_layout_);
-            swap(desc_pool_, o.desc_pool_);
-            swap(descriptor_set_, o.descriptor_set_);
-            swap(set_index_, o.set_index_);
-            swap(binding_, o.binding_);
-            swap(stages_, o.stages_);
-            swap(layout_max_cap_, o.layout_max_cap_);
-            swap(cur_cap_, o.cur_cap_);
-            swap(slots_, o.slots_);
-            swap(gen_, o.gen_);
-            swap(alive_, o.alive_);
-            swap(free_, o.free_);
-            swap(count_, o.count_);
-            swap(clear_on_remove_, o.clear_on_remove_);
-            swap(pending_recycle_, o.pending_recycle_);
-            swap(default_format_, o.default_format_);
-            swap(srgb_for_color_, o.srgb_for_color_);
-            swap(gen_mips_, o.gen_mips_);
-            swap(image_tiling_, o.image_tiling_);
-            swap(image_usage_, o.image_usage_);
-            swap(view_type_, o.view_type_);
-            swap(image_aspect_, o.image_aspect_);
-            swap(default_sampler_ci_, o.default_sampler_ci_);
-            swap(pending_uploads_, o.pending_uploads_);
-            swap(one_shot_staging_, o.one_shot_staging_);
-            swap(deferred_staging_, o.deferred_staging_);
-            swap(pending_acquire_barriers_, o.pending_acquire_barriers_);
-            swap(pending_staging_textures_, o.pending_staging_textures_);
-            swap(pending_mip_gen_slots_, o.pending_mip_gen_slots_);
-            swap(frames_in_flight_, o.frames_in_flight_);
-            swap(owns_pool_, o.owns_pool_);
-            swap(fallback_image_, o.fallback_image_);
-            swap(fallback_alloc_, o.fallback_alloc_);
-            swap(fallback_view_, o.fallback_view_);
-            swap(fallback_sampler_, o.fallback_sampler_);
-            swap(deferred_queue_, o.deferred_queue_);
-        }
+        // Created and transitioned before publication; borrowed descriptors never outlive these owners.
+        VmaImage fallback_image_;
+        ImageViewOwner fallback_view_;
+        SamplerOwner fallback_sampler_;
     };
 
 } // namespace lux::render

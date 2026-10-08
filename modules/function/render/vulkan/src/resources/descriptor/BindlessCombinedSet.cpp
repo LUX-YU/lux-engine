@@ -4,6 +4,7 @@
 #include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 #include <vk_mem_alloc.h>
 
+#include <limits>
 #include <mutex>
 
 namespace lux::render
@@ -61,30 +62,155 @@ namespace lux::render
         }
     }
 
-    bool BindlessCombinedSet::init(const BCInitInfo& ci)
+    struct BindlessCombinedSet::Backing
     {
-        assert(ci.resource_context && ci.descriptor_set_layout);
-        rc_ = ci.resource_context;
+        DescriptorPoolOwner pool_owner;
+        VkDescriptorPool pool{};
+        VkDescriptorSet set{};
+        std::uint32_t capacity{};
+        std::uint32_t layout_capacity{};
+        VmaImage image;
+        ImageViewOwner view;
+        SamplerOwner sampler;
+    };
 
-        set_index_ = ci.set_index;
-        binding_ = ci.binding;
-        set_layout_ = ci.descriptor_set_layout;
+    BindlessCombinedSet::CreateResult BindlessCombinedSet::create(const BindlessSetCreateInfo& info) noexcept
+    {
+        const bool is_missing_binding = !info.resource_context || !info.deferred_queue || !info.descriptor_set_layout;
+        const bool is_invalid_capacity = info.layout_max_capacity == 0 || info.initial_capacity == 0;
+        const bool is_incomplete_external =
+            (info.external_pool == VK_NULL_HANDLE) != (info.external_set == VK_NULL_HANDLE);
+        const bool is_invalid_configuration =
+            is_missing_binding || is_invalid_capacity || is_incomplete_external || info.frames_in_flight == 0;
+        if (is_invalid_configuration)
+        {
+            return renderFailure<err::memory::InvalidBindlessConfiguration>();
+        }
 
-        queryFeaturesProps();
-        null_desc_supported_ = robustness2_features_.nullDescriptor;
+        auto& resources = *info.resource_context;
+        const VkDevice device = resources.logicalDevice();
+        const auto& limits = resources.physicalDevice().descriptorIndexingProperties();
+        Backing backing;
+        backing.layout_capacity = std::min(
+            {info.layout_max_capacity,
+             limits.maxDescriptorSetUpdateAfterBindSampledImages,
+             limits.maxPerStageDescriptorUpdateAfterBindSampledImages,
+             limits.maxPerStageUpdateAfterBindResources}
+        );
+        if (backing.layout_capacity == 0)
+        {
+            return renderFailure<err::memory::CapacityExhausted>();
+        }
+        backing.capacity = std::min(info.initial_capacity, backing.layout_capacity);
+        if (info.external_set)
+        {
+            backing.pool = info.external_pool;
+            backing.set = info.external_set;
+            backing.capacity = backing.layout_capacity;
+        }
+        else
+        {
+            constexpr std::uint32_t set_count = kMaxFramesInFlight + 2u;
+            if (backing.layout_capacity > std::numeric_limits<std::uint32_t>::max() / set_count)
+            {
+                return renderFailure<err::memory::CapacityExhausted>();
+            }
+            VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, backing.layout_capacity * set_count};
+            VkDescriptorPoolCreateInfo pool_info{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
+            pool_info.flags =
+                VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+            pool_info.maxSets = set_count;
+            pool_info.poolSizeCount = 1;
+            pool_info.pPoolSizes = &size;
+            auto pool = DescriptorPoolOwner::create(device, pool_info);
+            if (!pool)
+            {
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(pool.error()));
+            }
+            backing.pool_owner = std::move(*pool);
+            backing.pool = backing.pool_owner.get();
+            auto set = allocateSet(resources, backing.pool, info.descriptor_set_layout, backing.capacity);
+            if (!set)
+            {
+                return lux::cxx::unexpected(set.error());
+            }
+            backing.set = *set;
+        }
 
-        layout_max_cap_ = clampLayoutMax(ci.layout_max_capacity);
-        cur_cap_ = std::min(std::max(1u, ci.initial_capacity), layout_max_cap_);
+        VkImageCreateInfo image_info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        image_info.imageType = VK_IMAGE_TYPE_2D;
+        image_info.extent = {1, 1, 1};
+        image_info.mipLevels = image_info.arrayLayers = 1;
+        image_info.format = VK_FORMAT_R8G8B8A8_UNORM;
+        image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+        image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        image_info.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        image_info.samples = VK_SAMPLE_COUNT_1_BIT;
+        image_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VmaAllocationCreateInfo allocation_info{};
+        allocation_info.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+        auto image = VmaImage::create(resources.vmaAllocator(), image_info, allocation_info);
+        if (!image)
+        {
+            return lux::cxx::unexpected(image.error());
+        }
+        backing.image = std::move(*image);
+        VkImageViewCreateInfo view_info{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
+        view_info.image = backing.image.image();
+        view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        view_info.format = image_info.format;
+        view_info.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        auto view = ImageViewOwner::create(device, view_info);
+        if (!view)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(view.error()));
+        }
+        backing.view = std::move(*view);
+        VkSamplerCreateInfo sampler_info{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+        sampler_info.magFilter = sampler_info.minFilter = VK_FILTER_NEAREST;
+        sampler_info.addressModeU = sampler_info.addressModeV = sampler_info.addressModeW =
+            VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        auto sampler = SamplerOwner::create(device, sampler_info);
+        if (!sampler)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(sampler.error()));
+        }
+        backing.sampler = std::move(*sampler);
 
-        default_format_ = ci.default_image_format;
-        srgb_for_color_ = ci.srgb_for_color;
-        gen_mips_ = ci.generate_mipmaps;
-        image_tiling_ = ci.image_tiling;
-        image_usage_ = ci.image_usage;
-        view_type_ = ci.view_type;
-        image_aspect_ = ci.aspect;
+        auto command = beginOneTime(resources);
+        if (!command)
+        {
+            return lux::cxx::unexpected(command.error());
+        }
+        barrierImage(
+            command->get(),
+            backing.image.image(),
+            VK_IMAGE_ASPECT_COLOR_BIT,
+            VK_IMAGE_LAYOUT_UNDEFINED,
+            VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+        );
+        auto completed = endOneTime(resources, std::move(*command));
+        if (!completed)
+        {
+            return lux::cxx::unexpected(completed.error());
+        }
 
-        default_sampler_ci_ = ci.default_sampler_ci;
+        return std::unique_ptr<BindlessCombinedSet>(new BindlessCombinedSet(info, std::move(backing)));
+    }
+
+    BindlessCombinedSet::BindlessCombinedSet(const BindlessSetCreateInfo& info, Backing&& backing) noexcept
+        : rc_(*info.resource_context), deferred_queue_(*info.deferred_queue),
+          pool_owner_(std::move(backing.pool_owner)), set_layout_(info.descriptor_set_layout), desc_pool_(backing.pool),
+          descriptor_set_(backing.set), set_index_(info.set_index), binding_(info.binding),
+          layout_max_cap_(backing.layout_capacity), cur_cap_(backing.capacity), slots_(backing.layout_capacity),
+          gen_(backing.layout_capacity, 1), alive_(backing.layout_capacity, 0), clear_on_remove_(info.clear_on_remove),
+          default_format_(info.default_image_format), srgb_for_color_(info.srgb_for_color),
+          gen_mips_(info.generate_mipmaps), image_tiling_(info.image_tiling), image_usage_(info.image_usage),
+          view_type_(info.view_type), image_aspect_(info.aspect), default_sampler_ci_(info.default_sampler_ci),
+          deferred_staging_(info.frames_in_flight), frames_in_flight_(info.frames_in_flight),
+          fallback_image_(std::move(backing.image)), fallback_view_(std::move(backing.view)),
+          fallback_sampler_(std::move(backing.sampler))
+    {
         if (default_sampler_ci_.sType != VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO)
         {
             default_sampler_ci_ = {};
@@ -97,165 +223,38 @@ namespace lux::render
             default_sampler_ci_.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
             default_sampler_ci_.maxLod = VK_LOD_CLAMP_NONE;
         }
-        clear_on_remove_ = ci.clear_on_remove;
-
-        // Pool / set allocation
-        if (ci.external_pool && ci.external_set)
-        {
-            // External set mode: caller manages pool + set lifetime
-            desc_pool_ = ci.external_pool;
-            descriptor_set_ = ci.external_set;
-            owns_pool_ = false;
-            // In external mode, capacity is fixed at initial (no reallocation)
-            cur_cap_ = layout_max_cap_;
-        }
-        else
-        {
-            buildPool();
-            allocateSet(cur_cap_);
-            owns_pool_ = true;
-        }
-
-        slots_.resize(layout_max_cap_);
-        gen_.assign(layout_max_cap_, 1);
-        alive_.assign(layout_max_cap_, 0);
-        count_ = 0;
-
-        frames_in_flight_ = std::max(1u, ci.frames_in_flight);
-        deferred_staging_.resize(frames_in_flight_);
-
-        // Create 1x1 fallback texture for writeCombinedDescriptorNull.
-        // Always created because queryFeaturesProps() only checks physical
-        // device *support* — the feature may not be *enabled* on the logical
-        // device, making null descriptor writes invalid.
-        {
-            VkImageCreateInfo ici{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
-            ici.imageType = VK_IMAGE_TYPE_2D;
-            ici.extent = {1, 1, 1};
-            ici.mipLevels = 1;
-            ici.arrayLayers = 1;
-            ici.format = VK_FORMAT_R8G8B8A8_UNORM;
-            ici.tiling = VK_IMAGE_TILING_OPTIMAL;
-            ici.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-            ici.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-            ici.samples = VK_SAMPLE_COUNT_1_BIT;
-            ici.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-            VmaAllocationCreateInfo aci{};
-            aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-            VK_CHECK(vmaCreateImage(rc_->vmaAllocator(), &ici, &aci, &fallback_image_, &fallback_alloc_, nullptr));
-
-            VkImageViewCreateInfo vci{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-            vci.image = fallback_image_;
-            vci.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            vci.format = VK_FORMAT_R8G8B8A8_UNORM;
-            vci.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-            VK_CHECK(vkCreateImageView(rc_->logicalDevice(), &vci, nullptr, &fallback_view_));
-
-            VkSamplerCreateInfo sci{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-            sci.magFilter = VK_FILTER_NEAREST;
-            sci.minFilter = VK_FILTER_NEAREST;
-            sci.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-            sci.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-            sci.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-            VK_CHECK(vkCreateSampler(rc_->logicalDevice(), &sci, nullptr, &fallback_sampler_));
-
-            // Transition to SHADER_READ_ONLY_OPTIMAL so descriptors referencing it are valid.
-            auto cb_res = beginOneTime();
-            if (cb_res)
-            {
-                const VkCommandBuffer cb = cb_res->get();
-                barrierImage(
-                    cb,
-                    fallback_image_,
-                    VK_IMAGE_ASPECT_COLOR_BIT,
-                    VK_IMAGE_LAYOUT_UNDEFINED,
-                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-                );
-                (void)endOneTime(std::move(*cb_res));
-            }
-        }
-
-        return true;
     }
 
     void BindlessCombinedSet::beginFrame()
     {
-        // Auto-flush any pending texture uploads from previous frame
         flushUploads();
     }
 
-    void BindlessCombinedSet::shutdown()
+    BindlessCombinedSet::~BindlessCombinedSet() noexcept
     {
-        if (!rc_)
-            return;
-
-        // Clean up any pending uploads that were never flushed
-        for (auto& p : pending_uploads_)
-            destroyStaging(p.staging);
-        pending_uploads_.clear();
-
-        // Clean up deferred staging buffers from the last flush
+        // Dynamic slots/uploads have the existing caller-established GPU safe point.
+        for (auto& pending : pending_uploads_)
+        {
+            destroyStaging(pending.staging);
+        }
         for (auto& slot : deferred_staging_)
         {
-            for (auto& s : slot)
-                destroyStaging(s);
-            slot.clear();
-        }
-        deferred_staging_.clear();
-
-        auto& device = rc_->logicalDevice();
-
-        for (uint32_t i = 0; i < slots_.size(); ++i)
-            if (alive_[i])
-                destroyCombined(slots_[i]);
-
-        if (owns_pool_)
-        {
-            if (descriptor_set_ != VK_NULL_HANDLE)
+            for (auto& staging : slot)
             {
-                vkFreeDescriptorSets(device, desc_pool_, 1, &descriptor_set_);
-                descriptor_set_ = VK_NULL_HANDLE;
-            }
-
-            if (desc_pool_)
-            {
-                vkDestroyDescriptorPool(device, desc_pool_, nullptr);
-                desc_pool_ = VK_NULL_HANDLE;
+                destroyStaging(staging);
             }
         }
-        else
+        for (auto& staging : one_shot_staging_)
         {
-            // External mode: just clear our references
-            descriptor_set_ = VK_NULL_HANDLE;
-            desc_pool_ = VK_NULL_HANDLE;
+            destroyStaging(staging);
         }
-        set_layout_ = VK_NULL_HANDLE;
-
-        // Destroy fallback texture resources
-        if (fallback_view_ != VK_NULL_HANDLE)
+        for (std::uint32_t index = 0; index < slots_.size(); ++index)
         {
-            vkDestroyImageView(device, fallback_view_, nullptr);
-            fallback_view_ = VK_NULL_HANDLE;
+            if (alive_[index])
+            {
+                destroyCombined(slots_[index]);
+            }
         }
-        if (fallback_sampler_ != VK_NULL_HANDLE)
-        {
-            vkDestroySampler(device, fallback_sampler_, nullptr);
-            fallback_sampler_ = VK_NULL_HANDLE;
-        }
-        if (fallback_image_ != VK_NULL_HANDLE)
-        {
-            vmaDestroyImage(rc_->vmaAllocator(), fallback_image_, fallback_alloc_);
-            fallback_image_ = VK_NULL_HANDLE;
-            fallback_alloc_ = VK_NULL_HANDLE;
-        }
-
-        slots_.clear();
-        gen_.clear();
-        alive_.clear();
-        free_.clear();
-        rc_ = nullptr;
-        count_ = cur_cap_ = layout_max_cap_ = 0;
     }
 
     SlotHandle BindlessCombinedSet::addTexture(
@@ -310,7 +309,7 @@ namespace lux::render
         // View + sampler can be created now (don't depend on image layout)
         createImageView(s);
         VkSamplerCreateInfo sci = opt_sampler_ci ? *opt_sampler_ci : default_sampler_ci_;
-        VK_CHECK(vkCreateSampler(rc_->logicalDevice(), &sci, nullptr, &s.sampler));
+        VK_CHECK(vkCreateSampler(rc_.logicalDevice(), &sci, nullptr, &s.sampler));
 
         // Assign slot and write descriptor (UPDATE_AFTER_BIND, valid before upload)
         uint32_t idx = allocIndex();
@@ -354,7 +353,7 @@ namespace lux::render
         createImageGPU(s);
         createImageView(s);
         VkSamplerCreateInfo sci = opt_sampler_ci ? *opt_sampler_ci : default_sampler_ci_;
-        VK_CHECK(vkCreateSampler(rc_->logicalDevice(), &sci, nullptr, &s.sampler));
+        VK_CHECK(vkCreateSampler(rc_.logicalDevice(), &sci, nullptr, &s.sampler));
 
         const uint32_t idx = allocIndex();
         slots_[idx] = s;
@@ -501,7 +500,7 @@ namespace lux::render
 
         createImageView(s);
         VkSamplerCreateInfo sci = opt_sampler_ci ? *opt_sampler_ci : default_sampler_ci_;
-        VK_CHECK(vkCreateSampler(rc_->logicalDevice(), &sci, nullptr, &s.sampler));
+        VK_CHECK(vkCreateSampler(rc_.logicalDevice(), &sci, nullptr, &s.sampler));
 
         uint32_t idx = allocIndex();
         slots_[idx] = s;
@@ -519,12 +518,12 @@ namespace lux::render
         if (pending_uploads_.empty())
             return;
 
-        auto cb_result = beginOneTime();
+        auto cb_result = beginOneTime(rc_);
         if (!cb_result)
             return;
         const VkCommandBuffer cb = cb_result->get();
         recordPendingUploads(cb);
-        auto end_result = endOneTime(std::move(*cb_result));
+        auto end_result = endOneTime(rc_, std::move(*cb_result));
         if (!end_result)
             return;
         // One-shot path: submission fence wait guarantees staging safety.
@@ -761,10 +760,10 @@ namespace lux::render
         alive_[idx] = 0;
         gen_[idx]++;
 
-        if (deferred_queue_)
-            pending_recycle_.emplace_back(idx, deferred_queue_->currentSerial());
-        else
-            free_.push_back(idx); // standalone/tests (waitIdle): immediate reuse is safe
+        pending_recycle_.emplace_back(
+            idx,
+            deferred_queue_.currentSerial()
+        ); // standalone/tests (waitIdle): immediate reuse is safe
 
         return true;
     }
@@ -786,7 +785,6 @@ namespace lux::render
         bool srgb
     )
     {
-        assert(rc_ && "BindlessCombinedSet not initialised");
         assert(h.isValid() && h.index < layout_max_cap_);
 
         const uint32_t idx = h.index;
@@ -801,7 +799,7 @@ namespace lux::render
 
         createImageGPU(s);
         createImageView(s);
-        VK_CHECK(vkCreateSampler(rc_->logicalDevice(), &sci, nullptr, &s.sampler));
+        VK_CHECK(vkCreateSampler(rc_.logicalDevice(), &sci, nullptr, &s.sampler));
 
         slots_[idx] = s;
         alive_[idx] = 1;
@@ -829,7 +827,6 @@ namespace lux::render
         VkDeviceSize face_stride
     )
     {
-        assert(rc_ && "BindlessCombinedSet not initialised");
         assert(h.isValid() && h.index < layout_max_cap_);
         assert(view_type_ == VK_IMAGE_VIEW_TYPE_CUBE);
 
@@ -844,7 +841,7 @@ namespace lux::render
 
         createImageGPU(s);
         createImageView(s);
-        VK_CHECK(vkCreateSampler(rc_->logicalDevice(), &sci, nullptr, &s.sampler));
+        VK_CHECK(vkCreateSampler(rc_.logicalDevice(), &sci, nullptr, &s.sampler));
 
         slots_[idx] = s;
         alive_[idx] = 1;
@@ -1066,14 +1063,23 @@ namespace lux::render
         retireCombinedDeferred(previous);
     }
 
-    void BindlessCombinedSet::reserve(uint32_t need)
+    Expected<void> BindlessCombinedSet::reserve(uint32_t need)
     {
         if (need <= cur_cap_)
-            return;
+            return {};
+        const bool is_fixed_or_full = !pool_owner_ || need > layout_max_cap_;
+        if (is_fixed_or_full)
+        {
+            return renderFailure<err::memory::CapacityExhausted>();
+        }
         uint32_t new_cap = std::min(nextCap(cur_cap_, need), layout_max_cap_);
 
         assert(new_cap <= layout_max_cap_ && "Need to rebuild layout with larger descriptorCount");
-        reallocateSetAndCopy(new_cap);
+        auto reallocated = reallocateSetAndCopy(new_cap);
+        if (!reallocated)
+        {
+            return reallocated;
+        }
         if (slots_.size() < new_cap)
             slots_.resize(new_cap);
         if (gen_.size() < new_cap)
@@ -1081,92 +1087,50 @@ namespace lux::render
         if (alive_.size() < new_cap)
             alive_.resize(new_cap, 0);
         cur_cap_ = new_cap;
+        return {};
     }
 
     // ===== Private methods =====
 
-    void BindlessCombinedSet::queryFeaturesProps()
+    Expected<VkDescriptorSet> BindlessCombinedSet::allocateSet(
+        ResourceContext& resources,
+        VkDescriptorPool pool,
+        VkDescriptorSetLayout layout,
+        std::uint32_t count
+    ) noexcept
     {
-        features_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES};
-        robustness2_features_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT};
-        features_.pNext = &robustness2_features_;
-
-        VkPhysicalDeviceFeatures2 f2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &features_};
-        vkGetPhysicalDeviceFeatures2(rc_->physicalDevice(), &f2);
-
-        indexing_props_ = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_PROPERTIES};
-        VkPhysicalDeviceProperties2 p2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &indexing_props_};
-        vkGetPhysicalDeviceProperties2(rc_->physicalDevice(), &p2);
-    }
-
-    uint32_t BindlessCombinedSet::clampLayoutMax(uint32_t want) const
-    {
-        auto& phys = rc_->physicalDevice();
-        auto& idx_properties = phys.descriptorIndexingProperties();
-
-        uint32_t m = want;
-        m = std::min(m, idx_properties.maxDescriptorSetUpdateAfterBindSampledImages);
-        m = std::min(m, idx_properties.maxPerStageDescriptorUpdateAfterBindSampledImages);
-        m = std::min(m, idx_properties.maxPerStageUpdateAfterBindResources);
-        return std::max(1u, m);
-    }
-
-    void BindlessCombinedSet::buildPool()
-    {
-        auto& device = rc_->logicalDevice();
-
-        VkDescriptorPoolSize ps{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, layout_max_cap_ * (kMaxFramesInFlight + 2u)};
-        VkDescriptorPoolCreateInfo pci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-        pci.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-        pci.maxSets = kMaxFramesInFlight + 2;
-        pci.poolSizeCount = 1;
-        pci.pPoolSizes = &ps;
-        VK_CHECK(vkCreateDescriptorPool(device, &pci, nullptr, &desc_pool_));
-    }
-
-    void BindlessCombinedSet::allocateSet(uint32_t varCount)
-    {
-        auto& device = rc_->logicalDevice();
-
-        VkDescriptorSetVariableDescriptorCountAllocateInfo vci{
+        VkDescriptorSetVariableDescriptorCountAllocateInfo counts{
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO
         };
-        vci.descriptorSetCount = 1;
-        vci.pDescriptorCounts = &varCount;
-
-        VkDescriptorSetAllocateInfo ai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-        ai.descriptorPool = desc_pool_;
-        ai.descriptorSetCount = 1;
-        ai.pSetLayouts = &set_layout_;
-        ai.pNext = &vci;
-
-        VK_CHECK(vkAllocateDescriptorSets(device, &ai, &descriptor_set_));
+        counts.descriptorSetCount = 1;
+        counts.pDescriptorCounts = &count;
+        VkDescriptorSetAllocateInfo info{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
+        info.descriptorPool = pool;
+        info.descriptorSetCount = 1;
+        info.pSetLayouts = &layout;
+        info.pNext = &counts;
+        VkDescriptorSet set{};
+        VK_EXPECT(vkAllocateDescriptorSets(resources.logicalDevice(), &info, &set));
+        return set;
     }
 
-    void BindlessCombinedSet::reallocateSetAndCopy(uint32_t newCount)
+    Expected<void> BindlessCombinedSet::reallocateSetAndCopy(uint32_t newCount)
     {
-        auto& device = rc_->logicalDevice();
+        auto& device = rc_.logicalDevice();
 
-        VkDescriptorSet newSet = VK_NULL_HANDLE;
+        auto allocated = allocateSet(rc_, desc_pool_, set_layout_, newCount);
+        if (!allocated)
         {
-            VkDescriptorSetVariableDescriptorCountAllocateInfo vci{
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO
-            };
-            vci.descriptorSetCount = 1;
-            vci.pDescriptorCounts = &newCount;
-            VkDescriptorSetAllocateInfo ai{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
-            ai.descriptorPool = desc_pool_;
-            ai.descriptorSetCount = 1;
-            ai.pSetLayouts = &set_layout_;
-            ai.pNext = &vci;
-            VK_CHECK(vkAllocateDescriptorSets(device, &ai, &newSet));
+            return lux::cxx::unexpected(allocated.error());
         }
+        const auto newSet = *allocated;
 
         std::vector<VkCopyDescriptorSet> copies;
         copies.reserve(count_);
         for (uint32_t i = 0; i < count_; ++i)
         {
-            if (i < alive_.size() && alive_[i] && slots_[i].view)
+            const bool is_live_slot = i < alive_.size() && alive_[i];
+            if (is_live_slot)
             {
                 VkCopyDescriptorSet c{VK_STRUCTURE_TYPE_COPY_DESCRIPTOR_SET};
                 c.srcSet = descriptor_set_;
@@ -1182,27 +1146,9 @@ namespace lux::render
         if (!copies.empty())
             vkUpdateDescriptorSets(device, 0, nullptr, (uint32_t)copies.size(), copies.data());
 
-        if (descriptor_set_ != VK_NULL_HANDLE)
-        {
-            if (deferred_queue_ != nullptr)
-            {
-                deferred_queue_->retireDescriptorSet(desc_pool_, descriptor_set_);
-            }
-            else
-            {
-                // owns-pool growth requires a deferred-destroy queue (setDeferredQueue)
-                // so the superseded set outlives in-flight frames. deferred_queue_
-                // defaults to null and only this owns-pool reserve() path reaches
-                // here, so a missing queue is a setup error, not a runtime condition.
-                // Don't dereference null: assert in debug, and fall back to a hard
-                // device-idle + synchronous free (the pool is freeable — the deferred
-                // path frees the same way).
-                assert(false && "BindlessCombinedSet owns-pool growth needs setDeferredQueue()");
-                (void)rc_->deviceContext().waitIdle();
-                vkFreeDescriptorSets(device, desc_pool_, 1, &descriptor_set_);
-            }
-        }
+        deferred_queue_.retireDescriptorSet(desc_pool_, descriptor_set_);
         descriptor_set_ = newSet;
+        return {};
     }
 
     bool BindlessCombinedSet::ensureRoom()
@@ -1211,13 +1157,12 @@ namespace lux::render
             return true;
         if (count_ < cur_cap_)
             return true;
-        if (!owns_pool_)
+        if (!pool_owner_)
         {
             // External pool mode: cannot reallocate. Caller must handle.
             return false;
         }
-        reserve(count_ + 1);
-        return true;
+        return static_cast<bool>(reserve(count_ + 1));
     }
 
     void BindlessCombinedSet::writeCombinedDescriptor(uint32_t idx, VkImageView view, VkSampler sampler)
@@ -1234,14 +1179,14 @@ namespace lux::render
         w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         w.descriptorCount = 1;
         w.pImageInfo = &di;
-        vkUpdateDescriptorSets(rc_->logicalDevice(), 1, &w, 0, nullptr);
+        vkUpdateDescriptorSets(rc_.logicalDevice(), 1, &w, 0, nullptr);
     }
 
     void BindlessCombinedSet::writeCombinedDescriptorNull(uint32_t idx)
     {
         VkDescriptorImageInfo di{};
-        di.sampler = fallback_sampler_;
-        di.imageView = fallback_view_;
+        di.sampler = fallback_sampler_.get();
+        di.imageView = fallback_view_.get();
         di.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         w.dstSet = descriptor_set_;
@@ -1250,7 +1195,7 @@ namespace lux::render
         w.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         w.descriptorCount = 1;
         w.pImageInfo = &di;
-        vkUpdateDescriptorSets(rc_->logicalDevice(), 1, &w, 0, nullptr);
+        vkUpdateDescriptorSets(rc_.logicalDevice(), 1, &w, 0, nullptr);
     }
 
     void BindlessCombinedSet::createImageGPU(CombinedSlot& s)
@@ -1272,7 +1217,7 @@ namespace lux::render
         VmaAllocationCreateInfo aci{};
         aci.usage = VMA_MEMORY_USAGE_GPU_ONLY;
 
-        VK_CHECK(vmaCreateImage(rc_->vmaAllocator(), &ici, &aci, &s.image, &s.alloc, nullptr));
+        VK_CHECK(vmaCreateImage(rc_.vmaAllocator(), &ici, &aci, &s.image, &s.alloc, nullptr));
     }
 
     void BindlessCombinedSet::createImageView(CombinedSlot& s)
@@ -1282,12 +1227,12 @@ namespace lux::render
         vci.viewType = view_type_;
         vci.format = s.format;
         vci.subresourceRange = {image_aspect_, 0, s.mip_levels, 0, s.array_layers};
-        VK_CHECK(vkCreateImageView(rc_->logicalDevice(), &vci, nullptr, &s.view));
+        VK_CHECK(vkCreateImageView(rc_.logicalDevice(), &vci, nullptr, &s.view));
     }
 
     void BindlessCombinedSet::destroyCombined(CombinedSlot& s)
     {
-        auto& dev = rc_->logicalDevice();
+        auto& dev = rc_.logicalDevice();
         if (s.sampler)
         {
             vkDestroySampler(dev, s.sampler, nullptr);
@@ -1300,7 +1245,7 @@ namespace lux::render
         }
         if (s.image)
         {
-            vmaDestroyImage(rc_->vmaAllocator(), s.image, s.alloc);
+            vmaDestroyImage(rc_.vmaAllocator(), s.image, s.alloc);
             s.image = VK_NULL_HANDLE;
             s.alloc = VK_NULL_HANDLE;
         }
@@ -1308,19 +1253,12 @@ namespace lux::render
 
     void BindlessCombinedSet::retireCombinedDeferred(CombinedSlot& s)
     {
-        if (!deferred_queue_)
-        {
-            // Standalone / tests with no destroy queue: callers waitIdle before
-            // teardown, so immediate destruction is safe there.
-            destroyCombined(s);
-            return;
-        }
         if (s.sampler)
-            deferred_queue_->retireSampler(s.sampler);
+            deferred_queue_.retireSampler(s.sampler);
         if (s.view)
-            deferred_queue_->retireImageView(s.view);
+            deferred_queue_.retireImageView(s.view);
         if (s.image)
-            deferred_queue_->retireImage(s.image, s.alloc);
+            deferred_queue_.retireImage(s.image, s.alloc);
         s.sampler = VK_NULL_HANDLE;
         s.view = VK_NULL_HANDLE;
         s.image = VK_NULL_HANDLE;
@@ -1356,7 +1294,7 @@ namespace lux::render
         aci.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 
         VmaAllocationInfo ai{};
-        VK_CHECK(vmaCreateBuffer(rc_->vmaAllocator(), &bci, &aci, &b.buf, &b.alloc, &ai));
+        VK_CHECK(vmaCreateBuffer(rc_.vmaAllocator(), &bci, &aci, &b.buf, &b.alloc, &ai));
         std::memcpy(ai.pMappedData, data, (size_t)size);
         return b;
     }
@@ -1364,13 +1302,13 @@ namespace lux::render
     void BindlessCombinedSet::destroyStaging(StagingBuf& b)
     {
         if (b.buf)
-            vmaDestroyBuffer(rc_->vmaAllocator(), b.buf, b.alloc);
+            vmaDestroyBuffer(rc_.vmaAllocator(), b.buf, b.alloc);
         b = {};
     }
 
-    Expected<CommandBufferOwner> BindlessCombinedSet::beginOneTime()
+    Expected<CommandBufferOwner> BindlessCombinedSet::beginOneTime(ResourceContext& resources)
     {
-        auto command = CommandBufferOwner::create(rc_->logicalDevice(), rc_->commandPool());
+        auto command = CommandBufferOwner::create(resources.logicalDevice(), resources.commandPool());
         if (!command)
         {
             return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(command.error()));
@@ -1381,12 +1319,12 @@ namespace lux::render
         return std::move(*command);
     }
 
-    Expected<void> BindlessCombinedSet::endOneTime(CommandBufferOwner command)
+    Expected<void> BindlessCombinedSet::endOneTime(ResourceContext& resources, CommandBufferOwner command)
     {
         const auto cb = command.get();
         VK_EXPECT(vkEndCommandBuffer(cb));
         VkFenceCreateInfo fence_ci{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-        auto fence_owner = FenceOwner::create(rc_->logicalDevice(), fence_ci);
+        auto fence_owner = FenceOwner::create(resources.logicalDevice(), fence_ci);
         if (!fence_owner)
         {
             return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(fence_owner.error()));
@@ -1398,20 +1336,20 @@ namespace lux::render
         si.pCommandBuffers = &cb;
         VkResult submit_res{VK_ERROR_UNKNOWN};
         {
-            const std::scoped_lock queue_lock(rc_->deviceContext().graphicsQueueMutex());
-            submit_res = vkQueueSubmit(rc_->graphicsQueue(), 1, &si, fence);
+            const std::scoped_lock queue_lock(resources.deviceContext().graphicsQueueMutex());
+            submit_res = vkQueueSubmit(resources.graphicsQueue(), 1, &si, fence);
         }
         if (submit_res != VK_SUCCESS)
         {
             return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(submit_res));
         }
-        const auto wait_res = vkWaitForFences(rc_->logicalDevice(), 1, &fence, VK_TRUE, UINT64_MAX);
+        const auto wait_res = vkWaitForFences(resources.logicalDevice(), 1, &fence, VK_TRUE, UINT64_MAX);
         if (wait_res != VK_SUCCESS)
         {
             // A failed fence wait alone does not authorize destruction of submitted work.
             // This is already an explicitly synchronous path. Preserve ownership until
             // device idle or confirmed device loss, as in the renderer shutdown boundary.
-            const auto idle = rc_->deviceContext().waitIdle();
+            const auto idle = resources.deviceContext().waitIdle();
             const bool can_release = idle == VK_SUCCESS || idle == VK_ERROR_DEVICE_LOST;
             if (!can_release)
             {

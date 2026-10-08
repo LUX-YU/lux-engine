@@ -152,7 +152,9 @@ namespace lux::render
                 return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(VK_ERROR_MEMORY_MAP_FAILED));
             }
             s.ubo_mapped = bainfo.pMappedData;
-            const ViewParams initial{};
+            ViewParams initial{};
+            initial.params[0] = static_cast<float>(geom.width);
+            initial.params[1] = static_cast<float>(geom.height);
             std::memcpy(s.ubo_mapped, &initial, sizeof(initial));
 
             auto descriptor = arena_->allocate(read_layout_);
@@ -203,6 +205,20 @@ namespace lux::render
                 return {};
             }
         }
+        auto candidate = prepareView(width, height);
+        if (!candidate)
+        {
+            return lux::cxx::unexpected(candidate.error());
+        }
+        adoptView(view_id, std::move(*candidate));
+        return {};
+    }
+
+    Expected<std::unique_ptr<HzbResources::ViewSlots>> HzbResources::prepareView(
+        uint32_t width,
+        uint32_t height
+    ) noexcept
+    {
         auto candidate = std::make_unique<ViewSlots>();
         candidate->width = width;
         candidate->height = height;
@@ -211,11 +227,15 @@ namespace lux::render
         {
             if (auto result = prepareSlot(slot, *candidate); !result)
             {
-                return result;
+                return lux::cxx::unexpected(result.error());
             }
         }
+        return candidate;
+    }
+
+    void HzbResources::adoptView(uint32_t view_id, std::unique_ptr<ViewSlots> candidate) noexcept
+    {
         views_[view_id] = std::move(candidate);
-        return {};
     }
 
     void HzbResources::evictView(uint32_t view_id) noexcept
@@ -456,11 +476,16 @@ namespace lux::render
             return;
         }
 
+        recordViewInitialization(cmd, *vs);
+    }
+
+    void HzbResources::recordViewInitialization(VkCommandBuffer cmd, const ViewSlots& view)
+    {
         // forward-Z: far = 1.0 = "nothing in front" → an unbuilt/just-reset slot
         // reads as far everywhere, so the cull's max-Z test degrades to NO cull
         // (objects stay visible) instead of over-culling on garbage memory.
         const VkClearColorValue far_clear{{1.0f, 1.0f, 1.0f, 1.0f}};
-        const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0u, vs->mip_count, 0u, 1u};
+        const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0u, view.mip_count, 0u, 1u};
         for (uint32_t s = 0u; s < 2u; ++s)
         {
             // 1. UNDEFINED → GENERAL (discard garbage), ready for the clear (TRANSFER write).
@@ -472,7 +497,7 @@ namespace lux::render
             to_general.newLayout = VK_IMAGE_LAYOUT_GENERAL;
             to_general.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             to_general.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            to_general.image = vs->slots[s].image.get();
+            to_general.image = view.slots[s].image.get();
             to_general.subresourceRange = range;
             vkCmdPipelineBarrier(
                 cmd,
@@ -488,7 +513,7 @@ namespace lux::render
             );
 
             // 2. Clear every mip to far.
-            vkCmdClearColorImage(cmd, vs->slots[s].image.get(), VK_IMAGE_LAYOUT_GENERAL, &far_clear, 1u, &range);
+            vkCmdClearColorImage(cmd, view.slots[s].image.get(), VK_IMAGE_LAYOUT_GENERAL, &far_clear, 1u, &range);
 
             // 3. Make the clear visible to the build's / cull's shader access.
             VkImageMemoryBarrier to_shader{};
@@ -499,7 +524,7 @@ namespace lux::render
             to_shader.newLayout = VK_IMAGE_LAYOUT_GENERAL;
             to_shader.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
             to_shader.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            to_shader.image = vs->slots[s].image.get();
+            to_shader.image = view.slots[s].image.get();
             to_shader.subresourceRange = range;
             vkCmdPipelineBarrier(
                 cmd,

@@ -23,6 +23,12 @@ namespace shadow_fault
         IDLE,
         POOL,
         SET,
+        ALLOCATE_COMMAND,
+        BEGIN_COMMAND,
+        END_COMMAND,
+        FENCE,
+        SUBMIT,
+        WAIT,
         COUNT
     };
 
@@ -32,6 +38,12 @@ namespace shadow_fault
     inline std::array<unsigned, static_cast<unsigned>(EBoundary::COUNT)> attempts{};
     inline std::unordered_set<VkBuffer> live_buffers;
     inline std::unordered_set<VkDescriptorPool> live_pools;
+
+#if defined(LUX_HZB_NATIVE_FAULTS)
+    inline std::unordered_set<VkCommandBuffer> live_commands;
+    inline std::unordered_set<VkFence> live_fences;
+    inline bool in_flight{};
+#endif
 
     bool rejects(EBoundary attempted)
     {
@@ -168,8 +180,107 @@ namespace shadow_fault
         {
             return VK_ERROR_DEVICE_LOST;
         }
-        return vkDeviceWaitIdle(device);
+        const auto result = vkDeviceWaitIdle(device);
+#if defined(LUX_HZB_NATIVE_FAULTS)
+        if (result == VK_SUCCESS)
+        {
+            in_flight = false;
+        }
+#endif
+        return result;
     }
+
+#if defined(LUX_HZB_NATIVE_FAULTS)
+    VkResult allocateCommand(VkDevice device, const VkCommandBufferAllocateInfo* info, VkCommandBuffer* out)
+    {
+        if (rejects(EBoundary::ALLOCATE_COMMAND))
+        {
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        const auto result = vkAllocateCommandBuffers(device, info, out);
+        if (result == VK_SUCCESS)
+        {
+            for (unsigned i = 0; i < info->commandBufferCount; ++i)
+            {
+                assert(live_commands.insert(out[i]).second);
+            }
+        }
+        return result;
+    }
+
+    void freeCommands(VkDevice device, VkCommandPool pool, uint32_t count, const VkCommandBuffer* buffers)
+    {
+        assert(!in_flight);
+        for (unsigned i = 0; i < count; ++i)
+        {
+            assert(live_commands.erase(buffers[i]) == 1);
+        }
+        vkFreeCommandBuffers(device, pool, count, buffers);
+    }
+
+    VkResult beginCommand(VkCommandBuffer command, const VkCommandBufferBeginInfo* info)
+    {
+        return rejects(EBoundary::BEGIN_COMMAND) ? VK_ERROR_OUT_OF_DEVICE_MEMORY : vkBeginCommandBuffer(command, info);
+    }
+
+    VkResult endCommand(VkCommandBuffer command)
+    {
+        return rejects(EBoundary::END_COMMAND) ? VK_ERROR_OUT_OF_DEVICE_MEMORY : vkEndCommandBuffer(command);
+    }
+
+    VkResult createFence(
+        VkDevice device,
+        const VkFenceCreateInfo* info,
+        const VkAllocationCallbacks* callbacks,
+        VkFence* out
+    )
+    {
+        if (rejects(EBoundary::FENCE))
+        {
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        const auto result = vkCreateFence(device, info, callbacks, out);
+        if (result == VK_SUCCESS)
+        {
+            assert(live_fences.insert(*out).second);
+        }
+        return result;
+    }
+
+    void destroyFence(VkDevice device, VkFence fence, const VkAllocationCallbacks* callbacks)
+    {
+        assert(!in_flight && live_fences.erase(fence) == 1);
+        vkDestroyFence(device, fence, callbacks);
+    }
+
+    VkResult submit(VkQueue queue, uint32_t count, const VkSubmitInfo* info, VkFence fence)
+    {
+        if (rejects(EBoundary::SUBMIT))
+        {
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        const auto result = vkQueueSubmit(queue, count, info, fence);
+        if (result == VK_SUCCESS)
+        {
+            in_flight = true;
+        }
+        return result;
+    }
+
+    VkResult wait(VkDevice device, uint32_t count, const VkFence* fences, VkBool32 all, uint64_t timeout)
+    {
+        if (rejects(EBoundary::WAIT))
+        {
+            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+        }
+        const auto result = vkWaitForFences(device, count, fences, all, timeout);
+        if (result == VK_SUCCESS)
+        {
+            in_flight = false;
+        }
+        return result;
+    }
+#endif
 
     void update(
         VkDevice device,
@@ -200,6 +311,16 @@ namespace shadow_fault
 #define vkDestroyDescriptorPool shadow_fault::destroyPool
 #define vkAllocateDescriptorSets shadow_fault::allocateSets
 #endif
+#if defined(LUX_HZB_NATIVE_FAULTS)
+#define vkAllocateCommandBuffers shadow_fault::allocateCommand
+#define vkFreeCommandBuffers shadow_fault::freeCommands
+#define vkBeginCommandBuffer shadow_fault::beginCommand
+#define vkEndCommandBuffer shadow_fault::endCommand
+#define vkCreateFence shadow_fault::createFence
+#define vkDestroyFence shadow_fault::destroyFence
+#define vkQueueSubmit shadow_fault::submit
+#define vkWaitForFences shadow_fault::wait
+#endif
 #include "../../vulkan/src/gpu/memory/VmaTypes.cpp"
 #include "../../vulkan/src/gpu/VulkanContext.cpp"
 #if defined(LUX_SCENE_NATIVE_FAULTS)
@@ -215,6 +336,10 @@ namespace shadow_fault
 #include "../../vulkan/src/scene/SceneGraphCache.cpp"
 #include "../../vulkan/src/scene/RenderScene.cpp"
 #include "../../vulkan/src/renderer/Renderer.cpp"
+#if defined(LUX_HZB_NATIVE_FAULTS)
+#include "../../vulkan/src/resources/hzb/HzbResources.cpp"
+#include "../src/renderer/features/hzb/HzbFeature.cpp"
+#endif
 #undef vkCreateDescriptorPool
 #undef vkDestroyDescriptorPool
 #undef vkAllocateDescriptorSets
@@ -231,6 +356,16 @@ namespace shadow_fault
 #undef vmaFlushAllocation
 #undef vkDeviceWaitIdle
 #undef vkUpdateDescriptorSets
+#if defined(LUX_HZB_NATIVE_FAULTS)
+#undef vkAllocateCommandBuffers
+#undef vkFreeCommandBuffers
+#undef vkBeginCommandBuffer
+#undef vkEndCommandBuffer
+#undef vkCreateFence
+#undef vkDestroyFence
+#undef vkQueueSubmit
+#undef vkWaitForFences
+#endif
 #undef NDEBUG
 #include <cassert>
 // clang-format on

@@ -30,7 +30,7 @@
  *
  * 释放金字塔的两条路径,**在飞程度不同**:
  *   resize (ensureView) — 调用方先 vkDeviceWaitIdle,GPU 已空闲。
- *   evictView           — 由 RenderScene::removeView 的视图销毁钩子驱动,
+ *   evictView           — 由特性的 deallocateViewState 驱动,
  *                         那条路径**不等 GPU**(它自己的每视图 GPU 槽同样延迟
  *                         回收)。此刻 N-1/N-2 帧的命令缓冲仍可能在采样本金字塔,
  *                         其每 mip 构建描述符集也仍引用这些 image view。
@@ -98,8 +98,8 @@ namespace lux::render
         /// 旧句柄一律退役到 deferred_queue,不再就地销毁。
         Expected<void> ensureView(uint32_t view_id, uint32_t width, uint32_t height) noexcept;
 
-        /// Free everything this view owns. Wired to the registry's
-        /// view-destroyed hook — see the file header on id recycling.
+        /// Release this view through the original retirement queue. The feature
+        /// calls this from deallocateViewState before the view index can be reused.
         void evictView(uint32_t view_id) noexcept;
 
         /// True once ensureView() succeeded for this view.
@@ -178,6 +178,8 @@ namespace lux::render
         void writeViewParams(uint32_t view_id, uint32_t slot, const ViewParams& vp) noexcept;
 
     private:
+        friend class HzbFeature;
+
         struct Slot
         {
             TFifOwnedAllocated<VkImage> image;
@@ -211,6 +213,9 @@ namespace lux::render
         };
 
         explicit HzbResources(const CreateInfo& info) noexcept;
+        [[nodiscard]] Expected<std::unique_ptr<ViewSlots>> prepareView(uint32_t width, uint32_t height) noexcept;
+        void adoptView(uint32_t view_id, std::unique_ptr<ViewSlots> candidate) noexcept;
+        static void recordViewInitialization(VkCommandBuffer cmd, const ViewSlots& view);
         Expected<void> prepareSlot(Slot& slot, const ViewSlots& geometry) noexcept;
         [[nodiscard]] ViewSlots* findView(uint32_t view_id) noexcept;
         [[nodiscard]] const ViewSlots* findView(uint32_t view_id) const noexcept;

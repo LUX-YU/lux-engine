@@ -21,14 +21,13 @@
 #include <cstdint>
 #include <vector>
 
-#include <lux/engine/render/RenderFeature.hpp>
-#include <lux/engine/function/render/client/core/ResourceHandle.hpp>   // ShaderHandle
-#include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp> // ComputePipelineHandle
-#include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>      // DescriptorLayoutId
-#include <lux/engine/render/resources/hzb/HzbResources.hpp>
-#include <lux/cxx/container/BasicSparseSet.hpp>         // per-view mip-set table
-#include <lux/engine/render/gpu/lifecycle/FifOwned.hpp> // FifOwned<VkSampler> (C1)
+#include <lux/cxx/container/BasicSparseSet.hpp>                      // per-view mip-set table
+#include <lux/engine/function/render/client/core/ResourceHandle.hpp> // ShaderHandle
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/render/RenderFeature.hpp>
+#include <lux/engine/render/gpu/descriptor/DescriptorService.hpp>      // DescriptorLayoutId
+#include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp> // ComputePipelineHandle
+#include <lux/engine/render/resources/hzb/HzbResources.hpp>
 
 namespace lux::render
 {
@@ -51,9 +50,11 @@ namespace lux::render
         {
             return "Hzb";
         }
+
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
         void addPasses(RGBuilder& builder) override;
         void onFrameBegin(const FeatureFrameContext& ctx) override;
+        void deallocateViewState(uint32_t view_id) override;
 
         [[nodiscard]] const HzbResources* resources() const noexcept
         {
@@ -68,7 +69,7 @@ namespace lux::render
         /// (Re)create THIS VIEW's two HZB images at @p width×@p height and
         /// re-point its per-mip build descriptors. Idempotent for an unchanged
         /// extent (HzbResources::ensureView short-circuits).
-        void rebuildViewAt(uint32_t view_id, uint32_t width, uint32_t height);
+        [[nodiscard]] Expected<void> rebuildViewAt(uint32_t view_id, uint32_t width, uint32_t height) noexcept;
 
         Config cfg_{};
         HzbResources* hzb_res_{nullptr}; ///< owned by the scene registry
@@ -91,11 +92,12 @@ namespace lux::render
 
         /// Per-mip set-0 descriptors, per ping-pong slot — PER VIEW, because the
         /// mip count follows that view's extent. Keyed by View::handle.index,
-        /// evicted with the view (same hook that frees the images).
+        /// evicted by the original feature view-state lifetime hook.
         struct ViewMipSets
         {
             std::array<std::vector<VkDescriptorSet>, 2> slot;
         };
+
         lux::cxx::BasicSparseSet<uint32_t, ViewMipSets> mip_sets_;
     };
 

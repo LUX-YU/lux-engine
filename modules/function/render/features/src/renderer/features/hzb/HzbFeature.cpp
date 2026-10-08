@@ -17,6 +17,8 @@
 #include <lux/engine/function/render/graph/RGEnums.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
+#include <lux/engine/render/gpu/lifecycle/CommandBufferOwner.hpp>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineLayoutService.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
 #include <lux/engine/render/graph/PassRecordContext.hpp>
@@ -94,23 +96,6 @@ namespace lux::render
             hzb_res_ = sreg.insert(std::move(*resource)).get();
         }
 
-        if (fresh_hzb)
-        {
-            // 视图销毁时释放该视图的金字塔 —— **不是可选项**:view id 会被回收
-            // (SlotKeyAutoSparseSet 把 index 带着 +1 的 generation 放回池子,而
-            // feature 侧的 per-view 键是裸 index),留下的陈旧条目会被下一个拿到
-            // 同一个 index 的视图静默捡走。由**安装点**登记,只在首次创建时登记。
-            auto* res = hzb_res_;
-            auto* sets = &mip_sets_;
-            sreg.addViewDestroyedHook(
-                [res, sets](uint32_t /*scene_key*/, uint32_t view_id)
-                {
-                    res->evictView(view_id);
-                    sets->erase(view_id); // 描述符集由场景 arena 拥有,这里只丢句柄
-                }
-            );
-        }
-
         // --- 4. Compute pipeline (set0, set1-depth) + push constant ---
         {
             auto& shaders = ctx.globalRegistry().must<ShaderResources>();
@@ -151,107 +136,109 @@ namespace lux::render
         return {};
     }
 
-    void HzbFeature::rebuildViewAt(uint32_t view_id, uint32_t width, uint32_t height)
+    Expected<void> HzbFeature::rebuildViewAt(uint32_t view_id, uint32_t width, uint32_t height) noexcept
     {
-        if (hzb_res_ == nullptr || width == 0u || height == 0u)
+        const bool is_same_extent = hzb_res_->width(view_id) == width && hzb_res_->height(view_id) == height;
+        if (is_same_extent && mip_sets_.contains(view_id))
         {
-            return;
+            return {};
         }
-        // Nothing to do when this view already has a pyramid at this extent.
-        if (hzb_res_->viewReady(view_id) && hzb_res_->width(view_id) == width && hzb_res_->height(view_id) == height)
-        {
-            return;
-        }
-
         auto& ctx = renderContext();
-        VkDevice device = ctx.deviceContext().logicalDevice();
-        if (ctx.deviceContext().waitIdle() != VK_SUCCESS)
+        auto& device = ctx.deviceContext();
+        const auto idle_result = device.waitIdle();
+        if (idle_result != VK_SUCCESS)
         {
-            return;
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(idle_result));
         }
-
-        if (auto ready = hzb_res_->ensureView(view_id, width, height); !ready)
+        auto candidate = hzb_res_->prepareView(width, height);
+        if (!candidate)
         {
-            if (auto* sink = ctx.errorSink())
-            {
-                sink->emit(ready.error(), RenderErrorEvent::kNoScene, 0);
-            }
-            return;
+            return lux::cxx::unexpected(candidate.error());
         }
-
-        // Re-point THIS VIEW's per-mip build descriptors at the new images.
-        const uint32_t n = hzb_res_->mipCount(view_id);
-        const VkDescriptorSetLayout l0 =
-            set0_layout_; // product of reflection-based construction (retrieved during init)
-        auto& ms = mip_sets_[view_id];
-        for (uint32_t slot = 0u; slot < 2u; ++slot)
+        const auto mip_count = (*candidate)->mip_count;
+        ViewMipSets build_sets;
+        for (auto& slot : build_sets.slot)
         {
-            ms.slot[slot].assign(n, VK_NULL_HANDLE);
-            for (uint32_t i = 0u; i < n; ++i)
+            slot.reserve(mip_count);
+            for (uint32_t mip = 0; mip < mip_count; ++mip)
             {
-                auto descriptor = renderScene().descriptorArena().allocate(l0);
+                auto descriptor = renderScene().descriptorArena().allocate(set0_layout_);
                 if (!descriptor)
                 {
-                    // This resize boundary has already waited for GPU use. Keep no
-                    // ready pyramid backed by incomplete build descriptors; retry next frame.
-                    hzb_res_->evictView(view_id);
-                    mip_sets_.erase(view_id);
-                    if (auto* sink = ctx.errorSink())
-                    {
-                        sink->emit(descriptor.error(), RenderErrorEvent::kNoScene, 0);
-                    }
-                    return;
+                    return lux::cxx::unexpected(descriptor.error());
                 }
-                ms.slot[slot][i] = *descriptor;
+                slot.push_back(*descriptor);
             }
-            hzb_res_->writeBuildDescriptors(device, view_id, slot, ms.slot[slot].data(), n);
         }
 
-        // Mark BOTH slots not-ready (mip_count = 0): until a slot has actually
-        // been built, the cull shader's `params.z < 1` guard keeps everything
-        // (no over-cull on the first frame after a (re)build).
-        HzbResources::ViewParams nr{};
-        nr.params[0] = static_cast<float>(width);
-        nr.params[1] = static_cast<float>(height);
-        nr.params[2] = 0.0f; // mip_count = 0 → not ready
-        hzb_res_->writeViewParams(view_id, 0u, nr);
-        hzb_res_->writeViewParams(view_id, 1u, nr);
-
-        // First-use / post-resize: transition BOTH slots UNDEFINED→GENERAL via a
-        // one-shot submit, BEFORE any RenderGraph pass runs this frame. The cull
-        // samples the PREVIOUS slot — which won't be built until a later frame —
-        // so without this its first-frame layout stays UNDEFINED (VUID-09600).
-        // DeviceContext::waitIdle above guarantees no concurrent GPU work, so a
-        // blocking one-shot here is safe (resize is rare).
+        // This is the existing synchronous resize boundary. All candidates stay
+        // owned until initialization is complete, including a failed fence wait.
+        auto command = CommandBufferOwner::create(device.logicalDevice(), ctx.resourceContext().commandPool());
+        if (!command)
         {
-            VkCommandPoolCreateInfo pci{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
-            pci.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
-            pci.queueFamilyIndex = ctx.deviceContext().graphicsQueueFamilyIndex();
-            VkCommandPool pool = VK_NULL_HANDLE;
-            if (vkCreateCommandPool(device, &pci, nullptr, &pool) == VK_SUCCESS)
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(command.error()));
+        }
+        VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        const auto begin_result = vkBeginCommandBuffer(command->get(), &begin);
+        if (begin_result != VK_SUCCESS)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(begin_result));
+        }
+        HzbResources::recordViewInitialization(command->get(), **candidate);
+        const auto end_result = vkEndCommandBuffer(command->get());
+        if (end_result != VK_SUCCESS)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(end_result));
+        }
+        VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        auto fence = FenceOwner::create(device.logicalDevice(), fence_info);
+        if (!fence)
+        {
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(fence.error()));
+        }
+        const auto cmd = command->get();
+        VkSubmitInfo submission{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+        submission.commandBufferCount = 1;
+        submission.pCommandBuffers = &cmd;
+        {
+            const std::scoped_lock queue_lock(device.graphicsQueueMutex());
+            const auto submit_result = vkQueueSubmit(device.graphicsQueue(), 1, &submission, fence->get());
+            if (submit_result != VK_SUCCESS)
             {
-                VkCommandBufferAllocateInfo ai{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-                ai.commandPool = pool;
-                ai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-                ai.commandBufferCount = 1u;
-                VkCommandBuffer cmd = VK_NULL_HANDLE;
-                vkAllocateCommandBuffers(device, &ai, &cmd);
-                VkCommandBufferBeginInfo bi{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-                bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-                vkBeginCommandBuffer(cmd, &bi);
-                hzb_res_->recordInitToGeneral(cmd, view_id);
-                vkEndCommandBuffer(cmd);
-                VkSubmitInfo si{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-                si.commandBufferCount = 1u;
-                si.pCommandBuffers = &cmd;
-                {
-                    const std::scoped_lock queue_lock(ctx.deviceContext().graphicsQueueMutex());
-                    vkQueueSubmit(ctx.deviceContext().graphicsQueue(), 1u, &si, VK_NULL_HANDLE);
-                    vkQueueWaitIdle(ctx.deviceContext().graphicsQueue());
-                }
-                vkDestroyCommandPool(device, pool, nullptr);
+                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(submit_result));
             }
         }
+        const auto fence_handle = fence->get();
+        const auto completed = vkWaitForFences(device.logicalDevice(), 1, &fence_handle, VK_TRUE, UINT64_MAX);
+        if (completed != VK_SUCCESS)
+        {
+            const auto idle = device.waitIdle();
+            const bool can_release = idle == VK_SUCCESS || idle == VK_ERROR_DEVICE_LOST;
+            if (!can_release)
+            {
+                renderFatal("HZB initialization could not establish a safe resource release point");
+            }
+            return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(completed));
+        }
+
+        // No fallible backend work remains. Read images and build sets become
+        // visible together; old native owners retire at the original watermark.
+        hzb_res_->adoptView(view_id, std::move(*candidate));
+        mip_sets_[view_id] = std::move(build_sets);
+        const auto& accepted = mip_sets_[view_id];
+        for (uint32_t slot = 0; slot < 2; ++slot)
+        {
+            hzb_res_
+                ->writeBuildDescriptors(device.logicalDevice(), view_id, slot, accepted.slot[slot].data(), mip_count);
+        }
+        return {};
+    }
+
+    void HzbFeature::deallocateViewState(uint32_t view_id)
+    {
+        hzb_res_->evictView(view_id);
+        mip_sets_.erase(view_id);
     }
 
     void HzbFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)
@@ -287,9 +274,12 @@ namespace lux::render
                 }
 
                 // (Re)build this view's two images on first use / extent change.
-                rebuildViewAt(view_id, vw, vh);
-                if (!hzb_res_->viewReady(view_id))
+                if (auto ready = rebuildViewAt(view_id, vw, vh); !ready)
                 {
+                    if (auto* sink = renderContext().errorSink())
+                    {
+                        sink->emit(ready.error(), RenderErrorEvent::kNoScene, 0);
+                    }
                     return;
                 }
 

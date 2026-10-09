@@ -14,6 +14,7 @@ add_component(
     NAMESPACE      lux::engine::function
     OUTPUT_NAME    lux_engine_function_flowforge
     SOURCE_FILES
+        src/FlowNodePayload.cpp
         src/NodeRegistry.cpp
         src/NodeBase.cpp
         src/ControlNode.cpp
@@ -52,6 +53,7 @@ target_link_libraries(
         lux::cxx::algorithm
         lux::cxx::reflection_runtime
         lux::engine::core::meta
+        lux::engine::core::object
         lux::engine::function::script_core
         lux::engine::resource::description
 )
@@ -65,7 +67,7 @@ component_add_transitive_commands(
     flowforge
     "find_package(lux-cxx REQUIRED COMPONENTS container algorithm reflection_runtime)"
     "find_package(lux-engine-function REQUIRED COMPONENTS graph)"
-    "find_package(lux-engine-core REQUIRED COMPONENTS meta)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS meta object)"
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
@@ -101,5 +103,31 @@ if(BUILD_TESTING)
     add_test(
         NAME flow.ability_description_plugin
         COMMAND flow_ability_plugin_test "$<TARGET_FILE:flow_ability_description_plugin>"
+    )
+endif()
+
+if(BUILD_TESTING)
+    add_executable(flow_node_payload_test test/node_payload.cpp)
+
+    target_link_libraries(flow_node_payload_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(NAME flow.node_payload COMMAND flow_node_payload_test)
+
+    add_library(flow_node_payload_plugin MODULE test/node_payload_plugin.cpp)
+
+    target_link_libraries(flow_node_payload_plugin PRIVATE lux::engine::function::flowforge)
+
+    add_executable(flow_node_payload_plugin_test test/node_payload_plugin_test.cpp)
+
+    target_link_libraries(
+        flow_node_payload_plugin_test
+        PRIVATE lux::engine::function::flowforge lux::engine::platform::dynamic_library
+    )
+
+    add_dependencies(flow_node_payload_plugin_test flow_node_payload_plugin)
+
+    add_test(
+        NAME flow.node_payload_plugin
+        COMMAND flow_node_payload_plugin_test "$<TARGET_FILE:flow_node_payload_plugin>"
     )
 endif()

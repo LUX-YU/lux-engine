@@ -1,14 +1,12 @@
 #pragma once
 
+#include <lux/engine/flowforge/FlowForgeFailure.hpp>
 #include <lux/engine/flowforge/compiler/visibility.h>
 #include <lux/engine/flowforge/script/ScriptAbilityCatalog.hpp>
-#include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
-#include <lux/engine/function/script/ScriptEvent.hpp>
 #include <lux/engine/function/script/ScriptBindingHint.hpp>
+#include <lux/engine/function/script/ScriptEvent.hpp>
+#include <lux/engine/function/script/artifact/ScriptArtifact.hpp>
 
-#include <lux/cxx/compile_time/expected.hpp>
-
-#include <cstdint>
 #include <filesystem>
 #include <span>
 #include <string>
@@ -17,45 +15,6 @@
 namespace lux::flowforge
 {
     class FlowGraph;
-
-    enum class EFlowForgeError : std::uint8_t
-    {
-        GRAPH_INVALID,
-        INVALID_MODULE_NAME,
-        INVALID_DESCRIPTION,
-        ALLOCATION_FAILURE,
-        FOREIGN_EXCEPTION,
-        CONTEXT_CREATION_FAILED,
-        IR_VERIFICATION_FAILED,
-        LOWERING_FAILED,
-        JIT_ENGINE_CREATION_FAILED,
-        JIT_SYMBOL_LOOKUP_FAILED,
-        JIT_INVOCATION_FAILED,
-        AOT_CODEGEN_FAILED,
-        LINK_FAILED,
-        IO_FAILED,
-        UNKNOWN_SCRIPT_ABILITY_CONTRACT,
-        UNKNOWN_SCRIPT_ABILITY_METHOD,
-        SCRIPT_ABILITY_SCHEMA_MISMATCH,
-        SCRIPT_ABILITY_REQUIREMENT_CONFLICT,
-        UNKNOWN_SCRIPT_EVENT_SOURCE,
-        SCRIPT_EVENT_SCHEMA_MISMATCH,
-        UNSUPPORTED_SCRIPT_ABILITY_TYPE,
-        BORROWED_VALUE_CROSSES_SUSPENSION,
-        ASYNC_LIFECYCLE_NOT_SUPPORTED,
-        INVALID_CONTINUATION_FRAME_LAYOUT,
-        UNSUPPORTED_COROUTINE_CONTROL_FLOW,
-    };
-
-    struct FlowForgeFailure final
-    {
-        EFlowForgeError code{EFlowForgeError::GRAPH_INVALID};
-        std::string message;
-        std::uint64_t node_id{};
-        std::uint64_t pin_id{};
-    };
-
-    template <class Value> using FlowForgeResult = lux::cxx::expected<Value, FlowForgeFailure>;
 
     struct FlowForgeCompileOptions final
     {
@@ -88,4 +47,4 @@ namespace lux::flowforge
 
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<std::vector<lux::script::ScriptBindingHint>>
     describeFlowForgeBindingHints(const FlowGraph& graph) noexcept;
-}
+} // namespace lux::flowforge

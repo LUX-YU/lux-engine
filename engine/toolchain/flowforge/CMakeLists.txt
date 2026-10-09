@@ -77,3 +77,13 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
 
     add_test(NAME flowforge.scalar_lowering COMMAND flowforge_scalar_lowering_test)
 endif()
+
+if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
+    add_executable(flowforge_native_definition_test test/native_definition.cpp)
+
+    target_link_libraries(flowforge_native_definition_test PRIVATE flowforge_compiler)
+
+    lux_editor_test_options(flowforge_native_definition_test)
+
+    add_test(NAME flowforge.native_definition COMMAND flowforge_native_definition_test)
+endif()

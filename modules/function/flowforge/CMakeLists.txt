@@ -14,6 +14,7 @@ add_component(
     NAMESPACE      lux::engine::function
     OUTPUT_NAME    lux_engine_function_flowforge
     SOURCE_FILES
+        src/NativeCallDefinition.cpp
         src/FlowNodePayload.cpp
         src/ScalarLowering.cpp
         src/NodeRegistry.cpp
@@ -130,5 +131,33 @@ if(BUILD_TESTING)
     add_test(
         NAME flow.node_payload_plugin
         COMMAND flow_node_payload_plugin_test "$<TARGET_FILE:flow_node_payload_plugin>"
+    )
+endif()
+
+if(BUILD_TESTING)
+    add_executable(flow_native_definition_test test/native_definition.cpp)
+
+    target_link_libraries(flow_native_definition_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(NAME flow.native_definition COMMAND flow_native_definition_test)
+endif()
+
+if(BUILD_TESTING)
+    add_library(flow_native_definition_plugin MODULE test/native_definition_plugin.cpp)
+
+    target_link_libraries(flow_native_definition_plugin PRIVATE lux::engine::function::flowforge)
+
+    add_executable(flow_native_definition_plugin_test test/native_definition_plugin_test.cpp)
+
+    target_link_libraries(
+        flow_native_definition_plugin_test
+        PRIVATE lux::engine::function::flowforge lux::engine::platform::dynamic_library
+    )
+
+    add_dependencies(flow_native_definition_plugin_test flow_native_definition_plugin)
+
+    add_test(
+        NAME flow.native_definition_plugin
+        COMMAND flow_native_definition_plugin_test "$<TARGET_FILE:flow_native_definition_plugin>"
     )
 endif()

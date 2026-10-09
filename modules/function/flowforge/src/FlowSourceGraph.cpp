@@ -1,3 +1,5 @@
+#include <lux/engine/flowforge/NativeCallDefinition.hpp>
+
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -430,15 +432,28 @@ namespace lux::flowforge
                     source.id
                 );
             }
-            case ENodeOperation::NATIVE_FUNC_CALL: {
+            case ENodeOperation::NATIVE_FUNC_CALL:
+            {
                 const auto& call = std::get<FlowSourceNativeCall>(source.parameters);
+                const auto create_call = [&](const meta::RefInvokable& signature,
+                                             const meta::RefType* receiver) -> FlowSourceResult<std::unique_ptr<Node>>
+                {
+                    auto code = environment.code_lifetime ? object::CodeLease::plugin(environment.code_lifetime)
+                                                          : object::CodeLease::builtin();
+                    auto definition = NativeCallDefinition::create(signature, std::move(code), receiver);
+                    if (!definition)
+                    {
+                        return fail(EFlowSourceError::SCHEMA_MISMATCH, call.member, source.id);
+                    }
+                    return std::unique_ptr<Node>(std::make_unique<NativeFuncCall>(id, std::move(*definition)));
+                };
                 if (call.owner.empty())
                 {
                     for (const auto* function : environment.functions)
                     {
                         if (function && signatureMatches(function->invokable, call))
                         {
-                            return std::unique_ptr<Node>(std::make_unique<NativeFuncCall>(id, *function));
+                            return create_call(function->invokable, nullptr);
                         }
                     }
                 }
@@ -448,7 +463,7 @@ namespace lux::flowforge
                     {
                         if (signatureMatches(method.invokable, call))
                         {
-                            return std::unique_ptr<Node>(std::make_unique<NativeFuncCall>(id, *owner, method));
+                            return create_call(method.invokable, &owner->type);
                         }
                     }
                 }

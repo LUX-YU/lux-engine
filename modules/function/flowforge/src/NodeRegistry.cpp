@@ -1,7 +1,8 @@
-#include <lux/engine/flowforge/graph/NodeRegistry.hpp>
-#include <lux/engine/flowforge/graph/ControlNode.hpp>
+#include <lux/engine/flowforge/NativeCallDefinition.hpp>
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
+#include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
+#include <lux/engine/flowforge/graph/NodeRegistry.hpp>
 
 namespace lux::flowforge
 {
@@ -31,9 +32,8 @@ namespace lux::flowforge
         auto ptr = std::make_unique<NodeCreatInfo>();
         ptr->name = std::move(name);
         ptr->category = std::move(category);
-        ptr->creator = [op, operand_type]() -> std::unique_ptr<Node> {
-            return std::make_unique<NodeT>(op, operand_type);
-        };
+        ptr->creator = [op, operand_type]() -> std::unique_ptr<Node>
+        { return std::make_unique<NodeT>(op, operand_type); };
         return ptr;
     }
 
@@ -70,6 +70,7 @@ namespace lux::flowforge
             const char* base;
             ENodeOperation op;
         };
+
         static constexpr Entry binary_math[] = {
             {"Add", ENodeOperation::ADD},
             {"Subtract", ENodeOperation::SUBTRACT},
@@ -152,28 +153,47 @@ namespace lux::flowforge
         }
     } // namespace
 
-    std::size_t NodeRegistry::populateFromReflection(const lux::meta::ReflectionRegistry& reflection)
+    std::size_t NodeRegistry::populateFromReflection(
+        const lux::meta::ReflectionRegistry& reflection,
+        object::CodeLease code
+    )
     {
         std::size_t added = 0;
         for (const auto& fn_ptr : reflection.functions())
         {
             const lux::meta::RefFunction* fn = fn_ptr.get();
             if (!fn || !fn->invokable.invoker)
+            {
                 continue; // no callable trampoline
+            }
             if (!isGraphMappable(fn->invokable.return_type, /*as_return=*/true))
+            {
                 continue;
+            }
             bool ok = true;
             for (const auto& p : fn->invokable.parameters)
+            {
                 ok = ok && isGraphMappable(p.type, /*as_return=*/false);
+            }
             if (!ok)
+            {
                 continue;
+            }
 
+            auto definition = NativeCallDefinition::create(fn->invokable, code);
+            if (!definition)
+            {
+                continue;
+            }
             auto info = std::make_unique<NodeCreatInfo>();
             info->name = std::string(fn->invokable.name);
             info->category = "Native";
-            info->creator = [fn]() -> std::unique_ptr<Node> { return std::make_unique<NativeFuncCall>(*fn); };
+            info->creator = [definition = std::move(*definition)]() -> std::unique_ptr<Node>
+            { return std::make_unique<NativeFuncCall>(definition); };
             if (registerNode(std::move(info)))
+            {
                 ++added;
+            }
         }
         return added;
     }
@@ -191,7 +211,8 @@ namespace lux::flowforge
         if (info->creator)
         {
             auto raw_creator = std::move(info->creator);
-            info->creator = [raw = std::move(raw_creator), name = info->name]() -> std::unique_ptr<Node> {
+            info->creator = [raw = std::move(raw_creator), name = info->name]() -> std::unique_ptr<Node>
+            {
                 auto node = raw();
                 if (node)
                 {
@@ -223,4 +244,4 @@ namespace lux::flowforge
         auto it = node_category_map_.find(name);
         return it != node_category_map_.end() ? it->second.front() : nullptr;
     }
-}
+} // namespace lux::flowforge

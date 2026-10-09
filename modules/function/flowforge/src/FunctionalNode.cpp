@@ -1,55 +1,26 @@
+#include <lux/engine/flowforge/NativeCallDefinition.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
+
+#include <exception>
+#include <utility>
 
 namespace lux::flowforge
 {
-    // ====================== NativeFuncCall ======================
-    /**
-     * @brief Constructs a NativeFuncCall for a free function with a given ID.
-     * @param id The unique ID for this Node.
-     * @param ref_function Reference to the meta function information.
-     */
-    NativeFuncCall::NativeFuncCall(uint64_t id, const lux::meta::RefFunction& ref_function)
-        : ExecIntermediateNode(id, ENodeOperation::NATIVE_FUNC_CALL), is_method_(false),
-          invokable_info(&ref_function.invokable)
+    NativeFuncCall::NativeFuncCall(uint64_t id, Definition definition) noexcept
+        : ExecIntermediateNode(id, ENodeOperation::NATIVE_FUNC_CALL), definition_(std::move(definition))
     {
-        rebuildPins(nullptr);
-        setName(ref_function.invokable.name);
+        if (!definition_)
+        {
+            std::terminate();
+        }
+        rebuildPins();
+        setName(info().name);
     }
 
-    /**
-     * @brief Constructs a NativeFuncCall for a class method with a given ID.
-     * @param id The unique ID for this Node.
-     * @param ref_class Reference to the class metadata.
-     * @param ref_method Reference to the method metadata.
-     */
-    NativeFuncCall::NativeFuncCall(
-        uint64_t id,
-        const lux::meta::RefClass& ref_class,
-        const lux::meta::RefMethod& ref_method
-    )
-        : ExecIntermediateNode(id, ENodeOperation::NATIVE_FUNC_CALL), is_method_(true),
-          invokable_info(&ref_method.invokable)
+    NativeFuncCall::NativeFuncCall(Definition definition) noexcept
+        : NativeFuncCall(reinterpret_cast<uintptr_t>(this), std::move(definition))
     {
-        rebuildPins(&ref_class.type);
-        setName(ref_method.invokable.name);
     }
-
-    /**
-     * @brief Constructs a NativeFuncCall for a free function with a generated ID.
-     * @param ref_function Reference to the meta function information.
-     */
-    NativeFuncCall::NativeFuncCall(const lux::meta::RefFunction& ref_function)
-        : NativeFuncCall(reinterpret_cast<uintptr_t>(this), ref_function)
-    {}
-
-    /**
-     * @brief Constructs a NativeFuncCall for a class method with a generated ID.
-     * @param ref_class Reference to the class metadata.
-     * @param ref_method Reference to the method metadata.
-     */
-    NativeFuncCall::NativeFuncCall(const lux::meta::RefClass& ref_class, const lux::meta::RefMethod& ref_method)
-        : NativeFuncCall(reinterpret_cast<uintptr_t>(this), ref_class, ref_method)
-    {}
 
     /**
      * @brief Helper function to create input pins based on the function/method parameter types.
@@ -75,13 +46,12 @@ namespace lux::flowforge
 
     /**
      * @brief Drops + de-registers all parameter pins and the result pin, then rebuilds
-     *        them from invokable_info. The ONE pin-(re)build path shared by the
+     *        them from the immutable definition. The ONE pin-(re)build path shared by the
      *        constructors, rebind and reconstruct, reproducing fresh-construction pin
      *        order: in_pins_ = [exec_in, params..., Self?], out_pins_ = [exec_out, result].
      */
-    void NativeFuncCall::rebuildPins(const lux::meta::RefType* self_type)
+    void NativeFuncCall::rebuildPins()
     {
-        self_type_ = self_type;
 
         // De-register the old pins from the Node's pin lists BEFORE destroying them —
         // the Pin destructors only unlink links, they do not remove node-side entries.
@@ -96,35 +66,35 @@ namespace lux::flowforge
             result_.reset();
         }
 
-        result_ = std::make_unique<DataOutPin>(this, DataPinInfo{"Return", &invokable_info->return_type});
-        createPins(invokable_info->parameters);
-        if (is_method_ && self_type_)
+        result_ = std::make_unique<DataOutPin>(this, DataPinInfo{"Return", &info().return_type});
+        createPins(info().parameters);
+        if (const auto* self_type = ownerType())
         {
-            auto self_pin = std::make_unique<DataInPin>(this, DataPinInfo{"Self", self_type_});
+            auto self_pin = std::make_unique<DataInPin>(this, DataPinInfo{"Self", self_type});
             // Insert 'Self' pin at the beginning for convention
             data_in_pins_.insert(data_in_pins_.begin(), std::move(self_pin));
         }
     }
 
-    void NativeFuncCall::rebind(const lux::meta::RefFunction& ref_function)
+    void NativeFuncCall::rebind(Definition definition) noexcept
     {
-        is_method_ = false;
-        invokable_info = &ref_function.invokable;
-        rebuildPins(nullptr);
-        setName(ref_function.invokable.name);
+        if (!definition)
+        {
+            std::terminate();
+        }
+        auto previous = std::exchange(definition_, std::move(definition));
+        rebuildPins();
+        setName(info().name);
     }
 
-    void NativeFuncCall::rebind(const lux::meta::RefClass& ref_class, const lux::meta::RefMethod& ref_method)
+    const lux::meta::RefType* NativeFuncCall::ownerType() const noexcept
     {
-        is_method_ = true;
-        invokable_info = &ref_method.invokable;
-        rebuildPins(&ref_class.type);
-        setName(ref_method.invokable.name);
+        return definition_->receiver();
     }
 
     void NativeFuncCall::reconstruct()
     {
-        rebuildPins(self_type_);
+        rebuildPins();
     }
 
     /**
@@ -133,7 +103,7 @@ namespace lux::flowforge
      */
     const lux::meta::RefInvokable& NativeFuncCall::info() const
     {
-        return *invokable_info;
+        return definition_->signature();
     }
 
     /**
@@ -154,15 +124,6 @@ namespace lux::flowforge
         return *result_;
     }
 
-    /**
-     * @brief Sets the user-defined name for this NativeFuncCall.
-     * @param name The new name for this node.
-     */
-    void NativeFuncCall::setName(std::string_view name)
-    {
-        Node::setName(name);
-    }
-
     // ====================== FuncDefNode ======================
     FuncDefNode::FuncDefNode(
         uint64_t id,
@@ -181,7 +142,8 @@ namespace lux::flowforge
 
     FuncDefNode::FuncDefNode(std::string_view name, std::vector<FuncArgInfo> args, std::vector<FuncArgInfo> rets)
         : FuncDefNode(reinterpret_cast<uintptr_t>(this), name, std::move(args), std::move(rets))
-    {}
+    {
+    }
 
     // ====================== FuncReturnNode ======================
     FuncReturnNode::FuncReturnNode(uint64_t id, const FuncDefNode& def)
@@ -209,7 +171,8 @@ namespace lux::flowforge
 
     OnEventNode::OnEventNode(std::string_view event_name, std::vector<FuncArgInfo> params)
         : OnEventNode(reinterpret_cast<uintptr_t>(this), event_name, std::move(params))
-    {}
+    {
+    }
 
     // ====================== GraphFuncCallNode ======================
     GraphFuncCallNode::GraphFuncCallNode(uint64_t id, const FuncDefNode& callee)
@@ -228,5 +191,6 @@ namespace lux::flowforge
 
     GraphFuncCallNode::GraphFuncCallNode(const FuncDefNode& callee)
         : GraphFuncCallNode(reinterpret_cast<uintptr_t>(this), callee)
-    {}
-}
+    {
+    }
+} // namespace lux::flowforge

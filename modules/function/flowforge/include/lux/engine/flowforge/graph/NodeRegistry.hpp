@@ -1,7 +1,8 @@
 #pragma once
-#include <unordered_map>
-#include <functional>
 #include "NodeBase.hpp"
+#include <functional>
+#include <lux/engine/object/CodeLease.hpp>
+#include <unordered_map>
 
 namespace lux::flowforge
 {
@@ -29,27 +30,27 @@ namespace lux::flowforge
         ~NodeRegistry();
 
         /**
-		 * @brief Process-wide shared registry (builtins pre-registered).
-		 *        The editor registers its native-call nodes here so the
-		 *        graph serializer can re-instantiate them on load — a graph
-		 *        file references nodes by creator name, which must resolve
-		 *        in whatever process decodes it.
-		 */
+         * @brief Process-wide shared registry (builtins pre-registered).
+         *        The editor registers its native-call nodes here so the
+         *        graph serializer can re-instantiate them on load — a graph
+         *        file references nodes by creator name, which must resolve
+         *        in whatever process decodes it.
+         */
         static NodeRegistry& global();
 
         bool registerNode(std::unique_ptr<NodeCreatInfo> info);
 
         /**
-		 * @brief Populates the palette from the reflection registry: every
-		 *        FREE function with a callable invoker and a graph-mappable
-		 *        signature (scalar / pointer parameters, void or scalar
-		 *        return) becomes a NativeFuncCall creator named after the
-		 *        function. Methods are skipped for now (Self-pin semantics
-		 *        land with the object-model work). Duplicate names are
-		 *        skipped (registerNode already refuses them). Returns the
-		 *        number of creators added.
-		 */
-        std::size_t populateFromReflection(const lux::meta::ReflectionRegistry& reflection);
+         * @brief Populates the palette from the reflection registry: every
+         *        FREE function with a callable invoker and a graph-mappable
+         *        signature (scalar / pointer parameters, void or scalar
+         *        return) becomes a NativeFuncCall creator named after the
+         *        function. Methods are skipped for now (Self-pin semantics
+         *        land with the object-model work). Duplicate names are
+         *        skipped (registerNode already refuses them). Returns the
+         *        number of creators added.
+         */
+        std::size_t populateFromReflection(const lux::meta::ReflectionRegistry& reflection, object::CodeLease code);
 
         NodeCreatInfo* findNodeByName(const std::string& name) const;
         NodeCreatInfo* findNodeByCategory(const std::string& name) const;
@@ -66,4 +67,4 @@ namespace lux::flowforge
         NodeCreatInfoNameMap node_name_map_; // for quick search
         NodeCreatInfoCategoryMap node_category_map_;
     };
-}
+} // namespace lux::flowforge

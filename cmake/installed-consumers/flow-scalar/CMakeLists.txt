@@ -68,6 +68,11 @@ add_test(
     COMMAND registered_value "$<TARGET_FILE:registered_value_plugin>"
 )
 
+add_test(
+    NAME installed.flow_registered_value_foreign_definition
+    COMMAND registered_value "$<TARGET_FILE:registered_value_plugin>" definition
+)
+
 add_executable(
     node_catalog
     "${CMAKE_CURRENT_LIST_DIR}/../../../modules/function/flowforge/test/node_catalog.cpp"

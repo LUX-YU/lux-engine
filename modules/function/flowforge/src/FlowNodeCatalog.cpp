@@ -265,7 +265,10 @@ namespace lux::flowforge
         candidates.reserve(registrations.size());
         for (const auto& value : registrations)
         {
-            candidates.emplace_back(new FlowNodeType(value));
+            // The catalog can itself live in an extension's static copy of this module.
+            // Keep code outside that copy's destructor and shared control-block return path.
+            auto definition = std::shared_ptr<const FlowNodeType>(new FlowNodeType(value));
+            candidates.push_back(object::pinCodeOwner(value.code, std::move(definition)));
         }
         types_.reserve(types_.size() + candidates.size());
         for (auto& candidate : candidates)

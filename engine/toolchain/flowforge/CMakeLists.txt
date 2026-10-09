@@ -105,6 +105,11 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
         NAME flowforge.registered_value_plugin
         COMMAND flowforge_registered_value_test "$<TARGET_FILE:flowforge_registered_value_plugin>"
     )
+
+    add_test(
+        NAME flowforge.registered_value_foreign_definition
+        COMMAND flowforge_registered_value_test "$<TARGET_FILE:flowforge_registered_value_plugin>" definition
+    )
 endif()
 
 if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)

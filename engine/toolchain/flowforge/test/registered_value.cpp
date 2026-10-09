@@ -43,7 +43,7 @@ namespace
         );
     }
 
-    FlowGraph example(bool reject, const FlowNodeRegistration& definition)
+    FlowGraph example(bool reject, std::shared_ptr<const FlowNodeType> type)
     {
         FlowGraph graph;
         const auto* integer = &meta::ref_type_of_v<int>;
@@ -55,9 +55,6 @@ namespace
         require(graph.addExport({{1}, graph.nodeId(&entry), 41, {}}));
         Node* polynomial{};
         {
-            FlowNodeCatalog catalog;
-            require(catalog.add(std::span{&definition, 1}).has_value());
-            auto type = catalog.find(definition.identity.id);
             auto payload = type->create();
             require(payload.has_value());
             payload->get<Polynomial>()->reject = reject;
@@ -87,20 +84,38 @@ int main(int argc, char** argv)
     std::weak_ptr<engine::platform::DynamicLibrary> observed;
     {
         auto definition = registration();
-        if (argc == 2)
+        std::shared_ptr<const FlowNodeType> type;
+        if (argc >= 2)
         {
             auto library = std::make_shared<engine::platform::DynamicLibrary>(std::filesystem::path{argv[1]});
             require(library->is_loaded());
-            using Entry = void(FlowNodeRegistration&, const object::CodeLease&) noexcept;
-            const auto entry = library->get_symbol<Entry>("registerPolynomial");
-            require(entry != nullptr);
-            entry(definition, object::CodeLease::plugin(library));
+            if (argc == 3)
+            {
+                using Entry = void(std::shared_ptr<const FlowNodeType>&, const object::CodeLease&) noexcept;
+                const auto entry = library->get_symbol<Entry>("makeDefinition");
+                require(entry != nullptr);
+                entry(type, object::CodeLease::plugin(library));
+            }
+            else
+            {
+                using Entry = void(FlowNodeRegistration&, const object::CodeLease&) noexcept;
+                const auto entry = library->get_symbol<Entry>("registerPolynomial");
+                require(entry != nullptr);
+                entry(definition, object::CodeLease::plugin(library));
+            }
             observed = library;
         }
-        auto graph = example(false, definition);
-        auto invalid = example(true, definition);
+        if (!type)
+        {
+            FlowNodeCatalog catalog;
+            require(catalog.add(std::span{&definition, 1}).has_value());
+            type = catalog.find(definition.identity.id);
+        }
+        auto graph = example(false, type);
+        auto invalid = example(true, type);
+        type.reset();
         definition = {};
-        require(argc != 2 || !observed.expired());
+        require(argc < 2 || !observed.expired());
         auto object = compileFlowForgeObject(graph, {.module_name = "registered_polynomial"});
         if (!object)
         {

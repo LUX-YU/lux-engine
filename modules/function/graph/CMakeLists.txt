@@ -12,6 +12,7 @@ add_component(
     NAMESPACE      lux::engine::function
     OUTPUT_NAME    lux_engine_function_graph
     SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/GraphEdit.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/GraphLayout.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/GraphTopology.cpp
 )
@@ -30,3 +31,11 @@ component_add_transitive_commands(
     graph
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time algorithm)"
 )
+
+if(BUILD_TESTING)
+    add_executable(graph_edit_test test/edit.cpp)
+
+    target_link_libraries(graph_edit_test PRIVATE lux::engine::function::graph)
+
+    add_test(NAME graph.edit COMMAND graph_edit_test)
+endif()

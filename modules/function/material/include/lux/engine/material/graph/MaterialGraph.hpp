@@ -12,7 +12,7 @@
 #include <vector>
 
 #include <lux/engine/material/graph/Node.hpp>
-#include <lux/engine/function/graph/GraphLayout.hpp>
+#include <lux/engine/function/graph/GraphEdit.hpp>
 #include <lux/engine/description/MaterialEnums.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/material/graph/visibility.h>
@@ -124,7 +124,6 @@ namespace lux::material
 
     private:
         friend class MaterialGraphEdit;
-        [[nodiscard]] bool registerNodeStructure(Node& node, bool preserve_pin_ids) noexcept;
 
         std::unordered_map<NodeId, std::unique_ptr<Node>> nodes_;
         lux::graph::GraphTopology topology_;
@@ -166,12 +165,10 @@ namespace lux::material
         using NodeStorage = std::unordered_map<NodeId, std::unique_ptr<Node>>;
         explicit MaterialGraphEdit(MaterialGraph&);
         MaterialGraph* target_;
-        lux::graph::GraphTopology topology_;
-        lux::graph::GraphLayout layout_;
+        lux::graph::GraphEdit structure_;
         std::vector<std::pair<NodeId, NodeStorage::node_type>> nodes_;
         std::vector<const Node*> inserted_;
         bool committed_{};
-        bool topology_changed_{};
     };
 
 } // namespace lux::material

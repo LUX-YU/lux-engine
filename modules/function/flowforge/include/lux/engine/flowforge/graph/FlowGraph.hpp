@@ -3,7 +3,7 @@
 #include "NodeBase.hpp"
 #include <lux/cxx/container/SparseSet.hpp>
 #include <lux/engine/flowforge/script/ScriptGraph.hpp>
-#include <lux/engine/function/graph/GraphLayout.hpp>
+#include <lux/engine/function/graph/GraphEdit.hpp>
 #include <memory>
 #include <new>
 #include <vector>
@@ -325,14 +325,13 @@ namespace lux::flowforge
             NodeId id;
         };
         FlowGraph* target_;
-        lux::graph::GraphTopology topology_;
-        lux::graph::GraphLayout layout_;
+        lux::graph::GraphEdit structure_;
         lux::cxx::AutoSparseSet<NodeStorage, 1> nodes_;
         std::vector<Insertion> insert_;
         std::vector<std::pair<Pin*, PinId>> pins_;
         std::vector<NodeId> inserted_ids_;
         std::vector<std::size_t> keep_, erase_;
         std::vector<std::unique_ptr<Node>> removed_;
-        bool topology_changed_{}, layout_changed_{}, storage_changed_{};
+        bool storage_changed_{};
     };
 } // namespace lux::flowforge

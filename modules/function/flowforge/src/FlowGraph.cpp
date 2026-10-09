@@ -1,5 +1,5 @@
-#include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <exception>
+#include <lux/engine/flowforge/graph/FlowGraph.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -438,36 +438,25 @@ namespace lux::flowforge
 
 namespace lux::flowforge
 {
-    FlowGraphEdit::FlowGraphEdit(FlowGraph& target) : target_(&target) {}
+    FlowGraphEdit::FlowGraphEdit(FlowGraph& target) : target_(&target), structure_(target.topology_, target.layout_) {}
+
     FlowGraphEdit::~FlowGraphEdit() = default;
+
     FlowGraphEdit::FlowGraphEdit(FlowGraphEdit&& other) noexcept
-        : target_(std::exchange(other.target_, nullptr)), topology_(std::move(other.topology_)),
-          layout_(std::move(other.layout_)), nodes_(std::move(other.nodes_)), insert_(std::move(other.insert_)),
-          pins_(std::move(other.pins_)), inserted_ids_(std::move(other.inserted_ids_)), keep_(std::move(other.keep_)),
-          erase_(std::move(other.erase_)), removed_(std::move(other.removed_)),
-          topology_changed_(other.topology_changed_), layout_changed_(other.layout_changed_),
-          storage_changed_(other.storage_changed_)
-    {}
+        : target_(std::exchange(other.target_, nullptr)), structure_(std::move(other.structure_)),
+          nodes_(std::move(other.nodes_)), insert_(std::move(other.insert_)), pins_(std::move(other.pins_)),
+          inserted_ids_(std::move(other.inserted_ids_)), keep_(std::move(other.keep_)), erase_(std::move(other.erase_)),
+          removed_(std::move(other.removed_)), storage_changed_(other.storage_changed_)
+    {
+    }
 
     FlowGraphEdit::Result FlowGraphEdit::prepare(FlowGraph& graph, const FlowGraphChange& change)
     {
         using E = lux::graph::EGraphTopologyError;
-        const auto failure = [](E error, NodeId node = {}, PinId pin = {}) {
-            return lux::cxx::unexpected(lux::graph::GraphTopologyFailure{error, node, pin});
-        };
+        const auto failure = [](E error, NodeId node = {}, PinId pin = {})
+        { return lux::cxx::unexpected(lux::graph::GraphTopologyFailure{error, node, pin}); };
         FlowGraphEdit plan(graph);
         plan.storage_changed_ = !change.insert.empty() || !change.erase.empty();
-        plan.topology_changed_ = plan.storage_changed_ || !change.connect.empty() || !change.disconnect.empty();
-        plan.layout_changed_ = !change.erase.empty() || !change.place.empty() || !change.unplace.empty();
-        if (plan.topology_changed_)
-        {
-            plan.topology_ = graph.topology_;
-        }
-        if (plan.layout_changed_)
-        {
-            plan.layout_ = graph.layout_;
-        }
-        const auto& final_topology = plan.topology_changed_ ? plan.topology_ : graph.topology_;
         for (const auto id : change.erase)
         {
             const auto* node = graph.findNodeById(id);
@@ -495,10 +484,14 @@ namespace lux::flowforge
             {
                 if (exported.entry_node_id == id)
                 {
-                    const bool replaced_entry = std::ranges::any_of(change.insert, [&](const auto* entry) {
-                        return entry && *entry && (*entry)->id() == id &&
-                               (*entry)->operation() == ENodeOperation::ON_EVENT;
-                    });
+                    const bool replaced_entry = std::ranges::any_of(
+                        change.insert,
+                        [&](const auto* entry)
+                        {
+                            return entry && *entry && (*entry)->id() == id &&
+                                   (*entry)->operation() == ENodeOperation::ON_EVENT;
+                        }
+                    );
                     if (!replaced_entry)
                     {
                         return failure(E::INVALID_ID, id);
@@ -508,7 +501,7 @@ namespace lux::flowforge
         }
         for (const auto& link : change.disconnect)
         {
-            auto result = plan.topology_.disconnect(link.from, link.to);
+            auto result = plan.structure_.disconnect(link.from, link.to);
             if (!result)
             {
                 return lux::cxx::unexpected(result.error());
@@ -516,12 +509,11 @@ namespace lux::flowforge
         }
         for (const auto id : change.erase)
         {
-            auto removed = plan.topology_.detachNode(id);
+            auto removed = plan.structure_.detachNode(id);
             if (!removed)
             {
                 return lux::cxx::unexpected(removed.error());
             }
-            static_cast<void>(plan.layout_.erase(id));
         }
         if (plan.storage_changed_)
         {
@@ -558,7 +550,8 @@ namespace lux::flowforge
                 return failure(E::DUPLICATE_NODE, (*source)->id());
             }
             auto& node = **source;
-            const auto owns_definition = [&](const FuncDefNode* definition) {
+            const auto owns_definition = [&](const FuncDefNode* definition)
+            {
                 if (!definition)
                 {
                     return false;
@@ -570,9 +563,10 @@ namespace lux::flowforge
                         return std::ranges::find(change.erase, storage.node->id()) == change.erase.end();
                     }
                 }
-                return std::ranges::any_of(change.insert, [&](const auto* insertion) {
-                    return insertion && insertion->get() == definition;
-                });
+                return std::ranges::any_of(
+                    change.insert,
+                    [&](const auto* insertion) { return insertion && insertion->get() == definition; }
+                );
             };
             if ((node.operation() == ENodeOperation::GRAPH_FUNC_CALL &&
                  !owns_definition(static_cast<const GraphFuncCallNode&>(node).callee())) ||
@@ -619,7 +613,7 @@ namespace lux::flowforge
             const bool restoring = change.preserve_insert_ids;
             if (restoring)
             {
-                auto result = plan.topology_.insertNode({id, nodeType(node.operation())});
+                auto result = plan.structure_.insertNode({id, nodeType(node.operation())});
                 if (!result)
                 {
                     return lux::cxx::unexpected(result.error());
@@ -627,7 +621,7 @@ namespace lux::flowforge
             }
             else
             {
-                auto result = plan.topology_.addNode(nodeType(node.operation()));
+                auto result = plan.structure_.addNode(nodeType(node.operation()));
                 if (!result)
                 {
                     return lux::cxx::unexpected(result.error());
@@ -654,7 +648,7 @@ namespace lux::flowforge
                     if (restoring)
                     {
                         auto result =
-                            plan.topology_.insertPin({pin_id, id, direction, fanCap(pin->kind()), pinSemantic(*pin)});
+                            plan.structure_.insertPin({pin_id, id, direction, fanCap(pin->kind()), pinSemantic(*pin)});
                         if (!result)
                         {
                             return lux::cxx::unexpected(result.error());
@@ -662,7 +656,7 @@ namespace lux::flowforge
                     }
                     else
                     {
-                        auto result = plan.topology_.addPin(id, direction, fanCap(pin->kind()), pinSemantic(*pin));
+                        auto result = plan.structure_.addPin(id, direction, fanCap(pin->kind()), pinSemantic(*pin));
                         if (!result)
                         {
                             return lux::cxx::unexpected(result.error());
@@ -681,12 +675,13 @@ namespace lux::flowforge
         {
             if (!assigned.valid())
             {
-                const auto insertion = std::ranges::find_if(plan.insert_, [&](const auto& entry) {
-                    return entry.source->get() == pin->node();
-                });
+                const auto insertion = std::ranges::find_if(
+                    plan.insert_,
+                    [&](const auto& entry) { return entry.source->get() == pin->node(); }
+                );
                 const auto direction =
                     isInput(pin->kind()) ? lux::graph::EPinDirection::INPUT : lux::graph::EPinDirection::OUTPUT;
-                auto result = plan.topology_.addPin(insertion->id, direction, fanCap(pin->kind()), pinSemantic(*pin));
+                auto result = plan.structure_.addPin(insertion->id, direction, fanCap(pin->kind()), pinSemantic(*pin));
                 if (!result)
                 {
                     return lux::cxx::unexpected(result.error());
@@ -694,7 +689,8 @@ namespace lux::flowforge
                 assigned = *result;
             }
         }
-        const auto pin_at = [&](PinId id) -> const Pin* {
+        const auto pin_at = [&](PinId id) -> const Pin*
+        {
             for (const auto& [pin, assigned] : plan.pins_)
             {
                 if (assigned == id)
@@ -708,7 +704,11 @@ namespace lux::flowforge
         {
             const auto* from = pin_at(link.from);
             const auto* to = pin_at(link.to);
-            if (!from || !to || !final_topology.findPin(link.from) || !final_topology.findPin(link.to))
+            const bool has_payload_pins = from != nullptr && to != nullptr;
+            const bool has_structural_pins = plan.structure_.topology().findPin(link.from) != nullptr &&
+                                             plan.structure_.topology().findPin(link.to) != nullptr;
+            const bool has_missing_pin = !has_payload_pins || !has_structural_pins;
+            if (has_missing_pin)
             {
                 return failure(E::UNKNOWN_PIN, {}, !from ? link.from : link.to);
             }
@@ -727,7 +727,7 @@ namespace lux::flowforge
                     return failure(E::INVALID_TYPE, {}, link.to);
                 }
             }
-            auto result = plan.topology_.connect(link.from, link.to);
+            auto result = plan.structure_.connect(link.from, link.to);
             if (!result)
             {
                 return lux::cxx::unexpected(result.error());
@@ -743,11 +743,11 @@ namespace lux::flowforge
         }
         for (const auto id : change.unplace)
         {
-            if (!final_topology.findNode(id))
+            auto result = plan.structure_.unplace(id);
+            if (!result)
             {
-                return failure(E::UNKNOWN_NODE, id);
+                return lux::cxx::unexpected(result.error());
             }
-            static_cast<void>(plan.layout_.erase(id));
         }
         return plan;
     }
@@ -756,6 +756,7 @@ namespace lux::flowforge
     {
         return inserted_ids_;
     }
+
     std::span<const std::pair<Pin*, PinId>> FlowGraphEdit::assignedPins() const noexcept
     {
         return pins_;
@@ -772,19 +773,7 @@ namespace lux::flowforge
                 lux::graph::GraphTopologyFailure{lux::graph::EGraphTopologyError::INVALID_ID, id}
             );
         }
-        const auto& topology = topology_changed_ ? topology_ : target_->topology_;
-        if (!topology.findNode(id) || !std::isfinite(value.x) || !std::isfinite(value.y))
-        {
-            return lux::cxx::unexpected(
-                lux::graph::GraphTopologyFailure{lux::graph::EGraphTopologyError::INVALID_ID, id}
-            );
-        }
-        if (!layout_changed_)
-        {
-            layout_ = target_->layout_;
-            layout_changed_ = true;
-        }
-        return layout_.set(id, value);
+        return structure_.place(id, value);
     }
 
     void FlowGraphEdit::commit() noexcept
@@ -819,14 +808,7 @@ namespace lux::flowforge
         {
             std::swap(graph.nodes_, nodes_);
         }
-        if (topology_changed_)
-        {
-            std::swap(graph.topology_, topology_);
-        }
-        if (layout_changed_)
-        {
-            std::swap(graph.layout_, layout_);
-        }
+        structure_.commit();
         target_ = nullptr;
     }
 

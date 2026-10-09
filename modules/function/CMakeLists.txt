@@ -90,6 +90,19 @@ if(TARGET material_graph)
     list(APPEND LUX_FUNCTION_COMPONENTS material_graph)
 endif()
 
+if(BUILD_TESTING AND TARGET material_graph)
+    add_executable(graph_domain_edit_test graph/test/domain_edit.cpp)
+
+    target_link_libraries(
+        graph_domain_edit_test
+        PRIVATE lux::engine::function::material_graph lux::engine::function::flowforge
+    )
+
+    add_test(NAME graph.material_edit COMMAND graph_domain_edit_test material)
+
+    add_test(NAME graph.flow_edit COMMAND graph_domain_edit_test flow)
+endif()
+
 
 if(LUX_FUNCTION_COMPONENTS)
     lux_engine_install_components(

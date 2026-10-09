@@ -1,6 +1,5 @@
 #include "lux/engine/flowforge/graph/NodeBase.hpp"
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
-#include <lux/engine/flowforge/graph/FlowGraph.hpp>
 
 namespace lux::flowforge
 {
@@ -40,9 +39,14 @@ namespace lux::flowforge
 
     // ====================== SequenceNode ======================
 
-    SequenceNode::SequenceNode() : ExecIntermediateNode(ENodeOperation::SEQUENCE, "->", "->")
+    SequenceNode::SequenceNode(SequenceSchema schema) : ExecIntermediateNode(ENodeOperation::SEQUENCE, "->", "->")
     {
         setName("Sequence");
+        exec_out_pins_.reserve(schema.additional_outputs);
+        for (std::size_t index = 0; index != schema.additional_outputs; ++index)
+        {
+            exec_out_pins_.push_back(std::make_unique<ExecOutPin>(this));
+        }
     }
 
     /**
@@ -52,43 +56,6 @@ namespace lux::flowforge
     const std::vector<std::unique_ptr<ExecOutPin>>& SequenceNode::execOutPins() const
     {
         return exec_out_pins_;
-    }
-
-    /**
-     * @brief Adds an ExecOutPin to this SequenceNode.
-     */
-    ExecOutPin* SequenceNode::addExecOutPin(PinId stable_id)
-    {
-        auto pin = std::make_unique<ExecOutPin>(this);
-        const bool is_invalid_restore =
-            stable_id.valid() && (graph() == nullptr || !graph()->assignPinId(*pin, stable_id));
-        if (is_invalid_restore)
-        {
-            return nullptr;
-        }
-        const bool is_unregistered = graph() && !graph()->pinId(pin.get()).valid();
-        if (is_unregistered)
-        {
-            return nullptr;
-        }
-        auto* result = pin.get();
-        exec_out_pins_.push_back(std::move(pin));
-        return result;
-    }
-
-    /**
-     * @brief Removes the last ExecOutPin from this SequenceNode.
-     */
-    PinId SequenceNode::removeExecOutPin()
-    {
-        if (exec_out_pins_.empty())
-        {
-            return {};
-        }
-        const auto id = (graph() ? graph()->pinId(exec_out_pins_.back().get()) : PinId{});
-        removeOutPin(exec_out_pins_.back().get());
-        exec_out_pins_.pop_back();
-        return id;
     }
 
     // ====================== ForLoopNode ======================

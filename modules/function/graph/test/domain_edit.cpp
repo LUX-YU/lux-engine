@@ -117,9 +117,8 @@ namespace
     void flowCommit()
     {
         flowforge::FlowGraph graph;
-        auto sequence = std::make_unique<flowforge::SequenceNode>();
-        require(sequence->addExecOutPin());
-        require(sequence->addExecOutPin());
+        auto sequence = std::make_unique<flowforge::SequenceNode>(flowforge::SequenceSchema{2});
+        require(sequence->outPins().size() == 3);
         const auto index = graph.addNode(std::move(sequence));
         require(index.valid());
         const auto* original = graph.findNodeById(index);

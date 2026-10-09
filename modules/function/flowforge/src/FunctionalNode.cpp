@@ -47,7 +47,7 @@ namespace lux::flowforge
         {
             std::terminate();
         }
-        rebuildPins();
+        buildPins();
         setName(info().name);
     }
 
@@ -73,28 +73,9 @@ namespace lux::flowforge
         }
     }
 
-    /**
-     * @brief Drops + de-registers all parameter pins and the result pin, then rebuilds
-     *        them from the immutable definition. The ONE pin-(re)build path shared by the
-     *        constructors, rebind and reconstruct, reproducing fresh-construction pin
-     *        order: in_pins_ = [exec_in, params..., Self?], out_pins_ = [exec_out, result].
-     */
-    void NativeFuncCall::rebuildPins()
+    // Build the complete detached schema once. Replacement is a FlowGraphEdit transaction.
+    void NativeFuncCall::buildPins()
     {
-
-        // De-register the old pins from the Node's pin lists BEFORE destroying them —
-        // the Pin destructors only unlink links, they do not remove node-side entries.
-        for (auto& pin : data_in_pins_)
-        {
-            removeInPin(pin.get());
-        }
-        data_in_pins_.clear();
-        if (result_)
-        {
-            removeOutPin(result_.get());
-            result_.reset();
-        }
-
         result_ = std::make_unique<DataOutPin>(this, DataPinInfo{"Return", &info().return_type});
         createPins(info().parameters);
         if (const auto* self_type = ownerType())
@@ -105,25 +86,9 @@ namespace lux::flowforge
         }
     }
 
-    void NativeFuncCall::rebind(Definition definition) noexcept
-    {
-        if (!definition)
-        {
-            std::terminate();
-        }
-        auto previous = std::exchange(definition_, std::move(definition));
-        rebuildPins();
-        setName(info().name);
-    }
-
     const lux::meta::RefType* NativeFuncCall::ownerType() const noexcept
     {
         return definition_->receiver();
-    }
-
-    void NativeFuncCall::reconstruct()
-    {
-        rebuildPins();
     }
 
     /**

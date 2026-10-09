@@ -248,11 +248,9 @@ namespace lux::flowforge
     private:
         friend class FlowGraphEdit;
         friend class Node;
-        friend class SequenceNode;
         // Dynamic pin construction/restoration updates topology through these internal operations.
         [[nodiscard]] bool registerPin(Pin& pin, PinId restored = {}) noexcept;
         void unregisterPin(Pin& pin) noexcept;
-        [[nodiscard]] bool assignPinId(Pin& pin, PinId id) noexcept;
         [[nodiscard]] bool attachNodeStructure(NodeId id, Node& node, std::span<const PinId> pins) noexcept;
         [[nodiscard]] std::vector<PinId> snapshotPins(const Node&) const;
         void forgetPins(const Node&) noexcept;

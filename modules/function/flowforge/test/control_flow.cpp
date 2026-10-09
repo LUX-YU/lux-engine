@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <source_location>
+#include <utility>
 
 namespace
 {
@@ -20,9 +21,9 @@ namespace
         }
     }
 
-    template <class T> T& add(FlowGraph& graph)
+    template <class T, class... Args> T& add(FlowGraph& graph, Args&&... args)
     {
-        auto candidate = std::make_unique<T>();
+        auto candidate = std::make_unique<T>(std::forward<Args>(args)...);
         auto& result = *candidate;
         require(graph.addNode(std::move(candidate)).valid());
         return result;
@@ -66,12 +67,12 @@ namespace
     {
         FlowGraph graph;
         auto& branch = add<BranchNode>(graph);
-        auto& left = add<SequenceNode>(graph);
-        auto& right = add<SequenceNode>(graph);
+        auto& left = add<SequenceNode>(graph, SequenceSchema{1});
+        auto& right = add<SequenceNode>(graph, SequenceSchema{1});
         auto& second = add<ReturnNode>(graph);
         auto& first = add<ReturnNode>(graph);
-        auto* left_second = left.addExecOutPin();
-        auto* right_second = right.addExecOutPin();
+        auto* left_second = left.execOutPins().front().get();
+        auto* right_second = right.execOutPins().front().get();
         require(left_second != nullptr && right_second != nullptr);
         link(graph, branch.execOutPinUp(), left.execInPin());
         link(graph, branch.execOutPinDown(), right.execInPin());

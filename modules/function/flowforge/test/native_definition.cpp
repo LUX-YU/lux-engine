@@ -4,6 +4,7 @@
 #include <lux/engine/flowforge/graph/NodeRegistry.hpp>
 #include <lux/engine/meta/MetaCompat.hpp>
 
+#include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -44,6 +45,58 @@ namespace
         }
     };
 
+    NativeFuncCall* replaceNative(FlowGraph& graph, NodeId id, NativeFuncCall::Definition definition)
+    {
+        const auto* old = static_cast<const NativeFuncCall*>(graph.findNodeById(id));
+        std::unique_ptr<Node> candidate = std::make_unique<NativeFuncCall>(std::move(definition));
+        auto* result = static_cast<NativeFuncCall*>(candidate.get());
+        std::vector<PinId> pins(candidate->inPins().size() + candidate->outPins().size());
+        pins.front() = graph.pinId(&old->execInPin());
+        pins[candidate->inPins().size()] = graph.pinId(&old->execOutPin());
+        const std::array erase{id};
+        const std::array<FlowNodeInsertion, 1> insert{{{id, &candidate, pins}}};
+        std::vector<graph::GraphLayoutEntry> layout;
+        if (const auto* saved = graph.layout().find(id))
+        {
+            layout.push_back({id, *saved});
+        }
+        auto plan = FlowGraphEdit::prepare(graph, {.insert = insert, .erase = erase, .place = layout});
+        require(plan.has_value() && candidate && graph.findNodeById(id) == old);
+        plan->commit();
+        auto removed = plan->takeRemoved();
+        require(!candidate && removed.size() == 1 && graph.findNodeById(id) == result);
+        require(graph.pinId(&result->execInPin()) == pins.front());
+        require(graph.pinId(&result->execOutPin()) == pins[result->inPins().size()]);
+        // Old RuntimeObject defaults die before their definition/code. Disposal is outside commit.
+        removed.clear();
+        return result;
+    }
+
+    void exhaustedReplacement()
+    {
+        Input input;
+        auto definition = NativeCallDefinition::create(input.function.invokable, object::CodeLease::builtin());
+        require(definition.has_value());
+        FlowGraph graph;
+        auto owner = std::make_unique<NativeFuncCall>(*definition);
+        auto* original = owner.get();
+        require(graph.insertNode({{1}, std::move(owner), {{1}, {2}, {3}, {UINT64_MAX}}}));
+        const asset::AssetId asset{std::array<std::uint8_t, 16>{1}};
+        auto before = captureFlowSource(asset, "native", graph);
+        require(before.has_value());
+        std::unique_ptr<Node> candidate = std::make_unique<NativeFuncCall>(*definition);
+        const std::array<PinId, 4> pins{{{1}, {}, {3}, {}}};
+        const std::array<NodeId, 1> erase{{{1}}};
+        const std::array<FlowNodeInsertion, 1> insert{{{{1}, &candidate, pins}}};
+        auto refused = FlowGraphEdit::prepare(graph, {.insert = insert, .erase = erase});
+        require(!refused && candidate && graph.findNodeById({1}) == original);
+        auto after = captureFlowSource(asset, "native", graph);
+        require(after.has_value() && *before == *after);
+        require(graph.pinId(original->dataInPins().front().get()) == PinId{2});
+        require(graph.pinId(&original->result()) == PinId{UINT64_MAX});
+        std::puts("PASS native schema exhaustion: refused candidate, source/defaults/identities intact");
+    }
+
     void check(const NativeFuncCall& node)
     {
         require(node.info().name == "compute");
@@ -67,6 +120,7 @@ int main()
     using namespace lux;
     using namespace lux::flowforge;
     meta::meta_module_init();
+    exhaustedReplacement();
     {
         NativeFuncCall::Definition definition;
         {
@@ -83,7 +137,7 @@ int main()
         FlowGraph graph;
         const auto exec_in = graph.pinId(&node->execInPin());
         const auto exec_out = graph.pinId(&node->execOutPin());
-        node->reconstruct();
+        node = std::make_unique<NativeFuncCall>(node->definition());
         check(*node);
         require(graph.pinId(&node->execInPin()) == exec_in && graph.pinId(&node->execOutPin()) == exec_out);
 
@@ -104,8 +158,12 @@ int main()
         require(recaptured.has_value());
         require(*captured == *recaptured);
         auto* restored_node = static_cast<NativeFuncCall*>(restored.nodes().front().node);
-        restored_node->reconstruct();
+        const auto restored_id = restored.nodeId(restored_node);
+        require(restored.layout().set(restored_id, {4.0F, 11.0F, true}).has_value());
+        restored_node = replaceNative(restored, restored.nodeId(restored_node), restored_node->definition());
         check(*restored_node);
+        require(restored.layout().find(restored_id)->x == 4.0F);
+        require(restored.layout().find(restored_id)->y == 11.0F);
 
         int released{};
         NativeFuncCall::Definition method;
@@ -127,7 +185,7 @@ int main()
             require(result.has_value());
             method = std::move(*result);
         }
-        restored_node->rebind(std::move(method));
+        restored_node = replaceNative(restored, restored.nodeId(restored_node), std::move(method));
         require(released == 0);
         require(restored_node->ownerType()->name == "Receiver");
         require(restored_node->dataInPins().size() == 2U);
@@ -135,7 +193,7 @@ int main()
         Input replacement;
         auto next = NativeCallDefinition::create(replacement.function.invokable, object::CodeLease::builtin());
         require(next.has_value());
-        restored_node->rebind(std::move(*next));
+        restored_node = replaceNative(restored, restored.nodeId(restored_node), std::move(*next));
         require(released == 1);
         require(restored_node->ownerType() == nullptr);
         check(*restored_node);
@@ -156,8 +214,9 @@ int main()
         }
         auto& native = static_cast<NativeFuncCall&>(*palette_node);
         check(native);
-        native.reconstruct();
-        check(native);
+        auto recreated = std::make_unique<NativeFuncCall>(native.definition());
+        palette_node.reset();
+        check(*recreated);
 
         NativeFuncCall::Definition base_call;
         NativeFuncCall::Definition derived_call;

@@ -411,18 +411,6 @@ namespace lux::flowforge
         }
     }
 
-    bool FlowGraph::assignPinId(Pin& pin, PinId id) noexcept
-    {
-        const bool is_invalid_id = !id.valid() || topology_.findPin(id) != nullptr;
-        const bool is_foreign_pin = !pin.node() || pin.node()->graph() != this;
-        if (is_invalid_id || is_foreign_pin)
-        {
-            return false;
-        }
-        unregisterPin(pin);
-        return registerPin(pin, id);
-    }
-
     std::vector<PinId> FlowGraph::snapshotPins(const Node& node) const
     {
         std::vector<PinId> result;

@@ -1,3 +1,5 @@
+#pragma once
+
 #include "NodeBase.hpp"
 
 namespace lux::flowforge
@@ -43,6 +45,11 @@ namespace lux::flowforge
         DataInPin data_in_pin_; ///< The boolean condition input pin.
     };
 
+    struct SequenceSchema final
+    {
+        std::size_t additional_outputs{};
+    };
+
     /**
      * @class SequenceNode
      * @brief A node that sequences multiple ExecOutPins from a single ExecInPin.
@@ -50,26 +57,14 @@ namespace lux::flowforge
     class SequenceNode : public ExecIntermediateNode
     {
     public:
-        SequenceNode();
+        // Complete schema is constructed off graph; replace it through FlowGraphEdit.
+        explicit SequenceNode(SequenceSchema schema = {});
 
         /**
          * @brief Gets the list of ExecOutPins for this SequenceNode.
          * @return A const reference to a vector of unique_ptr to ExecOutPins.
          */
         const std::vector<std::unique_ptr<ExecOutPin>>& execOutPins() const;
-
-        /**
-         * @brief Adds a new ExecOutPin to this SequenceNode.
-         */
-        [[nodiscard]] ExecOutPin* addExecOutPin(PinId stable_id = {});
-
-        /**
-         * @brief Removes the last ExecOutPin from this SequenceNode.
-         */
-        [[nodiscard]] PinId removeExecOutPin();
-
-        using ExecIntermediateNode::addExecOutPin;
-        using ExecIntermediateNode::removeExecOutPin;
 
     private:
         std::vector<std::unique_ptr<ExecOutPin>> exec_out_pins_; ///< The executable output pins.

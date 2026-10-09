@@ -182,7 +182,7 @@ namespace
         auto& call = add<GraphFuncCallNode>(graph, graph.nodeId(&first), first);
         auto& nested = add<GraphFuncCallNode>(graph, graph.nodeId(&second), second);
         auto& recurse = add<GraphFuncCallNode>(graph, graph.nodeId(&first), first);
-        auto& sequence = add<SequenceNode>(graph);
+        auto& sequence = add<SequenceNode>(graph, SequenceSchema{1});
         auto desc = description();
         desc.kind = script::EScriptApiMethodKind::ASYNC_OPERATION;
         auto& asynchronous = add<ScriptAbilityNode>(graph, desc);
@@ -191,7 +191,7 @@ namespace
         link(graph, first.execOutPin(), nested.execInPin());
         link(graph, second.execOutPin(), sequence.execInPin());
         link(graph, sequence.execOutPin(), later.execInPin());
-        link(graph, *sequence.addExecOutPin(), asynchronous.execInPin());
+        link(graph, *sequence.execOutPins().front(), asynchronous.execInPin());
         link(graph, later.execOutPin(), recurse.execInPin());
         Options options{.script_abilities = ScriptAbilityNodeCatalogView{{&desc, 1}}};
         options.lifecycle.begin_play = 41;

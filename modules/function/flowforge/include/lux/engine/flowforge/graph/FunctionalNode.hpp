@@ -152,14 +152,15 @@ namespace lux::flowforge
         [[nodiscard]] const lux::meta::RefInvokable& info() const;
         [[nodiscard]] const lux::meta::RefType* ownerType() const noexcept;
 
-        // Keeps node/exec identity; rebuilt data pins lose their links as before. The old definition
-        // stays alive until every old pin and its default value has been destroyed.
-        void rebind(Definition) noexcept;
-        void reconstruct() override;
+        // Immutable signature can be shared by an off-graph replacement candidate.
+        [[nodiscard]] const Definition& definition() const noexcept
+        {
+            return definition_;
+        }
 
     private:
         void createPins(const std::vector<lux::meta::RefParam>&);
-        void rebuildPins();
+        void buildPins();
 
         Definition definition_;
         std::vector<std::unique_ptr<DataInPin>> data_in_pins_;

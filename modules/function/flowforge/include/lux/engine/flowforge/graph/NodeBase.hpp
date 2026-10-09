@@ -562,16 +562,6 @@ namespace lux::flowforge
         ENodeOperation operation() const;
 
         /**
-         * @brief Rebuilds this node's DYNAMIC pins from its current configuration
-         *        (e.g. a re-resolved reflected signature). Base implementation is a
-         *        no-op; nodes with reflection-driven or variable pin sets override it
-         *        (see NativeFuncCall). Links on rebuilt pins are dropped (cleanly
-         *        unlinked by the pin destructors) — the caller (the editor's
-         *        reconstruct path) re-validates and re-applies surviving links.
-         */
-        virtual void reconstruct() {}
-
-        /**
          * @brief Gets the user-defined name of this Node.
          * @return A const reference to the name string.
          */
@@ -659,55 +649,19 @@ namespace lux::flowforge
     template <typename Dervied> class THasExecOutPin
     {
     public:
-        void addExecOutPin(std::string_view name)
-        {
-            auto new_pin = new ExecOutPin(static_cast<Dervied*>(this), name);
-            extra_out_pins_.push_back(new_pin);
-        }
-
-        bool removeExecOutPin(size_t index)
-        {
-            if (index >= extra_out_pins_.size())
-            {
-                return false;
-            }
-            auto* pin = extra_out_pins_[index];
-            extra_out_pins_.erase(extra_out_pins_.begin() + index);
-            // De-register from the Node's out_pins_ BEFORE destruction — the Pin
-            // destructor only unlinks links, it does not remove the node-side entry.
-            static_cast<Dervied*>(this)->removeOutPin(pin);
-            delete pin;
-            return true;
-        }
-
-        bool removeExecOutPin(ExecOutPin* pin)
-        {
-            auto iter = std::find(extra_out_pins_.begin(), extra_out_pins_.end(), pin);
-            if (iter != extra_out_pins_.end())
-            {
-                extra_out_pins_.erase(iter);
-                static_cast<Dervied*>(this)->removeOutPin(pin);
-                delete pin;
-                return true;
-            }
-            return false;
-        }
-
-    public:
         THasExecOutPin(std::string_view name, std::initializer_list<std::string_view> out_pin_names = {})
             : fix_out_pin_(static_cast<Dervied*>(this), name)
         {
             for (auto name : out_pin_names)
             {
-                addExecOutPin(name);
+                extra_out_pins_.push_back(new ExecOutPin(static_cast<Dervied*>(this), name));
             }
         }
 
         ~THasExecOutPin()
         {
-            // Extra pins are heap-allocated and owned here; delete them (their
-            // destructors unlink any exec links). No removeOutPin needed — the
-            // whole node is being destroyed alongside its pin lists.
+            // The detached snapshot owns the complete schema. Pin destructors remove
+            // their borrows from Node's lists; graph removal already settled the topology.
             for (auto* pin : extra_out_pins_)
             {
                 delete pin;

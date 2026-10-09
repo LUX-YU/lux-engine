@@ -162,3 +162,18 @@ uses its existing environment/code lifetime, preserves the old typed parameter r
 exact pin semantic IDs, and still permits editable drafts independently of compile eligibility.
 Zero defaults are provided by the existing DataInPin initialization, not a second scalar initializer.
 The remaining control/native/Ability registrations, plain graph stores and graph UI are unfinished.
+
+## Dynamic schema replacement
+
+Sequence outputs and native signatures are constructed as complete detached candidates. A
+`SequenceSchema` declares additional outputs; `NativeFuncCall` retains one immutable definition.
+The old incremental add/remove/reconstruct/rebind methods are removed. Published schema changes
+use the existing `FlowGraphEdit` replacement (erase and insert the same NodeId), not callbacks from
+an attached node. Retained PinIds, surviving links and layout are explicit inputs to that transaction;
+zero pin entries request fresh identities. No second edit algorithm or implicit link repair is added.
+
+Preparation may fail, including identity exhaustion, without consuming candidate owners or changing
+the live source. Commit only exchanges prepared storage. Removed snapshots retain old pins, default
+values and native code until the caller disposes of them after commit. Undo may restore those exact
+identities. This closes the incremental dynamic-schema paths; the remaining polymorphic Node/Pin
+representation and Node.graph are still pending the full registered store migration.

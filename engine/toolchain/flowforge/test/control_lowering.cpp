@@ -109,8 +109,8 @@ namespace
         }
         else if (mode == 5)
         {
-            auto& sequence = add<SequenceNode>(graph);
-            auto* second = sequence.addExecOutPin();
+            auto& sequence = add<SequenceNode>(graph, SequenceSchema{1});
+            auto* second = sequence.execOutPins().front().get();
             require(second != nullptr);
             auto& branch = add<BranchNode>(graph);
             auto& left = add<SequenceNode>(graph);

@@ -389,12 +389,7 @@ namespace lux::flowforge
                 {
                     return fail(EFlowSourceError::SCHEMA_MISMATCH, "sequence outputs", source.id);
                 }
-                auto node = std::make_unique<SequenceNode>();
-                while (node->outPins().size() < source.outputs.size())
-                {
-                    static_cast<void>(node->addExecOutPin());
-                }
-                return std::unique_ptr<Node>(std::move(node));
+                return std::unique_ptr<Node>(std::make_unique<SequenceNode>(SequenceSchema{source.outputs.size() - 1}));
             }
             case ENodeOperation::FUNC_DEF_START:
             case ENodeOperation::ON_EVENT:

@@ -11,15 +11,16 @@
 #include <unordered_map>
 #include <vector>
 
-#include <lux/engine/material/graph/Node.hpp>
-#include <lux/engine/function/graph/GraphEdit.hpp>
 #include <lux/engine/description/MaterialEnums.hpp>
-#include <lux/engine/resource/identity/AssetId.hpp>
+#include <lux/engine/function/graph/GraphEdit.hpp>
+#include <lux/engine/material/graph/Node.hpp>
 #include <lux/engine/material/graph/visibility.h>
+#include <lux/engine/resource/identity/AssetId.hpp>
 
 namespace lux::material
 {
     class MaterialGraphEdit;
+
     /// A texture slot declared by the graph (-> ShadingModelDescriptor + descriptor
     /// layout set 2).
     struct TextureSlotDecl
@@ -75,7 +76,7 @@ namespace lux::material
         /// restoring a deleted node must reuse its original id, since both
         /// connections and recorded undo actions reference nodes by id). Returns
         /// Invalid NodeId if the id is already taken, invalid, or node is null;
-        /// next_id_ is bumped to the high-water mark so later addNode calls never
+        /// the topology identity allocator advances its high-water mark so later addNode calls never
         /// collide with it.
         NodeId addNodeWithId(NodeId id, std::unique_ptr<Node> node) noexcept;
 
@@ -96,14 +97,17 @@ namespace lux::material
         {
             return topology_;
         }
+
         [[nodiscard]] const lux::graph::GraphTopology& topology() const noexcept
         {
             return topology_;
         }
+
         [[nodiscard]] lux::graph::GraphLayout& layout() noexcept
         {
             return layout_;
         }
+
         [[nodiscard]] const lux::graph::GraphLayout& layout() const noexcept
         {
             return layout_;
@@ -112,9 +116,10 @@ namespace lux::material
         // A const graph lends const nodes. const unique_ptr alone would still expose mutable pointees.
         [[nodiscard]] auto nodes() const noexcept
         {
-            return std::views::transform(nodes_, [](const auto& entry) {
-                return std::pair<NodeId, const Node*>{entry.first, entry.second.get()};
-            });
+            return std::views::transform(
+                nodes_,
+                [](const auto& entry) { return std::pair<NodeId, const Node*>{entry.first, entry.second.get()}; }
+            );
         }
 
         lux::rdesc::ELightingTechnique shading_model = lux::rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS;
@@ -130,11 +135,19 @@ namespace lux::material
         lux::graph::GraphLayout layout_;
     };
 
+    // A borrowed payload paired with its store key. An invalid key requests a fresh identity on insertion;
+    // a valid key explicitly restores that identity. The payload never owns graph membership or NodeId.
+    struct MaterialNodeEntry final
+    {
+        NodeId id;
+        const Node* value{};
+    };
+
     // A transaction describes only affected nodes, links and positions. Node inputs remain borrowed.
     // An unassigned inserted node receives fresh node/pin identities during preparation.
     struct MaterialGraphChange final
     {
-        std::span<const Node* const> insert;
+        std::span<const MaterialNodeEntry> insert;
         std::span<const NodeId> erase;
         std::span<const lux::graph::LinkRecord> connect;
         std::span<const lux::graph::LinkRecord> disconnect;
@@ -152,7 +165,7 @@ namespace lux::material
         MaterialGraphEdit(const MaterialGraphEdit&) = delete;
         MaterialGraphEdit& operator=(const MaterialGraphEdit&) = delete;
 
-        [[nodiscard]] std::span<const Node* const> insertedNodes() const noexcept;
+        [[nodiscard]] std::span<const MaterialNodeEntry> insertedNodes() const noexcept;
         [[nodiscard]] lux::cxx::expected<void, lux::graph::GraphTopologyFailure> place(
             NodeId,
             lux::graph::GraphNodeLayout
@@ -167,7 +180,7 @@ namespace lux::material
         MaterialGraph* target_;
         lux::graph::GraphEdit structure_;
         std::vector<std::pair<NodeId, NodeStorage::node_type>> nodes_;
-        std::vector<const Node*> inserted_;
+        std::vector<MaterialNodeEntry> inserted_;
         bool committed_{};
     };
 

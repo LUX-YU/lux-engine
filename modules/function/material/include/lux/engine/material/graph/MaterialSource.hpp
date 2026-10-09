@@ -11,6 +11,7 @@ namespace lux::material
         std::string name;
         MaterialGraph graph;
     };
+
     struct MaterialSourceLimits final
     {
         std::size_t max_bytes{16U * 1024U * 1024U};
@@ -28,6 +29,7 @@ namespace lux::material
         UNKNOWN_NODE_KIND,
         INVALID_TOPOLOGY
     };
+
     struct MaterialSourceFailure final
     {
         EMaterialSourceError code{};
@@ -53,6 +55,7 @@ namespace lux::material
     ) noexcept;
     [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<void> validateMaterialNode(
         const Node&,
+        NodeId = {},
         MaterialSourceLimits = {}
     ) noexcept;
     // In-memory structural validation. Does not format/parse TOML or run the compiler.

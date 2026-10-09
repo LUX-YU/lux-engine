@@ -38,14 +38,14 @@ namespace
         require(baseline.has_value());
 
         material::MaterialGraph edited;
-        const std::array<const material::Node*, 2> inputs{&constant, &surface};
+        const std::array<material::MaterialNodeEntry, 2> inputs{{{{}, &constant}, {{}, &surface}}};
         material::MaterialGraphChange change;
         change.insert = inputs;
         auto edit = material::MaterialGraphEdit::prepare(edited, change);
         require(edit.has_value());
         require(edit->insertedNodes().size() == 2);
-        const auto from = edit->insertedNodes()[0]->outputs().front().id;
-        const auto to = edit->insertedNodes()[1]->inputs().front().id;
+        const auto from = edit->insertedNodes()[0].value->outputs().front().id;
+        const auto to = edit->insertedNodes()[1].value->inputs().front().id;
         edit->commit();
         const std::array<graph::LinkRecord, 1> links{{{from, to}}};
         change = {};
@@ -57,6 +57,15 @@ namespace
         require(actual.has_value());
         require(actual->gbuffer_spirv == baseline->gbuffer_spirv);
         require(actual->forward_spirv == baseline->forward_spirv);
+        material::MaterialGraph invalid;
+        constexpr material::NodeId invalid_id{1000000031};
+        auto invalid_payload = std::make_unique<material::SampleTextureNode>();
+        invalid_payload->texture_slot = 29;
+        require(invalid.addNodeWithId(invalid_id, std::move(invalid_payload)) == invalid_id);
+        require(invalid.addNode(std::make_unique<material::OutputSurfaceNode>()).valid());
+        auto failed = material::compileMaterial(invalid);
+        require(!failed && failed.error().code == material::EMaterialCompileError::INVALID_GRAPH);
+        require(failed.error().node_id == invalid_id);
         std::printf(
             "Material actual compiler: identical SPIR-V (%zu + %zu words)\n",
             actual->gbuffer_spirv.size(),

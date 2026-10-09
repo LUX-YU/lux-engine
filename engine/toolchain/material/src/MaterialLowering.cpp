@@ -170,7 +170,9 @@ namespace lux::material::compiler
         ShaderValueType mathResultType(graph::EMathOp op, ShaderValueType operand) noexcept
         {
             if (op == graph::EMathOp::DOT || op == graph::EMathOp::LENGTH)
+            {
                 return ShaderValueType::FLOAT;
+            }
             return operand;
         }
 
@@ -236,7 +238,8 @@ namespace lux::material::compiler
 
             Lowerer(const graph::MaterialGraph& g_, MaterialIR& r_, MaterialCompileFailure* e_)
                 : g(g_), result(r_), ir(r_.shader), error(e_)
-            {}
+            {
+            }
 
             bool fail(
                 std::string message,
@@ -246,7 +249,9 @@ namespace lux::material::compiler
             )
             {
                 if (error && ok) // keep the first error only
+                {
                     *error = MaterialCompileFailure{code, std::move(message), node_id, pin_index};
+                }
                 ok = false;
                 return false;
             }
@@ -259,12 +264,14 @@ namespace lux::material::compiler
             {
                 ShaderValueType result{};
                 if (!mapValueType(source, result))
+                {
                     fail(
                         "invalid material value type reached lowering",
                         EMaterialCompileError::INVALID_GRAPH,
                         node_id,
                         pin_index
                     );
+                }
                 return result;
             }
 
@@ -272,11 +279,13 @@ namespace lux::material::compiler
             {
                 EOp result{};
                 if (!mapMathOp(source, result))
+                {
                     fail(
                         "invalid material math operation reached lowering",
                         EMaterialCompileError::INVALID_GRAPH,
                         node_id
                     );
+                }
                 return result;
             }
 
@@ -305,7 +314,9 @@ namespace lux::material::compiler
             {
                 auto it = input_slot_of.find(in);
                 if (it != input_slot_of.end())
+                {
                     return it->second;
+                }
                 const uint32_t slot = static_cast<uint32_t>(ir.inputs.size());
                 InputSlot s;
                 const auto* input = graph::materialInputDescription(in);
@@ -328,21 +339,27 @@ namespace lux::material::compiler
             {
                 const graph::Node* src = g.node(source.node);
                 if (!src)
+                {
                     return fail(
                         "dangling connection: source node missing",
                         EMaterialCompileError::INVALID_GRAPH,
                         source.node,
                         source.pin
                     );
+                }
                 if (source.pin >= src->outputs().size())
+                {
                     return fail(
                         "connection references an invalid source output pin",
                         EMaterialCompileError::INVALID_GRAPH,
                         source.node,
                         source.pin
                     );
+                }
                 if (source.pin != 0)
+                {
                     return fail("multi-output nodes are not supported yet");
+                }
                 return true;
             }
 
@@ -353,7 +370,9 @@ namespace lux::material::compiler
             uint32_t operandValue(const graph::DataPin& pin)
             {
                 if (!ok)
+                {
                     return kNoValue;
+                }
 
                 const auto source = g.source(pin.id);
                 if (source.valid())
@@ -368,9 +387,13 @@ namespace lux::material::compiler
                     const ShaderValueType produced = ir.values[vidx].type;
                     const auto expected = valueType(pin.type, source.node, source.pin);
                     if (!ok)
+                    {
                         return kNoValue;
+                    }
                     if (produced == expected)
+                    {
                         return vidx;
+                    }
 
                     const int ap = static_cast<int>(produced) + 1; // source arity
                     const int an = static_cast<int>(pin.type) + 1; // target arity
@@ -394,7 +417,9 @@ namespace lux::material::compiler
                         v.op = EOp::CONSTRUCT;
                         v.type = expected;
                         for (int i = 0; i < an; ++i)
+                        {
                             v.operands[static_cast<size_t>(i)] = vidx;
+                        }
                         return push(v);
                     }
                     fail(
@@ -442,15 +467,21 @@ namespace lux::material::compiler
                         int used = usedInputCount(n);
                         const int pin_count = static_cast<int>(n->inputs().size());
                         if (used > pin_count)
+                        {
                             used = pin_count;
+                        }
                         for (int k = 0; k < used; ++k)
                         {
                             const graph::DataPin& pin = n->inputs()[k];
                             const auto source = g.source(pin.id);
                             if (!source.valid())
+                            {
                                 continue;
+                            }
                             if (!validateSource(source))
+                            {
                                 return kNoValue;
+                            }
                             const int sc = color[source.node];
                             if (sc == 1)
                             {
@@ -458,14 +489,18 @@ namespace lux::material::compiler
                                 return kNoValue;
                             }
                             if (sc != 2)
+                            {
                                 stack.push_back(source.node);
+                            }
                         }
                     }
                     else // col == 1: children already emitted -> emit this node
                     {
-                        const uint32_t idx = emitNode(n);
+                        const uint32_t idx = emitNode(id, n);
                         if (!ok)
+                        {
                             return kNoValue;
+                        }
                         value_of[id] = idx;
                         color[id] = 2;
                         stack.pop_back();
@@ -476,36 +511,43 @@ namespace lux::material::compiler
                 return it == value_of.end() ? kNoValue : it->second;
             }
 
-            uint32_t emitNode(const graph::Node* n)
+            uint32_t emitNode(graph::NodeId id, const graph::Node* n)
             {
                 switch (n->kind())
                 {
-                case graph::EMatNodeKind::CONSTANT: {
+                case graph::EMatNodeKind::CONSTANT:
+                {
                     auto* c = static_cast<const graph::ConstantNode*>(n);
                     ShaderIRValue v{};
                     v.op = EOp::CONSTANT;
-                    v.type = valueType(c->value_type, n->id());
+                    v.type = valueType(c->value_type, id);
                     if (!ok)
+                    {
                         return kNoValue;
+                    }
                     for (int k = 0; k < 4; ++k)
+                    {
                         v.constant[k] = c->value[k];
+                    }
                     return push(v);
                 }
-                case graph::EMatNodeKind::INPUT: {
+                case graph::EMatNodeKind::INPUT:
+                {
                     auto* in = static_cast<const graph::InputNode*>(n);
                     ShaderIRValue v{};
                     v.op = EOp::INPUT;
                     const auto* description = graph::materialInputDescription(in->input);
                     if (description == nullptr)
                     {
-                        fail("invalid Material input reached lowering", EMaterialCompileError::INVALID_GRAPH, n->id());
+                        fail("invalid Material input reached lowering", EMaterialCompileError::INVALID_GRAPH, id);
                         return kNoValue;
                     }
-                    v.type = valueType(description->type, n->id());
+                    v.type = valueType(description->type, id);
                     v.slot = inputSlot(in->input);
                     return push(v);
                 }
-                case graph::EMatNodeKind::SAMPLE_TEXTURE: {
+                case graph::EMatNodeKind::SAMPLE_TEXTURE:
+                {
                     auto* s = static_cast<const graph::SampleTextureNode*>(n);
                     if (n->inputs().empty())
                     {
@@ -514,13 +556,15 @@ namespace lux::material::compiler
                     }
                     const uint32_t uv = operandValue(n->inputs()[0]);
                     if (!ok)
+                    {
                         return kNoValue;
+                    }
                     if (s->texture_slot >= ir.textures.size())
                     {
                         fail(
                             "SampleTexture references an undeclared texture slot",
                             EMaterialCompileError::INVALID_GRAPH,
-                            n->id()
+                            id
                         );
                         return kNoValue;
                     }
@@ -531,15 +575,12 @@ namespace lux::material::compiler
                     v.operands[0] = uv;
                     return push(v);
                 }
-                case graph::EMatNodeKind::PARAM: {
+                case graph::EMatNodeKind::PARAM:
+                {
                     auto* p = static_cast<const graph::ParamNode*>(n);
                     if (p->param_slot >= ir.params.size())
                     {
-                        fail(
-                            "Param references an undeclared parameter slot",
-                            EMaterialCompileError::INVALID_GRAPH,
-                            n->id()
-                        );
+                        fail("Param references an undeclared parameter slot", EMaterialCompileError::INVALID_GRAPH, id);
                         return kNoValue;
                     }
                     ShaderIRValue v{};
@@ -549,8 +590,9 @@ namespace lux::material::compiler
                     return push(v);
                 }
                 case graph::EMatNodeKind::MATH:
-                    return emitMath(static_cast<const graph::MathNode*>(n));
-                case graph::EMatNodeKind::DECODE_NORMAL: {
+                    return emitMath(id, static_cast<const graph::MathNode*>(n));
+                case graph::EMatNodeKind::DECODE_NORMAL:
+                {
                     if (n->inputs().empty())
                     {
                         fail("DecodeNormal node has no 'rgb' input pin");
@@ -558,14 +600,17 @@ namespace lux::material::compiler
                     }
                     const uint32_t rgb = operandValue(n->inputs()[0]);
                     if (!ok)
+                    {
                         return kNoValue;
+                    }
                     ShaderIRValue v{};
                     v.op = EOp::DECODE_NORMAL;
                     v.type = ShaderValueType::VEC3;
                     v.operands[0] = rgb;
                     return push(v);
                 }
-                case graph::EMatNodeKind::SWIZZLE: {
+                case graph::EMatNodeKind::SWIZZLE:
+                {
                     if (n->inputs().empty())
                     {
                         fail("Swizzle node has no input pin");
@@ -573,19 +618,26 @@ namespace lux::material::compiler
                     }
                     const uint32_t src = operandValue(n->inputs()[0]);
                     if (!ok)
+                    {
                         return kNoValue;
+                    }
                     auto* sw = static_cast<const graph::SwizzleNode*>(n);
                     ShaderIRValue v{};
                     v.op = EOp::SWIZZLE;
-                    v.type = valueType(sw->out_type, n->id());
+                    v.type = valueType(sw->out_type, id);
                     if (!ok)
+                    {
                         return kNoValue;
+                    }
                     v.operands[0] = src;
                     for (int k = 0; k < 4; ++k)
+                    {
                         v.swizzle[k] = sw->components[k];
+                    }
                     return push(v);
                 }
-                case graph::EMatNodeKind::TBN_TRANSFORM: {
+                case graph::EMatNodeKind::TBN_TRANSFORM:
+                {
                     if (n->inputs().empty())
                     {
                         fail("TbnTransform node has no input pin");
@@ -593,26 +645,33 @@ namespace lux::material::compiler
                     }
                     const uint32_t src = operandValue(n->inputs()[0]);
                     if (!ok)
+                    {
                         return kNoValue;
+                    }
                     ShaderIRValue v{};
                     v.op = EOp::TBN_NORMAL;
                     v.type = ShaderValueType::VEC3;
                     v.operands[0] = src;
                     return push(v);
                 }
-                case graph::EMatNodeKind::CONSTRUCT: {
+                case graph::EMatNodeKind::CONSTRUCT:
+                {
                     auto* cs = static_cast<const graph::ConstructNode*>(n);
                     const size_t cnt = n->inputs().size() > 4 ? 4 : n->inputs().size();
                     ShaderIRValue v{};
                     v.op = EOp::CONSTRUCT;
-                    v.type = valueType(cs->out_type, n->id());
+                    v.type = valueType(cs->out_type, id);
                     if (!ok)
+                    {
                         return kNoValue;
+                    }
                     for (size_t k = 0; k < cnt; ++k)
                     {
                         v.operands[k] = operandValue(n->inputs()[k]);
                         if (!ok)
+                        {
                             return kNoValue;
+                        }
                     }
                     return push(v);
                 }
@@ -622,7 +681,7 @@ namespace lux::material::compiler
                 }
             }
 
-            uint32_t emitMath(const graph::MathNode* m)
+            uint32_t emitMath(graph::NodeId id, const graph::MathNode* m)
             {
                 if (m->inputs().size() < 2)
                 {
@@ -639,11 +698,15 @@ namespace lux::material::compiler
                 {
                     const uint32_t a = operandValue(m->inputs()[0]);
                     if (!ok)
+                    {
                         return kNoValue;
+                    }
                     ShaderIRValue v{};
-                    v.op = mathOp(m->op, m->id());
+                    v.op = mathOp(m->op, id);
                     if (!ok)
+                    {
                         return kNoValue;
+                    }
                     v.type = mathResultType(m->op, ir.values[a].type);
                     v.operands[0] = a;
                     return push(v);
@@ -651,17 +714,21 @@ namespace lux::material::compiler
 
                 const uint32_t a = operandValue(m->inputs()[0]);
                 if (!ok)
+                {
                     return kNoValue;
+                }
                 const uint32_t b = operandValue(m->inputs()[1]);
                 if (!ok)
+                {
                     return kNoValue;
+                }
 
                 const ShaderValueType ta = ir.values[a].type;
                 const ShaderValueType tb = ir.values[b].type;
 
                 if ((m->op == graph::EMathOp::DOT || m->op == graph::EMathOp::CROSS) && (ta != tb || !isVector(ta)))
                 {
-                    fail("Dot/Cross require two vectors of equal type", EMaterialCompileError::TYPE_MISMATCH, m->id());
+                    fail("Dot/Cross require two vectors of equal type", EMaterialCompileError::TYPE_MISMATCH, id);
                     return kNoValue;
                 }
                 if (ta != tb)
@@ -670,14 +737,16 @@ namespace lux::material::compiler
                         std::string("binary math requires equal operand types (") + typeName(ta) + " vs " +
                             typeName(tb) + "; broadcast not supported yet)",
                         EMaterialCompileError::TYPE_MISMATCH,
-                        m->id()
+                        id
                     );
                     return kNoValue;
                 }
                 ShaderIRValue v{};
-                v.op = mathOp(m->op, m->id());
+                v.op = mathOp(m->op, id);
                 if (!ok)
+                {
                     return kNoValue;
+                }
                 v.type = mathResultType(m->op, ta);
                 v.operands[0] = a;
                 v.operands[1] = b;
@@ -688,24 +757,30 @@ namespace lux::material::compiler
             {
                 // 1. Find the single OutputSurface.
                 const graph::Node* output = nullptr;
+                graph::NodeId output_id;
                 for (const auto& [id, np] : g.nodes())
                 {
                     if (np->kind() == graph::EMatNodeKind::OUTPUT_SURFACE)
                     {
                         if (output)
+                        {
                             return fail(
                                 "material graph has more than one OutputSurface node",
                                 EMaterialCompileError::INVALID_GRAPH,
                                 id
                             );
+                        }
                         output = np;
+                        output_id = id;
                     }
                 }
                 if (!output)
+                {
                     return fail(
                         "material graph has no OutputSurface node",
                         EMaterialCompileError::MISSING_REQUIRED_OUTPUT
                     );
+                }
 
                 // 2. Carry shading_model + render_state out via MaterialIR
                 //    (they do not go into ShaderIR).
@@ -716,16 +791,22 @@ namespace lux::material::compiler
 
                 // 3. Copy resource slots into ShaderIR.
                 for (const auto& t : g.texture_slots)
+                {
                     ir.textures.push_back({t.name});
+                }
                 for (const auto& p : g.param_slots)
                 {
                     ParamSlot s;
                     s.name = p.name;
                     s.type = valueType(p.type);
                     if (!ok)
+                    {
                         return false;
+                    }
                     for (int k = 0; k < 4; ++k)
+                    {
                         s.dflt[k] = p.dflt[k];
+                    }
                     ir.params.push_back(std::move(s));
                 }
 
@@ -742,10 +823,14 @@ namespace lux::material::compiler
                     o.name = adesc.name;
                     o.type = valueType(adesc.type);
                     if (!ok)
+                    {
                         return false;
+                    }
                     o.value_id = kNoValue;
                     for (int k = 0; k < 4; ++k)
+                    {
                         o.dflt[k] = adesc.dflt[k];
+                    }
 
                     if (i < output->inputs().size())
                     {
@@ -754,13 +839,19 @@ namespace lux::material::compiler
                         if (source.valid())
                         {
                             if (!validateSource(source))
+                            {
                                 return false;
+                            }
                             lower(source.node);
                             if (!ok)
+                            {
                                 return false;
+                            }
                             o.value_id = operandValue(pin);
                             if (!ok)
+                            {
                                 return false;
+                            }
                         }
                         else
                         {
@@ -769,12 +860,16 @@ namespace lux::material::compiler
                                                     pin.constant[2] != d[2] || pin.constant[3] != d[3];
                             if (overridden)
                             {
-                                const auto type = valueType(pin.type, output->id(), static_cast<std::uint32_t>(i));
+                                const auto type = valueType(pin.type, output_id, static_cast<std::uint32_t>(i));
                                 if (!ok)
+                                {
                                     return false;
+                                }
                                 o.value_id = emitConstant(pin.constant, type);
                                 if (!ok)
+                                {
                                     return false;
+                                }
                             }
                         }
                     }
@@ -790,7 +885,8 @@ namespace lux::material::compiler
                 // double_sided is pure PSO state that doesn't change the
                 // SPIR-V, so it does not enter this key.
                 uint64_t cf = ir.fingerprint;
-                auto cmix = [&](uint64_t x) noexcept {
+                auto cmix = [&](uint64_t x) noexcept
+                {
                     cf ^= x;
                     cf *= 1099511628211ull;
                 };
@@ -815,7 +911,9 @@ namespace lux::material::compiler
             error{EMaterialCompileError::LOWERING_FAILURE, "lowerMaterial failed", {}, graph::invalid_pin};
         Lowerer lowerer(graph, out, &error);
         if (!lowerer.run())
+        {
             return lux::cxx::unexpected(std::move(error));
+        }
         return out;
     }
 

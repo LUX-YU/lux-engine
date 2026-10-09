@@ -49,7 +49,7 @@ namespace lux::material
         };
 
         template <NodeStructure Structure>
-        bool registerNodeStructure(Structure& structure, Node& node_value, bool preserve_pin_ids) noexcept
+        bool registerNodeStructure(Structure& structure, NodeId id, Node& node_value, bool preserve_pin_ids) noexcept
         {
             const auto add_pins = [&](std::vector<DataPin>& pins, EPinDirection direction, bool existing_pass) noexcept
             {
@@ -67,7 +67,7 @@ namespace lux::material
                     {
                         const auto inserted = structure.insertPin(lux::graph::PinRecord{
                             pin.id,
-                            node_value.id(),
+                            id,
                             graphDirection(direction),
                             static_cast<std::uint8_t>(fan_cap),
                             pinSemantic(direction, ordinal)
@@ -80,7 +80,7 @@ namespace lux::material
                     else
                     {
                         auto created = structure.addPin(
-                            node_value.id(),
+                            id,
                             graphDirection(direction),
                             static_cast<std::uint8_t>(fan_cap),
                             pinSemantic(direction, ordinal)
@@ -101,7 +101,7 @@ namespace lux::material
                 !add_pins(node_value.inputs(), EPinDirection::INPUT, false) ||
                 !add_pins(node_value.outputs(), EPinDirection::OUTPUT, false))
             {
-                static_cast<void>(structure.detachNode(node_value.id()));
+                static_cast<void>(structure.detachNode(id));
                 return false;
             }
             return true;
@@ -143,8 +143,7 @@ namespace lux::material
         {
             return {};
         }
-        node_value->setId(*id);
-        if (!registerNodeStructure(topology_, *node_value, false))
+        if (!registerNodeStructure(topology_, *id, *node_value, false))
         {
             return {};
         }
@@ -162,7 +161,6 @@ namespace lux::material
         {
             return {};
         }
-        node_value->setId(id);
         const auto pins_have_ids = [&]
         {
             for (const auto& pin : node_value->inputs())
@@ -181,7 +179,7 @@ namespace lux::material
             }
             return true;
         }();
-        if (!registerNodeStructure(topology_, *node_value, pins_have_ids))
+        if (!registerNodeStructure(topology_, id, *node_value, pins_have_ids))
         {
             return {};
         }
@@ -354,22 +352,23 @@ namespace lux::material
             }
             result.nodes_.emplace_back(id, NodeStorage::node_type{});
         }
-        for (const auto* node : change.insert)
+        for (const auto& entry : change.insert)
         {
+            const auto* node = entry.value;
             if (!node)
             {
                 return fail(Error::INVALID_TYPE);
             }
-            if (node->id().valid() && result.structure_.topology().findNode(node->id()))
+            if (entry.id.valid() && result.structure_.topology().findNode(entry.id))
             {
-                return fail(Error::DUPLICATE_NODE, node->id());
+                return fail(Error::DUPLICATE_NODE, entry.id);
             }
             auto copy = node->clone();
             if (!copy)
             {
-                return fail(Error::INVALID_ID, node->id());
+                return fail(Error::INVALID_ID, entry.id);
             }
-            auto id = node->id();
+            auto id = entry.id;
             if (id.valid())
             {
                 auto inserted = result.structure_.insertNode({id, nodeType(node->kind())});
@@ -387,16 +386,15 @@ namespace lux::material
                 }
                 id = *created;
             }
-            copy->setId(id);
             // Preserve the original decoder rule: incomplete pin IDs request a wholly fresh schema.
             const auto hasId = [](const DataPin& pin) noexcept { return pin.id.valid(); };
-            const bool preserve_ids = node->id().valid() && std::ranges::all_of(copy->inputs(), hasId) &&
+            const bool preserve_ids = entry.id.valid() && std::ranges::all_of(copy->inputs(), hasId) &&
                                       std::ranges::all_of(copy->outputs(), hasId);
-            if (!registerNodeStructure(result.structure_, *copy, preserve_ids))
+            if (!registerNodeStructure(result.structure_, id, *copy, preserve_ids))
             {
-                return fail(Error::INVALID_ID, node->id());
+                return fail(Error::INVALID_ID, entry.id);
             }
-            result.inserted_.push_back(copy.get());
+            result.inserted_.push_back({id, copy.get()});
             staged_nodes.emplace(id, std::move(copy));
         }
         const auto findNode = [&](NodeId id) -> const Node*
@@ -455,9 +453,9 @@ namespace lux::material
                 return lux::cxx::unexpected(unplaced.error());
             }
         }
-        for (const auto* node : result.inserted_)
+        for (const auto& entry : result.inserted_)
         {
-            result.nodes_.emplace_back(node->id(), staged_nodes.extract(node->id()));
+            result.nodes_.emplace_back(entry.id, staged_nodes.extract(entry.id));
         }
         // reserve may change capacity, never content or identity. Insertion later transfers node handles.
         if (!change.insert.empty())
@@ -467,7 +465,7 @@ namespace lux::material
         return result;
     }
 
-    std::span<const Node* const> MaterialGraphEdit::insertedNodes() const noexcept
+    std::span<const MaterialNodeEntry> MaterialGraphEdit::insertedNodes() const noexcept
     {
         return inserted_;
     }

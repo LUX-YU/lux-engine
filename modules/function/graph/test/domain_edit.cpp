@@ -73,7 +73,7 @@ namespace
         const auto destination = graph.node(output)->inputs().front().id;
         const auto* output_pointer = graph.node(output);
         const std::array<graph::NodeId, 1> erased{constant};
-        const std::array<const material::Node*, 1> inserted{replacement.get()};
+        const std::array<material::MaterialNodeEntry, 1> inserted{{{constant, replacement.get()}}};
         const std::array<graph::LinkRecord, 1> links{{{old_pin, destination}}};
         const std::array<graph::GraphLayoutEntry, 1> positions{{{constant, {8.0F, 9.0F, true}}}};
         material::MaterialGraphChange change;
@@ -91,7 +91,7 @@ namespace
         require(graph.node(constant)->outputs().front().id == old_pin);
         require(static_cast<const material::ConstantNode*>(graph.node(constant))->value[0] == 0.875F);
         require(graph.source(destination).node == constant);
-        const std::array<const material::Node*, 1> undo{restored_payload.get()};
+        const std::array<material::MaterialNodeEntry, 1> undo{{{constant, restored_payload.get()}}};
         change.insert = undo;
         {
             auto edit = material::MaterialGraphEdit::prepare(graph, change);
@@ -184,7 +184,7 @@ namespace
         require(graph.layout().set(original_id, {10.0F, 20.0F, true}).has_value());
         const Records before(graph.topology(), graph.layout());
         material::ConstantNode candidate;
-        const std::array<const material::Node*, 1> inputs{&candidate};
+        const std::array<material::MaterialNodeEntry, 1> inputs{{{{}, &candidate}}};
         material::MaterialGraphChange change;
         change.insert = inputs;
         graph::NodeId issued_node;
@@ -192,9 +192,9 @@ namespace
         {
             auto edit = material::MaterialGraphEdit::prepare(graph, change);
             require(edit.has_value());
-            const auto* inserted = edit->insertedNodes().front();
-            issued_node = inserted->id();
-            issued_pin = inserted->outputs().front().id;
+            const auto& inserted = edit->insertedNodes().front();
+            issued_node = inserted.id;
+            issued_pin = inserted.value->outputs().front().id;
             before.check(graph.topology(), graph.layout());
         }
         before.check(graph.topology(), graph.layout());
@@ -205,7 +205,9 @@ namespace
         before.check(graph.topology(), graph.layout());
         require(graph.node(original_id) == original_pointer);
         require(original_pointer->value[0] == 0.625F);
-        require(!candidate.id().valid());
+        require(!inputs.front().id.valid());
+        require(!candidate.outputs().front().id.valid());
+        require(candidate.value[0] == 0.0F);
         const auto next = graph.addNode(std::make_unique<material::ConstantNode>());
         require(next.valid());
         const auto next_pin = graph.node(next)->outputs().front().id;

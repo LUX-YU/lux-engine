@@ -8,8 +8,8 @@
 
 #include <memory>
 #include <string>
-#include <vector>
 #include <utility>
+#include <vector>
 
 #include <lux/engine/material/graph/DataPin.hpp>
 #include <lux/engine/material/graph/visibility.h>
@@ -61,14 +61,6 @@ namespace lux::material
         /// from the graph an asset owns (the graph itself is move-only).
         [[nodiscard]] virtual std::unique_ptr<Node> clone() const = 0;
 
-        NodeId id() const noexcept
-        {
-            return id_;
-        }
-        void setId(NodeId id) noexcept
-        {
-            id_ = id;
-        }
         EMatNodeKind kind() const noexcept
         {
             return kind_;
@@ -92,6 +84,7 @@ namespace lux::material
         {
             return name_;
         }
+
         void setName(std::string n)
         {
             name_ = std::move(n);
@@ -101,14 +94,17 @@ namespace lux::material
         {
             return in_pins_;
         }
+
         const std::vector<DataPin>& inputs() const noexcept
         {
             return in_pins_;
         }
+
         std::vector<DataPin>& outputs() noexcept
         {
             return out_pins_;
         }
+
         const std::vector<DataPin>& outputs() const noexcept
         {
             return out_pins_;
@@ -138,7 +134,6 @@ namespace lux::material
         // (prevents slicing).
         Node(const Node&) = default;
 
-        NodeId id_{};
         const EMatNodeKind kind_;
         std::string name_;
         std::vector<DataPin> in_pins_;

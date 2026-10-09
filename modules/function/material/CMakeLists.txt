@@ -50,6 +50,12 @@ component_add_transitive_commands(
 )
 
 if(BUILD_TESTING)
+    add_executable(material_node_identity_test test/node_identity.cpp)
+
+    target_link_libraries(material_node_identity_test PRIVATE lux::engine::function::material_graph)
+
+    add_test(NAME material.node_identity COMMAND material_node_identity_test)
+
     add_executable(material_shader_ir_test test/shader_ir.cpp)
 
     target_link_libraries(material_shader_ir_test PRIVATE lux::engine::function::material_graph)

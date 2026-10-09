@@ -542,8 +542,7 @@ namespace lux::flowforge
                 return fail(EFlowSourceError::INVALID_IDENTITY, "metadata.function.duplicate");
             }
         }
-        ScriptAbilityNodeCatalog abilities;
-        if (auto valid = abilities.add({environment.abilities.nodes()}); !valid)
+        if (auto valid = validateScriptAbilityNodes(environment.abilities.nodes()); !valid)
         {
             return fail(EFlowSourceError::SCHEMA_MISMATCH, "metadata.ability");
         }

@@ -4,13 +4,18 @@
 
 #include <array>
 #include <cstdint>
-#include <new>
+#include <memory>
 #include <span>
 #include <string_view>
 #include <vector>
 
 namespace lux::flowforge
 {
+    namespace detail
+    {
+        class ScriptAbilityNodeStorage;
+    }
+
     struct ScriptAbilityNodeDescription final
     {
         lux::script::ScriptApiContractIdView contract;
@@ -29,7 +34,8 @@ namespace lux::flowforge
     {
         using Traits = lux::script::TScriptAbilityTraits<Ability>;
 
-        inline static constexpr auto Nodes = []() consteval {
+        inline static constexpr auto Nodes = []() consteval
+        {
             std::array<ScriptAbilityNodeDescription, Traits::Methods.size()> result{};
             for (std::size_t index{}; index < result.size(); ++index)
             {
@@ -73,21 +79,28 @@ namespace lux::flowforge
         INVALID_DESCRIPTION,
         DUPLICATE_METHOD,
         CONFLICTING_CONTRACT_SCHEMA,
-        ALLOCATION_FAILURE,
     };
+
+    // Pure validation used by source decoding as well as directory admission; no retained input or allocation.
+    [[nodiscard]] lux::cxx::expected<void, EScriptAbilityNodeCatalogError> validateScriptAbilityNodes(
+        std::span<const ScriptAbilityNodeDescription> nodes
+    ) noexcept;
 
     class ScriptAbilityNodeCatalogView final
     {
     public:
         ScriptAbilityNodeCatalogView() = default;
+
         explicit ScriptAbilityNodeCatalogView(std::span<const ScriptAbilityNodeDescription> nodes) noexcept
             : nodes_(nodes)
-        {}
+        {
+        }
 
         [[nodiscard]] std::span<const ScriptAbilityNodeDescription> nodes() const noexcept
         {
             return nodes_;
         }
+
         [[nodiscard]] const ScriptAbilityNodeDescription* find(
             lux::script::ScriptApiContractIdView contract,
             lux::script::ScriptApiMethodIdView method
@@ -100,16 +113,28 @@ namespace lux::flowforge
     class ScriptAbilityNodeCatalog final
     {
     public:
+        ScriptAbilityNodeCatalog() noexcept;
+        ~ScriptAbilityNodeCatalog();
+
+        ScriptAbilityNodeCatalog(const ScriptAbilityNodeCatalog&) = delete;
+        ScriptAbilityNodeCatalog& operator=(const ScriptAbilityNodeCatalog&) = delete;
+        ScriptAbilityNodeCatalog(ScriptAbilityNodeCatalog&&) = delete;
+        ScriptAbilityNodeCatalog& operator=(ScriptAbilityNodeCatalog&&) = delete;
+
+        // Copies the entire description. The contributor may release its data/code after add returns.
+        // Rejection leaves the catalog and all outstanding borrowed views unchanged.
         [[nodiscard]] lux::cxx::expected<void, EScriptAbilityNodeCatalogError> add(
             ScriptAbilityCatalogContribution contribution
         ) noexcept;
 
+        // Borrowed until the next successful add or catalog destruction; not a publication/worker snapshot.
         [[nodiscard]] ScriptAbilityNodeCatalogView view() const noexcept
         {
             return ScriptAbilityNodeCatalogView(nodes_);
         }
 
     private:
+        std::vector<std::unique_ptr<const detail::ScriptAbilityNodeStorage>> storage_;
         std::vector<ScriptAbilityNodeDescription> nodes_;
     };
 } // namespace lux::flowforge

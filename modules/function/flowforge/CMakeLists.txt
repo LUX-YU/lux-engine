@@ -56,6 +56,9 @@ target_link_libraries(
         lux::engine::resource::description
 )
 target_compile_definitions(flowforge PRIVATE TOML_EXCEPTIONS=0 TOML_HEADER_ONLY=1)
+
+target_include_directories(flowforge PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+
 target_include_directories(flowforge PRIVATE $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
 
 component_add_transitive_commands(
@@ -73,4 +76,30 @@ if(BUILD_TESTING)
     target_link_libraries(flow_constant_default_test PRIVATE lux::engine::function::flowforge)
 
     add_test(NAME flow.constant_default COMMAND flow_constant_default_test)
+
+    add_executable(flow_ability_description_test test/ability_description.cpp)
+
+    target_link_libraries(flow_ability_description_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(NAME flow.ability_catalog_ownership COMMAND flow_ability_description_test catalog)
+
+    add_test(NAME flow.ability_node_ownership COMMAND flow_ability_description_test node)
+
+    add_library(flow_ability_description_plugin SHARED test/ability_plugin.cpp)
+
+    target_link_libraries(flow_ability_description_plugin PRIVATE lux::engine::function::flowforge)
+
+    add_executable(flow_ability_plugin_test test/ability_plugin_test.cpp)
+
+    target_link_libraries(
+        flow_ability_plugin_test
+        PRIVATE lux::engine::function::flowforge lux::engine::platform::dynamic_library
+    )
+
+    add_dependencies(flow_ability_plugin_test flow_ability_description_plugin)
+
+    add_test(
+        NAME flow.ability_description_plugin
+        COMMAND flow_ability_plugin_test "$<TARGET_FILE:flow_ability_description_plugin>"
+    )
 endif()

@@ -3,8 +3,10 @@
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
+#include <string>
 
 int main()
 {
@@ -67,5 +69,23 @@ int main()
     assert(compiled && !compiled->object.empty());
     assert(compiled->description.api_requirements.size() == 1);
     assert(compiled->description.api_requirements.front().expected_schema_hash == 77);
+
+    // Actual compiler consumes catalog metadata after the caller's dynamic backing has changed and died.
+    ScriptAbilityNodeCatalog catalog;
+    {
+        std::string contract = "test.runtime";
+        std::string method = "ping";
+        auto dynamic = description;
+        dynamic.contract = lux::script::ScriptApiContractIdView{contract};
+        dynamic.method = lux::script::ScriptApiMethodIdView{method};
+        assert(catalog.add({{&dynamic, 1}}));
+        std::fill(contract.begin(), contract.end(), '#');
+        std::fill(method.begin(), method.end(), '#');
+    }
+    options.script_abilities = catalog.view();
+    auto owned = compileFlowForgeObject(graph, options);
+    assert(owned && !owned->object.empty());
+    assert(owned->description.api_requirements.size() == 1);
+    assert(owned->description.api_requirements.front().expected_schema_hash == 77);
     std::puts("PASS real Flow compiler: empty export, impostor rejection, catalog/schema errors and Ability object");
 }

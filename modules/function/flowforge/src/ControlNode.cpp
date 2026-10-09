@@ -60,7 +60,14 @@ namespace lux::flowforge
     ExecOutPin* SequenceNode::addExecOutPin(PinId stable_id)
     {
         auto pin = std::make_unique<ExecOutPin>(this);
-        if (stable_id.valid() && (graph() == nullptr || !graph()->assignPinId(*pin, stable_id)))
+        const bool is_invalid_restore =
+            stable_id.valid() && (graph() == nullptr || !graph()->assignPinId(*pin, stable_id));
+        if (is_invalid_restore)
+        {
+            return nullptr;
+        }
+        const bool is_unregistered = graph() && !graph()->pinId(pin.get()).valid();
+        if (is_unregistered)
         {
             return nullptr;
         }
@@ -78,7 +85,7 @@ namespace lux::flowforge
         {
             return {};
         }
-        const auto id = exec_out_pins_.back()->id();
+        const auto id = (graph() ? graph()->pinId(exec_out_pins_.back().get()) : PinId{});
         removeOutPin(exec_out_pins_.back().get());
         exec_out_pins_.pop_back();
         return id;

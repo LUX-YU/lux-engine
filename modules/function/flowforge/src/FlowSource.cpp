@@ -16,6 +16,7 @@ namespace lux::flowforge
         {
             return lux::cxx::unexpected(FlowSourceFailure{code, std::move(field), node, pin});
         }
+
         template <class T> bool number(std::string_view text, T& value) noexcept
         {
             if (text.empty())
@@ -25,6 +26,7 @@ namespace lux::flowforge
             const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
             return result.ec == std::errc{} && result.ptr == text.data() + text.size();
         }
+
         bool textValid(std::string_view text, FlowSourceLimits limits) noexcept
         {
             if (text.size() > limits.max_string_bytes)
@@ -68,6 +70,7 @@ namespace lux::flowforge
             }
             return true;
         }
+
         bool literalValid(const FlowSourceLiteral& literal) noexcept
         {
             std::int64_t signed_value{};
@@ -90,13 +93,17 @@ namespace lux::flowforge
                 return false;
             }
         }
+
         bool fields(const toml::table& table, std::initializer_list<std::string_view> names) noexcept
         {
-            return std::ranges::all_of(table, [&](const auto& item) {
-                return std::find(names.begin(), names.end(), item.first.str()) != names.end();
-            });
+            return std::ranges::all_of(
+                table,
+                [&](const auto& item) { return std::find(names.begin(), names.end(), item.first.str()) != names.end(); }
+            );
         }
+
         using View = toml::node_view<const toml::node>;
+
         bool readText(View value, std::string& out)
         {
             auto text = value.value<std::string>();
@@ -107,11 +114,13 @@ namespace lux::flowforge
             out = std::move(*text);
             return true;
         }
+
         bool readId(View value, std::uint64_t& out) noexcept
         {
             const auto text = value.value<std::string_view>();
             return text && number(*text, out);
         }
+
         template <class T> bool readEnum(View value, T& out, T maximum) noexcept
         {
             const auto integer = value.value<std::int64_t>();
@@ -122,16 +131,19 @@ namespace lux::flowforge
             out = static_cast<T>(*integer);
             return true;
         }
+
         toml::table literalTable(const FlowSourceLiteral& value)
         {
             return toml::table{{"kind", static_cast<std::int64_t>(value.kind)}, {"value", value.value}};
         }
+
         bool readLiteral(View view, FlowSourceLiteral& out)
         {
             const auto* table = view.as_table();
             return table && fields(*table, {"kind", "value"}) &&
                    readEnum(view["kind"], out.kind, EFlowLiteralKind::REAL) && readText(view["value"], out.value);
         }
+
         toml::array arguments(const std::vector<FlowSourceArgument>& values)
         {
             toml::array result;
@@ -141,6 +153,7 @@ namespace lux::flowforge
             }
             return result;
         }
+
         bool readArguments(View view, std::vector<FlowSourceArgument>& out, FlowSourceLimits limits)
         {
             const auto* array = view.as_array();
@@ -161,6 +174,7 @@ namespace lux::flowforge
             }
             return true;
         }
+
         toml::array pins(const std::vector<FlowSourcePin>& values)
         {
             toml::array result;
@@ -176,6 +190,7 @@ namespace lux::flowforge
             }
             return result;
         }
+
         bool readPins(View view, std::vector<FlowSourcePin>& out, FlowSourceLimits limits)
         {
             const auto* array = view.as_array();
@@ -203,6 +218,7 @@ namespace lux::flowforge
             }
             return true;
         }
+
         toml::table eventTable(const lux::script::ScriptEventSourceDescription& value)
         {
             return toml::table{
@@ -223,6 +239,7 @@ namespace lux::flowforge
                 {"delivery_version", value.delivery_schema_version}
             };
         }
+
         bool readEvent(View view, lux::script::ScriptEventSourceDescription& out)
         {
             const auto* table = view.as_table();
@@ -247,7 +264,8 @@ namespace lux::flowforge
             {
                 return false;
             }
-            const auto integer = [&](std::string_view key, auto& destination) {
+            const auto integer = [&](std::string_view key, auto& destination)
+            {
                 const auto value = view[key].value<std::int64_t>();
                 using T = std::remove_reference_t<decltype(destination)>;
                 if (!value || *value < 0 || *value > (std::numeric_limits<T>::max)())
@@ -331,7 +349,8 @@ namespace lux::flowforge
                 return false;
             }
             return std::visit(
-                [&](const auto& value) {
+                [&](const auto& value)
+                {
                     using T = std::decay_t<decltype(value)>;
                     if constexpr (std::is_same_v<T, std::monostate>)
                     {
@@ -379,7 +398,8 @@ namespace lux::flowforge
         toml::table parametersTable(const VFlowSourceParameters& parameters)
         {
             return std::visit(
-                [](const auto& value) -> toml::table {
+                [](const auto& value) -> toml::table
+                {
                     using T = std::decay_t<decltype(value)>;
                     if constexpr (std::is_same_v<T, std::monostate>)
                     {
@@ -443,26 +463,31 @@ namespace lux::flowforge
             {
             case 0:
                 return table->empty();
-            case 1: {
+            case 1:
+            {
                 auto& value = node.parameters.emplace<FlowSourceType>();
                 return fields(*table, {"type"}) && readText(view["type"], value.name);
             }
-            case 2: {
+            case 2:
+            {
                 auto& value = node.parameters.emplace<FlowSourceSignature>();
                 return fields(*table, {"arguments", "results"}) &&
                        readArguments(view["arguments"], value.arguments, limits) &&
                        readArguments(view["results"], value.results, limits);
             }
-            case 3: {
+            case 3:
+            {
                 auto& value = node.parameters.emplace<FlowSourceReference>();
                 return fields(*table, {"reference"}) && readId(view["reference"], value.id);
             }
-            case 4: {
+            case 4:
+            {
                 auto& value = node.parameters.emplace<FlowSourceField>();
                 return fields(*table, {"owner", "member", "type"}) && readText(view["owner"], value.owner) &&
                        readText(view["member"], value.member) && readText(view["type"], value.type);
             }
-            case 5: {
+            case 5:
+            {
                 auto& value = node.parameters.emplace<FlowSourceNativeCall>();
                 return fields(*table, {"owner", "member", "signature", "arguments", "results"}) &&
                        readText(view["owner"], value.owner) && readText(view["member"], value.member) &&
@@ -470,7 +495,8 @@ namespace lux::flowforge
                        readArguments(view["arguments"], value.parameters.arguments, limits) &&
                        readArguments(view["results"], value.parameters.results, limits);
             }
-            case 6: {
+            case 6:
+            {
                 auto& value = node.parameters.emplace<FlowSourceAbility>();
                 const auto version = view["schema_version"].value<std::int64_t>();
                 if (!version || *version < 0 || *version > UINT32_MAX)
@@ -526,7 +552,8 @@ namespace lux::flowforge
             return fail(EFlowSourceError::LIMIT_EXCEEDED, "counts");
         }
         std::size_t charged{};
-        const auto text = [&](std::string_view value) {
+        const auto text = [&](std::string_view value)
+        {
             if (!textValid(value, limits) || value.size() > limits.max_bytes - charged)
             {
                 return false;
@@ -539,16 +566,19 @@ namespace lux::flowforge
             return fail(EFlowSourceError::INVALID_VALUE, "name");
         }
         std::unordered_set<std::uint64_t> node_ids, variable_ids, export_ids, symbols;
+
         struct PinOwner
         {
             const FlowSourcePin* pin;
             NodeId node;
             std::size_t links{};
         };
+
         std::unordered_map<std::uint64_t, PinOwner> pin_ids;
         for (const auto& node : source.nodes)
         {
-            if (!node.id.valid() || node.id.value == UINT64_MAX || !node_ids.insert(node.id.value).second)
+            const bool is_invalid_node_id = !node.id.valid() || !node_ids.insert(node.id.value).second;
+            if (is_invalid_node_id)
             {
                 return fail(EFlowSourceError::INVALID_IDENTITY, "node", node.id);
             }
@@ -575,8 +605,9 @@ namespace lux::flowforge
                     {
                         return fail(EFlowSourceError::LIMIT_EXCEEDED, "pins", node.id);
                     }
-                    if (!pin.id.valid() || pin.id.value == UINT64_MAX ||
-                        !pin_ids.emplace(pin.id.value, PinOwner{&pin, node.id}).second)
+                    const bool is_invalid_pin_id =
+                        !pin.id.valid() || !pin_ids.emplace(pin.id.value, PinOwner{&pin, node.id}).second;
+                    if (is_invalid_pin_id)
                     {
                         return fail(EFlowSourceError::INVALID_IDENTITY, "pin", node.id, pin.id);
                     }

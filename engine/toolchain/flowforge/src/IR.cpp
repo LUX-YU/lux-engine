@@ -116,7 +116,7 @@ namespace lux::flowforge
             .code = EFlowForgeError::GRAPH_INVALID,
             .message = std::move(message),
             .node_id = bc.current_node ? bc.graph->nodeId(bc.current_node).value : 0U,
-            .pin_id = include_pin && bc.current_pin ? bc.current_pin->id().value : 0U,
+            .pin_id = include_pin && bc.current_pin ? bc.graph->pinId(bc.current_pin).value : 0U,
         };
     }
 
@@ -277,7 +277,7 @@ namespace lux::flowforge
                 llvm::SmallVector<mlir::Value> preds;
                 for (auto* ex : in.linkedPins())
                 {
-                    auto it = exec_tok.find(ex->id().value);
+                    auto it = exec_tok.find(bc.graph->pinId(ex).value);
                     if (it == exec_tok.end() || !it->second)
                     {
                         LUX_FF_FAIL_AT_PIN(bc, "exec token not materialised");
@@ -700,7 +700,7 @@ namespace lux::flowforge
 
         // Entry token + argument surfacing.
         auto entry_tok = bc.builder.create<mlir::flowforge::StartOp>(bc.loc, bc.token).getResult();
-        vm.exec_tok[entry_pin->id().value] = entry_tok;
+        vm.exec_tok[bc.graph->pinId(entry_pin).value] = entry_tok;
         bc.state_ptr = entry_block->getArgument(0);
         bc.ability_runtime = entry_block->getArgument(1);
         if (def)
@@ -708,7 +708,7 @@ namespace lux::flowforge
             const auto& arg_pins = def->argPins();
             for (size_t i = 0; i < arg_pins.size(); ++i)
             {
-                vm.exec_data[arg_pins[i]->id().value] = entry_block->getArgument(i + 2);
+                vm.exec_data[bc.graph->pinId(arg_pins[i].get()).value] = entry_block->getArgument(i + 2);
             }
         }
         if (event)
@@ -716,7 +716,7 @@ namespace lux::flowforge
             const auto& param_pins = event->paramPins();
             for (size_t i = 0; i < param_pins.size(); ++i)
             {
-                vm.exec_data[param_pins[i]->id().value] = entry_block->getArgument(i + 2);
+                vm.exec_data[bc.graph->pinId(param_pins[i].get()).value] = entry_block->getArgument(i + 2);
             }
         }
 
@@ -865,7 +865,7 @@ namespace lux::flowforge
     //
     // Preconditions on entry:
     //   - bc.builder's insertion point is at the END of the target block.
-    //   - vm.exec_tok[start_pin.id()] holds the incoming token for this chain
+    //   - vm.exec_tok[bc.graph->pinId(&start_pin)] holds the incoming token for this chain
     //     (the predecessor's out-token, or the enclosing region's block-arg).
     //
     // The loop walks `start_pin -> nextPin().node()` and dispatches by op kind.
@@ -888,7 +888,7 @@ namespace lux::flowforge
     )
     {
         const ExecOutPin* cur_pin = &start_pin;
-        LUX_FF_TRY_VALUE(cur_tok, vm.requireExecTok(cur_pin->id().value, bc));
+        LUX_FF_TRY_VALUE(cur_tok, vm.requireExecTok(bc.graph->pinId(cur_pin).value, bc));
 
         while (true)
         {
@@ -943,7 +943,7 @@ namespace lux::flowforge
             case ENodeOperation::NATIVE_FUNC_CALL: {
                 LUX_FF_TRY(lowerNativeCallImpl(*node, in_tok, vm, bc));
                 const auto& call = static_cast<const NativeFuncCall&>(*node);
-                LUX_FF_TRY_VALUE(next_token, vm.requireExecTok(call.execOutPin().id().value, bc));
+                LUX_FF_TRY_VALUE(next_token, vm.requireExecTok(bc.graph->pinId(&call.execOutPin()).value, bc));
                 cur_tok = next_token;
                 cur_pin = &call.execOutPin();
                 break;
@@ -952,7 +952,7 @@ namespace lux::flowforge
             case ENodeOperation::SCRIPT_ABILITY_CALL: {
                 const auto& call = static_cast<const ScriptAbilityNode&>(*node);
                 LUX_FF_TRY(lowerScriptAbilityCallImpl(call, in_tok, vm, bc));
-                LUX_FF_TRY_VALUE(next_token, vm.requireExecTok(call.execOutPin().id().value, bc));
+                LUX_FF_TRY_VALUE(next_token, vm.requireExecTok(bc.graph->pinId(&call.execOutPin()).value, bc));
                 cur_tok = next_token;
                 cur_pin = &call.execOutPin();
                 break;
@@ -961,7 +961,7 @@ namespace lux::flowforge
             case ENodeOperation::SCRIPT_EVENT_WAIT: {
                 const auto& wait = static_cast<const ScriptEventAwaitNode&>(*node);
                 LUX_FF_TRY(lowerScriptEventWaitImpl(wait, in_tok, vm, bc));
-                LUX_FF_TRY_VALUE(next_token, vm.requireExecTok(wait.execOutPin().id().value, bc));
+                LUX_FF_TRY_VALUE(next_token, vm.requireExecTok(bc.graph->pinId(&wait.execOutPin()).value, bc));
                 cur_tok = next_token;
                 cur_pin = &wait.execOutPin();
                 break;
@@ -1006,10 +1006,10 @@ namespace lux::flowforge
                 auto callOp = bc.builder.create<mlir::func::CallOp>(bc.loc, callee->name(), ret_tys, operands);
                 for (size_t i = 0; i < call.resultPins().size(); ++i)
                 {
-                    vm.exec_data[call.resultPins()[i]->id().value] = callOp.getResult(i);
+                    vm.exec_data[bc.graph->pinId(call.resultPins()[i].get()).value] = callOp.getResult(i);
                 }
 
-                vm.exec_tok[call.execOutPin().id().value] = in_tok;
+                vm.exec_tok[bc.graph->pinId(&call.execOutPin()).value] = in_tok;
                 cur_tok = in_tok;
                 cur_pin = &call.execOutPin();
                 break;
@@ -1047,8 +1047,8 @@ namespace lux::flowforge
                 bc.builder.create<mlir::LLVM::StoreOp>(bc.loc, val, gep);
 
                 // Object passthrough + threaded exec token.
-                vm.exec_data[sf.objectOut().id().value] = obj;
-                vm.exec_tok[sf.execOutPin().id().value] = in_tok;
+                vm.exec_data[bc.graph->pinId(&sf.objectOut()).value] = obj;
+                vm.exec_tok[bc.graph->pinId(&sf.execOutPin()).value] = in_tok;
                 cur_tok = in_tok;
                 cur_pin = &sf.execOutPin();
                 break;
@@ -1069,8 +1069,8 @@ namespace lux::flowforge
                 bc.builder.create<mlir::LLVM::StoreOp>(bc.loc, val, slot);
 
                 // Passthrough value + threaded exec token.
-                vm.exec_data[sv.valueOut().id().value] = val;
-                vm.exec_tok[sv.execOutPin().id().value] = in_tok;
+                vm.exec_data[bc.graph->pinId(&sv.valueOut()).value] = val;
+                vm.exec_tok[bc.graph->pinId(&sv.execOutPin()).value] = in_tok;
                 cur_tok = in_tok;
                 cur_pin = &sv.execOutPin();
                 break;
@@ -1109,7 +1109,7 @@ namespace lux::flowforge
                     ValueMaps::PureScope pure_scope(vm);
                     bc.builder.setInsertionPointToEnd(blk);
                     auto blk_arg = blk->getArgument(0);
-                    vm.exec_tok[br.execOutPinUp().id().value] = blk_arg;
+                    vm.exec_tok[bc.graph->pinId(&br.execOutPinUp()).value] = blk_arg;
                     LUX_FF_TRY_VALUE(end, lowerChain(bc, vm, br.execOutPinUp(), lowered, inner_ext, loop_depth));
                     if (end)
                     {
@@ -1131,7 +1131,7 @@ namespace lux::flowforge
                     ValueMaps::PureScope pure_scope(vm);
                     bc.builder.setInsertionPointToEnd(blk);
                     auto blk_arg = blk->getArgument(0);
-                    vm.exec_tok[br.execOutPinDown().id().value] = blk_arg;
+                    vm.exec_tok[bc.graph->pinId(&br.execOutPinDown()).value] = blk_arg;
                     LUX_FF_TRY_VALUE(end, lowerChain(bc, vm, br.execOutPinDown(), lowered, inner_ext, loop_depth));
                     if (end)
                     {
@@ -1149,8 +1149,8 @@ namespace lux::flowforge
                 //    (so PD's gatherPredTokens, which still reads the
                 //    inside-leg exec_out_pin ids, sees Branch.result(i)
                 //    rather than the now-out-of-scope inside-block SSA).
-                vm.exec_tok[br.execOutPinUp().id().value] = op.getResult(0);
-                vm.exec_tok[br.execOutPinDown().id().value] = op.getResult(1);
+                vm.exec_tok[bc.graph->pinId(&br.execOutPinUp()).value] = op.getResult(0);
+                vm.exec_tok[bc.graph->pinId(&br.execOutPinDown()).value] = op.getResult(1);
                 auto up_reach = reachableFromPin(&br.execOutPinUp());
                 auto down_reach = reachableFromPin(&br.execOutPinDown());
                 for (auto* n : up_reach)
@@ -1160,9 +1160,9 @@ namespace lux::flowforge
                         continue;
                     }
                     for (const Pin* p : n->outPins())
-                        if (p->kind() == EPinKind::EXEC_OUT && vm.exec_tok.count(p->id().value))
+                        if (p->kind() == EPinKind::EXEC_OUT && vm.exec_tok.count(bc.graph->pinId(p).value))
                         {
-                            vm.exec_tok[p->id().value] = op.getResult(0);
+                            vm.exec_tok[bc.graph->pinId(p).value] = op.getResult(0);
                         }
                 }
                 for (auto* n : down_reach)
@@ -1172,9 +1172,9 @@ namespace lux::flowforge
                         continue;
                     }
                     for (const Pin* p : n->outPins())
-                        if (p->kind() == EPinKind::EXEC_OUT && vm.exec_tok.count(p->id().value))
+                        if (p->kind() == EPinKind::EXEC_OUT && vm.exec_tok.count(bc.graph->pinId(p).value))
                         {
-                            vm.exec_tok[p->id().value] = op.getResult(1);
+                            vm.exec_tok[bc.graph->pinId(p).value] = op.getResult(1);
                         }
                 }
 
@@ -1212,7 +1212,7 @@ namespace lux::flowforge
                     LUX_FF_FAIL(bc, "post-dominator has no exec_in link");
                 }
                 cur_pin = pd_exec_in->linkedPins().front();
-                LUX_FF_TRY_VALUE(post_dom_token, vm.requireExecTok(cur_pin->id().value, bc));
+                LUX_FF_TRY_VALUE(post_dom_token, vm.requireExecTok(bc.graph->pinId(cur_pin).value, bc));
                 cur_tok = post_dom_token;
                 break;
             }
@@ -1263,15 +1263,15 @@ namespace lux::flowforge
                     bc.builder.setInsertionPointToEnd(blk);
                     auto body_arg = blk->getArgument(0);
                     auto iv_arg = blk->getArgument(1);
-                    vm.exec_tok[loop.loopBody().id().value] = body_arg;
-                    vm.exec_data[loop.indexPin().id().value] = iv_arg;
+                    vm.exec_tok[bc.graph->pinId(&loop.loopBody()).value] = body_arg;
+                    vm.exec_data[bc.graph->pinId(&loop.indexPin()).value] = iv_arg;
                     LUX_FF_TRY_VALUE(body_end, lowerChain(bc, vm, loop.loopBody(), lowered, external, loop_depth + 1));
                     if (body_end)
                         bc.builder.create<mlir::flowforge::YieldOp>(bc.loc, body_end);
                 }
 
                 cur_tok = op.getResult(1);
-                vm.exec_tok[loop.completed().id().value] = cur_tok;
+                vm.exec_tok[bc.graph->pinId(&loop.completed()).value] = cur_tok;
                 cur_pin = &loop.completed();
                 break;
             }
@@ -1307,7 +1307,7 @@ namespace lux::flowforge
                     ValueMaps::PureScope pure_scope(vm);
                     bc.builder.setInsertionPointToEnd(blk);
                     auto body_arg = blk->getArgument(0);
-                    vm.exec_tok[loop.loopBody().id().value] = body_arg;
+                    vm.exec_tok[bc.graph->pinId(&loop.loopBody()).value] = body_arg;
                     LUX_FF_TRY_VALUE(body_end, lowerChain(bc, vm, loop.loopBody(), lowered, external, loop_depth + 1));
                     if (body_end)
                     {
@@ -1316,7 +1316,7 @@ namespace lux::flowforge
                 }
 
                 cur_tok = op.getResult(1);
-                vm.exec_tok[loop.completed().id().value] = cur_tok;
+                vm.exec_tok[bc.graph->pinId(&loop.completed()).value] = cur_tok;
                 cur_pin = &loop.completed();
                 break;
             }
@@ -1339,7 +1339,7 @@ namespace lux::flowforge
                 mlir::Value tok = in_tok;
                 for (const ExecOutPin* leg : legs)
                 {
-                    vm.exec_tok[leg->id().value] = tok;
+                    vm.exec_tok[bc.graph->pinId(leg).value] = tok;
                     LUX_FF_TRY_VALUE(end, lowerChain(bc, vm, *leg, lowered, external, loop_depth));
                     // A leg that ended in Return/Break terminates the
                     // chain — remaining legs are unreachable (the
@@ -1394,12 +1394,12 @@ namespace lux::flowforge
 
         if (auto* src = in.linkedPin())
         {
-            if (auto it = vm.exec_data.find(src->id().value); it != vm.exec_data.end())
+            if (auto it = vm.exec_data.find(bc.graph->pinId(src).value); it != vm.exec_data.end())
             {
                 return it->second;
             }
             auto& scope = vm.pure_scopes.back();
-            if (auto it = scope.find(src->id().value); it != scope.end())
+            if (auto it = scope.find(bc.graph->pinId(src).value); it != scope.end())
             {
                 return it->second;
             }
@@ -1412,7 +1412,7 @@ namespace lux::flowforge
             if (!in.validConstant())
                 LUX_FF_FAIL_AT_PIN(bc, "pin has no link and no valid default constant");
             LUX_FF_TRY_VALUE(cst, buildConstant(in, bc, in.constantData(), asIdx));
-            vm.pure_scopes.back()[in.id().value] = cst;
+            vm.pure_scopes.back()[bc.graph->pinId(&in).value] = cst;
             return cst;
         }
 
@@ -1682,14 +1682,14 @@ namespace lux::flowforge
         case ENodeOperation::CMP_GT:
         case ENodeOperation::CMP_GE: {
             LUX_FF_TRY_VALUE(v, lowerBinaryOp(static_cast<const BinaryOpNode&>(*n), vm, bc));
-            vm.pure_scopes.back()[src.id().value] = v;
+            vm.pure_scopes.back()[bc.graph->pinId(&src).value] = v;
             return v;
         }
 
         case ENodeOperation::NEGATE:
         case ENodeOperation::LOGICAL_NOT: {
             LUX_FF_TRY_VALUE(v, lowerUnaryOp(static_cast<const UnaryOpNode&>(*n), vm, bc));
-            vm.pure_scopes.back()[src.id().value] = v;
+            vm.pure_scopes.back()[bc.graph->pinId(&src).value] = v;
             return v;
         }
 
@@ -2132,7 +2132,7 @@ namespace lux::flowforge
                     .code = EFlowForgeError::UNSUPPORTED_SCRIPT_ABILITY_TYPE,
                     .message = "record Script Ability parameters are not supported by FlowForge S3",
                     .node_id = node_id,
-                    .pin_id = pin->id().value
+                    .pin_id = bc.graph->pinId(pin.get()).value
                 });
             }
             LUX_FF_TRY_VALUE(value, getOperand(*pin, vm, bc));
@@ -2153,7 +2153,7 @@ namespace lux::flowforge
                     .code = EFlowForgeError::UNSUPPORTED_SCRIPT_ABILITY_TYPE,
                     .message = "record Script Ability results are not supported by FlowForge S3",
                     .node_id = node_id,
-                    .pin_id = call.resultPins().front()->id().value
+                    .pin_id = bc.graph->pinId(call.resultPins().front().get()).value
                 });
             }
             result_types.push_back(refTypeToMLIR(bc, *type));
@@ -2167,8 +2167,8 @@ namespace lux::flowforge
         const auto function = getOrDeclareExternFunc(bc, name, function_type);
         auto invoked = bc.builder.create<mlir::func::CallOp>(bc.loc, function, operands);
         if (!call.resultPins().empty())
-            vm.exec_data[call.resultPins().front()->id().value] = invoked.getResult(0);
-        vm.exec_tok[call.execOutPin().id().value] = in_tok;
+            vm.exec_data[bc.graph->pinId(call.resultPins().front().get()).value] = invoked.getResult(0);
+        vm.exec_tok[bc.graph->pinId(&call.execOutPin()).value] = in_tok;
         bc.current_pin = nullptr;
         return {};
     }
@@ -2198,7 +2198,7 @@ namespace lux::flowforge
                 .code = EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH,
                 .message = "record Script Event payloads are not supported by FlowForge S5.1",
                 .node_id = node_id,
-                .pin_id = wait.payloadPin().id().value
+                .pin_id = bc.graph->pinId(&wait.payloadPin()).value
             });
         }
         const auto name =
@@ -2206,8 +2206,8 @@ namespace lux::flowforge
         const auto function_type = bc.builder.getFunctionType({}, {result_type});
         const auto function = getOrDeclareExternFunc(bc, name, function_type);
         auto invoked = bc.builder.create<mlir::func::CallOp>(bc.loc, function, mlir::ValueRange{});
-        vm.exec_data[wait.payloadPin().id().value] = invoked.getResult(0);
-        vm.exec_tok[wait.execOutPin().id().value] = in_tok;
+        vm.exec_data[bc.graph->pinId(&wait.payloadPin()).value] = invoked.getResult(0);
+        vm.exec_tok[bc.graph->pinId(&wait.execOutPin()).value] = in_tok;
         return {};
     }
 
@@ -2346,11 +2346,11 @@ namespace lux::flowforge
         // Map return value to the result DataOutPin (if not void).
         if (result_value)
         {
-            vm.exec_data[call.result().id().value] = result_value;
+            vm.exec_data[bc.graph->pinId(&call.result()).value] = result_value;
         }
 
         // Thread exec token through (sequential call): outTok = inTok.
-        vm.exec_tok[call.execOutPin().id().value] = in_tok;
+        vm.exec_tok[bc.graph->pinId(&call.execOutPin()).value] = in_tok;
         return {};
     }
 

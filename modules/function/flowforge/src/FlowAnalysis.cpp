@@ -179,7 +179,10 @@ namespace lux::flowforge
             return requirements;
         }
 
-        [[nodiscard]] std::vector<const Node*> executableConsumers(const DataOutPin& output) noexcept
+        [[nodiscard]] std::vector<const Node*> executableConsumers(
+            const FlowGraph& graph,
+            const DataOutPin& output
+        ) noexcept
         {
             std::vector<const Node*> consumers;
             std::queue<const DataOutPin*> pending;
@@ -189,7 +192,7 @@ namespace lux::flowforge
             {
                 const auto* current = pending.front();
                 pending.pop();
-                if (!visited_pins.insert(current->id().value).second)
+                if (!visited_pins.insert(graph.pinId(current).value).second)
                 {
                     continue;
                 }
@@ -232,17 +235,19 @@ namespace lux::flowforge
                     {
                         continue;
                     }
-                    for (const auto* consumer : executableConsumers(*producer->resultPins()[index]))
+                    for (const auto* consumer : executableConsumers(graph, *producer->resultPins()[index]))
                     {
-                        if (const auto suspension =
-                                analysis.suspensionBetween(producer->execOutPin().id(), graph.nodeId(consumer));
+                        if (const auto suspension = analysis.suspensionBetween(
+                                graph.pinId(&producer->execOutPin()),
+                                graph.nodeId(consumer)
+                            );
                             suspension.valid())
                         {
                             return lux::cxx::unexpected(FlowForgeFailure{
                                 .code = EFlowForgeError::BORROWED_VALUE_CROSSES_SUSPENSION,
                                 .message = "BORROWED_STEP value crosses a Script Ability suspension",
                                 .node_id = suspension.value,
-                                .pin_id = producer->resultPins()[index]->id().value
+                                .pin_id = graph.pinId(producer->resultPins()[index].get()).value
                             });
                         }
                     }
@@ -267,7 +272,7 @@ namespace lux::flowforge
                 {
                     if (pin->kind() == EPinKind::EXEC_OUT)
                     {
-                        suspension = analysis.firstSuspensionFrom(pin->id());
+                        suspension = analysis.firstSuspensionFrom(graph.pinId(pin));
                     }
                     if (suspension.valid())
                     {
@@ -346,7 +351,7 @@ namespace lux::flowforge
                 {
                     const auto* function = static_cast<const FuncDefNode*>(storage.node);
                     definitions.insert(function);
-                    functions.emplace(storage.id, FunctionSummary{function->execOutPin().id()});
+                    functions.emplace(storage.id, FunctionSummary{graph.pinId(&function->execOutPin())});
                 }
             }
 
@@ -385,7 +390,7 @@ namespace lux::flowforge
                     if (const auto* next = static_cast<const ExecOutPin*>(pin)->nextPin())
                     {
                         const auto successor = graph.nodeId(next->node());
-                        starts.emplace(pin->id(), successor);
+                        starts.emplace(graph.pinId(pin), successor);
                         projected.successors.push_back(successor);
                     }
                 }

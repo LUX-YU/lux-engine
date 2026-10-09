@@ -63,7 +63,10 @@ namespace
         require(graph.addExport({{export_id}, graph.nodeId(e), export_id, {}}));
         require(e->execOutPin().linkTo(&c->execInPin()) == ELinkError::SUCCESS);
         require(c->execOutPin().linkTo(&w->execInPin()) == ELinkError::SUCCESS);
-        require(graph.findPin(c->result().id())->linkTo(graph.findPin(w->valueIn().id())) == ELinkError::SUCCESS);
+        require(
+            graph.findPin(graph.pinId(&c->result()))->linkTo(graph.findPin(graph.pinId(&w->valueIn()))) ==
+            ELinkError::SUCCESS
+        );
     }
 } // namespace
 

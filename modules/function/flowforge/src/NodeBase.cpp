@@ -129,24 +129,6 @@ namespace lux::flowforge
         name_ = name;
     }
 
-    /**
-     * @brief Retrieves the unique ID of this Pin.
-     * @return A 64-bit integer representing the ID.
-     */
-    PinId Pin::id() const
-    {
-        return id_;
-    }
-
-    /**
-     * @brief Assigns an ID to this Pin.
-     * @param id The ID value to set.
-     */
-    void Pin::setId(PinId id)
-    {
-        id_ = id;
-    }
-
     // ====================== ExecInPin ======================
 
     /**
@@ -248,7 +230,7 @@ namespace lux::flowforge
         {
             return result;
         }
-        for (auto* pin : node()->graph()->linkedPins(id()))
+        for (auto* pin : node()->graph()->linkedPins(node()->graph()->pinId(this)))
         {
             if (pin != nullptr && pin->kind() == EPinKind::EXEC_OUT)
             {
@@ -345,7 +327,7 @@ namespace lux::flowforge
         {
             return nullptr;
         }
-        const auto pins = node()->graph()->linkedPins(id());
+        const auto pins = node()->graph()->linkedPins(node()->graph()->pinId(this));
         return pins.empty() ? nullptr : static_cast<const ExecInPin*>(pins.front());
     }
 
@@ -522,7 +504,7 @@ namespace lux::flowforge
         {
             return nullptr;
         }
-        const auto pins = node()->graph()->linkedPins(id());
+        const auto pins = node()->graph()->linkedPins(node()->graph()->pinId(this));
         return pins.empty() ? nullptr : static_cast<const DataOutPin*>(pins.front());
     }
 
@@ -567,7 +549,7 @@ namespace lux::flowforge
         {
             return result;
         }
-        for (auto* pin : node()->graph()->linkedPins(id()))
+        for (auto* pin : node()->graph()->linkedPins(node()->graph()->pinId(this)))
         {
             if (pin != nullptr && pin->kind() == EPinKind::DATA_IN)
             {
@@ -691,7 +673,6 @@ namespace lux::flowforge
     void Node::addInPin(Pin* pin)
     {
         in_pins_.push_back(pin);
-        pin->setId({});
         if (graph_ != nullptr)
         {
             static_cast<void>(graph_->registerPin(*pin));
@@ -705,7 +686,6 @@ namespace lux::flowforge
     void Node::addOutPin(Pin* pin)
     {
         out_pins_.push_back(pin);
-        pin->setId({});
         if (graph_ != nullptr)
         {
             static_cast<void>(graph_->registerPin(*pin));

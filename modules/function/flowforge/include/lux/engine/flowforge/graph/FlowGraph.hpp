@@ -17,6 +17,8 @@ namespace lux::flowforge
     {
         NodeId id;
         std::unique_ptr<Node> node;
+        // Input pins followed by output pins; zero requests a new signature pin.
+        std::vector<PinId> pins;
     };
 
     struct FlowNodeInsertion final
@@ -24,6 +26,7 @@ namespace lux::flowforge
         // Invalid ID requests a fresh identity; valid ID explicitly restores a snapshot.
         NodeId id;
         std::unique_ptr<Node>* node{};
+        std::span<const PinId> pins;
     };
 
     /**
@@ -107,14 +110,13 @@ namespace lux::flowforge
             return layout_;
         }
 
+        [[nodiscard]] PinId pinId(const Pin*) const noexcept;
         [[nodiscard]] Pin* findPin(PinId id) noexcept;
         [[nodiscard]] const Pin* findPin(PinId id) const noexcept;
         [[nodiscard]] std::vector<Pin*> linkedPins(PinId id);
         [[nodiscard]] std::vector<const Pin*> linkedPins(PinId id) const;
         [[nodiscard]] ELinkError connect(Pin& first, Pin& second) noexcept;
         [[nodiscard]] ELinkError disconnect(Pin& first, Pin& second) noexcept;
-        // Source reconstruction assigns persisted IDs before the node is attached.
-        [[nodiscard]] static bool assignDetachedPinId(Pin&, PinId) noexcept;
 
         // ------------------------------------------------------------------
         // Graph-local variables. Each variable owns a stable, monotonically
@@ -247,10 +249,12 @@ namespace lux::flowforge
         friend class Node;
         friend class SequenceNode;
         // Dynamic pin construction/restoration updates topology through these internal operations.
-        [[nodiscard]] bool registerPin(Pin& pin) noexcept;
+        [[nodiscard]] bool registerPin(Pin& pin, PinId restored = {}) noexcept;
         void unregisterPin(Pin& pin) noexcept;
         [[nodiscard]] bool assignPinId(Pin& pin, PinId id) noexcept;
-        [[nodiscard]] bool attachNodeStructure(NodeId id, Node& node, bool preserve_pin_ids) noexcept;
+        [[nodiscard]] bool attachNodeStructure(NodeId id, Node& node, std::span<const PinId> pins) noexcept;
+        [[nodiscard]] std::vector<PinId> snapshotPins(const Node&) const;
+        void forgetPins(const Node&) noexcept;
         void rebindNodes() noexcept;
 
         std::vector<GraphVariable> variables_;
@@ -258,6 +262,8 @@ namespace lux::flowforge
         uint64_t next_var_id_{1};
         std::map<NodeId, std::unique_ptr<Node>> nodes_;
         std::unordered_map<const Node*, NodeId> node_ids_;
+        std::unordered_map<PinId, Pin*> pin_store_;
+        std::unordered_map<const Pin*, PinId> pin_ids_;
         lux::graph::GraphTopology topology_;
         lux::graph::GraphLayout layout_;
     };
@@ -305,6 +311,8 @@ namespace lux::flowforge
         lux::graph::GraphEdit structure_;
         std::map<NodeId, std::unique_ptr<Node>> nodes_;
         std::unordered_map<const Node*, NodeId> node_ids_;
+        std::unordered_map<PinId, Pin*> pin_store_;
+        std::unordered_map<const Pin*, PinId> pin_ids_;
         std::vector<Insertion> insert_;
         std::vector<std::pair<Pin*, PinId>> pins_;
         std::vector<NodeId> inserted_ids_;

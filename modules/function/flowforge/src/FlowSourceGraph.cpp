@@ -782,7 +782,7 @@ namespace lux::flowforge
                 {
                     return fail(EFlowSourceError::INVALID_VALUE, "pin", item.id);
                 }
-                FlowSourcePin value{pin->id(), pin->kind(), pin->name()};
+                FlowSourcePin value{graph.pinId(pin), pin->kind(), pin->name()};
                 if (const auto* type = pinType(*pin))
                 {
                     value.type = type->name;
@@ -794,7 +794,7 @@ namespace lux::flowforge
                     {
                         auto error = literal.error();
                         error.node = item.id;
-                        error.pin = pin->id();
+                        error.pin = graph.pinId(pin);
                         return lux::cxx::unexpected(std::move(error));
                     }
                     value.literal = std::move(*literal);
@@ -999,6 +999,7 @@ namespace lux::flowforge
                 {
                     return fail(EFlowSourceError::SCHEMA_MISMATCH, "pin count", item.id);
                 }
+                std::vector<PinId> restored_pins;
                 for (const bool input : {true, false})
                 {
                     const auto& pins = input ? node->inPins() : node->outPins();
@@ -1014,10 +1015,7 @@ namespace lux::flowforge
                             return fail(EFlowSourceError::SCHEMA_MISMATCH, "pin type", item.id, saved[i].id);
                         }
                         pin.setName(saved[i].name);
-                        if (!FlowGraph::assignDetachedPinId(pin, saved[i].id))
-                        {
-                            return fail(EFlowSourceError::INVALID_IDENTITY, "pin", item.id, saved[i].id);
-                        }
+                        restored_pins.push_back(saved[i].id);
                         if (pin.kind() == EPinKind::DATA_IN)
                         {
                             auto literal = materializeLiteral(saved[i].literal, *type);
@@ -1032,7 +1030,7 @@ namespace lux::flowforge
                         }
                     }
                 }
-                if (!graph.insertNode({item.id, std::move(node)}))
+                if (!graph.insertNode({item.id, std::move(node), std::move(restored_pins)}))
                 {
                     return fail(EFlowSourceError::INVALID_TOPOLOGY, "node", item.id);
                 }

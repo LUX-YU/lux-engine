@@ -337,21 +337,7 @@ namespace lux::flowforge
          */
         void setName(std::string_view name);
 
-        /**
-         * @brief Gets the unique ID of this Pin.
-         * @return A 64-bit integer representing the ID.
-         */
-        PinId id() const;
-
     private:
-        /**
-         * @brief Assigns a unique ID to this Pin.
-         * @param id The new ID value.
-         */
-        void setId(PinId id);
-
-    private:
-        PinId id_;         ///< Stable shared-topology identity.
         EPinKind kind_;    ///< The kind of this pin.
         std::string name_; ///< A user-defined name for this pin.
         Node* node_;       ///< Pointer to the parent Node.

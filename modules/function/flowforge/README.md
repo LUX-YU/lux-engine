@@ -38,12 +38,25 @@ derived reverse lookup that returns an invalid ID for detached or foreign nodes.
 store uses stable IDs directly, without a recycled container index or an ID inside `Node`.
 It orders entries by ID and does not allocate sparse storage proportional to the ID value.
 
-Extraction returns a `FlowNodeSnapshot` containing the key and unique owner. Restoration
+Extraction returns a `FlowNodeSnapshot` containing the key, unique owner and pin identity sequence. Restoration
 uses that explicit key; fresh insertion never reuses an issued identity. Batch insertion
 uses `FlowNodeInsertion`: zero requests a new ID, a nonzero ID explicitly restores a snapshot.
 Preparation keeps input owners untouched and prepares all store entries and reverse indexes;
 commit only moves ownership and swaps the prepared storage with the original `GraphEdit`.
 Removed snapshots retain their keys for undo. Reverse indexes never issue identities.
 
-This step does not remove the remaining Pin IDs, graph membership pointers or polymorphic
+Pins no longer contain IDs. `pinId(pointer)` resolves the graph's non-owning reverse index;
+`findPin(id)` resolves its hash index without walking nodes or pin arrays. Node members still
+own the actual pin objects until the registered semantic payload migration. Topology remains
+the sole authority for pin owner/direction/fan/links. The indexes only locate those objects.
+
+Snapshot pin IDs follow input-then-output order. An empty sequence requests fresh signature
+pins; otherwise its size must exactly match the signature, and an invalid entry requests a
+new pin at that position. Explicit identities are restored before fresh signature identities
+are issued. Detached pins have no graph identity; source reconstruction and undo provide the
+saved sequence to insertion instead of mutating detached object fields. Exhaustion remains
+absorbing, while explicit restoration is still permitted. Preparation builds complete indexes;
+commit swaps them without allocating or invoking user code.
+
+This step does not remove graph membership pointers or polymorphic
 semantic node classes. The registered Flow payload/compiler migration is still required.

@@ -144,7 +144,9 @@ namespace
         require(graph.nodes().empty() && graph.topology().pins().empty() && graph.layout().all().empty());
         require(removed.size() == 1 && removed.front().node.get() == original);
         require(removed.front().node->graph() == nullptr);
-        const std::array<flowforge::FlowNodeInsertion, 1> inserted{{{removed.front().id, &removed.front().node}}};
+        const std::array<flowforge::FlowNodeInsertion, 1> inserted{
+            {{removed.front().id, &removed.front().node, removed.front().pins}}
+        };
         const std::array<graph::GraphLayoutEntry, 1> positions{{{id, {3.0F, 7.0F, true}}}};
         change = {};
         change.insert = inserted;
@@ -258,11 +260,11 @@ namespace
         require(candidate->graph() == nullptr && !graph.nodeId(candidate.get()).valid());
         for (const auto* pin : candidate->inPins())
         {
-            require(!pin->id().valid());
+            require(!graph.pinId(pin).valid());
         }
         for (const auto* pin : candidate->outPins())
         {
-            require(!pin->id().valid());
+            require(!graph.pinId(pin).valid());
         }
         const auto next_index = graph.addNode(std::make_unique<flowforge::SequenceNode>());
         require(next_index.valid());
@@ -270,11 +272,11 @@ namespace
         bool pins_advanced = true;
         for (const auto* pin : next->inPins())
         {
-            pins_advanced = pins_advanced && pin->id().value > max_pin;
+            pins_advanced = pins_advanced && graph.pinId(pin).value > max_pin;
         }
         for (const auto* pin : next->outPins())
         {
-            pins_advanced = pins_advanced && pin->id().value > max_pin;
+            pins_advanced = pins_advanced && graph.pinId(pin).value > max_pin;
         }
         std::printf(
             "Flow abandoned node=%llu max pin=%llu; next node=%llu; all pins advanced=%d; owners preserved\n",

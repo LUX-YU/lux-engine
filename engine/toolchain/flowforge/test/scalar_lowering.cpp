@@ -56,9 +56,18 @@ namespace
         require(f->execOutPin().linkTo(&r->execInPin()) == ELinkError::SUCCESS);
         const auto& lhs = addInput(graph, type, "lhs_" + std::to_string(count));
         const auto& rhs = addInput(graph, type, "rhs_" + std::to_string(count));
-        require(graph.connect(*graph.findPin(lhs.id()), *graph.findPin(x->lhs().id())) == ELinkError::SUCCESS);
-        require(graph.connect(*graph.findPin(rhs.id()), *graph.findPin(x->rhs().id())) == ELinkError::SUCCESS);
-        require(graph.findPin(x->result().id())->linkTo(graph.findPin(r->valueIn().id())) == ELinkError::SUCCESS);
+        require(
+            graph.connect(*graph.findPin(graph.pinId(&lhs)), *graph.findPin(graph.pinId(&x->lhs()))) ==
+            ELinkError::SUCCESS
+        );
+        require(
+            graph.connect(*graph.findPin(graph.pinId(&rhs)), *graph.findPin(graph.pinId(&x->rhs()))) ==
+            ELinkError::SUCCESS
+        );
+        require(
+            graph.findPin(graph.pinId(&x->result()))->linkTo(graph.findPin(graph.pinId(&r->valueIn()))) ==
+            ELinkError::SUCCESS
+        );
     }
 
     void addUnary(FlowGraph& graph, ENodeOperation operation, const meta::RefType& type, std::size_t& count)
@@ -80,8 +89,14 @@ namespace
         require(graph.addExport({{count}, graph.nodeId(f), count, {}}));
         require(f->execOutPin().linkTo(&r->execInPin()) == ELinkError::SUCCESS);
         const auto& input = addInput(graph, type, "value_" + std::to_string(count));
-        require(graph.connect(*graph.findPin(input.id()), *graph.findPin(x->operand().id())) == ELinkError::SUCCESS);
-        require(graph.findPin(x->result().id())->linkTo(graph.findPin(r->valueIn().id())) == ELinkError::SUCCESS);
+        require(
+            graph.connect(*graph.findPin(graph.pinId(&input)), *graph.findPin(graph.pinId(&x->operand()))) ==
+            ELinkError::SUCCESS
+        );
+        require(
+            graph.findPin(graph.pinId(&x->result()))->linkTo(graph.findPin(graph.pinId(&r->valueIn()))) ==
+            ELinkError::SUCCESS
+        );
     }
 } // namespace
 

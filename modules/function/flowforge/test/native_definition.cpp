@@ -80,13 +80,13 @@ int main()
         auto node = std::make_unique<NativeFuncCall>(definition);
         definition.reset();
         check(*node);
-        const auto exec_in = node->execInPin().id();
-        const auto exec_out = node->execOutPin().id();
+        FlowGraph graph;
+        const auto exec_in = graph.pinId(&node->execInPin());
+        const auto exec_out = graph.pinId(&node->execOutPin());
         node->reconstruct();
         check(*node);
-        require(node->execInPin().id() == exec_in && node->execOutPin().id() == exec_out);
+        require(graph.pinId(&node->execInPin()) == exec_in && graph.pinId(&node->execOutPin()) == exec_out);
 
-        FlowGraph graph;
         require(graph.addNode(std::move(node)).valid());
         auto captured = captureFlowSource(asset::AssetId{std::array<std::uint8_t, 16>{1}}, "native", graph);
         require(captured.has_value());
@@ -211,8 +211,8 @@ int main()
         require(graph.addNode(std::move(derived_node)).valid());
         require(
             graph.connect(
-                *graph.findPin(derived_pointer->result().id()),
-                *graph.findPin(base_pointer->dataInPins()[0]->id())
+                *graph.findPin(graph.pinId(&derived_pointer->result())),
+                *graph.findPin(graph.pinId(base_pointer->dataInPins()[0].get()))
             ) == ELinkError::SUCCESS
         );
 

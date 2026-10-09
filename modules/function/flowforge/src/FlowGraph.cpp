@@ -40,16 +40,6 @@ namespace lux::flowforge
 
     FlowGraph::FlowGraph() = default;
 
-    bool FlowGraph::assignDetachedPinId(Pin& pin, PinId id) noexcept
-    {
-        if (!id.valid() || !pin.node() || pin.node()->graph())
-        {
-            return false;
-        }
-        pin.setId(id);
-        return true;
-    }
-
     FlowGraph::~FlowGraph()
     {
         for (auto& [stored_id, node] : nodes_)
@@ -64,6 +54,7 @@ namespace lux::flowforge
     FlowGraph::FlowGraph(FlowGraph&& other) noexcept
         : variables_(std::move(other.variables_)), exports_(std::move(other.exports_)),
           next_var_id_(other.next_var_id_), nodes_(std::move(other.nodes_)), node_ids_(std::move(other.node_ids_)),
+          pin_store_(std::move(other.pin_store_)), pin_ids_(std::move(other.pin_ids_)),
           topology_(std::move(other.topology_)), layout_(std::move(other.layout_))
     {
         rebindNodes();
@@ -87,6 +78,8 @@ namespace lux::flowforge
         next_var_id_ = other.next_var_id_;
         nodes_ = std::move(other.nodes_);
         node_ids_ = std::move(other.node_ids_);
+        pin_store_ = std::move(other.pin_store_);
+        pin_ids_ = std::move(other.pin_ids_);
         topology_ = std::move(other.topology_);
         layout_ = std::move(other.layout_);
         rebindNodes();
@@ -106,7 +99,7 @@ namespace lux::flowforge
             return {};
         }
         node_ids_.emplace(node.get(), *id);
-        if (!attachNodeStructure(*id, *node, false))
+        if (!attachNodeStructure(*id, *node, {}))
         {
             node_ids_.erase(node.get());
             return {};
@@ -117,7 +110,7 @@ namespace lux::flowforge
 
     bool FlowGraph::insertNode(FlowNodeSnapshot snapshot) noexcept
     {
-        auto& [id, node] = snapshot;
+        auto& [id, node, pins] = snapshot;
         const bool is_invalid_candidate = !node || node->graph() != nullptr || !id.valid();
         if (is_invalid_candidate)
         {
@@ -128,7 +121,7 @@ namespace lux::flowforge
             return false;
         }
         node_ids_.emplace(node.get(), id);
-        if (!attachNodeStructure(id, *node, true))
+        if (!attachNodeStructure(id, *node, pins))
         {
             node_ids_.erase(node.get());
             return false;
@@ -169,46 +162,39 @@ namespace lux::flowforge
     std::optional<FlowNodeSnapshot> FlowGraph::extractNode(NodeId id) noexcept
     {
         const auto found = nodes_.find(id);
-        if (found == nodes_.end() || !topology_.detachNode(id))
+        if (found == nodes_.end())
         {
             return std::nullopt;
         }
+        auto pins = snapshotPins(*found->second);
+        if (!topology_.detachNode(id))
+        {
+            return std::nullopt;
+        }
+        forgetPins(*found->second);
         auto node = std::move(found->second);
         node->graph_ = nullptr;
         node_ids_.erase(node.get());
         nodes_.erase(found);
-        return FlowNodeSnapshot{id, std::move(node)};
+        return FlowNodeSnapshot{id, std::move(node), std::move(pins)};
+    }
+
+    PinId FlowGraph::pinId(const Pin* pin) const noexcept
+    {
+        const auto found = pin_ids_.find(pin);
+        return found == pin_ids_.end() ? PinId{} : found->second;
     }
 
     Pin* FlowGraph::findPin(PinId id) noexcept
     {
-        for (auto& [stored_id, node] : nodes_)
-        {
-            if (!node)
-            {
-                continue;
-            }
-            for (auto* pin : node->inPins())
-            {
-                if (pin != nullptr && pin->id() == id)
-                {
-                    return pin;
-                }
-            }
-            for (auto* pin : node->outPins())
-            {
-                if (pin != nullptr && pin->id() == id)
-                {
-                    return pin;
-                }
-            }
-        }
-        return nullptr;
+        const auto found = pin_store_.find(id);
+        return found == pin_store_.end() ? nullptr : found->second;
     }
 
     const Pin* FlowGraph::findPin(PinId id) const noexcept
     {
-        return const_cast<FlowGraph*>(this)->findPin(id);
+        const auto found = pin_store_.find(id);
+        return found == pin_store_.end() ? nullptr : found->second;
     }
 
     std::vector<Pin*> FlowGraph::linkedPins(PinId id)
@@ -267,14 +253,14 @@ namespace lux::flowforge
             return second_preflight;
         }
 
-        auto* first_record = topology_.findPin(first.id());
-        auto* second_record = topology_.findPin(second.id());
+        auto* first_record = topology_.findPin(pinId(&first));
+        auto* second_record = topology_.findPin(pinId(&second));
         if (first_record == nullptr || second_record == nullptr)
         {
             return ELinkError::INVALID_PIN;
         }
-        const auto from = first_record->direction == lux::graph::EPinDirection::OUTPUT ? first.id() : second.id();
-        const auto to = first_record->direction == lux::graph::EPinDirection::INPUT ? first.id() : second.id();
+        const auto from = first_record->direction == lux::graph::EPinDirection::OUTPUT ? pinId(&first) : pinId(&second);
+        const auto to = first_record->direction == lux::graph::EPinDirection::INPUT ? pinId(&first) : pinId(&second);
         const auto connected = topology_.connect(from, to);
         if (connected)
         {
@@ -297,101 +283,130 @@ namespace lux::flowforge
         {
             return ELinkError::INVALID_PIN;
         }
-        const auto* first_record = topology_.findPin(first.id());
-        const auto* second_record = topology_.findPin(second.id());
+        const auto* first_record = topology_.findPin(pinId(&first));
+        const auto* second_record = topology_.findPin(pinId(&second));
         if (first_record == nullptr || second_record == nullptr)
         {
             return ELinkError::INVALID_PIN;
         }
-        const auto from = first_record->direction == lux::graph::EPinDirection::OUTPUT ? first.id() : second.id();
-        const auto to = first_record->direction == lux::graph::EPinDirection::INPUT ? first.id() : second.id();
+        const auto from = first_record->direction == lux::graph::EPinDirection::OUTPUT ? pinId(&first) : pinId(&second);
+        const auto to = first_record->direction == lux::graph::EPinDirection::INPUT ? pinId(&first) : pinId(&second);
         return topology_.disconnect(from, to) ? ELinkError::UNLINKED : ELinkError::UNMATCHED;
     }
 
-    bool FlowGraph::registerPin(Pin& pin) noexcept
+    bool FlowGraph::registerPin(Pin& pin, PinId restored) noexcept
     {
-        const auto direction =
-            isInput(pin.kind()) ? lux::graph::EPinDirection::INPUT : lux::graph::EPinDirection::OUTPUT;
-        if (const auto* existing = topology_.findPin(pin.id()); existing != nullptr)
-        {
-            return existing->owner == nodeId(pin.node()) && existing->direction == direction &&
-                   existing->semantic == pinSemantic(pin);
-        }
-        if (pin.id().valid())
-        {
-            return static_cast<bool>(topology_.insertPin(
-                lux::graph::PinRecord{pin.id(), nodeId(pin.node()), direction, fanCap(pin.kind()), pinSemantic(pin)}
-            ));
-        }
-        auto created = topology_.addPin(nodeId(pin.node()), direction, fanCap(pin.kind()), pinSemantic(pin));
-        if (!created)
+        const auto owner = nodeId(pin.node());
+        const bool is_invalid_pin = !owner.valid() || pin_ids_.contains(&pin);
+        if (is_invalid_pin)
         {
             return false;
         }
-        pin.setId(*created);
+        const auto direction =
+            isInput(pin.kind()) ? lux::graph::EPinDirection::INPUT : lux::graph::EPinDirection::OUTPUT;
+        auto id = restored;
+        if (id.valid())
+        {
+            if (!topology_.insertPin({id, owner, direction, fanCap(pin.kind()), pinSemantic(pin)}))
+            {
+                return false;
+            }
+        }
+        else
+        {
+            auto created = topology_.addPin(owner, direction, fanCap(pin.kind()), pinSemantic(pin));
+            if (!created)
+            {
+                return false;
+            }
+            id = *created;
+        }
+        pin_store_.emplace(id, &pin);
+        pin_ids_.emplace(&pin, id);
         return true;
     }
 
     void FlowGraph::unregisterPin(Pin& pin) noexcept
     {
-        if (pin.id().valid())
+        const auto id = pinId(&pin);
+        if (id.valid())
         {
-            static_cast<void>(topology_.detachPin(pin.id()));
+            static_cast<void>(topology_.detachPin(id));
+            pin_store_.erase(id);
+            pin_ids_.erase(&pin);
         }
     }
 
     bool FlowGraph::assignPinId(Pin& pin, PinId id) noexcept
     {
-        if (!id.valid() || topology_.findPin(id) != nullptr)
+        const bool is_invalid_id = !id.valid() || topology_.findPin(id) != nullptr;
+        const bool is_foreign_pin = !pin.node() || pin.node()->graph() != this;
+        if (is_invalid_id || is_foreign_pin)
         {
             return false;
         }
         unregisterPin(pin);
-        pin.setId(id);
-        if (registerPin(pin))
-        {
-            return true;
-        }
-        pin.setId({});
-        return false;
+        return registerPin(pin, id);
     }
 
-    bool FlowGraph::attachNodeStructure(NodeId id, Node& node, bool preserve_pin_ids) noexcept
+    std::vector<PinId> FlowGraph::snapshotPins(const Node& node) const
     {
-        if (!preserve_pin_ids)
+        std::vector<PinId> result;
+        result.reserve(node.inPins().size() + node.outPins().size());
+        for (const bool input : {true, false})
         {
-            for (auto* pin : node.inPins())
+            for (const auto* pin : input ? node.inPins() : node.outPins())
             {
-                if (pin != nullptr)
-                {
-                    pin->setId({});
-                }
+                result.push_back(pinId(pin));
             }
-            for (auto* pin : node.outPins())
+        }
+        return result;
+    }
+
+    void FlowGraph::forgetPins(const Node& node) noexcept
+    {
+        for (const bool input : {true, false})
+        {
+            for (const auto* pin : input ? node.inPins() : node.outPins())
             {
-                if (pin != nullptr)
-                {
-                    pin->setId({});
-                }
+                pin_store_.erase(pinId(pin));
+                pin_ids_.erase(pin);
             }
+        }
+    }
+
+    bool FlowGraph::attachNodeStructure(NodeId id, Node& node, std::span<const PinId> restored) noexcept
+    {
+        const auto count = node.inPins().size() + node.outPins().size();
+        if (!restored.empty() && restored.size() != count)
+        {
+            static_cast<void>(topology_.detachNode(id));
+            return false;
         }
         node.graph_ = this;
-        for (auto* pin : node.inPins())
+        // Restore all issued identities before allocating new signature pins.
+        for (const bool fresh : {false, true})
         {
-            if (pin == nullptr || !registerPin(*pin))
+            std::size_t ordinal{};
+            for (const bool input : {true, false})
             {
-                node.graph_ = nullptr;
-                static_cast<void>(topology_.detachNode(id));
-                return false;
-            }
-        }
-        for (auto* pin : node.outPins())
-        {
-            if (pin == nullptr || !registerPin(*pin))
-            {
-                node.graph_ = nullptr;
-                static_cast<void>(topology_.detachNode(id));
-                return false;
+                for (auto* pin : input ? node.inPins() : node.outPins())
+                {
+                    const auto saved = restored.empty() ? PinId{} : restored[ordinal];
+                    ++ordinal;
+                    if (fresh == saved.valid())
+                    {
+                        continue;
+                    }
+                    const bool is_invalid_pin = !pin || pin->node() != &node || isInput(pin->kind()) != input;
+                    if (is_invalid_pin || !registerPin(*pin, saved))
+                    {
+                        forgetPins(node);
+                        node.graph_ = nullptr;
+                        static_cast<void>(topology_.detachNode(id));
+                        return false;
+                    }
+                }
             }
         }
         return true;
@@ -417,9 +432,11 @@ namespace lux::flowforge
 
     FlowGraphEdit::FlowGraphEdit(FlowGraphEdit&& other) noexcept
         : target_(std::exchange(other.target_, nullptr)), structure_(std::move(other.structure_)),
-          nodes_(std::move(other.nodes_)), node_ids_(std::move(other.node_ids_)), insert_(std::move(other.insert_)),
-          pins_(std::move(other.pins_)), inserted_ids_(std::move(other.inserted_ids_)), keep_(std::move(other.keep_)),
-          erase_(std::move(other.erase_)), removed_(std::move(other.removed_)), storage_changed_(other.storage_changed_)
+          nodes_(std::move(other.nodes_)), node_ids_(std::move(other.node_ids_)),
+          pin_store_(std::move(other.pin_store_)), pin_ids_(std::move(other.pin_ids_)),
+          insert_(std::move(other.insert_)), pins_(std::move(other.pins_)),
+          inserted_ids_(std::move(other.inserted_ids_)), keep_(std::move(other.keep_)), erase_(std::move(other.erase_)),
+          removed_(std::move(other.removed_)), storage_changed_(other.storage_changed_)
     {
     }
 
@@ -496,15 +513,24 @@ namespace lux::flowforge
                 if (std::ranges::find(change.erase, storage.id) != change.erase.end())
                 {
                     plan.erase_.push_back(storage.id);
+                    plan.removed_.push_back({storage.id, nullptr, graph.snapshotPins(*storage.node)});
                 }
                 else
                 {
                     plan.nodes_.emplace(storage.id, nullptr);
                     plan.node_ids_.emplace(storage.node, storage.id);
                     plan.keep_.push_back(storage.id);
+                    for (const bool input : {true, false})
+                    {
+                        for (auto* pin : input ? storage.node->inPins() : storage.node->outPins())
+                        {
+                            const auto pin_id = graph.pinId(pin);
+                            plan.pin_store_.emplace(pin_id, pin);
+                            plan.pin_ids_.emplace(pin, pin_id);
+                        }
+                    }
                 }
             }
-            plan.removed_.resize(plan.erase_.size());
         }
         for (const auto& candidate : change.insert)
         {
@@ -560,7 +586,7 @@ namespace lux::flowforge
                         const auto* type = static_cast<const DataOutPin*>(pin)->info().type;
                         if (!type || !variable->type || *type != *variable->type)
                         {
-                            return failure(E::INVALID_ID, candidate.id, pin->id());
+                            return failure(E::INVALID_ID, candidate.id);
                         }
                     }
                 }
@@ -571,7 +597,7 @@ namespace lux::flowforge
                         const auto* type = static_cast<const DataInPin*>(pin)->info().type;
                         if (!type || !variable->type || *type != *variable->type)
                         {
-                            return failure(E::INVALID_ID, candidate.id, pin->id());
+                            return failure(E::INVALID_ID, candidate.id);
                         }
                     }
                 }
@@ -596,6 +622,14 @@ namespace lux::flowforge
                 }
                 id = *result;
             }
+            const auto pin_count = node.inPins().size() + node.outPins().size();
+            const bool has_invalid_snapshot =
+                !candidate.pins.empty() && (!restoring || candidate.pins.size() != pin_count);
+            if (has_invalid_snapshot)
+            {
+                return failure(E::INVALID_ID, id);
+            }
+            std::size_t ordinal{};
             for (const bool input : {true, false})
             {
                 const auto& pins = input ? node.inPins() : node.outPins();
@@ -606,7 +640,8 @@ namespace lux::flowforge
                         return failure(E::INVALID_DIRECTION, id);
                     }
                     const auto direction = input ? lux::graph::EPinDirection::INPUT : lux::graph::EPinDirection::OUTPUT;
-                    auto pin_id = pin->id();
+                    auto pin_id = candidate.pins.empty() ? PinId{} : candidate.pins[ordinal];
+                    ++ordinal;
                     if (restoring && !pin_id.valid())
                     {
                         // Allocate new signature pins after every preserved ID has been registered.
@@ -657,16 +692,16 @@ namespace lux::flowforge
                 assigned = *result;
             }
         }
+        for (const auto& [pin, id] : plan.pins_)
+        {
+            plan.pin_store_.emplace(id, pin);
+            plan.pin_ids_.emplace(pin, id);
+        }
         const auto pin_at = [&](PinId id) -> const Pin*
         {
-            for (const auto& [pin, assigned] : plan.pins_)
-            {
-                if (assigned == id)
-                {
-                    return pin;
-                }
-            }
-            return graph.findPin(id);
+            const auto& store = plan.storage_changed_ ? plan.pin_store_ : graph.pin_store_;
+            const auto found = store.find(id);
+            return found == store.end() ? nullptr : found->second;
         };
         for (const auto& link : change.connect)
         {
@@ -755,15 +790,11 @@ namespace lux::flowforge
         {
             auto& node = graph.nodes_.at(erase_[i]);
             node->graph_ = nullptr;
-            removed_[i] = {erase_[i], std::move(node)};
+            removed_[i].node = std::move(node);
         }
         for (const auto index : keep_)
         {
             nodes_.at(index) = std::move(graph.nodes_.at(index));
-        }
-        for (const auto& [pin, id] : pins_)
-        {
-            pin->setId(id);
         }
         for (const auto& insertion : insert_)
         {
@@ -775,6 +806,8 @@ namespace lux::flowforge
         {
             std::swap(graph.nodes_, nodes_);
             std::swap(graph.node_ids_, node_ids_);
+            std::swap(graph.pin_store_, pin_store_);
+            std::swap(graph.pin_ids_, pin_ids_);
         }
         structure_.commit();
         target_ = nullptr;

@@ -110,7 +110,7 @@ namespace
         require(success->abilityRequirements().size() == 1);
         require(success->abilityRequirements()[0].contract.name() == desc.contract.name());
         require(success->abilityRequirements()[0].expected_schema_hash == 73);
-        require(!success->firstSuspensionFrom(start.execOutPin().id()).valid());
+        require(!success->firstSuspensionFrom(graph.pinId(&start.execOutPin())).valid());
 #endif
         ++desc.schema_hash;
         auto& conflicting = add<ScriptAbilityNode>(graph, desc);
@@ -164,8 +164,10 @@ namespace
         auto result = analyze(graph, options);
         require(result.has_value() && result->eventRequirements().size() == 1);
         require(result->eventRequirements()[0] == desc);
-        require(result->firstSuspensionFrom(start.execOutPin().id()) == graph.nodeId(&event));
-        require(result->suspensionBetween(start.execOutPin().id(), graph.nodeId(&event)) == graph.nodeId(&event));
+        require(result->firstSuspensionFrom(graph.pinId(&start.execOutPin())) == graph.nodeId(&event));
+        require(
+            result->suspensionBetween(graph.pinId(&start.execOutPin()), graph.nodeId(&event)) == graph.nodeId(&event)
+        );
         catalog.system_name = "changed after analysis";
         require(result->eventRequirements()[0] == desc);
 #endif
@@ -201,11 +203,14 @@ namespace
         options.lifecycle = {};
         auto result = analyze(graph, options);
         require(result.has_value());
-        require(result->firstSuspensionFrom(start.execOutPin().id()) == graph.nodeId(&asynchronous));
-        require(result->suspensionBetween(start.execOutPin().id(), graph.nodeId(&call)) == graph.nodeId(&asynchronous));
+        require(result->firstSuspensionFrom(graph.pinId(&start.execOutPin())) == graph.nodeId(&asynchronous));
+        require(
+            result->suspensionBetween(graph.pinId(&start.execOutPin()), graph.nodeId(&call)) ==
+            graph.nodeId(&asynchronous)
+        );
         require(!result->firstSuspensionFrom({}).valid());
-        require(!result->suspensionBetween(start.execOutPin().id(), {UINT64_MAX}).valid());
-        require(!result->firstSuspensionFrom(call.execInPin().id()).valid());
+        require(!result->suspensionBetween(graph.pinId(&start.execOutPin()), {UINT64_MAX}).valid());
+        require(!result->firstSuspensionFrom(graph.pinId(&call.execInPin())).valid());
 #endif
     }
 
@@ -258,7 +263,7 @@ namespace
             analyze(graph, options),
             EFlowForgeError::BORROWED_VALUE_CROSSES_SUSPENSION,
             graph.nodeId(&suspend),
-            producer.resultPins()[0]->id()
+            graph.pinId(producer.resultPins()[0].get())
         );
 #if !defined(FLOW_ANALYSIS_COMPILER)
         require(suspend.execOutPin().unlinkFrom(&consumer.execInPin()) == ELinkError::UNLINKED);
@@ -266,7 +271,7 @@ namespace
         link(producer.execOutPin(), consumer.execInPin());
         auto valid = analyze(graph, options);
         require(valid.has_value());
-        require(!valid->firstSuspensionFrom(start.execOutPin().id()).valid());
+        require(!valid->firstSuspensionFrom(graph.pinId(&start.execOutPin())).valid());
 #endif
     }
 
@@ -279,7 +284,7 @@ namespace
         desc.kind = script::EScriptApiMethodKind::ASYNC_OPERATION;
         auto& node = add<ScriptAbilityNode>(graph, desc);
         link(start.execOutPin(), node.execInPin());
-        start_id = start.execOutPin().id();
+        start_id = graph.pinId(&start.execOutPin());
         witness = graph.nodeId(&node);
         auto result = analyze(graph, {.script_abilities = ScriptAbilityNodeCatalogView{{&desc, 1}}});
         require(result.has_value());

@@ -1097,6 +1097,7 @@ namespace lux::flowforge
         }
 
         bool lowerAsyncEvents(
+            const FlowGraph& graph,
             llvm::Module& module,
             const std::vector<EventInfo>& events,
             const std::vector<AbilityImportInfo>& imports,
@@ -1114,7 +1115,7 @@ namespace lux::flowforge
                 if (!lowerEventToStateMachine(module, events[index], imports, event_imports, steps[index], error))
                     return false;
                 const bool expected_suspension =
-                    suspension_analysis.firstSuspensionFrom(events[index].node->execOutPin().id()).valid();
+                    suspension_analysis.firstSuspensionFrom(graph.pinId(&events[index].node->execOutPin())).valid();
                 const bool lowered_suspension = steps[index].start != nullptr;
                 if (expected_suspension != lowered_suspension)
                 {
@@ -1735,7 +1736,7 @@ namespace lux::flowforge
         std::vector<NativeStepInfo> steps;
         {
             std::string err;
-            if (!lowerAsyncEvents(*llmod, events, ability_imports, event_wait_imports, suspension_analysis, steps, err))
+            if (!lowerAsyncEvents(graph, *llmod, events, ability_imports, event_wait_imports, suspension_analysis, steps, err))
                 return fail(std::move(err));
         }
 

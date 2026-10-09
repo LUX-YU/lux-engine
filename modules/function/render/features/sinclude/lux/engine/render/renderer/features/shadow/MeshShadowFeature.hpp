@@ -1,6 +1,6 @@
 #pragma once
-#include <lux/engine/function/render/features/visibility.h>
 #include <lux/engine/function/render/features/GpuDrivenMeshExtFlags.hpp>
+#include <lux/engine/function/render/features/visibility.h>
 /**
  * @file MeshShadowFeature.hpp
  * @brief Standalone shadow-rendering feature for GPU-driven mesh geometry.
@@ -14,25 +14,25 @@
  *   - Writes to the shadow atlas texture via referenceTexture("ShadowAtlas")
  */
 
-#include <lux/engine/render/renderer/features/GpuDrivenMeshFeatureBase.hpp>
-#include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/function/render/client/core/RenderTypes.hpp> // kMaxFramesInFlight
-#include <lux/engine/render/gpu/memory/GPUBuffer.hpp>
-#include <lux/engine/render/gpu/ShaderObject.hpp>
-#include <lux/engine/render/gpu/VmaFwd.hpp>
-#include <lux/engine/render/graph/RGPassTypes.hpp>
-#include <lux/engine/function/render/features/resources/lighting/ShadowMapTypes.hpp>
+#include <lux/engine/function/render/client/core/ResourceHandle.hpp>
 #include <lux/engine/function/render/features/resources/lighting/EShadowTechnique.hpp> // kShadowTechniqueCount
-#include <lux/engine/render/resources/lighting/ShadowFrameExtData.hpp>
-#include <lux/engine/render/resources/mesh/GpuDrivenMeshConsts.hpp> // kMaxShadowBiasGroups(唯一真相源)
+#include <lux/engine/function/render/features/resources/lighting/ShadowMapTypes.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/gapi/vk/Pipeline.hpp>
+#include <lux/engine/render/gpu/ShaderObject.hpp>
+#include <lux/engine/render/gpu/VmaFwd.hpp>
+#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
+#include <lux/engine/render/graph/RGPassTypes.hpp>
+#include <lux/engine/render/renderer/features/GpuDrivenMeshFeatureBase.hpp>
+#include <lux/engine/render/resources/lighting/ShadowFrameExtData.hpp>
+#include <lux/engine/render/resources/mesh/GpuDrivenMeshConsts.hpp> // kMaxShadowBiasGroups(唯一真相源)
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <string>
 #include <string_view>
-#include <array>
 #include <vector>
 
 #include <vulkan/vulkan.h>
@@ -78,6 +78,7 @@ namespace lux::render
         }
 
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
+        void onDetachFromScene(RenderScene& scene) override;
         void onFrameBegin(const FeatureFrameContext& ctx) override;
         void addPasses(RGBuilder& builder) override;
         void populateFrameContext(RGFrameContext& frame_ctx) override;
@@ -128,7 +129,19 @@ namespace lux::render
         /// 缺阴影资源时本 feature 合法地整体 no-op(见 onFrameBegin 的早退),
         /// 所以判空保留、只把每帧查找收敛为一次。
         ShadowResources* shadow_res_cache_{nullptr};
-        void createCullResources();
+        using CullBuffers = std::array<VmaBuffer, kMaxFramesInFlight>;
+
+        struct MappedBuffer
+        {
+            VmaBuffer buffer;
+            void* mapped{};
+            VkDeviceSize size{};
+        };
+
+        [[nodiscard]] static Expected<CullBuffers>
+        createCullBuffers(VmaAllocator allocator, uint32_t max_slices) noexcept;
+        [[nodiscard]] static Expected<MappedBuffer> createMdcBuffer(VmaAllocator allocator, VkDeviceSize size) noexcept;
+        void rejectFrame(RenderError error) noexcept;
         void buildBiasGroups(std::span<const ShadowSliceGPU> slices, uint32_t atlas_resolution);
         void checkShadowGraphInvalidation();
 
@@ -144,12 +157,8 @@ namespace lux::render
         // slot while a prior in-flight frame's cull/compact may still read a
         // different slot via binding 7. Growth retires the old slot through the
         // DeferredDestroyQueue instead of destroying an in-flight buffer.
-        std::array<VkBuffer, kMaxFramesInFlight> shadow_mdc_info_buf_{};
-        std::array<VmaAllocation, kMaxFramesInFlight> shadow_mdc_info_alloc_{};
-        std::array<void*, kMaxFramesInFlight> shadow_mdc_info_mapped_{};
-        std::array<VkDeviceSize, kMaxFramesInFlight> shadow_mdc_info_buf_size_{};
+        std::array<MappedBuffer, kMaxFramesInFlight> shadow_mdc_info_{};
         uint32_t mdc_info_slot_{0};
-        uint32_t frame_counter_{0};
         std::vector<uint32_t> shadow_mdc_gpu_data_;
         uint32_t shadow_mdc_count_{0};
         uint32_t view_mdc_count_{0};
@@ -168,11 +177,9 @@ namespace lux::render
         // Per-FIF (not single): kUploadFrustums vkCmdUpdateBuffers this SSBO every
         // frame, so a single buffer lets frame N+1's transfer write race frame N's
         // still-in-flight cull read — a cross-frame WAR the render graph can't see
-        // (the write is issued inside the cull pass). Mirrors shadow_mdc_info_buf_;
-        // the slot is mdc_info_slot_ (rotated once per frame in onFrameBegin). (P1#24)
-        std::array<VkBuffer, kMaxFramesInFlight> shadow_cull_ubo_{};
-        std::array<VmaAllocation, kMaxFramesInFlight> shadow_cull_ubo_alloc_{};
-        VkDeviceSize shadow_cull_ssbo_size_{0};
+        // (the write is issued inside the cull pass). The engine's frame slot
+        // selects both this buffer and shadow_mdc_info_.
+        CullBuffers shadow_cull_ubo_{};
 
         // --- Shadow caster draw pipelines (one per shadow technique) ---
         // Assembled from the current IShadowTechnique's declared caster vert/frag

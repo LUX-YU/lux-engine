@@ -1,179 +1,99 @@
 # Flow authoring and compilation values
 
-`NativeCallDefinition::create` freezes the invocation signature used by `NativeFuncCall`.
-The returned immutable owner retains all signature names, parameter and result types,
-record identity/ancestry and value operations. Record projections deliberately omit
-reflected fields/methods: inspection and reflective discovery use the original metadata
-provider. The explicit `CodeLease` covers the invoker and any copied type operations.
-`CodeLease::builtin()` is only for process-lifetime code; dynamic callers supply its real
-code owner. No module loader or second reflection registry is created here.
+## Authority and storage
 
-A node retains this definition before its pin owners. Rebinding keeps the previous
-owner until old pins and default values are destroyed. Node/exec identity and the existing
-pin reconstruction order remain unchanged; rebuilding data pins still removes their
-old links. The source codec and reflection palette construct the same definition.
+`FlowGraph` owns plain `FlowNode` values keyed by `NodeId` and plain `FlowPinPayload`
+values keyed by `PinId`. `GraphTopology` alone owns membership, pin direction, fan limits
+and links. `GraphLayout` alone owns placement. Neither semantic payload stores its own
+ID, a graph pointer, a parent node pointer or a duplicate link list. Pin payload lookup
+uses a hash map; sparse allocation does not grow with the numeric ID value.
 
-`FlowAnalysis::create` owns the domain checks previously embedded in Toolchain: Ability
-and Event requirements, transitive suspension through graph function calls, borrowed-step
-values crossing suspension and synchronous lifecycle exports. It accepts the real FlowGraph
-and immutable catalog views without LLVM, Process or Editor. The compiler uses this same
-analysis before lowering and when checking generated async markers; there is no second
-Toolchain implementation of these rules.
+`node(id)` is a synchronous read-only borrow. `nodes()` borrows `{id, node}` entries.
+`pin(id)` accesses the domain value; it cannot change topology. Interactive `connect`
+and `disconnect` normalize either endpoint order, then use the same `GraphEdit` as batches.
+Graph-local IDs must come from the supplied graph; equal numbers in different graphs do
+not establish cross-graph identity. Pointer-based connection/discovery APIs are removed.
 
-`reachableExecution` and `findBranchMerge` also belong to this module. They query the current
-graph and return owned IDs, never borrowed nodes. Direct-edge traversal is iterative and shared
-with the immutable suspension projection. The compiler consumes these queries; its old pointer
-walk and branch-merge implementation are removed. Merge selection preserves the existing
-true-leg-first breadth-first rule; it is not advertised as a general post-dominance theorem.
-At a merge owned by an enclosing control region, nested branch lowering returns its outer token
-without inspecting that merge's other predecessors. Only the owning chain gathers them, after
-its participating regions have returned. The original unmaterialized-token and SSA-dominance
-failures are archived; the regression now requires successful compilation and checks linked
-native execution for one, two and three nested levels in both predecessor insertion orders.
+## Transactions and replay
 
-The result owns requirement values and an execution-reachability projection keyed by the
-input graph's stable IDs. It does not retain Node/Pin pointers, catalog views or reflection
-metadata. Graph and catalog destruction is safe after analysis. This is a disposable
-compilation result, not an editable graph or a live cache: after editing a graph, analyze
-the new input again. Queries return the lowest reachable suspension NodeId deterministically,
-including recursive functions, or an invalid ID when no suspension is reachable. The caller
-must pair analysis and lowering from the same unchanged graph input.
+`FlowGraphEdit` prepares domain candidates together with the existing `graph::GraphEdit`.
+Preparation clones input values, validates schemas, references, links and placement, and
+reserves destination storage. Failure preserves the published source and caller's candidates.
+Issued identities are never recycled, including identities consumed by abandoned preparation.
+Explicit restored IDs are admitted before fresh IDs, including definitions referenced by
+candidates earlier in the batch. Node/Pin maximum IDs remain valid; exhaustion stops fresh
+issuance without preventing explicit restoration.
 
-This lifetime contract does not complete the broader Flow graph migration: the existing
-Node/Pin structure and NodeRegistry palette are still active. The final domain catalog,
-compiler extension surface and removal of duplicate structural authority remain pending.
+Commit transfers prepared storage without allocation or extension callbacks. Detached
+`FlowNodeSnapshot` values retain the removed node, exact pin records/defaults, links and
+layout. They are replay inputs, not another live topology. Pins are destroyed before the
+node's metadata/code providers, including during graph and snapshot move assignment.
 
-Node identity belongs to the graph store. `addNode` returns the issued `NodeId`; constructors
-only accept semantic data. `nodes()` borrows `{id, node}` entries, and `nodeId(pointer)` is a
-derived reverse lookup that returns an invalid ID for detached or foreign nodes. The owning
-store uses stable IDs directly, without a recycled container index or an ID inside `Node`.
-It orders entries by ID and does not allocate sparse storage proportional to the ID value.
+Dynamic schema changes replace a node through the same transaction. `SequencePayload`
+declares extra outputs; `NativeCallPayload` retains an immutable invocation definition.
+Retained PinIds, surviving links and layout are explicit inputs. There is no incremental
+node mutation, implicit link repair or parallel batch implementation.
 
-Extraction returns a `FlowNodeSnapshot` containing the key, unique owner and pin identity sequence. Restoration
-uses that explicit key; fresh insertion never reuses an issued identity. Batch insertion
-uses `FlowNodeInsertion`: zero requests a new ID, a nonzero ID explicitly restores a snapshot.
-Preparation keeps input owners untouched and prepares all store entries and reverse indexes;
-commit only moves ownership and swaps the prepared storage with the original `GraphEdit`.
-Removed snapshots retain their keys for undo. Reverse indexes never issue identities.
+Function call/return payloads store graph-local definition IDs and semantic signatures.
+Batch validation checks the complete candidate graph. Removing a referenced definition or
+changing its kind/signature without updating users is rejected. Capture and compilation
+also validate references at their own boundary. Restoring a definition at a different
+address does not require pointer rebinding.
 
-Pins no longer contain IDs. `pinId(pointer)` resolves the graph's non-owning reverse index;
-`findPin(id)` resolves its hash index without walking nodes or pin arrays. Node members still
-own the actual pin objects until the registered semantic payload migration. Topology remains
-the sole authority for pin owner/direction/fan/links. The indexes only locate those objects.
+## Registrations and compilation
 
-Snapshot pin IDs follow input-then-output order. An empty sequence requests fresh signature
-pins; otherwise its size must exactly match the signature, and an invalid entry requests a
-new pin at that position. Explicit identities are restored before fresh signature identities
-are issued. Detached pins have no graph identity; source reconstruction and undo provide the
-saved sequence to insertion instead of mutating detached object fields. Exhaustion remains
-absorbing, while explicit restoration is still permitted. Preparation builds complete indexes;
-commit swaps them without allocating or invoking user code.
+`FlowNodeCatalog` publishes immutable canonical-name/version definitions. Registration
+validates declarations without constructing payloads or invoking extension callbacks.
+Definitions and erased payloads retain actual `CodeLease` owners. Plugin-local catalog
+implementations use the stable Object provider's control-block bridge so final release,
+callback cleanup and late weak release cannot return into unloaded code.
 
-This step does not remove graph membership pointers or polymorphic
-semantic node classes. The registered Flow payload/compiler migration is still required.
+Builtins and extensions use the same payload creation, schema, validation and compilation
+contracts. A definition provides either a value compiler or an execution compiler.
+`FlowValueCompiler` expresses scalar and memory operations; `FlowExecutionCompiler`
+expresses control flow, calls, suspension and writes using declared pin semantics.
+Toolchain owns SSA, region scope and token lowering. Registered callbacks do not mutate
+an authoring graph. Memory readers are re-evaluated after writes rather than cached as pure
+values. Schema declaration order determines argument/output order, never numeric PinId order.
 
-Function calls and function returns store the definition's graph-local `NodeId`, not its
-address. Their constructors borrow a definition only to copy the initial pin schema. Resolve
-against the receiving graph immediately before use; missing/wrong-kind definitions or a
-different pin signature fail resolution. Pin types still borrow the immutable metadata
-environment under its existing lifetime contract. Equal numeric IDs in different graphs do
-not identify the same object: callers explicitly supply an ID from the receiving graph.
+Editable schemas remain distinct from compile eligibility: an invalid draft can be captured
+when its structure and references are valid, while compilation reports its semantic error.
+An extension failure invalidates the disposable compiler candidate; it is never published.
 
-An extracted definition can be restored at a different address without rebinding its users.
-Unresolved intermediate drafts remain possible through the low-level store, but source
-capture and call lowering refuse them. Batch edits still reject removing a definition while
-retaining its users. New definition/call/return candidates in one batch use explicit snapshot
-IDs; admission checks the complete candidate set, including definitions appearing later.
-The pointer-based constructors and stored-reference accessors have been removed.
+## Metadata and native calls
 
-## Registered value compilation
+`NativeCallDefinition::create` freezes signature names, parameter/result types, record
+identity/ancestry and value operations. Record projections deliberately omit reflected
+fields/methods: discovery uses the original metadata provider. Its explicit `CodeLease`
+covers invocation and copied operations. `CodeLease::builtin()` is only for process-lifetime
+code. Native schema storage remains execution, parameters, optional Self; invocation places
+Self first. Source reconstruction and the reflection palette use this same definition.
 
-`FlowNodeCatalog` publishes immutable, canonical-name/version definitions. Registration only
-validates and stores declarations; it does not construct payloads or run extension callbacks.
-Definitions own their type-token names and retain a `CodeLease`. Payloads own semantic data,
-clone/destruction callbacks and the same code lease; neither owns node identity or topology.
-Pin declarations borrow the immutable reflection environment under its existing lifetime
-contract. They may describe a dynamic number of pins.
+General reflection metadata remains borrowed from an immutable environment that outlives
+its graphs and snapshots. Script Ability/Event payload clones share their immutable owned
+metadata allocation, so restored pin values retain the exact metadata backing they reference.
+No second reflection registry or module loader is introduced.
 
-`FlowNodeType::describePins` admits editable schemas independently of compile eligibility.
-`compile` validates the payload, input signature and returned output signature. Its synchronous
-callback can combine multiple `FlowValueCompiler::emitScalar` primitives. Values are scoped to
-that invocation, cannot escape it, and do not identify graph objects. Toolchain translates the
-primitives into MLIR; built-in scalar lowering uses this same translation. Failed compilation
-discards the candidate, including any primitives already emitted by a rejected callback.
+## Source and analysis
 
-`createFlowValueNode` currently connects these plain payloads to the existing Flow node store.
-Its private node adapter retains the definition and owns its declared pin objects; it does not
-erase an old polymorphic node into the semantic payload. Topology uses the canonical type and
-declared pin semantics. This is an intermediate migration boundary, not completion of MA08:
-registered control/native/Ability nodes and the final plain NodeId/PinId stores still need migration.
-No additional runtime, executor or plugin loader is introduced here.
+Source v2 stores canonical names, versions, semantic pin identities and owning values.
+The frozen v1 reader remains supported. Historical builtin wire tags are private codec
+implementation details, not runtime operation IDs or extensible compiler dispatch.
+Registered custom payloads use their declared binary codecs. Builtin parameter adapters
+remain in the source codec; this closure does not claim all metadata-dependent codecs have
+been distributed into registrations.
 
-## Source identity and extension codecs
+Materialization resolves metadata and forward references, builds detached values and admits
+the entire graph through one `FlowGraphEdit`. Source capture validates reference kind and
+signature, not just existence. Unknown kinds, versions and invalid references fail explicitly.
 
-New source encoding is `lux.flowforge.source` version 2. Every node stores a canonical type
-name and schema version, every pin its semantic identity in addition to its graph-local PinId.
-Builtin topology type IDs use the same canonical-name hash. File decoding retains version 1
-as a read-only compatibility format; the explicit frozen ordinal/name table is independent of
-future enum numbering. New output never writes operation ordinals. Control/native/Ability builtin construction
-and parameter-schema adapters remain until the complete builtin registration migration; their
-canonical names are reserved against extension substitution and hash collision.
+`FlowAnalysis` owns Ability/Event requirements, transitive suspension, borrowed-step crossing
+and synchronous lifecycle-export checks without LLVM, Process or Editor. Its result owns
+values and stable IDs, not source pointers. Toolchain uses the same analysis. Re-analyze after
+editing; the result is not a live cache. `reachableExecution` and `findBranchMerge` use the
+same topology and schema order. The original true-leg-first breadth-first merge selection is
+preserved; it is not a general post-dominance algorithm.
 
-Registered nodes use their definition's encode/decode callbacks. Binary payload bytes are
-losslessly hex-encoded by the outer TOML codec. Syntax decoding and re-encoding do not require
-an extension to be loaded or call its code. Materialization borrows `FlowSourceEnvironment::nodes`,
-checks canonical name/version and exact pin semantics/types, then retains the resolved immutable
-definition. The catalog may die after materialization; metadata retains its separate environment
-lifetime. Missing definitions, wrong schema and rejected codecs report explicit failures; codec
-failures retain the original FlowForgeFailure. No default-success node is substituted.
-
-Editable drafts need only pass source/pin schema checks, not compilation eligibility. NodeId,
-PinId, links, variables, exports and persistent layout survive v1->v2 and registered round-trips.
-Capacity, identity exhaustion and GraphEdit ownership rules are unchanged. Full registered
-control/native/Ability codecs still depend on the remaining domain migration.
-
-## Connection authority
-
-Connection admission and mutation belong to `FlowGraph::connect` / `disconnect`. Pin payloads
-have no virtual preflight, link/unlink entry point or writable topology. The receiving graph
-resolves both borrows through its own pin store, then uses GraphTopology for membership, identities,
-links and commit. Detached, foreign and moved pins cannot alias equal local IDs in another graph.
-Data initialization retains the original directional diagnostics; occupied pins reject without
-replacing links. Domain admission does not invoke extension callbacks or allocate linked-pin lists.
-This removes Pin connection authority, not the remaining Node.graph/dynamic-schema representation.
-
-## Builtin scalar registrations
-
-Arithmetic, comparison and boolean operators now use `ScalarNodePayload` and the public
-`FlowNodeRegistration` callbacks. `BinaryOpNode`, `UnaryOpNode` and their Toolchain lowering
-branches are removed. The compiler uses the same registered-value path for builtins and extensions.
-The payload only borrows the declared operand metadata; topology, default values and pin identities
-remain in the current graph representation pending the full store migration.
-
-Composition adds `scalarNodeRegistrations(code)` to an otherwise empty `FlowNodeCatalog`.
-No payload is created during registration. A static module copy inside a DLL supplies its actual
-code lease; published definitions, payload clones and their cleanup retain it. `create()` chooses
-bool for boolean operations and int32 otherwise; set the typed payload's operand before admitting
-its node to select another reflected type. Existing reflection environment lifetime rules apply.
-The established intrinsic names and v1 codecs cannot be reassigned to arbitrary callbacks.
-
-Palette creation and source reconstruction consume these real definitions. Source reconstruction
-uses its existing environment/code lifetime, preserves the old typed parameter representation and
-exact pin semantic IDs, and still permits editable drafts independently of compile eligibility.
-Zero defaults are provided by the existing DataInPin initialization, not a second scalar initializer.
-The remaining control/native/Ability registrations, plain graph stores and graph UI are unfinished.
-
-## Dynamic schema replacement
-
-Sequence outputs and native signatures are constructed as complete detached candidates. A
-`SequenceSchema` declares additional outputs; `NativeFuncCall` retains one immutable definition.
-The old incremental add/remove/reconstruct/rebind methods are removed. Published schema changes
-use the existing `FlowGraphEdit` replacement (erase and insert the same NodeId), not callbacks from
-an attached node. Retained PinIds, surviving links and layout are explicit inputs to that transaction;
-zero pin entries request fresh identities. No second edit algorithm or implicit link repair is added.
-
-Preparation may fail, including identity exhaustion, without consuming candidate owners or changing
-the live source. Commit only exchanges prepared storage. Removed snapshots retain old pins, default
-values and native code until the caller disposes of them after commit. Undo may restore those exact
-identities. This closes the incremental dynamic-schema paths; the remaining polymorphic Node/Pin
-representation and Node.graph are still pending the full registered store migration.
+This plain-store closure does not certify the whole MA08 graph-editor rendering gate or
+later mechanism stages. Qualification records distinguish development, clean tracked source,
+installed SDK and real rendering evidence.

@@ -1,8 +1,7 @@
-#include <lux/engine/flowforge/script/ScriptGraph.hpp>
+#include <lux/engine/flowforge/FunctionNodes.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
-#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
+#include <lux/engine/flowforge/script/ScriptGraph.hpp>
 
-#include <new>
 #include <unordered_set>
 
 namespace lux::flowforge
@@ -19,13 +18,13 @@ namespace lux::flowforge
 
             for (const auto& exported : graph.exports())
             {
-                const Node* entry = graph.findNodeById(exported.entry_node_id);
+                const auto* entry = graph.node(exported.entry_node_id);
                 const bool is_invalid_identity = !exported.id || !exported.entry_node_id.valid() ||
                                                  exported.symbol == lux::script::InvalidScriptSymbolId;
                 const bool is_duplicate_identity = !export_ids.insert(exported.id.value).second ||
                                                    !entry_node_ids.insert(exported.entry_node_id).second ||
                                                    !symbols.insert(exported.symbol).second;
-                const bool is_invalid_entry = entry == nullptr || entry->operation() != ENodeOperation::ON_EVENT;
+                const bool is_invalid_entry = entry == nullptr || entry->payload.get<EventEntryPayload>() == nullptr;
                 if (is_invalid_identity || is_duplicate_identity || is_invalid_entry)
                 {
                     return false;
@@ -34,4 +33,4 @@ namespace lux::flowforge
             return true;
         }
     }
-}
+} // namespace lux::flowforge

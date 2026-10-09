@@ -43,7 +43,7 @@ target_link_libraries(
 
 add_test(NAME installed.flow_ability_plugin COMMAND flow_ability_plugin_test "$<TARGET_FILE:flow_ability_plugin>")
 
-foreach(header ScriptAbilityCatalog ScriptAbilityNode)
+foreach(header ScriptAbilityCatalog ScriptAbilityPayload ScriptEventPayload)
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" "#include <lux/engine/flowforge/script/${header}.hpp>\n")
 
     add_library(${header}_header OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")
@@ -51,7 +51,7 @@ foreach(header ScriptAbilityCatalog ScriptAbilityNode)
     target_link_libraries(${header}_header PRIVATE lux::engine::function::flowforge)
 endforeach()
 
-foreach(target flow_ability_plugin flow_ability_plugin_test ScriptAbilityCatalog_header ScriptAbilityNode_header)
+foreach(target flow_ability_plugin flow_ability_plugin_test ScriptAbilityCatalog_header ScriptAbilityPayload_header ScriptEventPayload_header)
     if(MSVC)
         target_compile_options(${target} PRIVATE /permissive- /GR- /utf-8)
     else()

@@ -1,6 +1,8 @@
 #include <lux/engine/flowforge/FlowNodeCatalog.hpp>
 #include <lux/engine/flowforge/graph/FlowSource.hpp>
+#include <lux/engine/flowforge/script/ScriptAbilityPayload.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -111,11 +113,16 @@ namespace
         require(payload.has_value());
         payload->get<Payload>()->outputs = 4;
         payload->get<Payload>()->reject = true;
-        auto node = createFlowValueNode(definition, std::move(*payload));
+        auto node = createFlowNode(definition, std::move(*payload));
         require(node.has_value());
         const auto id = graph.addNode(std::move(*node));
-        require(id.valid());
-        require(graph.layout().set(id, {12.0F, -3.0F, true}).has_value());
+        require(id.has_value());
+        const graph::GraphLayoutEntry placement{*id, {12.0F, -3.0F, true}};
+        FlowGraphChange layout;
+        layout.place = std::span{&placement, 1};
+        auto edit = FlowGraphEdit::prepare(graph, layout);
+        require(edit.has_value());
+        edit->commit();
         auto source = captureFlowSource(assetId(), "extension", graph);
         require(source.has_value());
         require(source->nodes.front().type == entry.identity.canonical_name && source->nodes.front().version == 3);
@@ -130,10 +137,10 @@ namespace
         environment.nodes = &catalog;
         auto restored = materializeFlowSource(*decoded, environment);
         require(restored.has_value());
-        const auto* actual = restored->findNodeById(id);
-        require(actual && actual->outPins().size() == 4);
-        require(actual->registeredPayload()->get<Payload>()->reject);
-        require(!definition->validate(*actual->registeredPayload()));
+        const auto* actual = restored->node(*id);
+        require(actual && std::ranges::count(restored->topology().pins(), *id, &graph::PinRecord::owner) == 4);
+        require(actual->payload.get<Payload>()->reject);
+        require(!definition->validate(actual->payload));
         auto again = captureFlowSource(source->id, source->name, *restored);
         require(again.has_value() && *again == *source);
         require(*encodeFlowSource(*again) == *encoded);
@@ -187,13 +194,138 @@ namespace
         auto no_codec = catalog.find(missing_codec.identity.id);
         auto unencodable = no_codec->create();
         require(unencodable.has_value());
-        auto unencodable_node = createFlowValueNode(no_codec, std::move(*unencodable));
+        auto unencodable_node = createFlowNode(no_codec, std::move(*unencodable));
         require(unencodable_node.has_value());
         FlowGraph unsaved;
-        require(unsaved.addNode(std::move(*unencodable_node)).valid());
+        require(unsaved.addNode(std::move(*unencodable_node)).has_value());
         auto rejected = captureFlowSource(assetId(), "unencodable", unsaved);
         require(!rejected && rejected.error().code == EFlowSourceError::NODE_CODEC_FAILURE);
         require(rejected.error().cause && rejected.error().cause->message == "node definition has no source codec");
+    }
+
+    void functionForwardReferences()
+    {
+        FlowNodeCatalog catalog;
+        require(catalog.add(functionNodeRegistrations()).has_value());
+        const auto make = [&]<class T>(std::string_view name, T value) noexcept
+        {
+            auto definition = catalog.find(graph::nodeTypeId(name));
+            auto payload = definition->create();
+            require(payload.has_value());
+            *payload->get<T>() = std::move(value);
+            auto node = createFlowNode(definition, std::move(*payload));
+            require(node.has_value());
+            return std::move(*node);
+        };
+        const std::vector<FuncArgInfo> arguments{{&meta::ref_type_of_v<int>, "argument"}};
+        const std::vector<FuncArgInfo> results{{&meta::ref_type_of_v<int>, "result"}};
+        auto function = make("lux.flow.function", FunctionPayload{arguments, results});
+        auto call = make("lux.flow.function_call", FunctionCallPayload{NodeId{99}, arguments, results});
+        auto returned = make("lux.flow.function_return", FunctionReturnPayload{NodeId{99}, results});
+        const std::array entries{
+            FlowNodeEntry{NodeId{1}, &call},
+            FlowNodeEntry{NodeId{2}, &returned},
+            FlowNodeEntry{NodeId{99}, &function}
+        };
+        FlowGraph graph;
+        auto edit = FlowGraphEdit::prepare(graph, {.insert = entries});
+        require(edit.has_value());
+        edit->commit();
+        auto source = captureFlowSource(assetId(), "functions", graph);
+        require(source.has_value());
+        // Wire pin order is schema order, never ascending PinId. Include the final valid ID.
+        auto next = UINT64_MAX;
+        for (auto& node : source->nodes)
+        {
+            for (auto& pin : node.inputs)
+            {
+                pin.id = PinId{next--};
+            }
+            for (auto& pin : node.outputs)
+            {
+                pin.id = PinId{next--};
+            }
+        }
+        auto restored = materializeFlowSource(*source);
+        require(restored.has_value());
+        auto captured = captureFlowSource(source->id, source->name, *restored);
+        require(captured.has_value() && *captured == *source);
+        const auto* actual = restored->node(NodeId{1})->payload.get<FunctionCallPayload>();
+        require(actual && actual->callee == NodeId{99} && actual->arguments.size() == 1);
+        auto invalid = *source;
+        std::get<FlowSourceReference>(invalid.nodes.front().parameters).id = 200;
+        const auto refused = materializeFlowSource(invalid);
+        require(!refused && refused.error().code == EFlowSourceError::INVALID_IDENTITY);
+        require(*captureFlowSource(source->id, source->name, *restored) == *source);
+        std::puts("PASS function forward references, atomic reconstruction and non-ordinal/max PinIds");
+    }
+
+    void restoredMetadataLifetime()
+    {
+        const script::ScriptAbilityValueDescription type{
+            semantic::typeId("lux.i32"),
+            "lux.i32",
+            semantic::EValuePass::VALUE,
+            static_cast<std::uint8_t>(semantic::EAbiKind::I32),
+            4,
+            4,
+            script::EScriptAbilityValueLifetime::OWNED_VALUE
+        };
+        const std::array parameters{script::ScriptAbilityParameterDescription{"value", type}};
+        const ScriptAbilityNodeDescription description{
+            script::ScriptApiContractIdView{"test.source"},
+            script::ScriptApiMethodIdView{"call"},
+            "Source",
+            "Call",
+            1,
+            17,
+            script::EScriptAbilityReceiverKind::NONE,
+            script::EScriptApiMethodKind::QUERY,
+            parameters,
+            {}
+        };
+        FlowNodeCatalog catalog;
+        const auto registration = scriptAbilityRegistration();
+        require(catalog.add({&registration, 1}).has_value());
+        auto definition = catalog.find(registration.identity.id);
+        auto payload = definition->create();
+        require(payload.has_value());
+        *payload->get<ScriptAbilityPayload>() = ScriptAbilityPayload{description};
+        auto value = createFlowNode(definition, std::move(*payload));
+        require(value.has_value());
+        FlowGraph graph;
+        const auto id = graph.addNode(std::move(*value));
+        require(id.has_value());
+        const auto before = captureFlowSource(assetId(), "metadata", graph);
+        require(before.has_value());
+        {
+            auto removed = graph.extractNode(*id);
+            require(removed.has_value());
+            const FlowNodeEntry entry{*id, &removed->value, removed->pins};
+            auto edit = FlowGraphEdit::prepare(graph, {.insert = std::span{&entry, 1}});
+            require(edit.has_value());
+            edit->commit();
+            const auto* node = graph.node(*id);
+            const auto schema = node->definition->describePins(node->payload);
+            require(schema.has_value());
+            const auto& argument = (*schema)[1];
+            const auto* pin = graph.pin(graph.pinId(*id, argument.semantic));
+            // No dangling dereference: check while both old/new metadata owners still exist.
+            require(pin->type == argument.type);
+            require(pin->default_value.type() == argument.type);
+        }
+        auto captured = captureFlowSource(assetId(), "metadata", graph);
+        require(captured.has_value() && *captured == *before);
+        ScriptAbilityNodeCatalog abilities;
+        require(abilities.add({{&description, 1}}).has_value());
+        FlowSourceEnvironment environment;
+        environment.abilities = abilities.view();
+        auto restored = materializeFlowSource(*captured, environment);
+        require(restored.has_value());
+        graph = {};
+        auto again = captureFlowSource(assetId(), "metadata", *restored);
+        require(again.has_value() && *again == *before);
+        std::puts("PASS restored Script metadata/defaults survive original node and temporary source owners");
     }
 
     void legacyRoundtrip(const std::filesystem::path& directory)
@@ -238,6 +370,8 @@ int main(int argc, char** argv)
     require(argc == 2);
     meta::meta_module_init();
     registeredRoundtrip();
+    functionForwardReferences();
+    restoredMetadataLifetime();
     legacyRoundtrip(argv[1]);
     meta::meta_module_deinit();
     std::puts(

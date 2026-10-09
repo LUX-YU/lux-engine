@@ -7,13 +7,13 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include <lux/engine/flowforge/ControlNodes.hpp>
+#include <lux/engine/flowforge/FunctionNodes.hpp>
+#include <lux/engine/flowforge/ObjectNodes.hpp>
 #include <lux/engine/flowforge/ScalarNodes.hpp>
-#include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FlowSource.hpp>
-#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
-#include <lux/engine/flowforge/graph/ObjectNode.hpp>
-#include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
-#include <lux/engine/flowforge/script/ScriptEventAwaitNode.hpp>
+#include <lux/engine/flowforge/script/ScriptAbilityPayload.hpp>
+#include <lux/engine/flowforge/script/ScriptEventPayload.hpp>
 #include <lux/engine/meta/MetaCompat.hpp>
 #include <map>
 #include <set>
@@ -183,17 +183,14 @@ namespace lux::flowforge
             return std::move(*result);
         }
 
-        const lux::meta::RefType* pinType(const Pin& pin) noexcept
+        EFlowSourcePinKind sourcePinKind(const FlowPinDeclaration& pin) noexcept
         {
-            if (pin.kind() == EPinKind::DATA_IN)
+            const bool input = pin.direction == graph::EPinDirection::INPUT;
+            if (pin.role == EFlowPinRole::EXECUTION)
             {
-                return static_cast<const DataInPin&>(pin).info().type;
+                return input ? EFlowSourcePinKind::EXEC_IN : EFlowSourcePinKind::EXEC_OUT;
             }
-            if (pin.kind() == EPinKind::DATA_OUT)
-            {
-                return static_cast<const DataOutPin&>(pin).info().type;
-            }
-            return nullptr;
+            return input ? EFlowSourcePinKind::DATA_IN : EFlowSourcePinKind::DATA_OUT;
         }
 
         std::vector<FlowSourceArgument> captureArguments(const std::vector<FuncArgInfo>& values)
@@ -302,15 +299,16 @@ namespace lux::flowforge
                    info.return_type.name == source.parameters.results.front().type;
         }
 
-        FlowSourceResult<std::unique_ptr<Node>> makeNode(
+        FlowSourceResult<FlowNode> makeNode(
             const FlowSourceNode& source,
-            FlowGraph& graph,
+            const FlowGraph& graph,
+            const std::map<NodeId, FlowNode>& prepared,
             const FlowNodeCatalog& builtins,
             const FlowSourceEnvironment& environment
         ) noexcept
         {
-            const auto operation = detail::builtinNodeOperation(source.type);
-            if (operation == ENodeOperation::REGISTERED_VALUE)
+            const auto operation = detail::builtinSourceKind(source.type);
+            if (operation == detail::EBuiltinSourceKind::EXTENSION)
             {
                 const auto definition =
                     environment.nodes ? environment.nodes->find(graph::nodeTypeId(source.type)) : nullptr;
@@ -331,7 +329,7 @@ namespace lux::flowforge
                     error.cause = std::move(payload.error());
                     return cxx::unexpected(std::move(error));
                 }
-                auto node = createFlowValueNode(definition, std::move(*payload));
+                auto node = createFlowNode(definition, std::move(*payload));
                 if (!node)
                 {
                     FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
@@ -340,7 +338,7 @@ namespace lux::flowforge
                 }
                 return std::move(*node);
             }
-            if (detail::registeredScalarOperation(operation))
+            if (detail::isScalarSourceKind(operation))
             {
                 const auto* type = findType(std::get<FlowSourceType>(source.parameters).name, environment);
                 if (!type)
@@ -360,7 +358,7 @@ namespace lux::flowforge
                     return cxx::unexpected(std::move(error));
                 }
                 payload->get<ScalarNodePayload>()->operand_type = type;
-                auto node = createFlowValueNode(std::move(definition), std::move(*payload));
+                auto node = createFlowNode(std::move(definition), std::move(*payload));
                 if (!node)
                 {
                     FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
@@ -369,30 +367,61 @@ namespace lux::flowforge
                 }
                 return std::move(*node);
             }
+            // The fixed wire adapters only resolve saved metadata. The registered definition
+            // remains the sole schema, validation and compile provider.
+            const auto make = [&]<class T>(T value) noexcept -> FlowSourceResult<FlowNode>
+            {
+                auto definition = builtins.find(graph::nodeTypeId(source.type));
+                if (!definition)
+                {
+                    return fail(EFlowSourceError::UNKNOWN_NODE_KIND, source.type, source.id);
+                }
+                auto payload = definition->create();
+                if (!payload)
+                {
+                    FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
+                    error.cause = std::move(payload.error());
+                    return cxx::unexpected(std::move(error));
+                }
+                auto* target = payload->get<T>();
+                if (!target)
+                {
+                    return fail(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
+                }
+                *target = std::move(value);
+                auto node = createFlowNode(std::move(definition), std::move(*payload));
+                if (!node)
+                {
+                    FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
+                    error.cause = std::move(node.error());
+                    return cxx::unexpected(std::move(error));
+                }
+                return std::move(*node);
+            };
             switch (operation)
             {
-            case ENodeOperation::START:
-                return std::unique_ptr<Node>(std::make_unique<StartNode>());
-            case ENodeOperation::BRANCH:
-                return std::unique_ptr<Node>(std::make_unique<BranchNode>());
-            case ENodeOperation::FOR_LOOP:
-                return std::unique_ptr<Node>(std::make_unique<ForLoopNode>());
-            case ENodeOperation::WHILE_LOOP:
-                return std::unique_ptr<Node>(std::make_unique<WhileLoopNode>());
-            case ENodeOperation::RETURN:
-                return std::unique_ptr<Node>(std::make_unique<ReturnNode>());
-            case ENodeOperation::BREAK:
-                return std::unique_ptr<Node>(std::make_unique<BreakNode>());
-            case ENodeOperation::SEQUENCE:
+            case detail::EBuiltinSourceKind::START:
+                return make(StartPayload{});
+            case detail::EBuiltinSourceKind::BRANCH:
+                return make(BranchPayload{});
+            case detail::EBuiltinSourceKind::FOR_LOOP:
+                return make(ForLoopPayload{});
+            case detail::EBuiltinSourceKind::WHILE_LOOP:
+                return make(WhileLoopPayload{});
+            case detail::EBuiltinSourceKind::RETURN:
+                return make(ReturnPayload{});
+            case detail::EBuiltinSourceKind::BREAK:
+                return make(BreakPayload{});
+            case detail::EBuiltinSourceKind::SEQUENCE:
             {
                 if (source.outputs.empty())
                 {
                     return fail(EFlowSourceError::SCHEMA_MISMATCH, "sequence outputs", source.id);
                 }
-                return std::unique_ptr<Node>(std::make_unique<SequenceNode>(SequenceSchema{source.outputs.size() - 1}));
+                return make(SequencePayload{source.outputs.size() - 1});
             }
-            case ENodeOperation::FUNC_DEF_START:
-            case ENodeOperation::ON_EVENT:
+            case detail::EBuiltinSourceKind::FUNC_DEF_START:
+            case detail::EBuiltinSourceKind::ON_EVENT:
             {
                 auto args =
                     materializeArguments(std::get<FlowSourceSignature>(source.parameters).arguments, environment);
@@ -400,9 +429,9 @@ namespace lux::flowforge
                 {
                     return lux::cxx::unexpected(args.error());
                 }
-                if (operation == ENodeOperation::ON_EVENT)
+                if (operation == detail::EBuiltinSourceKind::ON_EVENT)
                 {
-                    return std::unique_ptr<Node>(std::make_unique<OnEventNode>(source.name, std::move(*args)));
+                    return make(EventEntryPayload{std::move(*args)});
                 }
                 auto results =
                     materializeArguments(std::get<FlowSourceSignature>(source.parameters).results, environment);
@@ -410,43 +439,41 @@ namespace lux::flowforge
                 {
                     return lux::cxx::unexpected(results.error());
                 }
-                return std::unique_ptr<Node>(
-                    std::make_unique<FuncDefNode>(source.name, std::move(*args), std::move(*results))
-                );
+                return make(FunctionPayload{std::move(*args), std::move(*results)});
             }
-            case ENodeOperation::FUNC_RETURN:
-            case ENodeOperation::GRAPH_FUNC_CALL:
+            case detail::EBuiltinSourceKind::FUNC_RETURN:
+            case detail::EBuiltinSourceKind::GRAPH_FUNC_CALL:
             {
                 const NodeId reference{std::get<FlowSourceReference>(source.parameters).id};
-                const auto* target = graph.findNodeById(reference);
-                if (!target || target->operation() != ENodeOperation::FUNC_DEF_START)
+                const auto found = prepared.find(reference);
+                const auto* target = found == prepared.end() ? nullptr : found->second.payload.get<FunctionPayload>();
+                if (!target)
                 {
                     return fail(EFlowSourceError::INVALID_IDENTITY, "function", source.id);
                 }
-                const auto& definition = static_cast<const FuncDefNode&>(*target);
-                if (operation == ENodeOperation::FUNC_RETURN)
+                const auto& definition = *target;
+                if (operation == detail::EBuiltinSourceKind::FUNC_RETURN)
                 {
-                    return std::unique_ptr<Node>(std::make_unique<FuncReturnNode>(reference, definition));
+                    return make(FunctionReturnPayload{reference, definition.results});
                 }
-                return std::unique_ptr<Node>(std::make_unique<GraphFuncCallNode>(reference, definition));
+                return make(FunctionCallPayload{reference, definition.arguments, definition.results});
             }
-            case ENodeOperation::GET_VARIABLE:
-            case ENodeOperation::SET_VARIABLE:
+            case detail::EBuiltinSourceKind::GET_VARIABLE:
+            case detail::EBuiltinSourceKind::SET_VARIABLE:
             {
                 const auto* variable = graph.findVariable(std::get<FlowSourceReference>(source.parameters).id);
                 if (!variable)
                 {
                     return fail(EFlowSourceError::INVALID_IDENTITY, "variable", source.id);
                 }
-                const DataPinInfo info{variable->name, variable->type};
-                if (operation == ENodeOperation::GET_VARIABLE)
+                if (operation == detail::EBuiltinSourceKind::GET_VARIABLE)
                 {
-                    return std::unique_ptr<Node>(std::make_unique<GetVariableNode>(variable->id, info));
+                    return make(GetVariablePayload{variable->id, variable->type});
                 }
-                return std::unique_ptr<Node>(std::make_unique<SetVariableNode>(variable->id, info));
+                return make(SetVariablePayload{variable->id, variable->type});
             }
-            case ENodeOperation::GET_OBJECT:
-            case ENodeOperation::SET_OBJECT:
+            case detail::EBuiltinSourceKind::GET_OBJECT:
+            case detail::EBuiltinSourceKind::SET_OBJECT:
             {
                 const auto* type = findType(std::get<FlowSourceType>(source.parameters).name, environment);
                 if (!type)
@@ -457,14 +484,14 @@ namespace lux::flowforge
                         source.id
                     );
                 }
-                if (operation == ENodeOperation::GET_OBJECT)
+                if (operation == detail::EBuiltinSourceKind::GET_OBJECT)
                 {
-                    return std::unique_ptr<Node>(std::make_unique<GetObjectNode>(*type));
+                    return make(GetObjectPayload{type});
                 }
-                return std::unique_ptr<Node>(std::make_unique<SetObjectNode>(*type));
+                return make(SetObjectPayload{type});
             }
-            case ENodeOperation::GET_FIELD:
-            case ENodeOperation::SET_FIELD:
+            case detail::EBuiltinSourceKind::GET_FIELD:
+            case detail::EBuiltinSourceKind::SET_FIELD:
             {
                 const auto& field_source = std::get<FlowSourceField>(source.parameters);
                 const auto* owner = findClass(field_source.owner, environment);
@@ -472,13 +499,15 @@ namespace lux::flowforge
                 {
                     for (const auto& field : owner->fields)
                     {
-                        if (field.name == field_source.member && field.type.name == field_source.type)
+                        const bool is_matching_field =
+                            field.name == field_source.member && field.type.name == field_source.type;
+                        if (is_matching_field)
                         {
-                            if (operation == ENodeOperation::GET_FIELD)
+                            if (operation == detail::EBuiltinSourceKind::GET_FIELD)
                             {
-                                return std::unique_ptr<Node>(std::make_unique<GetFieldNode>(*owner, field));
+                                return make(GetFieldPayload{owner, &field});
                             }
-                            return std::unique_ptr<Node>(std::make_unique<SetFieldNode>(*owner, field));
+                            return make(SetFieldPayload{owner, &field});
                         }
                     }
                 }
@@ -488,11 +517,11 @@ namespace lux::flowforge
                     source.id
                 );
             }
-            case ENodeOperation::NATIVE_FUNC_CALL:
+            case detail::EBuiltinSourceKind::NATIVE_FUNC_CALL:
             {
                 const auto& call = std::get<FlowSourceNativeCall>(source.parameters);
                 const auto create_call = [&](const meta::RefInvokable& signature,
-                                             const meta::RefType* receiver) -> FlowSourceResult<std::unique_ptr<Node>>
+                                             const meta::RefType* receiver) noexcept -> FlowSourceResult<FlowNode>
                 {
                     auto code = environment.code_lifetime ? object::CodeLease::plugin(environment.code_lifetime)
                                                           : object::CodeLease::builtin();
@@ -501,7 +530,7 @@ namespace lux::flowforge
                     {
                         return fail(EFlowSourceError::SCHEMA_MISMATCH, call.member, source.id);
                     }
-                    return std::unique_ptr<Node>(std::make_unique<NativeFuncCall>(std::move(*definition)));
+                    return make(NativeCallPayload{std::move(*definition)});
                 };
                 if (call.owner.empty())
                 {
@@ -525,7 +554,7 @@ namespace lux::flowforge
                 }
                 return fail(EFlowSourceError::UNKNOWN_REFLECTION_MEMBER, call.member, source.id);
             }
-            case ENodeOperation::SCRIPT_ABILITY_CALL:
+            case detail::EBuiltinSourceKind::SCRIPT_ABILITY_CALL:
             {
                 const auto& ability = std::get<FlowSourceAbility>(source.parameters);
                 const auto* description = environment.abilities.find(
@@ -536,25 +565,28 @@ namespace lux::flowforge
                 {
                     return fail(EFlowSourceError::UNKNOWN_ABILITY, ability.method, source.id);
                 }
-                if (description->schema_version != ability.schema_version ||
-                    description->schema_hash != ability.schema_hash)
+                const bool is_schema_mismatch = description->schema_version != ability.schema_version ||
+                                                description->schema_hash != ability.schema_hash;
+                if (is_schema_mismatch)
                 {
                     return fail(EFlowSourceError::SCHEMA_MISMATCH, ability.method, source.id);
                 }
-                return std::unique_ptr<Node>(std::make_unique<ScriptAbilityNode>(*description));
+                return make(ScriptAbilityPayload{*description});
             }
-            case ENodeOperation::SCRIPT_EVENT_WAIT:
+            case detail::EBuiltinSourceKind::SCRIPT_EVENT_WAIT:
             {
                 const auto& saved_event = std::get<lux::script::ScriptEventSourceDescription>(source.parameters);
                 for (const auto& event : environment.events)
                 {
-                    if (event.system_id == saved_event.system_id && event.event_id == saved_event.event_id)
+                    const bool is_matching_event =
+                        event.system_id == saved_event.system_id && event.event_id == saved_event.event_id;
+                    if (is_matching_event)
                     {
                         if (event != saved_event)
                         {
                             return fail(EFlowSourceError::SCHEMA_MISMATCH, "event", source.id);
                         }
-                        return std::unique_ptr<Node>(std::make_unique<ScriptEventAwaitNode>(event));
+                        return make(ScriptEventPayload{event});
                     }
                 }
                 return fail(EFlowSourceError::SCHEMA_MISMATCH, "missing event", source.id);
@@ -689,7 +721,7 @@ namespace lux::flowforge
 
     FlowSourceResult<FlowSourceNode> captureFlowNode(const FlowGraph& graph, NodeId id) noexcept
     {
-        const auto* found = graph.findNodeById(id);
+        const auto* found = graph.node(id);
         if (!found)
         {
             return fail(EFlowSourceError::INVALID_IDENTITY, "node", id);
@@ -697,25 +729,38 @@ namespace lux::flowforge
         const auto& node = *found;
         FlowSourceNode item;
         item.id = id;
-        if (const auto* definition = node.registeredType())
+        const auto& definition = *node.definition;
+        const auto find_node = [&](NodeId target) noexcept { return graph.node(target); };
+        const auto find_variable_type = [&](std::uint64_t variable) noexcept -> const meta::RefType*
         {
-            item.type = definition->identity().canonical_name;
-            item.version = definition->identity().version;
-            const auto* payload = node.registeredPayload();
-            if (!payload)
-            {
-                return fail(EFlowSourceError::INVALID_VALUE, "node.payload", id);
-            }
-            auto encoded = definition->encode(*payload);
+            const auto* value = graph.findVariable(variable);
+            return value ? value->type : nullptr;
+        };
+        auto references = definition.validateReferences(node.payload, {find_node, find_variable_type});
+        if (!references)
+        {
+            FlowSourceFailure error{EFlowSourceError::INVALID_IDENTITY, "references", id};
+            error.cause = std::move(references.error());
+            return cxx::unexpected(std::move(error));
+        }
+        item.type = definition.identity().canonical_name;
+        item.version = definition.identity().version;
+        item.name = node.name;
+        item.creator = node.creator;
+        const auto operation = detail::builtinSourceKind(item.type);
+        const bool is_scalar = detail::isScalarSourceKind(operation);
+        const bool is_extension = operation == detail::EBuiltinSourceKind::EXTENSION;
+        if (is_scalar || is_extension)
+        {
+            auto encoded = definition.encode(node.payload);
             if (!encoded)
             {
                 FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, item.type, id};
                 error.cause = std::move(encoded.error());
                 return cxx::unexpected(std::move(error));
             }
-            if (detail::registeredScalarOperation(detail::builtinNodeOperation(item.type)))
+            if (is_scalar)
             {
-                // Preserve the established builtin wire format; the registered codec owns the value.
                 item.parameters = FlowSourceType{std::move(*encoded)};
             }
             else
@@ -723,93 +768,77 @@ namespace lux::flowforge
                 item.parameters = FlowSourcePayload{std::move(*encoded)};
             }
         }
-        else
+        switch (operation)
         {
-            item.type = detail::builtinNodeName(node.operation());
-        }
-        item.name = node.name();
-        item.creator = node.creatorName();
-        switch (node.operation())
-        {
-        case ENodeOperation::FUNC_DEF_START:
+        case detail::EBuiltinSourceKind::FUNC_DEF_START:
             item.parameters = FlowSourceSignature{
-                captureArguments(static_cast<const FuncDefNode&>(node).argInfos()),
-                captureArguments(static_cast<const FuncDefNode&>(node).retInfos())
+                captureArguments(node.payload.get<FunctionPayload>()->arguments),
+                captureArguments(node.payload.get<FunctionPayload>()->results)
             };
             break;
-        case ENodeOperation::ON_EVENT:
+        case detail::EBuiltinSourceKind::ON_EVENT:
             item.parameters =
-                FlowSourceSignature{captureArguments(static_cast<const OnEventNode&>(node).paramInfos()), {}};
+                FlowSourceSignature{captureArguments(node.payload.get<EventEntryPayload>()->parameters), {}};
             break;
-        case ENodeOperation::FUNC_RETURN:
-            if (!static_cast<const FuncReturnNode&>(node).resolveDefinition(graph))
-            {
-                return fail(EFlowSourceError::INVALID_IDENTITY, "function", id);
-            }
-            item.parameters = FlowSourceReference{static_cast<const FuncReturnNode&>(node).definitionId().value};
+        case detail::EBuiltinSourceKind::FUNC_RETURN:
+            item.parameters = FlowSourceReference{node.payload.get<FunctionReturnPayload>()->definition.value};
             break;
-        case ENodeOperation::GRAPH_FUNC_CALL:
-            if (!static_cast<const GraphFuncCallNode&>(node).resolveCallee(graph))
-            {
-                return fail(EFlowSourceError::INVALID_IDENTITY, "function", id);
-            }
-            item.parameters = FlowSourceReference{static_cast<const GraphFuncCallNode&>(node).calleeId().value};
+        case detail::EBuiltinSourceKind::GRAPH_FUNC_CALL:
+            item.parameters = FlowSourceReference{node.payload.get<FunctionCallPayload>()->callee.value};
             break;
-        case ENodeOperation::GET_VARIABLE:
-            item.parameters = FlowSourceReference{static_cast<const GetVariableNode&>(node).variableId()};
+        case detail::EBuiltinSourceKind::GET_VARIABLE:
+            item.parameters = FlowSourceReference{node.payload.get<GetVariablePayload>()->variable};
             break;
-        case ENodeOperation::SET_VARIABLE:
-            item.parameters = FlowSourceReference{static_cast<const SetVariableNode&>(node).variableId()};
+        case detail::EBuiltinSourceKind::SET_VARIABLE:
+            item.parameters = FlowSourceReference{node.payload.get<SetVariablePayload>()->variable};
             break;
-        case ENodeOperation::GET_OBJECT:
-            item.parameters =
-                FlowSourceType{std::string(static_cast<const GetObjectNode&>(node).dataOutPin().info().type->name)};
+        case detail::EBuiltinSourceKind::GET_OBJECT:
+            item.parameters = FlowSourceType{std::string(node.payload.get<GetObjectPayload>()->type->name)};
             break;
-        case ENodeOperation::SET_OBJECT:
-            item.parameters =
-                FlowSourceType{std::string(static_cast<const SetObjectNode&>(node).dataInPin().info().type->name)};
+        case detail::EBuiltinSourceKind::SET_OBJECT:
+            item.parameters = FlowSourceType{std::string(node.payload.get<SetObjectPayload>()->type->name)};
             break;
-        case ENodeOperation::GET_FIELD:
+        case detail::EBuiltinSourceKind::GET_FIELD:
         {
-            const auto& field = static_cast<const GetFieldNode&>(node);
+            const auto& field = *node.payload.get<GetFieldPayload>();
             item.parameters = FlowSourceField{
-                std::string(field.ownerClass()->full_name),
-                std::string(field.field()->name),
-                std::string(field.field()->type.name)
+                std::string(field.owner->full_name),
+                std::string(field.field->name),
+                std::string(field.field->type.name)
             };
             break;
         }
-        case ENodeOperation::SET_FIELD:
+        case detail::EBuiltinSourceKind::SET_FIELD:
         {
-            const auto& field = static_cast<const SetFieldNode&>(node);
+            const auto& field = *node.payload.get<SetFieldPayload>();
             item.parameters = FlowSourceField{
-                std::string(field.ownerClass()->full_name),
-                std::string(field.field()->name),
-                std::string(field.field()->type.name)
+                std::string(field.owner->full_name),
+                std::string(field.field->name),
+                std::string(field.field->type.name)
             };
             break;
         }
-        case ENodeOperation::NATIVE_FUNC_CALL:
+        case detail::EBuiltinSourceKind::NATIVE_FUNC_CALL:
         {
-            const auto& call = static_cast<const NativeFuncCall&>(node);
+            const auto& call = *node.payload.get<NativeCallPayload>()->definition;
             FlowSourceNativeCall value;
-            value.member = call.info().full_name;
-            value.signature = call.info().type_signature;
-            if (call.ownerType())
+            value.member = call.signature().full_name;
+            value.signature = call.signature().type_signature;
+            if (call.receiver())
             {
-                value.owner = call.ownerType()->name;
+                value.owner = call.receiver()->name;
             }
-            for (const auto& parameter : call.info().parameters)
+            for (const auto& parameter : call.signature().parameters)
             {
                 value.parameters.arguments.push_back({std::string(parameter.name), std::string(parameter.type.name)});
             }
-            value.parameters.results.push_back({{}, std::string(call.info().return_type.name)});
+            value.parameters.results.push_back({{}, std::string(call.signature().return_type.name)});
             item.parameters = std::move(value);
             break;
         }
-        case ENodeOperation::SCRIPT_ABILITY_CALL:
+        case detail::EBuiltinSourceKind::SCRIPT_ABILITY_CALL:
         {
-            const auto& ability = static_cast<const ScriptAbilityNode&>(node);
+            const auto& ability = *node.payload.get<ScriptAbilityPayload>();
             item.parameters = FlowSourceAbility{
                 std::string(ability.contract().name()),
                 std::string(ability.method().name()),
@@ -818,45 +847,48 @@ namespace lux::flowforge
             };
             break;
         }
-        case ENodeOperation::SCRIPT_EVENT_WAIT:
-            item.parameters = static_cast<const ScriptEventAwaitNode&>(node).source();
+        case detail::EBuiltinSourceKind::SCRIPT_EVENT_WAIT:
+            item.parameters = node.payload.get<ScriptEventPayload>()->source();
             break;
         default:
             break;
         }
-        for (const bool input : {true, false})
+        auto declarations = definition.describePins(node.payload);
+        if (!declarations)
         {
-            for (const auto* pin : input ? node.inPins() : node.outPins())
+            FlowSourceFailure error{EFlowSourceError::SCHEMA_MISMATCH, "pins", id};
+            error.cause = std::move(declarations.error());
+            return cxx::unexpected(std::move(error));
+        }
+        for (const auto& declaration : *declarations)
+        {
+            const auto pin_id = graph.pinId(id, declaration.semantic);
+            const auto* pin = graph.pin(pin_id);
+            const auto* record = graph.topology().findPin(pin_id);
+            if (!pin || !record)
             {
-                if (!pin)
-                {
-                    return fail(EFlowSourceError::INVALID_VALUE, "pin", item.id);
-                }
-                FlowSourcePin value{graph.pinId(pin), pin->kind(), pin->name()};
-                const auto* record = graph.topology().findPin(value.id);
-                if (!record)
-                {
-                    return fail(EFlowSourceError::INVALID_TOPOLOGY, "pin", id, value.id);
-                }
-                value.semantic = record->semantic;
-                if (const auto* type = pinType(*pin))
-                {
-                    value.type = type->name;
-                }
-                if (pin->kind() == EPinKind::DATA_IN)
-                {
-                    auto literal = captureLiteral(static_cast<const DataInPin*>(pin)->constantData());
-                    if (!literal)
-                    {
-                        auto error = literal.error();
-                        error.node = item.id;
-                        error.pin = graph.pinId(pin);
-                        return lux::cxx::unexpected(std::move(error));
-                    }
-                    value.literal = std::move(*literal);
-                }
-                (input ? item.inputs : item.outputs).push_back(std::move(value));
+                return fail(EFlowSourceError::INVALID_TOPOLOGY, "pin", id, pin_id);
             }
+            FlowSourcePin value{pin_id, sourcePinKind(declaration), pin->name};
+            value.semantic = record->semantic;
+            if (pin->type)
+            {
+                value.type = pin->type->name;
+            }
+            if (value.kind == EFlowSourcePinKind::DATA_IN)
+            {
+                auto literal = captureLiteral(pin->default_value);
+                if (!literal)
+                {
+                    auto error = std::move(literal.error());
+                    error.node = id;
+                    error.pin = pin_id;
+                    return cxx::unexpected(std::move(error));
+                }
+                value.literal = std::move(*literal);
+            }
+            const bool input = record->direction == graph::EPinDirection::INPUT;
+            (input ? item.inputs : item.outputs).push_back(std::move(value));
         }
         return item;
     }
@@ -869,18 +901,18 @@ namespace lux::flowforge
     ) noexcept
     {
         FlowSource source{id, std::move(name)};
-        for (const auto& storage : graph.nodes())
+        for (const auto& [node_id, node] : graph.nodes())
         {
-            if (!storage.node)
+            if (!node)
             {
                 return fail(EFlowSourceError::INVALID_VALUE, "node");
             }
-            auto item = captureFlowNode(graph, storage.id);
+            auto item = captureFlowNode(graph, node_id);
             if (!item)
             {
                 return lux::cxx::unexpected(item.error());
             }
-            if (const auto* layout = graph.layout().find(storage.id))
+            if (const auto* layout = graph.layout().find(node_id))
             {
                 item->layout = *layout;
             }
@@ -917,11 +949,11 @@ namespace lux::flowforge
         const FlowSourceEnvironment& environment
     ) noexcept
     {
-        if (from.kind == EPinKind::EXEC_OUT && to.kind == EPinKind::EXEC_IN)
+        if (from.kind == EFlowSourcePinKind::EXEC_OUT && to.kind == EFlowSourcePinKind::EXEC_IN)
         {
             return {};
         }
-        if (from.kind != EPinKind::DATA_OUT || to.kind != EPinKind::DATA_IN)
+        if (from.kind != EFlowSourcePinKind::DATA_OUT || to.kind != EFlowSourcePinKind::DATA_IN)
         {
             return fail(EFlowSourceError::INVALID_TOPOLOGY, "pin direction", {}, to.id);
         }
@@ -947,7 +979,7 @@ namespace lux::flowforge
         const FlowSourceEnvironment& environment
     ) noexcept
     {
-        if (pin.kind != EPinKind::DATA_IN)
+        if (pin.kind != EFlowSourcePinKind::DATA_IN)
         {
             return fail(EFlowSourceError::INVALID_VALUE, "literal direction", {}, pin.id);
         }
@@ -1019,9 +1051,18 @@ namespace lux::flowforge
         FlowNodeCatalog builtins;
         const auto builtin_code = environment.code_lifetime ? object::CodeLease::plugin(environment.code_lifetime)
                                                             : object::CodeLease::builtin();
-        if (!builtins.add(scalarNodeRegistrations(builtin_code)))
+        const auto special = std::array{
+            nativeCallRegistration(builtin_code),
+            scriptAbilityRegistration(builtin_code),
+            scriptEventRegistration(builtin_code)
+        };
+        const bool registered = builtins.add(scalarNodeRegistrations(builtin_code)) &&
+                                builtins.add(controlNodeRegistrations(builtin_code)) &&
+                                builtins.add(functionNodeRegistrations(builtin_code)) &&
+                                builtins.add(objectNodeRegistrations(builtin_code)) && builtins.add(special);
+        if (!registered)
         {
-            return fail(EFlowSourceError::SCHEMA_MISMATCH, "builtin scalar definitions");
+            return fail(EFlowSourceError::SCHEMA_MISMATCH, "builtin definitions");
         }
         FlowGraph graph;
         for (const auto& variable : source.variables)
@@ -1041,79 +1082,134 @@ namespace lux::flowforge
                 return fail(EFlowSourceError::INVALID_IDENTITY, "variable");
             }
         }
-        // Definitions first, then their callers/returns; source order is independent of construction order.
+        // Detached semantic values resolve forward function references without publishing a
+        // partially constructed graph. One GraphEdit validates the complete candidate below.
+        std::map<NodeId, FlowNode> prepared;
+        std::vector<std::vector<FlowPinEntry>> restored;
+        std::vector<FlowNodeEntry> entries;
+        std::vector<graph::GraphLayoutEntry> placements;
+        restored.reserve(source.nodes.size());
+        entries.reserve(source.nodes.size());
+        placements.reserve(source.nodes.size());
         for (const bool definitions : {true, false})
         {
             for (const auto& item : source.nodes)
             {
-                if ((detail::builtinNodeOperation(item.type) == ENodeOperation::FUNC_DEF_START) != definitions)
+                if ((detail::builtinSourceKind(item.type) == detail::EBuiltinSourceKind::FUNC_DEF_START) != definitions)
                 {
                     continue;
                 }
-                auto result = makeNode(item, graph, builtins, environment);
+                auto result = makeNode(item, graph, prepared, builtins, environment);
                 if (!result)
                 {
-                    return lux::cxx::unexpected(result.error());
+                    return cxx::unexpected(std::move(result.error()));
                 }
-                auto node = std::move(*result);
-                node->setName(item.name);
-                node->setCreatorName(item.creator);
-                if (node->inPins().size() != item.inputs.size() || node->outPins().size() != item.outputs.size())
+                result->name = item.name;
+                result->creator = item.creator;
+                prepared.emplace(item.id, std::move(*result));
+            }
+        }
+        for (const auto& item : source.nodes)
+        {
+            const auto& node = prepared.at(item.id);
+            auto declarations = node.definition->describePins(node.payload);
+            if (!declarations)
+            {
+                FlowSourceFailure error{EFlowSourceError::SCHEMA_MISMATCH, "pins", item.id};
+                error.cause = std::move(declarations.error());
+                return cxx::unexpected(std::move(error));
+            }
+            auto& pins = restored.emplace_back();
+            pins.reserve(declarations->size());
+            std::size_t input_index{}, output_index{};
+            for (const auto& declaration : *declarations)
+            {
+                const bool input = declaration.direction == graph::EPinDirection::INPUT;
+                const auto& saved = input ? item.inputs : item.outputs;
+                auto& index = input ? input_index : output_index;
+                if (index == saved.size())
                 {
                     return fail(EFlowSourceError::SCHEMA_MISMATCH, "pin count", item.id);
                 }
-                std::vector<PinId> restored_pins;
-                for (const bool input : {true, false})
+                const auto& value = saved[index++];
+                const auto* type = declaration.type;
+                const bool is_kind_mismatch = sourcePinKind(declaration) != value.kind;
+                const bool is_semantic_mismatch = declaration.semantic != value.semantic;
+                const bool is_type_mismatch = type ? type->name != value.type : !value.type.empty();
+                if (is_kind_mismatch || is_semantic_mismatch || is_type_mismatch)
                 {
-                    const auto& pins = input ? node->inPins() : node->outPins();
-                    const auto& saved = input ? item.inputs : item.outputs;
-                    for (std::size_t i{}; i < pins.size(); ++i)
+                    return fail(EFlowSourceError::SCHEMA_MISMATCH, "pin type", item.id, value.id);
+                }
+                const bool single = declaration.role == EFlowPinRole::EXECUTION ? !input : input;
+                FlowPinEntry entry{
+                    {value.id,
+                     item.id,
+                     declaration.direction,
+                     single ? std::uint8_t{1} : graph::kUnlimitedFan,
+                     declaration.semantic},
+                    {value.name, declaration.role, type, declaration.allow_default, declaration.necessary, {}}
+                };
+                if (value.kind == EFlowSourcePinKind::DATA_IN)
+                {
+                    auto literal = materializeLiteral(value.literal, *type);
+                    if (!literal)
                     {
-                        auto& pin = *pins[i];
-                        const auto* type = pinType(pin);
-                        const auto semantic = node->registeredType() ? node->registeredPinSemantic(pin)
-                                                                     : detail::builtinPinSemantic(pin.kind(), i);
-                        const bool mismatch = pin.kind() != saved[i].kind || semantic != saved[i].semantic ||
-                                              (type ? type->name != saved[i].type : !saved[i].type.empty());
-                        if (mismatch)
-                        {
-                            return fail(EFlowSourceError::SCHEMA_MISMATCH, "pin type", item.id, saved[i].id);
-                        }
-                        pin.setName(saved[i].name);
-                        restored_pins.push_back(saved[i].id);
-                        if (pin.kind() == EPinKind::DATA_IN)
-                        {
-                            auto literal = materializeLiteral(saved[i].literal, *type);
-                            if (!literal)
-                            {
-                                return lux::cxx::unexpected(literal.error());
-                            }
-                            auto& target = static_cast<DataInPin&>(pin);
-                            // This is reconstruction of an exact declared type, not an implicit assignment.
-                            // In particular, the legacy conversion table does not accept even void* -> void*.
-                            target.constantData() = std::move(*literal);
-                        }
+                        auto error = std::move(literal.error());
+                        error.node = item.id;
+                        error.pin = value.id;
+                        return cxx::unexpected(std::move(error));
                     }
+                    // Exact-type restoration is not an implicit assignment (notably void*).
+                    entry.value.default_value = std::move(*literal);
                 }
-                if (!graph.insertNode({item.id, std::move(node), std::move(restored_pins)}))
-                {
-                    return fail(EFlowSourceError::INVALID_TOPOLOGY, "node", item.id);
-                }
-                if (!graph.layout().set(item.id, item.layout))
-                {
-                    return fail(EFlowSourceError::INVALID_VALUE, "layout", item.id);
-                }
+                pins.push_back(std::move(entry));
             }
+            const bool is_count_mismatch = input_index != item.inputs.size() || output_index != item.outputs.size();
+            if (is_count_mismatch)
+            {
+                return fail(EFlowSourceError::SCHEMA_MISMATCH, "pin count", item.id);
+            }
+            entries.push_back({item.id, &node, pins});
+            placements.push_back({item.id, item.layout});
         }
+        std::vector<graph::LinkRecord> links;
+        links.reserve(source.links.size());
         for (const auto& link : source.links)
         {
-            auto* from = graph.findPin(link.from);
-            auto* to = graph.findPin(link.to);
-            if (!from || !to || graph.connect(*from, *to) != ELinkError::SUCCESS)
-            {
-                return fail(EFlowSourceError::INVALID_TOPOLOGY, "link", {}, link.to);
-            }
+            links.push_back({link.from, link.to});
         }
+        FlowGraphChange change;
+        change.insert = entries;
+        change.connect = links;
+        change.place = placements;
+        auto edit = FlowGraphEdit::prepare(graph, change);
+        if (!edit)
+        {
+            FlowSourceFailure error{EFlowSourceError::INVALID_TOPOLOGY, "graph"};
+            std::visit(
+                [&]<class T>(const T& failure) noexcept
+                {
+                    if constexpr (std::is_same_v<T, graph::GraphTopologyFailure>)
+                    {
+                        error.node = failure.node;
+                        error.pin = failure.pin;
+                    }
+                    else if constexpr (std::is_same_v<T, FlowForgeFailure>)
+                    {
+                        error.node = NodeId{failure.node_id};
+                        error.pin = PinId{failure.pin_id};
+                        error.cause = failure;
+                    }
+                    else
+                    {
+                        error.code = EFlowSourceError::UNSUPPORTED_LITERAL;
+                    }
+                },
+                edit.error()
+            );
+            return cxx::unexpected(std::move(error));
+        }
+        edit->commit();
         for (const auto& item : source.exports)
         {
             if (!graph.addExport({FlowForgeExportNodeId{item.id}, item.entry, item.symbol, item.hints}))

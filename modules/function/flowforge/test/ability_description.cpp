@@ -1,10 +1,12 @@
-#include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
+#include <lux/engine/flowforge/script/ScriptAbilityPayload.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstdlib>
+#include <lux/engine/meta/Meta.hpp>
 #include <string>
+#include <type_traits>
 
 namespace
 {
@@ -89,8 +91,21 @@ namespace
         require(value.results[0].canonical_name == "lux.i32" && value.results[0].alignment == 4);
     }
 
-    void check(const ScriptAbilityNode& value) noexcept
+    void check(const ScriptAbilityPayload& value) noexcept
     {
+        static_assert(!std::is_polymorphic_v<ScriptAbilityPayload>);
+        check(value.description());
+        const auto pins = value.describePins();
+        require(pins.has_value() && pins->size() == 4);
+        require((*pins)[0].role == EFlowPinRole::EXECUTION && (*pins)[0].name == "Execute");
+        require((*pins)[1].role == EFlowPinRole::DATA && (*pins)[1].name == "argument");
+        require((*pins)[1].allow_default && (*pins)[1].direction == lux::graph::EPinDirection::INPUT);
+        require((*pins)[1].type->name == "lux.i32" && (*pins)[1].type->size == 4);
+        require((*pins)[2].role == EFlowPinRole::EXECUTION && (*pins)[2].name == "Completed");
+        require((*pins)[3].name == "Result" && (*pins)[3].type->alignment == 4);
+        require((*pins)[3].direction == lux::graph::EPinDirection::OUTPUT);
+        require((*pins)[1].semantic.value == (std::uint64_t{4} << 56 | 2));
+        require((*pins)[3].semantic.value == (std::uint64_t{5} << 56 | 2));
         require(value.contract().name() == "vendor.runtime.ability");
         require(value.method().name() == "compute");
         require(value.expectedSchemaVersion() == 7 && value.expectedSchemaHash() == 919);
@@ -159,10 +174,10 @@ int main(int argc, char** argv)
     }
     else if (mode == "node")
     {
-        std::unique_ptr<ScriptAbilityNode> node;
+        std::unique_ptr<ScriptAbilityPayload> node;
         {
             Input input;
-            node = std::make_unique<ScriptAbilityNode>(input.description);
+            node = std::make_unique<ScriptAbilityPayload>(input.description);
             input.overwrite();
             check(*node);
         }
@@ -171,9 +186,17 @@ int main(int argc, char** argv)
             ScriptAbilityNodeCatalog catalog;
             Input input;
             require(catalog.add({{&input.description, 1}}).has_value());
-            node = std::make_unique<ScriptAbilityNode>(catalog.view().nodes().front());
+            node = std::make_unique<ScriptAbilityPayload>(catalog.view().nodes().front());
         }
         check(*node);
+        ScriptAbilityPayload moved{std::move(*node)};
+        node.reset();
+        check(moved);
+        Input replacement;
+        ScriptAbilityPayload assigned{replacement.description};
+        assigned = std::move(moved);
+        replacement.overwrite();
+        check(assigned);
     }
     else
     {

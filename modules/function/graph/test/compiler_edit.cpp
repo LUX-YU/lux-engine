@@ -1,7 +1,7 @@
 #include "../../material/test/MaterialTest.hpp"
 #include <lux/engine/flowforge/Compiler.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
-#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
+#include <lux/engine/flowforge/FunctionNodes.hpp>
 #include <lux/engine/material/Compiler.hpp>
 
 #include <array>

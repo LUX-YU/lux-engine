@@ -7,7 +7,6 @@
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/Hashing.h>
 #include <llvm/ADT/ScopeExit.h>
-#include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/ADT/StringMap.h>
 #include <llvm/Support/raw_ostream.h>
 #include <lux/engine/flowforge/FlowNodeCatalog.hpp>
@@ -23,19 +22,20 @@
 #include <unordered_set>
 #include <utility>
 #include FLOWFORGE_ARITH_DIALECT_INCLUDE
+#include "lux/engine/flowforge/ControlNodes.hpp"
+#include "lux/engine/flowforge/FunctionNodes.hpp"
+#include "lux/engine/flowforge/ObjectNodes.hpp"
 #include "lux/engine/flowforge/compiler/IRImpl.hpp"
-#include "lux/engine/flowforge/compiler/TypeSizeMap.hpp"
 #include "lux/engine/flowforge/compiler/ScriptInstance.hpp" // invokerSymbol / eventSymbol
+#include "lux/engine/flowforge/compiler/TypeSizeMap.hpp"
 #include "lux/engine/flowforge/graph/FlowGraph.hpp"
 #include "lux/engine/flowforge/graph/StateLayout.hpp"
-#include "lux/engine/flowforge/graph/NodeBase.hpp"
-#include "lux/engine/flowforge/graph/ControlNode.hpp"
-#include "lux/engine/flowforge/graph/FunctionalNode.hpp"
-#include "lux/engine/flowforge/graph/ObjectNode.hpp"
-#include <lux/engine/flowforge/detail/ScalarLowering.hpp>
+#include "lux/engine/flowforge/script/ScriptAbilityPayload.hpp"
+#include "lux/engine/flowforge/script/ScriptEventPayload.hpp"
 #include <lux/engine/flowforge/FlowControlFlow.hpp>
-#include "lux/engine/flowforge/script/ScriptEventAwaitNode.hpp"
-#include "lux/engine/flowforge/script/ScriptAbilityNode.hpp"
+#include <lux/engine/flowforge/FlowExecutionCompiler.hpp>
+#include <lux/engine/flowforge/NativeCallDefinition.hpp>
+#include <lux/engine/flowforge/detail/ScalarLowering.hpp>
 
 namespace lux::flowforge
 {
@@ -83,7 +83,7 @@ namespace lux::flowforge
         llvm::StringMap<mlir::LLVM::GlobalOp> string_globals;
 
         // Extern function declarations cache. Dedupes by symbol name so
-        // multiple NativeFuncCall nodes targeting the same function share
+        // multiple registered native-call nodes targeting the same function share
         // one func.func declaration in the module.
         llvm::StringMap<mlir::func::FuncOp> extern_funcs;
 
@@ -102,8 +102,8 @@ namespace lux::flowforge
         std::unordered_map<std::uint64_t, std::uint32_t> ability_ordinals;
         std::unordered_map<std::uint64_t, std::uint32_t> event_wait_ordinals;
 
-        const Node* current_node = nullptr;
-        const Pin* current_pin = nullptr;
+        NodeId current_node;
+        PinId current_pin;
 
     private:
         static std::atomic<uint32_t> next_module_id_;
@@ -116,8 +116,8 @@ namespace lux::flowforge
         return FlowForgeFailure{
             .code = EFlowForgeError::GRAPH_INVALID,
             .message = std::move(message),
-            .node_id = bc.current_node ? bc.graph->nodeId(bc.current_node).value : 0U,
-            .pin_id = include_pin && bc.current_pin ? bc.graph->pinId(bc.current_pin).value : 0U,
+            .node_id = bc.current_node.value,
+            .pin_id = include_pin ? bc.current_pin.value : 0U,
         };
     }
 
@@ -305,10 +305,32 @@ namespace lux::flowforge
         }
     }
 
-    class ScalarValueCompiler final : public FlowValueCompiler
+    static FlowForgeResult<mlir::Value> variableAddress(uint64_t var_id, BuilderContext& bc)
+    {
+        const auto* field = bc.state_layout.find(var_id);
+        if (!field)
+        {
+            LUX_FF_FAIL(bc, "graph variable not found");
+        }
+        if (!bc.state_ptr)
+        {
+            LUX_FF_FAIL(bc, "function has no instance-state pointer");
+        }
+
+        auto ptr_ty = mlir::LLVM::LLVMPointerType::get(bc.ctx);
+        return bc.builder.create<mlir::LLVM::GEPOp>(
+            bc.loc,
+            ptr_ty,
+            bc.builder.getI8Type(),
+            bc.state_ptr,
+            llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(field->offset)}
+        );
+    }
+
+    class ValueCompiler final : public FlowValueCompiler
     {
     public:
-        explicit ScalarValueCompiler(BuilderContext& context) noexcept : context_(context) {}
+        explicit ValueCompiler(BuilderContext& context) noexcept : context_(context) {}
 
         [[nodiscard]] FlowForgeResult<FlowValue> add(mlir::Value value, const meta::RefType& type) noexcept
         {
@@ -329,6 +351,48 @@ namespace lux::flowforge
         [[nodiscard]] mlir::Value value(FlowValue id) const noexcept
         {
             return id < values_.size() ? values_[id].value : mlir::Value{};
+        }
+
+        FlowForgeResult<FlowValue> readVariable(std::uint64_t variable) noexcept override
+        {
+            auto& bc = context_;
+            const auto* value = bc.graph->findVariable(variable);
+            const bool has_type = value && value->type;
+            if (!has_type)
+            {
+                LUX_FF_FAIL(bc, "graph variable not found");
+            }
+            LUX_FF_TRY_VALUE(slot, variableAddress(variable, bc));
+            auto loaded = bc.builder.create<mlir::LLVM::LoadOp>(bc.loc, refTypeToMLIR(bc, *value->type), slot);
+            return add(loaded, *value->type);
+        }
+
+        FlowForgeResult<FlowValue> readField(const meta::RefField& field, FlowValue object) noexcept override
+        {
+            auto& bc = context_;
+            const auto address = value(object);
+            const bool has_pointer = address && mlir::isa<mlir::LLVM::LLVMPointerType>(address.getType());
+            if (!has_pointer)
+            {
+                LUX_FF_FAIL_AT_PIN(bc, "field access needs an object pointer");
+            }
+            const auto field_type = refTypeToMLIR(bc, field.type);
+            const bool is_unsupported_record =
+                mlir::isa<mlir::LLVM::LLVMPointerType>(field_type) && !isPointerQual(field.type);
+            if (is_unsupported_record)
+            {
+                LUX_FF_FAIL(bc, "record-typed fields are not supported yet");
+            }
+            const auto pointer_type = mlir::LLVM::LLVMPointerType::get(bc.ctx);
+            auto offset = bc.builder.create<mlir::LLVM::GEPOp>(
+                bc.loc,
+                pointer_type,
+                bc.builder.getI8Type(),
+                address,
+                llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(field.offset)}
+            );
+            auto loaded = bc.builder.create<mlir::LLVM::LoadOp>(bc.loc, field_type, offset);
+            return add(loaded, field.type);
         }
 
     private:
@@ -352,6 +416,62 @@ namespace lux::flowforge
         BuilderContext& context_;
         std::vector<Value> values_;
     };
+
+    static FlowForgeResult<std::vector<PinId>> nodePins(
+        const FlowGraph& graph,
+        NodeId node,
+        graph::EPinDirection direction,
+        EFlowPinRole role
+    )
+    {
+        const auto* value = graph.node(node);
+        const bool has_definition = value && value->definition;
+        if (!has_definition)
+        {
+            return lux::cxx::unexpected(FlowForgeFailure{EFlowForgeError::GRAPH_INVALID, "missing node definition"});
+        }
+        auto schema = value->definition->describePins(value->payload);
+        if (!schema)
+        {
+            return lux::cxx::unexpected(std::move(schema.error()));
+        }
+        std::vector<PinId> result;
+        for (const auto& declaration : *schema)
+        {
+            const bool matches = declaration.direction == direction && declaration.role == role;
+            if (matches)
+            {
+                const auto id = graph.pinId(node, declaration.semantic);
+                if (!id.valid())
+                {
+                    return lux::cxx::unexpected(FlowForgeFailure{
+                        EFlowForgeError::GRAPH_INVALID,
+                        "registered pin declaration differs from graph pins",
+                        node.value
+                    });
+                }
+                result.push_back(id);
+            }
+        }
+        return result;
+    }
+
+    static std::vector<PinId> linkedPins(const FlowGraph& graph, PinId pin)
+    {
+        std::vector<PinId> result;
+        for (const auto& link : graph.topology().links())
+        {
+            if (link.from == pin)
+            {
+                result.push_back(link.to);
+            }
+            else if (link.to == pin)
+            {
+                result.push_back(link.from);
+            }
+        }
+        return result;
+    }
 
     class MLIRBuilderImpl
     {
@@ -385,10 +505,12 @@ namespace lux::flowforge
             struct PureScope
             {
                 ValueMaps& vm;
+
                 explicit PureScope(ValueMaps& v) : vm(v)
                 {
                     vm.pure_scopes.emplace_back();
                 }
+
                 ~PureScope()
                 {
                     vm.pure_scopes.pop_back();
@@ -404,21 +526,22 @@ namespace lux::flowforge
             FlowForgeResult<mlir::Value> requireExecTok(uint64_t pin_id, BuilderContext& bc) const
             {
                 auto it = exec_tok.find(pin_id);
-                if (it == exec_tok.end() || !it->second)
+                const bool has_token = it != exec_tok.end() && it->second;
+                if (!has_token)
                 {
                     LUX_FF_FAIL(bc, "exec token not materialised");
                 }
                 return it->second;
             }
 
-            FlowForgeResult<llvm::SmallVector<mlir::Value>> gatherPredTokens(const ExecInPin& in, BuilderContext& bc)
-                const
+            FlowForgeResult<llvm::SmallVector<mlir::Value>> gatherPredTokens(PinId in, BuilderContext& bc) const
             {
                 llvm::SmallVector<mlir::Value> preds;
-                for (auto* ex : bc.graph->linkedPins(bc.graph->pinId(&in)))
+                for (const auto ex : linkedPins(*bc.graph, in))
                 {
-                    auto it = exec_tok.find(bc.graph->pinId(ex).value);
-                    if (it == exec_tok.end() || !it->second)
+                    auto it = exec_tok.find(ex.value);
+                    const bool has_token = it != exec_tok.end() && it->second;
+                    if (!has_token)
                     {
                         LUX_FF_FAIL_AT_PIN(bc, "exec token not materialised");
                     }
@@ -449,9 +572,9 @@ namespace lux::flowforge
         FlowForgeResult<std::unique_ptr<IR>> generateMLIR(const FlowGraph&);
 
     private:
-        FlowForgeResult<mlir::Value> getOperand(const DataInPin&, ValueMaps&, BuilderContext&, bool asIndex = false);
+        FlowForgeResult<mlir::Value> getOperand(PinId, ValueMaps&, BuilderContext&, bool asIndex = false);
         FlowForgeResult<mlir::Value> buildConstant(
-            const DataInPin&,
+            const meta::RefType&,
             BuilderContext&,
             const lux::meta::RuntimeObject&,
             bool asIndex = false
@@ -459,7 +582,7 @@ namespace lux::flowforge
 
         // Pin-independent scalar-constant emission (bool / ints / floats).
         // Shared by buildConstant and variable default-value initialization.
-        // Throws for non-scalar base types.
+        // Returns a structured failure for non-scalar base types.
         FlowForgeResult<mlir::Value> buildScalarConstantValue(
             BuilderContext&,
             const lux::meta::RefType&,
@@ -479,19 +602,13 @@ namespace lux::flowforge
         // the current insertion point and caches the result in the current
         // pure scope. Non-pure sources (a native call that hasn't run yet)
         // and data cycles return a structured graph error.
-        FlowForgeResult<mlir::Value> materializePureValue(const DataOutPin& src, ValueMaps&, BuilderContext&);
+        FlowForgeResult<mlir::Value> materializePureValue(PinId src, ValueMaps&, BuilderContext&);
 
         // Implicit scalar conversion of `v` to the declared type `dst_rt`
         // (int widening/narrowing, int<->float, float widening). Extension
         // signedness follows the DESTINATION type. Anything non-scalar or
-        // float->int throws.
+        // float->int returns a structured failure.
         FlowForgeResult<mlir::Value> coerceScalar(BuilderContext&, mlir::Value v, const lux::meta::RefType& dst_rt);
-
-        // Address of a graph variable inside the instance-state block:
-        // `state_ptr + layout offset` (byte GEP at the current insertion
-        // point). Defaults are NOT materialized here — the host initializes
-        // the block from the layout's defaults blob before invoking.
-        FlowForgeResult<mlir::Value> varSlotAddress(uint64_t var_id, BuilderContext&);
 
         // Merge convergent control tokens into a single SSA value.
         // - 0 inputs: build error (the caller's exec-in pin has no link).
@@ -506,16 +623,136 @@ namespace lux::flowforge
         mlir::Value globalConstantAssign(BuilderContext&, const lux::meta::RuntimeObject&, bool asIndex);
         mlir::Value globalStringConstantAssign(BuilderContext&, const char*, size_t);
 
-        // Sequential per-node lowering helpers — no region recursion. Control
-        // ops (Branch / ForLoop / WhileLoop / Sequence) are inlined in
-        // lowerChain's switch since each needs to set up its own region(s)
-        // and recurse.
-        FlowForgeResult<void> lowerReturnImpl(const Node&, mlir::Value in_tok, ValueMaps&, BuilderContext&);
-        FlowForgeResult<void> lowerNativeCallImpl(const Node&, mlir::Value in_tok, ValueMaps&, BuilderContext&);
-        FlowForgeResult<void>
-        lowerScriptAbilityCallImpl(const ScriptAbilityNode&, mlir::Value in_tok, ValueMaps&, BuilderContext&);
-        FlowForgeResult<void>
-        lowerScriptEventWaitImpl(const ScriptEventAwaitNode&, mlir::Value in_tok, ValueMaps&, BuilderContext&);
+        class ExecutionCompiler final : public FlowExecutionCompiler
+        {
+        public:
+            ExecutionCompiler(
+                MLIRBuilderImpl& builder,
+                BuilderContext& context,
+                ValueMaps& values,
+                NodeId node,
+                mlir::Value token,
+                std::unordered_set<NodeId>& lowered_nodes,
+                const std::unordered_set<NodeId>& external_nodes,
+                int depth
+            ) noexcept
+                : builder_(builder), bc_(context), vm_(values), node_(node), in_tok_(token), lowered_(lowered_nodes),
+                  external_(external_nodes), loop_depth_(depth), token_(token)
+            {
+            }
+
+            FlowForgeResult<void> branch(graph::PinSemanticId, graph::PinSemanticId, graph::PinSemanticId) noexcept
+                override;
+            FlowForgeResult<void> forLoop(
+                graph::PinSemanticId,
+                graph::PinSemanticId,
+                graph::PinSemanticId,
+                graph::PinSemanticId,
+                graph::PinSemanticId
+            ) noexcept override;
+            FlowForgeResult<void> whileLoop(graph::PinSemanticId, graph::PinSemanticId, graph::PinSemanticId) noexcept
+                override;
+            FlowForgeResult<void> sequence(std::span<const graph::PinSemanticId>) noexcept override;
+            FlowForgeResult<void> returnValues(std::span<const graph::PinSemanticId>) noexcept override;
+            FlowForgeResult<void> breakLoop() noexcept override;
+            FlowForgeResult<void> functionCall(
+                NodeId,
+                std::span<const graph::PinSemanticId>,
+                std::span<const graph::PinSemanticId>,
+                graph::PinSemanticId
+            ) noexcept override;
+            FlowForgeResult<void> nativeCall(
+                const NativeCallDefinition&,
+                std::span<const graph::PinSemanticId>,
+                graph::PinSemanticId,
+                graph::PinSemanticId
+            ) noexcept override;
+            FlowForgeResult<void> abilityCall(
+                const ScriptAbilityPayload&,
+                std::span<const graph::PinSemanticId>,
+                std::span<const graph::PinSemanticId>,
+                graph::PinSemanticId
+            ) noexcept override;
+            FlowForgeResult<void> eventWait(
+                const ScriptEventPayload&,
+                graph::PinSemanticId,
+                graph::PinSemanticId
+            ) noexcept override;
+            FlowForgeResult<void> storeVariable(
+                std::uint64_t,
+                graph::PinSemanticId,
+                graph::PinSemanticId,
+                graph::PinSemanticId
+            ) noexcept override;
+            FlowForgeResult<void> storeField(
+                const meta::RefField&,
+                graph::PinSemanticId,
+                graph::PinSemanticId,
+                graph::PinSemanticId,
+                graph::PinSemanticId
+            ) noexcept override;
+
+            [[nodiscard]] PinId next() const noexcept
+            {
+                return next_;
+            }
+
+            [[nodiscard]] mlir::Value token() const noexcept
+            {
+                return token_;
+            }
+
+        private:
+            [[nodiscard]] FlowForgeResult<void> validatePins(
+                std::span<const graph::PinSemanticId> semantics,
+                graph::EPinDirection direction,
+                EFlowPinRole role
+            ) const noexcept
+            {
+                for (const auto semantic : semantics)
+                {
+                    const auto id = pin(semantic);
+                    const auto* record = bc_.graph->topology().findPin(id);
+                    const auto* value = bc_.graph->pin(id);
+                    const bool has_pin = record && value;
+                    const bool matches = has_pin && record->owner == node_ && record->direction == direction &&
+                                         value->role == role && (role == EFlowPinRole::EXECUTION || value->type);
+                    if (!matches)
+                    {
+                        return lux::cxx::unexpected(FlowForgeFailure{
+                            EFlowForgeError::GRAPH_INVALID,
+                            "execution compiler pin does not match the registered schema",
+                            node_.value,
+                            id.value
+                        });
+                    }
+                }
+                return {};
+            }
+
+            [[nodiscard]] PinId pin(graph::PinSemanticId semantic) const noexcept
+            {
+                return bc_.graph->pinId(node_, semantic);
+            }
+
+            void completed(graph::PinSemanticId semantic) noexcept
+            {
+                next_ = pin(semantic);
+                token_ = in_tok_;
+                vm_.exec_tok[next_.value] = token_;
+            }
+
+            MLIRBuilderImpl& builder_;
+            BuilderContext& bc_;
+            ValueMaps& vm_;
+            NodeId node_;
+            mlir::Value in_tok_;
+            std::unordered_set<NodeId>& lowered_;
+            const std::unordered_set<NodeId>& external_;
+            int loop_depth_;
+            PinId next_;
+            mlir::Value token_;
+        };
 
         // Per-region recursive lowering driver.
         //
@@ -534,9 +771,9 @@ namespace lux::flowforge
         FlowForgeResult<mlir::Value> lowerChain(
             BuilderContext& bc,
             ValueMaps& vm,
-            const ExecOutPin& start_pin,
-            std::unordered_set<const Node*>& lowered,
-            const std::unordered_set<const Node*>& external,
+            PinId start_pin,
+            std::unordered_set<NodeId>& lowered,
+            const std::unordered_set<NodeId>& external,
             int loop_depth
         );
 
@@ -545,17 +782,17 @@ namespace lux::flowforge
         // FuncDefNode (signature from its arg/ret declarations). All
         // functions share one module, so graph calls are plain func.calls
         // and recursion is legal.
-        FlowForgeResult<void> lowerFunction(BuilderContext& bc, const Node& entry);
+        FlowForgeResult<void> lowerFunction(BuilderContext& bc, NodeId entry_id);
 
         mlir::MLIRContext* context_;
 
         // Pure nodes currently on the materialization recursion stack —
         // re-entering one means the data graph has a cycle.
-        llvm::SmallPtrSet<const Node*, 8> materializing_;
+        std::unordered_set<NodeId> materializing_;
     };
 
     // ----------------------------------------------------------------------------
-    // ctor — nothing to wire up; control-op dispatch happens inside lowerChain.
+    // ctor — nothing to wire up; registered execution callbacks select the backend primitive.
     // ----------------------------------------------------------------------------
     MLIRBuilderImpl::MLIRBuilderImpl(mlir::MLIRContext* context) : context_(context) {}
 
@@ -587,16 +824,19 @@ namespace lux::flowforge
         // Collect entries: at most one START (-> @main) plus any number of
         // FUNC_DEF_STARTs (-> named graph functions). All functions land in
         // ONE module, so graph calls are plain func.calls (whole-program).
-        llvm::SmallVector<const Node*, 4> entries;
-        const Node* start = nullptr;
+        llvm::SmallVector<NodeId, 4> entries;
+        NodeId start;
         std::unordered_set<std::string> func_names;
+
         struct AbilityKey final
         {
             std::string_view contract;
             std::string_view method;
             std::uint64_t node{};
         };
+
         std::vector<AbilityKey> ability_keys;
+
         struct EventWaitKey final
         {
             std::uint64_t system{};
@@ -604,76 +844,78 @@ namespace lux::flowforge
             std::uint8_t route{};
             std::uint64_t node{};
         };
+
         std::vector<EventWaitKey> event_wait_keys;
-        for (const auto& storage : g.nodes())
+        for (const auto& [id, node] : g.nodes())
         {
-            const Node* n = storage.node;
-            if (n->operation() == ENodeOperation::SCRIPT_ABILITY_CALL)
+            if (const auto* ability = node->payload.get<ScriptAbilityPayload>())
             {
-                const auto& ability = static_cast<const ScriptAbilityNode&>(*n);
-                ability_keys.push_back({ability.contract().name(), ability.method().name(), storage.id.value});
+                ability_keys.push_back({ability->contract().name(), ability->method().name(), id.value});
             }
-            else if (n->operation() == ENodeOperation::SCRIPT_EVENT_WAIT)
+            else if (const auto* wait = node->payload.get<ScriptEventPayload>())
             {
-                const auto& event = static_cast<const ScriptEventAwaitNode&>(*n).source();
+                const auto& event = wait->source();
                 event_wait_keys.push_back(
-                    {event.system_id, event.event_id, static_cast<std::uint8_t>(event.route), storage.id.value}
+                    {event.system_id, event.event_id, static_cast<std::uint8_t>(event.route), id.value}
                 );
             }
-            switch (n->operation())
+            if (node->payload.get<StartPayload>())
             {
-            case ENodeOperation::START:
-                if (start)
+                if (start.valid())
                 {
                     LUX_FF_FAIL(bc, "graph has more than one Start node");
                 }
-                start = n;
-                entries.push_back(n);
-                break;
-            case ENodeOperation::FUNC_DEF_START: {
-                bc.current_node = n;
-                if (n->name().empty())
+                start = id;
+                entries.push_back(id);
+            }
+            else if (node->payload.get<FunctionPayload>())
+            {
+                bc.current_node = id;
+                if (node->name.empty())
                 {
                     LUX_FF_FAIL(bc, "graph function has no name");
                 }
-                if (n->name() == "main")
+                if (node->name == "main")
                 {
                     LUX_FF_FAIL(bc, "'main' is reserved for the Start entry");
                 }
-                if (!func_names.insert(n->name()).second)
+                if (!func_names.insert(node->name).second)
                 {
                     LUX_FF_FAIL(bc, "duplicate graph function name");
                 }
-                entries.push_back(n);
-                break;
+                entries.push_back(id);
             }
-            case ENodeOperation::ON_EVENT: {
-                bc.current_node = n;
-                if (n->name().empty())
+            else if (node->payload.get<EventEntryPayload>())
+            {
+                bc.current_node = id;
+                if (node->name.empty())
                 {
                     LUX_FF_FAIL(bc, "event entry has no name");
                 }
-                // Uniqueness on the SANITIZED symbol — two display names
-                // that collapse to the same symbol would collide.
-                if (!func_names.insert(FlowScriptInstance::eventSymbol(n->name())).second)
+                if (!func_names.insert(FlowScriptInstance::eventSymbol(node->name)).second)
+                {
                     LUX_FF_FAIL(bc, "duplicate event name");
-                entries.push_back(n);
-                break;
-            }
-            default:
-                break;
+                }
+                entries.push_back(id);
             }
         }
-        std::ranges::sort(ability_keys, [](const auto& left, const auto& right) {
-            return left.contract < right.contract || (left.contract == right.contract && left.method < right.method);
-        });
+        std::ranges::sort(
+            ability_keys,
+            [](const auto& left, const auto& right)
+            {
+                return left.contract < right.contract ||
+                       (left.contract == right.contract && left.method < right.method);
+            }
+        );
         std::uint32_t next_ordinal{};
         std::string_view previous_contract;
         std::string_view previous_method;
         bool has_previous{};
         for (const auto& key : ability_keys)
         {
-            if (!has_previous || key.contract != previous_contract || key.method != previous_method)
+            const bool is_new_ability =
+                !has_previous || key.contract != previous_contract || key.method != previous_method;
+            if (is_new_ability)
             {
                 previous_contract = key.contract;
                 previous_method = key.method;
@@ -682,13 +924,21 @@ namespace lux::flowforge
             }
             bc.ability_ordinals.emplace(key.node, next_ordinal - 1U);
         }
-        std::ranges::sort(event_wait_keys, [](const auto& left, const auto& right) {
-            if (left.system != right.system)
-                return left.system < right.system;
-            if (left.event != right.event)
-                return left.event < right.event;
-            return left.route < right.route;
-        });
+        std::ranges::sort(
+            event_wait_keys,
+            [](const auto& left, const auto& right)
+            {
+                if (left.system != right.system)
+                {
+                    return left.system < right.system;
+                }
+                if (left.event != right.event)
+                {
+                    return left.event < right.event;
+                }
+                return left.route < right.route;
+            }
+        );
         next_ordinal = 0U;
         std::uint64_t previous_system{};
         std::uint64_t previous_event{};
@@ -696,8 +946,9 @@ namespace lux::flowforge
         has_previous = false;
         for (const auto& key : event_wait_keys)
         {
-            if (!has_previous || key.system != previous_system || key.event != previous_event ||
-                key.route != previous_route)
+            const bool is_new_event = !has_previous || key.system != previous_system || key.event != previous_event ||
+                                      key.route != previous_route;
+            if (is_new_event)
             {
                 previous_system = key.system;
                 previous_event = key.event;
@@ -712,19 +963,23 @@ namespace lux::flowforge
             LUX_FF_FAIL(bc, "no entry node found");
         }
 
-        for (const Node* entry : entries)
+        for (const auto entry : entries)
         {
-            LUX_FF_TRY(lowerFunction(bc, *entry));
+            LUX_FF_TRY(lowerFunction(bc, entry));
         }
 
         // Verify before handing the module out and retain MLIR diagnostics.
         {
             std::string diag_text;
-            mlir::ScopedDiagnosticHandler handler(context_, [&](mlir::Diagnostic& d) {
-                llvm::raw_string_ostream os(diag_text);
-                os << d.str() << '\n';
-                return mlir::success();
-            });
+            mlir::ScopedDiagnosticHandler handler(
+                context_,
+                [&](mlir::Diagnostic& d)
+                {
+                    llvm::raw_string_ostream os(diag_text);
+                    os << d.str() << '\n';
+                    return mlir::success();
+                }
+            );
             if (mlir::failed(mlir::verify(bc.module)))
             {
                 return lux::cxx::unexpected(FlowForgeFailure{
@@ -751,9 +1006,10 @@ namespace lux::flowforge
     // its declared return values. Argument block-args are published as
     // exec_data for the FuncDef's argument out-pins.
     // =============================================================================
-    FlowForgeResult<void> MLIRBuilderImpl::lowerFunction(BuilderContext& bc, const Node& entry)
+    FlowForgeResult<void> MLIRBuilderImpl::lowerFunction(BuilderContext& bc, NodeId entry_id)
     {
-        bc.current_node = &entry;
+        bc.current_node = entry_id;
+        const auto& entry = *bc.graph->node(entry_id);
         bc.builder.setInsertionPointToEnd(bc.module.getBody());
 
         std::string fn_name = "main";
@@ -766,19 +1022,26 @@ namespace lux::flowforge
         arg_tys.push_back(mlir::LLVM::LLVMPointerType::get(bc.ctx));
         arg_tys.push_back(mlir::LLVM::LLVMPointerType::get(bc.ctx));
         llvm::SmallVector<mlir::Type, 2> ret_tys;
-        const FuncDefNode* def = nullptr;
-        const OnEventNode* event = nullptr;
-        const ExecOutPin* entry_pin = nullptr;
-
-        if (entry.operation() == ENodeOperation::START)
+        const auto* def = entry.payload.get<FunctionPayload>();
+        const auto* event = entry.payload.get<EventEntryPayload>();
+        LUX_FF_TRY_VALUE(
+            entry_pins,
+            nodePins(*bc.graph, entry_id, graph::EPinDirection::OUTPUT, EFlowPinRole::EXECUTION)
+        );
+        if (entry_pins.empty())
         {
-            entry_pin = &static_cast<const StartNode&>(entry).execOutPin();
+            LUX_FF_FAIL(bc, "entry node has no execution output");
         }
-        else if (entry.operation() == ENodeOperation::FUNC_DEF_START)
+        const auto entry_pin = entry_pins.front();
+
+        if (entry.payload.get<StartPayload>())
         {
-            def = &static_cast<const FuncDefNode&>(entry);
-            fn_name = def->name();
-            for (const auto& a : def->argInfos())
+            // Start has only the hidden runtime arguments.
+        }
+        else if (def)
+        {
+            fn_name = entry.name;
+            for (const auto& a : def->arguments)
             {
                 if (!a.type)
                 {
@@ -786,7 +1049,7 @@ namespace lux::flowforge
                 }
                 arg_tys.push_back(refTypeToMLIR(bc, *a.type));
             }
-            for (const auto& r : def->retInfos())
+            for (const auto& r : def->results)
             {
                 if (!r.type)
                 {
@@ -794,13 +1057,11 @@ namespace lux::flowforge
                 }
                 ret_tys.push_back(refTypeToMLIR(bc, *r.type));
             }
-            entry_pin = &def->execOutPin();
         }
-        else if (entry.operation() == ENodeOperation::ON_EVENT)
+        else if (event)
         {
-            event = &static_cast<const OnEventNode&>(entry);
-            fn_name = FlowScriptInstance::eventSymbol(event->name());
-            for (const auto& p : event->paramInfos())
+            fn_name = FlowScriptInstance::eventSymbol(entry.name);
+            for (const auto& p : event->parameters)
             {
                 if (!p.type)
                 {
@@ -808,7 +1069,6 @@ namespace lux::flowforge
                 }
                 arg_tys.push_back(refTypeToMLIR(bc, *p.type));
             }
-            entry_pin = &event->execOutPin();
         }
         else
         {
@@ -820,37 +1080,28 @@ namespace lux::flowforge
         // convention (FlowScriptInstance::invoke -> invokePacked), which
         // needs the _mlir_ciface wrapper.
         if (event)
+        {
             fn->setAttr("llvm.emit_c_interface", mlir::UnitAttr::get(bc.ctx));
+        }
         auto* entry_block = fn.addEntryBlock();
         bc.main_func = fn; // current function: alloca/return-type context
         bc.builder.setInsertionPointToStart(entry_block);
 
         ValueMaps vm;
-        std::unordered_set<const Node*> lowered{&entry};
+        std::unordered_set<NodeId> lowered{entry_id};
 
         // Entry token + argument surfacing.
         auto entry_tok = bc.builder.create<mlir::flowforge::StartOp>(bc.loc, bc.token).getResult();
-        vm.exec_tok[bc.graph->pinId(entry_pin).value] = entry_tok;
+        vm.exec_tok[entry_pin.value] = entry_tok;
         bc.state_ptr = entry_block->getArgument(0);
         bc.ability_runtime = entry_block->getArgument(1);
-        if (def)
+        LUX_FF_TRY_VALUE(arguments, nodePins(*bc.graph, entry_id, graph::EPinDirection::OUTPUT, EFlowPinRole::DATA));
+        for (std::size_t i = 0; i < arguments.size(); ++i)
         {
-            const auto& arg_pins = def->argPins();
-            for (size_t i = 0; i < arg_pins.size(); ++i)
-            {
-                vm.exec_data[bc.graph->pinId(arg_pins[i].get()).value] = entry_block->getArgument(i + 2);
-            }
-        }
-        if (event)
-        {
-            const auto& param_pins = event->paramPins();
-            for (size_t i = 0; i < param_pins.size(); ++i)
-            {
-                vm.exec_data[bc.graph->pinId(param_pins[i].get()).value] = entry_block->getArgument(i + 2);
-            }
+            vm.exec_data[arguments[i].value] = entry_block->getArgument(i + 2);
         }
 
-        LUX_FF_TRY_VALUE(tail, lowerChain(bc, vm, *entry_pin, lowered, /*external=*/{}, /*loop_depth=*/0));
+        LUX_FF_TRY_VALUE(tail, lowerChain(bc, vm, entry_pin, lowered, /*external=*/{}, /*loop_depth=*/0));
 
         // A null tail means the chain ended in an explicit Return/Break
         // terminator. Otherwise the chain just stopped — synthesize the
@@ -859,11 +1110,13 @@ namespace lux::flowforge
         if (tail)
         {
             if (!ret_tys.empty())
+            {
                 LUX_FF_FAIL(
                     bc,
                     "graph function with return values must end in a "
                     "Function Return node on every path"
                 );
+            }
             bc.builder.create<mlir::flowforge::ReturnOp>(bc.loc, mlir::TypeRange{}, mlir::ValueRange{tail});
         }
         return {};
@@ -874,10 +1127,10 @@ namespace lux::flowforge
     //
     // Preconditions on entry:
     //   - bc.builder's insertion point is at the END of the target block.
-    //   - vm.exec_tok[bc.graph->pinId(&start_pin)] holds the incoming token for this chain
+    //   - vm.exec_tok[start_pin.value] holds the incoming token for this chain
     //     (the predecessor's out-token, or the enclosing region's block-arg).
     //
-    // The loop follows the supplied graph's execution edges and dispatches by op kind.
+    // The loop follows the supplied topology and calls the registered execution compiler.
     // For each control op with sub-regions it sets the insertion point into
     // the region's block, recurses, then restores the insertion point on
     // return (via InsertionGuard) and continues the outer chain.
@@ -890,511 +1143,498 @@ namespace lux::flowforge
     FlowForgeResult<mlir::Value> MLIRBuilderImpl::lowerChain(
         BuilderContext& bc,
         ValueMaps& vm,
-        const ExecOutPin& start_pin,
-        std::unordered_set<const Node*>& lowered,
-        const std::unordered_set<const Node*>& external,
+        PinId start_pin,
+        std::unordered_set<NodeId>& lowered,
+        const std::unordered_set<NodeId>& external,
         int loop_depth
     )
     {
-        const ExecOutPin* cur_pin = &start_pin;
-        LUX_FF_TRY_VALUE(cur_tok, vm.requireExecTok(bc.graph->pinId(cur_pin).value, bc));
-
+        auto current = start_pin;
+        LUX_FF_TRY_VALUE(token, vm.requireExecTok(current.value, bc));
         while (true)
         {
-            const auto successors = bc.graph->linkedPins(bc.graph->pinId(cur_pin));
+            const auto successors = linkedPins(*bc.graph, current);
             if (successors.empty())
             {
-                return cur_tok; // chain ends
+                return token;
             }
-            const auto* next_in = static_cast<const ExecInPin*>(successors.front());
-            const Node* node = next_in->node();
-            if (external.count(node))
+            const auto input = successors.front();
+            const auto* record = bc.graph->topology().findPin(input);
+            if (!record)
             {
-                return cur_tok; // outer scope handles
+                LUX_FF_FAIL(bc, "execution edge has no target pin");
             }
-            if (lowered.count(node))
+            const auto id = record->owner;
+            const bool is_already_owned = external.contains(id) || lowered.contains(id);
+            if (is_already_owned)
             {
-                return cur_tok; // already lowered
+                return token;
             }
-            lowered.insert(node);
-            bc.current_node = node;
-
-            // Merge multi-link in-tokens via flowforge.token_merge (single-link
-            // and all-same fast-paths inside mergeExecTokens).
-            mlir::Value in_tok = cur_tok;
-            if (bc.graph->topology().linkCount(bc.graph->pinId(next_in)) > 1)
+            lowered.insert(id);
+            bc.current_node = id;
+            if (bc.graph->topology().linkCount(input) > 1)
             {
-                LUX_FF_TRY_VALUE(preds, vm.gatherPredTokens(*next_in, bc));
-                LUX_FF_TRY_VALUE(merged, mergeExecTokens(bc, preds));
-                in_tok = merged;
+                LUX_FF_TRY_VALUE(predecessors, vm.gatherPredTokens(input, bc));
+                LUX_FF_TRY_VALUE(merged, mergeExecTokens(bc, predecessors));
+                token = merged;
             }
-
-            switch (node->operation())
+            const auto* node = bc.graph->node(id);
+            const bool has_definition = node && node->definition;
+            if (!has_definition)
             {
-            // --------------------- RETURN / FUNC_RETURN -------------------
-            // Legal ANYWHERE (also nested in Branch/Loop regions): the
-            // FlowForge -> CF lowering turns every return into a jump to
-            // the function's exit block.
-            case ENodeOperation::RETURN:
-            case ENodeOperation::FUNC_RETURN: {
-                LUX_FF_TRY(lowerReturnImpl(*node, in_tok, vm, bc));
-                return mlir::Value{};
+                LUX_FF_FAIL(bc, "execution node has no registered definition");
             }
-
-            // -------------------------- BREAK -----------------------------
-            case ENodeOperation::BREAK: {
-                if (loop_depth == 0)
-                    LUX_FF_FAIL(bc, "Break is only valid inside a loop body");
-                bc.builder.create<mlir::flowforge::BreakOp>(bc.loc, in_tok);
-                return mlir::Value{};
-            }
-
-            // ----------------------- NATIVE_CALL -------------------------
-            case ENodeOperation::NATIVE_FUNC_CALL: {
-                LUX_FF_TRY(lowerNativeCallImpl(*node, in_tok, vm, bc));
-                const auto& call = static_cast<const NativeFuncCall&>(*node);
-                LUX_FF_TRY_VALUE(next_token, vm.requireExecTok(bc.graph->pinId(&call.execOutPin()).value, bc));
-                cur_tok = next_token;
-                cur_pin = &call.execOutPin();
-                break;
-            }
-
-            case ENodeOperation::SCRIPT_ABILITY_CALL: {
-                const auto& call = static_cast<const ScriptAbilityNode&>(*node);
-                LUX_FF_TRY(lowerScriptAbilityCallImpl(call, in_tok, vm, bc));
-                LUX_FF_TRY_VALUE(next_token, vm.requireExecTok(bc.graph->pinId(&call.execOutPin()).value, bc));
-                cur_tok = next_token;
-                cur_pin = &call.execOutPin();
-                break;
-            }
-
-            case ENodeOperation::SCRIPT_EVENT_WAIT: {
-                const auto& wait = static_cast<const ScriptEventAwaitNode&>(*node);
-                LUX_FF_TRY(lowerScriptEventWaitImpl(wait, in_tok, vm, bc));
-                LUX_FF_TRY_VALUE(next_token, vm.requireExecTok(bc.graph->pinId(&wait.execOutPin()).value, bc));
-                cur_tok = next_token;
-                cur_pin = &wait.execOutPin();
-                break;
-            }
-
-            // -------------------- GRAPH_FUNC_CALL -------------------------
-            // A call to a FuncDef in the same graph: plain func.call to
-            // the callee's symbol in the same module. The callee's
-            // func.func may be generated before or after this one —
-            // symbol references are order-independent.
-            case ENodeOperation::GRAPH_FUNC_CALL: {
-                const auto& call = static_cast<const GraphFuncCallNode&>(*node);
-                const FuncDefNode* callee = call.resolveCallee(*bc.graph);
-                if (!callee)
-                {
-                    LUX_FF_FAIL(bc, "graph call has no callee");
-                }
-
-                llvm::SmallVector<mlir::Value, 4> operands;
-                // Callee shares THIS instance's variables: forward the
-                // state pointer as the hidden leading argument.
-                operands.push_back(bc.state_ptr);
-                operands.push_back(bc.ability_runtime);
-                for (const auto& pin : call.argPins())
-                {
-                    LUX_FF_TRY_VALUE(v, getOperand(*pin, vm, bc));
-                    if (pin->info().type &&
-                        !mlir::isa<mlir::LLVM::LLVMPointerType>(refTypeToMLIR(bc, *pin->info().type)) &&
-                        !mlir::isa<mlir::LLVM::LLVMPointerType>(v.getType()))
-                    {
-                        LUX_FF_TRY_VALUE(coerced, coerceScalar(bc, v, *pin->info().type));
-                        v = coerced;
-                    }
-                    operands.push_back(v);
-                }
-                llvm::SmallVector<mlir::Type, 2> ret_tys;
-                for (const auto& pin : call.resultPins())
-                {
-                    ret_tys.push_back(refTypeToMLIR(bc, *pin->info().type));
-                }
-
-                auto callOp = bc.builder.create<mlir::func::CallOp>(bc.loc, callee->name(), ret_tys, operands);
-                for (size_t i = 0; i < call.resultPins().size(); ++i)
-                {
-                    vm.exec_data[bc.graph->pinId(call.resultPins()[i].get()).value] = callOp.getResult(i);
-                }
-
-                vm.exec_tok[bc.graph->pinId(&call.execOutPin()).value] = in_tok;
-                cur_tok = in_tok;
-                cur_pin = &call.execOutPin();
-                break;
-            }
-
-            // ----------------------- SET_FIELD ----------------------------
-            case ENodeOperation::SET_FIELD: {
-                const auto& sf = static_cast<const SetFieldNode&>(*node);
-                if (!sf.field())
-                {
-                    LUX_FF_FAIL(bc, "field access has no reflected field");
-                }
-                LUX_FF_TRY_VALUE(obj, getOperand(sf.objectPin(), vm, bc));
-                if (!mlir::isa<mlir::LLVM::LLVMPointerType>(obj.getType()))
-                {
-                    LUX_FF_FAIL(bc, "field access needs an object pointer");
-                }
-                mlir::Type fty = refTypeToMLIR(bc, sf.field()->type);
-                if (mlir::isa<mlir::LLVM::LLVMPointerType>(fty) && !isPointerQual(sf.field()->type))
-                    LUX_FF_FAIL(bc, "record-typed fields are not supported yet");
-                LUX_FF_TRY_VALUE(val, getOperand(sf.valueIn(), vm, bc));
-                if (!mlir::isa<mlir::LLVM::LLVMPointerType>(fty))
-                {
-                    LUX_FF_TRY_VALUE(coerced, coerceScalar(bc, val, sf.field()->type));
-                    val = coerced;
-                }
-                auto ptr_ty = mlir::LLVM::LLVMPointerType::get(bc.ctx);
-                mlir::Value gep = bc.builder.create<mlir::LLVM::GEPOp>(
-                    bc.loc,
-                    ptr_ty,
-                    bc.builder.getI8Type(),
-                    obj,
-                    llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(sf.field()->offset)}
-                );
-                bc.builder.create<mlir::LLVM::StoreOp>(bc.loc, val, gep);
-
-                // Object passthrough + threaded exec token.
-                vm.exec_data[bc.graph->pinId(&sf.objectOut()).value] = obj;
-                vm.exec_tok[bc.graph->pinId(&sf.execOutPin()).value] = in_tok;
-                cur_tok = in_tok;
-                cur_pin = &sf.execOutPin();
-                break;
-            }
-
-            // ---------------------- SET_VARIABLE -------------------------
-            case ENodeOperation::SET_VARIABLE: {
-                const auto& sv = static_cast<const SetVariableNode&>(*node);
-                const auto* var = bc.graph ? bc.graph->findVariable(sv.variableId()) : nullptr;
-                if (!var || !var->type)
-                {
-                    LUX_FF_FAIL(bc, "graph variable not found");
-                }
-
-                LUX_FF_TRY_VALUE(operand, getOperand(sv.valueIn(), vm, bc));
-                LUX_FF_TRY_VALUE(val, coerceScalar(bc, operand, *var->type));
-                LUX_FF_TRY_VALUE(slot, varSlotAddress(sv.variableId(), bc));
-                bc.builder.create<mlir::LLVM::StoreOp>(bc.loc, val, slot);
-
-                // Passthrough value + threaded exec token.
-                vm.exec_data[bc.graph->pinId(&sv.valueOut()).value] = val;
-                vm.exec_tok[bc.graph->pinId(&sv.execOutPin()).value] = in_tok;
-                cur_tok = in_tok;
-                cur_pin = &sv.execOutPin();
-                break;
-            }
-
-            // ------------------------- BRANCH ----------------------------
-            case ENodeOperation::BRANCH: {
-                const auto& br = static_cast<const BranchNode&>(*node);
-                LUX_FF_TRY_VALUE(cond, getOperand(br.dataInPin(), vm, bc));
-
-                const Node* pd = bc.graph->findNodeById(findBranchMerge(*bc.graph, bc.graph->nodeId(node)));
-                auto inner_ext = external;
-                if (pd)
-                {
-                    inner_ext.insert(pd);
-                }
-
-                auto op = bc.builder.create<mlir::flowforge::BranchOp>(
-                    bc.loc,
-                    mlir::TypeRange{bc.token, bc.token},
-                    mlir::ValueRange{in_tok, cond}
-                );
-
-                // then-region — block-arg(0) = the input token for this
-                // leg. A null chain result means the leg ended in a
-                // Return/Break terminator — no yield may follow it.
-                bool then_terminated = false;
-                {
-                    auto* blk = addSingleBlockWithArgs(
-                        bc.builder,
-                        FLOWFORGE_GET_THEN_REGION(op),
-                        mlir::TypeRange{bc.token},
-                        bc.loc
-                    );
-                    mlir::OpBuilder::InsertionGuard guard(bc.builder);
-                    ValueMaps::PureScope pure_scope(vm);
-                    bc.builder.setInsertionPointToEnd(blk);
-                    auto blk_arg = blk->getArgument(0);
-                    vm.exec_tok[bc.graph->pinId(&br.execOutPinUp()).value] = blk_arg;
-                    LUX_FF_TRY_VALUE(end, lowerChain(bc, vm, br.execOutPinUp(), lowered, inner_ext, loop_depth));
-                    if (end)
-                    {
-                        bc.builder.create<mlir::flowforge::YieldOp>(bc.loc, end);
-                    }
-                    else
-                        then_terminated = true;
-                }
-                // else-region — same shape
-                bool else_terminated = false;
-                {
-                    auto* blk = addSingleBlockWithArgs(
-                        bc.builder,
-                        FLOWFORGE_GET_ELSE_REGION(op),
-                        mlir::TypeRange{bc.token},
-                        bc.loc
-                    );
-                    mlir::OpBuilder::InsertionGuard guard(bc.builder);
-                    ValueMaps::PureScope pure_scope(vm);
-                    bc.builder.setInsertionPointToEnd(blk);
-                    auto blk_arg = blk->getArgument(0);
-                    vm.exec_tok[bc.graph->pinId(&br.execOutPinDown()).value] = blk_arg;
-                    LUX_FF_TRY_VALUE(end, lowerChain(bc, vm, br.execOutPinDown(), lowered, inner_ext, loop_depth));
-                    if (end)
-                    {
-                        bc.builder.create<mlir::flowforge::YieldOp>(bc.loc, end);
-                    }
-                    else
-                        else_terminated = true;
-                }
-
-                // Post-lowering: the BranchOp's results are the per-leg
-                // out-tokens visible to OUTER scope. Re-publish:
-                //  - the Branch's own out-pins (so any direct consumer
-                //    sees the result, not the inner block-arg);
-                //  - every exec_out pin of nodes reachable inside each leg
-                //    (so PD's gatherPredTokens, which still reads the
-                //    inside-leg exec_out_pin ids, sees Branch.result(i)
-                //    rather than the now-out-of-scope inside-block SSA).
-                vm.exec_tok[bc.graph->pinId(&br.execOutPinUp()).value] = op.getResult(0);
-                vm.exec_tok[bc.graph->pinId(&br.execOutPinDown()).value] = op.getResult(1);
-                auto up_reach = reachableExecution(*bc.graph, bc.graph->pinId(&br.execOutPinUp()));
-                auto down_reach = reachableExecution(*bc.graph, bc.graph->pinId(&br.execOutPinDown()));
-                for (const auto id : up_reach)
-                {
-                    const auto* n = bc.graph->findNodeById(id);
-                    if (n == pd)
-                    {
-                        continue;
-                    }
-                    for (const Pin* p : n->outPins())
-                        if (p->kind() == EPinKind::EXEC_OUT && vm.exec_tok.count(bc.graph->pinId(p).value))
-                        {
-                            vm.exec_tok[bc.graph->pinId(p).value] = op.getResult(0);
-                        }
-                }
-                for (const auto id : down_reach)
-                {
-                    const auto* n = bc.graph->findNodeById(id);
-                    if (n == pd)
-                    {
-                        continue;
-                    }
-                    for (const Pin* p : n->outPins())
-                        if (p->kind() == EPinKind::EXEC_OUT && vm.exec_tok.count(bc.graph->pinId(p).value))
-                        {
-                            vm.exec_tok[bc.graph->pinId(p).value] = op.getResult(1);
-                        }
-                }
-
-                if (!pd)
-                {
-                    // Legs never reconverge. If BOTH legs terminated
-                    // (Return/Break), control cannot flow past the
-                    // branch — but the containing block still needs a
-                    // terminator (BranchOp is not one). Emit the
-                    // unreachable marker; the CF lowering erases it
-                    // together with its provably-unreachable block.
-                    if (then_terminated && else_terminated)
-                    {
-                        bc.builder.create<mlir::flowforge::UnreachableOp>(bc.loc, op.getResult(0));
-                        return mlir::Value{};
-                    }
-                    // Otherwise at least one leg falls through and the
-                    // outer chain simply has nothing more to lower.
-                    return cur_tok;
-                }
-                if (external.contains(pd))
-                {
-                    // The enclosing region owns this merge. Its other predecessors may not have
-                    // been lowered yet, or their tokens may belong to sibling regions. Complete
-                    // this region with the branch's outer token; only the owning chain gathers
-                    // the merge's predecessors after all participating regions have returned.
-                    return op.getResult(0);
-                }
-                // Pivot to the post-dominator. Any of its linked
-                // predecessors works (they all map to the right Branch
-                // result thanks to the remap above); the next iteration
-                // will see PD as `node`, gather the (already-remapped)
-                // pred tokens, and emit token_merge.
-                const ExecInPin* pd_exec_in = nullptr;
-                for (const Pin* p : pd->inPins())
-                    if (p->kind() == EPinKind::EXEC_IN)
-                    {
-                        pd_exec_in = static_cast<const ExecInPin*>(p);
-                        break;
-                    }
-                const auto predecessors = bc.graph->linkedPins(bc.graph->pinId(pd_exec_in));
-                if (predecessors.empty())
-                {
-                    LUX_FF_FAIL(bc, "post-dominator has no exec_in link");
-                }
-                cur_pin = static_cast<const ExecOutPin*>(predecessors.front());
-                LUX_FF_TRY_VALUE(post_dom_token, vm.requireExecTok(bc.graph->pinId(cur_pin).value, bc));
-                cur_tok = post_dom_token;
-                break;
-            }
-
-            // ----------------------- FOR_LOOP ----------------------------
-            case ENodeOperation::FOR_LOOP: {
-                const auto& loop = static_cast<const ForLoopNode&>(*node);
-                auto idxTy = bc.builder.getIndexType();
-                // Constants come back as index directly (asIdx); linked
-                // integer values need an explicit index_cast.
-                auto toIndex = [&](mlir::Value v) -> FlowForgeResult<mlir::Value> {
-                    if (v.getType() == idxTy)
-                    {
-                        return v;
-                    }
-                    if (mlir::isa<mlir::IntegerType>(v.getType()))
-                    {
-                        return bc.builder.create<mlir::arith::IndexCastOp>(bc.loc, idxTy, v).getResult();
-                    }
-                    LUX_FF_FAIL(bc, "for-loop bound is not an integer");
-                };
-                LUX_FF_TRY_VALUE(first_operand, getOperand(loop.first_index(), vm, bc, /*asIdx=*/true));
-                LUX_FF_TRY_VALUE(last_operand, getOperand(loop.lastIndex(), vm, bc, /*asIdx=*/true));
-                LUX_FF_TRY_VALUE(first, toIndex(first_operand));
-                LUX_FF_TRY_VALUE(last, toIndex(last_operand));
-
-                auto op = bc.builder.create<mlir::flowforge::ForLoopOp>(
-                    bc.loc,
-                    mlir::TypeRange{bc.token, bc.token, idxTy},
-                    mlir::ValueRange{in_tok, first, last}
-                );
-
-                // body region — args = (per-iter token, iv). The yield
-                // carries only the continuation token: the IV is a
-                // loop-defined block-arg (scf.for model), not a value
-                // that flows along region control-flow edges. A null
-                // chain result means the body ended in Return/Break —
-                // that terminator stands, no yield.
-                {
-                    auto* blk = addSingleBlockWithArgs(
-                        bc.builder,
-                        op.getBodyRegion(),
-                        mlir::TypeRange{bc.token, idxTy},
-                        bc.loc
-                    );
-                    mlir::OpBuilder::InsertionGuard guard(bc.builder);
-                    ValueMaps::PureScope pure_scope(vm);
-                    bc.builder.setInsertionPointToEnd(blk);
-                    auto body_arg = blk->getArgument(0);
-                    auto iv_arg = blk->getArgument(1);
-                    vm.exec_tok[bc.graph->pinId(&loop.loopBody()).value] = body_arg;
-                    vm.exec_data[bc.graph->pinId(&loop.indexPin()).value] = iv_arg;
-                    LUX_FF_TRY_VALUE(body_end, lowerChain(bc, vm, loop.loopBody(), lowered, external, loop_depth + 1));
-                    if (body_end)
-                        bc.builder.create<mlir::flowforge::YieldOp>(bc.loc, body_end);
-                }
-
-                cur_tok = op.getResult(1);
-                vm.exec_tok[bc.graph->pinId(&loop.completed()).value] = cur_tok;
-                cur_pin = &loop.completed();
-                break;
-            }
-
-            // ----------------------- WHILE_LOOP --------------------------
-            // The condition's pure subgraph is expanded INSIDE the cond
-            // region, so it is re-evaluated every iteration (a condition
-            // reading a graph variable observes the body's writes).
-            case ENodeOperation::WHILE_LOOP: {
-                const auto& loop = static_cast<const WhileLoopNode&>(*node);
-
-                auto op = bc.builder.create<mlir::flowforge::WhileLoopOp>(
-                    bc.loc,
-                    mlir::TypeRange{bc.token, bc.token},
-                    mlir::ValueRange{in_tok}
-                );
-
-                // cond region — per-iteration condition evaluation.
-                {
-                    auto* blk =
-                        addSingleBlockWithArgs(bc.builder, op.getCondRegion(), mlir::TypeRange{bc.token}, bc.loc);
-                    mlir::OpBuilder::InsertionGuard guard(bc.builder);
-                    ValueMaps::PureScope pure_scope(vm);
-                    bc.builder.setInsertionPointToEnd(blk);
-                    LUX_FF_TRY_VALUE(cond_val, getOperand(loop.dataInPin(), vm, bc));
-                    bc.builder.create<mlir::flowforge::CondYieldOp>(bc.loc, blk->getArgument(0), cond_val);
-                }
-                // body region — recursive
-                {
-                    auto* blk =
-                        addSingleBlockWithArgs(bc.builder, op.getBodyRegion(), mlir::TypeRange{bc.token}, bc.loc);
-                    mlir::OpBuilder::InsertionGuard guard(bc.builder);
-                    ValueMaps::PureScope pure_scope(vm);
-                    bc.builder.setInsertionPointToEnd(blk);
-                    auto body_arg = blk->getArgument(0);
-                    vm.exec_tok[bc.graph->pinId(&loop.loopBody()).value] = body_arg;
-                    LUX_FF_TRY_VALUE(body_end, lowerChain(bc, vm, loop.loopBody(), lowered, external, loop_depth + 1));
-                    if (body_end)
-                    {
-                        bc.builder.create<mlir::flowforge::YieldOp>(bc.loc, body_end);
-                    }
-                }
-
-                cur_tok = op.getResult(1);
-                vm.exec_tok[bc.graph->pinId(&loop.completed()).value] = cur_tok;
-                cur_pin = &loop.completed();
-                break;
-            }
-
-            // ------------------------ SEQUENCE ---------------------------
-            case ENodeOperation::SEQUENCE: {
-                // Sequence is pure ordering: the runtime fires each leg
-                // in order. The lowering therefore inlines the legs
-                // sequentially into the CURRENT block, threading the
-                // token from one leg's end to the next leg's start — no
-                // dedicated op or region is needed.
-                const auto& seq = static_cast<const SequenceNode&>(*node);
-                llvm::SmallVector<const ExecOutPin*, 4> legs;
-                legs.push_back(&seq.execOutPin());
-                for (auto& extra : seq.execOutPins())
-                {
-                    legs.push_back(extra.get());
-                }
-
-                mlir::Value tok = in_tok;
-                for (const ExecOutPin* leg : legs)
-                {
-                    vm.exec_tok[bc.graph->pinId(leg).value] = tok;
-                    LUX_FF_TRY_VALUE(end, lowerChain(bc, vm, *leg, lowered, external, loop_depth));
-                    // A leg that ended in Return/Break terminates the
-                    // chain — remaining legs are unreachable (the
-                    // runtime aborts the sequence there too).
-                    if (!end)
-                    {
-                        return mlir::Value{};
-                    }
-                    tok = end;
-                }
-
-                // Sequence has no continuation pin of its own — each leg
-                // already carried its chain to its end. Chain ends here;
-                // `tok` is the token after the last leg completed.
-                return tok;
-            }
-
-            // -------------------- START / FUNC_DEF -----------------------
-            // Both are entry-only. Encountering them mid-chain means the
-            // graph contains a back-edge from a later node to the entry,
-            // which the runtime should already have rejected. Reject
-            // loudly here too.
-            case ENodeOperation::START:
-            case ENodeOperation::FUNC_DEF_START:
-                LUX_FF_FAIL(bc, "entry node reached mid-chain");
-
-            default:
-                LUX_FF_FAIL(bc, "no lowering registered");
+            ExecutionCompiler compiler(*this, bc, vm, id, token, lowered, external, loop_depth);
+            LUX_FF_TRY(node->definition->compileExecution(node->payload, compiler));
+            token = compiler.token();
+            current = compiler.next();
+            if (!current.valid())
+            {
+                return token;
             }
         }
     }
 
+    FlowForgeResult<void> MLIRBuilderImpl::ExecutionCompiler::storeVariable(
+        std::uint64_t variable,
+        graph::PinSemanticId value,
+        graph::PinSemanticId result,
+        graph::PinSemanticId done
+    ) noexcept
+    {
+        LUX_FF_TRY(validatePins(std::array{value}, graph::EPinDirection::INPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(std::array{result}, graph::EPinDirection::OUTPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(std::array{done}, graph::EPinDirection::OUTPUT, EFlowPinRole::EXECUTION));
+
+        const auto* var = bc_.graph ? bc_.graph->findVariable(variable) : nullptr;
+        const bool has_variable = var && var->type;
+        if (!has_variable)
+        {
+            LUX_FF_FAIL(bc_, "graph variable not found");
+        }
+
+        LUX_FF_TRY_VALUE(operand, builder_.getOperand(pin(value), vm_, bc_));
+        LUX_FF_TRY_VALUE(val, builder_.coerceScalar(bc_, operand, *var->type));
+        LUX_FF_TRY_VALUE(slot, variableAddress(variable, bc_));
+        bc_.builder.create<mlir::LLVM::StoreOp>(bc_.loc, val, slot);
+
+        // Passthrough value + threaded exec token.
+        vm_.exec_data[pin(result).value] = val;
+        completed(done);
+        return {};
+    }
+
+    FlowForgeResult<void> MLIRBuilderImpl::ExecutionCompiler::storeField(
+        const meta::RefField& field,
+        graph::PinSemanticId object,
+        graph::PinSemanticId value,
+        graph::PinSemanticId result,
+        graph::PinSemanticId done
+    ) noexcept
+    {
+        LUX_FF_TRY(validatePins(std::array{object, value}, graph::EPinDirection::INPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(std::array{result}, graph::EPinDirection::OUTPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(std::array{done}, graph::EPinDirection::OUTPUT, EFlowPinRole::EXECUTION));
+
+        LUX_FF_TRY_VALUE(obj, builder_.getOperand(pin(object), vm_, bc_));
+        if (!mlir::isa<mlir::LLVM::LLVMPointerType>(obj.getType()))
+        {
+            LUX_FF_FAIL(bc_, "field access needs an object pointer");
+        }
+        mlir::Type fty = refTypeToMLIR(bc_, field.type);
+        const bool is_unsupported_record = mlir::isa<mlir::LLVM::LLVMPointerType>(fty) && !isPointerQual(field.type);
+        if (is_unsupported_record)
+        {
+            LUX_FF_FAIL(bc_, "record-typed fields are not supported yet");
+        }
+        LUX_FF_TRY_VALUE(val, builder_.getOperand(pin(value), vm_, bc_));
+        if (!mlir::isa<mlir::LLVM::LLVMPointerType>(fty))
+        {
+            LUX_FF_TRY_VALUE(coerced, builder_.coerceScalar(bc_, val, field.type));
+            val = coerced;
+        }
+        auto ptr_ty = mlir::LLVM::LLVMPointerType::get(bc_.ctx);
+        mlir::Value gep = bc_.builder.create<mlir::LLVM::GEPOp>(
+            bc_.loc,
+            ptr_ty,
+            bc_.builder.getI8Type(),
+            obj,
+            llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(field.offset)}
+        );
+        bc_.builder.create<mlir::LLVM::StoreOp>(bc_.loc, val, gep);
+
+        // Object passthrough + threaded exec token.
+        vm_.exec_data[pin(result).value] = obj;
+        completed(done);
+        return {};
+    }
+
+    FlowForgeResult<void> MLIRBuilderImpl::ExecutionCompiler::functionCall(
+        NodeId callee_id,
+        std::span<const graph::PinSemanticId> arguments,
+        std::span<const graph::PinSemanticId> results,
+        graph::PinSemanticId done
+    ) noexcept
+    {
+        LUX_FF_TRY(validatePins(arguments, graph::EPinDirection::INPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(results, graph::EPinDirection::OUTPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(std::array{done}, graph::EPinDirection::OUTPUT, EFlowPinRole::EXECUTION));
+
+        const auto* callee = bc_.graph->node(callee_id);
+        const bool has_callee = callee && callee->payload.get<FunctionPayload>();
+        if (!has_callee)
+        {
+            LUX_FF_FAIL(bc_, "graph call has no callee");
+        }
+
+        llvm::SmallVector<mlir::Value, 4> operands;
+        // Callee shares THIS instance's variables: forward the
+        // state pointer as the hidden leading argument.
+        operands.push_back(bc_.state_ptr);
+        operands.push_back(bc_.ability_runtime);
+        for (const auto semantic : arguments)
+        {
+            const auto id = pin(semantic);
+            const auto* input = bc_.graph->pin(id);
+            LUX_FF_TRY_VALUE(v, builder_.getOperand(id, vm_, bc_));
+            const bool needs_scalar_coercion =
+                input->type && !mlir::isa<mlir::LLVM::LLVMPointerType>(refTypeToMLIR(bc_, *input->type)) &&
+                !mlir::isa<mlir::LLVM::LLVMPointerType>(v.getType());
+            if (needs_scalar_coercion)
+            {
+                LUX_FF_TRY_VALUE(coerced, builder_.coerceScalar(bc_, v, *input->type));
+                v = coerced;
+            }
+            operands.push_back(v);
+        }
+        llvm::SmallVector<mlir::Type, 2> ret_tys;
+        for (const auto semantic : results)
+        {
+            ret_tys.push_back(refTypeToMLIR(bc_, *bc_.graph->pin(pin(semantic))->type));
+        }
+
+        auto callOp = bc_.builder.create<mlir::func::CallOp>(bc_.loc, callee->name, ret_tys, operands);
+        for (size_t i = 0; i < results.size(); ++i)
+        {
+            vm_.exec_data[pin(results[i]).value] = callOp.getResult(i);
+        }
+
+        completed(done);
+        return {};
+    }
+
+    FlowForgeResult<void> MLIRBuilderImpl::ExecutionCompiler::forLoop(
+        graph::PinSemanticId first_pin,
+        graph::PinSemanticId last_pin,
+        graph::PinSemanticId index,
+        graph::PinSemanticId body_pin,
+        graph::PinSemanticId done
+    ) noexcept
+    {
+        LUX_FF_TRY(validatePins(std::array{first_pin, last_pin}, graph::EPinDirection::INPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(std::array{index}, graph::EPinDirection::OUTPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(std::array{body_pin, done}, graph::EPinDirection::OUTPUT, EFlowPinRole::EXECUTION));
+
+        auto idxTy = bc_.builder.getIndexType();
+        // Constants come back as index directly (asIdx); linked
+        // integer values need an explicit index_cast.
+        auto toIndex = [&](mlir::Value v) -> FlowForgeResult<mlir::Value>
+        {
+            if (v.getType() == idxTy)
+            {
+                return v;
+            }
+            if (mlir::isa<mlir::IntegerType>(v.getType()))
+            {
+                return bc_.builder.create<mlir::arith::IndexCastOp>(bc_.loc, idxTy, v).getResult();
+            }
+            LUX_FF_FAIL(bc_, "for-loop bound is not an integer");
+        };
+        LUX_FF_TRY_VALUE(first_operand, builder_.getOperand(pin(first_pin), vm_, bc_, /*asIdx=*/true));
+        LUX_FF_TRY_VALUE(last_operand, builder_.getOperand(pin(last_pin), vm_, bc_, /*asIdx=*/true));
+        LUX_FF_TRY_VALUE(first, toIndex(first_operand));
+        LUX_FF_TRY_VALUE(last, toIndex(last_operand));
+
+        auto op = bc_.builder.create<mlir::flowforge::ForLoopOp>(
+            bc_.loc,
+            mlir::TypeRange{bc_.token, bc_.token, idxTy},
+            mlir::ValueRange{in_tok_, first, last}
+        );
+
+        // body region — args = (per-iter token, iv). The yield
+        // carries only the continuation token: the IV is a
+        // loop-defined block-arg (scf.for model), not a value
+        // that flows along region control-flow edges. A null
+        // chain result means the body ended in Return/Break —
+        // that terminator stands, no yield.
+        {
+            auto* blk =
+                addSingleBlockWithArgs(bc_.builder, op.getBodyRegion(), mlir::TypeRange{bc_.token, idxTy}, bc_.loc);
+            mlir::OpBuilder::InsertionGuard guard(bc_.builder);
+            ValueMaps::PureScope pure_scope(vm_);
+            bc_.builder.setInsertionPointToEnd(blk);
+            auto body_arg = blk->getArgument(0);
+            auto iv_arg = blk->getArgument(1);
+            vm_.exec_tok[pin(body_pin).value] = body_arg;
+            vm_.exec_data[pin(index).value] = iv_arg;
+            LUX_FF_TRY_VALUE(
+                body_end,
+                builder_.lowerChain(bc_, vm_, pin(body_pin), lowered_, external_, loop_depth_ + 1)
+            );
+            if (body_end)
+            {
+                bc_.builder.create<mlir::flowforge::YieldOp>(bc_.loc, body_end);
+            }
+        }
+
+        token_ = op.getResult(1);
+        vm_.exec_tok[pin(done).value] = token_;
+        next_ = pin(done);
+        return {};
+    }
+
+    FlowForgeResult<void> MLIRBuilderImpl::ExecutionCompiler::whileLoop(
+        graph::PinSemanticId condition,
+        graph::PinSemanticId body,
+        graph::PinSemanticId done
+    ) noexcept
+    {
+        LUX_FF_TRY(validatePins(std::array{condition}, graph::EPinDirection::INPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(std::array{body, done}, graph::EPinDirection::OUTPUT, EFlowPinRole::EXECUTION));
+
+        auto op = bc_.builder.create<mlir::flowforge::WhileLoopOp>(
+            bc_.loc,
+            mlir::TypeRange{bc_.token, bc_.token},
+            mlir::ValueRange{in_tok_}
+        );
+
+        // cond region — per-iteration condition evaluation.
+        {
+            auto* blk = addSingleBlockWithArgs(bc_.builder, op.getCondRegion(), mlir::TypeRange{bc_.token}, bc_.loc);
+            mlir::OpBuilder::InsertionGuard guard(bc_.builder);
+            ValueMaps::PureScope pure_scope(vm_);
+            bc_.builder.setInsertionPointToEnd(blk);
+            LUX_FF_TRY_VALUE(cond_val, builder_.getOperand(pin(condition), vm_, bc_));
+            bc_.builder.create<mlir::flowforge::CondYieldOp>(bc_.loc, blk->getArgument(0), cond_val);
+        }
+        // body region — recursive
+        {
+            auto* blk = addSingleBlockWithArgs(bc_.builder, op.getBodyRegion(), mlir::TypeRange{bc_.token}, bc_.loc);
+            mlir::OpBuilder::InsertionGuard guard(bc_.builder);
+            ValueMaps::PureScope pure_scope(vm_);
+            bc_.builder.setInsertionPointToEnd(blk);
+            auto body_arg = blk->getArgument(0);
+            vm_.exec_tok[pin(body).value] = body_arg;
+            LUX_FF_TRY_VALUE(body_end, builder_.lowerChain(bc_, vm_, pin(body), lowered_, external_, loop_depth_ + 1));
+            if (body_end)
+            {
+                bc_.builder.create<mlir::flowforge::YieldOp>(bc_.loc, body_end);
+            }
+        }
+
+        token_ = op.getResult(1);
+        vm_.exec_tok[pin(done).value] = token_;
+        next_ = pin(done);
+        return {};
+    }
+
+    FlowForgeResult<void> MLIRBuilderImpl::ExecutionCompiler::sequence(std::span<const graph::PinSemanticId> legs
+    ) noexcept
+    {
+        LUX_FF_TRY(validatePins(legs, graph::EPinDirection::OUTPUT, EFlowPinRole::EXECUTION));
+
+        // Sequence is pure ordering: the runtime fires each leg
+        // in order. The lowering therefore inlines the legs
+        // sequentially into the CURRENT block, threading the
+        // token from one leg's end to the next leg's start — no
+        // dedicated op or region is needed.
+        mlir::Value tok = in_tok_;
+        for (const auto semantic : legs)
+        {
+            const auto leg = pin(semantic);
+            vm_.exec_tok[leg.value] = tok;
+            LUX_FF_TRY_VALUE(end, builder_.lowerChain(bc_, vm_, leg, lowered_, external_, loop_depth_));
+            // A leg that ended in Return/Break terminates the
+            // chain — remaining legs are unreachable (the
+            // runtime aborts the sequence there too).
+            if (!end)
+            {
+                token_ = {};
+                return {};
+            }
+            tok = end;
+        }
+
+        // Sequence has no continuation pin of its own — each leg
+        // already carried its chain to its end. Chain ends here;
+        // `tok` is the token after the last leg completed.
+        token_ = tok;
+        return {};
+    }
+
+    FlowForgeResult<void> MLIRBuilderImpl::ExecutionCompiler::branch(
+        graph::PinSemanticId condition,
+        graph::PinSemanticId true_leg,
+        graph::PinSemanticId false_leg
+    ) noexcept
+    {
+        LUX_FF_TRY(validatePins(std::array{condition}, graph::EPinDirection::INPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(std::array{true_leg, false_leg}, graph::EPinDirection::OUTPUT, EFlowPinRole::EXECUTION)
+        );
+
+        LUX_FF_TRY_VALUE(cond, builder_.getOperand(pin(condition), vm_, bc_));
+
+        const auto pd = findBranchMerge(*bc_.graph, node_, pin(true_leg), pin(false_leg));
+        auto inner_ext = external_;
+        if (pd.valid())
+        {
+            inner_ext.insert(pd);
+        }
+
+        auto op = bc_.builder.create<mlir::flowforge::BranchOp>(
+            bc_.loc,
+            mlir::TypeRange{bc_.token, bc_.token},
+            mlir::ValueRange{in_tok_, cond}
+        );
+
+        // then-region — block-arg(0) = the input token for this
+        // leg. A null chain result means the leg ended in a
+        // Return/Break terminator — no yield may follow it.
+        bool then_terminated = false;
+        {
+            auto* blk =
+                addSingleBlockWithArgs(bc_.builder, FLOWFORGE_GET_THEN_REGION(op), mlir::TypeRange{bc_.token}, bc_.loc);
+            mlir::OpBuilder::InsertionGuard guard(bc_.builder);
+            ValueMaps::PureScope pure_scope(vm_);
+            bc_.builder.setInsertionPointToEnd(blk);
+            auto blk_arg = blk->getArgument(0);
+            vm_.exec_tok[pin(true_leg).value] = blk_arg;
+            LUX_FF_TRY_VALUE(end, builder_.lowerChain(bc_, vm_, pin(true_leg), lowered_, inner_ext, loop_depth_));
+            if (end)
+            {
+                bc_.builder.create<mlir::flowforge::YieldOp>(bc_.loc, end);
+            }
+            else
+            {
+                then_terminated = true;
+            }
+        }
+        // else-region — same shape
+        bool else_terminated = false;
+        {
+            auto* blk =
+                addSingleBlockWithArgs(bc_.builder, FLOWFORGE_GET_ELSE_REGION(op), mlir::TypeRange{bc_.token}, bc_.loc);
+            mlir::OpBuilder::InsertionGuard guard(bc_.builder);
+            ValueMaps::PureScope pure_scope(vm_);
+            bc_.builder.setInsertionPointToEnd(blk);
+            auto blk_arg = blk->getArgument(0);
+            vm_.exec_tok[pin(false_leg).value] = blk_arg;
+            LUX_FF_TRY_VALUE(end, builder_.lowerChain(bc_, vm_, pin(false_leg), lowered_, inner_ext, loop_depth_));
+            if (end)
+            {
+                bc_.builder.create<mlir::flowforge::YieldOp>(bc_.loc, end);
+            }
+            else
+            {
+                else_terminated = true;
+            }
+        }
+
+        // Post-lowering: the BranchOp's results are the per-leg
+        // out-tokens visible to OUTER scope. Re-publish:
+        //  - the Branch's own out-pins (so any direct consumer
+        //    sees the result, not the inner block-arg);
+        //  - every exec_out pin of nodes reachable inside each leg
+        //    (so PD's gatherPredTokens, which still reads the
+        //    inside-leg exec_out_pin ids, sees Branch.result(i)
+        //    rather than the now-out-of-scope inside-block SSA).
+        vm_.exec_tok[pin(true_leg).value] = op.getResult(0);
+        vm_.exec_tok[pin(false_leg).value] = op.getResult(1);
+        auto up_reach = reachableExecution(*bc_.graph, pin(true_leg));
+        auto down_reach = reachableExecution(*bc_.graph, pin(false_leg));
+        auto remap = [&](const auto& reachable, mlir::Value token) -> FlowForgeResult<void>
+        {
+            for (const auto id : reachable)
+            {
+                if (id == pd)
+                {
+                    continue;
+                }
+                LUX_FF_TRY_VALUE(
+                    outputs,
+                    nodePins(*bc_.graph, id, graph::EPinDirection::OUTPUT, EFlowPinRole::EXECUTION)
+                );
+                for (const auto output : outputs)
+                {
+                    if (vm_.exec_tok.contains(output.value))
+                    {
+                        vm_.exec_tok[output.value] = token;
+                    }
+                }
+            }
+            return {};
+        };
+        LUX_FF_TRY(remap(up_reach, op.getResult(0)));
+        LUX_FF_TRY(remap(down_reach, op.getResult(1)));
+
+        if (!pd.valid())
+        {
+            // Legs never reconverge. If BOTH legs terminated
+            // (Return/Break), control cannot flow past the
+            // branch — but the containing block still needs a
+            // terminator (BranchOp is not one). Emit the
+            // unreachable marker; the CF lowering erases it
+            // together with its provably-unreachable block.
+            const bool all_legs_terminated = then_terminated && else_terminated;
+            if (all_legs_terminated)
+            {
+                bc_.builder.create<mlir::flowforge::UnreachableOp>(bc_.loc, op.getResult(0));
+                token_ = {};
+                return {};
+            }
+            // Otherwise at least one leg falls through and the
+            // outer chain simply has nothing more to lower.
+            return {};
+        }
+        if (external_.contains(pd))
+        {
+            // The enclosing region owns this merge. Its other predecessors may not have
+            // been lowered_ yet, or their tokens may belong to sibling regions. Complete
+            // this region with the branch's outer token; only the owning chain gathers
+            // the merge's predecessors after all participating regions have returned.
+            token_ = op.getResult(0);
+            return {};
+        }
+        // Pivot to the post-dominator. Any of its linked
+        // predecessors works (they all map to the right Branch
+        // result thanks to the remap above); the next iteration
+        // will see PD as `node`, gather the (already-remapped)
+        // pred tokens, and emit token_merge.
+        LUX_FF_TRY_VALUE(inputs, nodePins(*bc_.graph, pd, graph::EPinDirection::INPUT, EFlowPinRole::EXECUTION));
+        const auto predecessors = inputs.empty() ? std::vector<PinId>{} : linkedPins(*bc_.graph, inputs.front());
+        if (predecessors.empty())
+        {
+            LUX_FF_FAIL(bc_, "post-dominator has no exec_in link");
+        }
+        next_ = predecessors.front();
+        LUX_FF_TRY_VALUE(post_dom_token, vm_.requireExecTok(next_.value, bc_));
+        token_ = post_dom_token;
+        return {};
+    }
+
+    FlowForgeResult<void> MLIRBuilderImpl::ExecutionCompiler::breakLoop() noexcept
+    {
+        if (loop_depth_ == 0)
+        {
+            LUX_FF_FAIL(bc_, "Break is only valid inside a loop body");
+        }
+        bc_.builder.create<mlir::flowforge::BreakOp>(bc_.loc, in_tok_);
+        token_ = {};
+        return {};
+    }
+
     // =============================================================================
-    // getOperand — resolve a DataInPin to an MLIR Value.
+    // getOperand — resolve a data input identity to an MLIR Value.
     //
     // Resolution order for a linked source:
     //   1. exec_data — values a non-pure node already produced on the exec
@@ -1405,39 +1645,45 @@ namespace lux::flowforge
     // Unlinked pins fall back to their editor-provided constant.
     // =============================================================================
     FlowForgeResult<mlir::Value> MLIRBuilderImpl::getOperand(
-        const DataInPin& in,
+        PinId input,
         ValueMaps& vm,
         BuilderContext& bc,
-        bool asIdx
+        bool as_index
     )
     {
-        bc.current_pin = &in;
-
-        if (const auto link = bc.graph->topology().incoming(bc.graph->pinId(&in)))
+        bc.current_pin = input;
+        const auto* record = bc.graph->topology().findPin(input);
+        const auto* value = bc.graph->pin(input);
+        const bool is_input = record && record->direction == graph::EPinDirection::INPUT;
+        const bool is_data = value && value->role == EFlowPinRole::DATA && value->type;
+        const bool is_invalid_input = !is_input || !is_data;
+        if (is_invalid_input)
         {
-            const auto* src = static_cast<const DataOutPin*>(bc.graph->findPin(link->from));
-            if (auto it = vm.exec_data.find(bc.graph->pinId(src).value); it != vm.exec_data.end())
+            LUX_FF_FAIL_AT_PIN(bc, "data input pin is not part of the graph");
+        }
+        if (const auto link = bc.graph->topology().incoming(input))
+        {
+            if (auto it = vm.exec_data.find(link->from.value); it != vm.exec_data.end())
             {
                 return it->second;
             }
             auto& scope = vm.pure_scopes.back();
-            if (auto it = scope.find(bc.graph->pinId(src).value); it != scope.end())
+            if (auto it = scope.find(link->from.value); it != scope.end())
             {
                 return it->second;
             }
-            return materializePureValue(*src, vm, bc);
+            return materializePureValue(link->from, vm, bc);
         }
-
-        // Constant / default value path.
-        if (in.allowDefault())
+        if (value->allow_default)
         {
-            if (!in.validConstant())
+            if (!value->default_value.isValid())
+            {
                 LUX_FF_FAIL_AT_PIN(bc, "pin has no link and no valid default constant");
-            LUX_FF_TRY_VALUE(cst, buildConstant(in, bc, in.constantData(), asIdx));
-            vm.pure_scopes.back()[bc.graph->pinId(&in).value] = cst;
-            return cst;
+            }
+            LUX_FF_TRY_VALUE(constant, buildConstant(*value->type, bc, value->default_value, as_index));
+            vm.pure_scopes.back()[input.value] = constant;
+            return constant;
         }
-
         LUX_FF_FAIL_AT_PIN(bc, "DataInPin has no source and no default value");
     }
 
@@ -1516,15 +1762,18 @@ namespace lux::flowforge
 
         switch (static_cast<EBaseType>(rt.qtype.base))
         {
-        case EBaseType::BOOL: {
+        case EBaseType::BOOL:
+        {
             const bool* p = static_cast<const bool*>(obj.data());
             return b.create<mlir::arith::ConstantOp>(loc, b.getI1Type(), b.getBoolAttr(*p));
         }
-        case EBaseType::FLOAT: {
+        case EBaseType::FLOAT:
+        {
             const float* p = static_cast<const float*>(obj.data());
             return b.create<mlir::arith::ConstantOp>(loc, b.getF32Type(), b.getF32FloatAttr(*p));
         }
-        case EBaseType::DOUBLE: {
+        case EBaseType::DOUBLE:
+        {
             const double* p = static_cast<const double*>(obj.data());
             return b.create<mlir::arith::ConstantOp>(loc, b.getF64Type(), b.getF64FloatAttr(*p));
         }
@@ -1549,7 +1798,7 @@ namespace lux::flowforge
     // buildConstant — scalars, strings, and trivially-copyable aggregates.
     // ============================================================================
     FlowForgeResult<mlir::Value> MLIRBuilderImpl::buildConstant(
-        const DataInPin& in,
+        const meta::RefType& rt,
         BuilderContext& bc,
         const lux::meta::RuntimeObject& obj,
         bool is_seq
@@ -1558,7 +1807,6 @@ namespace lux::flowforge
         using namespace lux::meta;
         auto& b = bc.builder;
         auto& loc = bc.loc;
-        auto& rt = *in.info().type;
 
         // Strings FIRST. std::string_view is itself standard-layout and
         // trivially copyable — a byte-copy dispatch placed before this check
@@ -1607,7 +1855,9 @@ namespace lux::flowforge
         // constructor must run over a buffer) are deferred — report a clear
         // diagnostic rather than materializing garbage.
         if (!rt.traits.is_trivially_copyable)
+        {
             LUX_FF_FAIL_AT_PIN(bc, "non-trivially-copyable class constants are not yet supported");
+        }
         const auto& obj_type = *obj.type();
         if (obj_type.size == 0)
         {
@@ -1666,103 +1916,83 @@ namespace lux::flowforge
     // ============================================================================
     // materializePureValue — on-demand expansion of the pure data subgraph.
     // ============================================================================
-    FlowForgeResult<mlir::Value> MLIRBuilderImpl::materializePureValue(
-        const DataOutPin& src,
-        ValueMaps& vm,
-        BuilderContext& bc
-    )
+    FlowForgeResult<mlir::Value> MLIRBuilderImpl::materializePureValue(PinId source, ValueMaps& vm, BuilderContext& bc)
     {
-        const Node* n = src.node();
-        if (!isPureDataOp(n->operation()))
+        const auto* record = bc.graph->topology().findPin(source);
+        const auto* stored = record ? bc.graph->node(record->owner) : nullptr;
+        const bool has_definition = stored && stored->definition;
+        if (!has_definition)
+        {
+            LUX_FF_FAIL_AT_PIN(bc, "registered value node has no definition or payload");
+        }
+        if (stored->definition->hasExecutionCompiler())
+        {
             LUX_FF_FAIL_AT_PIN(
                 bc,
                 "source value not materialised (its producer has not run "
                 "on the exec chain yet)"
             );
-        if (!materializing_.insert(n).second)
+        }
+        const auto owner = record->owner;
+        if (!materializing_.insert(owner).second)
         {
             LUX_FF_FAIL(bc, "cycle detected in pure data graph");
         }
-        auto cycle_guard = llvm::make_scope_exit([&] { materializing_.erase(n); });
-
-        // Error context: point at the pure node while we lower it.
-        bc.current_node = n;
-
-        switch (n->operation())
+        auto cycle_guard = llvm::make_scope_exit([&] { materializing_.erase(owner); });
+        bc.current_node = owner;
+        const auto& definition = *stored->definition;
+        LUX_FF_TRY_VALUE(schema, definition.describePins(stored->payload));
+        ValueCompiler compiler(bc);
+        std::vector<FlowValue> inputs;
+        std::vector<PinId> output_pins;
+        for (const auto& declaration : schema)
         {
-        case ENodeOperation::REGISTERED_VALUE:
+            const auto id = bc.graph->pinId(owner, declaration.semantic);
+            if (!id.valid())
+            {
+                LUX_FF_FAIL(bc, "registered pin declaration differs from graph pins");
+            }
+            if (declaration.direction == graph::EPinDirection::OUTPUT)
+            {
+                output_pins.push_back(id);
+                continue;
+            }
+            LUX_FF_TRY_VALUE(input, getOperand(id, vm, bc));
+            // Reflected object addresses keep their pointer representation; the memory primitive
+            // owns the exact unsupported-object diagnostic rather than a scalar coercion failure.
+            if (!mlir::isa<mlir::LLVM::LLVMPointerType>(refTypeToMLIR(bc, *declaration.type)))
+            {
+                LUX_FF_TRY_VALUE(coerced, coerceScalar(bc, input, *declaration.type));
+                input = coerced;
+            }
+            LUX_FF_TRY_VALUE(value, compiler.add(input, *declaration.type));
+            inputs.push_back(value);
+        }
+        bc.current_node = owner;
+        LUX_FF_TRY_VALUE(outputs, definition.compile(stored->payload, inputs, compiler));
+        if (outputs.size() != output_pins.size())
         {
-            const auto* type = n->registeredType();
-            const auto* payload = n->registeredPayload();
-            const bool has_definition = type && payload;
-            if (!has_definition)
-            {
-                LUX_FF_FAIL(bc, "registered value node has no definition or payload");
-            }
-            ScalarValueCompiler compiler(bc);
-            std::vector<FlowValue> inputs;
-            for (const auto* pin : n->inPins())
-            {
-                const auto& data = static_cast<const DataInPin&>(*pin);
-                LUX_FF_TRY_VALUE(input, getOperand(data, vm, bc));
-                LUX_FF_TRY_VALUE(coerced, coerceScalar(bc, input, *data.info().type));
-                LUX_FF_TRY_VALUE(value, compiler.add(coerced, *data.info().type));
-                inputs.push_back(value);
-            }
-            bc.current_node = n;
-            LUX_FF_TRY_VALUE(outputs, type->compile(*payload, inputs, compiler));
-            if (outputs.size() != n->outPins().size())
-            {
-                LUX_FF_FAIL(bc, "registered output count differs from graph pins");
-            }
-            for (std::size_t i = 0; i < outputs.size(); ++i)
-            {
-                vm.pure_scopes.back()[bc.graph->pinId(n->outPins()[i]).value] = compiler.value(outputs[i]);
-            }
-            return vm.pure_scopes.back().at(bc.graph->pinId(&src).value);
+            LUX_FF_FAIL(bc, "registered output count differs from graph pins");
         }
-
-        // Pseudo-pure memory read: re-load at EVERY use (never cached)
-        // so a Set earlier on the exec chain is always observed.
-        case ENodeOperation::GET_VARIABLE: {
-            const auto& get = static_cast<const GetVariableNode&>(*n);
-            const auto* var = bc.graph ? bc.graph->findVariable(get.variableId()) : nullptr;
-            if (!var || !var->type)
+        const bool cache_values = definition.valueEvaluation() == EFlowValueEvaluation::PURE;
+        mlir::Value requested;
+        for (std::size_t i = 0; i != outputs.size(); ++i)
+        {
+            const auto value = compiler.value(outputs[i]);
+            if (cache_values)
             {
-                LUX_FF_FAIL(bc, "graph variable not found");
+                vm.pure_scopes.back()[output_pins[i].value] = value;
             }
-            LUX_FF_TRY_VALUE(slot, varSlotAddress(get.variableId(), bc));
-            return bc.builder.create<mlir::LLVM::LoadOp>(bc.loc, refTypeToMLIR(bc, *var->type), slot);
-        }
-
-        // Pseudo-pure memory read off an engine object: byte-offset GEP
-        // from the reflected field, re-loaded at every use.
-        case ENodeOperation::GET_FIELD: {
-            const auto& gf = static_cast<const GetFieldNode&>(*n);
-            if (!gf.field())
+            if (output_pins[i] == source)
             {
-                LUX_FF_FAIL(bc, "field access has no reflected field");
+                requested = value;
             }
-            LUX_FF_TRY_VALUE(obj, getOperand(gf.objectPin(), vm, bc));
-            if (!mlir::isa<mlir::LLVM::LLVMPointerType>(obj.getType()))
-                LUX_FF_FAIL_AT_PIN(bc, "field access needs an object pointer");
-            mlir::Type fty = refTypeToMLIR(bc, gf.field()->type);
-            if (mlir::isa<mlir::LLVM::LLVMPointerType>(fty) && !isPointerQual(gf.field()->type))
-                LUX_FF_FAIL(bc, "record-typed fields are not supported yet");
-            auto ptr_ty = mlir::LLVM::LLVMPointerType::get(bc.ctx);
-            mlir::Value gep = bc.builder.create<mlir::LLVM::GEPOp>(
-                bc.loc,
-                ptr_ty,
-                bc.builder.getI8Type(),
-                obj,
-                llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(gf.field()->offset)}
-            );
-            return bc.builder.create<mlir::LLVM::LoadOp>(bc.loc, fty, gep);
         }
-
-        default:
-            LUX_FF_FAIL(bc, "no pure lowering registered for this node");
+        if (!requested)
+        {
+            LUX_FF_FAIL_AT_PIN(bc, "registered source output is not declared");
         }
+        return requested;
     }
 
     // ============================================================================
@@ -1840,28 +2070,6 @@ namespace lux::flowforge
     // Validation (scalar-ness / default value) already ran in
     // computeStateLayout at the top of generateMLIR.
     // ============================================================================
-    FlowForgeResult<mlir::Value> MLIRBuilderImpl::varSlotAddress(uint64_t var_id, BuilderContext& bc)
-    {
-        const auto* field = bc.state_layout.find(var_id);
-        if (!field)
-        {
-            LUX_FF_FAIL(bc, "graph variable not found");
-        }
-        if (!bc.state_ptr)
-        {
-            LUX_FF_FAIL(bc, "function has no instance-state pointer");
-        }
-
-        auto ptr_ty = mlir::LLVM::LLVMPointerType::get(bc.ctx);
-        return bc.builder.create<mlir::LLVM::GEPOp>(
-            bc.loc,
-            ptr_ty,
-            bc.builder.getI8Type(),
-            bc.state_ptr,
-            llvm::ArrayRef<mlir::LLVM::GEPArg>{static_cast<int32_t>(field->offset)}
-        );
-    }
-
     // ============================================================================
     // mergeExecTokens — see header comment on the member declaration.
     // ============================================================================
@@ -1906,13 +2114,11 @@ namespace lux::flowforge
     // ============================================================================
     // Sequential lowering helpers
     // ============================================================================
-    FlowForgeResult<void> MLIRBuilderImpl::lowerReturnImpl(
-        const Node& n,
-        mlir::Value in_tok,
-        ValueMaps& vm,
-        BuilderContext& bc
-    )
+    FlowForgeResult<void> MLIRBuilderImpl::ExecutionCompiler::returnValues(std::span<const graph::PinSemanticId> results
+    ) noexcept
     {
+        LUX_FF_TRY(validatePins(results, graph::EPinDirection::INPUT, EFlowPinRole::DATA));
+
         // Collect return values from the node's data input pins (works for
         // both ReturnNode — none today — and FuncReturnNode). ReturnOp's
         // $rets is Variadic<AnyType> per FlowForgeOps.td. Scalars are
@@ -1920,24 +2126,24 @@ namespace lux::flowforge
         // result types by construction (FuncReturnNode mirrors the
         // FuncDefNode signature).
         llvm::SmallVector<mlir::Value, 4> operands;
-        operands.push_back(in_tok);
-        for (auto* pin : n.inPins())
+        operands.push_back(in_tok_);
+        for (const auto semantic : results)
         {
-            if (pin->kind() != EPinKind::DATA_IN)
+            const auto id = pin(semantic);
+            const auto* input = bc_.graph->pin(id);
+            LUX_FF_TRY_VALUE(v, builder_.getOperand(id, vm_, bc_));
+            const bool needs_scalar_coercion =
+                input->type && !mlir::isa<mlir::LLVM::LLVMPointerType>(refTypeToMLIR(bc_, *input->type)) &&
+                !mlir::isa<mlir::LLVM::LLVMPointerType>(v.getType());
+            if (needs_scalar_coercion)
             {
-                continue;
-            }
-            auto* dpin = static_cast<DataInPin*>(pin);
-            LUX_FF_TRY_VALUE(v, getOperand(*dpin, vm, bc));
-            if (dpin->info().type && !mlir::isa<mlir::LLVM::LLVMPointerType>(refTypeToMLIR(bc, *dpin->info().type)) &&
-                !mlir::isa<mlir::LLVM::LLVMPointerType>(v.getType()))
-            {
-                LUX_FF_TRY_VALUE(coerced, coerceScalar(bc, v, *dpin->info().type));
+                LUX_FF_TRY_VALUE(coerced, builder_.coerceScalar(bc_, v, *input->type));
                 v = coerced;
             }
             operands.push_back(v);
         }
-        bc.builder.create<mlir::flowforge::ReturnOp>(bc.loc, mlir::TypeRange{}, operands);
+        bc_.builder.create<mlir::flowforge::ReturnOp>(bc_.loc, mlir::TypeRange{}, operands);
+        token_ = {};
         return {};
     }
 
@@ -1993,16 +2199,21 @@ namespace lux::flowforge
         return bc.builder.create<mlir::LLVM::AllocaOp>(bc.loc, ptr_ty, elem_ty, n);
     }
 
-    FlowForgeResult<void> MLIRBuilderImpl::lowerScriptAbilityCallImpl(
-        const ScriptAbilityNode& call,
-        mlir::Value in_tok,
-        ValueMaps& vm,
-        BuilderContext& bc
-    )
+    FlowForgeResult<void> MLIRBuilderImpl::ExecutionCompiler::abilityCall(
+        const ScriptAbilityPayload& call,
+        std::span<const graph::PinSemanticId> arguments,
+        std::span<const graph::PinSemanticId> results,
+        graph::PinSemanticId done
+    ) noexcept
     {
-        const auto node_id = bc.graph->nodeId(&call).value;
-        const auto ordinal = bc.ability_ordinals.find(node_id);
-        if (ordinal == bc.ability_ordinals.end() || call.results().size() > 1U)
+        LUX_FF_TRY(validatePins(arguments, graph::EPinDirection::INPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(results, graph::EPinDirection::OUTPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(std::array{done}, graph::EPinDirection::OUTPUT, EFlowPinRole::EXECUTION));
+
+        const auto node_id = node_.value;
+        const auto ordinal = bc_.ability_ordinals.find(node_id);
+        const bool is_invalid_shape = ordinal == bc_.ability_ordinals.end() || call.results().size() > 1U;
+        if (is_invalid_shape)
         {
             return lux::cxx::unexpected(FlowForgeFailure{
                 .code = EFlowForgeError::UNSUPPORTED_SCRIPT_ABILITY_TYPE,
@@ -2013,72 +2224,85 @@ namespace lux::flowforge
 
         llvm::SmallVector<mlir::Value, 6> operands;
         llvm::SmallVector<mlir::Type, 6> argument_types;
-        operands.push_back(bc.ability_runtime);
-        argument_types.push_back(bc.ability_runtime.getType());
-        for (const auto& pin : call.parameterPins())
+        operands.push_back(bc_.ability_runtime);
+        argument_types.push_back(bc_.ability_runtime.getType());
+        for (const auto semantic : arguments)
         {
-            bc.current_pin = pin.get();
-            if (pin->info().type == nullptr)
-                LUX_FF_FAIL_AT_PIN(bc, "Script Ability parameter has no semantic type");
-            auto type = refTypeToMLIR(bc, *pin->info().type);
+            const auto id = pin(semantic);
+            const auto* input = bc_.graph->pin(id);
+            bc_.current_pin = id;
+            if (input->type == nullptr)
+            {
+                LUX_FF_FAIL_AT_PIN(bc_, "Script Ability parameter has no semantic type");
+            }
+            auto type = refTypeToMLIR(bc_, *input->type);
             if (mlir::isa<mlir::LLVM::LLVMPointerType>(type))
             {
                 return lux::cxx::unexpected(FlowForgeFailure{
                     .code = EFlowForgeError::UNSUPPORTED_SCRIPT_ABILITY_TYPE,
                     .message = "record Script Ability parameters are not supported by FlowForge S3",
                     .node_id = node_id,
-                    .pin_id = bc.graph->pinId(pin.get()).value
+                    .pin_id = id.value
                 });
             }
-            LUX_FF_TRY_VALUE(value, getOperand(*pin, vm, bc));
+            LUX_FF_TRY_VALUE(value, builder_.getOperand(id, vm_, bc_));
             if (mlir::isa<mlir::LLVM::LLVMPointerType>(value.getType()))
-                LUX_FF_FAIL_AT_PIN(bc, "Script Ability parameter cannot be coerced to its semantic type");
-            LUX_FF_TRY_VALUE(coerced, coerceScalar(bc, value, *pin->info().type));
+            {
+                LUX_FF_FAIL_AT_PIN(bc_, "Script Ability parameter cannot be coerced to its semantic type");
+            }
+            LUX_FF_TRY_VALUE(coerced, builder_.coerceScalar(bc_, value, *input->type));
             operands.push_back(coerced);
             argument_types.push_back(type);
         }
 
         llvm::SmallVector<mlir::Type, 1> result_types;
-        if (!call.resultPins().empty())
+        if (!results.empty())
         {
-            const auto* type = call.resultPins().front()->info().type;
-            if (type == nullptr || mlir::isa<mlir::LLVM::LLVMPointerType>(refTypeToMLIR(bc, *type)))
+            const auto* type = bc_.graph->pin(pin(results.front()))->type;
+            const bool is_unsupported_type =
+                type == nullptr || mlir::isa<mlir::LLVM::LLVMPointerType>(refTypeToMLIR(bc_, *type));
+            if (is_unsupported_type)
             {
                 return lux::cxx::unexpected(FlowForgeFailure{
                     .code = EFlowForgeError::UNSUPPORTED_SCRIPT_ABILITY_TYPE,
                     .message = "record Script Ability results are not supported by FlowForge S3",
                     .node_id = node_id,
-                    .pin_id = bc.graph->pinId(call.resultPins().front().get()).value
+                    .pin_id = pin(results.front()).value
                 });
             }
-            result_types.push_back(refTypeToMLIR(bc, *type));
+            result_types.push_back(refTypeToMLIR(bc_, *type));
         }
 
         const auto name =
             call.methodKind() == lux::script::EScriptApiMethodKind::ASYNC_OPERATION
                 ? "lux_ff_ability_async_" + std::to_string(ordinal->second) + "_node_" + std::to_string(node_id)
                 : "lux_ff_ability_sync_" + std::to_string(ordinal->second);
-        const auto function_type = bc.builder.getFunctionType(argument_types, result_types);
-        const auto function = getOrDeclareExternFunc(bc, name, function_type);
-        auto invoked = bc.builder.create<mlir::func::CallOp>(bc.loc, function, operands);
-        if (!call.resultPins().empty())
-            vm.exec_data[bc.graph->pinId(call.resultPins().front().get()).value] = invoked.getResult(0);
-        vm.exec_tok[bc.graph->pinId(&call.execOutPin()).value] = in_tok;
-        bc.current_pin = nullptr;
+        const auto function_type = bc_.builder.getFunctionType(argument_types, result_types);
+        const auto function = getOrDeclareExternFunc(bc_, name, function_type);
+        auto invoked = bc_.builder.create<mlir::func::CallOp>(bc_.loc, function, operands);
+        if (!results.empty())
+        {
+            vm_.exec_data[pin(results.front()).value] = invoked.getResult(0);
+        }
+        completed(done);
+        bc_.current_pin = {};
         return {};
     }
 
-    FlowForgeResult<void> MLIRBuilderImpl::lowerScriptEventWaitImpl(
-        const ScriptEventAwaitNode& wait,
-        mlir::Value in_tok,
-        ValueMaps& vm,
-        BuilderContext& bc
-    )
+    FlowForgeResult<void> MLIRBuilderImpl::ExecutionCompiler::eventWait(
+        const ScriptEventPayload&,
+        graph::PinSemanticId payload,
+        graph::PinSemanticId done
+    ) noexcept
     {
-        const auto node_id = bc.graph->nodeId(&wait).value;
-        const auto ordinal = bc.event_wait_ordinals.find(node_id);
-        const auto* type = wait.payloadPin().info().type;
-        if (ordinal == bc.event_wait_ordinals.end() || type == nullptr)
+        LUX_FF_TRY(validatePins(std::array{payload}, graph::EPinDirection::OUTPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(std::array{done}, graph::EPinDirection::OUTPUT, EFlowPinRole::EXECUTION));
+
+        const auto node_id = node_.value;
+        const auto ordinal = bc_.event_wait_ordinals.find(node_id);
+        const auto* type = bc_.graph->pin(pin(payload))->type;
+        const bool has_payload = ordinal != bc_.event_wait_ordinals.end() && type != nullptr;
+        if (!has_payload)
         {
             return lux::cxx::unexpected(FlowForgeFailure{
                 .code = EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH,
@@ -2086,38 +2310,40 @@ namespace lux::flowforge
                 .node_id = node_id
             });
         }
-        const auto result_type = refTypeToMLIR(bc, *type);
+        const auto result_type = refTypeToMLIR(bc_, *type);
         if (mlir::isa<mlir::LLVM::LLVMPointerType>(result_type))
         {
             return lux::cxx::unexpected(FlowForgeFailure{
                 .code = EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH,
                 .message = "record Script Event payloads are not supported by FlowForge S5.1",
                 .node_id = node_id,
-                .pin_id = bc.graph->pinId(&wait.payloadPin()).value
+                .pin_id = pin(payload).value
             });
         }
-        const auto name =
-            "lux_ff_event_wait_" + std::to_string(ordinal->second) + "_node_" + std::to_string(node_id);
-        const auto function_type = bc.builder.getFunctionType({}, {result_type});
-        const auto function = getOrDeclareExternFunc(bc, name, function_type);
-        auto invoked = bc.builder.create<mlir::func::CallOp>(bc.loc, function, mlir::ValueRange{});
-        vm.exec_data[bc.graph->pinId(&wait.payloadPin()).value] = invoked.getResult(0);
-        vm.exec_tok[bc.graph->pinId(&wait.execOutPin()).value] = in_tok;
+        const auto name = "lux_ff_event_wait_" + std::to_string(ordinal->second) + "_node_" + std::to_string(node_id);
+        const auto function_type = bc_.builder.getFunctionType({}, {result_type});
+        const auto function = getOrDeclareExternFunc(bc_, name, function_type);
+        auto invoked = bc_.builder.create<mlir::func::CallOp>(bc_.loc, function, mlir::ValueRange{});
+        vm_.exec_data[pin(payload).value] = invoked.getResult(0);
+        completed(done);
         return {};
     }
 
-    FlowForgeResult<void> MLIRBuilderImpl::lowerNativeCallImpl(
-        const Node& n,
-        mlir::Value in_tok,
-        ValueMaps& vm,
-        BuilderContext& bc
-    )
+    FlowForgeResult<void> MLIRBuilderImpl::ExecutionCompiler::nativeCall(
+        const NativeCallDefinition& definition,
+        std::span<const graph::PinSemanticId> arguments,
+        graph::PinSemanticId result,
+        graph::PinSemanticId done
+    ) noexcept
     {
-        const auto& call = static_cast<const NativeFuncCall&>(n);
-        auto& info = call.info();
-        auto& b = bc.builder;
-        auto loc = bc.loc;
-        auto ptr_ty = mlir::LLVM::LLVMPointerType::get(bc.ctx);
+        LUX_FF_TRY(validatePins(arguments, graph::EPinDirection::INPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(std::array{result}, graph::EPinDirection::OUTPUT, EFlowPinRole::DATA));
+        LUX_FF_TRY(validatePins(std::array{done}, graph::EPinDirection::OUTPUT, EFlowPinRole::EXECUTION));
+
+        const auto& info = definition.signature();
+        auto& b = bc_.builder;
+        auto loc = bc_.loc;
+        auto ptr_ty = mlir::LLVM::LLVMPointerType::get(bc_.ctx);
 
         const bool returns_void =
             static_cast<lux::meta::EBaseType>(info.return_type.qtype.base) == lux::meta::EBaseType::VOID &&
@@ -2127,17 +2353,18 @@ namespace lux::flowforge
         // call flavors): scalars coerce to the declared parameter type,
         // pointer-typed parameters pass through untouched.
         llvm::SmallVector<mlir::Value, 4> operands;
-        operands.reserve(call.dataInPins().size());
-        for (size_t i = 0; i < call.dataInPins().size(); ++i)
+        operands.reserve(arguments.size());
+        for (size_t i = 0; i < arguments.size(); ++i)
         {
-            LUX_FF_TRY_VALUE(v, getOperand(*call.dataInPins()[i], vm, bc));
+            LUX_FF_TRY_VALUE(v, builder_.getOperand(pin(arguments[i]), vm_, bc_));
             if (i < info.parameters.size())
             {
                 const auto& prt = info.parameters[i].type;
-                if (!mlir::isa<mlir::LLVM::LLVMPointerType>(refTypeToMLIR(bc, prt)) &&
-                    !mlir::isa<mlir::LLVM::LLVMPointerType>(v.getType()))
+                const bool needs_scalar_coercion = !mlir::isa<mlir::LLVM::LLVMPointerType>(refTypeToMLIR(bc_, prt)) &&
+                                                   !mlir::isa<mlir::LLVM::LLVMPointerType>(v.getType());
+                if (needs_scalar_coercion)
                 {
-                    LUX_FF_TRY_VALUE(coerced, coerceScalar(bc, v, prt));
+                    LUX_FF_TRY_VALUE(coerced, builder_.coerceScalar(bc_, v, prt));
                     v = coerced;
                 }
             }
@@ -2153,18 +2380,19 @@ namespace lux::flowforge
             argTypes.reserve(info.parameters.size());
             for (auto& param : info.parameters)
             {
-                argTypes.push_back(refTypeToMLIR(bc, param.type));
+                argTypes.push_back(refTypeToMLIR(bc_, param.type));
             }
             llvm::SmallVector<mlir::Type, 1> retTypes;
             if (!returns_void)
             {
-                retTypes.push_back(refTypeToMLIR(bc, info.return_type));
+                retTypes.push_back(refTypeToMLIR(bc_, info.return_type));
             }
 
             auto fnTy = b.getFunctionType(argTypes, retTypes);
-            auto funcOp = getOrDeclareExternFunc(bc, info.name, fnTy);
+            auto funcOp = getOrDeclareExternFunc(bc_, info.name, fnTy);
             auto callOp = b.create<mlir::func::CallOp>(loc, funcOp, operands);
-            if (!returns_void && callOp.getNumResults() > 0)
+            const bool has_result = !returns_void && callOp.getNumResults() > 0;
+            if (has_result)
             {
                 result_value = callOp.getResult(0);
             }
@@ -2182,20 +2410,21 @@ namespace lux::flowforge
             // hash-based symbol (see FlowScriptInstance::invokerSymbol).
             const std::string sym = FlowScriptInstance::invokerSymbol(info);
             auto fnTy = b.getFunctionType({ptr_ty, ptr_ty, ptr_ty}, {});
-            auto funcOp = getOrDeclareExternFunc(bc, sym, fnTy);
+            auto funcOp = getOrDeclareExternFunc(bc_, sym, fnTy);
 
             auto null_ptr = b.create<mlir::LLVM::ZeroOp>(loc, ptr_ty).getResult();
 
             mlir::Value args_base = null_ptr;
             if (!operands.empty())
             {
-                args_base = allocaAtEntry(bc, ptr_ty, static_cast<int64_t>(operands.size()));
+                args_base = allocaAtEntry(bc_, ptr_ty, static_cast<int64_t>(operands.size()));
                 for (size_t i = 0; i < operands.size(); ++i)
                 {
                     mlir::Value storage;
                     const bool operand_is_ptr = mlir::isa<mlir::LLVM::LLVMPointerType>(operands[i].getType());
                     const bool param_is_ptr_qual = i < info.parameters.size() && isPointerQual(info.parameters[i].type);
-                    if (operand_is_ptr && !param_is_ptr_qual)
+                    const bool is_by_value_record = operand_is_ptr && !param_is_ptr_qual;
+                    if (is_by_value_record)
                     {
                         // by-value record: the operand already points at a T.
                         storage = operands[i];
@@ -2203,7 +2432,7 @@ namespace lux::flowforge
                     else
                     {
                         // scalar or pointer parameter: spill into a slot.
-                        storage = allocaAtEntry(bc, operands[i].getType(), 1);
+                        storage = allocaAtEntry(bc_, operands[i].getType(), 1);
                         b.create<mlir::LLVM::StoreOp>(loc, operands[i], storage);
                     }
                     auto slot = b.create<mlir::LLVM::GEPOp>(
@@ -2221,14 +2450,18 @@ namespace lux::flowforge
             mlir::Type ret_ty;
             if (!returns_void)
             {
-                ret_ty = refTypeToMLIR(bc, info.return_type);
-                if (mlir::isa<mlir::LLVM::LLVMPointerType>(ret_ty) && !isPointerQual(info.return_type))
+                ret_ty = refTypeToMLIR(bc_, info.return_type);
+                const bool is_unsupported_record =
+                    mlir::isa<mlir::LLVM::LLVMPointerType>(ret_ty) && !isPointerQual(info.return_type);
+                if (is_unsupported_record)
+                {
                     LUX_FF_FAIL(
-                        bc,
+                        bc_,
                         "record-typed return values are not supported for "
                         "reflected calls yet"
                     );
-                ret_slot = allocaAtEntry(bc, ret_ty, 1);
+                }
+                ret_slot = allocaAtEntry(bc_, ret_ty, 1);
             }
 
             b.create<mlir::func::CallOp>(loc, funcOp, mlir::ValueRange{null_ptr, args_base, ret_slot});
@@ -2241,11 +2474,11 @@ namespace lux::flowforge
         // Map return value to the result DataOutPin (if not void).
         if (result_value)
         {
-            vm.exec_data[bc.graph->pinId(&call.result()).value] = result_value;
+            vm_.exec_data[pin(result).value] = result_value;
         }
 
         // Thread exec token through (sequential call): outTok = inTok.
-        vm.exec_tok[bc.graph->pinId(&call.execOutPin()).value] = in_tok;
+        completed(done);
         return {};
     }
 
@@ -2274,6 +2507,7 @@ namespace lux::flowforge
     MLIRBuilder::~MLIRBuilder() = default;
     MLIRBuilder::MLIRBuilder(MLIRBuilder&&) noexcept = default;
     MLIRBuilder& MLIRBuilder::operator=(MLIRBuilder&&) noexcept = default;
+
     FlowForgeResult<std::unique_ptr<IR>> MLIRBuilder::generateIR(const FlowGraph& graph) noexcept
     {
         try

@@ -1,8 +1,4 @@
-#include <lux/engine/flowforge/script/ScriptEventAwaitNode.hpp>
-
-#include <lux/engine/meta/MetaDef.hpp>
-
-#include <string>
+#include <lux/engine/flowforge/script/ScriptValueType.hpp>
 
 namespace lux::flowforge
 {
@@ -35,26 +31,12 @@ namespace lux::flowforge
         }
     } // namespace
 
-    struct ScriptEventAwaitNode::TypeStorage final
+    detail::ScriptValueType::ScriptValueType(const script::ScriptAbilityValueDescription& description) noexcept
+        : name(description.canonical_name)
     {
-        std::string name;
-        lux::meta::RefType type;
-    };
-
-    std::size_t ScriptEventAwaitNode::descriptionBytes() const noexcept
-    {
-        return sizeof(TypeStorage) + type_->name.capacity() + source_.system_name.capacity() +
-               source_.event_name.capacity() + source_.payload.canonical_name.capacity() + 4;
-    }
-
-    ScriptEventAwaitNode::ScriptEventAwaitNode(const lux::script::ScriptEventSourceDescription& source)
-        : ExecIntermediateNode(ENodeOperation::SCRIPT_EVENT_WAIT, "Execute", "Received"), source_(source),
-          type_(std::make_unique<TypeStorage>())
-    {
-        type_->name = source_.payload.canonical_name;
-        type_->type = {
+        type = {
             .qtype =
-                {static_cast<std::uint8_t>(baseType(source_.payload.abi_kind)),
+                {static_cast<std::uint8_t>(baseType(description.abi_kind)),
                  static_cast<std::uint8_t>(lux::meta::ETypeQual::VALUE)},
             .traits =
                 {.is_standard_layout = true,
@@ -64,14 +46,10 @@ namespace lux::flowforge
                  .is_trivially_destructible = true,
                  .is_trivially_move_assignable = true,
                  .is_trivially_move_constructible = true},
-            .name = type_->name,
-            .hash = source_.payload.type_id,
-            .size = source_.payload.size,
-            .alignment = source_.payload.alignment
+            .name = name,
+            .hash = description.type_id,
+            .size = description.size,
+            .alignment = description.alignment
         };
-        setName(source_.system_name + "." + source_.event_name);
-        payload_pin_ = std::make_unique<DataOutPin>(this, DataPinInfo{"Payload", std::addressof(type_->type)});
     }
-
-    ScriptEventAwaitNode::~ScriptEventAwaitNode() = default;
 } // namespace lux::flowforge

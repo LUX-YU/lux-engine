@@ -1,10 +1,11 @@
 #include <lux/engine/flowforge/FlowAnalysis.hpp>
 #include <lux/engine/flowforge/detail/ExecutionTraversal.hpp>
+#include <lux/engine/flowforge/detail/FlowPinSchema.hpp>
 
+#include <lux/engine/flowforge/FunctionNodes.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
-#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
-#include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
-#include <lux/engine/flowforge/script/ScriptEventAwaitNode.hpp>
+#include <lux/engine/flowforge/script/ScriptAbilityPayload.hpp>
+#include <lux/engine/flowforge/script/ScriptEventPayload.hpp>
 
 #include <algorithm>
 #include <queue>
@@ -35,17 +36,17 @@ namespace lux::flowforge
         ) noexcept
         {
             std::vector<lux::rdesc::ScriptApiRequirement> requirements;
-            for (const auto& storage : graph.nodes())
+            for (const auto& [id, stored] : graph.nodes())
             {
-                const auto* node = storage.node->scriptAbility();
+                const auto* node = stored->payload.get<ScriptAbilityPayload>();
                 if (node == nullptr)
                 {
-                    if (storage.node->operation() == ENodeOperation::SCRIPT_ABILITY_CALL)
+                    if (stored->definition->identity().canonical_name == "lux.flow.ability_call")
                     {
                         return lux::cxx::unexpected(FlowForgeFailure{
                             .code = EFlowForgeError::GRAPH_INVALID,
                             .message = "Script Ability operation has no Script Ability node contract",
-                            .node_id = storage.id.value
+                            .node_id = id.value
                         });
                     }
                     continue;
@@ -61,7 +62,7 @@ namespace lux::flowforge
                         return lux::cxx::unexpected(FlowForgeFailure{
                             .code = EFlowForgeError::SCRIPT_ABILITY_REQUIREMENT_CONFLICT,
                             .message = "the graph uses conflicting schemas for one Script Ability contract",
-                            .node_id = storage.id.value
+                            .node_id = id.value
                         });
                     }
                 }
@@ -84,7 +85,7 @@ namespace lux::flowforge
                         .message = contract_exists
                                        ? "the Script Ability method is not present in the supplied catalog"
                                        : "the Script Ability contract is not present in the supplied catalog",
-                        .node_id = storage.id.value
+                        .node_id = id.value
                     });
                 }
                 const bool is_schema_mismatch = catalog_node->schema_version != node->expectedSchemaVersion() ||
@@ -95,7 +96,7 @@ namespace lux::flowforge
                     return lux::cxx::unexpected(FlowForgeFailure{
                         .code = EFlowForgeError::SCRIPT_ABILITY_SCHEMA_MISMATCH,
                         .message = "the Script Ability node schema does not match the supplied catalog",
-                        .node_id = storage.id.value
+                        .node_id = id.value
                     });
                 }
 
@@ -120,20 +121,20 @@ namespace lux::flowforge
         ) noexcept
         {
             std::vector<lux::script::ScriptEventSourceDescription> requirements;
-            for (const auto& storage : graph.nodes())
+            for (const auto& [id, stored] : graph.nodes())
             {
-                if (storage.node->operation() != ENodeOperation::SCRIPT_EVENT_WAIT)
+                const auto* node = stored->payload.get<ScriptEventPayload>();
+                if (!node)
                 {
                     continue;
                 }
-                const auto& node = static_cast<const ScriptEventAwaitNode&>(*storage.node);
-                const auto& expected = node.source();
+                const auto& expected = node->source();
                 if (!expected.valid())
                 {
                     return lux::cxx::unexpected(FlowForgeFailure{
                         .code = EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH,
                         .message = "the Script Event source description is invalid",
-                        .node_id = storage.id.value
+                        .node_id = id.value
                     });
                 }
                 const auto found = std::ranges::find_if(
@@ -149,7 +150,7 @@ namespace lux::flowforge
                     return lux::cxx::unexpected(FlowForgeFailure{
                         .code = EFlowForgeError::UNKNOWN_SCRIPT_EVENT_SOURCE,
                         .message = "the Script Event source is not present in the supplied catalog",
-                        .node_id = storage.id.value
+                        .node_id = id.value
                     });
                 }
                 const bool is_schema_mismatch = found->payload != expected.payload ||
@@ -163,7 +164,7 @@ namespace lux::flowforge
                     return lux::cxx::unexpected(FlowForgeFailure{
                         .code = EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH,
                         .message = "the Script Event source schema does not match the supplied catalog",
-                        .node_id = storage.id.value
+                        .node_id = id.value
                     });
                 }
                 const auto existing = std::ranges::find_if(
@@ -180,36 +181,43 @@ namespace lux::flowforge
             return requirements;
         }
 
-        [[nodiscard]] std::vector<const Node*> executableConsumers(
-            const FlowGraph& graph,
-            const DataOutPin& output
-        ) noexcept
+        [[nodiscard]] std::vector<NodeId> executableConsumers(const FlowGraph& graph, PinId output) noexcept
         {
-            std::vector<const Node*> consumers;
-            std::queue<const DataOutPin*> pending;
-            std::unordered_set<std::uint64_t> visited_pins;
-            pending.push(std::addressof(output));
+            std::vector<NodeId> consumers;
+            std::queue<PinId> pending;
+            std::unordered_set<PinId> visited_pins;
+            pending.push(output);
             while (!pending.empty())
             {
-                const auto* current = pending.front();
+                const auto current = pending.front();
                 pending.pop();
-                if (!visited_pins.insert(graph.pinId(current).value).second)
+                if (!visited_pins.insert(current).second)
                 {
                     continue;
                 }
-                for (const auto* input : graph.linkedPins(graph.pinId(current)))
+                for (const auto& link : graph.topology().links())
                 {
-                    const auto* node = input->node();
-                    if (!isPureDataOp(node->operation()))
+                    if (link.from != current)
                     {
-                        consumers.push_back(node);
                         continue;
                     }
-                    for (const auto* pin : node->outPins())
+                    const auto owner = graph.topology().findPin(link.to)->owner;
+                    const bool has_execution = std::ranges::any_of(
+                        graph.topology().pins(),
+                        [&](const auto& pin) noexcept
+                        { return pin.owner == owner && graph.pin(pin.id)->role == EFlowPinRole::EXECUTION; }
+                    );
+                    if (has_execution)
                     {
-                        if (pin->kind() == EPinKind::DATA_OUT)
+                        consumers.push_back(owner);
+                        continue;
+                    }
+                    for (const auto& pin : graph.topology().pins())
+                    {
+                        const bool is_output = pin.owner == owner && pin.direction == graph::EPinDirection::OUTPUT;
+                        if (is_output)
                         {
-                            pending.push(static_cast<const DataOutPin*>(pin));
+                            pending.push(pin.id);
                         }
                     }
                 }
@@ -223,9 +231,9 @@ namespace lux::flowforge
             const FlowAnalysis& analysis
         ) noexcept
         {
-            for (const auto& storage : graph.nodes())
+            for (const auto& [id, stored] : graph.nodes())
             {
-                const auto* producer = storage.node->scriptAbility();
+                const auto* producer = stored->payload.get<ScriptAbilityPayload>();
                 if (producer == nullptr)
                 {
                     continue;
@@ -236,11 +244,18 @@ namespace lux::flowforge
                     {
                         continue;
                     }
-                    for (const auto* consumer : executableConsumers(graph, *producer->resultPins()[index]))
+                    const auto output = graph.pinId(
+                        id,
+                        detail::pinSemantic(EFlowPinRole::DATA, graph::EPinDirection::OUTPUT, index + 1)
+                    );
+                    for (const auto consumer : executableConsumers(graph, output))
                     {
                         if (const auto suspension = analysis.suspensionBetween(
-                                graph.pinId(&producer->execOutPin()),
-                                graph.nodeId(consumer)
+                                graph.pinId(
+                                    id,
+                                    detail::pinSemantic(EFlowPinRole::EXECUTION, graph::EPinDirection::OUTPUT, 0)
+                                ),
+                                consumer
                             );
                             suspension.valid())
                         {
@@ -248,7 +263,7 @@ namespace lux::flowforge
                                 .code = EFlowForgeError::BORROWED_VALUE_CROSSES_SUSPENSION,
                                 .message = "BORROWED_STEP value crosses a Script Ability suspension",
                                 .node_id = suspension.value,
-                                .pin_id = graph.pinId(producer->resultPins()[index].get()).value
+                                .pin_id = output.value
                             });
                         }
                     }
@@ -263,17 +278,19 @@ namespace lux::flowforge
                 {
                     continue;
                 }
-                const auto* entry = graph.findNodeById(exported.entry_node_id);
+                const auto* entry = graph.node(exported.entry_node_id);
                 if (entry == nullptr)
                 {
                     continue;
                 }
                 NodeId suspension;
-                for (const auto* pin : entry->outPins())
+                for (const auto& pin : graph.topology().pins())
                 {
-                    if (pin->kind() == EPinKind::EXEC_OUT)
+                    const bool is_output =
+                        pin.owner == exported.entry_node_id && pin.direction == graph::EPinDirection::OUTPUT;
+                    if (is_output && graph.pin(pin.id)->role == EFlowPinRole::EXECUTION)
                     {
-                        suspension = analysis.firstSuspensionFrom(graph.pinId(pin));
+                        suspension = analysis.firstSuspensionFrom(pin.id);
                     }
                     if (suspension.valid())
                     {
@@ -344,52 +361,54 @@ namespace lux::flowforge
 
         [[nodiscard]] FlowForgeResult<void> build(const FlowGraph& graph) noexcept
         {
-            for (const auto& storage : graph.nodes())
+            for (const auto& [id, stored] : graph.nodes())
             {
-                if (storage.node->operation() == ENodeOperation::FUNC_DEF_START)
+                if (stored->payload.get<FunctionPayload>())
                 {
-                    const auto* function = static_cast<const FuncDefNode*>(storage.node);
-                    functions.emplace(storage.id, FunctionSummary{graph.pinId(&function->execOutPin())});
+                    functions.emplace(
+                        id,
+                        FunctionSummary{graph.pinId(
+                            id,
+                            detail::pinSemantic(EFlowPinRole::EXECUTION, graph::EPinDirection::OUTPUT, 0)
+                        )}
+                    );
                 }
             }
 
-            for (const auto& storage : graph.nodes())
+            for (const auto& [id, stored] : graph.nodes())
             {
-                const auto& node = *storage.node;
-                auto& projected = execution[storage.id];
-                if (const auto* ability = node.scriptAbility())
+                auto& projected = execution[id];
+                if (const auto* ability = stored->payload.get<ScriptAbilityPayload>())
                 {
                     projected.suspends = ability->methodKind() == script::EScriptApiMethodKind::ASYNC_OPERATION;
                 }
                 else
                 {
-                    projected.suspends = node.operation() == ENodeOperation::SCRIPT_EVENT_WAIT;
+                    projected.suspends = stored->payload.get<ScriptEventPayload>() != nullptr;
                 }
 
-                if (node.operation() == ENodeOperation::GRAPH_FUNC_CALL)
+                if (const auto* call = stored->payload.get<FunctionCallPayload>())
                 {
-                    const auto& call = static_cast<const GraphFuncCallNode&>(node);
-                    projected.foreign_callee = !functions.contains(call.calleeId());
-                    projected.incompatible_callee = !projected.foreign_callee && call.resolveCallee(graph) == nullptr;
+                    projected.foreign_callee = !functions.contains(call->callee);
                     if (!projected.foreign_callee)
                     {
-                        projected.callee = call.calleeId();
+                        const auto* definition = graph.node(call->callee)->payload.get<FunctionPayload>();
+                        projected.incompatible_callee = !call->matchesSignature(*definition);
+                        projected.callee = call->callee;
                     }
                 }
+            }
 
-                for (const auto* pin : node.outPins())
+            for (const auto& link : graph.topology().links())
+            {
+                if (graph.pin(link.from)->role != EFlowPinRole::EXECUTION)
                 {
-                    if (pin->kind() != EPinKind::EXEC_OUT)
-                    {
-                        continue;
-                    }
-                    for (const auto* next : graph.linkedPins(graph.pinId(pin)))
-                    {
-                        const auto successor = graph.nodeId(next->node());
-                        starts.emplace(graph.pinId(pin), successor);
-                        projected.successors.push_back(successor);
-                    }
+                    continue;
                 }
+                const auto from = graph.topology().findPin(link.from)->owner;
+                const auto successor = graph.topology().findPin(link.to)->owner;
+                starts.emplace(link.from, successor);
+                execution.at(from).successors.push_back(successor);
             }
 
             for (auto& [id, summary] : functions)

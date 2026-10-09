@@ -3,7 +3,7 @@
 #include "lux/engine/flowforge/compiler/IR.hpp"
 #include "lux/engine/flowforge/compiler/IRImpl.hpp"
 #include "lux/engine/flowforge/graph/FlowGraph.hpp"
-#include "lux/engine/flowforge/graph/FunctionalNode.hpp"
+#include "lux/engine/flowforge/FunctionNodes.hpp"
 #include <lux/engine/meta/Meta.hpp>
 
 #include <mlir/ExecutionEngine/ExecutionEngine.h>
@@ -69,13 +69,15 @@ namespace lux::flowforge
             std::unique_ptr<FlowScriptInstance> inst(new FlowScriptInstance());
 
             // Event table straight from the graph (no IR round trip needed).
-            for (const auto& storage : graph.nodes())
+            for (const auto& [id, node] : graph.nodes())
             {
-                const Node* node = storage.node;
-                if (node == nullptr || node->operation() != ENodeOperation::ON_EVENT)
+                static_cast<void>(id);
+                const auto* event = node->payload.get<EventEntryPayload>();
+                if (!event)
+                {
                     continue;
-                const auto& event = static_cast<const OnEventNode&>(*node);
-                inst->events_.push_back(EventEntry{event.name(), eventSymbol(event.name()), event.paramInfos().size()});
+                }
+                inst->events_.push_back(EventEntry{node->name, eventSymbol(node->name), event->parameters.size()});
             }
 
             auto builder = MLIRBuilder::create(context);

@@ -12,7 +12,7 @@
 //     void* args[] = { &player_ptr, &dt };
 //     script->invoke("Tick", args);
 //
-// Reflected native calls (NativeFuncCall nodes whose RefInvokable carries a
+// Reflected native calls (NativeCallPayload values whose RefInvokable carries a
 // type-erased invoker trampoline) are bound automatically: the IR builder
 // emits a call to `_lfi_<hash>` with the invoker ABI
 // (void(void* obj, void** args, void* ret)) and compile() registers every

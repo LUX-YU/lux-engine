@@ -1,70 +1,63 @@
 #pragma once
-#include "NodeBase.hpp"
-#include <functional>
-#include <lux/engine/object/CodeLease.hpp>
+
+#include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/flowforge/graph/FlowNode.hpp>
+
 #include <unordered_map>
+
+namespace lux::meta
+{
+    class ReflectionRegistry;
+}
 
 namespace lux::flowforge
 {
-    using node_creator = std::function<std::unique_ptr<Node>()>;
-
-    struct NodeCreatInfo
+    struct NodeCreateInfo final
     {
+        using Creator = cxx::move_only_function<FlowForgeResult<FlowNode>() noexcept>;
+
         std::string name;
         std::string category;
-        node_creator creator;
+        Creator creator;
     };
 
-    using NodeCreatInfoPtrList = std::vector<NodeCreatInfo*>;
-    using NodeCreatInfoUniquePtrList = std::vector<std::unique_ptr<NodeCreatInfo>>;
-    using NodeCreatInfoNameMap = std::unordered_map<std::string, NodeCreatInfo*>;
-    using NodeCreatInfoCategoryMap = std::unordered_map<std::string, NodeCreatInfoPtrList>;
-
-    class NodeRegistry
+    // UI-facing creation recipes, not a second topology or node-type authority.
+    // Each factory constructs a plain payload using a retained, registered definition.
+    class LUX_ENGINE_FLOWFORGE_PUBLIC NodeRegistry final
     {
     public:
-        NodeRegistry();
+        // Dynamic providers pin their recipe/registration code independently of native callee code.
+        [[nodiscard]] static FlowForgeResult<std::unique_ptr<NodeRegistry>>
+        create(object::CodeLease code = object::CodeLease::builtin()) noexcept;
+
         NodeRegistry(const NodeRegistry&) = delete;
         NodeRegistry& operator=(const NodeRegistry&) = delete;
+        NodeRegistry(NodeRegistry&&) = delete;
+        NodeRegistry& operator=(NodeRegistry&&) = delete;
 
         ~NodeRegistry();
 
-        /**
-         * @brief Process-wide shared registry (builtins pre-registered).
-         *        The editor registers its native-call nodes here so the
-         *        graph serializer can re-instantiate them on load — a graph
-         *        file references nodes by creator name, which must resolve
-         *        in whatever process decodes it.
-         */
-        static NodeRegistry& global();
+        [[nodiscard]] bool registerNode(std::unique_ptr<NodeCreateInfo>) noexcept;
 
-        bool registerNode(std::unique_ptr<NodeCreatInfo> info);
+        // Free reflected functions with scalar/pointer signatures. Immutable native definitions
+        // own the copied metadata and code lease; the reflection registry need not outlive nodes.
+        std::size_t populateFromReflection(const meta::ReflectionRegistry&, object::CodeLease) noexcept;
 
-        /**
-         * @brief Populates the palette from the reflection registry: every
-         *        FREE function with a callable invoker and a graph-mappable
-         *        signature (scalar / pointer parameters, void or scalar
-         *        return) becomes a NativeFuncCall creator named after the
-         *        function. Methods are skipped for now (Self-pin semantics
-         *        land with the object-model work). Duplicate names are
-         *        skipped (registerNode already refuses them). Returns the
-         *        number of creators added.
-         */
-        std::size_t populateFromReflection(const lux::meta::ReflectionRegistry& reflection, object::CodeLease code);
+        [[nodiscard]] NodeCreateInfo* findNodeByName(const std::string&) const noexcept;
+        [[nodiscard]] NodeCreateInfo* findNodeByCategory(const std::string&) const noexcept;
 
-        NodeCreatInfo* findNodeByName(const std::string& name) const;
-        NodeCreatInfo* findNodeByCategory(const std::string& name) const;
-
-        const NodeCreatInfoUniquePtrList& node_creators() const
+        [[nodiscard]] const std::vector<std::unique_ptr<NodeCreateInfo>>& nodeCreators() const noexcept
         {
             return node_creators_;
         }
 
     private:
-        void registerBuiltinNodes();
+        explicit NodeRegistry(object::CodeLease) noexcept;
+        void registerBuiltinNodes(object::CodeLease) noexcept;
 
-        NodeCreatInfoUniquePtrList node_creators_;
-        NodeCreatInfoNameMap node_name_map_; // for quick search
-        NodeCreatInfoCategoryMap node_category_map_;
+        std::shared_ptr<const FlowNodeType> native_type_;
+        std::vector<std::unique_ptr<NodeCreateInfo>> node_creators_;
+        std::unordered_map<std::string, NodeCreateInfo*> node_name_map_;
+        std::unordered_map<std::string, std::vector<NodeCreateInfo*>> node_category_map_;
     };
 } // namespace lux::flowforge

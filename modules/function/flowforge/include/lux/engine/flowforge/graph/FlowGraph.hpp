@@ -1,59 +1,63 @@
 #pragma once
 
-#include "NodeBase.hpp"
+#include <lux/engine/flowforge/graph/FlowNode.hpp>
 #include <lux/engine/flowforge/script/ScriptGraph.hpp>
 #include <lux/engine/function/graph/GraphEdit.hpp>
+
 #include <map>
-#include <memory>
-#include <new>
-#include <optional>
 #include <ranges>
+#include <span>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace lux::flowforge
 {
-    struct FlowNodeSnapshot final
-    {
-        NodeId id;
-        std::unique_ptr<Node> node;
-        // Input pins followed by output pins; zero requests a new signature pin.
-        std::vector<PinId> pins;
-    };
+    class FlowGraphEdit;
 
-    struct FlowNodeInsertion final
-    {
-        // Invalid ID requests a fresh identity; valid ID explicitly restores a snapshot.
-        NodeId id;
-        std::unique_ptr<Node>* node{};
-        std::span<const PinId> pins;
-    };
-
-    /**
-     * @class FlowGraph
-     * @brief Represents a collection of interconnected Flowforge nodes,
-     * Which could be a function or a script.
-     */
-    class FlowGraph
+    class LUX_ENGINE_FLOWFORGE_PUBLIC FlowGraph final
     {
     public:
-        FlowGraph();
+        FlowGraph() noexcept;
         ~FlowGraph();
         FlowGraph(const FlowGraph&) = delete;
         FlowGraph& operator=(const FlowGraph&) = delete;
-        FlowGraph(FlowGraph&& other) noexcept;
-        FlowGraph& operator=(FlowGraph&& other) noexcept;
+        FlowGraph(FlowGraph&&) noexcept;
+        FlowGraph& operator=(FlowGraph&&) noexcept;
 
-        struct NodeEntry final
-        {
-            NodeId id;
-            Node* node;
-        };
+        [[nodiscard]] FlowGraphResult<NodeId> addNode(FlowNode) noexcept;
+        [[nodiscard]] FlowGraphResult<NodeId> addNodeWithId(
+            NodeId,
+            FlowNode,
+            std::span<const FlowPinEntry> = {}
+        ) noexcept;
+        [[nodiscard]] FlowGraphResult<FlowNodeSnapshot> extractNode(NodeId) noexcept;
+        [[nodiscard]] FlowGraphResult<void> removeNode(NodeId) noexcept;
+        [[nodiscard]] const FlowNode* node(NodeId) const noexcept;
+        [[nodiscard]] const FlowPinPayload* pin(PinId) const noexcept;
+        [[nodiscard]] FlowPinPayload* pin(PinId) noexcept;
+        [[nodiscard]] PinId pinId(NodeId, graph::PinSemanticId) const noexcept;
+        // Interactive endpoints may arrive in either order; topology stores output -> input.
+        [[nodiscard]] FlowGraphResult<void> connect(PinId from, PinId to) noexcept;
+        [[nodiscard]] FlowGraphResult<void> disconnect(PinId from, PinId to) noexcept;
 
         [[nodiscard]] auto nodes() const noexcept
         {
-            return nodes_ | std::views::transform([](const auto& entry) noexcept
-                                                  { return NodeEntry{entry.first, entry.second.get()}; });
+            return std::views::transform(
+                nodes_,
+                [](const auto& entry) noexcept
+                { return std::pair<NodeId, const FlowNode*>{entry.first, &entry.second}; }
+            );
+        }
+
+        [[nodiscard]] const graph::GraphTopology& topology() const noexcept
+        {
+            return topology_;
+        }
+
+        [[nodiscard]] const graph::GraphLayout& layout() const noexcept
+        {
+            return layout_;
         }
 
         [[nodiscard]] bool addExport(ExportMethodNode exported) noexcept
@@ -85,39 +89,6 @@ namespace lux::flowforge
         {
             exports_.swap(exports);
         }
-
-        [[nodiscard]] NodeId addNode(std::unique_ptr<Node>) noexcept;
-        [[nodiscard]] bool insertNode(FlowNodeSnapshot) noexcept;
-        [[nodiscard]] Node* findNodeById(NodeId) noexcept;
-        [[nodiscard]] const Node* findNodeById(NodeId) const noexcept;
-        // Reverse index is derived from the owning store; detached/foreign nodes have no identity here.
-        [[nodiscard]] NodeId nodeId(const Node*) const noexcept;
-        [[nodiscard]] bool removeNode(NodeId) noexcept;
-        [[nodiscard]] std::optional<FlowNodeSnapshot> extractNode(NodeId) noexcept;
-
-        [[nodiscard]] const lux::graph::GraphTopology& topology() const noexcept
-        {
-            return topology_;
-        }
-
-        [[nodiscard]] lux::graph::GraphLayout& layout() noexcept
-        {
-            return layout_;
-        }
-
-        [[nodiscard]] const lux::graph::GraphLayout& layout() const noexcept
-        {
-            return layout_;
-        }
-
-        [[nodiscard]] PinId pinId(const Pin*) const noexcept;
-        [[nodiscard]] Pin* findPin(PinId id) noexcept;
-        [[nodiscard]] const Pin* findPin(PinId id) const noexcept;
-        [[nodiscard]] std::vector<Pin*> linkedPins(PinId id);
-        [[nodiscard]] std::vector<const Pin*> linkedPins(PinId id) const;
-        // The receiver owns structural mutation; pin payloads are read-only inputs.
-        [[nodiscard]] ELinkError connect(const Pin& first, const Pin& second) noexcept;
-        [[nodiscard]] ELinkError disconnect(const Pin& first, const Pin& second) noexcept;
 
         // ------------------------------------------------------------------
         // Graph-local variables. Each variable owns a stable, monotonically
@@ -186,7 +157,9 @@ namespace lux::flowforge
             lux::meta::RuntimeObject default_value
         )
         {
-            if (id == 0 || id == UINT64_MAX || findVariable(id))
+            const bool is_invalid_id = id == 0 || id == UINT64_MAX;
+            const bool has_duplicate = findVariable(id) != nullptr;
+            if (is_invalid_id || has_duplicate)
             {
                 return false;
             }
@@ -247,76 +220,74 @@ namespace lux::flowforge
 
     private:
         friend class FlowGraphEdit;
-        friend class Node;
-        // Dynamic pin construction/restoration updates topology through these internal operations.
-        [[nodiscard]] bool registerPin(Pin& pin, PinId restored = {}) noexcept;
-        void unregisterPin(Pin& pin) noexcept;
-        [[nodiscard]] bool attachNodeStructure(NodeId id, Node& node, std::span<const PinId> pins) noexcept;
-        [[nodiscard]] std::vector<PinId> snapshotPins(const Node&) const;
-        void forgetPins(const Node&) noexcept;
-        void rebindNodes() noexcept;
+        using NodeStorage = std::map<NodeId, FlowNode>;
+        using PinStorage = std::unordered_map<PinId, FlowPinPayload>;
 
         std::vector<GraphVariable> variables_;
         std::vector<ExportMethodNode> exports_;
-        uint64_t next_var_id_{1};
-        std::map<NodeId, std::unique_ptr<Node>> nodes_;
-        std::unordered_map<const Node*, NodeId> node_ids_;
-        std::unordered_map<PinId, Pin*> pin_store_;
-        std::unordered_map<const Pin*, PinId> pin_ids_;
-        lux::graph::GraphTopology topology_;
-        lux::graph::GraphLayout layout_;
+        std::uint64_t next_var_id_{1};
+        NodeStorage nodes_;
+        PinStorage pins_;
+        graph::GraphTopology topology_;
+        graph::GraphLayout layout_;
+    };
+
+    struct FlowNodeEntry final
+    {
+        NodeId id;
+        const FlowNode* value{};
+        std::span<const FlowPinEntry> pins;
     };
 
     struct FlowGraphChange final
     {
-        // Ownership changes only at commit. Failure leaves every pointed-to unique_ptr intact.
-        std::span<const FlowNodeInsertion> insert;
+        std::span<const FlowNodeEntry> insert;
         std::span<const NodeId> erase;
-        std::span<const lux::graph::LinkRecord> connect, disconnect;
-        std::span<const lux::graph::GraphLayoutEntry> place;
+        std::span<const graph::LinkRecord> connect, disconnect;
+        std::span<const graph::GraphLayoutEntry> place;
         std::span<const NodeId> unplace;
     };
 
-    class FlowGraphEdit final
+    struct FlowNodeAssignment final
+    {
+        NodeId id;
+        std::vector<graph::PinRecord> pins;
+    };
+
+    // Uses the shared GraphEdit for all structural preparation. Domain values are prepared
+    // beforehand and transferred by node handles at commit; no callback or value destruction
+    // runs in the commit interval. Removed snapshots retain their provider until pin cleanup.
+    class LUX_ENGINE_FLOWFORGE_PUBLIC FlowGraphEdit final
     {
     public:
-        using Result = lux::cxx::expected<FlowGraphEdit, lux::graph::GraphTopologyFailure>;
-        [[nodiscard]] static Result prepare(FlowGraph&, const FlowGraphChange&);
+        [[nodiscard]] static FlowGraphResult<FlowGraphEdit> prepare(FlowGraph&, const FlowGraphChange&) noexcept;
+        ~FlowGraphEdit();
         FlowGraphEdit(FlowGraphEdit&&) noexcept;
         FlowGraphEdit(const FlowGraphEdit&) = delete;
         FlowGraphEdit& operator=(const FlowGraphEdit&) = delete;
-        ~FlowGraphEdit();
+        FlowGraphEdit& operator=(FlowGraphEdit&&) = delete;
 
-        [[nodiscard]] std::span<const NodeId> insertedIds() const noexcept;
-        [[nodiscard]] std::span<const std::pair<Pin*, PinId>> assignedPins() const noexcept;
-        [[nodiscard]] lux::cxx::expected<void, lux::graph::GraphTopologyFailure> place(
-            NodeId,
-            lux::graph::GraphNodeLayout
-        );
+        [[nodiscard]] std::span<const FlowNodeAssignment> insertedNodes() const noexcept;
+        [[nodiscard]] FlowGraphResult<void> place(NodeId, graph::GraphNodeLayout) noexcept;
         void commit() noexcept;
-        // Removed nodes are detached and retained until the journal adopts them or this plan is destroyed.
         [[nodiscard]] std::vector<FlowNodeSnapshot> takeRemoved() noexcept;
 
     private:
-        explicit FlowGraphEdit(FlowGraph&);
-
-        struct Insertion final
-        {
-            std::unique_ptr<Node>* source;
-            NodeId id;
-        };
+        friend class FlowGraph;
+        using NodeStorage = FlowGraph::NodeStorage;
+        using PinStorage = FlowGraph::PinStorage;
+        explicit FlowGraphEdit(FlowGraph&) noexcept;
+        [[nodiscard]] FlowGraphResult<void> insert(NodeId, FlowNode, std::span<const FlowPinEntry>) noexcept;
+        [[nodiscard]] FlowGraphResult<void> finishPins() noexcept;
+        void reserveCommit() noexcept;
 
         FlowGraph* target_;
-        lux::graph::GraphEdit structure_;
-        std::map<NodeId, std::unique_ptr<Node>> nodes_;
-        std::unordered_map<const Node*, NodeId> node_ids_;
-        std::unordered_map<PinId, Pin*> pin_store_;
-        std::unordered_map<const Pin*, PinId> pin_ids_;
-        std::vector<Insertion> insert_;
-        std::vector<std::pair<Pin*, PinId>> pins_;
-        std::vector<NodeId> inserted_ids_;
-        std::vector<NodeId> keep_, erase_;
+        graph::GraphEdit structure_;
+        NodeStorage staged_nodes_;
         std::vector<FlowNodeSnapshot> removed_;
-        bool storage_changed_{};
+        PinStorage staged_pins_;
+        std::vector<std::vector<FlowPinEntry>> inserted_pins_;
+        std::vector<FlowNodeAssignment> inserted_;
+        bool committed_{};
     };
 } // namespace lux::flowforge

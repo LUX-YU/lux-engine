@@ -53,8 +53,14 @@ target_compile_definitions(flow_analysis_compiler PRIVATE FLOW_ANALYSIS_COMPILER
 
 add_test(NAME installed.flow_analysis_compiler COMMAND flow_analysis_compiler)
 
+add_executable(async_lowering "${CMAKE_CURRENT_LIST_DIR}/../../../engine/toolchain/flowforge/test/async_lowering.cpp")
+
+target_link_libraries(async_lowering PRIVATE lux::engine::flowforge::flowforge_compiler)
+
+add_test(NAME installed.flow_async_lowering COMMAND async_lowering)
+
 foreach(target native_definition native_definition_plugin native_definition_plugin_test native_compiler structure_access
-    flow_analysis flow_analysis_compiler
+    flow_analysis flow_analysis_compiler async_lowering
 )
     if(MSVC)
         target_compile_options(${target} PRIVATE /permissive- /GR- /utf-8)
@@ -63,7 +69,10 @@ foreach(target native_definition native_definition_plugin native_definition_plug
     endif()
 endforeach()
 
-foreach(header FlowAnalysis NativeCallDefinition graph/FunctionalNode graph/NodeRegistry graph/FlowGraph graph/NodeBase)
+foreach(header
+    FlowAnalysis NativeCallDefinition FunctionNodes ControlNodes ObjectNodes FlowExecutionCompiler
+    graph/NodeRegistry graph/FlowGraph graph/FlowNode
+)
     string(REPLACE "/" "_" stem "${header}")
 
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${stem}.cpp" "#include <lux/engine/flowforge/${header}.hpp>\n")

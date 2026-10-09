@@ -1,8 +1,9 @@
+#include "FlowGraphFixture.hpp"
 #include <lux/engine/flowforge/Compiler.hpp>
+#include <lux/engine/flowforge/FunctionNodes.hpp>
 #include <lux/engine/flowforge/NativeCallDefinition.hpp>
+#include <lux/engine/flowforge/ObjectNodes.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
-#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
-#include <lux/engine/flowforge/graph/ObjectNode.hpp>
 
 #include <cstdio>
 #include <cstdlib>
@@ -29,7 +30,7 @@ namespace
 
     void addCall(FlowGraph& graph, bool reflected, std::uint64_t export_id)
     {
-        NativeFuncCall::Definition definition;
+        std::shared_ptr<const NativeCallDefinition> definition;
         {
             std::string name = reflected ? "reflected_compute" : "direct_compute";
             std::string signature{"int(int)"};
@@ -46,24 +47,20 @@ namespace
             require(made.has_value());
             definition = std::move(*made);
         }
-        auto call = std::make_unique<NativeFuncCall>(std::move(definition));
-        auto event = std::make_unique<OnEventNode>("native_" + std::to_string(export_id));
+        test::GraphFixture fixture;
         const auto* type = &meta::ref_type_of_v<int>;
         auto initial = meta::RuntimeObject::defaultOf(*type);
         require(initial.has_value());
-        auto variable = graph.addVariable("result_" + std::to_string(export_id), type, std::move(*initial));
+        const auto variable = graph.addVariable("result_" + std::to_string(export_id), type, std::move(*initial));
         require(variable != 0U);
-        auto write = std::make_unique<SetVariableNode>(variable, DataPinInfo{"result", type});
-        auto* c = call.get();
-        auto* e = event.get();
-        auto* w = write.get();
-        require(graph.addNode(std::move(call)).valid());
-        require(graph.addNode(std::move(event)).valid());
-        require(graph.addNode(std::move(write)).valid());
-        require(graph.addExport({{export_id}, graph.nodeId(e), export_id, {}}));
-        require(graph.connect(e->execOutPin(), c->execInPin()) == ELinkError::SUCCESS);
-        require(graph.connect(c->execOutPin(), w->execInPin()) == ELinkError::SUCCESS);
-        require(graph.connect(c->result(), w->valueIn()) == ELinkError::SUCCESS);
+        const auto c = fixture.add<NativeCallPayload>(graph, "lux.flow.native_call", {std::move(definition)});
+        const auto e =
+            fixture.add<EventEntryPayload>(graph, "lux.flow.event", {}, "native_" + std::to_string(export_id));
+        const auto w = fixture.add<SetVariablePayload>(graph, "lux.flow.set_variable", {variable, type});
+        require(graph.addExport({{export_id}, e, export_id, {}}));
+        require(graph.connect(test::execOut(graph, e), test::execIn(graph, c)).has_value());
+        require(graph.connect(test::execOut(graph, c), test::execIn(graph, w)).has_value());
+        require(graph.connect(test::dataOut(graph, c), test::dataIn(graph, w)).has_value());
     }
 } // namespace
 

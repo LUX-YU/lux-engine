@@ -18,15 +18,14 @@ add_component(
         src/FlowAnalysis.cpp
         src/FlowControlFlow.cpp
         src/FlowNodePayload.cpp
+        src/FlowNode.cpp
         src/FlowNodeCatalog.cpp
         src/FlowValueCompiler.cpp
-        src/RegisteredValueNode.cpp
         src/ScalarLowering.cpp
         src/NodeRegistry.cpp
-        src/NodeBase.cpp
-        src/ControlNode.cpp
-        src/FunctionalNode.cpp
-        src/ObjectNode.cpp
+        src/ControlNodes.cpp
+        src/FunctionNodes.cpp
+        src/ObjectNodes.cpp
         src/ScalarNodes.cpp
         src/FlowGraph.cpp
         src/FlowSource.cpp
@@ -34,8 +33,9 @@ add_component(
         src/StateLayout.cpp
         src/script/ScriptGraph.cpp
         src/script/ScriptAbilityCatalog.cpp
-        src/script/ScriptAbilityNode.cpp
-        src/script/ScriptEventAwaitNode.cpp
+        src/script/ScriptAbilityPayload.cpp
+        src/script/ScriptValueType.cpp
+        src/script/ScriptEventPayload.cpp
 )
 
 component_include_directories(
@@ -80,6 +80,39 @@ component_add_transitive_commands(
 )
 
 if(BUILD_TESTING)
+    add_executable(flow_plain_analysis_test test/plain_analysis.cpp)
+
+    target_link_libraries(flow_plain_analysis_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(NAME flow.plain_analysis COMMAND flow_plain_analysis_test)
+
+    add_executable(flow_control_payloads_test test/control_payloads.cpp)
+
+    target_link_libraries(flow_control_payloads_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(NAME flow.control_payloads COMMAND flow_control_payloads_test)
+
+    add_executable(flow_source_values_test test/source_values.cpp)
+
+    target_link_libraries(flow_source_values_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(
+        NAME flow.source_values
+        COMMAND flow_source_values_test ${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/source-v1
+    )
+
+    add_executable(flow_plain_payloads_test test/plain_payloads.cpp)
+
+    target_link_libraries(flow_plain_payloads_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(NAME flow.plain_payloads COMMAND flow_plain_payloads_test)
+
+    add_executable(flow_plain_store_test test/plain_store.cpp)
+
+    target_link_libraries(flow_plain_store_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(NAME flow.plain_store COMMAND flow_plain_store_test)
+
     add_executable(flow_constant_default_test test/constant_default.cpp)
 
     target_link_libraries(flow_constant_default_test PRIVATE lux::engine::function::flowforge)

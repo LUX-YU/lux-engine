@@ -1,13 +1,15 @@
+#include "FlowGraphFixture.hpp"
 #include "registered_value_definition.hpp"
+#include <exception>
 #include <lux/engine/dynamic_library/DynamicLibrary.hpp>
 #include <lux/engine/flowforge/Compiler.hpp>
+#include <lux/engine/flowforge/ControlNodes.hpp>
 #include <lux/engine/flowforge/FlowNodeCatalog.hpp>
+#include <lux/engine/flowforge/FunctionNodes.hpp>
+#include <lux/engine/flowforge/ObjectNodes.hpp>
 #include <lux/engine/flowforge/ScalarNodes.hpp>
-#include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FlowSource.hpp>
-#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
-#include <lux/engine/flowforge/graph/ObjectNode.hpp>
 #include <lux/engine/function/script/native/NativeModule.hpp>
 
 #include <array>
@@ -30,52 +32,40 @@ namespace
         }
     }
 
-    template <class T, class... Args> T& add(FlowGraph& graph, Args&&... args)
-    {
-        auto owner = std::make_unique<T>(std::forward<Args>(args)...);
-        auto& node = *owner;
-        require(graph.addNode(std::move(owner)).valid());
-        return node;
-    }
-
-    void link(FlowGraph& graph, const Pin& from, const Pin& to)
-    {
-        require(
-            graph.connect(*graph.findPin(graph.pinId(&from)), *graph.findPin(graph.pinId(&to))) == ELinkError::SUCCESS
-        );
-    }
-
     FlowGraph example(bool reject, std::shared_ptr<const FlowNodeType> type)
     {
+        test::GraphFixture fixture;
         FlowGraph graph;
         const auto* integer = &meta::ref_type_of_v<int>;
         auto initial = meta::RuntimeObject::defaultOf(*integer);
         require(initial.has_value());
         const auto variable = graph.addVariable("result", integer, std::move(*initial));
         require(variable != 0);
-        auto& entry = add<OnEventNode>(graph, "Evaluate", std::vector<FuncArgInfo>{{integer, "x"}, {integer, "y"}});
-        require(graph.addExport({{1}, graph.nodeId(&entry), 41, {}}));
-        Node* polynomial{};
+        const auto entry =
+            fixture.add(graph, "lux.flow.event", EventEntryPayload{{{integer, "x"}, {integer, "y"}}}, "Evaluate");
+        require(graph.addExport({{1}, entry, 41, {}}));
+        NodeId polynomial;
         {
             auto payload = type->create();
             require(payload.has_value());
             payload->get<Polynomial>()->reject = reject;
-            auto node = createFlowValueNode(type, std::move(*payload));
+            auto node = createFlowNode(type, std::move(*payload));
             require(node.has_value());
-            polynomial = node->get();
-            require(graph.addNode(std::move(*node)).valid());
+            const auto added = graph.addNode(std::move(*node));
+            require(added.has_value());
+            polynomial = *added;
         }
         // Definition and plain payload remain valid after the composition catalog is gone.
-        link(graph, *entry.paramPins()[0], *polynomial->inPins()[0]);
-        link(graph, *entry.paramPins()[1], *polynomial->inPins()[1]);
-        auto& first = add<SetVariableNode>(graph, variable, DataPinInfo{"square", integer});
-        auto& second = add<SetVariableNode>(graph, variable, DataPinInfo{"sum", integer});
-        auto& end = add<ReturnNode>(graph);
-        link(graph, entry.execOutPin(), first.execInPin());
-        link(graph, first.execOutPin(), second.execInPin());
-        link(graph, second.execOutPin(), end.execInPin());
-        link(graph, *polynomial->outPins()[0], first.valueIn());
-        link(graph, *polynomial->outPins()[1], second.valueIn());
+        test::link(graph, test::dataOut(graph, entry), test::dataIn(graph, polynomial));
+        test::link(graph, test::dataOut(graph, entry, 1), test::dataIn(graph, polynomial, 1));
+        const auto first = fixture.add(graph, "lux.flow.set_variable", SetVariablePayload{variable, integer}, "square");
+        const auto second = fixture.add(graph, "lux.flow.set_variable", SetVariablePayload{variable, integer}, "sum");
+        const auto end = fixture.add(graph, "lux.flow.return", ReturnPayload{});
+        test::link(graph, test::execOut(graph, entry), test::execIn(graph, first));
+        test::link(graph, test::execOut(graph, first), test::execIn(graph, second));
+        test::link(graph, test::execOut(graph, second), test::execIn(graph, end));
+        test::link(graph, test::dataOut(graph, polynomial), test::dataIn(graph, first));
+        test::link(graph, test::dataOut(graph, polynomial, 1), test::dataIn(graph, second));
         return graph;
     }
 
@@ -89,6 +79,18 @@ namespace
             const meta::RefType* type(FlowValue value) const noexcept override
             {
                 return value <= 1 ? &meta::ref_type_of_v<std::int32_t> : nullptr;
+            }
+
+            FlowForgeResult<FlowValue> readVariable(std::uint64_t) noexcept override
+            {
+                require(false); // This fixture exclusively exercises scalar callbacks.
+                std::terminate();
+            }
+
+            FlowForgeResult<FlowValue> readField(const meta::RefField&, FlowValue) noexcept override
+            {
+                require(false);
+                std::terminate();
             }
 
         private:

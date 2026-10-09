@@ -1,8 +1,8 @@
 #pragma once
 
 #include <lux/engine/flowforge/FlowForgeFailure.hpp>
+#include <lux/engine/flowforge/FunctionNodes.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
-#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/script/ScriptAbilityCatalog.hpp>
 #include <lux/engine/function/script/ScriptEvent.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
@@ -37,10 +37,20 @@ namespace lux::flowforge
         bool operator==(const FlowSourceLiteral&) const = default;
     };
 
+    // Frozen file values, not a runtime Pin class or its membership state.
+    enum class EFlowSourcePinKind : std::uint8_t
+    {
+        UNKNOWN = 0,
+        EXEC_IN = 1,
+        EXEC_OUT = 2,
+        DATA_IN = 3,
+        DATA_OUT = 4
+    };
+
     struct FlowSourcePin final
     {
         PinId id;
-        EPinKind kind{};
+        EFlowSourcePinKind kind{};
         std::string name, type;
         FlowSourceLiteral literal;
         graph::PinSemanticId semantic;

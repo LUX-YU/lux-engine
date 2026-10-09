@@ -30,10 +30,10 @@
 #include "lux/engine/flowforge/compiler/ScriptInstance.hpp"
 #include "lux/engine/flowforge/FlowAnalysis.hpp"
 #include "lux/engine/flowforge/compiler/ContinuationFrameLayout.hpp"
-#include "lux/engine/flowforge/script/ScriptEventAwaitNode.hpp"
+#include "lux/engine/flowforge/script/ScriptEventPayload.hpp"
 #include "lux/engine/flowforge/graph/FlowGraph.hpp"
-#include "lux/engine/flowforge/graph/FunctionalNode.hpp"
-#include "lux/engine/flowforge/script/ScriptAbilityNode.hpp"
+#include "lux/engine/flowforge/FunctionNodes.hpp"
+#include "lux/engine/flowforge/script/ScriptAbilityPayload.hpp"
 
 #include <lux/engine/core/semantic/SemanticType.hpp>
 #include <lux/engine/description/Script.hpp>
@@ -96,19 +96,19 @@ namespace lux::flowforge
     {
         struct EventInfo
         {
-            const OnEventNode* node;
+            PinId entry;
             std::string symbol;
             lux::script::ScriptSymbolId authored_symbol{};
         };
 
         struct AbilityImportInfo final
         {
-            const ScriptAbilityNode* node{};
+            const ScriptAbilityPayload* node{};
         };
 
         struct EventWaitImportInfo final
         {
-            const ScriptEventAwaitNode* node{};
+            const ScriptEventPayload* node{};
         };
 
         struct NativeStepInfo final
@@ -123,11 +123,14 @@ namespace lux::flowforge
 
         [[nodiscard]] std::vector<AbilityImportInfo> collectAbilityImports(const FlowGraph& graph)
         {
-            std::vector<const ScriptAbilityNode*> nodes;
-            for (const auto& storage : graph.nodes())
+            std::vector<const ScriptAbilityPayload*> nodes;
+            for (const auto& [id, stored] : graph.nodes())
             {
-                if (storage.node->operation() == ENodeOperation::SCRIPT_ABILITY_CALL)
-                    nodes.push_back(static_cast<const ScriptAbilityNode*>(storage.node));
+                static_cast<void>(id);
+                if (const auto* payload = stored->payload.get<ScriptAbilityPayload>())
+                {
+                    nodes.push_back(payload);
+                }
             }
             std::ranges::sort(nodes, [](const auto* left, const auto* right) {
                 return left->contract().name() < right->contract().name() ||
@@ -149,11 +152,14 @@ namespace lux::flowforge
 
         [[nodiscard]] std::vector<EventWaitImportInfo> collectEventWaitImports(const FlowGraph& graph)
         {
-            std::vector<const ScriptEventAwaitNode*> nodes;
-            for (const auto& storage : graph.nodes())
+            std::vector<const ScriptEventPayload*> nodes;
+            for (const auto& [id, stored] : graph.nodes())
             {
-                if (storage.node->operation() == ENodeOperation::SCRIPT_EVENT_WAIT)
-                    nodes.push_back(static_cast<const ScriptEventAwaitNode*>(storage.node));
+                static_cast<void>(id);
+                if (const auto* payload = stored->payload.get<ScriptEventPayload>())
+                {
+                    nodes.push_back(payload);
+                }
             }
             std::ranges::sort(nodes, [](const auto* left, const auto* right) {
                 const auto& a = left->source();
@@ -1115,7 +1121,7 @@ namespace lux::flowforge
                 if (!lowerEventToStateMachine(module, events[index], imports, event_imports, steps[index], error))
                     return false;
                 const bool expected_suspension =
-                    suspension_analysis.firstSuspensionFrom(graph.pinId(&events[index].node->execOutPin())).valid();
+                    suspension_analysis.firstSuspensionFrom(events[index].entry).valid();
                 const bool lowered_suspension = steps[index].start != nullptr;
                 if (expected_suspension != lowered_suspension)
                 {
@@ -1665,12 +1671,13 @@ namespace lux::flowforge
         artifact_out.exports.reserve(graph.exports().size());
         for (const auto& exported : graph.exports())
         {
-            const auto* event = static_cast<const OnEventNode*>(graph.findNodeById(exported.entry_node_id));
+            const auto* node = graph.node(exported.entry_node_id);
+            const auto* event = node->payload.get<EventEntryPayload>();
             lux::rdesc::ScriptFunction function;
-            function.name = std::string(event->name());
+            function.name = node->name;
             function.symbol_id = exported.symbol;
-            function.args.reserve(event->paramInfos().size());
-            for (const auto& parameter : event->paramInfos())
+            function.args.reserve(event->parameters.size());
+            for (const auto& parameter : event->parameters)
             {
                 if (parameter.type == nullptr)
                 {
@@ -1683,7 +1690,18 @@ namespace lux::flowforge
                 }
                 function.args.push_back(std::move(*projected));
             }
-            events.push_back(EventInfo{event, FlowScriptInstance::eventSymbol(event->name()), exported.symbol});
+            PinId entry;
+            for (const auto& pin : graph.topology().pins())
+            {
+                const bool is_output = pin.owner == exported.entry_node_id &&
+                    pin.direction == graph::EPinDirection::OUTPUT;
+                if (is_output && graph.pin(pin.id)->role == EFlowPinRole::EXECUTION)
+                {
+                    entry = pin.id;
+                    break;
+                }
+            }
+            events.push_back(EventInfo{entry, FlowScriptInstance::eventSymbol(node->name), exported.symbol});
             artifact_out.exports.push_back(std::move(function));
         }
 

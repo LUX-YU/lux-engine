@@ -1,32 +1,38 @@
+#include "FlowGraphFixture.hpp"
 #include <lux/engine/flowforge/Compiler.hpp>
+#include <lux/engine/flowforge/FunctionNodes.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
-#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
-#include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
+#include <lux/engine/flowforge/script/ScriptAbilityPayload.hpp>
 
 #include <algorithm>
-#include <cassert>
 #include <cstdio>
 #include <string>
 
 int main()
 {
     using namespace lux::flowforge;
+    using test::require;
+    test::GraphFixture fixture;
     FlowGraph graph;
-    auto entry = std::make_unique<OnEventNode>("Tick");
-    auto* entry_ptr = entry.get();
-    graph.addNode(std::move(entry));
-    assert(graph.addExport({{1}, graph.nodeId(entry_ptr), 41, {}}));
+    const auto entry = fixture.add(graph, "lux.flow.event", EventEntryPayload{}, "Tick");
+    require(graph.addExport({{1}, entry, 41, {}}));
     FlowForgeCompileOptions options{.module_name = "ability_contract"};
     auto empty = compileFlowForgeObject(graph, options);
-    assert(empty && !empty->object.empty());
+    require(empty && !empty->object.empty());
 
-    // A caller-supplied operation enum cannot authorize a concrete downcast.
-    auto impostor = std::make_unique<Node>(ENodeOperation::SCRIPT_ABILITY_CALL);
-    assert(!impostor->scriptAbility());
-    auto impostor_index = graph.addNode(std::move(impostor));
+    FlowNodeCatalog node_catalog;
+    const std::array registrations{scriptAbilityRegistration()};
+    require(node_catalog.add(registrations).has_value());
+    auto ability_type = node_catalog.find(lux::graph::nodeTypeId("lux.flow.ability_call"));
+    // A claimed intrinsic type cannot authorize a concrete payload cast.
+    require(!createFlowNode(ability_type, {}));
+    const auto impostor = fixture.add(graph, "lux.flow.start", StartPayload{});
+    auto* malformed = const_cast<FlowNode*>(graph.node(impostor));
+    malformed->definition = ability_type;
+    malformed->payload = {};
     auto invalid = compileFlowForgeObject(graph, options);
-    assert(!invalid && invalid.error().code == EFlowForgeError::GRAPH_INVALID);
-    assert(graph.removeNode(impostor_index));
+    require(!invalid && invalid.error().code == EFlowForgeError::GRAPH_INVALID);
+    require(graph.removeNode(impostor).has_value());
 
     ScriptAbilityNodeDescription description{
         .contract = lux::script::ScriptApiContractIdView{"test.runtime"},
@@ -35,41 +41,57 @@ int main()
         .method_display_name = "Ping",
         .schema_hash = 77
     };
-    auto ability = std::make_unique<ScriptAbilityNode>(description);
-    auto* ability_ptr = ability.get();
-    assert(ability_ptr->scriptAbility() == ability_ptr);
-    graph.addNode(std::move(ability));
-    assert(graph.connect(entry_ptr->execOutPin(), ability_ptr->execInPin()) == ELinkError::SUCCESS);
+    const auto add_ability = [&]()
+    {
+        auto payload = FlowNodePayload::make<ScriptAbilityPayload, test::clone<ScriptAbilityPayload>>(
+            lux::object::CodeLease::builtin(),
+            description
+        );
+        require(payload.has_value());
+        auto node = createFlowNode(ability_type, std::move(*payload));
+        require(node.has_value());
+        require(node->payload.get<ScriptAbilityPayload>() != nullptr);
+        auto added = graph.addNode(std::move(*node));
+        require(added.has_value());
+        return *added;
+    };
+    const auto ability = add_ability();
+    const auto entry_pin = test::execOut(graph, entry);
+    const auto ability_pin = test::execIn(graph, ability);
+    require(graph.connect(entry_pin, ability_pin).has_value());
 
     // A rejected replacement preserves topology; explicit edits can replace and restore it.
-    auto alternative = std::make_unique<ScriptAbilityNode>(description);
-    auto* alternative_ptr = alternative.get();
-    const auto alternative_index = graph.addNode(std::move(alternative));
-    assert(graph.connect(entry_ptr->execOutPin(), alternative_ptr->execInPin()) == ELinkError::HAS_LINKED);
-    assert(graph.topology().findLink(graph.pinId(&entry_ptr->execOutPin()), graph.pinId(&ability_ptr->execInPin())));
-    assert(graph.disconnect(entry_ptr->execOutPin(), ability_ptr->execInPin()) == ELinkError::UNLINKED);
-    assert(graph.topology().linkCount(graph.pinId(&entry_ptr->execOutPin())) == 0);
-    assert(graph.connect(entry_ptr->execOutPin(), alternative_ptr->execInPin()) == ELinkError::SUCCESS);
-    assert(graph.topology().findLink(graph.pinId(&entry_ptr->execOutPin()), graph.pinId(&alternative_ptr->execInPin()))
+    const auto alternative = add_ability();
+    const auto alternative_pin = test::execIn(graph, alternative);
+    const auto refused = graph.connect(entry_pin, alternative_pin);
+    require(!refused);
+    require(
+        std::get<lux::graph::GraphTopologyFailure>(refused.error()).code ==
+        lux::graph::EGraphTopologyError::FAN_CAP_EXCEEDED
     );
-    assert(graph.disconnect(entry_ptr->execOutPin(), alternative_ptr->execInPin()) == ELinkError::UNLINKED);
-    assert(graph.connect(entry_ptr->execOutPin(), ability_ptr->execInPin()) == ELinkError::SUCCESS);
-    assert(graph.removeNode(alternative_index));
+    require(graph.topology().findLink(entry_pin, ability_pin));
+    require(graph.disconnect(entry_pin, ability_pin).has_value());
+    require(graph.topology().linkCount(entry_pin) == 0);
+    require(graph.connect(entry_pin, alternative_pin).has_value());
+    require(graph.topology().findLink(entry_pin, alternative_pin));
+    require(graph.disconnect(entry_pin, alternative_pin).has_value());
+    require(graph.connect(entry_pin, ability_pin).has_value());
+    require(graph.removeNode(alternative).has_value());
 
     auto missing = compileFlowForgeObject(graph, options);
-    assert(!missing && missing.error().code == EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_CONTRACT);
-    assert(missing.error().node_id == graph.nodeId(ability_ptr).value);
+    require(!missing && missing.error().code == EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_CONTRACT);
+    require(missing.error().node_id == ability.value);
 
     auto changed = description;
     changed.schema_hash = 78;
     options.script_abilities = ScriptAbilityNodeCatalogView{{&changed, 1}};
     auto mismatch = compileFlowForgeObject(graph, options);
-    assert(!mismatch && mismatch.error().code == EFlowForgeError::SCRIPT_ABILITY_SCHEMA_MISMATCH);
+    require(!mismatch && mismatch.error().code == EFlowForgeError::SCRIPT_ABILITY_SCHEMA_MISMATCH);
     options.script_abilities = ScriptAbilityNodeCatalogView{{&description, 1}};
     auto compiled = compileFlowForgeObject(graph, options);
-    assert(compiled && !compiled->object.empty());
-    assert(compiled->description.api_requirements.size() == 1);
-    assert(compiled->description.api_requirements.front().expected_schema_hash == 77);
+    require(compiled && !compiled->object.empty());
+    require(compiled->description.api_requirements.size() == 1);
+    require(compiled->description.api_requirements.front().expected_schema_hash == 77);
 
     // Actual compiler consumes catalog metadata after the caller's dynamic backing has changed and died.
     ScriptAbilityNodeCatalog catalog;
@@ -79,14 +101,14 @@ int main()
         auto dynamic = description;
         dynamic.contract = lux::script::ScriptApiContractIdView{contract};
         dynamic.method = lux::script::ScriptApiMethodIdView{method};
-        assert(catalog.add({{&dynamic, 1}}));
+        require(catalog.add({{&dynamic, 1}}).has_value());
         std::fill(contract.begin(), contract.end(), '#');
         std::fill(method.begin(), method.end(), '#');
     }
     options.script_abilities = catalog.view();
     auto owned = compileFlowForgeObject(graph, options);
-    assert(owned && !owned->object.empty());
-    assert(owned->description.api_requirements.size() == 1);
-    assert(owned->description.api_requirements.front().expected_schema_hash == 77);
+    require(owned && !owned->object.empty());
+    require(owned->description.api_requirements.size() == 1);
+    require(owned->description.api_requirements.front().expected_schema_hash == 77);
     std::puts("PASS real Flow compiler: empty export, impostor rejection, catalog/schema errors and Ability object");
 }

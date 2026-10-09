@@ -9,7 +9,8 @@
 namespace lux::meta
 {
     struct RefType;
-}
+    struct RefField;
+} // namespace lux::meta
 
 namespace lux::flowforge
 {
@@ -64,6 +65,14 @@ namespace lux::flowforge
         virtual ~FlowValueCompiler() = default;
         [[nodiscard]] virtual const meta::RefType* type(FlowValue) const noexcept = 0;
         [[nodiscard]] FlowForgeResult<FlowValue> emitScalar(EScalarInstruction, std::span<const FlowValue>) noexcept;
+
+        // Emit a fresh load at the current insertion point. These handles never represent a
+        // persistent authoring value; the backend retains the original reflected/state layout checks.
+        [[nodiscard]] virtual FlowForgeResult<FlowValue> readVariable(std::uint64_t variable) noexcept = 0;
+        [[nodiscard]] virtual FlowForgeResult<FlowValue> readField(
+            const meta::RefField&,
+            FlowValue object
+        ) noexcept = 0;
 
     protected:
         [[nodiscard]] virtual FlowForgeResult<FlowValue> emitScalarImpl(

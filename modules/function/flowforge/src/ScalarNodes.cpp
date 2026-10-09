@@ -1,9 +1,13 @@
 #include <lux/engine/flowforge/ScalarNodes.hpp>
-#include <lux/engine/flowforge/detail/FlowNodeIdentity.hpp>
+
+#include <array>
+#include <lux/engine/flowforge/detail/FlowPinSchema.hpp>
 #include <lux/engine/flowforge/detail/ScalarLowering.hpp>
 
 namespace lux::flowforge
 {
+    using detail::EScalarOperation;
+
     namespace
     {
         FlowForgeFailure invalidScalar(std::string message) noexcept
@@ -16,12 +20,12 @@ namespace lux::flowforge
             return std::make_unique<ScalarNodePayload>(value);
         }
 
-        template <ENodeOperation Operation>
+        template <EScalarOperation Operation>
         FlowForgeResult<FlowNodePayload> createScalar(const object::CodeLease& code) noexcept
         {
-            constexpr bool is_logical = Operation == ENodeOperation::LOGICAL_AND ||
-                                        Operation == ENodeOperation::LOGICAL_OR ||
-                                        Operation == ENodeOperation::LOGICAL_NOT;
+            constexpr bool is_logical = Operation == EScalarOperation::LOGICAL_AND ||
+                                        Operation == EScalarOperation::LOGICAL_OR ||
+                                        Operation == EScalarOperation::LOGICAL_NOT;
             if constexpr (is_logical)
             {
                 return FlowNodePayload::make<ScalarNodePayload, cloneScalar>(code, &meta::ref_type_of_v<bool>);
@@ -40,17 +44,18 @@ namespace lux::flowforge
             return {};
         }
 
-        template <ENodeOperation Operation> constexpr bool isUnary() noexcept
+        template <EScalarOperation Operation> constexpr bool isUnary() noexcept
         {
-            return Operation == ENodeOperation::NEGATE || Operation == ENodeOperation::LOGICAL_NOT;
+            return Operation == EScalarOperation::NEGATE || Operation == EScalarOperation::LOGICAL_NOT;
         }
 
-        template <ENodeOperation Operation> const meta::RefType* resultType(const meta::RefType* operand) noexcept
+        template <EScalarOperation Operation> const meta::RefType* resultType(const meta::RefType* operand) noexcept
         {
-            constexpr bool is_comparison = Operation >= ENodeOperation::CMP_EQ && Operation <= ENodeOperation::CMP_GE;
-            constexpr bool is_logical = Operation == ENodeOperation::LOGICAL_AND ||
-                                        Operation == ENodeOperation::LOGICAL_OR ||
-                                        Operation == ENodeOperation::LOGICAL_NOT;
+            constexpr bool is_comparison =
+                Operation >= EScalarOperation::CMP_EQ && Operation <= EScalarOperation::CMP_GE;
+            constexpr bool is_logical = Operation == EScalarOperation::LOGICAL_AND ||
+                                        Operation == EScalarOperation::LOGICAL_OR ||
+                                        Operation == EScalarOperation::LOGICAL_NOT;
             if constexpr (is_comparison || is_logical)
             {
                 return &meta::ref_type_of_v<bool>;
@@ -58,7 +63,7 @@ namespace lux::flowforge
             return operand;
         }
 
-        template <ENodeOperation Operation>
+        template <EScalarOperation Operation>
         FlowNodeRegistration::PinResult describeScalar(const FlowNodePayload& payload) noexcept
         {
             auto valid = validateScalar(payload);
@@ -67,25 +72,17 @@ namespace lux::flowforge
                 return cxx::unexpected(std::move(valid.error()));
             }
             const auto* type = payload.get<ScalarNodePayload>()->operand_type;
-            std::vector<FlowPinDeclaration> pins{
-                {detail::builtinPinSemantic(EPinKind::DATA_IN, 0), "A", graph::EPinDirection::INPUT, type, true}
-            };
+            std::vector<FlowPinDeclaration> pins;
+            detail::appendDataPin(pins, graph::EPinDirection::INPUT, 0, "A", type, true);
             if constexpr (!isUnary<Operation>())
             {
-                pins.push_back(
-                    {detail::builtinPinSemantic(EPinKind::DATA_IN, 1), "B", graph::EPinDirection::INPUT, type, true}
-                );
+                detail::appendDataPin(pins, graph::EPinDirection::INPUT, 1, "B", type, true);
             }
-            pins.push_back(
-                {detail::builtinPinSemantic(EPinKind::DATA_OUT, 0),
-                 "Result",
-                 graph::EPinDirection::OUTPUT,
-                 resultType<Operation>(type)}
-            );
+            detail::appendDataPin(pins, graph::EPinDirection::OUTPUT, 0, "Result", resultType<Operation>(type));
             return pins;
         }
 
-        template <ENodeOperation Operation>
+        template <EScalarOperation Operation>
         FlowNodeRegistration::ValueResult compileScalar(
             const FlowNodePayload& payload,
             std::span<const FlowValue> inputs,
@@ -137,9 +134,9 @@ namespace lux::flowforge
             return cxx::unexpected(invalidScalar("unknown scalar operand type"));
         }
 
-        template <ENodeOperation Operation> FlowNodeRegistration registration(const object::CodeLease& code) noexcept
+        template <EScalarOperation Operation>
+        FlowNodeRegistration registration(std::string_view name, const object::CodeLease& code) noexcept
         {
-            const auto name = detail::builtinNodeName(Operation);
             return {
                 {graph::nodeTypeId(name), std::string(name), 1},
                 cxx::typeToken<ScalarNodePayload>(),
@@ -157,21 +154,21 @@ namespace lux::flowforge
     std::vector<FlowNodeRegistration> scalarNodeRegistrations(object::CodeLease code) noexcept
     {
         return {
-            registration<ENodeOperation::ADD>(code),
-            registration<ENodeOperation::SUBTRACT>(code),
-            registration<ENodeOperation::MULTIPLY>(code),
-            registration<ENodeOperation::DIVIDE>(code),
-            registration<ENodeOperation::MODULO>(code),
-            registration<ENodeOperation::LOGICAL_AND>(code),
-            registration<ENodeOperation::LOGICAL_OR>(code),
-            registration<ENodeOperation::LOGICAL_NOT>(code),
-            registration<ENodeOperation::NEGATE>(code),
-            registration<ENodeOperation::CMP_EQ>(code),
-            registration<ENodeOperation::CMP_NE>(code),
-            registration<ENodeOperation::CMP_LT>(code),
-            registration<ENodeOperation::CMP_LE>(code),
-            registration<ENodeOperation::CMP_GT>(code),
-            registration<ENodeOperation::CMP_GE>(code)
+            registration<EScalarOperation::ADD>("lux.flow.add", code),
+            registration<EScalarOperation::SUBTRACT>("lux.flow.subtract", code),
+            registration<EScalarOperation::MULTIPLY>("lux.flow.multiply", code),
+            registration<EScalarOperation::DIVIDE>("lux.flow.divide", code),
+            registration<EScalarOperation::MODULO>("lux.flow.modulo", code),
+            registration<EScalarOperation::LOGICAL_AND>("lux.flow.and", code),
+            registration<EScalarOperation::LOGICAL_OR>("lux.flow.or", code),
+            registration<EScalarOperation::LOGICAL_NOT>("lux.flow.not", code),
+            registration<EScalarOperation::NEGATE>("lux.flow.negate", code),
+            registration<EScalarOperation::CMP_EQ>("lux.flow.equal", code),
+            registration<EScalarOperation::CMP_NE>("lux.flow.not_equal", code),
+            registration<EScalarOperation::CMP_LT>("lux.flow.less", code),
+            registration<EScalarOperation::CMP_LE>("lux.flow.less_equal", code),
+            registration<EScalarOperation::CMP_GT>("lux.flow.greater", code),
+            registration<EScalarOperation::CMP_GE>("lux.flow.greater_equal", code)
         };
     }
 } // namespace lux::flowforge

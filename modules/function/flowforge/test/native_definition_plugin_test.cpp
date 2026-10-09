@@ -1,7 +1,8 @@
+#include "NativeGraphFixture.hpp"
 #include <lux/engine/dynamic_library/DynamicLibrary.hpp>
+#include <lux/engine/flowforge/FunctionNodes.hpp>
 #include <lux/engine/flowforge/NativeCallDefinition.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
-#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 
 #include <array>
 #include <cstdio>
@@ -29,7 +30,7 @@ int main(int argc, char** argv)
     meta::meta_module_init();
     bool unloaded{};
     std::weak_ptr<Library> observed;
-    NativeFuncCall::Definition definition;
+    native_fixture::Definition definition;
     {
         auto library = std::shared_ptr<Library>(
             new Library(std::filesystem::path{argv[1]}),
@@ -41,7 +42,7 @@ int main(int argc, char** argv)
         );
         require(library->is_loaded());
         observed = library;
-        using Entry = void(NativeFuncCall::Definition&, object::CodeLease) noexcept;
+        using Entry = void(native_fixture::Definition&, object::CodeLease) noexcept;
         auto entry = library->get_symbol<Entry>("createNativeDefinition");
         require(entry != nullptr);
         entry(definition, object::CodeLease::plugin(library));
@@ -49,31 +50,39 @@ int main(int argc, char** argv)
     require(!unloaded && !observed.expired());
     {
         FlowGraph graph;
-        auto owner = std::make_unique<NativeFuncCall>(std::move(definition));
-        auto* node = owner.get();
-        const auto id = graph.addNode(std::move(owner));
-        require(id.valid());
-        require(node->info().name == "plugin_compute");
-        require(node->info().parameters[0].name == "argument");
+        auto owner = native_fixture::make(std::move(definition));
+        const auto added = graph.addNode(std::move(owner));
+        require(added.has_value());
+        const auto id = *added;
+        const auto* node = graph.node(id);
+        const auto& info = native_fixture::native(*node).definition->signature();
+        require(info.name == "plugin_compute");
+        require(info.parameters[0].name == "argument");
+        const auto input = native_fixture::pin(graph, id, EFlowPinRole::DATA, graph::EPinDirection::INPUT);
         int initial{};
-        std::memcpy(&initial, node->dataInPins()[0]->constantData().data(), sizeof(initial));
+        std::memcpy(&initial, graph.pin(input)->default_value.data(), sizeof(initial));
         require(initial == 0);
-        std::unique_ptr<Node> replacement = std::make_unique<NativeFuncCall>(node->definition());
-        const auto* current = static_cast<const NativeFuncCall*>(replacement.get());
-        const std::array pins{graph.pinId(&node->execInPin()), PinId{}, graph.pinId(&node->execOutPin()), PinId{}};
-        const std::array erase{id};
-        const std::array<FlowNodeInsertion, 1> insert{{{id, &replacement, pins}}};
-        auto prepared = FlowGraphEdit::prepare(graph, {.insert = insert, .erase = erase});
-        require(prepared.has_value() && !unloaded && graph.findNodeById(id) == node);
-        prepared->commit();
-        auto removed = prepared->takeRemoved();
-        require(removed.size() == 1 && removed.front().node.get() == node);
-        removed.clear();
-        require(!unloaded && graph.findNodeById(id) == current);
+        {
+            auto replacement = native_fixture::candidate(id, native_fixture::native(*node).definition);
+            native_fixture::preserveExecutionPins(replacement, graph);
+            const std::array erase{id};
+            const std::array<FlowNodeEntry, 1> insert{{{id, &replacement.value, replacement.pins}}};
+            auto prepared = FlowGraphEdit::prepare(graph, {.insert = insert, .erase = erase});
+            require(prepared.has_value() && !unloaded && graph.node(id) == node);
+            const auto* old_definition = native_fixture::native(*node).definition.get();
+            prepared->commit();
+            auto removed = prepared->takeRemoved();
+            require(
+                removed.size() == 1 && native_fixture::native(removed.front().value).definition.get() == old_definition
+            );
+            removed.clear();
+            require(!unloaded && graph.node(id));
+        }
+        const auto& current = native_fixture::native(*graph.node(id)).definition->signature();
         int argument = 25;
         int result{};
         void* arguments[]{&argument};
-        current->info().invoker(nullptr, arguments, &result);
+        current.invoker(nullptr, arguments, &result);
         require(result == 42);
         require(!unloaded);
     }

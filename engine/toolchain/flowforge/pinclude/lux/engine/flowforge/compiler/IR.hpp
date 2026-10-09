@@ -22,14 +22,9 @@
 namespace lux::flowforge
 {
     class FlowGraph;
-    class Node;
-    class ExecSourceNode;
-    class ExecIntermediateNode;
-    class DataInPin;
-    class DataOutPin;
-    class ExecOutPin;
 
     class IRImpl;
+
     class IR
     {
     public:
@@ -64,6 +59,7 @@ namespace lux::flowforge
         {
             return context_;
         }
+
         const void* context() const noexcept
         {
             return context_;
@@ -76,6 +72,7 @@ namespace lux::flowforge
     };
 
     class MLIRBuilderImpl;
+
     class MLIRBuilder
     {
     public:

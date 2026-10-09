@@ -1,8 +1,10 @@
 #pragma once
 
+#include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/flowforge/FlowNodePayload.hpp>
 #include <lux/engine/flowforge/FlowValueCompiler.hpp>
 #include <lux/engine/function/graph/GraphNodeTypeIdentity.hpp>
+#include <lux/engine/meta/RuntimeObject.hpp>
 
 #include <span>
 #include <string>
@@ -10,20 +12,50 @@
 
 namespace lux::flowforge
 {
-    class Node;
+    struct FlowNode;
+    class FlowExecutionCompiler;
+
+    // Borrowed only for a synchronous candidate validation call. Lookups see the complete
+    // candidate, including replacements and removals; no mutable graph or persistent cache escapes.
+    struct FlowReferenceView final
+    {
+        cxx::function_ref<const FlowNode*(graph::NodeId) noexcept> node;
+        cxx::function_ref<const meta::RefType*(std::uint64_t) noexcept> variable_type;
+    };
+
+    enum class EFlowPinRole : std::uint8_t
+    {
+        DATA,
+        EXECUTION
+    };
+
+    enum class EFlowValueEvaluation : std::uint8_t
+    {
+        PURE,
+        // Re-evaluate on every use, including within the same control-flow region.
+        READS_STATE
+    };
 
     struct FlowPinDeclaration final
     {
+        using InitialValue =
+            FlowForgeResult<meta::RuntimeObject> (*)(const FlowNodePayload&, const meta::RefType&) noexcept;
+
         graph::PinSemanticId semantic;
         std::string name;
         graph::EPinDirection direction{graph::EPinDirection::INPUT};
         // Borrowed immutable metadata; its environment must outlive all definitions and graphs using it.
         const meta::RefType* type{};
         bool allow_default{};
+        EFlowPinRole role{EFlowPinRole::DATA};
+        bool necessary{};
+        // Fresh data-input value, prepared once; null (or an empty successful value) leaves it link-only.
+        // allow_default governs editing, not initialization. Restore keeps the captured value.
+        // The node definition pins callback code; commit never invokes it.
+        InitialValue initial_value{};
     };
 
-    // Pure value compilation is the first supported role. Control/native/Ability registrations
-    // remain part of the graph migration; they must not be simulated by this scalar interface.
+    // A definition supplies exactly one value or control compiler. Neither role erases a legacy Node.
     struct FlowNodeRegistration final
     {
         using PinResult = FlowForgeResult<std::vector<FlowPinDeclaration>>;
@@ -35,6 +67,8 @@ namespace lux::flowforge
             ValueResult (*)(const FlowNodePayload&, std::span<const FlowValue>, FlowValueCompiler&) noexcept;
         using Encode = FlowForgeResult<std::string> (*)(const FlowNodePayload&) noexcept;
         using Decode = FlowForgeResult<FlowNodePayload> (*)(std::string_view, const object::CodeLease&) noexcept;
+        using ValidateReferences = FlowForgeResult<void> (*)(const FlowNodePayload&, FlowReferenceView) noexcept;
+        using CompileExecution = FlowForgeResult<void> (*)(const FlowNodePayload&, FlowExecutionCompiler&) noexcept;
 
         graph::GraphNodeTypeIdentity identity;
         cxx::TypeToken payload_type;
@@ -45,6 +79,9 @@ namespace lux::flowforge
         Compile compile{};
         Encode encode{};
         Decode decode{};
+        ValidateReferences validate_references{};
+        CompileExecution compile_execution{};
+        EFlowValueEvaluation value_evaluation{EFlowValueEvaluation::PURE};
     };
 
     class LUX_ENGINE_FLOWFORGE_PUBLIC FlowNodeType final
@@ -59,12 +96,18 @@ namespace lux::flowforge
         [[nodiscard]] const graph::GraphNodeTypeIdentity& identity() const noexcept;
         [[nodiscard]] FlowForgeResult<FlowNodePayload> create() const noexcept;
         [[nodiscard]] FlowForgeResult<void> validate(const FlowNodePayload&) const noexcept;
+        [[nodiscard]] FlowForgeResult<void>
+        validateReferences(const FlowNodePayload&, FlowReferenceView) const noexcept;
         [[nodiscard]] FlowNodeRegistration::PinResult describePins(const FlowNodePayload&) const noexcept;
         [[nodiscard]] FlowForgeResult<std::string> encode(const FlowNodePayload&) const noexcept;
         [[nodiscard]] FlowForgeResult<FlowNodePayload> decode(std::string_view) const noexcept;
         // A failed callback invalidates the caller's disposable compile candidate. Never publish it.
         [[nodiscard]] FlowNodeRegistration::ValueResult
         compile(const FlowNodePayload&, std::span<const FlowValue>, FlowValueCompiler&) const noexcept;
+        [[nodiscard]] bool hasExecutionCompiler() const noexcept;
+        [[nodiscard]] EFlowValueEvaluation valueEvaluation() const noexcept;
+        [[nodiscard]] FlowForgeResult<void>
+        compileExecution(const FlowNodePayload&, FlowExecutionCompiler&) const noexcept;
 
     private:
         friend class FlowNodeCatalog;
@@ -101,10 +144,4 @@ namespace lux::flowforge
         std::vector<std::shared_ptr<const FlowNodeType>> types_;
     };
 
-    // Bridges registered semantic payloads into the current graph store. This does not complete
-    // the plain NodeId/PinId payload-store migration. The payload never owns an old Node object.
-    [[nodiscard]] LUX_ENGINE_FLOWFORGE_PUBLIC FlowForgeResult<std::unique_ptr<Node>> createFlowValueNode(
-        std::shared_ptr<const FlowNodeType>,
-        FlowNodePayload
-    ) noexcept;
 } // namespace lux::flowforge

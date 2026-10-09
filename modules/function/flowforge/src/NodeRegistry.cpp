@@ -1,133 +1,162 @@
+#include <lux/engine/flowforge/ControlNodes.hpp>
+#include <lux/engine/flowforge/FunctionNodes.hpp>
 #include <lux/engine/flowforge/NativeCallDefinition.hpp>
 #include <lux/engine/flowforge/ScalarNodes.hpp>
-#include <lux/engine/flowforge/detail/FlowNodeIdentity.hpp>
-#include <lux/engine/flowforge/graph/ControlNode.hpp>
-#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/graph/NodeRegistry.hpp>
+
+#include <algorithm>
 
 namespace lux::flowforge
 {
-    template <typename T>
-        requires std::is_base_of_v<lux::flowforge::Node, T>
-    std::unique_ptr<NodeCreatInfo> createControlFlowCreator(std::string_view name)
+    namespace
     {
-        auto ptr = std::make_unique<NodeCreatInfo>();
-        ptr->name = name;
-        ptr->category = "Control Flow";
-        ptr->creator = []() -> std::unique_ptr<Node> { return std::make_unique<T>(); };
-
-        return ptr;
-    }
-
-    // Palette entry for a typed binary/unary pure-data node. The palette is
-    // flat name -> creator, so per-type variants get a " (Int)" / " (Float)"
-    // suffix; bool-typed logic ops need no suffix (they only exist for bool).
-    static std::unique_ptr<NodeCreatInfo> createArithmeticCreator(
-        std::string name,
-        std::string category,
-        std::shared_ptr<const FlowNodeType> definition,
-        const lux::meta::RefType* operand_type
-    )
-    {
-        auto ptr = std::make_unique<NodeCreatInfo>();
-        ptr->name = std::move(name);
-        ptr->category = std::move(category);
-        ptr->creator = [definition = std::move(definition), operand_type]() -> std::unique_ptr<Node>
+        std::unique_ptr<NodeCreateInfo> createRecipe(
+            std::string name,
+            std::string category,
+            std::string node_name,
+            std::shared_ptr<const FlowNodeType> definition,
+            const meta::RefType* operand_type = nullptr
+        ) noexcept
         {
-            auto payload = definition->create();
-            if (!payload)
+            auto result = std::make_unique<NodeCreateInfo>();
+            result->name = std::move(name);
+            result->category = std::move(category);
+            result->creator = [
+                definition = std::move(definition),
+                operand_type,
+                name = std::move(node_name)
+            ]() noexcept -> FlowForgeResult<FlowNode>
             {
-                return {};
-            }
-            payload->get<ScalarNodePayload>()->operand_type = operand_type;
-            auto node = createFlowValueNode(definition, std::move(*payload));
-            if (!node)
-            {
-                return {};
-            }
-            node.value()->setName(toString(detail::builtinNodeOperation(definition->identity().canonical_name)));
-            return std::move(*node);
-        };
-        return ptr;
+                auto payload = definition->create();
+                if (!payload)
+                {
+                    return cxx::unexpected(std::move(payload.error()));
+                }
+                if (operand_type)
+                {
+                    payload->get<ScalarNodePayload>()->operand_type = operand_type;
+                }
+                auto node = createFlowNode(definition, std::move(*payload));
+                if (!node)
+                {
+                    return cxx::unexpected(std::move(node.error()));
+                }
+                node->name = name;
+                return node;
+            };
+            return result;
+        }
+    } // namespace
+
+    FlowForgeResult<std::unique_ptr<NodeRegistry>> NodeRegistry::create(object::CodeLease code) noexcept
+    {
+        if (!code.valid())
+        {
+            return cxx::unexpected(
+                FlowForgeFailure{EFlowForgeError::INVALID_DESCRIPTION, "node recipes require a valid code lease"}
+            );
+        }
+        return std::unique_ptr<NodeRegistry>(new NodeRegistry(std::move(code)));
     }
 
-    NodeRegistry::NodeRegistry()
+    NodeRegistry::NodeRegistry(object::CodeLease code) noexcept
     {
-        registerBuiltinNodes();
+        registerBuiltinNodes(std::move(code));
     }
 
-    NodeRegistry& NodeRegistry::global()
+    NodeRegistry::~NodeRegistry() = default;
+
+    void NodeRegistry::registerBuiltinNodes(object::CodeLease code) noexcept
     {
-        static NodeRegistry instance;
-        return instance;
-    }
-
-    NodeRegistry::~NodeRegistry() {}
-
-    void NodeRegistry::registerBuiltinNodes()
-    {
-        registerNode(createControlFlowCreator<StartNode>("Start"));
-        registerNode(createControlFlowCreator<BranchNode>("Branch"));
-        registerNode(createControlFlowCreator<SequenceNode>("Sequence"));
-        registerNode(createControlFlowCreator<ForLoopNode>("For Loop"));
-        registerNode(createControlFlowCreator<WhileLoopNode>("While Loop"));
-        registerNode(createControlFlowCreator<BreakNode>("Break"));
-        registerNode(createControlFlowCreator<ReturnNode>("Return"));
-
-        FlowNodeCatalog scalars;
-        if (!scalars.add(scalarNodeRegistrations()))
+        FlowNodeCatalog definitions;
+        const bool has_controls = definitions.add(controlNodeRegistrations(code)).has_value();
+        const bool has_scalars = definitions.add(scalarNodeRegistrations(code)).has_value();
+        const auto native = nativeCallRegistration(std::move(code));
+        const bool has_native = definitions.add({&native, 1}).has_value();
+        const bool has_all_definitions = has_controls && has_scalars && has_native;
+        if (!has_all_definitions)
         {
             std::terminate(); // Inconsistent module-owned declarations.
         }
-        const auto definition = [&](ENodeOperation operation) noexcept
-        { return scalars.find(graph::nodeTypeId(detail::builtinNodeName(operation))); };
-
-        // -------- pure data nodes: arithmetic / comparison / logic --------
-        const auto* i32 = &lux::meta::ref_type_of_v<int32_t>;
-        const auto* f32 = &lux::meta::ref_type_of_v<float>;
-        const auto* bl = &lux::meta::ref_type_of_v<bool>;
-
-        struct Entry
+        native_type_ = definitions.find(native.identity.id);
+        const auto install = [&](
+            std::string name,
+            std::string category,
+            std::string node_name,
+            std::string_view type,
+            const meta::RefType* operand = nullptr
+        ) noexcept
         {
-            const char* base;
-            ENodeOperation op;
+            auto definition = definitions.find(graph::nodeTypeId(type));
+            if (!definition)
+            {
+                std::terminate();
+            }
+            auto recipe = createRecipe(
+                std::move(name),
+                std::move(category),
+                std::move(node_name),
+                std::move(definition),
+                operand
+            );
+            if (!registerNode(std::move(recipe)))
+            {
+                std::terminate();
+            }
         };
 
-        static constexpr Entry binary_math[] = {
-            {"Add", ENodeOperation::ADD},
-            {"Subtract", ENodeOperation::SUBTRACT},
-            {"Multiply", ENodeOperation::MULTIPLY},
-            {"Divide", ENodeOperation::DIVIDE},
-        };
-        static constexpr Entry comparisons[] = {
-            {"Equal", ENodeOperation::CMP_EQ},
-            {"Not Equal", ENodeOperation::CMP_NE},
-            {"Less", ENodeOperation::CMP_LT},
-            {"Less Equal", ENodeOperation::CMP_LE},
-            {"Greater", ENodeOperation::CMP_GT},
-            {"Greater Equal", ENodeOperation::CMP_GE},
-        };
-
-        for (const auto& e : binary_math)
+        struct Entry final
         {
-            registerNode(createArithmeticCreator(std::string(e.base) + " (Int)", "Math", definition(e.op), i32));
-            registerNode(createArithmeticCreator(std::string(e.base) + " (Float)", "Math", definition(e.op), f32));
+            std::string_view name;
+            std::string_view type;
+        };
+
+        constexpr Entry controls[]{
+            {"Start", "lux.flow.start"},
+            {"Branch", "lux.flow.branch"},
+            {"Sequence", "lux.flow.sequence"},
+            {"For Loop", "lux.flow.for_loop"},
+            {"While Loop", "lux.flow.while_loop"},
+            {"Break", "lux.flow.break"},
+            {"Return", "lux.flow.return"}
+        };
+        for (const auto& entry : controls)
+        {
+            install(std::string(entry.name), "Control Flow", std::string(entry.name), entry.type);
         }
-        // Modulo is integer-only in the palette (arith.remf exists but the
-        // gameplay-facing default keeps float modulo out until asked for).
-        registerNode(createArithmeticCreator("Modulo (Int)", "Math", definition(ENodeOperation::MODULO), i32));
-
-        for (const auto& e : comparisons)
+        constexpr Entry math[]{
+            {"Add", "lux.flow.add"},
+            {"Subtract", "lux.flow.subtract"},
+            {"Multiply", "lux.flow.multiply"},
+            {"Divide", "lux.flow.divide"}
+        };
+        constexpr Entry comparisons[]{
+            {"Equal", "lux.flow.equal"},
+            {"Not Equal", "lux.flow.not_equal"},
+            {"Less", "lux.flow.less"},
+            {"Less Equal", "lux.flow.less_equal"},
+            {"Greater", "lux.flow.greater"},
+            {"Greater Equal", "lux.flow.greater_equal"}
+        };
+        const auto* integer = &meta::ref_type_of_v<std::int32_t>;
+        const auto* real = &meta::ref_type_of_v<float>;
+        const auto* boolean = &meta::ref_type_of_v<bool>;
+        for (const auto& entry : math)
         {
-            registerNode(createArithmeticCreator(std::string(e.base) + " (Int)", "Compare", definition(e.op), i32));
-            registerNode(createArithmeticCreator(std::string(e.base) + " (Float)", "Compare", definition(e.op), f32));
+            install(std::string(entry.name) + " (Int)", "Math", std::string(entry.name), entry.type, integer);
+            install(std::string(entry.name) + " (Float)", "Math", std::string(entry.name), entry.type, real);
         }
-
-        registerNode(createArithmeticCreator("And", "Logic", definition(ENodeOperation::LOGICAL_AND), bl));
-        registerNode(createArithmeticCreator("Or", "Logic", definition(ENodeOperation::LOGICAL_OR), bl));
-        registerNode(createArithmeticCreator("Not", "Logic", definition(ENodeOperation::LOGICAL_NOT), bl));
-        registerNode(createArithmeticCreator("Negate (Int)", "Math", definition(ENodeOperation::NEGATE), i32));
-        registerNode(createArithmeticCreator("Negate (Float)", "Math", definition(ENodeOperation::NEGATE), f32));
+        install("Modulo (Int)", "Math", "Modulo", "lux.flow.modulo", integer);
+        for (const auto& entry : comparisons)
+        {
+            install(std::string(entry.name) + " (Int)", "Compare", std::string(entry.name), entry.type, integer);
+            install(std::string(entry.name) + " (Float)", "Compare", std::string(entry.name), entry.type, real);
+        }
+        install("And", "Logic", "Logical And", "lux.flow.and", boolean);
+        install("Or", "Logic", "Logical Or", "lux.flow.or", boolean);
+        install("Not", "Logic", "Logical Not", "lux.flow.not", boolean);
+        install("Negate (Int)", "Math", "Negate", "lux.flow.negate", integer);
+        install("Negate (Float)", "Math", "Negate", "lux.flow.negate", real);
     }
 
     namespace
@@ -136,7 +165,7 @@ namespace lux::flowforge
         // map to first-class MLIR values, pointer-qualified types pass as
         // llvm.ptr. Everything else (by-value records, strings) stays out of
         // the auto-populated palette until the object model covers it.
-        bool isGraphMappable(const lux::meta::RefType& rt, bool as_return)
+        bool isGraphMappable(const lux::meta::RefType& rt, bool as_return) noexcept
         {
             using lux::meta::EBaseType;
             using lux::meta::ETypeQual;
@@ -176,42 +205,54 @@ namespace lux::flowforge
     } // namespace
 
     std::size_t NodeRegistry::populateFromReflection(
-        const lux::meta::ReflectionRegistry& reflection,
+        const meta::ReflectionRegistry& reflection,
         object::CodeLease code
-    )
+    ) noexcept
     {
-        std::size_t added = 0;
-        for (const auto& fn_ptr : reflection.functions())
+        const auto node_type = native_type_;
+        std::size_t added{};
+        for (const auto& function : reflection.functions())
         {
-            const lux::meta::RefFunction* fn = fn_ptr.get();
-            if (!fn || !fn->invokable.invoker)
-            {
-                continue; // no callable trampoline
-            }
-            if (!isGraphMappable(fn->invokable.return_type, /*as_return=*/true))
+            const bool has_invoker = function && function->invokable.invoker;
+            if (!has_invoker)
             {
                 continue;
             }
-            bool ok = true;
-            for (const auto& p : fn->invokable.parameters)
-            {
-                ok = ok && isGraphMappable(p.type, /*as_return=*/false);
-            }
-            if (!ok)
-            {
-                continue;
-            }
-
-            auto definition = NativeCallDefinition::create(fn->invokable, code);
-            if (!definition)
+            const auto& signature = function->invokable;
+            const bool has_return = isGraphMappable(signature.return_type, true);
+            const bool has_parameters = std::ranges::all_of(
+                signature.parameters,
+                [](const auto& parameter) noexcept { return isGraphMappable(parameter.type, false); }
+            );
+            const bool is_supported_signature = has_return && has_parameters;
+            if (!is_supported_signature)
             {
                 continue;
             }
-            auto info = std::make_unique<NodeCreatInfo>();
-            info->name = std::string(fn->invokable.name);
+            auto native = NativeCallDefinition::create(signature, code);
+            if (!native)
+            {
+                continue;
+            }
+            auto info = std::make_unique<NodeCreateInfo>();
+            info->name = std::string(signature.name);
             info->category = "Native";
-            info->creator = [definition = std::move(*definition)]() -> std::unique_ptr<Node>
-            { return std::make_unique<NativeFuncCall>(definition); };
+            info->creator = [node_type, native = std::move(*native)]() noexcept -> FlowForgeResult<FlowNode>
+            {
+                auto payload = node_type->create();
+                if (!payload)
+                {
+                    return cxx::unexpected(std::move(payload.error()));
+                }
+                payload->get<NativeCallPayload>()->definition = native;
+                auto node = createFlowNode(node_type, std::move(*payload));
+                if (!node)
+                {
+                    return cxx::unexpected(std::move(node.error()));
+                }
+                node->name = std::string(native->signature().name);
+                return node;
+            };
             if (registerNode(std::move(info)))
             {
                 ++added;
@@ -220,50 +261,47 @@ namespace lux::flowforge
         return added;
     }
 
-    bool NodeRegistry::registerNode(std::unique_ptr<NodeCreatInfo> info)
+    bool NodeRegistry::registerNode(std::unique_ptr<NodeCreateInfo> info) noexcept
     {
         if (!info)
         {
             return false;
         }
-
-        // Stamp the creator name on every instantiated node — the graph
-        // serializer re-instantiates registry-backed nodes (native calls in
-        // particular) by this name on load.
-        if (info->creator)
-        {
-            auto raw_creator = std::move(info->creator);
-            info->creator = [raw = std::move(raw_creator), name = info->name]() -> std::unique_ptr<Node>
-            {
-                auto node = raw();
-                if (node)
-                {
-                    node->setCreatorName(name);
-                }
-                return node;
-            };
-        }
-
-        auto [it, inserted] = node_name_map_.try_emplace(info->name, info.get());
-        if (!inserted)
+        const bool has_factory = static_cast<bool>(info->creator);
+        const bool has_name = !info->name.empty() && !node_name_map_.contains(info->name);
+        const bool is_invalid_recipe = !has_factory || !has_name;
+        if (is_invalid_recipe)
         {
             return false;
         }
+        // A palette label is captured once, independently of the recipe's lifetime.
+        info->creator = [
+            factory = std::move(info->creator),
+            name = info->name
+        ]() mutable noexcept -> FlowForgeResult<FlowNode>
+        {
+            auto node = factory();
+            if (node)
+            {
+                node->creator = name;
+            }
+            return node;
+        };
+        node_name_map_.emplace(info->name, info.get());
         node_category_map_[info->category].push_back(info.get());
         node_creators_.push_back(std::move(info));
-
         return true;
     }
 
-    NodeCreatInfo* NodeRegistry::findNodeByName(const std::string& name) const
+    NodeCreateInfo* NodeRegistry::findNodeByName(const std::string& name) const noexcept
     {
-        auto it = node_name_map_.find(name);
-        return it != node_name_map_.end() ? it->second : nullptr;
+        const auto found = node_name_map_.find(name);
+        return found == node_name_map_.end() ? nullptr : found->second;
     }
 
-    NodeCreatInfo* NodeRegistry::findNodeByCategory(const std::string& name) const
+    NodeCreateInfo* NodeRegistry::findNodeByCategory(const std::string& name) const noexcept
     {
-        auto it = node_category_map_.find(name);
-        return it != node_category_map_.end() ? it->second.front() : nullptr;
+        const auto found = node_category_map_.find(name);
+        return found == node_category_map_.end() ? nullptr : found->second.front();
     }
 } // namespace lux::flowforge

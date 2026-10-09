@@ -1,5 +1,5 @@
+#include <lux/engine/flowforge/ControlNodes.hpp>
 #include <lux/engine/flowforge/ScalarNodes.hpp>
-#include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FlowSource.hpp>
 
 #include <array>
@@ -32,33 +32,42 @@ namespace
     struct Fixture final
     {
         FlowGraph graph;
-        std::vector<Pin*> pins;
+        std::vector<PinId> pins;
 
         Fixture()
         {
             FlowNodeCatalog catalog;
             require(catalog.add(scalarNodeRegistrations()).has_value());
-            auto make = [&](std::string_view name, const meta::RefType& type)
+            require(catalog.add(controlNodeRegistrations()).has_value());
+            auto make = [&](std::string_view name, const meta::RefType* type = nullptr)
             {
                 auto definition = catalog.find(graph::nodeTypeId(name));
                 auto payload = definition->create();
                 require(payload.has_value());
-                payload->get<ScalarNodePayload>()->operand_type = &type;
-                auto node = createFlowValueNode(definition, std::move(*payload));
+                if (type)
+                {
+                    payload->get<ScalarNodePayload>()->operand_type = type;
+                }
+                auto node = createFlowNode(definition, std::move(*payload));
                 require(node.has_value());
                 return std::move(*node);
             };
-            std::array<std::unique_ptr<Node>, 4> nodes{
-                std::make_unique<BranchNode>(),
-                std::make_unique<BranchNode>(),
-                make("lux.flow.add", meta::ref_type_of_v<int>),
-                make("lux.flow.and", meta::ref_type_of_v<bool>)
+            std::array<FlowNode, 4> nodes{
+                make("lux.flow.branch"),
+                make("lux.flow.branch"),
+                make("lux.flow.add", &meta::ref_type_of_v<int>),
+                make("lux.flow.and", &meta::ref_type_of_v<bool>)
             };
             for (auto& node : nodes)
             {
-                pins.insert(pins.end(), node->inPins().begin(), node->inPins().end());
-                pins.insert(pins.end(), node->outPins().begin(), node->outPins().end());
-                require(graph.addNode(std::move(node)).valid());
+                auto schema = node.definition->describePins(node.payload);
+                require(schema.has_value());
+                auto id = graph.addNode(std::move(node));
+                require(id.has_value());
+                for (const auto& pin : *schema)
+                {
+                    pins.push_back(graph.pinId(*id, pin.semantic));
+                }
             }
             require(pins.size() == 14);
         }
@@ -77,27 +86,33 @@ namespace
                     auto& pins = fixture.pins;
                     if (occupied == 1)
                     {
-                        require(graph.connect(*pins[2], *pins[4]) == ELinkError::SUCCESS);
+                        require(graph.connect(pins[2], pins[4]).has_value());
                     }
                     else if (occupied == 2)
                     {
-                        require(graph.connect(*pins[13], *pins[1]) == ELinkError::SUCCESS);
+                        require(graph.connect(pins[13], pins[1]).has_value());
                     }
                     const auto before = capture(graph);
-                    const auto result = graph.connect(*pins[first], *pins[second]);
-                    std::printf("%u %zu %zu %u\n", occupied, first, second, static_cast<unsigned>(result));
-                    if (result != ELinkError::SUCCESS)
+                    const auto result = graph.connect(pins[first], pins[second]);
+                    std::printf("%u %zu %zu %u\n", occupied, first, second, static_cast<unsigned>(result.has_value()));
+                    if (!result)
                     {
                         require(capture(graph) == before);
                         continue;
                     }
                     const auto connected = capture(graph);
                     require(connected.links.size() == before.links.size() + 1);
-                    require(graph.connect(*pins[second], *pins[first]) == ELinkError::HAS_LINKED);
+                    const auto duplicate = graph.connect(pins[second], pins[first]);
+                    require(!duplicate);
+                    const auto* duplicate_error = std::get_if<graph::GraphTopologyFailure>(&duplicate.error());
+                    require(duplicate_error && duplicate_error->code == graph::EGraphTopologyError::DUPLICATE_LINK);
                     require(capture(graph) == connected);
-                    require(graph.disconnect(*pins[second], *pins[first]) == ELinkError::UNLINKED);
+                    require(graph.disconnect(pins[second], pins[first]).has_value());
                     require(capture(graph) == before);
-                    require(graph.disconnect(*pins[first], *pins[second]) == ELinkError::UNMATCHED);
+                    const auto missing = graph.disconnect(pins[first], pins[second]);
+                    require(!missing);
+                    const auto* missing_error = std::get_if<graph::GraphTopologyFailure>(&missing.error());
+                    require(missing_error && missing_error->code == graph::EGraphTopologyError::UNKNOWN_LINK);
                     require(capture(graph) == before);
                 }
             }

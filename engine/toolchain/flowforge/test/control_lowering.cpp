@@ -1,12 +1,13 @@
+#include "FlowGraphFixture.hpp"
 #include <array>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <lux/engine/flowforge/Compiler.hpp>
-#include <lux/engine/flowforge/graph/ControlNode.hpp>
+#include <lux/engine/flowforge/ControlNodes.hpp>
+#include <lux/engine/flowforge/FunctionNodes.hpp>
+#include <lux/engine/flowforge/ObjectNodes.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
-#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
-#include <lux/engine/flowforge/graph/ObjectNode.hpp>
 #include <source_location>
 
 namespace
@@ -23,20 +24,11 @@ namespace
         }
     }
 
-    template <class T, class... Args> T& add(FlowGraph& graph, Args&&... args)
-    {
-        auto owner = std::make_unique<T>(std::forward<Args>(args)...);
-        auto& value = *owner;
-        require(graph.addNode(std::move(owner)).valid());
-        return value;
-    }
-
-    void link(FlowGraph& graph, const Pin& from, const Pin& to)
-    {
-        require(
-            graph.connect(*graph.findPin(graph.pinId(&from)), *graph.findPin(graph.pinId(&to))) == ELinkError::SUCCESS
-        );
-    }
+    using test::dataIn;
+    using test::dataOut;
+    using test::execIn;
+    using test::execOut;
+    using test::link;
 
     void writeCount(std::ostream& output, std::size_t value)
     {
@@ -49,83 +41,89 @@ namespace
     FlowGraph example(unsigned mode)
     {
         FlowGraph graph;
+        test::GraphFixture fixture;
         const auto& boolean = meta::ref_type_of_v<bool>;
-        auto& entry = add<OnEventNode>(graph, "Tick", std::vector<FuncArgInfo>{{&boolean, "condition"}});
-        require(graph.addExport({{1}, graph.nodeId(&entry), 41, {}}));
-        auto& result = add<ReturnNode>(graph);
+        const auto entry = fixture.add<EventEntryPayload>(
+            graph,
+            "lux.flow.event",
+            {std::vector<FuncArgInfo>{{&boolean, "condition"}}},
+            "Tick"
+        );
+        require(graph.addExport({{1}, entry, 41, {}}));
+        const auto result = fixture.add<ReturnPayload>(graph, "lux.flow.return");
         if (mode == 0 || mode == 1 || mode == 2)
         {
-            auto& branch = add<BranchNode>(graph);
-            link(graph, entry.execOutPin(), branch.execInPin());
-            link(graph, *entry.paramPins().front(), branch.dataInPin());
+            const auto branch = fixture.add<BranchPayload>(graph, "lux.flow.branch");
+            link(graph, execOut(graph, entry), execIn(graph, branch));
+            link(graph, dataOut(graph, entry), dataIn(graph, branch));
             if (mode == 1)
             {
-                auto& other = add<ReturnNode>(graph);
-                link(graph, branch.execOutPinUp(), result.execInPin());
-                link(graph, branch.execOutPinDown(), other.execInPin());
+                const auto other = fixture.add<ReturnPayload>(graph, "lux.flow.return");
+                link(graph, execOut(graph, branch), execIn(graph, result));
+                link(graph, execOut(graph, branch, 1), execIn(graph, other));
             }
             else
             {
-                auto& left = add<SequenceNode>(graph);
-                auto& right = add<SequenceNode>(graph);
-                link(graph, branch.execOutPinUp(), left.execInPin());
-                link(graph, branch.execOutPinDown(), right.execInPin());
-                link(graph, right.execOutPin(), result.execInPin());
+                const auto left = fixture.add<SequencePayload>(graph, "lux.flow.sequence");
+                const auto right = fixture.add<SequencePayload>(graph, "lux.flow.sequence");
+                link(graph, execOut(graph, branch), execIn(graph, left));
+                link(graph, execOut(graph, branch, 1), execIn(graph, right));
+                link(graph, execOut(graph, right), execIn(graph, result));
                 if (mode == 0)
                 {
-                    link(graph, left.execOutPin(), result.execInPin());
+                    link(graph, execOut(graph, left), execIn(graph, result));
                 }
                 else
                 {
-                    auto& nested = add<BranchNode>(graph);
-                    link(graph, left.execOutPin(), nested.execInPin());
-                    link(graph, *entry.paramPins().front(), nested.dataInPin());
-                    link(graph, nested.execOutPinUp(), result.execInPin());
-                    link(graph, nested.execOutPinDown(), result.execInPin());
+                    const auto nested = fixture.add<BranchPayload>(graph, "lux.flow.branch");
+                    link(graph, execOut(graph, left), execIn(graph, nested));
+                    link(graph, dataOut(graph, entry), dataIn(graph, nested));
+                    link(graph, execOut(graph, nested), execIn(graph, result));
+                    link(graph, execOut(graph, nested, 1), execIn(graph, result));
                 }
             }
         }
         else if (mode == 3)
         {
-            auto& loop = add<ForLoopNode>(graph);
-            auto& branch = add<BranchNode>(graph);
-            auto& stop = add<BreakNode>(graph);
-            auto& body = add<SequenceNode>(graph);
-            link(graph, entry.execOutPin(), loop.execInPin());
-            link(graph, loop.loopBody(), branch.execInPin());
-            link(graph, *entry.paramPins().front(), branch.dataInPin());
-            link(graph, branch.execOutPinUp(), stop.execInPin());
-            link(graph, branch.execOutPinDown(), body.execInPin());
-            link(graph, loop.completed(), result.execInPin());
+            const auto loop = fixture.add<ForLoopPayload>(graph, "lux.flow.for_loop");
+            const auto branch = fixture.add<BranchPayload>(graph, "lux.flow.branch");
+            const auto stop = fixture.add<BreakPayload>(graph, "lux.flow.break");
+            const auto body = fixture.add<SequencePayload>(graph, "lux.flow.sequence");
+            link(graph, execOut(graph, entry), execIn(graph, loop));
+            link(graph, execOut(graph, loop), execIn(graph, branch));
+            link(graph, dataOut(graph, entry), dataIn(graph, branch));
+            link(graph, execOut(graph, branch), execIn(graph, stop));
+            link(graph, execOut(graph, branch, 1), execIn(graph, body));
+            link(graph, execOut(graph, loop, 1), execIn(graph, result));
         }
         else if (mode == 4)
         {
-            auto& loop = add<WhileLoopNode>(graph);
-            auto& stop = add<BreakNode>(graph);
-            link(graph, entry.execOutPin(), loop.execInPin());
-            link(graph, *entry.paramPins().front(), loop.dataInPin());
-            link(graph, loop.loopBody(), stop.execInPin());
-            link(graph, loop.completed(), result.execInPin());
+            const auto loop = fixture.add<WhileLoopPayload>(graph, "lux.flow.while_loop");
+            const auto stop = fixture.add<BreakPayload>(graph, "lux.flow.break");
+            link(graph, execOut(graph, entry), execIn(graph, loop));
+            link(graph, dataOut(graph, entry), dataIn(graph, loop));
+            link(graph, execOut(graph, loop), execIn(graph, stop));
+            link(graph, execOut(graph, loop, 1), execIn(graph, result));
         }
         else if (mode == 5)
         {
-            auto& sequence = add<SequenceNode>(graph, SequenceSchema{1});
-            auto* second = sequence.execOutPins().front().get();
-            require(second != nullptr);
-            auto& branch = add<BranchNode>(graph);
-            auto& left = add<SequenceNode>(graph);
-            auto& right = add<SequenceNode>(graph);
-            link(graph, entry.execOutPin(), sequence.execInPin());
-            link(graph, sequence.execOutPin(), branch.execInPin());
-            link(graph, *entry.paramPins().front(), branch.dataInPin());
-            link(graph, branch.execOutPinUp(), left.execInPin());
-            link(graph, branch.execOutPinDown(), right.execInPin());
-            link(graph, *second, result.execInPin());
+            const auto sequence = fixture.add<SequencePayload>(graph, "lux.flow.sequence", {1});
+            const auto second = execOut(graph, sequence, 1);
+            require(second.valid());
+            const auto branch = fixture.add<BranchPayload>(graph, "lux.flow.branch");
+            const auto left = fixture.add<SequencePayload>(graph, "lux.flow.sequence");
+            const auto right = fixture.add<SequencePayload>(graph, "lux.flow.sequence");
+            link(graph, execOut(graph, entry), execIn(graph, sequence));
+            link(graph, execOut(graph, sequence), execIn(graph, branch));
+            link(graph, dataOut(graph, entry), dataIn(graph, branch));
+            link(graph, execOut(graph, branch), execIn(graph, left));
+            link(graph, execOut(graph, branch, 1), execIn(graph, right));
+            link(graph, second, execIn(graph, result));
         }
         else
         {
-            auto& stop = add<BreakNode>(graph);
-            link(graph, entry.execOutPin(), stop.execInPin());
+            const auto stop = fixture.add<BreakPayload>(graph, "lux.flow.break");
+            link(graph, execOut(graph, entry), execIn(graph, stop));
         }
         return graph;
     }

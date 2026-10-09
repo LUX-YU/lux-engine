@@ -216,7 +216,7 @@ namespace lux::flowforge
                     return false;
                 }
                 const bool valid = readId((*table)["id"], pin.id.value) &&
-                                   readEnum((*table)["kind"], pin.kind, EPinKind::DATA_OUT) &&
+                                   readEnum((*table)["kind"], pin.kind, EFlowSourcePinKind::DATA_OUT) &&
                                    readText((*table)["name"], pin.name) && readText((*table)["type"], pin.type) &&
                                    readLiteral((*table)["literal"], pin.literal);
                 if (!valid)
@@ -308,9 +308,9 @@ namespace lux::flowforge
 
     namespace
     {
-        std::size_t parameterIndex(ENodeOperation operation) noexcept
+        std::size_t parameterIndex(detail::EBuiltinSourceKind operation) noexcept
         {
-            using O = ENodeOperation;
+            using O = detail::EBuiltinSourceKind;
             if ((operation >= O::ADD && operation <= O::CMP_GE) || operation == O::GET_OBJECT ||
                 operation == O::SET_OBJECT)
             {
@@ -335,7 +335,7 @@ namespace lux::flowforge
                 return 6;
             case O::SCRIPT_EVENT_WAIT:
                 return 7;
-            case O::REGISTERED_VALUE:
+            case O::EXTENSION:
                 return 8;
             default:
                 return 0;
@@ -363,7 +363,7 @@ namespace lux::flowforge
 
         template <class Text> bool parametersValid(const FlowSourceNode& node, Text& text, FlowSourceLimits limits)
         {
-            const auto operation = detail::builtinNodeOperation(node.type);
+            const auto operation = detail::builtinSourceKind(node.type);
             if (node.parameters.index() != parameterIndex(operation))
             {
                 return false;
@@ -383,12 +383,12 @@ namespace lux::flowforge
                     else if constexpr (std::is_same_v<T, FlowSourceSignature>)
                     {
                         return signatureValid(value, text, limits) &&
-                               (operation != ENodeOperation::ON_EVENT || value.results.empty());
+                               (operation != detail::EBuiltinSourceKind::ON_EVENT || value.results.empty());
                     }
                     else if constexpr (std::is_same_v<T, FlowSourceReference>)
                     {
-                        const bool is_variable =
-                            operation == ENodeOperation::GET_VARIABLE || operation == ENodeOperation::SET_VARIABLE;
+                        const bool is_variable = operation == detail::EBuiltinSourceKind::GET_VARIABLE ||
+                                                 operation == detail::EBuiltinSourceKind::SET_VARIABLE;
                         return value.id != 0 && (!is_variable || value.id != UINT64_MAX);
                     }
                     else if constexpr (std::is_same_v<T, FlowSourceField>)
@@ -543,7 +543,7 @@ namespace lux::flowforge
             {
                 return false;
             }
-            switch (parameterIndex(detail::builtinNodeOperation(node.type)))
+            switch (parameterIndex(detail::builtinSourceKind(node.type)))
             {
             case 0:
                 return table->empty();
@@ -668,12 +668,12 @@ namespace lux::flowforge
             {
                 return fail(EFlowSourceError::INVALID_IDENTITY, "node", node.id);
             }
-            const auto operation = detail::builtinNodeOperation(node.type);
+            const auto operation = detail::builtinSourceKind(node.type);
             const bool is_invalid_type = !detail::canonicalNodeName(node.type) || node.version == 0;
-            const bool is_unsupported_builtin = operation != ENodeOperation::REGISTERED_VALUE && node.version != 1;
-            const bool is_unsupported_operation = operation == ENodeOperation::INVALID ||
-                                                  operation == ENodeOperation::CREATE_OBJECT ||
-                                                  operation == ENodeOperation::SEND_EVENT;
+            const bool is_unsupported_builtin = operation != detail::EBuiltinSourceKind::EXTENSION && node.version != 1;
+            const bool is_unsupported_operation = operation == detail::EBuiltinSourceKind::INVALID ||
+                                                  operation == detail::EBuiltinSourceKind::CREATE_OBJECT ||
+                                                  operation == detail::EBuiltinSourceKind::SEND_EVENT;
             const bool is_unknown = is_invalid_type || is_unsupported_builtin || is_unsupported_operation;
             if (is_unknown)
             {
@@ -718,12 +718,15 @@ namespace lux::flowforge
                     {
                         return fail(EFlowSourceError::INVALID_IDENTITY, "pin", node.id, pin.id);
                     }
-                    const bool data = pin.kind == EPinKind::DATA_IN || pin.kind == EPinKind::DATA_OUT;
-                    const bool direction = input ? pin.kind == EPinKind::EXEC_IN || pin.kind == EPinKind::DATA_IN
-                                                 : pin.kind == EPinKind::EXEC_OUT || pin.kind == EPinKind::DATA_OUT;
-                    const bool valid = direction && data == !pin.type.empty() && text(pin.name) && text(pin.type) &&
-                                       text(pin.literal.value) && literalValid(pin.literal) &&
-                                       (pin.kind == EPinKind::DATA_IN || pin.literal.kind == EFlowLiteralKind::NONE);
+                    const bool data =
+                        pin.kind == EFlowSourcePinKind::DATA_IN || pin.kind == EFlowSourcePinKind::DATA_OUT;
+                    const bool direction =
+                        input ? pin.kind == EFlowSourcePinKind::EXEC_IN || pin.kind == EFlowSourcePinKind::DATA_IN
+                              : pin.kind == EFlowSourcePinKind::EXEC_OUT || pin.kind == EFlowSourcePinKind::DATA_OUT;
+                    const bool valid =
+                        direction && data == !pin.type.empty() && text(pin.name) && text(pin.type) &&
+                        text(pin.literal.value) && literalValid(pin.literal) &&
+                        (pin.kind == EFlowSourcePinKind::DATA_IN || pin.literal.kind == EFlowLiteralKind::NONE);
                     if (!valid)
                     {
                         return fail(EFlowSourceError::INVALID_VALUE, "pin", node.id, pin.id);
@@ -751,8 +754,10 @@ namespace lux::flowforge
             }
             auto& first = from->second;
             auto& second = to->second;
-            const bool exec = first.pin->kind == EPinKind::EXEC_OUT && second.pin->kind == EPinKind::EXEC_IN;
-            const bool data = first.pin->kind == EPinKind::DATA_OUT && second.pin->kind == EPinKind::DATA_IN;
+            const bool exec =
+                first.pin->kind == EFlowSourcePinKind::EXEC_OUT && second.pin->kind == EFlowSourcePinKind::EXEC_IN;
+            const bool data =
+                first.pin->kind == EFlowSourcePinKind::DATA_OUT && second.pin->kind == EFlowSourcePinKind::DATA_IN;
             const bool invalid =
                 first.node == second.node || (!exec && !data) || (exec && first.links) || (data && second.links);
             if (invalid)

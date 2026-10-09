@@ -1,8 +1,9 @@
+#include "FlowGraphFixture.hpp"
 #include <lux/engine/flowforge/Compiler.hpp>
-#include <lux/engine/flowforge/graph/ControlNode.hpp>
+#include <lux/engine/flowforge/ControlNodes.hpp>
+#include <lux/engine/flowforge/FunctionNodes.hpp>
+#include <lux/engine/flowforge/ObjectNodes.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
-#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
-#include <lux/engine/flowforge/graph/ObjectNode.hpp>
 #include <lux/engine/function/script/native/NativeModule.hpp>
 
 #include <array>
@@ -28,74 +29,73 @@ namespace
         }
     }
 
-    template <class T, class... Args> T& add(FlowGraph& graph, Args&&... args)
-    {
-        auto owner = std::make_unique<T>(std::forward<Args>(args)...);
-        auto& node = *owner;
-        require(graph.addNode(std::move(owner)).valid());
-        return node;
-    }
+    using test::dataIn;
+    using test::dataOut;
+    using test::execIn;
+    using test::execOut;
+    using test::link;
 
-    void link(FlowGraph& graph, const Pin& from, const Pin& to)
-    {
-        require(
-            graph.connect(*graph.findPin(graph.pinId(&from)), *graph.findPin(graph.pinId(&to))) == ELinkError::SUCCESS
-        );
-    }
-
-    const ExecInPin& branchTree(
+    PinId branchTree(
         FlowGraph& graph,
-        const OnEventNode& entry,
+        test::GraphFixture& fixture,
+        NodeId entry,
         std::uint64_t variable,
         unsigned depth,
         unsigned levels,
         unsigned value,
-        std::vector<const ExecOutPin*>& leaves
+        std::vector<PinId>& leaves
     )
     {
         if (depth == levels)
         {
-            auto& write = add<SetVariableNode>(graph, variable, DataPinInfo{"result", &meta::ref_type_of_v<int>});
+            const auto write =
+                fixture.add<SetVariablePayload>(graph, "lux.flow.set_variable", {variable, &meta::ref_type_of_v<int>});
             auto constant = meta::RuntimeObject::defaultOf(meta::ref_type_of_v<int>);
             require(constant.has_value());
             *static_cast<int*>(constant->data()) = static_cast<int>(value + 1);
-            auto* input = static_cast<DataInPin*>(graph.findPin(graph.pinId(&write.valueIn())));
-            require(input->setConstantData(std::move(*constant)));
-            leaves.push_back(&write.execOutPin());
-            return write.execInPin();
+            auto* input = graph.pin(dataIn(graph, write));
+            require(input->setDefault(std::move(*constant)));
+            leaves.push_back(execOut(graph, write));
+            return execIn(graph, write);
         }
-        auto& branch = add<BranchNode>(graph);
-        link(graph, *entry.paramPins()[depth], branch.dataInPin());
+        const auto branch = fixture.add<BranchPayload>(graph, "lux.flow.branch");
+        link(graph, dataOut(graph, entry, depth), dataIn(graph, branch));
         link(
             graph,
-            branch.execOutPinUp(),
-            branchTree(graph, entry, variable, depth + 1, levels, value * 2 + 1, leaves)
+            execOut(graph, branch),
+            branchTree(graph, fixture, entry, variable, depth + 1, levels, value * 2 + 1, leaves)
         );
-        link(graph, branch.execOutPinDown(), branchTree(graph, entry, variable, depth + 1, levels, value * 2, leaves));
-        return branch.execInPin();
+        link(
+            graph,
+            execOut(graph, branch, 1),
+            branchTree(graph, fixture, entry, variable, depth + 1, levels, value * 2, leaves)
+        );
+        return execIn(graph, branch);
     }
 
     FlowGraph example(unsigned levels, bool reverse)
     {
         FlowGraph graph;
+        test::GraphFixture fixture;
         auto initial = meta::RuntimeObject::defaultOf(meta::ref_type_of_v<int>);
         require(initial.has_value());
         const auto variable = graph.addVariable("result", &meta::ref_type_of_v<int>, std::move(*initial));
         require(variable != 0);
         const auto* boolean = &meta::ref_type_of_v<bool>;
-        auto& entry = add<OnEventNode>(
+        const auto entry = fixture.add<EventEntryPayload>(
             graph,
-            "Choose",
-            std::vector<FuncArgInfo>{{boolean, "outer"}, {boolean, "middle"}, {boolean, "inner"}}
+            "lux.flow.event",
+            {std::vector<FuncArgInfo>{{boolean, "outer"}, {boolean, "middle"}, {boolean, "inner"}}},
+            "Choose"
         );
-        require(graph.addExport({{1}, graph.nodeId(&entry), 41, {}}));
-        std::vector<const ExecOutPin*> leaves;
-        link(graph, entry.execOutPin(), branchTree(graph, entry, variable, 0, levels, 0, leaves));
-        auto& merge = add<ReturnNode>(graph);
+        require(graph.addExport({{1}, entry, 41, {}}));
+        std::vector<PinId> leaves;
+        link(graph, execOut(graph, entry), branchTree(graph, fixture, entry, variable, 0, levels, 0, leaves));
+        const auto merge = fixture.add<ReturnPayload>(graph, "lux.flow.return");
         for (std::size_t i{}; i != leaves.size(); ++i)
         {
             const auto index = reverse ? leaves.size() - i - 1 : i;
-            link(graph, *leaves[index], merge.execInPin());
+            link(graph, leaves[index], execIn(graph, merge));
         }
         return graph;
     }

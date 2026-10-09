@@ -68,6 +68,14 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
     lux_editor_test_options(flowforge_ability_contract_test)
     add_test(NAME flowforge.ability_contract COMMAND flowforge_ability_contract_test)
 
+    add_executable(flowforge_async_lowering_test test/async_lowering.cpp)
+
+    target_link_libraries(flowforge_async_lowering_test PRIVATE flowforge_compiler)
+
+    lux_editor_test_options(flowforge_async_lowering_test)
+
+    add_test(NAME flowforge.async_lowering COMMAND flowforge_async_lowering_test)
+
     add_executable(flowforge_scalar_lowering_test test/scalar_lowering.cpp)
 
     target_link_libraries(flowforge_scalar_lowering_test PRIVATE flowforge_compiler)
@@ -83,6 +91,14 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
     lux_editor_test_options(flowforge_nested_control_test)
 
     add_test(NAME flowforge.nested_control COMMAND flowforge_nested_control_test)
+
+    add_executable(flowforge_memory_lowering_test test/memory_lowering.cpp)
+
+    target_link_libraries(flowforge_memory_lowering_test PRIVATE flowforge_compiler script_native)
+
+    lux_editor_test_options(flowforge_memory_lowering_test)
+
+    add_test(NAME flowforge.memory_lowering COMMAND flowforge_memory_lowering_test)
 
     add_executable(flowforge_registered_value_test test/registered_value.cpp)
 

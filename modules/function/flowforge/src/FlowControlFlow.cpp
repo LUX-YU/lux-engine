@@ -1,7 +1,6 @@
 #include <lux/engine/flowforge/FlowControlFlow.hpp>
 
 #include <lux/engine/flowforge/detail/ExecutionTraversal.hpp>
-#include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 
 #include <array>
@@ -13,28 +12,50 @@ namespace lux::flowforge
     {
         [[nodiscard]] NodeId executionStart(const FlowGraph& graph, PinId id) noexcept
         {
-            const auto* pin = graph.findPin(id);
-            const bool is_execution_output = pin != nullptr && pin->kind() == EPinKind::EXEC_OUT;
+            const auto* pin = graph.pin(id);
+            const auto* record = graph.topology().findPin(id);
+            const bool has_pin = pin && record;
+            const bool is_execution_output =
+                has_pin && pin->role == EFlowPinRole::EXECUTION && record->direction == graph::EPinDirection::OUTPUT;
             if (!is_execution_output)
             {
                 return {};
             }
-            const auto links = graph.linkedPins(id);
-            return links.empty() ? NodeId{} : graph.nodeId(links.front()->node());
+            for (const auto& link : graph.topology().links())
+            {
+                if (link.from == id)
+                {
+                    const auto* input = graph.topology().findPin(link.to);
+                    return input ? input->owner : NodeId{};
+                }
+            }
+            return {};
         }
 
         template <class Emit> void successors(const FlowGraph& graph, NodeId id, Emit&& emit) noexcept
         {
-            const auto& node = *graph.findNodeById(id);
-            for (const auto* pin : node.outPins())
+            const auto* node = graph.node(id);
+            if (!node)
             {
-                if (pin->kind() != EPinKind::EXEC_OUT)
+                return;
+            }
+            const auto schema = node->definition->describePins(node->payload);
+            if (!schema)
+            {
+                return;
+            }
+            for (const auto& declaration : *schema)
+            {
+                const bool is_execution_output = declaration.direction == graph::EPinDirection::OUTPUT &&
+                                                 declaration.role == EFlowPinRole::EXECUTION;
+                if (!is_execution_output)
                 {
                     continue;
                 }
-                for (const auto* next : graph.linkedPins(graph.pinId(pin)))
+                const auto next = executionStart(graph, graph.pinId(id, declaration.semantic));
+                if (next.valid())
                 {
-                    emit(graph.nodeId(next->node()));
+                    emit(next);
                 }
             }
         }
@@ -56,17 +77,21 @@ namespace lux::flowforge
         return result;
     }
 
-    NodeId findBranchMerge(const FlowGraph& graph, NodeId branch) noexcept
+    NodeId findBranchMerge(const FlowGraph& graph, NodeId branch, PinId up, PinId down) noexcept
     {
-        const auto* node = graph.findNodeById(branch);
-        const bool is_branch = node != nullptr && node->operation() == ENodeOperation::BRANCH;
-        if (!is_branch)
+        const auto is_leg = [&](PinId id) noexcept
+        {
+            const auto* record = graph.topology().findPin(id);
+            const auto* payload = graph.pin(id);
+            const bool has_pin = record && payload;
+            return has_pin && record->owner == branch && record->direction == graph::EPinDirection::OUTPUT &&
+                   payload->role == EFlowPinRole::EXECUTION;
+        };
+        const bool is_valid_branch = up != down && is_leg(up) && is_leg(down);
+        if (!is_valid_branch)
         {
             return {};
         }
-        const auto& control = static_cast<const BranchNode&>(*node);
-        const auto up = graph.pinId(&control.execOutPinUp());
-        const auto down = graph.pinId(&control.execOutPinDown());
         const auto up_reachable = reachableExecution(graph, up);
         const auto down_reachable = reachableExecution(graph, down);
         const std::unordered_set<NodeId> down_set{down_reachable.begin(), down_reachable.end()};

@@ -19,9 +19,12 @@ namespace lux::flowforge
 
     // The existing compiler's branch-region rule: first common reachable node in breadth-first order,
     // seeding the true leg before the false leg and excluding the branch itself. This is not a general
-    // post-dominance proof. Invalid/non-branch input or disjoint legs return an invalid ID.
+    // post-dominance proof. The caller supplies its two declared execution legs; this algorithm
+    // does not depend on a concrete BranchNode C++ type. Foreign legs or disjoint paths return no ID.
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_PUBLIC graph::NodeId findBranchMerge(
         const FlowGraph&,
-        graph::NodeId branch
+        graph::NodeId branch,
+        graph::PinId true_leg,
+        graph::PinId false_leg
     ) noexcept;
 } // namespace lux::flowforge

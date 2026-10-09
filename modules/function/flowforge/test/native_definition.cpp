@@ -1,6 +1,7 @@
+#include "NativeGraphFixture.hpp"
+#include <lux/engine/flowforge/FunctionNodes.hpp>
 #include <lux/engine/flowforge/NativeCallDefinition.hpp>
 #include <lux/engine/flowforge/graph/FlowSource.hpp>
-#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/graph/NodeRegistry.hpp>
 #include <lux/engine/meta/MetaCompat.hpp>
 
@@ -45,28 +46,35 @@ namespace
         }
     };
 
-    NativeFuncCall* replaceNative(FlowGraph& graph, NodeId id, NativeFuncCall::Definition definition)
+    const FlowNode* replaceNative(FlowGraph& graph, NodeId id, native_fixture::Definition definition)
     {
-        const auto* old = static_cast<const NativeFuncCall*>(graph.findNodeById(id));
-        std::unique_ptr<Node> candidate = std::make_unique<NativeFuncCall>(std::move(definition));
-        auto* result = static_cast<NativeFuncCall*>(candidate.get());
-        std::vector<PinId> pins(candidate->inPins().size() + candidate->outPins().size());
-        pins.front() = graph.pinId(&old->execInPin());
-        pins[candidate->inPins().size()] = graph.pinId(&old->execOutPin());
+        const auto* old = graph.node(id);
+        auto candidate = native_fixture::candidate(id, std::move(definition));
+        native_fixture::preserveExecutionPins(candidate, graph);
         const std::array erase{id};
-        const std::array<FlowNodeInsertion, 1> insert{{{id, &candidate, pins}}};
+        const std::array<FlowNodeEntry, 1> insert{{{id, &candidate.value, candidate.pins}}};
         std::vector<graph::GraphLayoutEntry> layout;
         if (const auto* saved = graph.layout().find(id))
         {
             layout.push_back({id, *saved});
         }
         auto plan = FlowGraphEdit::prepare(graph, {.insert = insert, .erase = erase, .place = layout});
-        require(plan.has_value() && candidate && graph.findNodeById(id) == old);
+        require(plan.has_value() && candidate.value.definition && graph.node(id) == old);
+        const auto* old_native = native_fixture::native(*old).definition.get();
         plan->commit();
         auto removed = plan->takeRemoved();
-        require(!candidate && removed.size() == 1 && graph.findNodeById(id) == result);
-        require(graph.pinId(&result->execInPin()) == pins.front());
-        require(graph.pinId(&result->execOutPin()) == pins[result->inPins().size()]);
+        require(removed.size() == 1 && native_fixture::native(removed.front().value).definition.get() == old_native);
+        const auto* result = graph.node(id);
+        require(
+            result && native_fixture::native(*result).definition == native_fixture::native(candidate.value).definition
+        );
+        for (const auto& pin : candidate.pins)
+        {
+            if (pin.value.role == EFlowPinRole::EXECUTION)
+            {
+                require(graph.pinId(id, pin.record.semantic) == pin.record.id);
+            }
+        }
         // Old RuntimeObject defaults die before their definition/code. Disposal is outside commit.
         removed.clear();
         return result;
@@ -78,41 +86,54 @@ namespace
         auto definition = NativeCallDefinition::create(input.function.invokable, object::CodeLease::builtin());
         require(definition.has_value());
         FlowGraph graph;
-        auto owner = std::make_unique<NativeFuncCall>(*definition);
-        auto* original = owner.get();
-        require(graph.insertNode({{1}, std::move(owner), {{1}, {2}, {3}, {UINT64_MAX}}}));
+        auto original = native_fixture::candidate({1}, *definition);
+        require(original.pins.size() == 4);
+        const std::array<PinId, 4> ids{{{1}, {2}, {3}, {UINT64_MAX}}};
+        for (std::size_t i = 0; i != ids.size(); ++i)
+        {
+            original.pins[i].record.id = ids[i];
+        }
+        const std::array<FlowNodeEntry, 1> first{{{{1}, &original.value, original.pins}}};
+        auto insertion = FlowGraphEdit::prepare(graph, {.insert = first});
+        require(insertion.has_value());
+        insertion->commit();
+        const auto* previous = graph.node({1});
         const asset::AssetId asset{std::array<std::uint8_t, 16>{1}};
         auto before = captureFlowSource(asset, "native", graph);
         require(before.has_value());
-        std::unique_ptr<Node> candidate = std::make_unique<NativeFuncCall>(*definition);
-        const std::array<PinId, 4> pins{{{1}, {}, {3}, {}}};
+        auto candidate = native_fixture::candidate({1}, *definition);
+        native_fixture::preserveExecutionPins(candidate, graph);
         const std::array<NodeId, 1> erase{{{1}}};
-        const std::array<FlowNodeInsertion, 1> insert{{{{1}, &candidate, pins}}};
+        const std::array<FlowNodeEntry, 1> insert{{{{1}, &candidate.value, candidate.pins}}};
         auto refused = FlowGraphEdit::prepare(graph, {.insert = insert, .erase = erase});
-        require(!refused && candidate && graph.findNodeById({1}) == original);
+        require(!refused && candidate.value.definition && graph.node({1}) == previous);
         auto after = captureFlowSource(asset, "native", graph);
         require(after.has_value() && *before == *after);
-        require(graph.pinId(original->dataInPins().front().get()) == PinId{2});
-        require(graph.pinId(&original->result()) == PinId{UINT64_MAX});
+        require(native_fixture::pin(graph, {1}, EFlowPinRole::DATA, graph::EPinDirection::INPUT) == PinId{2});
+        require(native_fixture::pin(graph, {1}, EFlowPinRole::DATA, graph::EPinDirection::OUTPUT) == PinId{UINT64_MAX});
         std::puts("PASS native schema exhaustion: refused candidate, source/defaults/identities intact");
     }
 
-    void check(const NativeFuncCall& node)
+    void check(const FlowGraph& graph, NodeId id)
     {
-        require(node.info().name == "compute");
-        require(node.info().full_name == "vendor.compute");
-        require(node.info().type_signature == "int(int)");
-        require(node.info().return_type.name == "int");
-        require(node.info().parameters.size() == 1U);
-        require(node.info().parameters[0].name == "argument");
-        require(node.info().parameters[0].type.name == "int");
-        require(node.info().parameters[0].value_type_name == "int");
-        require(node.dataInPins().size() == 1U);
-        require(node.dataInPins()[0]->validConstant());
+        const auto& info = native_fixture::native(*graph.node(id)).definition->signature();
+        require(info.name == "compute");
+        require(info.full_name == "vendor.compute");
+        require(info.type_signature == "int(int)");
+        require(info.return_type.name == "int");
+        require(info.parameters.size() == 1U);
+        require(info.parameters[0].name == "argument");
+        require(info.parameters[0].type.name == "int");
+        require(info.parameters[0].value_type_name == "int");
+        const auto input = native_fixture::pin(graph, id, EFlowPinRole::DATA, graph::EPinDirection::INPUT);
+        require(input.valid());
+        require(!native_fixture::pin(graph, id, EFlowPinRole::DATA, graph::EPinDirection::INPUT, 1).valid());
+        require(graph.pin(input)->default_value.isValid());
         int initial{};
-        std::memcpy(&initial, node.dataInPins()[0]->constantData().data(), sizeof(initial));
+        std::memcpy(&initial, graph.pin(input)->default_value.data(), sizeof(initial));
         require(initial == 0);
     }
+
 } // namespace
 
 int main()
@@ -122,7 +143,7 @@ int main()
     meta::meta_module_init();
     exhaustedReplacement();
     {
-        NativeFuncCall::Definition definition;
+        native_fixture::Definition definition;
         {
             Input input;
             auto result = NativeCallDefinition::create(input.function.invokable, object::CodeLease::builtin());
@@ -131,17 +152,15 @@ int main()
             input.name.assign(input.name.size(), '#');
             input.function.invokable.parameters.clear();
         }
-        auto node = std::make_unique<NativeFuncCall>(definition);
+        auto node = native_fixture::make(definition);
         definition.reset();
-        check(*node);
+        auto copy = node.clone();
+        require(copy.has_value());
+        require(native_fixture::native(node).definition == native_fixture::native(*copy).definition);
         FlowGraph graph;
-        const auto exec_in = graph.pinId(&node->execInPin());
-        const auto exec_out = graph.pinId(&node->execOutPin());
-        node = std::make_unique<NativeFuncCall>(node->definition());
-        check(*node);
-        require(graph.pinId(&node->execInPin()) == exec_in && graph.pinId(&node->execOutPin()) == exec_out);
-
-        require(graph.addNode(std::move(node)).valid());
+        const auto added = graph.addNode(std::move(*copy));
+        require(added.has_value());
+        check(graph, *added);
         auto captured = captureFlowSource(asset::AssetId{std::array<std::uint8_t, 16>{1}}, "native", graph);
         require(captured.has_value());
         FlowGraph restored;
@@ -157,16 +176,19 @@ int main()
         auto recaptured = captureFlowSource(captured->id, "native", restored);
         require(recaptured.has_value());
         require(*captured == *recaptured);
-        auto* restored_node = static_cast<NativeFuncCall*>(restored.nodes().front().node);
-        const auto restored_id = restored.nodeId(restored_node);
-        require(restored.layout().set(restored_id, {4.0F, 11.0F, true}).has_value());
-        restored_node = replaceNative(restored, restored.nodeId(restored_node), restored_node->definition());
-        check(*restored_node);
+        const auto restored_id = (*restored.nodes().begin()).first;
+        const auto* restored_node = restored.node(restored_id);
+        const std::array<graph::GraphLayoutEntry, 1> placement{{{restored_id, {4.0F, 11.0F, true}}}};
+        auto placed = FlowGraphEdit::prepare(restored, {.place = placement});
+        require(placed.has_value());
+        placed->commit();
+        restored_node = replaceNative(restored, restored_id, native_fixture::native(*restored_node).definition);
+        check(restored, restored_id);
         require(restored.layout().find(restored_id)->x == 4.0F);
         require(restored.layout().find(restored_id)->y == 11.0F);
 
         int released{};
-        NativeFuncCall::Definition method;
+        native_fixture::Definition method;
         {
             Input input;
             auto owner = std::shared_ptr<int>(
@@ -185,21 +207,25 @@ int main()
             require(result.has_value());
             method = std::move(*result);
         }
-        restored_node = replaceNative(restored, restored.nodeId(restored_node), std::move(method));
+        restored_node = replaceNative(restored, restored_id, std::move(method));
         require(released == 0);
-        require(restored_node->ownerType()->name == "Receiver");
-        require(restored_node->dataInPins().size() == 2U);
-        require(restored_node->dataInPins().front()->info().name == "Self");
+        require(native_fixture::native(*restored_node).definition->receiver()->name == "Receiver");
+        const auto arguments = native_fixture::native(*restored_node).argumentSemantics();
+        require(arguments.has_value() && arguments->size() == 2U);
+        const auto self = restored.pinId(restored_id, arguments->front());
+        require(restored.pin(self)->name == "Self");
         Input replacement;
         auto next = NativeCallDefinition::create(replacement.function.invokable, object::CodeLease::builtin());
         require(next.has_value());
-        restored_node = replaceNative(restored, restored.nodeId(restored_node), std::move(*next));
+        restored_node = replaceNative(restored, restored_id, std::move(*next));
         require(released == 1);
-        require(restored_node->ownerType() == nullptr);
-        check(*restored_node);
-        std::unique_ptr<Node> palette_node;
+        require(native_fixture::native(*restored_node).definition->receiver() == nullptr);
+        check(restored, restored_id);
+        std::optional<FlowNode> palette_node;
         {
-            NodeRegistry palette;
+            auto created_palette = NodeRegistry::create();
+            require(created_palette.has_value());
+            auto& palette = **created_palette;
             Input input;
             input.function.invokable.invoker = [](void*, void**, void*) {};
             auto reflected = std::make_unique<meta::RefFunction>(input.function);
@@ -207,19 +233,26 @@ int main()
             require(
                 palette.populateFromReflection(meta::ReflectionRegistry::instance(), object::CodeLease::builtin()) > 0U
             );
-            const auto* creator = palette.findNodeByName("compute");
+            auto* creator = palette.findNodeByName("compute");
             require(creator != nullptr);
             input.name.assign(input.name.size(), '#');
-            palette_node = creator->creator();
+            auto created = creator->creator();
+            require(created.has_value());
+            palette_node = std::move(*created);
         }
-        auto& native = static_cast<NativeFuncCall&>(*palette_node);
-        check(native);
-        auto recreated = std::make_unique<NativeFuncCall>(native.definition());
+        FlowGraph palette_graph;
+        auto palette_id = palette_graph.addNode(std::move(*palette_node));
+        require(palette_id.has_value());
+        check(palette_graph, *palette_id);
+        auto recreated = native_fixture::make(native_fixture::native(*palette_graph.node(*palette_id)).definition);
         palette_node.reset();
-        check(*recreated);
+        require(palette_graph.removeNode(*palette_id).has_value());
+        palette_id = palette_graph.addNode(std::move(recreated));
+        require(palette_id.has_value());
+        check(palette_graph, *palette_id);
 
-        NativeFuncCall::Definition base_call;
-        NativeFuncCall::Definition derived_call;
+        native_fixture::Definition base_call;
+        native_fixture::Definition derived_call;
         {
             struct Base
             {
@@ -258,22 +291,21 @@ int main()
             require(second.has_value());
             derived_call = std::move(*second);
         }
-        auto base_node = std::make_unique<NativeFuncCall>(std::move(base_call));
-        auto derived_node = std::make_unique<NativeFuncCall>(std::move(derived_call));
-        const auto* base_type = base_node->dataInPins()[0]->info().type;
-        const auto* derived_type = derived_node->result().info().type;
+        auto base_node = native_fixture::make(std::move(base_call));
+        auto derived_node = native_fixture::make(std::move(derived_call));
+        const auto* base_type = &native_fixture::native(base_node).definition->signature().parameters[0].type;
+        const auto* derived_type = &native_fixture::native(derived_node).definition->signature().return_type;
         require(meta::canInitialize(base_type, derived_type));
         require(!meta::canInitialize(derived_type, base_type));
-        auto* base_pointer = base_node.get();
-        auto* derived_pointer = derived_node.get();
-        require(graph.addNode(std::move(base_node)).valid());
-        require(graph.addNode(std::move(derived_node)).valid());
-        require(
-            graph.connect(
-                *graph.findPin(graph.pinId(&derived_pointer->result())),
-                *graph.findPin(graph.pinId(base_pointer->dataInPins()[0].get()))
-            ) == ELinkError::SUCCESS
-        );
+        auto base_id = graph.addNode(std::move(base_node));
+        auto derived_id = graph.addNode(std::move(derived_node));
+        require(base_id.has_value() && derived_id.has_value());
+        require(graph
+                    .connect(
+                        native_fixture::pin(graph, *derived_id, EFlowPinRole::DATA, graph::EPinDirection::OUTPUT),
+                        native_fixture::pin(graph, *base_id, EFlowPinRole::DATA, graph::EPinDirection::INPUT)
+                    )
+                    .has_value());
 
         auto invalid = NativeCallDefinition::create({}, object::CodeLease::builtin());
         require(!invalid && invalid.error().code == EFlowForgeError::INVALID_DESCRIPTION);

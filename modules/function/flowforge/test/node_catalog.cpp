@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/flowforge/FlowNodeCatalog.hpp>
 #include <lux/engine/flowforge/ScalarNodes.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
@@ -92,6 +93,18 @@ namespace
             return value < values.size() ? values[value] : nullptr;
         }
 
+        FlowForgeResult<FlowValue> readVariable(std::uint64_t) noexcept override
+        {
+            require(false); // This fixture exclusively exercises scalar callbacks.
+            std::terminate();
+        }
+
+        FlowForgeResult<FlowValue> readField(const meta::RefField&, FlowValue) noexcept override
+        {
+            require(false);
+            std::terminate();
+        }
+
     private:
         FlowForgeResult<FlowValue> emitScalarImpl(
             EScalarInstruction,
@@ -134,18 +147,21 @@ namespace
             auto compiled = type->compile(*payload, inputs, compiler);
             require(compiled.has_value() && compiled->size() == 1 && compiler.emitted == 1);
             require(*compiler.type(compiled->front()) == *pins->back().type);
-            auto node = createFlowValueNode(type, std::move(*payload));
+            auto node = createFlowNode(type, std::move(*payload));
             require(node.has_value());
-            require((*node)->operation() == ENodeOperation::REGISTERED_VALUE);
-            for (const auto* input : (*node)->inPins())
-            {
-                const auto& pin = static_cast<const DataInPin&>(*input);
-                require(pin.allowDefault() && pin.constantData().isValid());
-            }
+            require(node->definition == type);
             FlowGraph graph;
             const auto id = graph.addNode(std::move(*node));
-            require(id.valid());
-            require(graph.topology().findNode(id)->type == registration.identity.id);
+            require(id.has_value());
+            for (const auto& declaration : *pins)
+            {
+                if (declaration.direction == graph::EPinDirection::INPUT)
+                {
+                    const auto* input = graph.pin(graph.pinId(*id, declaration.semantic));
+                    require(input && input->allow_default && input->default_value.isValid());
+                }
+            }
+            require(graph.topology().findNode(*id)->type == registration.identity.id);
             const asset::AssetId asset_id{std::array<std::uint8_t, 16>{1}};
             auto source = captureFlowSource(asset_id, "scalar", graph);
             require(source.has_value());
@@ -205,12 +221,12 @@ int main()
         payload->get<Payload>()->mode = 3;
         require(!type->describePins(*payload));
         payload->get<Payload>()->mode = 0;
-        auto node = createFlowValueNode(type, std::move(*payload));
+        auto node = createFlowNode(type, std::move(*payload));
         require(node.has_value());
         FlowGraph graph;
         const auto id = graph.addNode(std::move(*node));
-        require(id.valid());
-        require(graph.topology().findNode(id)->type == first.identity.id);
+        require(id.has_value());
+        require(graph.topology().findNode(*id)->type == first.identity.id);
         const std::array<FlowValue, 2> integers{0, 0};
         const std::array<FlowValue, 2> mixed{0, 1};
         const std::array<FlowValue, 2> unknown{0, kInvalidFlowValue};

@@ -21,3 +21,9 @@ else()
 endif()
 
 add_test(NAME installed.flow_scalar_lowering COMMAND scalar_lowering)
+
+add_executable(control_lowering "${CMAKE_CURRENT_LIST_DIR}/../../../engine/toolchain/flowforge/test/control_lowering.cpp")
+
+target_link_libraries(control_lowering PRIVATE lux::engine::flowforge::flowforge_compiler)
+
+add_test(NAME installed.flow_control_compiler_compatibility COMMAND control_lowering)

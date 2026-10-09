@@ -10,6 +10,18 @@ find_package(lux-engine-function REQUIRED COMPONENTS flowforge)
 
 enable_testing()
 
+add_executable(flow_control_flow "${CMAKE_CURRENT_LIST_DIR}/../../../modules/function/flowforge/test/control_flow.cpp")
+
+target_link_libraries(flow_control_flow PRIVATE lux::engine::function::flowforge)
+
+add_test(NAME installed.flow_control_without_toolchain COMMAND flow_control_flow)
+
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/control_header.cpp" "#include <lux/engine/flowforge/FlowControlFlow.hpp>\n")
+
+add_library(flow_control_header OBJECT "${CMAKE_CURRENT_BINARY_DIR}/control_header.cpp")
+
+target_link_libraries(flow_control_header PRIVATE lux::engine::function::flowforge)
+
 add_executable(flow_analysis "${CMAKE_CURRENT_LIST_DIR}/../../../modules/function/flowforge/test/analysis.cpp")
 
 target_link_libraries(flow_analysis PRIVATE lux::engine::function::flowforge)
@@ -22,7 +34,7 @@ add_library(flow_analysis_header OBJECT "${CMAKE_CURRENT_BINARY_DIR}/header.cpp"
 
 target_link_libraries(flow_analysis_header PRIVATE lux::engine::function::flowforge)
 
-foreach(target flow_analysis flow_analysis_header)
+foreach(target flow_analysis flow_analysis_header flow_control_flow flow_control_header)
     if(MSVC)
         target_compile_options(${target} PRIVATE /permissive- /GR- /utf-8)
     else()

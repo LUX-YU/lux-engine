@@ -1,4 +1,5 @@
 #include <lux/engine/flowforge/FlowAnalysis.hpp>
+#include <lux/engine/flowforge/detail/ExecutionTraversal.hpp>
 
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
@@ -318,28 +319,26 @@ namespace lux::flowforge
 
         template <class Callback> void visitDirectExecution(PinId start, Callback&& callback) const noexcept
         {
-            std::queue<NodeId> pending;
-            std::unordered_set<NodeId> visited;
-            if (const auto found = starts.find(start); found != starts.end())
+            const auto found = starts.find(start);
+            if (found == starts.end())
             {
-                pending.push(found->second);
+                return;
             }
-
-            while (!pending.empty())
-            {
-                const auto id = pending.front();
-                pending.pop();
-                if (!visited.insert(id).second)
+            detail::visitExecution(
+                std::span{&found->second, 1U},
+                [&](NodeId id, auto&& emit) noexcept
                 {
-                    continue;
-                }
-                const auto& node = execution.at(id);
-                callback(id, node);
-                for (const auto next : node.successors)
+                    for (const auto next : execution.at(id).successors)
+                    {
+                        emit(next);
+                    }
+                },
+                [&](NodeId id) noexcept
                 {
-                    pending.push(next);
+                    callback(id, execution.at(id));
+                    return true;
                 }
-            }
+            );
         }
 
         [[nodiscard]] FlowForgeResult<void> build(const FlowGraph& graph) noexcept

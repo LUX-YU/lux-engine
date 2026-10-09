@@ -98,3 +98,11 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
 
     add_test(NAME flowforge.analysis COMMAND flowforge_analysis_test)
 endif()
+
+if(BUILD_TESTING)
+    add_executable(flowforge_control_lowering_test test/control_lowering.cpp)
+
+    target_link_libraries(flowforge_control_lowering_test PRIVATE lux::engine::flowforge::flowforge_compiler)
+
+    add_test(NAME flowforge.control_lowering_compatibility COMMAND flowforge_control_lowering_test)
+endif()

@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <exception>
 #include <atomic>
-#include <queue>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -33,6 +32,7 @@
 #include "lux/engine/flowforge/graph/ObjectNode.hpp"
 #include "lux/engine/flowforge/graph/ArithmeticNode.hpp"
 #include <lux/engine/flowforge/detail/ScalarLowering.hpp>
+#include <lux/engine/flowforge/FlowControlFlow.hpp>
 #include "lux/engine/flowforge/script/ScriptEventAwaitNode.hpp"
 #include "lux/engine/flowforge/script/ScriptAbilityNode.hpp"
 
@@ -381,13 +381,7 @@ namespace lux::flowforge
 
         // Per-region recursive lowering driver.
         //
-        // reachableFromPin: forward reachability through exec edges. Used
-        //   by findPostDom to determine which graph nodes lie downstream of
-        //   a given control-op leg.
-        // findPostDom:      for a Branch with two legs, the closest node
-        //   reachable from BOTH legs — i.e., where the legs reconverge.
-        //   That node belongs to the OUTER scope; the legs nest only the
-        //   nodes strictly before it.
+        // Branch reachability and merge selection belong to the Flow module.
         // lowerChain:       walks the exec chain forward from a given start
         //   pin into the current insertion point. For control ops it
         //   creates the op and recurses INTO each sub-region's block, then
@@ -399,8 +393,6 @@ namespace lux::flowforge
         //   follow it, so the caller must NOT emit a yield).
         //   `loop_depth` counts enclosing loop regions — Break outside any
         //   loop is rejected at build time.
-        std::unordered_set<const Node*> reachableFromPin(const ExecOutPin* pin) const;
-        const Node* findPostDom(const Node* branch) const;
         FlowForgeResult<mlir::Value> lowerChain(
             BuilderContext& bc,
             ValueMaps& vm,
@@ -740,127 +732,6 @@ namespace lux::flowforge
     }
 
     // ============================================================================
-    // Forward reachability through exec edges. Starts at `pin->nextPin()->node()`
-    // (skipping the source) and walks every exec_out it encounters. Used by the
-    // post-dominator finder to determine which graph nodes lie downstream of a
-    // given control-op leg.
-    // ============================================================================
-    std::unordered_set<const Node*> MLIRBuilderImpl::reachableFromPin(const ExecOutPin* pin) const
-    {
-        std::unordered_set<const Node*> reach;
-        if (!pin)
-        {
-            return reach;
-        }
-        const ExecInPin* in = pin->nextPin();
-        if (!in)
-        {
-            return reach;
-        }
-
-        // Explicit worklist — editor graphs can be deep enough that a
-        // recursive DFS risks blowing the stack.
-        llvm::SmallVector<const Node*, 16> worklist{in->node()};
-        while (!worklist.empty())
-        {
-            const Node* n = worklist.pop_back_val();
-            if (!reach.insert(n).second)
-            {
-                continue;
-            }
-            for (const Pin* p : n->outPins())
-            {
-                if (p->kind() != EPinKind::EXEC_OUT)
-                {
-                    continue;
-                }
-                auto* ex = static_cast<const ExecOutPin*>(p);
-                if (auto* dst = ex->nextPin())
-                {
-                    worklist.push_back(dst->node());
-                }
-            }
-        }
-        return reach;
-    }
-
-    // ============================================================================
-    // Find the closest node reachable from BOTH legs of a Branch — that node
-    // is the post-dominator and belongs to the OUTER scope (the leg regions
-    // nest only the strictly-before-PD nodes; the PD is lowered once after the
-    // BranchOp with its incoming tokens merged via flowforge.token_merge).
-    //
-    // BFS from the Branch through both legs in lockstep so the first node we
-    // hit that's in the intersection is the topologically-closest one. Returns
-    // nullptr when the legs never reconverge (each leg is independently
-    // self-terminating — typically each ends in its own Return).
-    // ============================================================================
-    const Node* MLIRBuilderImpl::findPostDom(const Node* control) const
-    {
-        if (!control || control->operation() != ENodeOperation::BRANCH)
-        {
-            return nullptr;
-        }
-        const auto& br = static_cast<const BranchNode&>(*control);
-
-        auto up_reach = reachableFromPin(&br.execOutPinUp());
-        auto down_reach = reachableFromPin(&br.execOutPinDown());
-
-        std::unordered_set<const Node*> common;
-        for (auto* n : up_reach)
-        {
-            if (down_reach.count(n))
-            {
-                common.insert(n);
-            }
-        }
-        if (common.empty())
-        {
-            return nullptr;
-        }
-
-        std::queue<const Node*> q;
-        std::unordered_set<const Node*> visited{control};
-        if (auto* in = br.execOutPinUp().nextPin())
-        {
-            q.push(in->node());
-        }
-        if (auto* in = br.execOutPinDown().nextPin())
-        {
-            q.push(in->node());
-        }
-        while (!q.empty())
-        {
-            auto* n = q.front();
-            q.pop();
-            if (!visited.insert(n).second)
-            {
-                continue;
-            }
-            if (common.count(n))
-            {
-                return n;
-            }
-            for (const Pin* p : n->outPins())
-            {
-                if (p->kind() != EPinKind::EXEC_OUT)
-                {
-                    continue;
-                }
-                auto* ex = static_cast<const ExecOutPin*>(p);
-                if (auto* dst = ex->nextPin())
-                {
-                    if (!visited.count(dst->node()))
-                    {
-                        q.push(dst->node());
-                    }
-                }
-            }
-        }
-        return nullptr;
-    }
-
-    // ============================================================================
     // The recursive chain driver.
     //
     // Preconditions on entry:
@@ -1081,7 +952,7 @@ namespace lux::flowforge
                 const auto& br = static_cast<const BranchNode&>(*node);
                 LUX_FF_TRY_VALUE(cond, getOperand(br.dataInPin(), vm, bc));
 
-                const Node* pd = findPostDom(node);
+                const Node* pd = bc.graph->findNodeById(findBranchMerge(*bc.graph, bc.graph->nodeId(node)));
                 auto inner_ext = external;
                 if (pd)
                 {
@@ -1151,10 +1022,11 @@ namespace lux::flowforge
                 //    rather than the now-out-of-scope inside-block SSA).
                 vm.exec_tok[bc.graph->pinId(&br.execOutPinUp()).value] = op.getResult(0);
                 vm.exec_tok[bc.graph->pinId(&br.execOutPinDown()).value] = op.getResult(1);
-                auto up_reach = reachableFromPin(&br.execOutPinUp());
-                auto down_reach = reachableFromPin(&br.execOutPinDown());
-                for (auto* n : up_reach)
+                auto up_reach = reachableExecution(*bc.graph, bc.graph->pinId(&br.execOutPinUp()));
+                auto down_reach = reachableExecution(*bc.graph, bc.graph->pinId(&br.execOutPinDown()));
+                for (const auto id : up_reach)
                 {
+                    const auto* n = bc.graph->findNodeById(id);
                     if (n == pd)
                     {
                         continue;
@@ -1165,8 +1037,9 @@ namespace lux::flowforge
                             vm.exec_tok[bc.graph->pinId(p).value] = op.getResult(0);
                         }
                 }
-                for (auto* n : down_reach)
+                for (const auto id : down_reach)
                 {
+                    const auto* n = bc.graph->findNodeById(id);
                     if (n == pd)
                     {
                         continue;

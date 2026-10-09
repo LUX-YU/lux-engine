@@ -1,9 +1,7 @@
 #pragma once
 /**
  * @file Log.hpp
- * @brief lux::log — the engine's diagnostic-log service (architecture design
- *        §7.1, channel ②; queue shape re-designed by the unified-event-system
- *        design §7.5, 方案B + 档2).
+ * @brief lux::log — diagnostic records with one host-selected output.
  *
  * Two channels, one convergence point:
  *   ① ERRORS travel UP the call chain as return values (expected<T, E> /
@@ -34,12 +32,11 @@
  * checked at COMPILE time — and it also pins the format string to a
  * compile-time literal, which is what lets the record carry just a pointer.
  *
- * Back end (方案B — single-outlet callback seam): the multi-sink registry is
- * retired. The host injects ONE output callback at startup (`setOutput`);
- * in the engine hosts that callback publishes the record into the process
- * DomainEvents, and stderr/file/toast/logcat are pump SUBSCRIBERS assembled next
- * to it. No output installed → records format-and-fall-back to stderr: a
- * forgotten assembly must not become silent log loss.
+ * Back end: the host injects one output callback at startup (`setOutput`).
+ * It executes synchronously on the logging thread and borrows the record for
+ * that call. Routing and any retained data belong to the host. No output
+ * installed → format and fall back to stderr; missing assembly must not
+ * silently discard diagnostics.
  *
  * Ordering (§7.5-C): per-producer-thread FIFO; NO total order across threads.
  * Records carry `seq` (global atomic) as a stable sort key for consumers that
@@ -64,11 +61,11 @@ namespace lux::log
     // ── Host assembly (startup, main thread) ───────────────────────────
 
     /// The ONE output seam (方案B). The callback runs on the LOGGING thread
-    /// (publish into a lock-free queue is the intended body — keep it cheap);
+    /// (keep it cheap);
     /// the record is only valid for the duration of the call — copy it out
     /// (queueing by value does exactly that).
     /// Empty function restores the stderr fallback — hosts do that at the END
-    /// of shutdown so static-destructor-time logs never touch a dead bus.
+    /// of shutdown so subsequent logs use the fallback.
     using OutputFn = std::function<void(const LogRecord&)>;
     LUX_CORE_PUBLIC void setOutput(OutputFn fn);
 
@@ -85,9 +82,8 @@ namespace lux::log
     LUX_CORE_PUBLIC std::size_t formatRecord(const LogRecord& r, char* out, std::size_t cap) noexcept;
 
     /// Format + write "[level][category] text\n" to stderr — the line shape
-    /// every host's terminal outlet shares (drift here is what the shared
-    /// assembly exists to prevent). Used by the frame-pump stderr subscriber,
-    /// the un-assembled fallback, and shutdown tail-drains.
+    /// every host's terminal outlet shares. Used by host outputs and the
+    /// un-assembled fallback.
     LUX_CORE_PUBLIC void writeRecordToStderr(const LogRecord& r) noexcept;
 
     /// "trace"/"info"/"warn"/"error" — for subscribers that compose lines.
@@ -95,7 +91,7 @@ namespace lux::log
 
 #if defined(__ANDROID__)
     /// __android_log_print under @p tag — the Android host's outlet (its
-    /// shell wires setOutput straight to this until it grows a bus).
+    /// shell can route its output directly to this function).
     LUX_CORE_PUBLIC void writeRecordToLogcat(const LogRecord& r, const char* tag) noexcept;
 #endif
 
@@ -148,11 +144,5 @@ namespace lux::log
     {
         logf(ELevel::LOG_ERROR, category, fmt, std::forward<Args>(args)...);
     }
-
-    // (The LogSink interface, addSink/clearSinks/flushAll and the built-in
-    //  Stderr/File/Logcat sink factories are RETIRED — replaced by the single
-    //  outlet above plus event-bus subscribers at the host assembly layer.
-    //  FileSink had zero call sites; a file subscriber with its own writer
-    //  thread is one subscription away when a config field asks for it.)
 
 } // namespace lux::log

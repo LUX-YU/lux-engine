@@ -25,7 +25,7 @@ find_package(lux-engine-context REQUIRED COMPONENTS engine_context)
 
 find_package(lux-engine-context-render REQUIRED COMPONENTS engine_context_render)
 
-find_package(lux-engine-core REQUIRED COMPONENTS object error services)
+find_package(lux-engine-core REQUIRED COMPONENTS object error)
 
 find_package(lux-engine-platform REQUIRED COMPONENTS dynamic_library)
 
@@ -52,10 +52,6 @@ target_link_libraries(sdk_error_plugin PRIVATE lux::engine::core::error)
 add_executable(sdk_error errors.cpp)
 
 target_link_libraries(sdk_error PRIVATE lux::engine::core::error lux::engine::platform::dynamic_library)
-
-add_executable(sdk_services "${foundation}/services/test/services.cpp")
-
-target_link_libraries(sdk_services PRIVATE lux::engine::core::services)
 
 add_executable(framework_component ../context_component.cpp)
 
@@ -123,7 +119,12 @@ add_executable(framework_shutdown ../shutdown.cpp)
 
 target_link_libraries(framework_shutdown PRIVATE lux::engine::editor::lux_editor_app)
 
-foreach(target framework_transaction framework_identity framework_scene_file framework_host framework_shutdown framework_profiles framework_manifest framework_pacing framework_component framework_context framework_ui sdk_object sdk_error sdk_services sdk_object_plugin sdk_error_plugin)
+foreach(
+    target
+    framework_transaction framework_identity framework_scene_file framework_host framework_shutdown
+    framework_profiles framework_manifest framework_pacing framework_component framework_context
+    framework_ui sdk_object sdk_error sdk_object_plugin sdk_error_plugin
+)
     if(MSVC)
         target_compile_options(${target} PRIVATE /UNDEBUG /utf-8 /permissive- /GR- /we4541)
     else()
@@ -177,8 +178,6 @@ add_test(NAME sdk.framework.registration_conflict COMMAND framework_context --re
 add_test(NAME sdk.object COMMAND sdk_object $<TARGET_FILE:sdk_object_plugin>)
 
 add_test(NAME sdk.error COMMAND sdk_error $<TARGET_FILE:sdk_error_plugin>)
-
-add_test(NAME sdk.services COMMAND sdk_services)
 
 add_test(NAME sdk.framework.context COMMAND framework_context "${CMAKE_CURRENT_BINARY_DIR}/data")
 
@@ -251,7 +250,6 @@ set(
     error/Error
     error/ErrorDescriptor
     error/ErrorRegistry
-    services/ServiceRegistry
     ui/UpdateStatistics
     ui/Root
     ui/Pane
@@ -270,7 +268,7 @@ foreach(header IN LISTS foundation_headers)
 
     add_library(header_${name} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${name}.cpp")
 
-    target_link_libraries(header_${name} PRIVATE lux::engine::editor::lux_editor_ui lux::engine::core::services)
+    target_link_libraries(header_${name} PRIVATE lux::engine::editor::lux_editor_ui)
 
     if(MSVC)
         target_compile_options(header_${name} PRIVATE /GR- /we4541 /utf-8)

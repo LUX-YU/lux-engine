@@ -69,9 +69,9 @@ namespace lux::log
             "BufSink must model output_iterator<char> for std::vformat_to"
         );
 
-        /// 单出口状态。output 的读侧走裸原子指针 RCU(与 events 的泵表同一套
-        /// 纪律 —— atomic<shared_ptr> 在主流实现里带锁,会把锁放回每条日志的
-        /// 热路径);历史闭包进退休表,活到进程结束(setOutput 每进程 ~2 次)。
+        /// Single output: atomic publication keeps the read path free of the
+        /// administration lock. Replaced callbacks remain owned until process
+        /// shutdown.
         struct State
         {
             std::mutex admin;

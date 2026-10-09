@@ -13,26 +13,23 @@ add_subdirectory(error)
 add_subdirectory(type_info)
 add_subdirectory(meta)
 add_subdirectory(object)
-add_subdirectory(services)
 add_subdirectory(serialization)
 add_subdirectory(log)
-add_subdirectory(events)
 add_subdirectory(task)
 
 lux_engine_install_components(
-	PROJECT_NAME	lux-engine-core
-	VERSION			0.0.1
-	NAMESPACE		lux::engine::core
-	COMPONENTS		math
-					async_port
-					semantic
-                    error
-					type_info
-					meta
-					object
-                    services
-                    serialization
-					log
-					events
-					task
+    PROJECT_NAME lux-engine-core
+    VERSION 0.0.1
+    NAMESPACE lux::engine::core
+    COMPONENTS
+        math
+        async_port
+        semantic
+        error
+        type_info
+        meta
+        object
+        serialization
+        log
+        task
 )

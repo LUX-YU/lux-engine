@@ -13,6 +13,8 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Node.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialGraph.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialLowering.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialValidation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialSource.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderIR.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialNodePayload.cpp
@@ -26,6 +28,8 @@ component_include_directories(
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
 )
+
+target_include_directories(material_graph PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
 
 target_compile_definitions(
     material_graph
@@ -50,6 +54,12 @@ component_add_transitive_commands(
 )
 
 if(BUILD_TESTING)
+    add_executable(material_lowering_test test/lowering.cpp)
+
+    target_link_libraries(material_lowering_test PRIVATE lux::engine::function::material_graph)
+
+    add_test(NAME material.lowering COMMAND material_lowering_test)
+
     add_executable(material_node_identity_test test/node_identity.cpp)
 
     target_link_libraries(material_node_identity_test PRIVATE lux::engine::function::material_graph)

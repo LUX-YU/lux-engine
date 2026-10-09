@@ -12,7 +12,9 @@
 //  going into ShaderIR — they aren't "expressions".
 // =============================================================================
 
-#include <lux/engine/material/compiler/Lowering.hpp>
+#include <lux/engine/material/MaterialIR.hpp>
+#include <lux/engine/material/detail/MaterialValidation.hpp>
+#include <lux/engine/material/graph/MaterialGraph.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 
 #include <cstring>
@@ -20,7 +22,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace lux::material::compiler
+namespace lux::material
 {
     using namespace ::lux::shadergen;
     using ShaderValueType = ::lux::shadergen::EValueType;
@@ -904,8 +906,13 @@ namespace lux::material::compiler
         };
     } // namespace
 
-    lux::cxx::expected<MaterialIR, MaterialCompileFailure> lowerMaterial(const graph::MaterialGraph& graph)
+    lux::cxx::expected<MaterialIR, MaterialCompileFailure> lowerMaterial(const graph::MaterialGraph& graph) noexcept
     {
+        auto validation = detail::validateMaterialGraph(graph);
+        if (!validation)
+        {
+            return lux::cxx::unexpected(std::move(validation.error()));
+        }
         MaterialIR out{};
         MaterialCompileFailure
             error{EMaterialCompileError::LOWERING_FAILURE, "lowerMaterial failed", {}, graph::invalid_pin};
@@ -917,4 +924,4 @@ namespace lux::material::compiler
         return out;
     }
 
-} // namespace lux::material::compiler
+} // namespace lux::material

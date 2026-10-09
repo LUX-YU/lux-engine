@@ -9,7 +9,7 @@
 //
 //  Shell parameters (EmitParams) = shading_model / pass / alpha -- things that
 //  live outside the ShaderIR (they're shell concerns, not expressions); the
-//  caller pulls these from the private MaterialIR to fill it in.
+//  caller pulls these from the module-owned MaterialIR to fill it in.
 //
 //  Currently supported: the GBuffer pass (PBR / Unlit) and Forward Unlit.
 //  Forward lighting (GGX/Toon), textures/params, TbnNormal, and RawExpr are
@@ -36,7 +36,7 @@ namespace lux::shadergen::glsl
     };
 
     /// Shell parameters: determine which pass shell / shading-model branch / alpha
-    /// behavior to generate. Sourced from Material lowering's private MaterialIR (these
+    /// behavior to generate. Sourced from Material lowering's module-owned MaterialIR (these
     /// live outside the ShaderIR -- they're shell concerns, not expressions).
     struct EmitParams
     {

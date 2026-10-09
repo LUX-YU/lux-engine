@@ -27,7 +27,13 @@ target_link_libraries(material_node_identity PRIVATE lux::engine::function::mate
 
 add_test(NAME installed.material_node_identity COMMAND material_node_identity)
 
-foreach(header ShaderIR MaterialCompileFailure graph/Node graph/MaterialGraph graph/MaterialSource)
+add_executable(material_lowering "${CMAKE_CURRENT_LIST_DIR}/../../../modules/function/material/test/lowering.cpp")
+
+target_link_libraries(material_lowering PRIVATE lux::engine::function::material_graph)
+
+add_test(NAME installed.material_lowering COMMAND material_lowering)
+
+foreach(header ShaderIR MaterialCompileFailure MaterialIR graph/Node graph/MaterialGraph graph/MaterialSource)
     string(REPLACE "/" "_" target_name "${header}")
 
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${target_name}.cpp" "#include <lux/engine/material/${header}.hpp>\n")
@@ -38,6 +44,8 @@ foreach(header ShaderIR MaterialCompileFailure graph/Node graph/MaterialGraph gr
 endforeach()
 
 foreach(target
+    material_lowering
+    MaterialIR_header
     material_shader_ir
     material_node_identity
     ShaderIR_header

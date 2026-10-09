@@ -104,7 +104,6 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderEmitter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderCompiler.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialCompiler.cpp
         $<TARGET_OBJECTS:toolchain_shader_reflection>
         "${lux_material_embedded_includes}"

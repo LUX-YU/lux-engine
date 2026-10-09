@@ -1,156 +1,109 @@
 #pragma once
-/**
- * @file TransientVertexRing.hpp
- * @brief The ONE host-mapped per-frame-in-flight vertex ring features share.
- *
- * Three features (point-cloud transient, gizmo line-list, Canvas2D) each hand-rolled
- * this exact object — the same FrameSlot triple, the same vmaCreateBuffer(HOST_ACCESS_
- * SEQUENTIAL_WRITE | MAPPED) loop, the same retire-on-detach fix applied three times by
- * hand (#17). This type is that object ONCE, keeping the two lifecycle rules that were
- * repeatedly re-learned encoded in the API:
- *
- *  1. SLOT SELECTION takes the engine's REAL frame_index (slotFor(ctx.frame_index)) —
- *     never a private counter, which desyncs from the actual in-flight set (feature
- *     disable/re-enable, skipped frames, multi-scene) and lets the CPU overwrite a slot
- *     the GPU is still reading.
- *  2. RUNTIME DETACH must retire buffers through the frames-in-flight deferred-destroy
- *     queue (frames N-1/N-2 still bind them) — retireInto() nulls the handles so the
- *     destructor's immediate destroy() is a no-op on that path; destroy() remains the
- *     no-detach fallback (device idle at shutdown).
- *
- * Creation is fallible (Expected + rollback of partial allocations). Per-slot FEATURE
- * data (draw counts, content serials) deliberately does not live here — keep it in a
- * parallel array indexed by slotIndexFor(): the ring owns GPU lifecycle, nothing else.
- */
 
-#include <lux/engine/function/render/client/core/Errors.hpp> // Expected / renderFailure
+#include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 
-#include <vulkan/vulkan.h>
 #include <vk_mem_alloc.h>
 
 #include <algorithm>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 namespace lux::render
 {
-    class TransientVertexRing
+    /// Complete host-mapped vertex storage. The engine frame index selects the
+    /// slot. Runtime detach transfers its owners into the existing FIF retire
+    /// sink; ordinary destruction is only safe before submission or at idle.
+    class TransientVertexRing final
     {
     public:
         struct Slot
         {
-            VkBuffer buffer{VK_NULL_HANDLE};
-            VmaAllocation alloc{nullptr};
-            void* mapped{nullptr};
+            VmaBuffer buffer;
+            void* mapped{};
         };
 
-        TransientVertexRing() = default;
-        ~TransientVertexRing()
-        {
-            destroy();
-        }
-        TransientVertexRing(const TransientVertexRing&) = delete;
-        TransientVertexRing& operator=(const TransientVertexRing&) = delete;
-
-        /// Create one host-mapped VERTEX_BUFFER slot of @p slot_bytes per frame-in-flight
-        /// (at least one). On any slot's failure the already-created slots are rolled
-        /// back and the ring is left empty.
-        [[nodiscard]] Expected<void> create(
+        [[nodiscard]] static Expected<TransientVertexRing> create(
             VmaAllocator allocator,
             std::uint32_t frames_in_flight,
             VkDeviceSize slot_bytes
-        )
+        ) noexcept
         {
-            allocator_ = allocator;
-            const std::uint32_t count = std::max<std::uint32_t>(1u, frames_in_flight);
-            slots_.assign(count, Slot{});
-            for (auto& slot : slots_)
+            const auto count = std::max<std::uint32_t>(1u, frames_in_flight);
+            std::vector<Slot> slots;
+            slots.reserve(count);
+            for (std::uint32_t index = 0; index < count; ++index)
             {
-                VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-                bci.size = slot_bytes;
-                bci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-
-                VmaAllocationCreateInfo aci{};
-                aci.usage = VMA_MEMORY_USAGE_AUTO;
-                aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-                VmaAllocationInfo info{};
-                const VkResult r = vmaCreateBuffer(allocator_, &bci, &aci, &slot.buffer, &slot.alloc, &info);
-                if (r != VK_SUCCESS || info.pMappedData == nullptr)
+                VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
+                info.size = slot_bytes;
+                info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+                VmaAllocationCreateInfo allocation_info{};
+                allocation_info.usage = VMA_MEMORY_USAGE_AUTO;
+                allocation_info.flags =
+                    VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+                VkBuffer buffer{};
+                VmaAllocation allocation{};
+                VmaAllocationInfo mapping{};
+                const auto result = vmaCreateBuffer(allocator, &info, &allocation_info, &buffer, &allocation, &mapping);
+                if (result != VK_SUCCESS)
                 {
-                    destroy();
                     return renderFailure<err::memory::GpuAllocationFailed>();
                 }
-                slot.mapped = info.pMappedData;
+                auto owner = VmaBuffer::adopt({allocator, buffer, allocation});
+                if (!mapping.pMappedData)
+                {
+                    return renderFailure<err::memory::GpuAllocationFailed>();
+                }
+                slots.push_back({std::move(owner), mapping.pMappedData});
             }
-            return {};
+            return TransientVertexRing(allocator, std::move(slots));
         }
 
-        [[nodiscard]] bool empty() const noexcept
-        {
-            return slots_.empty();
-        }
+        TransientVertexRing(const TransientVertexRing&) = delete;
+        TransientVertexRing& operator=(const TransientVertexRing&) = delete;
+        TransientVertexRing(TransientVertexRing&&) noexcept = default;
+        TransientVertexRing& operator=(TransientVertexRing&&) noexcept = default;
+        ~TransientVertexRing() noexcept = default;
+
         [[nodiscard]] std::uint32_t size() const noexcept
         {
             return static_cast<std::uint32_t>(slots_.size());
         }
 
-        /// The slot index for the engine's REAL frame-in-flight (rule 1 above).
         [[nodiscard]] std::uint32_t slotIndexFor(std::uint32_t frame_index) const noexcept
         {
-            return frame_index % static_cast<std::uint32_t>(slots_.size());
+            return frame_index % size();
         }
-        [[nodiscard]] Slot& slotAt(std::uint32_t index) noexcept
-        {
-            return slots_[index];
-        }
+
         [[nodiscard]] const Slot& slotAt(std::uint32_t index) const noexcept
         {
             return slots_[index];
         }
-        [[nodiscard]] Slot& slotFor(std::uint32_t frame_index) noexcept
+
+        void flush(std::uint32_t index, VkDeviceSize bytes) noexcept
         {
-            return slots_[slotIndexFor(frame_index)];
+            vmaFlushAllocation(allocator_, slots_[index].buffer.allocation(), 0, bytes);
         }
 
-        /// Flush @p bytes of a slot's host-mapped range to the device.
-        void flush(std::uint32_t index, VkDeviceSize bytes)
-        {
-            vmaFlushAllocation(allocator_, slots_[index].alloc, 0, bytes);
-        }
-
-        /// Runtime-detach path (rule 2 above): hand every live buffer to a frames-in-
-        /// flight retire sink — `retire(VkBuffer, VmaAllocation)`, e.g. the deferred-
-        /// destroy queue or a ContextView's retireBuffer — and null the handles so the
-        /// destructor's destroy() becomes a no-op.
-        template <class RetireFn> void retireInto(RetireFn&& retire)
+        /// Consumes storage into the existing synchronous retirement sink.
+        /// A consumed/moved-from ring may only be destroyed or reassigned.
+        template <class RetireFn> void retireInto(RetireFn&& retire) && noexcept
         {
             for (auto& slot : slots_)
             {
-                if (slot.buffer != VK_NULL_HANDLE)
-                    retire(slot.buffer, slot.alloc);
-                slot = {};
-            }
-        }
-
-        /// Immediate-destruction fallback for the no-detach path ONLY (device idle at
-        /// shutdown); a no-op after retireInto() nulled the handles.
-        void destroy()
-        {
-            if (!allocator_)
-                return;
-            for (auto& slot : slots_)
-            {
-                if (slot.buffer != VK_NULL_HANDLE)
-                    vmaDestroyBuffer(allocator_, slot.buffer, slot.alloc);
-                slot = {};
+                const auto allocation = slot.buffer.release();
+                retire(allocation.buffer, allocation.allocation);
             }
             slots_.clear();
         }
 
     private:
-        VmaAllocator allocator_{nullptr};
+        TransientVertexRing(VmaAllocator allocator, std::vector<Slot> slots) noexcept
+            : allocator_(allocator), slots_(std::move(slots))
+        {
+        }
+
+        VmaAllocator allocator_;
         std::vector<Slot> slots_;
     };
-
 } // namespace lux::render

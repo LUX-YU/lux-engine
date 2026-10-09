@@ -4,15 +4,13 @@
  */
 
 #include <array>
-#include <lux/engine/render/renderer/features/gizmo/TriOverlayTransientFeature.hpp>
 #include <lux/engine/function/render/features/gizmo/GizmoVertex.hpp>
+#include <lux/engine/render/renderer/features/gizmo/TriOverlayTransientFeature.hpp>
 
-#include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/function/render/graph/RGEnums.hpp>
-#include <lux/engine/function/render/client/core/RenderFatal.hpp>
+#include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/render/renderer/features/TransientPrimitivePipelinePreset.hpp>
 
-#include <vk_mem_alloc.h>
 #include <cstring>
 
 namespace lux::render
@@ -41,12 +39,10 @@ namespace lux::render
 
     TriOverlayTransientFeature::TriOverlayTransientFeature(Config cfg)
         : RenderFeature(RenderFeature::Config{.name = "TriOverlayTransient"}), cfg_(std::move(cfg))
-    {}
-
-    TriOverlayTransientFeature::~TriOverlayTransientFeature()
     {
-        destroySlotBuffers();
     }
+
+    TriOverlayTransientFeature::~TriOverlayTransientFeature() = default;
 
     // ============================================================================
     //  Initialisation
@@ -68,7 +64,9 @@ namespace lux::render
 
         auto stages = cv.preparePipelineStages(stage_requests);
         if (!stages)
+        {
             return lux::cxx::unexpected(stages.error());
+        }
 
         // ---- Pipeline ----
         auto tmpl = makeTriOverlayGizmoTemplate();
@@ -82,8 +80,16 @@ namespace lux::render
         pipeline_handle_ = cv.registerGraphics(tmpl, stages->infos());
 
         // ---- GPU ring buffers (HOST_VISIBLE, persistently mapped) ----
-        allocator_ = cv.vmaAllocator();
-        createSlotBuffers();
+        auto ring = TransientVertexRing::create(
+            cv.vmaAllocator(),
+            cv.framesInFlight(),
+            static_cast<VkDeviceSize>(cfg_.max_vertices) * sizeof(GizmoVertex)
+        );
+        if (!ring)
+        {
+            return lux::cxx::unexpected(ring.error());
+        }
+        ring_.emplace(std::move(*ring));
 
         // ---- Scene-registry bridge for the upload handler ----
         incoming_ = &sceneView().resources().ensure<TransientTriOverlayBuffer>();
@@ -94,10 +100,14 @@ namespace lux::render
     //  Frame lifecycle
     // ============================================================================
 
-    void TriOverlayTransientFeature::onFrameBegin(const FeatureFrameContext& /*ctx*/)
+    void TriOverlayTransientFeature::onFrameBegin(const FeatureFrameContext& ctx)
     {
-        active_slot_ = frame_counter_ % kBufferCount;
-        ++frame_counter_;
+        if (!ring_)
+        {
+            draw_count_ = 0;
+            return;
+        }
+        active_slot_ = ring_->slotIndexFor(ctx.frame_index);
 
         auto data = incoming_->take();
         if (data.empty())
@@ -108,11 +118,10 @@ namespace lux::render
 
         const uint32_t count = static_cast<uint32_t>(std::min<size_t>(data.size(), cfg_.max_vertices));
 
-        auto& slot = slots_[active_slot_];
-        assert(slot.mapped && "EFrameSlot buffer was not created");
+        auto& slot = ring_->slotAt(active_slot_);
 
         std::memcpy(slot.mapped, data.data(), count * sizeof(GizmoVertex));
-        vmaFlushAllocation(allocator_, slot.alloc, 0, count * sizeof(GizmoVertex));
+        ring_->flush(active_slot_, count * sizeof(GizmoVertex));
         draw_count_ = count;
     }
 
@@ -128,76 +137,42 @@ namespace lux::render
             .setPipeline(pipeline_handle_)
             .bindSceneDS()
             .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::GIZMO)))
-            .setKernelFn([this](const PassRecordContext& ctx) {
-                if (draw_count_ == 0)
-                    return;
-                if (ctx.view == nullptr)
-                    return;
+            .setKernelFn(
+                [this](const PassRecordContext& ctx)
+                {
+                    if (draw_count_ == 0)
+                    {
+                        return;
+                    }
+                    if (ctx.view == nullptr)
+                    {
+                        return;
+                    }
 
-                auto& slot = slots_[active_slot_];
+                    auto& slot = ring_->slotAt(active_slot_);
 
-                VkDeviceSize zero_offset = 0;
-                vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &slot.buffer, &zero_offset);
-                vkCmdDraw(ctx.cmd, draw_count_, 1, 0, 0);
-            })
+                    const auto buffer = slot.buffer.buffer();
+                    VkDeviceSize zero_offset = 0;
+                    vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &buffer, &zero_offset);
+                    vkCmdDraw(ctx.cmd, draw_count_, 1, 0, 0);
+                }
+            )
             .setKernel("TriOverlayTransientDraw")
             .stage(ERenderStage::OVERLAY_STAGE); // overlay — composited on top of the post-processed
-                                           // (tonemapped) image, like the grid/line gizmos
-    }
-
-    // ============================================================================
-    //  Buffer management
-    // ============================================================================
-
-    void TriOverlayTransientFeature::createSlotBuffers()
-    {
-        const VkDeviceSize byte_size = static_cast<VkDeviceSize>(cfg_.max_vertices) * sizeof(GizmoVertex);
-
-        for (auto& slot : slots_)
-        {
-            VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-            bci.size = byte_size;
-            bci.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-
-            VmaAllocationCreateInfo aci{};
-            aci.usage = VMA_MEMORY_USAGE_AUTO;
-            aci.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
-
-            VmaAllocationInfo info{};
-            VkResult r = vmaCreateBuffer(allocator_, &bci, &aci, &slot.buffer, &slot.alloc, &info);
-            if (r != VK_SUCCESS)
-                renderFatal("TriOverlayTransientFeature buffer creation failed");
-            slot.mapped = info.pMappedData;
-        }
+                                                 // (tonemapped) image, like the grid/line gizmos
     }
 
     void TriOverlayTransientFeature::onDetachFromScene(RenderScene& /*scene*/)
     {
-        // Runtime removeFeature has no GPU idle wait; frames N-1/N-2 may still bind
-        // these ring buffers. Retire through the FIF deferred-destroy queue rather
-        // than the inline destroy the destructor would do. Nulled handles make
-        // destroySlotBuffers() a no-op on this path. (#17)
-        auto cv = contextView();
-        for (auto& slot : slots_)
+        if (!ring_)
         {
-            if (slot.buffer != VK_NULL_HANDLE)
-                cv.retireBuffer(slot.buffer, slot.alloc);
-            slot = {};
-        }
-    }
-
-    void TriOverlayTransientFeature::destroySlotBuffers()
-    {
-        // Fallback for the no-detach path (device idle at shutdown); a no-op after
-        // onDetachFromScene() has retired + nulled the handles.
-        if (!allocator_)
             return;
-        for (auto& slot : slots_)
-        {
-            if (slot.buffer != VK_NULL_HANDLE)
-                vmaDestroyBuffer(allocator_, slot.buffer, slot.alloc);
-            slot = {};
         }
+        // Frames in flight retain the buffers through the original retirement sink.
+        auto cv = contextView();
+        std::move(*ring_).retireInto([&](VkBuffer buffer, VmaAllocation allocation) noexcept
+                                     { cv.retireBuffer(buffer, allocation); });
+        ring_.reset();
+        draw_count_ = 0;
     }
-
 } // namespace lux::render

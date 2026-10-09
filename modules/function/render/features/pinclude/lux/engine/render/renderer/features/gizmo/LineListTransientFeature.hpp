@@ -7,14 +7,15 @@
  * a frame, nothing is drawn. Follows the PCFeatureTransient pattern.
  */
 
-#include <lux/engine/render/RenderFeature.hpp>
-#include <lux/engine/function/render/features/gizmo/GizmoVertex.hpp>
-#include <lux/engine/render/renderer/features/TransientVertexRing.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
-#include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>
+#include <lux/engine/function/render/features/gizmo/GizmoVertex.hpp>
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/render/RenderFeature.hpp>
+#include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>
+#include <lux/engine/render/renderer/features/TransientVertexRing.hpp>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -40,7 +41,9 @@ namespace lux::render
         std::vector<GizmoVertex> take()
         {
             if (!dirty_)
+            {
                 return {};
+            }
             dirty_ = false;
             return std::move(pending_);
         }
@@ -87,7 +90,7 @@ namespace lux::render
         // Shared FIF vertex ring: sized to framesInFlight() and indexed by the REAL
         // frame_index (replaces the old fixed slots_[3] + private frame counter, which
         // could desync from the actual in-flight set).
-        TransientVertexRing ring_;
+        std::optional<TransientVertexRing> ring_;
         uint32_t active_slot_{0};
         uint32_t draw_count_{0};
 

@@ -7,20 +7,17 @@
  * If no data arrives for a frame, nothing is drawn.
  */
 
-#include <lux/engine/render/RenderFeature.hpp>
-#include <lux/engine/function/render/features/gizmo/GizmoVertex.hpp>
 #include <lux/engine/function/render/client/core/ResourceHandle.hpp>
-#include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>
+#include <lux/engine/function/render/features/gizmo/GizmoVertex.hpp>
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/render/RenderFeature.hpp>
+#include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>
+#include <lux/engine/render/renderer/features/TransientVertexRing.hpp>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
-
-struct VmaAllocator_T;
-using VmaAllocator = VmaAllocator_T*;
-struct VmaAllocation_T;
-using VmaAllocation = VmaAllocation_T*;
 
 namespace lux::render
 {
@@ -44,7 +41,9 @@ namespace lux::render
         std::vector<GizmoVertex> take()
         {
             if (!dirty_)
+            {
                 return {};
+            }
             dirty_ = false;
             return std::move(pending_);
         }
@@ -84,28 +83,14 @@ namespace lux::render
         void onDetachFromScene(RenderScene& scene) override;
 
     private:
-        static constexpr uint32_t kBufferCount = 3;
-
-        struct EFrameSlot
-        {
-            VkBuffer buffer{VK_NULL_HANDLE};
-            VmaAllocation alloc{nullptr};
-            void* mapped{nullptr};
-        };
-
         Config cfg_;
         GraphicsPipelineHandle pipeline_handle_{kInvalidPipelineHandle};
 
-        VmaAllocator allocator_{nullptr};
-        EFrameSlot slots_[kBufferCount]{};
+        std::optional<TransientVertexRing> ring_;
         uint32_t active_slot_{0};
-        uint32_t frame_counter_{0};
         uint32_t draw_count_{0};
 
         TransientTriOverlayBuffer* incoming_{nullptr};
-
-        void createSlotBuffers();
-        void destroySlotBuffers();
     };
 
 } // namespace lux::render

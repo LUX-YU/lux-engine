@@ -4,21 +4,20 @@
  */
 
 #include <lux/engine/render/renderer/features/point_cloud/PCFeatureTransient.hpp>
-#include <lux/engine/render/resources/point_cloud/PointCloudGpuData.hpp>
 #include <lux/engine/render/resources/BuiltinShaderRegistry.hpp>
+#include <lux/engine/render/resources/point_cloud/PointCloudGpuData.hpp>
 
-#include <lux/engine/render/gpu/RenderContext.hpp>
-#include <lux/engine/render/scene/RenderScene.hpp>
-#include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/function/render/graph/RGEnums.hpp>
+#include <lux/engine/render/gpu/RenderContext.hpp>
 #include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
 #include <lux/engine/render/gpu/pipeline/StandardPipelineLayoutBuilder.hpp>
+#include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/render/renderer/features/point_cloud/PointCloudPipelinePreset.hpp>
 #include <lux/engine/render/resources/ShaderResources.hpp>
+#include <lux/engine/render/scene/RenderScene.hpp>
 
-#include <vk_mem_alloc.h>
-#include <cassert>
 #include <cstring>
+#include <vk_mem_alloc.h>
 
 namespace lux::render
 {
@@ -26,9 +25,10 @@ namespace lux::render
     PCFeatureTransient::PCFeatureTransient(Config cfg)
         : IPointCloudFeature(RenderFeature::Config{.name = "PointCloudTransient"}), cfg_(std::move(cfg)),
           point_size_(cfg_.point_size)
-    {}
+    {
+    }
 
-    // The ring destroys itself (no-detach fallback; a runtime detach retired + nulled first).
+    // An attached ring owns its buffers; runtime detach transfers them to retirement.
     PCFeatureTransient::~PCFeatureTransient() = default;
 
     // ============================================================================
@@ -50,7 +50,9 @@ namespace lux::render
 
         auto stages = preparePipelineStages(shaders, stage_requests);
         if (!stages)
+        {
             return lux::cxx::unexpected(stages.error());
+        }
 
         // ---- Pipeline ----
         auto tmpl = makePointCloudTemplate();
@@ -64,21 +66,28 @@ namespace lux::render
         tmpl.debug_name = "PointCloudTransient";
         auto pipeline = ctx.pipelineManager().registerGraphicsTemplate(tmpl, stages->infos());
         if (!pipeline)
+        {
             return lux::cxx::unexpected(pipeline.error());
+        }
         pipeline_handle_ = *pipeline;
 
         // ---- GPU ring buffers (HOST_VISIBLE, persistently mapped; shared FIF ring) ----
-        if (auto r = ring_.create(
-                ctx.vmaAllocator(),
-                contextView().framesInFlight(),
-                static_cast<VkDeviceSize>(cfg_.max_points) * sizeof(GpuPointVertex)
-            );
-            !r)
-            return r;
+        auto ring = TransientVertexRing::create(
+            ctx.vmaAllocator(),
+            contextView().framesInFlight(),
+            static_cast<VkDeviceSize>(cfg_.max_points) * sizeof(GpuPointVertex)
+        );
+        if (!ring)
+        {
+            return lux::cxx::unexpected(ring.error());
+        }
+        ring_.emplace(std::move(*ring));
 
         // ---- Scene-registry bridge for the upload handler ----
         if (!renderScene().resources().find<TransientPointCloudBuffer>())
+        {
             renderScene().resources().emplace<TransientPointCloudBuffer>();
+        }
         incoming_ = renderScene().resources().find<TransientPointCloudBuffer>();
         return {};
     }
@@ -89,14 +98,14 @@ namespace lux::render
 
     void PCFeatureTransient::onFrameBegin(const FeatureFrameContext& ctx)
     {
-        if (ring_.empty())
+        if (!ring_)
         {
             draw_count_ = 0;
             return;
         }
         // The engine's REAL frame-in-flight picks the slot (rule encoded in the ring —
         // the old private frame counter could desync and overwrite an in-flight slot).
-        active_slot_ = ring_.slotIndexFor(ctx.frame_index);
+        active_slot_ = ring_->slotIndexFor(ctx.frame_index);
 
         auto data = incoming_->take();
         if (data.empty())
@@ -107,11 +116,10 @@ namespace lux::render
 
         const uint32_t count = static_cast<uint32_t>(std::min<size_t>(data.size(), cfg_.max_points));
 
-        auto& slot = ring_.slotAt(active_slot_);
-        assert(slot.mapped && "ring slot buffer was not created");
+        auto& slot = ring_->slotAt(active_slot_);
 
         std::memcpy(slot.mapped, data.data(), count * sizeof(GpuPointVertex));
-        ring_.flush(active_slot_, count * sizeof(GpuPointVertex));
+        ring_->flush(active_slot_, count * sizeof(GpuPointVertex));
         draw_count_ = count;
     }
 
@@ -127,28 +135,36 @@ namespace lux::render
             .setPipeline(pipeline_handle_)
             .bindSceneDS()
             .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::POINT_CLOUD)))
-            .setKernelFn([this](const PassRecordContext& ctx) {
-                if (draw_count_ == 0)
-                    return;
-                if (ctx.view == nullptr)
-                    return;
+            .setKernelFn(
+                [this](const PassRecordContext& ctx)
+                {
+                    if (draw_count_ == 0)
+                    {
+                        return;
+                    }
+                    if (ctx.view == nullptr)
+                    {
+                        return;
+                    }
 
-                auto& slot = ring_.slotAt(active_slot_);
+                    auto& slot = ring_->slotAt(active_slot_);
 
-                const float point_size = point_size_;
-                vkCmdPushConstants(
-                    ctx.cmd,
-                    ctx.pipeline_layout,
-                    ctx.pc_stage_flags,
-                    kViewPushPrefixSize,
-                    sizeof(float),
-                    &point_size
-                );
+                    const float point_size = point_size_;
+                    vkCmdPushConstants(
+                        ctx.cmd,
+                        ctx.pipeline_layout,
+                        ctx.pc_stage_flags,
+                        kViewPushPrefixSize,
+                        sizeof(float),
+                        &point_size
+                    );
 
-                VkDeviceSize zero_offset = 0;
-                vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &slot.buffer, &zero_offset);
-                vkCmdDraw(ctx.cmd, draw_count_, 1, 0, 0);
-            })
+                    const auto buffer = slot.buffer.buffer();
+                    VkDeviceSize zero_offset = 0;
+                    vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &buffer, &zero_offset);
+                    vkCmdDraw(ctx.cmd, draw_count_, 1, 0, 0);
+                }
+            )
             .setKernel("PointCloudTransientDraw");
     }
 
@@ -163,7 +179,13 @@ namespace lux::render
         // through the frames-in-flight deferred-destroy queue instead of destroying
         // inline; retireInto nulls the handles so the destructor is a no-op. (#17)
         auto& q = renderContext().deferredDestroyQueue();
-        ring_.retireInto([&](VkBuffer b, VmaAllocation a) { q.retireBuffer(b, a); });
+        if (!ring_)
+        {
+            return;
+        }
+        std::move(*ring_).retireInto([&](VkBuffer b, VmaAllocation a) noexcept { q.retireBuffer(b, a); });
+        ring_.reset();
+        draw_count_ = 0;
     }
 
 } // namespace lux::render

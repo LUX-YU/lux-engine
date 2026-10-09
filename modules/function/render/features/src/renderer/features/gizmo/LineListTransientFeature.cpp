@@ -4,16 +4,15 @@
  */
 
 #include <array>
-#include <lux/engine/render/renderer/features/gizmo/LineListTransientFeature.hpp>
 #include <lux/engine/function/render/features/gizmo/GizmoVertex.hpp>
+#include <lux/engine/render/renderer/features/gizmo/LineListTransientFeature.hpp>
 
-#include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/function/render/graph/RGEnums.hpp>
+#include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/render/renderer/features/TransientPrimitivePipelinePreset.hpp>
 
-#include <vk_mem_alloc.h>
-#include <cassert>
 #include <cstring>
+#include <vk_mem_alloc.h>
 
 namespace lux::render
 {
@@ -40,9 +39,10 @@ namespace lux::render
 
     LineListTransientFeature::LineListTransientFeature(Config cfg)
         : RenderFeature(RenderFeature::Config{.name = "LineListTransient"}), cfg_(std::move(cfg))
-    {}
+    {
+    }
 
-    // The ring destroys itself (no-detach fallback; a runtime detach retired + nulled first).
+    // An attached ring owns its buffers; runtime detach transfers them to retirement.
     LineListTransientFeature::~LineListTransientFeature() = default;
 
     // ============================================================================
@@ -65,7 +65,9 @@ namespace lux::render
 
         auto stages = cv.preparePipelineStages(stage_requests);
         if (!stages)
+        {
             return lux::cxx::unexpected(stages.error());
+        }
         auto tmpl = makeLineListGizmoTemplate();
         tmpl.descriptor_set_count = 1;
         tmpl.line_width = cfg_.line_width;
@@ -78,13 +80,16 @@ namespace lux::render
         pipeline_handle_ = cv.registerGraphics(tmpl, stages->infos());
 
         // ---- GPU ring buffers (HOST_VISIBLE, persistently mapped; shared FIF ring) ----
-        if (auto r = ring_.create(
-                cv.vmaAllocator(),
-                cv.framesInFlight(),
-                static_cast<VkDeviceSize>(cfg_.max_vertices) * sizeof(GizmoVertex)
-            );
-            !r)
-            return r;
+        auto ring = TransientVertexRing::create(
+            cv.vmaAllocator(),
+            cv.framesInFlight(),
+            static_cast<VkDeviceSize>(cfg_.max_vertices) * sizeof(GizmoVertex)
+        );
+        if (!ring)
+        {
+            return lux::cxx::unexpected(ring.error());
+        }
+        ring_.emplace(std::move(*ring));
 
         // ---- Scene-registry bridge for the upload handler ----
         incoming_ = &sceneView().resources().ensure<TransientLineListBuffer>();
@@ -97,14 +102,14 @@ namespace lux::render
 
     void LineListTransientFeature::onFrameBegin(const FeatureFrameContext& ctx)
     {
-        if (ring_.empty())
+        if (!ring_)
         {
             draw_count_ = 0;
             return;
         }
         // The engine's REAL frame-in-flight picks the slot (rule encoded in the ring —
         // the old private frame counter could desync and overwrite an in-flight slot).
-        active_slot_ = ring_.slotIndexFor(ctx.frame_index);
+        active_slot_ = ring_->slotIndexFor(ctx.frame_index);
 
         auto data = incoming_->take();
         if (data.empty())
@@ -115,11 +120,10 @@ namespace lux::render
 
         const uint32_t count = static_cast<uint32_t>(std::min<size_t>(data.size(), cfg_.max_vertices));
 
-        auto& slot = ring_.slotAt(active_slot_);
-        assert(slot.mapped && "ring slot buffer was not created");
+        auto& slot = ring_->slotAt(active_slot_);
 
         std::memcpy(slot.mapped, data.data(), count * sizeof(GizmoVertex));
-        ring_.flush(active_slot_, count * sizeof(GizmoVertex));
+        ring_->flush(active_slot_, count * sizeof(GizmoVertex));
         draw_count_ = count;
     }
 
@@ -135,21 +139,29 @@ namespace lux::render
             .setPipeline(pipeline_handle_)
             .bindSceneDS()
             .setPhaseMask(phaseBit(static_cast<render_phase_id>(ECoreRenderPhase::GIZMO)))
-            .setKernelFn([this](const PassRecordContext& ctx) {
-                if (draw_count_ == 0)
-                    return;
-                if (ctx.view == nullptr)
-                    return;
+            .setKernelFn(
+                [this](const PassRecordContext& ctx)
+                {
+                    if (draw_count_ == 0)
+                    {
+                        return;
+                    }
+                    if (ctx.view == nullptr)
+                    {
+                        return;
+                    }
 
-                auto& slot = ring_.slotAt(active_slot_);
+                    auto& slot = ring_->slotAt(active_slot_);
 
-                VkDeviceSize zero_offset = 0;
-                vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &slot.buffer, &zero_offset);
-                vkCmdDraw(ctx.cmd, draw_count_, 1, 0, 0);
-            })
+                    const auto buffer = slot.buffer.buffer();
+                    VkDeviceSize zero_offset = 0;
+                    vkCmdBindVertexBuffers(ctx.cmd, 0, 1, &buffer, &zero_offset);
+                    vkCmdDraw(ctx.cmd, draw_count_, 1, 0, 0);
+                }
+            )
             .setKernel("LineListTransientDraw")
             .stage(ERenderStage::OVERLAY_STAGE); // overlay — composited on top of the post-processed
-                                           // (tonemapped) image, after the grid
+                                                 // (tonemapped) image, after the grid
     }
 
     void LineListTransientFeature::onDetachFromScene(RenderScene& /*scene*/)
@@ -159,7 +171,13 @@ namespace lux::render
         // than the inline destroy the destructor would do; retireInto nulls the
         // handles so the destructor is a no-op. (#17)
         auto cv = contextView();
-        ring_.retireInto([&](VkBuffer b, VmaAllocation a) { cv.retireBuffer(b, a); });
+        if (!ring_)
+        {
+            return;
+        }
+        std::move(*ring_).retireInto([&](VkBuffer b, VmaAllocation a) noexcept { cv.retireBuffer(b, a); });
+        ring_.reset();
+        draw_count_ = 0;
     }
 
 } // namespace lux::render

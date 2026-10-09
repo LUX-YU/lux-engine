@@ -2,6 +2,7 @@
 
 #include <array>
 #include <concepts>
+#include <lux/cxx/algorithm/hash.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -34,12 +35,7 @@ namespace lux::semantic
 
     [[nodiscard]] constexpr TypeId typeId(std::string_view canonical_name) noexcept
     {
-        std::uint64_t result = 14695981039346656037ULL;
-        for (const auto value : canonical_name)
-        {
-            result ^= static_cast<std::uint8_t>(value);
-            result *= 1099511628211ULL;
-        }
+        const auto result = cxx::algorithm::fnv1a(canonical_name);
         return result == InvalidTypeId ? 1U : result;
     }
 

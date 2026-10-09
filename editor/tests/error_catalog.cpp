@@ -53,6 +53,12 @@ int main(int argc, char** argv)
     assert(registerCatalog() && registry.find(id) == definition);
     assert(error::format({id, {17}}).find("Unknown error") == std::string::npos);
 
+#if defined(LUX_TEST_APP_ERRORS)
+    // Process owns and explicitly registers its catalog independently of Editor.
+    assert(!registry.find(error::errorId("lux.process.execution.0")));
+    assert(!registry.find(error::errorId("lux.process.execution.unknown")));
+#endif
+
     // Linking a component does not register unrelated component catalogs.
     constexpr std::string_view domain_examples[]{
         "lux.editor.project.manifest",

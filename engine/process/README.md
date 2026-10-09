@@ -27,6 +27,13 @@ owner 验证并捕获请求
 
 “任务完成”不等于“业务已经采用”，更不等于 GPU 完成。停止结果不能当作成功结果，失败之前已经发生的文件效果也不能因错误返回而被抹掉。
 
+## 执行错误的跨模块表示
+
+`execution/ExecutionError.hpp` 提供 `registerExecutionErrors()` 和 `toError(EExecutionError)`。
+宿主装配时显式登记 Process 目录并处理登记冲突；转换只复制稳定错误 ID 和数值参数，
+不登记描述、不查询全局目录、不分配。原 `lux.process.execution.*` 身份及恢复分类保持不变。
+Editor 等消费者不再维护一份执行错误映射；Process 只依赖底层 `core::error`，不依赖 Editor。
+
 ## 与 Scene 的边界
 
 Editor 中 Main 拥有活动 Scene。不得将 Scene 建立、无限运行循环、暂停等待和销毁全部塞进一个长期 Process worker，使该 worker 变成 Scene owner。

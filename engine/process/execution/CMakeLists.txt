@@ -13,6 +13,7 @@ add_component(
     NAMESPACE      lux::engine::process
     OUTPUT_NAME    lux_engine_process_execution
     SOURCE_FILES
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ExecutionError.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ExecutionRuntime.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Task.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Timer.cpp
@@ -34,13 +35,15 @@ target_link_libraries(
     process_execution
     PUBLIC
         lux::engine::core::async_port
+        lux::engine::core::error
         lux::cxx::compile_time
         lux::cxx::container
         STDEXEC::stdexec
 )
+
 component_add_transitive_commands(
     process_execution
-    "find_package(lux-engine-core REQUIRED COMPONENTS async_port)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS async_port error)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time container)"
     "find_package(stdexec CONFIG REQUIRED)"
 )
@@ -53,6 +56,11 @@ lux_engine_install_components(
 )
 
 if(BUILD_TESTING)
+    add_executable(execution_error_test test/ExecutionErrorTest.cpp)
+    target_link_libraries(execution_error_test PRIVATE lux::engine::process::process_execution)
+    add_test(NAME process.execution_errors COMMAND execution_error_test)
+    add_test(NAME process.execution_errors_collision COMMAND execution_error_test --collision)
+
     add_executable(task_scope_test test/TaskScopeTest.cpp)
     target_link_libraries(task_scope_test PRIVATE lux::engine::process::process_execution)
     if(MSVC)

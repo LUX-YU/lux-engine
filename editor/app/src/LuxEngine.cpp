@@ -19,6 +19,7 @@
 #include <lux/engine/editor/detail/ProjectPrepared.hpp>
 #include <lux/engine/editor/detail/ProjectUiMount.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
+#include <lux/engine/process/ExecutionError.hpp>
 #include <lux/engine/process/ObjectScheduler.hpp>
 #include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/scene/SceneError.hpp>
@@ -32,29 +33,6 @@ namespace lux::editor
 {
     namespace
     {
-        error::Error executionError(process::EExecutionError value) noexcept
-        {
-            constexpr error::ErrorId ids[]{
-                Errors::ProcessExecution0,
-                Errors::ProcessExecution1,
-                Errors::ProcessExecution2,
-                Errors::ProcessExecution3,
-                Errors::ProcessExecution4,
-                Errors::ProcessExecution5,
-                Errors::ProcessExecution6,
-                Errors::ProcessExecution7,
-                Errors::ProcessExecution8,
-                Errors::ProcessExecution9,
-                Errors::ProcessExecution10
-            };
-            static_assert(
-                std::size(ids) == static_cast<std::size_t>(process::EExecutionError::CAPABILITY_UNAVAILABLE) + 1
-            );
-            const auto code = static_cast<std::size_t>(value);
-            constexpr auto unknown = Errors::ProcessExecutionUnknown;
-            return {code < std::size(ids) ? ids[code] : unknown, {code}};
-        }
-
         error::Error creationError(const engine::EngineContext::VCreateFailure& failure) noexcept
         {
             return std::visit(
@@ -62,7 +40,7 @@ namespace lux::editor
                 {
                     if constexpr (std::is_same_v<std::decay_t<decltype(value)>, process::EExecutionError>)
                     {
-                        return executionError(value);
+                        return process::toError(value);
                     }
                     else
                     {
@@ -80,7 +58,7 @@ namespace lux::editor
                 {
                     if constexpr (std::is_same_v<std::decay_t<decltype(value)>, process::EExecutionError>)
                     {
-                        return executionError(value);
+                        return process::toError(value);
                     }
                     else
                     {
@@ -332,7 +310,7 @@ namespace lux::editor
             auto scheduler = host_.engine->execution().blocking();
             if (!scheduler)
             {
-                return cxx::unexpected(executionError(scheduler.error()));
+                return cxx::unexpected(process::toError(scheduler.error()));
             }
             // An intent triggered by candidate cleanup is later than this request.
             const auto serial = project_request_serial_ + 1;
@@ -358,7 +336,7 @@ namespace lux::editor
                         ) |
                         stdexec::upon_error(
                             [](process::EExecutionError error) noexcept
-                            { return detail::ProjectPreparation{cxx::unexpected(executionError(error)), false}; }
+                            { return detail::ProjectPreparation{cxx::unexpected(process::toError(error)), false}; }
                         ) |
                         stdexec::upon_stopped(
                             []() noexcept
@@ -383,7 +361,7 @@ namespace lux::editor
             );
             if (!submitted)
             {
-                return cxx::unexpected(executionError(submitted.error()));
+                return cxx::unexpected(process::toError(submitted.error()));
             }
             project_prepare_ = *submitted;
             return {};
@@ -560,12 +538,12 @@ namespace lux::editor
             auto collected = host_.engine->execution().collectCompletions();
             if (!collected)
             {
-                return cxx::unexpected(executionError(collected.error()));
+                return cxx::unexpected(process::toError(collected.error()));
             }
             auto dispatched = host_.engine->execution().dispatchTaskEvents();
             if (!dispatched)
             {
-                return cxx::unexpected(executionError(dispatched.error()));
+                return cxx::unexpected(process::toError(dispatched.error()));
             }
             static_cast<void>(object::ObjectRuntime::instance().dispatchPending());
             const bool closing = host_.window->shouldClose();
@@ -704,6 +682,10 @@ namespace lux::editor
             return cxx::unexpected(registered.error());
         }
         if (auto registered = registerEditorUiErrors(); !registered)
+        {
+            return cxx::unexpected(registered.error());
+        }
+        if (auto registered = process::registerExecutionErrors(); !registered)
         {
             return cxx::unexpected(registered.error());
         }

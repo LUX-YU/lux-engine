@@ -367,7 +367,9 @@ namespace lux::flowforge
                     }
                     else if constexpr (std::is_same_v<T, FlowSourceReference>)
                     {
-                        return value.id != 0 && value.id != UINT64_MAX;
+                        const bool is_variable = node.operation == ENodeOperation::GET_VARIABLE ||
+                                                 node.operation == ENodeOperation::SET_VARIABLE;
+                        return value.id != 0 && (!is_variable || value.id != UINT64_MAX);
                     }
                     else if constexpr (std::is_same_v<T, FlowSourceField>)
                     {

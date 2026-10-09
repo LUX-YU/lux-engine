@@ -1,5 +1,6 @@
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FlowSource.hpp>
+#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 
 #include <array>
 #include <concepts>
@@ -256,6 +257,25 @@ namespace
         require(sourceBytes(dynamic) == dynamic_source);
         check(dynamic);
     }
+
+    void checkMaximumCallee()
+    {
+        FlowGraph graph;
+        auto definition = std::make_unique<FuncDefNode>("maximum", std::vector<FuncArgInfo>{});
+        auto* callee = definition.get();
+        require(graph.insertNode({{UINT64_MAX}, std::move(definition)}));
+        require(graph.insertNode({{1}, std::make_unique<GraphFuncCallNode>(*callee)}));
+        require(graph.insertNode({{2}, std::make_unique<FuncReturnNode>(*callee)}));
+        const auto encoded = sourceBytes(graph);
+        auto decoded = decodeFlowSource(encoded);
+        require(decoded.has_value());
+        auto rebuilt = materializeFlowSource(*decoded);
+        require(rebuilt.has_value() && sourceBytes(*rebuilt) == encoded);
+        // Variable IDs use their existing independent counter; its maximum sentinel is unchanged.
+        FlowSourceVariable variable;
+        variable.id = UINT64_MAX;
+        require(!validateFlowVariable(variable));
+    }
 } // namespace
 
 int main()
@@ -263,6 +283,7 @@ int main()
     checkReceiver();
     checkStoreKeys();
     checkPinStore();
+    checkMaximumCallee();
     FlowGraph graph;
     auto candidate = std::make_unique<SequenceNode>();
     auto& sequence = *candidate;

@@ -179,9 +179,9 @@ namespace
         auto& start = entry(graph);
         auto& first = add<FuncDefNode>(graph, "First", std::vector<FuncArgInfo>{});
         auto& second = add<FuncDefNode>(graph, "Second", std::vector<FuncArgInfo>{});
-        auto& call = add<GraphFuncCallNode>(graph, first);
-        auto& nested = add<GraphFuncCallNode>(graph, second);
-        auto& recurse = add<GraphFuncCallNode>(graph, first);
+        auto& call = add<GraphFuncCallNode>(graph, graph.nodeId(&first), first);
+        auto& nested = add<GraphFuncCallNode>(graph, graph.nodeId(&second), second);
+        auto& recurse = add<GraphFuncCallNode>(graph, graph.nodeId(&first), first);
         auto& sequence = add<SequenceNode>(graph);
         auto desc = description();
         desc.kind = script::EScriptApiMethodKind::ASYNC_OPERATION;
@@ -221,10 +221,32 @@ namespace
         FlowGraph graph;
         auto& start = entry(graph);
         auto& function = add<FuncDefNode>(graph, "Local", std::vector<FuncArgInfo>{});
-        auto& call = add<GraphFuncCallNode>(graph, foreign_definition);
+        auto& call = add<GraphFuncCallNode>(graph, foreign.nodeId(&foreign_definition), foreign_definition);
         link(function.execOutPin(), call.execInPin());
         require(foreign.nodeId(&foreign_definition) == graph.nodeId(&start));
         failure(analyze(graph), EFlowForgeError::GRAPH_INVALID, graph.nodeId(&function));
+    }
+
+    void rebuiltCallee()
+    {
+        FlowGraph graph;
+        auto& start = entry(graph);
+        auto& definition = add<FuncDefNode>(graph, "Rebuilt", std::vector<FuncArgInfo>{});
+        const auto id = graph.nodeId(&definition);
+        auto& call = add<GraphFuncCallNode>(graph, id, definition);
+        auto& returned = add<FuncReturnNode>(graph, id, definition);
+        link(start.execOutPin(), call.execInPin());
+        link(definition.execOutPin(), returned.execInPin());
+        require(analyze(graph).has_value());
+        auto old = graph.extractNode(id);
+        require(old.has_value());
+        auto replacement = std::make_unique<FuncDefNode>("Rebuilt", std::vector<FuncArgInfo>{});
+        auto* replacement_pointer = replacement.get();
+        require(replacement_pointer != &definition);
+        require(graph.insertNode({id, std::move(replacement), old->pins}));
+        old.reset();
+        link(replacement_pointer->execOutPin(), returned.execInPin());
+        require(analyze(graph).has_value());
     }
 
     void borrowed()
@@ -300,6 +322,7 @@ int main()
     transitive();
     borrowed();
     foreignCallee();
+    rebuiltCallee();
 #if !defined(FLOW_ANALYSIS_COMPILER)
     graph::PinId start;
     graph::NodeId witness;

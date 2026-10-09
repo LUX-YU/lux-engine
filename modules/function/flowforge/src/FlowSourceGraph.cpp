@@ -388,7 +388,8 @@ namespace lux::flowforge
             case ENodeOperation::FUNC_RETURN:
             case ENodeOperation::GRAPH_FUNC_CALL:
             {
-                const auto* target = graph.findNodeById(NodeId{std::get<FlowSourceReference>(source.parameters).id});
+                const NodeId reference{std::get<FlowSourceReference>(source.parameters).id};
+                const auto* target = graph.findNodeById(reference);
                 if (!target || target->operation() != ENodeOperation::FUNC_DEF_START)
                 {
                     return fail(EFlowSourceError::INVALID_IDENTITY, "function", source.id);
@@ -396,9 +397,9 @@ namespace lux::flowforge
                 const auto& definition = static_cast<const FuncDefNode&>(*target);
                 if (operation == ENodeOperation::FUNC_RETURN)
                 {
-                    return std::unique_ptr<Node>(std::make_unique<FuncReturnNode>(definition));
+                    return std::unique_ptr<Node>(std::make_unique<FuncReturnNode>(reference, definition));
                 }
-                return std::unique_ptr<Node>(std::make_unique<GraphFuncCallNode>(definition));
+                return std::unique_ptr<Node>(std::make_unique<GraphFuncCallNode>(reference, definition));
             }
             case ENodeOperation::GET_VARIABLE:
             case ENodeOperation::SET_VARIABLE:
@@ -691,19 +692,18 @@ namespace lux::flowforge
                 FlowSourceSignature{captureArguments(static_cast<const OnEventNode&>(node).paramInfos()), {}};
             break;
         case ENodeOperation::FUNC_RETURN:
-            if (!static_cast<const FuncReturnNode&>(node).def())
+            if (!static_cast<const FuncReturnNode&>(node).resolveDefinition(graph))
             {
                 return fail(EFlowSourceError::INVALID_IDENTITY, "function", id);
             }
-            item.parameters = FlowSourceReference{graph.nodeId(static_cast<const FuncReturnNode&>(node).def()).value};
+            item.parameters = FlowSourceReference{static_cast<const FuncReturnNode&>(node).definitionId().value};
             break;
         case ENodeOperation::GRAPH_FUNC_CALL:
-            if (!static_cast<const GraphFuncCallNode&>(node).callee())
+            if (!static_cast<const GraphFuncCallNode&>(node).resolveCallee(graph))
             {
                 return fail(EFlowSourceError::INVALID_IDENTITY, "function", id);
             }
-            item.parameters =
-                FlowSourceReference{graph.nodeId(static_cast<const GraphFuncCallNode&>(node).callee()).value};
+            item.parameters = FlowSourceReference{static_cast<const GraphFuncCallNode&>(node).calleeId().value};
             break;
         case ENodeOperation::GET_VARIABLE:
             item.parameters = FlowSourceReference{static_cast<const GetVariableNode&>(node).variableId()};

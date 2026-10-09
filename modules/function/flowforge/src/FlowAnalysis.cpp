@@ -301,6 +301,7 @@ namespace lux::flowforge
             NodeId callee;
             bool suspends{};
             bool foreign_callee{};
+            bool incompatible_callee{};
         };
 
         struct FunctionSummary final
@@ -343,13 +344,11 @@ namespace lux::flowforge
 
         [[nodiscard]] FlowForgeResult<void> build(const FlowGraph& graph) noexcept
         {
-            std::unordered_set<const FuncDefNode*> definitions;
             for (const auto& storage : graph.nodes())
             {
                 if (storage.node->operation() == ENodeOperation::FUNC_DEF_START)
                 {
                     const auto* function = static_cast<const FuncDefNode*>(storage.node);
-                    definitions.insert(function);
                     functions.emplace(storage.id, FunctionSummary{graph.pinId(&function->execOutPin())});
                 }
             }
@@ -369,14 +368,12 @@ namespace lux::flowforge
 
                 if (node.operation() == ENodeOperation::GRAPH_FUNC_CALL)
                 {
-                    const auto* callee = static_cast<const GraphFuncCallNode&>(node).callee();
-                    if (callee != nullptr)
+                    const auto& call = static_cast<const GraphFuncCallNode&>(node);
+                    projected.foreign_callee = !functions.contains(call.calleeId());
+                    projected.incompatible_callee = !projected.foreign_callee && call.resolveCallee(graph) == nullptr;
+                    if (!projected.foreign_callee)
                     {
-                        projected.foreign_callee = !definitions.contains(callee);
-                        if (!projected.foreign_callee)
-                        {
-                            projected.callee = graph.nodeId(callee);
-                        }
+                        projected.callee = call.calleeId();
                     }
                 }
 
@@ -398,6 +395,7 @@ namespace lux::flowforge
             for (auto& [id, summary] : functions)
             {
                 bool has_foreign_callee{};
+                bool has_incompatible_callee{};
                 visitDirectExecution(
                     summary.entry,
                     [&](NodeId node_id, const ExecutionNode& node) noexcept
@@ -407,6 +405,7 @@ namespace lux::flowforge
                             summary.direct_witness = earlierWitness(summary.direct_witness, node_id);
                         }
                         has_foreign_callee = has_foreign_callee || node.foreign_callee;
+                        has_incompatible_callee = has_incompatible_callee || node.incompatible_callee;
                         const bool is_new_callee =
                             node.callee.valid() &&
                             std::ranges::find(summary.callees, node.callee) == summary.callees.end();
@@ -421,6 +420,14 @@ namespace lux::flowforge
                     return cxx::unexpected(FlowForgeFailure{
                         .code = EFlowForgeError::GRAPH_INVALID,
                         .message = "graph function call references a definition outside the graph",
+                        .node_id = id.value
+                    });
+                }
+                if (has_incompatible_callee)
+                {
+                    return cxx::unexpected(FlowForgeFailure{
+                        .code = EFlowForgeError::GRAPH_INVALID,
+                        .message = "graph function call signature differs from its definition",
                         .node_id = id.value
                     });
                 }

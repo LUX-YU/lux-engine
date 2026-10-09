@@ -845,7 +845,7 @@ namespace lux::flowforge
             // symbol references are order-independent.
             case ENodeOperation::GRAPH_FUNC_CALL: {
                 const auto& call = static_cast<const GraphFuncCallNode&>(*node);
-                const FuncDefNode* callee = call.callee();
+                const FuncDefNode* callee = call.resolveCallee(*bc.graph);
                 if (!callee)
                 {
                     LUX_FF_FAIL(bc, "graph call has no callee");

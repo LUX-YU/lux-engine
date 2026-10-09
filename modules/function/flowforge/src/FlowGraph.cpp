@@ -454,7 +454,7 @@ namespace lux::flowforge
             {
                 return failure(E::UNKNOWN_NODE, id);
             }
-            // A definition cannot disappear while one of its callers still holds its address.
+            // Removing a referenced definition requires removing its users in the same batch.
             for (const auto& storage : graph.nodes())
             {
                 if (std::ranges::find(change.erase, storage.id) != change.erase.end())
@@ -463,9 +463,9 @@ namespace lux::flowforge
                 }
                 const auto* user = storage.node;
                 if ((user->operation() == ENodeOperation::GRAPH_FUNC_CALL &&
-                     static_cast<const GraphFuncCallNode*>(user)->callee() == node) ||
+                     static_cast<const GraphFuncCallNode*>(user)->calleeId() == id) ||
                     (user->operation() == ENodeOperation::FUNC_RETURN &&
-                     static_cast<const FuncReturnNode*>(user)->def() == node))
+                     static_cast<const FuncReturnNode*>(user)->definitionId() == id))
                 {
                     return failure(E::INVALID_ID, id);
                 }
@@ -544,28 +544,37 @@ namespace lux::flowforge
                 return failure(E::DUPLICATE_NODE, candidate.id);
             }
             auto& node = **source;
-            const auto owns_definition = [&](const FuncDefNode* definition)
+            const auto valid_reference = [&](const auto& reference, NodeId definition_id)
             {
-                if (!definition)
+                const Node* definition = nullptr;
+                for (const auto& insertion : change.insert)
                 {
-                    return false;
-                }
-                for (const auto& storage : graph.nodes())
-                {
-                    if (storage.node == definition)
+                    const bool is_definition_candidate =
+                        definition_id.valid() && insertion.id == definition_id && insertion.node;
+                    if (is_definition_candidate)
                     {
-                        return std::ranges::find(change.erase, storage.id) == change.erase.end();
+                        definition = insertion.node->get();
+                        break;
                     }
                 }
-                return std::ranges::any_of(
-                    change.insert,
-                    [&](const auto& insertion) { return insertion.node && insertion.node->get() == definition; }
-                );
+                if (!definition && std::ranges::find(change.erase, definition_id) == change.erase.end())
+                {
+                    definition = graph.findNodeById(definition_id);
+                }
+                const bool is_definition = definition && definition->operation() == ENodeOperation::FUNC_DEF_START;
+                return is_definition && reference.matchesSignature(static_cast<const FuncDefNode&>(*definition));
             };
-            if ((node.operation() == ENodeOperation::GRAPH_FUNC_CALL &&
-                 !owns_definition(static_cast<const GraphFuncCallNode&>(node).callee())) ||
-                (node.operation() == ENodeOperation::FUNC_RETURN &&
-                 !owns_definition(static_cast<const FuncReturnNode&>(node).def())))
+            const bool is_invalid_call = node.operation() == ENodeOperation::GRAPH_FUNC_CALL &&
+                                         !valid_reference(
+                                             static_cast<const GraphFuncCallNode&>(node),
+                                             static_cast<const GraphFuncCallNode&>(node).calleeId()
+                                         );
+            const bool is_invalid_return = node.operation() == ENodeOperation::FUNC_RETURN &&
+                                           !valid_reference(
+                                               static_cast<const FuncReturnNode&>(node),
+                                               static_cast<const FuncReturnNode&>(node).definitionId()
+                                           );
+            if (is_invalid_call || is_invalid_return)
             {
                 return failure(E::INVALID_ID, candidate.id);
             }

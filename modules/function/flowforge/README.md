@@ -71,3 +71,17 @@ commit swaps them without allocating or invoking user code.
 
 This step does not remove graph membership pointers or polymorphic
 semantic node classes. The registered Flow payload/compiler migration is still required.
+
+Function calls and function returns store the definition's graph-local `NodeId`, not its
+address. Their constructors borrow a definition only to copy the initial pin schema. Resolve
+against the receiving graph immediately before use; missing/wrong-kind definitions or a
+different pin signature fail resolution. Pin types still borrow the immutable metadata
+environment under its existing lifetime contract. Equal numeric IDs in different graphs do
+not identify the same object: callers explicitly supply an ID from the receiving graph.
+
+An extracted definition can be restored at a different address without rebinding its users.
+Unresolved intermediate drafts remain possible through the low-level store, but source
+capture and call lowering refuse them. Batch edits still reject removing a definition while
+retaining its users. New definition/call/return candidates in one batch use explicit snapshot
+IDs; admission checks the complete candidate set, including definitions appearing later.
+The pointer-based constructors and stored-reference accessors have been removed.

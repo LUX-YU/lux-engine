@@ -1,4 +1,5 @@
 #include <lux/engine/flowforge/NativeCallDefinition.hpp>
+#include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 
 #include <exception>
@@ -6,6 +7,39 @@
 
 namespace lux::flowforge
 {
+    namespace
+    {
+        template <class PinType>
+        [[nodiscard]] bool matchesPins(
+            const std::vector<std::unique_ptr<PinType>>& pins,
+            std::span<const FuncArgInfo> signature
+        ) noexcept
+        {
+            if (pins.size() != signature.size())
+            {
+                return false;
+            }
+            for (std::size_t i = 0; i < pins.size(); ++i)
+            {
+                const auto* actual = pins[i]->info().type;
+                const auto* expected = signature[i].type;
+                const bool has_types = actual != nullptr && expected != nullptr;
+                if (!has_types || *actual != *expected)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        [[nodiscard]] const FuncDefNode* findDefinition(const FlowGraph& graph, NodeId id) noexcept
+        {
+            const auto* node = graph.findNodeById(id);
+            const bool is_definition = node != nullptr && node->operation() == ENodeOperation::FUNC_DEF_START;
+            return is_definition ? static_cast<const FuncDefNode*>(node) : nullptr;
+        }
+    } // namespace
+
     NativeFuncCall::NativeFuncCall(Definition definition) noexcept
         : ExecIntermediateNode(ENodeOperation::NATIVE_FUNC_CALL), definition_(std::move(definition))
     {
@@ -131,14 +165,25 @@ namespace lux::flowforge
     }
 
     // ====================== FuncReturnNode ======================
-    FuncReturnNode::FuncReturnNode(const FuncDefNode& def)
-        : Node(ENodeOperation::FUNC_RETURN), THasExecInPin("->"), def_(&def)
+    FuncReturnNode::FuncReturnNode(NodeId definition, const FuncDefNode& def)
+        : Node(ENodeOperation::FUNC_RETURN), THasExecInPin("->"), definition_(definition)
     {
         setName("Return " + def.name());
         for (const auto& r : def.retInfos())
         {
             ret_pins_.push_back(std::make_unique<DataInPin>(this, DataPinInfo{r.name, r.type}, /*allow_default=*/true));
         }
+    }
+
+    bool FuncReturnNode::matchesSignature(const FuncDefNode& definition) const noexcept
+    {
+        return matchesPins(ret_pins_, definition.retInfos());
+    }
+
+    const FuncDefNode* FuncReturnNode::resolveDefinition(const FlowGraph& graph) const noexcept
+    {
+        const auto* definition = findDefinition(graph, definition_);
+        return definition && matchesSignature(*definition) ? definition : nullptr;
     }
 
     // ====================== OnEventNode ======================
@@ -153,8 +198,8 @@ namespace lux::flowforge
     }
 
     // ====================== GraphFuncCallNode ======================
-    GraphFuncCallNode::GraphFuncCallNode(const FuncDefNode& callee)
-        : ExecIntermediateNode(ENodeOperation::GRAPH_FUNC_CALL), callee_(&callee)
+    GraphFuncCallNode::GraphFuncCallNode(NodeId callee_id, const FuncDefNode& callee)
+        : ExecIntermediateNode(ENodeOperation::GRAPH_FUNC_CALL), callee_(callee_id)
     {
         setName("Call " + callee.name());
         for (const auto& a : callee.argInfos())
@@ -165,6 +210,17 @@ namespace lux::flowforge
         {
             result_pins_.push_back(std::make_unique<DataOutPin>(this, DataPinInfo{r.name, r.type}));
         }
+    }
+
+    bool GraphFuncCallNode::matchesSignature(const FuncDefNode& definition) const noexcept
+    {
+        return matchesPins(arg_pins_, definition.argInfos()) && matchesPins(result_pins_, definition.retInfos());
+    }
+
+    const FuncDefNode* GraphFuncCallNode::resolveCallee(const FlowGraph& graph) const noexcept
+    {
+        const auto* definition = findDefinition(graph, callee_);
+        return definition && matchesSignature(*definition) ? definition : nullptr;
     }
 
 } // namespace lux::flowforge

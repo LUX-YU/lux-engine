@@ -36,6 +36,8 @@ namespace
     static_assert(!EmbeddedIdentity<Node> && !EmbeddedIdentity<Pin>);
     static_assert(!std::is_constructible_v<Node, std::uint64_t, ENodeOperation>);
     static_assert(!std::is_constructible_v<SequenceNode, std::uint64_t>);
+    static_assert(!std::is_constructible_v<GraphFuncCallNode, const FuncDefNode&>);
+    static_assert(!std::is_constructible_v<FuncReturnNode, const FuncDefNode&>);
 
     void require(bool value, std::source_location where = std::source_location::current()) noexcept
     {
@@ -258,14 +260,66 @@ namespace
         check(dynamic);
     }
 
+    void checkFunctionReferences()
+    {
+        FlowGraph graph;
+        auto definition = std::make_unique<FuncDefNode>("function", std::vector<FuncArgInfo>{});
+        auto* original = definition.get();
+        const auto id = graph.addNode(std::move(definition));
+        auto call = std::make_unique<GraphFuncCallNode>(id, *original);
+        auto returned = std::make_unique<FuncReturnNode>(id, *original);
+        auto* call_pointer = call.get();
+        auto* return_pointer = returned.get();
+        require(graph.addNode(std::move(call)).valid());
+        require(graph.addNode(std::move(returned)).valid());
+        const auto encoded = sourceBytes(graph);
+
+        // Detached definition owners may be destroyed without leaving semantic pointers in users.
+        auto old = graph.extractNode(id);
+        require(old.has_value());
+        require(call_pointer->resolveCallee(graph) == nullptr);
+        require(return_pointer->resolveDefinition(graph) == nullptr);
+        require(!captureFlowNode(graph, graph.nodeId(call_pointer)));
+        require(!captureFlowNode(graph, graph.nodeId(return_pointer)));
+        auto replacement = std::make_unique<FuncDefNode>("function", std::vector<FuncArgInfo>{});
+        auto* replacement_pointer = replacement.get();
+        require(replacement_pointer != original);
+        require(graph.insertNode({id, std::move(replacement), old->pins}));
+        old.reset();
+        require(call_pointer->calleeId() == id && return_pointer->definitionId() == id);
+        require(call_pointer->resolveCallee(graph) == replacement_pointer);
+        require(return_pointer->resolveDefinition(graph) == replacement_pointer);
+        require(sourceBytes(graph) == encoded);
+        FlowGraph moved(std::move(graph));
+        require(call_pointer->resolveCallee(moved) == replacement_pointer);
+        require(return_pointer->resolveDefinition(moved) == replacement_pointer);
+
+        // The transaction still rejects deleting a definition while retaining its users.
+        const std::array erase{id};
+        auto refused = FlowGraphEdit::prepare(moved, {.erase = erase});
+        require(!refused && sourceBytes(moved) == encoded);
+
+        old = moved.extractNode(id);
+        require(old.has_value());
+        require(moved.insertNode({id, std::make_unique<SequenceNode>()}));
+        require(!call_pointer->resolveCallee(moved) && !return_pointer->resolveDefinition(moved));
+        require(moved.removeNode(id));
+        const std::vector<FuncArgInfo> typed{{&meta::ref_type_of_v<int>, "value"}};
+        require(moved.insertNode({id, std::make_unique<FuncDefNode>("changed", typed, typed)}));
+        require(!call_pointer->resolveCallee(moved) && !return_pointer->resolveDefinition(moved));
+        require(!captureFlowNode(moved, moved.nodeId(call_pointer)));
+        require(!captureFlowNode(moved, moved.nodeId(return_pointer)));
+        std::printf("Flow function references: detach/rebuild/move/kind/signature checked\n");
+    }
+
     void checkMaximumCallee()
     {
         FlowGraph graph;
         auto definition = std::make_unique<FuncDefNode>("maximum", std::vector<FuncArgInfo>{});
         auto* callee = definition.get();
         require(graph.insertNode({{UINT64_MAX}, std::move(definition)}));
-        require(graph.insertNode({{1}, std::make_unique<GraphFuncCallNode>(*callee)}));
-        require(graph.insertNode({{2}, std::make_unique<FuncReturnNode>(*callee)}));
+        require(graph.insertNode({{1}, std::make_unique<GraphFuncCallNode>(NodeId{UINT64_MAX}, *callee)}));
+        require(graph.insertNode({{2}, std::make_unique<FuncReturnNode>(NodeId{UINT64_MAX}, *callee)}));
         const auto encoded = sourceBytes(graph);
         auto decoded = decodeFlowSource(encoded);
         require(decoded.has_value());
@@ -276,6 +330,37 @@ namespace
         variable.id = UINT64_MAX;
         require(!validateFlowVariable(variable));
     }
+
+    void checkFunctionReferenceBatch()
+    {
+        FlowGraph graph;
+        constexpr NodeId id{41};
+        std::unique_ptr<Node> definition = std::make_unique<FuncDefNode>("batch", std::vector<FuncArgInfo>{});
+        const auto& signature = static_cast<const FuncDefNode&>(*definition);
+        std::unique_ptr<Node> call = std::make_unique<GraphFuncCallNode>(id, signature);
+        std::unique_ptr<Node> returned = std::make_unique<FuncReturnNode>(id, signature);
+        const std::array<FlowNodeInsertion, 3> insert{{{{42}, &call}, {{43}, &returned}, {id, &definition}}};
+        auto plan = FlowGraphEdit::prepare(graph, {.insert = insert});
+        require(plan.has_value() && definition && call && returned);
+        plan->commit();
+        require(!definition && !call && !returned);
+        auto& call_node = static_cast<const GraphFuncCallNode&>(*graph.findNodeById({42}));
+        require(call_node.resolveCallee(graph) == graph.findNodeById(id));
+        const auto encoded = sourceBytes(graph);
+
+        FuncDefNode incompatible("different", {{&meta::ref_type_of_v<int>, "value"}});
+        std::unique_ptr<Node> invalid = std::make_unique<GraphFuncCallNode>(id, incompatible);
+        const std::array<FlowNodeInsertion, 1> invalid_insert{{{{44}, &invalid}}};
+        auto refused = FlowGraphEdit::prepare(graph, {.insert = invalid_insert});
+        require(!refused && invalid && sourceBytes(graph) == encoded);
+
+        const std::array<NodeId, 3> erase{{{41}, {42}, {43}}};
+        auto remove = FlowGraphEdit::prepare(graph, {.erase = erase});
+        require(remove.has_value());
+        remove->commit();
+        auto removed = remove->takeRemoved();
+        require(graph.nodes().empty() && removed.size() == 3);
+    }
 } // namespace
 
 int main()
@@ -283,7 +368,9 @@ int main()
     checkReceiver();
     checkStoreKeys();
     checkPinStore();
+    checkFunctionReferences();
     checkMaximumCallee();
+    checkFunctionReferenceBatch();
     FlowGraph graph;
     auto candidate = std::make_unique<SequenceNode>();
     auto& sequence = *candidate;

@@ -51,12 +51,16 @@ namespace lux::flowforge
     class FuncReturnNode : public Node, public THasExecInPin<FuncReturnNode>
     {
     public:
-        explicit FuncReturnNode(const FuncDefNode& def);
+        // The definition is borrowed only while copying the pin schema. The stored reference is graph-local.
+        FuncReturnNode(NodeId definition, const FuncDefNode& signature);
 
-        const FuncDefNode* def() const
+        [[nodiscard]] NodeId definitionId() const noexcept
         {
-            return def_;
+            return definition_;
         }
+
+        [[nodiscard]] bool matchesSignature(const FuncDefNode&) const noexcept;
+        [[nodiscard]] const FuncDefNode* resolveDefinition(const FlowGraph&) const noexcept;
 
         const std::vector<std::unique_ptr<DataInPin>>& retPins() const
         {
@@ -64,7 +68,7 @@ namespace lux::flowforge
         }
 
     private:
-        const FuncDefNode* def_;
+        NodeId definition_;
         std::vector<std::unique_ptr<DataInPin>> ret_pins_;
     };
 
@@ -106,12 +110,16 @@ namespace lux::flowforge
     class GraphFuncCallNode : public ExecIntermediateNode
     {
     public:
-        explicit GraphFuncCallNode(const FuncDefNode& callee);
+        // No definition address survives construction; use the receiving graph's NodeId.
+        GraphFuncCallNode(NodeId callee, const FuncDefNode& signature);
 
-        const FuncDefNode* callee() const
+        [[nodiscard]] NodeId calleeId() const noexcept
         {
             return callee_;
         }
+
+        [[nodiscard]] bool matchesSignature(const FuncDefNode&) const noexcept;
+        [[nodiscard]] const FuncDefNode* resolveCallee(const FlowGraph&) const noexcept;
 
         const std::vector<std::unique_ptr<DataInPin>>& argPins() const
         {
@@ -124,7 +132,7 @@ namespace lux::flowforge
         }
 
     private:
-        const FuncDefNode* callee_;
+        NodeId callee_;
         std::vector<std::unique_ptr<DataInPin>> arg_pins_;
         std::vector<std::unique_ptr<DataOutPin>> result_pins_;
     };

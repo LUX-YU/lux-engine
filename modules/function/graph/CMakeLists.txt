@@ -1,4 +1,4 @@
-find_package(lux-cxx REQUIRED COMPONENTS compile_time)
+find_package(lux-cxx REQUIRED COMPONENTS compile_time algorithm)
 
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_FUNCTION_GRAPH_LIBRARY
@@ -25,8 +25,8 @@ component_include_directories(
 )
 
 target_compile_definitions(graph PRIVATE LUX_FUNCTION_GRAPH_LIBRARY)
-target_link_libraries(graph PUBLIC lux::cxx::compile_time)
+target_link_libraries(graph PUBLIC lux::cxx::compile_time lux::cxx::algorithm)
 component_add_transitive_commands(
     graph
-    "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time algorithm)"
 )

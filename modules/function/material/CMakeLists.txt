@@ -15,6 +15,8 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialGraph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialSource.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderIR.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialNodePayload.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialNodeCatalog.cpp
 )
 
 component_include_directories(
@@ -37,12 +39,14 @@ target_link_libraries(
         lux::engine::function::graph
         lux::engine::resource::description
         lux::engine::resource::identity
+        lux::engine::core::object
 )
 
 component_add_transitive_commands(
     material_graph
     "find_package(lux-engine-function REQUIRED COMPONENTS graph)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity description)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS object)"
 )
 
 if(BUILD_TESTING)
@@ -51,4 +55,25 @@ if(BUILD_TESTING)
     target_link_libraries(material_shader_ir_test PRIVATE lux::engine::function::material_graph)
 
     add_test(NAME material.shader_ir COMMAND material_shader_ir_test)
+
+    add_executable(material_node_catalog_test test/node_catalog.cpp)
+
+    target_link_libraries(material_node_catalog_test PRIVATE lux::engine::function::material_graph)
+
+    add_test(NAME material.node_catalog COMMAND material_node_catalog_test)
+
+    add_library(material_node_plugin MODULE test/node_plugin.cpp)
+
+    target_link_libraries(material_node_plugin PRIVATE lux::engine::function::material_graph)
+
+    add_executable(material_node_plugin_test test/node_plugin_test.cpp)
+
+    target_link_libraries(
+        material_node_plugin_test
+        PRIVATE lux::engine::function::material_graph lux::engine::platform::dynamic_library
+    )
+
+    add_dependencies(material_node_plugin_test material_node_plugin)
+
+    add_test(NAME material.node_plugin COMMAND material_node_plugin_test $<TARGET_FILE:material_node_plugin>)
 endif()

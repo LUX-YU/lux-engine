@@ -1,7 +1,8 @@
+#include "../../flowforge/test/FlowTest.hpp"
 #include "../../material/test/MaterialTest.hpp"
 #include <lux/engine/flowforge/Compiler.hpp>
-#include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/FunctionNodes.hpp>
+#include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/material/Compiler.hpp>
 
 #include <array>
@@ -75,7 +76,9 @@ namespace
     void flowCompilation()
     {
         flowforge::FlowGraph direct;
-        const auto index = direct.addNode(std::make_unique<flowforge::OnEventNode>("Tick"));
+        auto baseline_node = flow_test::make("lux.flow.event");
+        baseline_node.name = "Tick";
+        const auto index = flow_test::add(direct, std::move(baseline_node));
         require(index.valid());
         require(direct.addExport({{1}, index, 41, {}}));
         const flowforge::FlowForgeCompileOptions options{.module_name = "shared_graph_edit"};
@@ -83,16 +86,21 @@ namespace
         require(baseline.has_value() && !baseline->object.empty());
 
         flowforge::FlowGraph edited;
-        std::unique_ptr<flowforge::Node> candidate = std::make_unique<flowforge::OnEventNode>("Tick");
-        const std::array<flowforge::FlowNodeInsertion, 1> inputs{{{{}, &candidate}}};
+        auto candidate = flow_test::make("lux.flow.event");
+        candidate.name = "Tick";
+        const auto definition = candidate.definition;
+        const std::array<flowforge::FlowNodeEntry, 1> inputs{{{{}, &candidate}}};
         flowforge::FlowGraphChange change;
         change.insert = inputs;
         auto edit = flowforge::FlowGraphEdit::prepare(edited, change);
         require(edit.has_value());
-        const auto id = edit->insertedIds().front();
-        require(candidate != nullptr);
+        const auto id = edit->insertedNodes().front().id;
+        require(candidate.definition == definition && candidate.name == "Tick");
+        require(edited.node(id) == nullptr);
         edit->commit();
-        require(candidate == nullptr);
+        require(candidate.definition == definition && candidate.name == "Tick");
+        require(edited.node(id) != &candidate);
+        require(edited.node(id)->definition == definition);
         require(edited.addExport({{1}, id, 41, {}}));
         auto actual = flowforge::compileFlowForgeObject(edited, options);
         require(actual.has_value());

@@ -12,6 +12,12 @@
 
 namespace lux::material
 {
+    enum class EMaterialNodeRole : std::uint8_t
+    {
+        VALUE,
+        SURFACE
+    };
+
     enum class EMaterialInputUse : std::uint8_t
     {
         VALUE,
@@ -38,8 +44,12 @@ namespace lux::material
         using Create = MaterialNodeResult<MaterialNodePayload> (*)(const object::CodeLease&) noexcept;
         using DescribePins = PinResult (*)(const MaterialNodePayload&) noexcept;
         using Validate = MaterialNodeResult<void> (*)(const MaterialNodePayload&) noexcept;
+        using ValidateBindings =
+            MaterialNodeResult<void> (*)(const MaterialNodePayload&, const shadergen::ShaderIR&) noexcept;
         using Compile =
             ShaderResult (*)(const MaterialNodePayload&, std::span<const std::uint32_t>, shadergen::ShaderIR&) noexcept;
+        using Encode = MaterialNodeResult<std::string> (*)(const MaterialNodePayload&) noexcept;
+        using Decode = MaterialNodeResult<MaterialNodePayload> (*)(std::string_view, const object::CodeLease&) noexcept;
 
         graph::GraphNodeTypeIdentity identity;
         cxx::TypeToken payload_type;
@@ -51,6 +61,12 @@ namespace lux::material
         // Intrinsic compilation diagnostics; an editable draft need not pass this check.
         Validate validate{};
         Compile compile{};
+        EMaterialNodeRole role{EMaterialNodeRole::VALUE};
+        // Optional resource admission, including disconnected nodes. Does not emit shader expressions.
+        ValidateBindings validate_bindings{};
+        // Optional paired source codec for this exact identity/version. No compiler eligibility requirement.
+        Encode encode{};
+        Decode decode{};
     };
 
     // Immutable definition. A borrowed use of this object and its payload cannot overlap their destruction.
@@ -65,10 +81,15 @@ namespace lux::material
         ~MaterialNodeType();
 
         [[nodiscard]] const graph::GraphNodeTypeIdentity& identity() const noexcept;
+        [[nodiscard]] EMaterialNodeRole role() const noexcept;
         [[nodiscard]] MaterialNodeResult<MaterialNodePayload> create() const noexcept;
         [[nodiscard]] MaterialNodeResult<void> validate(const MaterialNodePayload&) const noexcept;
+        [[nodiscard]] MaterialNodeResult<void> validateBindings(const MaterialNodePayload&, const shadergen::ShaderIR&)
+            const noexcept;
         // Checks payload ownership and authoring schema, without requiring a compilable node.
         [[nodiscard]] MaterialNodeRegistration::PinResult describePins(const MaterialNodePayload&) const noexcept;
+        [[nodiscard]] MaterialNodeResult<std::string> encode(const MaterialNodePayload&) const noexcept;
+        [[nodiscard]] MaterialNodeResult<MaterialNodePayload> decode(std::string_view) const noexcept;
 
         // Inputs use declaration order: VALUE requires SSA; CONNECTED_VALUE also permits kNoValue;
         // UNUSED requires kNoValue. A graph compiler resolves only demanded inputs. Outputs use output
@@ -106,8 +127,8 @@ namespace lux::material
         MaterialNodeCatalog(MaterialNodeCatalog&&) = delete;
         MaterialNodeCatalog& operator=(MaterialNodeCatalog&&) = delete;
 
-        [[nodiscard]] cxx::expected<void, EMaterialNodeCatalogError>
-        add(std::span<const MaterialNodeRegistration>) noexcept;
+        [[nodiscard]] cxx::expected<void, EMaterialNodeCatalogError> add(std::span<
+                                                                         const MaterialNodeRegistration>) noexcept;
 
         [[nodiscard]] std::shared_ptr<const MaterialNodeType> find(graph::NodeTypeId) const noexcept;
 

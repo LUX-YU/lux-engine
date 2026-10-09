@@ -1,8 +1,8 @@
+#include "MaterialTest.hpp"
 #include <lux/engine/material/MaterialIR.hpp>
 #include <lux/engine/material/MaterialMath.hpp>
 #include <lux/engine/material/MaterialNodeCatalog.hpp>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
-#include <lux/engine/material/graph/Nodes.hpp>
 
 #include <array>
 #include <cstdio>
@@ -43,12 +43,11 @@ int main()
     for (unsigned ordinal = 0; ordinal <= static_cast<unsigned>(EMathOp::LENGTH); ++ordinal)
     {
         math->op = static_cast<EMathOp>(ordinal);
-        auto node = std::make_unique<MathNode>(math->op);
-        node->setOperandType(math->operand_type);
+        auto node = material_test::make(*math);
         MaterialGraph graph;
-        const auto id = graph.addNode(std::move(node));
-        const auto output = graph.addNode(std::make_unique<OutputSurfaceNode>());
-        require(graph.connect(id, 0, output, 0));
+        const auto id = material_test::add(graph, std::move(node));
+        const auto output = material_test::add(graph, MaterialOutputSurface{});
+        require(material_test::connect(graph, id, 0, output, 0));
         auto lowered = lowerMaterial(graph);
         auto pins = type->describePins(*payload);
         if (math->op == EMathOp::LERP)

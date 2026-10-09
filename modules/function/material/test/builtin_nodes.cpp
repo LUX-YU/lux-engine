@@ -1,7 +1,7 @@
+#include "MaterialTest.hpp"
 #include <lux/engine/material/BuiltinMaterialNodes.hpp>
 #include <lux/engine/material/MaterialIR.hpp>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
-#include <lux/engine/material/graph/Nodes.hpp>
 
 #include <cstdio>
 #include <cstdlib>
@@ -41,7 +41,7 @@ namespace
         return types;
     }
 
-    template <class T> void compare(const MaterialNodeType& type, T value, std::unique_ptr<Node> node)
+    template <class T> void compare(const MaterialNodeType& type, T value)
     {
         auto payload = type.create();
         require(payload.has_value() && payload->get<T>() != nullptr);
@@ -50,7 +50,9 @@ namespace
         require(declared.has_value());
         auto copy = payload->clone();
         require(copy.has_value() && copy->get<T>() != payload->get<T>());
-        const auto input_count = node->inputs().size();
+        const auto input_count = static_cast<std::size_t>(
+            std::ranges::count(*declared, graph::EPinDirection::INPUT, &MaterialPinDeclaration::direction)
+        );
         MaterialGraph graph;
         graph.texture_slots.push_back({"albedo", asset::AssetId{std::array<std::uint8_t, 16>{1}}});
         auto parameter_type = EValueType::VEC4;
@@ -59,9 +61,10 @@ namespace
             parameter_type = value.type;
         }
         graph.param_slots.push_back({"parameter", parameter_type, {0.2F, 0.3F, 0.4F, 0.5F}});
-        const auto id = graph.addNode(std::move(node));
-        const auto surface = graph.addNode(std::make_unique<OutputSurfaceNode>());
-        require(graph.connect(id, 0, surface, static_cast<std::uint32_t>(EMaterialAttribute::ROUGHNESS)));
+        const auto id = material_test::add(graph, value);
+        const auto surface = material_test::add(graph, MaterialOutputSurface{});
+        require(material_test::connect(graph, id, 0, surface, static_cast<std::uint32_t>(EMaterialAttribute::ROUGHNESS))
+        );
         auto lowered = lowerMaterial(graph);
         require(lowered.has_value());
         auto expected = lowered->shader;
@@ -90,31 +93,19 @@ namespace
         for (unsigned ordinal = 0; ordinal != 4; ++ordinal)
         {
             const auto type = static_cast<EValueType>(ordinal);
-            auto constant = std::make_unique<ConstantNode>();
-            constant->setType(type);
-            for (std::size_t index = 0; index != 4; ++index)
-            {
-                constant->value[index] = static_cast<float>(index) * 0.1F;
-            }
-            compare(*types[0], MaterialConstant{{0, 0.1F, 0.2F, 0.3F}, type}, std::move(constant));
-            compare(*types[3], MaterialParameter{0, type}, std::make_unique<ParamNode>(type));
-            compare(
-                *types[5],
-                MaterialSwizzle{EValueType::VEC4, type},
-                std::make_unique<SwizzleNode>(EValueType::VEC4, type)
-            );
-            compare(*types[6], MaterialConstruct{type}, std::make_unique<ConstructNode>(type));
+            compare(*types[0], MaterialConstant{{0, 0.1F, 0.2F, 0.3F}, type});
+            compare(*types[3], MaterialParameter{0, type});
+            compare(*types[5], MaterialSwizzle{EValueType::VEC4, type});
+            compare(*types[6], MaterialConstruct{type});
         }
         for (unsigned ordinal = 0; ordinal != static_cast<unsigned>(EMaterialInput::COUNT); ++ordinal)
         {
             const auto input = static_cast<EMaterialInput>(ordinal);
-            auto node = std::make_unique<InputNode>();
-            node->setInput(input);
-            compare(*types[1], MaterialInput{input}, std::move(node));
+            compare(*types[1], MaterialInput{input});
         }
-        compare(*types[2], MaterialSampleTexture{}, std::make_unique<SampleTextureNode>());
-        compare(*types[7], MaterialDecodeNormal{}, std::make_unique<DecodeNormalNode>());
-        compare(*types[8], MaterialTbnTransform{}, std::make_unique<TbnTransformNode>());
+        compare(*types[2], MaterialSampleTexture{});
+        compare(*types[7], MaterialDecodeNormal{});
+        compare(*types[8], MaterialTbnTransform{});
     }
 
     void failures(const Types& types)
@@ -165,12 +156,11 @@ namespace
         for (bool overridden : {false, true})
         {
             MaterialGraph graph;
-            auto output = std::make_unique<OutputSurfaceNode>();
+            const auto output = material_test::add(graph, MaterialOutputSurface{});
             if (overridden)
             {
-                output->inputs()[3].constant[0] = 0.37F;
+                graph.pin(material_test::input(graph, output, 3))->constant[0] = 0.37F;
             }
-            graph.addNode(std::move(output));
             auto original = lowerMaterial(graph);
             require(original.has_value());
             auto candidate = original->shader;

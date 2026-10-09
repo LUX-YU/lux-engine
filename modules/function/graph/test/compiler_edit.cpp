@@ -1,8 +1,8 @@
+#include "../../material/test/MaterialTest.hpp"
 #include <lux/engine/flowforge/Compiler.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/material/Compiler.hpp>
-#include <lux/engine/material/graph/Nodes.hpp>
 
 #include <array>
 #include <cstdio>
@@ -24,16 +24,16 @@ namespace
 
     void materialCompilation()
     {
-        material::ConstantNode constant;
-        constant.setType(material::EValueType::VEC3);
-        constant.value[0] = 0.2F;
-        constant.value[1] = 0.5F;
-        constant.value[2] = 0.7F;
-        material::OutputSurfaceNode surface;
+        auto constant =
+            material_test::make(material::MaterialConstant{{0.2F, 0.5F, 0.7F, 0}, material::EValueType::VEC3});
+        auto surface = material_test::make(material::MaterialOutputSurface{});
         material::MaterialGraph direct;
-        const auto source = direct.addNode(constant.clone());
-        const auto destination = direct.addNode(surface.clone());
-        require(direct.connect(source, 0, destination, 0));
+        auto constant_copy = constant.clone();
+        auto surface_copy = surface.clone();
+        require(constant_copy.has_value() && surface_copy.has_value());
+        const auto source = material_test::add(direct, std::move(*constant_copy));
+        const auto destination = material_test::add(direct, std::move(*surface_copy));
+        require(material_test::connect(direct, source, 0, destination, 0));
         auto baseline = material::compileMaterial(direct);
         require(baseline.has_value());
 
@@ -44,8 +44,8 @@ namespace
         auto edit = material::MaterialGraphEdit::prepare(edited, change);
         require(edit.has_value());
         require(edit->insertedNodes().size() == 2);
-        const auto from = edit->insertedNodes()[0].value->outputs().front().id;
-        const auto to = edit->insertedNodes()[1].value->inputs().front().id;
+        const auto from = edit->insertedNodes()[0].pins.front().record.id;
+        const auto to = edit->insertedNodes()[1].pins.front().record.id;
         edit->commit();
         const std::array<graph::LinkRecord, 1> links{{{from, to}}};
         change = {};
@@ -59,10 +59,9 @@ namespace
         require(actual->forward_spirv == baseline->forward_spirv);
         material::MaterialGraph invalid;
         constexpr material::NodeId invalid_id{1000000031};
-        auto invalid_payload = std::make_unique<material::SampleTextureNode>();
-        invalid_payload->texture_slot = 29;
-        require(invalid.addNodeWithId(invalid_id, std::move(invalid_payload)) == invalid_id);
-        require(invalid.addNode(std::make_unique<material::OutputSurfaceNode>()).valid());
+        auto invalid_payload = material_test::make(material::MaterialSampleTexture{29});
+        require(invalid.addNodeWithId(invalid_id, std::move(invalid_payload)).value() == invalid_id);
+        require(material_test::add(invalid, material::MaterialOutputSurface{}).valid());
         auto failed = material::compileMaterial(invalid);
         require(!failed && failed.error().code == material::EMaterialCompileError::INVALID_GRAPH);
         require(failed.error().node_id == invalid_id);

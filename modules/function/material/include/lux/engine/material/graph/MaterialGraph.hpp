@@ -13,13 +13,25 @@
 
 #include <lux/engine/description/MaterialEnums.hpp>
 #include <lux/engine/function/graph/GraphEdit.hpp>
-#include <lux/engine/material/graph/Node.hpp>
+#include <lux/engine/material/graph/MaterialNode.hpp>
 #include <lux/engine/material/graph/visibility.h>
 #include <lux/engine/resource/identity/AssetId.hpp>
+#include <variant>
 
 namespace lux::material
 {
+    using graph::NodeId;
+    using graph::PinId;
+
+    using VMaterialGraphFailure = std::variant<graph::GraphTopologyFailure, MaterialCompileFailure>;
+    template <class T> using MaterialGraphResult = cxx::expected<T, VMaterialGraphFailure>;
+
     class MaterialGraphEdit;
+
+    namespace detail
+    {
+        struct MaterialSourceAccess;
+    }
 
     /// A texture slot declared by the graph (-> ShadingModelDescriptor + descriptor
     /// layout set 2).
@@ -51,137 +63,118 @@ namespace lux::material
         bool double_sided = false;
     };
 
-    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialGraph
+    class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialGraph final
     {
     public:
-        MaterialGraph();
+        MaterialGraph() noexcept;
         ~MaterialGraph();
         MaterialGraph(const MaterialGraph&) = delete;
         MaterialGraph& operator=(const MaterialGraph&) = delete;
         MaterialGraph(MaterialGraph&&) noexcept;
         MaterialGraph& operator=(MaterialGraph&&) noexcept;
 
-        /// Deep copy (the graph is move-only: nodes are polymorphic unique_ptr
-        /// objects). Preserves node ids, all connections/constants, slot
-        /// declarations, and render state. The editor uses this to produce a
-        /// working copy from the graph an asset owns.
-        [[nodiscard]] MaterialGraph clone() const;
+        [[nodiscard]] MaterialGraphResult<MaterialGraph> clone() const noexcept;
+        [[nodiscard]] MaterialGraphResult<NodeId> addNode(MaterialNode) noexcept;
+        [[nodiscard]] MaterialGraphResult<NodeId> addNodeWithId(
+            NodeId,
+            MaterialNode,
+            std::span<const MaterialPinEntry> = {}
+        ) noexcept;
+        [[nodiscard]] MaterialGraphResult<MaterialNodeSnapshot> extractNode(NodeId) noexcept;
+        [[nodiscard]] MaterialGraphResult<void> removeNode(NodeId) noexcept;
 
-        NodeId addNode(std::unique_ptr<Node> node) noexcept;
-        Node* node(NodeId id) noexcept;
-        const Node* node(NodeId id) const noexcept;
-        void removeNode(NodeId id);
+        [[nodiscard]] const MaterialNode* node(NodeId) const noexcept;
+        [[nodiscard]] const MaterialPinPayload* pin(PinId) const noexcept;
+        // Metadata edits do not change structural records. Source/compile validation still checks them.
+        [[nodiscard]] MaterialPinPayload* pin(PinId) noexcept;
+        [[nodiscard]] PinId pinId(NodeId, graph::PinSemanticId) const noexcept;
+        [[nodiscard]] MaterialGraphResult<void> connect(PinId from, PinId to) noexcept;
+        [[nodiscard]] MaterialGraphResult<void> disconnect(PinId input) noexcept;
 
-        /// Inserts a node with a specific id (History replay relies on stable ids:
-        /// restoring a deleted node must reuse its original id, since both
-        /// connections and recorded undo actions reference nodes by id). Returns
-        /// Invalid NodeId if the id is already taken, invalid, or node is null;
-        /// the topology identity allocator advances its high-water mark so later addNode calls never
-        /// collide with it.
-        NodeId addNodeWithId(NodeId id, std::unique_ptr<Node> node) noexcept;
+        [[nodiscard]] const graph::GraphTopology& topology() const noexcept;
+        [[nodiscard]] const graph::GraphLayout& layout() const noexcept;
 
-        /// Removes a node without destroying it and without touching other nodes'
-        /// input connections (the editor disconnects the recorded links one by one
-        /// before extracting). Returns nullptr if the node doesn't exist.
-        [[nodiscard]] std::unique_ptr<Node> extractNode(NodeId id);
-
-        /// Connects output pin src_pin of src to input pin dst_pin of dst. Returns
-        /// whether the connection succeeded.
-        [[nodiscard]] bool canConnect(NodeId src, uint32_t src_pin, NodeId dst, uint32_t dst_pin) const noexcept;
-        bool connect(NodeId src, uint32_t src_pin, NodeId dst, uint32_t dst_pin);
-        void disconnect(NodeId dst, uint32_t dst_pin);
-        [[nodiscard]] PinLink source(NodeId dst, uint32_t dst_pin) const noexcept;
-        [[nodiscard]] PinLink source(PinId input) const noexcept;
-
-        [[nodiscard]] lux::graph::GraphTopology& topology() noexcept
-        {
-            return topology_;
-        }
-
-        [[nodiscard]] const lux::graph::GraphTopology& topology() const noexcept
-        {
-            return topology_;
-        }
-
-        [[nodiscard]] lux::graph::GraphLayout& layout() noexcept
-        {
-            return layout_;
-        }
-
-        [[nodiscard]] const lux::graph::GraphLayout& layout() const noexcept
-        {
-            return layout_;
-        }
-
-        // A const graph lends const nodes. const unique_ptr alone would still expose mutable pointees.
         [[nodiscard]] auto nodes() const noexcept
         {
             return std::views::transform(
                 nodes_,
-                [](const auto& entry) { return std::pair<NodeId, const Node*>{entry.first, entry.second.get()}; }
+                [](const auto& entry) noexcept
+                { return std::pair<NodeId, const MaterialNode*>{entry.first, &entry.second}; }
             );
         }
 
-        lux::rdesc::ELightingTechnique shading_model = lux::rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS;
+        rdesc::ELightingTechnique shading_model{rdesc::ELightingTechnique::PBR_METALLIC_ROUGHNESS};
         std::vector<TextureSlotDecl> texture_slots;
         std::vector<ParamSlotDecl> param_slots;
         RenderState render_state;
 
     private:
         friend class MaterialGraphEdit;
+        friend struct detail::MaterialSourceAccess;
+        using NodeStorage = std::unordered_map<NodeId, MaterialNode>;
+        using PinStorage = std::unordered_map<PinId, MaterialPinPayload>;
 
-        std::unordered_map<NodeId, std::unique_ptr<Node>> nodes_;
-        lux::graph::GraphTopology topology_;
-        lux::graph::GraphLayout layout_;
+        NodeStorage nodes_;
+        PinStorage pins_;
+        graph::GraphTopology topology_;
+        graph::GraphLayout layout_;
     };
 
-    // A borrowed payload paired with its store key. An invalid key requests a fresh identity on insertion;
-    // a valid key explicitly restores that identity. The payload never owns graph membership or NodeId.
+    // Invalid id requests fresh node/pin identities. Restored pins must belong to the explicit id.
+    // Empty pins use the registered schema; provided records must match every schema semantic.
     struct MaterialNodeEntry final
     {
         NodeId id;
-        const Node* value{};
+        const MaterialNode* value{};
+        std::span<const MaterialPinEntry> pins;
     };
 
-    // A transaction describes only affected nodes, links and positions. Node inputs remain borrowed.
-    // An unassigned inserted node receives fresh node/pin identities during preparation.
     struct MaterialGraphChange final
     {
         std::span<const MaterialNodeEntry> insert;
         std::span<const NodeId> erase;
-        std::span<const lux::graph::LinkRecord> connect;
-        std::span<const lux::graph::LinkRecord> disconnect;
-        std::span<const lux::graph::GraphLayoutEntry> place;
+        std::span<const graph::LinkRecord> connect;
+        std::span<const graph::LinkRecord> disconnect;
+        std::span<const graph::GraphLayoutEntry> place;
         std::span<const NodeId> unplace;
     };
 
     class LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialGraphEdit final
     {
     public:
-        [[nodiscard]] static lux::cxx::expected<MaterialGraphEdit, lux::graph::GraphTopologyFailure>
-        prepare(MaterialGraph&, const MaterialGraphChange&);
+        [[nodiscard]] static MaterialGraphResult<MaterialGraphEdit>
+        prepare(MaterialGraph&, const MaterialGraphChange&) noexcept;
         ~MaterialGraphEdit();
         MaterialGraphEdit(MaterialGraphEdit&&) noexcept;
         MaterialGraphEdit(const MaterialGraphEdit&) = delete;
         MaterialGraphEdit& operator=(const MaterialGraphEdit&) = delete;
+        MaterialGraphEdit& operator=(MaterialGraphEdit&&) = delete;
 
         [[nodiscard]] std::span<const MaterialNodeEntry> insertedNodes() const noexcept;
-        [[nodiscard]] lux::cxx::expected<void, lux::graph::GraphTopologyFailure> place(
-            NodeId,
-            lux::graph::GraphNodeLayout
-        );
-        // Source must remain exclusively borrowed from prepare until this single commit.
-        // Reserved node handles and vector swaps allocate nothing and invoke no observers.
+        [[nodiscard]] MaterialGraphResult<void> place(NodeId, graph::GraphNodeLayout) noexcept;
+        // One exclusive synchronous borrow until commit/destruction. Commit transfers prepared node
+        // handles and swaps the original GraphEdit candidates; removed code owners survive until cleanup.
         void commit() noexcept;
 
     private:
-        using NodeStorage = std::unordered_map<NodeId, std::unique_ptr<Node>>;
-        explicit MaterialGraphEdit(MaterialGraph&);
+        friend class MaterialGraph;
+        using NodeStorage = MaterialGraph::NodeStorage;
+        using PinStorage = MaterialGraph::PinStorage;
+        explicit MaterialGraphEdit(MaterialGraph&) noexcept;
+        [[nodiscard]] MaterialGraphResult<void>
+        insert(NodeId, MaterialNode, std::span<const MaterialPinEntry>) noexcept;
+        void reserveCommit() noexcept;
+
         MaterialGraph* target_;
-        lux::graph::GraphEdit structure_;
-        std::vector<std::pair<NodeId, NodeStorage::node_type>> nodes_;
+        graph::GraphEdit structure_;
+        NodeStorage staged_nodes_;
+        PinStorage staged_pins_;
+        std::vector<NodeStorage::node_type> retired_nodes_;
+        std::vector<PinStorage::node_type> retired_pins_;
+        std::vector<NodeId> erase_nodes_;
+        std::vector<PinId> erase_pins_;
+        std::vector<std::vector<MaterialPinEntry>> inserted_pins_;
         std::vector<MaterialNodeEntry> inserted_;
         bool committed_{};
     };
-
 } // namespace lux::material

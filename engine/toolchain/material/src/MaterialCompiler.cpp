@@ -18,7 +18,7 @@ namespace lux::material
             EMaterialCompileError code,
             std::string message,
             NodeId node_id = {},
-            std::uint32_t pin_index = invalid_pin
+            std::uint32_t pin_index = ~std::uint32_t{0}
         ) noexcept
         {
             return MaterialCompileFailure{code, std::move(message), node_id, pin_index};

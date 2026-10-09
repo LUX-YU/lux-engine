@@ -1,7 +1,7 @@
+#include "MaterialTest.hpp"
 #include <lux/engine/material/BuiltinMaterialNodes.hpp>
 #include <lux/engine/material/MaterialIR.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
-#include <lux/engine/material/graph/Nodes.hpp>
 
 #include <algorithm>
 #include <array>
@@ -26,14 +26,14 @@ namespace
     bool draft(
         const MaterialNodeType& type,
         MaterialNodePayload& payload,
-        std::unique_ptr<Node> node,
+        MaterialNode node,
         std::size_t pin_count
     ) noexcept
     {
         MaterialSource source{asset::AssetId{std::array<std::uint8_t, 16>{1}}, "editable draft", {}};
-        const auto id = source.graph.addNode(std::move(node));
+        const auto id = material_test::add(source.graph, std::move(node));
         // Disconnected draft nodes are still serialized and validated by the real compiler.
-        static_cast<void>(source.graph.addNode(std::make_unique<OutputSurfaceNode>()));
+        static_cast<void>(material_test::add(source.graph, MaterialOutputSurface{}));
         auto encoded = encodeMaterialSource(source);
         require(encoded.has_value());
         auto decoded = decodeMaterialSource(*encoded);
@@ -89,8 +89,7 @@ int main()
          })
     {
         math = value;
-        auto node = std::make_unique<MathNode>(math.op);
-        node->setOperandType(math.operand_type);
+        auto node = material_test::make(math);
         rejected += !draft(*math_type, *math_payload, std::move(node), 3);
     }
     const auto swizzle_type = catalog.find(registrations[5].identity.id);
@@ -99,8 +98,7 @@ int main()
     auto& swizzle = *swizzle_payload->get<MaterialSwizzle>();
     swizzle.source_type = EValueType::FLOAT;
     swizzle.out_type = EValueType::VEC3;
-    auto node = std::make_unique<SwizzleNode>(swizzle.source_type, swizzle.out_type);
-    std::copy(swizzle.components.begin(), swizzle.components.end(), node->components);
+    auto node = material_test::make(swizzle);
     rejected += !draft(*swizzle_type, *swizzle_payload, std::move(node), 2);
     math.op = static_cast<EMathOp>(255);
     require(!math_type->describePins(*math_payload));

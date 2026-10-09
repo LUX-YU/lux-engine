@@ -1,5 +1,5 @@
+#include "../../../../modules/function/material/test/MaterialTest.hpp"
 #include <lux/engine/material/Compiler.hpp>
-#include <lux/engine/material/graph/Nodes.hpp>
 
 #include <cstdio>
 #include <cstdlib>
@@ -37,31 +37,35 @@ int main(int argc, char** argv)
     MaterialGraph graph;
     auto empty = compileMaterial(graph);
     require(!empty && empty.error().code == EMaterialCompileError::INVALID_GRAPH);
-    const auto unused = graph.addNode(std::make_unique<ConstantNode>());
+    const auto unused = material_test::add(graph, MaterialConstant{});
     auto missing = compileMaterial(graph);
     require(!missing && missing.error().code == EMaterialCompileError::MISSING_REQUIRED_OUTPUT);
-    graph.removeNode(unused);
-    const auto surface = graph.addNode(std::make_unique<OutputSurfaceNode>());
+    require(graph.removeNode(unused).has_value());
+    const auto surface = material_test::add(graph, MaterialOutputSurface{});
     for (int mode{}; mode != 4; ++mode)
     {
         if (mode == 1)
         {
-            auto constant = std::make_unique<ConstantNode>();
-            constant->setType(EValueType::VEC3);
-            constant->value[0] = 0.2F;
-            constant->value[1] = 0.5F;
-            constant->value[2] = 0.7F;
-            const auto value = graph.addNode(std::move(constant));
-            require(graph.connect(value, 0, surface, static_cast<std::uint32_t>(EMaterialAttribute::BASE_COLOR)));
+            const auto value = material_test::add(graph, MaterialConstant{{0.2F, 0.5F, 0.7F, 0}, EValueType::VEC3});
+            require(material_test::connect(
+                graph,
+                value,
+                0,
+                surface,
+                static_cast<std::uint32_t>(EMaterialAttribute::BASE_COLOR)
+            ));
         }
         if (mode == 2)
         {
             graph.param_slots.push_back({"roughness", EValueType::FLOAT, {0.35F, 0, 0, 0}});
-            auto parameter = std::make_unique<ParamNode>();
-            parameter->param_slot = 0;
-            parameter->setType(EValueType::FLOAT);
-            const auto value = graph.addNode(std::move(parameter));
-            require(graph.connect(value, 0, surface, static_cast<std::uint32_t>(EMaterialAttribute::ROUGHNESS)));
+            const auto value = material_test::add(graph, MaterialParameter{0, EValueType::FLOAT});
+            require(material_test::connect(
+                graph,
+                value,
+                0,
+                surface,
+                static_cast<std::uint32_t>(EMaterialAttribute::ROUGHNESS)
+            ));
         }
         if (mode == 3)
         {
@@ -80,8 +84,7 @@ int main(int argc, char** argv)
         require(result->double_sided == graph.render_state.double_sided);
         require(result->parameter_count == graph.param_slots.size());
     }
-    auto invalid = std::make_unique<SampleTextureNode>();
-    const auto invalid_id = graph.addNode(std::move(invalid));
+    const auto invalid_id = material_test::add(graph, MaterialSampleTexture{});
     auto failure = compileMaterial(graph);
     require(!failure && failure.error().code == EMaterialCompileError::INVALID_GRAPH);
     require(failure.error().node_id == invalid_id);

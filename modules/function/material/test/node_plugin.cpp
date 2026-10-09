@@ -79,4 +79,15 @@ extern "C" MATERIAL_TEST_EXPORT void materialNodeRegistration(
         candidate.values.push_back(value);
         return std::vector<std::uint32_t>{index};
     };
+    result.encode = [](const MaterialNodePayload&) noexcept -> MaterialNodeResult<std::string>
+    { return std::string{"external-constant-v1"}; };
+    result.decode = [](std::string_view bytes,
+                       const object::CodeLease& code) noexcept -> MaterialNodeResult<MaterialNodePayload>
+    {
+        if (bytes != "external-constant-v1")
+        {
+            return cxx::unexpected(MaterialCompileFailure{EMaterialCompileError::INVALID_GRAPH, "invalid DLL source"});
+        }
+        return MaterialNodePayload::make<ExternalPayload, &clone>(code);
+    };
 }

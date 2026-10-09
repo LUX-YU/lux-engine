@@ -43,7 +43,9 @@ namespace lux::material
             const bool has_payload_type = value.payload_type.isValid();
             const bool has_code = value.code.valid();
             const bool has_callbacks = value.create && value.describe_pins && value.validate && value.compile;
-            return has_identity && has_payload_type && has_code && has_callbacks;
+            const bool has_role = value.role == EMaterialNodeRole::VALUE || value.role == EMaterialNodeRole::SURFACE;
+            const bool has_codec_pair = (value.encode != nullptr) == (value.decode != nullptr);
+            return has_identity && has_payload_type && has_code && has_callbacks && has_role && has_codec_pair;
         }
     } // namespace
 
@@ -64,6 +66,25 @@ namespace lux::material
     {
         return payload.value_ && payload.type_ == registration_.payload_type &&
                payload.code_.sameOwner(registration_.code);
+    }
+
+    EMaterialNodeRole MaterialNodeType::role() const noexcept
+    {
+        return registration_.role;
+    }
+
+    MaterialNodeResult<void> MaterialNodeType::validateBindings(
+        const MaterialNodePayload& payload,
+        const shadergen::ShaderIR& resources
+    ) const noexcept
+    {
+        auto accepted = validate(payload);
+        if (!accepted)
+        {
+            return accepted;
+        }
+        return registration_.validate_bindings ? registration_.validate_bindings(payload, resources)
+                                               : MaterialNodeResult<void>{};
     }
 
     MaterialNodeResult<MaterialNodePayload> MaterialNodeType::create() const noexcept
@@ -87,6 +108,39 @@ namespace lux::material
             return cxx::unexpected(invalid("node payload does not belong to this definition"));
         }
         return registration_.validate(payload);
+    }
+
+    MaterialNodeResult<std::string> MaterialNodeType::encode(const MaterialNodePayload& payload) const noexcept
+    {
+        auto schema = describePins(payload);
+        if (!schema)
+        {
+            return cxx::unexpected(std::move(schema.error()));
+        }
+        if (!registration_.encode)
+        {
+            return cxx::unexpected(invalid("node definition has no source codec"));
+        }
+        return registration_.encode(payload);
+    }
+
+    MaterialNodeResult<MaterialNodePayload> MaterialNodeType::decode(std::string_view bytes) const noexcept
+    {
+        if (!registration_.decode)
+        {
+            return cxx::unexpected(invalid("node definition has no source codec"));
+        }
+        auto payload = registration_.decode(bytes, registration_.code);
+        if (!payload)
+        {
+            return cxx::unexpected(std::move(payload.error()));
+        }
+        auto schema = describePins(*payload);
+        if (!schema)
+        {
+            return cxx::unexpected(std::move(schema.error()));
+        }
+        return payload;
     }
 
     MaterialNodeResult<std::vector<MaterialPinDeclaration>> MaterialNodeType::describePins(

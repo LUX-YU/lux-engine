@@ -1,9 +1,9 @@
+#include "../../material/test/MaterialTest.hpp"
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FlowSource.hpp>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
-#include <lux/engine/material/graph/Nodes.hpp>
 
 #include <algorithm>
 #include <array>
@@ -60,20 +60,22 @@ namespace
     {
         material::MaterialSource source{assetId(), "transaction", {}};
         auto& graph = source.graph;
-        const auto constant = graph.addNode(std::make_unique<material::ConstantNode>());
-        const auto output = graph.addNode(std::make_unique<material::OutputSurfaceNode>());
-        require(graph.connect(constant, 0, output, 0));
-        require(graph.layout().set(constant, {8.0F, 9.0F, true}).has_value());
+        const auto constant = material_test::add(graph, material::MaterialConstant{});
+        const auto output = material_test::add(graph, material::MaterialOutputSurface{});
+        require(material_test::connect(graph, constant, 0, output, 0));
+        require(material_test::place(graph, constant, {8.0F, 9.0F, true}));
         auto encoded = material::encodeMaterialSource(source);
         require(encoded.has_value());
         auto restored_payload = graph.node(constant)->clone();
         auto replacement = graph.node(constant)->clone();
-        static_cast<material::ConstantNode*>(replacement.get())->value[0] = 0.875F;
-        const auto old_pin = replacement->outputs().front().id;
-        const auto destination = graph.node(output)->inputs().front().id;
+        require(restored_payload.has_value() && replacement.has_value());
+        replacement->payload.get<material::MaterialConstant>()->value[0] = 0.875F;
+        const auto original_pins = material_test::pins(graph, constant);
+        const auto old_pin = material_test::output(graph, constant);
+        const auto destination = material_test::input(graph, output);
         const auto* output_pointer = graph.node(output);
         const std::array<graph::NodeId, 1> erased{constant};
-        const std::array<material::MaterialNodeEntry, 1> inserted{{{constant, replacement.get()}}};
+        const std::array<material::MaterialNodeEntry, 1> inserted{{{constant, &*replacement, original_pins}}};
         const std::array<graph::LinkRecord, 1> links{{{old_pin, destination}}};
         const std::array<graph::GraphLayoutEntry, 1> positions{{{constant, {8.0F, 9.0F, true}}}};
         material::MaterialGraphChange change;
@@ -88,10 +90,10 @@ namespace
             edit->commit();
         }
         require(graph.node(output) == output_pointer);
-        require(graph.node(constant)->outputs().front().id == old_pin);
-        require(static_cast<const material::ConstantNode*>(graph.node(constant))->value[0] == 0.875F);
-        require(graph.source(destination).node == constant);
-        const std::array<material::MaterialNodeEntry, 1> undo{{{constant, restored_payload.get()}}};
+        require(material_test::output(graph, constant) == old_pin);
+        require(graph.node(constant)->payload.get<material::MaterialConstant>()->value[0] == 0.875F);
+        require(graph.topology().incoming(destination)->from == old_pin);
+        const std::array<material::MaterialNodeEntry, 1> undo{{{constant, &*restored_payload, original_pins}}};
         change.insert = undo;
         {
             auto edit = material::MaterialGraphEdit::prepare(graph, change);
@@ -176,14 +178,12 @@ namespace
     bool materialEdit()
     {
         material::MaterialGraph graph;
-        auto original = std::make_unique<material::ConstantNode>();
-        original->value[0] = 0.625F;
-        const auto* original_pointer = original.get();
-        const auto original_id = graph.addNode(std::move(original));
+        const auto original_id = material_test::add(graph, material::MaterialConstant{{0.625F, 0, 0, 0}});
+        const auto* original_pointer = graph.node(original_id);
         require(original_id.valid());
-        require(graph.layout().set(original_id, {10.0F, 20.0F, true}).has_value());
+        require(material_test::place(graph, original_id, {10.0F, 20.0F, true}));
         const Records before(graph.topology(), graph.layout());
-        material::ConstantNode candidate;
+        auto candidate = material_test::make(material::MaterialConstant{});
         const std::array<material::MaterialNodeEntry, 1> inputs{{{{}, &candidate}}};
         material::MaterialGraphChange change;
         change.insert = inputs;
@@ -194,7 +194,7 @@ namespace
             require(edit.has_value());
             const auto& inserted = edit->insertedNodes().front();
             issued_node = inserted.id;
-            issued_pin = inserted.value->outputs().front().id;
+            issued_pin = inserted.pins.front().record.id;
             before.check(graph.topology(), graph.layout());
         }
         before.check(graph.topology(), graph.layout());
@@ -204,13 +204,13 @@ namespace
         require(!rejected);
         before.check(graph.topology(), graph.layout());
         require(graph.node(original_id) == original_pointer);
-        require(original_pointer->value[0] == 0.625F);
+        require(original_pointer->payload.get<material::MaterialConstant>()->value[0] == 0.625F);
         require(!inputs.front().id.valid());
-        require(!candidate.outputs().front().id.valid());
-        require(candidate.value[0] == 0.0F);
-        const auto next = graph.addNode(std::make_unique<material::ConstantNode>());
+        require(!inputs.front().pins.size());
+        require(candidate.payload.get<material::MaterialConstant>()->value[0] == 0.0F);
+        const auto next = material_test::add(graph, material::MaterialConstant{});
         require(next.valid());
-        const auto next_pin = graph.node(next)->outputs().front().id;
+        const auto next_pin = material_test::output(graph, next);
         std::printf(
             "Material abandoned node=%llu pin=%llu; next node=%llu pin=%llu; published state preserved\n",
             issued_node.value,

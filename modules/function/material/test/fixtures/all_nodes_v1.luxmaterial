@@ -1,0 +1,304 @@
+alpha_cutoff = 0.5
+alpha_mode = 0
+double_sided = false
+format = 'lux.material.source'
+id = '01000000-0000-0000-0000-000000000000'
+links = []
+name = 'all payloads'
+shading = 2
+version = 1
+
+[[nodes]]
+id = '1000000007'
+inputs = []
+kind = 'constant'
+name = 'node 1000000007'
+
+    [nodes.layout]
+    placed = true
+    x = 3.0
+    y = 4.0
+
+    [nodes.payload]
+    type = 3
+    value = [ 0.0, 0.0, 0.0, 0.0 ]
+
+    [[nodes.outputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '1'
+    name = 'out'
+    type = 3
+
+[[nodes]]
+id = '1000000008'
+inputs = []
+kind = 'input'
+name = 'node 1000000008'
+
+    [nodes.layout]
+    placed = true
+    x = 3.0
+    y = 4.0
+
+    [nodes.payload]
+    input = 0
+
+    [[nodes.outputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '2'
+    name = 'out'
+    type = 1
+
+[[nodes]]
+id = '1000000009'
+kind = 'sample_texture'
+name = 'node 1000000009'
+
+    [nodes.layout]
+    placed = true
+    x = 3.0
+    y = 4.0
+
+    [nodes.payload]
+    slot = 0
+
+    [[nodes.inputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '3'
+    name = 'uv'
+    type = 1
+
+    [[nodes.outputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '4'
+    name = 'rgba'
+    type = 3
+
+[[nodes]]
+id = '1000000010'
+inputs = []
+kind = 'parameter'
+name = 'node 1000000010'
+
+    [nodes.layout]
+    placed = true
+    x = 3.0
+    y = 4.0
+
+    [nodes.payload]
+    slot = 0
+    type = 3
+
+    [[nodes.outputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '5'
+    name = 'value'
+    type = 3
+
+[[nodes]]
+id = '1000000011'
+kind = 'math'
+name = 'node 1000000011'
+
+    [nodes.layout]
+    placed = true
+    x = 3.0
+    y = 4.0
+
+    [nodes.payload]
+    operation = 0
+    type = 0
+
+    [[nodes.inputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '6'
+    name = 'a'
+    type = 0
+
+    [[nodes.inputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '7'
+    name = 'b'
+    type = 0
+
+    [[nodes.outputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '8'
+    name = 'result'
+    type = 0
+
+[[nodes]]
+id = '1000000012'
+kind = 'swizzle'
+name = 'node 1000000012'
+
+    [nodes.layout]
+    placed = true
+    x = 3.0
+    y = 4.0
+
+    [nodes.payload]
+    components = [ 0, 1, 2, 3 ]
+    source_type = 3
+    type = 2
+
+    [[nodes.inputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '9'
+    name = 'in'
+    type = 3
+
+    [[nodes.outputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '10'
+    name = 'out'
+    type = 2
+
+[[nodes]]
+id = '1000000013'
+kind = 'construct'
+name = 'node 1000000013'
+
+    [nodes.layout]
+    placed = true
+    x = 3.0
+    y = 4.0
+
+    [nodes.payload]
+    type = 2
+
+    [[nodes.inputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '11'
+    name = 'x'
+    type = 0
+
+    [[nodes.inputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '12'
+    name = 'y'
+    type = 0
+
+    [[nodes.inputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '13'
+    name = 'z'
+    type = 0
+
+    [[nodes.outputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '14'
+    name = 'out'
+    type = 2
+
+[[nodes]]
+id = '1000000014'
+kind = 'decode_normal'
+name = 'node 1000000014'
+
+    [nodes.layout]
+    placed = true
+    x = 3.0
+    y = 4.0
+
+    [nodes.payload]
+
+    [[nodes.inputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '15'
+    name = 'rgb'
+    type = 2
+
+    [[nodes.outputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '16'
+    name = 'normal'
+    type = 2
+
+[[nodes]]
+id = '1000000015'
+kind = 'tbn_transform'
+name = 'node 1000000015'
+
+    [nodes.layout]
+    placed = true
+    x = 3.0
+    y = 4.0
+
+    [nodes.payload]
+
+    [[nodes.inputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '17'
+    name = 'normal_ts'
+    type = 2
+
+    [[nodes.outputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '18'
+    name = 'world_normal'
+    type = 2
+
+[[nodes]]
+id = '1000000016'
+kind = 'output_surface'
+name = 'node 1000000016'
+outputs = []
+
+    [nodes.layout]
+    placed = true
+    x = 3.0
+    y = 4.0
+
+    [nodes.payload]
+
+    [[nodes.inputs]]
+    default = [ 1.0, 1.0, 1.0, 0.0 ]
+    id = '19'
+    name = 'base_color'
+    type = 2
+
+    [[nodes.inputs]]
+    default = [ 1.0, 0.0, 0.0, 0.0 ]
+    id = '20'
+    name = 'opacity'
+    type = 0
+
+    [[nodes.inputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '21'
+    name = 'metallic'
+    type = 0
+
+    [[nodes.inputs]]
+    default = [ 1.0, 0.0, 0.0, 0.0 ]
+    id = '22'
+    name = 'roughness'
+    type = 0
+
+    [[nodes.inputs]]
+    default = [ 0.0, 0.0, 1.0, 0.0 ]
+    id = '23'
+    name = 'normal_ts'
+    type = 2
+
+    [[nodes.inputs]]
+    default = [ 0.0, 0.0, 0.0, 0.0 ]
+    id = '24'
+    name = 'emissive'
+    type = 2
+
+    [[nodes.inputs]]
+    default = [ 1.0, 0.0, 0.0, 0.0 ]
+    id = '25'
+    name = 'ao'
+    type = 0
+
+[[parameters]]
+default = [ 0.5, 0.0, 0.0, 0.0 ]
+name = 'roughness'
+type = 0
+
+[[textures]]
+asset = '01000000-0000-0000-0000-000000000000'
+name = 'albedo'

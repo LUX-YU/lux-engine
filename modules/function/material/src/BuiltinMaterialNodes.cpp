@@ -1,3 +1,4 @@
+#include <lux/engine/material/detail/BuiltinMaterialCodec.hpp>
 #include <lux/engine/material/detail/BuiltinMaterialNodes.hpp>
 
 #include <algorithm>
@@ -20,8 +21,10 @@ namespace lux::material
             return type >= EValueType::FLOAT && type <= EValueType::VEC4;
         }
 
-        MaterialNodeResult<void>
-        validateSwizzle(const MaterialSwizzle& value, bool require_available_components) noexcept
+        MaterialNodeResult<void> validateSwizzle(
+            const MaterialSwizzle& value,
+            bool require_available_components
+        ) noexcept
         {
             const bool is_invalid_type = !validType(value.source_type) || !validType(value.out_type);
             if (is_invalid_type)
@@ -448,11 +451,44 @@ namespace lux::material
             return std::make_unique<T>(value);
         }
 
-        template <class T> MaterialNodeRegistration registration(std::string name) noexcept
+        template <class T> MaterialNodeRegistration registration() noexcept
         {
             MaterialNodeRegistration result;
+            std::string name{T::TypeName};
             result.identity = {graph::nodeTypeId(name), std::move(name), 1};
             result.payload_type = cxx::typeToken<T>();
+            detail::installBuiltinCodec<T, &clone<T>>(result);
+            if constexpr (std::is_same_v<T, MaterialOutputSurface>)
+            {
+                result.role = EMaterialNodeRole::SURFACE;
+            }
+            if constexpr (std::is_same_v<T, MaterialSampleTexture> || std::is_same_v<T, MaterialParameter>)
+            {
+                result.validate_bindings = [](const MaterialNodePayload& payload,
+                                              const shadergen::ShaderIR& resources) noexcept -> MaterialNodeResult<void>
+                {
+                    const auto& value = *payload.get<T>();
+                    if constexpr (std::is_same_v<T, MaterialSampleTexture>)
+                    {
+                        if (value.texture_slot >= resources.textures.size())
+                        {
+                            return cxx::unexpected(invalid("SampleTexture references an undeclared texture slot"));
+                        }
+                    }
+                    else
+                    {
+                        const bool has_slot = value.param_slot < resources.params.size();
+                        const bool is_type_mismatch =
+                            has_slot && resources.params[value.param_slot].type != static_cast<ShaderType>(value.type);
+                        const bool is_invalid_parameter = !has_slot || is_type_mismatch;
+                        if (is_invalid_parameter)
+                        {
+                            return cxx::unexpected(invalid("invalid Param node payload"));
+                        }
+                    }
+                    return {};
+                };
+            }
             result.create = [](const object::CodeLease& code) noexcept
             { return MaterialNodePayload::make<T, &clone<T>>(code); };
             result.validate = [](const MaterialNodePayload& payload) noexcept -> MaterialNodeResult<void>
@@ -464,10 +500,7 @@ namespace lux::material
                 else
                 {
                     // These payloads have no intrinsic invalid state; texture-slot admission needs IR resources.
-                    static_assert(
-                        std::is_same_v<T, MaterialSampleTexture> || std::is_same_v<T, MaterialDecodeNormal> ||
-                        std::is_same_v<T, MaterialTbnTransform> || std::is_same_v<T, MaterialOutputSurface>
-                    );
+                    static_assert(std::is_same_v<T, MaterialSampleTexture> || std::is_same_v<T, MaterialDecodeNormal> || std::is_same_v<T, MaterialTbnTransform> || std::is_same_v<T, MaterialOutputSurface>);
                     return {};
                 }
             };
@@ -520,16 +553,16 @@ namespace lux::material
     std::array<MaterialNodeRegistration, 10> materialBuiltinRegistrations() noexcept
     {
         return {
-            registration<MaterialConstant>("lux.material.constant.v1"),
-            registration<MaterialInput>("lux.material.input.v1"),
-            registration<MaterialSampleTexture>("lux.material.sample_texture.v1"),
-            registration<MaterialParameter>("lux.material.parameter.v1"),
+            registration<MaterialConstant>(),
+            registration<MaterialInput>(),
+            registration<MaterialSampleTexture>(),
+            registration<MaterialParameter>(),
             materialMathRegistration(),
-            registration<MaterialSwizzle>("lux.material.swizzle.v1"),
-            registration<MaterialConstruct>("lux.material.construct.v1"),
-            registration<MaterialDecodeNormal>("lux.material.decode_normal.v1"),
-            registration<MaterialTbnTransform>("lux.material.tbn_transform.v1"),
-            registration<MaterialOutputSurface>("lux.material.output_surface.v1")
+            registration<MaterialSwizzle>(),
+            registration<MaterialConstruct>(),
+            registration<MaterialDecodeNormal>(),
+            registration<MaterialTbnTransform>(),
+            registration<MaterialOutputSurface>()
         };
     }
 } // namespace lux::material

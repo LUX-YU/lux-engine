@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string_view>
+
 #include <lux/engine/material/graph/Types.hpp>
 #include <lux/engine/material/graph/visibility.h>
 
@@ -38,6 +40,7 @@ namespace lux::material
     // Semantic payload only: the catalog definition provides pins and compilation.
     struct MaterialMath final
     {
+        static constexpr std::string_view TypeName{"lux.material.math.v1"};
         EMathOp op{EMathOp::MUL};
         EValueType operand_type{EValueType::FLOAT};
     };

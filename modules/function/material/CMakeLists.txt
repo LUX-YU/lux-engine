@@ -12,11 +12,11 @@ add_component(
     NAMESPACE      lux::engine::function
     OUTPUT_NAME    lux_engine_function_material_graph
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/Node.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialGraph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialLowering.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialMath.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/BuiltinMaterialNodes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/BuiltinMaterialCodec.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialValidation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialSource.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderIR.cpp
@@ -61,6 +61,15 @@ component_add_transitive_commands(
 )
 
 if(BUILD_TESTING)
+    add_executable(material_registered_graph_test test/registered_graph.cpp)
+
+    target_link_libraries(material_registered_graph_test PRIVATE lux::engine::function::material_graph)
+
+    add_test(
+        NAME material.registered_graph
+        COMMAND material_registered_graph_test "${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/all_nodes_v1.luxmaterial"
+    )
+
     add_executable(material_authoring_schema_test test/authoring_schema.cpp)
 
     target_link_libraries(material_authoring_schema_test PRIVATE lux::engine::function::material_graph)

@@ -37,9 +37,9 @@ namespace lux::material
         NodeId node;
         PinId pin;
         std::uint32_t line{}, column{};
+        std::optional<MaterialCompileFailure> cause;
     };
     template <class T> using MaterialSourceResult = lux::cxx::expected<T, MaterialSourceFailure>;
-    [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC bool equalMaterialNodes(const Node&, const Node&) noexcept;
     // Local draft validation; does not assign identities or construct a temporary graph.
     [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<void> validateMaterialName(
         std::string_view,
@@ -54,7 +54,7 @@ namespace lux::material
         MaterialSourceLimits = {}
     ) noexcept;
     [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<void> validateMaterialNode(
-        const Node&,
+        const MaterialNode&,
         NodeId = {},
         MaterialSourceLimits = {}
     ) noexcept;
@@ -63,12 +63,19 @@ namespace lux::material
         const MaterialSource&,
         MaterialSourceLimits = {}
     ) noexcept;
-    // .luxmaterial v1 is an editable source document. No file I/O, compiler, Editor or GPU state enters this codec.
+    // Writes v2 with canonical node identity/version and registered payload codecs; reads v1 builtin sources.
+    // No file I/O, compiler, Editor or GPU state enters this codec.
     // Disconnected nodes, missing output and cycles remain saveable; compilation reports semantic diagnostics.
     [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<std::string> encodeMaterialSource(
         const MaterialSource&,
         MaterialSourceLimits = {}
     ) noexcept;
+    [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<MaterialSource> decodeMaterialSource(
+        std::string_view,
+        const MaterialNodeCatalog&,
+        MaterialSourceLimits = {}
+    ) noexcept;
+    // Builtin-only convenience. Extensions supply their immutable catalog explicitly.
     [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC MaterialSourceResult<MaterialSource> decodeMaterialSource(
         std::string_view,
         MaterialSourceLimits = {}

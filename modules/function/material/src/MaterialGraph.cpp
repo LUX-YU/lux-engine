@@ -1,113 +1,57 @@
-#include <exception>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
-#include <lux/engine/material/graph/Nodes.hpp>
 
 #include <algorithm>
-#include <concepts>
+#include <cmath>
+#include <exception>
 #include <utility>
 
 namespace lux::material
 {
     namespace
     {
-        [[nodiscard]] lux::graph::NodeTypeId nodeType(EMatNodeKind kind) noexcept
+        auto structural(graph::EGraphTopologyError code, NodeId node = {}, PinId pin = {}) noexcept
         {
-            return lux::graph::NodeTypeId{static_cast<std::uint64_t>(kind) + 1U};
+            return cxx::unexpected(VMaterialGraphFailure{graph::GraphTopologyFailure{code, node, pin}});
         }
 
-        [[nodiscard]] lux::graph::PinSemanticId
-        pinSemantic(lux::graph::EPinDirection direction, std::size_t ordinal) noexcept
+        auto semantic(MaterialCompileFailure error, NodeId node) noexcept
         {
-            const auto direction_bit = direction == lux::graph::EPinDirection::OUTPUT ? (std::uint64_t{1U} << 63U) : 0U;
-            return lux::graph::PinSemanticId{direction_bit | static_cast<std::uint64_t>(ordinal + 1U)};
+            error.node_id = node;
+            return cxx::unexpected(VMaterialGraphFailure{std::move(error)});
         }
 
-        [[nodiscard]] bool isConvertible(EValueType source, EValueType target) noexcept
+        bool validPin(const MaterialPinPayload& pin) noexcept
         {
-            if (source == target)
-            {
-                return true;
-            }
-            const auto source_width = static_cast<std::uint8_t>(source) + 1U;
-            const auto target_width = static_cast<std::uint8_t>(target) + 1U;
-            return source_width > target_width || (source == EValueType::FLOAT && target_width > 1U);
+            const bool is_valid_type = pin.type >= EValueType::FLOAT && pin.type <= EValueType::VEC4;
+            const bool is_finite =
+                std::ranges::all_of(pin.constant, [](float value) noexcept { return std::isfinite(value); });
+            return is_valid_type && is_finite;
         }
 
-        template <class Structure>
-        concept NodeStructure = requires(Structure& structure, lux::graph::PinRecord pin) {
-            { structure.insertPin(pin) } -> std::same_as<lux::cxx::expected<void, lux::graph::GraphTopologyFailure>>;
-            {
-                structure.addPin(pin.owner, pin.direction, pin.fan_cap, pin.semantic)
-            } -> std::same_as<lux::cxx::expected<PinId, lux::graph::GraphTopologyFailure>>;
-            {
-                structure.detachNode(pin.owner)
-            } -> std::same_as<lux::cxx::expected<lux::graph::DetachedNode, lux::graph::GraphTopologyFailure>>;
-        };
-
-        template <NodeStructure Structure>
-        bool registerNodeStructure(Structure& structure, NodeId id, Node& node_value, bool preserve_pin_ids) noexcept
+        bool convertible(EValueType source, EValueType destination) noexcept
         {
-            const auto add_pins = [&](
-                std::vector<DataPin>& pins,
-                lux::graph::EPinDirection direction,
-                bool existing_pass
-            ) noexcept
-            {
-                for (std::size_t ordinal{}; ordinal < pins.size(); ++ordinal)
-                {
-                    auto& pin = pins[ordinal];
-                    const bool existing = preserve_pin_ids && pin.id.valid();
-                    if (existing != existing_pass)
-                    {
-                        continue;
-                    }
-                    const auto fan_cap = direction == lux::graph::EPinDirection::INPUT ? 1U : lux::graph::kUnlimitedFan;
-                    if (existing)
-                    {
-                        const auto inserted = structure.insertPin(lux::graph::PinRecord{
-                            pin.id,
-                            id,
-                            direction,
-                            static_cast<std::uint8_t>(fan_cap),
-                            pinSemantic(direction, ordinal)
-                        });
-                        if (!inserted)
-                        {
-                            return false;
-                        }
-                    }
-                    else
-                    {
-                        auto created = structure.addPin(
-                            id,
-                            direction,
-                            static_cast<std::uint8_t>(fan_cap),
-                            pinSemantic(direction, ordinal)
-                        );
-                        if (!created)
-                        {
-                            return false;
-                        }
-                        pin.id = *created;
-                    }
-                }
-                return true;
-            };
-
-            // Admit all preserved identities before issuing new pins, including outputs after new inputs.
-            if (!add_pins(node_value.inputs(), lux::graph::EPinDirection::INPUT, true) ||
-                !add_pins(node_value.outputs(), lux::graph::EPinDirection::OUTPUT, true) ||
-                !add_pins(node_value.inputs(), lux::graph::EPinDirection::INPUT, false) ||
-                !add_pins(node_value.outputs(), lux::graph::EPinDirection::OUTPUT, false))
-            {
-                static_cast<void>(structure.detachNode(id));
-                return false;
-            }
-            return true;
+            const bool is_scalar = source == EValueType::FLOAT;
+            return source == destination || source > destination || is_scalar;
         }
     } // namespace
 
-    MaterialGraph::MaterialGraph() = default;
+    MaterialNodeResult<MaterialNode> MaterialNode::clone() const noexcept
+    {
+        if (!definition)
+        {
+            return cxx::unexpected(
+                MaterialCompileFailure{EMaterialCompileError::INVALID_GRAPH, "node has no registered definition"}
+            );
+        }
+        auto copied = payload.clone();
+        if (!copied)
+        {
+            return cxx::unexpected(std::move(copied.error()));
+        }
+        return MaterialNode{definition, name, std::move(*copied)};
+    }
+
+    MaterialGraph::MaterialGraph() noexcept = default;
 
     MaterialGraph::~MaterialGraph() = default;
 
@@ -115,7 +59,7 @@ namespace lux::material
 
     MaterialGraph& MaterialGraph::operator=(MaterialGraph&&) noexcept = default;
 
-    MaterialGraph MaterialGraph::clone() const
+    MaterialGraphResult<MaterialGraph> MaterialGraph::clone() const noexcept
     {
         MaterialGraph result;
         result.shading_model = shading_model;
@@ -124,190 +68,172 @@ namespace lux::material
         result.render_state = render_state;
         result.topology_ = topology_;
         result.layout_ = layout_;
-        for (const auto& [id, node_value] : nodes_)
+        result.pins_ = pins_;
+        result.nodes_.reserve(nodes_.size());
+        for (const auto& [id, value] : nodes_)
         {
-            if (node_value)
+            auto copied = value.clone();
+            if (!copied)
             {
-                result.nodes_.emplace(id, node_value->clone());
+                return semantic(std::move(copied.error()), id);
             }
+            result.nodes_.emplace(id, std::move(*copied));
         }
         return result;
     }
 
-    NodeId MaterialGraph::addNode(std::unique_ptr<Node> node_value) noexcept
+    MaterialGraphResult<NodeId> MaterialGraph::addNode(MaterialNode node) noexcept
     {
-        if (!node_value)
-        {
-            return {};
-        }
-        auto id = topology_.addNode(nodeType(node_value->kind()));
-        if (!id)
-        {
-            return {};
-        }
-        if (!registerNodeStructure(topology_, *id, *node_value, false))
-        {
-            return {};
-        }
-        nodes_.emplace(*id, std::move(node_value));
-        return *id;
+        return addNodeWithId({}, std::move(node));
     }
 
-    NodeId MaterialGraph::addNodeWithId(NodeId id, std::unique_ptr<Node> node_value) noexcept
+    MaterialGraphResult<NodeId> MaterialGraph::addNodeWithId(
+        NodeId id,
+        MaterialNode node,
+        std::span<const MaterialPinEntry> pins
+    ) noexcept
     {
-        if (!node_value || !id.valid() || nodes_.find(id) != nodes_.end())
+        MaterialGraphEdit edit(*this);
+        edit.inserted_.reserve(1);
+        edit.inserted_pins_.reserve(1);
+        auto inserted = edit.insert(id, std::move(node), pins);
+        if (!inserted)
         {
-            return {};
+            return cxx::unexpected(std::move(inserted.error()));
         }
-        if (!topology_.insertNode(lux::graph::NodeRecord{id, nodeType(node_value->kind())}))
-        {
-            return {};
-        }
-        const auto pins_have_ids = [&]
-        {
-            for (const auto& pin : node_value->inputs())
-            {
-                if (!pin.id.valid())
-                {
-                    return false;
-                }
-            }
-            for (const auto& pin : node_value->outputs())
-            {
-                if (!pin.id.valid())
-                {
-                    return false;
-                }
-            }
-            return true;
-        }();
-        if (!registerNodeStructure(topology_, id, *node_value, pins_have_ids))
-        {
-            return {};
-        }
-        nodes_.emplace(id, std::move(node_value));
-        return id;
+        const auto assigned = edit.inserted_.front().id;
+        edit.reserveCommit();
+        edit.commit();
+        return assigned;
     }
 
-    std::unique_ptr<Node> MaterialGraph::extractNode(NodeId id)
+    MaterialGraphResult<MaterialNodeSnapshot> MaterialGraph::extractNode(NodeId id) noexcept
     {
         const auto found = nodes_.find(id);
         if (found == nodes_.end())
         {
-            return nullptr;
+            return structural(graph::EGraphTopologyError::UNKNOWN_NODE, id);
         }
-        if (!topology_.detachNode(id))
+        graph::GraphEdit edit(topology_, layout_);
+        auto detached = edit.detachNode(id);
+        if (!detached)
         {
-            return nullptr;
+            return cxx::unexpected(VMaterialGraphFailure{detached.error()});
         }
-        auto result = std::move(found->second);
+        MaterialNodeSnapshot result;
+        result.id = id;
+        result.links = std::move(detached->links);
+        if (const auto* position = layout_.find(id))
+        {
+            result.layout = *position;
+        }
+        result.pins.reserve(detached->pins.size());
+        for (const auto& record : detached->pins)
+        {
+            const auto* value = pin(record.id);
+            if (!value)
+            {
+                return structural(graph::EGraphTopologyError::UNKNOWN_PIN, id, record.id);
+            }
+            result.pins.push_back({record, *value});
+        }
+        // All preparation has succeeded. Moving owners and erasing plain metadata cannot call extensions.
+        edit.commit();
+        result.value = std::move(found->second);
         nodes_.erase(found);
+        for (const auto& record : result.pins)
+        {
+            pins_.erase(record.record.id);
+        }
         return result;
     }
 
-    Node* MaterialGraph::node(NodeId id) noexcept
+    MaterialGraphResult<void> MaterialGraph::removeNode(NodeId id) noexcept
+    {
+        MaterialGraphChange change;
+        change.erase = {&id, 1};
+        auto edit = MaterialGraphEdit::prepare(*this, change);
+        if (!edit)
+        {
+            return cxx::unexpected(std::move(edit.error()));
+        }
+        edit->commit();
+        return {};
+    }
+
+    const MaterialNode* MaterialGraph::node(NodeId id) const noexcept
     {
         const auto found = nodes_.find(id);
-        return found == nodes_.end() ? nullptr : found->second.get();
+        return found == nodes_.end() ? nullptr : &found->second;
     }
 
-    const Node* MaterialGraph::node(NodeId id) const noexcept
+    const MaterialPinPayload* MaterialGraph::pin(PinId id) const noexcept
     {
-        const auto found = nodes_.find(id);
-        return found == nodes_.end() ? nullptr : found->second.get();
+        const auto found = pins_.find(id);
+        return found == pins_.end() ? nullptr : &found->second;
     }
 
-    void MaterialGraph::removeNode(NodeId id)
+    MaterialPinPayload* MaterialGraph::pin(PinId id) noexcept
     {
-        if (!topology_.detachNode(id))
-        {
-            return;
-        }
-        nodes_.erase(id);
-        static_cast<void>(layout_.erase(id));
+        return const_cast<MaterialPinPayload*>(std::as_const(*this).pin(id));
     }
 
-    bool MaterialGraph::canConnect(NodeId src, uint32_t src_pin, NodeId dst, uint32_t dst_pin) const noexcept
+    PinId MaterialGraph::pinId(NodeId node, graph::PinSemanticId semantic) const noexcept
     {
-        const auto* source_node = node(src);
-        const auto* target_node = node(dst);
-        const bool has_nodes = source_node != nullptr && target_node != nullptr;
-        const bool has_valid_pins =
-            has_nodes && src_pin < source_node->outputs().size() && dst_pin < target_node->inputs().size();
-        const bool is_invalid_connection = src == dst || !has_valid_pins;
-        if (is_invalid_connection)
+        for (const auto& record : topology_.pins())
         {
-            return false;
-        }
-        return isConvertible(source_node->outputs()[src_pin].type, target_node->inputs()[dst_pin].type);
-    }
-
-    bool MaterialGraph::connect(NodeId src, uint32_t src_pin, NodeId dst, uint32_t dst_pin)
-    {
-        if (!canConnect(src, src_pin, dst, dst_pin))
-        {
-            return false;
-        }
-        auto* source_node = node(src);
-        auto* target_node = node(dst);
-        return static_cast<bool>(
-            topology_.connect(source_node->outputs()[src_pin].id, target_node->inputs()[dst_pin].id)
-        );
-    }
-
-    void MaterialGraph::disconnect(NodeId dst, uint32_t dst_pin)
-    {
-        auto* target_node = node(dst);
-        if (target_node == nullptr || dst_pin >= target_node->inputs().size())
-        {
-            return;
-        }
-        const auto incoming = topology_.incoming(target_node->inputs()[dst_pin].id);
-        if (incoming)
-        {
-            static_cast<void>(topology_.disconnect(incoming->from, incoming->to));
-        }
-    }
-
-    PinLink MaterialGraph::source(NodeId dst, uint32_t dst_pin) const noexcept
-    {
-        const auto* target_node = node(dst);
-        if (target_node == nullptr || dst_pin >= target_node->inputs().size())
-        {
-            return {};
-        }
-        return source(target_node->inputs()[dst_pin].id);
-    }
-
-    PinLink MaterialGraph::source(PinId input) const noexcept
-    {
-        const auto incoming = topology_.incoming(input);
-        if (!incoming)
-        {
-            return {};
-        }
-        const auto* source_pin = topology_.findPin(incoming->from);
-        if (source_pin == nullptr)
-        {
-            return {};
-        }
-        const auto* source_node = node(source_pin->owner);
-        if (source_node == nullptr)
-        {
-            return {};
-        }
-        for (std::uint32_t ordinal{}; ordinal < source_node->outputs().size(); ++ordinal)
-        {
-            if (source_node->outputs()[ordinal].id == incoming->from)
+            if (record.owner == node && record.semantic == semantic)
             {
-                return PinLink{source_pin->owner, ordinal};
+                return record.id;
             }
         }
         return {};
     }
 
-    MaterialGraphEdit::MaterialGraphEdit(MaterialGraph& source)
-        : target_(&source), structure_(source.topology_, source.layout_)
+    MaterialGraphResult<void> MaterialGraph::connect(PinId from, PinId to) noexcept
+    {
+        const graph::LinkRecord link{from, to};
+        MaterialGraphChange change;
+        change.connect = {&link, 1};
+        auto edit = MaterialGraphEdit::prepare(*this, change);
+        if (!edit)
+        {
+            return cxx::unexpected(std::move(edit.error()));
+        }
+        edit->commit();
+        return {};
+    }
+
+    MaterialGraphResult<void> MaterialGraph::disconnect(PinId input) noexcept
+    {
+        const auto link = topology_.incoming(input);
+        if (!link)
+        {
+            return structural(graph::EGraphTopologyError::UNKNOWN_LINK, {}, input);
+        }
+        MaterialGraphChange change;
+        change.disconnect = {&*link, 1};
+        auto edit = MaterialGraphEdit::prepare(*this, change);
+        if (!edit)
+        {
+            return cxx::unexpected(std::move(edit.error()));
+        }
+        edit->commit();
+        return {};
+    }
+
+    const graph::GraphTopology& MaterialGraph::topology() const noexcept
+    {
+        return topology_;
+    }
+
+    const graph::GraphLayout& MaterialGraph::layout() const noexcept
+    {
+        return layout_;
+    }
+
+    MaterialGraphEdit::MaterialGraphEdit(MaterialGraph& graph) noexcept
+        : target_(&graph), structure_(graph.topology_, graph.layout_)
     {
     }
 
@@ -315,128 +241,205 @@ namespace lux::material
 
     MaterialGraphEdit::MaterialGraphEdit(MaterialGraphEdit&& other) noexcept
         : target_(std::exchange(other.target_, nullptr)), structure_(std::move(other.structure_)),
-          nodes_(std::move(other.nodes_)), inserted_(std::move(other.inserted_)),
+          staged_nodes_(std::move(other.staged_nodes_)), staged_pins_(std::move(other.staged_pins_)),
+          retired_nodes_(std::move(other.retired_nodes_)), retired_pins_(std::move(other.retired_pins_)),
+          erase_nodes_(std::move(other.erase_nodes_)), erase_pins_(std::move(other.erase_pins_)),
+          inserted_pins_(std::move(other.inserted_pins_)), inserted_(std::move(other.inserted_)),
           committed_(std::exchange(other.committed_, true))
     {
     }
 
-    lux::cxx::expected<MaterialGraphEdit, lux::graph::GraphTopologyFailure> MaterialGraphEdit::prepare(
+    MaterialGraphResult<void> MaterialGraphEdit::insert(
+        NodeId id,
+        MaterialNode node,
+        std::span<const MaterialPinEntry> restored
+    ) noexcept
+    {
+        if (!node.definition)
+        {
+            return structural(graph::EGraphTopologyError::INVALID_TYPE, id);
+        }
+        auto declarations = node.definition->describePins(node.payload);
+        if (!declarations)
+        {
+            return semantic(std::move(declarations.error()), id);
+        }
+        const bool has_restore = !restored.empty();
+        const bool is_invalid_restore = has_restore && (!id.valid() || restored.size() != declarations->size());
+        if (is_invalid_restore)
+        {
+            return structural(graph::EGraphTopologyError::INVALID_SEMANTIC, id);
+        }
+        const auto type = node.definition->identity().id;
+        if (id.valid())
+        {
+            auto accepted = structure_.insertNode({id, type});
+            if (!accepted)
+            {
+                return cxx::unexpected(VMaterialGraphFailure{accepted.error()});
+            }
+        }
+        else
+        {
+            auto assigned = structure_.addNode(type);
+            if (!assigned)
+            {
+                return cxx::unexpected(VMaterialGraphFailure{assigned.error()});
+            }
+            id = *assigned;
+        }
+        std::vector<MaterialPinEntry> entries;
+        entries.reserve(declarations->size());
+        for (const auto& declaration : *declarations)
+        {
+            const auto fan = declaration.direction == graph::EPinDirection::INPUT ? 1U : graph::kUnlimitedFan;
+            graph::PinRecord
+                record{{}, id, declaration.direction, static_cast<std::uint8_t>(fan), declaration.semantic};
+            MaterialPinPayload value{declaration.name, declaration.type, declaration.default_value};
+            if (has_restore)
+            {
+                const auto found = std::ranges::find(
+                    restored,
+                    declaration.semantic,
+                    [](const auto& entry) noexcept { return entry.record.semantic; }
+                );
+                if (found == restored.end())
+                {
+                    return structural(graph::EGraphTopologyError::INVALID_SEMANTIC, id);
+                }
+                const bool is_wrong_owner = found->record.owner != id;
+                const bool is_wrong_direction = found->record.direction != record.direction;
+                const bool is_wrong_fan = found->record.fan_cap != record.fan_cap;
+                const bool is_invalid_record = is_wrong_owner || is_wrong_direction || is_wrong_fan;
+                if (is_invalid_record)
+                {
+                    return structural(graph::EGraphTopologyError::INVALID_SEMANTIC, id, found->record.id);
+                }
+                record.id = found->record.id;
+                value = found->value;
+                auto accepted = structure_.insertPin(record);
+                if (!accepted)
+                {
+                    return cxx::unexpected(VMaterialGraphFailure{accepted.error()});
+                }
+            }
+            else
+            {
+                auto assigned = structure_.addPin(id, record.direction, record.fan_cap, record.semantic);
+                if (!assigned)
+                {
+                    return cxx::unexpected(VMaterialGraphFailure{assigned.error()});
+                }
+                record.id = *assigned;
+            }
+            if (!validPin(value))
+            {
+                return structural(graph::EGraphTopologyError::INVALID_TYPE, id, record.id);
+            }
+            entries.push_back({record, value});
+            staged_pins_.emplace(record.id, std::move(value));
+        }
+        auto stored = staged_nodes_.emplace(id, std::move(node));
+        if (!stored.second)
+        {
+            return structural(graph::EGraphTopologyError::DUPLICATE_NODE, id);
+        }
+        inserted_pins_.push_back(std::move(entries));
+        inserted_.push_back({id, &stored.first->second, inserted_pins_.back()});
+        return {};
+    }
+
+    MaterialGraphResult<MaterialGraphEdit> MaterialGraphEdit::prepare(
         MaterialGraph& source,
         const MaterialGraphChange& change
-    )
+    ) noexcept
     {
-        using Error = lux::graph::EGraphTopologyError;
-        const auto fail = [](Error error, NodeId node = {}, PinId pin = {})
-        { return lux::cxx::unexpected(lux::graph::GraphTopologyFailure{error, node, pin}); };
-        // Existing semantic payloads stay in place; only inserted payloads are cloned.
         MaterialGraphEdit result(source);
-        NodeStorage staged_nodes;
-        result.nodes_.reserve(change.insert.size() + change.erase.size());
         result.inserted_.reserve(change.insert.size());
+        result.inserted_pins_.reserve(change.insert.size());
         for (const auto& link : change.disconnect)
         {
-            auto disconnected = result.structure_.disconnect(link.from, link.to);
-            if (!disconnected)
+            auto removed = result.structure_.disconnect(link.from, link.to);
+            if (!removed)
             {
-                return lux::cxx::unexpected(disconnected.error());
+                return cxx::unexpected(VMaterialGraphFailure{removed.error()});
             }
         }
         for (const auto id : change.erase)
         {
             if (!source.node(id))
             {
-                return fail(Error::UNKNOWN_NODE, id);
+                return structural(graph::EGraphTopologyError::UNKNOWN_NODE, id);
             }
             auto removed = result.structure_.detachNode(id);
             if (!removed)
             {
-                return lux::cxx::unexpected(removed.error());
+                return cxx::unexpected(VMaterialGraphFailure{removed.error()});
             }
-            result.nodes_.emplace_back(id, NodeStorage::node_type{});
+            result.erase_nodes_.push_back(id);
+            for (const auto& pin : removed->pins)
+            {
+                result.erase_pins_.push_back(pin.id);
+            }
         }
+        std::vector<MaterialNode> copies;
+        copies.reserve(change.insert.size());
         for (const auto& entry : change.insert)
         {
-            const auto* node = entry.value;
-            if (!node)
+            if (!entry.value)
             {
-                return fail(Error::INVALID_TYPE);
+                return structural(graph::EGraphTopologyError::INVALID_TYPE, entry.id);
             }
-            if (entry.id.valid() && result.structure_.topology().findNode(entry.id))
-            {
-                return fail(Error::DUPLICATE_NODE, entry.id);
-            }
-            auto copy = node->clone();
+            auto copy = entry.value->clone();
             if (!copy)
             {
-                return fail(Error::INVALID_ID, entry.id);
+                return semantic(std::move(copy.error()), entry.id);
             }
-            auto id = entry.id;
-            if (id.valid())
+            copies.push_back(std::move(*copy));
+        }
+        // Restore explicit identities before issuing any new ones. Report insertions in request order.
+        std::vector<MaterialNodeEntry> ordered(change.insert.size());
+        // Restored pins precede fresh pins, including nodes with an explicit id but a fresh schema.
+        for (unsigned phase = 0; phase != 3; ++phase)
+        {
+            for (std::size_t index = 0; index != change.insert.size(); ++index)
             {
-                auto inserted = result.structure_.insertNode({id, nodeType(node->kind())});
+                const auto& entry = change.insert[index];
+                const unsigned entry_phase = !entry.pins.empty() ? 0U : entry.id.valid() ? 1U : 2U;
+                if (entry_phase != phase)
+                {
+                    continue;
+                }
+                auto inserted = result.insert(entry.id, std::move(copies[index]), entry.pins);
                 if (!inserted)
                 {
-                    return lux::cxx::unexpected(inserted.error());
+                    return cxx::unexpected(std::move(inserted.error()));
                 }
+                ordered[index] = result.inserted_.back();
             }
-            else
-            {
-                auto created = result.structure_.addNode(nodeType(node->kind()));
-                if (!created)
-                {
-                    return lux::cxx::unexpected(created.error());
-                }
-                id = *created;
-            }
-            // Preserve the original decoder rule: incomplete pin IDs request a wholly fresh schema.
-            const auto hasId = [](const DataPin& pin) noexcept { return pin.id.valid(); };
-            const bool preserve_ids = entry.id.valid() && std::ranges::all_of(copy->inputs(), hasId) &&
-                                      std::ranges::all_of(copy->outputs(), hasId);
-            if (!registerNodeStructure(result.structure_, id, *copy, preserve_ids))
-            {
-                return fail(Error::INVALID_ID, entry.id);
-            }
-            result.inserted_.push_back({id, copy.get()});
-            staged_nodes.emplace(id, std::move(copy));
         }
-        const auto findNode = [&](NodeId id) -> const Node*
-        {
-            const auto found = staged_nodes.find(id);
-            return found != staged_nodes.end() ? found->second.get() : source.node(id);
-        };
+        result.inserted_ = std::move(ordered);
         for (const auto& link : change.connect)
         {
-            const auto* from = result.structure_.topology().findPin(link.from);
-            const auto* to = result.structure_.topology().findPin(link.to);
-            if (!from || !to)
-            {
-                return fail(Error::UNKNOWN_PIN, {}, from ? link.to : link.from);
-            }
-            if (from->direction != lux::graph::EPinDirection::OUTPUT ||
-                to->direction != lux::graph::EPinDirection::INPUT)
-            {
-                return fail(Error::DIRECTION_MISMATCH, {}, link.from);
-            }
-            const auto* from_node = findNode(from->owner);
-            const auto* to_node = findNode(to->owner);
-            if (!from_node || !to_node)
-            {
-                return fail(Error::UNKNOWN_NODE, from_node ? to->owner : from->owner);
-            }
-            const auto& outputs = from_node->outputs();
-            const auto& inputs = to_node->inputs();
-            const auto output = std::ranges::find(outputs, link.from, &DataPin::id);
-            const auto input = std::ranges::find(inputs, link.to, &DataPin::id);
-            const bool has_payload_pins = output != outputs.end() && input != inputs.end();
-            const bool has_compatible_types = has_payload_pins && isConvertible(output->type, input->type);
-            if (!has_compatible_types)
-            {
-                return fail(Error::INVALID_TYPE, from->owner, link.from);
-            }
+            // Topology validates identity/direction/fan before semantic payload lookup.
             auto connected = result.structure_.connect(link.from, link.to);
             if (!connected)
             {
-                return lux::cxx::unexpected(connected.error());
+                return cxx::unexpected(VMaterialGraphFailure{connected.error()});
+            }
+            const auto find = [&](PinId id) noexcept -> const MaterialPinPayload*
+            {
+                const auto staged = result.staged_pins_.find(id);
+                return staged == result.staged_pins_.end() ? source.pin(id) : &staged->second;
+            };
+            const auto* from = find(link.from);
+            const auto* to = find(link.to);
+            const bool has_payloads = from && to;
+            const bool has_valid_values = has_payloads && validPin(*from) && validPin(*to);
+            const bool has_compatible_types = has_valid_values && convertible(from->type, to->type);
+            if (!has_compatible_types)
+            {
+                return structural(graph::EGraphTopologyError::INVALID_TYPE, {}, link.from);
             }
         }
         for (const auto& entry : change.place)
@@ -444,27 +447,27 @@ namespace lux::material
             auto placed = result.structure_.place(entry.node, entry.layout);
             if (!placed)
             {
-                return lux::cxx::unexpected(placed.error());
+                return cxx::unexpected(VMaterialGraphFailure{placed.error()});
             }
         }
         for (const auto id : change.unplace)
         {
-            auto unplaced = result.structure_.unplace(id);
-            if (!unplaced)
+            auto removed = result.structure_.unplace(id);
+            if (!removed)
             {
-                return lux::cxx::unexpected(unplaced.error());
+                return cxx::unexpected(VMaterialGraphFailure{removed.error()});
             }
         }
-        for (const auto& entry : result.inserted_)
-        {
-            result.nodes_.emplace_back(entry.id, staged_nodes.extract(entry.id));
-        }
-        // reserve may change capacity, never content or identity. Insertion later transfers node handles.
-        if (!change.insert.empty())
-        {
-            source.nodes_.reserve(source.nodes_.size() + change.insert.size());
-        }
+        result.reserveCommit();
         return result;
+    }
+
+    void MaterialGraphEdit::reserveCommit() noexcept
+    {
+        target_->nodes_.reserve(target_->nodes_.size() + staged_nodes_.size());
+        target_->pins_.reserve(target_->pins_.size() + staged_pins_.size());
+        retired_nodes_.reserve(erase_nodes_.size());
+        retired_pins_.reserve(erase_pins_.size());
     }
 
     std::span<const MaterialNodeEntry> MaterialGraphEdit::insertedNodes() const noexcept
@@ -472,18 +475,18 @@ namespace lux::material
         return inserted_;
     }
 
-    lux::cxx::expected<void, lux::graph::GraphTopologyFailure> MaterialGraphEdit::place(
-        NodeId id,
-        lux::graph::GraphNodeLayout value
-    )
+    MaterialGraphResult<void> MaterialGraphEdit::place(NodeId id, graph::GraphNodeLayout value) noexcept
     {
         if (committed_ || !target_)
         {
-            return lux::cxx::unexpected(
-                lux::graph::GraphTopologyFailure{lux::graph::EGraphTopologyError::INVALID_ID, id}
-            );
+            return structural(graph::EGraphTopologyError::INVALID_ID, id);
         }
-        return structure_.place(id, value);
+        auto placed = structure_.place(id, value);
+        if (!placed)
+        {
+            return cxx::unexpected(VMaterialGraphFailure{placed.error()});
+        }
+        return {};
     }
 
     void MaterialGraphEdit::commit() noexcept
@@ -493,22 +496,27 @@ namespace lux::material
             std::terminate();
         }
         structure_.commit();
-        for (auto& [id, node] : nodes_)
+        for (const auto id : erase_nodes_)
         {
-            if (node.empty())
+            retired_nodes_.push_back(target_->nodes_.extract(id));
+        }
+        for (const auto id : erase_pins_)
+        {
+            retired_pins_.push_back(target_->pins_.extract(id));
+        }
+        const auto transfer = [](auto& source, auto& target) noexcept
+        {
+            while (!source.empty())
             {
-                node = target_->nodes_.extract(id);
-            }
-            else
-            {
-                const auto inserted = target_->nodes_.insert(std::move(node));
+                auto inserted = target.insert(source.extract(source.begin()));
                 if (!inserted.inserted)
                 {
                     std::terminate();
                 }
             }
-        }
+        };
+        transfer(staged_nodes_, target_->nodes_);
+        transfer(staged_pins_, target_->pins_);
         committed_ = true;
     }
-
 } // namespace lux::material

@@ -27,7 +27,6 @@ namespace lux::graph
         DIRECTION_MISMATCH,
         FAN_CAP_EXCEEDED,
         ID_EXHAUSTED,
-        ALLOCATION_FAILURE,
     };
 
     struct GraphTopologyFailure final

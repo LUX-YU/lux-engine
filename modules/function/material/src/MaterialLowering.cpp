@@ -1,600 +1,313 @@
-// =============================================================================
-//  MaterialLowering.cpp — material graph -> pure expression ShaderIR
-//  (iterative worklist DFS)
-// -----------------------------------------------------------------------------
-//  ShaderGen's Client A. The data model graph::MaterialGraph lives in the
-//  description layer; this file lowers it into a backend-neutral ShaderIR
-//  (pure data) that engine/'s GLSL backend then turns into SPIR-V.
-//  The algorithm shares its lineage with lux::matgraph::lowerToIR (an
-//  explicit-stack DFS, so deep dependency chains don't blow the native
-//  stack), but the output side is now generic outputs + inputs slots, and
-//  shading_model/render_state are carried out via MaterialIR instead of
-//  going into ShaderIR — they aren't "expressions".
-// =============================================================================
-
 #include <lux/engine/material/MaterialIR.hpp>
-#include <lux/engine/material/detail/BuiltinMaterialNodes.hpp>
-#include <lux/engine/material/detail/MaterialMath.hpp>
 #include <lux/engine/material/detail/MaterialValidation.hpp>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
-#include <lux/engine/material/graph/Nodes.hpp>
 
-#include <cstring>
-#include <string>
+#include <algorithm>
+#include <bit>
 #include <unordered_map>
 #include <vector>
 
 namespace lux::material
 {
-    using namespace ::lux::shadergen;
-    using ShaderValueType = ::lux::shadergen::EValueType;
-
     namespace
     {
-        namespace graph = ::lux::material;
+        using shadergen::EOp;
+        using shadergen::kNoValue;
+        using shadergen::ShaderIR;
+        using shadergen::ShaderIRValue;
+        using ShaderType = shadergen::EValueType;
 
-        bool mapValueType(graph::EValueType type, ShaderValueType& result) noexcept
+        const char* typeName(ShaderType type) noexcept
         {
-            switch (type)
-            {
-            case graph::EValueType::FLOAT:
-                result = ShaderValueType::FLOAT;
-                return true;
-            case graph::EValueType::VEC2:
-                result = ShaderValueType::VEC2;
-                return true;
-            case graph::EValueType::VEC3:
-                result = ShaderValueType::VEC3;
-                return true;
-            case graph::EValueType::VEC4:
-                result = ShaderValueType::VEC4;
-                return true;
-            }
-            return false;
+            constexpr const char* Names[]{"float", "vec2", "vec3", "vec4"};
+            return Names[static_cast<std::size_t>(type)];
         }
 
-        const char* typeName(ShaderValueType t) noexcept
+        // Per-compilation indexes borrow the frozen graph. Node payloads never own topology or SSA state.
+        struct Lowerer final
         {
-            switch (t)
-            {
-            case ShaderValueType::FLOAT:
-                return "float";
-            case ShaderValueType::VEC2:
-                return "vec2";
-            case ShaderValueType::VEC3:
-                return "vec3";
-            case ShaderValueType::VEC4:
-                return "vec4";
-            }
-            return "?";
-        }
-
-        int usedInputCount(const graph::Node* n) noexcept
-        {
-            switch (n->kind())
-            {
-            case graph::EMatNodeKind::CONSTANT:
-            case graph::EMatNodeKind::INPUT:
-                return 0;
-            case graph::EMatNodeKind::SAMPLE_TEXTURE:
-            case graph::EMatNodeKind::DECODE_NORMAL:
-            case graph::EMatNodeKind::SWIZZLE:
-            case graph::EMatNodeKind::TBN_TRANSFORM:
-                return 1;
-            case graph::EMatNodeKind::MATH:
-                return static_cast<int>(detail::mathInputCount(static_cast<const graph::MathNode*>(n)->op));
-            case graph::EMatNodeKind::CONSTRUCT:
-                return static_cast<int>(n->inputs().size());
-            default:
-                return 0;
-            }
-        }
-
-        // Iterative (explicit-stack) topological walk + SSA emission.
-        // color: 0=white, 1=gray, 2=black.
-        struct Lowerer
-        {
-            const graph::MaterialGraph& g;
-            MaterialIR& result;
+            const MaterialGraph& graph;
+            const detail::MaterialCompileGraph& description;
             ShaderIR& ir;
-            MaterialCompileFailure* error;
-            std::unordered_map<graph::NodeId, int> color;
-            std::unordered_map<graph::NodeId, uint32_t> value_of;
-            bool ok = true;
+            MaterialCompileFailure error;
+            std::unordered_map<NodeId, unsigned> color;
+            std::unordered_map<PinId, std::uint32_t> values;
+            bool ok{true};
 
-            Lowerer(const graph::MaterialGraph& g_, MaterialIR& r_, MaterialCompileFailure* e_)
-                : g(g_), result(r_), ir(r_.shader), error(e_)
+            bool fail(MaterialCompileFailure failure, NodeId node = {}) noexcept
             {
-            }
-
-            bool fail(
-                std::string message,
-                EMaterialCompileError code = EMaterialCompileError::LOWERING_FAILURE,
-                graph::NodeId node_id = {},
-                std::uint32_t pin_index = graph::invalid_pin
-            )
-            {
-                if (error && ok) // keep the first error only
+                if (ok)
                 {
-                    *error = MaterialCompileFailure{code, std::move(message), node_id, pin_index};
+                    if (node.valid())
+                    {
+                        failure.node_id = node;
+                    }
+                    error = std::move(failure);
                 }
                 ok = false;
                 return false;
             }
 
-            ShaderValueType valueType(
-                graph::EValueType source,
-                graph::NodeId node_id = {},
-                std::uint32_t pin_index = graph::invalid_pin
-            )
+            std::uint32_t append(ShaderIRValue value) noexcept
             {
-                ShaderValueType result{};
-                if (!mapValueType(source, result))
-                {
-                    fail(
-                        "invalid material value type reached lowering",
-                        EMaterialCompileError::INVALID_GRAPH,
-                        node_id,
-                        pin_index
-                    );
-                }
-                return result;
+                const auto index = static_cast<std::uint32_t>(ir.values.size());
+                ir.values.push_back(value);
+                return index;
             }
 
-            uint32_t push(const ShaderIRValue& v)
+            PinId source(PinId input) const noexcept
             {
-                const uint32_t i = static_cast<uint32_t>(ir.values.size());
-                ir.values.push_back(v);
-                return i;
+                const auto found = description.incoming.find(input);
+                return found == description.incoming.end() ? PinId{} : found->second;
             }
 
-            uint32_t emitConstant(const float c[4], ShaderValueType t)
+            std::uint32_t constant(const MaterialPinPayload& pin) noexcept
             {
-                ShaderIRValue v{};
-                v.op = EOp::CONSTANT;
-                v.type = t;
-                v.constant[0] = c[0];
-                v.constant[1] = c[1];
-                v.constant[2] = c[2];
-                v.constant[3] = c[3];
-                return push(v);
+                ShaderIRValue value;
+                value.op = EOp::CONSTANT;
+                value.type = static_cast<ShaderType>(pin.type);
+                std::copy(pin.constant.begin(), pin.constant.end(), value.constant);
+                return append(value);
             }
 
-            bool validateSource(graph::PinLink source)
+            std::uint32_t operand(const detail::MaterialCompilePin& input) noexcept
             {
-                const graph::Node* src = g.node(source.node);
-                if (!src)
+                if (input.declaration.input_use == EMaterialInputUse::UNUSED)
                 {
-                    return fail(
-                        "dangling connection: source node missing",
-                        EMaterialCompileError::INVALID_GRAPH,
-                        source.node,
-                        source.pin
-                    );
+                    return kNoValue;
                 }
-                if (source.pin >= src->outputs().size())
+                const auto& pin = *graph.pin(input.id);
+                const auto output = source(input.id);
+                if (!output.valid())
                 {
-                    return fail(
-                        "connection references an invalid source output pin",
-                        EMaterialCompileError::INVALID_GRAPH,
-                        source.node,
-                        source.pin
-                    );
+                    const bool is_optional = input.declaration.input_use == EMaterialInputUse::CONNECTED_VALUE;
+                    const bool is_default = pin.constant == input.declaration.default_value;
+                    return is_optional && is_default ? kNoValue : constant(pin);
                 }
-                if (source.pin != 0)
+                const auto found = values.find(output);
+                if (found == values.end())
                 {
-                    return fail("multi-output nodes are not supported yet");
+                    fail({EMaterialCompileError::LOWERING_FAILURE, "internal: operand was not lowered before use"});
+                    return kNoValue;
+                }
+                const auto index = found->second;
+                const auto produced = ir.values[index].type;
+                const auto expected = static_cast<ShaderType>(pin.type);
+                if (produced == expected)
+                {
+                    return index;
+                }
+                const auto source_arity = static_cast<unsigned>(produced) + 1;
+                const auto target_arity = static_cast<unsigned>(expected) + 1;
+                ShaderIRValue value;
+                value.type = expected;
+                if (source_arity > target_arity)
+                {
+                    value.op = EOp::SWIZZLE;
+                    value.operands[0] = index;
+                    for (unsigned component = 0; component != 4; ++component)
+                    {
+                        value.swizzle[component] = static_cast<std::uint8_t>(component);
+                    }
+                    return append(value);
+                }
+                if (produced == ShaderType::FLOAT)
+                {
+                    value.op = EOp::CONSTRUCT;
+                    for (unsigned component = 0; component != target_arity; ++component)
+                    {
+                        value.operands[component] = index;
+                    }
+                    return append(value);
+                }
+                const auto owner = description.pins.at(output)->owner;
+                const auto& outputs = description.nodes.at(owner).outputs;
+                const auto ordinal = static_cast<std::uint32_t>(std::ranges::find(outputs, output) - outputs.begin());
+                fail(
+                    {EMaterialCompileError::TYPE_MISMATCH,
+                     std::string("type mismatch: source produces ") + typeName(produced) + " but pin '" + pin.name +
+                         "' expects " + typeName(expected) + " — insert a Construct node to widen",
+                     owner,
+                     ordinal}
+                );
+                return kNoValue;
+            }
+
+            bool compile(NodeId id, std::span<const std::uint32_t> inputs) noexcept
+            {
+                const auto& schema = description.nodes.at(id);
+                const auto& node = *graph.node(id);
+                auto outputs = node.definition->compile(node.payload, inputs, ir);
+                if (!outputs)
+                {
+                    return fail(std::move(outputs.error()), id);
+                }
+                for (std::size_t index = 0; index != outputs->size(); ++index)
+                {
+                    values.emplace(schema.outputs[index], (*outputs)[index]);
                 }
                 return true;
             }
 
-            // Resolves an input pin -> SSA value index. If connected: reads
-            // the already-lowered source value and type-checks it (including
-            // UE-style implicit narrowing / scalar splat); if unconnected:
-            // materializes a Constant from the pin's default value.
-            uint32_t operandValue(const graph::DataPin& pin)
+            bool emit(NodeId id) noexcept
             {
-                if (!ok)
+                const auto& schema = description.nodes.at(id);
+                std::vector<std::uint32_t> inputs;
+                inputs.reserve(schema.inputs.size());
+                for (const auto& input : schema.inputs)
                 {
-                    return kNoValue;
-                }
-
-                const auto source = g.source(pin.id);
-                if (source.valid())
-                {
-                    auto it = value_of.find(source.node);
-                    if (it == value_of.end())
-                    {
-                        fail("internal: operand was not lowered before use");
-                        return kNoValue;
-                    }
-                    const uint32_t vidx = it->second;
-                    const ShaderValueType produced = ir.values[vidx].type;
-                    const auto expected = valueType(pin.type, source.node, source.pin);
-                    if (!ok)
-                    {
-                        return kNoValue;
-                    }
-                    if (produced == expected)
-                    {
-                        return vidx;
-                    }
-
-                    const int ap = static_cast<int>(produced) + 1; // source arity
-                    const int an = static_cast<int>(pin.type) + 1; // target arity
-                    if (ap > an)
-                    {
-                        // larger -> smaller vector: take the leading components.
-                        ShaderIRValue v{};
-                        v.op = EOp::SWIZZLE;
-                        v.type = expected;
-                        v.operands[0] = vidx;
-                        v.swizzle[0] = 0;
-                        v.swizzle[1] = 1;
-                        v.swizzle[2] = 2;
-                        v.swizzle[3] = 3;
-                        return push(v);
-                    }
-                    if (produced == ShaderValueType::FLOAT && an > 1)
-                    {
-                        // scalar -> vector: splat (vecN(x)).
-                        ShaderIRValue v{};
-                        v.op = EOp::CONSTRUCT;
-                        v.type = expected;
-                        for (int i = 0; i < an; ++i)
-                        {
-                            v.operands[static_cast<size_t>(i)] = vidx;
-                        }
-                        return push(v);
-                    }
-                    fail(
-                        std::string("type mismatch: source produces ") + typeName(produced) + " but pin '" + pin.name +
-                            "' expects " + typeName(expected) + " — insert a Construct node to widen",
-                        EMaterialCompileError::TYPE_MISMATCH,
-                        source.node,
-                        source.pin
-                    );
-                    return kNoValue;
-                }
-
-                const auto type = valueType(pin.type);
-                return ok ? emitConstant(pin.constant, type) : kNoValue;
-            }
-
-            // Iterative post-order DFS: lowers root and its dependency
-            // subgraph, returning root's value index.
-            uint32_t lower(graph::NodeId root)
-            {
-                std::vector<graph::NodeId> stack;
-                stack.push_back(root);
-
-                while (ok && !stack.empty())
-                {
-                    const graph::NodeId id = stack.back();
-                    const int col = color[id];
-
-                    if (col == 2)
-                    {
-                        stack.pop_back();
-                        continue;
-                    }
-
-                    const graph::Node* n = g.node(id);
-                    if (!n)
-                    {
-                        fail("referenced node id not found", EMaterialCompileError::INVALID_GRAPH, id);
-                        return kNoValue;
-                    }
-
-                    if (col == 0)
-                    {
-                        color[id] = 1;
-                        int used = usedInputCount(n);
-                        const int pin_count = static_cast<int>(n->inputs().size());
-                        if (used > pin_count)
-                        {
-                            used = pin_count;
-                        }
-                        for (int k = 0; k < used; ++k)
-                        {
-                            const graph::DataPin& pin = n->inputs()[k];
-                            const auto source = g.source(pin.id);
-                            if (!source.valid())
-                            {
-                                continue;
-                            }
-                            if (!validateSource(source))
-                            {
-                                return kNoValue;
-                            }
-                            const int sc = color[source.node];
-                            if (sc == 1)
-                            {
-                                fail("cycle detected in material graph", EMaterialCompileError::CYCLE, source.node);
-                                return kNoValue;
-                            }
-                            if (sc != 2)
-                            {
-                                stack.push_back(source.node);
-                            }
-                        }
-                    }
-                    else // col == 1: children already emitted -> emit this node
-                    {
-                        const uint32_t idx = emitNode(id, n);
-                        if (!ok)
-                        {
-                            return kNoValue;
-                        }
-                        value_of[id] = idx;
-                        color[id] = 2;
-                        stack.pop_back();
-                    }
-                }
-
-                auto it = value_of.find(root);
-                return it == value_of.end() ? kNoValue : it->second;
-            }
-
-            template <class T> uint32_t emitBuiltin(graph::NodeId id, const graph::Node& node, const T& payload)
-            {
-                std::array<std::uint32_t, 4> inputs{};
-                for (std::size_t index = 0; index != node.inputs().size(); ++index)
-                {
-                    inputs[index] = operandValue(node.inputs()[index]);
-                    if (!ok)
-                    {
-                        return kNoValue;
-                    }
-                }
-                auto emitted = detail::appendBuiltin(payload, {inputs.data(), node.inputs().size()}, ir);
-                if (!emitted)
-                {
-                    auto failure = std::move(emitted.error());
-                    fail(std::move(failure.message), failure.code, id, failure.pin_index);
-                    return kNoValue;
-                }
-                return *emitted;
-            }
-
-            uint32_t emitNode(graph::NodeId id, const graph::Node* n)
-            {
-                // Transitional storage projection only: the registered semantic emitters below own
-                // compilation. The old Node representation is removed with the graph-store migration.
-                switch (n->kind())
-                {
-                case graph::EMatNodeKind::CONSTANT:
-                {
-                    const auto& value = static_cast<const graph::ConstantNode&>(*n);
-                    const MaterialConstant payload{
-                        {value.value[0], value.value[1], value.value[2], value.value[3]},
-                        value.value_type
-                    };
-                    return emitBuiltin(id, *n, payload);
-                }
-                case graph::EMatNodeKind::INPUT:
-                    return emitBuiltin(id, *n, MaterialInput{static_cast<const graph::InputNode&>(*n).input});
-                case graph::EMatNodeKind::SAMPLE_TEXTURE:
-                    return emitBuiltin(
-                        id,
-                        *n,
-                        MaterialSampleTexture{static_cast<const graph::SampleTextureNode&>(*n).texture_slot}
-                    );
-                case graph::EMatNodeKind::PARAM:
-                {
-                    const auto& value = static_cast<const graph::ParamNode&>(*n);
-                    return emitBuiltin(id, *n, MaterialParameter{value.param_slot, value.type});
-                }
-                case graph::EMatNodeKind::MATH:
-                    return emitMath(id, static_cast<const graph::MathNode*>(n));
-                case graph::EMatNodeKind::DECODE_NORMAL:
-                    return emitBuiltin(id, *n, MaterialDecodeNormal{});
-                case graph::EMatNodeKind::SWIZZLE:
-                {
-                    const auto& value = static_cast<const graph::SwizzleNode&>(*n);
-                    const MaterialSwizzle payload{
-                        value.source_type,
-                        value.out_type,
-                        {value.components[0], value.components[1], value.components[2], value.components[3]}
-                    };
-                    return emitBuiltin(id, *n, payload);
-                }
-                case graph::EMatNodeKind::TBN_TRANSFORM:
-                    return emitBuiltin(id, *n, MaterialTbnTransform{});
-                case graph::EMatNodeKind::CONSTRUCT:
-                    return emitBuiltin(
-                        id,
-                        *n,
-                        MaterialConstruct{static_cast<const graph::ConstructNode&>(*n).out_type}
-                    );
-                default:
-                    fail(std::string("unsupported node kind in lowering: ") + graph::toString(n->kind()));
-                    return kNoValue;
-                }
-            }
-
-            uint32_t emitMath(graph::NodeId id, const graph::MathNode* node)
-            {
-                const MaterialMath math{node->op, node->operand_type};
-                std::array<std::uint32_t, 2> inputs{kNoValue, kNoValue};
-                for (std::size_t index = 0; index != detail::mathInputCount(math.op); ++index)
-                {
-                    inputs[index] = operandValue(node->inputs()[index]);
-                    if (!ok)
-                    {
-                        return kNoValue;
-                    }
-                }
-                auto output = detail::appendMath(math, inputs, ir);
-                if (!output)
-                {
-                    auto failure = std::move(output.error());
-                    fail(std::move(failure.message), failure.code, id, failure.pin_index);
-                    return kNoValue;
-                }
-                return *output;
-            }
-
-            bool run()
-            {
-                // 1. Find the single OutputSurface.
-                const graph::Node* output = nullptr;
-                graph::NodeId output_id;
-                for (const auto& [id, np] : g.nodes())
-                {
-                    if (np->kind() == graph::EMatNodeKind::OUTPUT_SURFACE)
-                    {
-                        if (output)
-                        {
-                            return fail(
-                                "material graph has more than one OutputSurface node",
-                                EMaterialCompileError::INVALID_GRAPH,
-                                id
-                            );
-                        }
-                        output = np;
-                        output_id = id;
-                    }
-                }
-                if (!output)
-                {
-                    return fail(
-                        "material graph has no OutputSurface node",
-                        EMaterialCompileError::MISSING_REQUIRED_OUTPUT
-                    );
-                }
-
-                // 2. Carry shading_model + render_state out via MaterialIR
-                //    (they do not go into ShaderIR).
-                result.shading_model = g.shading_model;
-                result.alpha_mode = g.render_state.alpha_mode;
-                result.alpha_cutoff = g.render_state.alpha_cutoff;
-                result.double_sided = g.render_state.double_sided;
-
-                // 3. Copy resource slots into ShaderIR.
-                for (const auto& t : g.texture_slots)
-                {
-                    ir.textures.push_back({t.name});
-                }
-                for (const auto& p : g.param_slots)
-                {
-                    ParamSlot s;
-                    s.name = p.name;
-                    s.type = valueType(p.type);
+                    inputs.push_back(operand(input));
                     if (!ok)
                     {
                         return false;
                     }
-                    for (int k = 0; k < 4; ++k)
-                    {
-                        s.dflt[k] = p.dflt[k];
-                    }
-                    ir.params.push_back(std::move(s));
                 }
+                return compile(id, inputs);
+            }
 
-                // 4. 7 surface attributes -> named outputs (connected -> lower
-                //    the subgraph + type-check; unconnected -> materialize if
-                //    the constant was overridden, otherwise value_id=kNoValue
-                //    so the backend falls back to the contract default).
-                const size_t COUNT = static_cast<size_t>(graph::EMaterialAttribute::COUNT);
-                std::array<std::uint32_t, COUNT> surface_inputs;
-                surface_inputs.fill(kNoValue);
-                for (size_t i = 0; i < COUNT; ++i)
+            bool lower(NodeId root) noexcept
+            {
+                std::vector<NodeId> stack{root};
+                while (ok && !stack.empty())
                 {
-                    const graph::MaterialAttributeDesc& adesc = graph::kMaterialAttributes[i];
-                    if (i < output->inputs().size())
+                    const auto id = stack.back();
+                    const auto state = color[id];
+                    if (state == 2)
                     {
-                        const graph::DataPin& pin = output->inputs()[i];
-                        const auto source = g.source(pin.id);
-                        if (source.valid())
+                        stack.pop_back();
+                        continue;
+                    }
+                    if (state == 0)
+                    {
+                        color[id] = 1;
+                        // Preserve original reverse worklist order and skip unused inputs entirely.
+                        for (const auto& input : description.nodes.at(id).inputs)
                         {
-                            if (!validateSource(source))
+                            if (input.declaration.input_use == EMaterialInputUse::UNUSED)
                             {
-                                return false;
+                                continue;
                             }
-                            lower(source.node);
-                            if (!ok)
+                            const auto output = source(input.id);
+                            if (!output.valid())
                             {
-                                return false;
+                                continue;
                             }
-                            surface_inputs[i] = operandValue(pin);
-                            if (!ok)
+                            const auto owner = description.pins.at(output)->owner;
+                            const auto source_color = color[owner];
+                            if (source_color == 1)
                             {
-                                return false;
+                                return fail({EMaterialCompileError::CYCLE, "cycle detected in material graph", owner});
                             }
-                        }
-                        else
-                        {
-                            const float* d = adesc.dflt;
-                            const bool overridden = pin.constant[0] != d[0] || pin.constant[1] != d[1] ||
-                                                    pin.constant[2] != d[2] || pin.constant[3] != d[3];
-                            if (overridden)
+                            if (source_color != 2)
                             {
-                                const auto type = valueType(pin.type, output_id, static_cast<std::uint32_t>(i));
-                                if (!ok)
-                                {
-                                    return false;
-                                }
-                                surface_inputs[i] = emitConstant(pin.constant, type);
-                                if (!ok)
-                                {
-                                    return false;
-                                }
+                                stack.push_back(owner);
                             }
                         }
                     }
+                    else
+                    {
+                        if (!emit(id))
+                        {
+                            return false;
+                        }
+                        color[id] = 2;
+                        stack.pop_back();
+                    }
                 }
-                auto surface = detail::appendSurface(surface_inputs, ir);
-                if (!surface)
-                {
-                    auto failure = std::move(surface.error());
-                    return fail(std::move(failure.message), failure.code, output_id, failure.pin_index);
-                }
-
-                ir.fingerprint = ::lux::shadergen::computeFingerprint(ir);
-
-                // Final shader cache key: the expression fingerprint combined
-                // with the "shell" parameters (shading_model selects the
-                // BRDF/GBuffer encoding, alpha decides whether to discard) —
-                // these change the emitted SPIR-V but aren't part of the IR.
-                // double_sided is pure PSO state that doesn't change the
-                // SPIR-V, so it does not enter this key.
-                uint64_t cf = ir.fingerprint;
-                auto cmix = [&](uint64_t x) noexcept
-                {
-                    cf ^= x;
-                    cf *= 1099511628211ull;
-                };
-                cmix(static_cast<uint32_t>(result.shading_model));
-                cmix(static_cast<uint8_t>(result.alpha_mode));
-                if (result.alpha_mode == ::lux::rdesc::EAlphaMode::MASK)
-                {
-                    uint32_t u;
-                    std::memcpy(&u, &result.alpha_cutoff, 4);
-                    cmix(u);
-                }
-                result.combined_fingerprint = cf;
                 return ok;
+            }
+
+            bool run() noexcept
+            {
+                NodeId surface;
+                for (const auto& [id, node] : graph.nodes())
+                {
+                    if (node->definition->role() != EMaterialNodeRole::SURFACE)
+                    {
+                        continue;
+                    }
+                    if (surface.valid())
+                    {
+                        return fail(
+                            {EMaterialCompileError::INVALID_GRAPH,
+                             "material graph has more than one OutputSurface node",
+                             id}
+                        );
+                    }
+                    surface = id;
+                }
+                if (!surface.valid())
+                {
+                    return fail(
+                        {EMaterialCompileError::MISSING_REQUIRED_OUTPUT, "material graph has no OutputSurface node"}
+                    );
+                }
+                // Surface inputs preserve their original declaration order, independently of DFS stack order.
+                color[surface] = 1;
+                std::vector<std::uint32_t> inputs;
+                inputs.reserve(description.nodes.at(surface).inputs.size());
+                for (const auto& input : description.nodes.at(surface).inputs)
+                {
+                    if (input.declaration.input_use == EMaterialInputUse::UNUSED)
+                    {
+                        inputs.push_back(kNoValue);
+                        continue;
+                    }
+                    const auto output = source(input.id);
+                    if (output.valid())
+                    {
+                        const auto owner = description.pins.at(output)->owner;
+                        if (color[owner] == 1)
+                        {
+                            return fail({EMaterialCompileError::CYCLE, "cycle detected in material graph", owner});
+                        }
+                        if (!lower(owner))
+                        {
+                            return false;
+                        }
+                    }
+                    inputs.push_back(operand(input));
+                    if (!ok)
+                    {
+                        return false;
+                    }
+                }
+                return compile(surface, inputs);
             }
         };
     } // namespace
 
-    lux::cxx::expected<MaterialIR, MaterialCompileFailure> lowerMaterial(const graph::MaterialGraph& graph) noexcept
+    cxx::expected<MaterialIR, MaterialCompileFailure> lowerMaterial(const MaterialGraph& graph) noexcept
     {
-        auto validation = detail::validateMaterialGraph(graph);
-        if (!validation)
+        MaterialIR result;
+        auto description = detail::validateMaterialGraph(graph, result.shader);
+        if (!description)
         {
-            return lux::cxx::unexpected(std::move(validation.error()));
+            return cxx::unexpected(std::move(description.error()));
         }
-        MaterialIR out{};
-        MaterialCompileFailure
-            error{EMaterialCompileError::LOWERING_FAILURE, "lowerMaterial failed", {}, graph::invalid_pin};
-        Lowerer lowerer(graph, out, &error);
+        Lowerer lowerer{graph, *description, result.shader};
         if (!lowerer.run())
         {
-            return lux::cxx::unexpected(std::move(error));
+            return cxx::unexpected(std::move(lowerer.error));
         }
-        return out;
+        result.shading_model = graph.shading_model;
+        result.alpha_mode = graph.render_state.alpha_mode;
+        result.alpha_cutoff = graph.render_state.alpha_cutoff;
+        result.double_sided = graph.render_state.double_sided;
+        result.shader.fingerprint = shadergen::computeFingerprint(result.shader);
+        auto fingerprint = result.shader.fingerprint;
+        const auto mix = [&](std::uint64_t value) noexcept
+        {
+            fingerprint ^= value;
+            fingerprint *= 1099511628211ULL;
+        };
+        mix(static_cast<std::uint32_t>(result.shading_model));
+        mix(static_cast<std::uint8_t>(result.alpha_mode));
+        if (result.alpha_mode == rdesc::EAlphaMode::MASK)
+        {
+            mix(std::bit_cast<std::uint32_t>(result.alpha_cutoff));
+        }
+        result.combined_fingerprint = fingerprint;
+        return result;
     }
-
 } // namespace lux::material

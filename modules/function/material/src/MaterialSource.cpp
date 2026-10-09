@@ -3,78 +3,47 @@
 #include <charconv>
 #include <cmath>
 #include <locale>
+#include <lux/engine/material/BuiltinMaterialNodes.hpp>
 #include <lux/engine/material/detail/BuiltinMaterialNodes.hpp>
 #include <lux/engine/material/detail/MaterialMath.hpp>
+#include <lux/engine/material/detail/MaterialToml.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
-#include <lux/engine/material/graph/Nodes.hpp>
 #include <sstream>
 #include <toml++/toml.hpp>
 #include <unordered_set>
 
 namespace lux::material
 {
-    bool equalMaterialNodes(const Node& first, const Node& second) noexcept
+    namespace detail
     {
-        if (first.kind() != second.kind() || first.name() != second.name())
+        struct MaterialSourceAccess final
         {
-            return false;
-        }
-        const auto equal_pin = [](const DataPin& a, const DataPin& b)
-        {
-            return a.id == b.id && a.type == b.type && a.name == b.name &&
-                   std::ranges::equal(a.constant, b.constant);
+            static cxx::expected<void, graph::GraphTopologyFailure> restoreLinks(
+                MaterialGraph& graph,
+                std::span<const graph::LinkRecord> links
+            ) noexcept
+            {
+                graph::GraphEdit candidate(graph.topology_, graph.layout_);
+                for (const auto& link : links)
+                {
+                    auto accepted = candidate.connect(link.from, link.to);
+                    if (!accepted)
+                    {
+                        return accepted;
+                    }
+                }
+                candidate.commit();
+                return {};
+            }
         };
-        if (!std::ranges::equal(first.inputs(), second.inputs(), equal_pin) ||
-            !std::ranges::equal(first.outputs(), second.outputs(), equal_pin))
-        {
-            return false;
-        }
-        switch (first.kind())
-        {
-        case EMatNodeKind::CONSTANT:
-            return first.as<ConstantNode>()->value_type == second.as<ConstantNode>()->value_type &&
-                   std::ranges::equal(first.as<ConstantNode>()->value, second.as<ConstantNode>()->value);
-        case EMatNodeKind::INPUT:
-            return first.as<InputNode>()->input == second.as<InputNode>()->input;
-        case EMatNodeKind::SAMPLE_TEXTURE:
-            return first.as<SampleTextureNode>()->texture_slot == second.as<SampleTextureNode>()->texture_slot;
-        case EMatNodeKind::PARAM:
-            return first.as<ParamNode>()->param_slot == second.as<ParamNode>()->param_slot &&
-                   first.as<ParamNode>()->type == second.as<ParamNode>()->type;
-        case EMatNodeKind::MATH:
-            return first.as<MathNode>()->op == second.as<MathNode>()->op &&
-                   first.as<MathNode>()->operand_type == second.as<MathNode>()->operand_type;
-        case EMatNodeKind::SWIZZLE:
-            return first.as<SwizzleNode>()->source_type == second.as<SwizzleNode>()->source_type &&
-                   first.as<SwizzleNode>()->out_type == second.as<SwizzleNode>()->out_type &&
-                   std::ranges::equal(first.as<SwizzleNode>()->components, second.as<SwizzleNode>()->components);
-        case EMatNodeKind::CONSTRUCT:
-            return first.as<ConstructNode>()->out_type == second.as<ConstructNode>()->out_type;
-        case EMatNodeKind::DECODE_NORMAL:
-        case EMatNodeKind::TBN_TRANSFORM:
-        case EMatNodeKind::OUTPUT_SURFACE:
-            return true;
-        default:
-            return false;
-        }
-    }
+    } // namespace detail
 
     namespace
     {
-        constexpr std::array kinds{
-            "invalid",
-            "constant",
-            "input",
-            "sample_texture",
-            "math",
-            "swizzle",
-            "construct",
-            "decode_normal",
-            "tbn_transform",
-            "parameter",
-            "output_surface"
-        };
-        static_assert(kinds.size() == static_cast<std::size_t>(EMatNodeKind::COUNT));
+        using detail::fields;
+        using detail::floats;
+        using detail::integer;
+        using detail::readFloats;
 
         auto fail(EMaterialSourceError code, std::string field = {}, NodeId node = {}, PinId pin = {}) noexcept
         {
@@ -97,49 +66,6 @@ namespace lux::material
             return type <= EValueType::VEC4;
         }
 
-        toml::array floats(std::span<const float> values)
-        {
-            toml::array result;
-            for (const auto value : values)
-            {
-                result.push_back(static_cast<double>(value));
-            }
-            return result;
-        }
-
-        bool readFloats(const toml::node_view<const toml::node>& value, std::span<float> destination) noexcept
-        {
-            const auto* array = value.as_array();
-            if (!array || array->size() != destination.size())
-            {
-                return false;
-            }
-            for (std::size_t index{}; index < destination.size(); ++index)
-            {
-                const auto number = (*array)[index].value<double>();
-                if (!number)
-                {
-                    return false;
-                }
-                destination[index] = static_cast<float>(*number);
-                if (!std::isfinite(destination[index]))
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        bool fields(const toml::table& table, std::initializer_list<std::string_view> allowed) noexcept
-        {
-            return std::all_of(
-                table.begin(),
-                table.end(),
-                [&](const auto& item)
-                { return std::find(allowed.begin(), allowed.end(), item.first.str()) != allowed.end(); }
-            );
-        }
-
         std::optional<std::uint64_t> identity(const toml::node_view<const toml::node>& value) noexcept
         {
             const auto text = value.value<std::string_view>();
@@ -154,19 +80,6 @@ namespace lux::material
                 return {};
             }
             return number;
-        }
-
-        std::optional<std::uint32_t> integer(
-            const toml::node_view<const toml::node>& value,
-            std::uint32_t maximum
-        ) noexcept
-        {
-            const auto number = value.value<std::int64_t>();
-            if (!number || *number < 0 || static_cast<std::uint64_t>(*number) > maximum)
-            {
-                return {};
-            }
-            return static_cast<std::uint32_t>(*number);
         }
 
         bool textValid(std::string_view text, MaterialSourceLimits limits) noexcept
@@ -226,288 +139,124 @@ namespace lux::material
             return result;
         }
 
-        MaterialSourceResult<toml::table> payload(NodeId id, const Node& node) noexcept
+        auto payloadFailure(MaterialCompileFailure cause, NodeId id) noexcept
         {
-            toml::table result;
-            switch (node.kind())
-            {
-            case EMatNodeKind::CONSTANT:
-            {
-                const auto& value = *node.as<ConstantNode>();
-                if (!typeValid(value.value_type) || !finite(value.value))
-                {
-                    return fail(EMaterialSourceError::INVALID_VALUE, "constant", id);
-                }
-                result.insert("type", static_cast<std::int64_t>(value.value_type));
-                result.insert("value", floats(value.value));
-                break;
-            }
-            case EMatNodeKind::INPUT:
-            {
-                const auto input = node.as<InputNode>()->input;
-                if (input >= EMaterialInput::COUNT)
-                {
-                    return fail(EMaterialSourceError::INVALID_VALUE, "input", id);
-                }
-                result.insert("input", static_cast<std::int64_t>(input));
-                break;
-            }
-            case EMatNodeKind::SAMPLE_TEXTURE:
-                result.insert("slot", node.as<SampleTextureNode>()->texture_slot);
-                break;
-            case EMatNodeKind::PARAM:
-            {
-                const auto& value = *node.as<ParamNode>();
-                if (!typeValid(value.type))
-                {
-                    return fail(EMaterialSourceError::INVALID_VALUE, "type", id);
-                }
-                result.insert("type", static_cast<std::int64_t>(value.type));
-                result.insert("slot", value.param_slot);
-                break;
-            }
-            case EMatNodeKind::MATH:
-            {
-                const auto& value = *node.as<MathNode>();
-                if (!detail::validateMathPayload({value.op, value.operand_type}))
-                {
-                    return fail(EMaterialSourceError::INVALID_VALUE, "math", id);
-                }
-                result.insert("type", static_cast<std::int64_t>(value.operand_type));
-                result.insert("operation", static_cast<std::int64_t>(value.op));
-                break;
-            }
-            case EMatNodeKind::SWIZZLE:
-            {
-                const auto& value = *node.as<SwizzleNode>();
-                const MaterialSwizzle swizzle{
-                    value.source_type,
-                    value.out_type,
-                    {value.components[0], value.components[1], value.components[2], value.components[3]}
-                };
-                auto validated = detail::validateSwizzlePayload(swizzle);
-                if (!validated)
-                {
-                    const auto field = validated.error().pin_index == ~std::uint32_t{0} ? "swizzle" : "component";
-                    return fail(EMaterialSourceError::INVALID_VALUE, field, id);
-                }
-                result.insert("source_type", static_cast<std::int64_t>(value.source_type));
-                result.insert("type", static_cast<std::int64_t>(value.out_type));
-                toml::array components;
-                for (const auto component : value.components)
-                {
-                    components.push_back(component);
-                }
-                result.insert("components", std::move(components));
-                break;
-            }
-            case EMatNodeKind::CONSTRUCT:
-            {
-                const auto type = node.as<ConstructNode>()->out_type;
-                if (!typeValid(type))
-                {
-                    return fail(EMaterialSourceError::INVALID_VALUE, "type", id);
-                }
-                result.insert("type", static_cast<std::int64_t>(type));
-                break;
-            }
-            case EMatNodeKind::DECODE_NORMAL:
-            case EMatNodeKind::TBN_TRANSFORM:
-            case EMatNodeKind::OUTPUT_SURFACE:
-                break;
-            default:
-                return fail(EMaterialSourceError::UNKNOWN_NODE_KIND, "kind", id);
-            }
-            return result;
+            cause.node_id = id;
+            MaterialSourceFailure error{EMaterialSourceError::INVALID_VALUE, "node.payload", id};
+            error.cause = std::move(cause);
+            return cxx::unexpected(std::move(error));
         }
 
-        MaterialSourceResult<std::unique_ptr<Node>> makeNode(EMatNodeKind kind, const toml::table& data) noexcept
+        std::string legacyType(std::string_view kind)
         {
-            const auto type = integer(data["type"], 3);
-            const auto slot = integer(data["slot"], UINT32_MAX);
-            switch (kind)
+            constexpr std::string_view Kinds[]{
+                "constant",
+                "input",
+                "sample_texture",
+                "parameter",
+                "math",
+                "swizzle",
+                "construct",
+                "decode_normal",
+                "tbn_transform",
+                "output_surface"
+            };
+            if (std::ranges::find(Kinds, kind) == std::end(Kinds))
             {
-            case EMatNodeKind::CONSTANT:
-            {
-                if (!fields(data, {"type", "value"}) || !type)
-                {
-                    break;
-                }
-                auto node = std::make_unique<ConstantNode>();
-                if (!readFloats(data["value"], node->value))
-                {
-                    break;
-                }
-                node->setType(static_cast<EValueType>(*type));
-                return node;
+                return {};
             }
-            case EMatNodeKind::INPUT:
-            {
-                const auto input = integer(data["input"], static_cast<unsigned>(EMaterialInput::COUNT) - 1);
-                if (!fields(data, {"input"}) || !input)
-                {
-                    break;
-                }
-                auto node = std::make_unique<InputNode>();
-                node->input = static_cast<EMaterialInput>(*input);
-                node->outputs()[0].type = materialInputDescription(node->input)->type;
-                return node;
-            }
-            case EMatNodeKind::SAMPLE_TEXTURE:
-            {
-                if (!fields(data, {"slot"}) || !slot)
-                {
-                    break;
-                }
-                auto node = std::make_unique<SampleTextureNode>();
-                node->texture_slot = *slot;
-                return node;
-            }
-            case EMatNodeKind::PARAM:
-            {
-                if (!fields(data, {"type", "slot"}) || !type || !slot)
-                {
-                    break;
-                }
-                auto node = std::make_unique<ParamNode>(static_cast<EValueType>(*type));
-                node->param_slot = *slot;
-                return node;
-            }
-            case EMatNodeKind::MATH:
-            {
-                const auto op = integer(data["operation"], static_cast<unsigned>(EMathOp::LENGTH));
-                if (!fields(data, {"type", "operation"}) || !type || !op)
-                {
-                    break;
-                }
-                auto node = std::make_unique<MathNode>(static_cast<EMathOp>(*op));
-                node->setOperandType(static_cast<EValueType>(*type));
-                return node;
-            }
-            case EMatNodeKind::SWIZZLE:
-            {
-                const auto source_type = integer(data["source_type"], 3);
-                const auto* components = data["components"].as_array();
-                const bool valid = fields(data, {"type", "source_type", "components"}) && type && source_type &&
-                                   components && components->size() == 4;
-                if (!valid)
-                {
-                    break;
-                }
-                auto node = std::make_unique<SwizzleNode>(
-                    static_cast<EValueType>(*source_type),
-                    static_cast<EValueType>(*type)
-                );
-                for (std::size_t index{}; index < 4; ++index)
-                {
-                    const auto component = integer(toml::node_view<const toml::node>{&(*components)[index]}, 3);
-                    if (!component)
-                    {
-                        return fail(EMaterialSourceError::INVALID_VALUE, "components");
-                    }
-                    node->components[index] = static_cast<std::uint8_t>(*component);
-                }
-                return node;
-            }
-            case EMatNodeKind::CONSTRUCT:
-                if (fields(data, {"type"}) && type)
-                {
-                    return std::make_unique<ConstructNode>(static_cast<EValueType>(*type));
-                }
-                break;
-            case EMatNodeKind::DECODE_NORMAL:
-                if (data.empty())
-                {
-                    return std::make_unique<DecodeNormalNode>();
-                }
-                break;
-            case EMatNodeKind::TBN_TRANSFORM:
-                if (data.empty())
-                {
-                    return std::make_unique<TbnTransformNode>();
-                }
-                break;
-            case EMatNodeKind::OUTPUT_SURFACE:
-                if (data.empty())
-                {
-                    return std::make_unique<OutputSurfaceNode>();
-                }
-                break;
-            default:
-                return fail(EMaterialSourceError::UNKNOWN_NODE_KIND, "kind");
-            }
-            return fail(EMaterialSourceError::INVALID_VALUE, "payload");
+            return "lux.material." + std::string(kind) + ".v1";
         }
 
-        MaterialSourceResult<toml::array> encodePins(
-            const MaterialGraph& graph,
+        MaterialSourceResult<std::vector<MaterialPinEntry>> decodePins(
+            const toml::table& node,
             NodeId id,
-            std::span<const DataPin> pins,
-            lux::graph::EPinDirection direction,
-            MaterialSourceLimits limits
-        ) noexcept
-        {
-            toml::array result;
-            for (const auto& pin : pins)
-            {
-                const auto* topology = graph.topology().findPin(pin.id);
-                const bool valid = topology && topology->owner == id &&
-                                   topology->direction == direction &&
-                                   typeValid(pin.type) && textValid(pin.name, limits) &&
-                                   finite(pin.constant);
-                if (!valid)
-                {
-                    return fail(EMaterialSourceError::INVALID_TOPOLOGY, "pin", id, pin.id);
-                }
-                result.push_back(toml::table{
-                    {"id", std::to_string(pin.id.value)},
-                    {"name", pin.name},
-                    {"type", static_cast<std::int64_t>(pin.type)},
-                    {"default", floats(pin.constant)}
-                });
-            }
-            return result;
-        }
-
-        MaterialSourceResult<void> decodePins(
-            const toml::node_view<const toml::node>& value,
-            std::vector<DataPin>& pins,
+            std::span<const MaterialPinDeclaration> schema,
+            bool legacy,
             std::unordered_set<PinId>& identities,
             MaterialSourceLimits limits
         ) noexcept
         {
-            const auto* array = value.as_array();
-            if (!array || array->size() != pins.size())
+            std::vector<MaterialPinEntry> result;
+            if (schema.size() > limits.max_pins - identities.size())
             {
-                return fail(EMaterialSourceError::INVALID_VALUE, "pins");
+                return fail(EMaterialSourceError::LIMIT_EXCEEDED, "pins", id);
             }
-            if (pins.size() > limits.max_pins - identities.size())
+            result.reserve(schema.size());
+            if (legacy)
             {
-                return fail(EMaterialSourceError::LIMIT_EXCEEDED, "pins");
+                for (const auto direction : {graph::EPinDirection::INPUT, graph::EPinDirection::OUTPUT})
+                {
+                    const auto* array =
+                        node[direction == graph::EPinDirection::INPUT ? "inputs" : "outputs"].as_array();
+                    const auto count = std::ranges::count(schema, direction, &MaterialPinDeclaration::direction);
+                    if (!array || array->size() != static_cast<std::size_t>(count))
+                    {
+                        return fail(EMaterialSourceError::INVALID_VALUE, "pins", id);
+                    }
+                }
             }
-            for (std::size_t index{}; index < pins.size(); ++index)
+            const auto* all = node["pins"].as_array();
+            if (!legacy && (!all || all->size() != schema.size()))
             {
-                const auto* table = (*array)[index].as_table();
-                if (!table || !fields(*table, {"id", "name", "type", "default"}))
-                {
-                    return fail(EMaterialSourceError::UNKNOWN_FIELD, "pin");
-                }
-                const auto id = identity((*table)["id"]);
-                const auto name = text((*table)["name"], limits);
-                const auto type = integer((*table)["type"], 3);
-                if (!id || !identities.emplace(PinId{*id}).second)
-                {
-                    return fail(EMaterialSourceError::INVALID_IDENTITY, "pin");
-                }
-                if (!name || !type || !readFloats((*table)["default"], pins[index].constant))
-                {
-                    return fail(EMaterialSourceError::INVALID_VALUE, "pin");
-                }
-                pins[index].id = PinId{*id};
-                pins[index].name = *name;
-                pins[index].type = static_cast<EValueType>(*type);
+                return fail(EMaterialSourceError::INVALID_VALUE, "pins", id);
             }
-            return {};
+            std::size_t input_index{}, output_index{};
+            for (const auto& declaration : schema)
+            {
+                const toml::table* record{};
+                if (legacy)
+                {
+                    const bool input = declaration.direction == graph::EPinDirection::INPUT;
+                    const auto* array = node[input ? "inputs" : "outputs"].as_array();
+                    record = (*array)[input ? input_index++ : output_index++].as_table();
+                }
+                else
+                {
+                    for (const auto& item : *all)
+                    {
+                        const auto* candidate = item.as_table();
+                        if (candidate && identity((*candidate)["semantic"]) == declaration.semantic.value)
+                        {
+                            if (record)
+                            {
+                                return fail(EMaterialSourceError::INVALID_IDENTITY, "pin.semantic", id);
+                            }
+                            record = candidate;
+                        }
+                    }
+                }
+                if (!record)
+                {
+                    return fail(EMaterialSourceError::INVALID_VALUE, "pins", id);
+                }
+                const bool known = legacy ? fields(*record, {"id", "name", "type", "default"})
+                                          : fields(*record, {"id", "semantic", "name", "type", "default"});
+                if (!known)
+                {
+                    return fail(EMaterialSourceError::UNKNOWN_FIELD, "pin", id);
+                }
+                const auto pin_id = identity((*record)["id"]);
+                const auto name = text((*record)["name"], limits);
+                const auto type = integer((*record)["type"], 3);
+                if (!pin_id || !identities.emplace(PinId{*pin_id}).second)
+                {
+                    return fail(EMaterialSourceError::INVALID_IDENTITY, "pin", id);
+                }
+                MaterialPinPayload value;
+                if (!name || !type || !readFloats((*record)["default"], value.constant))
+                {
+                    return fail(EMaterialSourceError::INVALID_VALUE, "pin", id, PinId{*pin_id});
+                }
+                value.name = *name;
+                value.type = static_cast<EValueType>(*type);
+                const auto fan = declaration.direction == graph::EPinDirection::INPUT ? 1 : graph::kUnlimitedFan;
+                result.push_back(
+                    {{PinId{*pin_id}, id, declaration.direction, static_cast<std::uint8_t>(fan), declaration.semantic},
+                     std::move(value)}
+                );
+            }
+            return result;
         }
     } // namespace
 
@@ -582,91 +331,32 @@ namespace lux::material
         return {};
     }
 
-    MaterialSourceResult<void> validateMaterialNode(const Node& node, NodeId id, MaterialSourceLimits limits) noexcept
+    MaterialSourceResult<void> validateMaterialNode(
+        const MaterialNode& node,
+        NodeId id,
+        MaterialSourceLimits limits
+    ) noexcept
     {
         if (!validLimits(limits))
         {
             return fail(EMaterialSourceError::INVALID_ARGUMENT);
         }
-        if (!textValid(node.name(), limits))
+        if (!textValid(node.name, limits))
         {
             return fail(EMaterialSourceError::INVALID_VALUE, "node.name", id);
         }
-        std::size_t inputs{}, outputs{1};
-        bool valid{true};
-        switch (node.kind())
+        if (!node.definition)
         {
-        case EMatNodeKind::CONSTANT:
-            valid = typeValid(node.as<ConstantNode>()->value_type) && finite(node.as<ConstantNode>()->value);
-            break;
-        case EMatNodeKind::INPUT:
-            valid = node.as<InputNode>()->input < EMaterialInput::COUNT;
-            break;
-        case EMatNodeKind::PARAM:
-            valid = typeValid(node.as<ParamNode>()->type);
-            break;
-        case EMatNodeKind::SAMPLE_TEXTURE:
-        case EMatNodeKind::DECODE_NORMAL:
-        case EMatNodeKind::TBN_TRANSFORM:
-            inputs = 1;
-            break;
-        case EMatNodeKind::MATH:
-        {
-            inputs = 2;
-            const auto& value = *node.as<MathNode>();
-            valid = detail::validateMathPayload({value.op, value.operand_type}).has_value();
-            break;
+            return fail(EMaterialSourceError::UNKNOWN_NODE_KIND, "node.type", id);
         }
-        case EMatNodeKind::SWIZZLE:
+        auto schema = node.definition->describePins(node.payload);
+        if (!schema)
         {
-            inputs = 1;
-            const auto& value = *node.as<SwizzleNode>();
-            const MaterialSwizzle swizzle{
-                value.source_type,
-                value.out_type,
-                {value.components[0], value.components[1], value.components[2], value.components[3]}
-            };
-            valid = detail::validateSwizzlePayload(swizzle).has_value();
-            break;
+            return payloadFailure(std::move(schema.error()), id);
         }
-        case EMatNodeKind::CONSTRUCT:
-            valid = typeValid(node.as<ConstructNode>()->out_type);
-            inputs = static_cast<std::size_t>(node.as<ConstructNode>()->out_type) + 1;
-            break;
-        case EMatNodeKind::OUTPUT_SURFACE:
-            inputs = std::size(kMaterialAttributes);
-            outputs = 0;
-            break;
-        default:
-            return fail(EMaterialSourceError::UNKNOWN_NODE_KIND, "kind", id);
-        }
-        if (!valid || node.inputs().size() != inputs || node.outputs().size() != outputs)
+        if (schema->size() > limits.max_pins)
         {
-            return fail(EMaterialSourceError::INVALID_VALUE, "node.payload", id);
-        }
-        std::size_t pin_count{}, text_bytes{node.name().size()};
-        for (unsigned direction{}; direction < 2; ++direction)
-        {
-            const auto& pins = direction ? node.outputs() : node.inputs();
-            if (pins.size() > limits.max_pins - pin_count)
-            {
-                return fail(EMaterialSourceError::LIMIT_EXCEEDED, "pins", id);
-            }
-            pin_count += pins.size();
-            for (const auto& pin : pins)
-            {
-                const bool is_invalid_pin =
-                    !typeValid(pin.type) || !textValid(pin.name, limits) || !finite(pin.constant);
-                if (is_invalid_pin)
-                {
-                    return fail(EMaterialSourceError::INVALID_VALUE, "pin", id, pin.id);
-                }
-                if (pin.name.size() > limits.max_bytes - text_bytes)
-                {
-                    return fail(EMaterialSourceError::LIMIT_EXCEEDED, "pin.name", id, pin.id);
-                }
-                text_bytes += pin.name.size();
-            }
+            return fail(EMaterialSourceError::LIMIT_EXCEEDED, "pins", id);
         }
         return {};
     }
@@ -743,48 +433,57 @@ namespace lux::material
                 return fail(EMaterialSourceError::INVALID_VALUE, "parameter");
             }
         }
-        for (const auto& [id, owned] : graph.nodes())
+        std::unordered_map<NodeId, std::unordered_map<graph::PinSemanticId, const graph::PinRecord*>> pins;
+        for (const auto& record : graph.topology().pins())
         {
-            const auto* record = graph.topology().findNode(id);
-            if (!owned || !id.valid() || !record)
-            {
-                return fail(EMaterialSourceError::INVALID_IDENTITY, "node", id);
-            }
-            const auto& node = *owned;
-            if (record->type.value != static_cast<std::uint64_t>(node.kind()) + 1)
+            pins[record.owner].emplace(record.semantic, &record);
+        }
+        for (const auto& record : graph.topology().nodes())
+        {
+            const auto id = record.id;
+            const auto* node = graph.node(id);
+            const bool has_node = node && node->definition;
+            const bool has_identity = has_node && node->definition->identity().id == record.type;
+            if (!has_identity)
             {
                 return fail(EMaterialSourceError::INVALID_TOPOLOGY, "node.type", id);
             }
-            if (!count_text(node.name()))
-            {
-                return fail(EMaterialSourceError::INVALID_VALUE, "node.name", id);
-            }
-            if (const auto checked = validateMaterialNode(node, id, limits); !checked)
+            if (const auto checked = validateMaterialNode(*node, id, limits); !checked)
             {
                 return checked;
             }
-            for (unsigned direction{}; direction < 2; ++direction)
+            if (!count_text(node->name) || !count_text(node->definition->identity().canonical_name))
             {
-                const auto& pins = direction ? node.outputs() : node.inputs();
-                if (pins.size() > limits.max_pins - pin_count)
+                return fail(EMaterialSourceError::LIMIT_EXCEEDED, "node.name", id);
+            }
+            auto schema = node->definition->describePins(node->payload);
+            if (!schema)
+            {
+                return payloadFailure(std::move(schema.error()), id);
+            }
+            const auto& stored = pins[id];
+            if (stored.size() != schema->size())
+            {
+                return fail(EMaterialSourceError::INVALID_TOPOLOGY, "pins", id);
+            }
+            for (const auto& declaration : *schema)
+            {
+                const auto found = stored.find(declaration.semantic);
+                const bool has_pin = found != stored.end();
+                const bool has_direction = has_pin && found->second->direction == declaration.direction;
+                if (!has_direction)
                 {
-                    return fail(EMaterialSourceError::LIMIT_EXCEEDED, "pins", id);
+                    return fail(EMaterialSourceError::INVALID_TOPOLOGY, "pin", id);
                 }
-                pin_count += pins.size();
-                for (std::size_t index{}; index < pins.size(); ++index)
+                const auto pin_id = found->second->id;
+                const auto* value = graph.pin(pin_id);
+                const bool valid_value = value && typeValid(value->type) && textValid(value->name, limits) &&
+                                         finite(value->constant) && count_text(value->name);
+                if (!valid_value)
                 {
-                    const auto& pin = pins[index];
-                    const auto* topology = graph.topology().findPin(pin.id);
-                    const auto semantic = (direction ? std::uint64_t{1} << 63 : 0) | (index + 1);
-                    const bool valid_pin =
-                        topology && topology->owner == id && static_cast<unsigned>(topology->direction) == direction &&
-                        topology->semantic.value == semantic &&
-                        topology->fan_cap == (direction ? lux::graph::kUnlimitedFan : 1) && count_text(pin.name);
-                    if (!valid_pin)
-                    {
-                        return fail(EMaterialSourceError::INVALID_TOPOLOGY, "pin", id, pin.id);
-                    }
+                    return fail(EMaterialSourceError::INVALID_VALUE, "pin", id, pin_id);
                 }
+                ++pin_count;
             }
         }
         if (pin_count != graph.topology().pins().size())
@@ -824,7 +523,7 @@ namespace lux::material
         std::ranges::sort(ordered, {}, &MaterialNodeEntry::id);
         toml::table document{
             {"format", "lux.material.source"},
-            {"version", 1},
+            {"version", 2},
             {"id", uuids::to_string(source.id.uuid())},
             {"name", source.name},
             {"shading", static_cast<std::int64_t>(graph.shading_model)},
@@ -849,30 +548,44 @@ namespace lux::material
                 {"default", floats(slot.dflt)}
             });
         }
-        for (const auto& [id, node] : ordered)
+        std::unordered_map<NodeId, std::vector<const graph::PinRecord*>> pins;
+        for (const auto& pin : graph.topology().pins())
         {
-            auto data = payload(id, *node);
+            pins[pin.owner].push_back(&pin);
+        }
+        for (const auto& entry : ordered)
+        {
+            const auto id = entry.id;
+            const auto* node = entry.value;
+            auto data = node->definition->encode(node->payload);
             if (!data)
             {
-                return lux::cxx::unexpected(data.error());
+                return payloadFailure(std::move(data.error()), id);
             }
-            auto inputs = encodePins(graph, id, node->inputs(), lux::graph::EPinDirection::INPUT, limits);
-            auto outputs = encodePins(graph, id, node->outputs(), lux::graph::EPinDirection::OUTPUT, limits);
-            if (!inputs)
+            if (data->size() > limits.max_bytes)
             {
-                return lux::cxx::unexpected(inputs.error());
+                return fail(EMaterialSourceError::LIMIT_EXCEEDED, "node.payload", id);
             }
-            if (!outputs)
+            toml::array encoded_pins;
+            for (const auto* pin : pins[id])
             {
-                return lux::cxx::unexpected(outputs.error());
+                const auto& value = *graph.pin(pin->id);
+                encoded_pins.push_back(toml::table{
+                    {"id", std::to_string(pin->id.value)},
+                    {"semantic", std::to_string(pin->semantic.value)},
+                    {"name", value.name},
+                    {"type", static_cast<std::int64_t>(value.type)},
+                    {"default", floats(value.constant)}
+                });
             }
+            const auto& type = node->definition->identity();
             toml::table record{
                 {"id", std::to_string(id.value)},
-                {"name", node->name()},
-                {"kind", kinds[static_cast<std::size_t>(node->kind())]},
+                {"name", node->name},
+                {"type", type.canonical_name},
+                {"type_version", type.version},
                 {"payload", std::move(*data)},
-                {"inputs", std::move(*inputs)},
-                {"outputs", std::move(*outputs)}
+                {"pins", std::move(encoded_pins)}
             };
             if (const auto* layout = graph.layout().find(id))
             {
@@ -925,6 +638,7 @@ namespace lux::material
 
     MaterialSourceResult<MaterialSource> decodeMaterialSource(
         std::string_view bytes,
+        const MaterialNodeCatalog& catalog,
         MaterialSourceLimits limits
     ) noexcept
     {
@@ -963,7 +677,10 @@ namespace lux::material
         {
             return fail(EMaterialSourceError::UNKNOWN_FIELD, "source");
         }
-        if (table["format"].value<std::string_view>() != "lux.material.source" || table["version"].value<int>() != 1)
+        const auto version = table["version"].value<int>();
+        const bool has_format = table["format"].value<std::string_view>() == "lux.material.source";
+        const bool has_version = version == 1 || version == 2;
+        if (!has_format || !has_version)
         {
             return fail(EMaterialSourceError::UNSUPPORTED_FORMAT);
         }
@@ -1040,7 +757,15 @@ namespace lux::material
         for (const auto& entry : *nodes)
         {
             const auto* record = entry.as_table();
-            if (!record || !fields(*record, {"id", "name", "kind", "payload", "inputs", "outputs", "layout"}))
+            if (!record)
+            {
+                return fail(EMaterialSourceError::INVALID_VALUE, "node");
+            }
+            const bool legacy = *version == 1;
+            const bool known_fields =
+                legacy ? fields(*record, {"id", "name", "kind", "payload", "inputs", "outputs", "layout"})
+                       : fields(*record, {"id", "name", "type", "type_version", "payload", "pins", "layout"});
+            if (!known_fields)
             {
                 return fail(EMaterialSourceError::UNKNOWN_FIELD, "node");
             }
@@ -1050,37 +775,80 @@ namespace lux::material
                 return fail(EMaterialSourceError::INVALID_IDENTITY, "node");
             }
             const auto node_name = text((*record)["name"], limits);
-            const auto kind_text = (*record)["kind"].value<std::string_view>();
-            const auto kind = kind_text ? std::find(kinds.begin() + 1, kinds.end(), *kind_text) : kinds.end();
-            if (kind == kinds.end())
+            const auto type_name = legacy ? legacyType((*record)["kind"].value_or(std::string{}))
+                                          : (*record)["type"].value_or(std::string{});
+            const auto type_version =
+                legacy ? std::optional<std::uint32_t>{1} : integer((*record)["type_version"], UINT32_MAX);
+            auto definition = catalog.find(graph::nodeTypeId(type_name));
+            const bool has_definition = definition && definition->identity().canonical_name == type_name;
+            if (!has_definition)
             {
-                return fail(EMaterialSourceError::UNKNOWN_NODE_KIND, "kind", NodeId{*id});
+                return fail(EMaterialSourceError::UNKNOWN_NODE_KIND, "node.type", NodeId{*id});
             }
-            const auto* data = (*record)["payload"].as_table();
-            if (!node_name || !data)
+            if (type_version != definition->identity().version)
             {
-                return fail(EMaterialSourceError::INVALID_VALUE, "node", NodeId{*id});
+                return fail(EMaterialSourceError::UNSUPPORTED_FORMAT, "node.type_version", NodeId{*id});
             }
-            auto made = makeNode(static_cast<EMatNodeKind>(kind - kinds.begin()), *data);
-            if (!made)
+            std::string payload_bytes;
+            if (legacy)
             {
-                auto failure = made.error();
-                failure.node = NodeId{*id};
-                return lux::cxx::unexpected(std::move(failure));
+                const auto* data = (*record)["payload"].as_table();
+                if (!data)
+                {
+                    return fail(EMaterialSourceError::INVALID_VALUE, "node.payload", NodeId{*id});
+                }
+                std::ostringstream stream;
+                stream.imbue(std::locale::classic());
+                stream << toml::toml_formatter{*data};
+                payload_bytes = std::move(stream).str();
             }
-            auto node = std::move(*made);
-            node->setName(*node_name);
-            const auto inputs = decodePins((*record)["inputs"], node->inputs(), pin_ids, limits);
-            const auto outputs = decodePins((*record)["outputs"], node->outputs(), pin_ids, limits);
-            if (!inputs)
+            else
             {
-                return lux::cxx::unexpected(inputs.error());
+                auto data = (*record)["payload"].value<std::string>();
+                if (!data)
+                {
+                    return fail(EMaterialSourceError::INVALID_VALUE, "node.payload", NodeId{*id});
+                }
+                payload_bytes = std::move(*data);
             }
-            if (!outputs)
+            if (!node_name)
             {
-                return lux::cxx::unexpected(outputs.error());
+                return fail(EMaterialSourceError::INVALID_VALUE, "node.name", NodeId{*id});
             }
-            if (!result.graph.addNodeWithId(NodeId{*id}, std::move(node)).valid())
+            auto payload = definition->decode(payload_bytes);
+            if (!payload)
+            {
+                return payloadFailure(std::move(payload.error()), NodeId{*id});
+            }
+            auto schema = definition->describePins(*payload);
+            if (!schema)
+            {
+                return payloadFailure(std::move(schema.error()), NodeId{*id});
+            }
+            auto restored = decodePins(*record, NodeId{*id}, *schema, legacy, pin_ids, limits);
+            if (!restored)
+            {
+                return cxx::unexpected(std::move(restored.error()));
+            }
+            // v1 Math's output type was an operand hint. Normalize that exact legacy hint only;
+            // deliberately mismatched draft pins remain invalid at compilation.
+            if (legacy)
+            {
+                if (const auto* math = payload->get<MaterialMath>())
+                {
+                    for (auto& pin : *restored)
+                    {
+                        const bool is_output = pin.record.direction == graph::EPinDirection::OUTPUT;
+                        if (is_output && pin.value.type == math->operand_type)
+                        {
+                            pin.value.type = detail::mathOutputType(*math);
+                        }
+                    }
+                }
+            }
+            MaterialNode node{std::move(definition), *node_name, std::move(*payload)};
+            auto inserted = result.graph.addNodeWithId(NodeId{*id}, std::move(node), *restored);
+            if (!inserted)
             {
                 return fail(EMaterialSourceError::INVALID_TOPOLOGY, "node", NodeId{*id});
             }
@@ -1099,14 +867,22 @@ namespace lux::material
                 {
                     return fail(EMaterialSourceError::INVALID_VALUE, "layout", NodeId{*id});
                 }
-                const auto installed =
-                    result.graph.layout().set(NodeId{*id}, {static_cast<float>(*x), static_cast<float>(*y), *placed});
+                const graph::GraphLayoutEntry position{
+                    NodeId{*id},
+                    {static_cast<float>(*x), static_cast<float>(*y), *placed}
+                };
+                MaterialGraphChange change;
+                change.place = {&position, 1};
+                auto installed = MaterialGraphEdit::prepare(result.graph, change);
                 if (!installed)
                 {
                     return fail(EMaterialSourceError::INVALID_TOPOLOGY, "layout", NodeId{*id});
                 }
+                installed->commit();
             }
         }
+        std::vector<graph::LinkRecord> restored_links;
+        restored_links.reserve(links->size());
         for (const auto& entry : *links)
         {
             const auto* record = entry.as_table();
@@ -1119,11 +895,12 @@ namespace lux::material
             {
                 return fail(EMaterialSourceError::INVALID_IDENTITY, "link");
             }
-            const auto linked = result.graph.topology().connect(PinId{*from}, PinId{*to});
-            if (!linked)
-            {
-                return fail(EMaterialSourceError::INVALID_TOPOLOGY, "link", {}, PinId{*to});
-            }
+            restored_links.push_back({PinId{*from}, PinId{*to}});
+        }
+        auto linked = detail::MaterialSourceAccess::restoreLinks(result.graph, restored_links);
+        if (!linked)
+        {
+            return fail(EMaterialSourceError::INVALID_TOPOLOGY, "link", linked.error().node, linked.error().pin);
         }
         const auto validated = validateMaterialSource(result, limits);
         if (!validated)
@@ -1131,5 +908,19 @@ namespace lux::material
             return lux::cxx::unexpected(validated.error());
         }
         return result;
+    }
+
+    MaterialSourceResult<MaterialSource> decodeMaterialSource(
+        std::string_view bytes,
+        MaterialSourceLimits limits
+    ) noexcept
+    {
+        MaterialNodeCatalog catalog;
+        const auto registrations = materialBuiltinRegistrations();
+        if (!catalog.add(registrations))
+        {
+            std::terminate();
+        }
+        return decodeMaterialSource(bytes, catalog, limits);
     }
 } // namespace lux::material

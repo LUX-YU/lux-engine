@@ -13,6 +13,19 @@ find_package(lux-engine-function REQUIRED COMPONENTS material_graph)
 enable_testing()
 
 add_executable(
+    material_registered_graph
+    "${CMAKE_CURRENT_LIST_DIR}/../../../modules/function/material/test/registered_graph.cpp"
+)
+
+target_link_libraries(material_registered_graph PRIVATE lux::engine::function::material_graph)
+
+add_test(
+    NAME installed.material_registered_graph
+    COMMAND material_registered_graph
+        "${CMAKE_CURRENT_LIST_DIR}/../../../modules/function/material/test/fixtures/all_nodes_v1.luxmaterial"
+)
+
+add_executable(
     material_authoring_schema
     "${CMAKE_CURRENT_LIST_DIR}/../../../modules/function/material/test/authoring_schema.cpp"
 )
@@ -67,7 +80,7 @@ foreach(header
     MaterialIR
     MaterialMath
     MaterialNodeCatalog
-    graph/Node
+    graph/MaterialNode
     graph/MaterialGraph
     graph/MaterialSource
 )
@@ -81,6 +94,7 @@ foreach(header
 endforeach()
 
 foreach(target
+    material_registered_graph
     material_authoring_schema
     material_builtin_nodes
     BuiltinMaterialNodes_header
@@ -93,7 +107,7 @@ foreach(target
     material_node_identity
     ShaderIR_header
     MaterialCompileFailure_header
-    graph_Node_header
+    graph_MaterialNode_header
     graph_MaterialGraph_header
     graph_MaterialSource_header
 )

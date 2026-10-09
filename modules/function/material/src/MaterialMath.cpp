@@ -1,4 +1,5 @@
 #include <lux/engine/material/MaterialNodeCatalog.hpp>
+#include <lux/engine/material/detail/BuiltinMaterialCodec.hpp>
 #include <lux/engine/material/detail/MaterialMath.hpp>
 
 #include <array>
@@ -154,9 +155,10 @@ namespace lux::material
     MaterialNodeRegistration materialMathRegistration() noexcept
     {
         MaterialNodeRegistration result;
-        std::string name{"lux.material.math.v1"};
+        std::string name{MaterialMath::TypeName};
         result.identity = {graph::nodeTypeId(name), std::move(name), 1};
         result.payload_type = cxx::typeToken<MaterialMath>();
+        detail::installBuiltinCodec<MaterialMath, &cloneMath>(result);
         result.create = [](const object::CodeLease& code) noexcept
         { return MaterialNodePayload::make<MaterialMath, &cloneMath>(code); };
         result.validate = [](const MaterialNodePayload& value) noexcept

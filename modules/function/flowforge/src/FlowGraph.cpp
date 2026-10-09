@@ -56,7 +56,7 @@ namespace lux::flowforge
         {
             if (storage.node)
             {
-                storage.node->assignGraph(nullptr);
+                storage.node->graph_ = nullptr;
             }
         }
     }
@@ -79,7 +79,7 @@ namespace lux::flowforge
         {
             if (storage.node)
             {
-                storage.node->assignGraph(nullptr);
+                storage.node->graph_ = nullptr;
             }
         }
         variables_ = std::move(other.variables_);
@@ -108,7 +108,7 @@ namespace lux::flowforge
         {
             return (std::numeric_limits<std::size_t>::max)();
         }
-        node->assignStableId(*id);
+        node->id_ = *id;
         if (!attachNodeStructure(*node, false))
         {
             return (std::numeric_limits<std::size_t>::max)();
@@ -128,7 +128,7 @@ namespace lux::flowforge
         {
             return (std::numeric_limits<std::size_t>::max)();
         }
-        node->assignStableId(stable_id);
+        node->id_ = stable_id;
         const auto preserve_pin_ids =
             std::ranges::all_of(node->inPins(), [](const Pin* pin) { return pin != nullptr && pin->id().valid(); }) &&
             std::ranges::all_of(node->outPins(), [](const Pin* pin) { return pin != nullptr && pin->id().valid(); });
@@ -177,7 +177,7 @@ namespace lux::flowforge
             return false;
         }
         static_cast<void>(layout_.erase(node.id()));
-        node.assignGraph(nullptr);
+        node.graph_ = nullptr;
         nodes_.erase(index);
         return true;
     }
@@ -193,7 +193,7 @@ namespace lux::flowforge
         {
             return false;
         }
-        node.assignGraph(nullptr);
+        node.graph_ = nullptr;
         return nodes_.extract(index, out);
     }
 
@@ -402,12 +402,12 @@ namespace lux::flowforge
                 }
             }
         }
-        node.assignGraph(this);
+        node.graph_ = this;
         for (auto* pin : node.inPins())
         {
             if (pin == nullptr || !registerPin(*pin))
             {
-                node.assignGraph(nullptr);
+                node.graph_ = nullptr;
                 static_cast<void>(topology_.detachNode(node.id()));
                 return false;
             }
@@ -416,7 +416,7 @@ namespace lux::flowforge
         {
             if (pin == nullptr || !registerPin(*pin))
             {
-                node.assignGraph(nullptr);
+                node.graph_ = nullptr;
                 static_cast<void>(topology_.detachNode(node.id()));
                 return false;
             }
@@ -430,7 +430,7 @@ namespace lux::flowforge
         {
             if (storage.node)
             {
-                storage.node->assignGraph(this);
+                storage.node->graph_ = this;
             }
         }
     }
@@ -786,7 +786,7 @@ namespace lux::flowforge
         for (std::size_t i = 0; i < erase_.size(); ++i)
         {
             auto& node = graph.nodes_.at(erase_[i]).node;
-            node->assignGraph(nullptr);
+            node->graph_ = nullptr;
             removed_[i] = std::move(node);
         }
         for (const auto index : keep_)
@@ -800,8 +800,8 @@ namespace lux::flowforge
         for (const auto& insertion : insert_)
         {
             auto& node = *insertion.source;
-            node->assignStableId(insertion.id);
-            node->assignGraph(&graph);
+            node->id_ = insertion.id;
+            node->graph_ = &graph;
             nodes_.at(insertion.index).node = std::move(node);
         }
         if (storage_changed_)

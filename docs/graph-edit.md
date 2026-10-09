@@ -34,3 +34,11 @@ registered semantic payloads by NodeId/PinId and uses this transaction for graph
 restoration; its compiler builds temporary indexes from the frozen topology. See the
 [Material contract](../modules/function/material/README.md). Flow's polymorphic node/pin migration,
 remaining extension catalog and graph-editor rendering qualification are still unfinished.
+
+While Flow's representation is being migrated, its published topology and node ownership are read-only
+to consumers. Pin lists are borrowed read-only collections; semantic Pin values remain editable through
+their existing domain methods. Node identity and membership assignment belong to FlowGraph/FlowGraphEdit,
+not public Node setters. Dynamic pin construction/removal and explicit source restoration continue to
+update the existing topology through the graph's private operations. This closes externally writable
+structural bypasses; it does not qualify the old Node/Pin fields as the final payload-store architecture,
+nor change the current linear lookup complexity.

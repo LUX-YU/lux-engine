@@ -161,3 +161,11 @@ if(BUILD_TESTING)
         COMMAND flow_native_definition_plugin_test "$<TARGET_FILE:flow_native_definition_plugin>"
     )
 endif()
+
+if(BUILD_TESTING)
+    add_executable(flow_structure_access_test test/structure_access.cpp)
+
+    target_link_libraries(flow_structure_access_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(NAME flow.structure_access COMMAND flow_structure_access_test)
+endif()

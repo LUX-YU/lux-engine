@@ -33,7 +33,13 @@ add_executable(native_compiler "${CMAKE_CURRENT_LIST_DIR}/../../../engine/toolch
 target_link_libraries(native_compiler PRIVATE lux::engine::flowforge::flowforge_compiler)
 add_test(NAME installed.flow_native_compiler COMMAND native_compiler)
 
-foreach(target native_definition native_definition_plugin native_definition_plugin_test native_compiler)
+add_executable(structure_access "${flow_test}/structure_access.cpp")
+
+target_link_libraries(structure_access PRIVATE lux::engine::function::flowforge)
+
+add_test(NAME installed.flow_structure_access COMMAND structure_access)
+
+foreach(target native_definition native_definition_plugin native_definition_plugin_test native_compiler structure_access)
     if(MSVC)
         target_compile_options(${target} PRIVATE /permissive- /GR- /utf-8)
     else()
@@ -41,7 +47,7 @@ foreach(target native_definition native_definition_plugin native_definition_plug
     endif()
 endforeach()
 
-foreach(header NativeCallDefinition graph/FunctionalNode graph/NodeRegistry)
+foreach(header NativeCallDefinition graph/FunctionalNode graph/NodeRegistry graph/FlowGraph graph/NodeBase)
     string(REPLACE "/" "_" stem "${header}")
 
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${stem}.cpp" "#include <lux/engine/flowforge/${header}.hpp>\n")

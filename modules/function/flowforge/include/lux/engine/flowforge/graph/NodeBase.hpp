@@ -5,19 +5,19 @@
 
 #pragma once
 
-#include <limits>
 #include <cstdint>
-#include <span>
-#include <string>
+#include <limits>
 #include <lux/cxx/container/SparseSet.hpp>
 #include <lux/engine/function/graph/GraphTopology.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/meta/RuntimeObject.hpp>
+#include <span>
+#include <string>
 
 /**
-  * @namespace lux::flowforge
-  * @brief Contains classes and functions that represent a flow graph system with nodes and pins.
-  */
+ * @namespace lux::flowforge
+ * @brief Contains classes and functions that represent a flow graph system with nodes and pins.
+ */
 namespace lux::flowforge
 {
     class FlowGraph;
@@ -343,7 +343,7 @@ namespace lux::flowforge
          */
         PinId id() const;
 
-    protected:
+    private:
         /**
          * @brief Assigns a unique ID to this Pin.
          * @param id The new ID value.
@@ -524,10 +524,10 @@ namespace lux::flowforge
         ELinkError unlinkFrom(Pin* pin) override;
 
         /**
-		 * @brief Sets the constant data for this DataInPin.
-		 * @param value The Constant value to set.
-		 * @return True if the data was set successfully, false otherwise.
-		 */
+         * @brief Sets the constant data for this DataInPin.
+         * @param value The Constant value to set.
+         * @return True if the data was set successfully, false otherwise.
+         */
         bool setConstantData(lux::meta::RuntimeObject value);
 
         /**
@@ -544,21 +544,21 @@ namespace lux::flowforge
         [[nodiscard]] lux::cxx::expected<void, lux::meta::ERuntimeObjectError> resetConstantData() noexcept;
 
         /**
-		 * @brief Checks if this DataInPin is a constant.
-		 * @return True if it is a constant, false otherwise.
-		 */
+         * @brief Checks if this DataInPin is a constant.
+         * @return True if it is a constant, false otherwise.
+         */
         bool validConstant() const;
 
         /**
-		 * @brief Checks if this DataInPin allows a default value.
-		 * @return True if default value is allowed, false otherwise.
-		 */
+         * @brief Checks if this DataInPin allows a default value.
+         * @return True if default value is allowed, false otherwise.
+         */
         bool allowDefault() const;
 
         /**
-		 * @brief Checks if this DataInPin is necessary for the operation.
-		 * @return True if it is necessary, false otherwise.
-		 */
+         * @brief Checks if this DataInPin is necessary for the operation.
+         * @return True if it is necessary, false otherwise.
+         */
         bool isNecessary() const;
 
     private:
@@ -644,6 +644,8 @@ namespace lux::flowforge
     class Node
     {
         friend class Pin;
+        friend class FlowGraph;
+        friend class FlowGraphEdit;
         // HasExecOutPin manages heap-allocated extra exec-out pins and must be able
         // to de-register them from out_pins_ before deleting them.
         template <typename T> friend class THasExecOutPin;
@@ -683,12 +685,6 @@ namespace lux::flowforge
          */
         NodeId id() const;
 
-        /**
-         * @brief Re-keys this node with a stable shared-topology id.
-         *        Pin identity is allocated independently by GraphTopology.
-         */
-        void assignStableId(NodeId id);
-        void assignGraph(FlowGraph* graph) noexcept;
         [[nodiscard]] FlowGraph* graph() const noexcept
         {
             return graph_;
@@ -704,6 +700,7 @@ namespace lux::flowforge
         {
             return creator_name_;
         }
+
         void setCreatorName(std::string_view name)
         {
             creator_name_ = name;
@@ -742,10 +739,6 @@ namespace lux::flowforge
          * @brief Gets the input pins of this Node.
          * @return A const reference to a vector of Pin pointers.
          */
-        std::vector<Pin*>& inPins()
-        {
-            return in_pins_;
-        }
         const std::vector<Pin*>& inPins() const
         {
             return in_pins_;
@@ -755,10 +748,6 @@ namespace lux::flowforge
          * @brief Gets the output pins of this Node.
          * @return A const reference to a vector of Pin pointers.
          */
-        std::vector<Pin*>& outPins()
-        {
-            return out_pins_;
-        }
         const std::vector<Pin*>& outPins() const
         {
             return out_pins_;
@@ -809,6 +798,7 @@ namespace lux::flowforge
         {
             return in_pin_;
         }
+
         const ExecInPin& execInPin() const
         {
             return in_pin_;
@@ -880,6 +870,7 @@ namespace lux::flowforge
         {
             return fix_out_pin_;
         }
+
         const ExecOutPin& execOutPin() const
         {
             return fix_out_pin_;
@@ -889,10 +880,12 @@ namespace lux::flowforge
         {
             return extra_out_pins_;
         }
+
         [[nodiscard]] std::size_t extraOutPinStorageBytes() const noexcept
         {
             return extra_out_pins_.capacity() * sizeof(ExecOutPin*);
         }
+
         std::span<const ExecOutPin* const> extraOutPins() const
         {
             return extra_out_pins_;

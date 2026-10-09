@@ -4,8 +4,8 @@
  */
 #include "lux/engine/meta/RuntimeObject.hpp"
 #include <cstdio>
-#include <lux/engine/flowforge/graph/NodeBase.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
+#include <lux/engine/flowforge/graph/NodeBase.hpp>
 #include <lux/engine/meta/MetaCompat.hpp>
 #include <lux/engine/meta/MetaDef.hpp>
 
@@ -34,11 +34,17 @@ namespace lux::flowforge
     Pin::~Pin()
     {
         if (node_ == nullptr)
+        {
             return;
+        }
         if (kind_ == EPinKind::DATA_IN || kind_ == EPinKind::EXEC_IN)
+        {
             node_->removeInPin(this);
+        }
         else
+        {
             node_->removeOutPin(this);
+        }
     }
 
     /**
@@ -108,7 +114,9 @@ namespace lux::flowforge
     ELinkError Pin::unlinkFrom(Pin* pin)
     {
         if (pin == nullptr || node_ == nullptr || node_->graph() == nullptr)
+        {
             return ELinkError::INVALID_PIN;
+        }
         return node_->graph()->disconnect(*this, *pin);
     }
 
@@ -237,10 +245,16 @@ namespace lux::flowforge
     {
         std::vector<ExecOutPin*> result;
         if (node()->graph() == nullptr)
+        {
             return result;
+        }
         for (auto* pin : node()->graph()->linkedPins(id()))
+        {
             if (pin != nullptr && pin->kind() == EPinKind::EXEC_OUT)
+            {
                 result.push_back(static_cast<ExecOutPin*>(pin));
+            }
+        }
         return result;
     }
 
@@ -277,7 +291,9 @@ namespace lux::flowforge
         }
 
         if (nextPin() != nullptr)
+        {
             return ELinkError::HAS_LINKED;
+        }
 
         auto in_pin = static_cast<ExecInPin*>(pin);
         if (in_pin->hasPin(this))
@@ -313,7 +329,9 @@ namespace lux::flowforge
     ELinkError ExecOutPin::unlinkFrom(Pin* pin)
     {
         if (pin == nullptr || pin->kind() != EPinKind::EXEC_IN)
+        {
             return ELinkError::WRONG_KIND;
+        }
         return Pin::unlinkFrom(pin);
     }
 
@@ -324,7 +342,9 @@ namespace lux::flowforge
     const ExecInPin* ExecOutPin::nextPin() const
     {
         if (node()->graph() == nullptr)
+        {
             return nullptr;
+        }
         const auto pins = node()->graph()->linkedPins(id());
         return pins.empty() ? nullptr : static_cast<const ExecInPin*>(pins.front());
     }
@@ -381,7 +401,9 @@ namespace lux::flowforge
         }
 
         if (linkedPin() != nullptr)
+        {
             return ELinkError::HAS_LINKED;
+        }
 
         auto out_pin = static_cast<DataOutPin*>(pin);
         if (out_pin->hasPin(this))
@@ -422,7 +444,9 @@ namespace lux::flowforge
     ELinkError DataInPin::unlinkFrom(Pin* pin)
     {
         if (pin == nullptr || pin->kind() != EPinKind::DATA_OUT)
+        {
             return ELinkError::WRONG_KIND;
+        }
         return Pin::unlinkFrom(pin);
     }
 
@@ -495,7 +519,9 @@ namespace lux::flowforge
     const DataOutPin* DataInPin::linkedPin() const
     {
         if (node()->graph() == nullptr)
+        {
             return nullptr;
+        }
         const auto pins = node()->graph()->linkedPins(id());
         return pins.empty() ? nullptr : static_cast<const DataOutPin*>(pins.front());
     }
@@ -510,7 +536,8 @@ namespace lux::flowforge
      */
     DataOutPin::DataOutPin(Node* node, const DataPinInfo& info, std::string name)
         : Pin(node, EPinKind::DATA_OUT, name.empty() ? info.name : std::move(name)), info_(info)
-    {}
+    {
+    }
 
     /**
      * @brief Destructor. Unlinks from all connected DataInPins upon destruction.
@@ -537,10 +564,16 @@ namespace lux::flowforge
     {
         std::vector<DataInPin*> result;
         if (node()->graph() == nullptr)
+        {
             return result;
+        }
         for (auto* pin : node()->graph()->linkedPins(id()))
+        {
             if (pin != nullptr && pin->kind() == EPinKind::DATA_IN)
+            {
                 result.push_back(static_cast<DataInPin*>(pin));
+            }
+        }
         return result;
     }
 
@@ -647,16 +680,6 @@ namespace lux::flowforge
         return id_;
     }
 
-    void Node::assignStableId(NodeId id)
-    {
-        id_ = id;
-    }
-
-    void Node::assignGraph(FlowGraph* graph) noexcept
-    {
-        graph_ = graph;
-    }
-
     /**
      * @brief Retrieves the operation type of this Node.
      * @return An ENodeOperation enum value.
@@ -684,7 +707,9 @@ namespace lux::flowforge
         in_pins_.push_back(pin);
         pin->setId({});
         if (graph_ != nullptr)
+        {
             static_cast<void>(graph_->registerPin(*pin));
+        }
     }
 
     /**
@@ -696,7 +721,9 @@ namespace lux::flowforge
         out_pins_.push_back(pin);
         pin->setId({});
         if (graph_ != nullptr)
+        {
             static_cast<void>(graph_->registerPin(*pin));
+        }
     }
 
     /**
@@ -706,7 +733,9 @@ namespace lux::flowforge
     void Node::removeInPin(Pin* pin)
     {
         if (graph_ != nullptr && pin != nullptr)
+        {
             graph_->unregisterPin(*pin);
+        }
         in_pins_.erase(std::remove(in_pins_.begin(), in_pins_.end(), pin), in_pins_.end());
     }
 
@@ -717,7 +746,9 @@ namespace lux::flowforge
     void Node::removeOutPin(Pin* pin)
     {
         if (graph_ != nullptr && pin != nullptr)
+        {
             graph_->unregisterPin(*pin);
+        }
         out_pins_.erase(std::remove(out_pins_.begin(), out_pins_.end(), pin), out_pins_.end());
     }
 
@@ -738,6 +769,7 @@ namespace lux::flowforge
         std::initializer_list<std::string_view> out_pin_names
     )
         : Node(id, op), THasExecInPin(in_pin_name), THasExecOutPin(fix_out_pin_name, out_pin_names)
-    {}
+    {
+    }
 
 } // namespace lux::flowforge

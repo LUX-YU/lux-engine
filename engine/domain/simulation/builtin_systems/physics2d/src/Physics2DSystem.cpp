@@ -267,9 +267,9 @@ namespace lux::physics2d
                 {
                     continue;
                 }
-                const auto position = world.position(record.body).cast<double>() + *origin;
+                const Eigen::Vector2d position = world.position(record.body).cast<double>() + *origin;
                 const auto rotation = static_cast<double>(world.angle(record.body));
-                const auto velocity = world.linearVelocity(record.body).cast<double>();
+                const Eigen::Vector2d velocity = world.linearVelocity(record.body).cast<double>();
                 registry.patch<lux::simulation::ecs::Transform2D>(
                     entity,
                     [&](auto& transform)

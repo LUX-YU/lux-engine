@@ -4,8 +4,9 @@
 #include <lux/engine/render/graph/RGBuilder.hpp>
 #include <lux/engine/render/graph/RenderGraphCompiler.hpp>
 
-#include <cassert>
 #include <cstdio>
+#include <cstdlib>
+#include <source_location>
 #include <sstream>
 #include <type_traits>
 
@@ -15,6 +16,18 @@
 namespace
 {
     using namespace lux::render;
+
+    // Keep the same NDEBUG-dependent private type layout as the linked renderer.
+    // Test checks remain active in every configuration without changing that ABI.
+    template <class T>
+    void require(const T& condition, std::source_location location = std::source_location::current()) noexcept
+    {
+        if (!condition)
+        {
+            std::fprintf(stderr, "%s:%u: compiler result check failed\n", location.file_name(), location.line());
+            std::abort();
+        }
+    }
 
     template <class T>
     concept HasValidityFlag = requires(T& value) { value.valid; };
@@ -26,10 +39,10 @@ namespace
     template <class Error> void reject(RGBuilder builder, PipelineManager& manager, std::size_t pass_count)
     {
         auto result = RenderGraphCompiler::compile(std::move(builder).build(), manager);
-        assert(!result && isError<Error>(result.error().cause));
-        assert(result.error().candidate.original_graph.passes.size() == pass_count);
+        require(!result && isError<Error>(result.error().cause));
+        require(result.error().candidate.original_graph.passes.size() == pass_count);
         auto retained = std::move(result.error().candidate);
-        assert(retained.original_graph.passes.size() == pass_count);
+        require(retained.original_graph.passes.size() == pass_count);
     }
 
     void testCompiler(PipelineManager& manager)
@@ -66,24 +79,24 @@ namespace
             builder.addPass("warning before failure", ERGPassType::COMPUTE)
                 .write(texture, ETextureRole::UNORDERED_ACCESS);
             auto result = RenderGraphCompiler::compile(std::move(builder).build(), manager);
-            assert(!result && isError<err::graph::ComputePassMissingPipeline>(result.error().cause));
-            assert(!result.error().candidate.diagnostics.empty());
+            require(!result && isError<err::graph::ComputePassMissingPipeline>(result.error().cause));
+            require(!result.error().candidate.diagnostics.empty());
             auto retained = std::move(result.error().candidate);
-            assert(retained.original_graph.resources[0].name == "owned diagnostic");
-            assert(isError<err::graph::UsageUnderdeclared>(retained.diagnostics[0]));
-            assert(retained.compiled_passes[0].pass == &retained.original_graph.passes[0]);
+            require(retained.original_graph.resources[0].name == "owned diagnostic");
+            require(isError<err::graph::UsageUnderdeclared>(retained.diagnostics[0]));
+            require(retained.compiled_passes[0].pass == &retained.original_graph.passes[0]);
             std::ostringstream diagnostic;
             printCompiledGraph(retained, diagnostic);
-            assert(diagnostic.str().find("owned diagnostic") != std::string::npos);
+            require(diagnostic.str().find("owned diagnostic") != std::string::npos);
         }
         {
             RGBuilder builder;
             builder.addPass("retained side effect", ERGPassType::TRANSFER).markSideEffect();
             auto result = RenderGraphCompiler::compile(std::move(builder).build(), manager);
-            assert(result.has_value());
-            assert(result->execution_order.size() == 1);
+            require(result.has_value());
+            require(result->execution_order.size() == 1);
             auto retained = std::move(*result);
-            assert(retained.compiled_passes[0].pass == &retained.original_graph.passes[0]);
+            require(retained.compiled_passes[0].pass == &retained.original_graph.passes[0]);
         }
         {
             RGBuilder builder;
@@ -162,12 +175,12 @@ namespace
             lifetime.reset();
             {
                 auto result = RenderGraphCompiler::compile(std::move(builder).build(), manager);
-                assert(!result && !observed.expired());
+                require(!result && !observed.expired());
                 auto retained = std::move(result);
-                assert(!observed.expired());
-                assert(retained.error().candidate.original_graph.passes[0].condition());
+                require(!observed.expired());
+                require(retained.error().candidate.original_graph.passes[0].condition());
             }
-            assert(observed.expired());
+            require(observed.expired());
         }
     }
 
@@ -179,7 +192,7 @@ namespace
         layout.slots[0]->format = lux::rdesc::ETextureFormat::RGBA8_UNORM;
         cache.compile(layout, 0, {}, {}, nullptr, 1);
         const auto* original = cache.state().graph.get();
-        assert(original && cache.state().valid);
+        require(original && cache.state().valid);
         const auto color = cache.state().final_color_handle;
         auto candidate_layout = layout;
         candidate_layout.slots[0]->format = lux::rdesc::ETextureFormat::RGBA16_SFLOAT;
@@ -191,13 +204,13 @@ namespace
             nullptr,
             2
         );
-        assert(cache.state().graph.get() == original && cache.state().valid);
-        assert(cache.state().last_layout == layout && cache.state().final_color_handle.index == color.index);
-        assert(cache.telemetry().compile_attempts == 2 && cache.telemetry().compile_failures == 1);
-        assert(!cache.compileHistory().back().succeeded);
+        require(cache.state().graph.get() == original && cache.state().valid);
+        require(cache.state().last_layout == layout && cache.state().final_color_handle.index == color.index);
+        require(cache.telemetry().compile_attempts == 2 && cache.telemetry().compile_failures == 1);
+        require(!cache.compileHistory().back().succeeded);
         cache.compile(candidate_layout, 0, {}, {}, nullptr, 3);
-        assert(cache.state().graph && cache.state().graph.get() != original);
-        assert(cache.state().last_layout == candidate_layout && cache.telemetry().compile_successes == 2);
+        require(cache.state().graph && cache.state().graph.get() != original);
+        require(cache.state().last_layout == candidate_layout && cache.telemetry().compile_successes == 2);
         cache.collectRetired(3, 0);
         cache.collectRetired(4, 3);
     }
@@ -207,12 +220,12 @@ int main()
 {
     using namespace lux::render;
     auto instance = InstanceContext::create({});
-    assert(instance);
+    require(instance);
     auto device = DeviceContext::create(**instance, EPhysicalDeviceSelectionPolicy::DISCRETE_GPU_PREFERRED);
-    assert(device);
+    require(device);
     auto resources = ResourceContext::create(**device);
     auto layouts = GeneralDescriptorSetLayout::create(**device);
-    assert(resources && layouts);
+    require(resources && layouts);
     RenderContext::CreateInfo info{
         std::make_unique<PipelineManager>(**device, true),
         std::move(*layouts),
@@ -220,7 +233,7 @@ int main()
         2
     };
     auto context = RenderContext::create(**resources, std::move(info));
-    assert(context);
+    require(context);
     testCompiler((*context)->pipelineManager());
     testLastGood(**context);
     std::puts("Actual compiler errors/owned diagnostics/moved graph and last-good cache passed");

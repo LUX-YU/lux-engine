@@ -1,5 +1,6 @@
 #include <box2d/box2d.h>
 #include <cassert>
+#include <cmath>
 #include <iostream>
 #include <limits>
 #include <lux/engine/physics2d/Physics2DSystem.hpp>
@@ -126,13 +127,24 @@ int main()
         const auto entity = registry.create();
         registry.emplace<ecs::Transform2D>(entity).translation = {1.0e9, 1.0e9};
         registry.emplace<BoxCollider2D>(entity);
-        registry.emplace<RigidBody2D>(entity);
+        registry.emplace<RigidBody2D>(entity).velocity = {3.0, -2.0};
         auto system = Physics2DSystem::create(registry, time, {.body_capacity = 4});
         assert(system && (*system)->stats().active_bodies == 0);
         time.delta = SimulationDuration{16'666'667};
         assert((*system)->update());
         assert((*system)->stats().active_bodies == 1 && (*system)->stats().completed_steps == 1);
         assert(registry.get<ecs::Transform2D>(entity).translation.y() < 1.0e9);
+        const Eigen::Vector2d first_position = registry.get<ecs::Transform2D>(entity).translation;
+        const Eigen::Vector2d first_velocity = registry.get<RigidBody2D>(entity).velocity;
+        assert(first_position.allFinite() && first_velocity.allFinite());
+        assert(std::abs(first_position.x() - (1.0e9 + 0.05)) < 1.0e-6);
+        assert(std::abs(first_velocity.x() - 3.0) < 1.0e-6 && first_velocity.y() < -2.0);
+        assert((*system)->update() && (*system)->stats().completed_steps == 2);
+        const auto& next_position = registry.get<ecs::Transform2D>(entity).translation;
+        const auto& next_velocity = registry.get<RigidBody2D>(entity).velocity;
+        assert(next_position.allFinite() && next_velocity.allFinite());
+        assert(next_position.x() > first_position.x() && next_position.y() < first_position.y());
+        assert(std::abs(next_velocity.x() - 3.0) < 1.0e-6 && next_velocity.y() < first_velocity.y());
         assert((*system)->overlapsBox(1.0e9, 1.0e9, 1, 1));
         assert(!(*system)->overlapsBox(1.0e9, 1.0e9, -1, 1));
         registry.destroy(entity);

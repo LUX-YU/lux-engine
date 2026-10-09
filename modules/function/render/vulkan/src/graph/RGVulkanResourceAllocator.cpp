@@ -1,15 +1,24 @@
-#include <lux/engine/render/graph/RGVulkanResourceAllocator.hpp>
-#include <vk_mem_alloc.h>
-#include <lux/engine/render/graph/vk_type_converter.hpp>
 #include <lux/engine/render/gpu/VulkanContext.hpp>
 #include <lux/engine/render/graph/RGTextureUtils.hpp>
+#include <lux/engine/render/graph/RGVulkanResourceAllocator.hpp>
+#include <lux/engine/render/graph/vk_type_converter.hpp>
+#include <vk_mem_alloc.h>
 
 #include <array>
+#include <lux/cxx/core/scope_exit.hpp>
 
 namespace lux::render
 {
     namespace
     {
+        [[nodiscard]] bool ownsStorage(const RGPhysicalResource& resource) noexcept
+        {
+            const bool owns_regular = resource.lifetime == ERGResourceLifetime::TRANSIENT ||
+                                      resource.lifetime == ERGResourceLifetime::PERSISTENT;
+            const bool owns_ring = resource.lifetime == ERGResourceLifetime::PING_PONG && resource.ring_phase == 0;
+            return owns_regular || owns_ring;
+        }
+
         [[nodiscard]] VmaMemoryUsage convertMemoryUsageToVma(ERGMemoryUsage memory_usage)
         {
             switch (memory_usage)
@@ -66,18 +75,27 @@ namespace lux::render
     {
         auto it = resource_pool_.find(key);
         if (it == resource_pool_.end())
+        {
             return false;
+        }
 
-        const CachedResource& cached = it->second;
-        if (key.type == ERGResourceType::TEXTURE)
-        {
-            out.physical_handles.push_back(reinterpret_cast<uintptr_t>(cached.image));
-        }
-        else
-        {
-            out.physical_handles.push_back(reinterpret_cast<uintptr_t>(cached.buffer));
-        }
-        out.physical_allocations.push_back(reinterpret_cast<uintptr_t>(cached.allocation));
+        std::visit(
+            [&](auto& owner)
+            {
+                using T = std::decay_t<decltype(owner)>;
+                if constexpr (std::is_same_v<T, VmaImage>)
+                {
+                    out.physical_handles.push_back(reinterpret_cast<uintptr_t>(owner.image()));
+                }
+                else
+                {
+                    out.physical_handles.push_back(reinterpret_cast<uintptr_t>(owner.buffer()));
+                }
+                out.physical_allocations.push_back(reinterpret_cast<uintptr_t>(owner.allocation()));
+                (void)owner.release();
+            },
+            it->second.allocation
+        );
 
         resource_pool_.erase(it);
         return true;
@@ -87,20 +105,7 @@ namespace lux::render
     {
         for (size_t k = 0; k < res.physical_handles.size(); ++k)
         {
-            CachedResource cached{};
-            cached.allocation = reinterpret_cast<VmaAllocation>(res.physical_allocations[k]);
-            cached.last_used_frame = current_frame_;
-
-            if (res.type == ERGResourceType::TEXTURE)
-            {
-                cached.image = reinterpret_cast<VkImage>(res.physical_handles[k]);
-            }
-            else
-            {
-                cached.buffer = reinterpret_cast<VkBuffer>(res.physical_handles[k]);
-            }
-
-            resource_pool_.emplace(key, cached);
+            resource_pool_.emplace(key, CachedResource{takeAllocation(res, k), current_frame_});
         }
     }
 
@@ -115,6 +120,7 @@ namespace lux::render
         const size_t resource_count = graph.resources.size();
         RGPhysicalResourceTable table;
         table.reserve(resource_count);
+        lux::cxx::scope_exit rollback([&]() noexcept { deallocate(table); });
 
         for (size_t i = 0; i < resource_count; ++i)
         {
@@ -132,7 +138,8 @@ namespace lux::render
                 // returns 0 and barrier patching skips it.
                 phys.type = resource.type;
                 continue;
-            case ERGResourceLifetime::PING_PONG: {
+            case ERGResourceLifetime::PING_PONG:
+            {
                 phys.ring_size = resource.ring_size;
                 phys.ring_phase = resource.ring_phase;
                 phys.pingpong_peer = resource.pingpong_peer;
@@ -140,26 +147,30 @@ namespace lux::render
                 if (resource.ring_phase == 0u) // CURRENT owns the copies
                 {
                     std::visit(
-                        [&](auto&& arg) {
+                        [&](auto&& arg)
+                        {
                             using T = std::decay_t<decltype(arg)>;
                             if constexpr (std::is_same_v<T, RGTextureDescription>)
                             {
                                 auto result = createImage(resource, phys, extent, frames_in_flight);
                                 if (!result)
+                                {
                                     create_err = result.error();
+                                }
                             }
                             else if constexpr (std::is_same_v<T, RGBufferDescription>)
                             {
                                 auto result = createBuffer(resource, phys, frames_in_flight);
                                 if (!result)
+                                {
                                     create_err = result.error();
+                                }
                             }
                         },
                         resource.desc
                     );
                     if (create_err)
                     {
-                        deallocate(table);
                         return lux::cxx::unexpected(*create_err);
                     }
                 }
@@ -168,37 +179,44 @@ namespace lux::render
             }
             case ERGResourceLifetime::TRANSIENT:
                 [[fallthrough]];
-            case ERGResourceLifetime::PERSISTENT: {
+            case ERGResourceLifetime::PERSISTENT:
+            {
                 std::visit(
-                    [&](auto&& arg) {
+                    [&](auto&& arg)
+                    {
                         using T = std::decay_t<decltype(arg)>;
                         if constexpr (std::is_same_v<T, RGTextureDescription>)
                         {
                             phys.type = ERGResourceType::TEXTURE;
                             auto result = createImage(resource, phys, extent, frames_in_flight);
                             if (!result)
+                            {
                                 create_err = result.error();
+                            }
                         }
                         else if constexpr (std::is_same_v<T, RGBufferDescription>)
                         {
                             phys.type = ERGResourceType::BUFFER;
                             auto result = createBuffer(resource, phys, frames_in_flight);
                             if (!result)
+                            {
                                 create_err = result.error();
+                            }
                         }
                     },
                     resource.desc
                 );
                 if (create_err)
                 {
-                    deallocate(table);
                     return lux::cxx::unexpected(*create_err);
                 }
                 break;
             }
-            case ERGResourceLifetime::IMPORTED: {
+            case ERGResourceLifetime::IMPORTED:
+            {
                 std::visit(
-                    [&](auto&& arg) {
+                    [&](auto&& arg)
+                    {
                         using T = std::decay_t<decltype(arg)>;
                         if constexpr (std::is_same_v<T, RGTextureDescription>)
                         {
@@ -215,7 +233,9 @@ namespace lux::render
                             if (!phys.image_getter)
                             {
                                 if (!resource.import_info->slot.has_value())
+                                {
                                     create_err = renderError<err::internal::InvalidArgument>();
+                                }
                                 return;
                             }
 
@@ -229,7 +249,9 @@ namespace lux::render
                             }
                             phys.physical_handles.reserve(count);
                             for (uint32_t ii = 0; ii < count; ++ii)
+                            {
                                 phys.physical_handles.push_back(reinterpret_cast<uintptr_t>(images[ii]));
+                            }
                         }
                         else if constexpr (std::is_same_v<T, RGBufferDescription>)
                         {
@@ -257,20 +279,22 @@ namespace lux::render
                             }
                             phys.physical_handles.reserve(count);
                             for (uint32_t ii = 0; ii < count; ++ii)
+                            {
                                 phys.physical_handles.push_back(reinterpret_cast<uintptr_t>(buffers[ii]));
+                            }
                         }
                     },
                     resource.desc
                 );
                 if (create_err)
                 {
-                    deallocate(table);
                     return lux::cxx::unexpected(*create_err);
                 }
             }
             break;
             }
         }
+        rollback.release();
         return table;
     }
 
@@ -329,7 +353,9 @@ namespace lux::render
         const bool lazy_attachment = phy.lifetime == ERGResourceLifetime::TRANSIENT && image_info.usage != 0 &&
                                      (image_info.usage & ~kAttachmentOnlyUsage) == 0;
         if (lazy_attachment)
+        {
             image_info.usage |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+        }
 
         // 池化:transient 图像一律从大块里子分配,避免逐张 vkAllocateMemory。
         //
@@ -406,29 +432,30 @@ namespace lux::render
                     }
                 }
                 if (transient_image_pool_)
+                {
                     alloc_info.pool = transient_image_pool_.get();
+                }
             }
         }
 
+        phy.physical_handles.reserve(copies);
+        phy.physical_allocations.reserve(copies);
         for (uint32_t c = 0; c < copies; ++c)
         {
             // Try to reuse a cached resource from the pool first
             if (phy.lifetime == ERGResourceLifetime::TRANSIENT && tryAcquireFromPool(key, phy))
-                continue;
-
-            VkImage image = VK_NULL_HANDLE;
-            VmaAllocation allocation = VK_NULL_HANDLE;
-
-            VkResult result =
-                vmaCreateImage(context_.vmaAllocator(), &image_info, &alloc_info, &image, &allocation, nullptr);
-
-            if (result != VK_SUCCESS)
             {
-                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(result));
+                continue;
             }
 
-            phy.physical_handles.push_back(reinterpret_cast<uintptr_t>(image));
-            phy.physical_allocations.push_back(reinterpret_cast<uintptr_t>(allocation));
+            auto image = VmaImage::create(context_.vmaAllocator(), image_info, alloc_info);
+            if (!image)
+            {
+                return lux::cxx::unexpected(image.error());
+            }
+            phy.physical_handles.push_back(reinterpret_cast<uintptr_t>(image->image()));
+            phy.physical_allocations.push_back(reinterpret_cast<uintptr_t>(image->allocation()));
+            (void)image->release();
         }
         return {};
     }
@@ -455,61 +482,64 @@ namespace lux::render
                                 : (phy.lifetime == ERGResourceLifetime::TRANSIENT) ? frames_in_flight
                                                                                    : 1u;
 
+        phy.physical_handles.reserve(copies);
+        phy.physical_allocations.reserve(copies);
         for (uint32_t c = 0; c < copies; ++c)
         {
             if (phy.lifetime == ERGResourceLifetime::TRANSIENT && tryAcquireFromPool(key, phy))
-                continue;
-
-            VkBuffer buffer = VK_NULL_HANDLE;
-            VmaAllocation allocation = VK_NULL_HANDLE;
-
-            VkResult result =
-                vmaCreateBuffer(context_.vmaAllocator(), &buffer_info, &alloc_info, &buffer, &allocation, nullptr);
-
-            if (result != VK_SUCCESS)
             {
-                return renderFailure<err::device::VulkanCallFailed>(encodeVkResult(result));
+                continue;
             }
 
-            phy.physical_handles.push_back(reinterpret_cast<uintptr_t>(buffer));
-            phy.physical_allocations.push_back(reinterpret_cast<uintptr_t>(allocation));
+            auto buffer = VmaBuffer::create(context_.vmaAllocator(), buffer_info, alloc_info);
+            if (!buffer)
+            {
+                return lux::cxx::unexpected(buffer.error());
+            }
+            phy.physical_handles.push_back(reinterpret_cast<uintptr_t>(buffer->buffer()));
+            phy.physical_allocations.push_back(reinterpret_cast<uintptr_t>(buffer->allocation()));
+            (void)buffer->release();
         }
         return {};
     }
 
+    VPhysicalAllocation RGVulkanResourceAllocator::takeAllocation(
+        const RGPhysicalResource& resource,
+        size_t copy
+    ) noexcept
+    {
+        const auto allocation = reinterpret_cast<VmaAllocation>(resource.physical_allocations[copy]);
+        if (resource.type == ERGResourceType::TEXTURE)
+        {
+            return VmaImage::adopt(
+                {context_.vmaAllocator(), reinterpret_cast<VkImage>(resource.physical_handles[copy]), allocation}
+            );
+        }
+        return VmaBuffer::adopt(
+            {context_.vmaAllocator(), reinterpret_cast<VkBuffer>(resource.physical_handles[copy]), allocation}
+        );
+    }
+
+    void RGVulkanResourceAllocator::releaseResource(const RGPhysicalResource& resource) noexcept
+    {
+        for (size_t copy = 0; copy < resource.physical_handles.size(); ++copy)
+        {
+            const auto allocation = takeAllocation(resource, copy);
+        }
+    }
+
     void RGVulkanResourceAllocator::deallocate(const RGPhysicalResourceTable& table)
     {
-        // Direct destruction — resources are NOT returned to pool
-        for (uint32_t i = 0; i < table.size(); ++i)
+        for (uint32_t index = 0; index < table.size(); ++index)
         {
-            if (!table.contains(i))
+            if (!table.contains(index))
             {
                 continue;
             }
-
-            const auto& phys_res = table.at(i);
-
-            if (phys_res.lifetime == ERGResourceLifetime::TRANSIENT ||
-                phys_res.lifetime == ERGResourceLifetime::PERSISTENT)
+            const auto& resource = table.at(index);
+            if (ownsStorage(resource))
             {
-                if (phys_res.type == ERGResourceType::TEXTURE)
-                {
-                    for (size_t k = 0; k < phys_res.physical_handles.size(); ++k)
-                    {
-                        VkImage image = reinterpret_cast<VkImage>(phys_res.physical_handles[k]);
-                        VmaAllocation allocation = reinterpret_cast<VmaAllocation>(phys_res.physical_allocations[k]);
-                        destroyImage(image, allocation);
-                    }
-                }
-                else if (phys_res.type == ERGResourceType::BUFFER)
-                {
-                    for (size_t k = 0; k < phys_res.physical_handles.size(); ++k)
-                    {
-                        VkBuffer buffer = reinterpret_cast<VkBuffer>(phys_res.physical_handles[k]);
-                        VmaAllocation allocation = reinterpret_cast<VmaAllocation>(phys_res.physical_allocations[k]);
-                        destroyBuffer(buffer, allocation);
-                    }
-                }
+                releaseResource(resource);
             }
         }
     }
@@ -519,56 +549,35 @@ namespace lux::render
         const RGGraphDescription& graph
     )
     {
-        // Return TRANSIENT/PERSISTENT resources to pool for future reuse
-        for (uint32_t i = 0; i < table.size(); ++i)
+        for (uint32_t index = 0; index < table.size(); ++index)
         {
-            if (!table.contains(i))
-                continue;
-
-            const auto& phys_res = table.at(i);
-
-            if (phys_res.lifetime == ERGResourceLifetime::TRANSIENT ||
-                phys_res.lifetime == ERGResourceLifetime::PERSISTENT)
+            if (!table.contains(index))
             {
-                if (i < graph.resources.size())
-                {
-                    TransientResourceKey key = makeKey(graph.resources[i]);
-                    // Mirror createImage's RELATIVE_MODE patch: makeKey reads the
-                    // description's width/height (1/1 for RELATIVE), so without this
-                    // the image returns to the pool under key{1,1} and never matches
-                    // the resolved-extent lookup on the next allocate. (#15)
-                    if (phys_res.type == ERGResourceType::TEXTURE && phys_res.pool_key_width != 0)
-                    {
-                        key.width = phys_res.pool_key_width;
-                        key.height = phys_res.pool_key_height;
-                    }
-                    returnToPool(key, phys_res);
-                }
-                else
-                {
-                    // Fallback: resource index out of range, destroy directly
-                    if (phys_res.type == ERGResourceType::TEXTURE)
-                    {
-                        for (size_t k = 0; k < phys_res.physical_handles.size(); ++k)
-                        {
-                            destroyImage(
-                                reinterpret_cast<VkImage>(phys_res.physical_handles[k]),
-                                reinterpret_cast<VmaAllocation>(phys_res.physical_allocations[k])
-                            );
-                        }
-                    }
-                    else
-                    {
-                        for (size_t k = 0; k < phys_res.physical_handles.size(); ++k)
-                        {
-                            destroyBuffer(
-                                reinterpret_cast<VkBuffer>(phys_res.physical_handles[k]),
-                                reinterpret_cast<VmaAllocation>(phys_res.physical_allocations[k])
-                            );
-                        }
-                    }
-                }
+                continue;
             }
+            const auto& resource = table.at(index);
+            if (!ownsStorage(resource))
+            {
+                continue;
+            }
+            // Only ordinary allocations participate in the existing reuse cache.
+            // CURRENT owns a history ring; PREVIOUS and imported records only borrow.
+            const bool is_history_ring = resource.lifetime == ERGResourceLifetime::PING_PONG;
+            const bool has_no_description = index >= graph.resources.size();
+            const bool release_directly = is_history_ring || has_no_description;
+            if (release_directly)
+            {
+                releaseResource(resource);
+                continue;
+            }
+            TransientResourceKey key = makeKey(graph.resources[index]);
+            const bool has_resolved_extent = resource.type == ERGResourceType::TEXTURE && resource.pool_key_width != 0;
+            if (has_resolved_extent)
+            {
+                key.width = resource.pool_key_width;
+                key.height = resource.pool_key_height;
+            }
+            returnToPool(key, resource);
         }
     }
 
@@ -579,16 +588,6 @@ namespace lux::render
         {
             if (current_frame - it->second.last_used_frame > max_idle_frames)
             {
-                // Resource has been idle too long — destroy it
-                const CachedResource& cached = it->second;
-                if (cached.image != VK_NULL_HANDLE)
-                {
-                    destroyImage(cached.image, cached.allocation);
-                }
-                else if (cached.buffer != VK_NULL_HANDLE)
-                {
-                    destroyBuffer(cached.buffer, cached.allocation);
-                }
                 it = resource_pool_.erase(it);
             }
             else
@@ -600,37 +599,10 @@ namespace lux::render
 
     void RGVulkanResourceAllocator::releasePool()
     {
-        for (auto& [key, cached] : resource_pool_)
-        {
-            if (cached.image != VK_NULL_HANDLE)
-            {
-                destroyImage(cached.image, cached.allocation);
-            }
-            else if (cached.buffer != VK_NULL_HANDLE)
-            {
-                destroyBuffer(cached.buffer, cached.allocation);
-            }
-        }
+        // Cached allocation owners must disappear before their native pool owners.
         resource_pool_.clear();
-
         transient_image_pool_.reset();
         lazy_image_pool_.reset();
-        // 探测结果不重置:它是设备属性,与本分配器持有的资源无关。
+        // The lazy-memory probe describes the device, not this cache's contents.
     }
-
-    void RGVulkanResourceAllocator::destroyImage(VkImage image, VmaAllocation allocation)
-    {
-        if (image != VK_NULL_HANDLE && allocation != VK_NULL_HANDLE)
-        {
-            vmaDestroyImage(context_.vmaAllocator(), image, allocation);
-        }
-    }
-
-    void RGVulkanResourceAllocator::destroyBuffer(VkBuffer buffer, VmaAllocation allocation)
-    {
-        if (buffer != VK_NULL_HANDLE && allocation != VK_NULL_HANDLE)
-        {
-            vmaDestroyBuffer(context_.vmaAllocator(), buffer, allocation);
-        }
-    }
-}
+} // namespace lux::render

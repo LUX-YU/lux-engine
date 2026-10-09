@@ -1,10 +1,11 @@
 #pragma once
-#include <vulkan/vulkan.h>
+#include <lux/cxx/compile_time/type_info.hpp>
 #include <lux/engine/render/gpu/VmaFwd.hpp>
 #include <lux/engine/render/gpu/memory/VmaTypes.hpp>
 #include <lux/engine/render/graph/PhysicalResourceAllocator.hpp>
-#include <lux/cxx/compile_time/type_info.hpp>
 #include <unordered_map>
+#include <variant>
+#include <vulkan/vulkan.h>
 
 namespace lux::render
 {
@@ -36,7 +37,8 @@ namespace lux::render
         {
             // FNV-1a style hash combining
             size_t h = 14695981039346656037ULL;
-            auto combine = [&](size_t v) {
+            auto combine = [&](size_t v)
+            {
                 h ^= v;
                 h *= 1099511628211ULL;
             };
@@ -57,12 +59,12 @@ namespace lux::render
         }
     };
 
+    using VPhysicalAllocation = std::variant<VmaImage, VmaBuffer>;
+
     struct CachedResource
     {
-        VkImage image = VK_NULL_HANDLE;
-        VkBuffer buffer = VK_NULL_HANDLE;
-        VmaAllocation allocation = VK_NULL_HANDLE;
-        uint64_t last_used_frame = 0;
+        VPhysicalAllocation allocation;
+        uint64_t last_used_frame;
     };
 
     class LUX_FUNCTION_PUBLIC RGVulkanResourceAllocator : public PhysicalResourceAllocator
@@ -87,10 +89,6 @@ namespace lux::render
         // Release the allocated physical resource table
         void deallocate(const RGPhysicalResourceTable& table) override;
 
-        // Release a single resource (using the VMA allocator in context_)
-        void destroyImage(VkImage image, VmaAllocation allocation);
-        void destroyBuffer(VkBuffer buffer, VmaAllocation allocation);
-
         /// Deallocate resources but return TRANSIENT/PERSISTENT ones to pool for reuse.
         /// Use this instead of deallocate() when you plan to recompile soon.
         void deallocateToPool(const RGPhysicalResourceTable& table, const RGGraphDescription& graph) override;
@@ -114,6 +112,10 @@ namespace lux::render
             RGPhysicalResource& outAllocation,
             uint32_t frames_in_flight
         );
+
+        /// Consume one table allocation at the caller's established GPU-safe point.
+        [[nodiscard]] VPhysicalAllocation takeAllocation(const RGPhysicalResource& resource, size_t copy) noexcept;
+        void releaseResource(const RGPhysicalResource& resource) noexcept;
 
         /// Try to acquire a cached resource from the pool. Returns true if found.
         bool tryAcquireFromPool(const TransientResourceKey& key, RGPhysicalResource& out);
@@ -168,4 +170,4 @@ namespace lux::render
 
     private:
     };
-}
+} // namespace lux::render

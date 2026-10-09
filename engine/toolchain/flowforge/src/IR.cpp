@@ -1,25 +1,27 @@
+#include "FlowForgeDialect.h"
+#include "FlowForgeVersionCompat.h"
 #include <algorithm>
-#include <exception>
+#include <array>
 #include <atomic>
-#include <memory>
-#include <sstream>
-#include <string>
-#include <utility>
-#include <unordered_map>
-#include <unordered_set>
+#include <exception>
 #include <llvm/ADT/DenseMap.h>
 #include <llvm/ADT/Hashing.h>
 #include <llvm/ADT/ScopeExit.h>
 #include <llvm/ADT/SmallPtrSet.h>
 #include <llvm/ADT/StringMap.h>
-#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <llvm/Support/raw_ostream.h>
+#include <lux/engine/flowforge/FlowNodeCatalog.hpp>
+#include <memory>
 #include <mlir/Dialect/Func/IR/FuncOps.h>
+#include <mlir/Dialect/LLVMIR/LLVMDialect.h>
 #include <mlir/IR/BuiltinTypes.h>
 #include <mlir/IR/Diagnostics.h>
 #include <mlir/IR/Verifier.h>
-#include "FlowForgeDialect.h"
-#include "FlowForgeVersionCompat.h"
+#include <sstream>
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
 #include FLOWFORGE_ARITH_DIALECT_INCLUDE
 #include "lux/engine/flowforge/compiler/IRImpl.hpp"
 #include "lux/engine/flowforge/compiler/TypeSizeMap.hpp"
@@ -213,6 +215,145 @@ namespace lux::flowforge
     //==============================================================================
     // MLIRBuilderImpl — drives FlowGraph -> FlowForge dialect IR generation.
     //==============================================================================
+    static mlir::Value emitScalarPrimitive(
+        BuilderContext& bc,
+        EScalarInstruction instruction,
+        mlir::Value lhs,
+        mlir::Value rhs
+    ) noexcept
+    {
+        auto& b = bc.builder;
+        auto loc = bc.loc;
+        using I = EScalarInstruction;
+        using CmpI = mlir::arith::CmpIPredicate;
+        using CmpF = mlir::arith::CmpFPredicate;
+        switch (instruction)
+        {
+        case I::ADD_INTEGER:
+            return b.create<mlir::arith::AddIOp>(loc, lhs, rhs).getResult();
+        case I::ADD_FLOAT:
+            return b.create<mlir::arith::AddFOp>(loc, lhs, rhs).getResult();
+        case I::SUBTRACT_INTEGER:
+            return b.create<mlir::arith::SubIOp>(loc, lhs, rhs).getResult();
+        case I::SUBTRACT_FLOAT:
+            return b.create<mlir::arith::SubFOp>(loc, lhs, rhs).getResult();
+        case I::MULTIPLY_INTEGER:
+            return b.create<mlir::arith::MulIOp>(loc, lhs, rhs).getResult();
+        case I::MULTIPLY_FLOAT:
+            return b.create<mlir::arith::MulFOp>(loc, lhs, rhs).getResult();
+        case I::DIVIDE_SIGNED:
+            return b.create<mlir::arith::DivSIOp>(loc, lhs, rhs).getResult();
+        case I::DIVIDE_UNSIGNED:
+            return b.create<mlir::arith::DivUIOp>(loc, lhs, rhs).getResult();
+        case I::DIVIDE_FLOAT:
+            return b.create<mlir::arith::DivFOp>(loc, lhs, rhs).getResult();
+        case I::REMAINDER_SIGNED:
+            return b.create<mlir::arith::RemSIOp>(loc, lhs, rhs).getResult();
+        case I::REMAINDER_UNSIGNED:
+            return b.create<mlir::arith::RemUIOp>(loc, lhs, rhs).getResult();
+        case I::REMAINDER_FLOAT:
+            return b.create<mlir::arith::RemFOp>(loc, lhs, rhs).getResult();
+        case I::AND:
+            return b.create<mlir::arith::AndIOp>(loc, lhs, rhs).getResult();
+        case I::OR:
+            return b.create<mlir::arith::OrIOp>(loc, lhs, rhs).getResult();
+        case I::EQUAL_INTEGER:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::eq, lhs, rhs).getResult();
+        case I::NOT_EQUAL_INTEGER:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::ne, lhs, rhs).getResult();
+        case I::LESS_SIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::slt, lhs, rhs).getResult();
+        case I::LESS_UNSIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::ult, lhs, rhs).getResult();
+        case I::LESS_EQUAL_SIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::sle, lhs, rhs).getResult();
+        case I::LESS_EQUAL_UNSIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::ule, lhs, rhs).getResult();
+        case I::GREATER_SIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::sgt, lhs, rhs).getResult();
+        case I::GREATER_UNSIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::ugt, lhs, rhs).getResult();
+        case I::GREATER_EQUAL_SIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::sge, lhs, rhs).getResult();
+        case I::GREATER_EQUAL_UNSIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::uge, lhs, rhs).getResult();
+        case I::EQUAL_ORDERED_FLOAT:
+            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OEQ, lhs, rhs).getResult();
+        case I::NOT_EQUAL_ORDERED_FLOAT:
+            return b.create<mlir::arith::CmpFOp>(loc, CmpF::ONE, lhs, rhs).getResult();
+        case I::LESS_ORDERED_FLOAT:
+            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OLT, lhs, rhs).getResult();
+        case I::LESS_EQUAL_ORDERED_FLOAT:
+            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OLE, lhs, rhs).getResult();
+        case I::GREATER_ORDERED_FLOAT:
+            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OGT, lhs, rhs).getResult();
+        case I::GREATER_EQUAL_ORDERED_FLOAT:
+            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OGE, lhs, rhs).getResult();
+        case I::NEGATE_FLOAT:
+            return b.create<mlir::arith::NegFOp>(loc, lhs).getResult();
+        case I::NEGATE_INTEGER:
+        {
+            auto zero = b.create<mlir::arith::ConstantOp>(loc, lhs.getType(), b.getIntegerAttr(lhs.getType(), 0));
+            return b.create<mlir::arith::SubIOp>(loc, zero, lhs).getResult();
+        }
+        case I::NOT_BOOLEAN:
+        {
+            auto one = b.create<mlir::arith::ConstantOp>(loc, b.getI1Type(), b.getBoolAttr(true));
+            return b.create<mlir::arith::XOrIOp>(loc, lhs, one).getResult();
+        }
+        default:
+            std::terminate(); // The domain checks instruction and arity before calling the backend.
+        }
+    }
+
+    class ScalarValueCompiler final : public FlowValueCompiler
+    {
+    public:
+        explicit ScalarValueCompiler(BuilderContext& context) noexcept : context_(context) {}
+
+        [[nodiscard]] FlowForgeResult<FlowValue> add(mlir::Value value, const meta::RefType& type) noexcept
+        {
+            if (values_.size() >= kInvalidFlowValue)
+            {
+                return cxx::unexpected(buildFailure(context_, "scalar value capacity exhausted"));
+            }
+            const auto id = static_cast<FlowValue>(values_.size());
+            values_.push_back({value, &type});
+            return id;
+        }
+
+        const meta::RefType* type(FlowValue id) const noexcept override
+        {
+            return id < values_.size() ? values_[id].type : nullptr;
+        }
+
+        [[nodiscard]] mlir::Value value(FlowValue id) const noexcept
+        {
+            return id < values_.size() ? values_[id].value : mlir::Value{};
+        }
+
+    private:
+        FlowForgeResult<FlowValue> emitScalarImpl(
+            EScalarInstruction instruction,
+            std::span<const FlowValue> operands,
+            const meta::RefType& result_type
+        ) noexcept override
+        {
+            const auto lhs = value(operands.front());
+            const auto rhs = operands.size() == 2 ? value(operands.back()) : mlir::Value{};
+            return add(emitScalarPrimitive(context_, instruction, lhs, rhs), result_type);
+        }
+
+        struct Value final
+        {
+            mlir::Value value;
+            const meta::RefType* type;
+        };
+
+        BuilderContext& context_;
+        std::vector<Value> values_;
+    };
+
     class MLIRBuilderImpl
     {
         // Pin id -> SSA value mappings (per-build).
@@ -1574,6 +1715,38 @@ namespace lux::flowforge
             return v;
         }
 
+        case ENodeOperation::REGISTERED_VALUE:
+        {
+            const auto* type = n->registeredType();
+            const auto* payload = n->registeredPayload();
+            const bool has_definition = type && payload;
+            if (!has_definition)
+            {
+                LUX_FF_FAIL(bc, "registered value node has no definition or payload");
+            }
+            ScalarValueCompiler compiler(bc);
+            std::vector<FlowValue> inputs;
+            for (const auto* pin : n->inPins())
+            {
+                const auto& data = static_cast<const DataInPin&>(*pin);
+                LUX_FF_TRY_VALUE(input, getOperand(data, vm, bc));
+                LUX_FF_TRY_VALUE(coerced, coerceScalar(bc, input, *data.info().type));
+                LUX_FF_TRY_VALUE(value, compiler.add(coerced, *data.info().type));
+                inputs.push_back(value);
+            }
+            bc.current_node = n;
+            LUX_FF_TRY_VALUE(outputs, type->compile(*payload, inputs, compiler));
+            if (outputs.size() != n->outPins().size())
+            {
+                LUX_FF_FAIL(bc, "registered output count differs from graph pins");
+            }
+            for (std::size_t i = 0; i < outputs.size(); ++i)
+            {
+                vm.pure_scopes.back()[bc.graph->pinId(n->outPins()[i]).value] = compiler.value(outputs[i]);
+            }
+            return vm.pure_scopes.back().at(bc.graph->pinId(&src).value);
+        }
+
         // Pseudo-pure memory read: re-load at EVERY use (never cached)
         // so a Set earlier on the exec chain is always observed.
         case ENodeOperation::GET_VARIABLE: {
@@ -1704,81 +1877,17 @@ namespace lux::flowforge
         LUX_FF_TRY_VALUE(lhs, coerceScalar(bc, lhs_operand, *rt));
         LUX_FF_TRY_VALUE(rhs, coerceScalar(bc, rhs_operand, *rt));
 
-        auto& b = bc.builder;
-        auto loc = bc.loc;
         const auto instruction = detail::selectBinaryScalarInstruction(bin.operation(), *rt);
         if (!instruction)
         {
             LUX_FF_FAIL(bc, "not a binary operation");
         }
-        using I = detail::EScalarInstruction;
-        using CmpI = mlir::arith::CmpIPredicate;
-        using CmpF = mlir::arith::CmpFPredicate;
-        switch (*instruction)
-        {
-        case I::ADD_INTEGER:
-            return b.create<mlir::arith::AddIOp>(loc, lhs, rhs).getResult();
-        case I::ADD_FLOAT:
-            return b.create<mlir::arith::AddFOp>(loc, lhs, rhs).getResult();
-        case I::SUBTRACT_INTEGER:
-            return b.create<mlir::arith::SubIOp>(loc, lhs, rhs).getResult();
-        case I::SUBTRACT_FLOAT:
-            return b.create<mlir::arith::SubFOp>(loc, lhs, rhs).getResult();
-        case I::MULTIPLY_INTEGER:
-            return b.create<mlir::arith::MulIOp>(loc, lhs, rhs).getResult();
-        case I::MULTIPLY_FLOAT:
-            return b.create<mlir::arith::MulFOp>(loc, lhs, rhs).getResult();
-        case I::DIVIDE_SIGNED:
-            return b.create<mlir::arith::DivSIOp>(loc, lhs, rhs).getResult();
-        case I::DIVIDE_UNSIGNED:
-            return b.create<mlir::arith::DivUIOp>(loc, lhs, rhs).getResult();
-        case I::DIVIDE_FLOAT:
-            return b.create<mlir::arith::DivFOp>(loc, lhs, rhs).getResult();
-        case I::REMAINDER_SIGNED:
-            return b.create<mlir::arith::RemSIOp>(loc, lhs, rhs).getResult();
-        case I::REMAINDER_UNSIGNED:
-            return b.create<mlir::arith::RemUIOp>(loc, lhs, rhs).getResult();
-        case I::REMAINDER_FLOAT:
-            return b.create<mlir::arith::RemFOp>(loc, lhs, rhs).getResult();
-        case I::AND:
-            return b.create<mlir::arith::AndIOp>(loc, lhs, rhs).getResult();
-        case I::OR:
-            return b.create<mlir::arith::OrIOp>(loc, lhs, rhs).getResult();
-        case I::EQUAL_INTEGER:
-            return b.create<mlir::arith::CmpIOp>(loc, CmpI::eq, lhs, rhs).getResult();
-        case I::NOT_EQUAL_INTEGER:
-            return b.create<mlir::arith::CmpIOp>(loc, CmpI::ne, lhs, rhs).getResult();
-        case I::LESS_SIGNED:
-            return b.create<mlir::arith::CmpIOp>(loc, CmpI::slt, lhs, rhs).getResult();
-        case I::LESS_UNSIGNED:
-            return b.create<mlir::arith::CmpIOp>(loc, CmpI::ult, lhs, rhs).getResult();
-        case I::LESS_EQUAL_SIGNED:
-            return b.create<mlir::arith::CmpIOp>(loc, CmpI::sle, lhs, rhs).getResult();
-        case I::LESS_EQUAL_UNSIGNED:
-            return b.create<mlir::arith::CmpIOp>(loc, CmpI::ule, lhs, rhs).getResult();
-        case I::GREATER_SIGNED:
-            return b.create<mlir::arith::CmpIOp>(loc, CmpI::sgt, lhs, rhs).getResult();
-        case I::GREATER_UNSIGNED:
-            return b.create<mlir::arith::CmpIOp>(loc, CmpI::ugt, lhs, rhs).getResult();
-        case I::GREATER_EQUAL_SIGNED:
-            return b.create<mlir::arith::CmpIOp>(loc, CmpI::sge, lhs, rhs).getResult();
-        case I::GREATER_EQUAL_UNSIGNED:
-            return b.create<mlir::arith::CmpIOp>(loc, CmpI::uge, lhs, rhs).getResult();
-        case I::EQUAL_ORDERED_FLOAT:
-            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OEQ, lhs, rhs).getResult();
-        case I::NOT_EQUAL_ORDERED_FLOAT:
-            return b.create<mlir::arith::CmpFOp>(loc, CmpF::ONE, lhs, rhs).getResult();
-        case I::LESS_ORDERED_FLOAT:
-            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OLT, lhs, rhs).getResult();
-        case I::LESS_EQUAL_ORDERED_FLOAT:
-            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OLE, lhs, rhs).getResult();
-        case I::GREATER_ORDERED_FLOAT:
-            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OGT, lhs, rhs).getResult();
-        case I::GREATER_EQUAL_ORDERED_FLOAT:
-            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OGE, lhs, rhs).getResult();
-        default:
-            std::terminate(); // The domain selector only returns binary instructions.
-        }
+        ScalarValueCompiler compiler(bc);
+        LUX_FF_TRY_VALUE(left, compiler.add(lhs, *rt));
+        LUX_FF_TRY_VALUE(right, compiler.add(rhs, *rt));
+        const std::array operands{left, right};
+        LUX_FF_TRY_VALUE(result, compiler.emitScalar(*instruction, operands));
+        return compiler.value(result);
     }
 
     FlowForgeResult<mlir::Value> MLIRBuilderImpl::lowerUnaryOp(const UnaryOpNode& un, ValueMaps& vm, BuilderContext& bc)
@@ -1791,29 +1900,15 @@ namespace lux::flowforge
 
         LUX_FF_TRY_VALUE(operand, getOperand(un.operand(), vm, bc));
         LUX_FF_TRY_VALUE(v, coerceScalar(bc, operand, *rt));
-        auto& b = bc.builder;
-        auto loc = bc.loc;
-
         const auto instruction = detail::selectUnaryScalarInstruction(un.operation(), *rt);
         if (!instruction)
         {
             LUX_FF_FAIL(bc, "not a unary operation");
         }
-        switch (*instruction)
-        {
-        case detail::EScalarInstruction::NEGATE_FLOAT:
-            return b.create<mlir::arith::NegFOp>(loc, v).getResult();
-        case detail::EScalarInstruction::NEGATE_INTEGER: {
-            auto zero = b.create<mlir::arith::ConstantOp>(loc, v.getType(), b.getIntegerAttr(v.getType(), 0));
-            return b.create<mlir::arith::SubIOp>(loc, zero, v).getResult();
-        }
-        case detail::EScalarInstruction::NOT_BOOLEAN: {
-            auto one = b.create<mlir::arith::ConstantOp>(loc, b.getI1Type(), b.getBoolAttr(true));
-            return b.create<mlir::arith::XOrIOp>(loc, v, one).getResult();
-        }
-        default:
-            std::terminate(); // The domain selector only returns unary instructions.
-        }
+        ScalarValueCompiler compiler(bc);
+        LUX_FF_TRY_VALUE(input, compiler.add(v, *rt));
+        LUX_FF_TRY_VALUE(result, compiler.emitScalar(*instruction, std::span{&input, 1U}));
+        return compiler.value(result);
     }
 
     // ============================================================================

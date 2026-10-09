@@ -83,6 +83,28 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
     lux_editor_test_options(flowforge_nested_control_test)
 
     add_test(NAME flowforge.nested_control COMMAND flowforge_nested_control_test)
+
+    add_executable(flowforge_registered_value_test test/registered_value.cpp)
+
+    target_link_libraries(
+        flowforge_registered_value_test
+        PRIVATE flowforge_compiler script_native lux::engine::platform::dynamic_library
+    )
+
+    lux_editor_test_options(flowforge_registered_value_test)
+
+    add_test(NAME flowforge.registered_value COMMAND flowforge_registered_value_test)
+
+    add_library(flowforge_registered_value_plugin MODULE test/registered_value_plugin.cpp)
+
+    target_link_libraries(flowforge_registered_value_plugin PRIVATE lux::engine::function::flowforge)
+
+    add_dependencies(flowforge_registered_value_test flowforge_registered_value_plugin)
+
+    add_test(
+        NAME flowforge.registered_value_plugin
+        COMMAND flowforge_registered_value_test "$<TARGET_FILE:flowforge_registered_value_plugin>"
+    )
 endif()
 
 if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)

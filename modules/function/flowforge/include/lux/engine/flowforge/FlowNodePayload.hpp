@@ -66,6 +66,7 @@ namespace lux::flowforge
         }
 
     private:
+        friend class FlowNodeType;
         using Destroy = void (*)(void*) noexcept;
         using Clone = FlowForgeResult<void*> (*)(const void*) noexcept;
 

@@ -18,6 +18,9 @@ add_component(
         src/FlowAnalysis.cpp
         src/FlowControlFlow.cpp
         src/FlowNodePayload.cpp
+        src/FlowNodeCatalog.cpp
+        src/FlowValueCompiler.cpp
+        src/RegisteredValueNode.cpp
         src/ScalarLowering.cpp
         src/NodeRegistry.cpp
         src/NodeBase.cpp
@@ -186,4 +189,10 @@ if(BUILD_TESTING)
     target_link_libraries(flow_control_flow_test PRIVATE lux::engine::function::flowforge)
 
     add_test(NAME flow.control_flow COMMAND flow_control_flow_test)
+
+    add_executable(flow_node_catalog_test test/node_catalog.cpp)
+
+    target_link_libraries(flow_node_catalog_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(NAME flow.node_catalog COMMAND flow_node_catalog_test)
 endif()

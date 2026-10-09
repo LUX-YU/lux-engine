@@ -1,0 +1,149 @@
+#include "registered_value_definition.hpp"
+#include <lux/engine/dynamic_library/DynamicLibrary.hpp>
+#include <lux/engine/flowforge/Compiler.hpp>
+#include <lux/engine/flowforge/FlowNodeCatalog.hpp>
+#include <lux/engine/flowforge/graph/ControlNode.hpp>
+#include <lux/engine/flowforge/graph/FlowGraph.hpp>
+#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
+#include <lux/engine/flowforge/graph/ObjectNode.hpp>
+#include <lux/engine/function/script/native/NativeModule.hpp>
+
+#include <array>
+#include <cstdio>
+#include <cstdlib>
+#include <source_location>
+
+namespace
+{
+    using namespace lux;
+    using namespace lux::flowforge;
+    using namespace flow_test;
+
+    void require(bool value, std::source_location location = std::source_location::current()) noexcept
+    {
+        if (!value)
+        {
+            std::fprintf(stderr, "registered value failed at %u\n", location.line());
+            std::abort();
+        }
+    }
+
+    template <class T, class... Args> T& add(FlowGraph& graph, Args&&... args)
+    {
+        auto owner = std::make_unique<T>(std::forward<Args>(args)...);
+        auto& node = *owner;
+        require(graph.addNode(std::move(owner)).valid());
+        return node;
+    }
+
+    void link(FlowGraph& graph, const Pin& from, const Pin& to)
+    {
+        require(
+            graph.connect(*graph.findPin(graph.pinId(&from)), *graph.findPin(graph.pinId(&to))) == ELinkError::SUCCESS
+        );
+    }
+
+    FlowGraph example(bool reject, const FlowNodeRegistration& definition)
+    {
+        FlowGraph graph;
+        const auto* integer = &meta::ref_type_of_v<int>;
+        auto initial = meta::RuntimeObject::defaultOf(*integer);
+        require(initial.has_value());
+        const auto variable = graph.addVariable("result", integer, std::move(*initial));
+        require(variable != 0);
+        auto& entry = add<OnEventNode>(graph, "Evaluate", std::vector<FuncArgInfo>{{integer, "x"}, {integer, "y"}});
+        require(graph.addExport({{1}, graph.nodeId(&entry), 41, {}}));
+        Node* polynomial{};
+        {
+            FlowNodeCatalog catalog;
+            require(catalog.add(std::span{&definition, 1}).has_value());
+            auto type = catalog.find(definition.identity.id);
+            auto payload = type->create();
+            require(payload.has_value());
+            payload->get<Polynomial>()->reject = reject;
+            auto node = createFlowValueNode(type, std::move(*payload));
+            require(node.has_value());
+            polynomial = node->get();
+            require(graph.addNode(std::move(*node)).valid());
+        }
+        // Definition and plain payload remain valid after the composition catalog is gone.
+        link(graph, *entry.paramPins()[0], *polynomial->inPins()[0]);
+        link(graph, *entry.paramPins()[1], *polynomial->inPins()[1]);
+        auto& first = add<SetVariableNode>(graph, variable, DataPinInfo{"square", integer});
+        auto& second = add<SetVariableNode>(graph, variable, DataPinInfo{"sum", integer});
+        auto& end = add<ReturnNode>(graph);
+        link(graph, entry.execOutPin(), first.execInPin());
+        link(graph, first.execOutPin(), second.execInPin());
+        link(graph, second.execOutPin(), end.execInPin());
+        link(graph, *polynomial->outPins()[0], first.valueIn());
+        link(graph, *polynomial->outPins()[1], second.valueIn());
+        return graph;
+    }
+} // namespace
+
+int main(int argc, char** argv)
+{
+    meta::meta_module_init();
+    std::weak_ptr<engine::platform::DynamicLibrary> observed;
+    {
+        auto definition = registration();
+        if (argc == 2)
+        {
+            auto library = std::make_shared<engine::platform::DynamicLibrary>(std::filesystem::path{argv[1]});
+            require(library->is_loaded());
+            using Entry = void(FlowNodeRegistration&, const object::CodeLease&) noexcept;
+            const auto entry = library->get_symbol<Entry>("registerPolynomial");
+            require(entry != nullptr);
+            entry(definition, object::CodeLease::plugin(library));
+            observed = library;
+        }
+        auto graph = example(false, definition);
+        auto invalid = example(true, definition);
+        definition = {};
+        require(argc != 2 || !observed.expired());
+        auto object = compileFlowForgeObject(graph, {.module_name = "registered_polynomial"});
+        if (!object)
+        {
+            std::fprintf(stderr, "%s\n", object.error().message.c_str());
+        }
+        require(object.has_value());
+        auto artifact = linkFlowForgeObject(*object);
+        require(artifact.has_value());
+        auto module = script::loadNativeModule(artifact->payload(), "registered_polynomial");
+        require(module.has_value());
+        const auto* function = module->findFunction(script::ScriptSymbolId{41});
+        require(function != nullptr);
+        require(function->arg_count == 2 && function->invoke != nullptr);
+        require(module->stateSize() == sizeof(int));
+        int state{};
+        lux_script_native_instance_context context{&state, nullptr, 0, 0};
+        for (int x = -5; x <= 5; ++x)
+        {
+            for (int y = -3; y <= 3; ++y)
+            {
+                std::array<int, 2> values{x, y};
+                std::array<lux_script_value_slot, 2> arguments{};
+                for (std::size_t i{}; i != arguments.size(); ++i)
+                {
+                    const auto& type = function->args[i];
+                    require(type.size == sizeof(int));
+                    arguments[i] = {type.kind, {}, type.size, type.type_id, &values[i]};
+                }
+                lux_script_call_frame frame{arguments.data(), 2, 0, nullptr, 0, 0, nullptr};
+                require(function->invoke(&context, &frame) == 0);
+                if (state != x * x + y)
+                {
+                    std::fprintf(stderr, "x=%d y=%d actual=%d expected=%d\n", x, y, state, x * x + y);
+                }
+                require(state == x * x + y);
+            }
+        }
+        auto rejected = compileFlowForgeObject(invalid, {.module_name = "rejected_polynomial"});
+        require(!rejected && rejected.error().message == "compile failed: polynomial rejected");
+        std::puts(
+            "PASS registered multi-output polynomial: 77 native invocations, schema draft retained, compile rejected"
+        );
+    }
+    require(observed.expired());
+    meta::meta_module_deinit();
+}

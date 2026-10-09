@@ -10,6 +10,8 @@ find_package(lux-engine-flowforge-compiler REQUIRED COMPONENTS flowforge_compile
 
 find_package(lux-engine-function REQUIRED COMPONENTS script_native)
 
+find_package(lux-engine-platform REQUIRED COMPONENTS dynamic_library)
+
 enable_testing()
 
 add_executable(scalar_lowering "${CMAKE_CURRENT_LIST_DIR}/../../../engine/toolchain/flowforge/test/scalar_lowering.cpp")
@@ -38,3 +40,55 @@ target_link_libraries(
 )
 
 add_test(NAME installed.flow_nested_control COMMAND nested_control)
+
+add_library(
+    registered_value_plugin MODULE
+    "${CMAKE_CURRENT_LIST_DIR}/../../../engine/toolchain/flowforge/test/registered_value_plugin.cpp"
+)
+
+target_link_libraries(registered_value_plugin PRIVATE lux::engine::function::flowforge)
+
+add_executable(
+    registered_value
+    "${CMAKE_CURRENT_LIST_DIR}/../../../engine/toolchain/flowforge/test/registered_value.cpp"
+)
+
+target_link_libraries(
+    registered_value
+    PRIVATE lux::engine::flowforge::flowforge_compiler lux::engine::function::script_native
+        lux::engine::platform::dynamic_library
+)
+
+add_dependencies(registered_value registered_value_plugin)
+
+add_test(NAME installed.flow_registered_value COMMAND registered_value)
+
+add_test(
+    NAME installed.flow_registered_value_plugin
+    COMMAND registered_value "$<TARGET_FILE:registered_value_plugin>"
+)
+
+add_executable(
+    node_catalog
+    "${CMAKE_CURRENT_LIST_DIR}/../../../modules/function/flowforge/test/node_catalog.cpp"
+)
+
+target_link_libraries(node_catalog PRIVATE lux::engine::function::flowforge)
+
+add_test(NAME installed.flow_node_catalog COMMAND node_catalog)
+
+foreach(target registered_value registered_value_plugin node_catalog)
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /permissive- /GR- /utf-8)
+    else()
+        target_compile_options(${target} PRIVATE -fno-rtti)
+    endif()
+endforeach()
+
+foreach(header FlowNodeCatalog FlowValueCompiler)
+    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" "#include <lux/engine/flowforge/${header}.hpp>\n")
+
+    add_library(header_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")
+
+    target_link_libraries(header_${header} PRIVATE lux::engine::function::flowforge)
+endforeach()

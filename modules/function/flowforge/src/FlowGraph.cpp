@@ -1,4 +1,5 @@
 #include <exception>
+#include <lux/engine/flowforge/FlowNodeCatalog.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 
 #include <algorithm>
@@ -13,9 +14,13 @@ namespace lux::flowforge
 {
     namespace
     {
-        [[nodiscard]] lux::graph::NodeTypeId nodeType(ENodeOperation operation) noexcept
+        [[nodiscard]] lux::graph::NodeTypeId nodeType(const Node& node) noexcept
         {
-            return lux::graph::NodeTypeId{static_cast<std::uint64_t>(operation) + 1U};
+            if (const auto* type = node.registeredType())
+            {
+                return type->identity().id;
+            }
+            return lux::graph::NodeTypeId{static_cast<std::uint64_t>(node.operation()) + 1U};
         }
 
         [[nodiscard]] bool isInput(EPinKind kind) noexcept
@@ -30,6 +35,10 @@ namespace lux::flowforge
 
         [[nodiscard]] lux::graph::PinSemanticId pinSemantic(const Pin& pin) noexcept
         {
+            if (pin.node()->registeredType())
+            {
+                return pin.node()->registeredPinSemantic(pin);
+            }
             const auto kind = static_cast<std::uint64_t>(pin.kind()) + 1U;
             const auto& pins = isInput(pin.kind()) ? pin.node()->inPins() : pin.node()->outPins();
             const auto found = std::ranges::find(pins, std::addressof(pin));
@@ -93,7 +102,7 @@ namespace lux::flowforge
         {
             return {};
         }
-        auto id = topology_.addNode(nodeType(node->operation()));
+        auto id = topology_.addNode(nodeType(*node));
         if (!id)
         {
             return {};
@@ -116,7 +125,7 @@ namespace lux::flowforge
         {
             return false;
         }
-        if (!topology_.insertNode({id, nodeType(node->operation())}))
+        if (!topology_.insertNode({id, nodeType(*node)}))
         {
             return false;
         }
@@ -616,7 +625,7 @@ namespace lux::flowforge
             const bool restoring = id.valid();
             if (restoring)
             {
-                auto result = plan.structure_.insertNode({id, nodeType(node.operation())});
+                auto result = plan.structure_.insertNode({id, nodeType(node)});
                 if (!result)
                 {
                     return lux::cxx::unexpected(result.error());
@@ -624,7 +633,7 @@ namespace lux::flowforge
             }
             else
             {
-                auto result = plan.structure_.addNode(nodeType(node.operation()));
+                auto result = plan.structure_.addNode(nodeType(node));
                 if (!result)
                 {
                     return lux::cxx::unexpected(result.error());

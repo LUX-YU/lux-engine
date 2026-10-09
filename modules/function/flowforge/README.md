@@ -85,3 +85,28 @@ capture and call lowering refuse them. Batch edits still reject removing a defin
 retaining its users. New definition/call/return candidates in one batch use explicit snapshot
 IDs; admission checks the complete candidate set, including definitions appearing later.
 The pointer-based constructors and stored-reference accessors have been removed.
+
+## Registered value compilation
+
+`FlowNodeCatalog` publishes immutable, canonical-name/version definitions. Registration only
+validates and stores declarations; it does not construct payloads or run extension callbacks.
+Definitions own their type-token names and retain a `CodeLease`. Payloads own semantic data,
+clone/destruction callbacks and the same code lease; neither owns node identity or topology.
+Pin declarations borrow the immutable reflection environment under its existing lifetime
+contract. They may describe a dynamic number of pins.
+
+`FlowNodeType::describePins` admits editable schemas independently of compile eligibility.
+`compile` validates the payload, input signature and returned output signature. Its synchronous
+callback can combine multiple `FlowValueCompiler::emitScalar` primitives. Values are scoped to
+that invocation, cannot escape it, and do not identify graph objects. Toolchain translates the
+primitives into MLIR; built-in scalar lowering uses this same translation. Failed compilation
+discards the candidate, including any primitives already emitted by a rejected callback.
+
+`createFlowValueNode` currently connects these plain payloads to the existing Flow node store.
+Its private node adapter retains the definition and owns its declared pin objects; it does not
+erase an old polymorphic node into the semantic payload. Topology uses the canonical type and
+declared pin semantics. This is an intermediate migration boundary, not completion of MA08:
+registered control/native/Ability nodes, canonical source round-trip and the final plain
+NodeId/PinId stores still need migration. The old source codec rejects unsupported registered
+nodes rather than silently dropping their payload. No additional runtime, executor or plugin
+loader is introduced here.

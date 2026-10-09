@@ -22,6 +22,8 @@ namespace lux::flowforge
 {
     class FlowGraph;
     class ScriptAbilityNode;
+    class FlowNodeType;
+    class FlowNodePayload;
 
     using lux::graph::NodeId;
     using lux::graph::PinId;
@@ -91,7 +93,8 @@ namespace lux::flowforge
 
         // EVENT
         ON_EVENT,  // 0 exec in, 1 exec out, 1 data out (event payload).
-        SEND_EVENT // 1 exec in, 0 exec out. 1 data in (event payload).
+        SEND_EVENT,      // 1 exec in, 0 exec out. 1 data in (event payload).
+        REGISTERED_VALUE // Transitional graph representation; persistent identity comes from the definition.
     };
 
     /**
@@ -212,6 +215,7 @@ namespace lux::flowforge
         case ENodeOperation::GET_VARIABLE:
         case ENodeOperation::GET_FIELD: // pseudo-pure memory read (never cached)
         case ENodeOperation::GET_OBJECT:
+        case ENodeOperation::REGISTERED_VALUE:
             return true;
         default:
             return false;
@@ -658,6 +662,21 @@ namespace lux::flowforge
         [[nodiscard]] virtual const ScriptAbilityNode* scriptAbility() const noexcept
         {
             return nullptr;
+        }
+
+        [[nodiscard]] virtual const FlowNodeType* registeredType() const noexcept
+        {
+            return nullptr;
+        }
+
+        [[nodiscard]] virtual const FlowNodePayload* registeredPayload() const noexcept
+        {
+            return nullptr;
+        }
+
+        [[nodiscard]] virtual graph::PinSemanticId registeredPinSemantic(const Pin&) const noexcept
+        {
+            return {};
         }
 
         [[nodiscard]] FlowGraph* graph() const noexcept

@@ -37,7 +37,7 @@ namespace lux::meta
         stdstring_ref_info->type = lux::meta::ref_type_of_v<std::string>;
         stdstring_ref_info->construct = [](void* p) { new (p) std::string(); };
         stdstring_ref_info->destruct = [](void* p) { static_cast<std::string*>(p)->~basic_string(); };
-        lux::meta::ref_class_func_gen<RefClass>(*stdstring_ref_info);
+        lux::meta::ref_class_func_gen<std::string>(*stdstring_ref_info);
         // Self-link RefType.ptr -> the owning RefClass (generated meta code
         // gets this via the qual_type_index fix-up; hand-registered classes
         // must do it themselves). Without it RuntimeObject::cleanup()
@@ -53,7 +53,7 @@ namespace lux::meta
         stdstring_view_ref_info->type = lux::meta::ref_type_of_v<std::string_view>;
         stdstring_view_ref_info->construct = [](void* p) { new (p) std::string_view(); };
         stdstring_view_ref_info->destruct = [](void* p) { static_cast<std::string_view*>(p)->~basic_string_view(); };
-        lux::meta::ref_class_func_gen<RefClass>(*stdstring_view_ref_info);
+        lux::meta::ref_class_func_gen<std::string_view>(*stdstring_view_ref_info);
         stdstring_view_ref_info->type.ptr = stdstring_view_ref_info.get();
         ReflectionRegistry::instance().registerClass(std::move(stdstring_view_ref_info));
     }

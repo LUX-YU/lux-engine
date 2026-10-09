@@ -61,3 +61,29 @@ target_link_libraries(
 )
 
 component_add_internal_dependencies(meta type_info)
+
+if(BUILD_TESTING)
+    add_executable(meta_runtime_object_test test/RuntimeObjectTest.cpp)
+
+    target_link_libraries(meta_runtime_object_test PRIVATE lux::engine::core::meta)
+
+    add_test(NAME meta.runtime_object COMMAND meta_runtime_object_test)
+
+    add_library(meta_runtime_object_plugin SHARED test/RuntimeObjectPlugin.cpp)
+
+    target_link_libraries(meta_runtime_object_plugin PRIVATE lux::engine::core::meta)
+
+    add_executable(meta_runtime_object_plugin_test test/RuntimeObjectPluginTest.cpp)
+
+    target_link_libraries(
+        meta_runtime_object_plugin_test
+        PRIVATE lux::engine::core::meta lux::engine::platform::dynamic_library
+    )
+
+    add_dependencies(meta_runtime_object_plugin_test meta_runtime_object_plugin)
+
+    add_test(
+        NAME meta.runtime_object_plugin
+        COMMAND meta_runtime_object_plugin_test "$<TARGET_FILE:meta_runtime_object_plugin>"
+    )
+endif()

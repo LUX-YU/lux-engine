@@ -116,14 +116,14 @@ namespace lux::flowforge
             {
                 return lux::meta::RuntimeObject{};
             }
-            auto result = lux::meta::RuntimeObject::defaultOf(&type);
-            if (!result.isValid())
+            auto result = lux::meta::RuntimeObject::defaultOf(type);
+            if (!result)
             {
                 return fail(EFlowSourceError::UNSUPPORTED_LITERAL, std::string(type.name));
             }
             if (literal.kind == EFlowLiteralKind::ZERO)
             {
-                return result;
+                return std::move(*result);
             }
             const bool valid = visitScalar(type, [&]<class T>() {
                 T value{};
@@ -158,14 +158,14 @@ namespace lux::flowforge
                         }
                     }
                 }
-                std::memcpy(result.data(), &value, sizeof(T));
+                std::memcpy(result->data(), &value, sizeof(T));
                 return true;
             });
             if (!valid)
             {
                 return fail(EFlowSourceError::UNSUPPORTED_LITERAL, std::string(type.name));
             }
-            return result;
+            return std::move(*result);
         }
         const lux::meta::RefType* pinType(const Pin& pin) noexcept
         {

@@ -539,9 +539,9 @@ namespace lux::flowforge
 
         /**
          * @brief Resets the constant data to a default value based on the pin's type.
-         * This creates a new default constant of the appropriate type.
+         * Failure preserves the previous constant; automatic construction may leave a link-only pin.
          */
-        void resetConstantData();
+        [[nodiscard]] lux::cxx::expected<void, lux::meta::ERuntimeObjectError> resetConstantData() noexcept;
 
         /**
 		 * @brief Checks if this DataInPin is a constant.

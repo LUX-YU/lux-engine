@@ -66,3 +66,11 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS script_core)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS description)"
 )
+
+if(BUILD_TESTING)
+    add_executable(flow_constant_default_test test/constant_default.cpp)
+
+    target_link_libraries(flow_constant_default_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(NAME flow.constant_default COMMAND flow_constant_default_test)
+endif()

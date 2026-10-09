@@ -230,7 +230,7 @@ static void reflect_{{ rec.hash }}(lux::meta::ReflectionRegistry& registry, lux:
         cls.destruct = destructor_{{ rec.hash }};
         cls.destruct_symbol = "destructor_{{ rec.hash }}";
     }
-    lux::meta::ref_class_func_gen(cls);
+    lux::meta::ref_class_func_gen<{{ rec.fq_name }}>(cls);
 
     /* class-level annotation -------------------------------------------- */
     {%- for attr in rec.attributes -%}

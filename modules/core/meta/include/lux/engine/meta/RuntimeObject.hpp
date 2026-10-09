@@ -1,6 +1,6 @@
 /****************************************************************************************
  * @file   RuntimeObject.hpp
- * @brief  Runtime value holder with true SBO (< 8 B) + pointer-tagged heap flag
+ * @brief  Runtime value holder with 16-byte SBO + pointer-tagged heap flag
  ****************************************************************************************/
 #pragma once
 
@@ -23,6 +23,9 @@ namespace lux::meta
         INVALID_TYPE,
         CONSTRUCTION_UNAVAILABLE,
         CONSTRUCTION_FAILURE,
+        DEFAULT_UNAVAILABLE,
+        COPY_UNAVAILABLE,
+        COPY_FAILURE,
     };
 
     class RuntimeObject
@@ -33,7 +36,8 @@ namespace lux::meta
         static constexpr std::size_t SBO_SIZE = 16; // ≤ 16 B
         static constexpr std::size_t SBO_ALIGN = alignof(std::max_align_t);
 
-        union alignas(SBO_ALIGN) Storage {
+        union alignas(SBO_ALIGN) Storage
+        {
             void* heap;
             std::byte sbo[SBO_SIZE];
         };
@@ -45,9 +49,9 @@ namespace lux::meta
 
     public:
         /* ------------------------------------------------------------------ */
-        /* 0. Default construction — invalid                                  */
+        /* 0. Default construction — legal empty value                         */
         /* ------------------------------------------------------------------ */
-        RuntimeObject() = default;
+        RuntimeObject() noexcept = default;
 
         /* Copying is disabled; only move semantics are supported */
         RuntimeObject(const RuntimeObject&) = delete;
@@ -80,9 +84,13 @@ namespace lux::meta
         [[nodiscard]] static lux::cxx::expected<RuntimeObject, ERuntimeObjectError> create(const RefClass* cls) noexcept
         {
             if (cls == nullptr || !validHeapType(cls->type))
+            {
                 return lux::cxx::unexpected<ERuntimeObjectError>(ERuntimeObjectError::INVALID_TYPE);
+            }
             if (!cls->construct || !cls->destruct)
+            {
                 return lux::cxx::unexpected<ERuntimeObjectError>(ERuntimeObjectError::CONSTRUCTION_UNAVAILABLE);
+            }
 
             RuntimeObject result;
             void* storage = allocate(cls->type);
@@ -107,13 +115,19 @@ namespace lux::meta
         // special support for std::string
         [[nodiscard]] static lux::cxx::expected<RuntimeObject, ERuntimeObjectError> create(std::string value) noexcept
         {
-            static auto* string_class_meta = ReflectionRegistry::instance().findClass("std::string");
+            if (!ReflectionRegistry::initialized())
+            {
+                return lux::cxx::unexpected(ERuntimeObjectError::INVALID_TYPE);
+            }
+            const auto* string_class_meta = ReflectionRegistry::instance().findClass("std::string");
             const bool is_invalid_metadata = string_class_meta == nullptr || !validHeapType(string_class_meta->type);
             const bool is_layout_mismatch =
                 !is_invalid_metadata && (string_class_meta->type.size != sizeof(std::string) ||
                                          string_class_meta->type.alignment != alignof(std::string));
             if (is_invalid_metadata || is_layout_mismatch)
+            {
                 return lux::cxx::unexpected<ERuntimeObjectError>(ERuntimeObjectError::INVALID_TYPE);
+            }
 
             RuntimeObject result;
             void* storage = allocate(string_class_meta->type);
@@ -123,23 +137,8 @@ namespace lux::meta
             return result;
         }
 
-        // special support for std::string_view
-        explicit RuntimeObject(std::string_view str)
-        {
-            static_assert(sizeof(std::string_view) <= SBO_SIZE, "std::string_view size exceeds SBO_SIZE");
-            static auto* string_class_meta = ReflectionRegistry::instance().findClass("std::string_view");
-            const bool is_invalid_metadata = string_class_meta == nullptr;
-            const bool is_layout_mismatch =
-                !is_invalid_metadata && (string_class_meta->type.size != sizeof(std::string_view) ||
-                                         string_class_meta->type.alignment != alignof(std::string_view));
-            if (is_invalid_metadata || is_layout_mismatch)
-                return;
-            setTagged(&string_class_meta->type, false);
-            new (storage_.sbo) std::string_view(str);
-        }
-
         /* ------------------------------------------------------------------ */
-        /* 4. Built-in types ≤ 8 B: stored directly in the SBO (trivially copyable) */
+        /* 4. Built-in types ≤ 16 B: stored directly in the SBO (trivially copyable) */
         /* ------------------------------------------------------------------ */
         template <typename T, typename U = std::decay_t<T>>
             requires(sizeof(U) <= SBO_SIZE && std::is_trivially_copyable_v<U> && alignof(U) <= SBO_ALIGN)
@@ -150,34 +149,29 @@ namespace lux::meta
             new (storage_.sbo) U(std::forward<T>(v));
         }
 
-        /* ------------------------------------------------------------------ */
-        /* 4b. Named factory: produces a zero-initialized default value for a
-         *     given RefType. Note this can't be expressed via the
-         *     RuntimeObject(const RefType*) constructor — that constructor
-         *     would match the SBO template above instead, storing the pointer
-         *     itself as the value. Non-trivially-copyable types (which need
-         *     their constructor to run) return an invalid object; callers
-         *     must construct through RefClass::construct instead.            */
-        /* ------------------------------------------------------------------ */
-        static RuntimeObject defaultOf(const RefType* type) noexcept
+        /// Produces a zero-filled trivial value. Non-trivial values require create(RefClass*).
+        /// The metadata (and its registry/code owner) must outlive this value and its clones.
+        [[nodiscard]] static lux::cxx::expected<RuntimeObject, ERuntimeObjectError>
+        defaultOf(const RefType& type) noexcept
         {
-            RuntimeObject obj;
-            if (!type || type->size == 0 || !validAlignment(type->alignment) || !type->traits.is_trivially_copyable)
-                return obj;
+            if (!validHeapType(type))
+            {
+                return lux::cxx::unexpected(ERuntimeObjectError::INVALID_TYPE);
+            }
+            if (!type.traits.is_trivially_copyable)
+            {
+                return lux::cxx::unexpected(ERuntimeObjectError::DEFAULT_UNAVAILABLE);
+            }
 
-            if (fitsSbo(*type))
+            RuntimeObject result;
+            const bool heap = !fitsSbo(type);
+            if (heap)
             {
-                obj.setTagged(type, false);
-                std::memset(obj.storage_.sbo, 0, type->size);
+                result.storage_.heap = allocate(type);
             }
-            else
-            {
-                void* p = allocate(*type);
-                std::memset(p, 0, type->size);
-                obj.setTagged(type, true);
-                obj.storage_.heap = p;
-            }
-            return obj;
+            result.setTagged(&type, heap);
+            std::memset(result.data(), 0, type.size);
+            return result;
         }
 
         /* ------------------------------------------------------------------ */
@@ -195,6 +189,7 @@ namespace lux::meta
         {
             return getType() != nullptr;
         }
+
         [[nodiscard]] const RefType* type() const noexcept
         {
             return getType();
@@ -204,6 +199,7 @@ namespace lux::meta
         {
             return isHeap() ? storage_.heap : storage_.sbo;
         }
+
         [[nodiscard]] const void* data() const noexcept
         {
             return isHeap() ? storage_.heap : storage_.sbo;
@@ -224,9 +220,58 @@ namespace lux::meta
         /* ------------------------------------------------------------------ */
         /* 7. Explicit copy                                                   */
         /* ------------------------------------------------------------------ */
-        bool copyTo(RuntimeObject& dst) noexcept
+        /// Cloning empty succeeds with empty. Failure never changes the source.
+        [[nodiscard]] lux::cxx::expected<RuntimeObject, ERuntimeObjectError> clone() const noexcept
         {
-            return cloneImpl(dst);
+            RuntimeObject result;
+            const auto* value_type = getType();
+            if (!value_type)
+            {
+                return result;
+            }
+
+            const bool heap = isHeap();
+            if (!heap)
+            {
+                std::memcpy(result.storage_.sbo, storage_.sbo, value_type->size);
+                result.setTagged(value_type, false);
+                return result;
+            }
+
+            const RefClass* cls = nullptr;
+            if (!value_type->traits.is_trivially_copyable)
+            {
+                cls = static_cast<const RefClass*>(value_type->ptr);
+                const bool is_copy_unavailable = cls == nullptr || !cls->copy_construct;
+                if (is_copy_unavailable)
+                {
+                    return lux::cxx::unexpected(ERuntimeObjectError::COPY_UNAVAILABLE);
+                }
+            }
+            void* storage = allocate(*value_type);
+            if (cls)
+            {
+                try
+                {
+                    cls->copy_construct(storage, data());
+                }
+                catch (const std::bad_alloc&)
+                {
+                    std::terminate();
+                }
+                catch (...)
+                {
+                    deallocate(storage, *value_type);
+                    return lux::cxx::unexpected(ERuntimeObjectError::COPY_FAILURE);
+                }
+            }
+            else
+            {
+                std::memcpy(storage, data(), value_type->size);
+            }
+            result.storage_.heap = storage;
+            result.setTagged(value_type, true);
+            return result;
         }
 
         /* ------------------------------------------------------------------ */
@@ -273,7 +318,9 @@ namespace lux::meta
         [[nodiscard]] static void* allocate(const RefType& type) noexcept
         {
             if (!validHeapType(type))
+            {
                 std::terminate();
+            }
             return ::operator new(type.size, std::align_val_t{allocationAlignment(type)});
         }
 
@@ -307,7 +354,9 @@ namespace lux::meta
         {
             auto* type_ptr = getType();
             if (!type_ptr)
+            {
                 return;
+            }
             if (isHeap())
             {
                 // Trivially-copyable payloads (defaultOf's heap path) have
@@ -321,93 +370,6 @@ namespace lux::meta
                 storage_.heap = nullptr;
             }
             tagged_type_ = 0;
-        }
-
-        /* ------------------------------------------------------------------ */
-        /* Clone (strong exception safety: build a temporary first, then swap it into dst) */
-        /* ------------------------------------------------------------------ */
-        bool cloneImpl(RuntimeObject& dst) noexcept
-        {
-            auto* type_ptr = getType();
-            if (!type_ptr)
-                return false;
-            bool heap = isHeap();
-
-            // Same type and same storage mode — copy in place directly
-            if (dst.getType() == type_ptr && dst.isHeap() == heap)
-            {
-                if (heap)
-                {
-                    if (type_ptr->traits.is_trivially_copyable)
-                    {
-                        std::memcpy(dst.storage_.heap, storage_.heap, type_ptr->size);
-                        return true;
-                    }
-                    auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
-                    if (cls == nullptr || !cls->copy)
-                        return false;
-                    try
-                    {
-                        cls->copy(dst.storage_.heap, storage_.heap);
-                    }
-                    catch (const std::bad_alloc&)
-                    {
-                        std::terminate();
-                    }
-                    catch (...)
-                    {
-                        return false;
-                    }
-                }
-                else
-                {
-                    // stack
-                    std::memcpy(dst.storage_.sbo, storage_.sbo, SBO_SIZE);
-                }
-                return true;
-            }
-
-            /// Otherwise allocate/construct new copy in temporary object first
-            RuntimeObject tmp;
-            if (heap)
-            {
-                tmp.storage_.heap = allocate(*type_ptr);
-                if (type_ptr->traits.is_trivially_copyable)
-                {
-                    std::memcpy(tmp.storage_.heap, storage_.heap, type_ptr->size);
-                }
-                else
-                {
-                    auto* cls = static_cast<const RefClass*>(type_ptr->ptr);
-                    if (cls == nullptr || !cls->copy_construct)
-                    {
-                        deallocate(tmp.storage_.heap, *type_ptr);
-                        tmp.storage_.heap = nullptr;
-                        return false;
-                    }
-                    try
-                    {
-                        cls->copy_construct(tmp.storage_.heap, storage_.heap);
-                    }
-                    catch (const std::bad_alloc&)
-                    {
-                        std::terminate();
-                    }
-                    catch (...)
-                    {
-                        deallocate(tmp.storage_.heap, *type_ptr);
-                        tmp.storage_.heap = nullptr;
-                        return false;
-                    }
-                }
-            }
-            else
-            {
-                std::memcpy(tmp.storage_.sbo, storage_.sbo, SBO_SIZE);
-            }
-            tmp.setTagged(type_ptr, heap);
-            swap(tmp, dst);
-            return true;
         }
 
         template <typename T> [[nodiscard]] bool match() const noexcept

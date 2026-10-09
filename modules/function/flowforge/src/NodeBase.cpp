@@ -349,8 +349,12 @@ namespace lux::flowforge
     // "constants" that were really the RefType pointer's low bits).
     DataInPin::DataInPin(Node* node, const DataPinInfo& info, bool allow_default, bool is_necessary)
         : Pin(node, EPinKind::DATA_IN, info.name), info_(info), allow_default_(allow_default),
-          is_necessary_(is_necessary), data_(lux::meta::RuntimeObject::defaultOf(info.type))
-    {}
+          is_necessary_(is_necessary)
+    {
+        // A pin may require a link rather than a literal. Automatic defaults are optional;
+        // signature/type validation remains the graph's responsibility. Explicit reset reports failure.
+        (void)resetConstantData();
+    }
 
     /**
      * @brief Destructor. Unlinks from the connected DataOutPin upon destruction.
@@ -444,11 +448,19 @@ namespace lux::flowforge
         return data_;
     }
 
-    void DataInPin::resetConstantData()
+    lux::cxx::expected<void, lux::meta::ERuntimeObjectError> DataInPin::resetConstantData() noexcept
     {
-        // Zero-initialized default of the pin's type (see the ctor note —
-        // RuntimeObject(info_.type) would store the pointer as the value).
-        data_ = lux::meta::RuntimeObject::defaultOf(info_.type);
+        if (!info_.type)
+        {
+            return lux::cxx::unexpected(lux::meta::ERuntimeObjectError::INVALID_TYPE);
+        }
+        auto candidate = lux::meta::RuntimeObject::defaultOf(*info_.type);
+        if (!candidate)
+        {
+            return lux::cxx::unexpected(candidate.error());
+        }
+        data_ = std::move(*candidate);
+        return {};
     }
 
     bool DataInPin::validConstant() const

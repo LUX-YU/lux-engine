@@ -347,7 +347,7 @@ namespace lux::meta
     };
 
     // constructor and destructor will assign in the generated codes
-    template <typename T> void ref_class_func_gen(T& obj)
+    template <typename T> void ref_class_func_gen(RefClass& obj)
     {
         if constexpr (std::is_copy_assignable_v<T>)
         {

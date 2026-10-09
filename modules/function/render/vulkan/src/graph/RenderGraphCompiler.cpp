@@ -46,7 +46,7 @@ namespace lux::render
 
             // CompiledNative iff the kernel has a registered emit function.
             const auto* desc = KernelRegistry::instance().find(pass_desc->kernel_id);
-            if (desc && desc->emit)
+            if (desc && desc->descriptor.emit)
             {
                 return EPassExecutionMode::COMPILED_NATIVE;
             }

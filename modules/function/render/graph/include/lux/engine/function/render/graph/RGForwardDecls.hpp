@@ -44,6 +44,7 @@ namespace lux::render
         {
             return cur;
         }
+
         [[nodiscard]] RGResourceHandle previous() const noexcept
         {
             return prev;
@@ -51,7 +52,7 @@ namespace lux::render
     };
 
     // ── Pass kernel identifiers ──────────────────────────────────────────
-    //  Opaque numeric ID assigned by KernelRegistry at static-init time.
+    //  Opaque numeric ID assigned by KernelRegistry during explicit render composition.
     //  0 is reserved as kInvalidKernelId (no kernel / recorder fallback).
     //  IDs are allocated sequentially per KernelRegistry::registerKernel() call.
     //  Lives here (public, light) so KernelDescriptor.hpp can be authored from

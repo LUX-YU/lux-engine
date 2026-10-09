@@ -36,4 +36,6 @@ engine_add_comm_ops(NAME render_comm_ops CLIENT_TARGET render_feature_client
     CLIENT_VISIBILITY_HEADER lux/engine/function/render/features/client_visibility.h
     BACKEND_EXPORT_MACRO LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC
     BACKEND_VISIBILITY_HEADER lux/engine/function/render/features/visibility.h
+    KERNEL_HEADER lux/engine/function/render/features/BuiltinKernels.hpp
+    KERNEL_DECLARATIONS builtinKernelDeclarations
     TARGET_FILES ${LUX_RENDER_COMM_OPERATION_HEADERS})

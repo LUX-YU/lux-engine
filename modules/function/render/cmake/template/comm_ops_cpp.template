@@ -15,6 +15,8 @@
 #include <lux/engine/render/comm/server/FeatureOpRegistrar.hpp>
 #include <lux/engine/function/render/client/protocol/FeatureFactory.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
+{% if kernel_header != "" %}#include <{{ kernel_header }}>
+{% endif %}
 {% set cfg_index = 0 -%}
 {%- for rec_idx in marked_record_decls -%}{%- set r = decl_from_index(rec_idx) -%}{%- if annotation_has(r, "luxop::config") -%}{%- set cfg_index = rec_idx -%}{%- endif -%}{%- endfor -%}
 {%- set cfg = decl_from_index(cfg_index) -%}
@@ -101,6 +103,8 @@ namespace lux::render
         {{ prefix }}Ops::kParamSetOpIndex,
         k{{ prefix }}Descriptor,
         {{ prefix }}Ops::kOperationCount,
+{% if kernel_declarations != "" %}        {{ kernel_declarations }}(),
+{% endif %}
     };
     const RenderFeatureRegistration k{{ prefix }}RenderFeatureRegistration{
         .factory = k{{ prefix }}FeatureFactory,
@@ -112,7 +116,11 @@ namespace lux::render
 {% for rec_idx in marked_record_decls %}{% set r = decl_from_index(rec_idx) %}{% if annotation_has(r, "luxop::variant") %}
 {% set id = annotation_get_for_or(r, "luxop::variant", "id", "") %}{% set p = annotation_get_for_or(r, "luxop::variant", "prefix", "") %}
     const RenderFeatureRegistration k{{ p }}Registration{
-        {{ annotation_get_for_or(r, "luxop::variant", "factory", "") }},
+        {% if kernel_declarations != "" %}[] {
+            auto factory = {{ annotation_get_for_or(r, "luxop::variant", "factory", "") }};
+            factory.kernels = {{ kernel_declarations }}();
+            return factory;
+        }(){% else %}{{ annotation_get_for_or(r, "luxop::variant", "factory", "") }}{% endif %},
         makeRenderFeatureConfigCodec<::{{ r.fq_name }}>("{{ id }}.configuration"), false};
 {% endif %}{% endfor %}
 } // namespace lux::render

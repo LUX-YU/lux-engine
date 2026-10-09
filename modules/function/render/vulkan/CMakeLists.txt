@@ -166,6 +166,30 @@ if(ANDROID)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(render_kernel_registration_test test/kernel_registration.cpp)
+
+    target_link_libraries(render_kernel_registration_test PRIVATE render_vulkan)
+
+    add_test(NAME render.kernel_registration COMMAND render_kernel_registration_test)
+
+    add_library(render_kernel_plugin SHARED test/kernel_plugin.cpp)
+
+    target_link_libraries(render_kernel_plugin PRIVATE render_vulkan)
+
+    add_executable(render_kernel_plugin_lifetime_test test/kernel_plugin_lifetime.cpp)
+
+    target_link_libraries(
+        render_kernel_plugin_lifetime_test
+        PRIVATE render_vulkan lux::engine::platform::dynamic_library
+    )
+
+    add_dependencies(render_kernel_plugin_lifetime_test render_kernel_plugin)
+
+    add_test(
+        NAME render.kernel_plugin_lifetime
+        COMMAND render_kernel_plugin_lifetime_test "$<TARGET_FILE:render_kernel_plugin>"
+    )
+
     add_executable(render_arena_lifecycle_test test/arena_lifecycle.cpp)
     target_include_directories(render_arena_lifecycle_test PRIVATE sinclude)
     target_compile_definitions(render_arena_lifecycle_test PRIVATE LUX_FUNCTION_DLL_DISABLE)

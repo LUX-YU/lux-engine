@@ -1,21 +1,21 @@
-#include <lux/engine/process/ExecutionRuntime.hpp>
-#include <lux/engine/scene/RenderResources.hpp>
 #include "ExternalFeature.hpp"
+#include <cassert>
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
+#include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/project/PluginCatalog.hpp>
 #include <lux/engine/project/PluginLibrary.hpp>
 #include <lux/engine/project/PluginRendering.hpp>
 #include <lux/engine/render/RenderRuntime.hpp>
+#include <lux/engine/scene/RenderResources.hpp>
 #include <lux/engine/scene/RenderSceneState.hpp>
-#include <lux/engine/scene/RenderViewRequest.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
+#include <lux/engine/scene/RenderViewRequest.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
-#include <cassert>
-#include <chrono>
-#include <cstdio>
 #include <thread>
-#include <cstdlib>
 #undef assert
 #define assert(expression)                                                                                             \
     do                                                                                                                 \
@@ -41,6 +41,7 @@ int main(int argc, char** argv)
     {
         auto library = project::PluginLibrary::load(*description, libraries);
         if (!library)
+        {
             std::fprintf(
                 stderr,
                 "plugin rejected: %s / %s (%u)\n",
@@ -48,6 +49,7 @@ int main(int argc, char** argv)
                 library.error().subject.c_str(),
                 unsigned(library.error().code)
             );
+        }
         assert(library);
         libraries.push_back(std::move(*library));
     }
@@ -58,10 +60,16 @@ int main(int argc, char** argv)
     render::RendererConfig renderer;
     renderer.validation = true;
     renderer.control_capacity = 2;
-    auto created = render::RenderRuntime::create(renderer, [](auto severity, auto message) {
-        if (severity == 2)
-            std::fprintf(stderr, "%.*s\n", int(message.size()), message.data());
-    });
+    auto created = render::RenderRuntime::create(
+        renderer,
+        [](auto severity, auto message)
+        {
+            if (severity == 2)
+            {
+                std::fprintf(stderr, "%.*s\n", int(message.size()), message.data());
+            }
+        }
+    );
     assert(created);
     auto runtime = std::move(*created);
     auto execution = lux::process::ExecutionRuntime::create({1, 64, 64, {64}});
@@ -71,19 +79,23 @@ int main(int argc, char** argv)
     assert(made_resources);
     auto resources = std::move(*made_resources);
 
-    const auto pump = [&] {
+    const auto pump = [&]
+    {
         std::size_t controls = 2, programs = 1;
         assert(runtime->collectCompletions(8));
         assert(runtime->submitPending(controls, programs));
         assert(execution->collectCompletions());
     };
-    const auto until = [&](auto predicate) {
+    const auto until = [&](auto predicate)
+    {
         const auto limit = std::chrono::steady_clock::now() + 15s;
         while (std::chrono::steady_clock::now() < limit)
         {
             // A predicate can admit a packet. Success must not submit it again.
             if (predicate())
+            {
                 return;
+            }
             pump();
             std::this_thread::sleep_for(1ms);
         }
@@ -113,7 +125,9 @@ int main(int argc, char** argv)
     // More outstanding replies than transport slots: every accepted request completes.
     std::vector<render::TRenderRequest<render::FeatureTypeRegisteredReply>> duplicates;
     for (unsigned index{}; index < 8; ++index)
+    {
         duplicates.push_back(control.registerFeatureType(registration.factory, registration.code_lifetime));
+    }
     for (auto& request : duplicates)
     {
         until([&] { return request.isReady(); });
@@ -153,9 +167,8 @@ int main(int argc, char** argv)
     failing.factory.name = "RollbackFailure";
     failing.factory.descriptor.canonical_name = "sample.rollback.failure";
     failing.factory.descriptor.type = render::featureId("sample.rollback.failure");
-    failing.factory.register_ops_fn = +[](void*, render::TypeId*, std::uint32_t) -> render::Expected<std::uint32_t> {
-        return render::renderFailure<render::err::feature::InvalidRegistration>();
-    };
+    failing.factory.register_ops_fn = +[](void*, render::TypeId*, std::uint32_t) -> render::Expected<std::uint32_t>
+    { return render::renderFailure<render::err::feature::InvalidRegistration>(); };
     assert(runtime->beginFeatureRegistration({first, failing}));
     until([&] { return runtime->featureRegistrationStatus().state == render::EFeatureRegistrationState::FAILED; });
     assert(!runtime->features().find("RollbackFirst"));
@@ -227,7 +240,8 @@ int main(int argc, char** argv)
     auto made_scenes = scene::SceneRuntime::create(*execution, {0, 128});
     assert(made_scenes);
     auto scenes = std::move(*made_scenes);
-    auto build_scene = [&](std::shared_ptr<const scene::SceneDescription> input) {
+    auto build_scene = [&](std::shared_ptr<const scene::SceneDescription> input)
+    {
         return scenes->builder()
             .setDescription(std::move(input))
             .setWorld(std::make_shared<const world::WorldDescription>())
@@ -240,11 +254,17 @@ int main(int argc, char** argv)
     {
         auto candidate = configuration;
         if (invalid == 0)
+        {
             candidate.features.front().configuration_schema = "sample.wrong.schema";
+        }
         if (invalid == 1)
+        {
             ++candidate.features.front().configuration_version;
+        }
         if (invalid == 2)
+        {
             candidate.features.front().configuration.pop_back();
+        }
         std::vector<std::byte> bytes;
         assert(render_system.configuration.encode(&candidate, bytes));
         scene::SceneDescriptionBuilder input;
@@ -282,14 +302,18 @@ int main(int argc, char** argv)
         simulation::ecs::NullEntity,
         scene::ViewConfig{{64, 64}}
     );
-    until([&] {
-        const auto updated = scenes->driveFrame();
-        assert(updated && updated->empty());
-        const auto* result = registry.try_get<scene::RenderViewResult>(view_entity);
-        assert(!result || !result->failure);
-        return result && result->published_revision == 1;
-    });
-    const auto draw = [&] {
+    until(
+        [&]
+        {
+            const auto updated = scenes->driveFrame();
+            assert(updated && updated->empty());
+            const auto* result = registry.try_get<scene::RenderViewResult>(view_entity);
+            assert(!result || !result->failure);
+            return result && result->published_revision == 1;
+        }
+    );
+    const auto draw = [&]
+    {
         for (unsigned index{}; index < 5; ++index)
         {
 
@@ -300,15 +324,19 @@ int main(int argc, char** argv)
             commands.begin({});
             frame.kind = render::ERenderProgramKind::FRAME;
             const auto before = runtime->statistics().frames;
-            until([&] {
-                const auto submitted = runtime->submit(frame);
-                assert(submitted);
-                return *submitted == render::EFrameSubmit::SUBMITTED;
-            });
+            until(
+                [&]
+                {
+                    const auto submitted = runtime->submit(frame);
+                    assert(submitted);
+                    return *submitted == render::EFrameSubmit::SUBMITTED;
+                }
+            );
             until([&] { return runtime->statistics().frames > before; });
         }
     };
-    const auto pixels = [&] {
+    const auto pixels = [&]
+    {
         std::vector<std::byte> bytes(64 * 64 * 8); // Default Scene output can be RGBA16F.
         const auto view = registry.get<scene::RenderViewResult>(view_entity).view;
         const auto output = resources->viewOutput(view);
@@ -322,18 +350,21 @@ int main(int argc, char** argv)
     };
     draw();
     const auto red_pixels = pixels();
-    registry.patch<sample_ext::Tint>(entity, [](auto& tint) {
-        tint.red = 0;
-        tint.green = 1;
-    });
+    registry.patch<sample_ext::Tint>(
+        entity,
+        [](auto& tint)
+        {
+            tint.red = 0;
+            tint.green = 1;
+        }
+    );
     draw();
     const auto green_pixels = pixels();
     assert(red_pixels.second == green_pixels.second);
     // Offscreen presentation is BGRA8 sRGB. Inspect a covered pixel, including alpha.
     assert(unsigned(red_pixels.second) == 50);
-    const auto channel = [](const auto& pixels, unsigned channel) {
-        return std::to_integer<unsigned>(pixels.first[(32 * 64 + 32) * 4 + channel]);
-    };
+    const auto channel = [](const auto& pixels, unsigned channel)
+    { return std::to_integer<unsigned>(pixels.first[(32 * 64 + 32) * 4 + channel]); };
     assert(channel(red_pixels, 2) > 240 && channel(red_pixels, 1) < 8 && channel(red_pixels, 3) > 240);
     assert(channel(green_pixels, 1) > 240 && channel(green_pixels, 2) < 8 && channel(green_pixels, 3) > 240);
     assert(red_pixels.first != green_pixels.first); // Real ECS stage changed actual GPU output.
@@ -349,10 +380,13 @@ int main(int argc, char** argv)
     assert(retirement.id() == scene_id && !retirement.complete());
     // This standalone host pumps RenderRuntime explicitly (it has no EngineContext rendering adapter).
     // Keep that owner pump alive until SceneRuntime has observed the actual render retirement.
-    until([&] {
-        assert(scenes->driveFrame());
-        return retirement.complete();
-    });
+    until(
+        [&]
+        {
+            assert(scenes->driveFrame());
+            return retirement.complete();
+        }
+    );
     scenes.reset();
     resources->release(*old_scene);
     until([&] { return resources->empty(); });
@@ -363,14 +397,18 @@ int main(int argc, char** argv)
     assert(runtime->beginFeatureRegistration({during_close}));
     pump();
     assert(tasks.join());
-    assert(runtime->beginClose());
-    until([&] {
-        std::size_t replies = 16, controls = 8, programs = 4;
-        const auto closed = runtime->advanceClose(replies, controls, programs);
-        assert(closed);
-        return *closed == render::ERenderClose::COMPLETE;
-    });
-    assert(runtime->joinStopped());
+    // Cancel and settle the admitted registration before the explicit backend stop.
+    // Runtime destruction remains the physical barrier; no public close state machine exists.
+    assert(runtime->cancelFeatureRegistration());
+    until([&] { return runtime->featureRegistrationStatus().state == render::EFeatureRegistrationState::CANCELLED; });
+    control.requestStop();
+    const auto stop_limit = std::chrono::steady_clock::now() + 15s;
+    while (runtime->status().state != render::ERenderRuntimeState::RETIRED)
+    {
+        assert(std::chrono::steady_clock::now() < stop_limit);
+        assert(runtime->collectCompletions(16));
+        std::this_thread::sleep_for(1ms);
+    }
     assert(runtime->status().state == render::ERenderRuntimeState::RETIRED);
     assert(runtime->featureRegistrationStatus().state == render::EFeatureRegistrationState::CANCELLED);
     const auto stopped_registration = runtime->beginFeatureRegistration({during_close});

@@ -1,20 +1,20 @@
-#include <lux/engine/render/graph/RGVulkanRecorder.hpp>
-#include <lux/engine/render/graph/vk_type_converter.hpp>
-#include <lux/engine/render/gpu/VulkanContext.hpp> // For ResourceContext
-#include <lux/engine/render/graph/PassRecordContext.hpp>
-#include <lux/engine/render/graph/RGBarrierUtils.hpp>
-#include <lux/engine/render/graph/KernelReplayContext.hpp>
-#include <lux/engine/render/graph/KernelDescriptor.hpp>
-#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
-#include <lux/engine/render/scene/View.hpp> // frame_ctx.view->handle.index (per-view DS resolution)
-#include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
-#include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
-#include <lux/engine/render/targets/RenderTargetBinding.hpp>
-#include <array>
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <cassert>
 #include <cstring>
+#include <lux/engine/render/gpu/VulkanContext.hpp> // For ResourceContext
+#include <lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp>
+#include <lux/engine/render/gpu/pipeline/GeneralDescriptorSetLayout.hpp>
+#include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
+#include <lux/engine/render/graph/KernelDescriptor.hpp>
+#include <lux/engine/render/graph/KernelReplayContext.hpp>
+#include <lux/engine/render/graph/PassRecordContext.hpp>
+#include <lux/engine/render/graph/RGBarrierUtils.hpp>
+#include <lux/engine/render/graph/RGVulkanRecorder.hpp>
+#include <lux/engine/render/graph/vk_type_converter.hpp>
+#include <lux/engine/render/scene/View.hpp> // frame_ctx.view->handle.index (per-view DS resolution)
+#include <lux/engine/render/targets/RenderTargetBinding.hpp>
 #include <unordered_map>
 
 namespace lux::render
@@ -558,7 +558,8 @@ namespace lux::render
                     case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
                     case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
                     case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-                    case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT: {
+                    case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+                    {
                         VkImageView view = VK_NULL_HANDLE;
                         if (resource_index < context.per_frame_views.size() &&
                             frame_index < context.per_frame_views[resource_index].size())
@@ -580,7 +581,8 @@ namespace lux::render
                     case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
                     case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
                     case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-                    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC: {
+                    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+                    {
                         VkBuffer buffer = VK_NULL_HANDLE;
                         if (resource_index < context.per_frame_buffers.size() &&
                             frame_index < context.per_frame_buffers[resource_index].size())
@@ -625,16 +627,20 @@ namespace lux::render
             vkGetDeviceProcAddr(dev, "vkCmdSetRenderingAttachmentLocationsKHR")
         );
         if (!fn_set_rendering_locations_)
+        {
             fn_set_rendering_locations_ = reinterpret_cast<PFN_vkCmdSetRenderingAttachmentLocations>(
                 vkGetDeviceProcAddr(dev, "vkCmdSetRenderingAttachmentLocations")
             );
+        }
         fn_set_rendering_inputs_ = reinterpret_cast<PFN_vkCmdSetRenderingInputAttachmentIndices>(
             vkGetDeviceProcAddr(dev, "vkCmdSetRenderingInputAttachmentIndicesKHR")
         );
         if (!fn_set_rendering_inputs_)
+        {
             fn_set_rendering_inputs_ = reinterpret_cast<PFN_vkCmdSetRenderingInputAttachmentIndices>(
                 vkGetDeviceProcAddr(dev, "vkCmdSetRenderingInputAttachmentIndices")
             );
+        }
 
 #if !defined(NDEBUG)
         // Load VK_EXT_debug_utils entry points for pass labeling and pipeline
@@ -700,7 +706,9 @@ namespace lux::render
                 query_info.queryType = VK_QUERY_TYPE_TIMESTAMP;
                 query_info.queryCount = pass_count * 2u * frames_in_flight;
                 auto query_pool = QueryPoolOwner::create(
-                    context_.logicalDevice(), query_info, context_.instanceContext().allocator()
+                    context_.logicalDevice(),
+                    query_info,
+                    context_.instanceContext().allocator()
                 );
                 if (query_pool)
                 {
@@ -814,15 +822,19 @@ namespace lux::render
             // Gather pool sizes from all descriptor writes
             std::unordered_map<VkDescriptorType, uint32_t> type_counts;
             for (const auto& desc : tds_descs)
+            {
                 for (const auto& w : desc.writes)
                 {
                     type_counts[convertDescriptorType(w.descriptor_type)] += frames_in_flight;
                 }
+            }
 
             std::vector<VkDescriptorPoolSize> pool_sizes;
             pool_sizes.reserve(type_counts.size());
             for (auto& [dt, count] : type_counts)
+            {
                 pool_sizes.push_back({dt, count});
+            }
 
             VkDescriptorPoolCreateInfo pool_ci{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
             pool_ci.maxSets = total_sets;
@@ -880,7 +892,8 @@ namespace lux::render
                         case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
                         case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
                         case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-                        case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT: {
+                        case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:
+                        {
                             // ping-pong PREVIOUS redirects to the peer's earlier-frame copy view.
                             const auto img_tgt = resolveRingTarget(physical_resources, ri, fi);
                             VkImageView dview = VK_NULL_HANDLE;
@@ -890,7 +903,9 @@ namespace lux::render
                                 const auto& by_mip = record_context.per_frame_views_by_mip;
                                 if (img_tgt.first < by_mip.size() && img_tgt.second < by_mip[img_tgt.first].size() &&
                                     w.mip_level < by_mip[img_tgt.first][img_tgt.second].size())
+                                {
                                     dview = by_mip[img_tgt.first][img_tgt.second][w.mip_level];
+                                }
                             }
                             else
                             {
@@ -915,7 +930,8 @@ namespace lux::render
                         case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
                         case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
                         case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-                        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC: {
+                        case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
+                        {
                             const auto buf_tgt = resolveRingTarget(physical_resources, ri, fi);
                             VkDescriptorBufferInfo bi{};
                             bi.buffer = reinterpret_cast<VkBuffer>(
@@ -937,6 +953,7 @@ namespace lux::render
                         vk_writes.push_back(vw);
                     }
                     if (!vk_writes.empty())
+                    {
                         vkUpdateDescriptorSets(
                             device,
                             static_cast<uint32_t>(vk_writes.size()),
@@ -944,6 +961,7 @@ namespace lux::render
                             0,
                             nullptr
                         );
+                    }
                 }
             }
         }
@@ -959,7 +977,8 @@ namespace lux::render
             }
             if (compiled_graph.barrier_program.has_value())
             {
-                auto scan_groups = [&](const std::vector<BarrierProgram::BarrierGroup>& groups) {
+                auto scan_groups = [&](const std::vector<BarrierProgram::BarrierGroup>& groups)
+                {
                     for (const auto& g : groups)
                     {
                         max_img = std::max(max_img, static_cast<uint32_t>(g.image_barriers.size()));
@@ -1002,17 +1021,20 @@ namespace lux::render
     )
     {
         // 消费"被跳过首写者"登记:该资源本帧的 CLEAR 义务转移到本 pass。
-        auto take_pending_clear = [&](uint32_t res_idx) -> bool {
+        auto take_pending_clear = [&](uint32_t res_idx) -> bool
+        {
             if (!pending_clear)
             {
                 return false;
             }
             for (auto it = pending_clear->begin(); it != pending_clear->end(); ++it)
+            {
                 if (*it == res_idx)
                 {
                     pending_clear->erase(it);
                     return true;
                 }
+            }
             return false;
         };
         for (uint32_t ci = 0; ci < group.key.color_count; ++ci)
@@ -1064,7 +1086,9 @@ namespace lux::render
                     }
                     if (out_color[color_idx].loadOp == VK_ATTACHMENT_LOAD_OP_LOAD &&
                         take_pending_clear(tex_ref.resource.index))
+                    {
                         out_color[color_idx].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                    }
                     if (pass_info && decl < pass_info->pass_color_store_ops.size())
                     {
                         out_color[color_idx].storeOp = pass_info->pass_color_store_ops[decl];
@@ -1075,7 +1099,9 @@ namespace lux::render
             else if (tex_ref.role == lux::render::ETextureRole::DEPTH_STENCIL_ATTACHMENT && view != VK_NULL_HANDLE)
             {
                 if (out_depth.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && take_pending_clear(tex_ref.resource.index))
+                {
                     out_depth.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+                }
                 out_depth.imageView = view;
             }
         }
@@ -1224,7 +1250,8 @@ namespace lux::render
         BindingState& bs = *replay_state.binding_state;
         const PreBarrierGroupSelection pre_bsel = selectPreBarrierGroups(compiled_graph, frame_ctx);
 
-        auto tryCallKernelFn = [&]() -> bool {
+        auto tryCallKernelFn = [&]() -> bool
+        {
             if (replay_state.current_pass == UINT32_MAX)
             {
                 return false;
@@ -1294,7 +1321,8 @@ namespace lux::render
 
             switch (entry.type)
             {
-            case ECmd::SET_PASS_CONTEXT: {
+            case ECmd::SET_PASS_CONTEXT:
+            {
                 if (replay_state.current_pass != UINT32_MAX)
                 {
                     writePassTimestamp(
@@ -1344,7 +1372,8 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::PIPELINE_BARRIER: {
+            case ECmd::PIPELINE_BARRIER:
+            {
                 if (!replay_barriers)
                 {
                     break;
@@ -1357,6 +1386,7 @@ namespace lux::render
                     uint32_t pass_index;
                     uint32_t phase;
                 } bd;
+
                 std::memcpy(&bd, data, sizeof(bd));
                 const auto& cpass = compiled_graph.compiled_passes[bd.pass_index];
 
@@ -1373,7 +1403,8 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::BEGIN_RENDERING: {
+            case ECmd::BEGIN_RENDERING:
+            {
                 if (!replay_render_scope)
                 {
                     break;
@@ -1460,7 +1491,8 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::END_RENDERING: {
+            case ECmd::END_RENDERING:
+            {
                 if (!replay_render_scope)
                 {
                     break;
@@ -1469,7 +1501,8 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::LOCAL_READ_BOUNDARY: {
+            case ECmd::LOCAL_READ_BOUNDARY:
+            {
                 // Line-B P2: sub-pass boundary inside a local-read merged scope.
                 // Sets this sub-pass's attachment-location / input-index remaps
                 // and (for sub-pass > 0) the by-region intra-scope barrier.
@@ -1494,12 +1527,14 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::BIND_PIPELINE: {
+            case ECmd::BIND_PIPELINE:
+            {
                 struct
                 {
                     VkPipeline pipeline;
                     VkPipelineLayout layout;
                 } bp;
+
                 std::memcpy(&bp, data, sizeof(bp));
                 vkCmdBindPipeline(cmd, replay_state.current_bp, bp.pipeline);
                 if (bp.layout != VK_NULL_HANDLE)
@@ -1512,16 +1547,20 @@ namespace lux::render
                     bs.last_graphics_pipeline = bp.pipeline;
                 }
                 else
+                {
                     bs.last_compute_pipeline = bp.pipeline;
+                }
                 break;
             }
 
-            case ECmd::BIND_DESCRIPTOR_SETS: {
+            case ECmd::BIND_DESCRIPTOR_SETS:
+            {
                 struct
                 {
                     uint32_t slot;
                     VkDescriptorSet set;
                 } bd;
+
                 std::memcpy(&bd, data, sizeof(bd));
 
                 VkDescriptorSet ds = bd.set;
@@ -1561,7 +1600,8 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::PUSH_CONSTANTS: {
+            case ECmd::PUSH_CONSTANTS:
+            {
                 uint32_t pass_index;
                 std::memcpy(&pass_index, data, sizeof(uint32_t));
                 const auto& cpass = compiled_graph.compiled_passes[pass_index];
@@ -1571,10 +1611,12 @@ namespace lux::render
                 {
                     const auto& tmpl = pipeline_manager_.getTemplate(cpass.render.pipeline_template_handle);
                     for (const auto& range : tmpl.push_constant_ranges)
+                    {
                         if (range.offset < kViewPushPrefixSize && range.offset + range.size > 0u)
                         {
                             stages |= range.stageFlags;
                         }
+                    }
                 }
                 if (stages != 0 && replay_state.current_layout != VK_NULL_HANDLE)
                 {
@@ -1584,7 +1626,8 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::SET_VIEWPORT: {
+            case ECmd::SET_VIEWPORT:
+            {
                 uint32_t pass_index;
                 std::memcpy(&pass_index, data, sizeof(uint32_t));
                 const uint32_t gidx = compiled_graph.render_pass_layout.pass_to_group[pass_index];
@@ -1594,7 +1637,8 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::SET_SCISSOR: {
+            case ECmd::SET_SCISSOR:
+            {
                 uint32_t pass_index;
                 std::memcpy(&pass_index, data, sizeof(uint32_t));
                 const uint32_t gidx = compiled_graph.render_pass_layout.pass_to_group[pass_index];
@@ -1604,7 +1648,8 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::DISPATCH: {
+            case ECmd::DISPATCH:
+            {
                 if (tryCallKernelFn())
                 {
                     break;
@@ -1614,6 +1659,7 @@ namespace lux::render
                 {
                     uint32_t x, y, z;
                 } d;
+
                 std::memcpy(&d, data, sizeof(d));
                 for (const auto& patch : program.patches)
                 {
@@ -1626,9 +1672,9 @@ namespace lux::render
                         const KernelTypeId kid = static_cast<KernelTypeId>(patch.source_param >> 8);
                         const uint16_t sub_source = patch.source_param & 0xFF;
                         const auto* desc = KernelRegistry::instance().find(kid);
-                        if (desc && desc->resolve_patch)
+                        if (desc && desc->descriptor.resolve_patch)
                         {
-                            d.x = desc->resolve_patch(sub_source, frame_ctx);
+                            d.x = desc->descriptor.resolve_patch(sub_source, frame_ctx);
                         }
                     }
                 }
@@ -1640,12 +1686,14 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::DISPATCH_INDIRECT: {
+            case ECmd::DISPATCH_INDIRECT:
+            {
                 struct
                 {
                     uint32_t resource_idx;
                     VkDeviceSize offset;
                 } d{};
+
                 std::memcpy(&d, data, sizeof(d));
                 VkBuffer buffer = VK_NULL_HANDLE;
                 if (auto* physical = physical_resources.tryGet(d.resource_idx))
@@ -1659,7 +1707,8 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::DRAW_DIRECT: {
+            case ECmd::DRAW_DIRECT:
+            {
                 if (tryCallKernelFn())
                 {
                     break;
@@ -1669,6 +1718,7 @@ namespace lux::render
                 {
                     uint32_t vtx_count, inst_count, first_vtx, first_inst;
                 } d;
+
                 std::memcpy(&d, data, sizeof(d));
                 if (d.vtx_count > 0 && d.inst_count > 0)
                 {
@@ -1677,7 +1727,8 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::DRAW_INDEXED_INDIRECT_COUNT: {
+            case ECmd::DRAW_INDEXED_INDIRECT_COUNT:
+            {
                 if (replay_state.skip_next_draw)
                 {
                     // Skip ALL draws of an inactive shadow bias-group lane, not
@@ -1699,6 +1750,7 @@ namespace lux::render
                     uint32_t max_draws;
                     uint32_t stride;
                 } d;
+
                 std::memcpy(&d, data, sizeof(d));
 
                 VkBuffer indirect_buf = VK_NULL_HANDLE;
@@ -1727,7 +1779,8 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::FILL_BUFFER: {
+            case ECmd::FILL_BUFFER:
+            {
                 struct
                 {
                     uint32_t resource_idx;
@@ -1735,6 +1788,7 @@ namespace lux::render
                     VkDeviceSize size;
                     uint32_t fill_value;
                 } d;
+
                 std::memcpy(&d, data, sizeof(d));
 
                 VkBuffer buf = VK_NULL_HANDLE;
@@ -1765,7 +1819,8 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::CLEAR_COUNTERS: {
+            case ECmd::CLEAR_COUNTERS:
+            {
                 struct
                 {
                     uint32_t resource_indices[ClearCountersKernelConfig::kMaxBuffers];
@@ -1773,6 +1828,7 @@ namespace lux::render
                     uint32_t buffer_count;
                     uint32_t dispatch_x;
                 } d;
+
                 std::memcpy(&d, data, sizeof(d));
 
                 if (d.buffer_count == 0 || d.dispatch_x == 0 || replay_state.current_layout == VK_NULL_HANDLE)
@@ -1813,6 +1869,7 @@ namespace lux::render
                     uint32_t buffer_count;
                     uint32_t element_counts[ClearCountersKernelConfig::kMaxBuffers];
                 } pc{};
+
                 pc.element_count = max_elements;
                 pc.buffer_count = clamped_count;
                 std::memcpy(pc.element_counts, d.element_counts, sizeof(pc.element_counts));
@@ -1822,12 +1879,14 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::INVOKE_KERNEL_FN: {
+            case ECmd::INVOKE_KERNEL_FN:
+            {
                 tryCallKernelFn();
                 break;
             }
 
-            case ECmd::COPY_BUFFER: {
+            case ECmd::COPY_BUFFER:
+            {
                 if (tryCallKernelFn())
                 {
                     break;
@@ -1835,23 +1894,26 @@ namespace lux::render
                 break;
             }
 
-            case ECmd::KERNEL_COMMAND: {
+            case ECmd::KERNEL_COMMAND:
+            {
                 // Decode header: [KernelTypeId(1) | sub_cmd(1) | payload_size(2)]
                 if (entry.data_size < 4)
                 {
                     break;
                 }
+
                 struct Header
                 {
                     KernelTypeId kid;
                     uint8_t sub;
                     uint16_t psize;
                 };
+
                 Header hdr;
                 std::memcpy(&hdr, data, sizeof(hdr));
 
                 const auto* desc = KernelRegistry::instance().find(hdr.kid);
-                if (desc && desc->replay)
+                if (desc && desc->descriptor.replay)
                 {
                     const void* payload =
                         (entry.data_size > sizeof(hdr))
@@ -1864,7 +1926,7 @@ namespace lux::render
                         replay_state.current_layout,
                         replay_state.skip_next_draw
                     };
-                    desc->replay(hdr.sub, payload, hdr.psize, kern_ctx);
+                    desc->descriptor.replay(hdr.sub, payload, hdr.psize, kern_ctx);
                 }
                 break;
             }
@@ -1915,10 +1977,12 @@ namespace lux::render
 #if !defined(NDEBUG)
         // ---- VK_EXT_debug_utils: label this pass in the command buffer ------
         const char* pass_name = cpass.pass->name.c_str();
+
         struct LabelScope
         {
             VkCommandBuffer cmd;
             PFN_vkCmdEndDebugUtilsLabelEXT end_fn;
+
             ~LabelScope()
             {
                 if (end_fn)
@@ -1927,6 +1991,7 @@ namespace lux::render
                 }
             }
         } label_scope{cmd, fn_end_debug_label_};
+
         if (fn_begin_debug_label_)
         {
             VkDebugUtilsLabelEXT label{};
@@ -1970,7 +2035,9 @@ namespace lux::render
                 bs.last_graphics_pipeline = pass_pipeline;
             }
             else
+            {
                 bs.last_compute_pipeline = pass_pipeline;
+            }
             bs.last_pipeline_layout = pass_layout;
         }
 

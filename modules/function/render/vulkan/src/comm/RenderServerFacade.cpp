@@ -1,4 +1,5 @@
 #include <lux/engine/render/comm/server/RenderServerImpl.hpp>
+#include <lux/engine/render/graph/KernelDescriptor.hpp>
 
 #include <lux/engine/description/ShaderInfo.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
@@ -179,6 +180,19 @@ namespace lux::render
             return FeatureTypeRegisteredReply{.error = result.error()};
         }
 
+        // Kernel declarations are admitted on the render owner before any graph uses this feature.
+        // Unlike feature removal, accepted kernel code remains pinned until registry teardown.
+        auto kernels = KernelRegistry::instance().registerKernels(factory.kernels, code_lifetime);
+        if (!kernels)
+        {
+            if (result->status == EFeatureTypeRegisterStatus::NEW_REGISTRATION)
+            {
+                registry.erase(result->type_id);
+            }
+            return FeatureTypeRegisteredReply{
+                .error = renderError<err::graph::KernelRegistrationFailed>(static_cast<std::uint32_t>(kernels.error()))
+            };
+        }
         auto& stored = registry.at(result->type_id);
         if (result->status == EFeatureTypeRegisterStatus::NEW_REGISTRATION && factory.register_ops_fn)
         {

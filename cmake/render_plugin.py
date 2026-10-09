@@ -35,11 +35,11 @@ code += "namespace lux::render {\nstd::span<const RenderFeatureRegistration> bui
 code += ",\n".join("        " + r["registration"] for r in records)
 code += "\n    };\n    return entries;\n}\n}\n"
 code += r'''extern "C" LUX_ENGINE_FUNCTION_RENDER_FEATURES_PUBLIC
-const lux::render::RenderPluginExports *lux_render_exports_v1() noexcept
+const lux::render::RenderPluginExports *lux_render_exports_v2() noexcept
 {
     static const auto entries = lux::render::builtinRenderFeatureRegistrations();
     static const lux::render::RenderPluginExports exports{
-        sizeof(lux::render::RenderPluginExports), 1, entries.data(), static_cast<std::uint32_t>(entries.size())
+        sizeof(lux::render::RenderPluginExports), lux::render::kRenderPluginExportsVersion, entries.data(), static_cast<std::uint32_t>(entries.size())
     };
     return &exports;
 }

@@ -11,17 +11,17 @@
  *   MeshDraw::contribute_mesh  — generates ordered MeshLane entries
  */
 
+#include <lux/engine/function/render/features/resources/mesh/RenderObjectTypes.hpp> // EGeometryKind
+#include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
 #include <lux/engine/render/graph/KernelDescriptor.hpp>
-#include <lux/engine/render/renderer/features/BufferTransferSynchronization.hpp>
 #include <lux/engine/render/graph/KernelReplayContext.hpp>
 #include <lux/engine/render/graph/ProgramEmitter.hpp>
 #include <lux/engine/render/graph/RGCompiledGraph.hpp>
 #include <lux/engine/render/graph/RGPassTypes.hpp>
 #include <lux/engine/render/graph/RGRecorder.hpp>
-#include <lux/engine/render/gpu/pipeline/PipelineManager.hpp>
-#include <lux/engine/render/resources/mesh/MdcTable.hpp>
-#include <lux/engine/function/render/features/resources/mesh/RenderObjectTypes.hpp> // EGeometryKind
+#include <lux/engine/render/renderer/features/BufferTransferSynchronization.hpp>
 #include <lux/engine/render/resources/mesh/GpuDrivenMeshConsts.hpp>
+#include <lux/engine/render/resources/mesh/MdcTable.hpp>
 #include <lux/engine/render/resources/mesh/MeshInstanceExtData.hpp>
 
 #include <algorithm>
@@ -37,7 +37,9 @@ namespace lux::render::kernels
     {
         const auto slot = meshInstanceExtSlot();
         if (slot == kInvalidExtSlot)
+        {
             return nullptr;
+        }
         return static_cast<const MeshInstanceExtData*>(fc.ext_data[slot]);
     }
 
@@ -93,7 +95,9 @@ namespace lux::render::kernels
     )
     {
         if (cpass.pass->kernel_config.size < sizeof(MeshCullKernelConfig))
+        {
             return;
+        }
 
         const auto& cfg = cpass.pass->kernel_config.as<MeshCullKernelConfig>();
         const KernelTypeId kid = cpass.pass->kernel_id;
@@ -117,6 +121,7 @@ namespace lux::render::kernels
             VkDeviceSize size;
             uint32_t fill_value;
         } fill{cfg.draw_count_rg.index, 0, static_cast<VkDeviceSize>(cfg.draw_list_count) * sizeof(uint32_t), 0};
+
         e.emit(ExecutionProgram::Command::EType::FILL_BUFFER, &fill, static_cast<uint16_t>(sizeof(fill)));
 
         // VIEW-mode cull PC via the shared factory (single source of truth with
@@ -148,6 +153,7 @@ namespace lux::render::kernels
                 uint32_t resource_idx;
                 VkDeviceSize offset;
             } dispatch{cfg.dispatch_indirect_rg.index, cfg.dispatch_indirect_offset};
+
             e.emit(
                 ExecutionProgram::Command::EType::DISPATCH_INDIRECT,
                 &dispatch,
@@ -160,6 +166,7 @@ namespace lux::render::kernels
             {
                 uint32_t x, y, z;
             } dispatch{1, 1, 1};
+
             const uint32_t cmd_idx =
                 e.emit(ExecutionProgram::Command::EType::DISPATCH, &dispatch, static_cast<uint16_t>(sizeof(dispatch)));
 
@@ -167,8 +174,8 @@ namespace lux::render::kernels
             patch.command_index = cmd_idx;
             patch.data_field_offset = 0;
             patch.source = ExecutionProgram::DynamicPatch::ESource::KERNEL_PATCH;
-            patch.source_param = (static_cast<uint16_t>(kid) << 8) |
-                static_cast<uint16_t>(EMeshCullPatchSource::SLOT_COUNT);
+            patch.source_param =
+                (static_cast<uint16_t>(kid) << 8) | static_cast<uint16_t>(EMeshCullPatchSource::SLOT_COUNT);
             e.program.patches.push_back(patch);
         }
     }
@@ -195,18 +202,24 @@ namespace lux::render::kernels
         {
             uint32_t resource_idx = 0;
             if (data_size < sizeof(resource_idx))
+            {
                 return;
+            }
             std::memcpy(&resource_idx, data, sizeof(resource_idx));
 
             // 中性字节由组装方(Renderer)挂上,长度以实际为准 —— 旧实现写死
             // 6*16,一旦视锥布局变动就会静默截断/越读。
             const auto frustum = ctx.frame_ctx.view_frustum;
             if (frustum.empty())
+            {
                 return;
+            }
 
             const VkBuffer buf = ctx.resolveBuffer(resource_idx);
             if (buf == VK_NULL_HANDLE)
+            {
                 return;
+            }
 
             synchronizeBeforeBufferTransferWrites(ctx.cmd, std::array{buf});
             vkCmdUpdateBuffer(ctx.cmd, buf, 0, static_cast<VkDeviceSize>(frustum.size_bytes()), frustum.data());
@@ -224,7 +237,9 @@ namespace lux::render::kernels
         }
 
         if (sub_cmd != static_cast<uint8_t>(EMeshCullSubCmd::PUSH_CONSTANTS))
+        {
             return;
+        }
 
         MeshCullPushConstants pc{};
         std::memcpy(&pc, data, std::min(sizeof(pc), static_cast<size_t>(data_size)));
@@ -269,7 +284,9 @@ namespace lux::render::kernels
     )
     {
         if (!compiled.mesh_bucket_layout.has_value() || cpass.pass->kernel_config.size < sizeof(MeshDrawKernelConfig))
+        {
             return;
+        }
 
         const auto& cfg = cpass.pass->kernel_config.as<MeshDrawKernelConfig>();
 
@@ -283,7 +300,9 @@ namespace lux::render::kernels
         // 句柄为空 = 场景里根本没有网格存储,此时 lanes 也必为空;直接返回,
         // 避免录进一串没有索引缓冲可用的 indexed indirect draw。
         if (cfg.index_buffers_rg == nullptr || cfg.index_buffer_count == 0u)
+        {
             return;
+        }
 
         const KernelTypeId kid = cpass.pass->kernel_id;
         std::uint16_t last_ibo_segment = ~std::uint16_t{0u};
@@ -292,9 +311,13 @@ namespace lux::render::kernels
         for (const auto& lane : compiled.mesh_bucket_layout->lanes)
         {
             if (lane.pass_index != pi)
+            {
                 continue;
+            }
             if (lane.ibo_segment >= cfg.index_buffer_count)
+            {
                 continue;
+            }
 
             if (lane.bind_pipeline)
             {
@@ -303,6 +326,7 @@ namespace lux::render::kernels
                     VkPipeline pipeline;
                     VkPipelineLayout layout;
                 } bp{lane.pipeline, cpass.render.pipeline_layout};
+
                 e.emit(ExecutionProgram::Command::EType::BIND_PIPELINE, &bp, static_cast<uint16_t>(sizeof(bp)));
             }
 
@@ -313,6 +337,7 @@ namespace lux::render::kernels
                     uint32_t resource_idx;
                     uint32_t index_type;
                 } bind_idx{cfg.index_buffers_rg[lane.ibo_segment].index, static_cast<uint32_t>(lane.index_type)};
+
                 e.emitKernelCommand(
                     kid,
                     static_cast<uint8_t>(EMeshDrawSubCmd::BIND_INDEX_BUFFER),
@@ -339,6 +364,7 @@ namespace lux::render::kernels
                 1u,
                 kIndirectCommandSize
             };
+
             e.emit(
                 ExecutionProgram::Command::EType::DRAW_INDEXED_INDIRECT_COUNT,
                 &draw,
@@ -356,20 +382,27 @@ namespace lux::render::kernels
     static void replayMeshDrawCommand(uint32_t sub_cmd, const void* data, uint16_t data_size, KernelReplayContext& ctx)
     {
         if (sub_cmd != static_cast<uint8_t>(EMeshDrawSubCmd::BIND_INDEX_BUFFER))
+        {
             return;
+        }
 
         struct
         {
             uint32_t resource_idx;
             uint32_t index_type;
         } bind_idx{};
+
         if (data_size < sizeof(bind_idx))
+        {
             return;
+        }
         std::memcpy(&bind_idx, data, sizeof(bind_idx));
 
         const VkBuffer ibo = ctx.resolveBuffer(bind_idx.resource_idx);
         if (ibo != VK_NULL_HANDLE)
+        {
             vkCmdBindIndexBuffer(ctx.cmd, ibo, 0, static_cast<VkIndexType>(bind_idx.index_type));
+        }
     }
 
     // =========================================================================
@@ -384,14 +417,18 @@ namespace lux::render::kernels
     )
     {
         if (cpass.pass->kernel_config.size < sizeof(MeshDrawKernelConfig))
+        {
             return;
+        }
 
         const auto& cfg = cpass.pass->kernel_config.as<MeshDrawKernelConfig>();
         const uint32_t mdc_count = cfg.mdc_count;
         const MdcEntry* mdc_entries = cfg.mdc_entries;
 
         if (mdc_count == 0 || mdc_entries == nullptr)
+        {
             return;
+        }
 
         const auto& variants = cpass.render.pipeline_variants;
         // When a feature registers skinned pipeline variants, they live at
@@ -411,7 +448,9 @@ namespace lux::render::kernels
             }
             VkPipeline pipe = (vidx < variants.size()) ? variants[vidx] : VK_NULL_HANDLE;
             if (pipe == VK_NULL_HANDLE)
+            {
                 continue;
+            }
 
             MeshLane lane{};
             lane.lane_id = static_cast<uint32_t>(plan.lanes.size());
@@ -434,7 +473,8 @@ namespace lux::render::kernels
     {
         switch (source_param)
         {
-        case static_cast<uint16_t>(EMeshCullPatchSource::SLOT_COUNT): {
+        case static_cast<uint16_t>(EMeshCullPatchSource::SLOT_COUNT):
+        {
             const auto* ext = getInstanceExt(frame_ctx);
             const uint32_t count =
                 ext ? (ext->view_slot_capacity != 0u ? ext->view_slot_capacity : ext->slot_count) : 0u;
@@ -447,41 +487,41 @@ namespace lux::render::kernels
 
 } // namespace lux::render::kernels
 
-// =============================================================================
-//  Self-registration
-// =============================================================================
-
-LUX_REGISTER_KERNEL(
-    "MeshCull",
-    (lux::render::KernelDescriptor{
-        .emit = &lux::render::kernels::emitMeshCullKernel,
-        .contribute_mesh = nullptr,
-        .contribute_arena = &lux::render::kernels::meshCullContributeArena,
-        // 剔除推送常量改由本 kernel 回放,替代已删除的 L2 opcode
-        // CullPushConstants(见 emitMeshCullKernel 处说明)。
-        .replay = &lux::render::kernels::replayMeshCullCommand,
-        .resolve_patch = &lux::render::kernels::resolveMeshPatch,
-        .ext_slot_name = "mesh_instance",
-    })
-)
-
-LUX_REGISTER_KERNEL(
-    "MeshDraw",
-    (lux::render::KernelDescriptor{
-        .emit = &lux::render::kernels::emitMeshDrawKernel,
-        .contribute_mesh = &lux::render::kernels::meshDrawContributeMesh,
-        .contribute_arena = nullptr,
-        // 索引缓冲绑定改由本 kernel 回放,替代已删除的 L2 领域 opcode
-        // BindMeshBuffers(见 emitMeshDrawKernel 处说明)。
-        .replay = &lux::render::kernels::replayMeshDrawCommand,
-    })
-)
+namespace lux::render::kernels
+{
+    std::span<const KernelDeclaration> meshKernelDeclarations() noexcept
+    {
+        static constexpr KernelDeclaration declarations[]{
+            {"MeshCull",
+             KernelDescriptor{
+                 .emit = &lux::render::kernels::emitMeshCullKernel,
+                 .contribute_mesh = nullptr,
+                 .contribute_arena = &lux::render::kernels::meshCullContributeArena,
+                 // 剔除推送常量改由本 kernel 回放,替代已删除的 L2 opcode
+                 // CullPushConstants(见 emitMeshCullKernel 处说明)。
+                 .replay = &lux::render::kernels::replayMeshCullCommand,
+                 .resolve_patch = &lux::render::kernels::resolveMeshPatch,
+                 .ext_slot_name = "mesh_instance",
+             }},
+            {"MeshDraw",
+             KernelDescriptor{
+                 .emit = &lux::render::kernels::emitMeshDrawKernel,
+                 .contribute_mesh = &lux::render::kernels::meshDrawContributeMesh,
+                 .contribute_arena = nullptr,
+                 // 索引缓冲绑定改由本 kernel 回放,替代已删除的 L2 领域 opcode
+                 // BindMeshBuffers(见 emitMeshDrawKernel 处说明)。
+                 .replay = &lux::render::kernels::replayMeshDrawCommand,
+             }}
+        };
+        return declarations;
+    }
+} // namespace lux::render::kernels
 
 namespace lux::render
 {
     FrameExtensionSlotId meshInstanceExtSlot() noexcept
     {
-        static const FrameExtensionSlotId slot = KernelRegistry::instance().extSlotOf("mesh_instance");
+        static const FrameExtensionSlotId slot = FrameExtensionRegistry::instance().idOf("mesh_instance");
         return slot;
     }
 } // namespace lux::render

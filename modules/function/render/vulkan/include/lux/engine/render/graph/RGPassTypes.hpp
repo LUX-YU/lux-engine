@@ -1,21 +1,21 @@
 #pragma once
 
+#include <lux/engine/function/render/graph/RGEnums.hpp>
 #include <lux/engine/function/render/graph/RGForwardDecls.hpp>
 #include <lux/engine/function/render/graph/RGLogicalTypes.hpp>
-#include <lux/engine/render/graph/RGTransientDSTypes.hpp> // RGDescriptorWrite (neutral), RGTransientDSHandle
-#include <lux/engine/function/render/graph/RGEnums.hpp>
-#include <lux/engine/render/graph/RGResourceTypes.hpp>
-#include <lux/engine/render/graph/PassRecordContext.hpp>
-#include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>
 #include <lux/engine/function/visibility.h>
+#include <lux/engine/render/gpu/pipeline/GraphicsPipelineTemplate.hpp>
+#include <lux/engine/render/graph/PassRecordContext.hpp>
+#include <lux/engine/render/graph/RGResourceTypes.hpp>
+#include <lux/engine/render/graph/RGTransientDSTypes.hpp> // RGDescriptorWrite (neutral), RGTransientDSHandle
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <optional>
 #include <string>
-#include <vector>
-#include <limits>
 #include <type_traits>
+#include <vector>
 
 #include <lux/cxx/container/SmallVector.hpp>
 
@@ -155,6 +155,7 @@ namespace lux::render
         blob.store(config);
         return blob;
     }
+
     // RGResourceHandle is defined in RGForwardDecls.hpp
 
     // ========== Pass Type ==========
@@ -302,7 +303,7 @@ namespace lux::render
         /// command (DrawDirect, Dispatch, etc.).
         PassRecordFn kernel_fn;
 
-        /// Kernel identifier assigned by KernelRegistry at static-init time.
+        /// Kernel identifier assigned by KernelRegistry during explicit render composition.
         /// kInvalidKernelId (0) means recorder lambda path.
         KernelTypeId kernel_id{kInvalidKernelId};
 
@@ -326,9 +327,10 @@ namespace lux::render
         /// rendering scope — line-B design doc). Unknown names are ignored,
         /// same as after_passes.
         lux::cxx::SmallVector<std::string, 4> before_passes;
-        ERenderStage stage{ERenderStage::DEFAULT_STAGE}; ///< Painter-order tie-break for write-after-write between
-                                                   ///< data-independent passes (see ERenderStage). Default = Opaque ⇒
-                                                   ///< unannotated passes keep declaration-order tie-break.
+        ERenderStage stage{ERenderStage::DEFAULT_STAGE
+        }; ///< Painter-order tie-break for write-after-write between
+           ///< data-independent passes (see ERenderStage). Default = Opaque ⇒
+           ///< unannotated passes keep declaration-order tie-break.
 
         PassConditionFn condition{};
         /// 条件链标签(0 = 无)。同 tag 的条件 pass 构成"原子跳过链":

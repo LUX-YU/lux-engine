@@ -43,7 +43,9 @@ namespace lux::render::kernels
     )
     {
         if (cpass.pass->kernel_config.size < sizeof(MdcCompactKernelConfig))
+        {
             return;
+        }
 
         const auto& cfg = cpass.pass->kernel_config.as<MdcCompactKernelConfig>();
 
@@ -65,10 +67,12 @@ namespace lux::render::kernels
         // 子命令),所以上面描述的地雷已不复存在 —— 此段保留为设计教训:
         // **别在 L2 的通用指令集里放领域定型的载荷**。
         const KernelTypeId kid = cpass.pass->kernel_id;
+
         struct
         {
             uint32_t mdc_count;
         } pc{cfg.mdc_count};
+
         e.emitKernelCommand(
             kid,
             static_cast<uint8_t>(EMdcCompactSubCmd::PUSH_CONSTANTS),
@@ -80,6 +84,7 @@ namespace lux::render::kernels
         {
             uint32_t x, y, z;
         } dispatch{(cfg.mdc_count + kCullDispatchWorkgroupSize - 1) / kCullDispatchWorkgroupSize, 1, 1};
+
         e.emit(ExecutionProgram::Command::EType::DISPATCH, &dispatch, static_cast<uint16_t>(sizeof(dispatch)));
     }
 
@@ -93,14 +98,19 @@ namespace lux::render::kernels
     )
     {
         if (sub_cmd != static_cast<uint8_t>(EMdcCompactSubCmd::PUSH_CONSTANTS))
+        {
             return;
+        }
 
         struct
         {
             uint32_t mdc_count;
         } pc{};
+
         if (data_size < sizeof(pc))
+        {
             return;
+        }
         std::memcpy(&pc, data, sizeof(pc));
 
         if (pc.mdc_count > 0 && ctx.current_layout != VK_NULL_HANDLE)
@@ -121,7 +131,9 @@ namespace lux::render::kernels
     )
     {
         if (cpass.pass->kernel_config.size < sizeof(ClearCountersKernelConfig))
+        {
             return;
+        }
 
         const auto& cfg = cpass.pass->kernel_config.as<ClearCountersKernelConfig>();
         const uint32_t buffer_count = std::min(cfg.buffer_count, ClearCountersKernelConfig::kMaxBuffers);
@@ -139,15 +151,21 @@ namespace lux::render::kernels
         {
             const RGResourceHandle rg = cfg.buffers[bi];
             if (!rg)
+            {
                 continue;
+            }
 
             const VkDeviceSize clear_size = e.resolveBufferSizeBytes(rg);
             if (clear_size < sizeof(uint32_t))
+            {
                 continue;
+            }
 
             const uint32_t element_count = static_cast<uint32_t>(clear_size / sizeof(uint32_t));
             if (element_count == 0)
+            {
                 continue;
+            }
 
             clear.resource_indices[clear.buffer_count] = rg.index;
             clear.element_counts[clear.buffer_count] = element_count;
@@ -178,45 +196,35 @@ namespace lux::render::kernels
         {
             uint32_t vtx_count, inst_count, first_vtx, first_inst;
         } draw{3, 1, 0, 0};
+
         e.emit(ExecutionProgram::Command::EType::DRAW_DIRECT, &draw, static_cast<uint16_t>(sizeof(draw)));
     }
 
 } // namespace lux::render::kernels
 
-// =============================================================================
-//  Self-registration
-// =============================================================================
-
-LUX_REGISTER_KERNEL(
-    "MdcCompact",
-    (lux::render::KernelDescriptor{
-        .emit = &lux::render::kernels::emitMdcCompactKernel,
-        // 推送常量走本 kernel 自己的子命令回放。原先借用的那条 L2 领域定型 opcode
-        // 载荷不兼容,现已整条删除(见 emitMdcCompactKernel 处说明)。
-        .replay = &lux::render::kernels::replayMdcCompactCommand,
-    })
-)
-
-LUX_REGISTER_KERNEL(
-    "ClearCounters",
-    (lux::render::KernelDescriptor{
-        .emit = &lux::render::kernels::emitClearCountersKernel,
-    })
-)
-
-// Fullscreen-triangle passes — all share emitSimpleDrawKernel
-LUX_REGISTER_KERNEL(
-    "FullscreenQuad",
-    (lux::render::KernelDescriptor{.emit = &lux::render::kernels::emitSimpleDrawKernel})
-)
-LUX_REGISTER_KERNEL("SkyboxDraw", (lux::render::KernelDescriptor{.emit = &lux::render::kernels::emitSimpleDrawKernel}))
-LUX_REGISTER_KERNEL("GridDraw", (lux::render::KernelDescriptor{.emit = &lux::render::kernels::emitSimpleDrawKernel}))
-LUX_REGISTER_KERNEL("TonemapPass", (lux::render::KernelDescriptor{.emit = &lux::render::kernels::emitSimpleDrawKernel}))
-LUX_REGISTER_KERNEL(
-    "DeferredLighting",
-    (lux::render::KernelDescriptor{.emit = &lux::render::kernels::emitSimpleDrawKernel})
-)
-LUX_REGISTER_KERNEL(
-    "DepthPrepass",
-    (lux::render::KernelDescriptor{.emit = &lux::render::kernels::emitSimpleDrawKernel})
-)
+namespace lux::render::kernels
+{
+    std::span<const KernelDeclaration> utilityKernelDeclarations() noexcept
+    {
+        static constexpr KernelDeclaration declarations[]{
+            {"MdcCompact",
+             KernelDescriptor{
+                 .emit = &lux::render::kernels::emitMdcCompactKernel,
+                 // 推送常量走本 kernel 自己的子命令回放。原先借用的那条 L2 领域定型 opcode
+                 // 载荷不兼容,现已整条删除(见 emitMdcCompactKernel 处说明)。
+                 .replay = &lux::render::kernels::replayMdcCompactCommand,
+             }},
+            {"ClearCounters",
+             KernelDescriptor{
+                 .emit = &lux::render::kernels::emitClearCountersKernel,
+             }},
+            {"FullscreenQuad", KernelDescriptor{.emit = &lux::render::kernels::emitSimpleDrawKernel}},
+            {"SkyboxDraw", KernelDescriptor{.emit = &lux::render::kernels::emitSimpleDrawKernel}},
+            {"GridDraw", KernelDescriptor{.emit = &lux::render::kernels::emitSimpleDrawKernel}},
+            {"TonemapPass", KernelDescriptor{.emit = &lux::render::kernels::emitSimpleDrawKernel}},
+            {"DeferredLighting", KernelDescriptor{.emit = &lux::render::kernels::emitSimpleDrawKernel}},
+            {"DepthPrepass", KernelDescriptor{.emit = &lux::render::kernels::emitSimpleDrawKernel}}
+        };
+        return declarations;
+    }
+} // namespace lux::render::kernels

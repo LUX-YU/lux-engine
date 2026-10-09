@@ -19,10 +19,10 @@
  * `findByStableType()` is the NEW capability that dependency resolution needs.
  */
 
-#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory / GenericOkReply
-#include <lux/engine/function/render/client/core/FeatureTypeId.hpp>      // FeatureTypeId
-#include <lux/engine/function/render/client/core/Errors.hpp>             // Expected / renderFailure
 #include <lux/cxx/container/SparseSet.hpp>                               // OffsetAutoSparseSet
+#include <lux/engine/function/render/client/core/Errors.hpp>             // Expected / renderFailure
+#include <lux/engine/function/render/client/core/FeatureTypeId.hpp>      // FeatureTypeId
+#include <lux/engine/function/render/client/protocol/FeatureFactory.hpp> // FeatureFactory / GenericOkReply
 
 #include <cstddef>
 #include <cstdint>
@@ -61,7 +61,7 @@ namespace lux::render
     /// numeric values ride the wire FeatureTypeRegisteredReply::status field.
     enum class EFeatureTypeRegisterStatus : std::uint32_t
     {
-        NEW_REGISTRATION = 0,        ///< newly inserted; type_id is fresh, op handlers were just bound
+        NEW_REGISTRATION = 0,      ///< newly inserted; type_id is fresh, op handlers were just bound
         EXISTING_REGISTRATION = 1, ///< same factory already present; type_id is the EXISTING id (idempotent)
     };
 
@@ -100,11 +100,15 @@ namespace lux::render
         [[nodiscard]] Expected<FeatureTypeAddResult> add(FeatureTypeRecord record)
         {
             if (record.factory.create_fn == nullptr)
+            {
                 return renderFailure<err::feature::FactoryHasNoCreateFn>();
+            }
             const auto& factory = record.factory;
             const bool invalid_count = factory.operation_count > kMaxOps || record.op_count > kMaxOps;
             if (invalid_count)
+            {
                 return renderFailure<err::feature::OperationLimitExceeded>(factory.operation_count, kMaxOps);
+            }
             const bool invalid_functions = factory.operation_count != 0u &&
                                            (factory.register_ops_fn == nullptr || factory.unregister_ops_fn == nullptr);
             const bool invalid_parameter =
@@ -112,7 +116,9 @@ namespace lux::render
                 (factory.param_set_op_index >= 0 &&
                  static_cast<std::uint32_t>(factory.param_set_op_index) >= factory.operation_count);
             if (invalid_functions || invalid_parameter)
+            {
                 return renderFailure<err::feature::InvalidRegistration>();
+            }
 
             // Idempotent dedup is by STABLE TYPE (the descriptor's identity), which is what
             // uniquely names a feature type. create_fn is NOT a valid identity: distinct
@@ -128,22 +134,30 @@ namespace lux::render
                     // DIFFERENT factory is claiming it (create_fn differs), a genuine collision
                     // that would make findByStableType / dependency resolution ambiguous.
                     if (!sameFactory(existing->factory, record.factory))
+                    {
                         return renderFailure<err::feature::TypeIdCollision>(record.factory.descriptor.type);
+                    }
                     // Shared ownership is COUNTED: release() destroys the record only when
                     // the last registrant lets go (see FeatureTypeRecord::registrations).
                     const std::uint32_t id = findIdByStableType(record.factory.descriptor.type);
                     auto& shared = types_.at(id);
                     ++shared.registrations;
                     if (record.registration_leases.empty())
+                    {
                         shared.registration_leases.emplace_back();
+                    }
                     else
+                    {
                         shared.registration_leases.push_back(std::move(record.registration_leases.front()));
+                    }
                     return FeatureTypeAddResult{id, EFeatureTypeRegisterStatus::EXISTING_REGISTRATION};
                 }
             }
 
             if (record.registration_leases.empty())
+            {
                 record.registration_leases.emplace_back();
+            }
 
             // 到这里说明是一次**新类型**的插入。在放它进来之前再拦一道:名字不能与
             // 已注册的**另一个类型**重合。
@@ -160,9 +174,11 @@ namespace lux::render
             if (record.factory.descriptor.valid() && record.factory.name != nullptr)
             {
                 if (const FeatureTypeRecord* clash = findByName(record.factory.name))
+                {
                     return renderFailure<err::feature::FeatureNameCollision>(
                         encodeFeatureType(clash->factory.descriptor.type)
                     );
+                }
             }
 
             const std::uint32_t id = types_.insert(std::move(record));
@@ -173,14 +189,17 @@ namespace lux::render
         {
             return types_.contains(id);
         }
+
         [[nodiscard]] FeatureTypeRecord& at(std::uint32_t id)
         {
             return types_.at(id);
         }
+
         [[nodiscard]] const FeatureTypeRecord& at(std::uint32_t id) const
         {
             return types_.at(id);
         }
+
         void erase(std::uint32_t id)
         {
             types_.erase(id);
@@ -193,7 +212,9 @@ namespace lux::render
         [[nodiscard]] Expected<std::optional<FeatureTypeRecord>> release(std::uint32_t id)
         {
             if (!types_.contains(id))
+            {
                 return renderFailure<err::feature::TypeNotRegistered>(id);
+            }
             FeatureTypeRecord& rec = types_.at(id);
             if (rec.registrations > 1)
             {
@@ -202,7 +223,9 @@ namespace lux::render
                 return std::optional<FeatureTypeRecord>{};
             }
             if (rec.active_instances != 0u)
+            {
                 return renderFailure<err::feature::FeatureTypeInUse>(id, rec.active_instances);
+            }
             FeatureTypeRecord removed = std::move(rec);
             types_.erase(id);
             return std::optional<FeatureTypeRecord>{std::move(removed)};
@@ -212,17 +235,23 @@ namespace lux::render
         {
             const auto id = findIdByStableType(type);
             if (id != 0u)
+            {
                 ++types_.at(id).active_instances;
+            }
         }
 
         void noteInstanceRemoved(FeatureTypeId type) noexcept
         {
             const auto id = findIdByStableType(type);
             if (id == 0u)
+            {
                 return;
+            }
             auto& count = types_.at(id).active_instances;
             if (count != 0u)
+            {
                 --count;
+            }
         }
 
         /// Resolve a declared dependency: the registered type whose descriptor has
@@ -233,10 +262,16 @@ namespace lux::render
         [[nodiscard]] const FeatureTypeRecord* findByStableType(FeatureTypeId type) const noexcept
         {
             if (type == kInvalidFeatureTypeId)
+            {
                 return nullptr;
+            }
             for (const auto& rec : types_.values())
+            {
                 if (rec.factory.descriptor.type == type)
+                {
                     return &rec;
+                }
+            }
             return nullptr;
         }
 
@@ -245,11 +280,17 @@ namespace lux::render
         [[nodiscard]] const FeatureTypeRecord* findByName(const char* name) const noexcept
         {
             if (name == nullptr || *name == '\0')
+            {
                 return nullptr;
+            }
             const std::string_view want{name};
             for (const auto& rec : types_.values())
+            {
                 if (rec.factory.name != nullptr && want == rec.factory.name)
+                {
                     return &rec;
+                }
+            }
             return nullptr;
         }
 
@@ -260,12 +301,18 @@ namespace lux::render
         [[nodiscard]] std::uint32_t findIdByStableType(FeatureTypeId type) const noexcept
         {
             if (type == kInvalidFeatureTypeId)
+            {
                 return 0;
+            }
             const auto& ks = types_.keys();
             const auto& vs = types_.values();
             for (std::size_t i = 0; i < vs.size(); ++i)
+            {
                 if (vs[i].factory.descriptor.type == type)
+                {
                     return ks[i];
+                }
+            }
             return 0;
         }
 
@@ -274,6 +321,7 @@ namespace lux::render
         {
             const bool same_functions = a.create_fn == b.create_fn && a.register_ops_fn == b.register_ops_fn &&
                                         a.unregister_ops_fn == b.unregister_ops_fn;
+            const bool same_kernels = a.kernels.data() == b.kernels.data() && a.kernels.size() == b.kernels.size();
             const bool same_operations =
                 a.operation_count == b.operation_count && a.param_set_op_index == b.param_set_op_index;
             const bool same_names = a.name != nullptr && b.name != nullptr && std::string_view(a.name) == b.name;
@@ -287,7 +335,7 @@ namespace lux::render
                 x.conflicts.data() == y.conflicts.data() && x.conflicts.size() == y.conflicts.size() &&
                 x.level_profiles.data() == y.level_profiles.data() &&
                 x.level_profiles.size() == y.level_profiles.size();
-            return same_functions && same_operations && same_names && same_descriptor;
+            return same_functions && same_kernels && same_operations && same_names && same_descriptor;
         }
 
         Storage types_;

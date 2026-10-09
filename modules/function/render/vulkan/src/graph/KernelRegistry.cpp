@@ -1,53 +1,94 @@
+#include <limits>
 #include <lux/engine/render/graph/KernelDescriptor.hpp>
 
 namespace lux::render
 {
     KernelRegistry& KernelRegistry::instance() noexcept
     {
-        static KernelRegistry s_instance;
-        return s_instance;
+        static KernelRegistry registry;
+        return registry;
     }
 
-    KernelTypeId KernelRegistry::registerKernel(std::string_view name, KernelDescriptor desc)
+    KernelRegistrationResult KernelRegistry::registerKernel(KernelRegistration registration) noexcept
     {
-        // §3: Auto-allocate extension slot if requested.
-        if (desc.ext_slot_name)
+        const auto name = registration.canonical_name;
+        const bool is_invalid_name = name.empty() || name.find_first_of(" \t\r\n") != std::string_view::npos ||
+                                     name.find('\0') != std::string_view::npos;
+        if (is_invalid_name)
         {
-            // 异构查找:探测不构造 string,只有真要插入时才建键。
-            if (ext_name_to_slot_.find(desc.ext_slot_name) == ext_name_to_slot_.end())
-                ext_name_to_slot_.emplace(desc.ext_slot_name, next_ext_slot_++);
+            return lux::cxx::unexpected(EKernelRegistrationError::INVALID_NAME);
         }
-
-        auto it = name_to_id_.find(name);
-        if (it != name_to_id_.end())
+        const auto& descriptor = registration.descriptor;
+        const std::string_view extension = descriptor.ext_slot_name ? descriptor.ext_slot_name : "";
+        if (const auto id = idOf(name); id != kInvalidKernelId)
         {
-            // Already registered — replace descriptor, keep original ID.
-            descriptors_.insert(it->second, std::move(desc));
-            return it->second;
+            const auto& existing = *find(id);
+            const auto& old = existing.descriptor;
+            const bool same_functions =
+                old.emit == descriptor.emit && old.contribute_mesh == descriptor.contribute_mesh &&
+                old.contribute_arena == descriptor.contribute_arena && old.replay == descriptor.replay &&
+                old.resolve_patch == descriptor.resolve_patch;
+            const bool same_extension = existing.extension_name == extension;
+            if (!same_functions || !same_extension)
+            {
+                return lux::cxx::unexpected(EKernelRegistrationError::CONFLICT);
+            }
+            return id;
         }
-        const KernelTypeId id = next_id_++;
-        descriptors_.insert(id, std::move(desc));
+        if (name_to_id_.size() == std::numeric_limits<KernelTypeId>::max())
+        {
+            return lux::cxx::unexpected(EKernelRegistrationError::CAPACITY);
+        }
+        FrameExtensionSlotId slot{};
+        if (descriptor.ext_slot_name)
+        {
+            auto registered = FrameExtensionRegistry::instance().registerSlot(extension);
+            if (!registered)
+            {
+                return lux::cxx::unexpected(
+                    registered.error() == EFrameExtensionRegistrationError::CAPACITY
+                        ? EKernelRegistrationError::EXTENSION_CAPACITY
+                        : EKernelRegistrationError::INVALID_EXTENSION_NAME
+                );
+            }
+            slot = *registered;
+        }
+        auto entry = std::make_unique<RegisteredKernel>();
+        entry->code_lifetime = std::move(registration.code_lifetime);
+        entry->extension_name = extension;
+        entry->descriptor = descriptor;
+        entry->descriptor.ext_slot_name = descriptor.ext_slot_name ? entry->extension_name.c_str() : nullptr;
+        entry->extension_slot = slot;
+        const auto id = static_cast<KernelTypeId>(name_to_id_.size() + 1);
+        kernels_.insert(id, std::move(entry));
         name_to_id_.emplace(name, id);
         return id;
     }
 
+    lux::cxx::expected<void, EKernelRegistrationError> KernelRegistry::registerKernels(
+        std::span<const KernelDeclaration> declarations,
+        std::shared_ptr<const void> code_lifetime
+    ) noexcept
+    {
+        for (const auto& declaration : declarations)
+        {
+            auto registered = registerKernel({declaration.canonical_name, declaration.descriptor, code_lifetime});
+            if (!registered)
+            {
+                return lux::cxx::unexpected(registered.error());
+            }
+        }
+        return {};
+    }
+
     KernelTypeId KernelRegistry::idOf(std::string_view name) const noexcept
     {
-        auto it = name_to_id_.find(name);
-        return it != name_to_id_.end() ? it->second : kInvalidKernelId;
+        const auto found = name_to_id_.find(name);
+        return found != name_to_id_.end() ? found->second : kInvalidKernelId;
     }
 
-    const KernelDescriptor* KernelRegistry::find(KernelTypeId id) const noexcept
+    const RegisteredKernel* KernelRegistry::find(KernelTypeId id) const noexcept
     {
-        if (id == kInvalidKernelId || !descriptors_.contains(id))
-            return nullptr;
-        return &descriptors_.at(id);
+        return id != kInvalidKernelId && kernels_.contains(id) ? kernels_.at(id).get() : nullptr;
     }
-
-    FrameExtensionSlotId KernelRegistry::extSlotOf(std::string_view name) const noexcept
-    {
-        auto it = ext_name_to_slot_.find(name);
-        return it != ext_name_to_slot_.end() ? it->second : kInvalidExtSlot;
-    }
-
 } // namespace lux::render

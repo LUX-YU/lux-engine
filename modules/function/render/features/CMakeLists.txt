@@ -74,6 +74,7 @@ include_component_cmake_scripts(lux::engine::resource::asset)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/compile_glsl_shaders.cmake)
 
 set(RENDER_FEATURE_SRCS
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/BuiltinKernels.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assembly/canvas2d/Canvas2DOperationHandlers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assembly/deferred/DeferredGBufferOperationHandlers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assembly/deferred/DeferredLightingOperationHandlers.cpp
@@ -767,6 +768,17 @@ set_property(TARGET render_features PROPERTY LUX_PLUGIN_DESCRIPTION_INPUT "${_re
 set_property(TARGET render_features PROPERTY LUX_PLUGIN_SOURCE_INPUTS "${_render_plugin_sources};${_render_exports}")
 
 if(BUILD_TESTING AND LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(render_kernel_declarations_test test/kernel_declarations.cpp)
+
+    target_include_directories(
+        render_kernel_declarations_test
+        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/sinclude"
+    )
+
+    target_link_libraries(render_kernel_declarations_test PRIVATE render_features GPUOpen::VulkanMemoryAllocator)
+
+    add_test(NAME render.kernel_declarations COMMAND render_kernel_declarations_test)
+
     add_executable(render_view_binding_test test/view_binding.cpp)
     target_include_directories(render_view_binding_test PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/sinclude" "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/sinclude")

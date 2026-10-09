@@ -571,6 +571,14 @@ namespace lux::render::err
 
         /// pass 声明了 kernel id，但注册表中没有 emitter，且它也没有 recorder
         /// fallback。继续执行会得到一条“成功录制但没有任何命令”的静默空 pass。
+        struct KernelRegistrationFailed
+        {
+            static constexpr const char* name = "graph.kernel_registration_failed";
+            static constexpr const char* message = "Kernel registration rejected (reason {0})";
+            static constexpr ERecovery recovery = ERecovery::PERMANENT;
+            static constexpr ErrorArgs args{EErrorArg::UINT};
+        };
+
         struct KernelEmitterMissing
         {
             static constexpr const char* name = "graph.kernel_emitter_missing";
@@ -1310,6 +1318,7 @@ namespace lux::render::err
             static constexpr ERecovery recovery = ERecovery::NEEDS_INPUT;
             static constexpr ErrorArgs args{EErrorArg::UINT, EErrorArg::UINT};
         };
+
         struct SkinningInputPoolUnavailable
         {
             static constexpr const char* name = "frame.skinning_input_pool_unavailable";
@@ -1488,13 +1497,14 @@ namespace lux::render::err
     X(::lux::render::err::pipeline::VariantBudgetExhausted)                                                            \
     X(::lux::render::err::pipeline::GraphicsCreationFailed)                                                            \
     X(::lux::render::err::descriptor::InvalidVertexPoolTarget)                                                         \
-    X(::lux::render::err::descriptor::VertexSourceAlreadyRegistered)                                                \
+    X(::lux::render::err::descriptor::VertexSourceAlreadyRegistered)                                                   \
     X(::lux::render::err::descriptor::DomainWriteTargetEmpty)                                                          \
     X(::lux::render::err::graph::DependencyCycle)                                                                      \
     X(::lux::render::err::graph::ImportedResourceIncomplete)                                                           \
     X(::lux::render::err::graph::ReferencedResourceHasNoProducer)                                                      \
     X(::lux::render::err::graph::PassStarvedOfInput)                                                                   \
     X(::lux::render::err::graph::ComputePassMissingPipeline)                                                           \
+    X(::lux::render::err::graph::KernelRegistrationFailed)                                                             \
     X(::lux::render::err::graph::KernelEmitterMissing)                                                                 \
     X(::lux::render::err::graph::ComputePassPipelineStale)                                                             \
     X(::lux::render::err::graph::CrossQueueTransferRequired)                                                           \
@@ -1527,7 +1537,7 @@ namespace lux::render::err
     X(::lux::render::err::feature::TypeNotRegistered)                                                                  \
     X(::lux::render::err::feature::FeatureTypeInUse)                                                                   \
     X(::lux::render::err::feature::AlreadyInstalled)                                                                   \
-    X(::lux::render::err::feature::AttachmentNotAuthorized)                                                           \
+    X(::lux::render::err::feature::AttachmentNotAuthorized)                                                            \
     X(::lux::render::err::feature::ConflictsWithInstalled)                                                             \
     X(::lux::render::err::feature::DependencyMissing)                                                                  \
     X(::lux::render::err::feature::LevelProfileMissing)                                                                \

@@ -8,11 +8,11 @@
  * functions during ExecutionProgram replay.
  */
 
+#include <array>
+#include <cstdint>
 #include <lux/engine/render/graph/FrameExtensionRegistry.hpp>
 #include <lux/engine/render/resources/mesh/GpuDrivenMeshConsts.hpp> // kMaxShadowBiasGroups(唯一真相源)
 #include <vulkan/vulkan.h>
-#include <cstdint>
-#include <array>
 
 namespace lux::render
 {
@@ -44,7 +44,7 @@ namespace lux::render
     };
 
     /// Global slot ID for shadow frame extension data.
-    /// Assigned at static-init time by LUX_REGISTER_FRAME_EXTENSION.
+    /// Assigned during explicit render composition by FrameExtensionRegistry.
     LUX_FUNCTION_PUBLIC FrameExtensionSlotId shadowFrameExtSlot() noexcept;
 
 } // namespace lux::render

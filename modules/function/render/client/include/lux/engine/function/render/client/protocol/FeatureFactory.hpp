@@ -11,14 +11,15 @@
 //  comm/RenderProtocol.hpp 仍包含本头,对外接口不变。
 // ============================================================================
 
-#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp> // TypeId
-#include <lux/engine/function/render/client/core/FeatureHandle.hpp>
-#include <lux/engine/function/render/client/core/FeatureDescriptor.hpp>
 #include <lux/engine/function/render/client/core/Errors.hpp> // Expected<T>
+#include <lux/engine/function/render/client/core/FeatureDescriptor.hpp>
+#include <lux/engine/function/render/client/core/FeatureHandle.hpp>
+#include <lux/engine/function/render/client/protocol/RenderCommTypes.hpp> // TypeId
 
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <span>
 #include <type_traits>
 
 namespace lux::render
@@ -30,6 +31,8 @@ namespace lux::render
     using FeatureCreateFn = Expected<FeatureHandle> (*)(void* scene, const void* param, size_t param_size);
     using FeatureRegisterOpsFn = Expected<std::uint32_t> (*)(void* dispatcher, TypeId* out_ops, uint32_t max_ops);
     using FeatureUnregisterOpsFn = void (*)(void* dispatcher, const TypeId* ops, uint32_t op_count);
+
+    struct KernelDeclaration;
 
     struct FeatureFactory
     {
@@ -53,7 +56,10 @@ namespace lux::render
         /// feature as today: caller-ordered, no dependency/conflict validation.
         FeatureDescriptor descriptor{};
         std::uint32_t operation_count{};
+        /// Read only during serialized server admission; the same incoming code lease pins accepted kernels.
+        std::span<const KernelDeclaration> kernels;
     };
+
     static_assert(std::is_trivially_copyable_v<FeatureFactory>);
 
     /// 把 create-fn 收到的原始附件解成具体的 CommConfig。
@@ -77,10 +83,12 @@ namespace lux::render
         );
 
         if (param == nullptr || param_size != sizeof(Config))
+        {
             return renderFailure<err::comm::PayloadSizeMismatch>(
                 static_cast<std::uint32_t>(sizeof(Config)),
                 static_cast<std::uint32_t>(param_size)
             );
+        }
 
         Config value{};
         std::memcpy(&value, param, sizeof(Config));

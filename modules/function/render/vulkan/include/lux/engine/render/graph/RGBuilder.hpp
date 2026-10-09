@@ -1,11 +1,11 @@
 #pragma once
 
-#include <string>
-#include <string_view>
-#include <utility>
 #include <limits>
 #include <memory>
 #include <span>
+#include <string>
+#include <string_view>
+#include <utility>
 
 #include <lux/engine/render/graph/RGPassTypes.hpp>
 
@@ -213,6 +213,7 @@ namespace lux::render
 
         private:
             friend class RGBuilder;
+
             ConditionChainScope(RGBuilder& owner, std::uint64_t tag) noexcept : owner_(&owner), tag_(tag) {}
 
             RGBuilder* owner_{nullptr};
@@ -313,7 +314,7 @@ namespace lux::render
         RGPassBuilder& setKernelFn(PassRecordFn fn);
 
         /// Set a compile-time kernel for this pass by name (resolved via KernelRegistry).
-        /// @param name     Kernel name as registered with LUX_REGISTER_KERNEL.
+        /// @param name     Kernel name as registered with KernelRegistry.
         /// @param config   Pre-built kernel configuration blob.
         RGPassBuilder& setKernel(std::string_view name, const KernelConfigBlob& config);
 
@@ -422,7 +423,8 @@ namespace lux::render
 
     private:
         RGPassBuilder(RGGraphDescription& graph, uint32_t pass_index) noexcept : graph_{&graph}, pass_index_{pass_index}
-        {}
+        {
+        }
 
         // Internal accessor replacing the former public description().
         [[nodiscard]] RGPassDescription& pass() noexcept;

@@ -749,9 +749,9 @@ namespace lux::render
             }
 
             const auto* desc = KernelRegistry::instance().find(cpass.pass->kernel_id);
-            if (desc && desc->contribute_mesh)
+            if (desc && desc->descriptor.contribute_mesh)
             {
-                desc->contribute_mesh(pi, cpass, plan, pipeline_manager);
+                desc->descriptor.contribute_mesh(pi, cpass, plan, pipeline_manager);
             }
         }
 
@@ -872,9 +872,9 @@ namespace lux::render
             for (const auto& pass : compiled.original_graph.passes)
             {
                 const auto* desc = KernelRegistry::instance().find(pass.kernel_id);
-                if (desc && desc->contribute_arena)
+                if (desc && desc->descriptor.contribute_arena)
                 {
-                    desc->contribute_arena(pass, arena_accum);
+                    desc->descriptor.contribute_arena(pass, arena_accum);
                 }
             }
 
@@ -1256,9 +1256,9 @@ namespace lux::render
             {
                 // Registry dispatch — O(1) lookup, zero coupling to specific kernels.
                 const auto* desc = KernelRegistry::instance().find(cpass.pass->kernel_id);
-                if (desc && desc->emit)
+                if (desc && desc->descriptor.emit)
                 {
-                    desc->emit(emitter, pi, cpass, compiled);
+                    desc->descriptor.emit(emitter, pi, cpass, compiled);
                 }
             }
 

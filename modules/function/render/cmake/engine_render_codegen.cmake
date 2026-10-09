@@ -110,7 +110,7 @@ endfunction()
 # =============================================================================
 function(engine_add_comm_ops)
     set(one_value_args NAME CLIENT_TARGET IMPLEMENTATION_TARGET INCLUDE_PREFIX
-        CLIENT_EXPORT_MACRO CLIENT_VISIBILITY_HEADER BACKEND_EXPORT_MACRO BACKEND_VISIBILITY_HEADER)
+        CLIENT_EXPORT_MACRO CLIENT_VISIBILITY_HEADER BACKEND_EXPORT_MACRO BACKEND_VISIBILITY_HEADER KERNEL_HEADER KERNEL_DECLARATIONS)
     set(multi_value_args TARGET_FILES EXTRA_COMPILE_OPTIONS)
     cmake_parse_arguments(ARGS "" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
@@ -218,7 +218,7 @@ function(engine_add_comm_ops)
                 TEMPLATE ${_cpp_template}
                 OUTPUT_ROOT ${_job_root}
                 OUTPUT_SUFFIX .ops.cpp
-                JSON_FIELD "{\"stem\":\"${_stem}\",\"include_prefix\":\"${ARGS_INCLUDE_PREFIX}\"}"
+                JSON_FIELD "{\"stem\":\"${_stem}\",\"include_prefix\":\"${ARGS_INCLUDE_PREFIX}\",\"kernel_header\":\"${ARGS_KERNEL_HEADER}\",\"kernel_declarations\":\"${ARGS_KERNEL_DECLARATIONS}\"}"
             )
         endif()
 
@@ -230,7 +230,7 @@ function(engine_add_comm_ops)
                 TEMPLATE ${_cpp_template}
                 OUTPUT_ROOT ${_job_root}
                 OUTPUT_SUFFIX .ops.cpp
-                JSON_FIELD "{\"stem\":\"${_stem}\",\"include_prefix\":\"${ARGS_INCLUDE_PREFIX}\"}"
+                JSON_FIELD "{\"stem\":\"${_stem}\",\"include_prefix\":\"${ARGS_INCLUDE_PREFIX}\",\"kernel_header\":\"${ARGS_KERNEL_HEADER}\",\"kernel_declarations\":\"${ARGS_KERNEL_DECLARATIONS}\"}"
             )
         endif()
 

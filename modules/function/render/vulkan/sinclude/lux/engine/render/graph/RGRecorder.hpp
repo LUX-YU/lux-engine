@@ -1,17 +1,17 @@
 #pragma once
-#include <lux/engine/render/graph/RGCompiledGraph.hpp>
-#include <lux/engine/render/graph/BindingState.hpp>
-#include <lux/engine/render/graph/FrameExtensionRegistry.hpp>
-#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
-#include <lux/engine/function/render/client/RenderTargetLayout.hpp>
-#include <lux/engine/function/render/client/core/Errors.hpp>
-#include <vulkan/vulkan.h>
 #include <cstddef>
 #include <deque>
+#include <lux/engine/function/render/client/RenderTargetLayout.hpp>
+#include <lux/engine/function/render/client/core/Errors.hpp>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
+#include <lux/engine/render/graph/BindingState.hpp>
+#include <lux/engine/render/graph/FrameExtensionRegistry.hpp>
+#include <lux/engine/render/graph/RGCompiledGraph.hpp>
 #include <memory>
 #include <span>
 #include <string>
 #include <vector>
+#include <vulkan/vulkan.h>
 
 namespace lux::render
 {
@@ -94,7 +94,7 @@ namespace lux::render
         // ---- Generic extension data slots ----
         /// Per-slot data pointers set by features/kernels via FrameExtensionRegistry.
         /// Lifetime: feature-owned memory, valid for the current frame's recording.
-        std::array<const void*, kMaxFrameExtensionSlots> ext_data{};
+        std::array<const void*, kMaxFrameExtensionSlots + 1> ext_data{};
 
         // ---- External (e.g. CUDA-produced) timeline-semaphore sync ----
         /// Injected by a feature in populateFrameContext via
@@ -268,4 +268,4 @@ namespace lux::render
             ResourceRegistry* gpu_mgr = nullptr
         ) = 0;
     };
-}
+} // namespace lux::render

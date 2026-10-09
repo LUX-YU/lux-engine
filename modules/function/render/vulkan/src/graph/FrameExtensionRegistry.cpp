@@ -25,6 +25,7 @@ namespace lux::render
                 return lux::cxx::unexpected(EFrameExtensionRegistrationError::INVALID_NAME);
             }
         }
+        const std::lock_guard lock{mutex_};
         if (const auto found = name_to_id_.find(name); found != name_to_id_.end())
         {
             return found->second;
@@ -40,6 +41,7 @@ namespace lux::render
 
     FrameExtensionSlotId FrameExtensionRegistry::idOf(std::string_view name) const noexcept
     {
+        const std::lock_guard lock{mutex_};
         const auto found = name_to_id_.find(name);
         return found != name_to_id_.end() ? found->second : kInvalidExtSlot;
     }

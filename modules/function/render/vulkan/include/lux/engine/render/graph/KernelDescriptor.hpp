@@ -1,12 +1,15 @@
 #pragma once
 
+#include <array>
+#include <atomic>
 #include <cstdint>
+#include <limits>
 #include <lux/cxx/container/HeterogeneousLookup.hpp>
-#include <lux/cxx/container/SparseSet.hpp>
 #include <lux/engine/function/render/graph/RGForwardDecls.hpp>
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/render/graph/FrameExtensionRegistry.hpp>
 #include <memory>
+#include <mutex>
 #include <span>
 #include <string>
 #include <string_view>
@@ -130,8 +133,8 @@ namespace lux::render
         FrameExtensionSlotId extension_slot{};
     };
 
-    /// Serialized composition only; no unregister or hot replacement. Consumers must finish
-    /// before process registry teardown. Entries have stable addresses; accepted code stays pinned.
+    /// Synchronized cold registration; no unregister or hot replacement. Consumers must finish
+    /// before process registry teardown. Published entries are immutable and stay pinned.
     class LUX_FUNCTION_PUBLIC KernelRegistry final
     {
     public:
@@ -151,18 +154,20 @@ namespace lux::render
 
         template <typename Fn> void forEach(Fn&& fn) const
         {
-            const auto& keys = kernels_.keys();
-            const auto& values = kernels_.values();
-            for (std::size_t i = 0; i < keys.size(); ++i)
+            const auto count = published_count_.load(std::memory_order_acquire);
+            for (std::size_t i = 0; i < count; ++i)
             {
-                fn(keys[i], *values[i]);
+                fn(static_cast<KernelTypeId>(i + 1), *kernels_[i]);
             }
         }
 
     private:
         KernelRegistry() = default;
-        lux::cxx::OffsetSparseSet<KernelTypeId, std::unique_ptr<RegisteredKernel>> kernels_;
+        mutable std::mutex mutex_;
+        // KernelTypeId has a fixed 8-bit range. No published slot is replaced or relocated.
+        std::array<std::unique_ptr<RegisteredKernel>, std::numeric_limits<KernelTypeId>::max()> kernels_;
         lux::cxx::heterogeneous_map<KernelTypeId> name_to_id_;
+        std::atomic<std::size_t> published_count_{};
     };
 
     /// Byte size of one VkDrawIndexedIndirectCommand — the stride the GPU-driven

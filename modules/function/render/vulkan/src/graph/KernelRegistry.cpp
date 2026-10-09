@@ -20,8 +20,10 @@ namespace lux::render
         }
         const auto& descriptor = registration.descriptor;
         const std::string_view extension = descriptor.ext_slot_name ? descriptor.ext_slot_name : "";
-        if (const auto id = idOf(name); id != kInvalidKernelId)
+        const std::lock_guard lock{mutex_};
+        if (const auto found = name_to_id_.find(name); found != name_to_id_.end())
         {
+            const auto id = found->second;
             const auto& existing = *find(id);
             const auto& old = existing.descriptor;
             const bool same_functions =
@@ -60,8 +62,9 @@ namespace lux::render
         entry->descriptor.ext_slot_name = descriptor.ext_slot_name ? entry->extension_name.c_str() : nullptr;
         entry->extension_slot = slot;
         const auto id = static_cast<KernelTypeId>(name_to_id_.size() + 1);
-        kernels_.insert(id, std::move(entry));
+        kernels_[id - 1] = std::move(entry);
         name_to_id_.emplace(name, id);
+        published_count_.store(id, std::memory_order_release);
         return id;
     }
 
@@ -83,12 +86,14 @@ namespace lux::render
 
     KernelTypeId KernelRegistry::idOf(std::string_view name) const noexcept
     {
+        const std::lock_guard lock{mutex_};
         const auto found = name_to_id_.find(name);
         return found != name_to_id_.end() ? found->second : kInvalidKernelId;
     }
 
     const RegisteredKernel* KernelRegistry::find(KernelTypeId id) const noexcept
     {
-        return id != kInvalidKernelId && kernels_.contains(id) ? kernels_.at(id).get() : nullptr;
+        const auto count = published_count_.load(std::memory_order_acquire);
+        return id != kInvalidKernelId && id <= count ? kernels_[id - 1].get() : nullptr;
     }
 } // namespace lux::render

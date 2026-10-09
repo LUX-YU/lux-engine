@@ -4,6 +4,7 @@
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/cxx/container/HeterogeneousLookup.hpp>
 #include <lux/engine/function/visibility.h>
+#include <mutex>
 #include <string_view>
 
 namespace lux::render
@@ -19,8 +20,8 @@ namespace lux::render
     };
     using FrameExtensionResult = lux::cxx::expected<FrameExtensionSlotId, EFrameExtensionRegistrationError>;
 
-    /// The only frame-extension allocator. Register during serialized render composition,
-    /// before compiling/executing graphs. Names and slots remain valid until process shutdown.
+    /// The only frame-extension allocator. Cold registration is synchronized across render
+    /// owners. Names and slots remain valid until process shutdown.
     class LUX_FUNCTION_PUBLIC FrameExtensionRegistry final
     {
     public:
@@ -33,6 +34,7 @@ namespace lux::render
 
     private:
         FrameExtensionRegistry() = default;
+        mutable std::mutex mutex_;
         lux::cxx::heterogeneous_map<FrameExtensionSlotId> name_to_id_;
     };
 } // namespace lux::render

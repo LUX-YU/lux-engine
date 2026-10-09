@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/ContextExtensions.hpp>
 #include <lux/engine/editor/ContextErrors.hpp>
 #include <lux/engine/editor/EditorServices.hpp>
 #include <lux/engine/editor/EditorUiRegistry.hpp>
@@ -86,12 +87,19 @@ namespace lux::editor
             return {};
         }
 
+        template <class T>
+        [[nodiscard]] cxx::expected<void, engine::EContextExtensionError> bindExtension(T& surface) noexcept
+        {
+            return extensions_.bind(surface);
+        }
+
         [[nodiscard]] FrameworkResult<void> registerUiFactory(std::string, UiFactory) noexcept;
         [[nodiscard]] FrameworkResult<void> registerSceneProfile(SceneProfileRegistration) noexcept;
 
     private:
         friend class EditorContext;
         [[nodiscard]] FrameworkResult<void> registerErased(cxx::TypeToken, EditorServices::Factory) noexcept;
+        engine::ContextExtensions::Composition extensions_;
         std::vector<EditorServices::Entry> services_;
         std::vector<EditorUiRegistry::Factory> ui_;
         std::vector<SceneToolRegistry::Entry> scene_tools_;

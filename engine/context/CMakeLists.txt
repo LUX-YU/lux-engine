@@ -38,3 +38,11 @@ lux_engine_install_components(
 if(TARGET render_runtime)
     add_subdirectory(rendering)
 endif()
+
+if(BUILD_TESTING)
+    add_executable(context_extensions_test test/extensions.cpp)
+
+    target_link_libraries(context_extensions_test PRIVATE lux::engine::engine_context)
+
+    add_test(NAME engine.context_extensions COMMAND context_extensions_test)
+endif()

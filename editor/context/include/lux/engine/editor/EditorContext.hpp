@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/ContextExtensions.hpp>
 #include <lux/engine/editor/EditorServices.hpp>
 #include <lux/engine/editor/EditorUiRegistry.hpp>
 #include <lux/engine/editor/ProjectDescription.hpp>
@@ -84,6 +85,16 @@ namespace lux::editor
         {
             return scene_profiles_;
         }
+        [[nodiscard]] engine::ContextExtensions& extensions() noexcept
+        {
+            return extensions_;
+        }
+
+        [[nodiscard]] const engine::ContextExtensions& extensions() const noexcept
+        {
+            return extensions_;
+        }
+
         [[nodiscard]] process::TaskScope& tasks() noexcept;
         template <class T> [[nodiscard]] FrameworkResult<std::reference_wrapper<T>> service() noexcept
         {
@@ -105,6 +116,7 @@ namespace lux::editor
         EditorUiRegistry ui_;
         SceneToolRegistry scene_tools_;
         SceneProfileRegistry scene_profiles_;
+        engine::ContextExtensions extensions_;
         // Instances die before factory captures, project paths, VFS and plugin registrations.
         EditorServices services_;
         // Destruction requests cancellation only; accepted tasks own their inputs and code.

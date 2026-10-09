@@ -127,9 +127,13 @@ int main(int argc, char** argv)
     assert(queue.isCurrent() && engine);
     std::vector<int> destroyed;
     unsigned constructed{}, attempts{}, tools{};
+    asset::AssetVfs external_assets;
     {
         auto assemble = [&](EditorComposition& context) noexcept -> FrameworkResult<void>
         {
+            assert(context.bindExtension(external_assets));
+            const auto duplicate = context.bindExtension(external_assets);
+            assert(!duplicate && duplicate.error() == engine::EContextExtensionError::DUPLICATE_TYPE);
             assert(context.registerServiceFactory<Service>(
                 [&](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Service>>
                 {
@@ -179,6 +183,12 @@ int main(int argc, char** argv)
             fixture::createContext(**engine, {"First", std::filesystem::current_path()}, manifest("First"), assemble);
         assert(created);
         auto& context = **created;
+        assert(context.extensions().find<asset::AssetVfs>() == &external_assets);
+        assert(context.extensions().find<Service>() == nullptr && constructed == 0);
+        static_assert(std::is_same_v<
+                      decltype(std::as_const(context).extensions().find<asset::AssetVfs>()),
+                      const asset::AssetVfs*>);
+
         static_assert(std::is_same_v<decltype(std::as_const(context).engine()), const engine::EngineContext&>);
         static_assert(std::is_same_v<decltype(std::as_const(context).assets()), const asset::AssetVfs&>);
         assert(error::ErrorRegistry::instance().find(Errors::EditorRecursiveServiceFactory));
@@ -229,6 +239,7 @@ int main(int argc, char** argv)
             empty_assembly
         );
         assert(empty);
+        assert(!(*empty)->extensions().find<asset::AssetVfs>());
         auto missing = (*empty)->sceneTools().create<Tools>(**empty, world);
         assert(!missing && missing.error().type == error::errorId("lux.editor.no_matching_scene_tool_rule"));
     }

@@ -16,7 +16,8 @@ namespace lux::editor
         : engine_(engine), project_(std::move(prepared.description)), manifest_(std::move(prepared.manifest)),
           plugins_(std::move(prepared.plugins)), registrations_(std::move(prepared.registrations)),
           ui_(std::move(composition.ui_)), scene_tools_(std::move(composition.scene_tools_)),
-          scene_profiles_(std::move(composition.scene_profiles_)), services_(std::move(composition.services_)),
+          scene_profiles_(std::move(composition.scene_profiles_)),
+          extensions_(std::move(composition.extensions_).publish()), services_(std::move(composition.services_)),
           tasks_(engine.execution())
     {
     }

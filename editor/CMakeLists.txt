@@ -91,8 +91,8 @@ target_link_libraries(
         lux::engine::resource::asset
         lux::engine::scene::scene_asset
         lux::engine::process::process_execution
-    PRIVATE
         lux::engine::engine_context
+    PRIVATE
         lux::engine::project::project_plugins
 )
 

@@ -105,8 +105,12 @@ int main(int argc, char** argv)
     assert(runtime.isCurrent());
     std::vector<int> destroyed;
     unsigned constructed{}, attempts{}, tools{};
+    asset::AssetVfs extension_assets;
     auto assemble = [&](EditorComposition& context) noexcept -> FrameworkResult<void>
     {
+        assert(context.bindExtension(extension_assets));
+        const auto duplicate = context.bindExtension(extension_assets);
+        assert(!duplicate && duplicate.error() == engine::EContextExtensionError::DUPLICATE_TYPE);
         assert(context.registerServiceFactory<Service>(
             [&](EditorContext&) noexcept -> FrameworkResult<std::unique_ptr<Service>>
             {
@@ -155,6 +159,9 @@ int main(int argc, char** argv)
 
     auto inspect = [&](EditorContext& context) noexcept
     {
+        assert(context.extensions().find<asset::AssetVfs>() == &extension_assets);
+        assert(context.extensions().find<Service>() == nullptr && constructed == 0);
+        assert(std::as_const(context).extensions().find<asset::AssetVfs>() == &extension_assets);
         static_assert(std::is_same_v<decltype(std::as_const(context).engine()), const engine::EngineContext&>);
         static_assert(std::is_same_v<decltype(std::as_const(context).assets()), const asset::AssetVfs&>);
         assert(error::ErrorRegistry::instance().find(Errors::EditorInvalidWindowExtent));
@@ -205,6 +212,7 @@ int main(int argc, char** argv)
         [](EditorComposition&) noexcept -> FrameworkResult<void> { return {}; },
         [](EditorContext& context) noexcept
         {
+            assert(!context.extensions().find<asset::AssetVfs>());
             auto result = context.sceneTools().create<Tools>(context, {});
             assert(!result && result.error().type == error::errorId("lux.editor.no_matching_scene_tool_rule"));
         }

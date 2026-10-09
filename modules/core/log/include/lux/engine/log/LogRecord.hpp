@@ -1,7 +1,7 @@
 #pragma once
 /**
  * @file LogRecord.hpp
- * @brief 定长延迟格式化日志记录(统一事件系统 §7.5-D,档2)。
+ * @brief 同步交付、消费端格式化的定长日志记录。
  *
  * 调用点**不格式化**:把「格式串指针 + 参数字节 + 解码函数指针」打进一条
  * 定长记录,格式化推迟到消费端(formatRecord,在 Log.cpp)。稳态零堆分配的
@@ -9,15 +9,15 @@
  *   ① 格式串零拷贝 —— `std::format_string` 钉住编译期字面量,只存指针;
  *   ② 参数打包在栈上一次 memcpy 完成 —— 无 string/variant/类型擦除堆盒;
  *      解码靠调用点模板实例化出的静态函数指针(每调用点一个,零运行期注册);
- *   ③ 队列内核(moodycamel)的块池承接定长记录内存;
+ *   ③ 记录直接借给宿主出口，不建立队列或复制共享 owner;
  *   ④ 超长参数截断而非溢出堆(truncated 标记)—— 日志不是数据管道,
  *      「记录定长」正是让全链零分配成立的前提。
  *
  * 头内只有 memcpy 级打包与 `std::make_format_args`(纯指针打包)——
  * **不引入格式化代码路径**(Log.hpp 文件头记录的 57× 目标文件膨胀实测)。
  *
- * LogRecord 是纯数据 struct:log 模块定义它**不等于** log 依赖事件系统 ——
- * 发布发生在宿主组装层注入的单出口回调里(方案B,见 Log.hpp)。
+ * LogRecord 是借用格式、分类与解码代码的纯数据 struct；交付在调用线程同步发生。
+ * 宿主若延迟格式化，须自行保留这些借用的存储及代码寿命，不能只复制记录就假定安全。
  */
 
 #include <cstddef>
@@ -52,7 +52,7 @@ namespace lux::log
     inline constexpr std::size_t kLogArgCapacity = 232;
 
     /// 定长记录(≈288B):头部全部无所有权 —— format/category 是静态存储期
-    /// 字面量,decode 是静态函数指针;跨线程/延迟携带安全。
+    /// 字面量,decode 是调用模块的函数指针；有效期见文件头的借用合同。
     struct LogRecord
     {
         const char* format;   ///< 格式串字面量(fmt 风格)

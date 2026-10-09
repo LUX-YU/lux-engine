@@ -5,10 +5,9 @@
 #include <cstdio>
 #include <cstring>
 #include <iterator>
-#include <memory>
-#include <mutex>
+#include <exception>
+#include <functional>
 #include <thread>
-#include <vector>
 
 #if defined(__ANDROID__)
 #include <android/log.h>
@@ -69,14 +68,10 @@ namespace lux::log
             "BufSink must model output_iterator<char> for std::vformat_to"
         );
 
-        /// Single output: atomic publication keeps the read path free of the
-        /// administration lock. Replaced callbacks remain owned until process
-        /// shutdown.
+        /// The host retains the published target until all producers are joined.
         struct State
         {
-            std::mutex admin;
-            std::atomic<const OutputFn*> output{nullptr};
-            std::vector<std::unique_ptr<OutputFn>> retired;
+            std::atomic<const LogOutputTarget*> output{nullptr};
             std::atomic<std::uint8_t> min_level{static_cast<std::uint8_t>(ELevel::LOG_TRACE)};
             std::atomic<std::uint64_t> seq{0};
         };
@@ -110,21 +105,14 @@ namespace lux::log
         return "?";
     }
 
-    void setOutput(OutputFn fn)
+    void setOutputTarget(const LogOutputTarget* target) noexcept
     {
-        auto& s = state();
-        std::lock_guard lock(s.admin);
-        if (fn)
+        const bool is_invalid_target = target != nullptr && target->emit == nullptr;
+        if (is_invalid_target)
         {
-            auto owned = std::make_unique<OutputFn>(std::move(fn));
-            const OutputFn* raw = owned.get();
-            s.retired.push_back(std::move(owned));
-            s.output.store(raw, std::memory_order_release);
+            std::terminate();
         }
-        else
-        {
-            s.output.store(nullptr, std::memory_order_release);
-        }
+        state().output.store(target, std::memory_order_release);
     }
 
     void setMinLevel(ELevel lv) noexcept
@@ -229,9 +217,9 @@ namespace lux::log
             std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
                 .count();
 
-        if (const OutputFn* out = s.output.load(std::memory_order_acquire))
+        if (const LogOutputTarget* out = s.output.load(std::memory_order_acquire))
         {
-            (*out)(r);
+            out->emit(out->state, r);
             return;
         }
         // Host never assembled an output (CLI helper, early startup, tests,

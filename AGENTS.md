@@ -215,7 +215,8 @@ ALLOCATION_FAILURE。边界已有异常转换时先终止 bad_alloc，再转换�
 ### 库不决定文字打到哪；宿主装配一次出口
 
 见 `modules/core/log/include/lux/engine/log/Log.hpp` 的文件头（§7.1 两条通道）。
-库层只声明 level + category + 消息，落点由宿主在启动时 `addSink` 决定。
+库层只声明 level + category + 消息，落点由宿主在启动时 `setOutputTarget` 发布稳定借用目标。
+宿主先停止并 join 日志生产者，再清空目标，最后销毁目标 owner；日志库不拥有回调或业务对象。
 `modules/function/render` 更严格：它连 `lux::log` 都不链接，诊断只走
 `RenderErrorSink` 的结构化错误 + `Expected` 返回值（`no_terminal_io` 门禁）。
 

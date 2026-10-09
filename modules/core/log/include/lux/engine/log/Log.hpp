@@ -32,7 +32,7 @@
  * checked at COMPILE time — and it also pins the format string to a
  * compile-time literal, which is what lets the record carry just a pointer.
  *
- * Back end: the host injects one output callback at startup (`setOutput`).
+ * Back end: the host publishes one stable output target at startup (`setOutputTarget`).
  * It executes synchronously on the logging thread and borrows the record for
  * that call. Routing and any retained data belong to the host. No output
  * installed → format and fall back to stderr; missing assembly must not
@@ -43,8 +43,8 @@
  * want one. The old lock-fanout total order was the price of a lock on every
  * log call from every thread — retired with the registry.
  *
- * Threading: every function here is callable from any thread. setOutput /
- * setMinLevel are startup-time, host-assembly affairs.
+ * Threading: logging may run on any thread. Target publication is host assembly;
+ * stop/join all producers before clearing the target and destroying its owner.
  */
 
 #include <lux/engine/core/visibility.h>
@@ -52,7 +52,6 @@
 
 #include <cstdint>
 #include <format>
-#include <functional>
 #include <string_view>
 #include <utility>
 
@@ -60,14 +59,18 @@ namespace lux::log
 {
     // ── Host assembly (startup, main thread) ───────────────────────────
 
-    /// The ONE output seam (方案B). The callback runs on the LOGGING thread
-    /// (keep it cheap);
-    /// the record is only valid for the duration of the call — copy it out
-    /// (queueing by value does exactly that).
-    /// Empty function restores the stderr fallback — hosts do that at the END
-    /// of shutdown so subsequent logs use the fallback.
-    using OutputFn = std::function<void(const LogRecord&)>;
-    LUX_CORE_PUBLIC void setOutput(OutputFn fn);
+    /// Host-owned, immutable while published. Both the target and its state/code
+    /// must outlive all logging calls. The record is borrowed for the synchronous call.
+    struct LogOutputTarget final
+    {
+        void* state{};
+        void (*emit)(void*, const LogRecord&) noexcept{};
+    };
+
+    /// Publishes a borrowed stable target; a non-null target must have an emit function.
+    /// Before replacement/clear: stop and join producers. Clear, then destroy the old owner.
+    /// nullptr restores stderr. Core log never retains the target or any captured owner.
+    LUX_CORE_PUBLIC void setOutputTarget(const LogOutputTarget* target) noexcept;
 
     /// Runtime level filter — records below @p lv are dropped at the CALL
     /// SITE (before packing).

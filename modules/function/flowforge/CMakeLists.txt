@@ -196,3 +196,14 @@ if(BUILD_TESTING)
 
     add_test(NAME flow.node_catalog COMMAND flow_node_catalog_test)
 endif()
+
+if(BUILD_TESTING)
+    add_executable(flow_source_codec_test test/source_codec.cpp)
+
+    target_link_libraries(flow_source_codec_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(
+        NAME flow.source_codec
+        COMMAND flow_source_codec_test "${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/source-v1"
+    )
+endif()

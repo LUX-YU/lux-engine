@@ -1,4 +1,6 @@
+#include <lux/engine/flowforge/FlowNodeCatalog.hpp>
 #include <lux/engine/flowforge/NativeCallDefinition.hpp>
+#include <lux/engine/flowforge/detail/FlowNodeIdentity.hpp>
 
 #include <algorithm>
 #include <charconv>
@@ -317,7 +319,37 @@ namespace lux::flowforge
             const FlowSourceEnvironment& environment
         ) noexcept
         {
-            const auto operation = source.operation;
+            const auto operation = detail::builtinNodeOperation(source.type);
+            if (operation == ENodeOperation::REGISTERED_VALUE)
+            {
+                const auto definition =
+                    environment.nodes ? environment.nodes->find(graph::nodeTypeId(source.type)) : nullptr;
+                if (!definition)
+                {
+                    return fail(EFlowSourceError::UNKNOWN_NODE_KIND, source.type, source.id);
+                }
+                const bool is_identity_mismatch = definition->identity().canonical_name != source.type ||
+                                                  definition->identity().version != source.version;
+                if (is_identity_mismatch)
+                {
+                    return fail(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
+                }
+                auto payload = definition->decode(std::get<FlowSourcePayload>(source.parameters).bytes);
+                if (!payload)
+                {
+                    FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
+                    error.cause = std::move(payload.error());
+                    return cxx::unexpected(std::move(error));
+                }
+                auto node = createFlowValueNode(definition, std::move(*payload));
+                if (!node)
+                {
+                    FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
+                    error.cause = std::move(node.error());
+                    return cxx::unexpected(std::move(error));
+                }
+                return std::move(*node);
+            }
             if (binary(operation) || unary(operation))
             {
                 const auto* type = findType(std::get<FlowSourceType>(source.parameters).name, environment);
@@ -668,7 +700,28 @@ namespace lux::flowforge
         const auto& node = *found;
         FlowSourceNode item;
         item.id = id;
-        item.operation = node.operation();
+        if (const auto* definition = node.registeredType())
+        {
+            item.type = definition->identity().canonical_name;
+            item.version = definition->identity().version;
+            const auto* payload = node.registeredPayload();
+            if (!payload)
+            {
+                return fail(EFlowSourceError::INVALID_VALUE, "node.payload", id);
+            }
+            auto encoded = definition->encode(*payload);
+            if (!encoded)
+            {
+                FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, item.type, id};
+                error.cause = std::move(encoded.error());
+                return cxx::unexpected(std::move(error));
+            }
+            item.parameters = FlowSourcePayload{std::move(*encoded)};
+        }
+        else
+        {
+            item.type = detail::builtinNodeName(node.operation());
+        }
         item.name = node.name();
         item.creator = node.creatorName();
         if (binary(node.operation()))
@@ -783,6 +836,12 @@ namespace lux::flowforge
                     return fail(EFlowSourceError::INVALID_VALUE, "pin", item.id);
                 }
                 FlowSourcePin value{graph.pinId(pin), pin->kind(), pin->name()};
+                const auto* record = graph.topology().findPin(value.id);
+                if (!record)
+                {
+                    return fail(EFlowSourceError::INVALID_TOPOLOGY, "pin", id, value.id);
+                }
+                value.semantic = record->semantic;
                 if (const auto* type = pinType(*pin))
                 {
                     value.type = type->name;
@@ -983,7 +1042,7 @@ namespace lux::flowforge
         {
             for (const auto& item : source.nodes)
             {
-                if ((item.operation == ENodeOperation::FUNC_DEF_START) != definitions)
+                if ((detail::builtinNodeOperation(item.type) == ENodeOperation::FUNC_DEF_START) != definitions)
                 {
                     continue;
                 }
@@ -1008,7 +1067,9 @@ namespace lux::flowforge
                     {
                         auto& pin = *pins[i];
                         const auto* type = pinType(pin);
-                        const bool mismatch = pin.kind() != saved[i].kind ||
+                        const auto semantic = node->registeredType() ? node->registeredPinSemantic(pin)
+                                                                     : detail::builtinPinSemantic(pin.kind(), i);
+                        const bool mismatch = pin.kind() != saved[i].kind || semantic != saved[i].semantic ||
                                               (type ? type->name != saved[i].type : !saved[i].type.empty());
                         if (mismatch)
                         {

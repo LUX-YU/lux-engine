@@ -1,0 +1,60 @@
+exports = []
+format = 'lux.flowforge.source'
+id = '01000000-0000-0000-0000-000000000000'
+links = []
+name = 'Branch'
+variables = []
+version = 1
+
+[[nodes]]
+creator = 'Branch'
+id = '1'
+name = 'Branch'
+operation = 2
+
+    [nodes.layout]
+    placed = false
+    x = 0.0
+    y = 0.0
+
+    [nodes.parameters]
+
+    [[nodes.inputs]]
+    id = '1'
+    kind = 1
+    name = '->'
+    type = ''
+
+        [nodes.inputs.literal]
+        kind = 0
+        value = ''
+
+    [[nodes.inputs]]
+    id = '2'
+    kind = 3
+    name = 'Condition'
+    type = 'bool'
+
+        [nodes.inputs.literal]
+        kind = 2
+        value = 'false'
+
+    [[nodes.outputs]]
+    id = '3'
+    kind = 2
+    name = 'True'
+    type = ''
+
+        [nodes.outputs.literal]
+        kind = 0
+        value = ''
+
+    [[nodes.outputs]]
+    id = '4'
+    kind = 2
+    name = 'False'
+    type = ''
+
+        [nodes.outputs.literal]
+        kind = 0
+        value = ''

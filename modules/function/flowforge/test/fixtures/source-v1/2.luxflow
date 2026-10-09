@@ -1,0 +1,40 @@
+exports = []
+format = 'lux.flowforge.source'
+id = '01000000-0000-0000-0000-000000000000'
+links = []
+name = 'Sequence'
+variables = []
+version = 1
+
+[[nodes]]
+creator = 'Sequence'
+id = '1'
+name = 'Sequence'
+operation = 3
+
+    [nodes.layout]
+    placed = false
+    x = 0.0
+    y = 0.0
+
+    [nodes.parameters]
+
+    [[nodes.inputs]]
+    id = '1'
+    kind = 1
+    name = '->'
+    type = ''
+
+        [nodes.inputs.literal]
+        kind = 0
+        value = ''
+
+    [[nodes.outputs]]
+    id = '2'
+    kind = 2
+    name = '->'
+    type = ''
+
+        [nodes.outputs.literal]
+        kind = 0
+        value = ''

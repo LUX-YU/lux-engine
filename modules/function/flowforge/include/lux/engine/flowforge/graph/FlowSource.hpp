@@ -1,14 +1,18 @@
 #pragma once
 
+#include <lux/engine/flowforge/FlowForgeFailure.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/script/ScriptAbilityCatalog.hpp>
 #include <lux/engine/function/script/ScriptEvent.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
+#include <optional>
 #include <variant>
 
 namespace lux::flowforge
 {
+    class FlowNodeCatalog;
+
     // Owned source values only. A const source never exposes Node::graph(), Pin::node(), or metadata pointers.
     // Types and native call signatures use qualified names, not process addresses or registry indices.
     struct FlowSourceArgument final
@@ -39,6 +43,7 @@ namespace lux::flowforge
         EPinKind kind{};
         std::string name, type;
         FlowSourceLiteral literal;
+        graph::PinSemanticId semantic;
         bool operator==(const FlowSourcePin&) const = default;
     };
 
@@ -81,8 +86,14 @@ namespace lux::flowforge
         bool operator==(const FlowSourceAbility&) const = default;
     };
 
-    // Each operation has exactly one parameter schema. Control nodes have no parameters.
-    // These values are immutable captures/codec input, never a second writable FlowGraph.
+    struct FlowSourcePayload final
+    {
+        std::string bytes;
+        bool operator==(const FlowSourcePayload&) const = default;
+    };
+
+    // Builtin adapters have fixed parameter schemas; registered nodes own their codec bytes. Control nodes have no
+    // parameters. These values are immutable captures/codec input, never a second writable FlowGraph.
     using VFlowSourceParameters = std::variant<
         std::monostate,
         FlowSourceType,
@@ -91,12 +102,14 @@ namespace lux::flowforge
         FlowSourceField,
         FlowSourceNativeCall,
         FlowSourceAbility,
-        lux::script::ScriptEventSourceDescription>;
+        lux::script::ScriptEventSourceDescription,
+        FlowSourcePayload>;
 
     struct FlowSourceNode final
     {
         NodeId id;
-        ENodeOperation operation{};
+        std::string type;
+        std::uint32_t version{1};
         std::string name, creator;
         std::vector<FlowSourcePin> inputs, outputs;
         lux::graph::GraphNodeLayout layout;
@@ -157,7 +170,8 @@ namespace lux::flowforge
         UNKNOWN_REFLECTION_MEMBER,
         UNKNOWN_ABILITY,
         SCHEMA_MISMATCH,
-        UNSUPPORTED_LITERAL
+        UNSUPPORTED_LITERAL,
+        NODE_CODEC_FAILURE
     };
 
     struct FlowSourceFailure final
@@ -167,6 +181,7 @@ namespace lux::flowforge
         NodeId node;
         PinId pin;
         std::uint32_t line{}, column{};
+        std::optional<FlowForgeFailure> cause;
     };
     template <class T> using FlowSourceResult = lux::cxx::expected<T, FlowSourceFailure>;
 
@@ -181,6 +196,9 @@ namespace lux::flowforge
         ScriptAbilityNodeCatalogView abilities;
         std::span<const lux::script::ScriptEventSourceDescription> events;
         std::shared_ptr<const void> code_lifetime;
+        // Borrowed for this synchronous materialization only. Each restored node retains its
+        // immutable definition and code lease; the catalog itself need not outlive the graph.
+        const FlowNodeCatalog* nodes{};
     };
 
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_PUBLIC FlowSourceResult<void> validateFlowSourceEnvironment(

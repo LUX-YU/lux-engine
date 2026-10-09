@@ -106,7 +106,28 @@ discards the candidate, including any primitives already emitted by a rejected c
 Its private node adapter retains the definition and owns its declared pin objects; it does not
 erase an old polymorphic node into the semantic payload. Topology uses the canonical type and
 declared pin semantics. This is an intermediate migration boundary, not completion of MA08:
-registered control/native/Ability nodes, canonical source round-trip and the final plain
-NodeId/PinId stores still need migration. The old source codec rejects unsupported registered
-nodes rather than silently dropping their payload. No additional runtime, executor or plugin
-loader is introduced here.
+registered control/native/Ability nodes and the final plain NodeId/PinId stores still need migration.
+No additional runtime, executor or plugin loader is introduced here.
+
+## Source identity and extension codecs
+
+New source encoding is `lux.flowforge.source` version 2. Every node stores a canonical type
+name and schema version, every pin its semantic identity in addition to its graph-local PinId.
+Builtin topology type IDs use the same canonical-name hash. File decoding retains version 1
+as a read-only compatibility format; the explicit frozen ordinal/name table is independent of
+future enum numbering. New output never writes operation ordinals. Old builtin construction
+and parameter-schema adapters remain until the complete builtin registration migration; their
+canonical names are reserved against extension substitution and hash collision.
+
+Registered nodes use their definition's encode/decode callbacks. Binary payload bytes are
+losslessly hex-encoded by the outer TOML codec. Syntax decoding and re-encoding do not require
+an extension to be loaded or call its code. Materialization borrows `FlowSourceEnvironment::nodes`,
+checks canonical name/version and exact pin semantics/types, then retains the resolved immutable
+definition. The catalog may die after materialization; metadata retains its separate environment
+lifetime. Missing definitions, wrong schema and rejected codecs report explicit failures; codec
+failures retain the original FlowForgeFailure. No default-success node is substituted.
+
+Editable drafts need only pass source/pin schema checks, not compilation eligibility. NodeId,
+PinId, links, variables, exports and persistent layout survive v1->v2 and registered round-trips.
+Capacity, identity exhaustion and GraphEdit ownership rules are unchanged. Full registered
+control/native/Ability codecs still depend on the remaining domain migration.

@@ -63,6 +63,17 @@ namespace flow_test
             }
             return std::vector<FlowValue>{*square, *sum};
         };
+        result.encode = [](const FlowNodePayload& payload) noexcept -> FlowForgeResult<std::string>
+        { return std::string(payload.get<Polynomial>()->reject ? "1" : "0"); };
+        result.decode = [](std::string_view bytes,
+                           const object::CodeLease& code) noexcept -> FlowForgeResult<FlowNodePayload>
+        {
+            if (bytes != "0" && bytes != "1")
+            {
+                return cxx::unexpected(FlowForgeFailure{EFlowForgeError::GRAPH_INVALID, "invalid polynomial source"});
+            }
+            return FlowNodePayload::make<Polynomial, clone>(code, bytes == "1");
+        };
         return result;
     }
 

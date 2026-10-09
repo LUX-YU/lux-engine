@@ -4,6 +4,7 @@
 #include <lux/engine/flowforge/FlowNodeCatalog.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
+#include <lux/engine/flowforge/graph/FlowSource.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/graph/ObjectNode.hpp>
 #include <lux/engine/function/script/native/NativeModule.hpp>
@@ -95,6 +96,10 @@ int main(int argc, char** argv)
                 const auto entry = library->get_symbol<Entry>("makeDefinition");
                 require(entry != nullptr);
                 entry(type, object::CodeLease::plugin(library));
+                using Register = void(FlowNodeRegistration&, const object::CodeLease&) noexcept;
+                const auto registration = library->get_symbol<Register>("registerPolynomial");
+                require(registration != nullptr);
+                registration(definition, object::CodeLease::plugin(library));
             }
             else
             {
@@ -113,6 +118,24 @@ int main(int argc, char** argv)
         }
         auto graph = example(false, type);
         auto invalid = example(true, type);
+        const asset::AssetId source_id{std::array<std::uint8_t, 16>{1}};
+        auto source = captureFlowSource(source_id, "polynomial", graph);
+        require(source.has_value());
+        auto bytes = encodeFlowSource(*source);
+        require(bytes.has_value());
+        auto decoded = decodeFlowSource(*bytes);
+        require(decoded.has_value() && *decoded == *source);
+        {
+            FlowNodeCatalog decoding_catalog;
+            require(decoding_catalog.add(std::span{&definition, 1}).has_value());
+            FlowSourceEnvironment environment;
+            environment.nodes = &decoding_catalog;
+            auto restored = materializeFlowSource(*decoded, environment);
+            require(restored.has_value());
+            auto recaptured = captureFlowSource(source_id, "polynomial", *restored);
+            require(recaptured.has_value() && *recaptured == *source);
+            graph = std::move(*restored);
+        }
         type.reset();
         definition = {};
         require(argc < 2 || !observed.expired());

@@ -1,0 +1,31 @@
+exports = []
+format = 'lux.flowforge.source'
+id = '01000000-0000-0000-0000-000000000000'
+links = []
+name = 'Start'
+variables = []
+version = 1
+
+[[nodes]]
+creator = 'Start'
+id = '1'
+inputs = []
+name = 'Start'
+operation = 1
+
+    [nodes.layout]
+    placed = false
+    x = 0.0
+    y = 0.0
+
+    [nodes.parameters]
+
+    [[nodes.outputs]]
+    id = '1'
+    kind = 2
+    name = '->'
+    type = ''
+
+        [nodes.outputs.literal]
+        kind = 0
+        value = ''

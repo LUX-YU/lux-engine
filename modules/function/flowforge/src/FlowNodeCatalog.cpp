@@ -1,4 +1,5 @@
 #include <lux/engine/flowforge/FlowNodeCatalog.hpp>
+#include <lux/engine/flowforge/detail/FlowNodeIdentity.hpp>
 
 #include <lux/engine/meta/Meta.hpp>
 
@@ -13,29 +14,10 @@ namespace lux::flowforge
             return {EFlowForgeError::GRAPH_INVALID, std::move(message), {}, pin};
         }
 
-        bool canonicalName(std::string_view name) noexcept
-        {
-            if (name.empty())
-            {
-                return false;
-            }
-            const auto initial = [](char c) noexcept
-            { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; };
-            if (!initial(name.front()))
-            {
-                return false;
-            }
-            return std::all_of(
-                name.begin(),
-                name.end(),
-                [&](char c) noexcept { return initial(c) || (c >= '0' && c <= '9') || c == '.' || c == '-'; }
-            );
-        }
-
         bool validRegistration(const FlowNodeRegistration& value) noexcept
         {
             const bool has_identity = value.identity.id.valid() && value.identity.version != 0 &&
-                                      canonicalName(value.identity.canonical_name);
+                                      detail::canonicalNodeName(value.identity.canonical_name);
             const bool has_payload_type = value.payload_type.isValid();
             const bool has_code = value.code.valid();
             const bool has_callbacks = value.create && value.describe_pins && value.validate && value.compile;
@@ -218,18 +200,20 @@ namespace lux::flowforge
 
     FlowNodeCatalog::~FlowNodeCatalog() = default;
 
-    cxx::expected<void, EFlowNodeCatalogError> FlowNodeCatalog::add(std::span<const FlowNodeRegistration> registrations
-    ) noexcept
+    cxx::expected<void, EFlowNodeCatalogError>
+    FlowNodeCatalog::add(std::span<const FlowNodeRegistration> registrations) noexcept
     {
         for (std::size_t i = 0; i != registrations.size(); ++i)
         {
             const auto& value = registrations[i];
-            if (!validRegistration(value))
+            const bool is_builtin_identity =
+                detail::builtinNodeOperation(value.identity.canonical_name) != ENodeOperation::REGISTERED_VALUE;
+            if (!validRegistration(value) || is_builtin_identity)
             {
                 return cxx::unexpected(EFlowNodeCatalogError::INVALID_REGISTRATION);
             }
-            const auto check = [&](const graph::GraphNodeTypeIdentity& previous
-                               ) noexcept -> cxx::expected<void, EFlowNodeCatalogError>
+            using Result = cxx::expected<void, EFlowNodeCatalogError>;
+            const auto check = [&](const graph::GraphNodeTypeIdentity& previous) noexcept -> Result
             {
                 if (value.identity.id != previous.id)
                 {
@@ -240,6 +224,13 @@ namespace lux::flowforge
                                                                              : EFlowNodeCatalogError::HASH_COLLISION
                 );
             };
+            for (const auto& builtin : detail::builtin_node_identities)
+            {
+                if (value.identity.id == graph::nodeTypeId(builtin.name))
+                {
+                    return cxx::unexpected(EFlowNodeCatalogError::HASH_COLLISION);
+                }
+            }
             for (const auto& type : types_)
             {
                 auto result = check(type->identity());

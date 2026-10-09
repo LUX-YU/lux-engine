@@ -2,6 +2,7 @@
 #include <charconv>
 #include <cmath>
 #include <locale>
+#include <lux/engine/flowforge/detail/FlowNodeIdentity.hpp>
 #include <lux/engine/flowforge/graph/FlowSource.hpp>
 #include <sstream>
 #include <toml++/toml.hpp>
@@ -183,6 +184,7 @@ namespace lux::flowforge
                 result.push_back(toml::table{
                     {"id", std::to_string(value.id.value)},
                     {"kind", static_cast<std::int64_t>(value.kind)},
+                    {"semantic", std::to_string(value.semantic.value)},
                     {"name", value.name},
                     {"type", value.type},
                     {"literal", literalTable(value.literal)}
@@ -191,7 +193,7 @@ namespace lux::flowforge
             return result;
         }
 
-        bool readPins(View view, std::vector<FlowSourcePin>& out, FlowSourceLimits limits)
+        bool readPins(View view, std::vector<FlowSourcePin>& out, FlowSourceLimits limits, bool legacy)
         {
             const auto* array = view.as_array();
             if (!array || array->size() > limits.max_pins)
@@ -202,7 +204,14 @@ namespace lux::flowforge
             {
                 const auto* table = item.as_table();
                 FlowSourcePin pin;
-                if (!table || !fields(*table, {"id", "kind", "name", "type", "literal"}))
+                if (!table)
+                {
+                    return false;
+                }
+                const bool has_valid_fields =
+                    legacy ? fields(*table, {"id", "kind", "name", "type", "literal"})
+                           : fields(*table, {"id", "kind", "semantic", "name", "type", "literal"});
+                if (!has_valid_fields)
                 {
                     return false;
                 }
@@ -211,6 +220,14 @@ namespace lux::flowforge
                                    readText((*table)["name"], pin.name) && readText((*table)["type"], pin.type) &&
                                    readLiteral((*table)["literal"], pin.literal);
                 if (!valid)
+                {
+                    return false;
+                }
+                if (legacy)
+                {
+                    pin.semantic = detail::builtinPinSemantic(pin.kind, out.size());
+                }
+                else if (!readId((*table)["semantic"], pin.semantic.value))
                 {
                     return false;
                 }
@@ -318,6 +335,8 @@ namespace lux::flowforge
                 return 6;
             case O::SCRIPT_EVENT_WAIT:
                 return 7;
+            case O::REGISTERED_VALUE:
+                return 8;
             default:
                 return 0;
             }
@@ -344,7 +363,8 @@ namespace lux::flowforge
 
         template <class Text> bool parametersValid(const FlowSourceNode& node, Text& text, FlowSourceLimits limits)
         {
-            if (node.parameters.index() != parameterIndex(node.operation))
+            const auto operation = detail::builtinNodeOperation(node.type);
+            if (node.parameters.index() != parameterIndex(operation))
             {
                 return false;
             }
@@ -363,12 +383,12 @@ namespace lux::flowforge
                     else if constexpr (std::is_same_v<T, FlowSourceSignature>)
                     {
                         return signatureValid(value, text, limits) &&
-                               (node.operation != ENodeOperation::ON_EVENT || value.results.empty());
+                               (operation != ENodeOperation::ON_EVENT || value.results.empty());
                     }
                     else if constexpr (std::is_same_v<T, FlowSourceReference>)
                     {
-                        const bool is_variable = node.operation == ENodeOperation::GET_VARIABLE ||
-                                                 node.operation == ENodeOperation::SET_VARIABLE;
+                        const bool is_variable =
+                            operation == ENodeOperation::GET_VARIABLE || operation == ENodeOperation::SET_VARIABLE;
                         return value.id != 0 && (!is_variable || value.id != UINT64_MAX);
                     }
                     else if constexpr (std::is_same_v<T, FlowSourceField>)
@@ -387,6 +407,11 @@ namespace lux::flowforge
                         return !value.contract.empty() && !value.method.empty() && value.schema_version &&
                                value.schema_hash && text(value.contract) && text(value.method);
                     }
+                    else if constexpr (std::is_same_v<T, FlowSourcePayload>)
+                    {
+                        // Payload codecs own their binary format; do not apply the UI text limit.
+                        return value.bytes.size() <= limits.max_bytes / 2U;
+                    }
                     else
                     {
                         return value.valid() && text(value.system_name) && text(value.event_name) &&
@@ -395,6 +420,59 @@ namespace lux::flowforge
                 },
                 node.parameters
             );
+        }
+
+        std::string encodePayload(std::string_view bytes)
+        {
+            constexpr std::string_view digits = "0123456789abcdef";
+            std::string result;
+            result.reserve(bytes.size() * 2U);
+            for (const unsigned char value : bytes)
+            {
+                result.push_back(digits[value >> 4U]);
+                result.push_back(digits[value & 15U]);
+            }
+            return result;
+        }
+
+        bool readPayload(View view, FlowSourcePayload& payload, FlowSourceLimits limits)
+        {
+            const auto* table = view.as_table();
+            if (!table || !fields(*table, {"data"}))
+            {
+                return false;
+            }
+            const auto data = view["data"].value<std::string_view>();
+            const bool has_data = data.has_value();
+            const bool has_valid_size = has_data && data->size() % 2U == 0 && data->size() / 2U <= limits.max_bytes;
+            if (!has_valid_size)
+            {
+                return false;
+            }
+            const auto digit = [](char c) noexcept -> int
+            {
+                if (c >= '0' && c <= '9')
+                {
+                    return c - '0';
+                }
+                if (c >= 'a' && c <= 'f')
+                {
+                    return c - 'a' + 10;
+                }
+                return -1;
+            };
+            payload.bytes.reserve(data->size() / 2U);
+            for (std::size_t i{}; i != data->size(); i += 2U)
+            {
+                const auto high = digit((*data)[i]);
+                const auto low = digit((*data)[i + 1U]);
+                if (high < 0 || low < 0)
+                {
+                    return false;
+                }
+                payload.bytes.push_back(static_cast<char>((high << 4) | low));
+            }
+            return true;
         }
 
         toml::table parametersTable(const VFlowSourceParameters& parameters)
@@ -445,6 +523,10 @@ namespace lux::flowforge
                             {"schema_hash", std::to_string(value.schema_hash)}
                         };
                     }
+                    else if constexpr (std::is_same_v<T, FlowSourcePayload>)
+                    {
+                        return toml::table{{"data", encodePayload(value.bytes)}};
+                    }
                     else
                     {
                         return eventTable(value);
@@ -461,7 +543,7 @@ namespace lux::flowforge
             {
                 return false;
             }
-            switch (parameterIndex(node.operation))
+            switch (parameterIndex(detail::builtinNodeOperation(node.type)))
             {
             case 0:
                 return table->empty();
@@ -512,6 +594,8 @@ namespace lux::flowforge
             }
             case 7:
                 return readEvent(view, node.parameters.emplace<lux::script::ScriptEventSourceDescription>());
+            case 8:
+                return readPayload(view, node.parameters.emplace<FlowSourcePayload>(), limits);
             default:
                 return false;
             }
@@ -584,17 +668,32 @@ namespace lux::flowforge
             {
                 return fail(EFlowSourceError::INVALID_IDENTITY, "node", node.id);
             }
-            const bool unknown =
-                node.operation == ENodeOperation::INVALID || node.operation > ENodeOperation::SEND_EVENT ||
-                node.operation == ENodeOperation::CREATE_OBJECT || node.operation == ENodeOperation::SEND_EVENT;
-            if (unknown)
+            const auto operation = detail::builtinNodeOperation(node.type);
+            const bool is_invalid_type = !detail::canonicalNodeName(node.type) || node.version == 0;
+            const bool is_unsupported_builtin = operation != ENodeOperation::REGISTERED_VALUE && node.version != 1;
+            const bool is_unsupported_operation = operation == ENodeOperation::INVALID ||
+                                                  operation == ENodeOperation::CREATE_OBJECT ||
+                                                  operation == ENodeOperation::SEND_EVENT;
+            const bool is_unknown = is_invalid_type || is_unsupported_builtin || is_unsupported_operation;
+            if (is_unknown)
             {
-                return fail(EFlowSourceError::UNKNOWN_NODE_KIND, "operation", node.id);
+                return fail(EFlowSourceError::UNKNOWN_NODE_KIND, "type/version", node.id);
             }
-            if (!text(node.name) || !text(node.creator) || !parametersValid(node, text, limits))
+            const bool has_valid_parameters = parametersValid(node, text, limits);
+            const bool has_valid_text = text(node.type) && text(node.name) && text(node.creator);
+            if (!has_valid_text || !has_valid_parameters)
             {
                 return fail(EFlowSourceError::INVALID_VALUE, "node.parameters", node.id);
             }
+            if (const auto* payload = std::get_if<FlowSourcePayload>(&node.parameters))
+            {
+                if (payload->bytes.size() > limits.max_bytes - charged)
+                {
+                    return fail(EFlowSourceError::LIMIT_EXCEEDED, "node.payload", node.id);
+                }
+                charged += payload->bytes.size();
+            }
+            std::unordered_set<std::uint64_t> semantics;
             if (!std::isfinite(node.layout.x) || !std::isfinite(node.layout.y))
             {
                 return fail(EFlowSourceError::INVALID_VALUE, "layout", node.id);
@@ -607,8 +706,14 @@ namespace lux::flowforge
                     {
                         return fail(EFlowSourceError::LIMIT_EXCEEDED, "pins", node.id);
                     }
+                    const bool is_invalid_semantic =
+                        !pin.semantic.valid() || !semantics.insert(pin.semantic.value).second;
                     const bool is_invalid_pin_id =
                         !pin.id.valid() || !pin_ids.emplace(pin.id.value, PinOwner{&pin, node.id}).second;
+                    if (is_invalid_semantic)
+                    {
+                        return fail(EFlowSourceError::INVALID_IDENTITY, "pin.semantic", node.id, pin.id);
+                    }
                     if (is_invalid_pin_id)
                     {
                         return fail(EFlowSourceError::INVALID_IDENTITY, "pin", node.id, pin.id);
@@ -688,7 +793,7 @@ namespace lux::flowforge
         }
         toml::table document{
             {"format", "lux.flowforge.source"},
-            {"version", 1},
+            {"version", 2},
             {"id", uuids::to_string(source.id.uuid())},
             {"name", source.name}
         };
@@ -697,7 +802,8 @@ namespace lux::flowforge
         {
             toml::table table{
                 {"id", std::to_string(node.id.value)},
-                {"operation", static_cast<std::int64_t>(node.operation)},
+                {"type", node.type},
+                {"type_version", node.version},
                 {"name", node.name},
                 {"creator", node.creator},
                 {"inputs", pins(node.inputs)},
@@ -777,8 +883,10 @@ namespace lux::flowforge
         {
             return fail(EFlowSourceError::UNKNOWN_FIELD, "document");
         }
-        if (document["format"].value<std::string_view>() != "lux.flowforge.source" ||
-            document["version"].value<int>() != 1)
+        const auto version = document["version"].value<int>();
+        const bool is_invalid_version = version != 1 && version != 2;
+        const bool is_invalid_format = document["format"].value<std::string_view>() != "lux.flowforge.source";
+        if (is_invalid_format || is_invalid_version)
         {
             return fail(EFlowSourceError::UNSUPPORTED_FORMAT, "format/version");
         }
@@ -819,17 +927,49 @@ namespace lux::flowforge
             {
                 return fail(EFlowSourceError::INVALID_VALUE, "node");
             }
-            if (!fields(*table, {"id", "operation", "name", "creator", "inputs", "outputs", "parameters", "layout"}))
+            const bool legacy = *version == 1;
+            const bool has_valid_fields =
+                legacy
+                    ? fields(
+                          *table,
+                          {"id", "operation", "name", "creator", "inputs", "outputs", "parameters", "layout"}
+                      )
+                    : fields(
+                          *table,
+                          {"id", "type", "type_version", "name", "creator", "inputs", "outputs", "parameters", "layout"}
+                      );
+            if (!has_valid_fields)
             {
                 return fail(EFlowSourceError::UNKNOWN_FIELD, "node");
             }
             FlowSourceNode node;
             const View view{table};
-            const bool valid = readId(view["id"], node.id.value) &&
-                               readEnum(view["operation"], node.operation, ENodeOperation::SEND_EVENT) &&
-                               readText(view["name"], node.name) && readText(view["creator"], node.creator) &&
-                               readPins(view["inputs"], node.inputs, limits) &&
-                               readPins(view["outputs"], node.outputs, limits) &&
+            if (legacy)
+            {
+                const auto ordinal = view["operation"].value<std::int64_t>();
+                const bool is_invalid_ordinal =
+                    !ordinal || *ordinal < 0 ||
+                    static_cast<std::uint64_t>(*ordinal) >= detail::builtin_node_identities.size();
+                if (is_invalid_ordinal)
+                {
+                    return fail(EFlowSourceError::UNKNOWN_NODE_KIND, "operation");
+                }
+                node.type = detail::builtin_node_identities[static_cast<std::size_t>(*ordinal)].name;
+            }
+            else
+            {
+                const auto schema = view["type_version"].value<std::int64_t>();
+                const bool is_invalid_schema = !schema || *schema <= 0 || *schema > UINT32_MAX;
+                if (is_invalid_schema || !readText(view["type"], node.type))
+                {
+                    return fail(EFlowSourceError::UNKNOWN_NODE_KIND, "type/version");
+                }
+                node.version = static_cast<std::uint32_t>(*schema);
+            }
+            const bool valid = readId(view["id"], node.id.value) && readText(view["name"], node.name) &&
+                               readText(view["creator"], node.creator) &&
+                               readPins(view["inputs"], node.inputs, limits, legacy) &&
+                               readPins(view["outputs"], node.outputs, limits, legacy) &&
                                readParameters(view["parameters"], node, limits);
             if (!valid)
             {

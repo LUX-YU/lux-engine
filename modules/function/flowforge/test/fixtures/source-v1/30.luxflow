@@ -1,0 +1,41 @@
+exports = []
+format = 'lux.flowforge.source'
+id = '01000000-0000-0000-0000-000000000000'
+links = []
+name = 'Not'
+variables = []
+version = 1
+
+[[nodes]]
+creator = 'Not'
+id = '1'
+name = 'Logical Not'
+operation = 26
+
+    [nodes.layout]
+    placed = false
+    x = 0.0
+    y = 0.0
+
+    [nodes.parameters]
+    type = 'bool'
+
+    [[nodes.inputs]]
+    id = '1'
+    kind = 3
+    name = 'A'
+    type = 'bool'
+
+        [nodes.inputs.literal]
+        kind = 2
+        value = 'false'
+
+    [[nodes.outputs]]
+    id = '2'
+    kind = 4
+    name = 'Result'
+    type = 'bool'
+
+        [nodes.outputs.literal]
+        kind = 0
+        value = ''

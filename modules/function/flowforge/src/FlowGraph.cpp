@@ -1,5 +1,6 @@
 #include <exception>
 #include <lux/engine/flowforge/FlowNodeCatalog.hpp>
+#include <lux/engine/flowforge/detail/FlowNodeIdentity.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 
 #include <algorithm>
@@ -20,7 +21,7 @@ namespace lux::flowforge
             {
                 return type->identity().id;
             }
-            return lux::graph::NodeTypeId{static_cast<std::uint64_t>(node.operation()) + 1U};
+            return lux::graph::nodeTypeId(detail::builtinNodeName(node.operation()));
         }
 
         [[nodiscard]] bool isInput(EPinKind kind) noexcept
@@ -39,11 +40,10 @@ namespace lux::flowforge
             {
                 return pin.node()->registeredPinSemantic(pin);
             }
-            const auto kind = static_cast<std::uint64_t>(pin.kind()) + 1U;
             const auto& pins = isInput(pin.kind()) ? pin.node()->inPins() : pin.node()->outPins();
             const auto found = std::ranges::find(pins, std::addressof(pin));
-            const auto ordinal = found == pins.end() ? 0U : static_cast<std::uint64_t>(found - pins.begin()) + 1U;
-            return lux::graph::PinSemanticId{(kind << 56U) | ordinal};
+            return found == pins.end() ? graph::PinSemanticId{}
+                                       : detail::builtinPinSemantic(pin.kind(), found - pins.begin());
         }
     } // namespace
 

@@ -1,0 +1,51 @@
+exports = []
+format = 'lux.flowforge.source'
+id = '01000000-0000-0000-0000-000000000000'
+links = []
+name = 'Divide (Int)'
+variables = []
+version = 1
+
+[[nodes]]
+creator = 'Divide (Int)'
+id = '1'
+name = 'Divide'
+operation = 22
+
+    [nodes.layout]
+    placed = false
+    x = 0.0
+    y = 0.0
+
+    [nodes.parameters]
+    type = 'int'
+
+    [[nodes.inputs]]
+    id = '1'
+    kind = 3
+    name = 'A'
+    type = 'int'
+
+        [nodes.inputs.literal]
+        kind = 3
+        value = '0'
+
+    [[nodes.inputs]]
+    id = '2'
+    kind = 3
+    name = 'B'
+    type = 'int'
+
+        [nodes.inputs.literal]
+        kind = 3
+        value = '0'
+
+    [[nodes.outputs]]
+    id = '3'
+    kind = 4
+    name = 'Result'
+    type = 'int'
+
+        [nodes.outputs.literal]
+        kind = 0
+        value = ''

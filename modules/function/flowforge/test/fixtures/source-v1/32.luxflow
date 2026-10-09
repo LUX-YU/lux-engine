@@ -1,0 +1,41 @@
+exports = []
+format = 'lux.flowforge.source'
+id = '01000000-0000-0000-0000-000000000000'
+links = []
+name = 'Negate (Float)'
+variables = []
+version = 1
+
+[[nodes]]
+creator = 'Negate (Float)'
+id = '1'
+name = 'Negate'
+operation = 27
+
+    [nodes.layout]
+    placed = false
+    x = 0.0
+    y = 0.0
+
+    [nodes.parameters]
+    type = 'float'
+
+    [[nodes.inputs]]
+    id = '1'
+    kind = 3
+    name = 'A'
+    type = 'float'
+
+        [nodes.inputs.literal]
+        kind = 5
+        value = '0'
+
+    [[nodes.outputs]]
+    id = '2'
+    kind = 4
+    name = 'Result'
+    type = 'float'
+
+        [nodes.outputs.literal]
+        kind = 0
+        value = ''

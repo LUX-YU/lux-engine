@@ -80,10 +80,49 @@ namespace
         require(encoded.has_value());
         return std::move(*encoded);
     }
+
+    void checkReceiver()
+    {
+        FlowGraph target, foreign;
+        const auto populate = [](FlowGraph& graph)
+        {
+            const auto first = graph.addNodes(std::make_unique<SequenceNode>(0));
+            const auto second = graph.addNodes(std::make_unique<SequenceNode>(0));
+            return std::array<Pin*, 2>{
+                graph.getNode(first).node->outPins().front(),
+                graph.getNode(second).node->inPins().front()
+            };
+        };
+        const auto own = populate(target), other = populate(foreign);
+        require(own[0]->id() == other[0]->id() && own[1]->id() == other[1]->id());
+        const auto empty_target = sourceBytes(target), empty_foreign = sourceBytes(foreign);
+        require(target.connect(*other[0], *other[1]) == ELinkError::INVALID_PIN);
+        require(target.connect(*own[0], *other[1]) == ELinkError::INVALID_PIN);
+        require(target.connect(*other[0], *own[1]) == ELinkError::INVALID_PIN);
+        require(sourceBytes(target) == empty_target && sourceBytes(foreign) == empty_foreign);
+
+        require(target.connect(*own[0], *own[1]) == ELinkError::SUCCESS);
+        const auto linked = sourceBytes(target);
+        require(target.disconnect(*other[0], *other[1]) == ELinkError::INVALID_PIN);
+        require(target.disconnect(*own[0], *other[1]) == ELinkError::INVALID_PIN);
+        require(target.disconnect(*other[0], *own[1]) == ELinkError::INVALID_PIN);
+        require(sourceBytes(target) == linked && sourceBytes(foreign) == empty_foreign);
+
+        auto moved = std::move(target);
+        require(target.connect(*own[0], *own[1]) == ELinkError::INVALID_PIN);
+        require(target.disconnect(*own[0], *own[1]) == ELinkError::INVALID_PIN);
+        require(sourceBytes(moved) == linked);
+        require(moved.disconnect(*own[0], *own[1]) == ELinkError::UNLINKED);
+        require(sourceBytes(moved) == empty_target);
+        check(target);
+        check(moved);
+        check(foreign);
+    }
 } // namespace
 
 int main()
 {
+    checkReceiver();
     FlowGraph graph;
     auto candidate = std::make_unique<SequenceNode>(0);
     auto& sequence = *candidate;

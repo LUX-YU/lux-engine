@@ -290,6 +290,13 @@ namespace lux::flowforge
 
     ELinkError FlowGraph::connect(Pin& first, Pin& second) noexcept
     {
+        const bool owns_first = first.node() != nullptr && first.node()->graph() == this;
+        const bool owns_second = second.node() != nullptr && second.node()->graph() == this;
+        const bool has_foreign_pin = !owns_first || !owns_second;
+        if (has_foreign_pin)
+        {
+            return ELinkError::INVALID_PIN;
+        }
         const auto first_preflight = first.canLink(std::addressof(second));
         if (first_preflight != ELinkError::SUCCESS)
         {
@@ -324,6 +331,13 @@ namespace lux::flowforge
 
     ELinkError FlowGraph::disconnect(Pin& first, Pin& second) noexcept
     {
+        const bool owns_first = first.node() != nullptr && first.node()->graph() == this;
+        const bool owns_second = second.node() != nullptr && second.node()->graph() == this;
+        const bool has_foreign_pin = !owns_first || !owns_second;
+        if (has_foreign_pin)
+        {
+            return ELinkError::INVALID_PIN;
+        }
         const auto* first_record = topology_.findPin(first.id());
         const auto* second_record = topology_.findPin(second.id());
         if (first_record == nullptr || second_record == nullptr)

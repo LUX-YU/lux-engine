@@ -28,7 +28,7 @@
 #include "lux/engine/flowforge/compiler/IRImpl.hpp"
 #include "lux/engine/flowforge/compiler/Passes.hpp"
 #include "lux/engine/flowforge/compiler/ScriptInstance.hpp"
-#include "lux/engine/flowforge/compiler/SuspensionAnalysis.hpp"
+#include "lux/engine/flowforge/FlowAnalysis.hpp"
 #include "lux/engine/flowforge/compiler/ContinuationFrameLayout.hpp"
 #include "lux/engine/flowforge/script/ScriptEventAwaitNode.hpp"
 #include "lux/engine/flowforge/graph/FlowGraph.hpp"
@@ -1101,7 +1101,7 @@ namespace lux::flowforge
             const std::vector<EventInfo>& events,
             const std::vector<AbilityImportInfo>& imports,
             const std::vector<EventWaitImportInfo>& event_imports,
-            const SuspensionAnalysis& suspension_analysis,
+            const FlowAnalysis& suspension_analysis,
             std::vector<NativeStepInfo>& steps,
             std::string& error
         )
@@ -1114,7 +1114,7 @@ namespace lux::flowforge
                 if (!lowerEventToStateMachine(module, events[index], imports, event_imports, steps[index], error))
                     return false;
                 const bool expected_suspension =
-                    suspension_analysis.firstSuspensionFrom(events[index].node->execOutPin()) != nullptr;
+                    suspension_analysis.firstSuspensionFrom(events[index].node->execOutPin().id()).valid();
                 const bool lowered_suspension = steps[index].start != nullptr;
                 if (expected_suspension != lowered_suspension)
                 {
@@ -1638,7 +1638,7 @@ namespace lux::flowforge
         IRContext& ctx,
         const FlowGraph& graph,
         const FlowForgeCompileOptions& options,
-        const SuspensionAnalysis& suspension_analysis,
+        const FlowAnalysis& suspension_analysis,
         AotArtifact& artifact_out,
         std::string* error_out
     )
@@ -1948,20 +1948,8 @@ namespace lux::flowforge
     FlowForgeResult<AotArtifact> compileToObject(
         IRContext& context,
         const FlowGraph& graph,
-        const FlowForgeCompileOptions& options
-    ) noexcept
-    {
-        auto suspension_analysis = SuspensionAnalysis::create(graph);
-        if (!suspension_analysis)
-            return lux::cxx::unexpected(std::move(suspension_analysis.error()));
-        return compileToObject(context, graph, options, *suspension_analysis);
-    }
-
-    FlowForgeResult<AotArtifact> compileToObject(
-        IRContext& context,
-        const FlowGraph& graph,
         const FlowForgeCompileOptions& options,
-        const SuspensionAnalysis& suspension_analysis
+        const FlowAnalysis& suspension_analysis
     ) noexcept
     {
         try

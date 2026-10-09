@@ -29,14 +29,14 @@
 #include <string>
 #include <vector>
 
-#include <lux/engine/flowforge/compiler/IR.hpp>
 #include <lux/engine/description/Script.hpp>
+#include <lux/engine/flowforge/compiler/IR.hpp>
 
 namespace lux::flowforge
 {
     class FlowGraph;
     class IRContext;
-    class SuspensionAnalysis;
+    class FlowAnalysis;
 
     struct AotArtifact
     {
@@ -59,14 +59,8 @@ namespace lux::flowforge
     [[nodiscard]] FlowForgeResult<AotArtifact> compileToObject(
         IRContext& context,
         const FlowGraph& graph,
-        const FlowForgeCompileOptions& options
-    ) noexcept;
-
-    [[nodiscard]] FlowForgeResult<AotArtifact> compileToObject(
-        IRContext& context,
-        const FlowGraph& graph,
         const FlowForgeCompileOptions& options,
-        const SuspensionAnalysis& suspension_analysis
+        const FlowAnalysis& suspension_analysis
     ) noexcept;
 
     /// Writes COFF (.obj) or ELF (.o) beside the output and links a freestanding shared library.
@@ -78,4 +72,4 @@ namespace lux::flowforge
         const FlowForgeCompileOptions& options,
         std::string_view target_triple
     ) noexcept;
-}
+} // namespace lux::flowforge

@@ -15,6 +15,7 @@ add_component(
     OUTPUT_NAME    lux_engine_function_flowforge
     SOURCE_FILES
         src/NativeCallDefinition.cpp
+        src/FlowAnalysis.cpp
         src/FlowNodePayload.cpp
         src/ScalarLowering.cpp
         src/NodeRegistry.cpp
@@ -168,4 +169,12 @@ if(BUILD_TESTING)
     target_link_libraries(flow_structure_access_test PRIVATE lux::engine::function::flowforge)
 
     add_test(NAME flow.structure_access COMMAND flow_structure_access_test)
+endif()
+
+if(BUILD_TESTING)
+    add_executable(flow_analysis_test test/analysis.cpp)
+
+    target_link_libraries(flow_analysis_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(NAME flow.analysis COMMAND flow_analysis_test)
 endif()

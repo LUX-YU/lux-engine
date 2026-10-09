@@ -13,6 +13,21 @@ owner until old pins and default values are destroyed. Node/exec identity and th
 pin reconstruction order remain unchanged; rebuilding data pins still removes their
 old links. The source codec and reflection palette construct the same definition.
 
+`FlowAnalysis::create` owns the domain checks previously embedded in Toolchain: Ability
+and Event requirements, transitive suspension through graph function calls, borrowed-step
+values crossing suspension and synchronous lifecycle exports. It accepts the real FlowGraph
+and immutable catalog views without LLVM, Process or Editor. The compiler uses this same
+analysis before lowering and when checking generated async markers; there is no second
+Toolchain implementation of these rules.
+
+The result owns requirement values and an execution-reachability projection keyed by the
+input graph's stable IDs. It does not retain Node/Pin pointers, catalog views or reflection
+metadata. Graph and catalog destruction is safe after analysis. This is a disposable
+compilation result, not an editable graph or a live cache: after editing a graph, analyze
+the new input again. Queries return the lowest reachable suspension NodeId deterministically,
+including recursive functions, or an invalid ID when no suspension is reachable. The caller
+must pair analysis and lowering from the same unchanged graph input.
+
 This lifetime contract does not complete the broader Flow graph migration: the existing
 Node/Pin structure and NodeRegistry palette are still active. The final domain catalog,
 compiler extension surface and removal of duplicate structural authority remain pending.

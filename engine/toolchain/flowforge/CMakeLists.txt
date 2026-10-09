@@ -15,7 +15,6 @@ add_component(
         src/IRContext.cpp
         src/Passes.cpp
         src/ScriptInstance.cpp
-        src/SuspensionAnalysis.cpp
         src/AOT.cpp
 )
 component_include_directories(
@@ -86,4 +85,16 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
     lux_editor_test_options(flowforge_native_definition_test)
 
     add_test(NAME flowforge.native_definition COMMAND flowforge_native_definition_test)
+endif()
+
+if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
+    add_executable(flowforge_analysis_test ${PROJECT_SOURCE_DIR}/modules/function/flowforge/test/analysis.cpp)
+
+    target_link_libraries(flowforge_analysis_test PRIVATE flowforge_compiler)
+
+    target_compile_definitions(flowforge_analysis_test PRIVATE FLOW_ANALYSIS_COMPILER=1)
+
+    lux_editor_test_options(flowforge_analysis_test)
+
+    add_test(NAME flowforge.analysis COMMAND flowforge_analysis_test)
 endif()

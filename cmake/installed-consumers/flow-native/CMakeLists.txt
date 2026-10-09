@@ -39,7 +39,23 @@ target_link_libraries(structure_access PRIVATE lux::engine::function::flowforge)
 
 add_test(NAME installed.flow_structure_access COMMAND structure_access)
 
-foreach(target native_definition native_definition_plugin native_definition_plugin_test native_compiler structure_access)
+add_executable(flow_analysis "${flow_test}/analysis.cpp")
+
+target_link_libraries(flow_analysis PRIVATE lux::engine::function::flowforge)
+
+add_test(NAME installed.flow_analysis COMMAND flow_analysis)
+
+add_executable(flow_analysis_compiler "${flow_test}/analysis.cpp")
+
+target_link_libraries(flow_analysis_compiler PRIVATE lux::engine::flowforge::flowforge_compiler)
+
+target_compile_definitions(flow_analysis_compiler PRIVATE FLOW_ANALYSIS_COMPILER=1)
+
+add_test(NAME installed.flow_analysis_compiler COMMAND flow_analysis_compiler)
+
+foreach(target native_definition native_definition_plugin native_definition_plugin_test native_compiler structure_access
+    flow_analysis flow_analysis_compiler
+)
     if(MSVC)
         target_compile_options(${target} PRIVATE /permissive- /GR- /utf-8)
     else()
@@ -47,7 +63,7 @@ foreach(target native_definition native_definition_plugin native_definition_plug
     endif()
 endforeach()
 
-foreach(header NativeCallDefinition graph/FunctionalNode graph/NodeRegistry graph/FlowGraph graph/NodeBase)
+foreach(header FlowAnalysis NativeCallDefinition graph/FunctionalNode graph/NodeRegistry graph/FlowGraph graph/NodeBase)
     string(REPLACE "/" "_" stem "${header}")
 
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${stem}.cpp" "#include <lux/engine/flowforge/${header}.hpp>\n")

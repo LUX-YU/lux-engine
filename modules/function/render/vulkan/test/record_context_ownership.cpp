@@ -195,7 +195,6 @@ int main()
     physical[index].physical_handles.push_back(reinterpret_cast<std::uintptr_t>(image->image()));
 
     RGCompiledGraph graph;
-    graph.valid = true;
     auto& resource = graph.original_graph.resources.emplace_back();
     auto texture = RGTextureDescription::Absolute(8, 8);
     texture.mip_levels = 3;

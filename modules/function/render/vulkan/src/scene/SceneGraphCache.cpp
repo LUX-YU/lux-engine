@@ -14,8 +14,8 @@
 #include <lux/engine/render/targets/RenderTargetBinding.hpp>
 
 #include <algorithm>
-#include <cstdlib>
 #include <chrono>
+#include <cstdlib>
 #include <iostream>
 #include <utility>
 
@@ -58,7 +58,9 @@ namespace lux::render
         for (std::size_t index = 0u; index < telemetry_.invalidation_counts.size(); ++index)
         {
             if ((bits & (1u << index)) != 0u)
+            {
                 ++telemetry_.invalidation_counts[index];
+            }
         }
     }
 
@@ -79,7 +81,8 @@ namespace lux::render
         ++telemetry_.compile_attempts;
         std::uint64_t build_nanoseconds = 0u;
         std::uint64_t compile_nanoseconds = 0u;
-        const auto finishAttempt = [&](bool succeeded) {
+        const auto finishAttempt = [&](bool succeeded)
+        {
             const auto total_nanoseconds = static_cast<std::uint64_t>(
                 std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - total_started)
                     .count()
@@ -88,9 +91,13 @@ namespace lux::render
             telemetry_.compile_nanoseconds += compile_nanoseconds;
             telemetry_.total_nanoseconds += total_nanoseconds;
             if (succeeded)
+            {
                 ++telemetry_.compile_successes;
+            }
             else
+            {
                 ++telemetry_.compile_failures;
+            }
             compile_history_.push_back(SceneGraphCompileSample{
                 frame_serial,
                 telemetry_.pending_invalidation_bits,
@@ -101,9 +108,13 @@ namespace lux::render
             });
             constexpr std::size_t kCompileHistoryCapacity = 4096u;
             if (compile_history_.size() > kCompileHistoryCapacity)
+            {
                 compile_history_.pop_front();
+            }
             if (succeeded)
+            {
                 telemetry_.pending_invalidation_bits = 0u;
+            }
         };
         // ── 先把新图完整编出来,放进局部变量,**完全不触碰**当前在用的图与视图资源。
         // 没有颜色目标的布局 -> 不出图,是一个合法的"不渲染"结果。
@@ -183,7 +194,9 @@ namespace lux::render
             for (std::size_t si = 0; si < kTargetSlotCount; ++si)
             {
                 if ((transient_slots & (1u << si)) == 0u)
+                {
                     continue;
+                }
                 const auto slot = static_cast<ETargetSlot>(si);
                 if (slot == ETargetSlot::SCENE_COLOR || slot == ETargetSlot::SCENE_DEPTH ||
                     slot == ETargetSlot::RESOLVE_COLOR)
@@ -213,9 +226,13 @@ namespace lux::render
                 const auto extra_slot = static_cast<ETargetSlot>(si);
                 if (extra_slot == ETargetSlot::SCENE_COLOR || extra_slot == ETargetSlot::SCENE_DEPTH ||
                     extra_slot == ETargetSlot::RESOLVE_COLOR)
+                {
                     continue; // primary slots handled above
+                }
                 if (!layout.hasSlot(extra_slot))
+                {
                     continue;
+                }
                 const auto& sd = layout.slot(extra_slot);
                 RGImportedResourceInfo imp{};
                 imp.slot = extra_slot;
@@ -244,7 +261,9 @@ namespace lux::render
             // 按什么顺序,由场景决定(见 RenderFeatureSet::contributePasses)。
             const auto build_started = std::chrono::steady_clock::now();
             if (contribute_passes)
+            {
                 contribute_passes(builder);
+            }
 
             // 静态编译(不分配任何物理资源)。域 set 实例随图一起传入:切到合并布局的
             // 管线后,其 FEATURE 域槽在录制期绑定到该实例(绑定计划把若干逻辑绑定
@@ -269,24 +288,21 @@ namespace lux::render
                     .count()
             );
 
-            // 编译期发现的非致命问题:图仍然编得出来,但创建者的用途声明不足之类
-            // 的东西必须可见。成功与失败两条路都要上报 —— 它们与 valid 无关。
-            for (const RenderError& diagnostic : compiled.diagnostics)
-                ctx_.reportError(diagnostic, scene_index_);
-
-            if (!compiled.valid)
+            // Both outcomes retain their diagnostics. Failed candidates never
+            // reach the commit below, so the current graph and views stay intact.
+            const auto& diagnostics = compiled ? compiled->diagnostics : compiled.error().candidate.diagnostics;
+            for (const RenderError& diagnostic : diagnostics)
             {
-                ctx_.reportError(
-                    compiled.compile_error.ok() ? renderError<err::graph::CompiledGraphInvalid>()
-                                                : compiled.compile_error,
-                    scene_index_
-                );
-                // Commit NOTHING — 旧图 + 视图资源 + last_layout 全部保持原样。
+                ctx_.reportError(diagnostic, scene_index_);
+            }
+            if (!compiled)
+            {
+                ctx_.reportError(compiled.error().cause, scene_index_);
                 finishAttempt(false);
                 return;
             }
 
-            new_graph = std::make_unique<RGCompiledGraph>(std::move(compiled));
+            new_graph = std::make_unique<RGCompiledGraph>(std::move(*compiled));
             new_color_handle = backbuffer;
         }
 
@@ -319,7 +335,9 @@ namespace lux::render
         if (state_.graph && state_.graph->layout_plan)
         {
             for (const RenderError& warning : state_.graph->layout_plan->warnings)
+            {
                 ctx_.reportError(warning, scene_index_);
+            }
         }
         finishAttempt(true);
 
@@ -342,7 +360,9 @@ namespace lux::render
         for (auto* v : views)
         {
             if (v && v->resource_state)
+            {
                 retired_view_resources_.push_back(RetiredViewResources{std::move(v->resource_state), 0, source_graph});
+            }
         }
         telemetry_.retired_view_resource_high_water = std::max(
             telemetry_.retired_view_resource_high_water,
@@ -353,7 +373,9 @@ namespace lux::render
     void SceneGraphCache::retireViewResourceState(RGResourceState&& state, const RGGraphDescription* source_graph)
     {
         if (state.record_ctx.frames_in_flight == 0)
+        {
             return;
+        }
 
         auto retired = std::make_unique<RGResourceState>(std::move(state));
         retired_view_resources_.push_back(RetiredViewResources{std::move(retired), 0, source_graph});
@@ -370,7 +392,9 @@ namespace lux::render
         for (auto& rv : retired_view_resources_)
         {
             if (rv.retire_frame == 0)
+            {
                 rv.retire_frame = frame_id; // 首次见到时打戳 = 其最后一次 GPU 使用的上界
+            }
         }
         while (!retired_view_resources_.empty())
         {
@@ -379,7 +403,9 @@ namespace lux::render
             // "frame_id - retire_frame >= fif" 算术会高估完成度:序号在不提交的
             // tick 上照样前进(见 FrameDriver::gpuCompletedSerial)。
             if (oldest.retire_frame > completed_serial)
+            {
                 break;
+            }
 
             recorder_->deallocateRecordContext(oldest.state->record_ctx);
             if (oldest.source_graph)
@@ -397,13 +423,17 @@ namespace lux::render
         for (auto& rg : retired_graphs_)
         {
             if (rg.retire_frame == 0)
+            {
                 rg.retire_frame = frame_id;
+            }
         }
         while (!retired_graphs_.empty())
         {
             auto& oldest = retired_graphs_.front();
             if (oldest.retire_frame > completed_serial)
+            {
                 break;
+            }
             // 安全释放 —— 引用该图的视图资源都已在上一段清理完毕。
             retired_graphs_.pop_front();
         }
@@ -416,9 +446,13 @@ namespace lux::render
     void SceneGraphCache::dump(std::ostream& os) const
     {
         if (state_.valid && state_.graph)
+        {
             printCompiledGraph(*state_.graph, os);
+        }
         else
+        {
             os << "[SceneGraphCache] '" << debug_name_
                << "' has no compiled render graph yet (not rendered, or compile failed).\n";
+        }
     }
 } // namespace lux::render

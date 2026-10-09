@@ -1,9 +1,9 @@
 #pragma once
 
-#include <lux/engine/render/graph/RGPassTypes.hpp>
-#include <lux/engine/render/graph/RGCompiledGraph.hpp>
 #include <lux/engine/function/render/graph/DependencyAnalyzer.hpp>
 #include <lux/engine/render/graph/PhysicalResourceAllocator.hpp>
+#include <lux/engine/render/graph/RGCompiledGraph.hpp>
+#include <lux/engine/render/graph/RGPassTypes.hpp>
 #include <lux/engine/render/graph/RenderPassPlanner.hpp>
 
 namespace lux::render
@@ -43,10 +43,20 @@ namespace lux::render
         uint32_t max_color_attachments = 0;
     };
 
+    /// Failed compilation owns the original graph, partial analysis and diagnostics.
+    /// This candidate is never published into the scene's executable graph cache.
+    struct RGCompileFailure
+    {
+        RenderError cause;
+        RGCompiledGraph candidate;
+    };
+
+    using RGCompileResult = lux::cxx::expected<RGCompiledGraph, RGCompileFailure>;
+
     class LUX_FUNCTION_PUBLIC RenderGraphCompiler
     {
     public:
-        static RGCompiledGraph compile(
+        static RGCompileResult compile(
             RGGraphDescription graph,
             PipelineManager& pipeline_manager,
             const RGCompileOptions& options = {}
@@ -74,7 +84,7 @@ namespace lux::render
         static void validateResourceDSBindings(RGCompiledGraph& compiled);
 
         // 1) Global analysis: dependencies, lifetimes, resource validity, render pass layout
-        static bool buildGlobalInfo(RGCompiledGraph& compiled, const RGCompileOptions& options);
+        static Expected<void> buildGlobalInfo(RGCompiledGraph& compiled, const RGCompileOptions& options);
 
         // 1.7) Descriptor-layout allocation at graph-compile time.
         //      Walks the whole graph — pass -> pipeline template -> per-binding
@@ -84,14 +94,17 @@ namespace lux::render
         //      PipelineManager::finalizeTemplateLayout.
         //      Must run before buildCompiledPasses (2): that step builds the
         //      PSO and snapshots tmpl.pipeline_layout into the compiled pass.
-        //      On failure, writes compiled.compile_error and returns false —
-        //      RenderScene's build-then-commit keeps the last good graph
-        //      (a zero-side-effect rollback).
-        static bool computeGraphDescriptorLayouts(RGCompiledGraph& compiled, PipelineManager& pipeline_manager);
+        //      Layout diagnostics remain part of the candidate; publication belongs
+        //      to the scene's existing build-then-commit boundary.
+        static void computeGraphDescriptorLayouts(RGCompiledGraph& compiled, PipelineManager& pipeline_manager);
 
         // 2) Build compiled info for each pass
-        static bool buildCompiledPasses(RGCompiledGraph& compiled, PipelineManager& pipeline_manager);
-        static bool buildSinglePass(RGCompiledGraph& compiled, uint32_t pass_index, PipelineManager& pipeline_manager);
+        static Expected<void> buildCompiledPasses(RGCompiledGraph& compiled, PipelineManager& pipeline_manager);
+        static Expected<void> buildSinglePass(
+            RGCompiledGraph& compiled,
+            uint32_t pass_index,
+            PipelineManager& pipeline_manager
+        );
 
         // 2.1 Graphics pass: render pass / framebuffer / pipeline
         static void setupGraphicsPass(
@@ -103,8 +116,7 @@ namespace lux::render
         );
 
         // 2.1b Compute pass: pipeline layout / descriptor info (DESIGN-01)
-        static bool setupComputePass(
-            RGCompiledGraph& compiled,
+        static Expected<void> setupComputePass(
             RGCompiledPass& cpass,
             RGPassDescription& pass_desc,
             PipelineManager& pipeline_manager
@@ -128,7 +140,7 @@ namespace lux::render
         static void computeQueueAssignment(RGCompiledGraph& compiled);
 
         // 3.6) Cross-queue dependencies: timeline semaphore values + ownership transfers (A-01)
-        static void computeCrossQueueDependencies(RGCompiledGraph& compiled);
+        static Expected<void> computeCrossQueueDependencies(RGCompiledGraph& compiled);
 
         // 4) RenderPass Begin/End
         static void computeRenderPassBoundaries(RGCompiledGraph& compiled);
@@ -148,12 +160,13 @@ namespace lux::render
             /// res → 活 image 写者 pass 列表。
             std::vector<std::vector<uint32_t>> image_writers;
         };
+
         static LiveAccessIndex buildLiveAccessIndex(const RGCompiledGraph& compiled);
 
         // 4.5) Classify conditional passes as elective (intra-group additive)
         //      Must run before binding plan steps so they can conservatively
         //      reset state after elective passes.
-        static bool classifyElectivePasses(RGCompiledGraph& compiled, const LiveAccessIndex& access);
+        static Expected<void> classifyElectivePasses(RGCompiledGraph& compiled, const LiveAccessIndex& access);
 
         // 5) Pipeline binding strategy
         static void computePipelineBindingPlan(RGCompiledGraph& compiled);
@@ -188,7 +201,7 @@ namespace lux::render
         static void computeDescriptorSets(RGCompiledGraph& compiled, PipelineManager& pipeline_manager);
 
         // 9) Pre-compute per-group / per-pass attachment load+store ops
-        static void computeAttachmentOps(RGCompiledGraph& compiled, const LiveAccessIndex& access);
+        static Expected<void> computeAttachmentOps(RGCompiledGraph& compiled, const LiveAccessIndex& access);
 
         // ===== Kernel-driven fast-path compiler stages =====
 

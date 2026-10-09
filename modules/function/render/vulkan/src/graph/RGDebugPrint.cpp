@@ -162,7 +162,6 @@ namespace lux::render
         const uint32_t pass_count = static_cast<uint32_t>(graph.passes.size());
         const uint32_t resource_count = static_cast<uint32_t>(graph.resources.size());
 
-        os << "Valid: " << std::boolalpha << compiled.valid << "\n";
         os << "Pass count    : " << pass_count << "\n";
         os << "Resource count: " << resource_count << "\n";
         os << "(per-view extents — not stored on compiled graph)\n\n";

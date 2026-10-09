@@ -663,20 +663,10 @@ namespace lux::render
         /// Entries are kInvalidSlotIdx when the resource is not imported or untouched.
         std::vector<uint32_t> imported_final_state_lut;
 
-        /// 编译失败的原因(valid == false 时非 ok)。实参里带的是图内下标 ——
-        /// 图资源与 pass 的名字是用户自起的,装不进实参槽,但下标可以经
-        /// DumpRenderGraph 查回名字(见 err::graph 的族头注释)。
-        ///
-        /// 此前这里是 std::string:消费方唯一能做的事就是把它打到 stderr,
-        /// 于是渲染库替上层决定了编译诊断出现在哪个终端。
-        RenderError compile_error;
-
         /// 编译期发现的**非致命**问题(图仍然编得出来):创建者用途声明不足、
         /// keep_transient 与消费角色冲突之类。与 layout_plan->warnings 同一性质,
         /// 只是发生在布局分配之前、那张计划还不存在的时候。
         std::vector<RenderError> diagnostics;
-
-        bool valid = false;
 
         /// The descriptor layout allocated at graph-compile time. Committed
         /// or rolled back together with this graph (RenderScene's

@@ -662,11 +662,6 @@ namespace lux::render
         uint32_t frames_in_flight
     )
     {
-        if (!compiled_graph.valid)
-        {
-            return renderFailure<err::graph::CompiledGraphInvalid>();
-        }
-
         RGRecordContext record_context{};
         record_context.frames_in_flight = frames_in_flight;
         record_context.use_dynamic_rendering = use_dynamic_rendering_;

@@ -261,7 +261,7 @@ namespace lux::render
         }
     } // namespace
 
-    bool RenderGraphCompiler::computeGraphDescriptorLayouts(
+    void RenderGraphCompiler::computeGraphDescriptorLayouts(
         RGCompiledGraph& compiled,
         PipelineManager& pipeline_manager
     )
@@ -1419,7 +1419,6 @@ namespace lux::render
         }
 
         compiled.layout_plan = std::move(plan);
-        return true;
     }
 
 } // namespace lux::render

@@ -516,15 +516,8 @@ namespace lux::render::err
     // 按下标查回名字。句柄指向的是一个客户端本来就能取到的东西。
     namespace graph
     {
-        struct CompiledGraphInvalid
-        {
-            static constexpr const char* name = "graph.compiled_graph_invalid";
-            static constexpr const char* message = "编译后的 render graph 无效";
-            static constexpr ERecovery recovery = ERecovery::PERMANENT;
-            static constexpr ErrorArgs args{};
-        };
 
-        // ── 编译中止(compile_error) ────────────────────────────────────
+        // ── 编译结果中的失败原因 ────────────────────────────────────
 
         struct DependencyCycle
         {
@@ -1497,7 +1490,6 @@ namespace lux::render::err
     X(::lux::render::err::descriptor::InvalidVertexPoolTarget)                                                         \
     X(::lux::render::err::descriptor::VertexSourceAlreadyRegistered)                                                \
     X(::lux::render::err::descriptor::DomainWriteTargetEmpty)                                                          \
-    X(::lux::render::err::graph::CompiledGraphInvalid)                                                                 \
     X(::lux::render::err::graph::DependencyCycle)                                                                      \
     X(::lux::render::err::graph::ImportedResourceIncomplete)                                                           \
     X(::lux::render::err::graph::ReferencedResourceHasNoProducer)                                                      \

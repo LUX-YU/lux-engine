@@ -7,7 +7,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
-#include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
+#include <lux/engine/flowforge/ScalarNodes.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FlowSource.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
@@ -196,17 +196,6 @@ namespace lux::flowforge
             return nullptr;
         }
 
-        bool binary(ENodeOperation operation) noexcept
-        {
-            return (operation >= ENodeOperation::ADD && operation <= ENodeOperation::LOGICAL_OR) ||
-                   (operation >= ENodeOperation::CMP_EQ && operation <= ENodeOperation::CMP_GE);
-        }
-
-        bool unary(ENodeOperation operation) noexcept
-        {
-            return operation == ENodeOperation::NEGATE || operation == ENodeOperation::LOGICAL_NOT;
-        }
-
         std::vector<FlowSourceArgument> captureArguments(const std::vector<FuncArgInfo>& values)
         {
             std::vector<FlowSourceArgument> result;
@@ -316,6 +305,7 @@ namespace lux::flowforge
         FlowSourceResult<std::unique_ptr<Node>> makeNode(
             const FlowSourceNode& source,
             FlowGraph& graph,
+            const FlowNodeCatalog& builtins,
             const FlowSourceEnvironment& environment
         ) noexcept
         {
@@ -350,7 +340,7 @@ namespace lux::flowforge
                 }
                 return std::move(*node);
             }
-            if (binary(operation) || unary(operation))
+            if (detail::registeredScalarOperation(operation))
             {
                 const auto* type = findType(std::get<FlowSourceType>(source.parameters).name, environment);
                 if (!type)
@@ -361,11 +351,23 @@ namespace lux::flowforge
                         source.id
                     );
                 }
-                if (binary(operation))
+                auto definition = builtins.find(graph::nodeTypeId(source.type));
+                auto payload = definition->create();
+                if (!payload)
                 {
-                    return std::unique_ptr<Node>(std::make_unique<BinaryOpNode>(operation, type));
+                    FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
+                    error.cause = std::move(payload.error());
+                    return cxx::unexpected(std::move(error));
                 }
-                return std::unique_ptr<Node>(std::make_unique<UnaryOpNode>(operation, type));
+                payload->get<ScalarNodePayload>()->operand_type = type;
+                auto node = createFlowValueNode(std::move(definition), std::move(*payload));
+                if (!node)
+                {
+                    FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
+                    error.cause = std::move(node.error());
+                    return cxx::unexpected(std::move(error));
+                }
+                return std::move(*node);
             }
             switch (operation)
             {
@@ -716,7 +718,15 @@ namespace lux::flowforge
                 error.cause = std::move(encoded.error());
                 return cxx::unexpected(std::move(error));
             }
-            item.parameters = FlowSourcePayload{std::move(*encoded)};
+            if (detail::registeredScalarOperation(detail::builtinNodeOperation(item.type)))
+            {
+                // Preserve the established builtin wire format; the registered codec owns the value.
+                item.parameters = FlowSourceType{std::move(*encoded)};
+            }
+            else
+            {
+                item.parameters = FlowSourcePayload{std::move(*encoded)};
+            }
         }
         else
         {
@@ -724,14 +734,6 @@ namespace lux::flowforge
         }
         item.name = node.name();
         item.creator = node.creatorName();
-        if (binary(node.operation()))
-        {
-            item.parameters = FlowSourceType{std::string(static_cast<const BinaryOpNode&>(node).operandType()->name)};
-        }
-        else if (unary(node.operation()))
-        {
-            item.parameters = FlowSourceType{std::string(static_cast<const UnaryOpNode&>(node).operandType()->name)};
-        }
         switch (node.operation())
         {
         case ENodeOperation::FUNC_DEF_START:
@@ -1019,6 +1021,13 @@ namespace lux::flowforge
         {
             return lux::cxx::unexpected(valid.error());
         }
+        FlowNodeCatalog builtins;
+        const auto builtin_code = environment.code_lifetime ? object::CodeLease::plugin(environment.code_lifetime)
+                                                            : object::CodeLease::builtin();
+        if (!builtins.add(scalarNodeRegistrations(builtin_code)))
+        {
+            return fail(EFlowSourceError::SCHEMA_MISMATCH, "builtin scalar definitions");
+        }
         FlowGraph graph;
         for (const auto& variable : source.variables)
         {
@@ -1046,7 +1055,7 @@ namespace lux::flowforge
                 {
                     continue;
                 }
-                auto result = makeNode(item, graph, environment);
+                auto result = makeNode(item, graph, builtins, environment);
                 if (!result)
                 {
                     return lux::cxx::unexpected(result.error());

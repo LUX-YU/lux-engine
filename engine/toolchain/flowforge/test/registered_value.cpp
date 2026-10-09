@@ -2,6 +2,7 @@
 #include <lux/engine/dynamic_library/DynamicLibrary.hpp>
 #include <lux/engine/flowforge/Compiler.hpp>
 #include <lux/engine/flowforge/FlowNodeCatalog.hpp>
+#include <lux/engine/flowforge/ScalarNodes.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FlowSource.hpp>
@@ -77,11 +78,72 @@ namespace
         link(graph, *polynomial->outPins()[1], second.valueIn());
         return graph;
     }
+
+    void scalarProviderLifetime(const std::filesystem::path& file)
+    {
+        class Compiler final : public FlowValueCompiler
+        {
+        public:
+            unsigned emitted{};
+
+            const meta::RefType* type(FlowValue value) const noexcept override
+            {
+                return value <= 1 ? &meta::ref_type_of_v<std::int32_t> : nullptr;
+            }
+
+        private:
+            FlowForgeResult<FlowValue> emitScalarImpl(
+                EScalarInstruction operation,
+                std::span<const FlowValue> inputs,
+                const meta::RefType& result
+            ) noexcept override
+            {
+                require(operation == EScalarInstruction::ADD_INTEGER && inputs.size() == 2);
+                require(result == meta::ref_type_of_v<std::int32_t>);
+                ++emitted;
+                return FlowValue{1};
+            }
+        } compiler;
+
+        auto library = std::make_shared<engine::platform::DynamicLibrary>(file);
+        require(library->is_loaded());
+        const std::weak_ptr observed = library;
+        using Entry = void(std::shared_ptr<const FlowNodeType>&, const object::CodeLease&) noexcept;
+        auto entry = library->get_symbol<Entry>("makeScalarDefinition");
+        require(entry != nullptr);
+        std::shared_ptr<const FlowNodeType> definition;
+        entry(definition, object::CodeLease::plugin(library));
+        std::weak_ptr weak_definition = definition;
+        library.reset();
+        require(!observed.expired());
+        {
+            auto payload = definition->create();
+            require(payload.has_value());
+            auto copy = payload->clone();
+            require(copy.has_value());
+            auto encoded = definition->encode(*copy);
+            require(encoded.has_value());
+            auto decoded = definition->decode(*encoded);
+            require(decoded.has_value());
+            const std::array<FlowValue, 2> inputs{0, 0};
+            require(definition->compile(*decoded, inputs, compiler).has_value());
+            require(compiler.emitted == 1);
+            definition.reset();
+            require(!observed.expired()); // Payloads still own their callback and metadata provider.
+        }
+        require(observed.expired());
+        weak_definition.reset(); // The stable host control block also survives provider unload.
+        std::puts("PASS DLL builtin scalar definition: callback, clone, codec, payload cleanup and late weak release");
+    }
 } // namespace
 
 int main(int argc, char** argv)
 {
     meta::meta_module_init();
+    if (argc >= 2)
+    {
+        scalarProviderLifetime(std::filesystem::path{argv[1]});
+    }
     std::weak_ptr<engine::platform::DynamicLibrary> observed;
     {
         auto definition = registration();

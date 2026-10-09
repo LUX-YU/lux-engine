@@ -1,4 +1,5 @@
 #include "registered_value_definition.hpp"
+#include <lux/engine/flowforge/ScalarNodes.hpp>
 
 #if defined(_WIN32)
 #define FLOW_TEST_EXPORT __declspec(dllexport)
@@ -26,4 +27,17 @@ extern "C" FLOW_TEST_EXPORT void makeDefinition(
         std::abort();
     }
     output = catalog.find(definition.identity.id);
+}
+
+extern "C" FLOW_TEST_EXPORT void makeScalarDefinition(
+    std::shared_ptr<const lux::flowforge::FlowNodeType>& output,
+    const lux::object::CodeLease& code
+) noexcept
+{
+    lux::flowforge::FlowNodeCatalog catalog;
+    if (!catalog.add(lux::flowforge::scalarNodeRegistrations(code)))
+    {
+        std::abort();
+    }
+    output = catalog.find(lux::graph::nodeTypeId("lux.flow.add"));
 }

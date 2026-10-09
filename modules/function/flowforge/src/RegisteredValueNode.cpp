@@ -24,7 +24,7 @@ namespace lux::flowforge
                     const DataPinInfo info{declaration.name, declaration.type};
                     if (declaration.direction == graph::EPinDirection::INPUT)
                     {
-                        pins_.push_back(std::make_unique<DataInPin>(this, info));
+                        pins_.push_back(std::make_unique<DataInPin>(this, info, declaration.allow_default));
                     }
                     else
                     {

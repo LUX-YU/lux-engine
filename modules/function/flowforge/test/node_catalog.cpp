@@ -1,5 +1,7 @@
 #include <lux/engine/flowforge/FlowNodeCatalog.hpp>
+#include <lux/engine/flowforge/ScalarNodes.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
+#include <lux/engine/flowforge/graph/FlowSource.hpp>
 #include <lux/engine/meta/Meta.hpp>
 
 #include <array>
@@ -102,11 +104,66 @@ namespace
             return static_cast<FlowValue>(values.size() - 1);
         }
     };
+
+    void scalarDefinitions()
+    {
+        FlowNodeCatalog catalog;
+        require(catalog.add(scalarNodeRegistrations()).has_value());
+        require(scalarNodeRegistrations().size() == 15);
+        for (const auto& registration : scalarNodeRegistrations())
+        {
+            const auto type = catalog.find(registration.identity.id);
+            require(type && type->identity().canonical_name == registration.identity.canonical_name);
+            require(!catalog.add(std::span{&registration, 1}));
+            auto payload = type->create();
+            require(payload.has_value());
+            const auto* operand = payload->get<ScalarNodePayload>()->operand_type;
+            auto clone = payload->clone();
+            require(clone.has_value() && clone->get<ScalarNodePayload>() != payload->get<ScalarNodePayload>());
+            require(clone->get<ScalarNodePayload>()->operand_type == operand);
+            auto encoded = type->encode(*payload);
+            require(encoded.has_value() && *encoded == operand->name);
+            auto decoded = type->decode(*encoded);
+            require(decoded.has_value() && decoded->get<ScalarNodePayload>()->operand_type == operand);
+            require(!type->decode("not a reflected scalar"));
+            auto pins = type->describePins(*payload);
+            require(pins.has_value());
+            RecordingCompiler compiler;
+            compiler.values = {operand};
+            std::vector<FlowValue> inputs(pins->size() - 1, 0);
+            auto compiled = type->compile(*payload, inputs, compiler);
+            require(compiled.has_value() && compiled->size() == 1 && compiler.emitted == 1);
+            require(*compiler.type(compiled->front()) == *pins->back().type);
+            auto node = createFlowValueNode(type, std::move(*payload));
+            require(node.has_value());
+            require((*node)->operation() == ENodeOperation::REGISTERED_VALUE);
+            for (const auto* input : (*node)->inPins())
+            {
+                const auto& pin = static_cast<const DataInPin&>(*input);
+                require(pin.allowDefault() && pin.constantData().isValid());
+            }
+            FlowGraph graph;
+            const auto id = graph.addNode(std::move(*node));
+            require(id.valid());
+            require(graph.topology().findNode(id)->type == registration.identity.id);
+            const asset::AssetId asset_id{std::array<std::uint8_t, 16>{1}};
+            auto source = captureFlowSource(asset_id, "scalar", graph);
+            require(source.has_value());
+            require(std::get<FlowSourceType>(source->nodes.front().parameters).name == *encoded);
+            auto restored = materializeFlowSource(*source);
+            require(restored.has_value());
+            require(*captureFlowSource(asset_id, "scalar", *restored) == *source);
+        }
+        std::puts(
+            "PASS 15 builtin scalar definitions: same catalog, clone, codec, primitive compile and graph roundtrip"
+        );
+    }
 } // namespace
 
 int main()
 {
     meta::meta_module_init();
+    scalarDefinitions();
     {
         FlowNodeCatalog catalog;
         auto first = descriptor("test.identity");

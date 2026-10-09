@@ -85,6 +85,13 @@ namespace lux::flowforge::detail
         return graph::PinSemanticId{((static_cast<std::uint64_t>(kind) + 1U) << 56U) | (ordinal + 1U)};
     }
 
+    [[nodiscard]] constexpr bool registeredScalarOperation(ENodeOperation operation) noexcept
+    {
+        const bool is_arithmetic = operation >= ENodeOperation::ADD && operation <= ENodeOperation::NEGATE;
+        const bool is_comparison = operation >= ENodeOperation::CMP_EQ && operation <= ENodeOperation::CMP_GE;
+        return is_arithmetic || is_comparison;
+    }
+
     [[nodiscard]] constexpr bool canonicalNodeName(std::string_view name) noexcept
     {
         const auto initial = [](char c) noexcept

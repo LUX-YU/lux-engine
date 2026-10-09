@@ -1,5 +1,6 @@
 #include <lux/engine/flowforge/NativeCallDefinition.hpp>
-#include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
+#include <lux/engine/flowforge/ScalarNodes.hpp>
+#include <lux/engine/flowforge/detail/FlowNodeIdentity.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/graph/NodeRegistry.hpp>
@@ -21,19 +22,32 @@ namespace lux::flowforge
     // Palette entry for a typed binary/unary pure-data node. The palette is
     // flat name -> creator, so per-type variants get a " (Int)" / " (Float)"
     // suffix; bool-typed logic ops need no suffix (they only exist for bool).
-    template <typename NodeT>
     static std::unique_ptr<NodeCreatInfo> createArithmeticCreator(
         std::string name,
         std::string category,
-        ENodeOperation op,
+        std::shared_ptr<const FlowNodeType> definition,
         const lux::meta::RefType* operand_type
     )
     {
         auto ptr = std::make_unique<NodeCreatInfo>();
         ptr->name = std::move(name);
         ptr->category = std::move(category);
-        ptr->creator = [op, operand_type]() -> std::unique_ptr<Node>
-        { return std::make_unique<NodeT>(op, operand_type); };
+        ptr->creator = [definition = std::move(definition), operand_type]() -> std::unique_ptr<Node>
+        {
+            auto payload = definition->create();
+            if (!payload)
+            {
+                return {};
+            }
+            payload->get<ScalarNodePayload>()->operand_type = operand_type;
+            auto node = createFlowValueNode(definition, std::move(*payload));
+            if (!node)
+            {
+                return {};
+            }
+            node.value()->setName(toString(detail::builtinNodeOperation(definition->identity().canonical_name)));
+            return std::move(*node);
+        };
         return ptr;
     }
 
@@ -59,6 +73,14 @@ namespace lux::flowforge
         registerNode(createControlFlowCreator<WhileLoopNode>("While Loop"));
         registerNode(createControlFlowCreator<BreakNode>("Break"));
         registerNode(createControlFlowCreator<ReturnNode>("Return"));
+
+        FlowNodeCatalog scalars;
+        if (!scalars.add(scalarNodeRegistrations()))
+        {
+            std::terminate(); // Inconsistent module-owned declarations.
+        }
+        const auto definition = [&](ENodeOperation operation) noexcept
+        { return scalars.find(graph::nodeTypeId(detail::builtinNodeName(operation))); };
 
         // -------- pure data nodes: arithmetic / comparison / logic --------
         const auto* i32 = &lux::meta::ref_type_of_v<int32_t>;
@@ -88,24 +110,24 @@ namespace lux::flowforge
 
         for (const auto& e : binary_math)
         {
-            registerNode(createArithmeticCreator<BinaryOpNode>(std::string(e.base) + " (Int)", "Math", e.op, i32));
-            registerNode(createArithmeticCreator<BinaryOpNode>(std::string(e.base) + " (Float)", "Math", e.op, f32));
+            registerNode(createArithmeticCreator(std::string(e.base) + " (Int)", "Math", definition(e.op), i32));
+            registerNode(createArithmeticCreator(std::string(e.base) + " (Float)", "Math", definition(e.op), f32));
         }
         // Modulo is integer-only in the palette (arith.remf exists but the
         // gameplay-facing default keeps float modulo out until asked for).
-        registerNode(createArithmeticCreator<BinaryOpNode>("Modulo (Int)", "Math", ENodeOperation::MODULO, i32));
+        registerNode(createArithmeticCreator("Modulo (Int)", "Math", definition(ENodeOperation::MODULO), i32));
 
         for (const auto& e : comparisons)
         {
-            registerNode(createArithmeticCreator<BinaryOpNode>(std::string(e.base) + " (Int)", "Compare", e.op, i32));
-            registerNode(createArithmeticCreator<BinaryOpNode>(std::string(e.base) + " (Float)", "Compare", e.op, f32));
+            registerNode(createArithmeticCreator(std::string(e.base) + " (Int)", "Compare", definition(e.op), i32));
+            registerNode(createArithmeticCreator(std::string(e.base) + " (Float)", "Compare", definition(e.op), f32));
         }
 
-        registerNode(createArithmeticCreator<BinaryOpNode>("And", "Logic", ENodeOperation::LOGICAL_AND, bl));
-        registerNode(createArithmeticCreator<BinaryOpNode>("Or", "Logic", ENodeOperation::LOGICAL_OR, bl));
-        registerNode(createArithmeticCreator<UnaryOpNode>("Not", "Logic", ENodeOperation::LOGICAL_NOT, bl));
-        registerNode(createArithmeticCreator<UnaryOpNode>("Negate (Int)", "Math", ENodeOperation::NEGATE, i32));
-        registerNode(createArithmeticCreator<UnaryOpNode>("Negate (Float)", "Math", ENodeOperation::NEGATE, f32));
+        registerNode(createArithmeticCreator("And", "Logic", definition(ENodeOperation::LOGICAL_AND), bl));
+        registerNode(createArithmeticCreator("Or", "Logic", definition(ENodeOperation::LOGICAL_OR), bl));
+        registerNode(createArithmeticCreator("Not", "Logic", definition(ENodeOperation::LOGICAL_NOT), bl));
+        registerNode(createArithmeticCreator("Negate (Int)", "Math", definition(ENodeOperation::NEGATE), i32));
+        registerNode(createArithmeticCreator("Negate (Float)", "Math", definition(ENodeOperation::NEGATE), f32));
     }
 
     namespace

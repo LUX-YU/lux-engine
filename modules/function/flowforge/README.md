@@ -115,7 +115,7 @@ New source encoding is `lux.flowforge.source` version 2. Every node stores a can
 name and schema version, every pin its semantic identity in addition to its graph-local PinId.
 Builtin topology type IDs use the same canonical-name hash. File decoding retains version 1
 as a read-only compatibility format; the explicit frozen ordinal/name table is independent of
-future enum numbering. New output never writes operation ordinals. Old builtin construction
+future enum numbering. New output never writes operation ordinals. Control/native/Ability builtin construction
 and parameter-schema adapters remain until the complete builtin registration migration; their
 canonical names are reserved against extension substitution and hash collision.
 
@@ -141,3 +141,24 @@ links and commit. Detached, foreign and moved pins cannot alias equal local IDs 
 Data initialization retains the original directional diagnostics; occupied pins reject without
 replacing links. Domain admission does not invoke extension callbacks or allocate linked-pin lists.
 This removes Pin connection authority, not the remaining Node.graph/dynamic-schema representation.
+
+## Builtin scalar registrations
+
+Arithmetic, comparison and boolean operators now use `ScalarNodePayload` and the public
+`FlowNodeRegistration` callbacks. `BinaryOpNode`, `UnaryOpNode` and their Toolchain lowering
+branches are removed. The compiler uses the same registered-value path for builtins and extensions.
+The payload only borrows the declared operand metadata; topology, default values and pin identities
+remain in the current graph representation pending the full store migration.
+
+Composition adds `scalarNodeRegistrations(code)` to an otherwise empty `FlowNodeCatalog`.
+No payload is created during registration. A static module copy inside a DLL supplies its actual
+code lease; published definitions, payload clones and their cleanup retain it. `create()` chooses
+bool for boolean operations and int32 otherwise; set the typed payload's operand before admitting
+its node to select another reflected type. Existing reflection environment lifetime rules apply.
+The established intrinsic names and v1 codecs cannot be reassigned to arbitrary callbacks.
+
+Palette creation and source reconstruction consume these real definitions. Source reconstruction
+uses its existing environment/code lifetime, preserves the old typed parameter representation and
+exact pin semantic IDs, and still permits editable drafts independently of compile eligibility.
+Zero defaults are provided by the existing DataInPin initialization, not a second scalar initializer.
+The remaining control/native/Ability registrations, plain graph stores and graph UI are unfinished.

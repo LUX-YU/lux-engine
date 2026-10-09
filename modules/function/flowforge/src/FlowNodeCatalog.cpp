@@ -1,4 +1,5 @@
 #include <lux/engine/flowforge/FlowNodeCatalog.hpp>
+#include <lux/engine/flowforge/ScalarNodes.hpp>
 #include <lux/engine/flowforge/detail/FlowNodeIdentity.hpp>
 
 #include <lux/engine/meta/Meta.hpp>
@@ -24,6 +25,29 @@ namespace lux::flowforge
             const bool has_codec_pair = (value.encode != nullptr) == (value.decode != nullptr);
             return has_identity && has_payload_type && has_code && has_callbacks && has_codec_pair;
         }
+
+        bool matchesBuiltinScalar(const FlowNodeRegistration& candidate) noexcept
+        {
+            // Published intrinsic v1 names cannot be reassigned to a different wire/compile contract.
+            // The provider may replace the code lease when its static module copy lives in a DLL.
+            static const auto declarations = scalarNodeRegistrations();
+            for (const auto& value : declarations)
+            {
+                if (candidate.identity.canonical_name != value.identity.canonical_name)
+                {
+                    continue;
+                }
+                const bool has_identity = candidate.identity.version == value.identity.version &&
+                                          candidate.payload_type == value.payload_type;
+                const bool has_factory =
+                    candidate.create == value.create && candidate.describe_pins == value.describe_pins;
+                const bool has_behavior = candidate.validate == value.validate && candidate.compile == value.compile;
+                const bool has_codec = candidate.encode == value.encode && candidate.decode == value.decode;
+                return has_identity && has_factory && has_behavior && has_codec;
+            }
+            return false;
+        }
+
     } // namespace
 
     FlowNodeType::FlowNodeType(FlowNodeRegistration registration) noexcept
@@ -200,15 +224,18 @@ namespace lux::flowforge
 
     FlowNodeCatalog::~FlowNodeCatalog() = default;
 
-    cxx::expected<void, EFlowNodeCatalogError>
-    FlowNodeCatalog::add(std::span<const FlowNodeRegistration> registrations) noexcept
+    cxx::expected<void, EFlowNodeCatalogError> FlowNodeCatalog::add(std::span<const FlowNodeRegistration> registrations
+    ) noexcept
     {
         for (std::size_t i = 0; i != registrations.size(); ++i)
         {
             const auto& value = registrations[i];
-            const bool is_builtin_identity =
-                detail::builtinNodeOperation(value.identity.canonical_name) != ENodeOperation::REGISTERED_VALUE;
-            if (!validRegistration(value) || is_builtin_identity)
+            const auto operation = detail::builtinNodeOperation(value.identity.canonical_name);
+            const bool is_unmigrated_builtin =
+                operation != ENodeOperation::REGISTERED_VALUE && !detail::registeredScalarOperation(operation);
+            const bool is_reassigned_builtin =
+                detail::registeredScalarOperation(operation) && !matchesBuiltinScalar(value);
+            if (!validRegistration(value) || is_unmigrated_builtin || is_reassigned_builtin)
             {
                 return cxx::unexpected(EFlowNodeCatalogError::INVALID_REGISTRATION);
             }
@@ -226,7 +253,10 @@ namespace lux::flowforge
             };
             for (const auto& builtin : detail::builtin_node_identities)
             {
-                if (value.identity.id == graph::nodeTypeId(builtin.name))
+                const bool has_matching_name = value.identity.canonical_name == builtin.name;
+                const bool is_reserved = !detail::registeredScalarOperation(builtin.operation) || !has_matching_name;
+                const bool is_reserved_collision = is_reserved && value.identity.id == graph::nodeTypeId(builtin.name);
+                if (is_reserved_collision)
                 {
                     return cxx::unexpected(EFlowNodeCatalogError::HASH_COLLISION);
                 }

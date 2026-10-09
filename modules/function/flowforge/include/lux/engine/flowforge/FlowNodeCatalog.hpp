@@ -19,6 +19,7 @@ namespace lux::flowforge
         graph::EPinDirection direction{graph::EPinDirection::INPUT};
         // Borrowed immutable metadata; its environment must outlive all definitions and graphs using it.
         const meta::RefType* type{};
+        bool allow_default{};
     };
 
     // Pure value compilation is the first supported role. Control/native/Ability registrations

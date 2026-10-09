@@ -1,4 +1,4 @@
-#include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
+#include <lux/engine/flowforge/ScalarNodes.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FlowSource.hpp>
 
@@ -36,11 +36,23 @@ namespace
 
         Fixture()
         {
+            FlowNodeCatalog catalog;
+            require(catalog.add(scalarNodeRegistrations()).has_value());
+            auto make = [&](std::string_view name, const meta::RefType& type)
+            {
+                auto definition = catalog.find(graph::nodeTypeId(name));
+                auto payload = definition->create();
+                require(payload.has_value());
+                payload->get<ScalarNodePayload>()->operand_type = &type;
+                auto node = createFlowValueNode(definition, std::move(*payload));
+                require(node.has_value());
+                return std::move(*node);
+            };
             std::array<std::unique_ptr<Node>, 4> nodes{
                 std::make_unique<BranchNode>(),
                 std::make_unique<BranchNode>(),
-                std::make_unique<BinaryOpNode>(ENodeOperation::ADD, &meta::ref_type_of_v<int>),
-                std::make_unique<BinaryOpNode>(ENodeOperation::LOGICAL_AND, &meta::ref_type_of_v<bool>)
+                make("lux.flow.add", meta::ref_type_of_v<int>),
+                make("lux.flow.and", meta::ref_type_of_v<bool>)
             };
             for (auto& node : nodes)
             {

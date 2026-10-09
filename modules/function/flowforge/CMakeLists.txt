@@ -27,7 +27,7 @@ add_component(
         src/ControlNode.cpp
         src/FunctionalNode.cpp
         src/ObjectNode.cpp
-        src/ArithmeticNode.cpp
+        src/ScalarNodes.cpp
         src/FlowGraph.cpp
         src/FlowSource.cpp
         src/FlowSourceGraph.cpp

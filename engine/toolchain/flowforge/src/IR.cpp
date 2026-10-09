@@ -32,7 +32,6 @@
 #include "lux/engine/flowforge/graph/ControlNode.hpp"
 #include "lux/engine/flowforge/graph/FunctionalNode.hpp"
 #include "lux/engine/flowforge/graph/ObjectNode.hpp"
-#include "lux/engine/flowforge/graph/ArithmeticNode.hpp"
 #include <lux/engine/flowforge/detail/ScalarLowering.hpp>
 #include <lux/engine/flowforge/FlowControlFlow.hpp>
 #include "lux/engine/flowforge/script/ScriptEventAwaitNode.hpp"
@@ -175,7 +174,7 @@ namespace lux::flowforge
     // types, and records/unknowns fall back to llvm.ptr. Signedness (int vs
     // uint) is not encoded in the MLIR integer type itself (MLIR convention:
     // signless integers) — op SELECTION carries the signedness instead, see
-    // detail::isUnsignedScalar / lowerBinaryOp.
+    // detail::isUnsignedScalar and registered scalar lowering.
     static mlir::Type refTypeToMLIR(BuilderContext& bc, const lux::meta::RefType& rt)
     {
         using lux::meta::EBaseType;
@@ -481,8 +480,6 @@ namespace lux::flowforge
         // pure scope. Non-pure sources (a native call that hasn't run yet)
         // and data cycles return a structured graph error.
         FlowForgeResult<mlir::Value> materializePureValue(const DataOutPin& src, ValueMaps&, BuilderContext&);
-        FlowForgeResult<mlir::Value> lowerBinaryOp(const BinaryOpNode&, ValueMaps&, BuilderContext&);
-        FlowForgeResult<mlir::Value> lowerUnaryOp(const UnaryOpNode&, ValueMaps&, BuilderContext&);
 
         // Implicit scalar conversion of `v` to the declared type `dst_rt`
         // (int widening/narrowing, int<->float, float widening). Extension
@@ -1693,31 +1690,6 @@ namespace lux::flowforge
 
         switch (n->operation())
         {
-        case ENodeOperation::ADD:
-        case ENodeOperation::SUBTRACT:
-        case ENodeOperation::MULTIPLY:
-        case ENodeOperation::DIVIDE:
-        case ENodeOperation::MODULO:
-        case ENodeOperation::LOGICAL_AND:
-        case ENodeOperation::LOGICAL_OR:
-        case ENodeOperation::CMP_EQ:
-        case ENodeOperation::CMP_NE:
-        case ENodeOperation::CMP_LT:
-        case ENodeOperation::CMP_LE:
-        case ENodeOperation::CMP_GT:
-        case ENodeOperation::CMP_GE: {
-            LUX_FF_TRY_VALUE(v, lowerBinaryOp(static_cast<const BinaryOpNode&>(*n), vm, bc));
-            vm.pure_scopes.back()[bc.graph->pinId(&src).value] = v;
-            return v;
-        }
-
-        case ENodeOperation::NEGATE:
-        case ENodeOperation::LOGICAL_NOT: {
-            LUX_FF_TRY_VALUE(v, lowerUnaryOp(static_cast<const UnaryOpNode&>(*n), vm, bc));
-            vm.pure_scopes.back()[bc.graph->pinId(&src).value] = v;
-            return v;
-        }
-
         case ENodeOperation::REGISTERED_VALUE:
         {
             const auto* type = n->registeredType();
@@ -1856,62 +1828,6 @@ namespace lux::flowforge
             "no implicit conversion between the linked value's type and the "
             "pin's declared type"
         );
-    }
-
-    // ============================================================================
-    // lowerBinaryOp / lowerUnaryOp — arith-dialect emission for pure nodes.
-    // Signedness comes from the node's declared operand RefType (MLIR
-    // integers are signless; the op choice carries the signedness).
-    // ============================================================================
-    FlowForgeResult<mlir::Value> MLIRBuilderImpl::lowerBinaryOp(
-        const BinaryOpNode& bin,
-        ValueMaps& vm,
-        BuilderContext& bc
-    )
-    {
-        const auto* rt = bin.operandType();
-        if (!rt)
-        {
-            LUX_FF_FAIL(bc, "binary op node has no operand type");
-        }
-
-        LUX_FF_TRY_VALUE(lhs_operand, getOperand(bin.lhs(), vm, bc));
-        LUX_FF_TRY_VALUE(rhs_operand, getOperand(bin.rhs(), vm, bc));
-        LUX_FF_TRY_VALUE(lhs, coerceScalar(bc, lhs_operand, *rt));
-        LUX_FF_TRY_VALUE(rhs, coerceScalar(bc, rhs_operand, *rt));
-
-        const auto instruction = detail::selectBinaryScalarInstruction(bin.operation(), *rt);
-        if (!instruction)
-        {
-            LUX_FF_FAIL(bc, "not a binary operation");
-        }
-        ScalarValueCompiler compiler(bc);
-        LUX_FF_TRY_VALUE(left, compiler.add(lhs, *rt));
-        LUX_FF_TRY_VALUE(right, compiler.add(rhs, *rt));
-        const std::array operands{left, right};
-        LUX_FF_TRY_VALUE(result, compiler.emitScalar(*instruction, operands));
-        return compiler.value(result);
-    }
-
-    FlowForgeResult<mlir::Value> MLIRBuilderImpl::lowerUnaryOp(const UnaryOpNode& un, ValueMaps& vm, BuilderContext& bc)
-    {
-        const auto* rt = un.operandType();
-        if (!rt)
-        {
-            LUX_FF_FAIL(bc, "unary op node has no operand type");
-        }
-
-        LUX_FF_TRY_VALUE(operand, getOperand(un.operand(), vm, bc));
-        LUX_FF_TRY_VALUE(v, coerceScalar(bc, operand, *rt));
-        const auto instruction = detail::selectUnaryScalarInstruction(un.operation(), *rt);
-        if (!instruction)
-        {
-            LUX_FF_FAIL(bc, "not a unary operation");
-        }
-        ScalarValueCompiler compiler(bc);
-        LUX_FF_TRY_VALUE(input, compiler.add(v, *rt));
-        LUX_FF_TRY_VALUE(result, compiler.emitScalar(*instruction, std::span{&input, 1U}));
-        return compiler.value(result);
     }
 
     // ============================================================================

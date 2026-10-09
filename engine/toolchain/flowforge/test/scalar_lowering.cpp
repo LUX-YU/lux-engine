@@ -1,5 +1,5 @@
 #include <lux/engine/flowforge/Compiler.hpp>
-#include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
+#include <lux/engine/flowforge/ScalarNodes.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/graph/ObjectNode.hpp>
@@ -24,6 +24,38 @@ namespace
         }
     }
 
+    std::unique_ptr<Node> scalar(ENodeOperation operation, const meta::RefType& type)
+    {
+        FlowNodeCatalog catalog;
+        require(catalog.add(scalarNodeRegistrations()).has_value());
+        const auto names = std::array{
+            "lux.flow.add",
+            "lux.flow.subtract",
+            "lux.flow.multiply",
+            "lux.flow.divide",
+            "lux.flow.modulo",
+            "lux.flow.and",
+            "lux.flow.or",
+            "lux.flow.not",
+            "lux.flow.negate",
+            "lux.flow.equal",
+            "lux.flow.not_equal",
+            "lux.flow.less",
+            "lux.flow.less_equal",
+            "lux.flow.greater",
+            "lux.flow.greater_equal"
+        };
+        const auto index = static_cast<unsigned>(operation) - static_cast<unsigned>(ENodeOperation::ADD);
+        require(index < names.size());
+        auto definition = catalog.find(graph::nodeTypeId(names[index]));
+        auto payload = definition->create();
+        require(payload.has_value());
+        payload->get<ScalarNodePayload>()->operand_type = &type;
+        auto node = createFlowValueNode(definition, std::move(*payload));
+        require(node.has_value());
+        return std::move(*node);
+    }
+
     const DataOutPin& addInput(FlowGraph& graph, const meta::RefType& type, std::string name)
     {
         auto initial = meta::RuntimeObject::defaultOf(type);
@@ -38,9 +70,9 @@ namespace
 
     void addBinary(FlowGraph& graph, ENodeOperation operation, const meta::RefType& type, std::size_t& count)
     {
-        auto expression = std::make_unique<BinaryOpNode>(operation, &type);
+        auto expression = scalar(operation, type);
         auto function = std::make_unique<OnEventNode>("binary_" + std::to_string(count++));
-        const auto* result_type = expression->result().info().type;
+        const auto* result_type = static_cast<const DataOutPin&>(*expression->outPins().front()).info().type;
         auto initial = meta::RuntimeObject::defaultOf(*result_type);
         require(initial.has_value());
         const auto variable = graph.addVariable("result_" + std::to_string(count), result_type, std::move(*initial));
@@ -57,21 +89,21 @@ namespace
         const auto& lhs = addInput(graph, type, "lhs_" + std::to_string(count));
         const auto& rhs = addInput(graph, type, "rhs_" + std::to_string(count));
         require(
-            graph.connect(*graph.findPin(graph.pinId(&lhs)), *graph.findPin(graph.pinId(&x->lhs()))) ==
+            graph.connect(*graph.findPin(graph.pinId(&lhs)), *graph.findPin(graph.pinId(x->inPins()[0]))) ==
             ELinkError::SUCCESS
         );
         require(
-            graph.connect(*graph.findPin(graph.pinId(&rhs)), *graph.findPin(graph.pinId(&x->rhs()))) ==
+            graph.connect(*graph.findPin(graph.pinId(&rhs)), *graph.findPin(graph.pinId(x->inPins()[1]))) ==
             ELinkError::SUCCESS
         );
-        require(graph.connect(x->result(), r->valueIn()) == ELinkError::SUCCESS);
+        require(graph.connect(*x->outPins()[0], r->valueIn()) == ELinkError::SUCCESS);
     }
 
     void addUnary(FlowGraph& graph, ENodeOperation operation, const meta::RefType& type, std::size_t& count)
     {
-        auto expression = std::make_unique<UnaryOpNode>(operation, &type);
+        auto expression = scalar(operation, type);
         auto function = std::make_unique<OnEventNode>("unary_" + std::to_string(count++));
-        const auto* result_type = expression->result().info().type;
+        const auto* result_type = static_cast<const DataOutPin&>(*expression->outPins().front()).info().type;
         auto initial = meta::RuntimeObject::defaultOf(*result_type);
         require(initial.has_value());
         const auto variable = graph.addVariable("result_" + std::to_string(count), result_type, std::move(*initial));
@@ -87,10 +119,10 @@ namespace
         require(graph.connect(f->execOutPin(), r->execInPin()) == ELinkError::SUCCESS);
         const auto& input = addInput(graph, type, "value_" + std::to_string(count));
         require(
-            graph.connect(*graph.findPin(graph.pinId(&input)), *graph.findPin(graph.pinId(&x->operand()))) ==
+            graph.connect(*graph.findPin(graph.pinId(&input)), *graph.findPin(graph.pinId(x->inPins()[0]))) ==
             ELinkError::SUCCESS
         );
-        require(graph.connect(x->result(), r->valueIn()) == ELinkError::SUCCESS);
+        require(graph.connect(*x->outPins()[0], r->valueIn()) == ELinkError::SUCCESS);
     }
 } // namespace
 

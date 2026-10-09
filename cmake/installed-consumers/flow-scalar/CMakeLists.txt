@@ -90,7 +90,7 @@ foreach(target registered_value registered_value_plugin node_catalog)
     endif()
 endforeach()
 
-foreach(header FlowNodeCatalog FlowValueCompiler)
+foreach(header FlowNodeCatalog FlowValueCompiler ScalarNodes)
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" "#include <lux/engine/flowforge/${header}.hpp>\n")
 
     add_library(header_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")

@@ -23,12 +23,6 @@ namespace lux::material
     using lux::graph::NodeId;
     using lux::graph::PinId;
 
-    enum class EPinDirection : uint8_t
-    {
-        INPUT,
-        OUTPUT
-    };
-
     /**
      * @brief The source of a connection: an output pin on some node.
      *        An input pin has at most one source (pure dataflow, fan-in = 1).
@@ -46,15 +40,13 @@ namespace lux::material
 
     /**
      * @brief A typed data pin (an aggregate type, for easy initialization).
-     *        - Input pin: `source` points to where the value comes from; when
-     *          unconnected, `constant` is used as the default value.
-     *        - Output pin: `source` / `constant` are ignored.
+     *        Direction, ownership and links belong to GraphTopology.
+     *        An unconnected input uses `constant`; outputs ignore it.
      */
     struct DataPin
     {
         std::string name;
         EValueType type = EValueType::FLOAT;
-        EPinDirection direction = EPinDirection::INPUT;
         float constant[4] = {0, 0, 0, 0}; ///< Default constant used when an input is unconnected
         PinId id;                         ///< Stable shared-topology identity
     };

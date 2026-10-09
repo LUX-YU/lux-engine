@@ -1,3 +1,4 @@
+#include <lux/engine/material/MaterialIR.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 
@@ -17,6 +18,11 @@ namespace
 
     template <class T>
     concept SetsNodeIdentity = requires(T& value, NodeId id) { value.setId(id); };
+
+    template <class T>
+    concept HasPinDirection = requires(T& value) { value.direction; };
+
+    static_assert(!HasPinDirection<DataPin>);
 
     static_assert(!HasNodeIdentity<Node> && !SetsNodeIdentity<Node>);
     static_assert(!HasNodeIdentity<ConstantNode> && !SetsNodeIdentity<ConstantNode>);
@@ -93,6 +99,26 @@ int main()
     auto cloned = graph.clone();
     require(cloned.node(id) != graph.node(id));
     require(cloned.topology().findPin(original_pin)->owner == id);
+
+    // Only structural records carry direction. A malformed restored topology is still rejected;
+    // removing the duplicated payload field must not weaken source/compiler boundary checks.
+    auto invalid_graph = graph.clone();
+    auto removed_pin = invalid_graph.topology().detachPin(original_pin);
+    require(removed_pin.has_value());
+    removed_pin->pin.direction = graph::EPinDirection::INPUT;
+    auto failed_restore = invalid_graph.topology().restorePin(*removed_pin);
+    require(!failed_restore && failed_restore.error().code == graph::EGraphTopologyError::DIRECTION_MISMATCH);
+    require(invalid_graph.topology().findPin(original_pin) == nullptr);
+    removed_pin->links.clear();
+    require(invalid_graph.topology().restorePin(std::move(*removed_pin)).has_value());
+    require(invalid_graph.topology().findPin(original_pin)->direction == graph::EPinDirection::INPUT);
+    MaterialSource malformed{source.id, source.name, std::move(invalid_graph)};
+    auto rejected_source = validateMaterialSource(malformed);
+    require(!rejected_source && rejected_source.error().code == EMaterialSourceError::INVALID_TOPOLOGY);
+    auto rejected_ir = lowerMaterial(malformed.graph);
+    require(!rejected_ir && rejected_ir.error().code == EMaterialCompileError::INVALID_GRAPH);
+    require(rejected_ir.error().node_id == id);
+    require(*encodeMaterialSource(source) == *encoded);
 
     auto* constant = graph.node(id)->as<ConstantNode>();
     constant->value[0] = std::numeric_limits<float>::infinity();

@@ -15,16 +15,11 @@ namespace lux::material
             return lux::graph::NodeTypeId{static_cast<std::uint64_t>(kind) + 1U};
         }
 
-        [[nodiscard]] lux::graph::PinSemanticId pinSemantic(EPinDirection direction, std::size_t ordinal) noexcept
+        [[nodiscard]] lux::graph::PinSemanticId
+        pinSemantic(lux::graph::EPinDirection direction, std::size_t ordinal) noexcept
         {
-            const auto direction_bit = direction == EPinDirection::OUTPUT ? (std::uint64_t{1U} << 63U) : 0U;
+            const auto direction_bit = direction == lux::graph::EPinDirection::OUTPUT ? (std::uint64_t{1U} << 63U) : 0U;
             return lux::graph::PinSemanticId{direction_bit | static_cast<std::uint64_t>(ordinal + 1U)};
-        }
-
-        [[nodiscard]] lux::graph::EPinDirection graphDirection(EPinDirection direction) noexcept
-        {
-            return direction == EPinDirection::OUTPUT ? lux::graph::EPinDirection::OUTPUT
-                                                      : lux::graph::EPinDirection::INPUT;
         }
 
         [[nodiscard]] bool isConvertible(EValueType source, EValueType target) noexcept
@@ -37,6 +32,7 @@ namespace lux::material
             const auto target_width = static_cast<std::uint8_t>(target) + 1U;
             return source_width > target_width || (source == EValueType::FLOAT && target_width > 1U);
         }
+
         template <class Structure>
         concept NodeStructure = requires(Structure& structure, lux::graph::PinRecord pin) {
             { structure.insertPin(pin) } -> std::same_as<lux::cxx::expected<void, lux::graph::GraphTopologyFailure>>;
@@ -51,24 +47,27 @@ namespace lux::material
         template <NodeStructure Structure>
         bool registerNodeStructure(Structure& structure, NodeId id, Node& node_value, bool preserve_pin_ids) noexcept
         {
-            const auto add_pins = [&](std::vector<DataPin>& pins, EPinDirection direction, bool existing_pass) noexcept
+            const auto add_pins = [&](
+                std::vector<DataPin>& pins,
+                lux::graph::EPinDirection direction,
+                bool existing_pass
+            ) noexcept
             {
                 for (std::size_t ordinal{}; ordinal < pins.size(); ++ordinal)
                 {
                     auto& pin = pins[ordinal];
-                    pin.direction = direction;
                     const bool existing = preserve_pin_ids && pin.id.valid();
                     if (existing != existing_pass)
                     {
                         continue;
                     }
-                    const auto fan_cap = direction == EPinDirection::INPUT ? 1U : lux::graph::kUnlimitedFan;
+                    const auto fan_cap = direction == lux::graph::EPinDirection::INPUT ? 1U : lux::graph::kUnlimitedFan;
                     if (existing)
                     {
                         const auto inserted = structure.insertPin(lux::graph::PinRecord{
                             pin.id,
                             id,
-                            graphDirection(direction),
+                            direction,
                             static_cast<std::uint8_t>(fan_cap),
                             pinSemantic(direction, ordinal)
                         });
@@ -81,7 +80,7 @@ namespace lux::material
                     {
                         auto created = structure.addPin(
                             id,
-                            graphDirection(direction),
+                            direction,
                             static_cast<std::uint8_t>(fan_cap),
                             pinSemantic(direction, ordinal)
                         );
@@ -96,10 +95,10 @@ namespace lux::material
             };
 
             // Admit all preserved identities before issuing new pins, including outputs after new inputs.
-            if (!add_pins(node_value.inputs(), EPinDirection::INPUT, true) ||
-                !add_pins(node_value.outputs(), EPinDirection::OUTPUT, true) ||
-                !add_pins(node_value.inputs(), EPinDirection::INPUT, false) ||
-                !add_pins(node_value.outputs(), EPinDirection::OUTPUT, false))
+            if (!add_pins(node_value.inputs(), lux::graph::EPinDirection::INPUT, true) ||
+                !add_pins(node_value.outputs(), lux::graph::EPinDirection::OUTPUT, true) ||
+                !add_pins(node_value.inputs(), lux::graph::EPinDirection::INPUT, false) ||
+                !add_pins(node_value.outputs(), lux::graph::EPinDirection::OUTPUT, false))
             {
                 static_cast<void>(structure.detachNode(id));
                 return false;
@@ -109,8 +108,11 @@ namespace lux::material
     } // namespace
 
     MaterialGraph::MaterialGraph() = default;
+
     MaterialGraph::~MaterialGraph() = default;
+
     MaterialGraph::MaterialGraph(MaterialGraph&&) noexcept = default;
+
     MaterialGraph& MaterialGraph::operator=(MaterialGraph&&) noexcept = default;
 
     MaterialGraph MaterialGraph::clone() const

@@ -41,12 +41,11 @@ namespace lux::material
 
     namespace
     {
-        DataPin makePin(const char* name, EValueType type, EPinDirection dir)
+        DataPin makePin(const char* name, EValueType type)
         {
             DataPin p{};
             p.name = name;
             p.type = type;
-            p.direction = dir;
             return p;
         }
     } // namespace
@@ -55,7 +54,7 @@ namespace lux::material
     ConstantNode::ConstantNode() : Node(ConstructionKey{}, EMatNodeKind::CONSTANT)
     {
         setName("Constant");
-        out_pins_.push_back(makePin("out", value_type, EPinDirection::OUTPUT));
+        out_pins_.push_back(makePin("out", value_type));
     }
 
     void ConstantNode::setType(EValueType t)
@@ -69,7 +68,7 @@ namespace lux::material
     InputNode::InputNode() : Node(ConstructionKey{}, EMatNodeKind::INPUT)
     {
         setName("Input");
-        out_pins_.push_back(makePin("out", EValueType::VEC2, EPinDirection::OUTPUT));
+        out_pins_.push_back(makePin("out", EValueType::VEC2));
     }
 
     void InputNode::setInput(EMaterialInput value)
@@ -85,17 +84,17 @@ namespace lux::material
     SampleTextureNode::SampleTextureNode() : Node(ConstructionKey{}, EMatNodeKind::SAMPLE_TEXTURE)
     {
         setName("Sample Texture");
-        in_pins_.push_back(makePin("uv", EValueType::VEC2, EPinDirection::INPUT));
-        out_pins_.push_back(makePin("rgba", EValueType::VEC4, EPinDirection::OUTPUT));
+        in_pins_.push_back(makePin("uv", EValueType::VEC2));
+        out_pins_.push_back(makePin("rgba", EValueType::VEC4));
     }
 
     // ---- MathNode -----------------------------------------------------------
     MathNode::MathNode(EMathOp o) : Node(ConstructionKey{}, EMatNodeKind::MATH), op(o)
     {
         setName("Math");
-        in_pins_.push_back(makePin("a", EValueType::FLOAT, EPinDirection::INPUT));
-        in_pins_.push_back(makePin("b", EValueType::FLOAT, EPinDirection::INPUT));
-        out_pins_.push_back(makePin("result", EValueType::FLOAT, EPinDirection::OUTPUT));
+        in_pins_.push_back(makePin("a", EValueType::FLOAT));
+        in_pins_.push_back(makePin("b", EValueType::FLOAT));
+        out_pins_.push_back(makePin("result", EValueType::FLOAT));
     }
 
     void MathNode::setOperandType(EValueType t)
@@ -114,8 +113,8 @@ namespace lux::material
     DecodeNormalNode::DecodeNormalNode() : Node(ConstructionKey{}, EMatNodeKind::DECODE_NORMAL)
     {
         setName("Decode Normal");
-        in_pins_.push_back(makePin("rgb", EValueType::VEC3, EPinDirection::INPUT));
-        out_pins_.push_back(makePin("normal", EValueType::VEC3, EPinDirection::OUTPUT));
+        in_pins_.push_back(makePin("rgb", EValueType::VEC3));
+        out_pins_.push_back(makePin("normal", EValueType::VEC3));
     }
 
     // ---- SwizzleNode --------------------------------------------------------
@@ -123,8 +122,8 @@ namespace lux::material
         : Node(ConstructionKey{}, EMatNodeKind::SWIZZLE), source_type(source), out_type(out)
     {
         setName("Swizzle");
-        in_pins_.push_back(makePin("in", source, EPinDirection::INPUT));
-        out_pins_.push_back(makePin("out", out, EPinDirection::OUTPUT));
+        in_pins_.push_back(makePin("in", source));
+        out_pins_.push_back(makePin("out", out));
     }
 
     void SwizzleNode::setTypes(EValueType source, EValueType out)
@@ -141,7 +140,7 @@ namespace lux::material
     ParamNode::ParamNode(EValueType t) : Node(ConstructionKey{}, EMatNodeKind::PARAM), type(t)
     {
         setName("Param");
-        out_pins_.push_back(makePin("value", t, EPinDirection::OUTPUT));
+        out_pins_.push_back(makePin("value", t));
     }
 
     void ParamNode::setType(EValueType t)
@@ -155,8 +154,8 @@ namespace lux::material
     TbnTransformNode::TbnTransformNode() : Node(ConstructionKey{}, EMatNodeKind::TBN_TRANSFORM)
     {
         setName("TBN Transform");
-        in_pins_.push_back(makePin("normal_ts", EValueType::VEC3, EPinDirection::INPUT));
-        out_pins_.push_back(makePin("world_normal", EValueType::VEC3, EPinDirection::OUTPUT));
+        in_pins_.push_back(makePin("normal_ts", EValueType::VEC3));
+        out_pins_.push_back(makePin("world_normal", EValueType::VEC3));
     }
 
     // ---- ConstructNode ------------------------------------------------------
@@ -169,8 +168,8 @@ namespace lux::material
                                                   : 4;
         static const char* const kComp[4] = {"x", "y", "z", "w"};
         for (int i = 0; i < n; ++i)
-            in_pins_.push_back(makePin(kComp[i], EValueType::FLOAT, EPinDirection::INPUT));
-        out_pins_.push_back(makePin("out", out, EPinDirection::OUTPUT));
+            in_pins_.push_back(makePin(kComp[i], EValueType::FLOAT));
+        out_pins_.push_back(makePin("out", out));
     }
 
     void ConstructNode::setType(EValueType value)
@@ -184,7 +183,7 @@ namespace lux::material
         constexpr const char* names[]{"x", "y", "z", "w"};
         while (in_pins_.size() < count)
         {
-            in_pins_.push_back(makePin(names[in_pins_.size()], EValueType::FLOAT, EPinDirection::INPUT));
+            in_pins_.push_back(makePin(names[in_pins_.size()], EValueType::FLOAT));
         }
         in_pins_.resize(count);
         out_type = value;
@@ -200,7 +199,7 @@ namespace lux::material
         setName("Output Surface");
         for (const auto& a : kMaterialAttributes)
         {
-            DataPin pin = makePin(a.name, a.type, EPinDirection::INPUT);
+            DataPin pin = makePin(a.name, a.type);
             pin.constant[0] = a.dflt[0];
             pin.constant[1] = a.dflt[1];
             pin.constant[2] = a.dflt[2];

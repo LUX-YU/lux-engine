@@ -65,23 +65,19 @@ namespace lux::material::detail
             const Node& node
         )
         {
-            const auto validate = [&](const std::vector<DataPin>& pins,
-                                      EPinDirection expected) -> lux::cxx::expected<void, MaterialCompileFailure>
+            using PinResult = lux::cxx::expected<void, MaterialCompileFailure>;
+            const auto validate = [&](const std::vector<DataPin>& pins, lux::graph::EPinDirection expected) -> PinResult
             {
                 for (std::uint32_t index = 0U; index < pins.size(); ++index)
                 {
                     const auto& pin = pins[index];
                     const auto* structural = graph.topology().findPin(pin.id);
-                    const auto structural_direction = expected == EPinDirection::OUTPUT
-                                                          ? lux::graph::EPinDirection::OUTPUT
-                                                          : lux::graph::EPinDirection::INPUT;
                     const bool is_invalid_structure = structural == nullptr || structural->owner != id ||
-                                                      structural->direction != structural_direction;
+                                                      structural->direction != expected;
                     const bool is_invalid_value = !validValueType(pin.type) || !finiteValues(pin.constant);
                     const bool is_invalid_identity = !pin.id.valid();
-                    const bool is_direction_mismatch = pin.direction != expected;
                     const bool is_invalid_pin =
-                        is_invalid_value || is_invalid_identity || is_direction_mismatch || is_invalid_structure;
+                        is_invalid_value || is_invalid_identity || is_invalid_structure;
                     if (is_invalid_pin)
                     {
                         return invalidGraph("invalid material pin contract", id, index);
@@ -90,11 +86,11 @@ namespace lux::material::detail
                 return {};
             };
 
-            if (auto result = validate(node.inputs(), EPinDirection::INPUT); !result)
+            if (auto result = validate(node.inputs(), lux::graph::EPinDirection::INPUT); !result)
             {
                 return result;
             }
-            return validate(node.outputs(), EPinDirection::OUTPUT);
+            return validate(node.outputs(), lux::graph::EPinDirection::OUTPUT);
         }
 
         [[nodiscard]] bool hasShape(const Node& node, std::size_t input_count, std::size_t output_count) noexcept

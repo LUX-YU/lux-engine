@@ -19,7 +19,7 @@ namespace lux::material
         }
         const auto equal_pin = [](const DataPin& a, const DataPin& b)
         {
-            return a.id == b.id && a.type == b.type && a.direction == b.direction && a.name == b.name &&
+            return a.id == b.id && a.type == b.type && a.name == b.name &&
                    std::ranges::equal(a.constant, b.constant);
         };
         if (!std::ranges::equal(first.inputs(), second.inputs(), equal_pin) ||
@@ -438,7 +438,7 @@ namespace lux::material
             const MaterialGraph& graph,
             NodeId id,
             std::span<const DataPin> pins,
-            EPinDirection direction,
+            lux::graph::EPinDirection direction,
             MaterialSourceLimits limits
         ) noexcept
         {
@@ -447,8 +447,8 @@ namespace lux::material
             {
                 const auto* topology = graph.topology().findPin(pin.id);
                 const bool valid = topology && topology->owner == id &&
-                                   static_cast<unsigned>(topology->direction) == static_cast<unsigned>(direction) &&
-                                   pin.direction == direction && typeValid(pin.type) && textValid(pin.name, limits) &&
+                                   topology->direction == direction &&
+                                   typeValid(pin.type) && textValid(pin.name, limits) &&
                                    finite(pin.constant);
                 if (!valid)
                 {
@@ -647,8 +647,8 @@ namespace lux::material
             pin_count += pins.size();
             for (const auto& pin : pins)
             {
-                const bool is_invalid_pin = static_cast<unsigned>(pin.direction) != direction || !typeValid(pin.type) ||
-                                            !textValid(pin.name, limits) || !finite(pin.constant);
+                const bool is_invalid_pin =
+                    !typeValid(pin.type) || !textValid(pin.name, limits) || !finite(pin.constant);
                 if (is_invalid_pin)
                 {
                     return fail(EMaterialSourceError::INVALID_VALUE, "pin", id, pin.id);
@@ -770,7 +770,7 @@ namespace lux::material
                     const auto semantic = (direction ? std::uint64_t{1} << 63 : 0) | (index + 1);
                     const bool valid_pin =
                         topology && topology->owner == id && static_cast<unsigned>(topology->direction) == direction &&
-                        static_cast<unsigned>(pin.direction) == direction && topology->semantic.value == semantic &&
+                        topology->semantic.value == semantic &&
                         topology->fan_cap == (direction ? lux::graph::kUnlimitedFan : 1) && count_text(pin.name);
                     if (!valid_pin)
                     {
@@ -848,8 +848,8 @@ namespace lux::material
             {
                 return lux::cxx::unexpected(data.error());
             }
-            auto inputs = encodePins(graph, id, node->inputs(), EPinDirection::INPUT, limits);
-            auto outputs = encodePins(graph, id, node->outputs(), EPinDirection::OUTPUT, limits);
+            auto inputs = encodePins(graph, id, node->inputs(), lux::graph::EPinDirection::INPUT, limits);
+            auto outputs = encodePins(graph, id, node->outputs(), lux::graph::EPinDirection::OUTPUT, limits);
             if (!inputs)
             {
                 return lux::cxx::unexpected(inputs.error());

@@ -61,12 +61,9 @@ namespace
         require(graph.addNode(std::move(event)).valid());
         require(graph.addNode(std::move(write)).valid());
         require(graph.addExport({{export_id}, graph.nodeId(e), export_id, {}}));
-        require(e->execOutPin().linkTo(&c->execInPin()) == ELinkError::SUCCESS);
-        require(c->execOutPin().linkTo(&w->execInPin()) == ELinkError::SUCCESS);
-        require(
-            graph.findPin(graph.pinId(&c->result()))->linkTo(graph.findPin(graph.pinId(&w->valueIn()))) ==
-            ELinkError::SUCCESS
-        );
+        require(graph.connect(e->execOutPin(), c->execInPin()) == ELinkError::SUCCESS);
+        require(graph.connect(c->execOutPin(), w->execInPin()) == ELinkError::SUCCESS);
+        require(graph.connect(c->result(), w->valueIn()) == ELinkError::SUCCESS);
     }
 } // namespace
 

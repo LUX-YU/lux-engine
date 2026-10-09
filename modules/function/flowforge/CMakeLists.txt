@@ -207,3 +207,11 @@ if(BUILD_TESTING)
         COMMAND flow_source_codec_test "${CMAKE_CURRENT_SOURCE_DIR}/test/fixtures/source-v1"
     )
 endif()
+
+if(BUILD_TESTING)
+    add_executable(flow_connection_authority_test test/connection_authority.cpp)
+
+    target_link_libraries(flow_connection_authority_test PRIVATE lux::engine::function::flowforge)
+
+    add_test(NAME flow.connection_authority COMMAND flow_connection_authority_test)
+endif()

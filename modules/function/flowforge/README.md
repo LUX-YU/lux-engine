@@ -131,3 +131,13 @@ Editable drafts need only pass source/pin schema checks, not compilation eligibi
 PinId, links, variables, exports and persistent layout survive v1->v2 and registered round-trips.
 Capacity, identity exhaustion and GraphEdit ownership rules are unchanged. Full registered
 control/native/Ability codecs still depend on the remaining domain migration.
+
+## Connection authority
+
+Connection admission and mutation belong to `FlowGraph::connect` / `disconnect`. Pin payloads
+have no virtual preflight, link/unlink entry point or writable topology. The receiving graph
+resolves both borrows through its own pin store, then uses GraphTopology for membership, identities,
+links and commit. Detached, foreign and moved pins cannot alias equal local IDs in another graph.
+Data initialization retains the original directional diagnostics; occupied pins reject without
+replacing links. Domain admission does not invoke extension callbacks or allocate linked-pin lists.
+This removes Pin connection authority, not the remaining Node.graph/dynamic-schema representation.

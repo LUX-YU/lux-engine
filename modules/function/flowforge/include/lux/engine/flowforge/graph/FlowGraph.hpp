@@ -115,8 +115,9 @@ namespace lux::flowforge
         [[nodiscard]] const Pin* findPin(PinId id) const noexcept;
         [[nodiscard]] std::vector<Pin*> linkedPins(PinId id);
         [[nodiscard]] std::vector<const Pin*> linkedPins(PinId id) const;
-        [[nodiscard]] ELinkError connect(Pin& first, Pin& second) noexcept;
-        [[nodiscard]] ELinkError disconnect(Pin& first, Pin& second) noexcept;
+        // The receiver owns structural mutation; pin payloads are read-only inputs.
+        [[nodiscard]] ELinkError connect(const Pin& first, const Pin& second) noexcept;
+        [[nodiscard]] ELinkError disconnect(const Pin& first, const Pin& second) noexcept;
 
         // ------------------------------------------------------------------
         // Graph-local variables. Each variable owns a stable, monotonically

@@ -75,52 +75,6 @@ namespace lux::flowforge
     }
 
     /**
-     * @brief Checks if this Pin can link to the specified Pin.
-     *        Base implementation checks if both Pins belong to different Nodes.
-     * @param pin Pointer to the other Pin to check.
-     * @return ELinkError::SAME_NODE if they share the same Node, else SUCCESS.
-     */
-    ELinkError Pin::canLink(Pin* pin) const
-    {
-        if (pin == nullptr || node_ == nullptr || pin->node_ == nullptr || node_->graph() == nullptr ||
-            node_->graph() != pin->node_->graph())
-        {
-            return ELinkError::INVALID_PIN;
-        }
-        if (node_ == pin->node_)
-        {
-            return ELinkError::SAME_NODE;
-        }
-        return ELinkError::SUCCESS;
-    }
-
-    /**
-     * @brief Links this Pin to the specified Pin.
-     *        Delegates topology changes to the owning FlowGraph.
-     * @param pin Pointer to the Pin to link to.
-     * @return The topology operation result.
-     */
-    ELinkError Pin::linkTo(Pin* pin)
-    {
-        return node_->graph()->connect(*this, *pin);
-    }
-
-    /**
-     * @brief Unlinks this Pin from the specified Pin.
-     *        Delegates topology changes to the owning FlowGraph.
-     * @param pin Pointer to the Pin to unlink from.
-     * @return The topology operation result.
-     */
-    ELinkError Pin::unlinkFrom(Pin* pin)
-    {
-        if (pin == nullptr || node_ == nullptr || node_->graph() == nullptr)
-        {
-            return ELinkError::INVALID_PIN;
-        }
-        return node_->graph()->disconnect(*this, *pin);
-    }
-
-    /**
      * @brief Sets the name of this Pin.
      * @param name A string_view representing the new name.
      */
@@ -142,82 +96,6 @@ namespace lux::flowforge
      */
     // Structural links live exclusively in FlowGraph::topology().
     ExecInPin::~ExecInPin() = default;
-
-    /**
-     * @brief Checks if a specific ExecOutPin is linked to this ExecInPin.
-     * @param out_pin Pointer to the ExecOutPin to check.
-     * @return True if the ExecOutPin is linked, otherwise false.
-     */
-    bool ExecInPin::hasPin(const ExecOutPin* out_pin) const
-    {
-        const auto pins = linkedPins();
-        return std::ranges::find(pins, out_pin) != pins.end();
-    }
-
-    /**
-     * @brief Checks if this ExecInPin can link to the specified Pin.
-     *        Ensures the Pin is an ExecOutPin and not already linked.
-     * @param pin Pointer to the Pin to check.
-     * @return An ELinkError code describing the result.
-     */
-    ELinkError ExecInPin::canLink(Pin* pin) const
-    {
-        auto rst = Pin::canLink(pin);
-        if (rst != ELinkError::SUCCESS)
-        {
-            return rst;
-        }
-
-        if (pin->kind() != EPinKind::EXEC_OUT)
-        {
-            return ELinkError::WRONG_KIND;
-        }
-
-        auto out_pin = static_cast<ExecOutPin*>(pin);
-        if (hasPin(out_pin))
-        {
-            return ELinkError::HAS_LINKED;
-        }
-
-        // If out_pin->nextPin() == this, it means they're already linked
-        if (out_pin->nextPin() == this)
-        {
-            return ELinkError::HAS_LINKED;
-        }
-
-        return ELinkError::SUCCESS;
-    }
-
-    /**
-     * @brief Links this ExecInPin to another Pin (usually an ExecOutPin).
-     *        Existing conflicting links are rejected; replacement is an explicit graph edit.
-     * @param pin Pointer to the Pin to link with.
-     * @return An ELinkError code describing the result.
-     */
-    ELinkError ExecInPin::linkTo(Pin* pin)
-    {
-        auto rst = canLink(pin);
-        if (rst != ELinkError::SUCCESS)
-        {
-            return rst;
-        }
-
-        return Pin::linkTo(pin);
-    }
-
-    /**
-     * @brief Unlinks this ExecInPin from the specified Pin (usually an ExecOutPin).
-     * @param pin Pointer to the Pin to unlink from.
-     * @return An ELinkError code describing the unlink result.
-     */
-    ELinkError ExecInPin::unlinkFrom(Pin* pin)
-    {
-        if (pin->kind() != EPinKind::EXEC_OUT)
-        {
-            return ELinkError::WRONG_KIND;
-        }
-        return Pin::unlinkFrom(pin);
-    }
 
     /**
      * @brief Retrieves the list of ExecOutPins linked to this ExecInPin.
@@ -252,70 +130,6 @@ namespace lux::flowforge
      * @brief Destructor. Unlinks from the connected ExecInPin upon destruction.
      */
     ExecOutPin::~ExecOutPin() = default;
-
-    /**
-     * @brief Checks if this ExecOutPin can link to the specified Pin.
-     *        Ensures the Pin is an ExecInPin and not already linked.
-     * @param pin Pointer to the other Pin.
-     * @return ELinkError describing the result.
-     */
-    ELinkError ExecOutPin::canLink(Pin* pin) const
-    {
-        auto rst = Pin::canLink(pin);
-        if (rst != ELinkError::SUCCESS)
-        {
-            return rst;
-        }
-
-        if (pin->kind() != EPinKind::EXEC_IN)
-        {
-            return ELinkError::WRONG_KIND;
-        }
-
-        if (nextPin() != nullptr)
-        {
-            return ELinkError::HAS_LINKED;
-        }
-
-        auto in_pin = static_cast<ExecInPin*>(pin);
-        if (in_pin->hasPin(this))
-        {
-            return ELinkError::HAS_LINKED;
-        }
-
-        return ELinkError::SUCCESS;
-    }
-
-    /**
-     * @brief Links this ExecOutPin to another Pin (usually an ExecInPin).
-     *        Existing conflicting links are rejected; replacement is an explicit graph edit.
-     * @param pin Pointer to the other Pin.
-     * @return ELinkError describing the result of the link operation.
-     */
-    ELinkError ExecOutPin::linkTo(Pin* pin)
-    {
-        auto can_link_result = canLink(pin);
-        if (can_link_result != ELinkError::SUCCESS)
-        {
-            return can_link_result;
-        }
-
-        return Pin::linkTo(pin);
-    }
-
-    /**
-     * @brief Unlinks this ExecOutPin from the specified Pin (usually an ExecInPin).
-     * @param pin Pointer to the Pin to unlink from.
-     * @return ELinkError describing the result of the unlink operation.
-     */
-    ELinkError ExecOutPin::unlinkFrom(Pin* pin)
-    {
-        if (pin == nullptr || pin->kind() != EPinKind::EXEC_IN)
-        {
-            return ELinkError::WRONG_KIND;
-        }
-        return Pin::unlinkFrom(pin);
-    }
 
     /**
      * @brief Retrieves the ExecInPin currently linked to this ExecOutPin.
@@ -362,75 +176,6 @@ namespace lux::flowforge
      * @brief Destructor. Unlinks from the connected DataOutPin upon destruction.
      */
     DataInPin::~DataInPin() = default;
-
-    /**
-     * @brief Checks if this DataInPin can link to the specified Pin.
-     *        Ensures the Pin is a DataOutPin and not already linked.
-     * @param pin Pointer to the other Pin.
-     * @return ELinkError describing the result of the link check.
-     */
-    ELinkError DataInPin::canLink(Pin* pin) const
-    {
-        auto rst = Pin::canLink(pin);
-        if (rst != ELinkError::SUCCESS)
-        {
-            return rst;
-        }
-
-        if (pin->kind() != EPinKind::DATA_OUT)
-        {
-            return ELinkError::WRONG_KIND;
-        }
-
-        if (linkedPin() != nullptr)
-        {
-            return ELinkError::HAS_LINKED;
-        }
-
-        auto out_pin = static_cast<DataOutPin*>(pin);
-        if (out_pin->hasPin(this))
-        {
-            return ELinkError::HAS_LINKED;
-        }
-
-        if (!lux::meta::canInitialize(info().type, out_pin->info().type))
-        {
-            return ELinkError::WRONG_KIND;
-        }
-
-        return ELinkError::SUCCESS;
-    }
-
-    /**
-     * @brief Links this DataInPin to another Pin (usually a DataOutPin).
-     *        Existing conflicting links are rejected; replacement is an explicit graph edit.
-     * @param pin Pointer to the other Pin.
-     * @return ELinkError describing the result of the link operation.
-     */
-    ELinkError DataInPin::linkTo(Pin* pin)
-    {
-        auto rst = canLink(pin);
-        if (rst != ELinkError::SUCCESS)
-        {
-            return rst;
-        }
-
-        return Pin::linkTo(pin);
-    }
-
-    /**
-     * @brief Unlinks this DataInPin from the specified Pin (usually a DataOutPin).
-     * @param pin Pointer to the Pin to unlink from.
-     * @return ELinkError describing the result of the unlink operation.
-     */
-    ELinkError DataInPin::unlinkFrom(Pin* pin)
-    {
-        if (pin == nullptr || pin->kind() != EPinKind::DATA_OUT)
-        {
-            return ELinkError::WRONG_KIND;
-        }
-        return Pin::unlinkFrom(pin);
-    }
 
     bool DataInPin::setConstantData(lux::meta::RuntimeObject value)
     {
@@ -528,17 +273,6 @@ namespace lux::flowforge
     DataOutPin::~DataOutPin() = default;
 
     /**
-     * @brief Checks if this DataOutPin already has a specified DataInPin linked.
-     * @param in_pin Pointer to the DataInPin.
-     * @return True if the DataInPin is linked, otherwise false.
-     */
-    bool DataOutPin::hasPin(const DataInPin* in_pin) const
-    {
-        const auto pins = linkPins();
-        return std::ranges::find(pins, in_pin) != pins.end();
-    }
-
-    /**
      * @brief Retrieves all DataInPins linked to this DataOutPin.
      * @return A constant reference to the vector of DataInPin pointers.
      */
@@ -557,72 +291,6 @@ namespace lux::flowforge
             }
         }
         return result;
-    }
-
-    /**
-     * @brief Checks if this DataOutPin can link to the specified Pin.
-     *        Ensures the Pin is a DataInPin and not already linked.
-     * @param pin Pointer to the other Pin.
-     * @return ELinkError describing the result of the link check.
-     */
-    ELinkError DataOutPin::canLink(Pin* pin) const
-    {
-        auto rst = Pin::canLink(pin);
-        if (rst != ELinkError::SUCCESS)
-        {
-            return rst;
-        }
-
-        if (pin->kind() != EPinKind::DATA_IN)
-        {
-            return ELinkError::WRONG_KIND;
-        }
-
-        auto in_pin = static_cast<DataInPin*>(pin);
-        if (hasPin(in_pin) || in_pin->linkedPin() == this)
-        {
-            return ELinkError::HAS_LINKED;
-        }
-
-        // Use the new meta system for type compatibility check
-        if (!lux::meta::canInitialize(in_pin->info().type, info_.type))
-        {
-            return ELinkError::UNMATCHED;
-        }
-
-        return ELinkError::SUCCESS;
-    }
-
-    /**
-     * @brief Links this DataOutPin to another Pin (usually a DataInPin).
-     *        Existing conflicting links are rejected; replacement is an explicit graph edit.
-     * @param pin Pointer to the other Pin.
-     * @return ELinkError describing the result of the link operation.
-     */
-    ELinkError DataOutPin::linkTo(Pin* pin)
-    {
-        auto rst = canLink(pin);
-        if (rst != ELinkError::SUCCESS)
-        {
-            return rst;
-        }
-
-        return Pin::linkTo(pin);
-    }
-
-    /**
-     * @brief Unlinks this DataOutPin from the specified Pin (usually a DataInPin).
-     * @param pin Pointer to the Pin to unlink from.
-     * @return ELinkError describing the result of the unlink operation.
-     */
-    ELinkError DataOutPin::unlinkFrom(Pin* pin)
-    {
-        if (pin->kind() != EPinKind::DATA_IN)
-        {
-            return ELinkError::WRONG_KIND;
-        }
-
-        return Pin::unlinkFrom(pin);
     }
 
     /**

@@ -39,20 +39,20 @@ int main()
     auto* ability_ptr = ability.get();
     assert(ability_ptr->scriptAbility() == ability_ptr);
     graph.addNode(std::move(ability));
-    assert(entry_ptr->execOutPin().linkTo(&ability_ptr->execInPin()) == ELinkError::SUCCESS);
+    assert(graph.connect(entry_ptr->execOutPin(), ability_ptr->execInPin()) == ELinkError::SUCCESS);
 
     // A rejected replacement preserves topology; explicit edits can replace and restore it.
     auto alternative = std::make_unique<ScriptAbilityNode>(description);
     auto* alternative_ptr = alternative.get();
     const auto alternative_index = graph.addNode(std::move(alternative));
-    assert(entry_ptr->execOutPin().linkTo(&alternative_ptr->execInPin()) == ELinkError::HAS_LINKED);
+    assert(graph.connect(entry_ptr->execOutPin(), alternative_ptr->execInPin()) == ELinkError::HAS_LINKED);
     assert(entry_ptr->execOutPin().nextPin() == &ability_ptr->execInPin());
-    assert(entry_ptr->execOutPin().unlinkFrom(&ability_ptr->execInPin()) == ELinkError::UNLINKED);
+    assert(graph.disconnect(entry_ptr->execOutPin(), ability_ptr->execInPin()) == ELinkError::UNLINKED);
     assert(entry_ptr->execOutPin().nextPin() == nullptr);
-    assert(entry_ptr->execOutPin().linkTo(&alternative_ptr->execInPin()) == ELinkError::SUCCESS);
+    assert(graph.connect(entry_ptr->execOutPin(), alternative_ptr->execInPin()) == ELinkError::SUCCESS);
     assert(entry_ptr->execOutPin().nextPin() == &alternative_ptr->execInPin());
-    assert(entry_ptr->execOutPin().unlinkFrom(&alternative_ptr->execInPin()) == ELinkError::UNLINKED);
-    assert(entry_ptr->execOutPin().linkTo(&ability_ptr->execInPin()) == ELinkError::SUCCESS);
+    assert(graph.disconnect(entry_ptr->execOutPin(), alternative_ptr->execInPin()) == ELinkError::UNLINKED);
+    assert(graph.connect(entry_ptr->execOutPin(), ability_ptr->execInPin()) == ELinkError::SUCCESS);
     assert(graph.removeNode(alternative_index));
 
     auto missing = compileFlowForgeObject(graph, options);

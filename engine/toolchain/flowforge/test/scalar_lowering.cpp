@@ -53,7 +53,7 @@ namespace
         require(graph.addNode(std::move(expression)).valid());
         require(graph.addNode(std::move(result)).valid());
         require(graph.addExport({{count}, graph.nodeId(f), count, {}}));
-        require(f->execOutPin().linkTo(&r->execInPin()) == ELinkError::SUCCESS);
+        require(graph.connect(f->execOutPin(), r->execInPin()) == ELinkError::SUCCESS);
         const auto& lhs = addInput(graph, type, "lhs_" + std::to_string(count));
         const auto& rhs = addInput(graph, type, "rhs_" + std::to_string(count));
         require(
@@ -64,10 +64,7 @@ namespace
             graph.connect(*graph.findPin(graph.pinId(&rhs)), *graph.findPin(graph.pinId(&x->rhs()))) ==
             ELinkError::SUCCESS
         );
-        require(
-            graph.findPin(graph.pinId(&x->result()))->linkTo(graph.findPin(graph.pinId(&r->valueIn()))) ==
-            ELinkError::SUCCESS
-        );
+        require(graph.connect(x->result(), r->valueIn()) == ELinkError::SUCCESS);
     }
 
     void addUnary(FlowGraph& graph, ENodeOperation operation, const meta::RefType& type, std::size_t& count)
@@ -87,16 +84,13 @@ namespace
         require(graph.addNode(std::move(expression)).valid());
         require(graph.addNode(std::move(result)).valid());
         require(graph.addExport({{count}, graph.nodeId(f), count, {}}));
-        require(f->execOutPin().linkTo(&r->execInPin()) == ELinkError::SUCCESS);
+        require(graph.connect(f->execOutPin(), r->execInPin()) == ELinkError::SUCCESS);
         const auto& input = addInput(graph, type, "value_" + std::to_string(count));
         require(
             graph.connect(*graph.findPin(graph.pinId(&input)), *graph.findPin(graph.pinId(&x->operand()))) ==
             ELinkError::SUCCESS
         );
-        require(
-            graph.findPin(graph.pinId(&x->result()))->linkTo(graph.findPin(graph.pinId(&r->valueIn()))) ==
-            ELinkError::SUCCESS
-        );
+        require(graph.connect(x->result(), r->valueIn()) == ELinkError::SUCCESS);
     }
 } // namespace
 

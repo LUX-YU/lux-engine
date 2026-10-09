@@ -30,6 +30,17 @@ namespace
     template <typename T>
     concept EmbeddedIdentity = requires(const T& node) { node.id(); };
 
+    template <typename T>
+    concept LinkablePin = requires(T& pin, Pin* other) { pin.linkTo(other); };
+    template <typename T>
+    concept UnlinkablePin = requires(T& pin, Pin* other) { pin.unlinkFrom(other); };
+    template <typename T>
+    concept PinPreflight = requires(const T& pin, Pin* other) { pin.canLink(other); };
+
+    template <typename... T>
+    constexpr bool has_no_pin_authority = ((!LinkablePin<T> && !UnlinkablePin<T> && !PinPreflight<T>) && ...);
+
+    static_assert(has_no_pin_authority<Pin, ExecInPin, ExecOutPin, DataInPin, DataOutPin>);
     static_assert(!Rekeyable<Node> && !Rebindable<Node>);
     static_assert(!MutableTopology<FlowGraph> && !MutableOwner<FlowGraph> && !Unregisterable<FlowGraph>);
     static_assert(!MutableInputs<Node> && !MutableOutputs<Node>);
@@ -384,7 +395,7 @@ int main()
     auto* dynamic_pin = sequence.addExecOutPin();
     require(dynamic_pin != nullptr);
     const auto pin_id = graph.pinId(dynamic_pin);
-    require(dynamic_pin->linkTo(target.inPins().front()) == ELinkError::SUCCESS);
+    require(graph.connect(*dynamic_pin, *target.inPins().front()) == ELinkError::SUCCESS);
     check(graph);
     const auto linked = sourceBytes(graph);
 
@@ -394,7 +405,7 @@ int main()
     check(graph);
     auto* restored = sequence.addExecOutPin(pin_id);
     require(restored != nullptr && graph.pinId(restored) == pin_id);
-    require(restored->linkTo(target.inPins().front()) == ELinkError::SUCCESS);
+    require(graph.connect(*restored, *target.inPins().front()) == ELinkError::SUCCESS);
     require(sourceBytes(graph) == linked);
     check(graph);
 

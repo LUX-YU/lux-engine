@@ -60,9 +60,9 @@ namespace
         return result;
     }
 
-    void link(ExecOutPin& from, ExecInPin& to)
+    void link(FlowGraph& graph, ExecOutPin& from, ExecInPin& to)
     {
-        require(from.linkTo(&to) == ELinkError::SUCCESS);
+        require(graph.connect(from, to) == ELinkError::SUCCESS);
     }
 
     template <class Result> void failure(const Result& result, EFlowForgeError code, NodeId node, PinId pin = {})
@@ -94,7 +94,7 @@ namespace
         auto& start = entry(graph);
         auto desc = description();
         auto& ability = add<ScriptAbilityNode>(graph, desc);
-        link(start.execOutPin(), ability.execInPin());
+        link(graph, start.execOutPin(), ability.execInPin());
         failure(analyze(graph), EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_CONTRACT, graph.nodeId(&ability));
         auto catalog = desc;
         catalog.method = script::ScriptApiMethodIdView{"other"};
@@ -150,7 +150,7 @@ namespace
         auto desc = eventDescription();
         require(desc.valid());
         auto& event = add<ScriptEventAwaitNode>(graph, desc);
-        link(start.execOutPin(), event.execInPin());
+        link(graph, start.execOutPin(), event.execInPin());
         failure(analyze(graph), EFlowForgeError::UNKNOWN_SCRIPT_EVENT_SOURCE, graph.nodeId(&event));
         auto catalog = desc;
         ++catalog.delivery_schema_hash;
@@ -187,12 +187,12 @@ namespace
         desc.kind = script::EScriptApiMethodKind::ASYNC_OPERATION;
         auto& asynchronous = add<ScriptAbilityNode>(graph, desc);
         auto& later = add<ScriptAbilityNode>(graph, desc);
-        link(start.execOutPin(), call.execInPin());
-        link(first.execOutPin(), nested.execInPin());
-        link(second.execOutPin(), sequence.execInPin());
-        link(sequence.execOutPin(), later.execInPin());
-        link(*sequence.addExecOutPin(), asynchronous.execInPin());
-        link(later.execOutPin(), recurse.execInPin());
+        link(graph, start.execOutPin(), call.execInPin());
+        link(graph, first.execOutPin(), nested.execInPin());
+        link(graph, second.execOutPin(), sequence.execInPin());
+        link(graph, sequence.execOutPin(), later.execInPin());
+        link(graph, *sequence.addExecOutPin(), asynchronous.execInPin());
+        link(graph, later.execOutPin(), recurse.execInPin());
         Options options{.script_abilities = ScriptAbilityNodeCatalogView{{&desc, 1}}};
         options.lifecycle.begin_play = 41;
         failure(analyze(graph, options), EFlowForgeError::ASYNC_LIFECYCLE_NOT_SUPPORTED, graph.nodeId(&asynchronous));
@@ -222,7 +222,7 @@ namespace
         auto& start = entry(graph);
         auto& function = add<FuncDefNode>(graph, "Local", std::vector<FuncArgInfo>{});
         auto& call = add<GraphFuncCallNode>(graph, foreign.nodeId(&foreign_definition), foreign_definition);
-        link(function.execOutPin(), call.execInPin());
+        link(graph, function.execOutPin(), call.execInPin());
         require(foreign.nodeId(&foreign_definition) == graph.nodeId(&start));
         failure(analyze(graph), EFlowForgeError::GRAPH_INVALID, graph.nodeId(&function));
     }
@@ -235,8 +235,8 @@ namespace
         const auto id = graph.nodeId(&definition);
         auto& call = add<GraphFuncCallNode>(graph, id, definition);
         auto& returned = add<FuncReturnNode>(graph, id, definition);
-        link(start.execOutPin(), call.execInPin());
-        link(definition.execOutPin(), returned.execInPin());
+        link(graph, start.execOutPin(), call.execInPin());
+        link(graph, definition.execOutPin(), returned.execInPin());
         require(analyze(graph).has_value());
         auto old = graph.extractNode(id);
         require(old.has_value());
@@ -245,7 +245,7 @@ namespace
         require(replacement_pointer != &definition);
         require(graph.insertNode({id, std::move(replacement), old->pins}));
         old.reset();
-        link(replacement_pointer->execOutPin(), returned.execInPin());
+        link(graph, replacement_pointer->execOutPin(), returned.execInPin());
         require(analyze(graph).has_value());
     }
 
@@ -276,10 +276,10 @@ namespace
         auto& producer = add<ScriptAbilityNode>(graph, query);
         auto& suspend = add<ScriptAbilityNode>(graph, asynchronous);
         auto& consumer = add<ScriptAbilityNode>(graph, consume);
-        link(start.execOutPin(), producer.execInPin());
-        link(producer.execOutPin(), suspend.execInPin());
-        link(suspend.execOutPin(), consumer.execInPin());
-        require(producer.resultPins()[0]->linkTo(consumer.parameterPins()[0].get()) == ELinkError::SUCCESS);
+        link(graph, start.execOutPin(), producer.execInPin());
+        link(graph, producer.execOutPin(), suspend.execInPin());
+        link(graph, suspend.execOutPin(), consumer.execInPin());
+        require(graph.connect(*producer.resultPins()[0], *consumer.parameterPins()[0]) == ELinkError::SUCCESS);
         Options options{.script_abilities = ScriptAbilityNodeCatalogView{catalog}};
         failure(
             analyze(graph, options),
@@ -288,9 +288,9 @@ namespace
             graph.pinId(producer.resultPins()[0].get())
         );
 #if !defined(FLOW_ANALYSIS_COMPILER)
-        require(suspend.execOutPin().unlinkFrom(&consumer.execInPin()) == ELinkError::UNLINKED);
-        require(producer.execOutPin().unlinkFrom(&suspend.execInPin()) == ELinkError::UNLINKED);
-        link(producer.execOutPin(), consumer.execInPin());
+        require(graph.disconnect(suspend.execOutPin(), consumer.execInPin()) == ELinkError::UNLINKED);
+        require(graph.disconnect(producer.execOutPin(), suspend.execInPin()) == ELinkError::UNLINKED);
+        link(graph, producer.execOutPin(), consumer.execInPin());
         auto valid = analyze(graph, options);
         require(valid.has_value());
         require(!valid->firstSuspensionFrom(graph.pinId(&start.execOutPin())).valid());
@@ -305,7 +305,7 @@ namespace
         auto desc = description();
         desc.kind = script::EScriptApiMethodKind::ASYNC_OPERATION;
         auto& node = add<ScriptAbilityNode>(graph, desc);
-        link(start.execOutPin(), node.execInPin());
+        link(graph, start.execOutPin(), node.execInPin());
         start_id = graph.pinId(&start.execOutPin());
         witness = graph.nodeId(&node);
         auto result = analyze(graph, {.script_abilities = ScriptAbilityNodeCatalogView{{&desc, 1}}});

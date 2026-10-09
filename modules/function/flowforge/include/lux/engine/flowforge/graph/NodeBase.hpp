@@ -92,7 +92,7 @@ namespace lux::flowforge
         SET_VARIABLE, // 1 exec in, 1 exec out. 1 data in (value). 1 data out (value passthrough).
 
         // EVENT
-        ON_EVENT,  // 0 exec in, 1 exec out, 1 data out (event payload).
+        ON_EVENT,        // 0 exec in, 1 exec out, 1 data out (event payload).
         SEND_EVENT,      // 1 exec in, 0 exec out. 1 data in (event payload).
         REGISTERED_VALUE // Transitional graph representation; persistent identity comes from the definition.
     };
@@ -273,8 +273,8 @@ namespace lux::flowforge
      * @brief The base class for all pin types in the flow graph.
      *
      * A Pin holds a reference to its parent Node and maintains
-     * a kind (Exec/Data) and a name. Derived classes handle
-     * specific logic for linking and unlinking pins.
+     * a kind (Exec/Data) and a name. FlowGraph alone validates
+     * and changes connections; pins carry no connection mutators.
      */
     class Pin
     {
@@ -307,27 +307,6 @@ namespace lux::flowforge
          * @return A const reference to the name string.
          */
         const std::string& name() const;
-
-        /**
-         * @brief Checks if this Pin can be linked to another Pin.
-         * @param pin The other Pin to be checked.
-         * @return An ELinkError indicating the result of the check.
-         */
-        virtual ELinkError canLink(Pin* pin) const;
-
-        /**
-         * @brief Links this Pin to another Pin.
-         * @param pin The other Pin to link with.
-         * @return An ELinkError indicating success or the type of error.
-         */
-        virtual ELinkError linkTo(Pin* pin);
-
-        /**
-         * @brief Unlinks this Pin from another Pin.
-         * @param pin The other Pin to unlink from.
-         * @return An ELinkError indicating success or the type of error.
-         */
-        virtual ELinkError unlinkFrom(Pin* pin);
 
         /**
          * @brief Gets the parent Node of this Pin.
@@ -375,34 +354,6 @@ namespace lux::flowforge
          * @return A const reference to a vector of ExecOutPin pointers.
          */
         [[nodiscard]] std::vector<ExecOutPin*> linkedPins() const;
-
-        /**
-         * @brief Checks if a given ExecOutPin is already linked.
-         * @param node Pointer to the ExecOutPin to check.
-         * @return True if linked, otherwise false.
-         */
-        bool hasPin(const ExecOutPin* node) const;
-
-        /**
-         * @brief Checks if this ExecInPin can link to another Pin.
-         * @param pin The other Pin to check.
-         * @return An ELinkError indicating if linking is possible.
-         */
-        ELinkError canLink(Pin* pin) const override;
-
-        /**
-         * @brief Links this ExecInPin to another Pin (usually an ExecOutPin).
-         * @param pin The other Pin to link to.
-         * @return An ELinkError indicating the link result.
-         */
-        ELinkError linkTo(Pin* pin) override;
-
-        /**
-         * @brief Unlinks this ExecInPin from the specified Pin (usually an ExecOutPin).
-         * @param pin The Pin to unlink from.
-         * @return An ELinkError indicating the unlink result.
-         */
-        ELinkError unlinkFrom(Pin* pin) override;
     };
 
     /**
@@ -426,27 +377,6 @@ namespace lux::flowforge
          * @brief Destructor. Unlinks from the connected ExecInPin on destruction.
          */
         ~ExecOutPin() override;
-
-        /**
-         * @brief Checks if this ExecOutPin can link to another Pin.
-         * @param pin The other Pin to check.
-         * @return An ELinkError indicating if linking is possible.
-         */
-        ELinkError canLink(Pin* pin) const override;
-
-        /**
-         * @brief Links this ExecOutPin to another Pin (usually an ExecInPin).
-         * @param pin The other Pin to link to.
-         * @return An ELinkError indicating the link result.
-         */
-        ELinkError linkTo(Pin* pin) override;
-
-        /**
-         * @brief Unlinks this ExecOutPin from the specified Pin (usually an ExecInPin).
-         * @param pin The Pin to unlink from.
-         * @return An ELinkError indicating the unlink result.
-         */
-        ELinkError unlinkFrom(Pin* pin) override;
 
         /**
          * @brief Retrieves the ExecInPin linked to this ExecOutPin.
@@ -491,27 +421,6 @@ namespace lux::flowforge
          * @return A pointer to the connected DataOutPin, or nullptr if none is linked.
          */
         const DataOutPin* linkedPin() const;
-
-        /**
-         * @brief Checks if this DataInPin can link to another Pin.
-         * @param pin The other Pin to check.
-         * @return An ELinkError indicating if linking is possible.
-         */
-        ELinkError canLink(Pin* pin) const override;
-
-        /**
-         * @brief Links this DataInPin to another Pin (usually a DataOutPin).
-         * @param pin The other Pin to link with.
-         * @return An ELinkError indicating the link result.
-         */
-        ELinkError linkTo(Pin* pin) override;
-
-        /**
-         * @brief Unlinks this DataInPin from the specified Pin (usually a DataOutPin).
-         * @param pin The Pin to unlink from.
-         * @return An ELinkError indicating the unlink result.
-         */
-        ELinkError unlinkFrom(Pin* pin) override;
 
         /**
          * @brief Sets the constant data for this DataInPin.
@@ -582,38 +491,10 @@ namespace lux::flowforge
         ~DataOutPin();
 
         /**
-         * @brief Checks if this DataOutPin already has a specified DataInPin linked.
-         * @param node Pointer to the DataInPin to check.
-         * @return True if linked, otherwise false.
-         */
-        bool hasPin(const DataInPin* node) const;
-
-        /**
          * @brief Gets all DataInPins linked to this DataOutPin.
          * @return A const reference to a vector of DataInPin pointers.
          */
         [[nodiscard]] std::vector<DataInPin*> linkPins() const;
-
-        /**
-         * @brief Checks if this DataOutPin can link to another Pin.
-         * @param pin The other Pin to check.
-         * @return An ELinkError indicating if linking is possible.
-         */
-        ELinkError canLink(Pin* pin) const override;
-
-        /**
-         * @brief Links this DataOutPin to another Pin (usually a DataInPin).
-         * @param pin The other Pin to link with.
-         * @return An ELinkError indicating the link result.
-         */
-        ELinkError linkTo(Pin* pin) override;
-
-        /**
-         * @brief Unlinks this DataOutPin from the specified Pin (usually a DataInPin).
-         * @param pin The Pin to unlink from.
-         * @return An ELinkError indicating the unlink result.
-         */
-        ELinkError unlinkFrom(Pin* pin) override;
 
         /**
          * @brief Gets the info of this data pin.

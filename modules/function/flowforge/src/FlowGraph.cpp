@@ -45,6 +45,64 @@ namespace lux::flowforge
             return found == pins.end() ? graph::PinSemanticId{}
                                        : detail::builtinPinSemantic(pin.kind(), found - pins.begin());
         }
+
+        // Structural membership, same-node rules and fan limits belong to the graph.
+        // Keep the established directional error classification without virtual Pin callbacks.
+        [[nodiscard]] ELinkError pinConnection(
+            const Pin& first,
+            const Pin& second,
+            bool has_link,
+            bool has_exact_link
+        ) noexcept
+        {
+            switch (first.kind())
+            {
+            case EPinKind::EXEC_IN:
+                if (second.kind() != EPinKind::EXEC_OUT)
+                {
+                    return ELinkError::WRONG_KIND;
+                }
+                return has_exact_link ? ELinkError::HAS_LINKED : ELinkError::SUCCESS;
+            case EPinKind::EXEC_OUT:
+                if (second.kind() != EPinKind::EXEC_IN)
+                {
+                    return ELinkError::WRONG_KIND;
+                }
+                return has_link ? ELinkError::HAS_LINKED : ELinkError::SUCCESS;
+            case EPinKind::DATA_IN:
+            {
+                if (second.kind() != EPinKind::DATA_OUT)
+                {
+                    return ELinkError::WRONG_KIND;
+                }
+                if (has_link)
+                {
+                    return ELinkError::HAS_LINKED;
+                }
+                const auto* input = static_cast<const DataInPin&>(first).info().type;
+                const auto* output = static_cast<const DataOutPin&>(second).info().type;
+                const bool accepts_type = meta::canInitialize(input, output);
+                return accepts_type ? ELinkError::SUCCESS : ELinkError::WRONG_KIND;
+            }
+            case EPinKind::DATA_OUT:
+            {
+                if (second.kind() != EPinKind::DATA_IN)
+                {
+                    return ELinkError::WRONG_KIND;
+                }
+                if (has_exact_link)
+                {
+                    return ELinkError::HAS_LINKED;
+                }
+                const auto* input = static_cast<const DataInPin&>(second).info().type;
+                const auto* output = static_cast<const DataOutPin&>(first).info().type;
+                const bool accepts_type = meta::canInitialize(input, output);
+                return accepts_type ? ELinkError::SUCCESS : ELinkError::UNMATCHED;
+            }
+            default:
+                return ELinkError::WRONG_KIND;
+            }
+        }
     } // namespace
 
     FlowGraph::FlowGraph() = default;
@@ -242,64 +300,71 @@ namespace lux::flowforge
         return result;
     }
 
-    ELinkError FlowGraph::connect(Pin& first, Pin& second) noexcept
+    ELinkError FlowGraph::connect(const Pin& first, const Pin& second) noexcept
     {
-        const bool owns_first = first.node() != nullptr && first.node()->graph() == this;
-        const bool owns_second = second.node() != nullptr && second.node()->graph() == this;
-        const bool has_foreign_pin = !owns_first || !owns_second;
+        const auto first_id = pinId(&first);
+        const auto second_id = pinId(&second);
+        const auto* first_record = topology_.findPin(first_id);
+        const auto* second_record = topology_.findPin(second_id);
+        const bool has_foreign_pin = first_record == nullptr || second_record == nullptr;
         if (has_foreign_pin)
         {
             return ELinkError::INVALID_PIN;
         }
-        const auto first_preflight = first.canLink(std::addressof(second));
+        if (first_record->owner == second_record->owner)
+        {
+            return ELinkError::SAME_NODE;
+        }
+        bool first_linked{};
+        bool second_linked{};
+        bool exact_link{};
+        for (const auto& link : topology_.links())
+        {
+            const bool touches_first = link.from == first_id || link.to == first_id;
+            const bool touches_second = link.from == second_id || link.to == second_id;
+            first_linked |= touches_first;
+            second_linked |= touches_second;
+            exact_link |= touches_first && touches_second;
+        }
+        const auto first_preflight = pinConnection(first, second, first_linked, exact_link);
         if (first_preflight != ELinkError::SUCCESS)
         {
             return first_preflight;
         }
-        const auto second_preflight = second.canLink(std::addressof(first));
+        const auto second_preflight = pinConnection(second, first, second_linked, exact_link);
         if (second_preflight != ELinkError::SUCCESS)
         {
             return second_preflight;
         }
-
-        auto* first_record = topology_.findPin(pinId(&first));
-        auto* second_record = topology_.findPin(pinId(&second));
-        if (first_record == nullptr || second_record == nullptr)
-        {
-            return ELinkError::INVALID_PIN;
-        }
-        const auto from = first_record->direction == lux::graph::EPinDirection::OUTPUT ? pinId(&first) : pinId(&second);
-        const auto to = first_record->direction == lux::graph::EPinDirection::INPUT ? pinId(&first) : pinId(&second);
+        const auto from = first_record->direction == lux::graph::EPinDirection::OUTPUT ? first_id : second_id;
+        const auto to = first_record->direction == lux::graph::EPinDirection::INPUT ? first_id : second_id;
         const auto connected = topology_.connect(from, to);
         if (connected)
         {
             return ELinkError::SUCCESS;
         }
-        if (connected.error().code == lux::graph::EGraphTopologyError::DUPLICATE_LINK ||
-            connected.error().code == lux::graph::EGraphTopologyError::FAN_CAP_EXCEEDED)
+        const bool has_conflicting_link = connected.error().code == lux::graph::EGraphTopologyError::DUPLICATE_LINK ||
+                                          connected.error().code == lux::graph::EGraphTopologyError::FAN_CAP_EXCEEDED;
+        if (has_conflicting_link)
         {
             return ELinkError::HAS_LINKED;
         }
         return ELinkError::WRONG_KIND;
     }
 
-    ELinkError FlowGraph::disconnect(Pin& first, Pin& second) noexcept
+    ELinkError FlowGraph::disconnect(const Pin& first, const Pin& second) noexcept
     {
-        const bool owns_first = first.node() != nullptr && first.node()->graph() == this;
-        const bool owns_second = second.node() != nullptr && second.node()->graph() == this;
-        const bool has_foreign_pin = !owns_first || !owns_second;
+        const auto first_id = pinId(&first);
+        const auto second_id = pinId(&second);
+        const auto* first_record = topology_.findPin(first_id);
+        const auto* second_record = topology_.findPin(second_id);
+        const bool has_foreign_pin = first_record == nullptr || second_record == nullptr;
         if (has_foreign_pin)
         {
             return ELinkError::INVALID_PIN;
         }
-        const auto* first_record = topology_.findPin(pinId(&first));
-        const auto* second_record = topology_.findPin(pinId(&second));
-        if (first_record == nullptr || second_record == nullptr)
-        {
-            return ELinkError::INVALID_PIN;
-        }
-        const auto from = first_record->direction == lux::graph::EPinDirection::OUTPUT ? pinId(&first) : pinId(&second);
-        const auto to = first_record->direction == lux::graph::EPinDirection::INPUT ? pinId(&first) : pinId(&second);
+        const auto from = first_record->direction == lux::graph::EPinDirection::OUTPUT ? first_id : second_id;
+        const auto to = first_record->direction == lux::graph::EPinDirection::INPUT ? first_id : second_id;
         return topology_.disconnect(from, to) ? ELinkError::UNLINKED : ELinkError::UNMATCHED;
     }
 

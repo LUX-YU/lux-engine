@@ -102,7 +102,6 @@ add_component(
     NAMESPACE      lux::engine::toolchain
     OUTPUT_NAME    lux_engine_toolchain_material_compiler
     SOURCE_FILES
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderIR.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderEmitter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderCompiler.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialLowering.cpp
@@ -180,5 +179,16 @@ if(LUX_PROFILE_HAS_TOOLCHAIN)
         COMPONENTS
             toolchain_material_compiler
             toolchain_material_cooker
+    )
+endif()
+
+if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
+    add_executable(material_domain_compiler_test test/domain_boundary.cpp)
+
+    target_link_libraries(material_domain_compiler_test PRIVATE lux::engine::toolchain::toolchain_material_compiler)
+
+    add_test(
+        NAME material.domain_compiler
+        COMMAND material_domain_compiler_test "${CMAKE_CURRENT_BINARY_DIR}/material.spirv.bin"
     )
 endif()

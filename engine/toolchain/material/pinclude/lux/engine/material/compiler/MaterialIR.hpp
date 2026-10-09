@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/description/MaterialEnums.hpp>
-#include <lux/engine/material/compiler/ShaderIR.hpp>
+#include <lux/engine/material/ShaderIR.hpp>
 
 #include <cstdint>
 

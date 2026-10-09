@@ -21,9 +21,9 @@
 #include <vector>
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/material/compiler/ShaderIR.hpp>
 #include <lux/engine/description/MaterialEnums.hpp> // rdesc::EAlphaMode
 #include <lux/engine/description/ShaderInfo.hpp>    // CompiledShader holds a ShaderInfo value
+#include <lux/engine/material/ShaderIR.hpp>
 
 namespace lux::shadergen::glsl
 {

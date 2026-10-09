@@ -14,6 +14,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Node.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialGraph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialSource.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderIR.cpp
 )
 
 component_include_directories(
@@ -43,3 +44,11 @@ component_add_transitive_commands(
     "find_package(lux-engine-function REQUIRED COMPONENTS graph)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity description)"
 )
+
+if(BUILD_TESTING)
+    add_executable(material_shader_ir_test test/shader_ir.cpp)
+
+    target_link_libraries(material_shader_ir_test PRIVATE lux::engine::function::material_graph)
+
+    add_test(NAME material.shader_ir COMMAND material_shader_ir_test)
+endif()

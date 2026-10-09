@@ -3,7 +3,7 @@
 //  (shared by every client, so the rules can't drift)
 // =============================================================================
 
-#include <lux/engine/material/compiler/ShaderIR.hpp>
+#include <lux/engine/material/ShaderIR.hpp>
 
 #include <cstring>
 #include <string>
@@ -12,20 +12,26 @@ namespace lux::shadergen
 {
     uint64_t computeFingerprint(const ShaderIR& ir) noexcept
     {
-        uint64_t f = 1469598103934665603ull; // FNV-1a 64
-        auto mix = [&](uint64_t x) noexcept {
+        // Existing word-wise cache fingerprint; preserve its seed and mixing contract.
+        uint64_t f = 1469598103934665603ull;
+        auto mix = [&](uint64_t x) noexcept
+        {
             f ^= x;
             f *= 1099511628211ull;
         };
-        auto mixf = [&](float v) noexcept {
+        auto mixf = [&](float v) noexcept
+        {
             uint32_t u;
             std::memcpy(&u, &v, 4);
             mix(u);
         };
-        auto mixs = [&](const std::string& s) noexcept {
+        auto mixs = [&](const std::string& s) noexcept
+        {
             mix(s.size());
             for (char ch : s)
+            {
                 mix(static_cast<unsigned char>(ch));
+            }
         };
 
         mix(ir.values.size());
@@ -34,12 +40,18 @@ namespace lux::shadergen
             mix(static_cast<uint16_t>(v.op));
             mix(static_cast<uint8_t>(v.type));
             for (int k = 0; k < 4; ++k)
+            {
                 mix(v.operands[k]);
+            }
             mix(v.slot);
             for (int k = 0; k < 4; ++k)
+            {
                 mix(v.swizzle[k]);
+            }
             for (int k = 0; k < 4; ++k)
+            {
                 mixf(v.constant[k]);
+            }
         }
         mix(ir.outputs.size());
         for (const auto& o : ir.outputs)
@@ -52,8 +64,12 @@ namespace lux::shadergen
             // case; otherwise dflt has no effect on emission, and two graphs
             // that differ only in dflt must still hash identically.
             if (o.value_id == kNoValue)
+            {
                 for (int k = 0; k < 4; ++k)
+                {
                     mixf(o.dflt[k]);
+                }
+            }
         }
         mix(ir.inputs.size());
         for (const auto& s : ir.inputs)
@@ -65,7 +81,9 @@ namespace lux::shadergen
         }
         mix(ir.textures.size());
         for (const auto& t : ir.textures)
+        {
             mixs(t.name);
+        }
         mix(ir.params.size());
         for (const auto& p : ir.params)
         {

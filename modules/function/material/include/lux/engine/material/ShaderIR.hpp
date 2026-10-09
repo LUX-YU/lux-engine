@@ -22,6 +22,8 @@
 //  the implementation for the design and rationale.
 // =============================================================================
 
+#include <lux/engine/material/graph/visibility.h>
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -188,6 +190,6 @@ namespace lux::shadergen
     /// end and writes the result back into ir.fingerprint. If you construct
     /// an IR by hand, you must call this too, or fingerprint is left at its
     /// uncomputed 0.
-    [[nodiscard]] uint64_t computeFingerprint(const ShaderIR& ir) noexcept;
+    [[nodiscard]] LUX_ENGINE_MATERIAL_GRAPH_PUBLIC uint64_t computeFingerprint(const ShaderIR& ir) noexcept;
 
 } // namespace lux::shadergen

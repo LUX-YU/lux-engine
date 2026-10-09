@@ -405,8 +405,7 @@ namespace lux::render
 
     /// Async (non-blocking) variant of ReadbackTargetPayload. The server
     /// submits the image->buffer copy WITHOUT waiting on the fence, polls it
-    /// across ticks, and sends a DEFERRED reply matched by request_id (exactly
-    /// like uploadMesh/createTexture2D). `settle_frames` render ticks elapse
+    /// across ticks, and sends a DEFERRED reply matched by request_id. `settle_frames` render ticks elapse
     /// before the copy is taken, so static preview content settles into FIF
     /// slot 0. `dst_ptr` is a client buffer that MUST stay valid until the
     /// reply arrives (the server writes the pixels there directly).

@@ -1,21 +1,17 @@
 #include <lux/engine/render/comm/server/RenderServerImpl.hpp>
 
 #include <lux/engine/description/ShaderInfo.hpp>
-#include <lux/engine/description/Texture.hpp>
 #include <lux/engine/render/gpu/RenderContext.hpp>
 #include <lux/engine/render/renderer/FrameDriver.hpp>
 #include <lux/engine/render/renderer/Renderer.hpp>
 #include <lux/engine/render/resources/ShaderResources.hpp>
 #include <lux/engine/render/resources/TextureResources.hpp>
-#include <lux/engine/render/resources/descriptor/BindlessCombinedSet.hpp>
-#include <lux/engine/render/resources/mesh/MeshResources.hpp>
 #include <lux/engine/render/scene/RenderScene.hpp>
 #include <lux/engine/render/scene/View.hpp>
 #include <lux/engine/render/targets/PresentContext.hpp>
 #include <lux/engine/render/targets/SwapchainProvider.hpp>
 
 #include <algorithm>
-#include <mutex>
 #include <string>
 #include <utility>
 
@@ -326,20 +322,6 @@ namespace lux::render
         return provider ? provider->layout() : RenderTargetLayout{};
     }
 
-    Expected<RTextureHandle> GeneralRenderServer::createTexture2D(
-        const lux::rdesc::Texture& texture,
-        bool generate_mips
-    )
-    {
-        auto& resources = impl_->render_ctx_->globalRegistry().must<TextureResources>();
-        auto result = resources.submit(texture, nullptr, VK_FORMAT_UNDEFINED, generate_mips);
-        if (!result)
-        {
-            return lux::cxx::unexpected(result.error());
-        }
-        return resources.publishTexture(*result);
-    }
-
     ShaderHandle GeneralRenderServer::compileShader(
         std::span<const std::byte> spirv,
         const lux::rdesc::ShaderInfo* info
@@ -350,59 +332,4 @@ namespace lux::render
         return resources.add(spirv, info ? *info : default_info);
     }
 
-    Expected<void> GeneralRenderServer::flushPendingGpuTransfers()
-    {
-        auto& resource_context = *impl_->res_ctx_;
-        const VkDevice device = resource_context.logicalDevice();
-        const VkCommandPool pool = resource_context.commandPool();
-
-        VkCommandBufferAllocateInfo allocation{};
-        allocation.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocation.commandPool = pool;
-        allocation.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocation.commandBufferCount = 1;
-
-        VkCommandBuffer command = VK_NULL_HANDLE;
-        if (vkAllocateCommandBuffers(device, &allocation, &command) != VK_SUCCESS)
-        {
-            return renderFailure<err::internal::Unspecified>();
-        }
-
-        VkCommandBufferBeginInfo begin{};
-        begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(command, &begin);
-
-        auto* mesh_resources = impl_->render_ctx_->globalRegistry().find<MeshResources>();
-        auto& texture_resources = impl_->render_ctx_->globalRegistry().must<TextureResources>();
-        texture_resources.bindlessSet2D().flushUploads(command, 0);
-        texture_resources.bindlessSetCube().flushUploads(command, 0);
-        vkEndCommandBuffer(command);
-
-        VkFenceCreateInfo fence_info{};
-        fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        VkFence fence = VK_NULL_HANDLE;
-        vkCreateFence(device, &fence_info, nullptr, &fence);
-
-        VkSubmitInfo submit{};
-        submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-        submit.commandBufferCount = 1;
-        submit.pCommandBuffers = &command;
-        {
-            const std::scoped_lock queue_lock(resource_context.deviceContext().graphicsQueueMutex());
-            vkQueueSubmit(resource_context.graphicsQueue(), 1, &submit, fence);
-        }
-        vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
-
-        if (mesh_resources)
-        {
-            mesh_resources->retireFrameStagingBuffers(0);
-        }
-        texture_resources.bindlessSet2D().retireDeferredStaging(0);
-        texture_resources.bindlessSetCube().retireDeferredStaging(0);
-
-        vkDestroyFence(device, fence, nullptr);
-        vkFreeCommandBuffers(device, pool, 1, &command);
-        return {};
-    }
 } // namespace lux::render

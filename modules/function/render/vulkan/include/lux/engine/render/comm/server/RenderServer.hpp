@@ -1283,41 +1283,11 @@ namespace lux::render
         /// Only valid after an accepted CreateSurfaceTarget command.
         [[nodiscard]] RenderTargetLayout swapchainLayout() const;
 
-        // ── Server-side direct resource creation (same thread, init → tick) ──
-        // These are synchronous, blocking calls for use between init() and
-        // the first tick(). They bypass the protocol dispatcher entirely.
-
-        // (uploadMesh — synchronous server-side mesh upload — removed: no callers after
-        //  mesh data upload became a StandardMeshStack feature op. The async upload path
-        //  is the exported serverUploadMesh shim.)
-
-        // (uploadMaterial(rdesc::Material) retired in W5a; uploadGraphMaterial removed in
-        //  Stage C — the graph-material upload assembly is a StandardMaterial feature
-        //  concern now (serverUploadGraphMaterial, in the feature TU). The core server API
-        //  no longer names material upload.)
-
-        /// Create a 2D texture. Staging is deferred until flushPendingGpuTransfers().
-        [[nodiscard]] Expected<RTextureHandle> createTexture2D(
-            const lux::rdesc::Texture& texture,
-            bool generate_mips = true
-        );
-
-        // (createLight removed — light creation is feature-scoped via LightFeature;
-        //  see renderer/features/light/LightOperationHandlers.cpp.)
-
         /// Compile a shader from SPIR-V (fully synchronous — VkShaderModule).
         [[nodiscard]] ShaderHandle compileShader(
             std::span<const std::byte> spirv,
             const lux::rdesc::ShaderInfo* info = nullptr
         );
-
-        // (MeshInstanceParam + addMeshInstance removed — the mesh-instance assembly is a
-        //  StandardMeshStack feature concern now (serverAddMeshInstance, in the feature
-        //  TU). The core server API no longer names mesh instances.)
-
-        /// Submit all pending staging transfers (mesh + texture) to the GPU and wait.
-        /// Must be called after all uploadMesh/createTexture2D calls, before tick().
-        [[nodiscard]] Expected<void> flushPendingGpuTransfers();
 
         /// Lock-free read on the render thread. Primarily consumed by close
         /// reports and lifecycle probes; active entries are owned exclusively

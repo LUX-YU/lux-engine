@@ -5,17 +5,9 @@
 namespace lux::flowforge
 {
     // ====================== BranchNode ======================
-    /**
-     * @brief Default constructor for a BranchNode, uses its own pointer as ID.
-     */
-    BranchNode::BranchNode() : BranchNode(reinterpret_cast<uintptr_t>(this)) {}
 
-    /**
-     * @brief Constructs a BranchNode with a specified ID.
-     * @param id The unique ID for this Node.
-     */
-    BranchNode::BranchNode(uint64_t id)
-        : ExecIntermediateNode(id, ENodeOperation::BRANCH, "->", "True", {"False"}),
+    BranchNode::BranchNode()
+        : ExecIntermediateNode(ENodeOperation::BRANCH, "->", "True", {"False"}),
           data_in_pin_(this, DataPinInfo{"Condition", &lux::meta::ref_type_of_v<bool>}, true)
     {
         setName("Branch");
@@ -41,32 +33,14 @@ namespace lux::flowforge
         return data_in_pin_;
     }
 
-    /**
-     * @brief Default constructor for a StartNode, sets the Node ID to the pointer of this object.
-     */
-    StartNode::StartNode() : StartNode(reinterpret_cast<uintptr_t>(this)) {}
-
-    /**
-      * @brief Constructs a StartNode with a specified ID.
-      * @param id The unique ID for this Node.
-      */
-    StartNode::StartNode(uint64_t id) : Node(id, ENodeOperation::START), THasExecOutPin("->")
+    StartNode::StartNode() : Node(ENodeOperation::START), THasExecOutPin("->")
     {
         setName("Start");
     }
 
     // ====================== SequenceNode ======================
 
-    /**
-     * @brief Default constructor for a SequenceNode, uses its own pointer as ID.
-     */
-    SequenceNode::SequenceNode() : SequenceNode(reinterpret_cast<uintptr_t>(this)) {}
-
-    /**
-     * @brief Constructs a SequenceNode with a specified ID.
-     * @param id The unique ID for this Node.
-     */
-    SequenceNode::SequenceNode(uint64_t id) : ExecIntermediateNode(id, ENodeOperation::SEQUENCE, "->", "->")
+    SequenceNode::SequenceNode() : ExecIntermediateNode(ENodeOperation::SEQUENCE, "->", "->")
     {
         setName("Sequence");
     }
@@ -87,7 +61,9 @@ namespace lux::flowforge
     {
         auto pin = std::make_unique<ExecOutPin>(this);
         if (stable_id.valid() && (graph() == nullptr || !graph()->assignPinId(*pin, stable_id)))
+        {
             return nullptr;
+        }
         auto* result = pin.get();
         exec_out_pins_.push_back(std::move(pin));
         return result;
@@ -99,7 +75,9 @@ namespace lux::flowforge
     PinId SequenceNode::removeExecOutPin()
     {
         if (exec_out_pins_.empty())
+        {
             return {};
+        }
         const auto id = exec_out_pins_.back()->id();
         removeOutPin(exec_out_pins_.back().get());
         exec_out_pins_.pop_back();
@@ -108,21 +86,12 @@ namespace lux::flowforge
 
     // ====================== ForLoopNode ======================
 
-    /**
-     * @brief Default constructor for a ForLoopNode, uses its own pointer as ID.
-     */
-    ForLoopNode::ForLoopNode() : ForLoopNode(reinterpret_cast<uintptr_t>(this)) {}
-
-    /**
-     * @brief Constructs a ForLoopNode with a specified ID.
-     * @param id The unique ID for this Node.
-     */
     // Index pins are int32 (UE ForLoop convention): the IV wires directly
     // into int32 arithmetic without a lossy conversion, which the pin
     // type-check would otherwise refuse. "Last Index" is EXCLUSIVE — the
     // loop runs [first, last).
-    ForLoopNode::ForLoopNode(uint64_t id)
-        : ExecIntermediateNode(id, ENodeOperation::FOR_LOOP, "->", "loop body", {"Completed"}),
+    ForLoopNode::ForLoopNode()
+        : ExecIntermediateNode(ENodeOperation::FOR_LOOP, "->", "loop body", {"Completed"}),
           first_index_(this, DataPinInfo{"First Index", &lux::meta::ref_type_of_v<int32_t>}, true),
           last_index_(this, DataPinInfo{"Last Index", &lux::meta::ref_type_of_v<int32_t>}, true),
           index_(this, DataPinInfo{"Index", &lux::meta::ref_type_of_v<int32_t>})
@@ -179,17 +148,8 @@ namespace lux::flowforge
 
     // ====================== WhileLoopNode ======================
 
-    /**
-     * @brief Default constructor for a WhileLoopNode, uses its own pointer as ID.
-     */
-    WhileLoopNode::WhileLoopNode() : WhileLoopNode(reinterpret_cast<uintptr_t>(this)) {}
-
-    /**
-     * @brief Constructs a WhileLoopNode with a specified ID.
-     * @param id The unique ID for this Node.
-     */
-    WhileLoopNode::WhileLoopNode(uint64_t id)
-        : ExecIntermediateNode(id, ENodeOperation::WHILE_LOOP, "->", "loop body", {"Completed"}),
+    WhileLoopNode::WhileLoopNode()
+        : ExecIntermediateNode(ENodeOperation::WHILE_LOOP, "->", "loop body", {"Completed"}),
           data_in_pin_(this, DataPinInfo{"Condition", &lux::meta::ref_type_of_v<bool>}, true)
     {
         setName("While Loop");
@@ -223,23 +183,15 @@ namespace lux::flowforge
         return data_in_pin_;
     }
 
-    ReturnNode::ReturnNode() : ReturnNode(reinterpret_cast<uintptr_t>(this)) {}
-
-    /**
-     * @brief Constructs a ReturnNode with a specified ID.
-     * @param id The unique ID for this Node.
-     * @param type The runtime type info pointer for the return value type.
-     */
-    ReturnNode::ReturnNode(uint64_t id) : Node(id, ENodeOperation::RETURN), THasExecInPin("->")
+    ReturnNode::ReturnNode() : Node(ENodeOperation::RETURN), THasExecInPin("->")
     {
         setName("Return");
     }
 
     // ====================== BreakNode ======================
-    BreakNode::BreakNode() : BreakNode(reinterpret_cast<uintptr_t>(this)) {}
 
-    BreakNode::BreakNode(uint64_t id) : Node(id, ENodeOperation::BREAK), THasExecInPin("->")
+    BreakNode::BreakNode() : Node(ENodeOperation::BREAK), THasExecInPin("->")
     {
         setName("Break");
     }
-}
+} // namespace lux::flowforge

@@ -1,19 +1,29 @@
 #pragma once
 
 #include "NodeBase.hpp"
-#include <lux/cxx/container/SparseSet.hpp>
 #include <lux/engine/flowforge/script/ScriptGraph.hpp>
 #include <lux/engine/function/graph/GraphEdit.hpp>
+#include <map>
 #include <memory>
 #include <new>
+#include <optional>
+#include <ranges>
+#include <unordered_map>
 #include <vector>
 
 namespace lux::flowforge
 {
-    struct NodeStorage
+    struct FlowNodeSnapshot final
     {
+        NodeId id;
         std::unique_ptr<Node> node;
-        size_t index;
+    };
+
+    struct FlowNodeInsertion final
+    {
+        // Invalid ID requests a fresh identity; valid ID explicitly restores a snapshot.
+        NodeId id;
+        std::unique_ptr<Node>* node{};
     };
 
     /**
@@ -23,9 +33,6 @@ namespace lux::flowforge
      */
     class FlowGraph
     {
-        // This’s a kind of compromise
-        static constexpr size_t set_offset = 1;
-
     public:
         FlowGraph();
         ~FlowGraph();
@@ -34,11 +41,17 @@ namespace lux::flowforge
         FlowGraph(FlowGraph&& other) noexcept;
         FlowGraph& operator=(FlowGraph&& other) noexcept;
 
-        // Defined out-of-line in FlowGraph.cpp: forces MSVC to generate an exported
-        // copy in flowforged.dll. Without this, an inline-in-header definition on a
-        // class produces no export symbol, and DLL consumers
-        // (e.g. engine::flowforge_compiler) get LNK2019.
-        const std::vector<NodeStorage>& nodes() const;
+        struct NodeEntry final
+        {
+            NodeId id;
+            Node* node;
+        };
+
+        [[nodiscard]] auto nodes() const noexcept
+        {
+            return nodes_ | std::views::transform([](const auto& entry) noexcept
+                                                  { return NodeEntry{entry.first, entry.second.get()}; });
+        }
 
         [[nodiscard]] bool addExport(ExportMethodNode exported) noexcept
         {
@@ -70,52 +83,14 @@ namespace lux::flowforge
             exports_.swap(exports);
         }
 
-        size_t addNodes(std::unique_ptr<Node> node) noexcept;
-
-        /**
-         * @brief Decode path: adds a node KEEPING the given (serialized)
-         *        stable id and bumps the counter past it, so later addNodes
-         *        can never mint a duplicate.
-         */
-        size_t addNodesWithId(NodeId stable_id, std::unique_ptr<Node> node) noexcept;
-
-        /**
-         * @brief Finds a live node by its STABLE id (linear scan — decode /
-         *        error-reporting path, not a hot path).
-         */
-        Node* findNodeById(NodeId stable_id);
-        const Node* findNodeById(NodeId stable_id) const;
-
-        bool removeNode(size_t index);
-
-        /**
-         * @brief Detaches a node, moving its semantic storage out intact.
-         *        Unlike removeNode the node object survives — the caller owns it and
-         *        can restore it later via insertNodeAt (undo). The caller must drop
-         *        the node's links first; the index is recycled like removeNode.
-         * @return True if the index was live and the storage was moved out.
-         */
-        bool extractNode(size_t index, NodeStorage& out);
-
-        /**
-         * @brief Restores a node at a CALLER-CHOSEN index. Use when other data still
-         *        references that index (e.g. undoing a removeNode: links and editor
-         *        refs are keyed by node index, so the node must come back under its
-         *        ORIGINAL index). Reconciles the recycling allocator so the index can
-         *        never be handed out again by a later addNodes.
-         * @return True if the index was free and the node was inserted.
-         */
-        bool insertNodeAt(size_t index, std::unique_ptr<Node> node);
-
-        bool hasNode(size_t index) const
-        {
-            return nodes_.contains(index);
-        }
-
-        const NodeStorage& getNode(size_t idx) const
-        {
-            return nodes_.at(idx);
-        }
+        [[nodiscard]] NodeId addNode(std::unique_ptr<Node>) noexcept;
+        [[nodiscard]] bool insertNode(FlowNodeSnapshot) noexcept;
+        [[nodiscard]] Node* findNodeById(NodeId) noexcept;
+        [[nodiscard]] const Node* findNodeById(NodeId) const noexcept;
+        // Reverse index is derived from the owning store; detached/foreign nodes have no identity here.
+        [[nodiscard]] NodeId nodeId(const Node*) const noexcept;
+        [[nodiscard]] bool removeNode(NodeId) noexcept;
+        [[nodiscard]] std::optional<FlowNodeSnapshot> extractNode(NodeId) noexcept;
 
         [[nodiscard]] const lux::graph::GraphTopology& topology() const noexcept
         {
@@ -275,14 +250,14 @@ namespace lux::flowforge
         [[nodiscard]] bool registerPin(Pin& pin) noexcept;
         void unregisterPin(Pin& pin) noexcept;
         [[nodiscard]] bool assignPinId(Pin& pin, PinId id) noexcept;
-        [[nodiscard]] bool attachNodeStructure(Node& node, bool preserve_pin_ids) noexcept;
+        [[nodiscard]] bool attachNodeStructure(NodeId id, Node& node, bool preserve_pin_ids) noexcept;
         void rebindNodes() noexcept;
 
         std::vector<GraphVariable> variables_;
         std::vector<ExportMethodNode> exports_;
         uint64_t next_var_id_{1};
-        // start from one
-        lux::cxx::AutoSparseSet<NodeStorage, 1> nodes_;
+        std::map<NodeId, std::unique_ptr<Node>> nodes_;
+        std::unordered_map<const Node*, NodeId> node_ids_;
         lux::graph::GraphTopology topology_;
         lux::graph::GraphLayout layout_;
     };
@@ -290,12 +265,11 @@ namespace lux::flowforge
     struct FlowGraphChange final
     {
         // Ownership changes only at commit. Failure leaves every pointed-to unique_ptr intact.
-        std::span<std::unique_ptr<Node>* const> insert;
+        std::span<const FlowNodeInsertion> insert;
         std::span<const NodeId> erase;
         std::span<const lux::graph::LinkRecord> connect, disconnect;
         std::span<const lux::graph::GraphLayoutEntry> place;
         std::span<const NodeId> unplace;
-        bool preserve_insert_ids{true};
     };
 
     class FlowGraphEdit final
@@ -316,7 +290,7 @@ namespace lux::flowforge
         );
         void commit() noexcept;
         // Removed nodes are detached and retained until the journal adopts them or this plan is destroyed.
-        [[nodiscard]] std::vector<std::unique_ptr<Node>> takeRemoved() noexcept;
+        [[nodiscard]] std::vector<FlowNodeSnapshot> takeRemoved() noexcept;
 
     private:
         explicit FlowGraphEdit(FlowGraph&);
@@ -324,18 +298,18 @@ namespace lux::flowforge
         struct Insertion final
         {
             std::unique_ptr<Node>* source;
-            std::size_t index;
             NodeId id;
         };
 
         FlowGraph* target_;
         lux::graph::GraphEdit structure_;
-        lux::cxx::AutoSparseSet<NodeStorage, 1> nodes_;
+        std::map<NodeId, std::unique_ptr<Node>> nodes_;
+        std::unordered_map<const Node*, NodeId> node_ids_;
         std::vector<Insertion> insert_;
         std::vector<std::pair<Pin*, PinId>> pins_;
         std::vector<NodeId> inserted_ids_;
-        std::vector<std::size_t> keep_, erase_;
-        std::vector<std::unique_ptr<Node>> removed_;
+        std::vector<NodeId> keep_, erase_;
+        std::vector<FlowNodeSnapshot> removed_;
         bool storage_changed_{};
     };
 } // namespace lux::flowforge

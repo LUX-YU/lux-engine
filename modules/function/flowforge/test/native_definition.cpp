@@ -87,7 +87,7 @@ int main()
         require(node->execInPin().id() == exec_in && node->execOutPin().id() == exec_out);
 
         FlowGraph graph;
-        require(graph.addNodes(std::move(node)) != 0U);
+        require(graph.addNode(std::move(node)).valid());
         auto captured = captureFlowSource(asset::AssetId{std::array<std::uint8_t, 16>{1}}, "native", graph);
         require(captured.has_value());
         FlowGraph restored;
@@ -103,7 +103,7 @@ int main()
         auto recaptured = captureFlowSource(captured->id, "native", restored);
         require(recaptured.has_value());
         require(*captured == *recaptured);
-        auto* restored_node = static_cast<NativeFuncCall*>(restored.nodes().front().node.get());
+        auto* restored_node = static_cast<NativeFuncCall*>(restored.nodes().front().node);
         restored_node->reconstruct();
         check(*restored_node);
 
@@ -207,8 +207,8 @@ int main()
         require(!meta::canInitialize(derived_type, base_type));
         auto* base_pointer = base_node.get();
         auto* derived_pointer = derived_node.get();
-        require(graph.addNodes(std::move(base_node)) != 0U);
-        require(graph.addNodes(std::move(derived_node)) != 0U);
+        require(graph.addNode(std::move(base_node)).valid());
+        require(graph.addNode(std::move(derived_node)).valid());
         require(
             graph.connect(
                 *graph.findPin(derived_pointer->result().id()),

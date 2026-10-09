@@ -33,7 +33,7 @@ namespace lux::flowforge
                 return lux::meta::EBaseType::UNKNOWN;
             }
         }
-    }
+    } // namespace
 
     struct ScriptEventAwaitNode::TypeStorage final
     {
@@ -47,11 +47,8 @@ namespace lux::flowforge
                source_.event_name.capacity() + source_.payload.canonical_name.capacity() + 4;
     }
 
-    ScriptEventAwaitNode::ScriptEventAwaitNode(
-        std::uint64_t id,
-        const lux::script::ScriptEventSourceDescription& source
-    )
-        : ExecIntermediateNode(id, ENodeOperation::SCRIPT_EVENT_WAIT, "Execute", "Received"), source_(source),
+    ScriptEventAwaitNode::ScriptEventAwaitNode(const lux::script::ScriptEventSourceDescription& source)
+        : ExecIntermediateNode(ENodeOperation::SCRIPT_EVENT_WAIT, "Execute", "Received"), source_(source),
           type_(std::make_unique<TypeStorage>())
     {
         type_->name = source_.payload.canonical_name;
@@ -76,9 +73,5 @@ namespace lux::flowforge
         payload_pin_ = std::make_unique<DataOutPin>(this, DataPinInfo{"Payload", std::addressof(type_->type)});
     }
 
-    ScriptEventAwaitNode::ScriptEventAwaitNode(const lux::script::ScriptEventSourceDescription& source)
-        : ScriptEventAwaitNode(reinterpret_cast<std::uintptr_t>(this), source)
-    {}
-
     ScriptEventAwaitNode::~ScriptEventAwaitNode() = default;
-}
+} // namespace lux::flowforge

@@ -656,12 +656,7 @@ namespace lux::flowforge
          */
         Node();
 
-        /**
-         * @brief Constructs a Node with a given ID and operation type.
-         * @param id The unique ID for this Node.
-         * @param op The operation type (e.g., START, BRANCH, etc.).
-         */
-        Node(uint64_t id, ENodeOperation op);
+        explicit Node(ENodeOperation op);
 
         Node(const Node&) = delete;
         Node& operator=(const Node&) = delete;
@@ -678,12 +673,6 @@ namespace lux::flowforge
         {
             return nullptr;
         }
-
-        /**
-         * @brief Gets the unique ID of this Node.
-         * @return The Node's ID.
-         */
-        NodeId id() const;
 
         [[nodiscard]] FlowGraph* graph() const noexcept
         {
@@ -782,7 +771,6 @@ namespace lux::flowforge
         std::vector<Pin*> in_pins_;  ///< A list of pointers to this Node's input pins.
         std::vector<Pin*> out_pins_; ///< A list of pointers to this Node's output pins.
 
-        NodeId id_;                ///< Stable shared-topology identity.
         FlowGraph* graph_{};       ///< Borrowed graph while attached.
         ENodeOperation operation_; ///< The operation type of the Node.
         std::string name_;         ///< A user-defined name for the Node.
@@ -902,7 +890,6 @@ namespace lux::flowforge
     {
     public:
         ExecIntermediateNode(
-            uint64_t id,
             ENodeOperation op,
             std::string_view in_pin_name = "->",
             std::string_view fix_out_pin_name = "->",

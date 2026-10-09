@@ -14,16 +14,16 @@ int main()
     FlowGraph graph;
     auto entry = std::make_unique<OnEventNode>("Tick");
     auto* entry_ptr = entry.get();
-    graph.addNodes(std::move(entry));
-    assert(graph.addExport({{1}, entry_ptr->id(), 41, {}}));
+    graph.addNode(std::move(entry));
+    assert(graph.addExport({{1}, graph.nodeId(entry_ptr), 41, {}}));
     FlowForgeCompileOptions options{.module_name = "ability_contract"};
     auto empty = compileFlowForgeObject(graph, options);
     assert(empty && !empty->object.empty());
 
     // A caller-supplied operation enum cannot authorize a concrete downcast.
-    auto impostor = std::make_unique<Node>(0, ENodeOperation::SCRIPT_ABILITY_CALL);
+    auto impostor = std::make_unique<Node>(ENodeOperation::SCRIPT_ABILITY_CALL);
     assert(!impostor->scriptAbility());
-    auto impostor_index = graph.addNodes(std::move(impostor));
+    auto impostor_index = graph.addNode(std::move(impostor));
     auto invalid = compileFlowForgeObject(graph, options);
     assert(!invalid && invalid.error().code == EFlowForgeError::GRAPH_INVALID);
     assert(graph.removeNode(impostor_index));
@@ -38,13 +38,13 @@ int main()
     auto ability = std::make_unique<ScriptAbilityNode>(description);
     auto* ability_ptr = ability.get();
     assert(ability_ptr->scriptAbility() == ability_ptr);
-    graph.addNodes(std::move(ability));
+    graph.addNode(std::move(ability));
     assert(entry_ptr->execOutPin().linkTo(&ability_ptr->execInPin()) == ELinkError::SUCCESS);
 
     // A rejected replacement preserves topology; explicit edits can replace and restore it.
     auto alternative = std::make_unique<ScriptAbilityNode>(description);
     auto* alternative_ptr = alternative.get();
-    const auto alternative_index = graph.addNodes(std::move(alternative));
+    const auto alternative_index = graph.addNode(std::move(alternative));
     assert(entry_ptr->execOutPin().linkTo(&alternative_ptr->execInPin()) == ELinkError::HAS_LINKED);
     assert(entry_ptr->execOutPin().nextPin() == &ability_ptr->execInPin());
     assert(entry_ptr->execOutPin().unlinkFrom(&ability_ptr->execInPin()) == ELinkError::UNLINKED);
@@ -57,7 +57,7 @@ int main()
 
     auto missing = compileFlowForgeObject(graph, options);
     assert(!missing && missing.error().code == EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_CONTRACT);
-    assert(missing.error().node_id == ability_ptr->id().value);
+    assert(missing.error().node_id == graph.nodeId(ability_ptr).value);
 
     auto changed = description;
     changed.schema_hash = 78;

@@ -57,10 +57,10 @@ namespace
         auto* c = call.get();
         auto* e = event.get();
         auto* w = write.get();
-        require(graph.addNodes(std::move(call)) != 0U);
-        require(graph.addNodes(std::move(event)) != 0U);
-        require(graph.addNodes(std::move(write)) != 0U);
-        require(graph.addExport({{export_id}, e->id(), export_id, {}}));
+        require(graph.addNode(std::move(call)).valid());
+        require(graph.addNode(std::move(event)).valid());
+        require(graph.addNode(std::move(write)).valid());
+        require(graph.addExport({{export_id}, graph.nodeId(e), export_id, {}}));
         require(e->execOutPin().linkTo(&c->execInPin()) == ELinkError::SUCCESS);
         require(c->execOutPin().linkTo(&w->execInPin()) == ELinkError::SUCCESS);
         require(graph.findPin(c->result().id())->linkTo(graph.findPin(w->valueIn().id())) == ELinkError::SUCCESS);

@@ -21,7 +21,7 @@ int main()
     using lux::meta::RuntimeObject;
     lux::meta::meta_module_init();
     {
-        lux::flowforge::Node node{{}, lux::flowforge::ENodeOperation::GET_OBJECT};
+        lux::flowforge::Node node{lux::flowforge::ENodeOperation::GET_OBJECT};
         lux::flowforge::DataInPin number{&node, {"Number", &lux::meta::ref_type_of_v<int>}, true};
         require(number.validConstant());
         require(number.constantData().get<int>() == 0);

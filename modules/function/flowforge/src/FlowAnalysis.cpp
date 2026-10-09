@@ -44,7 +44,7 @@ namespace lux::flowforge
                         return lux::cxx::unexpected(FlowForgeFailure{
                             .code = EFlowForgeError::GRAPH_INVALID,
                             .message = "Script Ability operation has no Script Ability node contract",
-                            .node_id = storage.node->id().value
+                            .node_id = storage.id.value
                         });
                     }
                     continue;
@@ -60,7 +60,7 @@ namespace lux::flowforge
                         return lux::cxx::unexpected(FlowForgeFailure{
                             .code = EFlowForgeError::SCRIPT_ABILITY_REQUIREMENT_CONFLICT,
                             .message = "the graph uses conflicting schemas for one Script Ability contract",
-                            .node_id = node->id().value
+                            .node_id = storage.id.value
                         });
                     }
                 }
@@ -83,7 +83,7 @@ namespace lux::flowforge
                         .message = contract_exists
                                        ? "the Script Ability method is not present in the supplied catalog"
                                        : "the Script Ability contract is not present in the supplied catalog",
-                        .node_id = node->id().value
+                        .node_id = storage.id.value
                     });
                 }
                 const bool is_schema_mismatch = catalog_node->schema_version != node->expectedSchemaVersion() ||
@@ -94,7 +94,7 @@ namespace lux::flowforge
                     return lux::cxx::unexpected(FlowForgeFailure{
                         .code = EFlowForgeError::SCRIPT_ABILITY_SCHEMA_MISMATCH,
                         .message = "the Script Ability node schema does not match the supplied catalog",
-                        .node_id = node->id().value
+                        .node_id = storage.id.value
                     });
                 }
 
@@ -132,7 +132,7 @@ namespace lux::flowforge
                     return lux::cxx::unexpected(FlowForgeFailure{
                         .code = EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH,
                         .message = "the Script Event source description is invalid",
-                        .node_id = node.id().value
+                        .node_id = storage.id.value
                     });
                 }
                 const auto found = std::ranges::find_if(
@@ -148,7 +148,7 @@ namespace lux::flowforge
                     return lux::cxx::unexpected(FlowForgeFailure{
                         .code = EFlowForgeError::UNKNOWN_SCRIPT_EVENT_SOURCE,
                         .message = "the Script Event source is not present in the supplied catalog",
-                        .node_id = node.id().value
+                        .node_id = storage.id.value
                     });
                 }
                 const bool is_schema_mismatch = found->payload != expected.payload ||
@@ -162,7 +162,7 @@ namespace lux::flowforge
                     return lux::cxx::unexpected(FlowForgeFailure{
                         .code = EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH,
                         .message = "the Script Event source schema does not match the supplied catalog",
-                        .node_id = node.id().value
+                        .node_id = storage.id.value
                     });
                 }
                 const auto existing = std::ranges::find_if(
@@ -235,7 +235,7 @@ namespace lux::flowforge
                     for (const auto* consumer : executableConsumers(*producer->resultPins()[index]))
                     {
                         if (const auto suspension =
-                                analysis.suspensionBetween(producer->execOutPin().id(), consumer->id());
+                                analysis.suspensionBetween(producer->execOutPin().id(), graph.nodeId(consumer));
                             suspension.valid())
                         {
                             return lux::cxx::unexpected(FlowForgeFailure{
@@ -344,16 +344,16 @@ namespace lux::flowforge
             {
                 if (storage.node->operation() == ENodeOperation::FUNC_DEF_START)
                 {
-                    const auto* function = static_cast<const FuncDefNode*>(storage.node.get());
+                    const auto* function = static_cast<const FuncDefNode*>(storage.node);
                     definitions.insert(function);
-                    functions.emplace(function->id(), FunctionSummary{function->execOutPin().id()});
+                    functions.emplace(storage.id, FunctionSummary{function->execOutPin().id()});
                 }
             }
 
             for (const auto& storage : graph.nodes())
             {
                 const auto& node = *storage.node;
-                auto& projected = execution[node.id()];
+                auto& projected = execution[storage.id];
                 if (const auto* ability = node.scriptAbility())
                 {
                     projected.suspends = ability->methodKind() == script::EScriptApiMethodKind::ASYNC_OPERATION;
@@ -371,7 +371,7 @@ namespace lux::flowforge
                         projected.foreign_callee = !definitions.contains(callee);
                         if (!projected.foreign_callee)
                         {
-                            projected.callee = callee->id();
+                            projected.callee = graph.nodeId(callee);
                         }
                     }
                 }
@@ -384,7 +384,7 @@ namespace lux::flowforge
                     }
                     if (const auto* next = static_cast<const ExecOutPin*>(pin)->nextPin())
                     {
-                        const auto successor = next->node()->id();
+                        const auto successor = graph.nodeId(next->node());
                         starts.emplace(pin->id(), successor);
                         projected.successors.push_back(successor);
                     }

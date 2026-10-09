@@ -75,19 +75,18 @@ namespace
     void flowCompilation()
     {
         flowforge::FlowGraph direct;
-        const auto index = direct.addNodes(std::make_unique<flowforge::OnEventNode>("Tick"));
-        require(index != 0U);
-        require(direct.addExport({{1}, direct.getNode(index).node->id(), 41, {}}));
+        const auto index = direct.addNode(std::make_unique<flowforge::OnEventNode>("Tick"));
+        require(index.valid());
+        require(direct.addExport({{1}, index, 41, {}}));
         const flowforge::FlowForgeCompileOptions options{.module_name = "shared_graph_edit"};
         auto baseline = flowforge::compileFlowForgeObject(direct, options);
         require(baseline.has_value() && !baseline->object.empty());
 
         flowforge::FlowGraph edited;
         std::unique_ptr<flowforge::Node> candidate = std::make_unique<flowforge::OnEventNode>("Tick");
-        const std::array<std::unique_ptr<flowforge::Node>*, 1> inputs{&candidate};
+        const std::array<flowforge::FlowNodeInsertion, 1> inputs{{{{}, &candidate}}};
         flowforge::FlowGraphChange change;
         change.insert = inputs;
-        change.preserve_insert_ids = false;
         auto edit = flowforge::FlowGraphEdit::prepare(edited, change);
         require(edit.has_value());
         const auto id = edit->insertedIds().front();

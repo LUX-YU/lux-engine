@@ -32,7 +32,7 @@ namespace
         require(variable != 0U);
         auto input = std::make_unique<GetVariableNode>(variable, DataPinInfo{name, &type});
         const auto* pointer = input.get();
-        require(graph.addNodes(std::move(input)) != 0U);
+        require(graph.addNode(std::move(input)).valid());
         return pointer->valuePin();
     }
 
@@ -49,10 +49,10 @@ namespace
         auto* f = function.get();
         auto* x = expression.get();
         auto* r = result.get();
-        require(graph.addNodes(std::move(function)) != 0U);
-        require(graph.addNodes(std::move(expression)) != 0U);
-        require(graph.addNodes(std::move(result)) != 0U);
-        require(graph.addExport({{count}, f->id(), count, {}}));
+        require(graph.addNode(std::move(function)).valid());
+        require(graph.addNode(std::move(expression)).valid());
+        require(graph.addNode(std::move(result)).valid());
+        require(graph.addExport({{count}, graph.nodeId(f), count, {}}));
         require(f->execOutPin().linkTo(&r->execInPin()) == ELinkError::SUCCESS);
         const auto& lhs = addInput(graph, type, "lhs_" + std::to_string(count));
         const auto& rhs = addInput(graph, type, "rhs_" + std::to_string(count));
@@ -74,10 +74,10 @@ namespace
         auto* f = function.get();
         auto* x = expression.get();
         auto* r = result.get();
-        require(graph.addNodes(std::move(function)) != 0U);
-        require(graph.addNodes(std::move(expression)) != 0U);
-        require(graph.addNodes(std::move(result)) != 0U);
-        require(graph.addExport({{count}, f->id(), count, {}}));
+        require(graph.addNode(std::move(function)).valid());
+        require(graph.addNode(std::move(expression)).valid());
+        require(graph.addNode(std::move(result)).valid());
+        require(graph.addExport({{count}, graph.nodeId(f), count, {}}));
         require(f->execOutPin().linkTo(&r->execInPin()) == ELinkError::SUCCESS);
         const auto& input = addInput(graph, type, "value_" + std::to_string(count));
         require(graph.connect(*graph.findPin(input.id()), *graph.findPin(x->operand().id())) == ELinkError::SUCCESS);
@@ -90,18 +90,7 @@ int main(int argc, char** argv)
     meta::meta_module_init();
     {
         FlowGraph graph;
-        const std::array types{
-            &meta::ref_type_of_v<std::int8_t>,
-            &meta::ref_type_of_v<std::uint8_t>,
-            &meta::ref_type_of_v<std::int16_t>,
-            &meta::ref_type_of_v<std::uint16_t>,
-            &meta::ref_type_of_v<std::int32_t>,
-            &meta::ref_type_of_v<std::uint32_t>,
-            &meta::ref_type_of_v<std::int64_t>,
-            &meta::ref_type_of_v<std::uint64_t>,
-            &meta::ref_type_of_v<float>,
-            &meta::ref_type_of_v<double>
-        };
+        const std::array types{&meta::ref_type_of_v<std::int8_t>, &meta::ref_type_of_v<std::uint8_t>, &meta::ref_type_of_v<std::int16_t>, &meta::ref_type_of_v<std::uint16_t>, &meta::ref_type_of_v<std::int32_t>, &meta::ref_type_of_v<std::uint32_t>, &meta::ref_type_of_v<std::int64_t>, &meta::ref_type_of_v<std::uint64_t>, &meta::ref_type_of_v<float>, &meta::ref_type_of_v<double>};
         const std::array operations{
             ENodeOperation::ADD,
             ENodeOperation::SUBTRACT,

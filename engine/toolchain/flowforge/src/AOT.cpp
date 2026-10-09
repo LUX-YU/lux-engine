@@ -127,7 +127,7 @@ namespace lux::flowforge
             for (const auto& storage : graph.nodes())
             {
                 if (storage.node->operation() == ENodeOperation::SCRIPT_ABILITY_CALL)
-                    nodes.push_back(static_cast<const ScriptAbilityNode*>(storage.node.get()));
+                    nodes.push_back(static_cast<const ScriptAbilityNode*>(storage.node));
             }
             std::ranges::sort(nodes, [](const auto* left, const auto* right) {
                 return left->contract().name() < right->contract().name() ||
@@ -153,7 +153,7 @@ namespace lux::flowforge
             for (const auto& storage : graph.nodes())
             {
                 if (storage.node->operation() == ENodeOperation::SCRIPT_EVENT_WAIT)
-                    nodes.push_back(static_cast<const ScriptEventAwaitNode*>(storage.node.get()));
+                    nodes.push_back(static_cast<const ScriptEventAwaitNode*>(storage.node));
             }
             std::ranges::sort(nodes, [](const auto* left, const auto* right) {
                 const auto& a = left->source();

@@ -655,30 +655,16 @@ namespace lux::flowforge
     // ====================== Node ======================
 
     /**
-     * @brief Default constructor for an invalid Node (operation = INVALID, id = invalid_id).
+     * @brief Default constructor for an invalid Node (operation = INVALID).
      */
     Node::Node() : operation_(ENodeOperation::INVALID) {}
 
-    /**
-     * @brief Constructs a Node with a given ID and operation type.
-     * @param id The unique ID for the Node.
-     * @param op The operation type, e.g., START, BRANCH, etc.
-     */
-    Node::Node(uint64_t id, ENodeOperation op) : id_(NodeId{id}), operation_(op) {}
+    Node::Node(ENodeOperation op) : operation_(op) {}
 
     /**
      * @brief Virtual destructor for Node. Pins are automatically unlinked via their destructors.
      */
     Node::~Node() = default;
-
-    /**
-     * @brief Retrieves the ID of this Node.
-     * @return The Node's 64-bit integer ID.
-     */
-    NodeId Node::id() const
-    {
-        return id_;
-    }
 
     /**
      * @brief Retrieves the operation type of this Node.
@@ -762,13 +748,12 @@ namespace lux::flowforge
     }
 
     ExecIntermediateNode::ExecIntermediateNode(
-        uint64_t id,
         ENodeOperation op,
         std::string_view in_pin_name,
         std::string_view fix_out_pin_name,
         std::initializer_list<std::string_view> out_pin_names
     )
-        : Node(id, op), THasExecInPin(in_pin_name), THasExecOutPin(fix_out_pin_name, out_pin_names)
+        : Node(op), THasExecInPin(in_pin_name), THasExecOutPin(fix_out_pin_name, out_pin_names)
     {
     }
 

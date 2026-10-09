@@ -23,13 +23,18 @@ namespace
     template <typename T>
     concept MutableOutputs = requires(T& node) { node.outPins().clear(); };
     template <typename T>
-    concept MutableOwner = requires(T& graph) { graph.getNode(1).node.reset(); };
+    concept MutableOwner = requires(T& graph) { graph.findNodeById(NodeId{1}).reset(); };
     template <typename T>
     concept Unregisterable = requires(T& graph, Pin& pin) { graph.unregisterPin(pin); };
+    template <typename T>
+    concept EmbeddedIdentity = requires(const T& node) { node.id(); };
 
     static_assert(!Rekeyable<Node> && !Rebindable<Node>);
     static_assert(!MutableTopology<FlowGraph> && !MutableOwner<FlowGraph> && !Unregisterable<FlowGraph>);
     static_assert(!MutableInputs<Node> && !MutableOutputs<Node>);
+    static_assert(!EmbeddedIdentity<Node>);
+    static_assert(!std::is_constructible_v<Node, std::uint64_t, ENodeOperation>);
+    static_assert(!std::is_constructible_v<SequenceNode, std::uint64_t>);
 
     void require(bool value, std::source_location where = std::source_location::current()) noexcept
     {
@@ -48,15 +53,15 @@ namespace
         {
             const auto& node = *entry.node;
             require(node.graph() == &graph);
-            require(graph.topology().findNode(node.id()) != nullptr);
-            require(graph.findNodeById(node.id()) == &node);
+            require(graph.topology().findNode(entry.id) != nullptr);
+            require(graph.findNodeById(entry.id) == &node);
             const auto check_pins = [&](const auto& pins, graph::EPinDirection direction)
             {
                 for (const auto* pin : pins)
                 {
                     const auto* record = graph.topology().findPin(pin->id());
                     require(record != nullptr);
-                    require(record->owner == node.id() && record->direction == direction);
+                    require(record->owner == entry.id && record->direction == direction);
                     require(pin->node() == &node && graph.findPin(pin->id()) == pin);
                     ++pin_count;
                 }
@@ -86,11 +91,11 @@ namespace
         FlowGraph target, foreign;
         const auto populate = [](FlowGraph& graph)
         {
-            const auto first = graph.addNodes(std::make_unique<SequenceNode>(0));
-            const auto second = graph.addNodes(std::make_unique<SequenceNode>(0));
+            const auto first = graph.addNode(std::make_unique<SequenceNode>());
+            const auto second = graph.addNode(std::make_unique<SequenceNode>());
             return std::array<Pin*, 2>{
-                graph.getNode(first).node->outPins().front(),
-                graph.getNode(second).node->inPins().front()
+                graph.findNodeById(first)->outPins().front(),
+                graph.findNodeById(second)->inPins().front()
             };
         };
         const auto own = populate(target), other = populate(foreign);
@@ -118,21 +123,69 @@ namespace
         check(moved);
         check(foreign);
     }
+
+    void checkStoreKeys()
+    {
+        FlowGraph graph;
+        constexpr NodeId high{UINT64_MAX - 1};
+        auto detached = std::make_unique<SequenceNode>();
+        auto* original = detached.get();
+        require(!graph.nodeId(original).valid());
+        require(graph.insertNode({high, std::move(detached)}));
+        require(graph.nodeId(original) == high && graph.findNodeById(high) == original);
+        const auto saved = sourceBytes(graph);
+        auto extracted = graph.extractNode(high);
+        require(extracted.has_value() && extracted->id == high && extracted->node.get() == original);
+        require(!graph.nodeId(original).valid() && graph.findNodeById(high) == nullptr);
+        require(original->graph() == nullptr);
+        require(graph.insertNode(std::move(*extracted)));
+        require(sourceBytes(graph) == saved);
+
+        std::unique_ptr<Node> replacement = std::make_unique<SequenceNode>();
+        const std::array<NodeId, 1> erased{high};
+        const std::array<FlowNodeInsertion, 1> inserted{{{high, &replacement}}};
+        FlowGraphChange change;
+        change.erase = erased;
+        change.insert = inserted;
+        auto edit = FlowGraphEdit::prepare(graph, change);
+        require(edit.has_value());
+        auto* replacement_pointer = replacement.get();
+        require(graph.nodeId(original) == high && !graph.nodeId(replacement_pointer).valid());
+        edit->commit();
+        auto removed = edit->takeRemoved();
+        require(removed.size() == 1 && removed.front().id == high && removed.front().node.get() == original);
+        require(!graph.nodeId(original).valid() && graph.nodeId(replacement_pointer) == high);
+        require(graph.findNodeById(high) == replacement_pointer && !replacement);
+        check(graph);
+
+        const auto last = graph.addNode(std::make_unique<SequenceNode>());
+        require(last.value == UINT64_MAX);
+        require(!graph.addNode(std::make_unique<SequenceNode>()).valid());
+        require(graph.removeNode(last));
+        require(!graph.addNode(std::make_unique<SequenceNode>()).valid());
+        FlowGraph moved;
+        require(moved.addNode(std::make_unique<SequenceNode>()).valid());
+        moved = std::move(graph);
+        require(moved.nodeId(replacement_pointer) == high && !graph.nodeId(replacement_pointer).valid());
+        check(moved);
+        check(graph);
+    }
 } // namespace
 
 int main()
 {
     checkReceiver();
+    checkStoreKeys();
     FlowGraph graph;
-    auto candidate = std::make_unique<SequenceNode>(0);
+    auto candidate = std::make_unique<SequenceNode>();
     auto& sequence = *candidate;
-    const auto index = graph.addNodes(std::move(candidate));
-    require(graph.hasNode(index));
-    const auto id = sequence.id();
+    const auto index = graph.addNode(std::move(candidate));
+    require(graph.findNodeById(index) != nullptr);
+    const auto id = index;
     check(graph);
 
-    const auto target_index = graph.addNodes(std::make_unique<SequenceNode>(0));
-    auto& target = *graph.getNode(target_index).node;
+    const auto target_index = graph.addNode(std::make_unique<SequenceNode>());
+    auto& target = *graph.findNodeById(target_index);
     auto* dynamic_pin = sequence.addExecOutPin();
     require(dynamic_pin != nullptr);
     const auto pin_id = dynamic_pin->id();
@@ -172,12 +225,12 @@ int main()
     require(sourceBytes(graph) == linked);
     edit->commit();
     auto removed = edit->takeRemoved();
-    require(removed.size() == 1 && removed.front().get() == &sequence);
+    require(removed.size() == 1 && removed.front().node.get() == &sequence);
     require(sequence.graph() == nullptr && graph.findNodeById(id) == nullptr);
     require(graph.findPin(pin_id) == nullptr && graph.topology().links().empty());
     check(graph);
 
-    const std::array<std::unique_ptr<Node>*, 1> insert{&removed.front()};
+    const std::array<FlowNodeInsertion, 1> insert{{{removed.front().id, &removed.front().node}}};
     const std::array<graph::LinkRecord, 1> links{{{pin_id, target.inPins().front()->id()}}};
     change = {};
     change.insert = insert;
@@ -185,7 +238,7 @@ int main()
     auto undo = FlowGraphEdit::prepare(graph, change);
     require(undo.has_value());
     undo->commit();
-    require(!removed.front() && graph.findNodeById(id) == &sequence);
+    require(!removed.front().node && graph.findNodeById(id) == &sequence);
     check(graph);
     require(sourceBytes(graph) == linked);
     std::puts("PASS: controlled structure, dynamic pins, source roundtrip, graph move and edit replay");

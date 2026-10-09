@@ -31,3 +31,19 @@ must pair analysis and lowering from the same unchanged graph input.
 This lifetime contract does not complete the broader Flow graph migration: the existing
 Node/Pin structure and NodeRegistry palette are still active. The final domain catalog,
 compiler extension surface and removal of duplicate structural authority remain pending.
+
+Node identity belongs to the graph store. `addNode` returns the issued `NodeId`; constructors
+only accept semantic data. `nodes()` borrows `{id, node}` entries, and `nodeId(pointer)` is a
+derived reverse lookup that returns an invalid ID for detached or foreign nodes. The owning
+store uses stable IDs directly, without a recycled container index or an ID inside `Node`.
+It orders entries by ID and does not allocate sparse storage proportional to the ID value.
+
+Extraction returns a `FlowNodeSnapshot` containing the key and unique owner. Restoration
+uses that explicit key; fresh insertion never reuses an issued identity. Batch insertion
+uses `FlowNodeInsertion`: zero requests a new ID, a nonzero ID explicitly restores a snapshot.
+Preparation keeps input owners untouched and prepares all store entries and reverse indexes;
+commit only moves ownership and swaps the prepared storage with the original `GraphEdit`.
+Removed snapshots retain their keys for undo. Reverse indexes never issue identities.
+
+This step does not remove the remaining Pin IDs, graph membership pointers or polymorphic
+semantic node classes. The registered Flow payload/compiler migration is still required.

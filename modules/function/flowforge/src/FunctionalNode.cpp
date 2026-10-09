@@ -6,8 +6,8 @@
 
 namespace lux::flowforge
 {
-    NativeFuncCall::NativeFuncCall(uint64_t id, Definition definition) noexcept
-        : ExecIntermediateNode(id, ENodeOperation::NATIVE_FUNC_CALL), definition_(std::move(definition))
+    NativeFuncCall::NativeFuncCall(Definition definition) noexcept
+        : ExecIntermediateNode(ENodeOperation::NATIVE_FUNC_CALL), definition_(std::move(definition))
     {
         if (!definition_)
         {
@@ -15,11 +15,6 @@ namespace lux::flowforge
         }
         rebuildPins();
         setName(info().name);
-    }
-
-    NativeFuncCall::NativeFuncCall(Definition definition) noexcept
-        : NativeFuncCall(reinterpret_cast<uintptr_t>(this), std::move(definition))
-    {
     }
 
     /**
@@ -125,13 +120,8 @@ namespace lux::flowforge
     }
 
     // ====================== FuncDefNode ======================
-    FuncDefNode::FuncDefNode(
-        uint64_t id,
-        std::string_view name,
-        std::vector<FuncArgInfo> args,
-        std::vector<FuncArgInfo> rets
-    )
-        : Node(id, ENodeOperation::FUNC_DEF_START), THasExecOutPin("->"), args_(std::move(args)), rets_(std::move(rets))
+    FuncDefNode::FuncDefNode(std::string_view name, std::vector<FuncArgInfo> args, std::vector<FuncArgInfo> rets)
+        : Node(ENodeOperation::FUNC_DEF_START), THasExecOutPin("->"), args_(std::move(args)), rets_(std::move(rets))
     {
         setName(name);
         for (const auto& a : args_)
@@ -140,14 +130,9 @@ namespace lux::flowforge
         }
     }
 
-    FuncDefNode::FuncDefNode(std::string_view name, std::vector<FuncArgInfo> args, std::vector<FuncArgInfo> rets)
-        : FuncDefNode(reinterpret_cast<uintptr_t>(this), name, std::move(args), std::move(rets))
-    {
-    }
-
     // ====================== FuncReturnNode ======================
-    FuncReturnNode::FuncReturnNode(uint64_t id, const FuncDefNode& def)
-        : Node(id, ENodeOperation::FUNC_RETURN), THasExecInPin("->"), def_(&def)
+    FuncReturnNode::FuncReturnNode(const FuncDefNode& def)
+        : Node(ENodeOperation::FUNC_RETURN), THasExecInPin("->"), def_(&def)
     {
         setName("Return " + def.name());
         for (const auto& r : def.retInfos())
@@ -156,11 +141,9 @@ namespace lux::flowforge
         }
     }
 
-    FuncReturnNode::FuncReturnNode(const FuncDefNode& def) : FuncReturnNode(reinterpret_cast<uintptr_t>(this), def) {}
-
     // ====================== OnEventNode ======================
-    OnEventNode::OnEventNode(uint64_t id, std::string_view event_name, std::vector<FuncArgInfo> params)
-        : Node(id, ENodeOperation::ON_EVENT), THasExecOutPin("->"), params_(std::move(params))
+    OnEventNode::OnEventNode(std::string_view event_name, std::vector<FuncArgInfo> params)
+        : Node(ENodeOperation::ON_EVENT), THasExecOutPin("->"), params_(std::move(params))
     {
         setName(event_name);
         for (const auto& p : params_)
@@ -169,14 +152,9 @@ namespace lux::flowforge
         }
     }
 
-    OnEventNode::OnEventNode(std::string_view event_name, std::vector<FuncArgInfo> params)
-        : OnEventNode(reinterpret_cast<uintptr_t>(this), event_name, std::move(params))
-    {
-    }
-
     // ====================== GraphFuncCallNode ======================
-    GraphFuncCallNode::GraphFuncCallNode(uint64_t id, const FuncDefNode& callee)
-        : ExecIntermediateNode(id, ENodeOperation::GRAPH_FUNC_CALL), callee_(&callee)
+    GraphFuncCallNode::GraphFuncCallNode(const FuncDefNode& callee)
+        : ExecIntermediateNode(ENodeOperation::GRAPH_FUNC_CALL), callee_(&callee)
     {
         setName("Call " + callee.name());
         for (const auto& a : callee.argInfos())
@@ -189,8 +167,4 @@ namespace lux::flowforge
         }
     }
 
-    GraphFuncCallNode::GraphFuncCallNode(const FuncDefNode& callee)
-        : GraphFuncCallNode(reinterpret_cast<uintptr_t>(this), callee)
-    {
-    }
 } // namespace lux::flowforge

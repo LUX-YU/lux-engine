@@ -17,23 +17,18 @@ namespace lux::flowforge
     class BinaryOpNode : public Node
     {
     public:
-        /**
-         * @brief Constructs a BinaryOpNode, using its own pointer as ID.
-         * @param op            The operation tag (ADD..MODULO, LOGICAL_AND/OR, CMP_*).
-         * @param operand_type  Declared type of both operands (comparisons and
-         *                      logical ops still produce bool regardless).
-         */
         BinaryOpNode(ENodeOperation op, const lux::meta::RefType* operand_type);
-        BinaryOpNode(uint64_t id, ENodeOperation op, const lux::meta::RefType* operand_type);
 
         const DataInPin& lhs() const
         {
             return lhs_;
         }
+
         const DataInPin& rhs() const
         {
             return rhs_;
         }
+
         const DataOutPin& result() const
         {
             return result_;
@@ -59,12 +54,12 @@ namespace lux::flowforge
     {
     public:
         UnaryOpNode(ENodeOperation op, const lux::meta::RefType* operand_type);
-        UnaryOpNode(uint64_t id, ENodeOperation op, const lux::meta::RefType* operand_type);
 
         const DataInPin& operand() const
         {
             return operand_;
         }
+
         const DataOutPin& result() const
         {
             return result_;

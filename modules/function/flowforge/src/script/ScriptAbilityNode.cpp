@@ -53,8 +53,8 @@ namespace lux::flowforge
         return bytes;
     }
 
-    ScriptAbilityNode::ScriptAbilityNode(std::uint64_t id, const ScriptAbilityNodeDescription& description)
-        : ExecIntermediateNode(id, ENodeOperation::SCRIPT_ABILITY_CALL, "Execute", "Completed"),
+    ScriptAbilityNode::ScriptAbilityNode(const ScriptAbilityNodeDescription& description)
+        : ExecIntermediateNode(ENodeOperation::SCRIPT_ABILITY_CALL, "Execute", "Completed"),
           description_(std::make_unique<detail::ScriptAbilityNodeStorage>(description))
     {
         const auto& owned = description_->description();
@@ -78,11 +78,6 @@ namespace lux::flowforge
                 std::make_unique<DataOutPin>(this, DataPinInfo{name, storeType(owned.results[index])})
             );
         }
-    }
-
-    ScriptAbilityNode::ScriptAbilityNode(const ScriptAbilityNodeDescription& description)
-        : ScriptAbilityNode(reinterpret_cast<std::uintptr_t>(this), description)
-    {
     }
 
     ScriptAbilityNode::~ScriptAbilityNode() = default;

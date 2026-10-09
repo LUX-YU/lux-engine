@@ -52,19 +52,19 @@ namespace lux::flowforge
 
     FlowGraph::~FlowGraph()
     {
-        for (auto& storage : nodes_.values())
+        for (auto& [stored_id, node] : nodes_)
         {
-            if (storage.node)
+            if (node)
             {
-                storage.node->graph_ = nullptr;
+                node->graph_ = nullptr;
             }
         }
     }
 
     FlowGraph::FlowGraph(FlowGraph&& other) noexcept
         : variables_(std::move(other.variables_)), exports_(std::move(other.exports_)),
-          next_var_id_(other.next_var_id_), nodes_(std::move(other.nodes_)), topology_(std::move(other.topology_)),
-          layout_(std::move(other.layout_))
+          next_var_id_(other.next_var_id_), nodes_(std::move(other.nodes_)), node_ids_(std::move(other.node_ids_)),
+          topology_(std::move(other.topology_)), layout_(std::move(other.layout_))
     {
         rebindNodes();
     }
@@ -75,168 +75,127 @@ namespace lux::flowforge
         {
             return *this;
         }
-        for (auto& storage : nodes_.values())
+        for (auto& [stored_id, node] : nodes_)
         {
-            if (storage.node)
+            if (node)
             {
-                storage.node->graph_ = nullptr;
+                node->graph_ = nullptr;
             }
         }
         variables_ = std::move(other.variables_);
         exports_ = std::move(other.exports_);
         next_var_id_ = other.next_var_id_;
         nodes_ = std::move(other.nodes_);
+        node_ids_ = std::move(other.node_ids_);
         topology_ = std::move(other.topology_);
         layout_ = std::move(other.layout_);
         rebindNodes();
         return *this;
     }
 
-    const std::vector<NodeStorage>& FlowGraph::nodes() const
+    NodeId FlowGraph::addNode(std::unique_ptr<Node> node) noexcept
     {
-        return nodes_.values();
-    }
-
-    size_t FlowGraph::addNodes(std::unique_ptr<Node> node) noexcept
-    {
-        if (!node)
+        const bool is_invalid_candidate = !node || node->graph() != nullptr;
+        if (is_invalid_candidate)
         {
-            return (std::numeric_limits<std::size_t>::max)();
+            return {};
         }
         auto id = topology_.addNode(nodeType(node->operation()));
         if (!id)
         {
-            return (std::numeric_limits<std::size_t>::max)();
+            return {};
         }
-        node->id_ = *id;
-        if (!attachNodeStructure(*node, false))
+        node_ids_.emplace(node.get(), *id);
+        if (!attachNodeStructure(*id, *node, false))
         {
-            return (std::numeric_limits<std::size_t>::max)();
+            node_ids_.erase(node.get());
+            return {};
         }
-        const auto index = nodes_.emplace(std::move(node), 0U);
-        nodes_.at(index).index = index;
-        return index;
+        nodes_.emplace(*id, std::move(node));
+        return *id;
     }
 
-    size_t FlowGraph::addNodesWithId(NodeId stable_id, std::unique_ptr<Node> node) noexcept
+    bool FlowGraph::insertNode(FlowNodeSnapshot snapshot) noexcept
     {
-        if (!node || !stable_id.valid())
-        {
-            return (std::numeric_limits<std::size_t>::max)();
-        }
-        if (!topology_.insertNode(lux::graph::NodeRecord{stable_id, nodeType(node->operation())}))
-        {
-            return (std::numeric_limits<std::size_t>::max)();
-        }
-        node->id_ = stable_id;
-        const auto preserve_pin_ids =
-            std::ranges::all_of(node->inPins(), [](const Pin* pin) { return pin != nullptr && pin->id().valid(); }) &&
-            std::ranges::all_of(node->outPins(), [](const Pin* pin) { return pin != nullptr && pin->id().valid(); });
-        if (!attachNodeStructure(*node, preserve_pin_ids))
-        {
-            return (std::numeric_limits<std::size_t>::max)();
-        }
-        const auto index = nodes_.emplace(std::move(node), 0U);
-        nodes_.at(index).index = index;
-        return index;
-    }
-
-    Node* FlowGraph::findNodeById(NodeId stable_id)
-    {
-        for (auto& storage : nodes_.values())
-        {
-            if (storage.node && storage.node->id() == stable_id)
-            {
-                return storage.node.get();
-            }
-        }
-        return nullptr;
-    }
-
-    const Node* FlowGraph::findNodeById(NodeId stable_id) const
-    {
-        for (const auto& storage : nodes_.values())
-        {
-            if (storage.node && storage.node->id() == stable_id)
-            {
-                return storage.node.get();
-            }
-        }
-        return nullptr;
-    }
-
-    bool FlowGraph::removeNode(size_t index)
-    {
-        if (!nodes_.contains(index))
+        auto& [id, node] = snapshot;
+        const bool is_invalid_candidate = !node || node->graph() != nullptr || !id.valid();
+        if (is_invalid_candidate)
         {
             return false;
         }
-        auto& node = *nodes_.at(index).node;
-        if (!topology_.detachNode(node.id()))
+        if (!topology_.insertNode({id, nodeType(node->operation())}))
         {
             return false;
         }
-        static_cast<void>(layout_.erase(node.id()));
-        node.graph_ = nullptr;
-        nodes_.erase(index);
+        node_ids_.emplace(node.get(), id);
+        if (!attachNodeStructure(id, *node, true))
+        {
+            node_ids_.erase(node.get());
+            return false;
+        }
+        nodes_.emplace(id, std::move(node));
         return true;
     }
 
-    bool FlowGraph::extractNode(size_t index, NodeStorage& out)
+    Node* FlowGraph::findNodeById(NodeId id) noexcept
     {
-        if (!nodes_.contains(index))
-        {
-            return false;
-        }
-        auto& node = *nodes_.at(index).node;
-        if (!topology_.detachNode(node.id()))
-        {
-            return false;
-        }
-        node.graph_ = nullptr;
-        return nodes_.extract(index, out);
+        const auto found = nodes_.find(id);
+        return found == nodes_.end() ? nullptr : found->second.get();
     }
 
-    bool FlowGraph::insertNodeAt(size_t index, std::unique_ptr<Node> node)
+    const Node* FlowGraph::findNodeById(NodeId id) const noexcept
     {
-        if (!node || !node->id().valid() || nodes_.contains(index))
+        const auto found = nodes_.find(id);
+        return found == nodes_.end() ? nullptr : found->second.get();
+    }
+
+    NodeId FlowGraph::nodeId(const Node* node) const noexcept
+    {
+        const auto found = node_ids_.find(node);
+        return found == node_ids_.end() ? NodeId{} : found->second;
+    }
+
+    bool FlowGraph::removeNode(NodeId id) noexcept
+    {
+        auto removed = extractNode(id);
+        if (!removed)
         {
             return false;
         }
-        const auto id = node->id();
-        if (!topology_.insertNode(lux::graph::NodeRecord{id, nodeType(node->operation())}))
-        {
-            return false;
-        }
-        if (!attachNodeStructure(*node, true))
-        {
-            return false;
-        }
-        if (!nodes_.try_emplace_at(index, std::move(node), 0U))
-        {
-            static_cast<void>(topology_.detachNode(id));
-            return false;
-        }
-        nodes_.at(index).index = index;
+        static_cast<void>(layout_.erase(id));
         return true;
+    }
+
+    std::optional<FlowNodeSnapshot> FlowGraph::extractNode(NodeId id) noexcept
+    {
+        const auto found = nodes_.find(id);
+        if (found == nodes_.end() || !topology_.detachNode(id))
+        {
+            return std::nullopt;
+        }
+        auto node = std::move(found->second);
+        node->graph_ = nullptr;
+        node_ids_.erase(node.get());
+        nodes_.erase(found);
+        return FlowNodeSnapshot{id, std::move(node)};
     }
 
     Pin* FlowGraph::findPin(PinId id) noexcept
     {
-        for (auto& storage : nodes_.values())
+        for (auto& [stored_id, node] : nodes_)
         {
-            if (!storage.node)
+            if (!node)
             {
                 continue;
             }
-            for (auto* pin : storage.node->inPins())
+            for (auto* pin : node->inPins())
             {
                 if (pin != nullptr && pin->id() == id)
                 {
                     return pin;
                 }
             }
-            for (auto* pin : storage.node->outPins())
+            for (auto* pin : node->outPins())
             {
                 if (pin != nullptr && pin->id() == id)
                 {
@@ -355,16 +314,16 @@ namespace lux::flowforge
             isInput(pin.kind()) ? lux::graph::EPinDirection::INPUT : lux::graph::EPinDirection::OUTPUT;
         if (const auto* existing = topology_.findPin(pin.id()); existing != nullptr)
         {
-            return existing->owner == pin.node()->id() && existing->direction == direction &&
+            return existing->owner == nodeId(pin.node()) && existing->direction == direction &&
                    existing->semantic == pinSemantic(pin);
         }
         if (pin.id().valid())
         {
             return static_cast<bool>(topology_.insertPin(
-                lux::graph::PinRecord{pin.id(), pin.node()->id(), direction, fanCap(pin.kind()), pinSemantic(pin)}
+                lux::graph::PinRecord{pin.id(), nodeId(pin.node()), direction, fanCap(pin.kind()), pinSemantic(pin)}
             ));
         }
-        auto created = topology_.addPin(pin.node()->id(), direction, fanCap(pin.kind()), pinSemantic(pin));
+        auto created = topology_.addPin(nodeId(pin.node()), direction, fanCap(pin.kind()), pinSemantic(pin));
         if (!created)
         {
             return false;
@@ -397,7 +356,7 @@ namespace lux::flowforge
         return false;
     }
 
-    bool FlowGraph::attachNodeStructure(Node& node, bool preserve_pin_ids) noexcept
+    bool FlowGraph::attachNodeStructure(NodeId id, Node& node, bool preserve_pin_ids) noexcept
     {
         if (!preserve_pin_ids)
         {
@@ -422,7 +381,7 @@ namespace lux::flowforge
             if (pin == nullptr || !registerPin(*pin))
             {
                 node.graph_ = nullptr;
-                static_cast<void>(topology_.detachNode(node.id()));
+                static_cast<void>(topology_.detachNode(id));
                 return false;
             }
         }
@@ -431,7 +390,7 @@ namespace lux::flowforge
             if (pin == nullptr || !registerPin(*pin))
             {
                 node.graph_ = nullptr;
-                static_cast<void>(topology_.detachNode(node.id()));
+                static_cast<void>(topology_.detachNode(id));
                 return false;
             }
         }
@@ -440,11 +399,11 @@ namespace lux::flowforge
 
     void FlowGraph::rebindNodes() noexcept
     {
-        for (auto& storage : nodes_.values())
+        for (auto& [stored_id, node] : nodes_)
         {
-            if (storage.node)
+            if (node)
             {
-                storage.node->graph_ = this;
+                node->graph_ = this;
             }
         }
     }
@@ -458,9 +417,9 @@ namespace lux::flowforge
 
     FlowGraphEdit::FlowGraphEdit(FlowGraphEdit&& other) noexcept
         : target_(std::exchange(other.target_, nullptr)), structure_(std::move(other.structure_)),
-          nodes_(std::move(other.nodes_)), insert_(std::move(other.insert_)), pins_(std::move(other.pins_)),
-          inserted_ids_(std::move(other.inserted_ids_)), keep_(std::move(other.keep_)), erase_(std::move(other.erase_)),
-          removed_(std::move(other.removed_)), storage_changed_(other.storage_changed_)
+          nodes_(std::move(other.nodes_)), node_ids_(std::move(other.node_ids_)), insert_(std::move(other.insert_)),
+          pins_(std::move(other.pins_)), inserted_ids_(std::move(other.inserted_ids_)), keep_(std::move(other.keep_)),
+          erase_(std::move(other.erase_)), removed_(std::move(other.removed_)), storage_changed_(other.storage_changed_)
     {
     }
 
@@ -481,11 +440,11 @@ namespace lux::flowforge
             // A definition cannot disappear while one of its callers still holds its address.
             for (const auto& storage : graph.nodes())
             {
-                if (std::ranges::find(change.erase, storage.node->id()) != change.erase.end())
+                if (std::ranges::find(change.erase, storage.id) != change.erase.end())
                 {
                     continue;
                 }
-                const auto* user = storage.node.get();
+                const auto* user = storage.node;
                 if ((user->operation() == ENodeOperation::GRAPH_FUNC_CALL &&
                      static_cast<const GraphFuncCallNode*>(user)->callee() == node) ||
                     (user->operation() == ENodeOperation::FUNC_RETURN &&
@@ -500,10 +459,10 @@ namespace lux::flowforge
                 {
                     const bool replaced_entry = std::ranges::any_of(
                         change.insert,
-                        [&](const auto* entry)
+                        [&](const auto& entry)
                         {
-                            return entry && *entry && (*entry)->id() == id &&
-                                   (*entry)->operation() == ENodeOperation::ON_EVENT;
+                            return entry.node && *entry.node && entry.id == id &&
+                                   (*entry.node)->operation() == ENodeOperation::ON_EVENT;
                         }
                     );
                     if (!replaced_entry)
@@ -531,37 +490,32 @@ namespace lux::flowforge
         }
         if (plan.storage_changed_)
         {
-            plan.nodes_.reserve(graph.nodes().size() + change.insert.size());
+            plan.node_ids_.reserve(graph.nodes().size() + change.insert.size());
             for (const auto& storage : graph.nodes())
             {
-                if (!plan.nodes_.try_emplace_at(storage.index, std::unique_ptr<Node>{}, storage.index))
+                if (std::ranges::find(change.erase, storage.id) != change.erase.end())
                 {
-                    return failure(E::DUPLICATE_NODE, storage.node->id());
-                }
-                if (std::ranges::find(change.erase, storage.node->id()) != change.erase.end())
-                {
-                    plan.erase_.push_back(storage.index);
+                    plan.erase_.push_back(storage.id);
                 }
                 else
                 {
-                    plan.keep_.push_back(storage.index);
+                    plan.nodes_.emplace(storage.id, nullptr);
+                    plan.node_ids_.emplace(storage.node, storage.id);
+                    plan.keep_.push_back(storage.id);
                 }
-            }
-            for (const auto index : plan.erase_)
-            {
-                plan.nodes_.erase(index);
             }
             plan.removed_.resize(plan.erase_.size());
         }
-        for (auto* source : change.insert)
+        for (const auto& candidate : change.insert)
         {
+            auto* source = candidate.node;
             if (!source || !*source || (*source)->graph())
             {
                 return failure(E::INVALID_ID);
             }
             if (std::ranges::find(plan.insert_, source, &Insertion::source) != plan.insert_.end())
             {
-                return failure(E::DUPLICATE_NODE, (*source)->id());
+                return failure(E::DUPLICATE_NODE, candidate.id);
             }
             auto& node = **source;
             const auto owns_definition = [&](const FuncDefNode* definition)
@@ -572,14 +526,14 @@ namespace lux::flowforge
                 }
                 for (const auto& storage : graph.nodes())
                 {
-                    if (storage.node.get() == definition)
+                    if (storage.node == definition)
                     {
-                        return std::ranges::find(change.erase, storage.node->id()) == change.erase.end();
+                        return std::ranges::find(change.erase, storage.id) == change.erase.end();
                     }
                 }
                 return std::ranges::any_of(
                     change.insert,
-                    [&](const auto* insertion) { return insertion && insertion->get() == definition; }
+                    [&](const auto& insertion) { return insertion.node && insertion.node->get() == definition; }
                 );
             };
             if ((node.operation() == ENodeOperation::GRAPH_FUNC_CALL &&
@@ -587,7 +541,7 @@ namespace lux::flowforge
                 (node.operation() == ENodeOperation::FUNC_RETURN &&
                  !owns_definition(static_cast<const FuncReturnNode&>(node).def())))
             {
-                return failure(E::INVALID_ID, node.id());
+                return failure(E::INVALID_ID, candidate.id);
             }
             if (node.operation() == ENodeOperation::GET_VARIABLE || node.operation() == ENodeOperation::SET_VARIABLE)
             {
@@ -597,7 +551,7 @@ namespace lux::flowforge
                 const auto* variable = graph.findVariable(variable_id);
                 if (!variable)
                 {
-                    return failure(E::INVALID_ID, node.id());
+                    return failure(E::INVALID_ID, candidate.id);
                 }
                 for (const auto* pin : node.outPins())
                 {
@@ -606,7 +560,7 @@ namespace lux::flowforge
                         const auto* type = static_cast<const DataOutPin*>(pin)->info().type;
                         if (!type || !variable->type || *type != *variable->type)
                         {
-                            return failure(E::INVALID_ID, node.id(), pin->id());
+                            return failure(E::INVALID_ID, candidate.id, pin->id());
                         }
                     }
                 }
@@ -617,14 +571,14 @@ namespace lux::flowforge
                         const auto* type = static_cast<const DataInPin*>(pin)->info().type;
                         if (!type || !variable->type || *type != *variable->type)
                         {
-                            return failure(E::INVALID_ID, node.id(), pin->id());
+                            return failure(E::INVALID_ID, candidate.id, pin->id());
                         }
                     }
                 }
             }
 
-            auto id = node.id();
-            const bool restoring = change.preserve_insert_ids;
+            auto id = candidate.id;
+            const bool restoring = id.valid();
             if (restoring)
             {
                 auto result = plan.structure_.insertNode({id, nodeType(node.operation())});
@@ -680,9 +634,9 @@ namespace lux::flowforge
                     plan.pins_.emplace_back(const_cast<Pin*>(pin), pin_id);
                 }
             }
-            const auto index = plan.nodes_.emplace(std::unique_ptr<Node>{}, 0U);
-            plan.nodes_.at(index).index = index;
-            plan.insert_.push_back({source, index, id});
+            plan.nodes_.emplace(id, nullptr);
+            plan.node_ids_.emplace(source->get(), id);
+            plan.insert_.push_back({source, id});
             plan.inserted_ids_.push_back(id);
         }
         for (auto& [pin, assigned] : plan.pins_)
@@ -799,13 +753,13 @@ namespace lux::flowforge
         auto& graph = *target_;
         for (std::size_t i = 0; i < erase_.size(); ++i)
         {
-            auto& node = graph.nodes_.at(erase_[i]).node;
+            auto& node = graph.nodes_.at(erase_[i]);
             node->graph_ = nullptr;
-            removed_[i] = std::move(node);
+            removed_[i] = {erase_[i], std::move(node)};
         }
         for (const auto index : keep_)
         {
-            nodes_.at(index).node = std::move(graph.nodes_.at(index).node);
+            nodes_.at(index) = std::move(graph.nodes_.at(index));
         }
         for (const auto& [pin, id] : pins_)
         {
@@ -814,19 +768,19 @@ namespace lux::flowforge
         for (const auto& insertion : insert_)
         {
             auto& node = *insertion.source;
-            node->id_ = insertion.id;
             node->graph_ = &graph;
-            nodes_.at(insertion.index).node = std::move(node);
+            nodes_.at(insertion.id) = std::move(node);
         }
         if (storage_changed_)
         {
             std::swap(graph.nodes_, nodes_);
+            std::swap(graph.node_ids_, node_ids_);
         }
         structure_.commit();
         target_ = nullptr;
     }
 
-    std::vector<std::unique_ptr<Node>> FlowGraphEdit::takeRemoved() noexcept
+    std::vector<FlowNodeSnapshot> FlowGraphEdit::takeRemoved() noexcept
     {
         if (target_)
         {

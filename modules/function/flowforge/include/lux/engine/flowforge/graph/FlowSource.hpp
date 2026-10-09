@@ -25,12 +25,14 @@ namespace lux::flowforge
         UNSIGNED,
         REAL
     };
+
     struct FlowSourceLiteral final
     {
         EFlowLiteralKind kind{};
         std::string value;
         bool operator==(const FlowSourceLiteral&) const = default;
     };
+
     struct FlowSourcePin final
     {
         PinId id;
@@ -39,32 +41,38 @@ namespace lux::flowforge
         FlowSourceLiteral literal;
         bool operator==(const FlowSourcePin&) const = default;
     };
+
     struct FlowSourceType final
     {
         std::string name;
         bool operator==(const FlowSourceType&) const = default;
     };
+
     struct FlowSourceSignature final
     {
         std::vector<FlowSourceArgument> arguments, results;
         bool operator==(const FlowSourceSignature&) const = default;
     };
+
     struct FlowSourceReference final
     {
         std::uint64_t id{};
         bool operator==(const FlowSourceReference&) const = default;
     };
+
     struct FlowSourceField final
     {
         std::string owner, member, type;
         bool operator==(const FlowSourceField&) const = default;
     };
+
     struct FlowSourceNativeCall final
     {
         std::string owner, member, signature;
         FlowSourceSignature parameters;
         bool operator==(const FlowSourceNativeCall&) const = default;
     };
+
     struct FlowSourceAbility final
     {
         std::string contract, method;
@@ -72,6 +80,7 @@ namespace lux::flowforge
         std::uint64_t schema_hash{};
         bool operator==(const FlowSourceAbility&) const = default;
     };
+
     // Each operation has exactly one parameter schema. Control nodes have no parameters.
     // These values are immutable captures/codec input, never a second writable FlowGraph.
     using VFlowSourceParameters = std::variant<
@@ -94,6 +103,7 @@ namespace lux::flowforge
         VFlowSourceParameters parameters;
         bool operator==(const FlowSourceNode&) const = default;
     };
+
     struct FlowSourceVariable final
     {
         std::uint64_t id{};
@@ -101,11 +111,13 @@ namespace lux::flowforge
         FlowSourceLiteral value;
         bool operator==(const FlowSourceVariable&) const = default;
     };
+
     struct FlowSourceLink final
     {
         PinId from, to;
         bool operator==(const FlowSourceLink&) const = default;
     };
+
     struct FlowSourceExport final
     {
         std::uint64_t id{}, symbol{};
@@ -113,6 +125,7 @@ namespace lux::flowforge
         std::vector<lux::script::ScriptBindingHintTarget> hints;
         bool operator==(const FlowSourceExport&) const = default;
     };
+
     struct FlowSource final
     {
         lux::asset::AssetId id;
@@ -123,6 +136,7 @@ namespace lux::flowforge
         std::vector<FlowSourceExport> exports;
         bool operator==(const FlowSource&) const = default;
     };
+
     struct FlowSourceLimits final
     {
         std::size_t max_bytes{16U * 1024U * 1024U}, max_nodes{16384}, max_pins{131072};
@@ -145,6 +159,7 @@ namespace lux::flowforge
         SCHEMA_MISMATCH,
         UNSUPPORTED_LITERAL
     };
+
     struct FlowSourceFailure final
     {
         EFlowSourceError code{};
@@ -167,6 +182,7 @@ namespace lux::flowforge
         std::span<const lux::script::ScriptEventSourceDescription> events;
         std::shared_ptr<const void> code_lifetime;
     };
+
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_PUBLIC FlowSourceResult<void> validateFlowSourceEnvironment(
         const FlowSourceEnvironment&,
         FlowSourceLimits = {}
@@ -189,7 +205,10 @@ namespace lux::flowforge
         const FlowGraph&,
         FlowSourceLimits = {}
     ) noexcept;
-    [[nodiscard]] LUX_ENGINE_FLOWFORGE_PUBLIC FlowSourceResult<FlowSourceNode> captureFlowNode(const Node&) noexcept;
+    [[nodiscard]] LUX_ENGINE_FLOWFORGE_PUBLIC FlowSourceResult<FlowSourceNode> captureFlowNode(
+        const FlowGraph&,
+        NodeId
+    ) noexcept;
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_PUBLIC FlowSourceResult<std::vector<FuncArgInfo>> materializeFlowArguments(
         std::span<const FlowSourceArgument>,
         const FlowSourceEnvironment& = {},

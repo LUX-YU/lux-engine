@@ -11,7 +11,6 @@ namespace lux::flowforge
     class ScriptAbilityNode final : public ExecIntermediateNode
     {
     public:
-        ScriptAbilityNode(std::uint64_t id, const ScriptAbilityNodeDescription& description);
         explicit ScriptAbilityNode(const ScriptAbilityNodeDescription& description);
         ~ScriptAbilityNode() override;
 

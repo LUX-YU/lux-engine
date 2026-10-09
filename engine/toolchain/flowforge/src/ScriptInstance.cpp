@@ -71,7 +71,7 @@ namespace lux::flowforge
             // Event table straight from the graph (no IR round trip needed).
             for (const auto& storage : graph.nodes())
             {
-                const Node* node = storage.node.get();
+                const Node* node = storage.node;
                 if (node == nullptr || node->operation() != ENodeOperation::ON_EVENT)
                     continue;
                 const auto& event = static_cast<const OnEventNode&>(*node);

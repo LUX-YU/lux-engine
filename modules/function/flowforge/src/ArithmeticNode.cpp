@@ -38,7 +38,9 @@ namespace lux::flowforge
         {
             using lux::meta::EBaseType;
             if (!type)
+            {
                 return {};
+            }
             switch (static_cast<EBaseType>(type->qtype.base))
             {
             case EBaseType::BOOL:
@@ -70,12 +72,9 @@ namespace lux::flowforge
     } // namespace
 
     // ====================== BinaryOpNode ======================
-    BinaryOpNode::BinaryOpNode(ENodeOperation op, const lux::meta::RefType* operand_type)
-        : BinaryOpNode(reinterpret_cast<uintptr_t>(this), op, operand_type)
-    {}
 
-    BinaryOpNode::BinaryOpNode(uint64_t id, ENodeOperation op, const lux::meta::RefType* operand_type)
-        : Node(id, op), operand_type_(operand_type), lhs_(this, DataPinInfo{"A", operand_type}, /*allow_default=*/true),
+    BinaryOpNode::BinaryOpNode(ENodeOperation op, const lux::meta::RefType* operand_type)
+        : Node(op), operand_type_(operand_type), lhs_(this, DataPinInfo{"A", operand_type}, /*allow_default=*/true),
           rhs_(this, DataPinInfo{"B", operand_type}, /*allow_default=*/true),
           result_(this, DataPinInfo{"Result", resultTypeFor(op, operand_type)})
     {
@@ -88,17 +87,15 @@ namespace lux::flowforge
     }
 
     // ====================== UnaryOpNode ======================
-    UnaryOpNode::UnaryOpNode(ENodeOperation op, const lux::meta::RefType* operand_type)
-        : UnaryOpNode(reinterpret_cast<uintptr_t>(this), op, operand_type)
-    {}
 
-    UnaryOpNode::UnaryOpNode(uint64_t id, ENodeOperation op, const lux::meta::RefType* operand_type)
-        : Node(id, op), operand_type_(operand_type),
-          operand_(this, DataPinInfo{"A", operand_type}, /*allow_default=*/true),
+    UnaryOpNode::UnaryOpNode(ENodeOperation op, const lux::meta::RefType* operand_type)
+        : Node(op), operand_type_(operand_type), operand_(this, DataPinInfo{"A", operand_type}, /*allow_default=*/true),
           result_(this, DataPinInfo{"Result", resultTypeFor(op, operand_type)})
     {
         setName(toString(op));
         if (auto zero = makeZeroConstant(operand_type); zero.isValid())
+        {
             operand_.setConstantData(std::move(zero));
+        }
     }
 } // namespace lux::flowforge

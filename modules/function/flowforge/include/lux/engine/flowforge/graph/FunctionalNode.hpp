@@ -20,12 +20,6 @@ namespace lux::flowforge
     class FuncDefNode : public Node, public THasExecOutPin<FuncDefNode>
     {
     public:
-        FuncDefNode(
-            uint64_t id,
-            std::string_view name,
-            std::vector<FuncArgInfo> args,
-            std::vector<FuncArgInfo> rets = {}
-        );
         FuncDefNode(std::string_view name, std::vector<FuncArgInfo> args, std::vector<FuncArgInfo> rets = {});
 
         const std::vector<FuncArgInfo>& argInfos() const
@@ -57,7 +51,6 @@ namespace lux::flowforge
     class FuncReturnNode : public Node, public THasExecInPin<FuncReturnNode>
     {
     public:
-        FuncReturnNode(uint64_t id, const FuncDefNode& def);
         explicit FuncReturnNode(const FuncDefNode& def);
 
         const FuncDefNode* def() const
@@ -86,7 +79,6 @@ namespace lux::flowforge
     class OnEventNode : public Node, public THasExecOutPin<OnEventNode>
     {
     public:
-        OnEventNode(uint64_t id, std::string_view event_name, std::vector<FuncArgInfo> params = {});
         explicit OnEventNode(std::string_view event_name, std::vector<FuncArgInfo> params = {});
 
         const std::vector<FuncArgInfo>& paramInfos() const
@@ -114,7 +106,6 @@ namespace lux::flowforge
     class GraphFuncCallNode : public ExecIntermediateNode
     {
     public:
-        GraphFuncCallNode(uint64_t id, const FuncDefNode& callee);
         explicit GraphFuncCallNode(const FuncDefNode& callee);
 
         const FuncDefNode* callee() const
@@ -146,7 +137,6 @@ namespace lux::flowforge
     public:
         using Definition = std::shared_ptr<const NativeCallDefinition>;
 
-        NativeFuncCall(uint64_t id, Definition) noexcept;
         explicit NativeFuncCall(Definition) noexcept;
 
         [[nodiscard]] const std::vector<std::unique_ptr<DataInPin>>& dataInPins() const;

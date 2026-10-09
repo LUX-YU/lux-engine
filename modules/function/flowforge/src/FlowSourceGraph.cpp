@@ -24,6 +24,7 @@ namespace lux::flowforge
         {
             return lux::cxx::unexpected(FlowSourceFailure{code, std::move(field), node, pin});
         }
+
         template <class Fn> bool visitScalar(const lux::meta::RefType& type, Fn&& fn)
         {
             if (type.qtype.qual != static_cast<unsigned>(lux::meta::ETypeQual::VALUE))
@@ -59,6 +60,7 @@ namespace lux::flowforge
                 return false;
             }
         }
+
         FlowSourceResult<FlowSourceLiteral> captureLiteral(const lux::meta::RuntimeObject& object) noexcept
         {
             if (!object.isValid())
@@ -66,37 +68,41 @@ namespace lux::flowforge
                 return FlowSourceLiteral{};
             }
             FlowSourceLiteral literal;
-            const bool scalar = visitScalar(*object.type(), [&]<class T>() {
-                T value{};
-                std::memcpy(&value, object.data(), sizeof(T));
-                if constexpr (std::is_same_v<T, bool>)
+            const bool scalar = visitScalar(
+                *object.type(),
+                [&]<class T>()
                 {
-                    literal = {EFlowLiteralKind::BOOLEAN, value ? "true" : "false"};
-                }
-                else
-                {
-                    if constexpr (std::is_floating_point_v<T>)
+                    T value{};
+                    std::memcpy(&value, object.data(), sizeof(T));
+                    if constexpr (std::is_same_v<T, bool>)
                     {
-                        if (!std::isfinite(value))
-                        {
-                            return false;
-                        }
-                        literal.kind = EFlowLiteralKind::REAL;
+                        literal = {EFlowLiteralKind::BOOLEAN, value ? "true" : "false"};
                     }
                     else
                     {
-                        literal.kind = std::is_signed_v<T> ? EFlowLiteralKind::SIGNED : EFlowLiteralKind::UNSIGNED;
+                        if constexpr (std::is_floating_point_v<T>)
+                        {
+                            if (!std::isfinite(value))
+                            {
+                                return false;
+                            }
+                            literal.kind = EFlowLiteralKind::REAL;
+                        }
+                        else
+                        {
+                            literal.kind = std::is_signed_v<T> ? EFlowLiteralKind::SIGNED : EFlowLiteralKind::UNSIGNED;
+                        }
+                        char buffer[96];
+                        const auto result = std::to_chars(std::begin(buffer), std::end(buffer), value);
+                        if (result.ec != std::errc{})
+                        {
+                            return false;
+                        }
+                        literal.value.assign(buffer, result.ptr);
                     }
-                    char buffer[96];
-                    const auto result = std::to_chars(std::begin(buffer), std::end(buffer), value);
-                    if (result.ec != std::errc{})
-                    {
-                        return false;
-                    }
-                    literal.value.assign(buffer, result.ptr);
+                    return true;
                 }
-                return true;
-            });
+            );
             if (scalar)
             {
                 return literal;
@@ -109,6 +115,7 @@ namespace lux::flowforge
             }
             return fail(EFlowSourceError::UNSUPPORTED_LITERAL, std::string(object.type()->name));
         }
+
         FlowSourceResult<lux::meta::RuntimeObject> materializeLiteral(
             const FlowSourceLiteral& literal,
             const lux::meta::RefType& type
@@ -127,48 +134,53 @@ namespace lux::flowforge
             {
                 return std::move(*result);
             }
-            const bool valid = visitScalar(type, [&]<class T>() {
-                T value{};
-                if constexpr (std::is_same_v<T, bool>)
+            const bool valid = visitScalar(
+                type,
+                [&]<class T>()
                 {
-                    if (literal.kind != EFlowLiteralKind::BOOLEAN)
+                    T value{};
+                    if constexpr (std::is_same_v<T, bool>)
                     {
-                        return false;
-                    }
-                    value = literal.value == "true";
-                }
-                else
-                {
-                    constexpr auto expected = std::is_floating_point_v<T> ? EFlowLiteralKind::REAL
-                                              : std::is_signed_v<T>       ? EFlowLiteralKind::SIGNED
-                                                                          : EFlowLiteralKind::UNSIGNED;
-                    if (literal.kind != expected)
-                    {
-                        return false;
-                    }
-                    const auto begin = literal.value.data(), end = begin + literal.value.size();
-                    const auto parsed = std::from_chars(begin, end, value);
-                    if (parsed.ec != std::errc{} || parsed.ptr != end)
-                    {
-                        return false;
-                    }
-                    if constexpr (std::is_floating_point_v<T>)
-                    {
-                        if (!std::isfinite(value))
+                        if (literal.kind != EFlowLiteralKind::BOOLEAN)
                         {
                             return false;
                         }
+                        value = literal.value == "true";
                     }
+                    else
+                    {
+                        constexpr auto expected = std::is_floating_point_v<T> ? EFlowLiteralKind::REAL
+                                                  : std::is_signed_v<T>       ? EFlowLiteralKind::SIGNED
+                                                                              : EFlowLiteralKind::UNSIGNED;
+                        if (literal.kind != expected)
+                        {
+                            return false;
+                        }
+                        const auto begin = literal.value.data(), end = begin + literal.value.size();
+                        const auto parsed = std::from_chars(begin, end, value);
+                        if (parsed.ec != std::errc{} || parsed.ptr != end)
+                        {
+                            return false;
+                        }
+                        if constexpr (std::is_floating_point_v<T>)
+                        {
+                            if (!std::isfinite(value))
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                    std::memcpy(result->data(), &value, sizeof(T));
+                    return true;
                 }
-                std::memcpy(result->data(), &value, sizeof(T));
-                return true;
-            });
+            );
             if (!valid)
             {
                 return fail(EFlowSourceError::UNSUPPORTED_LITERAL, std::string(type.name));
             }
             return std::move(*result);
         }
+
         const lux::meta::RefType* pinType(const Pin& pin) noexcept
         {
             if (pin.kind() == EPinKind::DATA_IN)
@@ -181,15 +193,18 @@ namespace lux::flowforge
             }
             return nullptr;
         }
+
         bool binary(ENodeOperation operation) noexcept
         {
             return (operation >= ENodeOperation::ADD && operation <= ENodeOperation::LOGICAL_OR) ||
                    (operation >= ENodeOperation::CMP_EQ && operation <= ENodeOperation::CMP_GE);
         }
+
         bool unary(ENodeOperation operation) noexcept
         {
             return operation == ENodeOperation::NEGATE || operation == ENodeOperation::LOGICAL_NOT;
         }
+
         std::vector<FlowSourceArgument> captureArguments(const std::vector<FuncArgInfo>& values)
         {
             std::vector<FlowSourceArgument> result;
@@ -199,10 +214,12 @@ namespace lux::flowforge
             }
             return result;
         }
+
         const lux::meta::RefType* findType(std::string_view name, const FlowSourceEnvironment& environment) noexcept
         {
             const lux::meta::RefType* result{};
-            const auto builtin = [&]<class... T>() {
+            const auto builtin = [&]<class... T>()
+            {
                 ((name == lux::meta::builtin_ref_type_ptr<T>()->name ? result = lux::meta::builtin_ref_type_ptr<T>()
                                                                      : result),
                  ...);
@@ -244,6 +261,7 @@ namespace lux::flowforge
             }
             return nullptr;
         }
+
         const lux::meta::RefClass* findClass(std::string_view name, const FlowSourceEnvironment& environment) noexcept
         {
             for (const auto* type : environment.classes)
@@ -255,6 +273,7 @@ namespace lux::flowforge
             }
             return nullptr;
         }
+
         FlowSourceResult<std::vector<FuncArgInfo>> materializeArguments(
             const std::vector<FlowSourceArgument>& values,
             const FlowSourceEnvironment& environment
@@ -272,6 +291,7 @@ namespace lux::flowforge
             }
             return result;
         }
+
         bool signatureMatches(const lux::meta::RefInvokable& info, const FlowSourceNativeCall& source) noexcept
         {
             const bool mismatch = info.full_name != source.member || info.type_signature != source.signature ||
@@ -290,13 +310,13 @@ namespace lux::flowforge
             return source.parameters.results.size() == 1 &&
                    info.return_type.name == source.parameters.results.front().type;
         }
+
         FlowSourceResult<std::unique_ptr<Node>> makeNode(
             const FlowSourceNode& source,
             FlowGraph& graph,
             const FlowSourceEnvironment& environment
         ) noexcept
         {
-            const auto id = source.id.value;
             const auto operation = source.operation;
             if (binary(operation) || unary(operation))
             {
@@ -311,30 +331,31 @@ namespace lux::flowforge
                 }
                 if (binary(operation))
                 {
-                    return std::unique_ptr<Node>(std::make_unique<BinaryOpNode>(id, operation, type));
+                    return std::unique_ptr<Node>(std::make_unique<BinaryOpNode>(operation, type));
                 }
-                return std::unique_ptr<Node>(std::make_unique<UnaryOpNode>(id, operation, type));
+                return std::unique_ptr<Node>(std::make_unique<UnaryOpNode>(operation, type));
             }
             switch (operation)
             {
             case ENodeOperation::START:
-                return std::unique_ptr<Node>(std::make_unique<StartNode>(id));
+                return std::unique_ptr<Node>(std::make_unique<StartNode>());
             case ENodeOperation::BRANCH:
-                return std::unique_ptr<Node>(std::make_unique<BranchNode>(id));
+                return std::unique_ptr<Node>(std::make_unique<BranchNode>());
             case ENodeOperation::FOR_LOOP:
-                return std::unique_ptr<Node>(std::make_unique<ForLoopNode>(id));
+                return std::unique_ptr<Node>(std::make_unique<ForLoopNode>());
             case ENodeOperation::WHILE_LOOP:
-                return std::unique_ptr<Node>(std::make_unique<WhileLoopNode>(id));
+                return std::unique_ptr<Node>(std::make_unique<WhileLoopNode>());
             case ENodeOperation::RETURN:
-                return std::unique_ptr<Node>(std::make_unique<ReturnNode>(id));
+                return std::unique_ptr<Node>(std::make_unique<ReturnNode>());
             case ENodeOperation::BREAK:
-                return std::unique_ptr<Node>(std::make_unique<BreakNode>(id));
-            case ENodeOperation::SEQUENCE: {
+                return std::unique_ptr<Node>(std::make_unique<BreakNode>());
+            case ENodeOperation::SEQUENCE:
+            {
                 if (source.outputs.empty())
                 {
                     return fail(EFlowSourceError::SCHEMA_MISMATCH, "sequence outputs", source.id);
                 }
-                auto node = std::make_unique<SequenceNode>(id);
+                auto node = std::make_unique<SequenceNode>();
                 while (node->outPins().size() < source.outputs.size())
                 {
                     static_cast<void>(node->addExecOutPin());
@@ -342,7 +363,8 @@ namespace lux::flowforge
                 return std::unique_ptr<Node>(std::move(node));
             }
             case ENodeOperation::FUNC_DEF_START:
-            case ENodeOperation::ON_EVENT: {
+            case ENodeOperation::ON_EVENT:
+            {
                 auto args =
                     materializeArguments(std::get<FlowSourceSignature>(source.parameters).arguments, environment);
                 if (!args)
@@ -351,7 +373,7 @@ namespace lux::flowforge
                 }
                 if (operation == ENodeOperation::ON_EVENT)
                 {
-                    return std::unique_ptr<Node>(std::make_unique<OnEventNode>(id, source.name, std::move(*args)));
+                    return std::unique_ptr<Node>(std::make_unique<OnEventNode>(source.name, std::move(*args)));
                 }
                 auto results =
                     materializeArguments(std::get<FlowSourceSignature>(source.parameters).results, environment);
@@ -360,11 +382,12 @@ namespace lux::flowforge
                     return lux::cxx::unexpected(results.error());
                 }
                 return std::unique_ptr<Node>(
-                    std::make_unique<FuncDefNode>(id, source.name, std::move(*args), std::move(*results))
+                    std::make_unique<FuncDefNode>(source.name, std::move(*args), std::move(*results))
                 );
             }
             case ENodeOperation::FUNC_RETURN:
-            case ENodeOperation::GRAPH_FUNC_CALL: {
+            case ENodeOperation::GRAPH_FUNC_CALL:
+            {
                 const auto* target = graph.findNodeById(NodeId{std::get<FlowSourceReference>(source.parameters).id});
                 if (!target || target->operation() != ENodeOperation::FUNC_DEF_START)
                 {
@@ -373,12 +396,13 @@ namespace lux::flowforge
                 const auto& definition = static_cast<const FuncDefNode&>(*target);
                 if (operation == ENodeOperation::FUNC_RETURN)
                 {
-                    return std::unique_ptr<Node>(std::make_unique<FuncReturnNode>(id, definition));
+                    return std::unique_ptr<Node>(std::make_unique<FuncReturnNode>(definition));
                 }
-                return std::unique_ptr<Node>(std::make_unique<GraphFuncCallNode>(id, definition));
+                return std::unique_ptr<Node>(std::make_unique<GraphFuncCallNode>(definition));
             }
             case ENodeOperation::GET_VARIABLE:
-            case ENodeOperation::SET_VARIABLE: {
+            case ENodeOperation::SET_VARIABLE:
+            {
                 const auto* variable = graph.findVariable(std::get<FlowSourceReference>(source.parameters).id);
                 if (!variable)
                 {
@@ -387,12 +411,13 @@ namespace lux::flowforge
                 const DataPinInfo info{variable->name, variable->type};
                 if (operation == ENodeOperation::GET_VARIABLE)
                 {
-                    return std::unique_ptr<Node>(std::make_unique<GetVariableNode>(id, variable->id, info));
+                    return std::unique_ptr<Node>(std::make_unique<GetVariableNode>(variable->id, info));
                 }
-                return std::unique_ptr<Node>(std::make_unique<SetVariableNode>(id, variable->id, info));
+                return std::unique_ptr<Node>(std::make_unique<SetVariableNode>(variable->id, info));
             }
             case ENodeOperation::GET_OBJECT:
-            case ENodeOperation::SET_OBJECT: {
+            case ENodeOperation::SET_OBJECT:
+            {
                 const auto* type = findType(std::get<FlowSourceType>(source.parameters).name, environment);
                 if (!type)
                 {
@@ -404,12 +429,13 @@ namespace lux::flowforge
                 }
                 if (operation == ENodeOperation::GET_OBJECT)
                 {
-                    return std::unique_ptr<Node>(std::make_unique<GetObjectNode>(id, *type));
+                    return std::unique_ptr<Node>(std::make_unique<GetObjectNode>(*type));
                 }
-                return std::unique_ptr<Node>(std::make_unique<SetObjectNode>(id, *type));
+                return std::unique_ptr<Node>(std::make_unique<SetObjectNode>(*type));
             }
             case ENodeOperation::GET_FIELD:
-            case ENodeOperation::SET_FIELD: {
+            case ENodeOperation::SET_FIELD:
+            {
                 const auto& field_source = std::get<FlowSourceField>(source.parameters);
                 const auto* owner = findClass(field_source.owner, environment);
                 if (owner)
@@ -420,9 +446,9 @@ namespace lux::flowforge
                         {
                             if (operation == ENodeOperation::GET_FIELD)
                             {
-                                return std::unique_ptr<Node>(std::make_unique<GetFieldNode>(id, *owner, field));
+                                return std::unique_ptr<Node>(std::make_unique<GetFieldNode>(*owner, field));
                             }
-                            return std::unique_ptr<Node>(std::make_unique<SetFieldNode>(id, *owner, field));
+                            return std::unique_ptr<Node>(std::make_unique<SetFieldNode>(*owner, field));
                         }
                     }
                 }
@@ -445,7 +471,7 @@ namespace lux::flowforge
                     {
                         return fail(EFlowSourceError::SCHEMA_MISMATCH, call.member, source.id);
                     }
-                    return std::unique_ptr<Node>(std::make_unique<NativeFuncCall>(id, std::move(*definition)));
+                    return std::unique_ptr<Node>(std::make_unique<NativeFuncCall>(std::move(*definition)));
                 };
                 if (call.owner.empty())
                 {
@@ -469,7 +495,8 @@ namespace lux::flowforge
                 }
                 return fail(EFlowSourceError::UNKNOWN_REFLECTION_MEMBER, call.member, source.id);
             }
-            case ENodeOperation::SCRIPT_ABILITY_CALL: {
+            case ENodeOperation::SCRIPT_ABILITY_CALL:
+            {
                 const auto& ability = std::get<FlowSourceAbility>(source.parameters);
                 const auto* description = environment.abilities.find(
                     lux::script::ScriptApiContractIdView{ability.contract},
@@ -484,9 +511,10 @@ namespace lux::flowforge
                 {
                     return fail(EFlowSourceError::SCHEMA_MISMATCH, ability.method, source.id);
                 }
-                return std::unique_ptr<Node>(std::make_unique<ScriptAbilityNode>(id, *description));
+                return std::unique_ptr<Node>(std::make_unique<ScriptAbilityNode>(*description));
             }
-            case ENodeOperation::SCRIPT_EVENT_WAIT: {
+            case ENodeOperation::SCRIPT_EVENT_WAIT:
+            {
                 const auto& saved_event = std::get<lux::script::ScriptEventSourceDescription>(source.parameters);
                 for (const auto& event : environment.events)
                 {
@@ -496,7 +524,7 @@ namespace lux::flowforge
                         {
                             return fail(EFlowSourceError::SCHEMA_MISMATCH, "event", source.id);
                         }
-                        return std::unique_ptr<Node>(std::make_unique<ScriptEventAwaitNode>(id, event));
+                        return std::unique_ptr<Node>(std::make_unique<ScriptEventAwaitNode>(event));
                     }
                 }
                 return fail(EFlowSourceError::SCHEMA_MISMATCH, "missing event", source.id);
@@ -629,10 +657,16 @@ namespace lux::flowforge
         return materializeLiteral(literal, type);
     }
 
-    FlowSourceResult<FlowSourceNode> captureFlowNode(const Node& node) noexcept
+    FlowSourceResult<FlowSourceNode> captureFlowNode(const FlowGraph& graph, NodeId id) noexcept
     {
+        const auto* found = graph.findNodeById(id);
+        if (!found)
+        {
+            return fail(EFlowSourceError::INVALID_IDENTITY, "node", id);
+        }
+        const auto& node = *found;
         FlowSourceNode item;
-        item.id = node.id();
+        item.id = id;
         item.operation = node.operation();
         item.name = node.name();
         item.creator = node.creatorName();
@@ -659,16 +693,17 @@ namespace lux::flowforge
         case ENodeOperation::FUNC_RETURN:
             if (!static_cast<const FuncReturnNode&>(node).def())
             {
-                return fail(EFlowSourceError::INVALID_IDENTITY, "function", node.id());
+                return fail(EFlowSourceError::INVALID_IDENTITY, "function", id);
             }
-            item.parameters = FlowSourceReference{static_cast<const FuncReturnNode&>(node).def()->id().value};
+            item.parameters = FlowSourceReference{graph.nodeId(static_cast<const FuncReturnNode&>(node).def()).value};
             break;
         case ENodeOperation::GRAPH_FUNC_CALL:
             if (!static_cast<const GraphFuncCallNode&>(node).callee())
             {
-                return fail(EFlowSourceError::INVALID_IDENTITY, "function", node.id());
+                return fail(EFlowSourceError::INVALID_IDENTITY, "function", id);
             }
-            item.parameters = FlowSourceReference{static_cast<const GraphFuncCallNode&>(node).callee()->id().value};
+            item.parameters =
+                FlowSourceReference{graph.nodeId(static_cast<const GraphFuncCallNode&>(node).callee()).value};
             break;
         case ENodeOperation::GET_VARIABLE:
             item.parameters = FlowSourceReference{static_cast<const GetVariableNode&>(node).variableId()};
@@ -684,7 +719,8 @@ namespace lux::flowforge
             item.parameters =
                 FlowSourceType{std::string(static_cast<const SetObjectNode&>(node).dataInPin().info().type->name)};
             break;
-        case ENodeOperation::GET_FIELD: {
+        case ENodeOperation::GET_FIELD:
+        {
             const auto& field = static_cast<const GetFieldNode&>(node);
             item.parameters = FlowSourceField{
                 std::string(field.ownerClass()->full_name),
@@ -693,7 +729,8 @@ namespace lux::flowforge
             };
             break;
         }
-        case ENodeOperation::SET_FIELD: {
+        case ENodeOperation::SET_FIELD:
+        {
             const auto& field = static_cast<const SetFieldNode&>(node);
             item.parameters = FlowSourceField{
                 std::string(field.ownerClass()->full_name),
@@ -702,7 +739,8 @@ namespace lux::flowforge
             };
             break;
         }
-        case ENodeOperation::NATIVE_FUNC_CALL: {
+        case ENodeOperation::NATIVE_FUNC_CALL:
+        {
             const auto& call = static_cast<const NativeFuncCall&>(node);
             FlowSourceNativeCall value;
             value.member = call.info().full_name;
@@ -719,7 +757,8 @@ namespace lux::flowforge
             item.parameters = std::move(value);
             break;
         }
-        case ENodeOperation::SCRIPT_ABILITY_CALL: {
+        case ENodeOperation::SCRIPT_ABILITY_CALL:
+        {
             const auto& ability = static_cast<const ScriptAbilityNode&>(node);
             item.parameters = FlowSourceAbility{
                 std::string(ability.contract().name()),
@@ -780,12 +819,12 @@ namespace lux::flowforge
             {
                 return fail(EFlowSourceError::INVALID_VALUE, "node");
             }
-            auto item = captureFlowNode(*storage.node);
+            auto item = captureFlowNode(graph, storage.id);
             if (!item)
             {
                 return lux::cxx::unexpected(item.error());
             }
-            if (const auto* layout = graph.layout().find(storage.node->id()))
+            if (const auto* layout = graph.layout().find(storage.id))
             {
                 item->layout = *layout;
             }
@@ -846,6 +885,7 @@ namespace lux::flowforge
         }
         return {};
     }
+
     FlowSourceResult<void> validateFlowSourceLiteral(
         const FlowSourcePin& pin,
         const FlowSourceEnvironment& environment
@@ -869,6 +909,7 @@ namespace lux::flowforge
         }
         return {};
     }
+
     FlowSourceResult<FlowSourceVariable> captureFlowVariable(const FlowGraph::GraphVariable& variable) noexcept
     {
         if (!variable.type)
@@ -991,7 +1032,7 @@ namespace lux::flowforge
                         }
                     }
                 }
-                if (graph.addNodesWithId(item.id, std::move(node)) == (std::numeric_limits<std::size_t>::max)())
+                if (!graph.insertNode({item.id, std::move(node)}))
                 {
                     return fail(EFlowSourceError::INVALID_TOPOLOGY, "node", item.id);
                 }

@@ -115,7 +115,7 @@ namespace lux::flowforge
         return FlowForgeFailure{
             .code = EFlowForgeError::GRAPH_INVALID,
             .message = std::move(message),
-            .node_id = bc.current_node ? bc.current_node->id().value : 0U,
+            .node_id = bc.current_node ? bc.graph->nodeId(bc.current_node).value : 0U,
             .pin_id = include_pin && bc.current_pin ? bc.current_pin->id().value : 0U,
         };
     }
@@ -475,19 +475,19 @@ namespace lux::flowforge
             std::uint64_t node{};
         };
         std::vector<EventWaitKey> event_wait_keys;
-        for (auto& storage : g.nodes())
+        for (const auto& storage : g.nodes())
         {
-            const Node* n = storage.node.get();
+            const Node* n = storage.node;
             if (n->operation() == ENodeOperation::SCRIPT_ABILITY_CALL)
             {
                 const auto& ability = static_cast<const ScriptAbilityNode&>(*n);
-                ability_keys.push_back({ability.contract().name(), ability.method().name(), n->id().value});
+                ability_keys.push_back({ability.contract().name(), ability.method().name(), storage.id.value});
             }
             else if (n->operation() == ENodeOperation::SCRIPT_EVENT_WAIT)
             {
                 const auto& event = static_cast<const ScriptEventAwaitNode&>(*n).source();
                 event_wait_keys.push_back(
-                    {event.system_id, event.event_id, static_cast<std::uint8_t>(event.route), n->id().value}
+                    {event.system_id, event.event_id, static_cast<std::uint8_t>(event.route), storage.id.value}
                 );
             }
             switch (n->operation())
@@ -2105,13 +2105,14 @@ namespace lux::flowforge
         BuilderContext& bc
     )
     {
-        const auto ordinal = bc.ability_ordinals.find(call.id().value);
+        const auto node_id = bc.graph->nodeId(&call).value;
+        const auto ordinal = bc.ability_ordinals.find(node_id);
         if (ordinal == bc.ability_ordinals.end() || call.results().size() > 1U)
         {
             return lux::cxx::unexpected(FlowForgeFailure{
                 .code = EFlowForgeError::UNSUPPORTED_SCRIPT_ABILITY_TYPE,
                 .message = "Script Ability node has an unsupported result shape",
-                .node_id = call.id().value
+                .node_id = node_id
             });
         }
 
@@ -2130,7 +2131,7 @@ namespace lux::flowforge
                 return lux::cxx::unexpected(FlowForgeFailure{
                     .code = EFlowForgeError::UNSUPPORTED_SCRIPT_ABILITY_TYPE,
                     .message = "record Script Ability parameters are not supported by FlowForge S3",
-                    .node_id = call.id().value,
+                    .node_id = node_id,
                     .pin_id = pin->id().value
                 });
             }
@@ -2151,7 +2152,7 @@ namespace lux::flowforge
                 return lux::cxx::unexpected(FlowForgeFailure{
                     .code = EFlowForgeError::UNSUPPORTED_SCRIPT_ABILITY_TYPE,
                     .message = "record Script Ability results are not supported by FlowForge S3",
-                    .node_id = call.id().value,
+                    .node_id = node_id,
                     .pin_id = call.resultPins().front()->id().value
                 });
             }
@@ -2160,7 +2161,7 @@ namespace lux::flowforge
 
         const auto name =
             call.methodKind() == lux::script::EScriptApiMethodKind::ASYNC_OPERATION
-                ? "lux_ff_ability_async_" + std::to_string(ordinal->second) + "_node_" + std::to_string(call.id().value)
+                ? "lux_ff_ability_async_" + std::to_string(ordinal->second) + "_node_" + std::to_string(node_id)
                 : "lux_ff_ability_sync_" + std::to_string(ordinal->second);
         const auto function_type = bc.builder.getFunctionType(argument_types, result_types);
         const auto function = getOrDeclareExternFunc(bc, name, function_type);
@@ -2179,14 +2180,15 @@ namespace lux::flowforge
         BuilderContext& bc
     )
     {
-        const auto ordinal = bc.event_wait_ordinals.find(wait.id().value);
+        const auto node_id = bc.graph->nodeId(&wait).value;
+        const auto ordinal = bc.event_wait_ordinals.find(node_id);
         const auto* type = wait.payloadPin().info().type;
         if (ordinal == bc.event_wait_ordinals.end() || type == nullptr)
         {
             return lux::cxx::unexpected(FlowForgeFailure{
                 .code = EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH,
                 .message = "Script Event wait has no canonical payload",
-                .node_id = wait.id().value
+                .node_id = node_id
             });
         }
         const auto result_type = refTypeToMLIR(bc, *type);
@@ -2195,12 +2197,12 @@ namespace lux::flowforge
             return lux::cxx::unexpected(FlowForgeFailure{
                 .code = EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH,
                 .message = "record Script Event payloads are not supported by FlowForge S5.1",
-                .node_id = wait.id().value,
+                .node_id = node_id,
                 .pin_id = wait.payloadPin().id().value
             });
         }
         const auto name =
-            "lux_ff_event_wait_" + std::to_string(ordinal->second) + "_node_" + std::to_string(wait.id().value);
+            "lux_ff_event_wait_" + std::to_string(ordinal->second) + "_node_" + std::to_string(node_id);
         const auto function_type = bc.builder.getFunctionType({}, {result_type});
         const auto function = getOrDeclareExternFunc(bc, name, function_type);
         auto invoked = bc.builder.create<mlir::func::CallOp>(bc.loc, function, mlir::ValueRange{});

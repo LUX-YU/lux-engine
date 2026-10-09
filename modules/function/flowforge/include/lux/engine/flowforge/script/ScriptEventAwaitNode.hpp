@@ -11,7 +11,6 @@ namespace lux::flowforge
     class LUX_ENGINE_FLOWFORGE_PUBLIC ScriptEventAwaitNode final : public ExecIntermediateNode
     {
     public:
-        ScriptEventAwaitNode(std::uint64_t id, const lux::script::ScriptEventSourceDescription& source);
         explicit ScriptEventAwaitNode(const lux::script::ScriptEventSourceDescription& source);
         ~ScriptEventAwaitNode() override;
         [[nodiscard]] std::size_t descriptionBytes() const noexcept;
@@ -33,4 +32,4 @@ namespace lux::flowforge
         std::unique_ptr<TypeStorage> type_;
         std::unique_ptr<DataOutPin> payload_pin_;
     };
-}
+} // namespace lux::flowforge

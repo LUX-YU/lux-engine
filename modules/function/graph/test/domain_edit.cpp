@@ -117,20 +117,20 @@ namespace
     void flowCommit()
     {
         flowforge::FlowGraph graph;
-        auto sequence = std::make_unique<flowforge::SequenceNode>(0);
+        auto sequence = std::make_unique<flowforge::SequenceNode>();
         require(sequence->addExecOutPin());
         require(sequence->addExecOutPin());
-        const auto index = graph.addNodes(std::move(sequence));
-        require(index != 0U);
-        const auto* original = graph.getNode(index).node.get();
-        const auto id = original->id();
+        const auto index = graph.addNode(std::move(sequence));
+        require(index.valid());
+        const auto* original = graph.findNodeById(index);
+        const auto id = graph.nodeId(original);
         require(graph.layout().set(id, {3.0F, 7.0F, true}).has_value());
         auto source = flowforge::captureFlowSource(assetId(), "transaction", graph);
         require(source.has_value());
         auto encoded = flowforge::encodeFlowSource(*source);
         require(encoded.has_value());
         const Records records(graph.topology(), graph.layout());
-        std::vector<std::unique_ptr<flowforge::Node>> removed;
+        std::vector<flowforge::FlowNodeSnapshot> removed;
         const std::array<graph::NodeId, 1> erased{id};
         flowforge::FlowGraphChange change;
         change.erase = erased;
@@ -142,9 +142,9 @@ namespace
             removed = edit->takeRemoved();
         }
         require(graph.nodes().empty() && graph.topology().pins().empty() && graph.layout().all().empty());
-        require(removed.size() == 1 && removed.front().get() == original);
-        require(removed.front()->graph() == nullptr);
-        const std::array<std::unique_ptr<flowforge::Node>*, 1> inserted{&removed.front()};
+        require(removed.size() == 1 && removed.front().node.get() == original);
+        require(removed.front().node->graph() == nullptr);
+        const std::array<flowforge::FlowNodeInsertion, 1> inserted{{{removed.front().id, &removed.front().node}}};
         const std::array<graph::GraphLayoutEntry, 1> positions{{{id, {3.0F, 7.0F, true}}}};
         change = {};
         change.insert = inserted;
@@ -152,10 +152,10 @@ namespace
         {
             auto edit = flowforge::FlowGraphEdit::prepare(graph, change);
             require(edit.has_value());
-            require(removed.front().get() == original);
+            require(removed.front().node.get() == original);
             edit->commit();
         }
-        require(!removed.front());
+        require(!removed.front().node);
         require(graph.findNodeById(id) == original && original->graph() == &graph);
         records.check(graph.topology(), graph.layout());
         auto actual_source = flowforge::captureFlowSource(assetId(), "transaction", graph);
@@ -224,17 +224,16 @@ namespace
     bool flowEdit()
     {
         flowforge::FlowGraph graph;
-        const auto original_index = graph.addNodes(std::make_unique<flowforge::SequenceNode>(0));
-        require(original_index != 0U);
-        const auto* original = graph.getNode(original_index).node.get();
-        require(graph.layout().set(original->id(), {10.0F, 20.0F, true}).has_value());
+        const auto original_index = graph.addNode(std::make_unique<flowforge::SequenceNode>());
+        require(original_index.valid());
+        const auto* original = graph.findNodeById(original_index);
+        require(graph.layout().set(graph.nodeId(original), {10.0F, 20.0F, true}).has_value());
         const Records before(graph.topology(), graph.layout());
-        std::unique_ptr<flowforge::Node> candidate = std::make_unique<flowforge::SequenceNode>(0);
+        std::unique_ptr<flowforge::Node> candidate = std::make_unique<flowforge::SequenceNode>();
         const auto* candidate_pointer = candidate.get();
-        const std::array<std::unique_ptr<flowforge::Node>*, 1> inputs{&candidate};
+        const std::array<flowforge::FlowNodeInsertion, 1> inputs{{{{}, &candidate}}};
         flowforge::FlowGraphChange change;
         change.insert = inputs;
-        change.preserve_insert_ids = false;
         graph::NodeId issued_node;
         std::uint64_t max_pin{};
         {
@@ -254,9 +253,9 @@ namespace
         auto rejected = flowforge::FlowGraphEdit::prepare(graph, change);
         require(!rejected);
         before.check(graph.topology(), graph.layout());
-        require(graph.getNode(original_index).node.get() == original);
+        require(graph.findNodeById(original_index) == original);
         require(candidate.get() == candidate_pointer);
-        require(candidate->graph() == nullptr && !candidate->id().valid());
+        require(candidate->graph() == nullptr && !graph.nodeId(candidate.get()).valid());
         for (const auto* pin : candidate->inPins())
         {
             require(!pin->id().valid());
@@ -265,9 +264,9 @@ namespace
         {
             require(!pin->id().valid());
         }
-        const auto next_index = graph.addNodes(std::make_unique<flowforge::SequenceNode>(0));
-        require(next_index != 0U);
-        const auto* next = graph.getNode(next_index).node.get();
+        const auto next_index = graph.addNode(std::make_unique<flowforge::SequenceNode>());
+        require(next_index.valid());
+        const auto* next = graph.findNodeById(next_index);
         bool pins_advanced = true;
         for (const auto* pin : next->inPins())
         {
@@ -281,10 +280,10 @@ namespace
             "Flow abandoned node=%llu max pin=%llu; next node=%llu; all pins advanced=%d; owners preserved\n",
             issued_node.value,
             max_pin,
-            next->id().value,
+            next_index.value,
             pins_advanced
         );
-        return next->id().value > issued_node.value + 1U && pins_advanced;
+        return next_index.value > issued_node.value + 1U && pins_advanced;
     }
 } // namespace
 

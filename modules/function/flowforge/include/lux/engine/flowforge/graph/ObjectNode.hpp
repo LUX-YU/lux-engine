@@ -10,23 +10,12 @@ namespace lux::flowforge
     class GetObjectNode : public Node
     {
     public:
-        /**
-          * @brief Constructs a GetObjectNode with a generated ID.
-          * @param type The runtime type info pointer for the object type.
-          */
         GetObjectNode(const lux::meta::RefType& info);
 
         /**
-          * @brief Constructs a GetObjectNode with a specified ID.
-          * @param id The unique ID for this Node.
-          * @param type The runtime type info pointer for the object type.
-          */
-        GetObjectNode(uint64_t id, const lux::meta::RefType& info);
-
-        /**
-          * @brief Gets the DataOutPin that represents the read object.
-          * @return A const reference to the DataOutPin.
-          */
+         * @brief Gets the DataOutPin that represents the read object.
+         * @return A const reference to the DataOutPin.
+         */
         const DataOutPin& dataOutPin() const;
 
     private:
@@ -34,35 +23,24 @@ namespace lux::flowforge
     };
 
     /**
-      * @class SetObjectNode
-      * @brief A node that writes data to an object (via reflection).
-      */
+     * @class SetObjectNode
+     * @brief A node that writes data to an object (via reflection).
+     */
     class SetObjectNode : public ExecIntermediateNode
     {
     public:
-        /**
-          * @brief Constructs a SetObjectNode with a generated ID.
-          * @param type The runtime type info pointer for the object type.
-          */
         SetObjectNode(const lux::meta::RefType& info);
 
         /**
-          * @brief Constructs a SetObjectNode with a specified ID.
-          * @param id The unique ID for this Node.
-          * @param type The runtime type info pointer for the object type.
-          */
-        SetObjectNode(uint64_t id, const lux::meta::RefType& info);
-
-        /**
-          * @brief Gets the DataOutPin that represents the updated object.
-          * @return A const reference to the DataOutPin.
-          */
+         * @brief Gets the DataOutPin that represents the updated object.
+         * @return A const reference to the DataOutPin.
+         */
         const DataOutPin& dataOutPin() const;
 
         /**
-          * @brief Gets the DataInPin that represents the object data to be written.
-          * @return A const reference to the DataInPin.
-          */
+         * @brief Gets the DataInPin that represents the object data to be written.
+         * @return A const reference to the DataInPin.
+         */
         const DataInPin& dataInPin() const;
 
     private:
@@ -82,21 +60,23 @@ namespace lux::flowforge
     class GetFieldNode : public Node
     {
     public:
-        GetFieldNode(uint64_t id, const lux::meta::RefClass& cls, const lux::meta::RefField& field);
         GetFieldNode(const lux::meta::RefClass& cls, const lux::meta::RefField& field);
 
         const lux::meta::RefClass* ownerClass() const
         {
             return cls_;
         }
+
         const lux::meta::RefField* field() const
         {
             return field_;
         }
+
         const DataInPin& objectPin() const
         {
             return object_;
         }
+
         const DataOutPin& valuePin() const
         {
             return value_;
@@ -117,25 +97,28 @@ namespace lux::flowforge
     class SetFieldNode : public ExecIntermediateNode
     {
     public:
-        SetFieldNode(uint64_t id, const lux::meta::RefClass& cls, const lux::meta::RefField& field);
         SetFieldNode(const lux::meta::RefClass& cls, const lux::meta::RefField& field);
 
         const lux::meta::RefClass* ownerClass() const
         {
             return cls_;
         }
+
         const lux::meta::RefField* field() const
         {
             return field_;
         }
+
         const DataInPin& objectPin() const
         {
             return object_;
         }
+
         const DataInPin& valueIn() const
         {
             return value_in_;
         }
+
         const DataOutPin& objectOut() const
         {
             return object_out_;
@@ -161,12 +144,12 @@ namespace lux::flowforge
     {
     public:
         GetVariableNode(uint64_t var_id, const DataPinInfo& info);
-        GetVariableNode(uint64_t id, uint64_t var_id, const DataPinInfo& info);
 
         uint64_t variableId() const
         {
             return var_id_;
         }
+
         const DataOutPin& valuePin() const
         {
             return value_;
@@ -186,16 +169,17 @@ namespace lux::flowforge
     {
     public:
         SetVariableNode(uint64_t var_id, const DataPinInfo& info);
-        SetVariableNode(uint64_t id, uint64_t var_id, const DataPinInfo& info);
 
         uint64_t variableId() const
         {
             return var_id_;
         }
+
         const DataInPin& valueIn() const
         {
             return value_in_;
         }
+
         const DataOutPin& valueOut() const
         {
             return value_out_;
@@ -206,4 +190,4 @@ namespace lux::flowforge
         DataInPin value_in_;
         DataOutPin value_out_;
     };
-}
+} // namespace lux::flowforge

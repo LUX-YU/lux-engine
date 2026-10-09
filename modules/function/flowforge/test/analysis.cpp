@@ -49,14 +49,14 @@ namespace
     {
         auto node = std::make_unique<T>(std::forward<Args>(args)...);
         auto& result = *node;
-        require(graph.addNodes(std::move(node)) != 0);
+        require(graph.addNode(std::move(node)).valid());
         return result;
     }
 
     OnEventNode& entry(FlowGraph& graph)
     {
         auto& result = add<OnEventNode>(graph, "Tick");
-        require(graph.addExport({{1}, result.id(), 41, {}}));
+        require(graph.addExport({{1}, graph.nodeId(&result), 41, {}}));
         return result;
     }
 
@@ -95,14 +95,14 @@ namespace
         auto desc = description();
         auto& ability = add<ScriptAbilityNode>(graph, desc);
         link(start.execOutPin(), ability.execInPin());
-        failure(analyze(graph), EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_CONTRACT, ability.id());
+        failure(analyze(graph), EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_CONTRACT, graph.nodeId(&ability));
         auto catalog = desc;
         catalog.method = script::ScriptApiMethodIdView{"other"};
         Options options{.script_abilities = ScriptAbilityNodeCatalogView{{&catalog, 1}}};
-        failure(analyze(graph, options), EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_METHOD, ability.id());
+        failure(analyze(graph, options), EFlowForgeError::UNKNOWN_SCRIPT_ABILITY_METHOD, graph.nodeId(&ability));
         catalog = desc;
         ++catalog.schema_hash;
-        failure(analyze(graph, options), EFlowForgeError::SCRIPT_ABILITY_SCHEMA_MISMATCH, ability.id());
+        failure(analyze(graph, options), EFlowForgeError::SCRIPT_ABILITY_SCHEMA_MISMATCH, graph.nodeId(&ability));
         catalog = desc;
         auto success = analyze(graph, options);
         require(success.has_value());
@@ -114,12 +114,16 @@ namespace
 #endif
         ++desc.schema_hash;
         auto& conflicting = add<ScriptAbilityNode>(graph, desc);
-        failure(analyze(graph, options), EFlowForgeError::SCRIPT_ABILITY_REQUIREMENT_CONFLICT, conflicting.id());
+        failure(
+            analyze(graph, options),
+            EFlowForgeError::SCRIPT_ABILITY_REQUIREMENT_CONFLICT,
+            graph.nodeId(&conflicting)
+        );
 
         FlowGraph impostor;
         entry(impostor);
-        auto& fake = add<Node>(impostor, 0, ENodeOperation::SCRIPT_ABILITY_CALL);
-        failure(analyze(impostor), EFlowForgeError::GRAPH_INVALID, fake.id());
+        auto& fake = add<Node>(impostor, ENodeOperation::SCRIPT_ABILITY_CALL);
+        failure(analyze(impostor), EFlowForgeError::GRAPH_INVALID, impostor.nodeId(&fake));
     }
 
     script::ScriptEventSourceDescription eventDescription()
@@ -147,21 +151,21 @@ namespace
         require(desc.valid());
         auto& event = add<ScriptEventAwaitNode>(graph, desc);
         link(start.execOutPin(), event.execInPin());
-        failure(analyze(graph), EFlowForgeError::UNKNOWN_SCRIPT_EVENT_SOURCE, event.id());
+        failure(analyze(graph), EFlowForgeError::UNKNOWN_SCRIPT_EVENT_SOURCE, graph.nodeId(&event));
         auto catalog = desc;
         ++catalog.delivery_schema_hash;
         Options options{.script_events = {&catalog, 1}};
-        failure(analyze(graph, options), EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH, event.id());
+        failure(analyze(graph, options), EFlowForgeError::SCRIPT_EVENT_SCHEMA_MISMATCH, graph.nodeId(&event));
         catalog = desc;
         options.lifecycle.begin_play = 41;
-        failure(analyze(graph, options), EFlowForgeError::ASYNC_LIFECYCLE_NOT_SUPPORTED, event.id());
+        failure(analyze(graph, options), EFlowForgeError::ASYNC_LIFECYCLE_NOT_SUPPORTED, graph.nodeId(&event));
 #if !defined(FLOW_ANALYSIS_COMPILER)
         options.lifecycle = {};
         auto result = analyze(graph, options);
         require(result.has_value() && result->eventRequirements().size() == 1);
         require(result->eventRequirements()[0] == desc);
-        require(result->firstSuspensionFrom(start.execOutPin().id()) == event.id());
-        require(result->suspensionBetween(start.execOutPin().id(), event.id()) == event.id());
+        require(result->firstSuspensionFrom(start.execOutPin().id()) == graph.nodeId(&event));
+        require(result->suspensionBetween(start.execOutPin().id(), graph.nodeId(&event)) == graph.nodeId(&event));
         catalog.system_name = "changed after analysis";
         require(result->eventRequirements()[0] == desc);
 #endif
@@ -189,16 +193,16 @@ namespace
         link(later.execOutPin(), recurse.execInPin());
         Options options{.script_abilities = ScriptAbilityNodeCatalogView{{&desc, 1}}};
         options.lifecycle.begin_play = 41;
-        failure(analyze(graph, options), EFlowForgeError::ASYNC_LIFECYCLE_NOT_SUPPORTED, asynchronous.id());
+        failure(analyze(graph, options), EFlowForgeError::ASYNC_LIFECYCLE_NOT_SUPPORTED, graph.nodeId(&asynchronous));
         options.lifecycle.begin_play = 0;
         options.lifecycle.end_play = 41;
-        failure(analyze(graph, options), EFlowForgeError::ASYNC_LIFECYCLE_NOT_SUPPORTED, asynchronous.id());
+        failure(analyze(graph, options), EFlowForgeError::ASYNC_LIFECYCLE_NOT_SUPPORTED, graph.nodeId(&asynchronous));
 #if !defined(FLOW_ANALYSIS_COMPILER)
         options.lifecycle = {};
         auto result = analyze(graph, options);
         require(result.has_value());
-        require(result->firstSuspensionFrom(start.execOutPin().id()) == asynchronous.id());
-        require(result->suspensionBetween(start.execOutPin().id(), call.id()) == asynchronous.id());
+        require(result->firstSuspensionFrom(start.execOutPin().id()) == graph.nodeId(&asynchronous));
+        require(result->suspensionBetween(start.execOutPin().id(), graph.nodeId(&call)) == graph.nodeId(&asynchronous));
         require(!result->firstSuspensionFrom({}).valid());
         require(!result->suspensionBetween(start.execOutPin().id(), {UINT64_MAX}).valid());
         require(!result->firstSuspensionFrom(call.execInPin().id()).valid());
@@ -214,8 +218,8 @@ namespace
         auto& function = add<FuncDefNode>(graph, "Local", std::vector<FuncArgInfo>{});
         auto& call = add<GraphFuncCallNode>(graph, foreign_definition);
         link(function.execOutPin(), call.execInPin());
-        require(foreign_definition.id() == start.id());
-        failure(analyze(graph), EFlowForgeError::GRAPH_INVALID, function.id());
+        require(foreign.nodeId(&foreign_definition) == graph.nodeId(&start));
+        failure(analyze(graph), EFlowForgeError::GRAPH_INVALID, graph.nodeId(&function));
     }
 
     void borrowed()
@@ -253,7 +257,7 @@ namespace
         failure(
             analyze(graph, options),
             EFlowForgeError::BORROWED_VALUE_CROSSES_SUSPENSION,
-            suspend.id(),
+            graph.nodeId(&suspend),
             producer.resultPins()[0]->id()
         );
 #if !defined(FLOW_ANALYSIS_COMPILER)
@@ -276,7 +280,7 @@ namespace
         auto& node = add<ScriptAbilityNode>(graph, desc);
         link(start.execOutPin(), node.execInPin());
         start_id = start.execOutPin().id();
-        witness = node.id();
+        witness = graph.nodeId(&node);
         auto result = analyze(graph, {.script_abilities = ScriptAbilityNodeCatalogView{{&desc, 1}}});
         require(result.has_value());
         return std::move(*result);

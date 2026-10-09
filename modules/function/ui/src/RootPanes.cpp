@@ -299,7 +299,7 @@ namespace lux::ui
             impl_->menu_state.pane = nullptr;
             impl_->menu_state.element = nullptr;
         }
-        impl_->cancelChanges(pane);
+        impl_->cancelActions(pane);
         for (auto** target :
              {&impl_->focus_state.focused,
               &impl_->focus_state.hovered,
@@ -332,7 +332,7 @@ namespace lux::ui
                 {
                     impl_->menu_state.element = nullptr;
                 }
-                impl_->cancelChanges(element);
+                impl_->cancelActions(element);
                 if (impl_->focus_state.focused_element == &element)
                 {
                     detail::ContextActivation context{impl_->context->native()};
@@ -362,7 +362,7 @@ namespace lux::ui
     void Root::checkDestruction(const object::LuxObject& object) const noexcept
     {
         requireOwner();
-        for (auto* callback : {impl_->active_update, impl_->change_state.active})
+        for (auto* callback : {impl_->active_update, impl_->safe_point_state.active})
         {
             for (auto* active = callback; active; active = active->parent())
             {

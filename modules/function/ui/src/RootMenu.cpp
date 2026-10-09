@@ -7,21 +7,25 @@ namespace lux::ui
         checkContentChange();
         impl_->menu_state.items = std::move(menu);
     }
+
     std::span<const MenuItem> Root::menu() const noexcept
     {
         requireOwner();
         return impl_->menu_state.items;
     }
+
     bool Root::menuTargets(const Element& element) const noexcept
     {
         requireOwner();
         return impl_->menu_state.open && impl_->menu_state.element == &element;
     }
+
     void Root::setCommandFallback(object::LuxObject* target) noexcept
     {
         requireOwner();
         impl_->command_fallback = target ? target->objectId() : object::ObjectId{};
     }
+
     void Root::Impl::routeCommand(Root& root, object::LuxObject* target, Command& command) noexcept
     {
         Root::beginCallbackBorrow(root);
@@ -49,6 +53,7 @@ namespace lux::ui
         }
         Root::endCallbackBorrow(root);
     }
+
     void Root::Impl::menuCommand(Root& root, Command& command) noexcept
     {
         object::LuxObject* target =
@@ -60,10 +65,11 @@ namespace lux::ui
         else
         {
             const auto stored = target ? store(root, *menu_state.pane, *target) : StoredTarget{};
-            menu_state.calls.push_back({stored, CommandId{std::string(command.id.name())}});
+            safe_point_state.pending.push_back({stored, CommandExecution{CommandId{std::string(command.id.name())}}});
             command.result = ECommandDispatchResult::EXECUTED;
         }
     }
+
     void Root::Impl::drawMenuItems(Root& root, std::span<const MenuItem> items) noexcept
     {
         for (const auto& item : items)
@@ -100,6 +106,7 @@ namespace lux::ui
             }
         }
     }
+
     void Root::Impl::drawMenu(Root& root) noexcept
     {
         menu_state.height = 0;
@@ -131,6 +138,7 @@ namespace lux::ui
             menu_state.open = false;
         }
     }
+
     bool Root::Impl::shortcut(Root& root, const Key& key) noexcept
     {
         if (!key.down)

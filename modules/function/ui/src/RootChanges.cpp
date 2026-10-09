@@ -1,5 +1,7 @@
 #include <lux/engine/ui/detail/RootImpl.hpp>
 
+#include <type_traits>
+
 namespace lux::ui
 {
     void Root::deferChange(Pane& target, ChangeCallback apply) noexcept
@@ -59,95 +61,103 @@ namespace lux::ui
         {
             detail::failContract();
         }
-        const Change change{target, apply};
-        const auto pending = change_state.pending.begin() + change_state.batch_size;
-        if (std::find(pending, change_state.pending.end(), change) == change_state.pending.end())
+        const auto pending = safe_point_state.pending.begin() + safe_point_state.batch_size;
+        const auto same = [target, apply](const UiSafePointAction& action) noexcept
         {
-            change_state.pending.push_back(change);
+            const auto* mutation = std::get_if<DeferredMutation>(&action.payload);
+            return mutation && action.target == target && mutation->apply == apply;
+        };
+        if (std::find_if(pending, safe_point_state.pending.end(), same) == safe_point_state.pending.end())
+        {
+            safe_point_state.pending.push_back({target, DeferredMutation{apply}});
         }
     }
 
-    void Root::Impl::cancelChanges(object::LuxObject& target) noexcept
+    void Root::Impl::cancelActions(object::LuxObject& target) noexcept
     {
-        for (auto& call : menu_state.calls)
-        {
-            if (call.target.object == target.objectId())
-            {
-                call.command = {};
-            }
-        }
         // The active batch keeps its indices even if a preceding callback destroys a later target.
-        for (std::size_t index{}; index < change_state.batch_size; ++index)
+        for (std::size_t index{}; index < safe_point_state.batch_size; ++index)
         {
-            if (change_state.pending[index].target.object == target.objectId())
+            if (safe_point_state.pending[index].target.object == target.objectId())
             {
-                change_state.pending[index] = {};
+                safe_point_state.pending[index] = {};
             }
         }
-        const auto pending = change_state.pending.begin() + change_state.batch_size;
+        const auto pending = safe_point_state.pending.begin() + safe_point_state.batch_size;
         const auto end = std::remove_if(
             pending,
-            change_state.pending.end(),
-            [&target](const Change& change) noexcept { return change.target.object == target.objectId(); }
+            safe_point_state.pending.end(),
+            [&target](const UiSafePointAction& action) noexcept { return action.target.object == target.objectId(); }
         );
-        change_state.pending.erase(end, change_state.pending.end());
+        safe_point_state.pending.erase(end, safe_point_state.pending.end());
     }
 
     void Root::applyPendingChanges() noexcept
     {
         requireOwner();
-        const auto count = impl_->menu_state.calls.size();
         impl_->applyPendingChanges(*this);
-        for (std::size_t index{}; index < count; ++index)
-        {
-            const auto call = impl_->menu_state.calls[index];
-            auto* target = Impl::resolve(*this, call.target);
-            const bool cancelled = !call.command.isValid();
-            const bool stale_target = !call.target.object.isNull() && !target;
-            if (cancelled || stale_target)
-            {
-                continue;
-            }
-            Command command{call.command.view()};
-            impl_->routeCommand(*this, target, command);
-            if (command.enabled)
-            {
-                command.phase = ECommandPhase::EXECUTE;
-                impl_->routeCommand(*this, target, command);
-            }
-        }
-        impl_->menu_state.calls.erase(impl_->menu_state.calls.begin(), impl_->menu_state.calls.begin() + count);
     }
 
     void Root::Impl::applyPendingChanges(Root& root) noexcept
     {
         const bool is_active_visit = drawing || updating || layout_state.depth != 0;
-        const bool is_active_callback = change_state.batch_size != 0 || change_state.active || Root::isDispatching();
+        const bool is_active_callback =
+            safe_point_state.batch_size != 0 || safe_point_state.active || Root::isDispatching();
         if (is_active_visit || is_active_callback)
         {
             detail::failContract();
         }
-        change_state.batch_size = change_state.pending.size();
-        for (std::size_t index{}; index < change_state.batch_size; ++index)
+        safe_point_state.batch_size = safe_point_state.pending.size();
+        for (std::size_t index{}; index < safe_point_state.batch_size; ++index)
         {
             // No vector reference survives the call: it may enqueue or destroy other targets.
-            const auto change = std::exchange(change_state.pending[index], Change{});
-            auto* target = resolve(root, change.target);
-            if (!target)
+            auto action = std::exchange(safe_point_state.pending[index], UiSafePointAction{});
+            auto* target = resolve(root, action.target);
+            const bool is_stale_target = !action.target.object.isNull() && !target;
+            if (is_stale_target)
             {
                 continue;
             }
-            change_state.active = target;
-            Root::beginCallbackBorrow(*target);
-            change.apply(*target);
-            Root::endCallbackBorrow(*target);
-            change_state.active = nullptr;
+            safe_point_state.active = target;
+            if (target)
+            {
+                Root::beginCallbackBorrow(*target);
+            }
+            std::visit(
+                [&](const auto& payload) noexcept
+                {
+                    using T = std::remove_cvref_t<decltype(payload)>;
+                    if constexpr (std::is_same_v<T, DeferredMutation>)
+                    {
+                        if (target && payload.apply)
+                        {
+                            payload.apply(*target);
+                        }
+                    }
+                    else
+                    {
+                        Command command{payload.command.view()};
+                        routeCommand(root, target, command);
+                        if (command.enabled)
+                        {
+                            command.phase = ECommandPhase::EXECUTE;
+                            routeCommand(root, target, command);
+                        }
+                    }
+                },
+                action.payload
+            );
+            if (target)
+            {
+                Root::endCallbackBorrow(*target);
+            }
+            safe_point_state.active = nullptr;
         }
-        change_state.pending.erase(
-            change_state.pending.begin(),
-            change_state.pending.begin() + change_state.batch_size
+        safe_point_state.pending.erase(
+            safe_point_state.pending.begin(),
+            safe_point_state.pending.begin() + safe_point_state.batch_size
         );
-        change_state.batch_size = 0;
+        safe_point_state.batch_size = 0;
     }
 
 } // namespace lux::ui

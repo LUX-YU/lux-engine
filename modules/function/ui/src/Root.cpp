@@ -97,7 +97,7 @@ namespace lux::ui
         requireOwner();
         const bool is_active_visit = impl_->drawing || impl_->updating || impl_->layout_state.depth != 0;
         const bool is_active_callback =
-            impl_->change_state.batch_size != 0 || impl_->change_state.active || isDispatching();
+            impl_->safe_point_state.batch_size != 0 || impl_->safe_point_state.active || isDispatching();
         if (is_active_visit || is_active_callback)
         {
             return lux::cxx::unexpected(ECaptureError::FRAME_OPEN);
@@ -130,7 +130,7 @@ namespace lux::ui
         started = std::chrono::steady_clock::now();
         maintain();
         impl_->statistics.maintenance += std::chrono::steady_clock::now() - started;
-        const bool pending = !impl_->change_state.pending.empty() || !impl_->menu_state.calls.empty();
+        const bool pending = !impl_->safe_point_state.pending.empty();
         if (pending && impl_->window)
         {
             window::LuxWindow::wakeEvents();
@@ -147,14 +147,17 @@ namespace lux::ui
         }
         detail::ContextActivation active{impl_->context->native()};
         impl_->drawing = true;
+
         struct Finish final
         {
             Root& root;
+
             ~Finish()
             {
                 root.impl_->drawing = false;
             }
         } finish{*this};
+
         auto started = impl_->context->beginFrame(info);
         if (!started)
         {

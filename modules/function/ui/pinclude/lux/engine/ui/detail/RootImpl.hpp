@@ -20,6 +20,7 @@
 #include <optional>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 
 namespace lux::ui
 {
@@ -28,10 +29,12 @@ namespace lux::ui
         struct Mutation final
         {
             bool& active;
+
             explicit Mutation(bool& flag) noexcept : active(flag)
             {
                 active = true;
             }
+
             ~Mutation()
             {
                 active = false;
@@ -77,11 +80,13 @@ namespace lux::ui
             float ratio{0.5F};
             std::vector<PaneId> panes;
         };
+
         std::vector<Node> nodes;
         std::vector<DockSurface> surfaces;
         std::vector<std::uint32_t> order;
         std::vector<ImGuiID> ids;
     };
+
     struct Root::Impl final
     {
         struct StoredTarget final
@@ -91,56 +96,74 @@ namespace lux::ui
             object::ObjectId object;
             bool operator==(const StoredTarget&) const noexcept = default;
         };
+
         struct Target final
         {
             Pane* pane{};
             Element* element{};
             Target() noexcept = default;
+
             Target(Pane* value) noexcept : pane(value) {}
+
             Target(Element* value) noexcept : element(value) {}
+
             Target(std::nullptr_t) noexcept {}
+
             [[nodiscard]] object::LuxObject* object() const noexcept
             {
                 return element ? static_cast<object::LuxObject*>(element) : pane;
             }
+
             [[nodiscard]] Pane* containingPane() const noexcept
             {
                 return element ? &element->pane() : pane;
             }
+
             [[nodiscard]] bool visible() const noexcept
             {
                 return element ? element->displayed() : pane && pane->visible();
             }
+
             explicit operator bool() const noexcept
             {
                 return object() != nullptr;
             }
+
             [[nodiscard]] object::LuxObject& operator*() const noexcept
             {
                 return *object();
             }
+
             bool operator==(const Target&) const noexcept = default;
         };
-        struct MenuCall final
+
+        struct CommandExecution final
         {
-            StoredTarget target;
             CommandId command;
         };
-        struct Change final
+
+        struct DeferredMutation final
+        {
+            ChangeCallback apply{};
+        };
+
+        using VUiSafePointPayload = std::variant<DeferredMutation, CommandExecution>;
+
+        struct UiSafePointAction final
         {
             StoredTarget target;
-            ChangeCallback apply{};
-            bool operator==(const Change&) const noexcept = default;
+            VUiSafePointPayload payload;
         };
+
         struct MenuState final
         {
             std::vector<MenuItem> items;
             Pane* pane{};
             Element* element{};
             bool open{};
-            std::vector<MenuCall> calls;
             float height{};
         } menu_state;
+
         struct FocusState final
         {
             Pane *focused{}, *hovered{}, *pending_focus{};
@@ -150,22 +173,26 @@ namespace lux::ui
             Element *draw_focused_element{}, *draw_hovered_element{};
             Pane* modal{};
         } focus_state;
-        struct ChangeState final
+
+        struct SafePointState final
         {
-            std::vector<Change> pending;
+            std::vector<UiSafePointAction> pending;
             std::size_t batch_size{};
             object::LuxObject* active{};
-        } change_state;
+        } safe_point_state;
+
         struct LayoutState final
         {
             std::size_t depth{};
             std::uint64_t epoch{};
         } layout_state;
+
         struct DockState final
         {
             bool enabled{};
             std::unique_ptr<DockData> pending;
         } dock_state;
+
         struct InputState final
         {
             ImGuiKeyChord modifiers{};
@@ -175,7 +202,7 @@ namespace lux::ui
         static StoredTarget store(Root&, Pane&, object::LuxObject&) noexcept;
         static object::LuxObject* resolve(Root&, StoredTarget) noexcept;
         void queueChange(StoredTarget, ChangeCallback) noexcept;
-        void cancelChanges(object::LuxObject&) noexcept;
+        void cancelActions(object::LuxObject&) noexcept;
         void applyPendingChanges(Root&) noexcept;
         void drawMenu(Root&) noexcept;
         void drawMenuItems(Root&, std::span<const MenuItem>) noexcept;

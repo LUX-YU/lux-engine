@@ -20,6 +20,29 @@ namespace lux::material
             return type >= EValueType::FLOAT && type <= EValueType::VEC4;
         }
 
+        MaterialNodeResult<void>
+        validateSwizzle(const MaterialSwizzle& value, bool require_available_components) noexcept
+        {
+            const bool is_invalid_type = !validType(value.source_type) || !validType(value.out_type);
+            if (is_invalid_type)
+            {
+                return cxx::unexpected(invalid("invalid Swizzle node value type"));
+            }
+            const auto source_arity = static_cast<std::size_t>(value.source_type) + 1;
+            const auto output_arity = static_cast<std::size_t>(value.out_type) + 1;
+            for (std::size_t index = 0; index != value.components.size(); ++index)
+            {
+                const bool is_used = require_available_components && index < output_arity;
+                const bool is_invalid =
+                    value.components[index] > 3 || (is_used && value.components[index] >= source_arity);
+                if (is_invalid)
+                {
+                    return cxx::unexpected(invalid("invalid Swizzle component", static_cast<std::uint32_t>(index)));
+                }
+            }
+            return {};
+        }
+
         MaterialPinDeclaration input(std::size_t index, std::string name, EValueType type) noexcept
         {
             return {graph::PinSemanticId{index + 1}, std::move(name), graph::EPinDirection::INPUT, type};
@@ -173,25 +196,14 @@ namespace lux::material
         return {};
     }
 
+    MaterialNodeResult<void> detail::validateSwizzlePayload(const MaterialSwizzle& value) noexcept
+    {
+        return validateSwizzle(value, false);
+    }
+
     MaterialNodeResult<void> detail::validateBuiltin(const MaterialSwizzle& value) noexcept
     {
-        const bool is_invalid_type = !validType(value.source_type) || !validType(value.out_type);
-        if (is_invalid_type)
-        {
-            return cxx::unexpected(invalid("invalid Swizzle node value type"));
-        }
-        const auto source_arity = static_cast<std::size_t>(value.source_type) + 1;
-        const auto output_arity = static_cast<std::size_t>(value.out_type) + 1;
-        for (std::size_t index = 0; index != value.components.size(); ++index)
-        {
-            const bool is_used = index < output_arity;
-            const bool is_invalid = value.components[index] > 3 || (is_used && value.components[index] >= source_arity);
-            if (is_invalid)
-            {
-                return cxx::unexpected(invalid("invalid Swizzle component", static_cast<std::uint32_t>(index)));
-            }
-        }
-        return {};
+        return validateSwizzle(value, true);
     }
 
     MaterialNodeResult<void> detail::validateBuiltin(const MaterialConstruct& value) noexcept
@@ -461,7 +473,23 @@ namespace lux::material
             };
             using PinResult = MaterialNodeRegistration::PinResult;
             result.describe_pins = [](const MaterialNodePayload& payload) noexcept -> PinResult
-            { return pins(*payload.get<T>()); };
+            {
+                const auto& value = *payload.get<T>();
+                MaterialNodeResult<void> validated;
+                if constexpr (std::is_same_v<T, MaterialSwizzle>)
+                {
+                    validated = detail::validateSwizzlePayload(value);
+                }
+                else if constexpr (requires { detail::validateBuiltin(value); })
+                {
+                    validated = detail::validateBuiltin(value);
+                }
+                if (!validated)
+                {
+                    return cxx::unexpected(std::move(validated.error()));
+                }
+                return pins(value);
+            };
             result.compile = [](const MaterialNodePayload& payload,
                                 std::span<const std::uint32_t> inputs,
                                 shadergen::ShaderIR& ir) noexcept -> MaterialNodeRegistration::ShaderResult

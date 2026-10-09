@@ -13,6 +13,9 @@ namespace lux::material::detail
 
     [[nodiscard]] EValueType mathOutputType(const MaterialMath&) noexcept;
 
+    // Source/schema admission deliberately includes drafts not yet eligible for compilation.
+    [[nodiscard]] cxx::expected<void, MaterialCompileFailure> validateMathPayload(const MaterialMath&) noexcept;
+
     [[nodiscard]] cxx::expected<void, MaterialCompileFailure> validateMath(const MaterialMath&) noexcept;
 
     [[nodiscard]] cxx::expected<std::uint32_t, MaterialCompileFailure>

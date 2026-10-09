@@ -61,13 +61,26 @@ namespace lux::material
         return info && info->scalar_result ? EValueType::FLOAT : value.operand_type;
     }
 
+    cxx::expected<void, MaterialCompileFailure> detail::validateMathPayload(const MaterialMath& value) noexcept
+    {
+        const bool is_invalid_operation = operation(value.op) == nullptr;
+        const bool is_invalid_type = value.operand_type < EValueType::FLOAT || value.operand_type > EValueType::VEC4;
+        const bool is_invalid_math = is_invalid_operation || is_invalid_type;
+        if (is_invalid_math)
+        {
+            return cxx::unexpected(invalid("invalid or unsupported Math node payload"));
+        }
+        return {};
+    }
+
     cxx::expected<void, MaterialCompileFailure> detail::validateMath(const MaterialMath& value) noexcept
     {
-        const auto* info = operation(value.op);
-        const bool is_unsupported = info == nullptr || info->inputs == 0;
-        const bool is_invalid_type = value.operand_type < EValueType::FLOAT || value.operand_type > EValueType::VEC4;
-        const bool is_invalid_math = is_unsupported || is_invalid_type;
-        if (is_invalid_math)
+        auto payload = validateMathPayload(value);
+        if (!payload)
+        {
+            return payload;
+        }
+        if (operation(value.op)->inputs == 0)
         {
             return cxx::unexpected(invalid("invalid or unsupported Math node payload"));
         }
@@ -151,6 +164,11 @@ namespace lux::material
         result.describe_pins = [](const MaterialNodePayload& value) noexcept -> MaterialNodeRegistration::PinResult
         {
             const auto& math = *value.get<MaterialMath>();
+            auto validated = detail::validateMathPayload(math);
+            if (!validated)
+            {
+                return cxx::unexpected(std::move(validated.error()));
+            }
             const auto second_use =
                 detail::mathInputCount(math.op) == 1 ? EMaterialInputUse::UNUSED : EMaterialInputUse::VALUE;
             constexpr graph::PinSemanticId ResultSemantic{(std::uint64_t{1} << 63) | 1};

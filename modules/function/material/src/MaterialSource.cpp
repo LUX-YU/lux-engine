@@ -3,6 +3,8 @@
 #include <charconv>
 #include <cmath>
 #include <locale>
+#include <lux/engine/material/detail/BuiltinMaterialNodes.hpp>
+#include <lux/engine/material/detail/MaterialMath.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <sstream>
@@ -267,7 +269,7 @@ namespace lux::material
             case EMatNodeKind::MATH:
             {
                 const auto& value = *node.as<MathNode>();
-                if (!typeValid(value.operand_type) || value.op > EMathOp::LENGTH)
+                if (!detail::validateMathPayload({value.op, value.operand_type}))
                 {
                     return fail(EMaterialSourceError::INVALID_VALUE, "math", id);
                 }
@@ -278,19 +280,22 @@ namespace lux::material
             case EMatNodeKind::SWIZZLE:
             {
                 const auto& value = *node.as<SwizzleNode>();
-                if (!typeValid(value.source_type) || !typeValid(value.out_type))
+                const MaterialSwizzle swizzle{
+                    value.source_type,
+                    value.out_type,
+                    {value.components[0], value.components[1], value.components[2], value.components[3]}
+                };
+                auto validated = detail::validateSwizzlePayload(swizzle);
+                if (!validated)
                 {
-                    return fail(EMaterialSourceError::INVALID_VALUE, "swizzle", id);
+                    const auto field = validated.error().pin_index == ~std::uint32_t{0} ? "swizzle" : "component";
+                    return fail(EMaterialSourceError::INVALID_VALUE, field, id);
                 }
                 result.insert("source_type", static_cast<std::int64_t>(value.source_type));
                 result.insert("type", static_cast<std::int64_t>(value.out_type));
                 toml::array components;
                 for (const auto component : value.components)
                 {
-                    if (component > 3)
-                    {
-                        return fail(EMaterialSourceError::INVALID_VALUE, "component", id);
-                    }
                     components.push_back(component);
                 }
                 result.insert("components", std::move(components));
@@ -606,19 +611,22 @@ namespace lux::material
             inputs = 1;
             break;
         case EMatNodeKind::MATH:
+        {
             inputs = 2;
-            valid = typeValid(node.as<MathNode>()->operand_type) && node.as<MathNode>()->op <= EMathOp::LENGTH;
+            const auto& value = *node.as<MathNode>();
+            valid = detail::validateMathPayload({value.op, value.operand_type}).has_value();
             break;
+        }
         case EMatNodeKind::SWIZZLE:
         {
             inputs = 1;
             const auto& value = *node.as<SwizzleNode>();
-            valid = typeValid(value.source_type) && typeValid(value.out_type) &&
-                    std::all_of(
-                        std::begin(value.components),
-                        std::end(value.components),
-                        [](auto component) { return component < 4; }
-                    );
+            const MaterialSwizzle swizzle{
+                value.source_type,
+                value.out_type,
+                {value.components[0], value.components[1], value.components[2], value.components[3]}
+            };
+            valid = detail::validateSwizzlePayload(swizzle).has_value();
             break;
         }
         case EMatNodeKind::CONSTRUCT:

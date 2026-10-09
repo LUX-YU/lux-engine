@@ -53,9 +53,12 @@ int main()
         auto pins = type->describePins(*payload);
         if (math->op == EMathOp::LERP)
         {
-            require(!lowered && !pins);
-            require(lowered.error().code == pins.error().code);
-            require(lowered.error().message == pins.error().message);
+            require(!lowered && pins && pins->size() == 3);
+            shadergen::ShaderIR candidate;
+            auto compiled = type->compile(*payload, {}, candidate);
+            require(!compiled && candidate.values.empty());
+            require(lowered.error().code == compiled.error().code);
+            require(lowered.error().message == compiled.error().message);
             continue;
         }
         require(lowered.has_value() && pins.has_value());

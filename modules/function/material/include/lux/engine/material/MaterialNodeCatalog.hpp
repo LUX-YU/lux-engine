@@ -45,7 +45,10 @@ namespace lux::material
         cxx::TypeToken payload_type;
         object::CodeLease code{object::CodeLease::builtin()};
         Create create{};
+        // Authoring schema admission is independent of compilation eligibility. This callback must
+        // reject malformed payload fields before using them to construct pin declarations.
         DescribePins describe_pins{};
+        // Intrinsic compilation diagnostics; an editable draft need not pass this check.
         Validate validate{};
         Compile compile{};
     };
@@ -64,6 +67,7 @@ namespace lux::material
         [[nodiscard]] const graph::GraphNodeTypeIdentity& identity() const noexcept;
         [[nodiscard]] MaterialNodeResult<MaterialNodePayload> create() const noexcept;
         [[nodiscard]] MaterialNodeResult<void> validate(const MaterialNodePayload&) const noexcept;
+        // Checks payload ownership and authoring schema, without requiring a compilable node.
         [[nodiscard]] MaterialNodeRegistration::PinResult describePins(const MaterialNodePayload&) const noexcept;
 
         // Inputs use declaration order: VALUE requires SSA; CONNECTED_VALUE also permits kNoValue;

@@ -4,6 +4,7 @@ generate_visibility_header(
     DISABLE_DLL_MACRO_NAME  LUX_ENGINE_MATERIAL_GRAPH_DLL_DISABLE
     GENERATE_FILE_PATH      lux/engine/material/graph/visibility.h
 )
+
 find_package(tomlplusplus CONFIG REQUIRED)
 
 add_component(
@@ -37,7 +38,11 @@ target_compile_definitions(
     material_graph
     PRIVATE LUX_ENGINE_MATERIAL_GRAPH_LIBRARY TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0
 )
-target_include_directories(material_graph PRIVATE $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
+
+target_include_directories(
+    material_graph
+    PRIVATE $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>
+)
 
 target_link_libraries(
     material_graph
@@ -56,6 +61,12 @@ component_add_transitive_commands(
 )
 
 if(BUILD_TESTING)
+    add_executable(material_authoring_schema_test test/authoring_schema.cpp)
+
+    target_link_libraries(material_authoring_schema_test PRIVATE lux::engine::function::material_graph)
+
+    add_test(NAME material.authoring_schema COMMAND material_authoring_schema_test)
+
     add_executable(material_builtin_nodes_test test/builtin_nodes.cpp)
 
     target_link_libraries(material_builtin_nodes_test PRIVATE lux::engine::function::material_graph)

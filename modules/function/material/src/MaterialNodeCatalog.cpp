@@ -93,10 +93,9 @@ namespace lux::material
         const MaterialNodePayload& payload
     ) const noexcept
     {
-        auto validation = validate(payload);
-        if (!validation)
+        if (!accepts(payload))
         {
-            return cxx::unexpected(std::move(validation.error()));
+            return cxx::unexpected(invalid("node payload does not belong to this definition"));
         }
         auto pins = registration_.describe_pins(payload);
         if (!pins)
@@ -138,6 +137,11 @@ namespace lux::material
         shadergen::ShaderIR& candidate
     ) const noexcept
     {
+        auto validation = validate(payload);
+        if (!validation)
+        {
+            return cxx::unexpected(std::move(validation.error()));
+        }
         auto pins = describePins(payload);
         if (!pins)
         {

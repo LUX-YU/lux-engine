@@ -12,6 +12,15 @@ find_package(lux-engine-function REQUIRED COMPONENTS material_graph)
 
 enable_testing()
 
+add_executable(
+    material_authoring_schema
+    "${CMAKE_CURRENT_LIST_DIR}/../../../modules/function/material/test/authoring_schema.cpp"
+)
+
+target_link_libraries(material_authoring_schema PRIVATE lux::engine::function::material_graph)
+
+add_test(NAME installed.material_authoring_schema COMMAND material_authoring_schema)
+
 add_executable(material_shader_ir "${CMAKE_CURRENT_LIST_DIR}/../../../modules/function/material/test/shader_ir.cpp")
 
 target_link_libraries(material_shader_ir PRIVATE lux::engine::function::material_graph)
@@ -72,6 +81,7 @@ foreach(header
 endforeach()
 
 foreach(target
+    material_authoring_schema
     material_builtin_nodes
     BuiltinMaterialNodes_header
     material_math_registration

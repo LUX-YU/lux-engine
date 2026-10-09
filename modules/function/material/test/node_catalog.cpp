@@ -191,6 +191,11 @@ int main()
     require(payload.has_value());
     payload->get<Payload>()->outputs = 0;
     require(!type->validate(*payload));
+    require(type->describePins(*payload)->size() == 1);
+    shadergen::ShaderIR rejected_candidate;
+    auto rejected_compile = type->compile(*payload, {}, rejected_candidate);
+    require(!rejected_compile && rejected_compile.error().message == "no outputs");
+    require(rejected_candidate.values.empty());
     payload->get<Payload>()->outputs = 2;
     require(type->describePins(*payload)->size() == 3);
     payload->get<Payload>()->outputs = 3;

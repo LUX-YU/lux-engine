@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <source_location>
+#include <utility>
 
 namespace
 {
@@ -36,6 +37,18 @@ namespace
     concept UnlinkablePin = requires(T& pin, Pin* other) { pin.unlinkFrom(other); };
     template <typename T>
     concept PinPreflight = requires(const T& pin, Pin* other) { pin.canLink(other); };
+
+    template <typename T>
+    concept PinLinks = requires(const T& pin) { pin.linkedPins(); };
+    template <typename T>
+    concept PinSuccessor = requires(const T& pin) { pin.nextPin(); };
+    template <typename T>
+    concept PinSource = requires(const T& pin) { pin.linkedPin(); };
+    template <typename T>
+    concept PinConsumers = requires(const T& pin) { pin.linkPins(); };
+
+    static_assert(!PinLinks<ExecInPin> && !PinSuccessor<ExecOutPin>);
+    static_assert(!PinSource<DataInPin> && !PinConsumers<DataOutPin>);
 
     template <typename... T>
     constexpr bool has_no_pin_authority = ((!LinkablePin<T> && !UnlinkablePin<T> && !PinPreflight<T>) && ...);
@@ -126,11 +139,19 @@ namespace
         require(target.disconnect(*own[0], *other[1]) == ELinkError::INVALID_PIN);
         require(target.disconnect(*other[0], *own[1]) == ELinkError::INVALID_PIN);
         require(sourceBytes(target) == linked && sourceBytes(foreign) == empty_foreign);
+        const auto output = target.pinId(own[0]);
+        const auto input = target.pinId(own[1]);
+        require(std::as_const(target).linkedPins(output) == std::vector<const Pin*>{own[1]});
+        require(std::as_const(target).linkedPins(input) == std::vector<const Pin*>{own[0]});
+        require(std::as_const(foreign).linkedPins(output).empty());
+        require(std::as_const(foreign).linkedPins(input).empty());
 
         auto moved = std::move(target);
         require(target.connect(*own[0], *own[1]) == ELinkError::INVALID_PIN);
         require(target.disconnect(*own[0], *own[1]) == ELinkError::INVALID_PIN);
         require(sourceBytes(moved) == linked);
+        require(std::as_const(target).linkedPins(output).empty());
+        require(std::as_const(moved).linkedPins(output) == std::vector<const Pin*>{own[1]});
         require(moved.disconnect(*own[0], *own[1]) == ELinkError::UNLINKED);
         require(sourceBytes(moved) == empty_target);
         check(target);

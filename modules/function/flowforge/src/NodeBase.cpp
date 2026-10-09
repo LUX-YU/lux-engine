@@ -97,27 +97,6 @@ namespace lux::flowforge
     // Structural links live exclusively in FlowGraph::topology().
     ExecInPin::~ExecInPin() = default;
 
-    /**
-     * @brief Retrieves the list of ExecOutPins linked to this ExecInPin.
-     * @return A constant reference to a vector of ExecOutPin pointers.
-     */
-    std::vector<ExecOutPin*> ExecInPin::linkedPins() const
-    {
-        std::vector<ExecOutPin*> result;
-        if (node()->graph() == nullptr)
-        {
-            return result;
-        }
-        for (auto* pin : node()->graph()->linkedPins(node()->graph()->pinId(this)))
-        {
-            if (pin != nullptr && pin->kind() == EPinKind::EXEC_OUT)
-            {
-                result.push_back(static_cast<ExecOutPin*>(pin));
-            }
-        }
-        return result;
-    }
-
     // ====================== ExecOutPin ======================
 
     /**
@@ -130,25 +109,6 @@ namespace lux::flowforge
      * @brief Destructor. Unlinks from the connected ExecInPin upon destruction.
      */
     ExecOutPin::~ExecOutPin() = default;
-
-    /**
-     * @brief Retrieves the ExecInPin currently linked to this ExecOutPin.
-     * @return A pointer to the ExecInPin, or nullptr if none is linked.
-     */
-    const ExecInPin* ExecOutPin::nextPin() const
-    {
-        if (node()->graph() == nullptr)
-        {
-            return nullptr;
-        }
-        const auto pins = node()->graph()->linkedPins(node()->graph()->pinId(this));
-        return pins.empty() ? nullptr : static_cast<const ExecInPin*>(pins.front());
-    }
-
-    ExecInPin* ExecOutPin::nextPin()
-    {
-        return const_cast<ExecInPin*>(std::as_const(*this).nextPin());
-    }
 
     // ====================== DataInPin ======================
 
@@ -239,20 +199,6 @@ namespace lux::flowforge
         return info_;
     }
 
-    /**
-     * @brief Retrieves the DataOutPin currently linked to this DataInPin.
-     * @return A pointer to the DataOutPin, or nullptr if none is linked.
-     */
-    const DataOutPin* DataInPin::linkedPin() const
-    {
-        if (node()->graph() == nullptr)
-        {
-            return nullptr;
-        }
-        const auto pins = node()->graph()->linkedPins(node()->graph()->pinId(this));
-        return pins.empty() ? nullptr : static_cast<const DataOutPin*>(pins.front());
-    }
-
     // ====================== DataOutPin ======================
 
     /**
@@ -271,27 +217,6 @@ namespace lux::flowforge
      */
     // Structural links live exclusively in FlowGraph::topology().
     DataOutPin::~DataOutPin() = default;
-
-    /**
-     * @brief Retrieves all DataInPins linked to this DataOutPin.
-     * @return A constant reference to the vector of DataInPin pointers.
-     */
-    std::vector<DataInPin*> DataOutPin::linkPins() const
-    {
-        std::vector<DataInPin*> result;
-        if (node()->graph() == nullptr)
-        {
-            return result;
-        }
-        for (auto* pin : node()->graph()->linkedPins(node()->graph()->pinId(this)))
-        {
-            if (pin != nullptr && pin->kind() == EPinKind::DATA_IN)
-            {
-                result.push_back(static_cast<DataInPin*>(pin));
-            }
-        }
-        return result;
-    }
 
     /**
      * @brief Retrieves the runtime type info of this DataOutPin.

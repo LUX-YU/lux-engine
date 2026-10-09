@@ -46,11 +46,12 @@ int main()
     auto* alternative_ptr = alternative.get();
     const auto alternative_index = graph.addNode(std::move(alternative));
     assert(graph.connect(entry_ptr->execOutPin(), alternative_ptr->execInPin()) == ELinkError::HAS_LINKED);
-    assert(entry_ptr->execOutPin().nextPin() == &ability_ptr->execInPin());
+    assert(graph.topology().findLink(graph.pinId(&entry_ptr->execOutPin()), graph.pinId(&ability_ptr->execInPin())));
     assert(graph.disconnect(entry_ptr->execOutPin(), ability_ptr->execInPin()) == ELinkError::UNLINKED);
-    assert(entry_ptr->execOutPin().nextPin() == nullptr);
+    assert(graph.topology().linkCount(graph.pinId(&entry_ptr->execOutPin())) == 0);
     assert(graph.connect(entry_ptr->execOutPin(), alternative_ptr->execInPin()) == ELinkError::SUCCESS);
-    assert(entry_ptr->execOutPin().nextPin() == &alternative_ptr->execInPin());
+    assert(graph.topology().findLink(graph.pinId(&entry_ptr->execOutPin()), graph.pinId(&alternative_ptr->execInPin()))
+    );
     assert(graph.disconnect(entry_ptr->execOutPin(), alternative_ptr->execInPin()) == ELinkError::UNLINKED);
     assert(graph.connect(entry_ptr->execOutPin(), ability_ptr->execInPin()) == ELinkError::SUCCESS);
     assert(graph.removeNode(alternative_index));

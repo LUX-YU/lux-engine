@@ -348,12 +348,6 @@ namespace lux::flowforge
          * @brief Destructor. Unlinks from all connected ExecOutPins on destruction.
          */
         ~ExecInPin() override;
-
-        /**
-         * @brief Gets all ExecOutPins linked to this ExecInPin.
-         * @return A const reference to a vector of ExecOutPin pointers.
-         */
-        [[nodiscard]] std::vector<ExecOutPin*> linkedPins() const;
     };
 
     /**
@@ -377,14 +371,6 @@ namespace lux::flowforge
          * @brief Destructor. Unlinks from the connected ExecInPin on destruction.
          */
         ~ExecOutPin() override;
-
-        /**
-         * @brief Retrieves the ExecInPin linked to this ExecOutPin.
-         * @return A pointer to the ExecInPin, or nullptr if none is linked.
-         */
-        const ExecInPin* nextPin() const;
-
-        ExecInPin* nextPin();
     };
 
     /**
@@ -415,12 +401,6 @@ namespace lux::flowforge
          * @return A const reference to the DataPinInfo.
          */
         const DataPinInfo& info() const;
-
-        /**
-         * @brief Gets the DataOutPin linked to this DataInPin.
-         * @return A pointer to the connected DataOutPin, or nullptr if none is linked.
-         */
-        const DataOutPin* linkedPin() const;
 
         /**
          * @brief Sets the constant data for this DataInPin.
@@ -489,12 +469,6 @@ namespace lux::flowforge
          * @brief Destructor. Unlinks from all connected DataInPins on destruction.
          */
         ~DataOutPin();
-
-        /**
-         * @brief Gets all DataInPins linked to this DataOutPin.
-         * @return A const reference to a vector of DataInPin pointers.
-         */
-        [[nodiscard]] std::vector<DataInPin*> linkPins() const;
 
         /**
          * @brief Gets the info of this data pin.

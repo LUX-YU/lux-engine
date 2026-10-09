@@ -197,7 +197,7 @@ namespace lux::flowforge
                 {
                     continue;
                 }
-                for (const auto* input : current->linkPins())
+                for (const auto* input : graph.linkedPins(graph.pinId(current)))
                 {
                     const auto* node = input->node();
                     if (!isPureDataOp(node->operation()))
@@ -383,7 +383,7 @@ namespace lux::flowforge
                     {
                         continue;
                     }
-                    if (const auto* next = static_cast<const ExecOutPin*>(pin)->nextPin())
+                    for (const auto* next : graph.linkedPins(graph.pinId(pin)))
                     {
                         const auto successor = graph.nodeId(next->node());
                         starts.emplace(graph.pinId(pin), successor);

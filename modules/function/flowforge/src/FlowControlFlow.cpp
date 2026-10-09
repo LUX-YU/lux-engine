@@ -19,8 +19,8 @@ namespace lux::flowforge
             {
                 return {};
             }
-            const auto* next = static_cast<const ExecOutPin*>(pin)->nextPin();
-            return next != nullptr ? graph.nodeId(next->node()) : NodeId{};
+            const auto links = graph.linkedPins(id);
+            return links.empty() ? NodeId{} : graph.nodeId(links.front()->node());
         }
 
         template <class Emit> void successors(const FlowGraph& graph, NodeId id, Emit&& emit) noexcept
@@ -32,7 +32,7 @@ namespace lux::flowforge
                 {
                     continue;
                 }
-                if (const auto* next = static_cast<const ExecOutPin*>(pin)->nextPin())
+                for (const auto* next : graph.linkedPins(graph.pinId(pin)))
                 {
                     emit(graph.nodeId(next->node()));
                 }

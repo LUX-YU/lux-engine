@@ -416,7 +416,7 @@ namespace lux::flowforge
                 const
             {
                 llvm::SmallVector<mlir::Value> preds;
-                for (auto* ex : in.linkedPins())
+                for (auto* ex : bc.graph->linkedPins(bc.graph->pinId(&in)))
                 {
                     auto it = exec_tok.find(bc.graph->pinId(ex).value);
                     if (it == exec_tok.end() || !it->second)
@@ -880,7 +880,7 @@ namespace lux::flowforge
     //   - vm.exec_tok[bc.graph->pinId(&start_pin)] holds the incoming token for this chain
     //     (the predecessor's out-token, or the enclosing region's block-arg).
     //
-    // The loop walks `start_pin -> nextPin().node()` and dispatches by op kind.
+    // The loop follows the supplied graph's execution edges and dispatches by op kind.
     // For each control op with sub-regions it sets the insertion point into
     // the region's block, recurses, then restores the insertion point on
     // return (via InsertionGuard) and continues the outer chain.
@@ -904,11 +904,12 @@ namespace lux::flowforge
 
         while (true)
         {
-            const ExecInPin* next_in = cur_pin->nextPin();
-            if (!next_in)
+            const auto successors = bc.graph->linkedPins(bc.graph->pinId(cur_pin));
+            if (successors.empty())
             {
                 return cur_tok; // chain ends
             }
+            const auto* next_in = static_cast<const ExecInPin*>(successors.front());
             const Node* node = next_in->node();
             if (external.count(node))
             {
@@ -924,7 +925,7 @@ namespace lux::flowforge
             // Merge multi-link in-tokens via flowforge.token_merge (single-link
             // and all-same fast-paths inside mergeExecTokens).
             mlir::Value in_tok = cur_tok;
-            if (next_in->linkedPins().size() > 1)
+            if (bc.graph->topology().linkCount(bc.graph->pinId(next_in)) > 1)
             {
                 LUX_FF_TRY_VALUE(preds, vm.gatherPredTokens(*next_in, bc));
                 LUX_FF_TRY_VALUE(merged, mergeExecTokens(bc, preds));
@@ -1229,11 +1230,12 @@ namespace lux::flowforge
                         pd_exec_in = static_cast<const ExecInPin*>(p);
                         break;
                     }
-                if (!pd_exec_in || pd_exec_in->linkedPins().empty())
+                const auto predecessors = bc.graph->linkedPins(bc.graph->pinId(pd_exec_in));
+                if (predecessors.empty())
                 {
                     LUX_FF_FAIL(bc, "post-dominator has no exec_in link");
                 }
-                cur_pin = pd_exec_in->linkedPins().front();
+                cur_pin = static_cast<const ExecOutPin*>(predecessors.front());
                 LUX_FF_TRY_VALUE(post_dom_token, vm.requireExecTok(bc.graph->pinId(cur_pin).value, bc));
                 cur_tok = post_dom_token;
                 break;
@@ -1414,8 +1416,9 @@ namespace lux::flowforge
     {
         bc.current_pin = &in;
 
-        if (auto* src = in.linkedPin())
+        if (const auto link = bc.graph->topology().incoming(bc.graph->pinId(&in)))
         {
+            const auto* src = static_cast<const DataOutPin*>(bc.graph->findPin(link->from));
             if (auto it = vm.exec_data.find(bc.graph->pinId(src).value); it != vm.exec_data.end())
             {
                 return it->second;

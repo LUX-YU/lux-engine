@@ -19,3 +19,26 @@ engine_add_comm_ops(NAME ui_render_ops CLIENT_TARGET ui_rendering IMPLEMENTATION
     CLIENT_EXPORT_MACRO LUX_UI_RENDERING_PUBLIC CLIENT_VISIBILITY_HEADER lux/engine/ui/rendering/visibility.h
     BACKEND_EXPORT_MACRO LUX_UI_RENDERING_PUBLIC BACKEND_VISIBILITY_HEADER lux/engine/ui/rendering/visibility.h
     TARGET_FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/ui/rendering/UiRenderOperation.hpp)
+
+if(BUILD_TESTING AND LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(
+        ui_sampler_ownership_test
+        test/sampler_ownership.cpp
+    )
+    target_include_directories(
+        ui_sampler_ownership_test
+        PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/pinclude"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude"
+            "${CMAKE_CURRENT_SOURCE_DIR}/../../render/vulkan/sinclude"
+    )
+    target_link_libraries(
+        ui_sampler_ownership_test
+        PRIVATE ui_rendering render_vulkan imgui::vulkan Vulkan::Vulkan
+    )
+    lux_editor_test_options(ui_sampler_ownership_test)
+    if(LUX_RENDER_BUILD_GPU_TESTS)
+        add_test(NAME ui.sampler_ownership COMMAND ui_sampler_ownership_test)
+        set_tests_properties(ui.sampler_ownership PROPERTIES TIMEOUT 60 LABELS "gpu;lifecycle")
+    endif()
+endif()

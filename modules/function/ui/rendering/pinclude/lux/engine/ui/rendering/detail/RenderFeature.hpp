@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/RenderFeature.hpp>
+#include <lux/engine/render/gpu/lifecycle/DeviceObject.hpp>
 #include <lux/engine/ui/rendering/RenderFeature.hpp>
 #include <lux/engine/ui/rendering/detail/VulkanBackend.hpp>
 
@@ -51,7 +52,7 @@ namespace lux::ui::detail
         std::vector<std::vector<Texture>> textures_;
         std::uint32_t frame_slot_{};
         std::uint64_t serial_{};
-        VkSampler sampler_{};
+        render::SamplerOwner sampler_;
         static VkDescriptorSet resolveTexture(void*, render::RTextureHandle) noexcept;
     };
 } // namespace lux::ui::detail

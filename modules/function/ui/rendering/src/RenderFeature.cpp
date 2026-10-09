@@ -68,10 +68,6 @@ namespace lux::ui::detail
         {
             renderer_->destroyColorPipeline(pipeline);
         }
-        if (sampler_)
-        {
-            vkDestroySampler(renderContext().device(), sampler_, nullptr);
-        }
     }
 
     render::Expected<void> RenderFeature::initAndAttachTo(render::RenderScene&)
@@ -93,17 +89,18 @@ namespace lux::ui::detail
         {
             return render::renderFailure<render::err::feature::ResourceInitFailed>();
         }
-        renderer_ = std::move(*created);
         VkSamplerCreateInfo info{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
         info.magFilter = VK_FILTER_LINEAR;
         info.minFilter = VK_FILTER_LINEAR;
         info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
         info.addressModeU = info.addressModeV = info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        const auto result = vkCreateSampler(context.device(), &info, nullptr, &sampler_);
-        if (result != VK_SUCCESS)
+        auto sampler = render::SamplerOwner::create(context.device(), info);
+        if (!sampler)
         {
-            return render::renderFailure<render::err::device::VulkanCallFailed>(result);
+            return render::renderFailure<render::err::device::VulkanCallFailed>(sampler.error());
         }
+        renderer_ = std::move(*created);
+        sampler_ = std::move(*sampler);
         textures_.resize(context.framesInFlight());
         renderer_->setTextureResolver(&RenderFeature::resolveTexture, this);
         font_ = {};
@@ -188,7 +185,7 @@ namespace lux::ui::detail
             if (!source)
                 return render::renderFailure<render::err::resource::NotFound>();
             VkImageView view{};
-            VkSampler sampler = sampler_;
+            VkSampler sampler = sampler_.get();
             VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             if (source->kind == render::TextureResources::ERemoteKind::OUTPUT)
             {

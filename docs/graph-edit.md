@@ -29,6 +29,8 @@ are returned by the preparation operation; ordinary heap exhaustion retains the 
 
 The real installed SDK regression records the former identity reuse in both domain transactions.
 The shared edit tests additionally cover candidate restoration, direction and duplicate-link errors,
-layout locality, high-water exhaustion, and explicit restoration after exhaustion. This is the
-structural transaction extraction only: replacing legacy polymorphic domain nodes, pin payload lookup,
-codec/compiler integration and the remaining Flow extension catalog are separate, unfinished work.
+layout locality, high-water exhaustion, and explicit restoration after exhaustion. Material now stores
+registered semantic payloads by NodeId/PinId and uses this transaction for graph changes and source
+restoration; its compiler builds temporary indexes from the frozen topology. See the
+[Material contract](../modules/function/material/README.md). Flow's polymorphic node/pin migration,
+remaining extension catalog and graph-editor rendering qualification are still unfinished.

@@ -194,7 +194,7 @@ extern "C" SAMPLE_EXPORT const lux::simulation::ecs::ComponentPluginExports* lux
         directComponentValueCapture<sample_ext::Tint>(),
         directComponentReferences<sample_ext::Tint>()
     );
-    static const ComponentPluginExports table{sizeof(table), lux::render::kRenderPluginExportsVersion, &component, 1};
+    static const ComponentPluginExports table{.entries = &component, .count = 1};
     return &table;
 }
 
@@ -210,6 +210,6 @@ extern "C" SAMPLE_EXPORT const lux::scene::RenderScenePluginExports* lux_render_
          ) noexcept -> lux::cxx::expected<std::unique_ptr<RenderSyncStage>, RenderSyncStageCreateFailure>
         { return std::make_unique<sample_ext::TintStage>(info); }
     };
-    static const RenderScenePluginExports table{sizeof(table), lux::render::kRenderPluginExportsVersion, &binding, 1};
+    static const RenderScenePluginExports table{.entries = &binding, .count = 1};
     return &table;
 }

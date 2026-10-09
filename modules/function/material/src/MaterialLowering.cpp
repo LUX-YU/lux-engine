@@ -13,6 +13,7 @@
 // =============================================================================
 
 #include <lux/engine/material/MaterialIR.hpp>
+#include <lux/engine/material/detail/BuiltinMaterialNodes.hpp>
 #include <lux/engine/material/detail/MaterialMath.hpp>
 #include <lux/engine/material/detail/MaterialValidation.hpp>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
@@ -89,32 +90,6 @@ namespace lux::material
             }
         }
 
-        // Interpolant location for material shading inputs, aligned with the
-        // engine material vertex shader's output layout (mirrors the old
-        // material_graph_glsl emitter's declIn: the gaps in numbering are
-        // historical, and must match exactly so the shadergen emitter's
-        // output stays equivalent to the old backend's GLSL). VertexColor was
-        // never declared by the old backend, so it's left at -1 for the
-        // emitter/ShellTemplate to decide.
-        int32_t materialInputLocation(graph::EMaterialInput in) noexcept
-        {
-            switch (in)
-            {
-            case graph::EMaterialInput::WORLD_POSITION:
-                return 0;
-            case graph::EMaterialInput::WORLD_NORMAL:
-                return 1;
-            case graph::EMaterialInput::UV0:
-                return 3;
-            case graph::EMaterialInput::WORLD_TANGENT:
-                return 5;
-            case graph::EMaterialInput::VERTEX_COLOR:
-                return -1;
-            default:
-                return -1;
-            }
-        }
-
         // Iterative (explicit-stack) topological walk + SSA emission.
         // color: 0=white, 1=gray, 2=black.
         struct Lowerer
@@ -125,7 +100,6 @@ namespace lux::material
             MaterialCompileFailure* error;
             std::unordered_map<graph::NodeId, int> color;
             std::unordered_map<graph::NodeId, uint32_t> value_of;
-            std::unordered_map<graph::EMaterialInput, uint32_t> input_slot_of;
             bool ok = true;
 
             Lowerer(const graph::MaterialGraph& g_, MaterialIR& r_, MaterialCompileFailure* e_)
@@ -184,33 +158,6 @@ namespace lux::material
                 v.constant[2] = c[2];
                 v.constant[3] = c[3];
                 return push(v);
-            }
-
-            // Maps a material shading-input semantic onto a generic inputs
-            // slot, creating it lazily on first use.
-            uint32_t inputSlot(graph::EMaterialInput in)
-            {
-                auto it = input_slot_of.find(in);
-                if (it != input_slot_of.end())
-                {
-                    return it->second;
-                }
-                const uint32_t slot = static_cast<uint32_t>(ir.inputs.size());
-                InputSlot s;
-                const auto* input = graph::materialInputDescription(in);
-                if (input == nullptr)
-                {
-                    fail("invalid Material input reached lowering", EMaterialCompileError::INVALID_GRAPH);
-                    return kNoValue;
-                }
-                s.name = input->name;
-                s.type = valueType(input->type);
-                // Aligned with the engine material vertex interpolant layout.
-                s.location = materialInputLocation(in);
-                s.interpolation = EInterpolation::SMOOTH;
-                ir.inputs.push_back(std::move(s));
-                input_slot_of[in] = slot;
-                return slot;
             }
 
             bool validateSource(graph::PinLink source)
@@ -389,170 +336,77 @@ namespace lux::material
                 return it == value_of.end() ? kNoValue : it->second;
             }
 
+            template <class T> uint32_t emitBuiltin(graph::NodeId id, const graph::Node& node, const T& payload)
+            {
+                std::array<std::uint32_t, 4> inputs{};
+                for (std::size_t index = 0; index != node.inputs().size(); ++index)
+                {
+                    inputs[index] = operandValue(node.inputs()[index]);
+                    if (!ok)
+                    {
+                        return kNoValue;
+                    }
+                }
+                auto emitted = detail::appendBuiltin(payload, {inputs.data(), node.inputs().size()}, ir);
+                if (!emitted)
+                {
+                    auto failure = std::move(emitted.error());
+                    fail(std::move(failure.message), failure.code, id, failure.pin_index);
+                    return kNoValue;
+                }
+                return *emitted;
+            }
+
             uint32_t emitNode(graph::NodeId id, const graph::Node* n)
             {
+                // Transitional storage projection only: the registered semantic emitters below own
+                // compilation. The old Node representation is removed with the graph-store migration.
                 switch (n->kind())
                 {
                 case graph::EMatNodeKind::CONSTANT:
                 {
-                    auto* c = static_cast<const graph::ConstantNode*>(n);
-                    ShaderIRValue v{};
-                    v.op = EOp::CONSTANT;
-                    v.type = valueType(c->value_type, id);
-                    if (!ok)
-                    {
-                        return kNoValue;
-                    }
-                    for (int k = 0; k < 4; ++k)
-                    {
-                        v.constant[k] = c->value[k];
-                    }
-                    return push(v);
+                    const auto& value = static_cast<const graph::ConstantNode&>(*n);
+                    const MaterialConstant payload{
+                        {value.value[0], value.value[1], value.value[2], value.value[3]},
+                        value.value_type
+                    };
+                    return emitBuiltin(id, *n, payload);
                 }
                 case graph::EMatNodeKind::INPUT:
-                {
-                    auto* in = static_cast<const graph::InputNode*>(n);
-                    ShaderIRValue v{};
-                    v.op = EOp::INPUT;
-                    const auto* description = graph::materialInputDescription(in->input);
-                    if (description == nullptr)
-                    {
-                        fail("invalid Material input reached lowering", EMaterialCompileError::INVALID_GRAPH, id);
-                        return kNoValue;
-                    }
-                    v.type = valueType(description->type, id);
-                    v.slot = inputSlot(in->input);
-                    return push(v);
-                }
+                    return emitBuiltin(id, *n, MaterialInput{static_cast<const graph::InputNode&>(*n).input});
                 case graph::EMatNodeKind::SAMPLE_TEXTURE:
-                {
-                    auto* s = static_cast<const graph::SampleTextureNode*>(n);
-                    if (n->inputs().empty())
-                    {
-                        fail("SampleTexture node has no 'uv' input pin");
-                        return kNoValue;
-                    }
-                    const uint32_t uv = operandValue(n->inputs()[0]);
-                    if (!ok)
-                    {
-                        return kNoValue;
-                    }
-                    if (s->texture_slot >= ir.textures.size())
-                    {
-                        fail(
-                            "SampleTexture references an undeclared texture slot",
-                            EMaterialCompileError::INVALID_GRAPH,
-                            id
-                        );
-                        return kNoValue;
-                    }
-                    ShaderIRValue v{};
-                    v.op = EOp::SAMPLE_TEXTURE;
-                    v.type = ShaderValueType::VEC4;
-                    v.slot = s->texture_slot;
-                    v.operands[0] = uv;
-                    return push(v);
-                }
+                    return emitBuiltin(
+                        id,
+                        *n,
+                        MaterialSampleTexture{static_cast<const graph::SampleTextureNode&>(*n).texture_slot}
+                    );
                 case graph::EMatNodeKind::PARAM:
                 {
-                    auto* p = static_cast<const graph::ParamNode*>(n);
-                    if (p->param_slot >= ir.params.size())
-                    {
-                        fail("Param references an undeclared parameter slot", EMaterialCompileError::INVALID_GRAPH, id);
-                        return kNoValue;
-                    }
-                    ShaderIRValue v{};
-                    v.op = EOp::PARAM;
-                    v.type = ir.params[p->param_slot].type; // authoritative: the declared parameter type
-                    v.slot = p->param_slot;
-                    return push(v);
+                    const auto& value = static_cast<const graph::ParamNode&>(*n);
+                    return emitBuiltin(id, *n, MaterialParameter{value.param_slot, value.type});
                 }
                 case graph::EMatNodeKind::MATH:
                     return emitMath(id, static_cast<const graph::MathNode*>(n));
                 case graph::EMatNodeKind::DECODE_NORMAL:
-                {
-                    if (n->inputs().empty())
-                    {
-                        fail("DecodeNormal node has no 'rgb' input pin");
-                        return kNoValue;
-                    }
-                    const uint32_t rgb = operandValue(n->inputs()[0]);
-                    if (!ok)
-                    {
-                        return kNoValue;
-                    }
-                    ShaderIRValue v{};
-                    v.op = EOp::DECODE_NORMAL;
-                    v.type = ShaderValueType::VEC3;
-                    v.operands[0] = rgb;
-                    return push(v);
-                }
+                    return emitBuiltin(id, *n, MaterialDecodeNormal{});
                 case graph::EMatNodeKind::SWIZZLE:
                 {
-                    if (n->inputs().empty())
-                    {
-                        fail("Swizzle node has no input pin");
-                        return kNoValue;
-                    }
-                    const uint32_t src = operandValue(n->inputs()[0]);
-                    if (!ok)
-                    {
-                        return kNoValue;
-                    }
-                    auto* sw = static_cast<const graph::SwizzleNode*>(n);
-                    ShaderIRValue v{};
-                    v.op = EOp::SWIZZLE;
-                    v.type = valueType(sw->out_type, id);
-                    if (!ok)
-                    {
-                        return kNoValue;
-                    }
-                    v.operands[0] = src;
-                    for (int k = 0; k < 4; ++k)
-                    {
-                        v.swizzle[k] = sw->components[k];
-                    }
-                    return push(v);
+                    const auto& value = static_cast<const graph::SwizzleNode&>(*n);
+                    const MaterialSwizzle payload{
+                        value.source_type,
+                        value.out_type,
+                        {value.components[0], value.components[1], value.components[2], value.components[3]}
+                    };
+                    return emitBuiltin(id, *n, payload);
                 }
                 case graph::EMatNodeKind::TBN_TRANSFORM:
-                {
-                    if (n->inputs().empty())
-                    {
-                        fail("TbnTransform node has no input pin");
-                        return kNoValue;
-                    }
-                    const uint32_t src = operandValue(n->inputs()[0]);
-                    if (!ok)
-                    {
-                        return kNoValue;
-                    }
-                    ShaderIRValue v{};
-                    v.op = EOp::TBN_NORMAL;
-                    v.type = ShaderValueType::VEC3;
-                    v.operands[0] = src;
-                    return push(v);
-                }
+                    return emitBuiltin(id, *n, MaterialTbnTransform{});
                 case graph::EMatNodeKind::CONSTRUCT:
-                {
-                    auto* cs = static_cast<const graph::ConstructNode*>(n);
-                    const size_t cnt = n->inputs().size() > 4 ? 4 : n->inputs().size();
-                    ShaderIRValue v{};
-                    v.op = EOp::CONSTRUCT;
-                    v.type = valueType(cs->out_type, id);
-                    if (!ok)
-                    {
-                        return kNoValue;
-                    }
-                    for (size_t k = 0; k < cnt; ++k)
-                    {
-                        v.operands[k] = operandValue(n->inputs()[k]);
-                        if (!ok)
-                        {
-                            return kNoValue;
-                        }
-                    }
-                    return push(v);
-                }
+                    return emitBuiltin(
+                        id,
+                        *n,
+                        MaterialConstruct{static_cast<const graph::ConstructNode&>(*n).out_type}
+                    );
                 default:
                     fail(std::string("unsupported node kind in lowering: ") + graph::toString(n->kind()));
                     return kNoValue;
@@ -643,23 +497,11 @@ namespace lux::material
                 //    the constant was overridden, otherwise value_id=kNoValue
                 //    so the backend falls back to the contract default).
                 const size_t COUNT = static_cast<size_t>(graph::EMaterialAttribute::COUNT);
-                ir.outputs.reserve(COUNT);
+                std::array<std::uint32_t, COUNT> surface_inputs;
+                surface_inputs.fill(kNoValue);
                 for (size_t i = 0; i < COUNT; ++i)
                 {
                     const graph::MaterialAttributeDesc& adesc = graph::kMaterialAttributes[i];
-                    Output o;
-                    o.name = adesc.name;
-                    o.type = valueType(adesc.type);
-                    if (!ok)
-                    {
-                        return false;
-                    }
-                    o.value_id = kNoValue;
-                    for (int k = 0; k < 4; ++k)
-                    {
-                        o.dflt[k] = adesc.dflt[k];
-                    }
-
                     if (i < output->inputs().size())
                     {
                         const graph::DataPin& pin = output->inputs()[i];
@@ -675,7 +517,7 @@ namespace lux::material
                             {
                                 return false;
                             }
-                            o.value_id = operandValue(pin);
+                            surface_inputs[i] = operandValue(pin);
                             if (!ok)
                             {
                                 return false;
@@ -693,7 +535,7 @@ namespace lux::material
                                 {
                                     return false;
                                 }
-                                o.value_id = emitConstant(pin.constant, type);
+                                surface_inputs[i] = emitConstant(pin.constant, type);
                                 if (!ok)
                                 {
                                     return false;
@@ -701,7 +543,12 @@ namespace lux::material
                             }
                         }
                     }
-                    ir.outputs.push_back(std::move(o));
+                }
+                auto surface = detail::appendSurface(surface_inputs, ir);
+                if (!surface)
+                {
+                    auto failure = std::move(surface.error());
+                    return fail(std::move(failure.message), failure.code, output_id, failure.pin_index);
                 }
 
                 ir.fingerprint = ::lux::shadergen::computeFingerprint(ir);

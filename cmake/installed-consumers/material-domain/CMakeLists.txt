@@ -42,7 +42,17 @@ target_link_libraries(material_math_registration PRIVATE lux::engine::function::
 
 add_test(NAME installed.material_math_registration COMMAND material_math_registration)
 
+add_executable(
+    material_builtin_nodes
+    "${CMAKE_CURRENT_LIST_DIR}/../../../modules/function/material/test/builtin_nodes.cpp"
+)
+
+target_link_libraries(material_builtin_nodes PRIVATE lux::engine::function::material_graph)
+
+add_test(NAME installed.material_builtin_nodes COMMAND material_builtin_nodes)
+
 foreach(header
+    BuiltinMaterialNodes
     ShaderIR
     MaterialCompileFailure
     MaterialIR
@@ -62,6 +72,8 @@ foreach(header
 endforeach()
 
 foreach(target
+    material_builtin_nodes
+    BuiltinMaterialNodes_header
     material_math_registration
     MaterialMath_header
     MaterialNodeCatalog_header

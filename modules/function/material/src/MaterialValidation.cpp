@@ -1,4 +1,5 @@
 #include <lux/engine/description/Material.hpp>
+#include <lux/engine/material/detail/BuiltinMaterialNodes.hpp>
 #include <lux/engine/material/detail/MaterialMath.hpp>
 #include <lux/engine/material/detail/MaterialValidation.hpp>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
@@ -140,10 +141,13 @@ namespace lux::material::detail
                     return shape;
                 }
                 const auto& value = static_cast<const ConstantNode&>(node);
-                const bool is_invalid_value = !validValueType(value.value_type) || !finiteValues(value.value);
-                if (is_invalid_value)
+                auto validated = detail::validateBuiltin(
+                    MaterialConstant{{value.value[0], value.value[1], value.value[2], value.value[3]}, value.value_type}
+                );
+                if (!validated)
                 {
-                    return invalidGraph("invalid Constant node payload", id);
+                    validated.error().node_id = id;
+                    return validated;
                 }
                 return requirePinType(false, 0U, value.value_type);
             }
@@ -154,12 +158,13 @@ namespace lux::material::detail
                     return shape;
                 }
                 const auto& input = static_cast<const InputNode&>(node);
-                const auto* description = materialInputDescription(input.input);
-                if (description == nullptr)
+                auto validated = detail::validateBuiltin(MaterialInput{input.input});
+                if (!validated)
                 {
-                    return invalidGraph("invalid Material input enum", id);
+                    validated.error().node_id = id;
+                    return validated;
                 }
-                return requirePinType(false, 0U, description->type);
+                return requirePinType(false, 0U, materialInputDescription(input.input)->type);
             }
             case EMatNodeKind::SAMPLE_TEXTURE:
             {
@@ -185,10 +190,16 @@ namespace lux::material::detail
                     return shape;
                 }
                 const auto& parameter = static_cast<const ParamNode&>(node);
+                auto validated = detail::validateBuiltin(MaterialParameter{parameter.param_slot, parameter.type});
+                if (!validated)
+                {
+                    validated.error().node_id = id;
+                    return validated;
+                }
                 const bool has_slot = parameter.param_slot < graph.param_slots.size();
                 const bool is_type_mismatch =
                     has_slot && graph.param_slots[parameter.param_slot].type != parameter.type;
-                const bool is_invalid_parameter = !validValueType(parameter.type) || !has_slot || is_type_mismatch;
+                const bool is_invalid_parameter = !has_slot || is_type_mismatch;
                 if (is_invalid_parameter)
                 {
                     return invalidGraph("invalid Param node payload", id);
@@ -225,22 +236,15 @@ namespace lux::material::detail
                     return shape;
                 }
                 const auto& swizzle = static_cast<const SwizzleNode&>(node);
-                const auto source_arity = valueArity(swizzle.source_type);
-                const auto output_arity = valueArity(swizzle.out_type);
-                const bool is_invalid_arity = source_arity == 0U || output_arity == 0U;
-                if (is_invalid_arity)
+                auto validated = detail::validateBuiltin(MaterialSwizzle{
+                    swizzle.source_type,
+                    swizzle.out_type,
+                    {swizzle.components[0], swizzle.components[1], swizzle.components[2], swizzle.components[3]}
+                });
+                if (!validated)
                 {
-                    return invalidGraph("invalid Swizzle node value type", id);
-                }
-                for (std::size_t component = 0U; component < std::size(swizzle.components); ++component)
-                {
-                    const bool is_used = component < output_arity;
-                    const bool is_invalid_component = swizzle.components[component] > 3U ||
-                                                      (is_used && swizzle.components[component] >= source_arity);
-                    if (is_invalid_component)
-                    {
-                        return invalidGraph("invalid Swizzle component", id, static_cast<std::uint32_t>(component));
-                    }
+                    validated.error().node_id = id;
+                    return validated;
                 }
                 if (auto input = requirePinType(true, 0U, swizzle.source_type); !input)
                 {
@@ -251,8 +255,14 @@ namespace lux::material::detail
             case EMatNodeKind::CONSTRUCT:
             {
                 const auto& construct = static_cast<const ConstructNode&>(node);
+                auto validated = detail::validateBuiltin(MaterialConstruct{construct.out_type});
+                if (!validated)
+                {
+                    validated.error().node_id = id;
+                    return validated;
+                }
                 const auto arity = valueArity(construct.out_type);
-                const bool is_invalid_shape = arity == 0U || !hasShape(node, arity, 1U);
+                const bool is_invalid_shape = !hasShape(node, arity, 1U);
                 if (is_invalid_shape)
                 {
                     return invalidGraph("invalid Construct node payload or arity", id);
@@ -299,8 +309,8 @@ namespace lux::material::detail
 
     } // namespace
 
-    [[nodiscard]] lux::cxx::expected<void, MaterialCompileFailure>
-    validateMaterialGraph(const MaterialGraph& graph) noexcept
+    [[nodiscard]] lux::cxx::expected<void, MaterialCompileFailure> validateMaterialGraph(const MaterialGraph& graph
+    ) noexcept
     {
         const bool has_nodes = !graph.nodes().empty();
         const bool exceeds_parameters = graph.param_slots.size() > rdesc::MaterialDescription::kMaxParams;

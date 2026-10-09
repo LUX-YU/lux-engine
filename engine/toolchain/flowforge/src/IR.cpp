@@ -32,6 +32,7 @@
 #include "lux/engine/flowforge/graph/FunctionalNode.hpp"
 #include "lux/engine/flowforge/graph/ObjectNode.hpp"
 #include "lux/engine/flowforge/graph/ArithmeticNode.hpp"
+#include <lux/engine/flowforge/detail/ScalarLowering.hpp>
 #include "lux/engine/flowforge/script/ScriptEventAwaitNode.hpp"
 #include "lux/engine/flowforge/script/ScriptAbilityNode.hpp"
 
@@ -172,7 +173,7 @@ namespace lux::flowforge
     // types, and records/unknowns fall back to llvm.ptr. Signedness (int vs
     // uint) is not encoded in the MLIR integer type itself (MLIR convention:
     // signless integers) — op SELECTION carries the signedness instead, see
-    // isUnsignedInt / lowerBinaryOp.
+    // detail::isUnsignedScalar / lowerBinaryOp.
     static mlir::Type refTypeToMLIR(BuilderContext& bc, const lux::meta::RefType& rt)
     {
         using lux::meta::EBaseType;
@@ -207,28 +208,6 @@ namespace lux::flowforge
         default:
             return mlir::LLVM::LLVMPointerType::get(bc.ctx);
         }
-    }
-
-    static bool isUnsignedInt(const lux::meta::RefType& rt)
-    {
-        using lux::meta::EBaseType;
-        switch (static_cast<EBaseType>(rt.qtype.base))
-        {
-        case EBaseType::UINT8:
-        case EBaseType::UINT16:
-        case EBaseType::UINT32:
-        case EBaseType::UINT64:
-            return true;
-        default:
-            return false;
-        }
-    }
-
-    static bool isFloatType(const lux::meta::RefType& rt)
-    {
-        using lux::meta::EBaseType;
-        auto base = static_cast<EBaseType>(rt.qtype.base);
-        return base == EBaseType::FLOAT || base == EBaseType::DOUBLE;
     }
 
     //==============================================================================
@@ -1778,7 +1757,7 @@ namespace lux::flowforge
         auto dst_int = mlir::dyn_cast<mlir::IntegerType>(dst);
         auto src_flt = mlir::dyn_cast<mlir::FloatType>(src);
         auto dst_flt = mlir::dyn_cast<mlir::FloatType>(dst);
-        const bool dst_unsigned = isUnsignedInt(dst_rt);
+        const bool dst_unsigned = detail::isUnsignedScalar(dst_rt);
 
         // The for-loop induction variable is an MLIR `index`; wiring it into
         // integer arithmetic is the single most common pattern, so cast it.
@@ -1846,62 +1825,78 @@ namespace lux::flowforge
 
         auto& b = bc.builder;
         auto loc = bc.loc;
-        const bool flt = isFloatType(*rt);
-        const bool uns = isUnsignedInt(*rt);
-
+        const auto instruction = detail::selectBinaryScalarInstruction(bin.operation(), *rt);
+        if (!instruction)
+        {
+            LUX_FF_FAIL(bc, "not a binary operation");
+        }
+        using I = detail::EScalarInstruction;
         using CmpI = mlir::arith::CmpIPredicate;
         using CmpF = mlir::arith::CmpFPredicate;
-        auto cmpi = [&](CmpI s, CmpI u) {
-            return b.create<mlir::arith::CmpIOp>(loc, uns ? u : s, lhs, rhs).getResult();
-        };
-        auto cmpf = [&](CmpF p) { return b.create<mlir::arith::CmpFOp>(loc, p, lhs, rhs).getResult(); };
-
-        switch (bin.operation())
+        switch (*instruction)
         {
-        case ENodeOperation::ADD:
-            return flt ? b.create<mlir::arith::AddFOp>(loc, lhs, rhs).getResult()
-                       : b.create<mlir::arith::AddIOp>(loc, lhs, rhs).getResult();
-        case ENodeOperation::SUBTRACT:
-            return flt ? b.create<mlir::arith::SubFOp>(loc, lhs, rhs).getResult()
-                       : b.create<mlir::arith::SubIOp>(loc, lhs, rhs).getResult();
-        case ENodeOperation::MULTIPLY:
-            return flt ? b.create<mlir::arith::MulFOp>(loc, lhs, rhs).getResult()
-                       : b.create<mlir::arith::MulIOp>(loc, lhs, rhs).getResult();
-        case ENodeOperation::DIVIDE:
-            if (flt)
-            {
-                return b.create<mlir::arith::DivFOp>(loc, lhs, rhs).getResult();
-            }
-            return uns ? b.create<mlir::arith::DivUIOp>(loc, lhs, rhs).getResult()
-                       : b.create<mlir::arith::DivSIOp>(loc, lhs, rhs).getResult();
-        case ENodeOperation::MODULO:
-            if (flt)
-            {
-                return b.create<mlir::arith::RemFOp>(loc, lhs, rhs).getResult();
-            }
-            return uns ? b.create<mlir::arith::RemUIOp>(loc, lhs, rhs).getResult()
-                       : b.create<mlir::arith::RemSIOp>(loc, lhs, rhs).getResult();
-
-        case ENodeOperation::LOGICAL_AND:
+        case I::ADD_INTEGER:
+            return b.create<mlir::arith::AddIOp>(loc, lhs, rhs).getResult();
+        case I::ADD_FLOAT:
+            return b.create<mlir::arith::AddFOp>(loc, lhs, rhs).getResult();
+        case I::SUBTRACT_INTEGER:
+            return b.create<mlir::arith::SubIOp>(loc, lhs, rhs).getResult();
+        case I::SUBTRACT_FLOAT:
+            return b.create<mlir::arith::SubFOp>(loc, lhs, rhs).getResult();
+        case I::MULTIPLY_INTEGER:
+            return b.create<mlir::arith::MulIOp>(loc, lhs, rhs).getResult();
+        case I::MULTIPLY_FLOAT:
+            return b.create<mlir::arith::MulFOp>(loc, lhs, rhs).getResult();
+        case I::DIVIDE_SIGNED:
+            return b.create<mlir::arith::DivSIOp>(loc, lhs, rhs).getResult();
+        case I::DIVIDE_UNSIGNED:
+            return b.create<mlir::arith::DivUIOp>(loc, lhs, rhs).getResult();
+        case I::DIVIDE_FLOAT:
+            return b.create<mlir::arith::DivFOp>(loc, lhs, rhs).getResult();
+        case I::REMAINDER_SIGNED:
+            return b.create<mlir::arith::RemSIOp>(loc, lhs, rhs).getResult();
+        case I::REMAINDER_UNSIGNED:
+            return b.create<mlir::arith::RemUIOp>(loc, lhs, rhs).getResult();
+        case I::REMAINDER_FLOAT:
+            return b.create<mlir::arith::RemFOp>(loc, lhs, rhs).getResult();
+        case I::AND:
             return b.create<mlir::arith::AndIOp>(loc, lhs, rhs).getResult();
-        case ENodeOperation::LOGICAL_OR:
+        case I::OR:
             return b.create<mlir::arith::OrIOp>(loc, lhs, rhs).getResult();
-
-        case ENodeOperation::CMP_EQ:
-            return flt ? cmpf(CmpF::OEQ) : cmpi(CmpI::eq, CmpI::eq);
-        case ENodeOperation::CMP_NE:
-            return flt ? cmpf(CmpF::ONE) : cmpi(CmpI::ne, CmpI::ne);
-        case ENodeOperation::CMP_LT:
-            return flt ? cmpf(CmpF::OLT) : cmpi(CmpI::slt, CmpI::ult);
-        case ENodeOperation::CMP_LE:
-            return flt ? cmpf(CmpF::OLE) : cmpi(CmpI::sle, CmpI::ule);
-        case ENodeOperation::CMP_GT:
-            return flt ? cmpf(CmpF::OGT) : cmpi(CmpI::sgt, CmpI::ugt);
-        case ENodeOperation::CMP_GE:
-            return flt ? cmpf(CmpF::OGE) : cmpi(CmpI::sge, CmpI::uge);
-
+        case I::EQUAL_INTEGER:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::eq, lhs, rhs).getResult();
+        case I::NOT_EQUAL_INTEGER:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::ne, lhs, rhs).getResult();
+        case I::LESS_SIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::slt, lhs, rhs).getResult();
+        case I::LESS_UNSIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::ult, lhs, rhs).getResult();
+        case I::LESS_EQUAL_SIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::sle, lhs, rhs).getResult();
+        case I::LESS_EQUAL_UNSIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::ule, lhs, rhs).getResult();
+        case I::GREATER_SIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::sgt, lhs, rhs).getResult();
+        case I::GREATER_UNSIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::ugt, lhs, rhs).getResult();
+        case I::GREATER_EQUAL_SIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::sge, lhs, rhs).getResult();
+        case I::GREATER_EQUAL_UNSIGNED:
+            return b.create<mlir::arith::CmpIOp>(loc, CmpI::uge, lhs, rhs).getResult();
+        case I::EQUAL_ORDERED_FLOAT:
+            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OEQ, lhs, rhs).getResult();
+        case I::NOT_EQUAL_ORDERED_FLOAT:
+            return b.create<mlir::arith::CmpFOp>(loc, CmpF::ONE, lhs, rhs).getResult();
+        case I::LESS_ORDERED_FLOAT:
+            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OLT, lhs, rhs).getResult();
+        case I::LESS_EQUAL_ORDERED_FLOAT:
+            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OLE, lhs, rhs).getResult();
+        case I::GREATER_ORDERED_FLOAT:
+            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OGT, lhs, rhs).getResult();
+        case I::GREATER_EQUAL_ORDERED_FLOAT:
+            return b.create<mlir::arith::CmpFOp>(loc, CmpF::OGE, lhs, rhs).getResult();
         default:
-            LUX_FF_FAIL(bc, "not a binary operation");
+            std::terminate(); // The domain selector only returns binary instructions.
         }
     }
 
@@ -1918,22 +1913,25 @@ namespace lux::flowforge
         auto& b = bc.builder;
         auto loc = bc.loc;
 
-        switch (un.operation())
+        const auto instruction = detail::selectUnaryScalarInstruction(un.operation(), *rt);
+        if (!instruction)
         {
-        case ENodeOperation::NEGATE: {
-            if (isFloatType(*rt))
-            {
-                return b.create<mlir::arith::NegFOp>(loc, v).getResult();
-            }
+            LUX_FF_FAIL(bc, "not a unary operation");
+        }
+        switch (*instruction)
+        {
+        case detail::EScalarInstruction::NEGATE_FLOAT:
+            return b.create<mlir::arith::NegFOp>(loc, v).getResult();
+        case detail::EScalarInstruction::NEGATE_INTEGER: {
             auto zero = b.create<mlir::arith::ConstantOp>(loc, v.getType(), b.getIntegerAttr(v.getType(), 0));
             return b.create<mlir::arith::SubIOp>(loc, zero, v).getResult();
         }
-        case ENodeOperation::LOGICAL_NOT: {
+        case detail::EScalarInstruction::NOT_BOOLEAN: {
             auto one = b.create<mlir::arith::ConstantOp>(loc, b.getI1Type(), b.getBoolAttr(true));
             return b.create<mlir::arith::XOrIOp>(loc, v, one).getResult();
         }
         default:
-            LUX_FF_FAIL(bc, "not a unary operation");
+            std::terminate(); // The domain selector only returns unary instructions.
         }
     }
 

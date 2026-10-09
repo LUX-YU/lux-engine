@@ -15,6 +15,7 @@ add_component(
     OUTPUT_NAME    lux_engine_function_flowforge
     SOURCE_FILES
         src/FlowNodePayload.cpp
+        src/ScalarLowering.cpp
         src/NodeRegistry.cpp
         src/NodeBase.cpp
         src/ControlNode.cpp
@@ -59,7 +60,7 @@ target_link_libraries(
 )
 target_compile_definitions(flowforge PRIVATE TOML_EXCEPTIONS=0 TOML_HEADER_ONLY=1)
 
-target_include_directories(flowforge PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
+target_include_directories(flowforge PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/sinclude)
 
 target_include_directories(flowforge PRIVATE $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
 

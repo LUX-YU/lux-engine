@@ -44,6 +44,7 @@ target_include_directories(
     flowforge_compiler
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+        ${PROJECT_SOURCE_DIR}/modules/function/flowforge/sinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/src/mlir
         ${CMAKE_CURRENT_BINARY_DIR}/src/mlir
         ${MLIR_INCLUDE_DIRS}
@@ -67,4 +68,12 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
     target_link_libraries(flowforge_ability_contract_test PRIVATE flowforge_compiler)
     lux_editor_test_options(flowforge_ability_contract_test)
     add_test(NAME flowforge.ability_contract COMMAND flowforge_ability_contract_test)
+
+    add_executable(flowforge_scalar_lowering_test test/scalar_lowering.cpp)
+
+    target_link_libraries(flowforge_scalar_lowering_test PRIVATE flowforge_compiler)
+
+    lux_editor_test_options(flowforge_scalar_lowering_test)
+
+    add_test(NAME flowforge.scalar_lowering COMMAND flowforge_scalar_lowering_test)
 endif()

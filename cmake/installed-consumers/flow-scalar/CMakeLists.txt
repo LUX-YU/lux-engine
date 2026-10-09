@@ -8,6 +8,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(lux-engine-flowforge-compiler REQUIRED COMPONENTS flowforge_compiler)
 
+find_package(lux-engine-function REQUIRED COMPONENTS script_native)
+
 enable_testing()
 
 add_executable(scalar_lowering "${CMAKE_CURRENT_LIST_DIR}/../../../engine/toolchain/flowforge/test/scalar_lowering.cpp")
@@ -27,3 +29,12 @@ add_executable(control_lowering "${CMAKE_CURRENT_LIST_DIR}/../../../engine/toolc
 target_link_libraries(control_lowering PRIVATE lux::engine::flowforge::flowforge_compiler)
 
 add_test(NAME installed.flow_control_compiler_compatibility COMMAND control_lowering)
+
+add_executable(nested_control "${CMAKE_CURRENT_LIST_DIR}/../../../engine/toolchain/flowforge/test/nested_control.cpp")
+
+target_link_libraries(
+    nested_control
+    PRIVATE lux::engine::flowforge::flowforge_compiler lux::engine::function::script_native
+)
+
+add_test(NAME installed.flow_nested_control COMMAND nested_control)

@@ -75,6 +75,14 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
     lux_editor_test_options(flowforge_scalar_lowering_test)
 
     add_test(NAME flowforge.scalar_lowering COMMAND flowforge_scalar_lowering_test)
+
+    add_executable(flowforge_nested_control_test test/nested_control.cpp)
+
+    target_link_libraries(flowforge_nested_control_test PRIVATE flowforge_compiler script_native)
+
+    lux_editor_test_options(flowforge_nested_control_test)
+
+    add_test(NAME flowforge.nested_control COMMAND flowforge_nested_control_test)
 endif()
 
 if(BUILD_TESTING AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)

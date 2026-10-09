@@ -134,7 +134,6 @@ namespace
 int main(int argc, char** argv)
 {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
-    bool failed{};
     std::ofstream output;
     if (argc == 2)
     {
@@ -158,12 +157,9 @@ int main(int argc, char** argv)
                 static_cast<unsigned long long>(compiled.error().pin_id),
                 compiled.error().message.c_str()
             );
-            const bool is_inherited_nested_failure =
-                mode == 2 && compiled.error().message == "compile failed: exec token not materialised";
             const bool is_explicit_invalid_break =
                 mode == 6 && compiled.error().message == "compile failed: Break is only valid inside a loop body";
-            require(is_inherited_nested_failure || is_explicit_invalid_break);
-            failed = failed || mode != 6;
+            require(is_explicit_invalid_break);
             continue;
         }
         require(mode != 6 && !compiled->object.empty());
@@ -175,8 +171,7 @@ int main(int argc, char** argv)
             output.write(reinterpret_cast<const char*>(compiled->object.data()), compiled->object.size());
         }
     }
-    std::printf("control AOT total bytes=%zu unexpected_failure=%u\n", bytes, unsigned(failed));
-    // Compatibility regression only. The valid nested graph remains an OPEN compiler failure;
-    // the qualification probe deliberately returns 42 so it cannot be reported as supported.
-    return argc == 2 && failed ? 42 : 0;
+    std::printf("control AOT total bytes=%zu unexpected_failure=0\n", bytes);
+    // Every legal case must compile; the archived pre-correction probe retains the former failure.
+    return 0;
 }

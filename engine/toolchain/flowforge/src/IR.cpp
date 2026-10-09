@@ -1068,6 +1068,14 @@ namespace lux::flowforge
                     // outer chain simply has nothing more to lower.
                     return cur_tok;
                 }
+                if (external.contains(pd))
+                {
+                    // The enclosing region owns this merge. Its other predecessors may not have
+                    // been lowered yet, or their tokens may belong to sibling regions. Complete
+                    // this region with the branch's outer token; only the owning chain gathers
+                    // the merge's predecessors after all participating regions have returned.
+                    return op.getResult(0);
+                }
                 // Pivot to the post-dominator. Any of its linked
                 // predecessors works (they all map to the right Branch
                 // result thanks to the remap above); the next iteration

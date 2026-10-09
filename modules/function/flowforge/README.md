@@ -25,9 +25,11 @@ graph and return owned IDs, never borrowed nodes. Direct-edge traversal is itera
 with the immutable suspension projection. The compiler consumes these queries; its old pointer
 walk and branch-merge implementation are removed. Merge selection preserves the existing
 true-leg-first breadth-first rule; it is not advertised as a general post-dominance theorem.
-The legal nested-Branch fixture currently fails in the real compiler with an unmaterialized
-execution token. Its diagnostic compatibility regression does not qualify that graph as supported;
-the old and new installed-SDK probes retain an explicit failing exit status.
+At a merge owned by an enclosing control region, nested branch lowering returns its outer token
+without inspecting that merge's other predecessors. Only the owning chain gathers them, after
+its participating regions have returned. The original unmaterialized-token and SSA-dominance
+failures are archived; the regression now requires successful compilation and checks linked
+native execution for one, two and three nested levels in both predecessor insertion orders.
 
 The result owns requirement values and an execution-reachability projection keyed by the
 input graph's stable IDs. It does not retain Node/Pin pointers, catalog views or reflection

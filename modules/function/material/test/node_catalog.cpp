@@ -49,6 +49,8 @@ namespace
         bool reject_clone{};
         bool invalid_pins{};
         bool invalid_output{};
+        bool invalid_output_use{};
+        EMaterialInputUse input_use{EMaterialInputUse::VALUE};
     };
 
     MaterialNodeResult<std::unique_ptr<Payload>> clonePayload(const Payload& source) noexcept
@@ -65,6 +67,8 @@ namespace
         copy->outputs = source.outputs;
         copy->invalid_pins = source.invalid_pins;
         copy->invalid_output = source.invalid_output;
+        copy->invalid_output_use = source.invalid_output_use;
+        copy->input_use = source.input_use;
         return copy;
     }
 
@@ -89,6 +93,7 @@ namespace
             const auto& value = *payload.get<Payload>();
             std::vector<MaterialPinDeclaration> pins;
             pins.push_back({graph::PinSemanticId{1}, "input", graph::EPinDirection::INPUT});
+            pins.back().input_use = value.input_use;
             for (unsigned i = 0; i != value.outputs; ++i)
             {
                 pins.push_back(
@@ -96,6 +101,10 @@ namespace
                      "output " + std::to_string(i),
                      graph::EPinDirection::OUTPUT}
                 );
+            }
+            if (value.invalid_output_use)
+            {
+                pins.back().input_use = EMaterialInputUse::UNUSED;
             }
             return pins;
         };
@@ -109,8 +118,15 @@ namespace
             {
                 const auto index = static_cast<std::uint32_t>(ir.values.size());
                 shadergen::ShaderIRValue expression{shadergen::EOp::ADD, shadergen::EValueType::FLOAT};
-                expression.operands[0] = inputs[0];
-                expression.operands[1] = inputs[0];
+                if (inputs[0] == shadergen::kNoValue)
+                {
+                    expression.op = shadergen::EOp::CONSTANT;
+                }
+                else
+                {
+                    expression.operands[0] = inputs[0];
+                    expression.operands[1] = inputs[0];
+                }
                 ir.values.push_back(expression);
                 outputs.push_back(value.invalid_output ? shadergen::kNoValue : index);
             }
@@ -190,6 +206,18 @@ int main()
     const auto prior = shadergen::computeFingerprint(candidate);
     require(!type->compile(*payload, bad_input, candidate));
     require(shadergen::computeFingerprint(candidate) == prior);
+    payload->get<Payload>()->input_use = EMaterialInputUse::CONNECTED_VALUE;
+    require(type->compile(*payload, bad_input, candidate).has_value());
+    require(type->compile(*payload, inputs, candidate).has_value());
+    payload->get<Payload>()->input_use = EMaterialInputUse::UNUSED;
+    require(type->compile(*payload, bad_input, candidate).has_value());
+    require(!type->compile(*payload, inputs, candidate));
+    payload->get<Payload>()->input_use = static_cast<EMaterialInputUse>(255);
+    require(!type->describePins(*payload));
+    payload->get<Payload>()->input_use = EMaterialInputUse::VALUE;
+    payload->get<Payload>()->invalid_output_use = true;
+    require(!type->describePins(*payload));
+    payload->get<Payload>()->invalid_output_use = false;
     payload->get<Payload>()->invalid_pins = true;
     require(!type->describePins(*payload));
     payload->get<Payload>()->invalid_pins = false;

@@ -115,7 +115,13 @@ namespace lux::material
                 pins->begin() + i,
                 [&](const auto& existing) noexcept { return existing.semantic == pin.semantic; }
             );
-            const bool is_invalid_pin = !has_identity || !is_valid_type || !is_valid_direction || has_duplicate;
+            const bool is_valid_use = pin.input_use == EMaterialInputUse::VALUE ||
+                                      pin.input_use == EMaterialInputUse::CONNECTED_VALUE ||
+                                      pin.input_use == EMaterialInputUse::UNUSED;
+            const bool is_output_use_mismatch =
+                pin.direction == graph::EPinDirection::OUTPUT && pin.input_use != EMaterialInputUse::VALUE;
+            const bool is_invalid_pin = !has_identity || !is_valid_type || !is_valid_direction || has_duplicate ||
+                                        !is_valid_use || is_output_use_mismatch;
             if (is_invalid_pin)
             {
                 return cxx::unexpected(
@@ -146,11 +152,29 @@ namespace lux::material
                 ++output_count;
                 continue;
             }
-            const bool has_input = input_count < inputs.size();
-            const bool has_value = has_input && inputs[input_count] < candidate.values.size();
+            if (input_count >= inputs.size())
+            {
+                return cxx::unexpected(invalid("node input count does not match its pin declarations"));
+            }
+            const auto input = inputs[input_count];
+            const bool has_value = input < candidate.values.size();
             const bool has_matching_type =
-                has_value && candidate.values[inputs[input_count]].type == static_cast<shadergen::EValueType>(pin.type);
-            if (!has_matching_type)
+                has_value && candidate.values[input].type == static_cast<shadergen::EValueType>(pin.type);
+            const bool is_absent = input == shadergen::kNoValue;
+            bool accepted{};
+            switch (pin.input_use)
+            {
+            case EMaterialInputUse::VALUE:
+                accepted = has_matching_type;
+                break;
+            case EMaterialInputUse::CONNECTED_VALUE:
+                accepted = is_absent || has_matching_type;
+                break;
+            case EMaterialInputUse::UNUSED:
+                accepted = is_absent;
+                break;
+            }
+            if (!accepted)
             {
                 return cxx::unexpected(invalid("node input does not match its pin declaration"));
             }

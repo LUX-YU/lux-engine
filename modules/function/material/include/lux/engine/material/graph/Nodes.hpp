@@ -10,40 +10,11 @@
 
 #include <memory>
 
+#include <lux/engine/material/MaterialMath.hpp>
 #include <lux/engine/material/graph/Node.hpp>
 
 namespace lux::material
 {
-    enum class EMathOp : uint8_t
-    {
-        // binary (2 operands)
-        MUL,
-        ADD,
-        SUB,
-        DIV,
-        DOT, ///< -> Float
-        MIN,
-        MAX,
-        POW,
-        STEP,
-        MOD,
-        CROSS, ///< Vec3 x Vec3 -> Vec3
-        REFLECT,
-        // ternary (currently unsupported by the 2-pin Math node)
-        LERP,
-        // unary (1 operand; pin 1 ignored)
-        SATURATE,
-        ONE_MINUS, ///< 1 - x
-        ABS,
-        SQRT,
-        FLOOR,
-        FRACT,
-        SIN,
-        COS,
-        NORMALIZE,
-        LENGTH ///< -> Float
-    };
-
     // A specialization may override clone/destruction while retaining its built-in kind and payload schema.
     // clone() must produce an independent object, including any auxiliary owned state. Code leases live
     // outside these objects; subclasses must not rely on an in-object lease to cover their own destructor.
@@ -54,6 +25,7 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::CONSTANT;
         ConstantNode();
+
         [[nodiscard]] std::unique_ptr<Node> clone() const override
         {
             return std::make_unique<ConstantNode>(*this);
@@ -73,6 +45,7 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::INPUT;
         InputNode();
+
         [[nodiscard]] std::unique_ptr<Node> clone() const override
         {
             return std::make_unique<InputNode>(*this);
@@ -89,6 +62,7 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::SAMPLE_TEXTURE;
         SampleTextureNode();
+
         [[nodiscard]] std::unique_ptr<Node> clone() const override
         {
             return std::make_unique<SampleTextureNode>(*this);
@@ -106,6 +80,7 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::PARAM;
         explicit ParamNode(EValueType type = EValueType::VEC4);
+
         [[nodiscard]] std::unique_ptr<Node> clone() const override
         {
             return std::make_unique<ParamNode>(*this);
@@ -127,6 +102,7 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::MATH;
         explicit MathNode(EMathOp op = EMathOp::MUL);
+
         [[nodiscard]] std::unique_ptr<Node> clone() const override
         {
             return std::make_unique<MathNode>(*this);
@@ -147,6 +123,7 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::DECODE_NORMAL;
         DecodeNormalNode();
+
         [[nodiscard]] std::unique_ptr<Node> clone() const override
         {
             return std::make_unique<DecodeNormalNode>(*this);
@@ -161,6 +138,7 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::TBN_TRANSFORM;
         TbnTransformNode();
+
         [[nodiscard]] std::unique_ptr<Node> clone() const override
         {
             return std::make_unique<TbnTransformNode>(*this);
@@ -176,6 +154,7 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::SWIZZLE;
         explicit SwizzleNode(EValueType source_type = EValueType::VEC4, EValueType out_type = EValueType::VEC3);
+
         [[nodiscard]] std::unique_ptr<Node> clone() const override
         {
             return std::make_unique<SwizzleNode>(*this);
@@ -198,6 +177,7 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::CONSTRUCT;
         explicit ConstructNode(EValueType out_type = EValueType::VEC3);
+
         [[nodiscard]] std::unique_ptr<Node> clone() const override
         {
             return std::make_unique<ConstructNode>(*this);
@@ -213,6 +193,7 @@ namespace lux::material
     public:
         static constexpr EMatNodeKind kKind = EMatNodeKind::OUTPUT_SURFACE;
         OutputSurfaceNode();
+
         [[nodiscard]] std::unique_ptr<Node> clone() const override
         {
             return std::make_unique<OutputSurfaceNode>(*this);

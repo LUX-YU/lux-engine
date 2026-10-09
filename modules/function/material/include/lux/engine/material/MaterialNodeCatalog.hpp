@@ -12,6 +12,13 @@
 
 namespace lux::material
 {
+    enum class EMaterialInputUse : std::uint8_t
+    {
+        VALUE,
+        CONNECTED_VALUE,
+        UNUSED
+    };
+
     struct MaterialPinDeclaration final
     {
         graph::PinSemanticId semantic;
@@ -19,6 +26,9 @@ namespace lux::material
         graph::EPinDirection direction{graph::EPinDirection::INPUT};
         EValueType type{EValueType::FLOAT};
         std::array<float, 4> default_value{};
+        // Input demand is independent of authoring pin existence. UNUSED is never evaluated;
+        // CONNECTED_VALUE leaves an unconnected input as kNoValue instead of creating a constant.
+        EMaterialInputUse input_use{EMaterialInputUse::VALUE};
     };
 
     struct MaterialNodeRegistration final
@@ -56,7 +66,8 @@ namespace lux::material
         [[nodiscard]] MaterialNodeResult<void> validate(const MaterialNodePayload&) const noexcept;
         [[nodiscard]] MaterialNodeRegistration::PinResult describePins(const MaterialNodePayload&) const noexcept;
 
-        // Inputs refer to already resolved SSA values, in input declaration order. Outputs use output
+        // Inputs use declaration order: VALUE requires SSA; CONNECTED_VALUE also permits kNoValue;
+        // UNUSED requires kNoValue. A graph compiler resolves only demanded inputs. Outputs use output
         // declaration order. The caller owns a disposable IR candidate: failure never authorizes its adoption.
         [[nodiscard]] MaterialNodeRegistration::ShaderResult compile(
             const MaterialNodePayload&,
@@ -91,8 +102,8 @@ namespace lux::material
         MaterialNodeCatalog(MaterialNodeCatalog&&) = delete;
         MaterialNodeCatalog& operator=(MaterialNodeCatalog&&) = delete;
 
-        [[nodiscard]] cxx::expected<void, EMaterialNodeCatalogError> add(std::span<
-                                                                         const MaterialNodeRegistration>) noexcept;
+        [[nodiscard]] cxx::expected<void, EMaterialNodeCatalogError>
+        add(std::span<const MaterialNodeRegistration>) noexcept;
 
         [[nodiscard]] std::shared_ptr<const MaterialNodeType> find(graph::NodeTypeId) const noexcept;
 

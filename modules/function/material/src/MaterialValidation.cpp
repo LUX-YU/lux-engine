@@ -1,4 +1,5 @@
 #include <lux/engine/description/Material.hpp>
+#include <lux/engine/material/detail/MaterialMath.hpp>
 #include <lux/engine/material/detail/MaterialValidation.hpp>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
@@ -39,38 +40,6 @@ namespace lux::material::detail
                 return 4U;
             }
             return 0U;
-        }
-
-        [[nodiscard]] bool validMathOp(EMathOp op) noexcept
-        {
-            switch (op)
-            {
-            case EMathOp::MUL:
-            case EMathOp::ADD:
-            case EMathOp::SUB:
-            case EMathOp::DIV:
-            case EMathOp::DOT:
-            case EMathOp::MIN:
-            case EMathOp::MAX:
-            case EMathOp::POW:
-            case EMathOp::STEP:
-            case EMathOp::MOD:
-            case EMathOp::CROSS:
-            case EMathOp::REFLECT:
-            case EMathOp::LERP:
-            case EMathOp::SATURATE:
-            case EMathOp::ONE_MINUS:
-            case EMathOp::ABS:
-            case EMathOp::SQRT:
-            case EMathOp::FLOOR:
-            case EMathOp::FRACT:
-            case EMathOp::SIN:
-            case EMathOp::COS:
-            case EMathOp::NORMALIZE:
-            case EMathOp::LENGTH:
-                return true;
-            }
-            return false;
         }
 
         [[nodiscard]] bool finiteValues(const float (&values)[4]) noexcept
@@ -233,23 +202,11 @@ namespace lux::material::detail
                     return shape;
                 }
                 const auto& math = static_cast<const MathNode&>(node);
-                const bool is_unsupported_operation = !validMathOp(math.op) || math.op == EMathOp::LERP;
-                const bool is_invalid_operand = !validValueType(math.operand_type);
-                const bool is_invalid_math = is_unsupported_operation || is_invalid_operand;
-                if (is_invalid_math)
+                auto validation = detail::validateMath({math.op, math.operand_type});
+                if (!validation)
                 {
-                    return invalidGraph("invalid or unsupported Math node payload", id);
-                }
-                const bool requires_vector = math.op == EMathOp::DOT || math.op == EMathOp::CROSS;
-                const bool is_scalar_mismatch = requires_vector && math.operand_type == EValueType::FLOAT;
-                if (is_scalar_mismatch)
-                {
-                    return invalidGraph("Dot/Cross require vector operands", id);
-                }
-                const bool is_cross_mismatch = math.op == EMathOp::CROSS && math.operand_type != EValueType::VEC3;
-                if (is_cross_mismatch)
-                {
-                    return invalidGraph("Cross requires Vec3 operands", id);
+                    validation.error().node_id = id;
+                    return validation;
                 }
                 if (auto first = requirePinType(true, 0U, math.operand_type); !first)
                 {
@@ -342,8 +299,8 @@ namespace lux::material::detail
 
     } // namespace
 
-    [[nodiscard]] lux::cxx::expected<void, MaterialCompileFailure> validateMaterialGraph(const MaterialGraph& graph
-    ) noexcept
+    [[nodiscard]] lux::cxx::expected<void, MaterialCompileFailure>
+    validateMaterialGraph(const MaterialGraph& graph) noexcept
     {
         const bool has_nodes = !graph.nodes().empty();
         const bool exceeds_parameters = graph.param_slots.size() > rdesc::MaterialDescription::kMaxParams;

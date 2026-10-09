@@ -14,6 +14,7 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Node.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialGraph.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialLowering.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialMath.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialValidation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/MaterialSource.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderIR.cpp
@@ -54,6 +55,12 @@ component_add_transitive_commands(
 )
 
 if(BUILD_TESTING)
+    add_executable(material_math_registration_test test/math_registration.cpp)
+
+    target_link_libraries(material_math_registration_test PRIVATE lux::engine::function::material_graph)
+
+    add_test(NAME material.math_registration COMMAND material_math_registration_test)
+
     add_executable(material_lowering_test test/lowering.cpp)
 
     target_link_libraries(material_lowering_test PRIVATE lux::engine::function::material_graph)

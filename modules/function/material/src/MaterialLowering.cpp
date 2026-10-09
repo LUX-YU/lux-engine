@@ -13,6 +13,7 @@
 // =============================================================================
 
 #include <lux/engine/material/MaterialIR.hpp>
+#include <lux/engine/material/detail/MaterialMath.hpp>
 #include <lux/engine/material/detail/MaterialValidation.hpp>
 #include <lux/engine/material/graph/MaterialGraph.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
@@ -51,11 +52,6 @@ namespace lux::material
             return false;
         }
 
-        bool isVector(ShaderValueType t) noexcept
-        {
-            return t == ShaderValueType::VEC2 || t == ShaderValueType::VEC3 || t == ShaderValueType::VEC4;
-        }
-
         const char* typeName(ShaderValueType t) noexcept
         {
             switch (t)
@@ -72,112 +68,6 @@ namespace lux::material
             return "?";
         }
 
-        bool mapMathOp(graph::EMathOp op, EOp& result) noexcept
-        {
-            switch (op)
-            {
-            case graph::EMathOp::MUL:
-                result = EOp::MUL;
-                return true;
-            case graph::EMathOp::ADD:
-                result = EOp::ADD;
-                return true;
-            case graph::EMathOp::SUB:
-                result = EOp::SUB;
-                return true;
-            case graph::EMathOp::DIV:
-                result = EOp::DIV;
-                return true;
-            case graph::EMathOp::LERP:
-                result = EOp::LERP;
-                return true;
-            case graph::EMathOp::SATURATE:
-                result = EOp::SATURATE;
-                return true;
-            case graph::EMathOp::DOT:
-                result = EOp::DOT;
-                return true;
-            case graph::EMathOp::MIN:
-                result = EOp::MIN;
-                return true;
-            case graph::EMathOp::MAX:
-                result = EOp::MAX;
-                return true;
-            case graph::EMathOp::POW:
-                result = EOp::POW;
-                return true;
-            case graph::EMathOp::STEP:
-                result = EOp::STEP;
-                return true;
-            case graph::EMathOp::MOD:
-                result = EOp::MOD;
-                return true;
-            case graph::EMathOp::CROSS:
-                result = EOp::CROSS;
-                return true;
-            case graph::EMathOp::REFLECT:
-                result = EOp::REFLECT;
-                return true;
-            case graph::EMathOp::ONE_MINUS:
-                result = EOp::ONE_MINUS;
-                return true;
-            case graph::EMathOp::ABS:
-                result = EOp::ABS;
-                return true;
-            case graph::EMathOp::SQRT:
-                result = EOp::SQRT;
-                return true;
-            case graph::EMathOp::FLOOR:
-                result = EOp::FLOOR;
-                return true;
-            case graph::EMathOp::FRACT:
-                result = EOp::FRACT;
-                return true;
-            case graph::EMathOp::SIN:
-                result = EOp::SIN;
-                return true;
-            case graph::EMathOp::COS:
-                result = EOp::COS;
-                return true;
-            case graph::EMathOp::NORMALIZE:
-                result = EOp::NORMALIZE;
-                return true;
-            case graph::EMathOp::LENGTH:
-                result = EOp::LENGTH;
-                return true;
-            }
-            return false;
-        }
-
-        bool isUnaryMathOp(graph::EMathOp op) noexcept
-        {
-            switch (op)
-            {
-            case graph::EMathOp::SATURATE:
-            case graph::EMathOp::ONE_MINUS:
-            case graph::EMathOp::ABS:
-            case graph::EMathOp::SQRT:
-            case graph::EMathOp::FLOOR:
-            case graph::EMathOp::FRACT:
-            case graph::EMathOp::SIN:
-            case graph::EMathOp::COS:
-            case graph::EMathOp::NORMALIZE:
-            case graph::EMathOp::LENGTH:
-                return true;
-            default:
-                return false;
-            }
-        }
-
-        ShaderValueType mathResultType(graph::EMathOp op, ShaderValueType operand) noexcept
-        {
-            if (op == graph::EMathOp::DOT || op == graph::EMathOp::LENGTH)
-            {
-                return ShaderValueType::FLOAT;
-            }
-            return operand;
-        }
-
         int usedInputCount(const graph::Node* n) noexcept
         {
             switch (n->kind())
@@ -191,7 +81,7 @@ namespace lux::material
             case graph::EMatNodeKind::TBN_TRANSFORM:
                 return 1;
             case graph::EMatNodeKind::MATH:
-                return isUnaryMathOp(static_cast<const graph::MathNode*>(n)->op) ? 1 : 2;
+                return static_cast<int>(detail::mathInputCount(static_cast<const graph::MathNode*>(n)->op));
             case graph::EMatNodeKind::CONSTRUCT:
                 return static_cast<int>(n->inputs().size());
             default:
@@ -272,20 +162,6 @@ namespace lux::material
                         EMaterialCompileError::INVALID_GRAPH,
                         node_id,
                         pin_index
-                    );
-                }
-                return result;
-            }
-
-            EOp mathOp(graph::EMathOp source, graph::NodeId node_id)
-            {
-                EOp result{};
-                if (!mapMathOp(source, result))
-                {
-                    fail(
-                        "invalid material math operation reached lowering",
-                        EMaterialCompileError::INVALID_GRAPH,
-                        node_id
                     );
                 }
                 return result;
@@ -683,76 +559,26 @@ namespace lux::material
                 }
             }
 
-            uint32_t emitMath(graph::NodeId id, const graph::MathNode* m)
+            uint32_t emitMath(graph::NodeId id, const graph::MathNode* node)
             {
-                if (m->inputs().size() < 2)
+                const MaterialMath math{node->op, node->operand_type};
+                std::array<std::uint32_t, 2> inputs{kNoValue, kNoValue};
+                for (std::size_t index = 0; index != detail::mathInputCount(math.op); ++index)
                 {
-                    fail("Math node is missing input pins");
-                    return kNoValue;
-                }
-                if (m->op == graph::EMathOp::LERP)
-                {
-                    fail("Lerp requires 3 inputs; the 2-input Math node cannot express it yet");
-                    return kNoValue;
-                }
-
-                if (isUnaryMathOp(m->op))
-                {
-                    const uint32_t a = operandValue(m->inputs()[0]);
+                    inputs[index] = operandValue(node->inputs()[index]);
                     if (!ok)
                     {
                         return kNoValue;
                     }
-                    ShaderIRValue v{};
-                    v.op = mathOp(m->op, id);
-                    if (!ok)
-                    {
-                        return kNoValue;
-                    }
-                    v.type = mathResultType(m->op, ir.values[a].type);
-                    v.operands[0] = a;
-                    return push(v);
                 }
-
-                const uint32_t a = operandValue(m->inputs()[0]);
-                if (!ok)
+                auto output = detail::appendMath(math, inputs, ir);
+                if (!output)
                 {
+                    auto failure = std::move(output.error());
+                    fail(std::move(failure.message), failure.code, id, failure.pin_index);
                     return kNoValue;
                 }
-                const uint32_t b = operandValue(m->inputs()[1]);
-                if (!ok)
-                {
-                    return kNoValue;
-                }
-
-                const ShaderValueType ta = ir.values[a].type;
-                const ShaderValueType tb = ir.values[b].type;
-
-                if ((m->op == graph::EMathOp::DOT || m->op == graph::EMathOp::CROSS) && (ta != tb || !isVector(ta)))
-                {
-                    fail("Dot/Cross require two vectors of equal type", EMaterialCompileError::TYPE_MISMATCH, id);
-                    return kNoValue;
-                }
-                if (ta != tb)
-                {
-                    fail(
-                        std::string("binary math requires equal operand types (") + typeName(ta) + " vs " +
-                            typeName(tb) + "; broadcast not supported yet)",
-                        EMaterialCompileError::TYPE_MISMATCH,
-                        id
-                    );
-                    return kNoValue;
-                }
-                ShaderIRValue v{};
-                v.op = mathOp(m->op, id);
-                if (!ok)
-                {
-                    return kNoValue;
-                }
-                v.type = mathResultType(m->op, ta);
-                v.operands[0] = a;
-                v.operands[1] = b;
-                return push(v);
+                return *output;
             }
 
             bool run()

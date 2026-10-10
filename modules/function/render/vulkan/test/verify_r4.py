@@ -99,6 +99,8 @@ def main():
                 allowed |= {"render_vulkan", "render_vulkan_fault", "render_vulkan_shader"}
             elif name.startswith("render_transport"):
                 allowed |= {"render_transport", "render_transport_test_operations_generate"}
+                if other.startswith("render_transport_") and other.endswith("_operations_generate"):
+                    allowed.add(other)
             elif name.startswith("render_graph"):
                 allowed.add("render_graph")
             require(other in allowed, "target dependency escape: " + name + " -> " + other)

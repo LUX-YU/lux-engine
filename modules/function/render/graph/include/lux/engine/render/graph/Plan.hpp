@@ -138,6 +138,9 @@ namespace lux::render
         std::optional<RenderError> error;
         std::vector<PassKey> cycle_path;
         std::vector<std::string> cycle_names;
+        std::vector<PassKey> scope_path;
+        std::vector<std::string> scope_names;
+        std::vector<GraphHazard> scope_edges;
         std::string json;
     };
 
@@ -253,8 +256,9 @@ namespace lux::render
             return data_.cache_identity;
         }
 
-        // Diagnostic lookup hint only; matches() always checks complete typed identity.
-        [[nodiscard]] std::uint64_t fingerprint() const noexcept
+        // Only fingerprints the diagnostic presentation, NOT structural/cache identity.
+        // Cache compatibility uses matches()/cacheIdentity(); a structural hash is not provided here.
+        [[nodiscard]] std::uint64_t diagnosticDigest() const noexcept
         {
             return cxx::Fnv1a64::hash(data_.diagnostics_json);
         }

@@ -28,6 +28,47 @@ namespace lux::rdesc
         INPUT_ATTACHMENT
     };
 
+    [[nodiscard]] constexpr bool isShaderDescriptorRole(EPassFieldRole role) noexcept
+    {
+        switch (role)
+        {
+        case EPassFieldRole::SAMPLED_READ:
+        case EPassFieldRole::STORAGE_READ:
+        case EPassFieldRole::STORAGE_WRITE:
+        case EPassFieldRole::STORAGE_READ_WRITE:
+        case EPassFieldRole::SAMPLER:
+        case EPassFieldRole::UNIFORM_READ:
+        case EPassFieldRole::READ_ONLY_STORAGE:
+        case EPassFieldRole::READ_WRITE_STORAGE:
+        case EPassFieldRole::INPUT_ATTACHMENT:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    [[nodiscard]] constexpr bool isPassFieldRole(EPassFieldRole role) noexcept
+    {
+        if (isShaderDescriptorRole(role))
+        {
+            return true;
+        }
+        switch (role)
+        {
+        case EPassFieldRole::COLOR_ATTACHMENT:
+        case EPassFieldRole::DEPTH_STENCIL:
+        case EPassFieldRole::RESOLVE:
+        case EPassFieldRole::TRANSFER_SOURCE:
+        case EPassFieldRole::TRANSFER_DESTINATION:
+        case EPassFieldRole::VERTEX:
+        case EPassFieldRole::INDEX:
+        case EPassFieldRole::INDIRECT:
+            return true;
+        default:
+            return false;
+        }
+    }
+
     enum class EFieldOwner
     {
         SCENE,

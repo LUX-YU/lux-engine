@@ -179,8 +179,7 @@ namespace lux::render
                 role == rdesc::EPassFieldRole::TRANSFER_SOURCE || role == rdesc::EPassFieldRole::TRANSFER_DESTINATION;
             const bool is_invalid_attachment = is_attachment && kind != EPassKind::GRAPHICS;
             const auto stage_mask = kind == EPassKind::COMPUTE ? 4u : 3u;
-            const bool is_shader_field =
-                role <= rdesc::EPassFieldRole::READ_WRITE_STORAGE || role == rdesc::EPassFieldRole::INPUT_ATTACHMENT;
+            const bool is_shader_field = rdesc::isShaderDescriptorRole(role);
             const bool is_invalid_stage = is_shader_field && (field.stages & stage_mask) == 0;
             const bool is_invalid_transfer =
                 is_transfer && kind != EPassKind::TRANSFER && kind != EPassKind::HOST_READBACK;

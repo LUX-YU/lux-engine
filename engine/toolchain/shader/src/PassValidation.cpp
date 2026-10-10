@@ -14,11 +14,6 @@ namespace lux::toolchain
         namespace sc = SPIRV_CROSS_NAMESPACE;
         using ERole = rdesc::EPassFieldRole;
 
-        bool shaderResource(ERole role) noexcept
-        {
-            return role <= ERole::READ_WRITE_STORAGE || role == ERole::INPUT_ATTACHMENT;
-        }
-
         rdesc::EDescriptorType descriptorType(ERole role) noexcept
         {
             using EType = rdesc::EDescriptorType;
@@ -155,7 +150,7 @@ namespace lux::toolchain
             std::uint32_t active_bindings = 0;
             for (const auto& field : contract.resources)
             {
-                if (!shaderResource(field.role))
+                if (!rdesc::isShaderDescriptorRole(field.role))
                 {
                     continue;
                 }
@@ -403,7 +398,7 @@ namespace lux::toolchain
             contract.resources.begin(),
             contract.resources.end(),
             [required_stages](const auto& field)
-            { return shaderResource(field.role) && (field.stages & required_stages) == 0; }
+            { return rdesc::isShaderDescriptorRole(field.role) && (field.stages & required_stages) == 0; }
         );
         const bool uncovered_scalar = std::any_of(
             contract.scalars.begin(),

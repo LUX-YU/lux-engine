@@ -82,14 +82,38 @@ namespace lux::render
 
         void closure(DependencyMatrix& reachable) noexcept
         {
-            for (std::size_t k = 0; k < reachable.size(); ++k)
+            const auto count = reachable.size();
+            const auto words = (count + 63) / 64;
+            std::vector<std::uint64_t> bits(count * words);
+            for (std::size_t i = 0; i < count; ++i)
             {
-                for (std::size_t i = 0; i < reachable.size(); ++i)
+                for (std::size_t j = 0; j < count; ++j)
                 {
-                    for (std::size_t j = 0; j < reachable.size(); ++j)
+                    if (reachable[i][j])
                     {
-                        reachable[i][j] = reachable[i][j] || (reachable[i][k] && reachable[k][j]);
+                        bits[i * words + j / 64] |= std::uint64_t{1} << (j % 64);
                     }
+                }
+            }
+            for (std::size_t k = 0; k < count; ++k)
+            {
+                for (std::size_t i = 0; i < count; ++i)
+                {
+                    if ((bits[i * words + k / 64] & (std::uint64_t{1} << (k % 64))) == 0)
+                    {
+                        continue;
+                    }
+                    for (std::size_t word = 0; word < words; ++word)
+                    {
+                        bits[i * words + word] |= bits[k * words + word];
+                    }
+                }
+            }
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                for (std::size_t j = 0; j < count; ++j)
+                {
+                    reachable[i][j] = (bits[i * words + j / 64] & (std::uint64_t{1} << (j % 64))) != 0;
                 }
             }
         }
@@ -119,6 +143,466 @@ namespace lux::render
             return result + '"';
         }
 
+        bool findCycle(
+            const LogicalGraphIdentity& graph,
+            const DependencyMatrix& edges,
+            GraphCompileDiagnostic& diagnostic
+        ) noexcept
+        {
+            const auto count = graph.passes.size();
+            std::vector<unsigned> color(count);
+            std::vector<std::size_t> path;
+            auto visit = [&](auto&& self, std::size_t p) -> bool
+            {
+                color[p] = 1;
+                path.push_back(p);
+                for (std::size_t q = 0; q < count; ++q)
+                {
+                    if (edges[p][q])
+                    {
+                        if (color[q] == 1)
+                        {
+                            auto begin = std::find(path.begin(), path.end(), q);
+                            for (auto it = begin; it != path.end(); ++it)
+                            {
+                                diagnostic.cycle_path.push_back(graph.passes[*it].key);
+                                diagnostic.cycle_names.push_back(graph.passes[*it].canonical_name);
+                            }
+                            diagnostic.cycle_path.push_back(graph.passes[q].key);
+                            diagnostic.cycle_names.push_back(graph.passes[q].canonical_name);
+                            diagnostic.error = RenderError{kGraphCycle, {p + 1, q + 1}};
+                            return true;
+                        }
+                        if (color[q] == 0 && self(self, q))
+                        {
+                            return true;
+                        }
+                    }
+                }
+                path.pop_back();
+                color[p] = 2;
+                return false;
+            };
+            for (std::size_t p = 0; p < count; ++p)
+            {
+                if (!color[p] && visit(visit, p))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        void scheduleLiveGraph(LogicalGraphPlanData& data, const DependencyMatrix& edges) noexcept
+        {
+            const auto& graph = data.identity;
+            const auto count = graph.passes.size();
+            std::vector<unsigned> indegree(count);
+            for (std::size_t a = 0; a < count; ++a)
+            {
+                for (std::size_t b = 0; b < count; ++b)
+                {
+                    if (edges[a][b])
+                    {
+                        data.dependencies.push_back(
+                            {GraphPassId{static_cast<std::uint32_t>(a + 1)},
+                             GraphPassId{static_cast<std::uint32_t>(b + 1)}}
+                        );
+                        if (data.live[a] && data.live[b])
+                        {
+                            ++indegree[b];
+                        }
+                    }
+                }
+            }
+            std::vector<bool> emitted(count);
+            for (;;)
+            {
+                std::optional<std::size_t> chosen;
+                for (std::size_t p = 0; p < count; ++p)
+                {
+                    if (data.live[p] && !emitted[p] && indegree[p] == 0)
+                    {
+                        if (!chosen || graph.passes[p].canonical_name < graph.passes[*chosen].canonical_name)
+                        {
+                            chosen = p;
+                        }
+                    }
+                }
+                if (!chosen)
+                {
+                    break;
+                }
+                const auto p = *chosen;
+                emitted[p] = true;
+                data.order.push_back(GraphPassId{static_cast<std::uint32_t>(p + 1)});
+                for (std::size_t q = 0; q < count; ++q)
+                {
+                    if (edges[p][q] && data.live[q])
+                    {
+                        --indegree[q];
+                    }
+                }
+            }
+        }
+
+        void computeLogicalLifetimes(LogicalGraphPlanData& data, const std::vector<bool>& exported_versions) noexcept
+        {
+            const auto& graph = data.identity;
+            const auto count = graph.passes.size();
+            std::vector<std::optional<std::uint32_t>> positions(count);
+            for (std::size_t i = 0; i < data.order.size(); ++i)
+            {
+                positions[data.order[i].value() - 1] = static_cast<std::uint32_t>(i);
+            }
+            for (auto& version : data.versions)
+            {
+                auto include = [&](GraphPassId pass)
+                {
+                    const bool has_no_live_position = !pass.isValid() || !positions[pass.value() - 1];
+                    if (has_no_live_position)
+                    {
+                        return;
+                    }
+                    const auto p = *positions[pass.value() - 1];
+                    if (!version.lifetime)
+                    {
+                        version.lifetime = GraphResourceLifetime{p, p};
+                    }
+                    else
+                    {
+                        version.lifetime->first_pass = std::min(version.lifetime->first_pass, p);
+                        version.lifetime->last_pass = std::max(version.lifetime->last_pass, p);
+                    }
+                };
+                include(version.writer);
+                for (auto reader : version.readers)
+                {
+                    include(reader);
+                }
+                const auto version_index = static_cast<std::size_t>(&version - data.versions.data());
+                if (exported_versions[version_index])
+                {
+                    const auto terminal = static_cast<std::uint32_t>(data.order.size());
+                    if (!version.lifetime)
+                    {
+                        version.lifetime = GraphResourceLifetime{0, terminal};
+                    }
+                    else
+                    {
+                        version.lifetime->last_pass = terminal;
+                    }
+                }
+                if (version.lifetime)
+                {
+                    auto& lifetime = data.lifetimes[version.resource.value() - 1];
+                    if (!lifetime)
+                    {
+                        lifetime = version.lifetime;
+                    }
+                    else
+                    {
+                        lifetime->first_pass = std::min(lifetime->first_pass, version.lifetime->first_pass);
+                        lifetime->last_pass = std::max(lifetime->last_pass, version.lifetime->last_pass);
+                    }
+                }
+            }
+            for (std::size_t a = 0; a < data.versions.size(); ++a)
+            {
+                for (std::size_t b = a + 1; b < data.versions.size(); ++b)
+                {
+                    const auto& x = data.versions[a];
+                    const auto& y = data.versions[b];
+                    const bool is_unavailable_reuse_pair = x.resource == y.resource || !x.lifetime || !y.lifetime;
+                    if (is_unavailable_reuse_pair)
+                    {
+                        continue;
+                    }
+                    const auto& xr = graph.resources[x.resource.value() - 1];
+                    const auto& yr = graph.resources[y.resource.value() - 1];
+                    if (xr.origin != EGraphResourceOrigin::TRANSIENT || yr.origin != EGraphResourceOrigin::TRANSIENT ||
+                        xr.description != yr.description)
+                    {
+                        continue;
+                    }
+                    if (x.lifetime->last_pass < y.lifetime->first_pass)
+                    {
+                        data.reuse_candidates.push_back({static_cast<unsigned>(a), static_cast<unsigned>(b)});
+                    }
+                    else if (y.lifetime->last_pass < x.lifetime->first_pass)
+                    {
+                        data.reuse_candidates.push_back({static_cast<unsigned>(b), static_cast<unsigned>(a)});
+                    }
+                }
+            }
+        }
+
+        void formatPlanDiagnostics(LogicalGraphPlanData& data) noexcept
+        {
+            const auto& graph = data.identity;
+            const auto count = graph.passes.size();
+            auto rangeJson = [&](const VGraphRange& range)
+            {
+                std::ostringstream value;
+                if (const auto* buffer = std::get_if<BufferRange>(&range))
+                {
+                    value << "{\"byte_offset\":" << buffer->byte_offset << ",\"byte_count\":" << buffer->byte_count
+                          << '}';
+                }
+                else if (const auto* image = std::get_if<ImageRange>(&range))
+                {
+                    value << "{\"aspect\":" << static_cast<unsigned>(image->aspect) << ",\"mip\":" << image->base_mip
+                          << ",\"mips\":" << image->mip_count << ",\"layer\":" << image->base_layer
+                          << ",\"layers\":" << image->layer_count << '}';
+                }
+                else
+                {
+                    value << "null";
+                }
+                return value.str();
+            };
+            std::ostringstream json;
+            json << "{\"passes\":[";
+            for (std::size_t p = 0; p < count; ++p)
+            {
+                if (p)
+                {
+                    json << ',';
+                }
+                const auto& pass = graph.passes[p];
+                json << "{\"name\":" << quote(pass.canonical_name) << ",\"key\":" << pass.key.value()
+                     << ",\"shader\":" << quote(pass.shader_name) << ",\"scope\":" << static_cast<unsigned>(pass.scope)
+                     << ",\"condition\":" << pass.condition.value() << ",\"live\":" << (data.live[p] ? "true" : "false")
+                     << ",\"scene_share_eligible\":" << (data.scene_share_eligible[p] ? "true" : "false")
+                     << ",\"reason\":"
+                     << quote(
+                            data.live[p] ? "reachable output/producer or explicit retention option"
+                                         : "unreachable from output"
+                        )
+                     << '}';
+            }
+            json << "],\"order\":[";
+            for (std::size_t i = 0; i < data.order.size(); ++i)
+            {
+                if (i)
+                {
+                    json << ',';
+                }
+                json << data.order[i].value();
+            }
+            json << "],\"hazards\":[";
+            for (std::size_t i = 0; i < data.hazards.size(); ++i)
+            {
+                if (i)
+                {
+                    json << ',';
+                }
+                const auto& hazard = data.hazards[i];
+                json << "{\"before\":" << hazard.before.value() << ",\"after\":" << hazard.after.value()
+                     << ",\"kind\":" << static_cast<unsigned>(hazard.kind)
+                     << ",\"resource\":" << hazard.resource.value() << ",\"range\":" << rangeJson(hazard.range) << '}';
+            }
+            json << "],\"versions\":[";
+            for (std::size_t i = 0; i < data.versions.size(); ++i)
+            {
+                if (i)
+                {
+                    json << ',';
+                }
+                const auto& version = data.versions[i];
+                json << "{\"resource\":" << version.resource.value() << ",\"writer\":" << version.writer.value()
+                     << ",\"range\":" << rangeJson(version.range) << ",\"readers\":[";
+                for (std::size_t j = 0; j < version.readers.size(); ++j)
+                {
+                    if (j)
+                    {
+                        json << ',';
+                    }
+                    json << version.readers[j].value();
+                }
+                json << "],\"lifetime\":";
+                if (version.lifetime)
+                {
+                    json << '[' << version.lifetime->first_pass << ',' << version.lifetime->last_pass << ']';
+                }
+                else
+                {
+                    json << "null";
+                }
+                json << '}';
+            }
+            json << "],\"imports\":[";
+            for (std::size_t i = 0; i < data.imports.size(); ++i)
+            {
+                if (i)
+                {
+                    json << ',';
+                }
+                json << data.imports[i].value();
+            }
+            json << "],\"exports\":[";
+            for (std::size_t i = 0; i < graph.outputs.size(); ++i)
+            {
+                if (i)
+                {
+                    json << ',';
+                }
+                const auto& output = graph.outputs[i];
+                json << "{\"resource\":" << output.resource.value()
+                     << ",\"kind\":" << static_cast<unsigned>(output.kind) << ",\"range\":" << rangeJson(output.range)
+                     << '}';
+            }
+            json << "],\"cache_identity\":{\"equality\":\"exact typed fields\","
+                    "\"includes\":[\"resources and import initialization\",\"pass identity and shader interface\","
+                    "\"uses and producer versions\",\"bindings structural operations\",\"conditions and scope\","
+                    "\"providers outputs explicit order compile options\"],"
+                    "\"excludes\":[\"scalar bytes\",\"sampler values\",\"clear values\",\"camera\","
+                    "\"time serial revisions backing dynamic offsets\"]},\"native_alias_proven\":false}";
+            data.diagnostics_json = json.str();
+        }
+
+        void retainDataProducers(const DependencyMatrix& data_liveness, std::vector<bool>& live) noexcept
+        {
+            std::vector<std::size_t> pending;
+            for (std::size_t p = 0; p < live.size(); ++p)
+            {
+                if (live[p])
+                {
+                    pending.push_back(p);
+                }
+            }
+            while (!pending.empty())
+            {
+                const auto consumer = pending.back();
+                pending.pop_back();
+                for (std::size_t producer = 0; producer < live.size(); ++producer)
+                {
+                    if (data_liveness[producer][consumer] && !live[producer])
+                    {
+                        live[producer] = true;
+                        pending.push_back(producer);
+                    }
+                }
+            }
+        }
+
+        bool permitsExecutionPredecessor(EExecutionScope before, EExecutionScope after) noexcept
+        {
+            // Explicit execution-domain rule; enum ordinal values carry no scope semantics.
+            switch (after)
+            {
+            case EExecutionScope::SCENE:
+                return before == EExecutionScope::SCENE;
+            case EExecutionScope::VIEW:
+                return before == EExecutionScope::SCENE || before == EExecutionScope::VIEW;
+            case EExecutionScope::TARGET:
+                return before == EExecutionScope::SCENE || before == EExecutionScope::VIEW ||
+                       before == EExecutionScope::TARGET;
+            }
+            return false;
+        }
+
+        void describeScopePath(
+            const LogicalGraphPlanData& data,
+            const DependencyMatrix& edges,
+            std::size_t before,
+            std::size_t after,
+            GraphCompileDiagnostic& diagnostic
+        ) noexcept
+        {
+            const auto& graph = data.identity;
+            const auto count = graph.passes.size();
+            std::vector<std::size_t> parent(count, count);
+            std::vector<std::size_t> pending{before};
+            parent[before] = before;
+            for (std::size_t cursor = 0; cursor < pending.size() && parent[after] == count; ++cursor)
+            {
+                const auto p = pending[cursor];
+                for (std::size_t q = 0; q < count; ++q)
+                {
+                    if (edges[p][q] && data.live[q] && parent[q] == count)
+                    {
+                        parent[q] = p;
+                        pending.push_back(q);
+                    }
+                }
+            }
+            std::vector<std::size_t> path{after};
+            while (path.back() != before)
+            {
+                path.push_back(parent[path.back()]);
+            }
+            std::reverse(path.begin(), path.end());
+            for (const auto p : path)
+            {
+                diagnostic.scope_path.push_back(graph.passes[p].key);
+                diagnostic.scope_names.push_back(graph.passes[p].canonical_name);
+            }
+            for (std::size_t i = 1; i < path.size(); ++i)
+            {
+                for (const auto& hazard : data.hazards)
+                {
+                    if (hazard.before.value() == path[i - 1] + 1 && hazard.after.value() == path[i] + 1)
+                    {
+                        diagnostic.scope_edges.push_back(hazard);
+                    }
+                }
+            }
+            diagnostic.error = RenderError{kScope, {graph.passes[after].key.value(), graph.passes[before].key.value()}};
+        }
+
+        bool proveScopeSharing(
+            LogicalGraphPlanData& data,
+            const DependencyMatrix& execution,
+            GraphCompileDiagnostic& diagnostic
+        ) noexcept
+        {
+            const auto& graph = data.identity;
+            const auto count = graph.passes.size();
+            // A derived live execution relation, separate from the RAW/FALLBACK relation used by C5.
+            auto share_preconditions = execution;
+            for (std::size_t a = 0; a < count; ++a)
+            {
+                for (std::size_t b = 0; b < count; ++b)
+                {
+                    share_preconditions[a][b] = share_preconditions[a][b] && data.live[a] && data.live[b];
+                }
+            }
+            closure(share_preconditions);
+            data.scene_sources.resize(count);
+            for (std::size_t p = 0; p < count; ++p)
+            {
+                if (!data.live[p])
+                {
+                    continue;
+                }
+                for (const auto predecessor : data.order)
+                {
+                    const auto q = predecessor.value() - 1;
+                    const bool is_scope_conflict =
+                        share_preconditions[q][p] &&
+                        !permitsExecutionPredecessor(graph.passes[q].scope, graph.passes[p].scope);
+                    if (is_scope_conflict)
+                    {
+                        describeScopePath(data, execution, q, p, diagnostic);
+                        return false;
+                    }
+                }
+                if (graph.passes[p].scope == EExecutionScope::SCENE)
+                {
+                    for (std::size_t q = 0; q < count; ++q)
+                    {
+                        if (p == q || share_preconditions[q][p])
+                        {
+                            data.scene_sources[p].push_back(GraphPassId{static_cast<std::uint32_t>(q + 1)});
+                        }
+                    }
+                    data.scene_share_eligible[p] = true;
+                }
+            }
+            return true;
+        }
+
         struct Analysis
         {
             LogicalGraphPlanData data;
@@ -134,7 +618,7 @@ namespace lux::render
             auto& graph = data.identity;
             const auto count = graph.passes.size();
             DependencyMatrix edges(count, std::vector<bool>(count));
-            DependencyMatrix essential(count, std::vector<bool>(count));
+            DependencyMatrix data_liveness(count, std::vector<bool>(count));
             std::vector<bool> exported_versions;
             std::vector<std::vector<std::pair<std::size_t, std::size_t>>> alternatives(count);
             auto fail = [&](error::ErrorId code, std::uint64_t pass, std::uint64_t resource)
@@ -158,7 +642,7 @@ namespace lux::render
                     edges[a][b] = true;
                     if (kind == EGraphHazard::RAW || kind == EGraphHazard::FALLBACK)
                     {
-                        essential[a][b] = true;
+                        data_liveness[a][b] = true;
                     }
                     data.hazards.push_back(
                         {GraphPassId{static_cast<std::uint32_t>(a + 1)},
@@ -168,50 +652,6 @@ namespace lux::render
                          kind}
                     );
                 }
-            };
-            auto cycle = [&]()
-            {
-                std::vector<unsigned> color(count);
-                std::vector<std::size_t> path;
-                auto visit = [&](auto&& self, std::size_t p) -> bool
-                {
-                    color[p] = 1;
-                    path.push_back(p);
-                    for (std::size_t q = 0; q < count; ++q)
-                    {
-                        if (edges[p][q])
-                        {
-                            if (color[q] == 1)
-                            {
-                                auto begin = std::find(path.begin(), path.end(), q);
-                                for (auto it = begin; it != path.end(); ++it)
-                                {
-                                    result.diagnostic.cycle_path.push_back(graph.passes[*it].key);
-                                    result.diagnostic.cycle_names.push_back(graph.passes[*it].canonical_name);
-                                }
-                                result.diagnostic.cycle_path.push_back(graph.passes[q].key);
-                                result.diagnostic.cycle_names.push_back(graph.passes[q].canonical_name);
-                                fail(kGraphCycle, p + 1, q + 1);
-                                return true;
-                            }
-                            if (color[q] == 0 && self(self, q))
-                            {
-                                return true;
-                            }
-                        }
-                    }
-                    path.pop_back();
-                    color[p] = 2;
-                    return false;
-                };
-                for (std::size_t p = 0; p < count; ++p)
-                {
-                    if (!color[p] && visit(visit, p))
-                    {
-                        return true;
-                    }
-                }
-                return false;
             };
             for (const auto& dependency : graph.dependencies)
             {
@@ -301,7 +741,7 @@ namespace lux::render
                     return result;
                 }
             }
-            if (cycle())
+            if (findCycle(graph, edges, result.diagnostic))
             {
                 return result;
             }
@@ -451,7 +891,7 @@ namespace lux::render
                     }
                 }
             }
-            if (cycle())
+            if (findCycle(graph, edges, result.diagnostic))
             {
                 return result;
             }
@@ -708,11 +1148,6 @@ namespace lux::render
                                         data.input_choices.push_back({consumer, use_index, condition_writer, fallback});
                                     }
                                 }
-                                if (static_cast<unsigned>(graph.passes[p].scope) < static_cast<unsigned>(source.scope))
-                                {
-                                    fail(kScope, p + 1, id.value());
-                                    return false;
-                                }
                                 edge(writer, p, id, cell, EGraphHazard::RAW);
                             }
                             const auto next = static_cast<std::size_t>(selected + 1);
@@ -840,7 +1275,7 @@ namespace lux::render
                     return result;
                 }
             }
-            if (cycle())
+            if (findCycle(graph, edges, result.diagnostic))
             {
                 return result;
             }
@@ -866,292 +1301,14 @@ namespace lux::render
                     data.live[p] = true;
                 }
             }
-            // Read/producer and explicit order roots retain inputs. Anti-dependencies do not create liveness.
-            for (std::size_t round = 0; round < count; ++round)
+            retainDataProducers(data_liveness, data.live);
+            scheduleLiveGraph(data, edges);
+            computeLogicalLifetimes(data, exported_versions);
+            if (!proveScopeSharing(data, edges, result.diagnostic))
             {
-                for (std::size_t a = 0; a < count; ++a)
-                {
-                    for (std::size_t b = 0; b < count; ++b)
-                    {
-                        if (essential[a][b] && data.live[b])
-                        {
-                            data.live[a] = true;
-                        }
-                    }
-                }
+                return result;
             }
-            std::vector<unsigned> indegree(count);
-            for (std::size_t a = 0; a < count; ++a)
-            {
-                for (std::size_t b = 0; b < count; ++b)
-                {
-                    if (edges[a][b])
-                    {
-                        data.dependencies.push_back(
-                            {GraphPassId{static_cast<std::uint32_t>(a + 1)},
-                             GraphPassId{static_cast<std::uint32_t>(b + 1)}}
-                        );
-                        if (data.live[a] && data.live[b])
-                        {
-                            ++indegree[b];
-                        }
-                    }
-                }
-            }
-            std::vector<bool> emitted(count);
-            for (;;)
-            {
-                std::optional<std::size_t> chosen;
-                for (std::size_t p = 0; p < count; ++p)
-                {
-                    if (data.live[p] && !emitted[p] && indegree[p] == 0)
-                    {
-                        if (!chosen || graph.passes[p].canonical_name < graph.passes[*chosen].canonical_name)
-                        {
-                            chosen = p;
-                        }
-                    }
-                }
-                if (!chosen)
-                {
-                    break;
-                }
-                const auto p = *chosen;
-                emitted[p] = true;
-                data.order.push_back(GraphPassId{static_cast<std::uint32_t>(p + 1)});
-                for (std::size_t q = 0; q < count; ++q)
-                {
-                    if (edges[p][q] && data.live[q])
-                    {
-                        --indegree[q];
-                    }
-                }
-                data.scene_share_eligible[p] = graph.passes[p].scope == EExecutionScope::SCENE;
-            }
-            std::vector<std::optional<std::uint32_t>> positions(count);
-            for (std::size_t i = 0; i < data.order.size(); ++i)
-            {
-                positions[data.order[i].value() - 1] = static_cast<std::uint32_t>(i);
-            }
-            for (auto& version : data.versions)
-            {
-                auto include = [&](GraphPassId pass)
-                {
-                    const bool has_no_live_position = !pass.isValid() || !positions[pass.value() - 1];
-                    if (has_no_live_position)
-                    {
-                        return;
-                    }
-                    const auto p = *positions[pass.value() - 1];
-                    if (!version.lifetime)
-                    {
-                        version.lifetime = GraphResourceLifetime{p, p};
-                    }
-                    else
-                    {
-                        version.lifetime->first_pass = std::min(version.lifetime->first_pass, p);
-                        version.lifetime->last_pass = std::max(version.lifetime->last_pass, p);
-                    }
-                };
-                include(version.writer);
-                for (auto reader : version.readers)
-                {
-                    include(reader);
-                }
-                const auto version_index = static_cast<std::size_t>(&version - data.versions.data());
-                if (exported_versions[version_index])
-                {
-                    const auto terminal = static_cast<std::uint32_t>(data.order.size());
-                    if (!version.lifetime)
-                    {
-                        version.lifetime = GraphResourceLifetime{0, terminal};
-                    }
-                    else
-                    {
-                        version.lifetime->last_pass = terminal;
-                    }
-                }
-                if (version.lifetime)
-                {
-                    auto& lifetime = data.lifetimes[version.resource.value() - 1];
-                    if (!lifetime)
-                    {
-                        lifetime = version.lifetime;
-                    }
-                    else
-                    {
-                        lifetime->first_pass = std::min(lifetime->first_pass, version.lifetime->first_pass);
-                        lifetime->last_pass = std::max(lifetime->last_pass, version.lifetime->last_pass);
-                    }
-                }
-            }
-            for (std::size_t a = 0; a < data.versions.size(); ++a)
-            {
-                for (std::size_t b = a + 1; b < data.versions.size(); ++b)
-                {
-                    const auto& x = data.versions[a];
-                    const auto& y = data.versions[b];
-                    const bool is_unavailable_reuse_pair = x.resource == y.resource || !x.lifetime || !y.lifetime;
-                    if (is_unavailable_reuse_pair)
-                    {
-                        continue;
-                    }
-                    const auto& xr = graph.resources[x.resource.value() - 1];
-                    const auto& yr = graph.resources[y.resource.value() - 1];
-                    if (xr.origin != EGraphResourceOrigin::TRANSIENT || yr.origin != EGraphResourceOrigin::TRANSIENT ||
-                        xr.description != yr.description)
-                    {
-                        continue;
-                    }
-                    if (x.lifetime->last_pass < y.lifetime->first_pass)
-                    {
-                        data.reuse_candidates.push_back({static_cast<unsigned>(a), static_cast<unsigned>(b)});
-                    }
-                    else if (y.lifetime->last_pass < x.lifetime->first_pass)
-                    {
-                        data.reuse_candidates.push_back({static_cast<unsigned>(b), static_cast<unsigned>(a)});
-                    }
-                }
-            }
-            auto inherited = essential;
-            closure(inherited);
-            data.scene_sources.resize(count);
-            for (std::size_t p = 0; p < count; ++p)
-            {
-                if (data.scene_share_eligible[p])
-                {
-                    for (std::size_t q = 0; q < count; ++q)
-                    {
-                        if (q == p || inherited[q][p])
-                        {
-                            if (graph.passes[q].scope != EExecutionScope::SCENE)
-                            {
-                                fail(kScope, p + 1, q + 1);
-                                return result;
-                            }
-                            data.scene_sources[p].push_back(GraphPassId{static_cast<std::uint32_t>(q + 1)});
-                        }
-                    }
-                }
-            }
-            auto rangeJson = [&](const VGraphRange& range)
-            {
-                std::ostringstream value;
-                if (const auto* buffer = std::get_if<BufferRange>(&range))
-                {
-                    value << "{\"byte_offset\":" << buffer->byte_offset << ",\"byte_count\":" << buffer->byte_count
-                          << '}';
-                }
-                else if (const auto* image = std::get_if<ImageRange>(&range))
-                {
-                    value << "{\"aspect\":" << static_cast<unsigned>(image->aspect) << ",\"mip\":" << image->base_mip
-                          << ",\"mips\":" << image->mip_count << ",\"layer\":" << image->base_layer
-                          << ",\"layers\":" << image->layer_count << '}';
-                }
-                else
-                {
-                    value << "null";
-                }
-                return value.str();
-            };
-            std::ostringstream json;
-            json << "{\"passes\":[";
-            for (std::size_t p = 0; p < count; ++p)
-            {
-                if (p)
-                {
-                    json << ',';
-                }
-                const auto& pass = graph.passes[p];
-                json << "{\"name\":" << quote(pass.canonical_name) << ",\"key\":" << pass.key.value()
-                     << ",\"shader\":" << quote(pass.shader_name) << ",\"scope\":" << static_cast<unsigned>(pass.scope)
-                     << ",\"condition\":" << pass.condition.value() << ",\"live\":" << (data.live[p] ? "true" : "false")
-                     << ",\"scene_share_eligible\":" << (data.scene_share_eligible[p] ? "true" : "false")
-                     << ",\"reason\":"
-                     << quote(
-                            data.live[p] ? "reachable output/producer or explicit retention option"
-                                         : "unreachable from output"
-                        )
-                     << '}';
-            }
-            json << "],\"order\":[";
-            for (std::size_t i = 0; i < data.order.size(); ++i)
-            {
-                if (i)
-                {
-                    json << ',';
-                }
-                json << data.order[i].value();
-            }
-            json << "],\"hazards\":[";
-            for (std::size_t i = 0; i < data.hazards.size(); ++i)
-            {
-                if (i)
-                {
-                    json << ',';
-                }
-                const auto& hazard = data.hazards[i];
-                json << "{\"before\":" << hazard.before.value() << ",\"after\":" << hazard.after.value()
-                     << ",\"kind\":" << static_cast<unsigned>(hazard.kind)
-                     << ",\"resource\":" << hazard.resource.value() << ",\"range\":" << rangeJson(hazard.range) << '}';
-            }
-            json << "],\"versions\":[";
-            for (std::size_t i = 0; i < data.versions.size(); ++i)
-            {
-                if (i)
-                {
-                    json << ',';
-                }
-                const auto& version = data.versions[i];
-                json << "{\"resource\":" << version.resource.value() << ",\"writer\":" << version.writer.value()
-                     << ",\"range\":" << rangeJson(version.range) << ",\"readers\":[";
-                for (std::size_t j = 0; j < version.readers.size(); ++j)
-                {
-                    if (j)
-                    {
-                        json << ',';
-                    }
-                    json << version.readers[j].value();
-                }
-                json << "],\"lifetime\":";
-                if (version.lifetime)
-                {
-                    json << '[' << version.lifetime->first_pass << ',' << version.lifetime->last_pass << ']';
-                }
-                else
-                {
-                    json << "null";
-                }
-                json << '}';
-            }
-            json << "],\"imports\":[";
-            for (std::size_t i = 0; i < data.imports.size(); ++i)
-            {
-                if (i)
-                {
-                    json << ',';
-                }
-                json << data.imports[i].value();
-            }
-            json << "],\"exports\":[";
-            for (std::size_t i = 0; i < graph.outputs.size(); ++i)
-            {
-                if (i)
-                {
-                    json << ',';
-                }
-                const auto& output = graph.outputs[i];
-                json << "{\"resource\":" << output.resource.value()
-                     << ",\"kind\":" << static_cast<unsigned>(output.kind) << ",\"range\":" << rangeJson(output.range)
-                     << '}';
-            }
-            json << "],\"cache_identity\":{\"equality\":\"exact typed fields\","
-                    "\"includes\":[\"resources and import initialization\",\"pass identity and shader interface\","
-                    "\"uses and producer versions\",\"bindings structural operations\",\"conditions and scope\","
-                    "\"providers outputs explicit order compile options\"],"
-                    "\"excludes\":[\"scalar bytes\",\"sampler values\",\"clear values\",\"camera\","
-                    "\"time serial revisions backing dynamic offsets\"]},\"native_alias_proven\":false}";
-            data.diagnostics_json = json.str();
+            formatPlanDiagnostics(data);
             result.diagnostic.json = data.diagnostics_json;
             return result;
         }
@@ -1365,6 +1522,28 @@ namespace lux::render
                     json << ',';
                 }
                 json << quote(result.diagnostic.cycle_names[i]);
+            }
+            json << "],\"scope_path\":[";
+            for (std::size_t i = 0; i < result.diagnostic.scope_path.size(); ++i)
+            {
+                if (i)
+                {
+                    json << ',';
+                }
+                json << "{\"key\":" << result.diagnostic.scope_path[i].value()
+                     << ",\"name\":" << quote(result.diagnostic.scope_names[i]) << '}';
+            }
+            json << "],\"scope_edges\":[";
+            for (std::size_t i = 0; i < result.diagnostic.scope_edges.size(); ++i)
+            {
+                if (i)
+                {
+                    json << ',';
+                }
+                const auto& edge = result.diagnostic.scope_edges[i];
+                json << "{\"before\":" << edge.before.value() << ",\"after\":" << edge.after.value()
+                     << ",\"kind\":" << static_cast<unsigned>(edge.kind) << ",\"resource\":" << edge.resource.value()
+                     << '}';
             }
             json << "]}";
             result.diagnostic.json = json.str();

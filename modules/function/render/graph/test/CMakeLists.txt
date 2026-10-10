@@ -370,3 +370,21 @@ add_executable(render_graph_logical_benchmark LogicalBenchmark.cpp)
 target_link_libraries(render_graph_logical_benchmark PRIVATE lux::engine::render::render_graph)
 
 add_test(NAME render.graph.logical_compile_benchmark COMMAND render_graph_logical_benchmark)
+
+add_executable(render_graph_scope_proof ScopeProof.cpp)
+
+target_link_libraries(render_graph_scope_proof PRIVATE lux::engine::render::render_graph)
+
+foreach(case IN ITEMS orders hazards sharing conditions culling digest roles)
+    add_test(NAME render.graph.scope_${case} COMMAND render_graph_scope_proof ${case})
+endforeach()
+
+add_executable(render_graph_scale_benchmark ScaleBenchmark.cpp)
+
+target_link_libraries(render_graph_scale_benchmark PRIVATE lux::engine::render::render_graph)
+
+if(WIN32)
+    target_link_libraries(render_graph_scale_benchmark PRIVATE Psapi)
+endif()
+
+add_test(NAME render.graph.scale_smoke COMMAND render_graph_scale_benchmark 64)

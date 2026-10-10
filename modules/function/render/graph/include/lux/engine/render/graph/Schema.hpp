@@ -187,7 +187,7 @@ namespace lux::render
                 field.element_alignment == 0 || (field.element_alignment & (field.element_alignment - 1)) != 0 ||
                 field.array_count == 0 || (!field.descriptor_array && field.array_count != 1) || field.stages == 0 ||
                 (field.stages & ~7u) != 0;
-            const bool is_invalid_role = field.role > rdesc::EPassFieldRole::INPUT_ATTACHMENT;
+            const bool is_invalid_role = !rdesc::isPassFieldRole(field.role);
             const bool is_invalid_owner =
                 field.owner > rdesc::EFieldOwner::PASS_LOCAL || field.frequency > rdesc::EUpdateFrequency::DRAW;
             if (is_invalid_identity || is_invalid_shape || is_invalid_role || is_invalid_owner)

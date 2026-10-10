@@ -6,6 +6,10 @@ set(LUX_VULKAN_SOURCES
     src/Error.cpp
     src/device/Device.cpp
     src/device/Vma.cpp
+    src/memory/Memory.cpp
+    src/descriptor/Descriptors.cpp
+    src/pipeline/Objects.cpp
+    src/pipeline/Pipeline.cpp
 )
 
 add_component(

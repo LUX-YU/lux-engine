@@ -6,6 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 enable_testing()
 
+find_package(lux-cmake-toolset CONFIG REQUIRED)
 find_package(lux-engine-core CONFIG REQUIRED COMPONENTS meta)
 find_package(lux-cxx CONFIG REQUIRED COMPONENTS serialization reflection_runtime)
 include_component_cmake_scripts(lux::engine::core::meta)
@@ -13,13 +14,15 @@ include_component_cmake_scripts(lux::cxx::serialization)
 
 set(fixture "${CMAKE_CURRENT_SOURCE_DIR}/../../../modules/core/meta/test")
 add_executable(meta_projections "${fixture}/ProjectionCompatibility.cpp")
+# This fixture uses headers, not C++ modules. The parser consumes expanded compile commands.
+set_target_properties(meta_projections PROPERTIES CXX_SCAN_FOR_MODULES OFF)
 target_include_directories(meta_projections PRIVATE "${fixture}")
 target_link_libraries(
     meta_projections
     PRIVATE lux::engine::core::type_info lux::cxx::serialization lux::cxx::reflection_runtime
 )
 if(MSVC)
-    target_compile_options(meta_projections PRIVATE /UNDEBUG /utf-8 /permissive- /GR-)
+    target_compile_options(meta_projections PRIVATE /UNDEBUG /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor /GR-)
 else()
     target_compile_options(meta_projections PRIVATE -UNDEBUG -fno-rtti)
 endif()

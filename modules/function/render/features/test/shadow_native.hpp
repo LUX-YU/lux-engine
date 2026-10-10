@@ -4,6 +4,7 @@
 #include <lux/engine/gapi/vk/vk.hpp>
 #define VMA_IMPLEMENTATION
 #include <vk_mem_alloc.h>
+#include <lux/engine/render/gpu/VmaFwd.hpp>
 
 #include <array>
 #include <cassert>

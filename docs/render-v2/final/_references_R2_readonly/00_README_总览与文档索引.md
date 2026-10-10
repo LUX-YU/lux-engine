@@ -1,14 +1,3 @@
-> **F0 权威入口更新（2026-10-10）**：后续目标规范使用 [FINAL 阅读入口](final/README.md)，
-> 实施按 [17：LLM 实施合同](final/17_LLM实施合同.md) 和
-> [F0 阶段解释表](F0_STAGE_INTERPRETATION.md) 执行。
-> 下方原 R2 正文及同级旧设计中的冲突未来目标均已 **SUPERSEDED**；其旧状态、分支、授权和阶段编号不是当前施工入口。
-> R0–R4 历史验收、R2 原始 PARTIAL、R2-FIX 修订及所有 NOT_RUN 事实保持不变。
-> 新阶段为 F0–F11/H1–H6，产品在 F11 切换前保持 `EXPECTED_UNAVAILABLE`。
-> 本次只实施 F0；提交、独立验收并推送后 STOP，F1 仍须用户单独放行。
-> [F0 工作单](F0_WORK_ORDER.md) · [历史与保护映射](F0_PROVENANCE.md)
-
----
-
 # LuxEngine Render V2：最终设计与实施文档集 R2
 
 > 状态：**RECORDED / NOT STARTED**  

@@ -1,0 +1,26 @@
+﻿WorkloadId,ImplementationPhase,Name,EvidenceClass,Oracle,ImplementationSHA,QualificationSHA,Status
+W01,F3,Tonemap+Generated Blur+Composite,CPU+GPU+Shader,One author schema → GLSL/SPIR-V/LayoutPlan/accesses; GPU HDR result; wrong resource fails,,,DESIGN_ONLY
+W02,F4,HZB mip chain,Logical+GPU,"Subresource RAW/WAW/WAR/initialized mip, each mip downsample correct",,,DESIGN_ONLY
+W03,F4,Compute-Graphics-Readback,GPU+sync,Real queue ownership/barriers and checksum; single queue fallback,,,DESIGN_ONLY
+W04,F4,Transient alias/noalias,GPU+VRAM,"Same output, no overlap races; peak GPU memory and alias proof",,,DESIGN_ONLY
+W05,F5,N Views same RenderPath,GPU+plan reuse,"One plan for compatible cameras, independent View outputs, no default per-View graph",,,DESIGN_ONLY
+W06,F7,2 Scenes shared asset,Transport+GPU,"One semantic upload/backing, no premature Scene A retire harms Scene B",,,DESIGN_ONLY
+W07,F8,Skinning 3 FIF,Compute+GPU lifetime,"One Scene pose once, cross-frame WAR fence proof",,,DESIGN_ONLY
+W08,F9,Shadow PCF EVSM CSM,GPU+image,"All techniques readback/quality, view-dependent cascade sharing conditional",,,DESIGN_ONLY
+W09,F10,Terrain streaming fallback,Upload+GPU,Page cache parent fallback/rebase/capacity no missing resident assets,,,DESIGN_ONLY
+W10,F10,Five PointCloud implementations,GPU+image,Simple/GPUDriven/LOD/SoftSplat/Transient separately output,,,DESIGN_ONLY
+W11,F10,Canvas+UI+Picking,GPU+target,"Per-view layered targets, stable priority, stale pick generation rejection",,,DESIGN_ONLY
+W12,F6,External Plugin SDK code pin,installed consumer + GPU,Independent DLL load/attach/record/readback/unload while in-flight,,,DESIGN_ONLY
+W13,F5,10Hz Simulation 144Hz Render,Runtime+latency,"Render frames > publication, no graph recompilation, no CPU busy spin",,,DESIGN_ONLY
+W14,F5,Resize minimize lost,GPU+stop,"Swapchain/offscreen readiness, terminal/retire correctness without waits deadlock",,,DESIGN_ONLY
+W15,F3,Shared descriptor full layout,Shader+GPU,Partial shader reflection vs full Engine/Feature set correct compatibility,,,DESIGN_ONLY
+W16,F4,Multiview and separate fallback,GPU+image,Layered render viewMask with per-view data vs independent output equality,,,DESIGN_ONLY
+W17,F7,Create update update delete under backpressure,Transport+ECS,"Retained packet/source revisions, stale generation and cross-lane reorder",,,DESIGN_ONLY
+W18,F1,Modern C++20 compile rejects,C++20 compile,"Invalid Params/strong ID, no virtual optional hook, public header closure",,,DESIGN_ONLY
+W19,F11,Full Legacy parity/product,GPU+SDK+product,"All Fxx/Ixx PASS, no fallback old renderer, real Editor Player Toolchain installed SDK",,,DESIGN_ONLY
+W20,H1,Virtual geometry,GPU+quality,Page/cluster LOD data-driven residency and reference scenes,,,DESIGN_ONLY
+W21,H2,Dynamic GI/reflections,GPU+quality,Scene-space radiance and time/spatial denoise reference,,,DESIGN_ONLY
+W22,H3,Temporal upscaling,GPU+quality,motion/reprojection/history and anti-ghosting reference,,,DESIGN_ONLY
+W23,H4,Virtual shadow maps,GPU+quality,virtual page table feedback/invalidation and shaded image reference,,,DESIGN_ONLY
+W24,H5,Layered material/volumetric,GPU+quality,BSDF energy/volumetric/shader layout and visual reference,,,DESIGN_ONLY
+W25,H6,3D Gaussian Splatting mixed rendering,GPU+quality,GPU tile sort/front to back transmittance + Mesh depth and multi View readback,,,DESIGN_ONLY

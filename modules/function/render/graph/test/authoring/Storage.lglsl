@@ -1,0 +1,3 @@
+//! lux-shader stage=compute entry=main
+layout(local_size_x=1) in;
+void main() { p_values.data[0].value += 1.0; imageStore(p_output, ivec2(0), vec4(p_values.data[0].value)); }

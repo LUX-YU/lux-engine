@@ -1,0 +1,3 @@
+//! lux-shader stage=fragment entry=main
+layout(location=0) out vec4 color;
+void main() { color = texture(sampler2D(p_input[0], p_linear), vec2(0.5) + vec2(lux_push.p_radius * 0.001)); }

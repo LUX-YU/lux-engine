@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/DefinitionAccess.hpp>
 #include <lux/engine/render/graph/Bindings.hpp>
 
 #include <algorithm>
@@ -38,7 +39,7 @@ namespace
         std::vector<GraphDependency> dependencies = {}
     )
     {
-        auto definition = RenderGraphDefinition::create(
+        auto definition = detail::DefinitionAccess::create(
             std::move(resources), std::move(passes), std::move(dependencies)
         );
         CHECK(definition);
@@ -69,45 +70,45 @@ namespace
         static_assert(!std::is_default_constructible_v<FrameGraphBindings>);
         auto empty = compile({}, {});
         CHECK(empty.executionOrder().empty() && empty.lifetimes().empty());
-        CHECK(renderGraphErrorDescriptors().size() == 6);
-        error(RenderGraphDefinition::create({{static_cast<EGraphResourceKind>(55)}}, {}), kGraphInvalidResource);
-        error(RenderGraphDefinition::create({{EGraphResourceKind::BUFFER, static_cast<EGraphResourceOrigin>(55)}}, {}),
+        CHECK(renderGraphErrorDescriptors().size() == 7);
+        error(detail::DefinitionAccess::create({{static_cast<EGraphResourceKind>(55)}}, {}), kGraphInvalidResource);
+        error(detail::DefinitionAccess::create({{EGraphResourceKind::BUFFER, static_cast<EGraphResourceOrigin>(55)}}, {}),
             kGraphInvalidResource);
         const auto target = renderTargetSemanticId("test.color");
-        error(RenderGraphDefinition::create({{EGraphResourceKind::BUFFER, EGraphResourceOrigin::IMPORTED, target}}, {}),
+        error(detail::DefinitionAccess::create({{EGraphResourceKind::BUFFER, EGraphResourceOrigin::IMPORTED, target}}, {}),
             kGraphInvalidResource);
         const GraphResource image{EGraphResourceKind::IMAGE, EGraphResourceOrigin::IMPORTED, target};
-        error(RenderGraphDefinition::create({image, image}, {}), kGraphInvalidResource);
+        error(detail::DefinitionAccess::create({image, image}, {}), kGraphInvalidResource);
         for (auto id : {0u, 2u})
         {
-            error(RenderGraphDefinition::create({{}}, {{{use(id, EGraphAccess::WRITE)}}}), kGraphInvalidUse);
+            error(detail::DefinitionAccess::create({{}}, {{{use(id, EGraphAccess::WRITE)}}}), kGraphInvalidUse);
         }
-        error(RenderGraphDefinition::create({{}}, {{{use(1, EGraphAccess::READ), use(1, EGraphAccess::WRITE)}}}),
+        error(detail::DefinitionAccess::create({{}}, {{{use(1, EGraphAccess::READ), use(1, EGraphAccess::WRITE)}}}),
             kGraphInvalidUse);
-        error(RenderGraphDefinition::create({{}}, {{{use(1, static_cast<EGraphAccess>(55))}}}), kGraphInvalidUse);
-        error(RenderGraphDefinition::create({{}}, {{{use(1, EGraphAccess::WRITE, static_cast<EGraphUsage>(55))}}}),
+        error(detail::DefinitionAccess::create({{}}, {{{use(1, static_cast<EGraphAccess>(55))}}}), kGraphInvalidUse);
+        error(detail::DefinitionAccess::create({{}}, {{{use(1, EGraphAccess::WRITE, static_cast<EGraphUsage>(55))}}}),
             kGraphInvalidUse);
-        error(RenderGraphDefinition::create({{}}, {{{use(1, EGraphAccess::WRITE, EGraphUsage::COLOR_ATTACHMENT)}}}),
+        error(detail::DefinitionAccess::create({{}}, {{{use(1, EGraphAccess::WRITE, EGraphUsage::COLOR_ATTACHMENT)}}}),
             kGraphInvalidUse);
-        error(RenderGraphDefinition::create({image}, {{{use(1, EGraphAccess::READ, EGraphUsage::VERTEX)}}}),
+        error(detail::DefinitionAccess::create({image}, {{{use(1, EGraphAccess::READ, EGraphUsage::VERTEX)}}}),
             kGraphInvalidUse);
-        error(RenderGraphDefinition::create({{}}, {{{use(1, EGraphAccess::WRITE, EGraphUsage::UNIFORM)}}}),
+        error(detail::DefinitionAccess::create({{}}, {{{use(1, EGraphAccess::WRITE, EGraphUsage::UNIFORM)}}}),
             kGraphInvalidUse);
-        error(RenderGraphDefinition::create({{}}, {{{use(1, EGraphAccess::READ_WRITE, EGraphUsage::TRANSFER)}}}),
+        error(detail::DefinitionAccess::create({{}}, {{{use(1, EGraphAccess::READ_WRITE, EGraphUsage::TRANSFER)}}}),
             kGraphInvalidUse);
-        error(RenderGraphDefinition::create({{EGraphResourceKind::IMAGE}},
+        error(detail::DefinitionAccess::create({{EGraphResourceKind::IMAGE}},
             {{{use(1, EGraphAccess::READ, EGraphUsage::PRESENT)}}}), kGraphInvalidUse);
         for (auto dependency : {edge(0, 1), edge(1, 2), edge(1, 1)})
         {
-            error(RenderGraphDefinition::create({}, {{}}, {dependency}), kGraphInvalidDependency);
+            error(detail::DefinitionAccess::create({}, {{}}, {dependency}), kGraphInvalidDependency);
         }
-        auto a = RenderGraphDefinition::create({}, {{}, {}, {}}, {edge(2, 3), edge(1, 2), edge(1, 2)});
-        auto b = RenderGraphDefinition::create({}, {{}, {}, {}}, {edge(1, 2), edge(2, 3)});
+        auto a = detail::DefinitionAccess::create({}, {{}, {}, {}}, {edge(2, 3), edge(1, 2), edge(1, 2)});
+        auto b = detail::DefinitionAccess::create({}, {{}, {}, {}}, {edge(1, 2), edge(2, 3)});
         CHECK(a && b && *a == *b);
-        auto uses_a = RenderGraphDefinition::create(
+        auto uses_a = detail::DefinitionAccess::create(
             {{}, {}}, {{{use(2, EGraphAccess::WRITE), use(1, EGraphAccess::WRITE)}}}
         );
-        auto uses_b = RenderGraphDefinition::create(
+        auto uses_b = detail::DefinitionAccess::create(
             {{}, {}}, {{{use(1, EGraphAccess::WRITE), use(2, EGraphAccess::WRITE)}}}
         );
         CHECK(uses_a && uses_b && *uses_a == *uses_b);
@@ -159,13 +160,13 @@ namespace
     {
         // compiler_result.cpp: dependency cycle, required producer, retained
         // empty side-effect pass, owned moved plan, failed candidate/last good.
-        auto cycle = RenderGraphDefinition::create({}, {{}, {}}, {edge(1, 2), edge(2, 1)});
+        auto cycle = detail::DefinitionAccess::create({}, {{}, {}}, {edge(1, 2), edge(2, 1)});
         CHECK(cycle);
         error(CompiledGraphPlan::compile(*cycle), kGraphCycle);
-        auto missing = RenderGraphDefinition::create({{}}, {{{use(1, EGraphAccess::READ)}}});
+        auto missing = detail::DefinitionAccess::create({{}}, {{{use(1, EGraphAccess::READ)}}});
         CHECK(missing);
         error(CompiledGraphPlan::compile(*missing), kGraphMissingProducer);
-        auto read_write = RenderGraphDefinition::create({{}}, {{{use(1, EGraphAccess::READ_WRITE)}}});
+        auto read_write = detail::DefinitionAccess::create({{}}, {{{use(1, EGraphAccess::READ_WRITE)}}});
         CHECK(read_write);
         error(CompiledGraphPlan::compile(*read_write), kGraphMissingProducer);
         auto good = compile({}, {{}});
@@ -213,7 +214,7 @@ namespace
     {
         std::vector<GraphResource> resources{{EGraphResourceKind::BUFFER, EGraphResourceOrigin::IMPORTED}};
         std::vector<GraphPass> passes{{{use(1, EGraphAccess::READ)}}};
-        auto definition = RenderGraphDefinition::create(resources, passes);
+        auto definition = detail::DefinitionAccess::create(resources, passes);
         CHECK(definition);
         std::size_t compile_count = 1;
         auto result = CompiledGraphPlan::compile(*definition);
@@ -231,10 +232,10 @@ namespace
             CHECK(binding->imports()[0].dynamic_offset == frame * 256);
             CHECK(plan.executionOrder().data() == order);
         }
-        auto same = RenderGraphDefinition::create(resources, passes);
+        auto same = detail::DefinitionAccess::create(resources, passes);
         CHECK(same && plan.matches(*same));
         passes[0].uses[0].access = EGraphAccess::READ_WRITE;
-        auto changed = RenderGraphDefinition::create(resources, passes);
+        auto changed = detail::DefinitionAccess::create(resources, passes);
         CHECK(changed && !plan.matches(*changed));
         auto replacement = CompiledGraphPlan::compile(*changed);
         CHECK(replacement);
@@ -242,23 +243,23 @@ namespace
         CHECK(compile_count == 2 && plan.matches(*same));
         // Resource kind/origin/semantic, usage, pass set and edges are topology.
         resources[0].origin = EGraphResourceOrigin::TRANSIENT;
-        auto origin = RenderGraphDefinition::create(resources, {{{use(1, EGraphAccess::READ)}}});
+        auto origin = detail::DefinitionAccess::create(resources, {{{use(1, EGraphAccess::READ)}}});
         CHECK(origin && !plan.matches(*origin));
         resources[0] = {EGraphResourceKind::IMAGE, EGraphResourceOrigin::IMPORTED};
-        auto kind = RenderGraphDefinition::create(resources, {{{use(1, EGraphAccess::READ)}}});
+        auto kind = detail::DefinitionAccess::create(resources, {{{use(1, EGraphAccess::READ)}}});
         CHECK(kind && !plan.matches(*kind));
         auto image_plan = CompiledGraphPlan::compile(*kind);
         CHECK(image_plan);
         resources[0].target_semantic = renderTargetSemanticId("test.frame.color");
-        auto semantic = RenderGraphDefinition::create(resources, {{{use(1, EGraphAccess::READ)}}});
+        auto semantic = detail::DefinitionAccess::create(resources, {{{use(1, EGraphAccess::READ)}}});
         CHECK(semantic && !image_plan->matches(*semantic));
-        auto usage = RenderGraphDefinition::create({{EGraphResourceKind::BUFFER, EGraphResourceOrigin::IMPORTED}},
+        auto usage = detail::DefinitionAccess::create({{EGraphResourceKind::BUFFER, EGraphResourceOrigin::IMPORTED}},
             {{{use(1, EGraphAccess::READ, EGraphUsage::UNIFORM)}}});
         CHECK(usage && !plan.matches(*usage));
-        auto extra = RenderGraphDefinition::create({}, {{}, {}}, {edge(2, 1)});
+        auto extra = detail::DefinitionAccess::create({}, {{}, {}}, {edge(2, 1)});
         auto plain = compile({}, {{}, {}});
         CHECK(extra && !plain.matches(*extra));
-        auto fewer = RenderGraphDefinition::create({}, {{}});
+        auto fewer = detail::DefinitionAccess::create({}, {{}});
         CHECK(fewer && !plain.matches(*fewer));
     }
 

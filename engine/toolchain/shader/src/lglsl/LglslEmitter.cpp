@@ -1,6 +1,7 @@
-#include <lux/engine/toolchain/shader/lglsl/LglslEmitter.hpp>
 #include <lux/engine/description/LayoutContract.hpp>
+#include <lux/engine/toolchain/shader/lglsl/LglslEmitter.hpp>
 
+#include <algorithm>
 #include <array>
 #include <lux/cxx/core/Format.hpp>
 #include <optional>
@@ -15,7 +16,9 @@ namespace lux::shadergen::lglsl
         {
             const size_t b = s.find_first_not_of(" \t\r");
             if (b == std::string_view::npos)
+            {
                 return {};
+            }
             const size_t e = s.find_last_not_of(" \t\r");
             return s.substr(b, e - b + 1);
         }
@@ -27,7 +30,9 @@ namespace lux::shadergen::lglsl
         [[nodiscard]] std::string_view stripLineComment(std::string_view s) noexcept
         {
             if (const size_t c = s.find("//"); c != std::string_view::npos)
+            {
                 s = s.substr(0, c);
+            }
             return trim(s);
         }
 
@@ -52,7 +57,9 @@ namespace lux::shadergen::lglsl
         [[nodiscard]] std::string_view stripNameSuffix(std::string_view name) noexcept
         {
             if (size_t p = name.find_first_of("[;"); p != std::string_view::npos)
+            {
                 name = name.substr(0, p);
+            }
             return name;
         }
 
@@ -92,13 +99,17 @@ namespace lux::shadergen::lglsl
                 {
                     const size_t eq = kv.find('=');
                     if (eq == std::string_view::npos)
+                    {
                         return lux::format("lux-shader 需要 key=value 形式,得到 '{}'", kv);
+                    }
                     const std::string_view key = kv.substr(0, eq);
                     const std::string_view val = kv.substr(eq + 1);
                     if (key == "stage")
                     {
                         if (!parseStage(val, meta.stage))
+                        {
                             return lux::format("未知 stage '{}'(可用:vertex/fragment/compute)", val);
+                        }
                     }
                     else if (key == "entry")
                     {
@@ -115,12 +126,16 @@ namespace lux::shadergen::lglsl
             {
                 const std::string_view name = nextToken(cursor);
                 if (name.empty())
+                {
                     return std::string("lux-variant 需要一个宏名");
+                }
                 meta.variants.push_back({std::string(name)});
                 return std::nullopt;
             }
             if (directive.starts_with("lux-"))
+            {
                 return lux::format("不认识的 pragma 指令 '{}'", directive);
+            }
             return std::nullopt; // a plain "//!" comment, unrelated to this emitter
         }
 
@@ -139,6 +154,9 @@ namespace lux::shadergen::lglsl
         /// location / constant_id etc. is an "explicit declaration" and passes
         /// through unchanged.
         constexpr std::array kMergeableLayoutQualifiers = {
+            std::string_view{"r32f"},
+            std::string_view{"rgba32f"},
+            std::string_view{"rgba8"},
             std::string_view{"std140"},
             std::string_view{"std430"},
             std::string_view{"scalar"},
@@ -153,11 +171,15 @@ namespace lux::shadergen::lglsl
         [[nodiscard]] std::optional<std::string_view> mergeableLayoutContent(std::string_view trimmed) noexcept
         {
             if (!trimmed.starts_with("layout"))
+            {
                 return std::nullopt;
+            }
             const size_t open = trimmed.find('(');
             const size_t close = trimmed.find(')');
             if (open == std::string_view::npos || close == std::string_view::npos || close < open)
+            {
                 return std::nullopt;
+            }
             const std::string_view content = trimmed.substr(open + 1, close - open - 1);
 
             std::string_view cursor = content;
@@ -167,19 +189,31 @@ namespace lux::shadergen::lglsl
                 // Comma-separated: strip the trailing comma, then check each item
                 // against the whitelist.
                 while (!tok.empty() && tok.back() == ',')
+                {
                     tok.remove_suffix(1);
+                }
                 if (tok.empty())
+                {
                     continue;
+                }
                 ++items;
-                bool ok = false;
+                const auto attachment_prefix = std::string_view{"input_attachment_index="};
+                const bool is_attachment_index =
+                    tok.starts_with(attachment_prefix) && tok.size() > attachment_prefix.size() &&
+                    tok.substr(attachment_prefix.size()).find_first_not_of("0123456789") == std::string_view::npos;
+                bool ok = is_attachment_index;
                 for (const auto q : kMergeableLayoutQualifiers)
+                {
                     if (tok == q)
                     {
                         ok = true;
                         break;
                     }
+                }
                 if (!ok)
+                {
                     return std::nullopt;
+                }
             }
             return items > 0 ? std::optional{content} : std::nullopt;
         }
@@ -203,23 +237,31 @@ namespace lux::shadergen::lglsl
             {
                 const auto mergeable = mergeableLayoutContent(trimmed);
                 if (!mergeable)
+                {
                     return {}; // explicit layout(set=… / push_constant / location …) -> passed through unchanged
+                }
                 merge = *mergeable;
                 cursor = trimmed.substr(trimmed.find(')') + 1);
             }
             for (std::string_view tok = nextToken(cursor); !tok.empty(); tok = nextToken(cursor))
             {
                 if (tok == "uniform" || tok == "buffer")
+                {
                     return {true, cursor, merge};
+                }
                 bool is_qualifier = false;
                 for (const auto q : kQualifiers)
+                {
                     if (tok == q)
                     {
                         is_qualifier = true;
                         break;
                     }
+                }
                 if (!is_qualifier)
+                {
                     return {};
+                }
             }
             return {};
         }
@@ -234,7 +276,9 @@ namespace lux::shadergen::lglsl
         [[nodiscard]] std::string formatInjection(uint32_t set, uint32_t binding, std::string_view merge_layout)
         {
             if (merge_layout.empty())
+            {
                 return lux::format("layout(set = {}, binding = {}) ", set, binding);
+            }
             return lux::format("layout(set = {}, binding = {}, {}) ", set, binding, merge_layout);
         }
 
@@ -243,7 +287,10 @@ namespace lux::shadergen::lglsl
         class Emitter
         {
         public:
-            Emitter(std::string_view source, EEmitMode mode) : source_(source), mode_(mode) {}
+            Emitter(std::string_view source, EEmitMode mode, const rdesc::PassShaderContract* contract = nullptr)
+                : source_(source), mode_(mode), contract_(contract)
+            {
+            }
 
             lux::cxx::expected<EmitOutput, std::string> run()
             {
@@ -257,19 +304,27 @@ namespace lux::shadergen::lglsl
                     rest = (nl == std::string_view::npos) ? std::string_view{} : rest.substr(nl + 1);
 
                     if (auto err = consumeLine(line, line_no))
+                    {
                         return lux::cxx::unexpected<std::string>(lux::format("line {}: {}", line_no, *err));
+                    }
                 }
                 if (in_block_)
+                {
                     return lux::cxx::unexpected<std::string>(
                         lux::format("line {}: 资源块声明未闭合(缺 '}};')", block_start_line_)
                     );
+                }
                 if (mode_ == EEmitMode::SHADER && out_.meta.stage == rdesc::EShaderType::UNDEFINED)
+                {
                     return lux::cxx::unexpected<std::string>("缺少 '//! lux-shader stage=...' pragma"
                                                              "(.lglsl 必须自描述)");
+                }
                 if (mode_ == EEmitMode::HEADER && out_.meta.stage != rdesc::EShaderType::UNDEFINED)
+                {
                     return lux::cxx::unexpected<std::string>(
                         "共享头(.lglslh)不应声明 lux-shader —— stage 属于包含它的着色器"
                     );
+                }
                 return std::move(out_);
             }
 
@@ -283,15 +338,46 @@ namespace lux::shadergen::lglsl
             std::optional<std::string> consumeLine(std::string_view line, uint32_t line_no)
             {
                 const std::string_view judged = stripLineComment(line);
+                if (contract_ && judged.starts_with("layout"))
+                {
+                    const auto open = judged.find('(');
+                    const auto close = judged.find(')');
+                    const bool is_incomplete = open == std::string_view::npos || close == std::string_view::npos;
+                    if (is_incomplete)
+                    {
+                        return std::string("Pass layout qualifier must be complete on one line");
+                    }
+                    auto qualifiers = judged.substr(open + 1, close - open - 1);
+                    while (!qualifiers.empty())
+                    {
+                        const auto comma = qualifiers.find(',');
+                        const auto item = qualifiers.substr(0, comma);
+                        const auto key = trim(item.substr(0, item.find('=')));
+                        const bool is_physical = key == "set" || key == "binding";
+                        if (is_physical)
+                        {
+                            return std::string("Pass shader cannot assign physical set/binding");
+                        }
+                        if (comma == std::string_view::npos)
+                        {
+                            break;
+                        }
+                        qualifiers.remove_prefix(comma + 1);
+                    }
+                }
 
                 if (in_block_)
+                {
                     return consumeBlockLine(line, judged);
+                }
 
                 const std::string_view trimmed = trim(line);
                 if (trimmed.starts_with("//!")) // a pragma is itself a comment, so check it before stripping comments
                 {
                     if (auto err = parsePragma(trimmed.substr(3), out_.meta))
+                    {
                         return err;
+                    }
                     appendLine(line); // keep the pragma as a comment, for easier debugging/diffing
                     return std::nullopt;
                 }
@@ -306,7 +392,9 @@ namespace lux::shadergen::lglsl
                 // Single-line opaque / single-line block: if it ends with ';',
                 // this line is already a complete declaration.
                 if (judged.ends_with(";"))
+                {
                     return emitDeclaration(line, judged, line_no);
+                }
 
                 // Multi-line block declaration: enter collection mode; where to
                 // inject on the block's first line is decided when it's flushed.
@@ -353,10 +441,31 @@ namespace lux::shadergen::lglsl
             {
                 const std::string_view name = declarationName(judged);
                 if (name.empty())
+                {
                     return std::string("无法从资源声明中提取名字"
                                        "(约定式解析;若为特殊形态请显式写 layout)");
+                }
 
-                const auto* entry = rdesc::findLogicalResource(name);
+                const auto* entry = contract_ ? nullptr : rdesc::findLogicalResource(name);
+                if (contract_)
+                {
+                    const auto found = std::find_if(
+                        contract_->resources.begin(),
+                        contract_->resources.end(),
+                        [name](const auto& field) { return field.shader_name == name; }
+                    );
+                    if (found == contract_->resources.end())
+                    {
+                        return "Shader resource not declared by PassSchema: " + std::string(name);
+                    }
+                    for (const auto& binding : out_.injected)
+                    {
+                        if (binding.name == name)
+                        {
+                            return "Duplicate Shader resource: " + std::string(name);
+                        }
+                    }
+                }
 
                 // R2-1:契约不再是词汇表的边界。契约条目 = 冻结域与引擎共享资源
                 // (它们的位置由契约定,一行未动);**契约外 = 自由域局部资源**,
@@ -369,7 +478,7 @@ namespace lux::shadergen::lglsl
                 //    layout(set=..,binding=..)(matchDeclStart 直通)即可;
                 //  · .lglslh 里的局部资源按**头文件**独立计数:多个带局部资源的头
                 //    被同一着色器包含会撞 b0 —— 今日树内无此形状,出现时同上处理。
-                const uint32_t inj_set = entry ? entry->canonical_set : kLocalResourceSet;
+                const uint32_t inj_set = entry ? entry->canonical_set : (contract_ ? 0u : kLocalResourceSet);
                 const uint32_t inj_binding = entry ? entry->canonical_binding : next_local_binding_++;
 
                 const DeclHead head = matchDeclStart(judged);
@@ -385,7 +494,9 @@ namespace lux::shadergen::lglsl
                 {
                     body.remove_prefix(body.find(')') + 1);
                     if (const size_t b = body.find_first_not_of(" \t"); b != std::string_view::npos)
+                    {
                         body.remove_prefix(b);
+                    }
                 }
 
                 out_.glsl.append(indent);
@@ -410,7 +521,9 @@ namespace lux::shadergen::lglsl
                     std::string_view cursor = tail;
                     const std::string_view instance = nextToken(cursor);
                     if (!instance.empty() && instance != ";")
+                    {
                         return stripNameSuffix(instance);
+                    }
                     // No instance name -> use the block name: the first token
                     // after the uniform|buffer keyword
                     const DeclHead head = matchDeclStart(trimmed);
@@ -421,7 +534,9 @@ namespace lux::shadergen::lglsl
                 std::string_view cursor = trimmed;
                 std::string_view last{};
                 for (std::string_view tok = nextToken(cursor); !tok.empty(); tok = nextToken(cursor))
+                {
                     last = tok;
+                }
                 return stripNameSuffix(last);
             }
 
@@ -431,9 +546,13 @@ namespace lux::shadergen::lglsl
                 for (char c : s)
                 {
                     if (c == '{')
+                    {
                         ++d;
+                    }
                     if (c == '}')
+                    {
                         --d;
+                    }
                 }
                 return d;
             }
@@ -444,6 +563,7 @@ namespace lux::shadergen::lglsl
                 out_.glsl.push_back('\n');
             }
 
+            const rdesc::PassShaderContract* contract_{};
             std::string_view source_;
             EEmitMode mode_{EEmitMode::SHADER};
             EmitOutput out_{};
@@ -462,6 +582,18 @@ namespace lux::shadergen::lglsl
     lux::cxx::expected<EmitOutput, std::string> emitCanonicalGlsl(std::string_view source, EEmitMode mode)
     {
         return Emitter(source, mode).run();
+    }
+
+    lux::cxx::expected<EmitOutput, std::string> emitPassGlsl(
+        const rdesc::PassShaderContract& contract,
+        std::string_view source
+    )
+    {
+        std::string combined = "#version 450\n";
+        combined += contract.declarations;
+        combined += '\n';
+        combined += source;
+        return Emitter(combined, EEmitMode::SHADER, &contract).run();
     }
 
 } // namespace lux::shadergen::lglsl

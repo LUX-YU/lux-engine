@@ -1,0 +1,21 @@
+{
+"types": {{ types }},
+"declarations": {{ declarations }},
+"records": [
+{% for idx in marked_record_decls %}{% set rec = decl_from_index(idx) %}
+{"id": {{ json_str(rec.id) }}, "params": {{ annotation_has(rec, "luxpass::params") }} },
+{% endfor %}null],
+"fields": [
+{% for d in declarations %}{% if d.__kind == "FieldDecl" %}
+{"id": {{ json_str(d.id) }},
+ "resource": {{ annotation_has(d, "luxpass::resource") }},
+ "annotation_count": {{ annotation_count(d, "luxpass::resource") }},
+ "role_count": {{ annotation_count(d, "role") }},
+ "arguments": {{ annotation_map_for(d, "luxpass::resource") }},
+{% for key in ["role", "scope", "frequency", "semantic", "for", "dimension", "format"] %}
+ "{{ key }}": {{ json_str(annotation_get_for_or(d, "luxpass::resource", key, "")) }},
+{% endfor %}
+ "stages": {{ annotation_get_for_or(d, "luxpass::resource", "stages", 7) }},
+ "required": {{ annotation_get_for_or(d, "luxpass::resource", "required", true) }} },
+{% endif %}{% endfor %}null]
+}

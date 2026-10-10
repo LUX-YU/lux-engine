@@ -80,6 +80,18 @@ namespace lux::render
 
     RenderResult<CompiledGraphPlan> CompiledGraphPlan::compile(const RenderGraphDefinition& definition) noexcept
     {
+        // F1 admits complete author declarations. The preserved R3 scheduler
+        // proves whole-resource hazards only; F2 replaces this algorithm.
+        for (std::size_t i = 0; i < definition.passes().size(); ++i)
+        {
+            for (const auto& use : definition.passes()[i].uses)
+            {
+                if (!use.whole_resource)
+                {
+                    return cxx::unexpected(RenderError{kGraphUnsupportedScheduling, {i + 1, use.resource.value()}});
+                }
+            }
+        }
         Adjacency edges(definition.passes().size());
         for (const auto& dependency : definition.dependencies())
         {

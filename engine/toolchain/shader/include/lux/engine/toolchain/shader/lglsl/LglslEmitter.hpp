@@ -33,6 +33,7 @@
 #include <lux/engine/description/ShaderInfo.hpp> // rdesc::EShaderType
 
 #include <cstdint>
+#include <lux/engine/description/PassContract.hpp>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -87,6 +88,13 @@ namespace lux::shadergen::lglsl
     lux::cxx::expected<EmitOutput, std::string> emitCanonicalGlsl(
         std::string_view source,
         EEmitMode mode = EEmitMode::SHADER
+    );
+
+    // Schema declarations are injected by this cold path. Locations are provisional
+    // compiler positions; F3 LayoutPlan owns final physical allocation/relocation.
+    [[nodiscard]] lux::cxx::expected<EmitOutput, std::string> emitPassGlsl(
+        const rdesc::PassShaderContract& contract,
+        std::string_view source
     );
 
 } // namespace lux::shadergen::lglsl

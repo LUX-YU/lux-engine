@@ -1,3 +1,4 @@
+#include <lux/engine/render/graph/DefinitionAccess.hpp>
 #include <lux/engine/render/graph/Bindings.hpp>
 
 #if defined(LUX_PROBE_VULKAN)
@@ -22,13 +23,13 @@ int main()
     lux::render::GraphPassId pass = lux::render::GraphResourceId{1};
     return static_cast<int>(pass.value());
 #elif defined(LUX_PROBE_TEMPORARY)
-    auto definition = lux::render::RenderGraphDefinition::create({}, {});
+    auto definition = lux::render::detail::DefinitionAccess::create({}, {});
     auto bindings = lux::render::FrameGraphBindings::create(
         *lux::render::CompiledGraphPlan::compile(*definition), {}, {}
     );
     return bindings ? 0 : 1;
 #else
-    auto definition = lux::render::RenderGraphDefinition::create({}, {});
+    auto definition = lux::render::detail::DefinitionAccess::create({}, {});
     return definition ? 0 : 1;
 #endif
 }

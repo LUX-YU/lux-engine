@@ -1,6 +1,6 @@
 #include <lux/engine/toolchain/shader/SpirvReflection.hpp>
 
-#include <spirv_cross/spirv_cross.hpp>
+#include <spirv_cross.hpp>
 
 #include <algorithm>
 #include <cstdint>
@@ -136,7 +136,7 @@ namespace lux::toolchain
             b.binding = binding;
             b.name = comp.get_name(r.id);
             b.type = EDescriptorType::UNIFORM_BUFFER;
-            b.count = calcArraySize(comp, t);
+            b.count = calcArraySize(comp, comp.get_type(r.type_id));
             b.blockSize = static_cast<uint32_t>(comp.get_declared_struct_size(t));
             b.writable = false;
             pushBinding(out, b);
@@ -154,9 +154,9 @@ namespace lux::toolchain
             b.binding = binding;
             b.name = comp.get_name(r.id);
             b.type = EDescriptorType::STORAGE_BUFFER;
-            b.count = calcArraySize(comp, t);
+            b.count = calcArraySize(comp, comp.get_type(r.type_id));
             b.blockSize = static_cast<uint32_t>(comp.get_declared_struct_size(t));
-            b.writable = isWritableStorage(comp, r.id);
+            b.writable = !comp.get_buffer_block_flags(r.id).get(spv::DecorationNonWritable);
             pushBinding(out, b);
         }
 
@@ -172,7 +172,7 @@ namespace lux::toolchain
             b.binding = binding;
             b.name = comp.get_name(r.id);
             b.type = EDescriptorType::COMBINED_IMAGE_SAMPLER;
-            b.count = calcArraySize(comp, t);
+            b.count = calcArraySize(comp, comp.get_type(r.type_id));
             pushBinding(out, b);
         }
 
@@ -187,7 +187,7 @@ namespace lux::toolchain
             b.binding = binding;
             b.name = comp.get_name(r.id);
             b.type = EDescriptorType::SAMPLED_IMAGE;
-            b.count = calcArraySize(comp, t);
+            b.count = calcArraySize(comp, comp.get_type(r.type_id));
             pushBinding(out, b);
         }
         for (auto& r : res.separate_samplers)
@@ -199,7 +199,7 @@ namespace lux::toolchain
             b.binding = binding;
             b.name = comp.get_name(r.id);
             b.type = EDescriptorType::SAMPLER;
-            b.count = 1;
+            b.count = calcArraySize(comp, comp.get_type(r.type_id));
             pushBinding(out, b);
         }
 
@@ -214,7 +214,7 @@ namespace lux::toolchain
             b.binding = binding;
             b.name = comp.get_name(r.id);
             b.type = EDescriptorType::STORAGE_IMAGE;
-            b.count = calcArraySize(comp, t);
+            b.count = calcArraySize(comp, comp.get_type(r.type_id));
             b.writable = isWritableStorage(comp, r.id);
             pushBinding(out, b);
         }
@@ -230,7 +230,7 @@ namespace lux::toolchain
             b.binding = binding;
             b.name = comp.get_name(r.id);
             b.type = EDescriptorType::INPUT_ATTACHMENT;
-            b.count = calcArraySize(comp, t);
+            b.count = calcArraySize(comp, comp.get_type(r.type_id));
             pushBinding(out, b);
         }
 

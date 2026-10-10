@@ -1,0 +1,94 @@
+#pragma once
+
+#include <cstdint>
+#include <span>
+#include <string_view>
+
+namespace lux::rdesc
+{
+    enum class EPassFieldRole
+    {
+        SAMPLED_READ,
+        STORAGE_READ,
+        STORAGE_WRITE,
+        STORAGE_READ_WRITE,
+        SAMPLER,
+        UNIFORM_READ,
+        READ_ONLY_STORAGE,
+        READ_WRITE_STORAGE,
+        COLOR_ATTACHMENT,
+        DEPTH_STENCIL,
+        RESOLVE,
+        TRANSFER_SOURCE,
+        TRANSFER_DESTINATION,
+        VERTEX,
+        INDEX,
+        INDIRECT,
+        INPUT_ATTACHMENT
+    };
+
+    enum class EFieldOwner
+    {
+        SCENE,
+        FEATURE,
+        PASS_LOCAL
+    };
+    enum class EUpdateFrequency
+    {
+        STATIC,
+        FRAME,
+        DRAW
+    };
+    enum class EScalarKind
+    {
+        FLOAT,
+        INT,
+        UINT
+    };
+
+    // Generated cold metadata. Names are diagnostics/compile facts, never runtime routes.
+    struct PassResourceField
+    {
+        std::string_view path;
+        std::string_view shader_name;
+        EPassFieldRole role;
+        EFieldOwner owner;
+        EUpdateFrequency frequency;
+        bool required;
+        std::uint32_t array_count;
+        std::uint32_t element_stride;
+        std::string_view semantic;
+        std::string_view paired_texture;
+        std::string_view dimension;
+        std::string_view image_format;
+        std::uint32_t stages{7};
+        bool descriptor_array{false};
+
+        bool operator==(const PassResourceField&) const noexcept = default;
+    };
+
+    struct PassScalarField
+    {
+        std::string_view path;
+        EScalarKind kind;
+        std::uint32_t offset;
+        std::uint32_t size;
+        std::uint32_t array_stride;
+        std::uint32_t array_count;
+        EFieldOwner owner{EFieldOwner::PASS_LOCAL};
+        EUpdateFrequency frequency{EUpdateFrequency::FRAME};
+        std::uint32_t stages{7};
+
+        bool operator==(const PassScalarField&) const noexcept = default;
+    };
+
+    struct PassShaderContract
+    {
+        std::string_view canonical_name;
+        std::span<const PassResourceField> resources;
+        std::span<const PassScalarField> scalars;
+        std::string_view declarations;
+        std::uint32_t parameter_size;
+        std::uint32_t parameter_alignment;
+    };
+} // namespace lux::rdesc

@@ -259,7 +259,8 @@ namespace
             const bool has_declaration =
                 declared && declared->definition->sourceStage() == EFlowSourceStage::DECLARATION;
             const bool has_variable = references.variable_type(7) == environment.types.front();
-            if (!has_declaration || !has_variable)
+            const bool has_peer_body = references.node(NodeId{1}) != nullptr;
+            if (!has_declaration || !has_variable || has_peer_body)
             {
                 return cxx::unexpected(
                     FlowSourceFailure{EFlowSourceError::INVALID_IDENTITY, "external reference", source.id}
@@ -288,6 +289,12 @@ namespace
             const NodeId id{entry.source_stage == EFlowSourceStage::DECLARATION ? 99U : 1U};
             require(graph.addNodeWithId(id, std::move(*node)).has_value());
         }
+        auto peer_definition = catalog.find(body.identity.id);
+        auto peer_payload = peer_definition->create();
+        require(peer_payload.has_value());
+        auto peer = createFlowNode(peer_definition, std::move(*peer_payload));
+        require(peer.has_value());
+        require(graph.addNodeWithId(NodeId{2}, std::move(*peer)).has_value());
         const auto captured = captureFlowSource(assetId(), "registered metadata", graph);
         require(captured.has_value() && captured->nodes.front().id == NodeId{1});
         const auto bytes = encodeFlowSource(*captured);
@@ -297,7 +304,7 @@ namespace
         environment.nodes = &catalog;
         environment.types = types;
         auto restored = materializeFlowSource(*captured, environment);
-        require(restored.has_value() && restored_declarations == 1 && restored_bodies == 1);
+        require(restored.has_value() && restored_declarations == 1 && restored_bodies == 2);
         require(*captureFlowSource(assetId(), "registered metadata", *restored) == *captured);
         require(*encodeFlowSource(*captureFlowSource(assetId(), "registered metadata", *restored)) == *bytes);
         environment.types = {};

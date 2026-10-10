@@ -612,7 +612,12 @@ namespace lux::flowforge
         const auto find_node = [&](NodeId id) noexcept -> const FlowNode*
         {
             const auto found = prepared.find(id);
-            return found == prepared.end() ? nullptr : &found->second;
+            if (found == prepared.end())
+            {
+                return nullptr;
+            }
+            const auto& node = found->second;
+            return node.definition->sourceStage() == EFlowSourceStage::DECLARATION ? &node : nullptr;
         };
         const auto find_variable_type = [&](std::uint64_t id) noexcept -> const meta::RefType*
         {

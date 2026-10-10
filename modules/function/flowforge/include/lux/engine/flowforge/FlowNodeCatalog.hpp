@@ -24,8 +24,9 @@ namespace lux::flowforge
     };
     class FlowExecutionCompiler;
 
-    // Borrowed only for a synchronous candidate validation call. Lookups see the complete
-    // candidate, including replacements and removals; no mutable graph or persistent cache escapes.
+    // Synchronous read-only borrow; callbacks cannot retain these lookups.
+    // Edit validation sees the complete candidate, including replacements and removals.
+    // Source restoration sees completed declarations and variables, never earlier body nodes.
     struct FlowReferenceView final
     {
         cxx::function_ref<const FlowNode*(graph::NodeId) noexcept> node;

@@ -88,7 +88,8 @@ does not inspect concrete payload types or dispatch on historical builtin wire t
 Restoration callbacks synchronously borrow an immutable `FlowSourceEnvironment` and a
 `FlowReferenceView` over the unpublished candidate. They must not retain either view.
 Definitions declare `DECLARATION` or `BODY` restoration stage, preserving forward function
-references without publishing a partial graph. This is a two-stage source contract, not a
+references without publishing a partial graph. Node lookups expose declarations only;
+earlier body nodes do not leak traversal order into extension behavior. This is a two-stage source contract, not a
 runtime dependency scheduler. Definition identity/version, code ownership and resulting
 pin schemas are checked before admission. Original v1/v2 parameter schemas remain unchanged.
 

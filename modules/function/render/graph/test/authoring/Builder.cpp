@@ -252,7 +252,7 @@ int main()
     auto dynamic = tonemap(updated_input, updated_output);
     dynamic.exposure = 9.0f;
     dynamic.linear.sampler = GraphSampler{9};
-    dynamic.output.clear[0] = 0.5f;
+    dynamic.output.clear = FloatColorClear{{0.5f, 0.0f, 0.0f, 0.0f}};
     check(
         bool(updated.addPass(
             "test.pass.1",

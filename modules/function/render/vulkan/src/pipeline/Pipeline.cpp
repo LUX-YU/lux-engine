@@ -5,24 +5,31 @@
 namespace lux::render::vulkan
 {
     RenderResult<ShaderModule> ShaderModule::create(
-        const VulkanDevice &device, std::span<const std::uint32_t> spirv
+        const VulkanDevice& device,
+        std::span<const std::uint32_t> spirv
     ) noexcept
     {
         const bool is_invalid_binary = spirv.size() < 5 || spirv[0] != 0x07230203u;
         if (is_invalid_binary)
+        {
             return cxx::unexpected(RenderError{kInvalidArgument});
+        }
         VkShaderModuleCreateInfo info{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
         info.codeSize = spirv.size_bytes();
         info.pCode = spirv.data();
         VkShaderModule module{};
         const auto result = LUX_NATIVE("shader", vkCreateShaderModule(device.native(), &info, nullptr, &module));
         if (result != VK_SUCCESS)
+        {
             return cxx::unexpected(nativeError(result));
+        }
         return ShaderModule{device.native(), module};
     }
 
     RenderResult<PipelineLayout> PipelineLayout::create(
-        const VulkanDevice &device, std::span<const VkDescriptorSetLayout> layouts
+        const VulkanDevice& device,
+        std::span<const VkDescriptorSetLayout> layouts,
+        std::span<const VkPushConstantRange> push_ranges
     ) noexcept
     {
         if (layouts.size() > device.properties().limits.maxBoundDescriptorSets)
@@ -32,26 +39,51 @@ namespace lux::render::vulkan
         for (auto layout : layouts)
         {
             if (!layout)
+            {
                 return cxx::unexpected(RenderError{kInvalidArgument});
+            }
+        }
+        VkShaderStageFlags stages = 0;
+        for (const auto& range : push_ranges)
+        {
+            const auto limit = device.properties().limits.maxPushConstantsSize;
+            constexpr auto allowed_stages =
+                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+            const bool invalid_range = range.stageFlags == 0 || (range.stageFlags & ~allowed_stages) != 0 ||
+                                       (range.stageFlags & stages) != 0 || range.offset % 4 != 0 || range.size == 0 ||
+                                       range.size % 4 != 0 || range.offset > limit || range.size > limit - range.offset;
+            if (invalid_range)
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument});
+            }
+            stages |= range.stageFlags;
         }
         VkPipelineLayoutCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
         info.setLayoutCount = static_cast<std::uint32_t>(layouts.size());
         info.pSetLayouts = layouts.data();
+        info.pushConstantRangeCount = static_cast<std::uint32_t>(push_ranges.size());
+        info.pPushConstantRanges = push_ranges.data();
         VkPipelineLayout layout{};
         const auto result =
             LUX_NATIVE("pipeline_layout", vkCreatePipelineLayout(device.native(), &info, nullptr, &layout));
         if (result != VK_SUCCESS)
+        {
             return cxx::unexpected(nativeError(result));
+        }
         return PipelineLayout{device.native(), layout};
     }
 
     RenderResult<ComputePipeline> ComputePipeline::create(
-        const VulkanDevice &device, const ShaderModule &shader, const PipelineLayout &layout
+        const VulkanDevice& device,
+        const ShaderModule& shader,
+        const PipelineLayout& layout
     ) noexcept
     {
         const bool is_wrong_owner = shader.device() != device.native() || layout.device() != device.native();
         if (is_wrong_owner)
+        {
             return cxx::unexpected(RenderError{kWrongOwner});
+        }
         VkComputePipelineCreateInfo info{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
         info.layout = layout.native();
         info.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -60,13 +92,16 @@ namespace lux::render::vulkan
         info.stage.pName = "main";
         VkPipeline pipeline{};
         const auto result = LUX_NATIVE(
-            "pipeline", vkCreateComputePipelines(device.native(), VK_NULL_HANDLE, 1, &info, nullptr, &pipeline)
+            "pipeline",
+            vkCreateComputePipelines(device.native(), VK_NULL_HANDLE, 1, &info, nullptr, &pipeline)
         );
         if (result != VK_SUCCESS)
         {
             // Vulkan may return partial output handles on pipeline failure.
             if (pipeline)
+            {
                 LUX_DESTROY("pipeline", vkDestroyPipeline(device.native(), pipeline, nullptr));
+            }
             return cxx::unexpected(nativeError(result));
         }
         return ComputePipeline{device.native(), pipeline};

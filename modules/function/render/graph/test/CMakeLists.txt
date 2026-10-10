@@ -1,5 +1,18 @@
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/../pinclude")
 
+add_executable(render_graph_color_clear ColorClear.cpp)
+
+add_dependencies(render_graph_color_clear render_graph_schema_Tonemap_pass_schema)
+
+target_include_directories(
+    render_graph_color_clear PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated" "${CMAKE_CURRENT_SOURCE_DIR}/authoring"
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+target_link_libraries(render_graph_color_clear PRIVATE lux::engine::render::render_graph)
+
+add_test(NAME render.graph.typed_color_clear COMMAND render_graph_color_clear)
+
 add_executable(render_graph_test Graph.cpp)
 
 target_link_libraries(render_graph_test PRIVATE lux::engine::render::render_graph)
@@ -45,6 +58,17 @@ add_test(NAME render.graph.binding_allocation COMMAND render_graph_benchmark)
 include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/RenderGraphCodegen.cmake")
 
 find_program(LUX_GLSLC glslc HINTS "${Vulkan_INCLUDE_DIR}/../Bin" REQUIRED)
+
+find_program(LUX_SPIRV_VAL spirv-val HINTS "${Vulkan_INCLUDE_DIR}/../Bin" REQUIRED)
+
+add_test(
+    NAME render.graph.f3_include_contract
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/authoring/F3Includes.py"
+        "${LUX_GLSLC}" "${LUX_SPIRV_VAL}"
+        "$<TARGET_FILE:render_graph_schema_Complex>" "$<TARGET_FILE:render_graph_schema_Tonemap>"
+        "$<TARGET_FILE:render_graph_schema_Stages>" "${CMAKE_CURRENT_SOURCE_DIR}/authoring"
+        "${CMAKE_CURRENT_BINARY_DIR}/f3-includes"
+)
 
 foreach(fixture IN ITEMS Tonemap Blur Composite Storage Hzb Complex LocalRead HalfStorage)
     add_executable(render_graph_schema_${fixture} authoring/Fixture.cpp)

@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <charconv>
+#include <limits>
 #include <lux/engine/toolchain/shader/PassValidation.hpp>
 #include <lux/engine/toolchain/shader/SpirvReflection.hpp>
 #include <new>
@@ -115,7 +116,8 @@ namespace lux::toolchain
 
         cxx::expected<void, std::string> validate(
             std::span<const std::uint32_t> words,
-            const rdesc::PassShaderContract& contract
+            const rdesc::PassShaderContract& contract,
+            std::span<const PassDescriptorLocation> final_locations
         )
         {
             rdesc::ShaderInfo reflected;
@@ -160,12 +162,28 @@ namespace lux::toolchain
                     continue;
                 }
                 ++active_bindings;
+                std::uint32_t expected_set = 0, expected_binding = binding;
+                if (!final_locations.empty())
+                {
+                    const auto index = static_cast<std::uint32_t>(&field - contract.resources.data());
+                    const auto location = std::find_if(
+                        final_locations.begin(),
+                        final_locations.end(),
+                        [&](const auto& item) { return item.field_index == index; }
+                    );
+                    if (location == final_locations.end())
+                    {
+                        return cxx::unexpected("Missing final placement: " + std::string(field.path));
+                    }
+                    expected_set = location->set;
+                    expected_binding = location->binding;
+                }
                 const rdesc::EDescriptorBindingInfo* actual = nullptr;
                 for (const auto& set : reflected.sets)
                 {
                     for (const auto& candidate : set.bindings)
                     {
-                        if (set.set == 0 && candidate.binding == binding)
+                        if (set.set == expected_set && candidate.binding == expected_binding)
                         {
                             actual = &candidate;
                         }
@@ -189,8 +207,9 @@ namespace lux::toolchain
                 const sc::Resource* resource = nullptr;
                 for (const auto& candidate : resources)
                 {
-                    const bool is_match = compiler.get_decoration(candidate.id, spv::DecorationDescriptorSet) == 0 &&
-                                          compiler.get_decoration(candidate.id, spv::DecorationBinding) == binding;
+                    const bool is_match =
+                        compiler.get_decoration(candidate.id, spv::DecorationDescriptorSet) == expected_set &&
+                        compiler.get_decoration(candidate.id, spv::DecorationBinding) == expected_binding;
                     if (is_match)
                     {
                         resource = &candidate;
@@ -363,7 +382,8 @@ namespace lux::toolchain
 
     cxx::expected<void, std::string> validatePassSpirv(
         std::span<const std::uint32_t> words,
-        const rdesc::PassShaderContract& contract
+        const rdesc::PassShaderContract& contract,
+        std::span<const PassDescriptorLocation> final_locations
     ) noexcept
     {
         if (words.size() < 5 || words[0] != 0x07230203)
@@ -372,7 +392,25 @@ namespace lux::toolchain
         }
         try
         {
-            return validate(words, contract);
+            for (std::size_t i = 0; i < final_locations.size(); ++i)
+            {
+                const auto& current = final_locations[i];
+                if (current.field_index >= contract.resources.size() ||
+                    !rdesc::isShaderDescriptorRole(contract.resources[current.field_index].role))
+                {
+                    return cxx::unexpected(std::string("Invalid final descriptor field"));
+                }
+                for (std::size_t j = 0; j < i; ++j)
+                {
+                    const auto& previous = final_locations[j];
+                    if (previous.field_index == current.field_index ||
+                        (previous.set == current.set && previous.binding == current.binding))
+                    {
+                        return cxx::unexpected(std::string("Duplicate final descriptor placement"));
+                    }
+                }
+            }
+            return validate(words, contract, final_locations);
         }
         catch (const std::bad_alloc&)
         {
@@ -412,6 +450,7 @@ namespace lux::toolchain
         try
         {
             std::uint32_t observed = 0;
+            std::vector<PassStageInterface> interfaces;
             for (const auto& module : modules)
             {
                 const auto valid = validatePassSpirv(module.words, contract);
@@ -428,10 +467,32 @@ namespace lux::toolchain
                     return cxx::unexpected(std::string("Duplicate or unexpected Shader stage"));
                 }
                 observed |= stage;
+                auto interface = reflectPassInterface(module.words);
+                if (!interface)
+                {
+                    return cxx::unexpected(interface.error());
+                }
+                interfaces.push_back(std::move(*interface));
             }
             if (observed != required_stages)
             {
                 return cxx::unexpected(std::string("Incomplete Pass Shader program"));
+            }
+            if (required_stages == 3)
+            {
+                const auto& vertex =
+                    *std::find_if(interfaces.begin(), interfaces.end(), [](const auto& v) { return v.stage == 1; });
+                const auto& fragment =
+                    *std::find_if(interfaces.begin(), interfaces.end(), [](const auto& v) { return v.stage == 2; });
+                for (const auto& input : fragment.inputs)
+                {
+                    if (std::find(vertex.outputs.begin(), vertex.outputs.end(), input) == vertex.outputs.end())
+                    {
+                        return cxx::unexpected(
+                            "Vertex/fragment interface mismatch at location " + std::to_string(input.location)
+                        );
+                    }
+                }
             }
             return {};
         }
@@ -442,6 +503,108 @@ namespace lux::toolchain
         catch (const std::exception& error)
         {
             return cxx::unexpected(std::string("SPIR-V compiler failure: ") + error.what());
+        }
+    }
+
+    cxx::expected<PassStageInterface, std::string> reflectPassInterface(std::span<const std::uint32_t> words) noexcept
+    {
+        if (words.size() < 5 || words[0] != 0x07230203)
+        {
+            return cxx::unexpected(std::string("Invalid SPIR-V interface header"));
+        }
+        try
+        {
+            sc::Compiler compiler(words.data(), words.size());
+            const auto model = compiler.get_execution_model();
+            PassStageInterface result;
+            const bool unsupported_stage = model != spv::ExecutionModelVertex && model != spv::ExecutionModelFragment &&
+                                           model != spv::ExecutionModelGLCompute;
+            if (unsupported_stage)
+            {
+                return cxx::unexpected(std::string("Unsupported Pass Shader stage"));
+            }
+            result.stage = model == spv::ExecutionModelVertex ? 1u : model == spv::ExecutionModelFragment ? 2u : 4u;
+            for (auto capability : compiler.get_declared_capabilities())
+            {
+                result.capabilities.push_back(static_cast<std::uint32_t>(capability));
+            }
+            if (result.stage == 4)
+            {
+                result.local_size_id = compiler.get_execution_mode_bitset().get(spv::ExecutionModeLocalSizeId);
+                for (unsigned i = 0; i < 3; ++i)
+                {
+                    result.workgroup[i] = compiler.get_execution_mode_argument(spv::ExecutionModeLocalSize, i);
+                }
+            }
+            const auto resources = compiler.get_shader_resources();
+            for (const auto input : {true, false})
+            {
+                auto& destination = input ? result.inputs : result.outputs;
+                for (const auto& resource : input ? resources.stage_inputs : resources.stage_outputs)
+                {
+                    if (compiler.has_decoration(resource.id, spv::DecorationBuiltIn))
+                    {
+                        continue;
+                    }
+                    const auto& type = compiler.get_type(resource.type_id);
+                    const bool numeric = type.basetype == sc::SPIRType::Float || type.basetype == sc::SPIRType::Int ||
+                                         type.basetype == sc::SPIRType::UInt;
+                    const bool unsupported = !numeric || type.width != 32 ||
+                                             !compiler.has_decoration(resource.id, spv::DecorationLocation) ||
+                                             compiler.has_decoration(resource.id, spv::DecorationIndex);
+                    if (unsupported)
+                    {
+                        return cxx::unexpected(std::string("Unsupported Pass stage interface shape"));
+                    }
+                    const auto scalar = type.basetype == sc::SPIRType::Float ? EShaderScalarType::FLOAT
+                                        : type.basetype == sc::SPIRType::Int ? EShaderScalarType::SINT
+                                                                             : EShaderScalarType::UINT;
+                    std::uint32_t locations = type.columns;
+                    for (std::size_t i = 0; i < type.array.size(); ++i)
+                    {
+                        const bool invalid_array =
+                            !type.array_size_literal[i] || type.array[i] == 0 ||
+                            locations > std::numeric_limits<std::uint32_t>::max() / type.array[i];
+                        if (invalid_array)
+                        {
+                            return cxx::unexpected(std::string("Invalid stage interface array extent"));
+                        }
+                        locations *= type.array[i];
+                    }
+                    const auto base = compiler.get_decoration(resource.id, spv::DecorationLocation);
+                    if (locations > std::numeric_limits<std::uint32_t>::max() - base)
+                    {
+                        return cxx::unexpected(std::string("Stage interface location overflow"));
+                    }
+                    for (std::uint32_t i = 0; i < locations; ++i)
+                    {
+                        destination.push_back(
+                            {base + i,
+                             compiler.get_decoration(resource.id, spv::DecorationComponent),
+                             type.width,
+                             type.vecsize,
+                             scalar,
+                             compiler.has_decoration(resource.id, spv::DecorationFlat),
+                             compiler.has_decoration(resource.id, spv::DecorationNoPerspective)}
+                        );
+                    }
+                }
+                std::sort(
+                    destination.begin(),
+                    destination.end(),
+                    [](const auto& a, const auto& b)
+                    { return std::pair{a.location, a.component} < std::pair{b.location, b.component}; }
+                );
+            }
+            return result;
+        }
+        catch (const std::bad_alloc&)
+        {
+            std::terminate();
+        }
+        catch (const std::exception& error)
+        {
+            return cxx::unexpected(std::string("SPIR-V interface failure: ") + error.what());
         }
     }
 } // namespace lux::toolchain

@@ -325,6 +325,13 @@ namespace lux::render
                     {
                         return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, field.resource.value()}});
                     }
+                    const bool is_invalid_clear =
+                        field.role == rdesc::EPassFieldRole::COLOR_ATTACHMENT && field.load == ELoadOp::CLEAR &&
+                        !matchesClearFormat(field.clear, resources[field.resource.value() - 1].texture().format);
+                    if (is_invalid_clear)
+                    {
+                        return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, field.resource.value()}});
+                    }
                 }
                 if (field.role == rdesc::EPassFieldRole::RESOLVE)
                 {

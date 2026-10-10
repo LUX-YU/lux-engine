@@ -1,0 +1,10 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+#extension GL_GOOGLE_include_directive : require
+//! lux-pass-declarations
+#include "F3TonemapHelper.lglslh"
+layout(location=0) out vec4 color;
+void main()
+{
+    color = f3Tonemap(vec2(0.5));
+}

@@ -1,0 +1,11 @@
+//! lux-shader stage=compute entry=main
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "F3Types.lglslh"
+//! lux-pass-declarations
+#include "F3ComplexHelper.lglslh"
+layout(local_size_x=1) in;
+void main()
+{
+    imageStore(p_output, ivec2(0), vec4(f3ComplexValue()));
+}

@@ -1,0 +1,4 @@
+// The generated block declaration and its references must see this macro first.
+#define Lux_AlignedValue F3AlignedValue
+#define F3_HELPER_ENABLED 1
+struct F3Scale { float value; };

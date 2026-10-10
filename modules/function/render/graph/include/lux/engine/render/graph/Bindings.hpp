@@ -26,12 +26,6 @@ namespace lux::render
         std::uint32_t frame_slot{};
     };
 
-    struct ColorClearValue
-    {
-        std::array<float, 4> value;
-        bool operator==(const ColorClearValue&) const noexcept = default;
-    };
-
     struct DepthStencilClearValue
     {
         float depth;

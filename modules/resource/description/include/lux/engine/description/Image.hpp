@@ -95,6 +95,15 @@ namespace lux::rdesc
         DEPTH,
         DEPTH_STENCIL
     };
+    enum class ETextureClearClass
+    {
+        INVALID,
+        FLOAT,
+        SINT,
+        UINT,
+        DEPTH_STENCIL
+    };
+
     enum class ETextureUsage
     {
         SAMPLED,
@@ -183,6 +192,48 @@ namespace lux::rdesc
             return ETextureFormatClass::DEPTH_STENCIL;
         default:
             return ETextureFormatClass::INVALID;
+        }
+    }
+
+    [[nodiscard]] constexpr ETextureClearClass textureClearClass(ETextureFormat format) noexcept
+    {
+        switch (format)
+        {
+        case ETextureFormat::R8_UINT:
+        case ETextureFormat::R16_UINT:
+        case ETextureFormat::R32_UINT:
+        case ETextureFormat::RG8_UINT:
+        case ETextureFormat::RG16_UINT:
+        case ETextureFormat::RG32_UINT:
+        case ETextureFormat::RGB8_UINT:
+        case ETextureFormat::RGB32_UINT:
+        case ETextureFormat::RGBA8_UINT:
+        case ETextureFormat::RGBA16_UINT:
+        case ETextureFormat::RGBA32_UINT:
+            return ETextureClearClass::UINT;
+        case ETextureFormat::R8_SINT:
+        case ETextureFormat::R16_SINT:
+        case ETextureFormat::R32_SINT:
+        case ETextureFormat::RG8_SINT:
+        case ETextureFormat::RG16_SINT:
+        case ETextureFormat::RG32_SINT:
+        case ETextureFormat::RGB8_SINT:
+        case ETextureFormat::RGB32_SINT:
+        case ETextureFormat::RGBA8_SINT:
+        case ETextureFormat::RGBA16_SINT:
+        case ETextureFormat::RGBA32_SINT:
+            return ETextureClearClass::SINT;
+        default:
+            switch (textureFormatClass(format))
+            {
+            case ETextureFormatClass::COLOR:
+                return ETextureClearClass::FLOAT;
+            case ETextureFormatClass::DEPTH:
+            case ETextureFormatClass::DEPTH_STENCIL:
+                return ETextureClearClass::DEPTH_STENCIL;
+            default:
+                return ETextureClearClass::INVALID;
+            }
         }
     }
 

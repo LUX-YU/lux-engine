@@ -1,8 +1,8 @@
 #include <lux/engine/render/vulkan/descriptor/Descriptors.hpp>
 #include <lux/engine/render/vulkan/pipeline/Pipeline.hpp>
 
-#include <utility>
 #include "Native.hpp"
+#include <utility>
 
 namespace lux::render::vulkan
 {
@@ -14,7 +14,9 @@ namespace lux::render::vulkan
     void DescriptorSetLayout::release() noexcept
     {
         if (handle_)
+        {
             LUX_DESTROY("descriptor_layout", vkDestroyDescriptorSetLayout(device_, handle_, nullptr));
+        }
     }
 
     DescriptorSetLayout::~DescriptorSetLayout() noexcept
@@ -22,12 +24,12 @@ namespace lux::render::vulkan
         release();
     }
 
-    DescriptorSetLayout::DescriptorSetLayout(DescriptorSetLayout &&other) noexcept
+    DescriptorSetLayout::DescriptorSetLayout(DescriptorSetLayout&& other) noexcept
         : device_(other.device_), handle_(std::exchange(other.handle_, VK_NULL_HANDLE))
     {
     }
 
-    DescriptorSetLayout &DescriptorSetLayout::operator=(DescriptorSetLayout &&other) noexcept
+    DescriptorSetLayout& DescriptorSetLayout::operator=(DescriptorSetLayout&& other) noexcept
     {
         if (this != &other)
         {
@@ -39,18 +41,24 @@ namespace lux::render::vulkan
     }
 
     DescriptorPool::DescriptorPool(
-        const VulkanDevice &device, VkDescriptorPool handle, std::uint32_t remaining
+        const VulkanDevice& device,
+        VkDescriptorPool handle,
+        std::uint32_t remaining
     ) noexcept
         : device_(device.native()), handle_(handle),
           storage_alignment_(device.properties().limits.minStorageBufferOffsetAlignment),
-          storage_range_(device.properties().limits.maxStorageBufferRange), remaining_sets_(remaining)
+          storage_range_(device.properties().limits.maxStorageBufferRange),
+          uniform_alignment_(device.properties().limits.minUniformBufferOffsetAlignment),
+          uniform_range_(device.properties().limits.maxUniformBufferRange), remaining_sets_(remaining)
     {
     }
 
     void DescriptorPool::release() noexcept
     {
         if (handle_)
+        {
             LUX_DESTROY("descriptor_pool", vkDestroyDescriptorPool(device_, handle_, nullptr));
+        }
     }
 
     DescriptorPool::~DescriptorPool() noexcept
@@ -58,14 +66,15 @@ namespace lux::render::vulkan
         release();
     }
 
-    DescriptorPool::DescriptorPool(DescriptorPool &&other) noexcept
+    DescriptorPool::DescriptorPool(DescriptorPool&& other) noexcept
         : device_(other.device_), handle_(std::exchange(other.handle_, VK_NULL_HANDLE)),
           storage_alignment_(other.storage_alignment_), storage_range_(other.storage_range_),
+          uniform_alignment_(other.uniform_alignment_), uniform_range_(other.uniform_range_),
           remaining_sets_(other.remaining_sets_)
     {
     }
 
-    DescriptorPool &DescriptorPool::operator=(DescriptorPool &&other) noexcept
+    DescriptorPool& DescriptorPool::operator=(DescriptorPool&& other) noexcept
     {
         if (this != &other)
         {
@@ -74,6 +83,8 @@ namespace lux::render::vulkan
             handle_ = std::exchange(other.handle_, VK_NULL_HANDLE);
             storage_alignment_ = other.storage_alignment_;
             storage_range_ = other.storage_range_;
+            uniform_alignment_ = other.uniform_alignment_;
+            uniform_range_ = other.uniform_range_;
             remaining_sets_ = other.remaining_sets_;
         }
         return *this;
@@ -84,7 +95,9 @@ namespace lux::render::vulkan
     void ShaderModule::release() noexcept
     {
         if (handle_)
+        {
             LUX_DESTROY("shader", vkDestroyShaderModule(device_, handle_, nullptr));
+        }
     }
 
     ShaderModule::~ShaderModule() noexcept
@@ -92,12 +105,12 @@ namespace lux::render::vulkan
         release();
     }
 
-    ShaderModule::ShaderModule(ShaderModule &&other) noexcept
+    ShaderModule::ShaderModule(ShaderModule&& other) noexcept
         : device_(other.device_), handle_(std::exchange(other.handle_, VK_NULL_HANDLE))
     {
     }
 
-    ShaderModule &ShaderModule::operator=(ShaderModule &&other) noexcept
+    ShaderModule& ShaderModule::operator=(ShaderModule&& other) noexcept
     {
         if (this != &other)
         {
@@ -115,7 +128,9 @@ namespace lux::render::vulkan
     void PipelineLayout::release() noexcept
     {
         if (handle_)
+        {
             LUX_DESTROY("pipeline_layout", vkDestroyPipelineLayout(device_, handle_, nullptr));
+        }
     }
 
     PipelineLayout::~PipelineLayout() noexcept
@@ -123,12 +138,12 @@ namespace lux::render::vulkan
         release();
     }
 
-    PipelineLayout::PipelineLayout(PipelineLayout &&other) noexcept
+    PipelineLayout::PipelineLayout(PipelineLayout&& other) noexcept
         : device_(other.device_), handle_(std::exchange(other.handle_, VK_NULL_HANDLE))
     {
     }
 
-    PipelineLayout &PipelineLayout::operator=(PipelineLayout &&other) noexcept
+    PipelineLayout& PipelineLayout::operator=(PipelineLayout&& other) noexcept
     {
         if (this != &other)
         {
@@ -144,7 +159,9 @@ namespace lux::render::vulkan
     void ComputePipeline::release() noexcept
     {
         if (handle_)
+        {
             LUX_DESTROY("pipeline", vkDestroyPipeline(device_, handle_, nullptr));
+        }
     }
 
     ComputePipeline::~ComputePipeline() noexcept
@@ -152,12 +169,12 @@ namespace lux::render::vulkan
         release();
     }
 
-    ComputePipeline::ComputePipeline(ComputePipeline &&other) noexcept
+    ComputePipeline::ComputePipeline(ComputePipeline&& other) noexcept
         : device_(other.device_), handle_(std::exchange(other.handle_, VK_NULL_HANDLE))
     {
     }
 
-    ComputePipeline &ComputePipeline::operator=(ComputePipeline &&other) noexcept
+    ComputePipeline& ComputePipeline::operator=(ComputePipeline&& other) noexcept
     {
         if (this != &other)
         {

@@ -1,13 +1,15 @@
 # Render V2 cumulative capability evidence view
 
-Snapshot baseline: `c986e69765c9dd222469d4cf5090aa72549966dc`. F3 is **IN_PROGRESS / NOT_QUALIFIED**.
+Snapshot baseline: `c986e69765c9dd222469d4cf5090aa72549966dc`. F3 qualification is **REPORT_RESOLVED**, using [F3_VERIFICATION.md](F3_VERIFICATION.md).
+Before that report exists at V, F3 remains NOT_QUALIFIED; after V its exact I, per-item status and evidence govern.
 This is the single cumulative index requested during F3. Retain this path in later authorized stages.
 FINAL CSVs and historical reports remain read-only. The rows below are references, not a second design.
 
 ## Reading the status
 
 - `OPEN`: the whole FINAL row has not been closed by this index; cited sub-evidence is not whole-row PASS.
-- `F3_PENDING`: this phase owes independent evidence. Development builds are not qualification.
+- `REPORT_RESOLVED`: resolve exact I/V and status from F3_VERIFICATION.md; an absent report means NOT_QUALIFIED.
+  A failed or partial report never turns this link into PASS. Development builds are not qualification.
 - Evidence classes distinguish DOC, AUTHOR/SHADER, LOGICAL_CPU, NATIVE_GPU, SANITIZER and PRODUCT/SDK.
 - Historical R4 GPU tests are regressions only; they do not qualify F3 pipelines or Native RenderGraph.
 - A later stage may close a row only with every required category and any cross-stage obligation complete.
@@ -78,10 +80,10 @@ Whole-row OPEN is deliberate where runtime, native, installation or later busine
 | I06 | Transactional graph cache | F5 | OPEN; no row qualification recorded | Full frozen acceptance in its authorized phase |
 | I07 | Generated PassParams HPP | F1 | OPEN; AUTHOR/SHADER sub-evidence: F1 → F1-FIX-2 reports above | Reconcile complete row requirements; native/integration evidence is not implied |
 | I08 | Generated PassParams GLSL | F1 | OPEN; AUTHOR/SHADER sub-evidence: F1 → F1-FIX-2 reports above | Reconcile complete row requirements; native/integration evidence is not implied |
-| I09 | Layout plan/descriptor layout | F3 | F3_PENDING; no independent F3 I/V yet | F3 normal/ASan/native pipeline evidence and exact I/V |
-| I10 | SPIR-V binding relocation | F3 | F3_PENDING; no independent F3 I/V yet | F3 normal/ASan/native pipeline evidence and exact I/V |
-| I11 | Engine shared descriptor set shapes | F3 | F3_PENDING; no independent F3 I/V yet | F3 normal/ASan/native pipeline evidence and exact I/V |
-| I12 | Shader resource catalog and variants | F3 | F3_PENDING; no independent F3 I/V yet | F3 normal/ASan/native pipeline evidence and exact I/V |
+| I09 | Layout plan/descriptor layout | F3 | REPORT_RESOLVED; [F3 normal/ASan/native evidence and I/V](F3_VERIFICATION.md) | F3 normal/ASan/native pipeline evidence and exact I/V |
+| I10 | SPIR-V binding relocation | F3 | REPORT_RESOLVED; [F3 normal/ASan/native evidence and I/V](F3_VERIFICATION.md) | F3 normal/ASan/native pipeline evidence and exact I/V |
+| I11 | Engine shared descriptor set shapes | F3 | REPORT_RESOLVED; [F3 normal/ASan/native evidence and I/V](F3_VERIFICATION.md) | F3 normal/ASan/native pipeline evidence and exact I/V |
+| I12 | Shader resource catalog and variants | F3 | REPORT_RESOLVED; [F3 normal/ASan/native evidence and I/V](F3_VERIFICATION.md) | F3 normal/ASan/native pipeline evidence and exact I/V |
 | I13 | Staging/native transfer | F4 | OPEN; no row qualification recorded | Full frozen acceptance in its authorized phase |
 | I14 | GPU deferred destruction | F4 | OPEN; no row qualification recorded | Full frozen acceptance in its authorized phase |
 | I15 | Runtime owner/lifecycle/reply pump | F5 | OPEN; no row qualification recorded | Full frozen acceptance in its authorized phase |
@@ -111,7 +113,7 @@ Whole-row OPEN is deliberate where runtime, native, installation or later busine
 | I39 | Unsolicited diagnostic port separate from replies | F5 | OPEN; no row qualification recorded | Full frozen acceptance in its authorized phase |
 | I40 | Render projection retained revision backpressure | F7 | OPEN; no row qualification recorded | Full frozen acceptance in its authorized phase |
 | I41 | Plugin code pin native graph in-flight retirement | F6 | OPEN; no row qualification recorded | Full frozen acceptance in its authorized phase |
-| I42 | Shader cache/material last-good hot reload | F3 | F3_PENDING; no independent F3 I/V yet | F3 Shader/PSO cache and last-good; F8 registered Material hot update; do not close whole row in F3 |
+| I42 | Shader cache/material last-good hot reload | F3/F8 | PARTIAL whole row; F3 sub-evidence REPORT_RESOLVED; [F3 normal/ASan/native evidence and I/V](F3_VERIFICATION.md) | F3 Shader/PSO cache and last-good; F8 registered Material hot update; do not close whole row in F3 |
 | I43 | Multi target scene-view layer composition | F5 | OPEN; no row qualification recorded | Full frozen acceptance in its authorized phase |
 | I44 | Record hot path no lazy pipeline or heap | F4 | OPEN; no row qualification recorded | Full frozen acceptance in its authorized phase |
 | H01 | Virtual Geometry / Nanite-like | F11+H1 | OPEN; no row qualification recorded | Full frozen acceptance in its authorized phase |
@@ -125,7 +127,7 @@ Whole-row OPEN is deliberate where runtime, native, installation or later busine
 
 | ID | Frozen workload | Phase | Status / evidence boundary |
 |---|---|---|---|
-| W01 | Tonemap+Generated Blur+Composite | F3 | F3_PENDING; Tonemap + generated Blur + Composite GPU and CPU image references; no generic recorder |
+| W01 | Tonemap+Generated Blur+Composite | F3 | REPORT_RESOLVED via [F3 report](F3_VERIFICATION.md); Tonemap + generated Blur + Composite GPU and CPU image references; no generic recorder |
 | W02 | HZB mip chain | F4 | OPEN; full workload not qualified |
 | W03 | Compute-Graphics-Readback | F4 | OPEN; full workload not qualified |
 | W04 | Transient alias/noalias | F4 | OPEN; full workload not qualified |
@@ -139,7 +141,7 @@ Whole-row OPEN is deliberate where runtime, native, installation or later busine
 | W12 | External Plugin SDK code pin | F6 | OPEN; full workload not qualified |
 | W13 | 10Hz Simulation 144Hz Render | F5 | OPEN; full workload not qualified |
 | W14 | Resize minimize lost | F5 | OPEN; full workload not qualified |
-| W15 | Shared descriptor full layout | F3 | F3_PENDING; complete shared owner shapes across real VS/FS pipelines and GPU output |
+| W15 | Shared descriptor full layout | F3 | REPORT_RESOLVED via [F3 report](F3_VERIFICATION.md); complete shared owner shapes across real VS/FS pipelines and GPU output |
 | W16 | Multiview and separate fallback | F4 | OPEN; full workload not qualified |
 | W17 | Create update update delete under backpressure | F7 | OPEN; full workload not qualified |
 | W18 | Modern C++20 compile rejects | F1 | OPEN; F1/FIX/FIX-2 AUTHOR/SHADER positive/negative evidence above; complete row closure requires review |
@@ -215,3 +217,13 @@ F3-PRE-01/02 have development author/emitter tests, not final F3 qualification; 
 G01–G07 are native output/lifetime obligations; G08/G09 are cold negative obligations with actual device/binary facts.
 NATIVE_RENDER_GRAPH = NOT_IMPLEMENTED. RENDER_RUNTIME = NOT_IMPLEMENTED.
 V2_PRODUCT = EXPECTED_UNAVAILABLE. F4 and later remain NOT_AUTHORIZED.
+
+## F3 evidence resolution and remaining gates
+
+I09/I10/I11/I12 and W01/W15 F3 mechanism status resolve to the independent F3 report, including
+its immutable implementation SHA and external evidence manifest. I42 remains PARTIAL until F8 Material
+integration. F3-PRE-01/02 close only if the report explicitly qualifies integer attachment clear and
+production emitter ordering. REQ13/14/15/19/44 receive F3 sub-evidence from that report; cross-stage
+requirements remain OPEN. Native RenderGraph and Runtime remain NOT_IMPLEMENTED; product remains
+EXPECTED_UNAVAILABLE. F4 requires separate user authorization. Frozen CSV content and historical
+reports have not been rewritten.

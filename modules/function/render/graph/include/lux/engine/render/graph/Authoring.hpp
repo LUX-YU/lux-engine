@@ -1,10 +1,12 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <lux/engine/description/Image.hpp>
 #include <lux/engine/render/core/Identity.hpp>
 #include <string>
+#include <type_traits>
 
 namespace lux::render
 {
@@ -208,6 +210,110 @@ namespace lux::render
         GraphTexture fallback{};
     };
 
+    struct FloatColorClear
+    {
+        std::array<float, 4> values{};
+        bool operator==(const FloatColorClear&) const noexcept = default;
+    };
+
+    struct SintColorClear
+    {
+        std::array<std::int32_t, 4> values{};
+        bool operator==(const SintColorClear&) const noexcept = default;
+    };
+
+    struct UintColorClear
+    {
+        std::array<std::uint32_t, 4> values{};
+        bool operator==(const UintColorClear&) const noexcept = default;
+    };
+
+    // MSVC std::variant is not standard-layout. This closed value preserves the existing
+    // PassParams ABI contract without exposing a mutable tag or inactive union member.
+    class ColorClearValue
+    {
+    public:
+        constexpr ColorClearValue() noexcept = default;
+
+        constexpr ColorClearValue(FloatColorClear value) noexcept : storage_(value) {}
+
+        constexpr ColorClearValue(SintColorClear value) noexcept
+            : storage_(value), kind_(rdesc::ETextureClearClass::SINT)
+        {
+        }
+
+        constexpr ColorClearValue(UintColorClear value) noexcept
+            : storage_(value), kind_(rdesc::ETextureClearClass::UINT)
+        {
+        }
+
+        [[nodiscard]] constexpr rdesc::ETextureClearClass colorClass() const noexcept
+        {
+            return kind_;
+        }
+
+        template <typename T>
+            requires(std::is_same_v<T, FloatColorClear> || std::is_same_v<T, SintColorClear> || std::is_same_v<T, UintColorClear>)
+        [[nodiscard]] constexpr const T* getIf() const noexcept
+        {
+            if constexpr (std::is_same_v<T, FloatColorClear>)
+            {
+                return kind_ == rdesc::ETextureClearClass::FLOAT ? &storage_.floating : nullptr;
+            }
+            else if constexpr (std::is_same_v<T, SintColorClear>)
+            {
+                return kind_ == rdesc::ETextureClearClass::SINT ? &storage_.signed_integer : nullptr;
+            }
+            else
+            {
+                return kind_ == rdesc::ETextureClearClass::UINT ? &storage_.unsigned_integer : nullptr;
+            }
+        }
+
+        [[nodiscard]] constexpr bool operator==(const ColorClearValue& other) const noexcept
+        {
+            if (kind_ != other.kind_)
+            {
+                return false;
+            }
+            if (kind_ == rdesc::ETextureClearClass::FLOAT)
+            {
+                return storage_.floating == other.storage_.floating;
+            }
+            if (kind_ == rdesc::ETextureClearClass::SINT)
+            {
+                return storage_.signed_integer == other.storage_.signed_integer;
+            }
+            return storage_.unsigned_integer == other.storage_.unsigned_integer;
+        }
+
+    private:
+        union Storage
+        {
+            FloatColorClear floating;
+            SintColorClear signed_integer;
+            UintColorClear unsigned_integer;
+
+            constexpr Storage() noexcept : floating{} {}
+
+            constexpr Storage(FloatColorClear value) noexcept : floating(value) {}
+
+            constexpr Storage(SintColorClear value) noexcept : signed_integer(value) {}
+
+            constexpr Storage(UintColorClear value) noexcept : unsigned_integer(value) {}
+        };
+
+        Storage storage_{};
+        rdesc::ETextureClearClass kind_{rdesc::ETextureClearClass::FLOAT};
+    };
+
+    static_assert(std::is_standard_layout_v<ColorClearValue> && std::is_trivially_copyable_v<ColorClearValue>);
+
+    [[nodiscard]] constexpr bool matchesClearFormat(const ColorClearValue& clear, rdesc::ETextureFormat format) noexcept
+    {
+        return clear.colorClass() == rdesc::textureClearClass(format);
+    }
+
     struct Attachment
     {
         GraphTexture texture{};
@@ -215,7 +321,7 @@ namespace lux::render
         GraphTexture fallback{};
         ELoadOp load{ELoadOp::CLEAR};
         EStoreOp store{EStoreOp::STORE};
-        float clear[4]{};
+        ColorClearValue clear{};
     };
 
     struct DepthStencilAttachment

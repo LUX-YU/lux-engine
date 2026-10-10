@@ -66,12 +66,15 @@ int main()
     values.camera[0] = 0.75f;
     values.passes[0].scalars[0] = std::byte{1};
     values.passes[0].fields[1] = GraphSampler{2};
-    values.passes[0].fields[2] = ColorClearValue{{0.2f, 0.3f, 0.4f, 1.0f}};
+    values.passes[0].fields[2] = ColorClearValue{FloatColorClear{{0.2f, 0.3f, 0.4f, 1.0f}}};
     auto second = FrameGraphBindings::create(*plan, {2, 1000, 1}, imports, values);
     CHECK(second && second->values()->camera[0] == 0.75f);
     CHECK(second->invocation(GraphPassId{1})->scalars[0] == std::byte{1});
     CHECK(std::get<GraphSampler>(second->invocation(GraphPassId{1})->fields[1]) == GraphSampler{2});
-    CHECK(std::get<ColorClearValue>(second->invocation(GraphPassId{1})->fields[2]).value[0] == 0.2f);
+    CHECK(
+        std::get<ColorClearValue>(second->invocation(GraphPassId{1})->fields[2]).getIf<FloatColorClear>()->values[0] ==
+        0.2f
+    );
     CHECK(&second->plan() == &first->plan());
     values.passes[0].fields[1] = ColorClearValue{};
     CHECK(!FrameGraphBindings::create(*plan, {}, imports, values));

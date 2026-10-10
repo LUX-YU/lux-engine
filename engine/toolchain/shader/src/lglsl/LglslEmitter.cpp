@@ -611,12 +611,29 @@ namespace lux::shadergen::lglsl
         std::string preamble;
         std::string body;
         bool in_preamble = true;
+        const bool explicit_insertion = source.find("//! lux-pass-declarations") != std::string_view::npos;
+        bool inserted = false;
+        bool seen_content = false;
+        bool extensions_closed = false;
+        std::uint32_t line_number = 0;
         for (auto rest = source; !rest.empty();)
         {
+            ++line_number;
             const auto end = rest.find('\n');
             const auto line = end == std::string_view::npos ? rest : rest.substr(0, end);
             rest = end == std::string_view::npos ? std::string_view{} : rest.substr(end + 1);
             const auto text = trim(line);
+            if (text == "//! lux-pass-declarations")
+            {
+                if (inserted)
+                {
+                    return lux::cxx::unexpected(lux::format("Duplicate lux-pass-declarations at line {}", line_number));
+                }
+                inserted = true;
+                in_preamble = false;
+                extensions_closed = true;
+                continue;
+            }
             if (text.starts_with("//!"))
             {
                 if (auto error = parsePragma(text.substr(3), meta))
@@ -626,19 +643,31 @@ namespace lux::shadergen::lglsl
             }
             if (text.starts_with("#version"))
             {
-                if (!version.empty() || !in_preamble)
+                if (!version.empty() || seen_content || inserted)
                 {
-                    return lux::cxx::unexpected(std::string("Duplicate or late #version"));
+                    return lux::cxx::unexpected(lux::format("Duplicate or late #version at line {}", line_number));
                 }
                 version = std::string(line) + '\n';
                 continue;
             }
+            const bool is_comment = text.empty() || text.starts_with("//");
+            const bool is_extension = text.starts_with("#extension");
+            if (is_extension && extensions_closed)
+            {
+                return lux::cxx::unexpected(lux::format("Late #extension at line {}", line_number));
+            }
+            seen_content = seen_content || !is_comment;
+            extensions_closed = extensions_closed || (!is_comment && !is_extension);
             const bool header_line = text.empty() || text.starts_with("//") || text.starts_with("#extension") ||
                                      text.starts_with("#include") || text.starts_with("#define");
-            in_preamble = in_preamble && header_line;
+            in_preamble = explicit_insertion ? !inserted : in_preamble && header_line;
             auto& output = in_preamble ? preamble : body;
             output.append(line);
             output += '\n';
+        }
+        if (explicit_insertion && !inserted)
+        {
+            return lux::cxx::unexpected(std::string("Expected exact //! lux-pass-declarations marker"));
         }
         const auto stage =
             meta.stage == rdesc::EShaderType::VERTEX ? 0u : (meta.stage == rdesc::EShaderType::FRAGMENT ? 1u : 2u);

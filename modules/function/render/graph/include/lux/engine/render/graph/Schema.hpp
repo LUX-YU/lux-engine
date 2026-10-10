@@ -81,7 +81,7 @@ namespace lux::render
             {
                 binding.load = value.load;
                 binding.store = value.store;
-                std::copy(std::begin(value.clear), std::end(value.clear), binding.clear.begin());
+                binding.clear = value.clear;
                 if (value.load == ELoadOp::LOAD && role != rdesc::EPassFieldRole::RESOLVE)
                 {
                     access = EGraphAccess::READ_WRITE;

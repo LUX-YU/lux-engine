@@ -4,6 +4,82 @@
 
 namespace lux::render
 {
+    namespace
+    {
+        RenderResult<void> validateInvocationData(
+            const LogicalGraphPlan& plan,
+            const GraphInvocationData* values
+        ) noexcept
+        {
+            if (values->passes.size() != plan.identity().passes.size())
+            {
+                return cxx::unexpected(RenderError{kGraphInvalidBinding, {values->passes.size()}});
+            }
+            for (std::size_t p = 0; p < plan.identity().passes.size(); ++p)
+            {
+                const auto& pass = plan.identity().passes[p];
+                const auto& supplied = values->passes[p];
+                if (supplied.scalars.size() != pass.scalar_size || supplied.fields.size() != pass.bindings.size() ||
+                    (!pass.condition.isValid() && !supplied.enabled))
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidBinding, {p}});
+                }
+                for (std::size_t q = 0; q < p; ++q)
+                {
+                    if (pass.condition.isValid() && pass.condition == plan.identity().passes[q].condition &&
+                        supplied.enabled != values->passes[q].enabled)
+                    {
+                        return cxx::unexpected(RenderError{kGraphInvalidBinding, {p}});
+                    }
+                }
+                for (std::size_t f = 0; f < pass.bindings.size(); ++f)
+                {
+                    const auto& binding = pass.bindings[f].value;
+                    std::size_t expected = 0;
+                    if (std::holds_alternative<SamplerBinding>(binding))
+                    {
+                        expected = 1;
+                    }
+                    if (const auto* attachment = std::get_if<AttachmentBinding>(&binding))
+                    {
+                        expected = attachment->role == rdesc::EPassFieldRole::COLOR_ATTACHMENT
+                                       ? 2
+                                       : (attachment->role == rdesc::EPassFieldRole::DEPTH_STENCIL ? 3 : 0);
+                    }
+                    if (supplied.fields[f].index() != expected)
+                    {
+                        return cxx::unexpected(RenderError{kGraphInvalidBinding, {p, f}});
+                    }
+                    if (expected == 2)
+                    {
+                        const auto& attachment = std::get<AttachmentBinding>(binding);
+                        const auto format = plan.identity().resources[attachment.resource.value() - 1].texture().format;
+                        const bool is_invalid_clear =
+                            attachment.load == ELoadOp::CLEAR &&
+                            !matchesClearFormat(std::get<ColorClearValue>(supplied.fields[f]), format);
+                        if (is_invalid_clear)
+                        {
+                            return cxx::unexpected(RenderError{kGraphInvalidBinding, {p, f}});
+                        }
+                    }
+                    if (expected == 3)
+                    {
+                        const auto depth = std::get<DepthStencilClearValue>(supplied.fields[f]).depth;
+                        if (!std::isfinite(depth) || depth < 0.0f || depth > 1.0f)
+                        {
+                            return cxx::unexpected(RenderError{kGraphInvalidBinding, {p, f}});
+                        }
+                    }
+                    if (expected == 1 && !std::get<GraphSampler>(supplied.fields[f]).isValid())
+                    {
+                        return cxx::unexpected(RenderError{kGraphInvalidBinding, {p, f}});
+                    }
+                }
+            }
+            return {};
+        }
+    } // namespace
+
     GraphInvocationData makeGraphInvocationData(const RenderGraphDefinition& definition) noexcept
     {
         GraphInvocationData result;
@@ -78,66 +154,10 @@ namespace lux::render
         {
             return FrameGraphBindings{plan, frame, imports, nullptr};
         }
-        if (values && values->passes.size() != plan.identity().passes.size())
+        const auto valid = validateInvocationData(plan, values);
+        if (!valid)
         {
-            return cxx::unexpected(RenderError{kGraphInvalidBinding, {values->passes.size()}});
-        }
-        for (std::size_t p = 0; p < plan.identity().passes.size(); ++p)
-        {
-            const auto& pass = plan.identity().passes[p];
-            if (!values)
-            {
-                if (pass.scalar_size != 0 || !pass.bindings.empty() || pass.condition.isValid())
-                {
-                    return cxx::unexpected(RenderError{kGraphInvalidBinding, {p}});
-                }
-                continue;
-            }
-            const auto& supplied = values->passes[p];
-            if (supplied.scalars.size() != pass.scalar_size || supplied.fields.size() != pass.bindings.size() ||
-                (!pass.condition.isValid() && !supplied.enabled))
-            {
-                return cxx::unexpected(RenderError{kGraphInvalidBinding, {p}});
-            }
-            for (std::size_t q = 0; q < p; ++q)
-            {
-                if (pass.condition.isValid() && pass.condition == plan.identity().passes[q].condition &&
-                    supplied.enabled != values->passes[q].enabled)
-                {
-                    return cxx::unexpected(RenderError{kGraphInvalidBinding, {p}});
-                }
-            }
-            for (std::size_t f = 0; f < pass.bindings.size(); ++f)
-            {
-                const auto& binding = pass.bindings[f].value;
-                std::size_t expected = 0;
-                if (std::holds_alternative<SamplerBinding>(binding))
-                {
-                    expected = 1;
-                }
-                if (const auto* attachment = std::get_if<AttachmentBinding>(&binding))
-                {
-                    expected = attachment->role == rdesc::EPassFieldRole::COLOR_ATTACHMENT
-                                   ? 2
-                                   : (attachment->role == rdesc::EPassFieldRole::DEPTH_STENCIL ? 3 : 0);
-                }
-                if (supplied.fields[f].index() != expected)
-                {
-                    return cxx::unexpected(RenderError{kGraphInvalidBinding, {p, f}});
-                }
-                if (expected == 3)
-                {
-                    const auto depth = std::get<DepthStencilClearValue>(supplied.fields[f]).depth;
-                    if (!std::isfinite(depth) || depth < 0.0f || depth > 1.0f)
-                    {
-                        return cxx::unexpected(RenderError{kGraphInvalidBinding, {p, f}});
-                    }
-                }
-                if (expected == 1 && !std::get<GraphSampler>(supplied.fields[f]).isValid())
-                {
-                    return cxx::unexpected(RenderError{kGraphInvalidBinding, {p, f}});
-                }
-            }
+            return cxx::unexpected(valid.error());
         }
         return FrameGraphBindings{plan, frame, imports, values};
     }

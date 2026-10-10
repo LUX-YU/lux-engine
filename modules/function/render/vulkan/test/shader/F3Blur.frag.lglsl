@@ -1,0 +1,13 @@
+#version 450
+//! lux-shader stage=fragment entry=main
+layout(location=0) out vec4 color;
+void main()
+{
+    ivec2 size = textureSize(sampler2D(p_input[0], p_nearest), 0);
+    ivec2 pixel = ivec2(gl_FragCoord.xy);
+    vec4 sum = vec4(0.0);
+    for (int y = -1; y <= 1; ++y)
+        for (int x = -1; x <= 1; ++x)
+            sum += texelFetch(sampler2D(p_input[0], p_nearest), clamp(pixel + ivec2(x,y), ivec2(0), size-1), 0);
+    color = mix(texelFetch(sampler2D(p_input[0], p_nearest), pixel, 0), sum / 9.0, lux_push.p_strength);
+}

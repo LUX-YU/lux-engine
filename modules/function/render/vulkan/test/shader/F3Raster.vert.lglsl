@@ -1,0 +1,7 @@
+#version 450
+//! lux-shader stage=vertex entry=main
+void main()
+{
+    vec2 point = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+    gl_Position = vec4(point * 2.0 - 1.0, lux_push.p_depth_value, 1.0);
+}

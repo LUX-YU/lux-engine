@@ -1,0 +1,7 @@
+float f3ComplexValue()
+{
+    F3Scale scale = F3Scale(2.0);
+    return (p_block.data.x + p_block.data.y + p_block.data.z + p_block.data.w
+        + p_values.data[0].gain + p_values.data[0].weights[2]
+        + lux_push.p_settings_0_gain + lux_push.p_settings_1_weights_2) * scale.value;
+}

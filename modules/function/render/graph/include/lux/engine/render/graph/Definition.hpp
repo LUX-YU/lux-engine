@@ -165,7 +165,7 @@ namespace lux::render
         BufferRange buffer_range{};
         ELoadOp load{ELoadOp::DISCARD};
         EStoreOp store{EStoreOp::STORE};
-        std::array<float, 4> clear{};
+        ColorClearValue clear{};
         ELoadOp stencil_load{ELoadOp::DISCARD};
         EStoreOp stencil_store{EStoreOp::DISCARD};
         float clear_depth{1.0f};

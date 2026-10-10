@@ -1,0 +1,18 @@
+#version 450
+//! lux-shader stage=compute entry=main
+layout(local_size_x=1) in;
+void main()
+{
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= lux_push.p_count) return;
+    float value = p_input.data[i].x + p_input.data[i].y + p_config.data.x + p_config.data.w;
+    p_outputs[0].data[i].x += value;
+    p_outputs[0].data[i].y = value + 1.0;
+    p_outputs[0].data[i].z = value + 2.0;
+    p_outputs[0].data[i].w = value + 3.0;
+    p_outputs[1].data[i].x = value * 2.0;
+    p_outputs[1].data[i].y = value * 3.0;
+    p_outputs[1].data[i].z = value * 4.0;
+    p_outputs[1].data[i].w = value * 5.0;
+    imageStore(p_image, ivec2(i, 0), vec4(value, value+1.0, value+2.0, value+3.0));
+}

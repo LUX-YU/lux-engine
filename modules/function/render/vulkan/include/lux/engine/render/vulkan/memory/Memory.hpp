@@ -18,13 +18,16 @@ namespace lux::render::vulkan
     {
     public:
         [[nodiscard]] static RenderResult<Buffer> create(
-            const VulkanAllocator &allocator, VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access
+            const VulkanAllocator& allocator,
+            VkDeviceSize size,
+            VkBufferUsageFlags usage,
+            EMemoryAccess access
         ) noexcept;
         ~Buffer() noexcept;
-        Buffer(Buffer &&other) noexcept;
-        Buffer &operator=(Buffer &&other) noexcept;
-        Buffer(const Buffer &) = delete;
-        Buffer &operator=(const Buffer &) = delete;
+        Buffer(Buffer&& other) noexcept;
+        Buffer& operator=(Buffer&& other) noexcept;
+        Buffer(const Buffer&) = delete;
+        Buffer& operator=(const Buffer&) = delete;
 
         [[nodiscard]] VkBuffer native() const noexcept
         {
@@ -53,39 +56,43 @@ namespace lux::render::vulkan
 
     private:
         Buffer(
-            VmaAllocator_T *allocator,
+            VmaAllocator_T* allocator,
             VkDevice device,
             VkBuffer buffer,
-            VmaAllocation_T *allocation,
-            void *mapped,
+            VmaAllocation_T* allocation,
+            void* mapped,
             VkDeviceSize size,
             VkBufferUsageFlags usage,
             EMemoryAccess access
         ) noexcept;
         void release() noexcept;
 
-        VmaAllocator_T *allocator_;
+        VmaAllocator_T* allocator_;
         VkDevice device_;
         VkBuffer buffer_;
-        VmaAllocation_T *allocation_;
-        void *mapped_;
+        VmaAllocation_T* allocation_;
+        void* mapped_;
         VkDeviceSize size_;
         VkBufferUsageFlags usage_;
         EMemoryAccess access_;
     };
 
-    // R4 image primitive: optimal tiled 2D, one mip/layer/sample; no asset schema.
+    // Optimal tiled 2D, one mip/layer; explicit sample count, no asset schema.
     class Image
     {
     public:
         [[nodiscard]] static RenderResult<Image> create(
-            const VulkanAllocator &allocator, VkExtent2D extent, VkFormat format, VkImageUsageFlags usage
+            const VulkanAllocator& allocator,
+            VkExtent2D extent,
+            VkFormat format,
+            VkImageUsageFlags usage,
+            VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT
         ) noexcept;
         ~Image() noexcept;
-        Image(Image &&other) noexcept;
-        Image &operator=(Image &&other) noexcept;
-        Image(const Image &) = delete;
-        Image &operator=(const Image &) = delete;
+        Image(Image&& other) noexcept;
+        Image& operator=(Image&& other) noexcept;
+        Image(const Image&) = delete;
+        Image& operator=(const Image&) = delete;
 
         [[nodiscard]] VkImage native() const noexcept
         {
@@ -112,24 +119,31 @@ namespace lux::render::vulkan
             return usage_;
         }
 
+        [[nodiscard]] VkSampleCountFlagBits samples() const noexcept
+        {
+            return samples_;
+        }
+
     private:
         Image(
-            VmaAllocator_T *allocator,
+            VmaAllocator_T* allocator,
             VkDevice device,
             VkImage image,
-            VmaAllocation_T *allocation,
+            VmaAllocation_T* allocation,
             VkExtent2D extent,
             VkFormat format,
-            VkImageUsageFlags usage
+            VkImageUsageFlags usage,
+            VkSampleCountFlagBits samples
         ) noexcept;
         void release() noexcept;
 
-        VmaAllocator_T *allocator_;
+        VmaAllocator_T* allocator_;
         VkDevice device_;
         VkImage image_;
-        VmaAllocation_T *allocation_;
+        VmaAllocation_T* allocation_;
         VkExtent2D extent_;
         VkFormat format_;
         VkImageUsageFlags usage_;
+        VkSampleCountFlagBits samples_;
     };
 } // namespace lux::render::vulkan

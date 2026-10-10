@@ -1,5 +1,199 @@
 add_executable(render_vulkan_device Device.cpp)
 
+add_subdirectory(shader)
+
+add_executable(render_vulkan_shader_benchmark ShaderBenchmark.cpp)
+
+target_link_libraries(render_vulkan_shader_benchmark PRIVATE render_vulkan_shader_compiler)
+
+target_include_directories(
+    render_vulkan_shader_benchmark PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shader/generated"
+        "${CMAKE_CURRENT_SOURCE_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+add_dependencies(
+    render_vulkan_shader_benchmark render_vulkan_spv_F3SharedA_vert render_vulkan_spv_F3SharedA_frag
+        render_vulkan_spv_F3SharedB_vert render_vulkan_spv_F3SharedB_frag
+)
+
+add_test(
+    NAME render.vulkan.shader_benchmark
+    COMMAND render_vulkan_shader_benchmark "${CMAKE_CURRENT_BINARY_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/shader"
+        "${CMAKE_CURRENT_BINARY_DIR}/benchmark-evidence"
+)
+
+set_tests_properties(render.vulkan.shader_benchmark PROPERTIES RUN_SERIAL TRUE TIMEOUT 180)
+
+add_executable(render_vulkan_shader_hot_link ShaderHotLink.cpp)
+
+target_link_libraries(render_vulkan_shader_hot_link PRIVATE render_vulkan_shader_compiler)
+
+if(MSVC)
+    target_link_options(render_vulkan_shader_hot_link PRIVATE "/MAP:${CMAKE_CURRENT_BINARY_DIR}/shader-hot.map")
+endif()
+
+add_test(NAME render.vulkan.shader_hot_link COMMAND render_vulkan_shader_hot_link)
+
+add_executable(render_vulkan_shader_cold ShaderColdFailures.cpp)
+
+target_link_libraries(render_vulkan_shader_cold PRIVATE render_vulkan_shader_compiler)
+
+target_include_directories(
+    render_vulkan_shader_cold PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shader/generated"
+        "${CMAKE_CURRENT_SOURCE_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+add_dependencies(
+    render_vulkan_shader_cold render_vulkan_spv_F3Storage_comp render_vulkan_spv_F3SharedA_vert render_vulkan_spv_F3SharedA_frag
+)
+
+add_test(NAME render.vulkan.shader_cold COMMAND render_vulkan_shader_cold "${CMAKE_CURRENT_BINARY_DIR}/shader")
+
+set_tests_properties(render.vulkan.shader_cold PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+add_executable(render_vulkan_raster_state RasterState.cpp)
+
+target_link_libraries(render_vulkan_raster_state PRIVATE render_vulkan_shader_compiler)
+
+target_include_directories(
+    render_vulkan_raster_state PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shader/generated"
+        "${CMAKE_CURRENT_SOURCE_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+add_dependencies(render_vulkan_raster_state render_vulkan_spv_F3Raster_vert render_vulkan_spv_F3Raster_frag)
+
+add_test(
+    NAME render.vulkan.raster_state
+    COMMAND render_vulkan_raster_state "${CMAKE_CURRENT_BINARY_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/shader"
+        "${CMAKE_CURRENT_BINARY_DIR}/raster-evidence"
+)
+
+set_tests_properties(render.vulkan.raster_state PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+add_executable(render_vulkan_shared_owners SharedOwners.cpp)
+
+target_link_libraries(render_vulkan_shared_owners PRIVATE render_vulkan_shader_compiler)
+
+target_include_directories(
+    render_vulkan_shared_owners PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shader/generated"
+        "${CMAKE_CURRENT_SOURCE_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+add_dependencies(
+    render_vulkan_shared_owners render_vulkan_spv_F3SharedA_vert render_vulkan_spv_F3SharedA_frag
+        render_vulkan_spv_F3SharedB_vert render_vulkan_spv_F3SharedB_frag
+)
+
+add_test(
+    NAME render.vulkan.shared_owners
+    COMMAND render_vulkan_shared_owners "${CMAKE_CURRENT_BINARY_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/shader"
+        "${CMAKE_CURRENT_BINARY_DIR}/shared-evidence"
+)
+
+set_tests_properties(render.vulkan.shared_owners PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+add_executable(render_vulkan_compute_bindings ComputeBindings.cpp)
+
+target_link_libraries(render_vulkan_compute_bindings PRIVATE render_vulkan_shader_compiler)
+
+target_include_directories(
+    render_vulkan_compute_bindings PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shader/generated"
+        "${CMAKE_CURRENT_SOURCE_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+add_dependencies(render_vulkan_compute_bindings render_vulkan_spv_F3Storage_comp)
+
+add_test(
+    NAME render.vulkan.compute_bindings
+    COMMAND render_vulkan_compute_bindings "${CMAKE_CURRENT_BINARY_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/shader"
+        "${CMAKE_CURRENT_BINARY_DIR}/compute-evidence"
+)
+
+set_tests_properties(render.vulkan.compute_bindings PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+add_executable(render_vulkan_attachment_clear AttachmentClear.cpp)
+
+target_link_libraries(render_vulkan_attachment_clear PRIVATE render_vulkan_shader_compiler)
+
+target_include_directories(
+    render_vulkan_attachment_clear PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shader/generated"
+        "${CMAKE_CURRENT_SOURCE_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+add_dependencies(render_vulkan_attachment_clear render_vulkan_schema_F3Tonemap)
+
+add_test(
+    NAME render.vulkan.attachment_clear
+    COMMAND render_vulkan_attachment_clear "${CMAKE_CURRENT_BINARY_DIR}/clear-evidence"
+)
+
+set_tests_properties(render.vulkan.attachment_clear PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+add_executable(render_vulkan_postprocess Postprocess.cpp)
+
+target_link_libraries(render_vulkan_postprocess PRIVATE render_vulkan_shader_compiler)
+
+target_include_directories(
+    render_vulkan_postprocess PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shader/generated"
+        "${CMAKE_CURRENT_SOURCE_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+add_dependencies(
+    render_vulkan_postprocess render_vulkan_spv_F3Tonemap_vert render_vulkan_spv_F3Tonemap_frag
+        render_vulkan_spv_F3Blur_vert render_vulkan_spv_F3Blur_frag
+        render_vulkan_spv_F3Composite_vert render_vulkan_spv_F3Composite_frag render_vulkan_spv_additive
+)
+
+add_test(
+    NAME render.vulkan.postprocess_w01
+    COMMAND render_vulkan_postprocess "${CMAKE_CURRENT_BINARY_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/shader"
+        "${CMAKE_CURRENT_BINARY_DIR}/w01-evidence"
+)
+
+set_tests_properties(render.vulkan.postprocess_w01 PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+add_executable(render_vulkan_shader_assets ShaderAssets.cpp)
+
+target_link_libraries(render_vulkan_shader_assets PRIVATE render_vulkan render_graph toolchain_shader_reflection)
+
+target_include_directories(
+    render_vulkan_shader_assets PRIVATE "${CMAKE_BINARY_DIR}/render_graph/test/generated"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../graph/test/authoring"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../engine/toolchain/shader/include"
+)
+
+add_dependencies(render_vulkan_shader_assets render_graph_shader_Complex)
+
+add_test(
+    NAME render.vulkan.shader_assets
+    COMMAND render_vulkan_shader_assets "${CMAKE_BINARY_DIR}/render_graph/test/generated/Complex.spv"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../graph/test/authoring/Complex.lglsl"
+)
+
+add_executable(render_vulkan_shader_layout ShaderLayout.cpp)
+
+target_link_libraries(render_vulkan_shader_layout PRIVATE render_vulkan_shader_compiler render_graph toolchain_shader_reflection)
+
+target_include_directories(
+    render_vulkan_shader_layout PRIVATE "${CMAKE_BINARY_DIR}/render_graph/test/generated"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../graph/test/authoring"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../engine/toolchain/shader/include"
+)
+
+add_dependencies(render_vulkan_shader_layout render_graph_shader_Complex render_graph_shader_Stages.vert render_graph_shader_Stages.frag)
+
+add_test(
+    NAME render.vulkan.shader_layout
+    COMMAND render_vulkan_shader_layout
+        "${CMAKE_BINARY_DIR}/render_graph/test/generated/Complex.spv"
+        "${CMAKE_BINARY_DIR}/render_graph/test/generated/Stages.vert.spv"
+        "${CMAKE_BINARY_DIR}/render_graph/test/generated/Stages.frag.spv"
+)
+
+set_tests_properties(render.vulkan.shader_layout PROPERTIES RUN_SERIAL TRUE)
+
 target_link_libraries(render_vulkan_device PRIVATE lux::engine::render::render_vulkan)
 
 add_test(NAME render.vulkan.device COMMAND render_vulkan_device)
@@ -56,6 +250,40 @@ target_link_libraries(
     PRIVATE GPUOpen::VulkanMemoryAllocator
 )
 
+add_library(
+    render_vulkan_shader_fault STATIC ../src/shader/Layout.cpp ../src/shader/Program.cpp ../src/shader/Bindings.cpp
+)
+
+target_include_directories(
+    render_vulkan_shader_fault PUBLIC ../include "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../engine/toolchain/shader/include"
+)
+
+target_link_libraries(
+    render_vulkan_shader_fault PUBLIC render_vulkan_fault shader_metadata render_graph PRIVATE toolchain_shader_reflection
+)
+
+add_executable(render_vulkan_shader_candidate ShaderCandidate.cpp)
+
+target_link_libraries(render_vulkan_shader_candidate PRIVATE render_vulkan_shader_fault)
+
+target_include_directories(
+    render_vulkan_shader_candidate PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shader/generated"
+        "${CMAKE_CURRENT_SOURCE_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+add_dependencies(
+    render_vulkan_shader_candidate render_vulkan_spv_F3SharedA_vert render_vulkan_spv_F3SharedA_frag
+        render_vulkan_spv_F3SharedB_vert render_vulkan_spv_F3SharedB_frag render_vulkan_spv_F3Raster_vert render_vulkan_spv_F3Raster_frag
+)
+
+add_test(
+    NAME render.vulkan.shader_candidate
+    COMMAND render_vulkan_shader_candidate "${CMAKE_CURRENT_BINARY_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/shader"
+        "${CMAKE_CURRENT_BINARY_DIR}/candidate-evidence"
+)
+
+set_tests_properties(render.vulkan.shader_candidate PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
 add_executable(render_vulkan_faults Faults.cpp)
 
 target_link_libraries(render_vulkan_faults PRIVATE render_vulkan_fault)
@@ -85,13 +313,20 @@ if(NOT LUX_R4_ASAN)
     set_tests_properties(render.vulkan.bounded_allocation PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
 endif()
 
-foreach(header IN ITEMS Error device/Device memory/Memory descriptor/Descriptors pipeline/Pipeline
+foreach(header IN ITEMS Error device/Device memory/Memory descriptor/Descriptors descriptor/ImageBindings pipeline/Pipeline pipeline/Graphics
         transfer/Submission transfer/Transfer retirement/Retirement)
     string(REPLACE "/" "_" name "${header}")
     set(source "${CMAKE_CURRENT_BINARY_DIR}/header_${name}.cpp")
     file(WRITE "${source}" "#include <lux/engine/render/vulkan/${header}.hpp>\n")
     add_library(render_vulkan_header_${name} OBJECT "${source}")
     target_link_libraries(render_vulkan_header_${name} PRIVATE lux::engine::render::render_vulkan)
+endforeach()
+
+foreach(header IN ITEMS Layout Format Program Bindings)
+    set(source "${CMAKE_CURRENT_BINARY_DIR}/header_shader_${header}.cpp")
+    file(WRITE "${source}" "#include <lux/engine/render/vulkan/shader/${header}.hpp>\n")
+    add_library(render_vulkan_header_shader_${header} OBJECT "${source}")
+    target_link_libraries(render_vulkan_header_shader_${header} PRIVATE render_vulkan_shader_compiler)
 endforeach()
 
 if(LUX_R4_ASAN)

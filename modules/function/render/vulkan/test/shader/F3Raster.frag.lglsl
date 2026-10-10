@@ -1,0 +1,7 @@
+#version 450
+//! lux-shader stage=fragment entry=main
+layout(location=0) out vec4 color;
+void main()
+{
+    color = vec4(lux_push.p_red, lux_push.p_green, lux_push.p_blue, lux_push.p_alpha);
+}

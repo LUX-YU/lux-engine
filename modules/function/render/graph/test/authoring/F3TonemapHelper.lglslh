@@ -1,0 +1,4 @@
+vec4 f3Tonemap(vec2 uv)
+{
+    return texture(sampler2D(p_input, p_linear), uv) * lux_push.p_exposure;
+}

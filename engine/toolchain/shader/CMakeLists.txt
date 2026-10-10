@@ -6,17 +6,26 @@ find_package(spirv_cross_core CONFIG REQUIRED)
 set_property(TARGET spirv-cross-core PROPERTY MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
 find_package(lux-cxx REQUIRED COMPONENTS compile_time core)
 
+find_library(
+    LUX_SPIRV_TOOLS_SHARED NAMES SPIRV-Tools-shared
+    HINTS "${Vulkan_INCLUDE_DIR}/../Lib" REQUIRED
+)
+
+find_path(LUX_SPIRV_TOOLS_INCLUDE spirv-tools/libspirv.h HINTS "${Vulkan_INCLUDE_DIR}" REQUIRED)
+
 # Shared implementation object: both the ShaderAsset cooker and Material compiler
 # own the resulting object code, while no installed interface exposes spirv-cross.
 add_library(
     toolchain_shader_reflection OBJECT
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SpirvReflection.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/PassValidation.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/SpirvRelocation.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderAssets.cpp
 )
 set_property(TARGET toolchain_shader_reflection PROPERTY POSITION_INDEPENDENT_CODE ON)
 target_include_directories(
     toolchain_shader_reflection
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_SPIRV_TOOLS_INCLUDE}
 )
 target_link_libraries(
     toolchain_shader_reflection
@@ -24,6 +33,7 @@ target_link_libraries(
         lux::engine::resource::shader_metadata
         spirv-cross-core
         lux::cxx::compile_time
+        "${LUX_SPIRV_TOOLS_SHARED}"
 )
 
 add_component(
@@ -76,7 +86,7 @@ if(LUX_PROFILE_HAS_TOOLCHAIN)
 endif()
 
 if(BUILD_TESTING)
-    foreach(header IN ITEMS PassValidation lglsl/LglslEmitter)
+    foreach(header IN ITEMS PassValidation SpirvRelocation ShaderAssets lglsl/LglslEmitter)
         string(REPLACE "/" "_" name "${header}")
         set(header_source "${CMAKE_CURRENT_BINARY_DIR}/header_${name}.cpp")
         file(WRITE "${header_source}" "#include <lux/engine/toolchain/shader/${header}.hpp>\n")

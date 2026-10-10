@@ -1,0 +1,9 @@
+#version 450
+//! lux-shader stage=fragment entry=main
+layout(location=0) in vec4 value;
+layout(location=0) out vec4 color;
+void main()
+{
+    color = value + vec4(p_feature_a.data.x, p_feature_a.data.y, p_feature_a.data.z, p_feature_a.data.w);
+}
+

@@ -1,0 +1,5 @@
+#if F3_HELPER_ENABLED
+#include "F3ComplexInner.lglslh"
+#else
+#error F3 helper prerequisite macro absent
+#endif

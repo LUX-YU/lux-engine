@@ -51,6 +51,9 @@ int main()
 #if defined(LUX_TEMP_VECTOR)
     auto rejected =
         FrameGraphBindings::create(*plan, {}, std::vector<GraphImportBinding>(imports.begin(), imports.end()), values);
+#elif defined(LUX_TEMP_CONST_VECTOR)
+    auto rejected =
+        FrameGraphBindings::create(*plan, {}, []() -> const std::vector<GraphImportBinding> { return {}; }(), values);
 #elif defined(LUX_TEMP_INVOCATION)
     auto rejected = FrameGraphBindings::create(*plan, {}, imports, makeGraphInvocationData(*definition));
 #elif defined(LUX_WRONG_SHADER)

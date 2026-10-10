@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/graph/Plan.hpp>
 #include <ranges>
+#include <type_traits>
 
 namespace lux::render
 {
@@ -86,6 +87,15 @@ namespace lux::render
         {
             return validate(plan, frame, std::span<const GraphImportBinding>(imports), nullptr);
         }
+
+        template <GraphImportStorage T>
+            requires(!std::is_lvalue_reference_v<T>)
+        static RenderResult<FrameGraphBindings> create(const LogicalGraphPlan&, GraphFrameValues, T&&) = delete;
+
+        template <GraphImportStorage T>
+            requires(!std::is_lvalue_reference_v<T>)
+        static RenderResult<FrameGraphBindings>
+        create(const LogicalGraphPlan&, GraphFrameValues, T&&, const GraphInvocationData&) = delete;
 
         template <GraphImportStorage T>
         static RenderResult<FrameGraphBindings> create(const LogicalGraphPlan&&, GraphFrameValues, T&) = delete;

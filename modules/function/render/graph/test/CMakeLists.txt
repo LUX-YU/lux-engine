@@ -326,7 +326,7 @@ foreach(case IN ITEMS ranges versions initialization depth_stencil providers con
     add_test(NAME render.graph.logical_${case} COMMAND render_graph_logical_test ${case})
 endforeach()
 
-foreach(probe IN ITEMS CONTROL TEMP_VECTOR TEMP_INVOCATION WRONG_SHADER WRONG_STORAGE)
+foreach(probe IN ITEMS CONTROL TEMP_VECTOR TEMP_CONST_VECTOR TEMP_INVOCATION WRONG_SHADER WRONG_STORAGE)
     if(probe STREQUAL CONTROL)
         add_executable(render_graph_author_logical_${probe} AuthoringLogical.cpp)
     else()

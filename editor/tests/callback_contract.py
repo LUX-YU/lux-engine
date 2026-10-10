@@ -28,10 +28,13 @@ for case in range(8):
     invocation = list(args)
     if msvc:
         invocation = ['/Fo' + str(output) if a.startswith('/Fo') else a for a in invocation]
-        invocation.append('/DLUX_CALLBACK_CASE=' + str(case))
+        definition = '/DLUX_CALLBACK_CASE=' + str(case)
     else:
         invocation[invocation.index('-o') + 1] = str(output)
-        invocation.append('-DLUX_CALLBACK_CASE=' + str(case))
+        definition = '-DLUX_CALLBACK_CASE=' + str(case)
+    # Clang's CMake command ends its option list with -- before the source file.
+    option_end = invocation.index('--') if '--' in invocation else len(invocation)
+    invocation.insert(option_end, definition)
     result = subprocess.run(invocation, cwd=item['directory'], stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True, errors='replace')
     print(case, result.returncode, result.stdout)

@@ -1,0 +1,5570 @@
+{
+  "implementation_sha": "7d84e8785ce6778e180d9f78cbb6e96bdd409fb5",
+  "archive_relative_source": "r1\\dependency-negatives\\object-process\\positive",
+  "status": "HISTORICAL_ONLY_NOT_FROZEN_SHA_RECONFIGURATION",
+  "targets": [
+    {
+      "name": "engine_context_render",
+      "type": "STATIC_LIBRARY",
+      "dependencies": [
+        "error",
+        "script_core",
+        "log",
+        "serialization",
+        "task",
+        "description",
+        "asset",
+        "render_feature_client",
+        "render_client",
+        "render_runtime",
+        "script_artifact",
+        "world_partition",
+        "world_description",
+        "domain_system_description",
+        "domain_system_identity",
+        "simulation_description",
+        "schema",
+        "core",
+        "snapshot",
+        "system",
+        "process_execution",
+        "process_asset_loading",
+        "scene_description",
+        "scene_composition",
+        "simulation_composition",
+        "hierarchy",
+        "transform",
+        "visual",
+        "scene_camera",
+        "scene_mesh_query",
+        "scene_render",
+        "engine_context"
+      ],
+      "paths": {
+        "build": "engine/context/rendering",
+        "source": "engine/context/rendering"
+      },
+      "sources": [
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/context/rendering/src/EngineRendering.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/context/rendering/src/RenderContext.cpp",
+          "sourceGroupIndex": 0
+        }
+      ],
+      "compileGroups": [
+        {
+          "compileCommandFragments": [
+            {
+              "fragment": "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+            },
+            {
+              "backtrace": 9,
+              "fragment": "/utf-8"
+            },
+            {
+              "backtrace": 9,
+              "fragment": "/permissive-"
+            },
+            {
+              "backtrace": 9,
+              "fragment": "/Zc:__cplusplus"
+            },
+            {
+              "backtrace": 9,
+              "fragment": "/Zc:preprocessor"
+            },
+            {
+              "backtrace": 14,
+              "fragment": "/GR-"
+            },
+            {
+              "backtrace": 14,
+              "fragment": "/we4541"
+            },
+            {
+              "backtrace": 6,
+              "fragment": "/Zc:externConstexpr"
+            }
+          ],
+          "defines": [
+            {
+              "backtrace": 6,
+              "define": "ENTT_NO_ETO"
+            },
+            {
+              "backtrace": 6,
+              "define": "STDEXEC_ENABLE_WINDOWS_THREAD_POOL"
+            }
+          ],
+          "includes": [
+            {
+              "backtrace": 17,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/context/rendering/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/context/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/process/execution/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/async_port/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/error/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/asset/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/identity/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/math/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/script/core/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/semantic/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/composition/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/world/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/world/partition/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/world/identity/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/partition/identity/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/composition/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/system/identity/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/system/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/system/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/serialization/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/type_info/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/core/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/task/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/task/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/scripting/core/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/script/artifact/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/system/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/schema/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/runtime/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/client/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/builtin_systems/render/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/cmake/../include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/components/camera/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/transform/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/snapshot/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/hierarchy/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/visual/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/builtin_systems/mesh_query/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/process/asset_loading/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/log/include"
+            },
+            {
+              "backtrace": 6,
+              "isSystem": true,
+              "path": "E:/SyncForder/CodeRepos/install/Framework-v2-dependencies/include"
+            },
+            {
+              "backtrace": 6,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include"
+            },
+            {
+              "backtrace": 6,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+            },
+            {
+              "backtrace": 6,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+            }
+          ],
+          "language": "CXX",
+          "languageStandard": {
+            "backtraces": [
+              6,
+              6,
+              6
+            ],
+            "standard": "20"
+          },
+          "sourceIndexes": [
+            0,
+            1
+          ]
+        }
+      ],
+      "link": null,
+      "install": {
+        "destinations": [
+          {
+            "backtrace": 5,
+            "path": "lib"
+          }
+        ],
+        "prefix": {
+          "path": "C:/Program Files (x86)/lux-engine"
+        }
+      }
+    },
+    {
+      "name": "project_plugin_rendering",
+      "type": "STATIC_LIBRARY",
+      "dependencies": [
+        "dynamic_library",
+        "error",
+        "script_core",
+        "serialization",
+        "task",
+        "description",
+        "asset",
+        "render_feature_client",
+        "render_client",
+        "render_runtime",
+        "script_artifact",
+        "world_partition",
+        "world_description",
+        "domain_system_description",
+        "domain_system_identity",
+        "simulation_description",
+        "schema",
+        "core",
+        "snapshot",
+        "system",
+        "process_execution",
+        "process_asset_loading",
+        "scene_description",
+        "scene_composition",
+        "simulation_composition",
+        "hierarchy",
+        "transform",
+        "visual",
+        "project_plugins",
+        "scene_camera",
+        "scene_mesh_query",
+        "scene_render"
+      ],
+      "paths": {
+        "build": "engine/project/plugins/rendering",
+        "source": "engine/project/plugins/rendering"
+      },
+      "sources": [
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/project/plugins/rendering/src/PluginRendering.cpp",
+          "sourceGroupIndex": 0
+        }
+      ],
+      "compileGroups": [
+        {
+          "compileCommandFragments": [
+            {
+              "fragment": "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+            },
+            {
+              "backtrace": 8,
+              "fragment": "/utf-8"
+            },
+            {
+              "backtrace": 8,
+              "fragment": "/permissive-"
+            },
+            {
+              "backtrace": 8,
+              "fragment": "/Zc:__cplusplus"
+            },
+            {
+              "backtrace": 8,
+              "fragment": "/Zc:preprocessor"
+            },
+            {
+              "backtrace": 13,
+              "fragment": "/GR-"
+            },
+            {
+              "backtrace": 13,
+              "fragment": "/we4541"
+            },
+            {
+              "backtrace": 6,
+              "fragment": "/Zc:externConstexpr"
+            }
+          ],
+          "defines": [
+            {
+              "backtrace": 6,
+              "define": "ENTT_NO_ETO"
+            },
+            {
+              "backtrace": 6,
+              "define": "STDEXEC_ENABLE_WINDOWS_THREAD_POOL"
+            }
+          ],
+          "includes": [
+            {
+              "backtrace": 16,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/project/plugins/rendering/include"
+            },
+            {
+              "backtrace": 18,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/project/plugins/rendering/../pinclude"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/project/plugins/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/project/plugins/identity/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/platform/dynamic_library/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/system/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/semantic/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/script/core/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/system/identity/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/system/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/serialization/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/type_info/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/core/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/composition/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/task/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/task/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/scripting/core/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/identity/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/script/artifact/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/asset/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/math/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/schema/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/world/identity/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/system/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/error/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/builtin_systems/render/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/cmake/../include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/client/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/runtime/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/components/camera/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/composition/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/world/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/world/partition/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/partition/identity/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/process/execution/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/async_port/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/transform/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/snapshot/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/hierarchy/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/visual/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/builtin_systems/mesh_query/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/process/asset_loading/include"
+            },
+            {
+              "backtrace": 6,
+              "isSystem": true,
+              "path": "E:/SyncForder/CodeRepos/install/Framework-v2-dependencies/include"
+            },
+            {
+              "backtrace": 6,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+            },
+            {
+              "backtrace": 6,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include"
+            },
+            {
+              "backtrace": 6,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+            }
+          ],
+          "language": "CXX",
+          "languageStandard": {
+            "backtraces": [
+              6,
+              6,
+              6
+            ],
+            "standard": "20"
+          },
+          "sourceIndexes": [
+            0
+          ]
+        }
+      ],
+      "link": null,
+      "install": {
+        "destinations": [
+          {
+            "backtrace": 5,
+            "path": "lib"
+          }
+        ],
+        "prefix": {
+          "path": "C:/Program Files (x86)/lux-engine"
+        }
+      }
+    },
+    {
+      "name": "render_client",
+      "type": "SHARED_LIBRARY",
+      "dependencies": [
+        "error",
+        "script_core",
+        "serialization",
+        "description"
+      ],
+      "paths": {
+        "build": "modules/function/render/client",
+        "source": "modules/function/render/client"
+      },
+      "sources": [
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/client/src/Capacity.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/client/src/FeatureParamsClient.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/client/src/RenderControlSession.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/client/src/RenderErrorRegistry.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/client/src/RenderFatal.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/client/src/RenderProgramSession.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/client/src/RenderTypes.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/client/src/RenderUploadClient.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/client/src/RenderUploadSession.cpp",
+          "sourceGroupIndex": 0
+        }
+      ],
+      "compileGroups": [
+        {
+          "compileCommandFragments": [
+            {
+              "fragment": "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+            },
+            {
+              "backtrace": 11,
+              "fragment": "/utf-8"
+            },
+            {
+              "backtrace": 11,
+              "fragment": "/permissive-"
+            },
+            {
+              "backtrace": 11,
+              "fragment": "/Zc:__cplusplus"
+            },
+            {
+              "backtrace": 11,
+              "fragment": "/Zc:preprocessor"
+            },
+            {
+              "backtrace": 17,
+              "fragment": "/GR-"
+            },
+            {
+              "backtrace": 17,
+              "fragment": "/we4541"
+            }
+          ],
+          "defines": [
+            {
+              "backtrace": 18,
+              "define": "LUX_FUNCTION_LIBRARY"
+            },
+            {
+              "define": "render_client_EXPORTS"
+            }
+          ],
+          "includes": [
+            {
+              "backtrace": 21,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/client/include"
+            },
+            {
+              "backtrace": 21,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen/include"
+            },
+            {
+              "backtrace": 23,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/client/pinclude"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/math/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/serialization/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/type_info/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/error/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/description/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/script/core/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/semantic/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/identity/include"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "E:/SyncForder/CodeRepos/install/Framework-v2-dependencies/include"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+            }
+          ],
+          "language": "CXX",
+          "languageStandard": {
+            "backtraces": [
+              7,
+              7
+            ],
+            "standard": "20"
+          },
+          "sourceIndexes": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ]
+        }
+      ],
+      "link": {
+        "commandFragments": [
+          {
+            "fragment": "/machine:x64 /debug /INCREMENTAL",
+            "role": "flags"
+          },
+          {
+            "backtrace": 7,
+            "fragment": "lib\\lux_engine_core_serialization.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 7,
+            "fragment": "lib\\lux_engine_core_error.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 7,
+            "fragment": "lib\\description.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 9,
+            "fragment": "lib\\lux_engine_function_script_core.lib",
+            "role": "libraries"
+          },
+          {
+            "fragment": "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+            "role": "libraries"
+          }
+        ],
+        "language": "CXX"
+      },
+      "install": {
+        "destinations": [
+          {
+            "backtrace": 6,
+            "path": "lib"
+          },
+          {
+            "backtrace": 6,
+            "path": "bin"
+          }
+        ],
+        "prefix": {
+          "path": "C:/Program Files (x86)/lux-engine"
+        }
+      }
+    },
+    {
+      "name": "render_feature_client",
+      "type": "SHARED_LIBRARY",
+      "dependencies": [
+        "error",
+        "script_core",
+        "serialization",
+        "description",
+        "render_comm_ops_LineListOperation_comm_codegen_generate",
+        "render_comm_ops_Grid2DOperation_comm_codegen_generate",
+        "render_comm_ops_Grid3DOperation_comm_codegen_generate",
+        "render_comm_ops_TriOverlayOperation_comm_codegen_generate",
+        "render_comm_ops_TrajectoryOperation_comm_codegen_generate",
+        "render_comm_ops_SkyboxOperation_comm_codegen_generate",
+        "render_comm_ops_SkinningOperation_comm_codegen_generate",
+        "render_comm_ops_PointCloudOperation_comm_codegen_generate",
+        "render_comm_ops_MeshStackOperation_comm_codegen_generate",
+        "render_comm_ops_ViewCameraOperation_comm_codegen_generate",
+        "render_comm_ops_TonemapOperation_comm_codegen_generate",
+        "render_comm_ops_LightOperation_comm_codegen_generate",
+        "render_comm_ops_ShadowMapOperation_comm_codegen_generate",
+        "render_comm_ops_DepthPrepassOperation_comm_codegen_generate",
+        "render_comm_ops_HighlightOperation_comm_codegen_generate",
+        "render_comm_ops_DeferredLightingOperation_comm_codegen_generate",
+        "render_comm_ops_MaterialOperation_comm_codegen_generate",
+        "render_comm_ops_DeferredGBufferOperation_comm_codegen_generate",
+        "render_comm_ops_ForwardMeshOperation_comm_codegen_generate",
+        "render_comm_ops_FogOperation_comm_codegen_generate",
+        "render_comm_ops_StreamingFeedbackOperation_comm_codegen_generate",
+        "render_comm_ops_HzbOperation_comm_codegen_generate",
+        "render_comm_ops_LinearDepthOperation_comm_codegen_generate",
+        "render_comm_ops_SsaoOperation_comm_codegen_generate",
+        "render_comm_ops_MeshShadowOperation_comm_codegen_generate",
+        "render_comm_ops_TerrainOperation_comm_codegen_generate",
+        "render_comm_ops_Canvas2DOperation_comm_codegen_generate",
+        "render_comm_ops_SpatialCullOperation_comm_codegen_generate",
+        "render_comm_ops_RenderClusterOperation_comm_codegen_generate",
+        "render_comm_ops_WaterOperation_comm_codegen_generate",
+        "render_client"
+      ],
+      "paths": {
+        "build": "modules/function/render",
+        "source": "modules/function/render"
+      },
+      "sources": [
+        {
+          "backtrace": 5,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/client/Canvas2DOperationClient.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 5,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/client/LightOperationClient.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 5,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/client/MaterialOperationClient.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 5,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/client/MeshStackOperationClient.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 5,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/client/ViewCameraOperation.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 87,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Grid3DOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 87,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Grid3DOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 87,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Grid3DOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 88,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Grid2DOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 88,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Grid2DOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 88,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Grid2DOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 89,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LineListOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 89,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LineListOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 89,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LineListOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 90,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TriOverlayOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 90,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TriOverlayOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 90,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TriOverlayOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 91,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TrajectoryOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 91,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TrajectoryOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 91,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TrajectoryOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 92,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SkyboxOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 92,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SkyboxOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 92,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SkyboxOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 93,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SkinningOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 93,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SkinningOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 93,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SkinningOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 94,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/PointCloudOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 94,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/PointCloudOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 94,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/PointCloudOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 95,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TonemapOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 95,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TonemapOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 95,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TonemapOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 96,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ShadowMapOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 96,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ShadowMapOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 96,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ShadowMapOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 97,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ViewCameraOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 97,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ViewCameraOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 97,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ViewCameraOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 98,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LightOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 98,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LightOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 98,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LightOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 99,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 99,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MeshStackOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 99,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MeshStackOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 100,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MaterialOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 100,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MaterialOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 100,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MaterialOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 101,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DeferredGBufferOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 101,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DeferredGBufferOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 101,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DeferredGBufferOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 102,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DeferredLightingOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 102,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DeferredLightingOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 102,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DeferredLightingOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 103,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DepthPrepassOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 103,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DepthPrepassOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 103,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DepthPrepassOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 104,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ForwardMeshOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 104,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ForwardMeshOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 104,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ForwardMeshOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 105,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/HighlightOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 105,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/HighlightOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 105,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/HighlightOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 106,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/StreamingFeedbackOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 106,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/StreamingFeedbackOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 106,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/StreamingFeedbackOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 107,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/HzbOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 107,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/HzbOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 107,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/HzbOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 108,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LinearDepthOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 108,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LinearDepthOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 108,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LinearDepthOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 109,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SsaoOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 109,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SsaoOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 109,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SsaoOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 110,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/FogOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 110,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/FogOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 110,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/FogOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 111,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Canvas2DOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 111,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Canvas2DOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 111,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Canvas2DOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 112,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MeshShadowOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 112,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MeshShadowOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 112,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MeshShadowOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 113,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SpatialCullOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 113,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SpatialCullOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 113,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SpatialCullOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 114,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/RenderClusterOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 114,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/RenderClusterOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 114,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/RenderClusterOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 115,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TerrainOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 115,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TerrainOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 115,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TerrainOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 116,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/WaterOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 116,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/WaterOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 116,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/WaterOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Grid3DOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Grid2DOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LineListOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TriOverlayOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TrajectoryOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SkyboxOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SkinningOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/PointCloudOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TonemapOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ShadowMapOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ViewCameraOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LightOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MeshStackOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MaterialOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DeferredGBufferOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DeferredLightingOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DepthPrepassOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ForwardMeshOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/HighlightOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/StreamingFeedbackOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/HzbOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LinearDepthOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SsaoOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/FogOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Canvas2DOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MeshShadowOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SpatialCullOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/RenderClusterOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TerrainOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/WaterOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        }
+      ],
+      "compileGroups": [
+        {
+          "compileCommandFragments": [
+            {
+              "fragment": "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+            },
+            {
+              "backtrace": 76,
+              "fragment": "/utf-8"
+            },
+            {
+              "backtrace": 76,
+              "fragment": "/permissive-"
+            },
+            {
+              "backtrace": 76,
+              "fragment": "/Zc:__cplusplus"
+            },
+            {
+              "backtrace": 76,
+              "fragment": "/Zc:preprocessor"
+            },
+            {
+              "backtrace": 81,
+              "fragment": "/GR-"
+            },
+            {
+              "backtrace": 81,
+              "fragment": "/we4541"
+            }
+          ],
+          "defines": [
+            {
+              "backtrace": 82,
+              "define": "LUX_RENDER_FEATURE_CLIENT_LIBRARY"
+            },
+            {
+              "define": "render_feature_client_EXPORTS"
+            }
+          ],
+          "includes": [
+            {
+              "backtrace": 85,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/cmake/../include"
+            },
+            {
+              "backtrace": 85,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen/include"
+            },
+            {
+              "backtrace": 86,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen"
+            },
+            {
+              "backtrace": 9,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/client/include"
+            },
+            {
+              "backtrace": 9,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/math/include"
+            },
+            {
+              "backtrace": 9,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/serialization/include"
+            },
+            {
+              "backtrace": 9,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/type_info/include"
+            },
+            {
+              "backtrace": 9,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/error/include"
+            },
+            {
+              "backtrace": 9,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/description/include"
+            },
+            {
+              "backtrace": 9,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/script/core/include"
+            },
+            {
+              "backtrace": 9,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/semantic/include"
+            },
+            {
+              "backtrace": 9,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/identity/include"
+            },
+            {
+              "backtrace": 9,
+              "isSystem": true,
+              "path": "E:/SyncForder/CodeRepos/install/Framework-v2-dependencies/include"
+            },
+            {
+              "backtrace": 9,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+            },
+            {
+              "backtrace": 9,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include"
+            },
+            {
+              "backtrace": 9,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+            }
+          ],
+          "language": "CXX",
+          "languageStandard": {
+            "backtraces": [
+              9,
+              9
+            ],
+            "standard": "20"
+          },
+          "sourceIndexes": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            6,
+            7,
+            9,
+            10,
+            12,
+            13,
+            15,
+            16,
+            18,
+            19,
+            21,
+            22,
+            24,
+            25,
+            27,
+            28,
+            30,
+            31,
+            33,
+            34,
+            36,
+            37,
+            39,
+            40,
+            42,
+            43,
+            45,
+            46,
+            48,
+            49,
+            51,
+            52,
+            54,
+            55,
+            57,
+            58,
+            60,
+            61,
+            63,
+            64,
+            66,
+            67,
+            69,
+            70,
+            72,
+            73,
+            75,
+            76,
+            78,
+            79,
+            81,
+            82,
+            84,
+            85,
+            87,
+            88,
+            90,
+            91,
+            93,
+            94
+          ]
+        }
+      ],
+      "link": {
+        "commandFragments": [
+          {
+            "fragment": "/machine:x64 /debug /INCREMENTAL",
+            "role": "flags"
+          },
+          {
+            "backtrace": 9,
+            "fragment": "lib\\render_client.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 11,
+            "fragment": "lib\\lux_engine_core_serialization.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 11,
+            "fragment": "lib\\lux_engine_core_error.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 11,
+            "fragment": "lib\\description.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 13,
+            "fragment": "lib\\lux_engine_function_script_core.lib",
+            "role": "libraries"
+          },
+          {
+            "fragment": "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+            "role": "libraries"
+          }
+        ],
+        "language": "CXX"
+      },
+      "install": {
+        "destinations": [
+          {
+            "backtrace": 8,
+            "path": "lib"
+          },
+          {
+            "backtrace": 8,
+            "path": "bin"
+          }
+        ],
+        "prefix": {
+          "path": "C:/Program Files (x86)/lux-engine"
+        }
+      }
+    },
+    {
+      "name": "render_features",
+      "type": "SHARED_LIBRARY",
+      "dependencies": [
+        "render_features_plugin_identity",
+        "window",
+        "dynamic_library",
+        "error",
+        "script_core",
+        "serialization",
+        "description",
+        "render_comm_ops_LineListOperation_comm_codegen_generate",
+        "render_comm_ops_Grid2DOperation_comm_codegen_generate",
+        "render_feature_client",
+        "render_comm_ops_Grid3DOperation_comm_codegen_generate",
+        "render_comm_ops_TriOverlayOperation_comm_codegen_generate",
+        "render_comm_ops_TrajectoryOperation_comm_codegen_generate",
+        "render_comm_ops_SkyboxOperation_comm_codegen_generate",
+        "render_comm_ops_SkinningOperation_comm_codegen_generate",
+        "render_comm_ops_PointCloudOperation_comm_codegen_generate",
+        "render_comm_ops_MeshStackOperation_comm_codegen_generate",
+        "render_comm_ops_ViewCameraOperation_comm_codegen_generate",
+        "render_comm_ops_TonemapOperation_comm_codegen_generate",
+        "render_comm_ops_LightOperation_comm_codegen_generate",
+        "render_comm_ops_ShadowMapOperation_comm_codegen_generate",
+        "render_comm_ops_DepthPrepassOperation_comm_codegen_generate",
+        "render_comm_ops_HighlightOperation_comm_codegen_generate",
+        "render_comm_ops_DeferredLightingOperation_comm_codegen_generate",
+        "render_comm_ops_MaterialOperation_comm_codegen_generate",
+        "render_comm_ops_DeferredGBufferOperation_comm_codegen_generate",
+        "render_comm_ops_ForwardMeshOperation_comm_codegen_generate",
+        "render_comm_ops_FogOperation_comm_codegen_generate",
+        "render_comm_ops_StreamingFeedbackOperation_comm_codegen_generate",
+        "render_comm_ops_HzbOperation_comm_codegen_generate",
+        "render_comm_ops_LinearDepthOperation_comm_codegen_generate",
+        "render_comm_ops_SsaoOperation_comm_codegen_generate",
+        "render_comm_ops_MeshShadowOperation_comm_codegen_generate",
+        "render_comm_ops_TerrainOperation_comm_codegen_generate",
+        "render_comm_ops_Canvas2DOperation_comm_codegen_generate",
+        "render_comm_ops_SpatialCullOperation_comm_codegen_generate",
+        "render_comm_ops_RenderClusterOperation_comm_codegen_generate",
+        "render_comm_ops_WaterOperation_comm_codegen_generate",
+        "render_client",
+        "render_graph",
+        "render_vulkan",
+        "render_highlight_pass_params_pass_codegen_generate",
+        "render_lglsl_shaders",
+        "render_lglsl_shaders_assets_generate",
+        "render_shaders",
+        "render_shaders_assets_generate",
+        "render_shaders_fr_pbr_variants_generate",
+        "render_shaders_fr_stylized_variants_generate",
+        "render_shaders_deferred_lighting_variants_generate",
+        "render_shaders_mesh_cull_unified_variants_generate",
+        "render_shaders_forward_mesh_vp_variants_generate",
+        "render_shaders_mesh_shadow_vp_variants_generate",
+        "render_shaders_highlight_mask_variants_generate",
+        "render_shaders_gbuffer_vp_variants_generate",
+        "render_textures_generate",
+        "render_shaders_shadow_depth_vp_variants_generate",
+        "render_features_builtin_embed"
+      ],
+      "paths": {
+        "build": "modules/function/render/features",
+        "source": "modules/function/render/features"
+      },
+      "sources": [
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/kernels/BuiltinKernels.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/canvas2d/Canvas2DOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/deferred/DeferredGBufferOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/deferred/DeferredLightingOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/forward/ForwardMeshOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/gizmo/LineListOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/gizmo/TriOverlayOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/grid/Grid2DOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/grid/Grid3DOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/highlight/HighlightOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/light/LightOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/material/MaterialOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/meshstack/MeshStackOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/point_cloud/PCOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/postprocess/FogOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/render_cluster/RenderClusterOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/terrain/TerrainOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/shadow/MeshShadowOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/shadow/ShadowMapOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/skinning/SkinningOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/sky_box/SkyboxOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/spatialcull/SpatialCullOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/streaming_feedback/StreamingFeedbackOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/trajectory/TrajectoryOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/view_camera/ViewCameraOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/assembly/water/WaterOperationHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/kernels/MeshKernels.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/kernels/ShadowKernels.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/kernels/UtilityKernels.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/BuiltinShaderContextView.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/canvas2d/Canvas2DFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/canvas2d/Canvas2DInstanceArena.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/deferred/DeferredGBufferFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/deferred/DeferredLightingFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/DepthPrepassFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/forward/ForwardMeshFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/gizmo/LineListTransientFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/gizmo/TriOverlayTransientFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/GpuDrivenMeshFeatureBase.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/grid/Grid2DPassFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/grid/Grid3DPassFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/highlight/HighlightFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/hzb/HzbFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/light/LightFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/material/StandardMaterialFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/meshstack/StandardMeshStackFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/point_cloud/PCFeatureGPUDriven.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/point_cloud/PCFeatureIndirectBase.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/point_cloud/PCFeatureLOD.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/point_cloud/PCFeatureSimple.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/point_cloud/PCFeatureSplatting.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/point_cloud/PCFeatureTransient.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/render_cluster/RenderClusterFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/render_cluster/RenderClusterResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/terrain/TerrainFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/terrain/TerrainResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/postprocess/LinearDepthFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/postprocess/FogFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/postprocess/SsaoFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/postprocess/TonemapFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/shadow/EVSMShadowResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/shadow/EVSMShadowTechnique.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/shadow/MeshShadowFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/shadow/ShadowMapFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/skinning/SkinningFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/sky_box/SkyboxFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/spatialcull/SpatialCullFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/streaming_feedback/StreamingFeedbackFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/trajectory/TrajectoryLineFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/view_camera/StandardViewCameraFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/renderer/features/water/WaterFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/features/src/scene/SpatialCullGrid.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 120,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/pass_gen/HighlightBlurPassParams.pass.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 120,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/pass_gen/HighlightCompositePassParams.pass.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 120,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/pass_gen/StreamingFeedbackPassParams.pass.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 120,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/pass_gen/TonemapPassParams.pass.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 120,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/pass_gen/HighlightBlurPassParams.lglslh",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 120,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/pass_gen/HighlightCompositePassParams.lglslh",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 120,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/pass_gen/StreamingFeedbackPassParams.lglslh",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 120,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/pass_gen/TonemapPassParams.lglslh",
+          "sourceGroupIndex": 2
+        },
+        {
+          "backtrace": 121,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Grid3DOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 122,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Grid2DOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 123,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LineListOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 124,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TriOverlayOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 125,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TrajectoryOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 126,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SkyboxOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 127,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SkinningOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 128,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/PointCloudOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 129,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TonemapOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 130,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ShadowMapOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 131,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ViewCameraOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 132,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LightOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 133,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MeshStackOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 134,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MaterialOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 135,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DeferredGBufferOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 136,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DeferredLightingOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 137,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/DepthPrepassOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 138,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ForwardMeshOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 139,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/HighlightOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 140,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/StreamingFeedbackOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 141,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/HzbOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 142,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/LinearDepthOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 143,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SsaoOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 144,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/FogOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 145,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/Canvas2DOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 146,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/MeshShadowOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 147,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/SpatialCullOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 148,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/RenderClusterOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 149,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/TerrainOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 150,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen/lux/engine/function/render/features/genops/WaterOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 151,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/plugin/RenderPluginExports.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 152,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/plugin/render_features/identity.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/pass_gen/HighlightBlurPassParams.pass.hpp.rule",
+          "sourceGroupIndex": 3
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/plugin/render.declaration.json.rule",
+          "sourceGroupIndex": 3
+        }
+      ],
+      "compileGroups": [
+        {
+          "compileCommandFragments": [
+            {
+              "fragment": "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+            },
+            {
+              "backtrace": 103,
+              "fragment": "/utf-8"
+            },
+            {
+              "backtrace": 103,
+              "fragment": "/permissive-"
+            },
+            {
+              "backtrace": 103,
+              "fragment": "/Zc:__cplusplus"
+            },
+            {
+              "backtrace": 103,
+              "fragment": "/Zc:preprocessor"
+            },
+            {
+              "backtrace": 109,
+              "fragment": "/GR-"
+            },
+            {
+              "backtrace": 109,
+              "fragment": "/we4541"
+            }
+          ],
+          "defines": [
+            {
+              "backtrace": 110,
+              "define": "LUX_ENGINE_FUNCTION_RENDER_FEATURES_LIBRARY"
+            },
+            {
+              "backtrace": 110,
+              "define": "LUX_FUNCTION_LIBRARY"
+            },
+            {
+              "backtrace": 9,
+              "define": "MESHOPTIMIZER_ALLOC_EXPORT"
+            },
+            {
+              "backtrace": 9,
+              "define": "MESHOPTIMIZER_API=__declspec(dllimport)"
+            },
+            {
+              "backtrace": 111,
+              "define": "NOMINMAX"
+            },
+            {
+              "backtrace": 111,
+              "define": "VK_USE_PLATFORM_WIN32_KHR"
+            },
+            {
+              "backtrace": 8,
+              "define": "VULKAN_DEBUG_REPORT"
+            },
+            {
+              "backtrace": 8,
+              "define": "VULKAN_SUPPORT"
+            },
+            {
+              "backtrace": 8,
+              "define": "__PLATFORM_WIN32__"
+            },
+            {
+              "backtrace": 8,
+              "define": "__TRAY_ENABLED__"
+            },
+            {
+              "define": "render_features_EXPORTS"
+            }
+          ],
+          "includes": [
+            {
+              "backtrace": 114,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/../vulkan/include"
+            },
+            {
+              "backtrace": 114,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/../client/include"
+            },
+            {
+              "backtrace": 114,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen"
+            },
+            {
+              "backtrace": 114,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen/include"
+            },
+            {
+              "backtrace": 116,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/../vulkan/sinclude"
+            },
+            {
+              "backtrace": 116,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/sinclude"
+            },
+            {
+              "backtrace": 116,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/../vulkan/pinclude"
+            },
+            {
+              "backtrace": 116,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/pinclude"
+            },
+            {
+              "backtrace": 117,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/pass_gen"
+            },
+            {
+              "backtrace": 118,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/comm_gen"
+            },
+            {
+              "backtrace": 119,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/features/builtin_shaders"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/vulkan/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/cmake/../include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/client/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/math/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/serialization/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/type_info/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/error/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/description/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/script/core/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/semantic/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/identity/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/graph/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/platform/window/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/platform/gapi/include"
+            },
+            {
+              "backtrace": 14,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/platform/dynamic_library/include"
+            },
+            {
+              "backtrace": 116,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include"
+            },
+            {
+              "backtrace": 8,
+              "isSystem": true,
+              "path": "E:/SyncForder/CodeRepos/install/Framework-v2-dependencies/include"
+            },
+            {
+              "backtrace": 8,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+            },
+            {
+              "backtrace": 8,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+            },
+            {
+              "backtrace": 8,
+              "isSystem": true,
+              "path": "D:/Development/VulkanSDK/1.4.304.0/include"
+            },
+            {
+              "backtrace": 9,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/vma"
+            }
+          ],
+          "language": "CXX",
+          "languageStandard": {
+            "backtraces": [
+              8,
+              8
+            ],
+            "standard": "20"
+          },
+          "sourceIndexes": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            55,
+            56,
+            57,
+            58,
+            59,
+            60,
+            61,
+            62,
+            63,
+            64,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70,
+            71,
+            80,
+            81,
+            82,
+            83,
+            84,
+            85,
+            86,
+            87,
+            88,
+            89,
+            90,
+            91,
+            92,
+            93,
+            94,
+            95,
+            96,
+            97,
+            98,
+            99,
+            100,
+            101,
+            102,
+            103,
+            104,
+            105,
+            106,
+            107,
+            108,
+            109,
+            110,
+            111
+          ]
+        }
+      ],
+      "link": {
+        "commandFragments": [
+          {
+            "fragment": "/machine:x64 /debug /INCREMENTAL",
+            "role": "flags"
+          },
+          {
+            "backtrace": 8,
+            "fragment": "lib\\render_vulkan.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 9,
+            "fragment": "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\meshoptimizer.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 14,
+            "fragment": "lib\\dynamic_library.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 17,
+            "fragment": "lib\\render_feature_client.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 21,
+            "fragment": "lib\\render_client.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 23,
+            "fragment": "lib\\lux_engine_core_serialization.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 23,
+            "fragment": "lib\\lux_engine_core_error.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 17,
+            "fragment": "lib\\render_graph.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 24,
+            "fragment": "lib\\window.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 26,
+            "fragment": "D:\\Development\\VulkanSDK\\1.4.304.0\\Lib\\vulkan-1.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 24,
+            "fragment": "lib\\description.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 28,
+            "fragment": "lib\\lux_engine_function_script_core.lib",
+            "role": "libraries"
+          },
+          {
+            "fragment": "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+            "role": "libraries"
+          }
+        ],
+        "language": "CXX"
+      },
+      "install": {
+        "destinations": [
+          {
+            "backtrace": 6,
+            "path": "lib"
+          },
+          {
+            "backtrace": 6,
+            "path": "bin"
+          }
+        ],
+        "prefix": {
+          "path": "C:/Program Files (x86)/lux-engine"
+        }
+      }
+    },
+    {
+      "name": "render_graph",
+      "type": "SHARED_LIBRARY",
+      "dependencies": [],
+      "paths": {
+        "build": "modules/function/render/graph",
+        "source": "modules/function/render/graph"
+      },
+      "sources": [
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/graph/src/DependencyAnalyzer.cpp",
+          "sourceGroupIndex": 0
+        }
+      ],
+      "compileGroups": [
+        {
+          "compileCommandFragments": [
+            {
+              "fragment": "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+            },
+            {
+              "backtrace": 8,
+              "fragment": "/utf-8"
+            },
+            {
+              "backtrace": 8,
+              "fragment": "/permissive-"
+            },
+            {
+              "backtrace": 8,
+              "fragment": "/Zc:__cplusplus"
+            },
+            {
+              "backtrace": 8,
+              "fragment": "/Zc:preprocessor"
+            },
+            {
+              "backtrace": 14,
+              "fragment": "/GR-"
+            },
+            {
+              "backtrace": 14,
+              "fragment": "/we4541"
+            }
+          ],
+          "defines": [
+            {
+              "backtrace": 15,
+              "define": "LUX_FUNCTION_LIBRARY"
+            },
+            {
+              "define": "render_graph_EXPORTS"
+            }
+          ],
+          "includes": [
+            {
+              "backtrace": 18,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/graph/include"
+            },
+            {
+              "backtrace": 18,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen/include"
+            }
+          ],
+          "language": "CXX",
+          "languageStandard": {
+            "backtraces": [
+              3
+            ],
+            "standard": "20"
+          },
+          "sourceIndexes": [
+            0
+          ]
+        }
+      ],
+      "link": {
+        "commandFragments": [
+          {
+            "fragment": "/machine:x64 /debug /INCREMENTAL",
+            "role": "flags"
+          },
+          {
+            "fragment": "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+            "role": "libraries"
+          }
+        ],
+        "language": "CXX"
+      },
+      "install": {
+        "destinations": [
+          {
+            "backtrace": 6,
+            "path": "lib"
+          },
+          {
+            "backtrace": 6,
+            "path": "bin"
+          }
+        ],
+        "prefix": {
+          "path": "C:/Program Files (x86)/lux-engine"
+        }
+      }
+    },
+    {
+      "name": "render_runtime",
+      "type": "SHARED_LIBRARY",
+      "dependencies": [
+        "window",
+        "error",
+        "script_core",
+        "serialization",
+        "description",
+        "render_feature_client",
+        "render_client",
+        "render_graph",
+        "render_vulkan"
+      ],
+      "paths": {
+        "build": "modules/function/render/runtime",
+        "source": "modules/function/render/runtime"
+      },
+      "sources": [
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/runtime/src/RenderRuntime.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/runtime/src/RendererThread.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/runtime/src/RendererError.cpp",
+          "sourceGroupIndex": 0
+        }
+      ],
+      "compileGroups": [
+        {
+          "compileCommandFragments": [
+            {
+              "fragment": "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+            },
+            {
+              "backtrace": 19,
+              "fragment": "/utf-8"
+            },
+            {
+              "backtrace": 19,
+              "fragment": "/permissive-"
+            },
+            {
+              "backtrace": 19,
+              "fragment": "/Zc:__cplusplus"
+            },
+            {
+              "backtrace": 19,
+              "fragment": "/Zc:preprocessor"
+            },
+            {
+              "backtrace": 25,
+              "fragment": "/GR-"
+            },
+            {
+              "backtrace": 25,
+              "fragment": "/we4541"
+            }
+          ],
+          "defines": [
+            {
+              "backtrace": 26,
+              "define": "LUX_RENDER_RUNTIME_LIBRARY"
+            },
+            {
+              "backtrace": 7,
+              "define": "VULKAN_DEBUG_REPORT"
+            },
+            {
+              "backtrace": 7,
+              "define": "VULKAN_SUPPORT"
+            },
+            {
+              "backtrace": 7,
+              "define": "__PLATFORM_WIN32__"
+            },
+            {
+              "backtrace": 7,
+              "define": "__TRAY_ENABLED__"
+            },
+            {
+              "define": "render_runtime_EXPORTS"
+            }
+          ],
+          "includes": [
+            {
+              "backtrace": 29,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/runtime/include"
+            },
+            {
+              "backtrace": 29,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen/include"
+            },
+            {
+              "backtrace": 31,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/runtime/pinclude"
+            },
+            {
+              "backtrace": 31,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/runtime/../vulkan/sinclude"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/client/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/math/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/serialization/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/type_info/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/error/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/description/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/script/core/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/semantic/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/identity/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/vulkan/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/cmake/../include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/graph/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/platform/window/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/platform/gapi/include"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "E:/SyncForder/CodeRepos/install/Framework-v2-dependencies/include"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/VulkanSDK/1.4.304.0/include"
+            }
+          ],
+          "language": "CXX",
+          "languageStandard": {
+            "backtraces": [
+              7,
+              7
+            ],
+            "standard": "20"
+          },
+          "sourceIndexes": [
+            0,
+            1,
+            2
+          ]
+        }
+      ],
+      "link": {
+        "commandFragments": [
+          {
+            "fragment": "/machine:x64 /debug /INCREMENTAL",
+            "role": "flags"
+          },
+          {
+            "backtrace": 7,
+            "fragment": "lib\\render_vulkan.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 10,
+            "fragment": "lib\\render_feature_client.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 7,
+            "fragment": "lib\\render_client.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 12,
+            "fragment": "lib\\lux_engine_core_serialization.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 12,
+            "fragment": "lib\\lux_engine_core_error.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 12,
+            "fragment": "lib\\description.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 14,
+            "fragment": "lib\\lux_engine_function_script_core.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 10,
+            "fragment": "lib\\render_graph.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 15,
+            "fragment": "lib\\window.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 17,
+            "fragment": "D:\\Development\\VulkanSDK\\1.4.304.0\\Lib\\vulkan-1.lib",
+            "role": "libraries"
+          },
+          {
+            "fragment": "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+            "role": "libraries"
+          }
+        ],
+        "language": "CXX"
+      },
+      "install": {
+        "destinations": [
+          {
+            "backtrace": 6,
+            "path": "lib"
+          },
+          {
+            "backtrace": 6,
+            "path": "bin"
+          }
+        ],
+        "prefix": {
+          "path": "C:/Program Files (x86)/lux-engine"
+        }
+      }
+    },
+    {
+      "name": "render_standard_content",
+      "type": "SHARED_LIBRARY",
+      "dependencies": [
+        "serialization"
+      ],
+      "paths": {
+        "build": "modules/function/render/standard_content",
+        "source": "modules/function/render/standard_content"
+      },
+      "sources": [
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/standard_content/src/ClassicMeshBatchCodec.cpp",
+          "sourceGroupIndex": 0
+        }
+      ],
+      "compileGroups": [
+        {
+          "compileCommandFragments": [
+            {
+              "fragment": "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+            },
+            {
+              "backtrace": 9,
+              "fragment": "/utf-8"
+            },
+            {
+              "backtrace": 9,
+              "fragment": "/permissive-"
+            },
+            {
+              "backtrace": 9,
+              "fragment": "/Zc:__cplusplus"
+            },
+            {
+              "backtrace": 9,
+              "fragment": "/Zc:preprocessor"
+            },
+            {
+              "backtrace": 15,
+              "fragment": "/GR-"
+            },
+            {
+              "backtrace": 15,
+              "fragment": "/we4541"
+            }
+          ],
+          "defines": [
+            {
+              "backtrace": 16,
+              "define": "LUX_ENGINE_FUNCTION_RENDER_STANDARD_CONTENT_LIBRARY"
+            },
+            {
+              "define": "render_standard_content_EXPORTS"
+            }
+          ],
+          "includes": [
+            {
+              "backtrace": 19,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/standard_content/include"
+            },
+            {
+              "backtrace": 19,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/identity/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/serialization/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/type_info/include"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "E:/SyncForder/CodeRepos/install/Framework-v2-dependencies/include"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+            }
+          ],
+          "language": "CXX",
+          "languageStandard": {
+            "backtraces": [
+              7,
+              7
+            ],
+            "standard": "20"
+          },
+          "sourceIndexes": [
+            0
+          ]
+        }
+      ],
+      "link": {
+        "commandFragments": [
+          {
+            "fragment": "/machine:x64 /debug /INCREMENTAL",
+            "role": "flags"
+          },
+          {
+            "backtrace": 7,
+            "fragment": "lib\\lux_engine_core_serialization.lib",
+            "role": "libraries"
+          },
+          {
+            "fragment": "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+            "role": "libraries"
+          }
+        ],
+        "language": "CXX"
+      },
+      "install": {
+        "destinations": [
+          {
+            "backtrace": 6,
+            "path": "lib"
+          },
+          {
+            "backtrace": 6,
+            "path": "bin"
+          }
+        ],
+        "prefix": {
+          "path": "C:/Program Files (x86)/lux-engine"
+        }
+      }
+    },
+    {
+      "name": "render_vulkan",
+      "type": "SHARED_LIBRARY",
+      "dependencies": [
+        "window",
+        "error",
+        "script_core",
+        "serialization",
+        "description",
+        "render_feature_client",
+        "render_client",
+        "render_graph"
+      ],
+      "paths": {
+        "build": "modules/function/render/vulkan",
+        "source": "modules/function/render/vulkan"
+      },
+      "sources": [
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/comm/FeatureParamsHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/comm/FeatureRegistration.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/comm/RenderServer.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/comm/RenderServerBootstrap.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/comm/RenderServerFacade.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/comm/RenderServerHandlers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/core/FrustumCuller.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/descriptor/DescriptorService.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/descriptor/SceneDescriptorArena.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/descriptor/SceneDomainDescriptorSets.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/lifecycle/DeferredDestroyQueue.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/lifecycle/VRAMBudgetGuard.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/memory/ArenaAllocator.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/memory/GPUBufferVma.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/memory/StagingBuffer.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/memory/VmaTypes.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/pipeline/GeneralDescriptorSetLayout.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/pipeline/PipelineLayoutService.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/pipeline/PipelineManager.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/pipeline/SpirvPatcher.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/pipeline/StandardPipelineLayoutBuilder.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/RenderContext.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/RenderSurface.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/transfer/TransferScheduler.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/utils/StagingRingBuffer.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/VmaImplementation.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/gpu/VulkanContext.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/FrameExtensionRegistry.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/FrameExternalSync.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/KernelRegistry.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/RenderGraphCompiler.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/RenderGraphCompiler.ExecutionPlan.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/RenderGraphCompiler.Barriers.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/RenderGraphCompiler.LayoutAllocator.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/RenderPassPlanner.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/RGBuilder.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/RGDebugPrint.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/RGGraphResize.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/RGVulkanRecorder.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/RGVulkanRecorder.RecordContext.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/RGVulkanRecorder.Submit.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/graph/RGVulkanResourceAllocator.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/RenderContextView.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/renderer/FrameDriver.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/renderer/FrameOrchestrator.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/renderer/Renderer.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/renderer/RenderTargetRegistry.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/descriptor/BindlessCombinedSet.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/hzb/HzbResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/lifecycle/GpuTransferPipeline.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/lighting/LightResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/lighting/ShadowResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/material/MaterialResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/material/TextureSamplingRepresentationCatalog.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/material/VariantBucketManager.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/mesh/InstanceResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/mesh/InstanceSlotRegistry.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/mesh/SparseInstanceStream.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/mesh/MdcTable.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/mesh/MeshResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/mesh/MeshSectionTable.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/point_cloud/GpuOctreeNodeBuffer.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/point_cloud/PointCloudGlobalBuffer.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/ShaderResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/SceneResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/TextureResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/TrajectoryGlobalBuffer.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/vertex/IVertexSource.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/vertex/SkinningResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/vertex/StaticVertexSource.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/vertex/TransientVertexSource.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/vertex/VertexPoolRegistry.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/resources/vertex/VertexProduction.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/scene/RenderScene.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/scene/RenderSceneView.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/scene/RenderFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/scene/RenderFeatureSet.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/scene/SceneGraphCache.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/scene/SceneViewSet.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/scene/View.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/targets/OffscreenImagePool.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/targets/PresentContext.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/targets/RenderTargetBinding.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/targets/ClearRenderTarget.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/render/vulkan/src/targets/SwapchainProvider.cpp",
+          "sourceGroupIndex": 0
+        }
+      ],
+      "compileGroups": [
+        {
+          "compileCommandFragments": [
+            {
+              "fragment": "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+            },
+            {
+              "backtrace": 21,
+              "fragment": "/utf-8"
+            },
+            {
+              "backtrace": 21,
+              "fragment": "/permissive-"
+            },
+            {
+              "backtrace": 21,
+              "fragment": "/Zc:__cplusplus"
+            },
+            {
+              "backtrace": 21,
+              "fragment": "/Zc:preprocessor"
+            },
+            {
+              "backtrace": 27,
+              "fragment": "/GR-"
+            },
+            {
+              "backtrace": 27,
+              "fragment": "/we4541"
+            }
+          ],
+          "defines": [
+            {
+              "backtrace": 28,
+              "define": "LUX_FUNCTION_LIBRARY"
+            },
+            {
+              "backtrace": 29,
+              "define": "NOMINMAX"
+            },
+            {
+              "backtrace": 29,
+              "define": "VK_USE_PLATFORM_WIN32_KHR"
+            },
+            {
+              "backtrace": 9,
+              "define": "VULKAN_DEBUG_REPORT"
+            },
+            {
+              "backtrace": 9,
+              "define": "VULKAN_SUPPORT"
+            },
+            {
+              "backtrace": 9,
+              "define": "__PLATFORM_WIN32__"
+            },
+            {
+              "backtrace": 9,
+              "define": "__TRAY_ENABLED__"
+            },
+            {
+              "define": "render_vulkan_EXPORTS"
+            }
+          ],
+          "includes": [
+            {
+              "backtrace": 32,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/vulkan/include"
+            },
+            {
+              "backtrace": 32,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen/include"
+            },
+            {
+              "backtrace": 34,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen"
+            },
+            {
+              "backtrace": 36,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/vulkan/sinclude"
+            },
+            {
+              "backtrace": 36,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/vulkan/pinclude"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/cmake/../include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/client/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/math/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/serialization/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/type_info/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/error/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/description/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/script/core/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/semantic/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/identity/include"
+            },
+            {
+              "backtrace": 8,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/graph/include"
+            },
+            {
+              "backtrace": 9,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/platform/window/include"
+            },
+            {
+              "backtrace": 9,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/platform/gapi/include"
+            },
+            {
+              "backtrace": 8,
+              "isSystem": true,
+              "path": "E:/SyncForder/CodeRepos/install/Framework-v2-dependencies/include"
+            },
+            {
+              "backtrace": 8,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+            },
+            {
+              "backtrace": 8,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include"
+            },
+            {
+              "backtrace": 8,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+            },
+            {
+              "backtrace": 9,
+              "isSystem": true,
+              "path": "D:/Development/VulkanSDK/1.4.304.0/include"
+            },
+            {
+              "backtrace": 9,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/vma"
+            }
+          ],
+          "language": "CXX",
+          "languageStandard": {
+            "backtraces": [
+              8,
+              8
+            ],
+            "standard": "20"
+          },
+          "sourceIndexes": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15,
+            16,
+            17,
+            18,
+            19,
+            20,
+            21,
+            22,
+            23,
+            24,
+            25,
+            26,
+            27,
+            28,
+            29,
+            30,
+            31,
+            32,
+            33,
+            34,
+            35,
+            36,
+            37,
+            38,
+            39,
+            40,
+            41,
+            42,
+            43,
+            44,
+            45,
+            46,
+            47,
+            48,
+            49,
+            50,
+            51,
+            52,
+            53,
+            54,
+            55,
+            56,
+            57,
+            58,
+            59,
+            60,
+            61,
+            62,
+            63,
+            64,
+            65,
+            66,
+            67,
+            68,
+            69,
+            70,
+            71,
+            72,
+            73,
+            74,
+            75,
+            76,
+            77,
+            78,
+            79,
+            80,
+            81,
+            82,
+            83,
+            84
+          ]
+        }
+      ],
+      "link": {
+        "commandFragments": [
+          {
+            "fragment": "/machine:x64 /debug /INCREMENTAL",
+            "role": "flags"
+          },
+          {
+            "backtrace": 8,
+            "fragment": "lib\\render_feature_client.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 8,
+            "fragment": "lib\\render_graph.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 9,
+            "fragment": "lib\\window.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 13,
+            "fragment": "lib\\render_client.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 9,
+            "fragment": "lib\\description.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 15,
+            "fragment": "lib\\lux_engine_function_script_core.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 17,
+            "fragment": "lib\\lux_engine_core_serialization.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 17,
+            "fragment": "lib\\lux_engine_core_error.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 19,
+            "fragment": "D:\\Development\\VulkanSDK\\1.4.304.0\\Lib\\vulkan-1.lib",
+            "role": "libraries"
+          },
+          {
+            "fragment": "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+            "role": "libraries"
+          }
+        ],
+        "language": "CXX"
+      },
+      "install": {
+        "destinations": [
+          {
+            "backtrace": 6,
+            "path": "lib"
+          },
+          {
+            "backtrace": 6,
+            "path": "bin"
+          }
+        ],
+        "prefix": {
+          "path": "C:/Program Files (x86)/lux-engine"
+        }
+      }
+    },
+    {
+      "name": "scene_render",
+      "type": "SHARED_LIBRARY",
+      "dependencies": [
+        "error",
+        "script_core",
+        "serialization",
+        "task",
+        "description",
+        "asset",
+        "render_feature_client",
+        "render_client",
+        "render_runtime",
+        "script_artifact",
+        "world_partition",
+        "world_description",
+        "domain_system_description",
+        "domain_system_identity",
+        "simulation_description",
+        "schema",
+        "core",
+        "snapshot",
+        "system",
+        "process_execution",
+        "process_asset_loading",
+        "scene_description",
+        "scene_composition",
+        "simulation_composition",
+        "hierarchy",
+        "transform",
+        "visual",
+        "scene_camera",
+        "scene_mesh_query",
+        "scene_render_configuration_codegen_generate"
+      ],
+      "paths": {
+        "build": "engine/scene/builtin_systems/render",
+        "source": "engine/scene/builtin_systems/render"
+      },
+      "sources": [
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/scene/builtin_systems/render/src/Builtin3DRenderStages.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/scene/builtin_systems/render/src/CameraExtraction.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/scene/builtin_systems/render/src/SceneRenderSchema.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/scene/builtin_systems/render/src/RenderAssets.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/scene/builtin_systems/render/src/RenderResources.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/scene/builtin_systems/render/src/RenderResourceAssets.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/scene/builtin_systems/render/src/RenderResourceScenes.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/scene/builtin_systems/render/src/RenderResourceViews.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/scene/builtin_systems/render/src/RenderSystemConfiguration.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/scene/builtin_systems/render/src/RenderViewRequests.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "engine/scene/builtin_systems/render/src/RenderSystem.cpp",
+          "sourceGroupIndex": 0
+        }
+      ],
+      "compileGroups": [
+        {
+          "compileCommandFragments": [
+            {
+              "fragment": "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+            },
+            {
+              "backtrace": 35,
+              "fragment": "/utf-8"
+            },
+            {
+              "backtrace": 35,
+              "fragment": "/permissive-"
+            },
+            {
+              "backtrace": 35,
+              "fragment": "/Zc:__cplusplus"
+            },
+            {
+              "backtrace": 35,
+              "fragment": "/Zc:preprocessor"
+            },
+            {
+              "backtrace": 40,
+              "fragment": "/GR-"
+            },
+            {
+              "backtrace": 40,
+              "fragment": "/we4541"
+            },
+            {
+              "backtrace": 6,
+              "fragment": "/Zc:externConstexpr"
+            }
+          ],
+          "defines": [
+            {
+              "backtrace": 6,
+              "define": "ENTT_NO_ETO"
+            },
+            {
+              "backtrace": 41,
+              "define": "LUX_ENGINE_SCENE_RENDER_LIBRARY"
+            },
+            {
+              "backtrace": 6,
+              "define": "STDEXEC_ENABLE_WINDOWS_THREAD_POOL"
+            },
+            {
+              "define": "scene_render_EXPORTS"
+            }
+          ],
+          "includes": [
+            {
+              "backtrace": 42,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/engine/scene/builtin_systems/render/type_info"
+            },
+            {
+              "backtrace": 45,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/builtin_systems/render/include"
+            },
+            {
+              "backtrace": 45,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen/include"
+            },
+            {
+              "backtrace": 47,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/builtin_systems/render/pinclude"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/cmake/../include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/client/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/math/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/serialization/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/type_info/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/error/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/script/core/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/semantic/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/identity/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/runtime/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/components/camera/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/schema/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/core/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/world/identity/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/composition/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/world/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/world/partition/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/partition/identity/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/composition/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/system/identity/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/system/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/system/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/task/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/task/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/scripting/core/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/script/artifact/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/asset/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/description/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/system/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/process/execution/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/async_port/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/transform/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/snapshot/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/hierarchy/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/domain/simulation/ecs/visual/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/scene/builtin_systems/mesh_query/include"
+            },
+            {
+              "backtrace": 6,
+              "path": "D:/LuxQualification/ma11-r1-source/engine/process/asset_loading/include"
+            },
+            {
+              "backtrace": 6,
+              "isSystem": true,
+              "path": "E:/SyncForder/CodeRepos/install/Framework-v2-dependencies/include"
+            },
+            {
+              "backtrace": 6,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+            },
+            {
+              "backtrace": 6,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include"
+            },
+            {
+              "backtrace": 6,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+            }
+          ],
+          "language": "CXX",
+          "languageStandard": {
+            "backtraces": [
+              6,
+              6,
+              6
+            ],
+            "standard": "20"
+          },
+          "sourceIndexes": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ]
+        }
+      ],
+      "link": {
+        "commandFragments": [
+          {
+            "fragment": "/machine:x64 /debug /INCREMENTAL",
+            "role": "flags"
+          },
+          {
+            "backtrace": 6,
+            "fragment": "lib\\render_runtime.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 6,
+            "fragment": "lib\\lux_engine_scene_camera.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 6,
+            "fragment": "lib\\lux_engine_scene_mesh_query.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 6,
+            "fragment": "lib\\lux_engine_process_asset_loading.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 6,
+            "fragment": "lib\\render_feature_client.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 10,
+            "fragment": "lib\\render_client.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 6,
+            "fragment": "lib\\lux_engine_scene_composition.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 12,
+            "fragment": "lib\\lux_engine_world_description.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 14,
+            "fragment": "lib\\lux_engine_world_partition.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 12,
+            "fragment": "lib\\lux_engine_simulation_composition.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 16,
+            "fragment": "lib\\lux_engine_core_task.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 16,
+            "fragment": "lib\\lux_engine_simulation_system.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 16,
+            "fragment": "lib\\lux_engine_simulation_description.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 18,
+            "fragment": "lib\\lux_engine_function_script_artifact.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 12,
+            "fragment": "lib\\lux_engine_scene_description.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 20,
+            "fragment": "lib\\lux_engine_domain_system_description.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 20,
+            "fragment": "lib\\lux_engine_domain_system_identity.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 6,
+            "fragment": "lib\\lux_engine_simulation_ecs_transform.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 22,
+            "fragment": "lib\\lux_engine_simulation_ecs_hierarchy.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 6,
+            "fragment": "lib\\lux_engine_simulation_ecs_visual.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 22,
+            "fragment": "lib\\lux_engine_simulation_ecs_snapshot.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 24,
+            "fragment": "lib\\lux_engine_simulation_ecs_schema.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 6,
+            "fragment": "lib\\lux_engine_simulation_ecs_core.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 6,
+            "fragment": "lib\\lux_engine_asset.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 22,
+            "fragment": "lib\\lux_engine_core_serialization.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 26,
+            "fragment": "lib\\description.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 28,
+            "fragment": "lib\\lux_engine_function_script_core.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 12,
+            "fragment": "lib\\lux_engine_process_execution.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 30,
+            "fragment": "lib\\lux_engine_core_error.lib",
+            "role": "libraries"
+          },
+          {
+            "fragment": "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+            "role": "libraries"
+          }
+        ],
+        "language": "CXX"
+      },
+      "install": {
+        "destinations": [
+          {
+            "backtrace": 5,
+            "path": "lib"
+          },
+          {
+            "backtrace": 5,
+            "path": "bin"
+          }
+        ],
+        "prefix": {
+          "path": "C:/Program Files (x86)/lux-engine"
+        }
+      }
+    },
+    {
+      "name": "ui_rendering",
+      "type": "SHARED_LIBRARY",
+      "dependencies": [
+        "window",
+        "error",
+        "object",
+        "script_core",
+        "serialization",
+        "description",
+        "render_feature_client",
+        "render_client",
+        "render_graph",
+        "render_vulkan",
+        "ui",
+        "ui_render_ops_UiRenderOperation_comm_codegen_generate"
+      ],
+      "paths": {
+        "build": "modules/function/ui/rendering",
+        "source": "modules/function/ui/rendering"
+      },
+      "sources": [
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/ui/rendering/src/RenderClient.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/ui/rendering/src/RenderFeature.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 3,
+          "compileGroupIndex": 0,
+          "path": "modules/function/ui/rendering/src/VulkanBackend.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 46,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/ui/rendering/comm_gen/lux/engine/ui/rendering/genops/UiRenderOperation.ops.hpp",
+          "sourceGroupIndex": 1
+        },
+        {
+          "backtrace": 46,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/ui/rendering/comm_gen/lux/engine/ui/rendering/genops/UiRenderOperation.client.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 46,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/ui/rendering/comm_gen/lux/engine/ui/rendering/genops/UiRenderOperation.metadata.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 47,
+          "compileGroupIndex": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/ui/rendering/comm_gen/lux/engine/ui/rendering/genops/UiRenderOperation.ops.cpp",
+          "sourceGroupIndex": 0
+        },
+        {
+          "backtrace": 0,
+          "isGenerated": true,
+          "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/ui/rendering/comm_gen/lux/engine/ui/rendering/genops/UiRenderOperation.ops.hpp.rule",
+          "sourceGroupIndex": 2
+        }
+      ],
+      "compileGroups": [
+        {
+          "compileCommandFragments": [
+            {
+              "fragment": "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+            },
+            {
+              "backtrace": 32,
+              "fragment": "/utf-8"
+            },
+            {
+              "backtrace": 32,
+              "fragment": "/permissive-"
+            },
+            {
+              "backtrace": 32,
+              "fragment": "/Zc:__cplusplus"
+            },
+            {
+              "backtrace": 32,
+              "fragment": "/Zc:preprocessor"
+            },
+            {
+              "backtrace": 38,
+              "fragment": "/GR-"
+            },
+            {
+              "backtrace": 38,
+              "fragment": "/we4541"
+            }
+          ],
+          "defines": [
+            {
+              "backtrace": 7,
+              "define": "IMGUI_SHARED_CORE"
+            },
+            {
+              "backtrace": 39,
+              "define": "LUX_UI_RENDERING_LIBRARY"
+            },
+            {
+              "backtrace": 7,
+              "define": "VULKAN_DEBUG_REPORT"
+            },
+            {
+              "backtrace": 7,
+              "define": "VULKAN_SUPPORT"
+            },
+            {
+              "backtrace": 7,
+              "define": "__PLATFORM_WIN32__"
+            },
+            {
+              "backtrace": 7,
+              "define": "__TRAY_ENABLED__"
+            },
+            {
+              "define": "ui_rendering_EXPORTS"
+            }
+          ],
+          "includes": [
+            {
+              "backtrace": 42,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/ui/rendering/include"
+            },
+            {
+              "backtrace": 42,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen/include"
+            },
+            {
+              "backtrace": 44,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/ui/rendering/pinclude"
+            },
+            {
+              "backtrace": 44,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/ui/rendering/../sinclude"
+            },
+            {
+              "backtrace": 44,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/ui/rendering/../../render/vulkan/sinclude"
+            },
+            {
+              "backtrace": 45,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/ui/rendering/comm_gen"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/ui/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/object/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/client/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/math/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/serialization/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/type_info/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/error/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/description/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/script/core/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/core/semantic/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/resource/identity/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/vulkan/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/gen"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/features/cmake/../include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-negative-object-process/modules/function/render/comm_gen"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/function/render/graph/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/platform/window/include"
+            },
+            {
+              "backtrace": 7,
+              "path": "D:/LuxQualification/ma11-r1-source/modules/platform/gapi/include"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "E:/SyncForder/CodeRepos/install/Framework-v2-dependencies/include"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+            },
+            {
+              "backtrace": 7,
+              "isSystem": true,
+              "path": "D:/Development/VulkanSDK/1.4.304.0/include"
+            }
+          ],
+          "language": "CXX",
+          "languageStandard": {
+            "backtraces": [
+              7,
+              7
+            ],
+            "standard": "20"
+          },
+          "sourceIndexes": [
+            0,
+            1,
+            2,
+            4,
+            5,
+            6
+          ]
+        }
+      ],
+      "link": {
+        "commandFragments": [
+          {
+            "fragment": "/machine:x64 /debug /INCREMENTAL",
+            "role": "flags"
+          },
+          {
+            "backtrace": 7,
+            "fragment": "E:\\SyncForder\\CodeRepos\\install\\Framework-v2-dependencies\\lib\\imgui_vulkan.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 7,
+            "fragment": "D:\\Development\\VulkanSDK\\1.4.304.0\\Lib\\vulkan-1.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 7,
+            "fragment": "lib\\render_vulkan.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 7,
+            "fragment": "lib\\ui.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 9,
+            "fragment": "lib\\lux_engine_core_object.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 17,
+            "fragment": "E:\\SyncForder\\CodeRepos\\install\\Framework-v2-dependencies\\lib\\imgui_core.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 20,
+            "fragment": "lib\\render_feature_client.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 7,
+            "fragment": "lib\\render_client.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 22,
+            "fragment": "lib\\lux_engine_core_serialization.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 22,
+            "fragment": "lib\\lux_engine_core_error.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 22,
+            "fragment": "lib\\description.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 24,
+            "fragment": "lib\\lux_engine_function_script_core.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 20,
+            "fragment": "lib\\render_graph.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 25,
+            "fragment": "lib\\window.lib",
+            "role": "libraries"
+          },
+          {
+            "backtrace": 27,
+            "fragment": "D:\\Development\\VulkanSDK\\1.4.304.0\\Lib\\vulkan-1.lib",
+            "role": "libraries"
+          },
+          {
+            "fragment": "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+            "role": "libraries"
+          }
+        ],
+        "language": "CXX"
+      },
+      "install": {
+        "destinations": [
+          {
+            "backtrace": 6,
+            "path": "lib"
+          },
+          {
+            "backtrace": 6,
+            "path": "bin"
+          }
+        ],
+        "prefix": {
+          "path": "C:/Program Files (x86)/lux-engine"
+        }
+      }
+    }
+  ]
+}

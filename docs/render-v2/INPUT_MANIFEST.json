@@ -1,0 +1,65 @@
+{
+  "zip_sha256": "24fc30e0b5edc6970ab96260df387d83c2b2a1563d06b0ba370ffa3e24359b1c",
+  "documents": [
+    {
+      "archive_name": "00_README_总览与文档索引.md",
+      "repository_name": "00_README.md",
+      "sha256": "c82aa5df189bfa98260deb8f380f22dbff47b94a7298a4c6c61ced2834f320a8"
+    },
+    {
+      "archive_name": "01_现状问题与Legacy冻结策略.md",
+      "repository_name": "01_LEGACY_AND_PROBLEMS.md",
+      "sha256": "94e280457d0368c3b1a95682f5108a6f6f4f5765feb7921a4f437ec6b96a4ee2"
+    },
+    {
+      "archive_name": "02_分层架构与依赖规则.md",
+      "repository_name": "02_LAYERS_AND_DEPENDENCIES.md",
+      "sha256": "8f52d932ba778c3f73d09fc7382e1fa3f1e6212e6bde953284b0bca5c6c3e29e"
+    },
+    {
+      "archive_name": "03_Core与Transport_数据契约和通信.md",
+      "repository_name": "03_CORE_AND_TRANSPORT.md",
+      "sha256": "a8fc1d52abe97c2ad5faabb5093dbc43ae5efd5ddc30b0c70e80d8516c7635a0"
+    },
+    {
+      "archive_name": "04_RenderGraph与VulkanFoundation.md",
+      "repository_name": "04_GRAPH_AND_VULKAN_FOUNDATION.md",
+      "sha256": "55362eb88aa1c6479d7bae0aee7bf6d149a3c1149eadf42dc269c564967f40b8"
+    },
+    {
+      "archive_name": "05_VulkanBackend_Runtime_Frame_Target.md",
+      "repository_name": "05_BACKEND_RUNTIME_FRAME_TARGET.md",
+      "sha256": "49eb0bce9cc38289989886a2598af8bdc5a11e3c11cd1d9af4782103d9f3b890"
+    },
+    {
+      "archive_name": "06_Feature系统与SceneCapability.md",
+      "repository_name": "06_FEATURE_AND_CAPABILITY.md",
+      "sha256": "d4cde1b8a3ac4564a5abeaf46b52467e56e991b018fa5cb7cf2005c9442aa80f"
+    },
+    {
+      "archive_name": "07_RenderSystem_Projection_ResourceDomain.md",
+      "repository_name": "07_RENDER_SYSTEM_PROJECTION_RESOURCE.md",
+      "sha256": "38b5f1bcd6132bf6c0cb3f6e11756d28672857f56b9fc6ff9b4f98fd524b43e5"
+    },
+    {
+      "archive_name": "08_Cpp_RAII_错误语义与热路径规范.md",
+      "repository_name": "08_CPP_RAII_PERFORMANCE.md",
+      "sha256": "c958328997d391d6f78d5c3ca8850e76a047eb2a0418d2305694057e8a69cf76"
+    },
+    {
+      "archive_name": "09_实施阶段_VerticalSlice_算法迁移.md",
+      "repository_name": "09_IMPLEMENTATION_PLAN.md",
+      "sha256": "b0565ce5e49f19a1397c3097aa8c65d2cb3e6ddd358625f4de603bc469682f18"
+    },
+    {
+      "archive_name": "10_验收门禁与LLM实施合同.md",
+      "repository_name": "10_LLM_CONTRACT.md",
+      "sha256": "3a9ee4cca32dd7b15350c77d09bf86db90edf3b6045498ce3262c56f5b18aee7"
+    },
+    {
+      "archive_name": "11_R0_实施工作单.md",
+      "repository_name": "11_R0_WORK_ORDER.md",
+      "sha256": "adc1c2c8ebd0bdacc3e631371b9be4877ef5efb2f9c6429f359d493510f37299"
+    }
+  ]
+}

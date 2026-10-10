@@ -6,4 +6,3 @@ void main()
 {
     color = value + vec4(p_feature_a.data.x, p_feature_a.data.y, p_feature_a.data.z, p_feature_a.data.w);
 }
-

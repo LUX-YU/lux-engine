@@ -59,7 +59,7 @@ check({targets[d['id']]['name'] for d in names['render_vulkan_shader_compiler'].
  {'render_core','render_graph','render_vulkan','toolchain_shader_reflection'},'cold compiler dependency closure')
 for h in ('Layout','Format','Program','Bindings'):check('render_vulkan_header_shader_'+h in names,'native public TU '+h)
 for h in ('pipeline_Graphics','descriptor_ImageBindings'):check('render_vulkan_header_'+h in names,'foundation public TU '+h)
-links={};includes={} 
+links={};includes={}
 for name,t in names.items():
  check(name.startswith(('render_core','render_transport','render_graph','render_vulkan','toolchain_shader','lux_shader_emitter')) or t['type']=='UTILITY','unexpected target '+name)
  inc={norm(v['path']) for g in t.get('compileGroups',[]) for v in g.get('includes',[])}

@@ -10,6 +10,9 @@ set(LUX_VULKAN_SOURCES
     src/descriptor/Descriptors.cpp
     src/pipeline/Objects.cpp
     src/pipeline/Pipeline.cpp
+    src/transfer/Submission.cpp
+    src/transfer/Transfer.cpp
+    src/retirement/Retirement.cpp
 )
 
 add_component(

@@ -321,7 +321,7 @@ bounded queue core
 packet/blob storage
 Upload byte accounting
 reply routing
-pending reply retry
+bounded pre-reserved reply cells（2026-10-10 用户批准的算法替换）
 BlobRef
 owned ExternalDataRef attachment
 stop/wake
@@ -329,6 +329,18 @@ generation-safe runtime-local route slot
 ```
 
 V2 重写的是 owner/interface，不是成熟 queue/packet 算法。
+
+**R2-FIX 明确例外：**用户批准用 bounded pre-reserved reply cells 替代 V1 response-ring
+pending reply publication/retry，不要求恢复 `pending_reply_publish_`。这是批准的算法变更，
+不宣称逐字迁移；其他成熟机制继续遵守上述迁移纪律。
+
+请求执行前预留完成存储，容量不足是 admission/backpressure 结果。接收方必须消费终态结果
+或显式 `abandon(ticket)`；丢失 ticket 是接收责任泄漏，不能伪装成正常背压。
+Packet 取消或 deferred promise 析构终结操作，但不替接收方放弃读取取消结果的责任。
+Completed/Cancelled 结果保留至消费或 abandon；Pending abandon 可直接推进 generation 回收。
+若 completion/cancellation 正在 WRITING，abandon 只交出接收责任，由唯一写入者结束写入后回收，
+不得提前复用字节存储。Stop 与 completion/abandon 保持同一原子终态/代际合同；旧 generation
+不得影响新 reservation。回收协议不得新增逐请求 heap、shared-owner churn、自旋等待或阻塞互斥。
 
 ## 14. PROGRAM/CONTROL 热路径目标
 

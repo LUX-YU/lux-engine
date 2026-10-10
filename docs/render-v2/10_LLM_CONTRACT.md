@@ -4,6 +4,28 @@
 
 ## 1. 每阶段开始
 
+### 全局最高优先级 HARD GATE：Simulation / Render Independence
+
+2026-10-10 R2-FIX 用户授权新增：Simulation 推进 World；Publication 传输已成立的状态变化；
+Rendering 独立产生帧。禁止将 Simulation tick、mandatory PROGRAM 和单个 RenderFrame 绑定。
+无新 PROGRAM 时，只要 Runtime/View/target 合法且调度允许，必须可重复渲染最后完整提交状态；
+背压不得自动暂停帧进度，retained packet 与后续 revisions 不得丢失。
+
+Simulation revision/time 不等于 Render frame serial/time。Definition 表达拓扑，CompiledGraphPlan
+复用执行计划，FrameGraphBindings 表达当前帧动态值；Simulation tick、普通动态状态或逐帧 bindings
+变化不应引发 graph compile。Backend 不读 ECS live mutable state。
+
+禁止新增第二 Runtime/Renderer、Feature frame loop、同步桥 Manager、无界快照队列、默认阻塞
+Simulation 的进度等待、通用 TimeManager/InterpolationManager。独立渲染不要求通用插值或预测，
+也不代表无条件忙等；R5 必须协调 target readiness、pacing、Transport、Stop/terminal failure、
+GPU in-flight capacity，不能用空轮询或固定频繁 sleep 替代调度。
+
+05 §18、07 §21 与 09 的 R3/R5/R7/R8 门禁是该原则的强制落实位置。R3 只做逻辑图，R5 使用真实
+Runtime/GPU 验证独立进度，R7 验证一次 publication 驱动多帧，R8 验证低频 Simulation/较高目标
+Render 频率与背压。不得借本合同提前实施未授权阶段；满足本轮资格并经用户审阅后才能进入 R3。
+
+### 每阶段入场检查
+
 必须：
 
 ```text

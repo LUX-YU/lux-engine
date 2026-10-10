@@ -85,6 +85,11 @@ logical resource/pass/dependency
 
 迁 V1 logical test vectors。
 
+Independent Render Progress 准入门禁：Graph compile 不依赖 Simulation tick；相同拓扑配合不同
+FrameGraphBindings 必须复用编译计划；普通动态 Scene/View 值不自动 invalidation，真正拓扑变更才
+触发重新编译。保持 Definition / CompiledPlan / FrameBindings 三段模型。纯逻辑 Graph 无
+Vulkan、Runtime、Scene/ECS 依赖；R3 不实现真实 FrameLoop。
+
 ## R4 — Vulkan Foundation
 
 按顺序：
@@ -128,6 +133,11 @@ Runtime/Backend/Scene/View/Graph/Frame/Target
 Device Lost terminal failure
 shutdown
 ```
+
+R5 另须满足 05 §18 的 Independent Render Progress HARD GATE：真实 backend execution domain，
+持久 RenderScene 跨多帧复用；多帧无 PROGRAM 时仍在合法 target/pacing 下通过真实 GPU
+offscreen/presentation clear-color 验证，帧数不等于 publication 次数；空队列无无界忙等，
+Stop、Device Lost 与 GPU in-flight 生命周期仍正确。可控帧触发/测试时间源可用，fake Runtime 不可用。
 
 ## R6 — Minimal Concrete Feature Execution API
 
@@ -181,6 +191,9 @@ typed producer
 
 验证 writer hot path 无 dynamic lookup/switch。
 
+独立进度验收：只发布一次 DebugColorData，无后续 PROGRAM 时连续渲染多帧并使用持久状态；
+再发布新值后，后续帧使用新提交状态，不依赖重复发送相同数据来驱动帧。
+
 ## R8 — RenderSystem / Projection Vertical Slice
 
 建立：
@@ -196,6 +209,10 @@ backpressure packet retention
 先用 Debug/Camera 小案例贯穿真实 SceneDriver。
 
 Projection normal update 接近 `O(changed)`。
+
+独立进度验收见 07 §21：受控 Simulation 10 Hz 与 Render 目标 60 Hz 或更高；渲染进度不由
+Simulation tick 数决定；Publication 只传输合法状态变化；PROGRAM 背压不强迫停帧，
+retained candidate 期间后续 World revisions 不丢失。不要求通用插值系统。
 
 ## R9 — RenderResourceDomain / Upload Vertical Slice
 

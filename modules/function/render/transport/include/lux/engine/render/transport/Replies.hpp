@@ -50,6 +50,7 @@ namespace lux::render
             ) noexcept;
             [[nodiscard]] RenderResult<bool>
             take(ReplyToken token, RenderDataTypeId type, std::span<std::byte> output) noexcept;
+            [[nodiscard]] RenderResult<void> abandon(ReplyToken token) noexcept;
             void cancel(ReplyToken token) noexcept;
             void stop() noexcept;
             [[nodiscard]] bool stopping() const noexcept { return stopping_.load(std::memory_order_acquire); }
@@ -57,7 +58,7 @@ namespace lux::render
         private:
             enum class EPhase : std::uint64_t
             {
-                FREE, RESERVING, PENDING, WRITING, VALUE, ERROR, READING, EXHAUSTED
+                FREE, RESERVING, PENDING, WRITING, VALUE, ERROR, READING, EXHAUSTED, ABANDONED_WRITING
             };
             struct Cell final
             {
@@ -70,6 +71,12 @@ namespace lux::render
             static constexpr std::uint64_t sequence(std::uint64_t generation, EPhase phase) noexcept
             {
                 return generation * 16 + static_cast<std::uint64_t>(phase);
+            }
+
+            static constexpr std::uint64_t recycled(std::uint64_t generation) noexcept
+            {
+                return generation == UINT64_MAX / 16 ? sequence(generation, EPhase::EXHAUSTED) :
+                    sequence(generation + 1, EPhase::FREE);
             }
 
             std::uint64_t owner_;
@@ -130,6 +137,14 @@ namespace lux::render
     class RenderReplyInbox final
     {
     public:
+        // Every ticket must be consumed to a terminal result OR explicitly abandoned.
+        // A successful abandon ends reception; an active writer reclaims after its write.
+        template <PacketValue T>
+        [[nodiscard]] RenderResult<void> abandon(RenderReplyTicket<T> ticket) noexcept
+        {
+            return arena_->abandon(ticket.token_);
+        }
+
         template <PacketValue T>
         [[nodiscard]] RenderResult<std::optional<T>> poll(RenderReplyTicket<T> ticket) noexcept
         {

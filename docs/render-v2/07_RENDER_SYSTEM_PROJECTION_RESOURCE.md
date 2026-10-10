@@ -368,3 +368,25 @@ pending candidate（待接纳的不可变 owning packet）
 ## 20. R2：ResourceDomain 的共享不引入第二份 GPU owner
 
 `RenderResourceDomain` 默认是 runtime-integration-scope 的 Scene-side asset resolution/retain 账本。Backend GPU resource 的真实拥有者仍是 Vulkan resource owner/provider；跨 Scene 共享只通过稳定 handle、receipt 和引用/退休合同表达，不复制 native backing ownership。
+
+## 21. HARD GATE：Simulation / Publication / Rendering 边界
+
+Simulation 推进 ECS、物理和业务逻辑等具有 Simulation 时间语义的 World 状态。
+RenderSystem / Projection 仅将已经成立的状态变化转换为 typed RenderData 并发布。
+RenderRuntime / VulkanBackend 按独立进度从已提交的持久 RenderScene 状态产生 GPU 工作、图像和 Present。
+Publication 不是帧触发器；Simulation tick、publication revision 与 Render frame serial 不必一一对应。
+Backend 不得借用 ECS live mutable state 完成每帧渲染。
+
+Simulation revision/time 与 Render time 分离。无新的 World revision 时仍可产生多帧，
+每帧可有独立 View/camera 参数、动态资源绑定与 Render time。只重复最后合法状态即可满足最初合同；
+transform/camera 插值或预测由真实 consumer 的时间语义决定，不要求所有 RenderData 自动插值，
+不新增 TimeManager 或 UniversalInterpolationManager。
+
+PROGRAM 背压期间 Backend 可以继续使用最后合法状态绘制。§19 的 observed/published revision、
+retained candidate 与后续 dirty/departure 责任继续成立，不得阻塞 Simulation 等待默认渲染进度，
+不得丢失后续 World revisions 或必要生命周期变化，也不得缓存无界 Simulation frame 快照。
+
+R8 使用受控低频 Simulation 与较高目标 Render 频率（例如 10 Hz 对 60 Hz）验证：
+渲染进度不受 tick 数量驱动；Publication 仅传输状态变化；PROGRAM 背压不强迫 Backend 停帧；
+retained candidate 期间后续 revisions 不丢失。实际帧率仍受合法 target/GPU/pacing 约束。
+具体执行调度见 05 §18；本轮不实现 RenderSystem 或通用插值系统。

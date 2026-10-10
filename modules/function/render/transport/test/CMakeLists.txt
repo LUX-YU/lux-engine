@@ -85,6 +85,26 @@ target_include_directories(
 
 add_dependencies(render_transport_benchmark render_transport_test_operations_generate)
 
+# The test executable supplies its instrumented Replies.cpp; the archive's
+# uninstrumented object is not pulled in. Production/benchmark retain no hook.
+add_executable(render_transport_reply_lifetime ReplyLifetime.cpp ../src/Replies.cpp)
+
+target_compile_definitions(render_transport_reply_lifetime PRIVATE LUX_RENDER_REPLY_TEST_HOOK)
+
+target_link_libraries(render_transport_reply_lifetime PRIVATE lux::engine::render::render_transport)
+
+target_include_directories(
+    render_transport_reply_lifetime
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${annotation_include}" "${CMAKE_CURRENT_BINARY_DIR}/generated"
+)
+
+add_dependencies(render_transport_reply_lifetime render_transport_test_operations_generate)
+
+foreach(test IN ITEMS lifecycle writing cancelling races)
+    add_test(NAME render.transport.reply_${test} COMMAND render_transport_reply_lifetime ${test})
+    set_tests_properties(render.transport.reply_${test} PROPERTIES TIMEOUT 45)
+endforeach()
+
 foreach(header IN ITEMS Error Operation Routes Replies Packet Transport)
     set(source "${CMAKE_CURRENT_BINARY_DIR}/header_${header}.cpp")
     file(WRITE "${source}" "#include <lux/engine/render/transport/${header}.hpp>\n")

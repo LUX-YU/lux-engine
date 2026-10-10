@@ -332,3 +332,33 @@ shutdown/backpressure/device failure tests
 跨 Scene 共用 GPU 资源不意味着 GPU backing 无条件永久驻留。Runtime shared resource 的最后 CPU semantic retain 释放，不得绕过 program packet retain、GPU in-flight frame reference 和 fence-proven retirement。`RenderResourceDomain` 只掌握 Scene-side 的请求/handle/receipt authority，不再拥有 backend native GPU backing 的第二份真相。
 
 Provider Feature 移除前，应先解除/失效它提供的 SceneCapability、阻止新 consumer attach，处理已存在的 dependent Feature 生命周期，然后才释放 provider native resource。`RenderScene` 继续是 Feature membership/lifecycle single authority，Capability index 只是 non-owning 冷态投影。
+
+## 18. HARD GATE：Independent Render Progress（R2-FIX 授权补充）
+
+Simulation advances World state；Publication transfers state changes；Rendering independently produces frames。
+三者没有强制的一对一 tick/packet/frame 关系。禁止 `Simulation tick → mandatory PROGRAM → exactly one frame`，
+禁止以收到新 PROGRAM 作为 render/present 的必要条件，禁止 Backend 每帧读取 ECS live mutable state。
+
+只要 Runtime、View、active target 合法且帧调度允许，Backend 必须能在无新 PROGRAM 时，
+使用最后一次完整提交的持久 RenderScene 状态连续产生帧。例如 Simulation 10 Hz、Render 目标 144 Hz；
+实际帧率仍受 GPU、VSync、Present、窗口状态和 in-flight capacity 约束，不承诺固定 FPS。
+Transport 背压不能自动暂停帧进度；继续绘制最后合法状态，同时按 retained packet/revision 合同
+保留未接纳更新及必要生命周期变化。
+
+Simulation revision/time 与 Render frame serial/time 是不同语义，禁止假定二者相等。
+无 Simulation 更新不等于无 per-frame 更新：Render time、动态 View/camera 参数、frame slot、
+imported image backing 和 dynamic offsets 仍可变化。
+`RenderGraphDefinition` 描述拓扑；`CompiledGraphPlan` 保存可复用计划；`FrameGraphBindings`
+提供当前渲染帧动态值。同 SceneData 的多帧可以有不同 bindings；普通 Scene/View 值改变不自动
+导致 topology invalidation，不能为更新 bindings 或 Simulation tick 重新编译图。
+
+独立进度不是无条件自旋。R5 必须基于真实 target readiness、VSync/Present pacing 或明确离屏策略、
+Transport 新工作、Stop/terminal failure 与 GPU in-flight capacity 实现帧进度/唤醒；
+禁止空轮询或固定频繁 sleep 代替完整调度。只使用一个 RenderRuntime/VulkanBackend，
+不得增加第二 Renderer、Feature frame loop、同步桥 Manager、无界快照队列或默认阻塞 Simulation。
+
+R5 硬性验收：真实独立 backend execution domain；PROGRAM 连续若干渲染帧无更新时，
+仍通过 GPU clear-color offscreen/presentation 路径验证持久状态复用；帧数不要求等于 publication 次数；
+空队列无无界 CPU 忙等；Stop、Device Lost、in-flight retirement 仍正确。
+可用可控帧触发/测试时间源保证确定性，但不得用 fake Runtime 代替真实执行结构。
+R2-FIX 仅固化合同，不实现 FrameLoop。插值/预测不是独立进度的先决条件，不新增通用时钟或插值框架。

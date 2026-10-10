@@ -73,18 +73,38 @@ network/disk serialization format. No extra field reflection occurs at dispatch.
 The current implementation reserves a bounded completion cell before appending a
 request. Replies are owned values up to 256 bytes. Capacity failure leaves the
 candidate intact. Unconsumed results retain their reservation; the producer must
-poll each ticket, including error results, to recycle capacity. Losing a numeric
-ticket does not cause silent eviction. An inbox can outlive the transport.
+poll each ticket to a terminal result (including cancellation), or explicitly
+`abandon(ticket)` through its inbox. Copies of a numeric ticket alias the same
+single reception obligation; they do not reserve additional capacity. Losing all
+copies without fulfilling that obligation is a caller lifetime bug and capacity
+leak, not normal backpressure. An inbox can outlive the transport.
 Inline completion has no per-request allocation or shared-owner increment.
 `deferReply<T>` explicitly moves responsibility into a move-only owning promise;
 abandonment settles cancellation. A generation CAS arbitrates completion,
 cancellation and stop; late completion cannot overwrite a reused cell.
 
-**Specification decision pending:** chapter 03 section 13 asks to migrate V1
-pending reply publication/retry. Pre-reserving completion storage replaces that
-algorithm instead of reproducing a response ring which can fill after execution.
-This difference requires explicit review acceptance before R2 can claim PASS.
-The architecture document itself is not rewritten to authorize the change.
+**Approved R2-FIX decision (2026-10-10):** chapter 03 section 13 now explicitly
+permits pre-reserved cells instead of V1 pending reply publication/retry. The
+historical R2 PARTIAL report remains unchanged.
+
+`abandon(ticket)` ends reception, not the execution of an already accepted operation.
+Later domain owners remain responsible for execution side effects. Pending or
+terminal cells recycle immediately; WRITING cells become ABANDONED_WRITING and
+the sole writer recycles only after its byte access ends. Therefore successful
+abandon can precede capacity availability while a writer is active; it never waits.
+Recycling advances generation (or retires an exhausted slot). Late completion,
+packet cleanup or deferred-promise destruction cannot touch a new reservation.
+Packet/promise cancellation terminates the operation with a readable error; it
+does not discharge the receiver's consume-or-abandon obligation.
+
+The receiver should serialize poll/abandon for one request. Foreign owner returns
+`kTransportWrongOwner`; stale, already consumed or already abandoned tickets return
+`kTransportReply`. Concurrent acquisition by a reader returns `kTransportBusy`
+without relinquishing reception. A not-ready poll retains the obligation. The
+abandon implementation follows at most three strong CAS attempts across the
+monotonic PENDING -> WRITING -> terminal path; it never spins waiting for progress.
+Normal completion adds one publication CAS, with no new per-request owner or heap.
+Inbox/promise owners keep the arena alive; numeric tickets alone do not own it.
 
 `requestStop()` closes the generic admission gate and settles pending replies.
 Already admitted writers may finish publication. Existing callbacks may finish;
@@ -112,7 +132,7 @@ are relative to `render_legacy/modules/function/render/` and are never build inp
 | Bounded upload ring and byte accounting | `runtime/pinclude/lux/engine/render/detail/UploadQueue.hpp`, blob `f832136e8402d881bac109e80dd5e5ef6a87a6bd`; try-lock returns BUSY, pop under lock permits concurrent consumers, active dispatch retains charge |
 | luxop code generation | `cmake/template/comm_ops_hpp.template`, blob `90f098be06694c72d2f9952ffcc41a49b9df73b2`; same parser/multi-projection generator, new projection emits typed traits and recursive ownership checks |
 | Stop/wake and retained failed submission | Generic admission ticket + epoch notification and unchanged-candidate retry; no old client/session/server hierarchy |
-| Reply routing/publication | Typed owner/generation completion cells; explicit algorithm difference described above, not claimed as verbatim V1 migration |
+| Reply routing/publication | User-approved owner/generation pre-reserved cells; explicit consume/abandon and writer-owned deferred reclamation, not verbatim V1 migration |
 
 `cmake/RenderTransportCodegen.cmake` exposes `render_transport_operations(target,
 author_header)`. It uses the existing installed `lux_meta_generator` and
@@ -124,11 +144,16 @@ and decoding; no second generator/parser or per-message lane/kind switch exists.
 ## Validation and limits
 
 The bootstrap builds all six public headers independently, preserves Core's eight
-tests, and adds fifteen Transport tests including actual compiler negatives.
+tests, and adds nineteen Transport tests including actual compiler negatives.
 CPU tests cover equal local slots in two owners, stale routes, ownership after
 caller destruction, bounded retries, reply capacity, cancellation, deferred
 completion, SPSC thread violations, 4-producer/3-consumer exact-once upload,
-active byte retirement, stop races and deliberately reordered lanes.
+active byte retirement, stop races and deliberately reordered lanes. R2-FIX adds
+10,000 single-slot cancel/abandon cycles, 1,000 concurrent completion/cancellation/
+stop/abandon trials, late-generation and post-Transport checks. Two deterministic
+tests pause the real completion/cancellation code after it claims WRITING, proving
+that abandon cannot recycle storage early. That internal test-only hook is absent
+from the production archive and unmodified benchmark target.
 
 `render_transport_benchmark` runs ten one-million-operation cases. Timing is
 p50/p95/max of 1,000-operation batch averages. Nine sequential cases warm up

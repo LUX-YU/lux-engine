@@ -82,11 +82,18 @@ int main(int argc, char **argv)
             auto ticket = take(std::move(batch).submit());
             if (iteration == 11)
             {
-                // Publication ends before transfer of ownership. Native backing
-                // remains in the retirement owner until the last-use fence.
-                CHECK(retired.retire(ticket, std::move(gpu)));
+                const auto previous = gpu.native();
+                auto failed_candidate = Buffer::create(allocator, 0, gpu.usage(), EMemoryAccess::DEVICE);
+                CHECK(!failed_candidate && gpu.native() == previous);
+                auto candidate = take(Buffer::create(allocator, gpu.size(), gpu.usage(), EMemoryAccess::DEVICE));
+                auto old_backing = std::move(gpu);
+                gpu = std::move(candidate);
+                CHECK(gpu.native() != previous && old_backing.native() == previous);
+                // The replacement is complete; existing descriptor/commands
+                // still refer to the retired old backing until this fence.
+                CHECK(retired.retire(ticket, std::move(old_backing)));
                 CHECK(retired.retire(ticket, std::move(image)));
-                CHECK(!gpu.native() && !image.native());
+                CHECK(!old_backing.native() && !image.native());
             }
             CHECK(take(queue->wait(ticket, 5'000'000'000)));
             std::array<std::uint32_t, 256> output{};

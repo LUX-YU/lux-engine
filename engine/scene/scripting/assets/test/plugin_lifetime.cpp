@@ -27,6 +27,7 @@ namespace
         engine::platform::DynamicLibrary library;
         PluginCounts& counts;
         Code(const char* file, PluginCounts& value) : library(file), counts(value) { assert(library.is_loaded()); }
+
         ~Code() noexcept
         {
             assert(counts.decoded == 1 && counts.destroyed == 1);

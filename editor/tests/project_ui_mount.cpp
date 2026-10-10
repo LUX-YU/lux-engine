@@ -15,6 +15,7 @@ namespace
     {
     public:
         explicit Pane(unsigned& destroyed) : ui::Pane("Project"), destroyed_(destroyed) {}
+
         ~Pane() override
         {
             ++destroyed_;

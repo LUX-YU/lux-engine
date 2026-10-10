@@ -252,6 +252,7 @@ namespace lux::render
         o.z = v.z();
         return o;
     }
+
     static aligned8vec2 to_aligned2(const Eigen::Vector2f& v)
     {
         aligned8vec2 o;

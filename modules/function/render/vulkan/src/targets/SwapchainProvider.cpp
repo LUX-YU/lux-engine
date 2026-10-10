@@ -365,6 +365,7 @@ namespace lux::render
         {
             return need_rebuild_ || pending_resize_extent_.has_value();
         }
+
         void markNeedsRebuild() noexcept
         {
             need_rebuild_ = true;
@@ -376,14 +377,17 @@ namespace lux::render
         {
             return extent_;
         }
+
         VkFormat format() const noexcept
         {
             return format_;
         }
+
         VkPresentModeKHR presentMode() const noexcept
         {
             return present_mode_;
         }
+
         uint32_t imageCount() const noexcept
         {
             return static_cast<uint32_t>(swapchain_images_.size());
@@ -436,6 +440,7 @@ namespace lux::render
         {
             rebuild_callback_ = std::move(fn);
         }
+
         void setExtentProvider(std::function<VkExtent2D()> fn)
         {
             extent_provider_ = std::move(fn);
@@ -540,14 +545,17 @@ namespace lux::render
     {
         return impl_->extent();
     }
+
     VkFormat SwapchainProvider::format() const noexcept
     {
         return impl_->format();
     }
+
     VkPresentModeKHR SwapchainProvider::presentMode() const noexcept
     {
         return impl_->presentMode();
     }
+
     uint32_t SwapchainProvider::imageCount() const noexcept
     {
         return impl_->imageCount();
@@ -567,10 +575,12 @@ namespace lux::render
     {
         return impl_->needsRebuild();
     }
+
     void SwapchainProvider::markNeedsRebuild() noexcept
     {
         impl_->markNeedsRebuild();
     }
+
     bool SwapchainProvider::presentScalingEnabled() const noexcept
     {
         return impl_->present_scaling_;
@@ -580,10 +590,12 @@ namespace lux::render
     {
         impl_->requestResize(new_extent);
     }
+
     void SwapchainProvider::setRebuildCallback(std::function<Expected<void>()> fn)
     {
         impl_->setRebuildCallback(std::move(fn));
     }
+
     void SwapchainProvider::setExtentProvider(std::function<VkExtent2D()> fn)
     {
         impl_->setExtentProvider(std::move(fn));

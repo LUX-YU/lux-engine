@@ -1217,6 +1217,7 @@ namespace lux::render
     {
         return mesh_section_table_.buffer();
     }
+
     uint32_t InstanceResources::slotCount() const noexcept
     {
         return registry_.slotCount();

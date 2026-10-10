@@ -134,6 +134,7 @@ namespace lux::render
         {
             return mip_feedback_capacity_;
         }
+
         [[nodiscard]] TextureMipFeedbackSnapshot mipFeedbackSnapshot() const noexcept
         {
             return mip_feedback_snapshot_;
@@ -185,10 +186,12 @@ namespace lux::render
         {
             return combined_->descriptorLayout();
         }
+
         VkDescriptorSet descriptorSet() const noexcept
         {
             return combined_->descriptorSet();
         }
+
         uint32_t fallbackBindlessIndex() const noexcept
         {
             return fallback_bindless_index_;
@@ -198,14 +201,17 @@ namespace lux::render
         {
             return *combined_;
         }
+
         const BindlessCombinedSet& bindlessSet2D() const noexcept
         {
             return *combined_;
         }
+
         BindlessCombinedSet& bindlessSetCube() noexcept
         {
             return *combined_cube_;
         }
+
         const BindlessCombinedSet& bindlessSetCube() const noexcept
         {
             return *combined_cube_;

@@ -102,6 +102,7 @@ namespace lux::render
         {
             return handle_;
         }
+
         [[nodiscard]] bool valid() const noexcept
         {
             return handle_ != VK_NULL_HANDLE;
@@ -172,6 +173,7 @@ namespace lux::render
             o.handle_ = VK_NULL_HANDLE;
             o.alloc_ = VK_NULL_HANDLE;
         }
+
         TFifOwnedAllocated& operator=(TFifOwnedAllocated&& o) noexcept
         {
             if (this != &o)
@@ -185,6 +187,7 @@ namespace lux::render
             }
             return *this;
         }
+
         ~TFifOwnedAllocated()
         {
             retire();
@@ -199,10 +202,12 @@ namespace lux::render
         {
             return handle_;
         }
+
         [[nodiscard]] VmaAllocation alloc() const noexcept
         {
             return alloc_;
         }
+
         [[nodiscard]] bool valid() const noexcept
         {
             return handle_ != VK_NULL_HANDLE;

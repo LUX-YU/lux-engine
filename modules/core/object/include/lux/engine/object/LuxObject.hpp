@@ -125,18 +125,22 @@ namespace lux::object
         {
             return parent_;
         }
+
         [[nodiscard]] LuxObject* firstChild() const noexcept
         {
             return first_child_;
         }
+
         [[nodiscard]] LuxObject* nextSibling() const noexcept
         {
             return next_sibling_;
         }
+
         [[nodiscard]] ObjectId objectId() const noexcept
         {
             return id_;
         }
+
         [[nodiscard]] ObjectResult<void> setParent(LuxObject*) noexcept;
         [[nodiscard]] ObjectResult<void> addChild(LuxObject&) noexcept;
         [[nodiscard]] ObjectResult<void> removeChild(LuxObject&) noexcept;
@@ -285,19 +289,23 @@ namespace lux::object
         {
             return closing_;
         }
+
         [[nodiscard]] SignalDelivery emit(TSignal<>& signal) noexcept
         {
             return emitSignal(signal.owner_, signal.storage_.get(), nullptr);
         }
+
         template <class Payload>
         [[nodiscard]] SignalDelivery emit(TSignal<Payload>& signal, const Payload& value) noexcept
         {
             return emitSignal(signal.owner_, signal.storage_.get(), std::addressof(value));
         }
+
         virtual bool allowsGenericStructure() const noexcept
         {
             return true;
         }
+
         void beginTreeVisit() noexcept;
         void endTreeVisit() noexcept;
         // Owner callbacks may change finished child subtrees, but cannot reclaim themselves or ancestors.
@@ -307,6 +315,7 @@ namespace lux::object
         // Hosts use this to keep structural adoption outside borrowed callback stacks.
         [[nodiscard]] static bool isDispatching() noexcept;
         virtual void event(EventView&) noexcept {}
+
         virtual void filterEvent(LuxObject&, EventView&) noexcept {}
 
     private:

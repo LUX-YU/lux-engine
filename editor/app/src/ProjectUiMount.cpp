@@ -10,10 +10,12 @@ namespace lux::editor::detail
     {
         clear();
     }
+
     ProjectUiMount::ProjectUiMount(ProjectUiMount&& other) noexcept
         : root_(std::exchange(other.root_, nullptr)), handles_(std::move(other.handles_))
     {
     }
+
     ProjectUiMount& ProjectUiMount::operator=(ProjectUiMount&& other) noexcept
     {
         if (this != &other)
@@ -24,6 +26,7 @@ namespace lux::editor::detail
         }
         return *this;
     }
+
     void ProjectUiMount::prepare(ui::Root& root, std::size_t count)
     {
         if (root_)
@@ -33,6 +36,7 @@ namespace lux::editor::detail
         handles_.reserve(count);
         root_ = &root;
     }
+
     void ProjectUiMount::arm(std::span<const ui::PaneHandle> handles) noexcept
     {
         const bool invalid_preparation = !root_ || !handles_.empty() || handles.size() > handles_.capacity();
@@ -42,11 +46,13 @@ namespace lux::editor::detail
         }
         handles_.assign(handles.begin(), handles.end());
     }
+
     void ProjectUiMount::disarm() noexcept
     {
         root_ = nullptr;
         handles_.clear();
     }
+
     void ProjectUiMount::clear() noexcept
     {
         if (!root_)

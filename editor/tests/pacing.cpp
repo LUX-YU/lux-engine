@@ -28,6 +28,7 @@ namespace
         {
             assert(addElement(label));
         }
+
         void update() noexcept override
         {
             ++updates;
@@ -44,6 +45,7 @@ namespace
                 );
             }
         }
+
         ui::Label label;
         window::LuxWindow* close_window{};
         std::size_t updates{};
@@ -52,6 +54,7 @@ namespace
     struct Receiver final : object::LuxObject
     {
         explicit Receiver(editor::LuxEngine& value) : host(value) {}
+
         object::TSignal<> finished{*this};
         editor::LuxEngine& host;
         bool called{};
@@ -60,6 +63,7 @@ namespace
             called = true;
             host.window().exit();
         }
+
         void queue() noexcept
         {
             const auto sent = emit(finished);
@@ -86,6 +90,7 @@ namespace
             }
         );
     }
+
     void run(bool vsync, bool minimized, bool native_close)
     {
         auto made = editor::LuxEngine::create({"Framework pacing", 640, 480, vsync});
@@ -190,6 +195,7 @@ namespace
         assert(host->window().uiRoot().statistics().panes == 1);
         assert(host->window().uiRoot().statistics().elements == 1);
     }
+
     void closeDuringMaintenance()
     {
         auto made = editor::LuxEngine::create({"Close during maintenance", 640, 480});

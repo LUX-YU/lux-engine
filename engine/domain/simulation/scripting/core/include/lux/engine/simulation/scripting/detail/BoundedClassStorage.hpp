@@ -66,6 +66,7 @@ namespace lux::simulation::script::detail
         {
             return {this, allocation.generation, allocation.page, allocation.slot};
         }
+
         [[nodiscard]] bool release(Ticket value) noexcept
         {
             if (value.owner != this || value.page >= pages_.size())
@@ -314,6 +315,7 @@ namespace lux::simulation::script::detail
             Arena(const Arena&) = delete;
             Arena& operator=(const Arena&) = delete;
             Arena(Arena&& other) noexcept : data(std::exchange(other.data, nullptr)), alignment(other.alignment) {}
+
             Arena& operator=(Arena&& other) noexcept
             {
                 if (this != &other)
@@ -325,6 +327,7 @@ namespace lux::simulation::script::detail
                 }
                 return *this;
             }
+
             ~Arena() noexcept
             {
                 if (data != nullptr)
@@ -393,10 +396,12 @@ namespace lux::simulation::script::detail
         {
             return value != 0U && (value & (value - 1U)) == 0U;
         }
+
         [[nodiscard]] static std::size_t alignUp(std::size_t size, std::size_t alignment) noexcept
         {
             return (size + alignment - 1U) & ~(alignment - 1U);
         }
+
         void initializePage(std::uint32_t index) noexcept
         {
             auto& page = pages_[index];
@@ -412,6 +417,7 @@ namespace lux::simulation::script::detail
             if (stats_.observation_collected)
                 stats_.maintenance_steps += steps;
         }
+
         [[nodiscard]] std::uint64_t linkPage(std::uint32_t index) noexcept
         {
             auto& page = pages_[index];
@@ -423,6 +429,7 @@ namespace lux::simulation::script::detail
             prepared.nonfull = index;
             return 2U + static_cast<std::uint64_t>(page.next != Invalid);
         }
+
         [[nodiscard]] std::uint64_t unlinkPage(std::uint32_t index) noexcept
         {
             auto& page = pages_[index];
@@ -437,6 +444,7 @@ namespace lux::simulation::script::detail
             page.next = Invalid;
             return visits;
         }
+
         [[nodiscard]] lux::cxx::expected<Allocation, EClassStorageError> fail() noexcept
         {
             ++stats_.capacity_failures;

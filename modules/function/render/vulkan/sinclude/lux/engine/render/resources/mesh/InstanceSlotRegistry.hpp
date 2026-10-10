@@ -50,14 +50,17 @@ namespace lux::render
         {
             return slot_count_;
         }
+
         [[nodiscard]] std::uint32_t capacity() const noexcept
         {
             return capacity_;
         }
+
         [[nodiscard]] std::uint32_t freeCount() const noexcept
         {
             return static_cast<std::uint32_t>(free_slots_.size());
         }
+
         [[nodiscard]] std::uint32_t retiredCount() const noexcept
         {
             return retired_count_;
@@ -67,10 +70,12 @@ namespace lux::render
         {
             return dense_alive_slots_;
         }
+
         [[nodiscard]] std::uint32_t densePosition(InstanceSlot slot) const noexcept
         {
             return slot.index < slot_dense_pos_.size() ? slot_dense_pos_[slot.index] : kInvalidDensePos;
         }
+
         [[nodiscard]] std::span<const std::uint32_t> generations() const noexcept
         {
             return generations_;

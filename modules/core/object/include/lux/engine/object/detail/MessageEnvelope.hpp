@@ -31,6 +31,7 @@ namespace lux::object
             {
                 return ops_ != nullptr;
             }
+
             [[nodiscard]] bool isInline() const noexcept
             {
                 return inline_;
@@ -125,6 +126,7 @@ namespace lux::object
             static_assert(std::is_nothrow_invocable_v<std::remove_reference_t<Callable>&>);
             return MessageEnvelope{std::forward<Callable>(callable), std::false_type{}};
         }
+
         // Opt-in only: ordinary Signal messages still have no shutdown callback.
         template <class Callable> MessageEnvelope makeCompletionMessage(Callable&& callable)
         {

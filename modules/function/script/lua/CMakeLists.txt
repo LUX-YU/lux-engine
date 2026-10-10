@@ -5,7 +5,8 @@ enable_language(C)
 
 include(CheckCXXSourceCompiles)
 set(CMAKE_REQUIRED_LIBRARIES LuxLua55::Runtime)
-set(_lux_lua_vm_probe [[
+set(
+    _lux_lua_vm_probe [[
     #include <lua.hpp>
     #include <type_traits>
     static_assert(LUA_VERSION_NUM == 505);
@@ -30,7 +31,9 @@ set(_lux_lua_vm_probe [[
         lua_close(state);
         return 0;
     }
-]])
+]]
+)
+
 unset(LUX_LUA55_CAPABLE CACHE)
 check_cxx_source_compiles("${_lux_lua_vm_probe}" LUX_LUA55_CAPABLE)
 unset(CMAKE_REQUIRED_LIBRARIES)
@@ -38,7 +41,8 @@ unset(CMAKE_REQUIRED_DEFINITIONS)
 unset(CMAKE_REQUIRED_INCLUDES)
 unset(_lux_lua_vm_probe)
 if(NOT LUX_LUA55_CAPABLE)
-    message(FATAL_ERROR
+    message(
+        FATAL_ERROR
         "Lua 5.5.1 does not provide the required Lux C API or double lua_Number contract"
     )
 endif()
@@ -81,16 +85,19 @@ target_link_libraries(
     PRIVATE
         LuxLua55::Runtime
 )
+
 include(CheckIPOSupported)
 check_ipo_supported(RESULT _lux_lua_ipo_supported OUTPUT _lux_lua_ipo_error LANGUAGES CXX)
 if(_lux_lua_ipo_supported)
     set_property(TARGET script_lua PROPERTY INTERPROCEDURAL_OPTIMIZATION TRUE)
 endif()
-add_custom_command(TARGET script_lua POST_BUILD
+add_custom_command(
+    TARGET script_lua POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:LuxLua55::Runtime>" "$<TARGET_FILE_DIR:script_lua>"
     VERBATIM
 )
+
 install(FILES "$<TARGET_FILE:LuxLua55::Runtime>" DESTINATION bin COMPONENT lux_sdk)
 
 component_add_transitive_commands(

@@ -8,6 +8,7 @@ namespace
     {
     public:
         PluginObject(int* trace) : LuxObject(), trace_(trace) {}
+
         ~PluginObject() override
         {
             ++trace_[0];
@@ -20,7 +21,9 @@ namespace
     {
         int* trace{};
         explicit PluginDeleter(int* value) noexcept : trace(value) {}
+
         PluginDeleter(PluginDeleter&& other) noexcept : trace(std::exchange(other.trace, nullptr)) {}
+
         ~PluginDeleter()
         {
             if (trace)
@@ -28,6 +31,7 @@ namespace
                 ++trace[2];
             }
         }
+
         void operator()(PluginObject* value) noexcept
         {
             delete value;

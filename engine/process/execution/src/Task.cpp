@@ -476,6 +476,7 @@ namespace lux::process
     }
 
     Task::Task(Task&& other) noexcept : record_(std::exchange(other.record_, nullptr)) {}
+
     Task& Task::operator=(Task&& other) noexcept
     {
         if (this != &other)
@@ -488,6 +489,7 @@ namespace lux::process
         }
         return *this;
     }
+
     Task::~Task() noexcept
     {
         if (record_)
@@ -495,10 +497,12 @@ namespace lux::process
             record_->runtime->release(*record_);
         }
     }
+
     TaskId Task::id() const noexcept
     {
         return record_ ? record_->info.id : TaskId{};
     }
+
     void Task::requestStop() noexcept
     {
         if (record_)
@@ -511,10 +515,12 @@ namespace lux::process
     {
         return record_ ? record_->info.id : TaskId{};
     }
+
     std::stop_token TaskReporter::stopToken() const noexcept
     {
         return record_ ? record_->stop.get_token() : std::stop_token{};
     }
+
     void TaskReporter::setPhase(std::string_view phase) const noexcept
     {
         if (!record_)
@@ -529,6 +535,7 @@ namespace lux::process
         }
         runtime.owner->wake();
     }
+
     void TaskReporter::setProgress(std::uint64_t completed, std::uint64_t total) const noexcept
     {
         if (!record_)

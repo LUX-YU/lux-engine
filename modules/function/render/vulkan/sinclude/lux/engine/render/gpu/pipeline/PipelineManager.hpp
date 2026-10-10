@@ -20,6 +20,7 @@ namespace lux::render
 {
     class DeviceContext;
 }
+
 #include <string>
 
 namespace lux::rdesc

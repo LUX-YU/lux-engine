@@ -238,6 +238,7 @@ namespace lux::meta
         class_map_.emplace(class_pool_.at(local)->full_name, local);
         return index;
     }
+
     size_t ReflectionRegistry::registerEnum(std::unique_ptr<RefEnum> meta)
     {
         if (!fallback_)

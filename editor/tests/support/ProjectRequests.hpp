@@ -21,6 +21,7 @@ namespace fixture
             }
         );
     }
+
     inline lux::editor::FrameworkResult<void> open(lux::editor::LuxEngine& host, std::filesystem::path file)
     {
         lux::editor::OpenProjectRequest request{std::move(file)};
@@ -31,6 +32,7 @@ namespace fixture
         }
         return {};
     }
+
     inline lux::editor::FrameworkResult<void> create(
         lux::editor::LuxEngine& host,
         lux::editor::CreateProjectRequest request
@@ -43,17 +45,20 @@ namespace fixture
         }
         return {};
     }
+
     inline void close(lux::editor::LuxEngine& host) noexcept
     {
         lux::editor::CloseProjectRequest request;
         assert(lux::object::sendEvent(host, request));
     }
+
     inline void cancel(lux::editor::LuxEngine& host) noexcept
     {
         lux::ui::Command command{lux::ui::CommandIdView{"lux.project.cancel_open"}, lux::ui::ECommandPhase::EXECUTE};
         assert(lux::object::sendEvent(host, command));
         assert(command.result == lux::ui::ECommandDispatchResult::EXECUTED);
     }
+
     struct ProjectFacts final
     {
         explicit ProjectFacts(lux::editor::LuxEngine& host)
@@ -74,6 +79,7 @@ namespace fixture
             );
             assert(changed_connection && failed_connection);
         }
+
         unsigned changed{}, failed{};
         lux::editor::ProjectOpenFailure failure;
         lux::object::LuxObject::ConnectResult changed_connection, failed_connection;

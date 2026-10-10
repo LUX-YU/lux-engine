@@ -136,14 +136,17 @@ namespace lux::render
         {
             return buffer_;
         }
+
         [[nodiscard]] VmaAllocation allocation() const noexcept
         {
             return allocation_;
         }
+
         [[nodiscard]] bool valid() const noexcept
         {
             return buffer_ != VK_NULL_HANDLE;
         }
+
         explicit operator bool() const noexcept
         {
             return valid();
@@ -212,14 +215,17 @@ namespace lux::render
         {
             return image_;
         }
+
         [[nodiscard]] VmaAllocation allocation() const noexcept
         {
             return allocation_;
         }
+
         [[nodiscard]] bool valid() const noexcept
         {
             return image_ != VK_NULL_HANDLE;
         }
+
         explicit operator bool() const noexcept
         {
             return valid();

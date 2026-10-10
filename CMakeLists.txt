@@ -30,11 +30,13 @@ find_package(lux-cmake-toolset CONFIG REQUIRED)
 include(InstallComponents)
 
 if(CMAKE_CROSSCOMPILING)
-    find_package(lux-cxx REQUIRED COMPONENTS
+    find_package(
+        lux-cxx REQUIRED COMPONENTS
         core memory binary time units diagnostic abi compile_time algorithm
     )
 else()
-    find_package(lux-cxx REQUIRED COMPONENTS
+    find_package(
+        lux-cxx REQUIRED COMPONENTS
         core memory binary time units diagnostic abi compile_time algorithm
         reflection_generator
     )
@@ -51,7 +53,8 @@ set_property(CACHE LUX_BUILD_PROFILE PROPERTY STRINGS DEVELOPER PLAYER EDITOR TO
 string(TOUPPER "${LUX_BUILD_PROFILE}" LUX_BUILD_PROFILE)
 set(_lux_valid_profiles DEVELOPER PLAYER EDITOR TOOLCHAIN)
 if(NOT LUX_BUILD_PROFILE IN_LIST _lux_valid_profiles)
-    message(FATAL_ERROR
+    message(
+        FATAL_ERROR
         "Unknown LUX_BUILD_PROFILE='${LUX_BUILD_PROFILE}'. Expected one of: "
         "${_lux_valid_profiles}"
     )
@@ -112,10 +115,12 @@ if(LUX_PROFILE_HAS_EDITOR)
 endif()
 include(BuiltinPlugins)
 
-install(DIRECTORY examples/render-plugin/ DESTINATION share/lux-engine/examples/external-feature
+install(
+    DIRECTORY examples/render-plugin/ DESTINATION share/lux-engine/examples/external-feature
     FILES_MATCHING PATTERN "*.cpp" PATTERN "*.hpp" PATTERN "*.json" PATTERN "*.py"
     PATTERN "*.vert" PATTERN "*.frag" PATTERN "CMakeLists.txt"
-    PATTERN "ExternalEditor*" EXCLUDE)
+    PATTERN "ExternalEditor*" EXCLUDE
+)
 
 lux_generate_capabilities()
 

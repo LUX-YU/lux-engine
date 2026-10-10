@@ -28,6 +28,7 @@ namespace lux::object::detail
         ObjectState(LuxObject* value, ObjectId identity) noexcept
             : object(value), id(identity)
         {}
+
         std::atomic_size_t refs{};
         std::atomic<LuxObject*> object;
         const ObjectId id;
@@ -47,6 +48,7 @@ namespace lux::object::detail
         SignalStorage(QueuedMessageFactory factory) noexcept
             : queue_factory(factory)
         {}
+
         std::atomic_size_t refs{};
         QueuedMessageFactory queue_factory;
         Records records;

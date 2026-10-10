@@ -24,10 +24,12 @@ namespace
     {
     public:
         Item(const char* id, Counts& counts) : Element{}, counts_(counts) {}
+
         ~Item() override
         {
             ++counts_.destroyed;
         }
+
         void (*on_draw)(Item&) noexcept {};
         void (*on_measure)(Item&) noexcept {};
         void (*on_event)(Item&) noexcept {};
@@ -53,6 +55,7 @@ namespace
                 on_draw(*this);
             }
         }
+
         ui::SizeHint measureContent(float) noexcept override
         {
             ++measurements;
@@ -62,6 +65,7 @@ namespace
             }
             return {{10, 10}, {40, 40}};
         }
+
         void event(object::EventView&) noexcept override
         {
             ++events;
@@ -70,23 +74,27 @@ namespace
                 on_event(*this);
             }
         }
+
         Counts& counts_;
     };
     class Window final : public ui::Pane
     {
     public:
         Window(const char* id, Counts& counts) : Pane(id), counts_(counts) {}
+
         ~Window() override
         {
             clearContent();
             ++counts_.destroyed;
         }
+
         void (*on_update)(Window&) noexcept {};
         object::ObjectRuntime* messages{};
         void receive(const unsigned&) noexcept
         {
             ++counts_.callbacks;
         }
+
         bool dispatching() const noexcept
         {
             return isDispatching();
@@ -100,6 +108,7 @@ namespace
                 on_update(*this);
             }
         }
+
         Counts& counts_;
     };
     static_assert(!std::derived_from<ui::Pane, ui::Element>);
@@ -223,6 +232,7 @@ namespace
             {
                 assert(layout_.addElement(external) && addElement(layout_));
             }
+
             ~Composite() override
             {
                 ++counts_.destroyed;
@@ -626,6 +636,7 @@ namespace
             ui::Root& root;
             bool prepared{};
             explicit Receiver(ui::Root& value) noexcept : root(value) {}
+
             void event(object::EventView& event) noexcept override
             {
                 assert(event.getIf<Prepare>());

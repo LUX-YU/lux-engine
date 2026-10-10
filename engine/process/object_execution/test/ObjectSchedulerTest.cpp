@@ -39,23 +39,27 @@ namespace
         {
             return {token};
         }
+
         void set_value() && noexcept
         {
             assert(result->count() == 0);
             ++result->value;
             result->thread = std::this_thread::get_id();
         }
+
         void set_stopped() && noexcept
         {
             assert(result->count() == 0);
             ++result->stopped;
         }
+
         void set_error(process::EExecutionError error) && noexcept
         {
             assert(result->count() == 0);
             ++result->error;
             result->failure = error;
         }
+
         void set_error(std::exception_ptr) && noexcept
         {
             std::abort();
@@ -199,16 +203,19 @@ namespace
             {
                 return {};
             }
+
             void set_value() && noexcept
             {
                 ++result->value;
                 auto* value = std::exchange(*owner, nullptr);
                 destroy(value);
             }
+
             void set_error(process::EExecutionError) && noexcept
             {
                 std::abort();
             }
+
             void set_stopped() && noexcept
             {
                 std::abort();

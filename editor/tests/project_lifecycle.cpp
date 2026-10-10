@@ -33,6 +33,7 @@ namespace
         {
             assert(addElement(content_));
         }
+
         ~Probe() override
         {
             if (context_)
@@ -53,13 +54,16 @@ namespace
             {
                 ++counts_.element;
             }
+
             void draw() noexcept override {}
+
             Counts& counts_;
         };
         void update() noexcept override
         {
             ++counts_.pane;
         }
+
         Counts& counts_;
         EditorContext* context_;
         Content content_;

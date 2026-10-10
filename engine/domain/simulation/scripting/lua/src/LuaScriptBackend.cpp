@@ -362,10 +362,12 @@ namespace lux::simulation::script
                 return span.valid() && local_slot < span.count ? static_cast<Value*>(span.block.data) + local_slot
                                                                : nullptr;
             }
+
             [[nodiscard]] const Value* at(const PreparedSpan& span, std::size_t local_slot) const noexcept
             {
                 return const_cast<TPreparedBlockStorage*>(this)->at(span, local_slot);
             }
+
             [[nodiscard]] Stats stats() const noexcept
             {
                 const auto stats = storage_.stats();
@@ -377,6 +379,7 @@ namespace lux::simulation::script
                     stats.release_steps
                 };
             }
+
         private:
             TPreparedBlockStorage(detail::BoundedClassStorage storage, std::size_t capacity) noexcept
                 : storage_(std::move(storage)), capacity_(capacity)

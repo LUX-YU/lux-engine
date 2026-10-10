@@ -61,6 +61,7 @@ namespace lux::render
         {
             return "PointCloudSimple";
         }
+
         lux::render::Expected<void> initAndAttachTo(RenderScene& scene) override;
 
         void addPasses(RGBuilder& builder) override;

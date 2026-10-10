@@ -195,14 +195,17 @@ namespace lux::render
             return (static_cast<RequestId>(lane) << 30) | ((static_cast<RequestId>(gen) & kGenerationMask) << 24) |
                    (slot & kIndexMask);
         }
+
         static constexpr std::uint32_t unpackIndex(RequestId id) noexcept
         {
             return id & kIndexMask;
         }
+
         static constexpr std::uint8_t unpackGeneration(RequestId id) noexcept
         {
             return static_cast<std::uint8_t>((id >> 24) & kGenerationMask);
         }
+
         static constexpr ERequestLane unpackLane(RequestId id) noexcept
         {
             return static_cast<ERequestLane>((id >> 30) & 0x3u);
@@ -306,6 +309,7 @@ namespace lux::render
                 valid_ = false;
                 return kInvalidRequestId;
             }
+
             struct PreparedRecord
             {
                 Packet& packet;

@@ -50,8 +50,11 @@ if(BUILD_TESTING)
     endif()
     add_test(NAME object.ownership COMMAND object_ownership_test $<TARGET_FILE:object_ownership_plugin>)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    add_test(NAME object.retirement_contract COMMAND "${Python3_EXECUTABLE}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/test/retirement_contract.py" $<TARGET_FILE:object_ownership_test>)
+    add_test(
+        NAME object.retirement_contract COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/retirement_contract.py" $<TARGET_FILE:object_ownership_test>
+    )
+
     add_executable(object_tree_test test/tree.cpp)
     target_link_libraries(object_tree_test PRIVATE object)
     if(MSVC)
@@ -71,8 +74,10 @@ if(BUILD_TESTING)
         target_compile_options(object_queue_test PRIVATE -UNDEBUG)
     endif()
     add_test(NAME object.queue COMMAND object_queue_test)
-    add_test(NAME object.runtime_shutdown COMMAND "${Python3_EXECUTABLE}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/test/runtime_shutdown.py" $<TARGET_FILE:object_queue_test>)
+    add_test(
+        NAME object.runtime_shutdown COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/runtime_shutdown.py" $<TARGET_FILE:object_queue_test>
+    )
 endif()
 
 if(BUILD_TESTING)
@@ -84,6 +89,8 @@ if(BUILD_TESTING)
         target_compile_options(object_target_test PRIVATE -UNDEBUG)
     endif()
     add_test(NAME object.target COMMAND object_target_test)
-    add_test(NAME object.target_contract COMMAND "${Python3_EXECUTABLE}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/test/target_contract.py" $<TARGET_FILE:object_target_test>)
+    add_test(
+        NAME object.target_contract COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/test/target_contract.py" $<TARGET_FILE:object_target_test>
+    )
 endif()

@@ -71,15 +71,18 @@ namespace lux::render
         {
             return get();
         }
+
         [[nodiscard]] T& operator*() const noexcept
         {
             return *get();
         }
+
         [[nodiscard]] VkDescriptorSet descriptorSet() const noexcept;
         [[nodiscard]] uint32_t index() const noexcept
         {
             return idx_;
         }
+
         explicit operator bool() const noexcept
         {
             return registry_ != nullptr;

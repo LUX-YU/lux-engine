@@ -14,6 +14,7 @@ if(NOT LUX_BUILD_PACKED_RENDER_CONTENT)
         SOURCE_FILES
             ${CMAKE_CURRENT_SOURCE_DIR}/src/BuiltinContentProvider.cpp
     )
+
     component_include_directories(
         render_features
         BUILD_TIME_EXPORT
@@ -21,16 +22,19 @@ if(NOT LUX_BUILD_PACKED_RENDER_CONTENT)
             ${LUX_GENERATE_HEADER_DIR}
         INSTALL_TIME include
     )
+
     target_compile_definitions(
         render_features
         PRIVATE LUX_ENGINE_FUNCTION_RENDER_FEATURES_LIBRARY
     )
+
     target_link_libraries(
         render_features
         PUBLIC
             lux::engine::function::render_feature_client
             lux::cxx::compile_time
     )
+
     component_add_internal_dependencies(render_features render_feature_client)
     component_add_transitive_commands(
         render_features
@@ -47,9 +51,11 @@ find_package(VulkanMemoryAllocator CONFIG REQUIRED)
 find_package(meshoptimizer CONFIG REQUIRED)
 find_path(meshoptimizer_INCLUDE_DIRS NAMES meshoptimizer.h REQUIRED)
 
-if(CMAKE_CROSSCOMPILING AND
-   DEFINED ENV{VULKAN_SDK} AND
-   EXISTS "$ENV{VULKAN_SDK}/Bin/glslc.exe")
+if(
+    CMAKE_CROSSCOMPILING AND
+    DEFINED ENV{VULKAN_SDK} AND
+    EXISTS "$ENV{VULKAN_SDK}/Bin/glslc.exe"
+)
     # find_package(Vulkan) reports the target triplet's glslc in a cross
     # configure. Shader compilation is a host build action, so that executable
     # is never runnable here.
@@ -73,7 +79,8 @@ include_component_cmake_scripts(meta)
 include_component_cmake_scripts(lux::engine::resource::asset)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/compile_glsl_shaders.cmake)
 
-set(RENDER_FEATURE_SRCS
+set(
+    RENDER_FEATURE_SRCS
     ${CMAKE_CURRENT_SOURCE_DIR}/src/kernels/BuiltinKernels.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assembly/canvas2d/Canvas2DOperationHandlers.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/assembly/deferred/DeferredGBufferOperationHandlers.cpp
@@ -239,10 +246,12 @@ elseif(NOT CMAKE_CROSSCOMPILING AND Vulkan_INCLUDE_DIRS)
 endif()
 
 if(NOT _pass_parse_vulkan_inc)
-    message(FATAL_ERROR
+    message(
+        FATAL_ERROR
         "[pass-params] 找不到平台中立的 Vulkan 头用于解析 —— meta_generator 将无法\n"
         "解析 PassParams 头,而**这不会让构建失败**,只会静默少生成 pass 参数。\n"
-        "设置 VULKAN_SDK 指向 Vulkan SDK 根目录。")
+        "设置 VULKAN_SDK 指向 Vulkan SDK 根目录。"
+    )
 endif()
 message(STATUS "[pass-params] 解析用 Vulkan 头: ${_pass_parse_vulkan_inc}")
 
@@ -492,6 +501,7 @@ compile_and_pack_shaders(
 		highlight/highlight_mask.vert
 		highlight/highlight_mask.frag
 )
+
 list(APPEND RENDER_SHADER_SPVS ${RENDER_LGLSL_SPVS})
 
 # ---------------------------------------------------------------------------
@@ -499,7 +509,8 @@ list(APPEND RENDER_SHADER_SPVS ${RENDER_LGLSL_SPVS})
 # LUX_SHADOW_SAMPLER_HEADER injections (PCF / EVSM / future MSM, VSM ...).
 # See the implementation.
 # ---------------------------------------------------------------------------
-set(_shadow_variants
+set(
+    _shadow_variants
 	"pcf|LUX_SHADOW_TECHNIQUE_ID=0"
 	"evsm|LUX_SHADOW_TECHNIQUE_ID=1"
 )
@@ -507,12 +518,14 @@ set(_shadow_variants
 # (line-B P3): sampled (classic two-scope) × local_read (tile-local merged
 # scope, KHR_dynamic_rendering_local_read). subpassLoad is a different SPIR-V
 # resource type, so this MUST be a baked variant, not a spec constant.
-set(_lighting_variants
+set(
+    _lighting_variants
 	"pcf|LUX_SHADOW_TECHNIQUE_ID=0"
 	"evsm|LUX_SHADOW_TECHNIQUE_ID=1"
 	"pcf_lr|LUX_SHADOW_TECHNIQUE_ID=0,LUX_GBUFFER_LOCAL_READ=1"
 	"evsm_lr|LUX_SHADOW_TECHNIQUE_ID=1,LUX_GBUFFER_LOCAL_READ=1"
 )
+
 compile_and_pack_shader_variants(
 	COMPILE_TARGET	render_shaders
 	ATTACH_TO		render_features
@@ -524,6 +537,7 @@ compile_and_pack_shader_variants(
 	SHADER			deferred/deferred_lighting.frag
 	VARIANTS		${_lighting_variants}
 )
+
 compile_and_pack_shader_variants(
 	COMPILE_TARGET	render_shaders
 	ATTACH_TO		render_features
@@ -535,6 +549,7 @@ compile_and_pack_shader_variants(
 	SHADER			forward/fr_pbr.frag
 	VARIANTS		${_shadow_variants}
 )
+
 compile_and_pack_shader_variants(
 	COMPILE_TARGET	render_shaders
 	ATTACH_TO		render_features
@@ -554,12 +569,14 @@ compile_and_pack_shader_variants(
 # SPIR-V, so shadow / HZB-off cull pipelines (set-0-only layout) must use the
 # no_hzb variant — see VUID-VkComputePipelineCreateInfo-layout-07988.
 # ---------------------------------------------------------------------------
-set(_cull_hzb_variants
+set(
+    _cull_hzb_variants
 	"no_hzb|"
 	"hzb|HZB_ENABLED=1"
 	"no_hzb_paged|LUX_INSTANCE_PAGED=1"
 	"hzb_paged|HZB_ENABLED=1,LUX_INSTANCE_PAGED=1"
 )
+
 compile_and_pack_shader_variants(
 	COMPILE_TARGET	render_shaders
 	ATTACH_TO		render_features
@@ -575,7 +592,8 @@ compile_and_pack_shader_variants(
 # BDA instance-page variants. Flat shaders remain the Legacy feature-level
 # implementation; devices with BDA+shaderInt64 resolve these variants under
 # the same feature contracts.
-foreach(_paged_lglsl_shader
+foreach(
+    _paged_lglsl_shader
 	forward/forward_mesh_vp.vert
 	deferred/gbuffer_vp.vert
 	highlight/highlight_mask.vert
@@ -593,7 +611,8 @@ foreach(_paged_lglsl_shader
 	)
 endforeach()
 
-foreach(_paged_shadow_shader
+foreach(
+    _paged_shadow_shader
 	shadow/mesh_shadow_vp.vert
 	shadow/shadow_depth_vp.vert
 )
@@ -740,6 +759,7 @@ add_texture_asset(
         "${TEXTURE_SOURCE_PATH}/plain_starfield_1.png|textures/plain_starfield_1.luxasset"
         "${TEXTURE_SOURCE_PATH}/ringed_gas_giant_planet.png|textures/ringed_gas_giant_planet.luxasset"
 )
+
 target_add_asset(TARGET render_features NAME render_textures)
 component_register_runtime_assets(
     COMPONENT render_features
@@ -753,16 +773,21 @@ component_register_runtime_assets(
 get_target_property(_render_fragments render_feature_client LUX_RENDER_PLUGIN_FRAGMENTS)
 set(_render_declaration "${CMAKE_CURRENT_BINARY_DIR}/plugin/render.declaration.json")
 set(_render_exports "${CMAKE_CURRENT_BINARY_DIR}/plugin/RenderPluginExports.cpp")
-add_custom_command(OUTPUT "${_render_declaration}" "${_render_exports}"
+add_custom_command(
+    OUTPUT "${_render_declaration}" "${_render_exports}"
     COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/cmake/render_plugin.py"
         --records ${_render_fragments} --output "${_render_declaration}" --exports "${_render_exports}"
     DEPENDS ${_render_fragments} "${PROJECT_SOURCE_DIR}/cmake/render_plugin.py"
-        "${PROJECT_SOURCE_DIR}/cmake/plugin_descriptor.py" VERBATIM)
+        "${PROJECT_SOURCE_DIR}/cmake/plugin_descriptor.py" VERBATIM
+)
+
 target_sources(render_features PRIVATE "${_render_exports}")
 add_custom_target(render_plugin_declaration DEPENDS "${_render_declaration}" "${_render_exports}")
-file(GLOB_RECURSE _render_plugin_sources CONFIGURE_DEPENDS
+file(
+    GLOB_RECURSE _render_plugin_sources CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/include/*.hpp" "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.lglsl")
+    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.lglsl"
+)
 # The repository composition attaches runtime/editor exports after both owners exist.
 set_property(TARGET render_features PROPERTY LUX_PLUGIN_DESCRIPTION_INPUT "${_render_declaration}")
 set_property(TARGET render_features PROPERTY LUX_PLUGIN_SOURCE_INPUTS "${_render_plugin_sources};${_render_exports}")
@@ -780,8 +805,11 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_test(NAME render.kernel_declarations COMMAND render_kernel_declarations_test)
 
     add_executable(render_view_binding_test test/view_binding.cpp)
-    target_include_directories(render_view_binding_test PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/sinclude" "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/sinclude")
+    target_include_directories(
+        render_view_binding_test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/sinclude" "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/sinclude"
+    )
+
     target_link_libraries(render_view_binding_test PRIVATE render_features)
     lux_editor_test_options(render_view_binding_test)
     add_test(NAME render.view_binding COMMAND render_view_binding_test)
@@ -790,21 +818,25 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_NATIVE_TESTS)
         render_shadow_lifetime_test
         test/shadow_lifetime.cpp
     )
+
     target_include_directories(
         render_shadow_lifetime_test
         PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/sinclude"
             "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/sinclude"
     )
+
     target_link_libraries(
         render_shadow_lifetime_test
         PRIVATE render_features
     )
+
     lux_editor_test_options(render_shadow_lifetime_test)
     add_executable(
         render_shadow_quality_faults_test
         test/shadow_quality_faults.cpp
     )
+
     target_include_directories(
         render_shadow_quality_faults_test
         PRIVATE
@@ -814,19 +846,23 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_NATIVE_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/pinclude"
             "${CMAKE_CURRENT_BINARY_DIR}/builtin_shaders"
     )
+
     target_link_libraries(
         render_shadow_quality_faults_test
         PRIVATE render_features GPUOpen::VulkanMemoryAllocator
     )
+
     lux_editor_test_options(render_shadow_quality_faults_test)
     add_dependencies(
         render_shadow_quality_faults_test
         render_features_builtin_embed
     )
+
     add_executable(
         render_scene_construction_test
         test/scene_construction.cpp
     )
+
     target_include_directories(
         render_scene_construction_test
         PRIVATE
@@ -836,19 +872,23 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_NATIVE_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/pinclude"
             "${CMAKE_CURRENT_BINARY_DIR}/builtin_shaders"
     )
+
     target_link_libraries(
         render_scene_construction_test
         PRIVATE render_features GPUOpen::VulkanMemoryAllocator
     )
+
     lux_editor_test_options(render_scene_construction_test)
     add_dependencies(
         render_scene_construction_test
         render_features_builtin_embed
     )
+
     add_executable(
         render_hzb_lifetime_test
         test/hzb_lifetime.cpp
     )
+
     target_include_directories(
         render_hzb_lifetime_test
         PRIVATE
@@ -858,35 +898,42 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_NATIVE_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/pinclude"
             "${CMAKE_CURRENT_BINARY_DIR}/builtin_shaders"
     )
+
     target_link_libraries(
         render_hzb_lifetime_test
         PRIVATE render_features GPUOpen::VulkanMemoryAllocator
     )
+
     lux_editor_test_options(render_hzb_lifetime_test)
     add_dependencies(
         render_hzb_lifetime_test
         render_features_builtin_embed
     )
+
     add_executable(
         render_vertex_registration_gpu_test
         test/vertex_registration_gpu.cpp
     )
+
     target_include_directories(
         render_vertex_registration_gpu_test
         PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/sinclude"
             "${CMAKE_CURRENT_BINARY_DIR}/builtin_shaders"
     )
+
     target_link_libraries(
         render_vertex_registration_gpu_test
         PRIVATE render_features GPUOpen::VulkanMemoryAllocator
     )
+
     lux_editor_test_options(render_vertex_registration_gpu_test)
     add_dependencies(render_vertex_registration_gpu_test render_features_builtin_embed)
     add_executable(
         render_transient_ring_ownership_test
         test/transient_ring_ownership.cpp
     )
+
     target_include_directories(
         render_transient_ring_ownership_test
         PRIVATE
@@ -896,10 +943,12 @@ if(BUILD_TESTING AND LUX_EDITOR_BUILD_NATIVE_TESTS)
             "${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/pinclude"
             "${CMAKE_CURRENT_BINARY_DIR}/builtin_shaders"
     )
+
     target_link_libraries(
         render_transient_ring_ownership_test
         PRIVATE render_features GPUOpen::VulkanMemoryAllocator
     )
+
     lux_editor_test_options(render_transient_ring_ownership_test)
     add_dependencies(
         render_transient_ring_ownership_test

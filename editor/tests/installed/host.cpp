@@ -54,19 +54,23 @@ namespace
                 beginDestruction();
             }
         }
+
         ~Pane() override
         {
             assert(*alive && !context.project().name.empty());
             ++counts.panes;
         }
+
         void update() noexcept override
         {
             ++counts.updates;
         }
+
         void drawTestContent(ui::Element&) noexcept
         {
             ++counts.draws;
         }
+
         EditorContext& context;
         Counts& counts;
         TUiTestContent<Pane> draw;
@@ -75,11 +79,13 @@ namespace
     struct Global final : ui::Pane
     {
         explicit Global(cxx::move_only_function<void() noexcept> step) : ui::Pane("Global"), step(std::move(step)) {}
+
         void update() noexcept override
         {
             ++updates;
             step();
         }
+
         cxx::move_only_function<void() noexcept> step;
         unsigned updates{};
     };

@@ -12,8 +12,10 @@ if(NOT TARGET script_core)
 endif()
 add_subdirectory(graph)
 add_subdirectory(flowforge)
-if((LUX_PROFILE_HAS_EDITOR OR LUX_PROFILE_HAS_TOOLCHAIN OR LUX_BUILD_PACKED_RENDER_CONTENT) AND
-   NOT TARGET material_graph)
+if(
+    (LUX_PROFILE_HAS_EDITOR OR LUX_PROFILE_HAS_TOOLCHAIN OR LUX_BUILD_PACKED_RENDER_CONTENT) AND
+    NOT TARGET material_graph
+)
     add_subdirectory(material)
 endif()
 
@@ -43,7 +45,8 @@ else()
 endif()
 
 if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
-    set(LUX_FUNCTION_COMPONENTS
+    set(
+        LUX_FUNCTION_COMPONENTS
         animation
         flowforge
         graph
@@ -55,9 +58,11 @@ if(LUX_BUILD_PROFILE STREQUAL "TOOLCHAIN")
         script_artifact
         script_core
     )
+
     list(APPEND LUX_FUNCTION_COMPONENTS script_native)
 else()
-    set(LUX_FUNCTION_COMPONENTS
+    set(
+        LUX_FUNCTION_COMPONENTS
         flowforge
         graph
         render_client
@@ -74,6 +79,7 @@ else()
         script_core
         script_native
     )
+
     if(TARGET script_lua)
         list(APPEND LUX_FUNCTION_COMPONENTS script_lua)
     endif()

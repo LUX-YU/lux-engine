@@ -42,26 +42,32 @@ namespace lux::process
         {
             return TTaskError(std::in_place_index<0>, std::move(error));
         }
+
         [[nodiscard]] static TTaskError execution(EExecutionError error) noexcept
         {
             return TTaskError(std::in_place_index<1>, error);
         }
+
         [[nodiscard]] static TTaskError cancelled() noexcept
         {
             return TTaskError(std::in_place_index<2>, TaskCancelled{});
         }
+
         [[nodiscard]] const E* domainFailure() const noexcept
         {
             return std::get_if<0>(&error_);
         }
+
         [[nodiscard]] E* domainFailure() noexcept
         {
             return std::get_if<0>(&error_);
         }
+
         [[nodiscard]] const EExecutionError* executionFailure() const noexcept
         {
             return std::get_if<1>(&error_);
         }
+
         [[nodiscard]] bool isCancelled() const noexcept
         {
             return error_.index() == 2U;
@@ -73,6 +79,7 @@ namespace lux::process
             : error_(index, std::forward<Value>(value))
         {
         }
+
         std::variant<E, EExecutionError, TaskCancelled> error_;
     };
 
@@ -92,6 +99,7 @@ namespace lux::process
         friend struct detail::TaskRuntime;
         friend class TaskScope;
         explicit TaskReporter(detail::TaskRecord* record) noexcept : record_(record) {}
+
         detail::TaskRecord* record_{};
     };
 
@@ -109,12 +117,14 @@ namespace lux::process
         {
             return record_ != nullptr;
         }
+
         [[nodiscard]] TaskId id() const noexcept;
         void requestStop() noexcept;
 
     private:
         friend class ExecutionRuntime;
         explicit Task(detail::TaskRecord* record) noexcept : record_(record) {}
+
         detail::TaskRecord* record_{};
     };
 
@@ -143,6 +153,7 @@ namespace lux::process
             {
                 return reporter.stopToken();
             }
+
             [[nodiscard]] TaskReporter query(GetTaskReporter) const noexcept
             {
                 return reporter;
@@ -219,16 +230,19 @@ namespace lux::process
                         completeTask(*owner->record_, ETaskState::SUCCEEDED);
                     }
                 }
+
                 void set_error(EExecutionError error) && noexcept
                 {
                     owner->result_.emplace(lux::cxx::unexpected(Error::execution(error)));
                     completeTask(*owner->record_, ETaskState::FAILED);
                 }
+
                 // Lux failures use the typed channel. An exception escaping a sender is fatal.
                 void set_error(std::exception_ptr) && noexcept
                 {
                     std::terminate();
                 }
+
                 void set_stopped() && noexcept
                 {
                     owner->result_.emplace(lux::cxx::unexpected(Error::cancelled()));
@@ -248,6 +262,7 @@ namespace lux::process
             {
                 stdexec::start(operation_);
             }
+
             void deliver() noexcept override
             {
                 std::invoke(completed_, std::move(*result_));

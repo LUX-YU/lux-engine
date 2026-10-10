@@ -30,6 +30,7 @@ namespace lux::object::detail
         explicit ObjectRuntimeState(std::size_t size)
             : capacity(size), slots{std::make_unique<QueueSlot[]>(size), std::make_unique<QueueSlot[]>(size)}
         {}
+
         void discardReady() noexcept
         {
             for (auto& bank : slots)
@@ -50,6 +51,7 @@ namespace lux::object::detail
                     slot.state.store(EQueueSlot::EMPTY, std::memory_order_release);
                 }
         }
+
         cxx::SlotKeyAutoSparseSet<ObjectId, LuxObject*> objects;
         const std::size_t capacity;
         std::array<std::unique_ptr<QueueSlot[]>, 2> slots;
@@ -246,22 +248,27 @@ namespace lux::object
         if (state_)
             state_->wake.store(wake, std::memory_order_release);
     }
+
     ObjectRuntime& ObjectRuntime::instance() noexcept
     {
         static ObjectRuntime runtime;
         return runtime;
     }
+
     ObjectRuntime::ObjectRuntime() noexcept : state_(std::make_unique<detail::ObjectRuntimeState>(4096)) {}
+
     ObjectRuntime::~ObjectRuntime()
     {
         closeAndReclaim();
         if (!state_->objects.empty())
             detail::failObjectContract();
     }
+
     bool ObjectRuntime::isCurrent() const noexcept
     {
         return state_->owner == std::this_thread::get_id();
     }
+
     ObjectId ObjectRuntime::registerObject(LuxObject& object) noexcept
     {
         const bool is_unavailable = !isCurrent() || state_->closed.load(std::memory_order_acquire);
@@ -272,12 +279,14 @@ namespace lux::object
             detail::failObjectContract();
         return id;
     }
+
     void ObjectRuntime::unregisterObject(ObjectId id) noexcept
     {
         if (!isCurrent())
             detail::failObjectContract();
         state_->objects.erase(id);
     }
+
     ObjectResult<LuxObject*> ObjectRuntime::resolve(ObjectId id) const noexcept
     {
         if (!isCurrent())
@@ -289,6 +298,7 @@ namespace lux::object
             return cxx::unexpected(EObjectTreeError::CLOSED);
         return *found;
     }
+
     void ObjectRuntime::closeAndReclaim() noexcept
     {
         close();
@@ -300,6 +310,7 @@ namespace lux::object
                 detail::failObjectContract();
         }
     }
+
     std::size_t ObjectRuntime::pendingRetirements() const noexcept
     {
         if (!state_)
@@ -345,6 +356,7 @@ namespace lux::object
         }
         return reclaimed;
     }
+
     std::size_t ObjectRuntime::dispatchPending()
     {
         auto* state = state_.get();
@@ -385,6 +397,7 @@ namespace lux::object
         }
         return consumed;
     }
+
     void ObjectRuntime::close() noexcept
     {
         if (!isCurrent())
@@ -400,6 +413,7 @@ namespace lux::object
         state->discardReady();
         detail::maintainSignals(*state);
     }
+
     ObjectQueueStatistics ObjectRuntime::statistics() const noexcept
     {
         if (!state_)

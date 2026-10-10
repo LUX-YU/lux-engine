@@ -15,6 +15,7 @@ namespace lux::object
             {
                 state->deliver(callback);
             }
+
             void cancel() noexcept
             {
                 // Runtime shutdown never invokes target business code; completion must still settle.
@@ -24,15 +25,18 @@ namespace lux::object
     } // namespace
 
     ObjectTarget::ObjectTarget(cxx::intrusive_ptr<detail::ObjectState> state) noexcept : state_(std::move(state)) {}
+
     ObjectTarget::operator bool() const noexcept
     {
         return static_cast<bool>(state_);
     }
+
     ObjectTarget LuxObject::target() const noexcept
     {
         assertAffinity();
         return ObjectTarget{ensureState()};
     }
+
     EObjectPostStatus post(
         const ObjectTarget& target,
         cxx::move_only_function<void(LuxObject*) noexcept> callback

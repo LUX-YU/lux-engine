@@ -40,6 +40,7 @@ namespace mlir
 {
     class ExecutionEngine;
 }
+
 namespace lux::meta
 {
     struct RefInvokable;
@@ -85,6 +86,7 @@ namespace lux::flowforge
         {
             return state_;
         }
+
         [[nodiscard]] std::span<const std::byte> instanceState() const
         {
             return state_;

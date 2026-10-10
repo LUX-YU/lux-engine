@@ -343,14 +343,17 @@ namespace lux::render
                 pages_.push_back(std::make_unique<T[]>(kInstanceSlotsPerPage));
             return true;
         }
+
         void clear()
         {
             pages_.clear();
         }
+
         [[nodiscard]] T& at(std::uint32_t index) noexcept
         {
             return pages_[index >> kInstancePageOffsetBits][index & (kInstanceSlotsPerPage - 1u)];
         }
+
         [[nodiscard]] const T& at(std::uint32_t index) const noexcept
         {
             return pages_[index >> kInstancePageOffsetBits][index & (kInstanceSlotsPerPage - 1u)];

@@ -13,8 +13,11 @@ if(CONSUMER_MODE STREQUAL "OBJECT")
     target_link_libraries(consumer PRIVATE lux::engine::core::object)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_test(NAME installed.object.target COMMAND consumer)
-    add_test(NAME installed.object.target_contract COMMAND "${Python3_EXECUTABLE}"
-        "${engine_source}/modules/core/object/test/target_contract.py" $<TARGET_FILE:consumer>)
+    add_test(
+        NAME installed.object.target_contract COMMAND "${Python3_EXECUTABLE}"
+        "${engine_source}/modules/core/object/test/target_contract.py" $<TARGET_FILE:consumer>
+    )
+
     set(header object/ObjectTarget)
     set(provider lux::engine::core::object)
     if(TARGET lux::engine::process::process_execution OR TARGET STDEXEC::stdexec)

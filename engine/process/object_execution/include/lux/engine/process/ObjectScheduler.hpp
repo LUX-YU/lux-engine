@@ -44,6 +44,7 @@ namespace lux::process
             {
             public:
                 explicit Env(ObjectScheduler scheduler) noexcept : scheduler_(std::move(scheduler)) {}
+
                 [[nodiscard]] ObjectScheduler query(stdexec::get_completion_scheduler_t<stdexec::set_value_t>)
                     const noexcept
                 {
@@ -77,6 +78,7 @@ namespace lux::process
                     : target_(std::move(target)), receiver_(std::move(receiver))
                 {
                 }
+
                 TOperation(const TOperation&) = delete;
                 TOperation& operator=(const TOperation&) = delete;
                 TOperation(TOperation&&) = delete;
@@ -139,6 +141,7 @@ namespace lux::process
         private:
             friend class ::lux::process::ObjectScheduler;
             explicit ObjectScheduleSender(ObjectScheduler scheduler) noexcept : scheduler_(std::move(scheduler)) {}
+
             ObjectScheduler scheduler_;
         };
     } // namespace detail
@@ -147,5 +150,6 @@ namespace lux::process
     {
         return detail::ObjectScheduleSender{*this};
     }
+
     static_assert(stdexec::scheduler<ObjectScheduler>);
 } // namespace lux::process

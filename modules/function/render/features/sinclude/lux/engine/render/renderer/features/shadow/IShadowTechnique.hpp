@@ -62,7 +62,9 @@ namespace lux::render
         // ── Per-frame scheduling. Each technique chooses how many and what
         //    kind of GPU passes it emits. ─────────────────────────────────
         virtual void recordFrameSetup(const ShadowFrameContext&) {}
+
         virtual void recordShadowPasses(const ShadowFrameContext&) {}
+
         virtual void recordPostFrame(const ShadowFrameContext&) {}
 
         // ── Caster pass declaration. The mesh shadow caster pipeline depends on

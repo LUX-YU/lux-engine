@@ -346,6 +346,7 @@ namespace lux::render
         if (auto adopted = static_cast<ui::detail::RenderFeature*>(feature)->adopt(input); !adopted)
             scene->renderContext().reportError(adopted.error(), payload.scene_id.index, scene->frameSerial());
     }
+
     void handleUiRenderClear(GeneralRenderServer::Dispatcher::Ctx& context, const UiRenderClearPayload& payload)
     {
         auto* scene = lookupScene(context.user_state, payload.scene_id);

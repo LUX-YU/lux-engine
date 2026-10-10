@@ -16,6 +16,7 @@ namespace
         {
             ++dispatch_depth;
         }
+
         ~DispatchScope()
         {
             --dispatch_depth;
@@ -34,6 +35,7 @@ namespace lux::object::detail
     {
         value->refs.fetch_add(1, std::memory_order_relaxed);
     }
+
     void intrusive_ptr_release(ObjectState* value) noexcept
     {
         if (value->refs.fetch_sub(1, std::memory_order_acq_rel) == 1)
@@ -41,10 +43,12 @@ namespace lux::object::detail
             delete value;
         }
     }
+
     void intrusive_ptr_add_ref(SignalStorage* value) noexcept
     {
         value->refs.fetch_add(1, std::memory_order_relaxed);
     }
+
     void intrusive_ptr_release(SignalStorage* value) noexcept
     {
         if (value->refs.fetch_sub(1, std::memory_order_acq_rel) == 1)
@@ -52,10 +56,12 @@ namespace lux::object::detail
             delete value;
         }
     }
+
     void intrusive_ptr_add_ref(ConnectionControl* value) noexcept
     {
         value->refs.fetch_add(1, std::memory_order_relaxed);
     }
+
     void intrusive_ptr_release(ConnectionControl* value) noexcept
     {
         if (value->refs.fetch_sub(1, std::memory_order_acq_rel) == 1)

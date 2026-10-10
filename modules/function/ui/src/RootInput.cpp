@@ -7,6 +7,7 @@ namespace lux::ui
         requireOwner();
         return impl_->focus_state.focused;
     }
+
     bool Root::requestFocus(Pane& pane) noexcept
     {
         requireOwner();
@@ -18,6 +19,7 @@ namespace lux::ui
         impl_->focus_state.pending_focus = &pane;
         return true;
     }
+
     bool Root::capturePointer(Pane& pane) noexcept
     {
         requireOwner();
@@ -30,6 +32,7 @@ namespace lux::ui
         impl_->focus_state.pointer_capture = &pane;
         return true;
     }
+
     void Root::releasePointer(Pane& pane) noexcept
     {
         requireOwner();
@@ -38,11 +41,13 @@ namespace lux::ui
             impl_->focus_state.pointer_capture = {};
         }
     }
+
     Element* Root::focusedElement() const noexcept
     {
         requireOwner();
         return impl_->focus_state.focused_element;
     }
+
     bool Root::requestFocus(Element& element) noexcept
     {
         if (element.attachedRoot() != this || !element.displayed() || !element.enabled() || !allowedByModal(element))
@@ -52,6 +57,7 @@ namespace lux::ui
         impl_->focus_state.pending_element = &element;
         return requestFocus(element.pane());
     }
+
     bool Root::capturePointer(Element& element) noexcept
     {
         requireOwner();
@@ -63,6 +69,7 @@ namespace lux::ui
         impl_->focus_state.pointer_capture = &element;
         return true;
     }
+
     void Root::releaseFocus(Element& element) noexcept
     {
         requireOwner();
@@ -83,6 +90,7 @@ namespace lux::ui
         impl_->focus_state.focused_element = {};
         releasePointer(element);
     }
+
     void Root::releasePointer(Element& element) noexcept
     {
         requireOwner();
@@ -91,6 +99,7 @@ namespace lux::ui
             impl_->focus_state.pointer_capture = {};
         }
     }
+
     Pane* Root::modalPane() const noexcept
     {
         detail::ContextActivation context{impl_->context->native()};
@@ -110,6 +119,7 @@ namespace lux::ui
         detail::ContextActivation context{impl_->context->native()};
         return !ImGui::GetTopMostPopupModal() || modalPane() == &target;
     }
+
     bool Root::allowedByModal(const Element& target) const noexcept
     {
         return allowedByModal(target.pane());

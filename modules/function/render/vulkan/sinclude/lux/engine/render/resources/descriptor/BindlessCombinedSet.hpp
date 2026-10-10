@@ -346,26 +346,32 @@ namespace lux::render
         {
             return set_layout_;
         }
+
         VkDescriptorSet descriptorSet() const
         {
             return descriptor_set_;
         }
+
         uint32_t binding() const
         {
             return binding_;
         }
+
         uint32_t setIndex() const
         {
             return set_index_;
         }
+
         uint32_t capacity() const
         {
             return cur_cap_;
         }
+
         uint32_t count() const
         {
             return count_;
         }
+
         uint32_t layoutMaxCapacity() const
         {
             return layout_max_cap_;
@@ -433,6 +439,7 @@ namespace lux::render
             v |= v >> 16;
             return ++v;
         }
+
         static uint32_t nextCap(uint32_t cur, uint32_t need)
         {
             return roundUpPow2(std::max(cur ? cur * 2 : 1u, need));
@@ -449,6 +456,7 @@ namespace lux::render
             }
             return count_ref++;
         }
+
         uint32_t allocIndex()
         {
             return allocIndex(free_, count_);

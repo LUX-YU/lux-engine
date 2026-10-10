@@ -6,6 +6,7 @@ namespace lux::ui
 {
     class Root;
 }
+
 namespace lux::editor::detail
 {
     // Owns only responsibility to unmount these registrations. Root owns every Pane.

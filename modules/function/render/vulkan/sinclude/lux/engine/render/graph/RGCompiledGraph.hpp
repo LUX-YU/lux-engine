@@ -554,10 +554,12 @@ namespace lux::render
         {
             return render.pipelineForGeometry(type);
         }
+
         [[nodiscard]] VkPipelineLayout layoutForGeometry(EGeometryType type) const noexcept
         {
             return render.layoutForGeometry(type);
         }
+
         [[nodiscard]] uint32_t descriptorSetCountForGeometry(EGeometryType type) const noexcept
         {
             return render.descriptorSetCountForGeometry(type);

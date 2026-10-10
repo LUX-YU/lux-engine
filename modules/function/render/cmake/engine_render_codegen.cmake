@@ -60,6 +60,7 @@ function(engine_add_pass_params)
             -D__LUX_PARSE_TIME__=1
             ${ARGS_EXTRA_COMPILE_OPTIONS}
     )
+
     lux_codegen_add_projection(
         JOB ${ARGS_NAME}_pass_codegen
         NAME pass_hpp
@@ -67,6 +68,7 @@ function(engine_add_pass_params)
         OUTPUT_ROOT ${_out_dir}
         OUTPUT_SUFFIX .pass.hpp
     )
+
     lux_codegen_add_projection(
         JOB ${ARGS_NAME}_pass_codegen
         NAME pass_glslh
@@ -74,6 +76,7 @@ function(engine_add_pass_params)
         OUTPUT_ROOT ${_out_dir}
         OUTPUT_SUFFIX .lglslh
     )
+
     lux_target_add_codegen(
         TARGET ${ARGS_TARGET}
         JOB ${ARGS_NAME}_pass_codegen
@@ -109,14 +112,23 @@ endfunction()
 #     templates need a per-file `stem`).
 # =============================================================================
 function(engine_add_comm_ops)
-    set(one_value_args NAME CLIENT_TARGET IMPLEMENTATION_TARGET INCLUDE_PREFIX
-        CLIENT_EXPORT_MACRO CLIENT_VISIBILITY_HEADER BACKEND_EXPORT_MACRO BACKEND_VISIBILITY_HEADER KERNEL_HEADER KERNEL_DECLARATIONS)
+    set(
+        one_value_args
+        NAME CLIENT_TARGET IMPLEMENTATION_TARGET INCLUDE_PREFIX
+        CLIENT_EXPORT_MACRO CLIENT_VISIBILITY_HEADER
+        BACKEND_EXPORT_MACRO BACKEND_VISIBILITY_HEADER
+        KERNEL_HEADER KERNEL_DECLARATIONS
+    )
+
     set(multi_value_args TARGET_FILES EXTRA_COMPILE_OPTIONS)
     cmake_parse_arguments(ARGS "" "${one_value_args}" "${multi_value_args}" ${ARGN})
 
-    if(NOT ARGS_NAME OR NOT ARGS_INCLUDE_PREFIX OR NOT ARGS_TARGET_FILES OR
-       (NOT ARGS_CLIENT_TARGET AND NOT ARGS_IMPLEMENTATION_TARGET))
-        message(FATAL_ERROR
+    if(
+        NOT ARGS_NAME OR NOT ARGS_INCLUDE_PREFIX OR NOT ARGS_TARGET_FILES OR
+        (NOT ARGS_CLIENT_TARGET AND NOT ARGS_IMPLEMENTATION_TARGET)
+    )
+        message(
+            FATAL_ERROR
             "[engine_add_comm_ops] NAME, INCLUDE_PREFIX, TARGET_FILES and at "
             "least one of CLIENT_TARGET / IMPLEMENTATION_TARGET are required"
         )
@@ -124,7 +136,8 @@ function(engine_add_comm_ops)
 
     if(ARGS_CLIENT_TARGET)
         if(NOT TARGET ${ARGS_CLIENT_TARGET})
-            message(FATAL_ERROR
+            message(
+                FATAL_ERROR
                 "[engine_add_comm_ops] CLIENT_TARGET "
                 "'${ARGS_CLIENT_TARGET}' does not exist"
             )
@@ -132,7 +145,8 @@ function(engine_add_comm_ops)
     endif()
     if(ARGS_IMPLEMENTATION_TARGET)
         if(NOT TARGET ${ARGS_IMPLEMENTATION_TARGET})
-            message(FATAL_ERROR
+            message(
+                FATAL_ERROR
                 "[engine_add_comm_ops] IMPLEMENTATION_TARGET "
                 "'${ARGS_IMPLEMENTATION_TARGET}' does not exist"
             )
@@ -140,7 +154,8 @@ function(engine_add_comm_ops)
     endif()
 
     if(IS_ABSOLUTE "${ARGS_INCLUDE_PREFIX}" OR ARGS_INCLUDE_PREFIX MATCHES "(^|/)\\.\\.(/|$)")
-        message(FATAL_ERROR
+        message(
+            FATAL_ERROR
             "[engine_add_comm_ops] INCLUDE_PREFIX must be an install-relative path"
         )
     endif()
@@ -185,6 +200,7 @@ function(engine_add_comm_ops)
                 OUTPUT_SUFFIX .ops.hpp
                 JSON_FIELD "{\"stem\":\"${_stem}\",\"client_export\":\"${ARGS_CLIENT_EXPORT_MACRO}\",\"client_visibility\":\"${ARGS_CLIENT_VISIBILITY_HEADER}\",\"backend_export\":\"${ARGS_BACKEND_EXPORT_MACRO}\",\"backend_visibility\":\"${ARGS_BACKEND_VISIBILITY_HEADER}\"}"
             )
+
             lux_codegen_add_projection(
                 JOB ${_job}
                 NAME client_ops_cpp
@@ -193,6 +209,7 @@ function(engine_add_comm_ops)
                 OUTPUT_SUFFIX .client.ops.cpp
                 JSON_FIELD "{\"stem\":\"${_stem}\"}"
             )
+
             lux_codegen_add_projection(
                 JOB ${_job}
                 NAME type_static_info
@@ -200,6 +217,7 @@ function(engine_add_comm_ops)
                 OUTPUT_ROOT ${_job_root}
                 OUTPUT_SUFFIX .type_static_info.hpp
             )
+
             lux_codegen_add_projection(
                 JOB ${_job}
                 NAME metadata_cpp
@@ -208,10 +226,14 @@ function(engine_add_comm_ops)
                 OUTPUT_SUFFIX .metadata.cpp
                 JSON_FIELD "{\"stem\":\"${_stem}\",\"include_prefix\":\"${ARGS_INCLUDE_PREFIX}\"}"
             )
-            lux_codegen_add_projection(JOB ${_job} NAME plugin_description
+
+            lux_codegen_add_projection(
+                JOB ${_job} NAME plugin_description
                 TEMPLATE ${CMAKE_CURRENT_FUNCTION_LIST_DIR}/template/comm_ops_plugin.template
                 OUTPUT_ROOT ${_job_root} OUTPUT_SUFFIX .plugin.json
-                JSON_FIELD "{\"stem\":\"${_stem}\",\"include_prefix\":\"${ARGS_INCLUDE_PREFIX}\"}")
+                JSON_FIELD "{\"stem\":\"${_stem}\",\"include_prefix\":\"${ARGS_INCLUDE_PREFIX}\"}"
+            )
+
             lux_codegen_add_projection(
                 JOB ${_job}
                 NAME ops_cpp
@@ -222,8 +244,10 @@ function(engine_add_comm_ops)
             )
         endif()
 
-        if(ARGS_IMPLEMENTATION_TARGET AND NOT _existing_job AND
-           NOT ARGS_CLIENT_TARGET)
+        if(
+            ARGS_IMPLEMENTATION_TARGET AND NOT _existing_job AND
+           NOT ARGS_CLIENT_TARGET
+        )
             lux_codegen_add_projection(
                 JOB ${_job}
                 NAME ops_cpp
@@ -248,8 +272,11 @@ function(engine_add_comm_ops)
             )
         endif()
         if(ARGS_CLIENT_TARGET)
-            set_property(TARGET ${ARGS_CLIENT_TARGET} APPEND PROPERTY LUX_RENDER_PLUGIN_FRAGMENTS
-                "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.plugin.json")
+            set_property(
+                TARGET ${ARGS_CLIENT_TARGET} APPEND PROPERTY LUX_RENDER_PLUGIN_FRAGMENTS
+                "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.plugin.json"
+            )
+
             target_sources(
                 ${ARGS_CLIENT_TARGET}
                 PRIVATE
@@ -257,6 +284,7 @@ function(engine_add_comm_ops)
                     "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.client.ops.cpp"
                     "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.metadata.cpp"
             )
+
             set_source_files_properties(
                 "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.ops.hpp"
                 "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.client.ops.cpp"
@@ -269,12 +297,16 @@ function(engine_add_comm_ops)
                 ${ARGS_IMPLEMENTATION_TARGET}
                 PRIVATE "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.ops.cpp"
             )
+
             set_source_files_properties(
                 "${_job_root}/${ARGS_INCLUDE_PREFIX}/${_stem}.ops.cpp"
                 PROPERTIES GENERATED TRUE
             )
-            if(_existing_job OR
-               NOT "${ARGS_IMPLEMENTATION_TARGET}" STREQUAL "${_generation_owner}")
+
+            if(
+                _existing_job OR
+               NOT "${ARGS_IMPLEMENTATION_TARGET}" STREQUAL "${_generation_owner}"
+            )
                 add_dependencies(
                     ${ARGS_IMPLEMENTATION_TARGET}
                     ${_job}_generate
@@ -288,9 +320,14 @@ function(engine_add_comm_ops)
             ${ARGS_CLIENT_TARGET}
             PUBLIC "$<BUILD_INTERFACE:${_root}>"
         )
-        install(DIRECTORY "${_root}/" DESTINATION include
-                FILES_MATCHING PATTERN "*.ops.hpp")
-        message(STATUS
+
+        install(
+            DIRECTORY "${_root}/" DESTINATION include
+                FILES_MATCHING PATTERN "*.ops.hpp"
+        )
+
+        message(
+            STATUS
             "[comm-ops] ${ARGS_CLIENT_TARGET}:client <- ${ARGS_NAME} (${_out_dir})"
         )
     endif()
@@ -300,7 +337,9 @@ function(engine_add_comm_ops)
             ${ARGS_IMPLEMENTATION_TARGET}
             PRIVATE "$<BUILD_INTERFACE:${_root}>"
         )
-        message(STATUS
+
+        message(
+            STATUS
             "[comm-ops] ${ARGS_IMPLEMENTATION_TARGET}:implementation "
             "<- ${ARGS_NAME} (${_out_dir})"
         )

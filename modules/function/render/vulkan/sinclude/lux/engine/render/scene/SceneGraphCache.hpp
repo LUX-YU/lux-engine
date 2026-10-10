@@ -94,10 +94,12 @@ namespace lux::render
         {
             return state_;
         }
+
         [[nodiscard]] const SceneGraphState& state() const noexcept
         {
             return state_;
         }
+
         [[nodiscard]] RGVulkanResourceAllocator& allocator() noexcept;
         [[nodiscard]] RGVulkanRecorder& recorder() noexcept;
 
@@ -108,6 +110,7 @@ namespace lux::render
         {
             return telemetry_;
         }
+
         [[nodiscard]] const std::deque<SceneGraphCompileSample>& compileHistory() const noexcept
         {
             return compile_history_;

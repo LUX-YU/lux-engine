@@ -143,6 +143,7 @@ namespace lux::render
         {
             return entries_.empty();
         }
+
         [[nodiscard]] size_t size() const noexcept
         {
             return entries_.size();

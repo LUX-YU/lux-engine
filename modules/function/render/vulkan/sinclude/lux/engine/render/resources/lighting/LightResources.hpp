@@ -244,10 +244,12 @@ namespace lux::render
         {
             return static_cast<std::uint32_t>(intensity_transitions_.size());
         }
+
         [[nodiscard]] std::uint32_t lightCount(ELightSetBindings binding) const noexcept
         {
             return live_counts_[static_cast<std::size_t>(binding)];
         }
+
         [[nodiscard]] bool canRebaseSceneOrigin(const std::int64_t origin_delta[3]) const noexcept;
         void rebaseSceneOrigin(const std::int64_t origin_delta[3]) noexcept;
 

@@ -330,55 +330,67 @@ namespace lux::render
         {
             return segment < vbo_buffers_.size() ? vbo_buffers_[segment].buffer() : VK_NULL_HANDLE;
         }
+
         /// Return the VkBuffer for a specific IBO segment (0 = original buffer).
         VkBuffer indexBuffer(uint16_t segment = 0) const
         {
             return segment < ibo_buffers_.size() ? ibo_buffers_[segment].buffer() : VK_NULL_HANDLE;
         }
+
         /// Convenience: return VBO for a given mesh handle.
         VkBuffer vertexBufferForMesh(MeshHandle h) const
         {
             return alive(h) ? vertexBuffer(gpu_records_[h.index].vbo_segment) : VK_NULL_HANDLE;
         }
+
         /// Convenience: return IBO for a given mesh handle.
         VkBuffer indexBufferForMesh(MeshHandle h) const
         {
             return alive(h) ? indexBuffer(gpu_records_[h.index].ibo_segment) : VK_NULL_HANDLE;
         }
+
         /// Number of VBO segments currently allocated.
         uint16_t vboSegmentCount() const
         {
             return static_cast<uint16_t>(vbo_buffers_.size());
         }
+
         /// Number of IBO segments currently allocated.
         uint16_t iboSegmentCount() const
         {
             return static_cast<uint16_t>(ibo_buffers_.size());
         }
+
         [[nodiscard]] std::uint64_t iboTopologySerial() const noexcept
         {
             return ibo_topology_serial_;
         }
+
         BufferRange vertexRange(MeshHandle h) const
         {
             return alive(h) ? gpu_records_[h.index].vertex_buffer_range : BufferRange{};
         }
+
         BufferRange indexRange(MeshHandle h) const
         {
             return alive(h) ? gpu_records_[h.index].index_buffer_range : BufferRange{};
         }
+
         uint32_t vertexStride(MeshHandle h) const
         {
             return alive(h) ? gpu_records_[h.index].vertex_stride : 0u;
         }
+
         uint32_t indexCount(MeshHandle h) const
         {
             return alive(h) ? gpu_records_[h.index].index_count : 0u;
         }
+
         EIndexType indexType(MeshHandle h) const
         {
             return alive(h) ? gpu_records_[h.index].index_type : EIndexType::NONE;
         }
+
         [[nodiscard]] const std::optional<lux::render::CapacityShortfall>& lastCapacityShortfall() const noexcept
         {
             return last_capacity_shortfall_;
@@ -450,10 +462,12 @@ namespace lux::render
         {
             return segments_ssbo_.buffer();
         }
+
         uint32_t segmentsBaseForSlice(uint32_t slice) const
         {
             return segments_ssbo_.baseIndexForSlice(slice);
         }
+
         void writeSegmentsDescriptor(VkDescriptorSet set, uint32_t binding) const
         {
             segments_ssbo_.writeDescriptor(set, binding);

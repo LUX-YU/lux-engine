@@ -23,6 +23,7 @@ namespace lux::ui::detail
         {
             return "UiRender";
         }
+
         [[nodiscard]] render::Expected<void> initAndAttachTo(render::RenderScene&) override;
         void addPasses(render::RGBuilder& builder) override;
         void retainSubmissions(const render::FrameRuntime&) const noexcept override;

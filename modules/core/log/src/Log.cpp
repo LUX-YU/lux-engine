@@ -39,14 +39,17 @@ namespace lux::log
                 ++n_;
                 return *this;
             }
+
             BufSink& operator*() noexcept
             {
                 return *this;
             }
+
             BufSink& operator++() noexcept
             {
                 return *this;
             }
+
             BufSink operator++(int) noexcept
             {
                 return *this;

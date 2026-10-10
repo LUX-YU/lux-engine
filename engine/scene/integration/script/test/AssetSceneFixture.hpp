@@ -255,17 +255,20 @@ namespace
             assert(execution.collectCompletions());
             assert(execution.dispatchTaskEvents());
         }
+
         void frame()
         {
             collect();
             const auto result = take(runtime->driveFrame());
             assert(result.empty());
         }
+
         std::int32_t value(lux::scene::SceneInstanceId id)
         {
             auto registry = take(runtime->borrowInstance(id));
             return registry.get().get<std::int32_t>(ecs::Entity{0});
         }
+
         void verifyFinished(lux::scene::SceneInstanceId id)
         {
             const auto& registry = take(runtime->borrowInstance(id)).get();

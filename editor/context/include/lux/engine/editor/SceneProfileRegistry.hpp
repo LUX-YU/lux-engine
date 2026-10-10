@@ -11,6 +11,7 @@ namespace lux::project
 {
     struct SceneRegistrations;
 }
+
 namespace lux::editor
 {
     class EditorContext;

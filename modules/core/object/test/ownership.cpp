@@ -40,10 +40,12 @@ namespace
         int* releases{};
         int* moves{};
         Deleter(int& released, int& moved) noexcept : releases(&released), moves(&moved) {}
+
         Deleter(Deleter&& other) noexcept : releases(std::exchange(other.releases, nullptr)), moves(other.moves)
         {
             ++*moves;
         }
+
         Deleter(const Deleter&) = delete;
         void operator()(Node* node) noexcept
         {
@@ -318,6 +320,7 @@ namespace
                 : parent(&owner), target(&value), rejected(&count)
             {
             }
+
             ReentrantDeleter(ReentrantDeleter&& other) noexcept
                 : parent(other.parent), target(other.target), rejected(other.rejected)
             {
@@ -329,6 +332,7 @@ namespace
                     ++*rejected;
                 }
             }
+
             void operator()(Node* value) noexcept
             {
                 delete value;

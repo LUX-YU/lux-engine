@@ -441,6 +441,7 @@ namespace lux::render
                 replyToCurrent<CreateTexture2DPayload>(ctx, Texture2DCreatedReply{RTextureHandle{}, 1u});
                 return;
             }
+
             struct ResolvedMip
             {
                 std::shared_ptr<const void> owner;

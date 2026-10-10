@@ -141,6 +141,7 @@ namespace lux::meta
     {
     public:
         constexpr explicit AnnotationView(const char* raw) noexcept : _raw(raw) {}
+
         constexpr AnnotationView() noexcept : _raw(nullptr) {}
 
         /// Returns the value for @p key, or std::nullopt if not found.
@@ -523,14 +524,17 @@ namespace lux::meta
         {
             return class_pool_.values();
         }
+
         const auto& enums() const noexcept
         {
             return enum_pool_.values();
         }
+
         const auto& functions() const noexcept
         {
             return func_pool_.values();
         }
+
         const auto& invokables() const noexcept
         {
             return invokable_registry_;
@@ -614,6 +618,7 @@ namespace lux::meta
         {
             return draft_.get();
         }
+
         using RegisterFn = void (*)(ReflectionRegistry&, std::vector<std::pair<std::string_view, RefType*>>&);
         [[nodiscard]] lux::cxx::expected<void, ReflectionRegistrationFailure> append(
             RegisterFn registration,

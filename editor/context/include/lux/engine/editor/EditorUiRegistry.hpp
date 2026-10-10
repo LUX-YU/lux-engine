@@ -12,6 +12,7 @@ namespace lux::ui
 {
     class Pane;
 }
+
 namespace lux::editor
 {
     class EditorContext;
@@ -32,6 +33,7 @@ namespace lux::editor
             friend class EditorUiRegistry;
             friend FrameworkResult<std::unique_ptr<ui::Pane>> createPane(EditorContext&, const PaneDescription&) noexcept;
             Factory(std::string type, UiFactory create) noexcept : type_(std::move(type)), create_(std::move(create)) {}
+
             std::string type_;
             mutable UiFactory create_;
         };

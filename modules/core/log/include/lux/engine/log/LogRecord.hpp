@@ -190,6 +190,7 @@ namespace lux::log
         template <> struct TCodec<>
         {
             static void pack(LogRecord&) noexcept {}
+
             static void decode(const LogRecord& r, EmitArgsFn emit, void* user)
             {
                 // format_args 无默认构造(MSVC):零实参也经 make_format_args。

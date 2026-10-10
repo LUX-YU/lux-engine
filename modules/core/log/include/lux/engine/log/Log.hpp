@@ -135,14 +135,17 @@ namespace lux::log
     {
         logf(ELevel::LOG_TRACE, category, fmt, std::forward<Args>(args)...);
     }
+
     template <class... Args> void info(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
     {
         logf(ELevel::LOG_INFO, category, fmt, std::forward<Args>(args)...);
     }
+
     template <class... Args> void warn(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
     {
         logf(ELevel::LOG_WARN, category, fmt, std::forward<Args>(args)...);
     }
+
     template <class... Args> void error(const char* category, std::format_string<Args...> fmt, Args&&... args) noexcept
     {
         logf(ELevel::LOG_ERROR, category, fmt, std::forward<Args>(args)...);

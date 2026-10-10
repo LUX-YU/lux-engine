@@ -30,6 +30,7 @@ namespace
             {}
         );
     }
+
     void inspect3D(const scene::ScenePackage& package, asset::AssetId id)
     {
         assert(package.scene->id() == id && package.scene->data().world() == package.world->id());

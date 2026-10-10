@@ -44,6 +44,7 @@ namespace lux::input
         {
             return registry_;
         }
+
         [[nodiscard]] const InputActionRegistry& actionRegistry() const noexcept
         {
             return registry_;

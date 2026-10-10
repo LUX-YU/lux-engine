@@ -21,6 +21,7 @@ namespace
     {
     public:
         explicit CountedRead(process::asset_loading::AssetReadPort port) : port_(std::move(port)) {}
+
         lux::async::SubmitResult submit(process::asset_loading::ReadAssetImage request, void* state,
             void (*complete)(void*, Outcome&&) noexcept, lux::async::SubmitOptions options) noexcept override
         {
@@ -33,6 +34,7 @@ namespace
             }
             return port_.submit(request, state, complete, options);
         }
+
         std::atomic_size_t calls{};
         bool fail_io{};
     private:

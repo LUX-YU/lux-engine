@@ -129,6 +129,7 @@ namespace lux::render
         {
             return cfg_.name;
         }
+
         // --- Scene lifecycle ---
 
         /// Render-thread only. Complete all GPU initialisation and bind to
@@ -191,6 +192,7 @@ namespace lux::render
         {
             return true;
         }
+
         virtual void rebaseSceneOrigin(const std::int64_t /*origin_delta*/[3]) noexcept {}
 
         // (onFrustumUpdated removed — now that View is no longer inherently 3D, the

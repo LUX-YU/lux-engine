@@ -36,6 +36,7 @@ namespace lux::object
             : builtin_(builtin), owner_(std::move(owner))
         {
         }
+
         bool builtin_;
         std::shared_ptr<const void> owner_;
     };

@@ -126,6 +126,7 @@ namespace lux::render
         {
             return active_technique_;
         }
+
         [[nodiscard]] IShadowTechnique& currentTechnique() noexcept;
         [[nodiscard]] const IShadowTechnique& currentTechnique() const noexcept;
 
@@ -139,14 +140,17 @@ namespace lux::render
         {
             return "lux::render::ShadowQualityParams";
         }
+
         [[nodiscard]] void* paramData() noexcept override
         {
             return &params_;
         }
+
         [[nodiscard]] std::size_t paramSize() const noexcept override
         {
             return sizeof(ShadowQualityParams);
         }
+
         EParamApply applyParams(const void* src, std::size_t size) override;
 
     private:

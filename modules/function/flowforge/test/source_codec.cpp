@@ -56,9 +56,12 @@ namespace
             std::vector<FlowPinDeclaration> pins;
             for (unsigned i{}; i != count; ++i)
             {
-                pins.push_back(
-                    FlowPinDeclaration{graph::PinSemanticId{100U + i}, "out" + std::to_string(i), graph::EPinDirection::OUTPUT, &meta::ref_type_of_v<int>}
-                );
+                pins.push_back(FlowPinDeclaration{
+                    graph::PinSemanticId{100U + i},
+                    "out" + std::to_string(i),
+                    graph::EPinDirection::OUTPUT,
+                    &meta::ref_type_of_v<int>
+                });
             }
             return pins;
         };

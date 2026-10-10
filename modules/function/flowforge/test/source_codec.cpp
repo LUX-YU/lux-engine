@@ -238,6 +238,8 @@ namespace
                                         const object::CodeLease& code) noexcept -> FlowSourceResult<FlowNodePayload>
         {
             ++restored_declarations;
+            require(references.node(NodeId{98}) == nullptr);
+            require(references.node(NodeId{99}) == nullptr);
             return registration().restore_source(source, environment, references, code);
         };
         auto body = registration();
@@ -295,6 +297,12 @@ namespace
         auto peer = createFlowNode(peer_definition, std::move(*peer_payload));
         require(peer.has_value());
         require(graph.addNodeWithId(NodeId{2}, std::move(*peer)).has_value());
+        auto peer_declaration = catalog.find(declaration.identity.id);
+        auto declaration_payload = peer_declaration->create();
+        require(declaration_payload.has_value());
+        auto declaration_node = createFlowNode(peer_declaration, std::move(*declaration_payload));
+        require(declaration_node.has_value());
+        require(graph.addNodeWithId(NodeId{98}, std::move(*declaration_node)).has_value());
         const auto captured = captureFlowSource(assetId(), "registered metadata", graph);
         require(captured.has_value() && captured->nodes.front().id == NodeId{1});
         const auto bytes = encodeFlowSource(*captured);
@@ -304,7 +312,7 @@ namespace
         environment.nodes = &catalog;
         environment.types = types;
         auto restored = materializeFlowSource(*captured, environment);
-        require(restored.has_value() && restored_declarations == 1 && restored_bodies == 2);
+        require(restored.has_value() && restored_declarations == 2 && restored_bodies == 2);
         require(*captureFlowSource(assetId(), "registered metadata", *restored) == *captured);
         require(*encodeFlowSource(*captureFlowSource(assetId(), "registered metadata", *restored)) == *bytes);
         environment.types = {};

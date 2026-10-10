@@ -609,16 +609,6 @@ namespace lux::flowforge
         restored.reserve(source.nodes.size());
         entries.reserve(source.nodes.size());
         placements.reserve(source.nodes.size());
-        const auto find_node = [&](NodeId id) noexcept -> const FlowNode*
-        {
-            const auto found = prepared.find(id);
-            if (found == prepared.end())
-            {
-                return nullptr;
-            }
-            const auto& node = found->second;
-            return node.definition->sourceStage() == EFlowSourceStage::DECLARATION ? &node : nullptr;
-        };
         const auto find_variable_type = [&](std::uint64_t id) noexcept -> const meta::RefType*
         {
             const auto* variable = graph.findVariable(id);
@@ -643,6 +633,20 @@ namespace lux::flowforge
         }
         for (const auto stage : {EFlowSourceStage::DECLARATION, EFlowSourceStage::BODY})
         {
+            const auto find_node = [&, stage](NodeId id) noexcept -> const FlowNode*
+            {
+                if (stage != EFlowSourceStage::BODY)
+                {
+                    return nullptr;
+                }
+                const auto found = prepared.find(id);
+                if (found == prepared.end())
+                {
+                    return nullptr;
+                }
+                const auto& node = found->second;
+                return node.definition->sourceStage() == EFlowSourceStage::DECLARATION ? &node : nullptr;
+            };
             for (std::size_t i = 0; i < source.nodes.size(); ++i)
             {
                 const auto& definition = definitions[i];

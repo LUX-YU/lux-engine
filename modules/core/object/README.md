@@ -20,6 +20,9 @@ shareOnRuntime() 转移真实唯一 allocation 到共享控制块。最后引用
 Runtime 最终清理关闭准入、结清已交还的回收责任，不派发业务回调、不等待任务。
 仍有外部共享 owner、活动回调或错误线程使回收无法推进时报告寿命契约错误。
 CodeLease/pinCodeOwner 的宿主释放桥覆盖对象析构、状态型 deleter 清理和返回；weak 控制块可晚于 DLL 卸载。
+pinCodeOwner 只接受真实 unique_ptr allocation，在首次共享时建立代码 pin。之后复制返回的 shared_ptr，
+不得重新包装已有共享 owner；该输入合同从根源禁止释放桥链，不通过 RTTI 查询或全局缓存解包。
+普通 C++ 值在最后强引用释放的线程清理；LuxObject 的线程亲和回收仍使用 shareOnRuntime。
 共享准入失败不消费候选或代码 pin，deleter 移动期间仍受结构保护。
 
 ```cpp

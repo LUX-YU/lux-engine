@@ -34,6 +34,43 @@ namespace
             ++trace[1];
         }
     };
+
+    struct PluginValue final
+    {
+        int* trace;
+
+        ~PluginValue()
+        {
+            ++trace[0];
+        }
+    };
+
+    struct ValueDeleter final
+    {
+        int* trace;
+
+        explicit ValueDeleter(int* value) noexcept : trace(value)
+        {
+        }
+
+        ValueDeleter(ValueDeleter&& other) noexcept : trace(std::exchange(other.trace, nullptr))
+        {
+        }
+
+        ~ValueDeleter()
+        {
+            if (trace)
+            {
+                ++trace[2];
+            }
+        }
+
+        void operator()(PluginValue* value) noexcept
+        {
+            delete value;
+            ++trace[1];
+        }
+    };
 } // namespace
 #if defined(_WIN32)
 #define TEST_EXPORT __declspec(dllexport)
@@ -56,4 +93,14 @@ extern "C" TEST_EXPORT void make_object(
 extern "C" TEST_EXPORT ObjectRuntime* object_runtime() noexcept
 {
     return &ObjectRuntime::instance();
+}
+
+extern "C" TEST_EXPORT void make_pinned_value(
+    CodeLease code,
+    int* trace,
+    std::shared_ptr<const void>& result
+) noexcept
+{
+    auto value = std::unique_ptr<PluginValue, ValueDeleter>(new PluginValue{trace}, ValueDeleter{trace});
+    result = pinCodeOwner(std::move(code), std::move(value));
 }

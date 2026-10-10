@@ -14,14 +14,17 @@ namespace lux::object
         {
             return CodeLease{true, {}};
         }
+
         [[nodiscard]] static CodeLease plugin(std::shared_ptr<const void> owner) noexcept
         {
             return CodeLease{false, std::move(owner)};
         }
+
         [[nodiscard]] bool valid() const noexcept
         {
             return builtin_ || bool(owner_);
         }
+
         [[nodiscard]] bool sameOwner(const CodeLease& other) const noexcept
         {
             return builtin_ == other.builtin_ && !owner_.owner_before(other.owner_) &&
@@ -44,10 +47,13 @@ namespace lux::object
         pinCodeOwner(CodeLease, std::shared_ptr<const void>) noexcept;
     } // namespace detail
 
-    template <class T> [[nodiscard]] std::shared_ptr<T> pinCodeOwner(CodeLease code, std::shared_ptr<T> value) noexcept
+    // Pin at the unique-allocation boundary. Copies of the returned owner share the same pin;
+    // an already shared owner cannot be wrapped again into a chain of release bridges.
+    template <class T, class D>
+    [[nodiscard]] std::shared_ptr<T> pinCodeOwner(CodeLease code, std::unique_ptr<T, D> value) noexcept
     {
         auto* pointer = value.get();
-        auto owner = detail::pinCodeOwner(std::move(code), std::move(value));
+        auto owner = detail::pinCodeOwner(std::move(code), std::shared_ptr<T>(std::move(value)));
         return std::shared_ptr<T>(std::move(owner), pointer);
     }
 } // namespace lux::object

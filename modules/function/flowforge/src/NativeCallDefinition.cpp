@@ -82,7 +82,7 @@ namespace lux::flowforge
         }
         // The stable Object provider keeps code alive outside the signature's deleter/control block.
         // This also covers a definition allocated by a statically linked copy inside an extension DLL.
-        auto value = std::shared_ptr<const NativeCallDefinition>(new NativeCallDefinition(source, receiver));
+        auto value = std::unique_ptr<const NativeCallDefinition>(new NativeCallDefinition(source, receiver));
         return object::pinCodeOwner(std::move(code), std::move(value));
     }
 

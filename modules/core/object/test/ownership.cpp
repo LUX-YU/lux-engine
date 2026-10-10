@@ -12,6 +12,11 @@
 using namespace lux::object;
 namespace
 {
+    template <class T>
+    concept PinnableAllocation = requires(T owner) { pinCodeOwner(CodeLease::builtin(), std::move(owner)); };
+    static_assert(PinnableAllocation<std::unique_ptr<int>>);
+    static_assert(!PinnableAllocation<std::shared_ptr<int>>);
+
     class Node : public LuxObject
     {
     public:
@@ -461,6 +466,34 @@ namespace
         assert(ObjectRuntime::instance().collectRetired() == 1 && second_trace[3] == 1);
     }
 
+    void pinnedValue(const char* path)
+    {
+        using Library = lux::engine::platform::DynamicLibrary;
+        using Make = void (*)(CodeLease, int*, std::shared_ptr<const void>&) noexcept;
+        int trace[4]{};
+        auto library = std::shared_ptr<Library>(new Library(path), [&](Library* value) noexcept {
+            assert(trace[0] == 1 && trace[1] == 1 && trace[2] == 1);
+            delete value;
+            ++trace[3];
+        });
+        assert(library->is_loaded());
+        auto create = reinterpret_cast<Make>(library->get_symbol("make_pinned_value"));
+        assert(create);
+        std::shared_ptr<const void> shared;
+        create(CodeLease::plugin(library), trace, shared);
+        assert(shared);
+        std::weak_ptr<const void> weak = shared;
+        auto copy = shared;
+        assert(!copy.owner_before(shared) && !shared.owner_before(copy));
+        library.reset();
+        shared.reset();
+        assert(!trace[0] && !trace[1] && !trace[2] && !trace[3] && !weak.expired());
+        std::thread worker([owner = std::move(copy)]() mutable { owner.reset(); });
+        worker.join();
+        assert(trace[0] == 1 && trace[1] == 1 && trace[2] == 1 && trace[3] == 1 && weak.expired());
+        weak.reset(); // Only the stable host control block remains after actual DLL unload.
+    }
+
     void plugin(const char* path)
     {
         using Library = lux::engine::platform::DynamicLibrary;
@@ -511,6 +544,7 @@ int main(int argc, char** argv)
     {
         plugin(argv[1]);
         pluginReplacement(argv[1]);
+        pinnedValue(argv[1]);
     }
     std::puts("Object ownership: mixed tree, refusal, callback, retirement, worker release and DLL tail passed");
 }

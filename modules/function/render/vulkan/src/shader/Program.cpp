@@ -20,7 +20,6 @@ namespace lux::render::vulkan
                 {
                 case spv::CapabilityMatrix:
                 case spv::CapabilityShader:
-                case spv::CapabilityInputAttachment:
                 case spv::CapabilityImageQuery:
                 case spv::CapabilityDerivativeControl:
                     break;

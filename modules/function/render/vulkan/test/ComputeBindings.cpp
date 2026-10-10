@@ -78,23 +78,26 @@ int main(int argc, char** argv)
         ));
         CHECK(program.identity().layout.sets.size() == 2 && program.identity().layout.dynamic_count == 2);
         {
+            for (const auto capability : {11u, 40u})
+            {
+                auto stages = variant->identity().stages;
+                // shaderInt64 and dynamic-rendering local read are deliberately not enabled.
+                stages[0].words.insert(stages[0].words.begin() + 5, {(2u << 16) | 17u, capability});
+                auto unsupported = makeCompiledShaderVariant(variant->identity().inputs, stages, schema);
+                CHECK(unsupported);
+                auto rejected = NativeShaderProgram::create(
+                    device,
+                    graph,
+                    pass,
+                    *unsupported,
+                    schema,
+                    {scene.identity, feature.identity, local.identity},
+                    owners,
+                    ComputeDescription{}
+                );
+                CHECK(!rejected && rejected.error().type == kUnsupported);
+            }
             auto stages = variant->identity().stages;
-            // OpCapability Int64 is valid Vulkan SPIR-V, but this Device deliberately has not enabled shaderInt64.
-            stages[0].words.insert(stages[0].words.begin() + 5, {(2u << 16) | 17u, 11u});
-            auto unsupported = makeCompiledShaderVariant(variant->identity().inputs, stages, schema);
-            CHECK(unsupported);
-            auto rejected = NativeShaderProgram::create(
-                device,
-                graph,
-                pass,
-                *unsupported,
-                schema,
-                {scene.identity, feature.identity, local.identity},
-                owners,
-                ComputeDescription{}
-            );
-            CHECK(!rejected && rejected.error().type == kUnsupported);
-            stages = variant->identity().stages;
             bool changed_group = false;
             for (std::size_t i = 5; i < stages[0].words.size(); i += stages[0].words[i] >> 16)
             {
@@ -105,7 +108,7 @@ int main(int argc, char** argv)
                 }
             }
             CHECK(changed_group);
-            unsupported = makeCompiledShaderVariant(variant->identity().inputs, stages, schema);
+            auto unsupported = makeCompiledShaderVariant(variant->identity().inputs, stages, schema);
             CHECK(unsupported);
             auto too_large = NativeShaderProgram::create(
                 device,

@@ -34,8 +34,10 @@ Camera/frame/scalar/clear values stay in invocation storage. No digest alone per
 pipeline layout, descriptor set layouts. It borrows Device, owns copied identity and all native candidate
 backing, and never retains a catalog pointer. Each fallible creation either returns the complete candidate
 or unwinds its private partial owners. The caller publishes only a successful candidate; failure leaves
-the old candidate and its output intact. A successful replacement transfers the old complete candidate
-to existing R4 retirement with its last submission serial. No per-resource DeviceWaitIdle is introduced.
+the old candidate and its output intact. A successful replacement retains the old complete candidate
+until its last R4 submission serial is proven complete. G07 performs that retention explicitly in its
+test owner; it does not extend Foundation's closed RetirementQueue to depend on Graph-aware candidates.
+The existing RetirementQueue remains covered by its original tests. No per-resource DeviceWaitIdle is introduced.
 
 `BoundDescriptorSets` cold-allocates one pool and the full required sets, then writes every descriptor
 array element exactly once. Missing, duplicated, wrong-owner/type/range values fail before publication.
@@ -64,6 +66,8 @@ interfaces fail cold. Specialization overrides are not exposed: the exact cooked
 default specialization values and is part of variant/native identity; native creation passes no override
 map. A different compiled define/source/binary forms a different variant. No claim is made for arbitrary
 runtime specialization, mesh/tessellation/geometry stages, interface blocks or 64-bit stage IO.
+Dynamic-rendering local read is not enabled; native programs declaring InputAttachment capability
+are rejected. Logical input-attachment schemas remain intact for the later F4 mechanism.
 
 Foundation remains `render_vulkan` (Core/Vulkan/VMA). Graph-aware cold creation belongs to
 `render_vulkan_shader_compiler` in the same module; the neutral Graph does not link it. The hot-link probe

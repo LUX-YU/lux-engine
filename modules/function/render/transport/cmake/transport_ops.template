@@ -1,0 +1,71 @@
+// Generated with the existing luxop parser; migrated comm_ops_hpp projection.
+#pragma once
+#include "{{ source_path }}"
+#include <lux/engine/render/transport/Operation.hpp>
+
+namespace lux::render
+{
+{% for rec_idx in marked_record_decls %}{% set op = decl_from_index(rec_idx) %}{% if annotation_has(op, "luxop::op") %}
+    template <> struct TransportValue<::{{ op.fq_name }}> : std::bool_constant<true
+{% for fid in op.field_decls %}{% set f = decl_from_id(fid) %}
+        && TransportValue<decltype(::{{ op.fq_name }}::{{ f.name }})>::value
+{% endfor %}
+    > {};
+    static_assert(PacketValue<::{{ op.fq_name }}>, "Transport payload must contain only owned value fields");
+{% endif %}{% endfor %}
+
+{% for rec_idx in marked_record_decls %}{% set op = decl_from_index(rec_idx) %}{% if annotation_has(op, "luxop::op") %}
+{% set lane = annotation_get_for_or(op, "luxop::op", "lane", "") %}
+{% set kind = annotation_get_for_or(op, "luxop::op", "kind", "") %}
+{% set name = annotation_get_for_or(op, "luxop::op", "name", "") %}
+{% set reply = annotation_get_for_or(op, "luxop::op", "reply", "") %}
+{% if name == "" %}
+#error "LUX_OP needs a canonical semantic name"
+{% endif %}
+{% if kind == "resource" and reply == "" %}
+#error "Resource operation needs a reply contract"
+{% endif %}
+{% if lane == "reply" %}
+    template <> struct RenderReplyTraits<::{{ op.fq_name }}>
+{% else %}
+    template <> struct RenderOpTraits<::{{ op.fq_name }}>
+{% endif %}
+    {
+        static constexpr std::string_view name = "{{ name }}";
+        static constexpr std::uint32_t wire_version = {{ annotation_get_for_or(op, "luxop::op", "wire_version", 1) }};
+        static constexpr std::uint32_t layout_version = {{ annotation_get_for_or(op, "luxop::op", "layout_version", 1) }};
+{% if lane != "reply" %}
+{% if reply == "" %}
+        using Reply = void;
+{% else %}
+        using Reply = ::{{ reply }};
+{% endif %}
+{% if lane == "program" %}
+        static constexpr ERenderLane lane = ERenderLane::PROGRAM;
+{% else if lane == "control" %}
+        static constexpr ERenderLane lane = ERenderLane::CONTROL;
+{% else if lane == "upload" %}
+        static constexpr ERenderLane lane = ERenderLane::UPLOAD;
+{% else %}
+#error "LUX_OP lane must be program, control, upload or reply"
+{% endif %}
+{% if kind == "stream" or kind == "resource" %}
+        static constexpr ERenderOperationKind kind = ERenderOperationKind::POD;
+{% else if kind == "bulk" %}
+        static constexpr ERenderOperationKind kind = ERenderOperationKind::BULK;
+{% else if kind == "blob" %}
+        static constexpr ERenderOperationKind kind = ERenderOperationKind::BLOB;
+{% set found_blob = false %}
+{% for fid in op.field_decls %}{% set f = decl_from_id(fid) %}{% if annotation_has(f, "luxop::blob_field") %}
+        static constexpr auto blob_member = &::{{ op.fq_name }}::{{ f.name }};
+{% set found_blob = true %}{% endif %}{% endfor %}
+{% if not found_blob %}
+#error "Blob operation needs a LUX_OP_BLOB field"
+{% endif %}
+{% else %}
+#error "LUX_OP kind must be stream, resource, bulk or blob"
+{% endif %}
+{% endif %}
+    };
+{% endif %}{% endfor %}
+}

@@ -13,8 +13,48 @@ namespace lux::render
     struct GraphSamplerTag;
     struct GraphPassKeyTag;
     struct GraphShaderKeyTag;
-    using GraphTexture = cxx::StrongId<GraphTextureTag, std::uint32_t, 0>;
-    using GraphBuffer = cxx::StrongId<GraphBufferTag, std::uint32_t, 0>;
+    class RenderGraphBuilder;
+
+    // Cold authoring references. A declaration position alone cannot identify its Builder.
+    // Raw numeric construction is unscoped and is rejected by addPass(). Not a runtime handle.
+    template <typename Tag> class GraphResourceHandle
+    {
+    public:
+        constexpr GraphResourceHandle() noexcept = default;
+
+        explicit constexpr GraphResourceHandle(std::uint32_t position) noexcept : position_(position) {}
+
+        [[nodiscard]] constexpr std::uint32_t value() const noexcept
+        {
+            return position_.value();
+        }
+
+        [[nodiscard]] constexpr std::uint64_t authoringScope() const noexcept
+        {
+            return scope_;
+        }
+
+        [[nodiscard]] constexpr bool isValid() const noexcept
+        {
+            return position_.isValid();
+        }
+
+        bool operator==(const GraphResourceHandle&) const noexcept = default;
+
+    private:
+        friend class RenderGraphBuilder;
+
+        constexpr GraphResourceHandle(std::uint32_t position, std::uint64_t scope) noexcept
+            : position_(position), scope_(scope)
+        {
+        }
+
+        cxx::StrongId<Tag, std::uint32_t, 0> position_{};
+        std::uint64_t scope_{};
+    };
+
+    using GraphTexture = GraphResourceHandle<GraphTextureTag>;
+    using GraphBuffer = GraphResourceHandle<GraphBufferTag>;
     using GraphSampler = cxx::StrongId<GraphSamplerTag, std::uint64_t, 0>;
     using PassKey = cxx::StrongId<GraphPassKeyTag, std::uint64_t, 0>;
     using ShaderKey = cxx::StrongId<GraphShaderKeyTag, std::uint64_t, 0>;

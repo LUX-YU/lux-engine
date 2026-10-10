@@ -93,6 +93,55 @@ namespace lux::render
             return false;
         }
 
+        bool validFieldKind(const GraphFieldBinding& field, const GraphResource& resource) noexcept
+        {
+            if (field.resource_kind != resource.kind)
+            {
+                return false;
+            }
+            using ERole = rdesc::EPassFieldRole;
+            switch (field.role)
+            {
+            case ERole::SAMPLED_READ:
+            case ERole::STORAGE_READ:
+            case ERole::STORAGE_WRITE:
+            case ERole::STORAGE_READ_WRITE:
+            case ERole::COLOR_ATTACHMENT:
+            case ERole::DEPTH_STENCIL:
+            case ERole::RESOLVE:
+            case ERole::INPUT_ATTACHMENT:
+                return resource.kind == EGraphResourceKind::IMAGE;
+            case ERole::UNIFORM_READ:
+            case ERole::READ_ONLY_STORAGE:
+            case ERole::READ_WRITE_STORAGE:
+            case ERole::VERTEX:
+            case ERole::INDEX:
+            case ERole::INDIRECT:
+                return resource.kind == EGraphResourceKind::BUFFER;
+            case ERole::TRANSFER_SOURCE:
+            case ERole::TRANSFER_DESTINATION:
+                return true; // Both native kinds; captured wrapper kind must still match.
+            case ERole::SAMPLER:
+                return false; // A sampler is not a Graph resource.
+            }
+            return false;
+        }
+
+        bool validDepthStencil(const GraphFieldBinding& field, const GraphResource& resource) noexcept
+        {
+            const auto aspects = static_cast<std::uint32_t>(field.image_range.aspect);
+            const auto available = rdesc::textureAspectMask(resource.texture.format);
+            const bool has_depth = (aspects & static_cast<std::uint32_t>(EAspect::DEPTH)) != 0;
+            const bool has_stencil = (aspects & static_cast<std::uint32_t>(EAspect::STENCIL)) != 0;
+            const bool uses_depth = field.load != ELoadOp::DISCARD || field.store != EStoreOp::DISCARD;
+            const bool uses_stencil =
+                field.stencil_load != ELoadOp::DISCARD || field.stencil_store != EStoreOp::DISCARD;
+            const bool is_invalid_aspect = aspects == 0 || (aspects & ~available) != 0 ||
+                                           (aspects & ~static_cast<std::uint32_t>(EAspect::DEPTH_STENCIL)) != 0;
+            const bool is_missing_aspect = (uses_depth && !has_depth) || (uses_stencil && !has_stencil);
+            return !is_invalid_aspect && !is_missing_aspect;
+        }
+
         bool overlaps(const GraphResourceUse& a, const GraphResourceUse& b, bool image) noexcept
         {
             if (a.whole_resource || b.whole_resource)
@@ -227,6 +276,21 @@ namespace lux::render
                 if (is_invalid_attachment)
                 {
                     return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, field.resource.value()}});
+                }
+                if (field.role != rdesc::EPassFieldRole::SAMPLER)
+                {
+                    const bool is_invalid_id = !field.resource.isValid() || field.resource.value() > resources.size();
+                    if (is_invalid_id || !validFieldKind(field, resources[field.resource.value() - 1]))
+                    {
+                        return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, field.resource.value()}});
+                    }
+                    const bool is_invalid_depth_stencil =
+                        field.role == rdesc::EPassFieldRole::DEPTH_STENCIL &&
+                        !validDepthStencil(field, resources[field.resource.value() - 1]);
+                    if (is_invalid_depth_stencil)
+                    {
+                        return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, field.resource.value()}});
+                    }
                 }
                 if (field.role == rdesc::EPassFieldRole::RESOLVE)
                 {

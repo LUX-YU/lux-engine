@@ -1,7 +1,62 @@
 #include <lux/engine/render/graph/Builder.hpp>
 
+#include <atomic>
+#include <exception>
+#include <limits>
+
 namespace lux::render
 {
+    namespace
+    {
+        std::uint64_t nextAuthoringScope() noexcept
+        {
+            // One cold scalar counter per linked Graph module, not a registry or per-resource owner.
+            // Handles belong to this module's authoring domain; no serialization/plugin ABI is implied.
+            static std::atomic<std::uint64_t> next{1};
+            const auto value = next.fetch_add(1, std::memory_order_relaxed);
+            if (value == 0 || value == std::numeric_limits<std::uint64_t>::max())
+            {
+                std::terminate();
+            }
+            return value;
+        }
+    } // namespace
+
+    RenderGraphBuilder::RenderGraphBuilder() noexcept : scope_(nextAuthoringScope()) {}
+
+    RenderGraphBuilder::RenderGraphBuilder(RenderGraphBuilder&& other) noexcept : RenderGraphBuilder()
+    {
+        swap(other);
+    }
+
+    RenderGraphBuilder& RenderGraphBuilder::operator=(RenderGraphBuilder&& other) noexcept
+    {
+        if (this != &other)
+        {
+            RenderGraphBuilder candidate(std::move(other));
+            swap(candidate);
+        }
+        return *this;
+    }
+
+    void RenderGraphBuilder::swap(RenderGraphBuilder& other) noexcept
+    {
+        std::swap(scope_, other.scope_);
+        error_.swap(other.error_);
+        resources_.swap(other.resources_);
+        passes_.swap(other.passes_);
+    }
+
+    RenderResult<RenderGraphDefinition> RenderGraphBuilder::finish() && noexcept
+    {
+        RenderGraphBuilder consumed(std::move(*this));
+        if (consumed.error_)
+        {
+            return cxx::unexpected(*consumed.error_);
+        }
+        return RenderGraphDefinition::create(std::move(consumed.resources_), std::move(consumed.passes_));
+    }
+
     GraphTexture RenderGraphBuilder::texture(TextureDesc description, std::string_view name) noexcept
     {
         GraphResource resource;
@@ -10,7 +65,7 @@ namespace lux::render
         resource.canonical_name = name;
         resource.semantic = graphResourceKey(name);
         resources_.push_back(std::move(resource));
-        return GraphTexture{static_cast<std::uint32_t>(resources_.size())};
+        return GraphTexture{static_cast<std::uint32_t>(resources_.size()), scope_};
     }
 
     GraphBuffer RenderGraphBuilder::buffer(BufferDesc description, std::string_view name) noexcept
@@ -20,7 +75,7 @@ namespace lux::render
         resource.canonical_name = name;
         resource.semantic = graphResourceKey(name);
         resources_.push_back(std::move(resource));
-        return GraphBuffer{static_cast<std::uint32_t>(resources_.size())};
+        return GraphBuffer{static_cast<std::uint32_t>(resources_.size()), scope_};
     }
 
     GraphTexture RenderGraphBuilder::importTexture(

@@ -17,6 +17,8 @@ namespace lux::render
     {
         struct CapturedParameters
         {
+            // Parallel to uses during capture only; never part of Definition/topology identity.
+            std::vector<std::uint64_t> authoring_scopes;
             std::vector<GraphResourceUse> uses;
             std::vector<std::byte> scalars;
             std::vector<GraphFieldBinding> bindings;
@@ -98,6 +100,8 @@ namespace lux::render
                     access = EGraphAccess::READ_WRITE;
                 }
             }
+            binding.resource_kind = EGraphResourceKind::IMAGE;
+            output.authoring_scopes.push_back(id.authoringScope());
             binding.image_range = value.range;
             const auto field_index = static_cast<std::uint32_t>(output.bindings.size());
             output.bindings.push_back(std::move(binding));
@@ -136,6 +140,8 @@ namespace lux::render
             }
             auto binding = captureField(field, element);
             binding.resource = GraphResourceId{id.value()};
+            binding.resource_kind = EGraphResourceKind::BUFFER;
+            output.authoring_scopes.push_back(id.authoringScope());
             binding.buffer_range = value.range;
             const auto field_index = static_cast<std::uint32_t>(output.bindings.size());
             output.bindings.push_back(std::move(binding));

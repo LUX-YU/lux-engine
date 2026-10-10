@@ -93,6 +93,7 @@ namespace lux::render
         std::uint32_t stages{7};
         GraphResourceId resource{};
         GraphSampler sampler{};
+        EGraphResourceKind resource_kind{EGraphResourceKind::BUFFER};
         ImageRange image_range{};
         BufferRange buffer_range{};
         ELoadOp load{ELoadOp::DISCARD};
@@ -114,9 +115,9 @@ namespace lux::render
         // Initial sampler/clear values are dynamic facts, not logical topology.
         bool operator==(const GraphFieldBinding& other) const noexcept
         {
-            return image_range == other.image_range && buffer_range == other.buffer_range && path == other.path &&
-                   array_element == other.array_element && resource == other.resource &&
-                   shader_name == other.shader_name && array_count == other.array_count &&
+            return resource_kind == other.resource_kind && image_range == other.image_range &&
+                   buffer_range == other.buffer_range && path == other.path && array_element == other.array_element &&
+                   resource == other.resource && shader_name == other.shader_name && array_count == other.array_count &&
                    element_stride == other.element_stride && descriptor_array == other.descriptor_array &&
                    stages == other.stages && load == other.load && store == other.store &&
                    stencil_load == other.stencil_load && stencil_store == other.stencil_store && role == other.role &&

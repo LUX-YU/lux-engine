@@ -298,3 +298,22 @@ target_link_libraries(render_graph_contracts PRIVATE lux::engine::render::render
 foreach(case IN ITEMS ranges formats identities)
     add_test(NAME render.graph.fix_${case} COMMAND render_graph_contracts ${case})
 endforeach()
+
+add_executable(render_graph_local_identity authoring/LocalIdentity.cpp)
+
+add_dependencies(
+    render_graph_local_identity render_graph_schema_Tonemap_pass_schema render_graph_schema_Storage_pass_schema
+    render_graph_schema_Attachments_pass_schema render_graph_schema_Optional_pass_schema
+    render_graph_schema_NonShader_pass_schema render_graph_schema_Stages_pass_schema
+)
+
+target_include_directories(
+    render_graph_local_identity PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    "${CMAKE_CURRENT_SOURCE_DIR}/authoring" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+target_link_libraries(render_graph_local_identity PRIVATE lux::engine::render::render_graph)
+
+foreach(case IN ITEMS same_kind cross_kind lifecycle forged roles depth_ops aspects)
+    add_test(NAME render.graph.fix2_${case} COMMAND render_graph_local_identity ${case})
+endforeach()

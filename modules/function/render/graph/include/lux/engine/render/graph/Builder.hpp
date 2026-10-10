@@ -8,6 +8,12 @@ namespace lux::render
     class RenderGraphBuilder
     {
     public:
+        RenderGraphBuilder() noexcept;
+        RenderGraphBuilder(const RenderGraphBuilder&) = delete;
+        RenderGraphBuilder& operator=(const RenderGraphBuilder&) = delete;
+        RenderGraphBuilder(RenderGraphBuilder&& other) noexcept;
+        RenderGraphBuilder& operator=(RenderGraphBuilder&& other) noexcept;
+
         [[nodiscard]] GraphTexture texture(TextureDesc description, std::string_view name = {}) noexcept;
 
         [[nodiscard]] GraphBuffer buffer(BufferDesc description, std::string_view name = {}) noexcept;
@@ -60,6 +66,26 @@ namespace lux::render
             {
                 return cxx::unexpected(*captured.error);
             }
+            if (captured.authoring_scopes.size() != captured.uses.size())
+            {
+                return cxx::unexpected(RenderError{kGraphInvalidUse, {passes_.size() + 1, 0}});
+            }
+            for (std::size_t index = 0; index < captured.uses.size(); ++index)
+            {
+                const auto& use = captured.uses[index];
+                const bool is_foreign_scope = captured.authoring_scopes[index] != scope_;
+                const bool is_invalid_position = !use.resource.isValid() || use.resource.value() > resources_.size();
+                const bool is_invalid_field = use.field_index >= captured.bindings.size();
+                if (is_foreign_scope || is_invalid_position || is_invalid_field)
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidUse, {passes_.size() + 1, use.resource.value()}});
+                }
+                const auto kind = captured.bindings[use.field_index].resource_kind;
+                if (kind != resources_[use.resource.value() - 1].kind)
+                {
+                    return cxx::unexpected(RenderError{kGraphInvalidUse, {passes_.size() + 1, use.resource.value()}});
+                }
+            }
             const auto key = passKey(name);
             const auto shader = shaderKey(shader_reference);
             const bool is_invalid_key = !key.isValid();
@@ -107,16 +133,13 @@ namespace lux::render
             return GraphPassId{static_cast<std::uint32_t>(passes_.size())};
         }
 
-        [[nodiscard]] RenderResult<RenderGraphDefinition> finish() && noexcept
-        {
-            if (error_)
-            {
-                return cxx::unexpected(*error_);
-            }
-            return RenderGraphDefinition::create(std::move(resources_), std::move(passes_));
-        }
+        // Consumes this declaration scope; the emptied Builder receives a fresh scope.
+        [[nodiscard]] RenderResult<RenderGraphDefinition> finish() && noexcept;
 
     private:
+        void swap(RenderGraphBuilder& other) noexcept;
+
+        std::uint64_t scope_;
         std::optional<RenderError> error_;
         std::vector<GraphResource> resources_;
         std::vector<GraphPass> passes_;

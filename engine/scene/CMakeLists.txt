@@ -13,7 +13,9 @@ add_subdirectory(integration/script)
 add_subdirectory(builtin_systems/transform)
 add_subdirectory(builtin_systems/mesh_query)
 add_subdirectory(components/camera)
-add_subdirectory(builtin_systems/render)
+if(TARGET render_runtime)
+    add_subdirectory(builtin_systems/render)
+endif()
 
 add_subdirectory(builtin_systems/world_loading)
 

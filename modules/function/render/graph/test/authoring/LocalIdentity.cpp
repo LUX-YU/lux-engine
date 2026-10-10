@@ -178,8 +178,9 @@ static void roleKinds()
         for (const auto declared : {correct, wrong})
         {
             GraphResource resource;
-            resource.kind = wrong;
-            GraphFieldBinding field;
+            resource.description = wrong == EGraphResourceKind::IMAGE ? VGraphResourceDescription{TextureDesc{}}
+                                                                      : VGraphResourceDescription{BufferDesc{}};
+            CapturedFieldBinding field;
             field.resource = GraphResourceId{1};
             field.resource_kind = declared;
             field.role = role;
@@ -192,7 +193,7 @@ static void roleKinds()
     for (const auto role : {EPassFieldRole::TRANSFER_SOURCE, EPassFieldRole::TRANSFER_DESTINATION})
     {
         GraphResource resource;
-        GraphFieldBinding field;
+        CapturedFieldBinding field;
         field.resource = GraphResourceId{1};
         field.resource_kind = EGraphResourceKind::IMAGE;
         field.role = role;
@@ -269,7 +270,18 @@ static void depthOperations()
         if (combined)
         {
             const auto& pass = combined->passes()[0];
-            check(pass.bindings[2].image_range == pass.uses[2].image_range, "generated DS range equals captured use");
+            auto depth_range = std::get<ImageRange>(pass.uses[2].range);
+            auto stencil_range = std::get<ImageRange>(pass.uses[3].range);
+            check(
+                depth_range.aspect == EAspect::DEPTH && stencil_range.aspect == EAspect::STENCIL,
+                "mixed DS capture splits both aspects"
+            );
+            depth_range.aspect = EAspect::DEPTH_STENCIL;
+            stencil_range.aspect = EAspect::DEPTH_STENCIL;
+            check(
+                pass.bindings[2].image_range == depth_range && pass.bindings[2].image_range == stencil_range,
+                "union of split DS uses exactly equals generated field range"
+            );
         }
         value.range.aspect = EAspect::STENCIL;
         check(!depth(format, value), "stencil-only view rejects depth clear/store");

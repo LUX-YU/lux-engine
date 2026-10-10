@@ -12,11 +12,36 @@ namespace lux::render
     {
         constexpr std::array kErrors{
             error::ErrorDescriptor{
-                "lux.render.graph.unsupported_scheduling",
-                "Subresource schedule is not available (pass, resource)",
+                "lux.render.graph.ambiguous_producer",
+                "Ambiguous version or provider (pass, resource)",
                 error::ERecovery::PERMANENT,
                 {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
             },
+            error::ErrorDescriptor{
+                "lux.render.graph.scope_conflict",
+                "Invocation scope conflict (pass, resource)",
+                error::ERecovery::PERMANENT,
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
+            },
+            error::ErrorDescriptor{
+                "lux.render.graph.conditional_input",
+                "Conditional input lacks a valid alternative (pass, resource)",
+                error::ERecovery::PERMANENT,
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
+            },
+            error::ErrorDescriptor{
+                "lux.render.graph.invalid_output",
+                "Invalid output effect or version (pass, resource)",
+                error::ERecovery::PERMANENT,
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
+            },
+            error::ErrorDescriptor{
+                "lux.render.graph.invalid_import",
+                "Invalid logical import initialization contract (pass, resource)",
+                error::ERecovery::PERMANENT,
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
+            },
+
             error::ErrorDescriptor{
                 "lux.render.graph.invalid_resource",
                 "Invalid resource declaration (resource)",
@@ -37,9 +62,9 @@ namespace lux::render
             },
             error::ErrorDescriptor{
                 "lux.render.graph.cycle",
-                "Cyclic dependencies (unscheduled pass count)",
+                "Cyclic dependencies (path endpoints; detailed diagnostic available)",
                 error::ERecovery::PERMANENT,
-                {error::EArgument::UNSIGNED}
+                {error::EArgument::UNSIGNED, error::EArgument::UNSIGNED}
             },
             error::ErrorDescriptor{
                 "lux.render.graph.missing_producer",
@@ -63,7 +88,7 @@ namespace lux::render
             {
                 return false;
             }
-            const bool is_image = resource.kind == EGraphResourceKind::IMAGE;
+            const bool is_image = resource.kind() == EGraphResourceKind::IMAGE;
             const bool is_read = use.access == EGraphAccess::READ;
             switch (use.usage)
             {
@@ -74,10 +99,10 @@ namespace lux::render
             case EGraphUsage::COLOR_ATTACHMENT:
             case EGraphUsage::RESOLVE:
                 return is_image &&
-                       rdesc::supportsTextureUsage(resource.texture.format, rdesc::ETextureUsage::COLOR_ATTACHMENT);
+                       rdesc::supportsTextureUsage(resource.texture().format, rdesc::ETextureUsage::COLOR_ATTACHMENT);
             case EGraphUsage::DEPTH_ATTACHMENT:
                 return is_image && rdesc::supportsTextureUsage(
-                                       resource.texture.format,
+                                       resource.texture().format,
                                        rdesc::ETextureUsage::DEPTH_STENCIL_ATTACHMENT
                                    );
             case EGraphUsage::INPUT_ATTACHMENT:
@@ -93,9 +118,9 @@ namespace lux::render
             return false;
         }
 
-        bool validFieldKind(const GraphFieldBinding& field, const GraphResource& resource) noexcept
+        bool validFieldKind(const CapturedFieldBinding& field, const GraphResource& resource) noexcept
         {
-            if (field.resource_kind != resource.kind)
+            if (field.resource_kind != resource.kind())
             {
                 return false;
             }
@@ -110,14 +135,14 @@ namespace lux::render
             case ERole::DEPTH_STENCIL:
             case ERole::RESOLVE:
             case ERole::INPUT_ATTACHMENT:
-                return resource.kind == EGraphResourceKind::IMAGE;
+                return resource.kind() == EGraphResourceKind::IMAGE;
             case ERole::UNIFORM_READ:
             case ERole::READ_ONLY_STORAGE:
             case ERole::READ_WRITE_STORAGE:
             case ERole::VERTEX:
             case ERole::INDEX:
             case ERole::INDIRECT:
-                return resource.kind == EGraphResourceKind::BUFFER;
+                return resource.kind() == EGraphResourceKind::BUFFER;
             case ERole::TRANSFER_SOURCE:
             case ERole::TRANSFER_DESTINATION:
                 return true; // Both native kinds; captured wrapper kind must still match.
@@ -127,10 +152,10 @@ namespace lux::render
             return false;
         }
 
-        bool validDepthStencil(const GraphFieldBinding& field, const GraphResource& resource) noexcept
+        bool validDepthStencil(const CapturedFieldBinding& field, const GraphResource& resource) noexcept
         {
             const auto aspects = static_cast<std::uint32_t>(field.image_range.aspect);
-            const auto available = rdesc::textureAspectMask(resource.texture.format);
+            const auto available = rdesc::textureAspectMask(resource.texture().format);
             const bool has_depth = (aspects & static_cast<std::uint32_t>(EAspect::DEPTH)) != 0;
             const bool has_stencil = (aspects & static_cast<std::uint32_t>(EAspect::STENCIL)) != 0;
             const bool uses_depth = field.load != ELoadOp::DISCARD || field.store != EStoreOp::DISCARD;
@@ -144,17 +169,15 @@ namespace lux::render
 
         bool overlaps(const GraphResourceUse& a, const GraphResourceUse& b, bool image) noexcept
         {
-            if (a.whole_resource || b.whole_resource)
-            {
-                return true;
-            }
             if (!image)
             {
-                return a.buffer_range.byte_offset < b.buffer_range.byte_offset + b.buffer_range.byte_count &&
-                       b.buffer_range.byte_offset < a.buffer_range.byte_offset + a.buffer_range.byte_count;
+                return std::get<BufferRange>(a.range).byte_offset <
+                           std::get<BufferRange>(b.range).byte_offset + std::get<BufferRange>(b.range).byte_count &&
+                       std::get<BufferRange>(b.range).byte_offset <
+                           std::get<BufferRange>(a.range).byte_offset + std::get<BufferRange>(a.range).byte_count;
             }
-            const auto& x = a.image_range;
-            const auto& y = b.image_range;
+            const auto& x = std::get<ImageRange>(a.range);
+            const auto& y = std::get<ImageRange>(b.range);
             const bool same_aspect = (static_cast<unsigned>(x.aspect) & static_cast<unsigned>(y.aspect)) != 0;
             const bool same_mip = x.base_mip < y.base_mip + y.mip_count && y.base_mip < x.base_mip + x.mip_count;
             const bool same_layer =
@@ -164,21 +187,17 @@ namespace lux::render
 
         bool validRange(const GraphResource& resource, const GraphResourceUse& use) noexcept
         {
-            if (use.whole_resource)
+            if (resource.kind() == EGraphResourceKind::BUFFER)
             {
-                return true;
-            }
-            if (resource.kind == EGraphResourceKind::BUFFER)
-            {
-                const auto& range = use.buffer_range;
+                const auto& range = std::get<BufferRange>(use.range);
                 const bool valid_layout = use.byte_alignment != 0 && range.byte_offset % use.byte_alignment == 0 &&
                                           range.byte_count >= use.minimum_bytes &&
                                           (use.element_stride == 0 || range.byte_count % use.element_stride == 0);
-                return valid_layout && range.byte_count != 0 && range.byte_offset <= resource.buffer.byte_size &&
-                       range.byte_count <= resource.buffer.byte_size - range.byte_offset;
+                return valid_layout && range.byte_count != 0 && range.byte_offset <= resource.buffer().byte_size &&
+                       range.byte_count <= resource.buffer().byte_size - range.byte_offset;
             }
-            const auto& range = use.image_range;
-            const auto& texture = resource.texture;
+            const auto& range = std::get<ImageRange>(use.range);
+            const auto& texture = resource.texture();
             const bool valid_mips = range.mip_count != 0 && range.base_mip <= texture.mip_count &&
                                     range.mip_count <= texture.mip_count - range.base_mip;
             const bool valid_layers = range.layer_count != 0 && range.base_layer <= texture.array_layers &&
@@ -198,16 +217,21 @@ namespace lux::render
     RenderGraphDefinition::RenderGraphDefinition(
         std::vector<GraphResource> resources,
         std::vector<GraphPass> passes,
-        std::vector<GraphDependency> dependencies
+        std::vector<GraphDependency> dependencies,
+        std::vector<GraphOutput> outputs,
+        std::vector<GraphProvider> providers
     ) noexcept
-        : resources_(std::move(resources)), passes_(std::move(passes)), dependencies_(std::move(dependencies))
+        : resources_(std::move(resources)), passes_(std::move(passes)), dependencies_(std::move(dependencies)),
+          outputs_(std::move(outputs)), providers_(std::move(providers))
     {
     }
 
     RenderResult<RenderGraphDefinition> RenderGraphDefinition::create(
         std::vector<GraphResource> resources,
         std::vector<GraphPass> passes,
-        std::vector<GraphDependency> dependencies
+        std::vector<GraphDependency> dependencies,
+        std::vector<GraphOutput> outputs,
+        std::vector<GraphProvider> providers
     ) noexcept
     {
         const bool is_too_large = resources.size() > std::numeric_limits<std::uint32_t>::max() ||
@@ -219,15 +243,13 @@ namespace lux::render
         for (std::size_t index = 0; index < resources.size(); ++index)
         {
             const auto& resource = resources[index];
-            const bool is_invalid_kind =
-                resource.kind != EGraphResourceKind::BUFFER && resource.kind != EGraphResourceKind::IMAGE;
             const bool is_invalid_origin =
                 resource.origin != EGraphResourceOrigin::TRANSIENT && resource.origin != EGraphResourceOrigin::IMPORTED;
             const bool is_invalid_target =
-                resource.target_semantic.isValid() && resource.kind != EGraphResourceKind::IMAGE;
-            const bool is_image = resource.kind == EGraphResourceKind::IMAGE;
-            const auto& texture = resource.texture;
-            const auto& buffer = resource.buffer;
+                resource.target_semantic.isValid() && resource.kind() != EGraphResourceKind::IMAGE;
+            const bool is_image = resource.kind() == EGraphResourceKind::IMAGE;
+            const auto texture = is_image ? resource.texture() : TextureDesc{};
+            const auto buffer = is_image ? BufferDesc{} : resource.buffer();
             const bool is_invalid_texture =
                 is_image && (texture.width == 0 || texture.height == 0 || texture.depth == 0 ||
                              texture.mip_count == 0 || texture.array_layers == 0 || texture.samples == 0 ||
@@ -241,8 +263,8 @@ namespace lux::render
             const bool is_invalid_scope = invalid_identity || resource.persistent_scope > EPersistentScope::VIEW ||
                                           (resource.origin == EGraphResourceOrigin::TRANSIENT &&
                                            resource.persistent_scope != EPersistentScope::NONE);
-            const bool is_invalid_resource = is_invalid_kind || is_invalid_origin || is_invalid_target ||
-                                             is_invalid_texture || is_invalid_buffer || is_invalid_scope;
+            const bool is_invalid_resource =
+                is_invalid_origin || is_invalid_target || is_invalid_texture || is_invalid_buffer || is_invalid_scope;
             if (is_invalid_resource)
             {
                 return cxx::unexpected(RenderError{kGraphInvalidResource, {index + 1}});
@@ -261,8 +283,20 @@ namespace lux::render
         }
         for (std::size_t index = 0; index < passes.size(); ++index)
         {
-            const auto& pass = passes[index];
-            const bool invalid_pass = pass.kind > EPassKind::HOST_READBACK || pass.scope > EExecutionScope::TARGET;
+            auto& pass = passes[index];
+            if (pass.canonical_name.empty())
+            {
+                pass.canonical_name = "anonymous.pass." + std::to_string(index + 1);
+                pass.key = passKey(pass.canonical_name);
+            }
+            const bool invalid_pass_identity = pass.key != passKey(pass.canonical_name) ||
+                                               std::any_of(
+                                                   passes.begin(),
+                                                   passes.begin() + index,
+                                                   [&](const auto& previous) { return previous.key == pass.key; }
+                                               );
+            const bool invalid_pass = pass.kind > EPassKind::HOST_READBACK || pass.scope > EExecutionScope::TARGET ||
+                                      (pass.invocation_inputs & ~15u) != 0 || invalid_pass_identity;
             if (invalid_pass)
             {
                 return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, 0}});
@@ -311,8 +345,8 @@ namespace lux::render
                     {
                         return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, field.resource.value()}});
                     }
-                    const auto& source = resources[paired->resource.value() - 1].texture;
-                    const auto& target = resources[field.resource.value() - 1].texture;
+                    const auto& source = resources[paired->resource.value() - 1].texture();
+                    const auto& target = resources[field.resource.value() - 1].texture();
                     const bool is_invalid_resolve = source.samples <= 1 || target.samples != 1 ||
                                                     source.format != target.format || source.width != target.width ||
                                                     source.height != target.height || source.depth != target.depth ||
@@ -332,7 +366,7 @@ namespace lux::render
                 {
                     return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, field.resource.value()}});
                 }
-                const auto format = resources[field.resource.value() - 1].texture.format;
+                const auto format = resources[field.resource.value() - 1].texture().format;
                 const bool is_mismatch =
                     !rdesc::supportsTextureUsage(format, rdesc::ETextureUsage::STORAGE) ||
                     (field.image_format == "rgba16f" && format != rdesc::ETextureFormat::RGBA16_SFLOAT) ||
@@ -354,27 +388,49 @@ namespace lux::render
             for (auto& use : uses)
             {
                 const bool is_invalid_id = !use.resource.isValid() || use.resource.value() > resources.size();
-                if (!is_invalid_id && !use.whole_resource)
+                if (!is_invalid_id)
                 {
                     const auto& resource = resources[use.resource.value() - 1];
-                    auto& image = use.image_range;
-                    auto& buffer = use.buffer_range;
-                    if (resource.kind == EGraphResourceKind::IMAGE)
+                    if (std::holds_alternative<WholeResource>(use.range))
                     {
-                        if (image.base_mip <= resource.texture.mip_count && image.mip_count == kRemainingSubresources)
+                        use.range = resource.kind() == EGraphResourceKind::IMAGE
+                                        ? VGraphRange{ImageRange{
+                                              static_cast<EAspect>(rdesc::textureAspectMask(resource.texture().format)),
+                                              0,
+                                              resource.texture().mip_count,
+                                              0,
+                                              resource.texture().array_layers
+                                          }}
+                                        : VGraphRange{BufferRange{0, resource.buffer().byte_size}};
+                    }
+                    const bool is_wrong_range =
+                        (resource.kind() == EGraphResourceKind::IMAGE) != std::holds_alternative<ImageRange>(use.range);
+                    if (is_wrong_range)
+                    {
+                        return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, use.resource.value()}});
+                    }
+                    ImageRange image =
+                        resource.kind() == EGraphResourceKind::IMAGE ? std::get<ImageRange>(use.range) : ImageRange{};
+                    BufferRange buffer = resource.kind() == EGraphResourceKind::BUFFER
+                                             ? std::get<BufferRange>(use.range)
+                                             : BufferRange{};
+                    if (resource.kind() == EGraphResourceKind::IMAGE)
+                    {
+                        if (image.base_mip <= resource.texture().mip_count && image.mip_count == kRemainingSubresources)
                         {
-                            image.mip_count = resource.texture.mip_count - image.base_mip;
+                            image.mip_count = resource.texture().mip_count - image.base_mip;
                         }
-                        if (image.base_layer <= resource.texture.array_layers &&
+                        if (image.base_layer <= resource.texture().array_layers &&
                             image.layer_count == kRemainingSubresources)
                         {
-                            image.layer_count = resource.texture.array_layers - image.base_layer;
+                            image.layer_count = resource.texture().array_layers - image.base_layer;
                         }
                     }
-                    else if (buffer.byte_offset <= resource.buffer.byte_size && buffer.byte_count == kRemainingBytes)
+                    else if (buffer.byte_offset <= resource.buffer().byte_size && buffer.byte_count == kRemainingBytes)
                     {
-                        buffer.byte_count = resource.buffer.byte_size - buffer.byte_offset;
+                        buffer.byte_count = resource.buffer().byte_size - buffer.byte_offset;
                     }
+                    use.range = resource.kind() == EGraphResourceKind::IMAGE ? VGraphRange{image} : VGraphRange{buffer};
                     if (use.field_index < passes[index].bindings.size())
                     {
                         auto& field = passes[index].bindings[use.field_index];
@@ -399,9 +455,9 @@ namespace lux::render
                                 cube ? (image.layer_count % 6 != 0 || (!arrayed && image.layer_count != 6))
                                      : (!arrayed && image.layer_count != 1);
                             const bool multisampled = field.dimension.find("MS") != std::string::npos;
-                            const bool invalid_view = resource.texture.dimension != expected_dimension ||
+                            const bool invalid_view = resource.texture().dimension != expected_dimension ||
                                                       invalid_layers ||
-                                                      multisampled != (resource.texture.samples > 1) ||
+                                                      multisampled != (resource.texture().samples > 1) ||
                                                       image.aspect == EAspect::DEPTH_STENCIL;
                             if (invalid_view)
                             {
@@ -418,6 +474,48 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, use.resource.value()}});
                 }
             }
+            const bool has_depth_stencil = std::any_of(
+                uses.begin(),
+                uses.end(),
+                [&](const auto& use)
+                {
+                    return use.usage == EGraphUsage::DEPTH_ATTACHMENT && use.field_index < pass.bindings.size() &&
+                           pass.bindings[use.field_index].role == rdesc::EPassFieldRole::DEPTH_STENCIL;
+                }
+            );
+            if (has_depth_stencil)
+            {
+                std::vector<GraphResourceUse> aspect_uses;
+                for (const auto& use : uses)
+                {
+                    const bool has_depth_field =
+                        use.usage == EGraphUsage::DEPTH_ATTACHMENT && use.field_index < pass.bindings.size() &&
+                        pass.bindings[use.field_index].role == rdesc::EPassFieldRole::DEPTH_STENCIL;
+                    if (!has_depth_field)
+                    {
+                        aspect_uses.push_back(use);
+                        continue;
+                    }
+                    const auto& field = pass.bindings[use.field_index];
+                    const auto range = std::get<ImageRange>(use.range);
+                    for (const auto aspect : {EAspect::DEPTH, EAspect::STENCIL})
+                    {
+                        if ((static_cast<unsigned>(range.aspect) & static_cast<unsigned>(aspect)) == 0)
+                        {
+                            continue;
+                        }
+                        auto split = use;
+                        auto split_range = range;
+                        split_range.aspect = aspect;
+                        split.range = split_range;
+                        const auto load = aspect == EAspect::STENCIL ? field.stencil_load : field.load;
+                        split.access = load == ELoadOp::LOAD ? EGraphAccess::READ_WRITE : EGraphAccess::WRITE;
+                        aspect_uses.push_back(std::move(split));
+                    }
+                }
+                uses = std::move(aspect_uses);
+            }
+
             for (auto& use : uses)
             {
                 const bool is_invalid_id = !use.resource.isValid() || use.resource.value() > resources.size();
@@ -431,9 +529,18 @@ namespace lux::render
                             break;
                         }
                         const bool same_resource = other.resource == use.resource;
-                        const bool is_image = resources[use.resource.value() - 1].kind == EGraphResourceKind::IMAGE;
+                        const bool is_image = resources[use.resource.value() - 1].kind() == EGraphResourceKind::IMAGE;
                         const bool reads_only = other.access == EGraphAccess::READ && use.access == EGraphAccess::READ;
-                        is_duplicate = is_duplicate || (same_resource && !reads_only && overlaps(other, use, is_image));
+                        const auto& read = use.local_read ? use : other;
+                        const auto& write = use.local_read ? other : use;
+                        const bool explicit_local_read =
+                            pass.kind == EPassKind::GRAPHICS && read.local_read &&
+                            read.usage == EGraphUsage::INPUT_ATTACHMENT && read.access == EGraphAccess::READ &&
+                            !write.local_read && write.access != EGraphAccess::READ && read.range == write.range &&
+                            (write.usage == EGraphUsage::COLOR_ATTACHMENT ||
+                             write.usage == EGraphUsage::DEPTH_ATTACHMENT);
+                        is_duplicate = is_duplicate || (same_resource && !reads_only && !explicit_local_read &&
+                                                        overlaps(other, use, is_image));
                     }
                 }
                 const bool is_invalid_use = is_invalid_id || is_duplicate ||
@@ -444,15 +551,6 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, use.resource.value()}});
                 }
                 const auto& resource = resources[use.resource.value() - 1];
-                const bool covers_image =
-                    resource.kind == EGraphResourceKind::IMAGE && use.image_range.base_mip == 0 &&
-                    use.image_range.mip_count == resource.texture.mip_count && use.image_range.base_layer == 0 &&
-                    use.image_range.layer_count == resource.texture.array_layers &&
-                    static_cast<unsigned>(use.image_range.aspect) == rdesc::textureAspectMask(resource.texture.format);
-                const bool covers_buffer = resource.kind == EGraphResourceKind::BUFFER &&
-                                           use.buffer_range.byte_offset == 0 &&
-                                           use.buffer_range.byte_count == resource.buffer.byte_size;
-                use.whole_resource = use.whole_resource || covers_image || covers_buffer;
             }
         }
         for (const auto& dependency : dependencies)
@@ -482,6 +580,12 @@ namespace lux::render
             }
         );
         dependencies.erase(std::unique(dependencies.begin(), dependencies.end()), dependencies.end());
-        return RenderGraphDefinition{std::move(resources), std::move(passes), std::move(dependencies)};
+        return RenderGraphDefinition{
+            std::move(resources),
+            std::move(passes),
+            std::move(dependencies),
+            std::move(outputs),
+            std::move(providers)
+        };
     }
 } // namespace lux::render

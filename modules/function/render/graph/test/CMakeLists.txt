@@ -317,3 +317,56 @@ target_link_libraries(render_graph_local_identity PRIVATE lux::engine::render::r
 foreach(case IN ITEMS same_kind cross_kind lifecycle forged roles depth_ops aspects)
     add_test(NAME render.graph.fix2_${case} COMMAND render_graph_local_identity ${case})
 endforeach()
+
+add_executable(render_graph_logical_test Logical.cpp)
+
+target_link_libraries(render_graph_logical_test PRIVATE lux::engine::render::render_graph)
+
+foreach(case IN ITEMS ranges versions initialization depth_stencil providers conditions culling scopes feedback oracle)
+    add_test(NAME render.graph.logical_${case} COMMAND render_graph_logical_test ${case})
+endforeach()
+
+foreach(probe IN ITEMS CONTROL TEMP_VECTOR TEMP_INVOCATION WRONG_SHADER WRONG_STORAGE)
+    if(probe STREQUAL CONTROL)
+        add_executable(render_graph_author_logical_${probe} AuthoringLogical.cpp)
+    else()
+        add_executable(render_graph_author_logical_${probe} EXCLUDE_FROM_ALL AuthoringLogical.cpp)
+    endif()
+
+    add_dependencies(render_graph_author_logical_${probe} render_graph_schema_Tonemap_pass_schema
+        render_graph_schema_Storage_pass_schema render_graph_schema_Transfer_pass_schema
+    )
+
+    target_include_directories(render_graph_author_logical_${probe} PRIVATE
+        "${CMAKE_CURRENT_BINARY_DIR}/generated" "${CMAKE_CURRENT_SOURCE_DIR}/authoring"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+    )
+
+    target_link_libraries(render_graph_author_logical_${probe} PRIVATE lux::engine::render::render_graph)
+
+    target_compile_definitions(render_graph_author_logical_${probe} PRIVATE LUX_${probe})
+
+    if(probe STREQUAL CONTROL)
+        add_test(NAME render.graph.logical_authoring COMMAND render_graph_author_logical_CONTROL)
+    else()
+        if(probe STREQUAL WRONG_SHADER)
+            set(expected "graphics")
+        else()
+            set(expected "create")
+        endif()
+
+        add_test(NAME render.graph.logical_reject_${probe}
+            COMMAND "${CMAKE_COMMAND}" "-DBUILD_DIR=${CMAKE_BINARY_DIR}"
+                "-DREJECT_TARGET=render_graph_author_logical_${probe}" "-DEXPECTED=${expected}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/authoring/Reject.cmake"
+        )
+
+        set_tests_properties(render.graph.logical_reject_${probe} PROPERTIES RUN_SERIAL TRUE)
+    endif()
+endforeach()
+
+add_executable(render_graph_logical_benchmark LogicalBenchmark.cpp)
+
+target_link_libraries(render_graph_logical_benchmark PRIVATE lux::engine::render::render_graph)
+
+add_test(NAME render.graph.logical_compile_benchmark COMMAND render_graph_logical_benchmark)

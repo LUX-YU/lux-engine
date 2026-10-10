@@ -7,8 +7,8 @@
 #include "Transfer.pass.hpp"
 #include <cstring>
 #include <iostream>
+#include <lux/engine/render/graph/Bindings.hpp>
 #include <lux/engine/render/graph/Builder.hpp>
-#include <lux/engine/render/graph/Plan.hpp>
 
 using namespace lux::render;
 
@@ -96,12 +96,9 @@ int main()
     check(bool(hz), "disjoint mip declarations are representable");
     if (hz)
     {
-        check(hz->passes()[0].uses[1].image_range.base_mip == 1, "mip range retained");
-        const auto schedule = CompiledGraphPlan::compile(*hz);
-        check(
-            !schedule && schedule.error().type == kGraphUnsupportedScheduling,
-            "R3 scheduler cannot silently claim subresource support"
-        );
+        check(std::get<ImageRange>(hz->passes()[0].uses[1].range).base_mip == 1, "mip range retained");
+        const auto schedule = compileLogicalGraph(*hz);
+        check(bool(schedule) && !schedule->versions().empty(), "F2 compiles disjoint mip versions");
     }
 
     RenderGraphBuilder invalid;
@@ -267,7 +264,15 @@ int main()
         "new initial dynamic values accepted"
     );
     auto same_topology = std::move(updated).finish();
-    check(definition && same_topology && *definition == *same_topology, "dynamic values do not alter logical topology");
+    check(definition && same_topology && *definition != *same_topology, "Definition preserves actual dynamic values");
+    if (definition && same_topology)
+    {
+        auto plan = compileLogicalGraph(*definition);
+        check(plan && plan->matches(*same_topology), "dynamic values do not alter logical compilation identity");
+        auto first = makeGraphInvocationData(*definition);
+        auto next = makeGraphInvocationData(*same_topology);
+        check(first.passes[0] != next.passes[0], "new invocation carries updated scalars sampler and clear");
+    }
     std::cout << "builder_failures=" << failures << '\n';
     return failures != 0;
 }

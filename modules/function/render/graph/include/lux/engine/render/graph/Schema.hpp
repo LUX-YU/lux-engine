@@ -21,7 +21,7 @@ namespace lux::render
             std::vector<std::uint64_t> authoring_scopes;
             std::vector<GraphResourceUse> uses;
             std::vector<std::byte> scalars;
-            std::vector<GraphFieldBinding> bindings;
+            std::vector<CapturedFieldBinding> bindings;
             std::optional<RenderError> error;
         };
 
@@ -32,9 +32,9 @@ namespace lux::render
             std::memcpy(output.scalars.data() + offset, &value, sizeof(T));
         }
 
-        inline GraphFieldBinding captureField(const rdesc::PassResourceField& field, std::uint32_t element) noexcept
+        inline CapturedFieldBinding captureField(const rdesc::PassResourceField& field, std::uint32_t element) noexcept
         {
-            GraphFieldBinding result;
+            CapturedFieldBinding result;
             result.path = field.path;
             result.array_element = element;
             result.shader_name = field.shader_name;
@@ -109,9 +109,7 @@ namespace lux::render
                 {GraphResourceId{id.value()},
                  access,
                  resourceUsage(role),
-                 false,
                  value.range,
-                 {},
                  field.stages,
                  0,
                  1,
@@ -149,8 +147,6 @@ namespace lux::render
                 {GraphResourceId{id.value()},
                  resourceAccess(role),
                  resourceUsage(role),
-                 false,
-                 {},
                  value.range,
                  field.stages,
                  field.element_stride,

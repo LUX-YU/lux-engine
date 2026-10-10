@@ -56,20 +56,23 @@ static void ranges()
     if (good)
     {
         const auto& pass = good->passes()[0];
-        check(pass.uses[0].buffer_range.byte_count == 64, "64-byte UBO default is 64 bytes");
+        check(std::get<BufferRange>(pass.uses[0].range).byte_count == 64, "64-byte UBO default is 64 bytes");
         check(
-            pass.uses[2].buffer_range.byte_count == 256 && pass.uses[2].element_stride == 16,
+            std::get<BufferRange>(pass.uses[2].range).byte_count == 256 && pass.uses[2].element_stride == 16,
             "runtime SSBO resolves to 16 bounded elements"
         );
         check(
-            pass.uses[3].image_range.mip_count == 5 && pass.uses[3].image_range.layer_count == 4,
+            std::get<ImageRange>(pass.uses[3].range).mip_count == 5 &&
+                std::get<ImageRange>(pass.uses[3].range).layer_count == 4,
             "implicit LOD default covers every mip and layer"
         );
         for (const auto& use : pass.uses)
         {
             const auto& field = pass.bindings[use.field_index];
             check(
-                field.image_range == use.image_range && field.buffer_range == use.buffer_range,
+                (std::holds_alternative<ImageRange>(use.range)
+                     ? field.image_range == std::get<ImageRange>(use.range)
+                     : field.buffer_range == std::get<BufferRange>(use.range)),
                 "binding and dependency use identical finite range"
             );
         }
@@ -78,7 +81,10 @@ static void ranges()
     check(bool(narrow), "explicit UBO/SSBO/native view ranges accepted");
     if (narrow)
     {
-        check(narrow->passes()[0].uses[2].buffer_range == BufferRange{32, 64}, "SSBO byte range preserved");
+        check(
+            std::get<BufferRange>(narrow->passes()[0].uses[2].range) == BufferRange{32, 64},
+            "SSBO byte range preserved"
+        );
         check(
             narrow->passes()[0].bindings[3].image_range == ImageRange{EAspect::COLOR, 1, 2, 1, 2},
             "explicit native view does not widen or narrow silently"

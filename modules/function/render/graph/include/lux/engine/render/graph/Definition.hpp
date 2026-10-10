@@ -7,8 +7,10 @@
 #include <lux/engine/render/core/Error.hpp>
 #include <lux/engine/render/core/Identity.hpp>
 #include <lux/engine/render/graph/Authoring.hpp>
+#include <optional>
 #include <span>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace lux::render
@@ -49,20 +51,84 @@ namespace lux::render
         RESOLVE
     };
 
+    struct WholeResource
+    {
+        bool operator==(const WholeResource&) const noexcept = default;
+    };
+
+    using VGraphRange = std::variant<WholeResource, ImageRange, BufferRange>;
+
+    // Neutral import boundary. This is a logical initialization promise, never a native fence.
+    // Empty initialized_ranges permits writes only until a graph producer supplies a version.
+    struct GraphImportContract
+    {
+        std::vector<VGraphRange> initialized_ranges{WholeResource{}};
+        bool temporal_history{false};
+        bool operator==(const GraphImportContract&) const noexcept = default;
+    };
+
     // IDs are one-based declaration positions, scoped to this definition. They
     // are neither runtime handles nor identities across unrelated definitions.
+    using VGraphResourceDescription = std::variant<BufferDesc, TextureDesc>;
+
     struct GraphResource
     {
-        EGraphResourceKind kind{EGraphResourceKind::BUFFER};
+        VGraphResourceDescription description{BufferDesc{}};
         EGraphResourceOrigin origin{EGraphResourceOrigin::TRANSIENT};
         RenderTargetSemanticId target_semantic{};
         EPersistentScope persistent_scope{EPersistentScope::NONE};
-        TextureDesc texture{};
-        BufferDesc buffer{};
         std::string canonical_name;
         GraphResourceKey semantic{};
+        std::optional<GraphImportContract> import_contract;
+
+        [[nodiscard]] EGraphResourceKind kind() const noexcept
+        {
+            return std::holds_alternative<TextureDesc>(description) ? EGraphResourceKind::IMAGE
+                                                                    : EGraphResourceKind::BUFFER;
+        }
+
+        [[nodiscard]] const TextureDesc& texture() const noexcept
+        {
+            return std::get<TextureDesc>(description);
+        }
+
+        [[nodiscard]] const BufferDesc& buffer() const noexcept
+        {
+            return std::get<BufferDesc>(description);
+        }
 
         bool operator==(const GraphResource&) const noexcept = default;
+    };
+
+    struct AutomaticProducer
+    {
+        bool operator==(const AutomaticProducer&) const noexcept = default;
+    };
+
+    struct ImportedProducer
+    {
+        bool operator==(const ImportedProducer&) const noexcept = default;
+    };
+
+    struct PassProducer
+    {
+        PassKey pass;
+        bool operator==(const PassProducer&) const noexcept = default;
+    };
+
+    struct SemanticProducer
+    {
+        GraphResourceKey semantic;
+        bool operator==(const SemanticProducer&) const noexcept = default;
+    };
+
+    using VGraphProducer = std::variant<AutomaticProducer, ImportedProducer, PassProducer, SemanticProducer>;
+
+    struct GraphFallback
+    {
+        GraphResourceId resource;
+        VGraphProducer producer{ImportedProducer{}};
+        bool operator==(const GraphFallback&) const noexcept = default;
     };
 
     struct GraphResourceUse
@@ -70,19 +136,20 @@ namespace lux::render
         GraphResourceId resource;
         EGraphAccess access{EGraphAccess::READ};
         EGraphUsage usage{EGraphUsage::SHADER};
-        bool whole_resource{true};
-        ImageRange image_range{};
-        BufferRange buffer_range{};
+        VGraphRange range{WholeResource{}};
         std::uint32_t stages{7};
         std::uint64_t minimum_bytes{};
         std::uint32_t byte_alignment{1};
         std::uint32_t element_stride{};
         std::uint32_t field_index{~0u};
+        VGraphProducer producer{AutomaticProducer{}};
+        std::optional<GraphFallback> fallback;
+        bool local_read{false};
 
         bool operator==(const GraphResourceUse&) const noexcept = default;
     };
 
-    struct GraphFieldBinding
+    struct CapturedFieldBinding
     {
         std::string path;
         std::uint32_t array_element{};
@@ -112,19 +179,7 @@ namespace lux::render
         std::string dimension;
         std::string image_format;
 
-        // Initial sampler/clear values are dynamic facts, not logical topology.
-        bool operator==(const GraphFieldBinding& other) const noexcept
-        {
-            return resource_kind == other.resource_kind && image_range == other.image_range &&
-                   buffer_range == other.buffer_range && path == other.path && array_element == other.array_element &&
-                   resource == other.resource && shader_name == other.shader_name && array_count == other.array_count &&
-                   element_stride == other.element_stride && descriptor_array == other.descriptor_array &&
-                   stages == other.stages && load == other.load && store == other.store &&
-                   stencil_load == other.stencil_load && stencil_store == other.stencil_store && role == other.role &&
-                   owner == other.owner && frequency == other.frequency && required == other.required &&
-                   semantic == other.semantic && paired_texture == other.paired_texture &&
-                   dimension == other.dimension && image_format == other.image_format;
-        }
+        bool operator==(const CapturedFieldBinding&) const noexcept = default;
     };
 
     struct GraphScalarField
@@ -155,15 +210,39 @@ namespace lux::render
         std::string shader_declarations;
         std::vector<GraphScalarField> scalar_fields;
         std::vector<std::byte> initial_scalars;
-        std::vector<GraphFieldBinding> bindings;
+        std::vector<CapturedFieldBinding> bindings;
 
-        bool operator==(const GraphPass& other) const noexcept
-        {
-            return canonical_name == other.canonical_name && shader_name == other.shader_name && uses == other.uses &&
-                   key == other.key && shader == other.shader && kind == other.kind && scope == other.scope &&
-                   schema_name == other.schema_name && bindings == other.bindings &&
-                   shader_declarations == other.shader_declarations && scalar_fields == other.scalar_fields;
-        }
+        // Zero is unconditional. Nonzero keys identify an atomic conditional group.
+        GraphResourceKey condition{};
+        // Explicit non-resource inputs: camera=1, render time=2, view history=4, target=8.
+        std::uint32_t invocation_inputs{};
+        bool operator==(const GraphPass&) const noexcept = default;
+    };
+
+    enum class EGraphOutput
+    {
+        EXPORT,
+        PRESENT,
+        READBACK,
+        EXTERNAL_WRITE
+    };
+
+    struct GraphOutput
+    {
+        GraphResourceId resource;
+        VGraphProducer producer{AutomaticProducer{}};
+        VGraphRange range{WholeResource{}};
+        EGraphOutput kind{EGraphOutput::EXPORT};
+        GraphResourceKey semantic{};
+        bool operator==(const GraphOutput&) const noexcept = default;
+    };
+
+    struct GraphProvider
+    {
+        GraphResourceKey semantic;
+        GraphResourceId resource;
+        PassKey pass;
+        bool operator==(const GraphProvider&) const noexcept = default;
     };
 
     struct GraphDependency
@@ -179,8 +258,17 @@ namespace lux::render
     inline constexpr auto kGraphInvalidDependency = error::errorId("lux.render.graph.invalid_dependency");
     inline constexpr auto kGraphCycle = error::errorId("lux.render.graph.cycle");
     inline constexpr auto kGraphMissingProducer = error::errorId("lux.render.graph.missing_producer");
-    inline constexpr auto kGraphUnsupportedScheduling = error::errorId("lux.render.graph.unsupported_scheduling");
     inline constexpr auto kGraphInvalidBinding = error::errorId("lux.render.graph.invalid_binding");
+
+    inline constexpr auto kGraphAmbiguousProducer = error::errorId("lux.render.graph.ambiguous_producer");
+
+    inline constexpr auto kGraphScopeConflict = error::errorId("lux.render.graph.scope_conflict");
+
+    inline constexpr auto kGraphConditionalInput = error::errorId("lux.render.graph.conditional_input");
+
+    inline constexpr auto kGraphInvalidOutput = error::errorId("lux.render.graph.invalid_output");
+
+    inline constexpr auto kGraphInvalidImport = error::errorId("lux.render.graph.invalid_import");
 
     [[nodiscard]] std::span<const error::ErrorDescriptor> renderGraphErrorDescriptors() noexcept;
 
@@ -202,7 +290,9 @@ namespace lux::render
         [[nodiscard]] static RenderResult<RenderGraphDefinition> create(
             std::vector<GraphResource> resources,
             std::vector<GraphPass> passes,
-            std::vector<GraphDependency> dependencies = {}
+            std::vector<GraphDependency> dependencies = {},
+            std::vector<GraphOutput> outputs = {},
+            std::vector<GraphProvider> providers = {}
         ) noexcept;
 
     public:
@@ -221,7 +311,17 @@ namespace lux::render
             return dependencies_;
         }
 
-        // Cold topology comparison: exact value equality, no hash collisions,
+        [[nodiscard]] std::span<const GraphOutput> outputs() const noexcept
+        {
+            return outputs_;
+        }
+
+        [[nodiscard]] std::span<const GraphProvider> providers() const noexcept
+        {
+            return providers_;
+        }
+
+        // Actual owning value comparison: exact value equality, no hash collisions,
         // simulation revision, frame time, backing tokens or dynamic offsets.
         bool operator==(const RenderGraphDefinition&) const noexcept = default;
 
@@ -229,11 +329,15 @@ namespace lux::render
         RenderGraphDefinition(
             std::vector<GraphResource> resources,
             std::vector<GraphPass> passes,
-            std::vector<GraphDependency> dependencies
+            std::vector<GraphDependency> dependencies,
+            std::vector<GraphOutput> outputs,
+            std::vector<GraphProvider> providers
         ) noexcept;
 
         std::vector<GraphResource> resources_;
         std::vector<GraphPass> passes_;
         std::vector<GraphDependency> dependencies_;
+        std::vector<GraphOutput> outputs_;
+        std::vector<GraphProvider> providers_;
     };
 } // namespace lux::render

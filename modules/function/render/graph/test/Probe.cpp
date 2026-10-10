@@ -1,5 +1,5 @@
-#include <lux/engine/render/graph/DefinitionAccess.hpp>
 #include <lux/engine/render/graph/Bindings.hpp>
+#include <lux/engine/render/graph/DefinitionAccess.hpp>
 
 #if defined(LUX_PROBE_VULKAN)
 #include <vulkan/vulkan.h>
@@ -24,9 +24,9 @@ int main()
     return static_cast<int>(pass.value());
 #elif defined(LUX_PROBE_TEMPORARY)
     auto definition = lux::render::detail::DefinitionAccess::create({}, {});
-    auto bindings = lux::render::FrameGraphBindings::create(
-        *lux::render::CompiledGraphPlan::compile(*definition), {}, {}
-    );
+    std::array<lux::render::GraphImportBinding, 0> imports{};
+    auto bindings =
+        lux::render::FrameGraphBindings::create(*lux::render::compileLogicalGraph(*definition), {}, imports);
     return bindings ? 0 : 1;
 #else
     auto definition = lux::render::detail::DefinitionAccess::create({}, {});

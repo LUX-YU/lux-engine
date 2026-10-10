@@ -8,4 +8,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(CTest)
 
-# R0 has no production targets. R1 adds only the real render_core target.
+find_package(lux-cmake-toolset CONFIG REQUIRED)
+
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/core" render_core)

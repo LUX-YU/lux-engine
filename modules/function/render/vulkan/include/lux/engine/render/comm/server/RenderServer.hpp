@@ -1299,7 +1299,7 @@ namespace lux::render
         /// owner, settles every tracked upload, and publishes terminal replies.
         [[nodiscard]] UploadLifecycleSnapshot closeAcceptedUploads() noexcept;
 
-        class Impl;
+        struct Impl;
 
     protected:
         using ImplOwner = std::unique_ptr<Impl, void (*)(Impl*)>;

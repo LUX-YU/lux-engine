@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <string_view>
@@ -63,6 +64,7 @@ namespace lux::rdesc
         std::string_view image_format;
         std::uint32_t stages{7};
         bool descriptor_array{false};
+        std::uint32_t element_alignment{1};
 
         bool operator==(const PassResourceField&) const noexcept = default;
     };
@@ -90,5 +92,6 @@ namespace lux::rdesc
         std::string_view declarations;
         std::uint32_t parameter_size;
         std::uint32_t parameter_alignment;
+        std::array<std::string_view, 3> stage_declarations{};
     };
 } // namespace lux::rdesc

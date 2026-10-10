@@ -73,9 +73,13 @@ namespace lux::render
                 return true;
             case EGraphUsage::COLOR_ATTACHMENT:
             case EGraphUsage::RESOLVE:
-                return is_image && resource.texture.format < ETextureFormat::D32_FLOAT;
+                return is_image &&
+                       rdesc::supportsTextureUsage(resource.texture.format, rdesc::ETextureUsage::COLOR_ATTACHMENT);
             case EGraphUsage::DEPTH_ATTACHMENT:
-                return is_image && resource.texture.format >= ETextureFormat::D32_FLOAT;
+                return is_image && rdesc::supportsTextureUsage(
+                                       resource.texture.format,
+                                       rdesc::ETextureUsage::DEPTH_STENCIL_ATTACHMENT
+                                   );
             case EGraphUsage::INPUT_ATTACHMENT:
                 return is_image;
             case EGraphUsage::VERTEX:
@@ -118,7 +122,10 @@ namespace lux::render
             if (resource.kind == EGraphResourceKind::BUFFER)
             {
                 const auto& range = use.buffer_range;
-                return range.byte_count != 0 && range.byte_offset <= resource.buffer.byte_size &&
+                const bool valid_layout = use.byte_alignment != 0 && range.byte_offset % use.byte_alignment == 0 &&
+                                          range.byte_count >= use.minimum_bytes &&
+                                          (use.element_stride == 0 || range.byte_count % use.element_stride == 0);
+                return valid_layout && range.byte_count != 0 && range.byte_offset <= resource.buffer.byte_size &&
                        range.byte_count <= resource.buffer.byte_size - range.byte_offset;
             }
             const auto& range = use.image_range;
@@ -127,9 +134,7 @@ namespace lux::render
                                     range.mip_count <= texture.mip_count - range.base_mip;
             const bool valid_layers = range.layer_count != 0 && range.base_layer <= texture.array_layers &&
                                       range.layer_count <= texture.array_layers - range.base_layer;
-            const bool is_depth =
-                texture.format == ETextureFormat::D32_FLOAT || texture.format == ETextureFormat::D24_STENCIL8;
-            const auto valid_aspects = texture.format == ETextureFormat::D24_STENCIL8 ? 6u : (is_depth ? 2u : 1u);
+            const auto valid_aspects = rdesc::textureAspectMask(texture.format);
             const auto aspects = static_cast<unsigned>(range.aspect);
             const bool valid_aspect = aspects != 0 && (aspects & ~valid_aspects) == 0;
             return valid_mips && valid_layers && valid_aspect;
@@ -175,14 +180,16 @@ namespace lux::render
             const auto& texture = resource.texture;
             const auto& buffer = resource.buffer;
             const bool is_invalid_texture =
-                is_image &&
-                (texture.width == 0 || texture.height == 0 || texture.depth == 0 || texture.mip_count == 0 ||
-                 texture.array_layers == 0 || texture.samples == 0 || (texture.samples & (texture.samples - 1)) != 0 ||
-                 texture.samples > 64 || texture.format > ETextureFormat::D24_STENCIL8 ||
-                 texture.dimension > ETextureDimension::CUBE || texture.extent_kind > EExtentKind::DYNAMIC);
+                is_image && (texture.width == 0 || texture.height == 0 || texture.depth == 0 ||
+                             texture.mip_count == 0 || texture.array_layers == 0 || texture.samples == 0 ||
+                             (texture.samples & (texture.samples - 1)) != 0 || texture.samples > 64 ||
+                             rdesc::textureFormatClass(texture.format) == rdesc::ETextureFormatClass::INVALID ||
+                             texture.dimension > ETextureDimension::CUBE || texture.extent_kind > EExtentKind::DYNAMIC);
             const bool is_invalid_buffer = !is_image && (buffer.byte_size == 0 || buffer.alignment == 0 ||
                                                          (buffer.alignment & (buffer.alignment - 1)) != 0);
-            const bool is_invalid_scope = resource.persistent_scope > EPersistentScope::VIEW ||
+            const bool invalid_identity =
+                !resource.canonical_name.empty() && resource.semantic != graphResourceKey(resource.canonical_name);
+            const bool is_invalid_scope = invalid_identity || resource.persistent_scope > EPersistentScope::VIEW ||
                                           (resource.origin == EGraphResourceOrigin::TRANSIENT &&
                                            resource.persistent_scope != EPersistentScope::NONE);
             const bool is_invalid_resource = is_invalid_kind || is_invalid_origin || is_invalid_target ||
@@ -193,8 +200,10 @@ namespace lux::render
             }
             for (std::size_t previous = 0; previous < index; ++previous)
             {
-                const bool is_duplicate_target = resource.target_semantic.isValid() &&
-                                                 resource.target_semantic == resources[previous].target_semantic;
+                const bool is_duplicate_target =
+                    (resource.target_semantic.isValid() &&
+                     resource.target_semantic == resources[previous].target_semantic) ||
+                    (resource.semantic.isValid() && resource.semantic == resources[previous].semantic);
                 if (is_duplicate_target)
                 {
                     return cxx::unexpected(RenderError{kGraphInvalidResource, {index + 1}});
@@ -260,9 +269,12 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, field.resource.value()}});
                 }
                 const auto format = resources[field.resource.value() - 1].texture.format;
-                const bool is_mismatch = (field.image_format == "r32f" && format != ETextureFormat::R32_FLOAT) ||
-                                         (field.image_format == "rgba32f" && format != ETextureFormat::RGBA32_FLOAT) ||
-                                         (field.image_format == "rgba8" && format != ETextureFormat::RGBA8_UNORM);
+                const bool is_mismatch =
+                    !rdesc::supportsTextureUsage(format, rdesc::ETextureUsage::STORAGE) ||
+                    (field.image_format == "rgba16f" && format != rdesc::ETextureFormat::RGBA16_SFLOAT) ||
+                    (field.image_format == "r32f" && format != lux::rdesc::ETextureFormat::R32_SFLOAT) ||
+                    (field.image_format == "rgba32f" && format != lux::rdesc::ETextureFormat::RGBA32_SFLOAT) ||
+                    (field.image_format == "rgba8" && format != lux::rdesc::ETextureFormat::RGBA8_UNORM);
                 if (is_mismatch)
                 {
                     return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, field.resource.value()}});
@@ -275,9 +287,66 @@ namespace lux::render
                 [](const auto& left, const auto& right) { return left.resource.value() < right.resource.value(); }
             );
             // Prove bounds before overlap arithmetic; subtraction in validRange avoids overflow.
-            for (const auto& use : uses)
+            for (auto& use : uses)
             {
                 const bool is_invalid_id = !use.resource.isValid() || use.resource.value() > resources.size();
+                if (!is_invalid_id && !use.whole_resource)
+                {
+                    const auto& resource = resources[use.resource.value() - 1];
+                    auto& image = use.image_range;
+                    auto& buffer = use.buffer_range;
+                    if (resource.kind == EGraphResourceKind::IMAGE)
+                    {
+                        if (image.base_mip <= resource.texture.mip_count && image.mip_count == kRemainingSubresources)
+                        {
+                            image.mip_count = resource.texture.mip_count - image.base_mip;
+                        }
+                        if (image.base_layer <= resource.texture.array_layers &&
+                            image.layer_count == kRemainingSubresources)
+                        {
+                            image.layer_count = resource.texture.array_layers - image.base_layer;
+                        }
+                    }
+                    else if (buffer.byte_offset <= resource.buffer.byte_size && buffer.byte_count == kRemainingBytes)
+                    {
+                        buffer.byte_count = resource.buffer.byte_size - buffer.byte_offset;
+                    }
+                    if (use.field_index < passes[index].bindings.size())
+                    {
+                        auto& field = passes[index].bindings[use.field_index];
+                        field.image_range = image;
+                        field.buffer_range = buffer;
+                        const bool shader_image = field.role == rdesc::EPassFieldRole::SAMPLED_READ ||
+                                                  field.role == rdesc::EPassFieldRole::STORAGE_READ ||
+                                                  field.role == rdesc::EPassFieldRole::STORAGE_WRITE ||
+                                                  field.role == rdesc::EPassFieldRole::STORAGE_READ_WRITE;
+                        if (shader_image)
+                        {
+                            const auto expected_dimension =
+                                field.dimension.starts_with("1D")
+                                    ? ETextureDimension::D1
+                                    : (field.dimension.starts_with("3D")
+                                           ? ETextureDimension::D3
+                                           : (field.dimension.starts_with("Cube") ? ETextureDimension::CUBE
+                                                                                  : ETextureDimension::D2));
+                            const bool arrayed = field.dimension.ends_with("Array");
+                            const bool cube = expected_dimension == ETextureDimension::CUBE;
+                            const bool invalid_layers =
+                                cube ? (image.layer_count % 6 != 0 || (!arrayed && image.layer_count != 6))
+                                     : (!arrayed && image.layer_count != 1);
+                            const bool multisampled = field.dimension.find("MS") != std::string::npos;
+                            const bool invalid_view = resource.texture.dimension != expected_dimension ||
+                                                      invalid_layers ||
+                                                      multisampled != (resource.texture.samples > 1) ||
+                                                      image.aspect == EAspect::DEPTH_STENCIL;
+                            if (invalid_view)
+                            {
+                                return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, use.resource.value()}}
+                                );
+                            }
+                        }
+                    }
+                }
                 const bool is_invalid_use = is_invalid_id || !validUse(resources[use.resource.value() - 1], use) ||
                                             !validRange(resources[use.resource.value() - 1], use);
                 if (is_invalid_use)
@@ -311,12 +380,11 @@ namespace lux::render
                     return cxx::unexpected(RenderError{kGraphInvalidUse, {index + 1, use.resource.value()}});
                 }
                 const auto& resource = resources[use.resource.value() - 1];
-                const bool covers_image = resource.kind == EGraphResourceKind::IMAGE && use.image_range.base_mip == 0 &&
-                                          use.image_range.mip_count == resource.texture.mip_count &&
-                                          use.image_range.base_layer == 0 &&
-                                          use.image_range.layer_count == resource.texture.array_layers &&
-                                          use.image_range.aspect != EAspect::STENCIL &&
-                                          resource.texture.format != ETextureFormat::D24_STENCIL8;
+                const bool covers_image =
+                    resource.kind == EGraphResourceKind::IMAGE && use.image_range.base_mip == 0 &&
+                    use.image_range.mip_count == resource.texture.mip_count && use.image_range.base_layer == 0 &&
+                    use.image_range.layer_count == resource.texture.array_layers &&
+                    static_cast<unsigned>(use.image_range.aspect) == rdesc::textureAspectMask(resource.texture.format);
                 const bool covers_buffer = resource.kind == EGraphResourceKind::BUFFER &&
                                            use.buffer_range.byte_offset == 0 &&
                                            use.buffer_range.byte_count == resource.buffer.byte_size;

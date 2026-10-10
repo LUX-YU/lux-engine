@@ -13,4 +13,16 @@ namespace lux::toolchain
         std::span<const std::uint32_t> words,
         const rdesc::PassShaderContract& contract
     ) noexcept;
+
+    struct PassShaderModule
+    {
+        std::span<const std::uint32_t> words;
+    };
+
+    // Complete program validation uses the same canonical slots for shared stage resources.
+    [[nodiscard]] cxx::expected<void, std::string> validatePassShaders(
+        std::span<const PassShaderModule> modules,
+        const rdesc::PassShaderContract& contract,
+        std::uint32_t required_stages
+    ) noexcept;
 } // namespace lux::toolchain

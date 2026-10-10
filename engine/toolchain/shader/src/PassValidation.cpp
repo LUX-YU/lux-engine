@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <charconv>
 #include <lux/engine/toolchain/shader/PassValidation.hpp>
 #include <lux/engine/toolchain/shader/SpirvReflection.hpp>
@@ -135,6 +136,8 @@ namespace lux::toolchain
             {
                 return cxx::unexpected(std::string("Unsupported Shader stage"));
             }
+            const auto stage_bit =
+                model == spv::ExecutionModelGLCompute ? 4u : (model == spv::ExecutionModelVertex ? 1u : 2u);
             const auto native = compiler.get_shader_resources();
             std::vector<sc::Resource> resources;
             for (const auto& list :
@@ -149,12 +152,19 @@ namespace lux::toolchain
                 resources.insert(resources.end(), list.begin(), list.end());
             }
             std::uint32_t binding = 0;
+            std::uint32_t active_bindings = 0;
             for (const auto& field : contract.resources)
             {
                 if (!shaderResource(field.role))
                 {
                     continue;
                 }
+                if ((field.stages & stage_bit) == 0)
+                {
+                    ++binding;
+                    continue;
+                }
+                ++active_bindings;
                 const rdesc::EDescriptorBindingInfo* actual = nullptr;
                 for (const auto& set : reflected.sets)
                 {
@@ -210,6 +220,15 @@ namespace lux::toolchain
                 if (field.element_stride != 0 && field.role != ERole::UNIFORM_READ)
                 {
                     const auto& block = compiler.get_type(resource->base_type_id);
+                    if (block.member_types.size() != 1)
+                    {
+                        return cxx::unexpected("Storage block shape mismatch: " + std::string(field.path));
+                    }
+                    const auto& elements = compiler.get_type(block.member_types[0]);
+                    if (elements.array.size() != 1 || elements.array[0] != 0)
+                    {
+                        return cxx::unexpected("Storage runtime array mismatch: " + std::string(field.path));
+                    }
                     if (compiler.type_struct_member_array_stride(block, 0) != field.element_stride)
                     {
                         return cxx::unexpected("Storage stride mismatch: " + std::string(field.path));
@@ -252,17 +271,11 @@ namespace lux::toolchain
                         return cxx::unexpected("Image dimension mismatch: " + std::string(field.path));
                     }
                 }
-                const bool is_compute = compiler.get_execution_model() == spv::ExecutionModelGLCompute;
-                const bool is_vertex = compiler.get_execution_model() == spv::ExecutionModelVertex;
-                const auto stage_bit = is_compute ? 4u : (is_vertex ? 1u : 2u);
-                if ((field.stages & stage_bit) == 0)
-                {
-                    return cxx::unexpected("Shader stage mismatch: " + std::string(field.path));
-                }
                 if (actual->type == rdesc::EDescriptorType::STORAGE_IMAGE)
                 {
                     const bool is_wrong_format =
                         (field.image_format == "rgba32f" && type.image.format != spv::ImageFormatRgba32f) ||
+                        (field.image_format == "rgba16f" && type.image.format != spv::ImageFormatRgba16f) ||
                         (field.image_format == "r32f" && type.image.format != spv::ImageFormatR32f) ||
                         (field.image_format == "rgba8" && type.image.format != spv::ImageFormatRgba8);
                     if (is_wrong_format)
@@ -272,7 +285,7 @@ namespace lux::toolchain
                 }
                 ++binding;
             }
-            if (resources.size() != binding)
+            if (resources.size() != active_bindings)
             {
                 return cxx::unexpected(std::string("Shader has resources outside PassSchema"));
             }
@@ -284,7 +297,11 @@ namespace lux::toolchain
                     actual_scalar_count += scalarCount(compiler, compiler.get_type(block.base_type_id));
                 }
             }
-            if (actual_scalar_count != contract.scalars.size())
+            if (actual_scalar_count != static_cast<std::size_t>(std::count_if(
+                                           contract.scalars.begin(),
+                                           contract.scalars.end(),
+                                           [stage_bit](const auto& field) { return (field.stages & stage_bit) != 0; }
+                                       )))
             {
                 return cxx::unexpected(std::string("Shader scalar field coverage mismatch"));
             }
@@ -295,7 +312,7 @@ namespace lux::toolchain
                     model == spv::ExecutionModelGLCompute ? 4u : (model == spv::ExecutionModelVertex ? 1u : 2u);
                 if ((scalar.stages & stage) == 0)
                 {
-                    return cxx::unexpected("Scalar stage mismatch: " + std::string(scalar.path));
+                    continue;
                 }
                 std::optional<ScalarLocation> location;
                 bool in_block = false;
@@ -361,6 +378,67 @@ namespace lux::toolchain
         try
         {
             return validate(words, contract);
+        }
+        catch (const std::bad_alloc&)
+        {
+            std::terminate();
+        }
+        catch (const std::exception& error)
+        {
+            return cxx::unexpected(std::string("SPIR-V compiler failure: ") + error.what());
+        }
+    }
+
+    cxx::expected<void, std::string> validatePassShaders(
+        std::span<const PassShaderModule> modules,
+        const rdesc::PassShaderContract& contract,
+        std::uint32_t required_stages
+    ) noexcept
+    {
+        if (required_stages != 3u && required_stages != 4u)
+        {
+            return cxx::unexpected(std::string("Expected vertex+fragment or compute program"));
+        }
+        const bool uncovered_resource = std::any_of(
+            contract.resources.begin(),
+            contract.resources.end(),
+            [required_stages](const auto& field)
+            { return shaderResource(field.role) && (field.stages & required_stages) == 0; }
+        );
+        const bool uncovered_scalar = std::any_of(
+            contract.scalars.begin(),
+            contract.scalars.end(),
+            [required_stages](const auto& field) { return (field.stages & required_stages) == 0; }
+        );
+        if (uncovered_resource || uncovered_scalar)
+        {
+            return cxx::unexpected(std::string("Pass field has no stage in the program"));
+        }
+        try
+        {
+            std::uint32_t observed = 0;
+            for (const auto& module : modules)
+            {
+                const auto valid = validatePassSpirv(module.words, contract);
+                if (!valid)
+                {
+                    return cxx::unexpected(valid.error());
+                }
+                sc::Compiler compiler(module.words.data(), module.words.size());
+                const auto model = compiler.get_execution_model();
+                const auto stage =
+                    model == spv::ExecutionModelGLCompute ? 4u : (model == spv::ExecutionModelVertex ? 1u : 2u);
+                if ((observed & stage) != 0 || (required_stages & stage) == 0)
+                {
+                    return cxx::unexpected(std::string("Duplicate or unexpected Shader stage"));
+                }
+                observed |= stage;
+            }
+            if (observed != required_stages)
+            {
+                return cxx::unexpected(std::string("Incomplete Pass Shader program"));
+            }
+            return {};
         }
         catch (const std::bad_alloc&)
         {

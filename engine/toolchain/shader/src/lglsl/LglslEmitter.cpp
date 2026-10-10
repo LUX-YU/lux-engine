@@ -156,6 +156,7 @@ namespace lux::shadergen::lglsl
         constexpr std::array kMergeableLayoutQualifiers = {
             std::string_view{"r32f"},
             std::string_view{"rgba32f"},
+            std::string_view{"rgba16f"},
             std::string_view{"rgba8"},
             std::string_view{"std140"},
             std::string_view{"std430"},
@@ -479,7 +480,23 @@ namespace lux::shadergen::lglsl
                 //  · .lglslh 里的局部资源按**头文件**独立计数:多个带局部资源的头
                 //    被同一着色器包含会撞 b0 —— 今日树内无此形状,出现时同上处理。
                 const uint32_t inj_set = entry ? entry->canonical_set : (contract_ ? 0u : kLocalResourceSet);
-                const uint32_t inj_binding = entry ? entry->canonical_binding : next_local_binding_++;
+                uint32_t inj_binding = entry ? entry->canonical_binding : next_local_binding_++;
+                if (contract_)
+                {
+                    inj_binding = 0;
+                    for (const auto& field : contract_->resources)
+                    {
+                        if (field.shader_name == name)
+                        {
+                            break;
+                        }
+                        if (field.role <= rdesc::EPassFieldRole::READ_WRITE_STORAGE ||
+                            field.role == rdesc::EPassFieldRole::INPUT_ATTACHMENT)
+                        {
+                            ++inj_binding;
+                        }
+                    }
+                }
 
                 const DeclHead head = matchDeclStart(judged);
 
@@ -589,10 +606,51 @@ namespace lux::shadergen::lglsl
         std::string_view source
     )
     {
-        std::string combined = "#version 450\n";
-        combined += contract.declarations;
+        ShaderMeta meta;
+        std::string version;
+        std::string preamble;
+        std::string body;
+        bool in_preamble = true;
+        for (auto rest = source; !rest.empty();)
+        {
+            const auto end = rest.find('\n');
+            const auto line = end == std::string_view::npos ? rest : rest.substr(0, end);
+            rest = end == std::string_view::npos ? std::string_view{} : rest.substr(end + 1);
+            const auto text = trim(line);
+            if (text.starts_with("//!"))
+            {
+                if (auto error = parsePragma(text.substr(3), meta))
+                {
+                    return lux::cxx::unexpected(*error);
+                }
+            }
+            if (text.starts_with("#version"))
+            {
+                if (!version.empty() || !in_preamble)
+                {
+                    return lux::cxx::unexpected(std::string("Duplicate or late #version"));
+                }
+                version = std::string(line) + '\n';
+                continue;
+            }
+            const bool header_line = text.empty() || text.starts_with("//") || text.starts_with("#extension") ||
+                                     text.starts_with("#include") || text.starts_with("#define");
+            in_preamble = in_preamble && header_line;
+            auto& output = in_preamble ? preamble : body;
+            output.append(line);
+            output += '\n';
+        }
+        const auto stage =
+            meta.stage == rdesc::EShaderType::VERTEX ? 0u : (meta.stage == rdesc::EShaderType::FRAGMENT ? 1u : 2u);
+        if (meta.stage == rdesc::EShaderType::UNDEFINED)
+        {
+            return lux::cxx::unexpected(std::string("Missing lux-shader stage"));
+        }
+        std::string combined = version.empty() ? "#version 450\n" : version;
+        combined += preamble;
+        combined += contract.stage_declarations[stage];
         combined += '\n';
-        combined += source;
+        combined += body;
         return Emitter(combined, EEmitMode::SHADER, &contract).run();
     }
 

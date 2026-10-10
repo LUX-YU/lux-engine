@@ -1,7 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
+#include <lux/engine/description/Image.hpp>
 #include <lux/engine/render/core/Identity.hpp>
+#include <string>
 
 namespace lux::render
 {
@@ -15,6 +18,43 @@ namespace lux::render
     using GraphSampler = cxx::StrongId<GraphSamplerTag, std::uint64_t, 0>;
     using PassKey = cxx::StrongId<GraphPassKeyTag, std::uint64_t, 0>;
     using ShaderKey = cxx::StrongId<GraphShaderKeyTag, std::uint64_t, 0>;
+
+    struct GraphResourceKeyTag;
+    using GraphResourceKey = cxx::StrongId<GraphResourceKeyTag, std::uint64_t, 0>;
+
+    [[nodiscard]] constexpr PassKey passKey(std::string_view name) noexcept
+    {
+        return PassKey{name.empty() ? 0 : cxx::Fnv1a64::hash(name)};
+    }
+
+    [[nodiscard]] constexpr GraphResourceKey graphResourceKey(std::string_view name) noexcept
+    {
+        return GraphResourceKey{name.empty() ? 0 : cxx::Fnv1a64::hash(name)};
+    }
+
+    // A cold reference to a logical Shader asset variant, never a compiled/native pipeline ID.
+    struct ShaderReference
+    {
+        std::string_view asset;
+        std::string_view variant;
+
+        [[nodiscard]] bool isValid() const noexcept
+        {
+            return !asset.empty() && !variant.empty() && asset.find('#') == std::string_view::npos &&
+                   variant.find('#') == std::string_view::npos;
+        }
+
+        [[nodiscard]] std::string canonicalName() const noexcept
+        {
+            return isValid() ? std::string(asset) + "#" + std::string(variant) : std::string{};
+        }
+    };
+
+    [[nodiscard]] inline ShaderKey shaderKey(ShaderReference reference) noexcept
+    {
+        const auto name = reference.canonicalName();
+        return ShaderKey{name.empty() ? 0 : cxx::Fnv1a64::hash(name)};
+    }
 
     enum class EPersistentScope
     {
@@ -43,14 +83,6 @@ namespace lux::render
         D3,
         CUBE
     };
-    enum class ETextureFormat
-    {
-        R32_FLOAT,
-        RGBA32_FLOAT,
-        RGBA8_UNORM,
-        D32_FLOAT,
-        D24_STENCIL8
-    };
     enum class EExtentKind
     {
         ABSOLUTE,
@@ -78,7 +110,7 @@ namespace lux::render
 
     struct TextureDesc
     {
-        ETextureFormat format{ETextureFormat::RGBA32_FLOAT};
+        rdesc::ETextureFormat format{rdesc::ETextureFormat::RGBA32_SFLOAT};
         ETextureDimension dimension{ETextureDimension::D2};
         EExtentKind extent_kind{EExtentKind::ABSOLUTE};
         std::uint32_t width{1}, height{1}, depth{1}, mip_count{1}, array_layers{1}, samples{1};
@@ -102,9 +134,12 @@ namespace lux::render
         bool operator==(const ImageRange&) const noexcept = default;
     };
 
+    inline constexpr auto kRemainingBytes = std::numeric_limits<std::uint64_t>::max();
+    inline constexpr auto kRemainingSubresources = std::numeric_limits<std::uint32_t>::max();
+
     struct BufferRange
     {
-        std::uint64_t byte_offset{0}, byte_count{1};
+        std::uint64_t byte_offset{0}, byte_count{kRemainingBytes};
 
         bool operator==(const BufferRange&) const noexcept = default;
     };
@@ -114,7 +149,8 @@ namespace lux::render
     struct SampledTexture
     {
         GraphTexture texture{};
-        ImageRange range{};
+        // Shader LOD/layers are relative to this native view. Default covers the complete backing.
+        ImageRange range{EAspect::COLOR, 0, kRemainingSubresources, 0, kRemainingSubresources};
         GraphTexture fallback{};
     };
 
@@ -165,7 +201,7 @@ namespace lux::render
     template <typename T> struct UniformBuffer
     {
         GraphBuffer buffer{};
-        BufferRange range{};
+        BufferRange range{0, sizeof(T)};
         GraphBuffer fallback{};
     };
 

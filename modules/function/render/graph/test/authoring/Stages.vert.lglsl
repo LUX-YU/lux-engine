@@ -1,0 +1,13 @@
+//! lux-shader stage=vertex entry=main
+#version 450
+#extension GL_GOOGLE_include_directive : require
+// Legacy order: pragma, version, comments/include, interfaces, main.
+#include "StageCommon.lglslh"
+layout(location=0) out vec2 uv;
+void main()
+{
+    uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+    gl_Position = vec4(uv * 2.0 - 1.0, 0.0, 1.0);
+    gl_Position.x += (p_vertex.data.rows[0].x + p_shared.data.rows[1].y + stage_bias) * lux_push.p_vertex_scale;
+    gl_Position.y *= lux_push.p_common_scale;
+}

@@ -8,18 +8,26 @@ namespace lux::render
     class RenderGraphBuilder
     {
     public:
-        [[nodiscard]] GraphTexture texture(TextureDesc description) noexcept;
+        [[nodiscard]] GraphTexture texture(TextureDesc description, std::string_view name = {}) noexcept;
 
-        [[nodiscard]] GraphBuffer buffer(BufferDesc description) noexcept;
+        [[nodiscard]] GraphBuffer buffer(BufferDesc description, std::string_view name = {}) noexcept;
 
-        [[nodiscard]] GraphTexture importTexture(TextureDesc description, EPersistentScope scope) noexcept;
+        [[nodiscard]] GraphTexture importTexture(
+            std::string_view name,
+            TextureDesc description,
+            EPersistentScope scope
+        ) noexcept;
 
-        [[nodiscard]] GraphBuffer importBuffer(BufferDesc description, EPersistentScope scope) noexcept;
+        [[nodiscard]] GraphBuffer importBuffer(
+            std::string_view name,
+            BufferDesc description,
+            EPersistentScope scope
+        ) noexcept;
 
         template <GraphPassParameters T>
         [[nodiscard]] RenderResult<GraphPassId> addPass(
-            PassKey key,
-            ShaderKey shader,
+            std::string_view name,
+            ShaderReference shader_reference,
             EPassKind kind,
             EExecutionScope scope,
             const T& parameters
@@ -34,11 +42,15 @@ namespace lux::render
                 const bool is_transfer = role == rdesc::EPassFieldRole::TRANSFER_SOURCE ||
                                          role == rdesc::EPassFieldRole::TRANSFER_DESTINATION;
                 const bool is_invalid_attachment = is_attachment && kind != EPassKind::GRAPHICS;
+                const auto stage_mask = kind == EPassKind::COMPUTE ? 4u : 3u;
+                const bool is_shader_field = role <= rdesc::EPassFieldRole::READ_WRITE_STORAGE ||
+                                             role == rdesc::EPassFieldRole::INPUT_ATTACHMENT;
+                const bool is_invalid_stage = is_shader_field && (field.stages & stage_mask) == 0;
                 const bool is_invalid_transfer =
                     is_transfer && kind != EPassKind::TRANSFER && kind != EPassKind::HOST_READBACK;
                 const bool is_invalid_native_only =
                     !is_transfer && (kind == EPassKind::TRANSFER || kind == EPassKind::HOST_READBACK);
-                if (is_invalid_attachment || is_invalid_transfer || is_invalid_native_only)
+                if (is_invalid_stage || is_invalid_attachment || is_invalid_transfer || is_invalid_native_only)
                 {
                     return cxx::unexpected(RenderError{kGraphInvalidUse, {passes_.size() + 1, 0}});
                 }
@@ -48,6 +60,8 @@ namespace lux::render
             {
                 return cxx::unexpected(*captured.error);
             }
+            const auto key = passKey(name);
+            const auto shader = shaderKey(shader_reference);
             const bool is_invalid_key = !key.isValid();
             const bool needs_shader = kind == EPassKind::COMPUTE || kind == EPassKind::GRAPHICS;
             const bool is_invalid_shader = needs_shader && !shader.isValid();
@@ -66,6 +80,8 @@ namespace lux::render
             pass.uses = std::move(captured.uses);
             pass.bindings = std::move(captured.bindings);
             pass.initial_scalars = std::move(captured.scalars);
+            pass.canonical_name = name;
+            pass.shader_name = shader_reference.canonicalName();
             pass.key = key;
             pass.shader = shader;
             pass.kind = kind;
@@ -93,10 +109,15 @@ namespace lux::render
 
         [[nodiscard]] RenderResult<RenderGraphDefinition> finish() && noexcept
         {
+            if (error_)
+            {
+                return cxx::unexpected(*error_);
+            }
             return RenderGraphDefinition::create(std::move(resources_), std::move(passes_));
         }
 
     private:
+        std::optional<RenderError> error_;
         std::vector<GraphResource> resources_;
         std::vector<GraphPass> passes_;
     };

@@ -22,6 +22,9 @@ elif case == "descriptor_count":
 elif case == "access":
     source = source.replace("readonly buffer", "buffer")
     expected = "Resource access mismatch"
+elif case == "runtime_array":
+    source = source.replace("data[]", "data[1]")
+    expected = "Storage runtime array mismatch"
 elif case == "extra_resource":
     source = source.replace("//! lux-shader", "layout(set=0, binding=42) uniform texture2D undeclared;\n//! lux-shader")
     expected = "Shader has resources outside PassSchema"

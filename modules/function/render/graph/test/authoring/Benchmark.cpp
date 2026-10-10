@@ -13,10 +13,16 @@ int main()
     {
         RenderGraphBuilder graph;
         Tonemap params;
-        params.input.texture = graph.importTexture({}, EPersistentScope::SCENE);
+        params.input.texture = graph.importTexture("test.input", {}, EPersistentScope::SCENE);
         params.linear.sampler = GraphSampler{1};
         params.output.texture = graph.texture({});
-        auto pass = graph.addPass(PassKey{1}, ShaderKey{2}, EPassKind::GRAPHICS, EExecutionScope::VIEW, params);
+        auto pass = graph.addPass(
+            "test.pass.1",
+            ShaderReference{"test.shader.2", "default"},
+            EPassKind::GRAPHICS,
+            EExecutionScope::VIEW,
+            params
+        );
         if (!pass)
         {
             std::abort();

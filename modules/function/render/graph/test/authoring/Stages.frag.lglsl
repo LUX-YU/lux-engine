@@ -1,0 +1,12 @@
+//! lux-shader stage=fragment entry=main
+#version 450
+#extension GL_GOOGLE_include_directive : require
+#include "StageCommon.lglslh"
+layout(location=0) in vec2 uv;
+layout(location=0) out vec4 color;
+void main()
+{
+    color = texture(sampler2DArray(p_image, p_linear), vec3(uv, 0.0));
+    color *= p_shared.data.rows[2].z + p_fragment.data[0].w + stage_bias;
+    color *= lux_push.p_fragment_scale * lux_push.p_common_scale;
+}

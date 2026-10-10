@@ -59,6 +59,8 @@ namespace lux::render
         EPersistentScope persistent_scope{EPersistentScope::NONE};
         TextureDesc texture{};
         BufferDesc buffer{};
+        std::string canonical_name;
+        GraphResourceKey semantic{};
 
         bool operator==(const GraphResource&) const noexcept = default;
     };
@@ -72,6 +74,10 @@ namespace lux::render
         ImageRange image_range{};
         BufferRange buffer_range{};
         std::uint32_t stages{7};
+        std::uint64_t minimum_bytes{};
+        std::uint32_t byte_alignment{1};
+        std::uint32_t element_stride{};
+        std::uint32_t field_index{~0u};
 
         bool operator==(const GraphResourceUse&) const noexcept = default;
     };
@@ -87,6 +93,8 @@ namespace lux::render
         std::uint32_t stages{7};
         GraphResourceId resource{};
         GraphSampler sampler{};
+        ImageRange image_range{};
+        BufferRange buffer_range{};
         ELoadOp load{ELoadOp::DISCARD};
         EStoreOp store{EStoreOp::STORE};
         std::array<float, 4> clear{};
@@ -106,7 +114,8 @@ namespace lux::render
         // Initial sampler/clear values are dynamic facts, not logical topology.
         bool operator==(const GraphFieldBinding& other) const noexcept
         {
-            return path == other.path && array_element == other.array_element && resource == other.resource &&
+            return image_range == other.image_range && buffer_range == other.buffer_range && path == other.path &&
+                   array_element == other.array_element && resource == other.resource &&
                    shader_name == other.shader_name && array_count == other.array_count &&
                    element_stride == other.element_stride && descriptor_array == other.descriptor_array &&
                    stages == other.stages && load == other.load && store == other.store &&
@@ -139,6 +148,8 @@ namespace lux::render
         ShaderKey shader{};
         EPassKind kind{EPassKind::COMPUTE};
         EExecutionScope scope{EExecutionScope::VIEW};
+        std::string canonical_name;
+        std::string shader_name;
         std::string schema_name;
         std::string shader_declarations;
         std::vector<GraphScalarField> scalar_fields;
@@ -147,8 +158,9 @@ namespace lux::render
 
         bool operator==(const GraphPass& other) const noexcept
         {
-            return uses == other.uses && key == other.key && shader == other.shader && kind == other.kind &&
-                   scope == other.scope && schema_name == other.schema_name && bindings == other.bindings &&
+            return canonical_name == other.canonical_name && shader_name == other.shader_name && uses == other.uses &&
+                   key == other.key && shader == other.shader && kind == other.kind && scope == other.scope &&
+                   schema_name == other.schema_name && bindings == other.bindings &&
                    shader_declarations == other.shader_declarations && scalar_fields == other.scalar_fields;
         }
     };

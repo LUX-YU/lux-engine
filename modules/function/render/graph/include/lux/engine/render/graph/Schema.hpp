@@ -98,9 +98,21 @@ namespace lux::render
                     access = EGraphAccess::READ_WRITE;
                 }
             }
+            binding.image_range = value.range;
+            const auto field_index = static_cast<std::uint32_t>(output.bindings.size());
             output.bindings.push_back(std::move(binding));
             output.uses.push_back(
-                {GraphResourceId{id.value()}, access, resourceUsage(role), false, value.range, {}, field.stages}
+                {GraphResourceId{id.value()},
+                 access,
+                 resourceUsage(role),
+                 false,
+                 value.range,
+                 {},
+                 field.stages,
+                 0,
+                 1,
+                 0,
+                 field_index}
             );
         }
 
@@ -124,6 +136,8 @@ namespace lux::render
             }
             auto binding = captureField(field, element);
             binding.resource = GraphResourceId{id.value()};
+            binding.buffer_range = value.range;
+            const auto field_index = static_cast<std::uint32_t>(output.bindings.size());
             output.bindings.push_back(std::move(binding));
             output.uses.push_back(
                 {GraphResourceId{id.value()},
@@ -132,7 +146,11 @@ namespace lux::render
                  false,
                  {},
                  value.range,
-                 field.stages}
+                 field.stages,
+                 field.element_stride,
+                 field.element_alignment,
+                 role == rdesc::EPassFieldRole::UNIFORM_READ ? 0u : field.element_stride,
+                 field_index}
             );
         }
 
@@ -163,9 +181,10 @@ namespace lux::render
         {
             const auto& field = contract.resources[i];
             const bool is_invalid_identity = field.path.empty() || field.shader_name.empty();
-            const bool is_invalid_shape = field.array_count == 0 ||
-                                          (!field.descriptor_array && field.array_count != 1) || field.stages == 0 ||
-                                          (field.stages & ~7u) != 0;
+            const bool is_invalid_shape =
+                field.element_alignment == 0 || (field.element_alignment & (field.element_alignment - 1)) != 0 ||
+                field.array_count == 0 || (!field.descriptor_array && field.array_count != 1) || field.stages == 0 ||
+                (field.stages & ~7u) != 0;
             const bool is_invalid_role = field.role > rdesc::EPassFieldRole::INPUT_ATTACHMENT;
             const bool is_invalid_owner =
                 field.owner > rdesc::EFieldOwner::PASS_LOCAL || field.frequency > rdesc::EUpdateFrequency::DRAW;

@@ -46,7 +46,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/RenderGraphCodegen.cmake")
 
 find_program(LUX_GLSLC glslc HINTS "${Vulkan_INCLUDE_DIR}/../Bin" REQUIRED)
 
-foreach(fixture IN ITEMS Tonemap Blur Composite Storage Hzb Complex LocalRead)
+foreach(fixture IN ITEMS Tonemap Blur Composite Storage Hzb Complex LocalRead HalfStorage)
     add_executable(render_graph_schema_${fixture} authoring/Fixture.cpp)
 
     target_link_libraries(
@@ -169,10 +169,10 @@ foreach(probe IN ITEMS Role Borrow Layout DuplicateRole Unknown)
     set_tests_properties(render.graph.codegen_reject_${probe} PROPERTIES RUN_SERIAL TRUE)
 endforeach()
 
-foreach(case IN ITEMS offset extra_scalar descriptor_count access extra_resource)
+foreach(case IN ITEMS offset extra_scalar descriptor_count access extra_resource runtime_array)
     if(case STREQUAL descriptor_count)
         set(fixture Composite)
-    elseif(case STREQUAL access)
+    elseif(case STREQUAL access OR case STREQUAL runtime_array)
         set(fixture Complex)
     else()
         set(fixture Tonemap)
@@ -225,3 +225,76 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/header_PassContract.cpp" "#include <lux/
 add_library(render_graph_header_PassContract OBJECT "${CMAKE_CURRENT_BINARY_DIR}/header_PassContract.cpp")
 
 target_link_libraries(render_graph_header_PassContract PRIVATE lux::engine::render::render_graph)
+
+# F1-FIX uses the production generator/emitter for a shared graphics contract.
+add_executable(render_graph_schema_Stages authoring/Fixture.cpp)
+
+target_link_libraries(render_graph_schema_Stages PRIVATE lux::engine::render::render_graph
+    lux::engine::toolchain::toolchain_shader_emitter toolchain_shader_reflection
+)
+
+target_include_directories(render_graph_schema_Stages PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include" "${CMAKE_CURRENT_SOURCE_DIR}/authoring"
+)
+
+target_compile_definitions(render_graph_schema_Stages PRIVATE
+    "LUX_FIXTURE_HEADER=\"Stages.pass.hpp\"" LUX_FIXTURE_TYPE=Stages
+)
+
+render_pass_schema(render_graph_schema_Stages "${CMAKE_CURRENT_SOURCE_DIR}/authoring/Stages.hpp")
+
+foreach(fixture IN ITEMS Stages.vert Stages.frag LegacyTonemap.vert)
+    if(fixture MATCHES "vert$")
+        set(stage vertex)
+    else()
+        set(stage fragment)
+    endif()
+
+    set(shader_output "${CMAKE_CURRENT_BINARY_DIR}/generated/${fixture}")
+    set(shader_source "${CMAKE_CURRENT_SOURCE_DIR}/authoring/${fixture}.lglsl")
+    add_custom_command(
+        OUTPUT "${shader_output}.spv" "${shader_output}.glsl"
+        COMMAND render_graph_schema_Stages "${shader_source}" "${shader_output}.glsl"
+        COMMAND "${LUX_GLSLC}" "-fshader-stage=${stage}" --target-env=vulkan1.2
+            "-I${CMAKE_CURRENT_SOURCE_DIR}/authoring" "${shader_output}.glsl" -o "${shader_output}.spv"
+        DEPENDS render_graph_schema_Stages "${shader_source}" "${CMAKE_CURRENT_SOURCE_DIR}/authoring/StageCommon.lglslh"
+        VERBATIM
+    )
+
+    add_custom_target(render_graph_shader_${fixture} ALL DEPENDS "${shader_output}.spv")
+
+    add_test(NAME render.graph.schema_${fixture} COMMAND render_graph_schema_Stages "${shader_output}.spv" validate)
+endforeach()
+
+add_executable(render_graph_stage_program authoring/StageProgram.cpp)
+
+add_dependencies(render_graph_stage_program render_graph_schema_Stages_pass_schema)
+
+target_include_directories(render_graph_stage_program PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    "${CMAKE_CURRENT_SOURCE_DIR}/authoring" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+target_link_libraries(render_graph_stage_program PRIVATE lux::engine::render::render_graph
+    lux::engine::toolchain::toolchain_shader_emitter toolchain_shader_reflection
+)
+
+add_test(NAME render.graph.stage_program COMMAND render_graph_stage_program
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/Stages.vert.spv" "${CMAKE_CURRENT_BINARY_DIR}/generated/Stages.frag.spv"
+)
+
+add_executable(render_graph_contracts authoring/Contracts.cpp)
+
+add_dependencies(render_graph_contracts render_graph_schema_Stages_pass_schema
+    render_graph_schema_Tonemap_pass_schema render_graph_schema_Storage_pass_schema
+    render_graph_schema_Attachments_pass_schema render_graph_schema_HalfStorage_pass_schema
+)
+
+target_include_directories(render_graph_contracts PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    "${CMAKE_CURRENT_SOURCE_DIR}/authoring" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+target_link_libraries(render_graph_contracts PRIVATE lux::engine::render::render_graph)
+
+foreach(case IN ITEMS ranges formats identities)
+    add_test(NAME render.graph.fix_${case} COMMAND render_graph_contracts ${case})
+endforeach()

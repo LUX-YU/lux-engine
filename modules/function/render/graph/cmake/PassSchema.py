@@ -40,6 +40,7 @@ def generate(ir, header):
     cpp = root["fq_name"]
     resources, scalars, capture, abi, glsl = [], [], [], [], []
     shader_structs = {}
+    declaration_stages = []
 
     def scalar_type(tid):
         t = types[tid]
@@ -131,6 +132,8 @@ def generate(ir, header):
             raise ValueError("required must be boolean")
         name = "p_" + path.replace(".", "_")
         suffix = "[" + str(count) + "]" if is_array else ""
+        declaration_begin = len(glsl)
+        alignment = 1
         stride = 0
         qualifier = ""
         if role == "sampler":
@@ -148,7 +151,7 @@ def generate(ir, header):
                 glsl.append("layout(input_attachment_index=" + str(index) + ") uniform subpassInput " + name + suffix + ";")
             else:
                 fmt = options["format"]
-                if fmt not in ("r32f", "rgba32f", "rgba8"):
+                if fmt not in ("r32f", "rgba16f", "rgba32f", "rgba8"):
                     raise ValueError("storage image requires supported format")
                 qualifier = {"storage_read": "readonly ", "storage_write": "writeonly ", "storage_read_write": ""}[role]
                 glsl.append("layout(" + fmt + ") " + qualifier + "uniform image" + dim + " " + name + suffix + ";")
@@ -158,6 +161,7 @@ def generate(ir, header):
                 raise ValueError("buffer requires one reflected element type")
             tid = args[0]["type_id"]
             stride = types[tid]["size"]
+            alignment = max(16 if role == "uniform_read" else 1, types[tid]["align"])
             ty = scalar_type(tid)
             leaves(tid, path + ".data", 0, True, metadata=options)
             if role == "uniform_read":
@@ -165,7 +169,8 @@ def generate(ir, header):
             else:
                 qualifier = "readonly " if role == "read_only_storage" else ""
                 glsl.append("layout(std430) " + qualifier + "buffer LuxBlock_" + name + " { " + ty + " data[]; } " + name + suffix + ";")
-        resources.append((path, name, enum, scope.upper(), frequency.upper(), required, count, stride, options["semantic"], options["for"], options["dimension"] or "2D", options["format"], options["stages"], is_array))
+        resources.append((path, name, enum, scope.upper(), frequency.upper(), required, count, stride, options["semantic"], options["for"], options["dimension"] or "2D", options["format"], options["stages"], is_array, alignment))
+        declaration_stages.extend([options["stages"]] * (len(glsl) - declaration_begin))
         for i in range(count):
             access = path + ("[" + str(i) + "]" if is_array else "")
             capture.append("        detail::captureResource(result, parameters." + access + ", resources[" + str(len(resources) - 1) + "], " + str(i) + ");")
@@ -211,14 +216,20 @@ def generate(ir, header):
     for f in resources:
         if f[2] == "RESOLVE" and (f[9] not in names or names[f[9]][2] != "COLOR_ATTACHMENT"):
             raise ValueError("resolve pairing does not name a color attachment")
-    pc = []
-    for path, kind, offset, size, stride, count, block, owner, frequency, stages in scalars:
-        if not block:
-            name = "p_" + path.replace(".", "_").replace("[", "_").replace("]", "")
-            pc.append("    layout(offset=" + str(offset) + ") " + kind.lower().replace("uint", "uint") + " " + name + ";")
-    declarations = "\n".join(shader_structs.values()) + "\n" + "\n".join(glsl)
-    if pc:
-        declarations += "\nlayout(push_constant, std430) uniform LuxPush {\n" + "\n".join(pc) + "\n} lux_push;\n"
+    def declarations_for(stage):
+        pc = []
+        for path, kind, offset, size, stride, count, block, owner, frequency, stages in scalars:
+            if not block and stages & stage:
+                name = "p_" + path.replace(".", "_").replace("[", "_").replace("]", "")
+                pc.append("    layout(offset=" + str(offset) + ") " + kind.lower() + " " + name + ";")
+        result = "\n".join(shader_structs.values()) + "\n" + "\n".join(
+            line for line, stages in zip(glsl, declaration_stages) if stages & stage)
+        if pc:
+            result += "\nlayout(push_constant, std430) uniform LuxPush {\n" + "\n".join(pc) + "\n} lux_push;\n"
+        return result
+
+    declarations = declarations_for(7)
+    stage_declarations = [declarations_for(stage) for stage in (1, 2, 4)]
     rt = types[root["type_id"]]
     text = ['// Generated from lux-cxx IR; do not edit.', '#pragma once', '#include "' + Path(header).name + '"', '#include <lux/engine/render/graph/Schema.hpp>', *abi,
             'static_assert(sizeof(::' + cpp + ') == ' + str(rt['size']) + ');',
@@ -227,13 +238,13 @@ def generate(ir, header):
             'namespace lux::render', '{', '    template <>', '    struct PassSchema<::' + cpp + '>', '    {',
             '    static constexpr std::uint32_t version = 1;',
             '    inline static constexpr std::array<rdesc::PassResourceField, ' + str(len(resources)) + '> resources{{']
-    for path, name, role, owner, frequency, required, count, stride, semantic, paired, dimension, image_format, stages, is_array in resources:
-        text += ['        {', '            ' + ',\n            '.join([json.dumps(path), json.dumps(name), 'rdesc::EPassFieldRole::' + role, 'rdesc::EFieldOwner::' + owner, 'rdesc::EUpdateFrequency::' + frequency, str(required).lower(), str(count), str(stride), json.dumps(semantic), json.dumps(paired), json.dumps(dimension), json.dumps(image_format), str(stages), str(is_array).lower()]), '        },']
+    for path, name, role, owner, frequency, required, count, stride, semantic, paired, dimension, image_format, stages, is_array, alignment in resources:
+        text += ['        {', '            ' + ',\n            '.join([json.dumps(path), json.dumps(name), 'rdesc::EPassFieldRole::' + role, 'rdesc::EFieldOwner::' + owner, 'rdesc::EUpdateFrequency::' + frequency, str(required).lower(), str(count), str(stride), json.dumps(semantic), json.dumps(paired), json.dumps(dimension), json.dumps(image_format), str(stages), str(is_array).lower(), str(alignment)]), '        },']
     text += ['    }};', '    inline static constexpr std::array<rdesc::PassScalarField, ' + str(len(scalars)) + '> scalars{{']
     for path, kind, offset, size, stride, count, block, owner, frequency, stages in scalars:
         text += ['        {', '            ' + ',\n            '.join([json.dumps(path), 'rdesc::EScalarKind::' + kind, *map(str, [offset,size,stride,count]), 'rdesc::EFieldOwner::' + owner, 'rdesc::EUpdateFrequency::' + frequency, str(stages)]), '        },']
     text += ['    }};', '', '    static constexpr rdesc::PassShaderContract contract() noexcept', '    {',
-             '        return {' + json.dumps(cpp) + ', resources, scalars, R"LUX(' + declarations + ')LUX", ' + str(rt['size']) + ', ' + str(rt['align']) + '};', '    }',
+             '        return {' + json.dumps(cpp) + ', resources, scalars, R"LUX(' + declarations + ')LUX", ' + str(rt['size']) + ', ' + str(rt['align']) + ', {' + ', '.join('R"LUX(' + value + ')LUX"' for value in stage_declarations) + '}};', '    }',
              '', '    static detail::CapturedParameters capture(const ::' + cpp + '& parameters) noexcept', '    {',
              '        detail::CapturedParameters result;', '        result.scalars.resize(' + str(rt['size']) + ');', *capture, '        return result;', '    }', '};', '}']
     start = text.index('    template <>') + 3

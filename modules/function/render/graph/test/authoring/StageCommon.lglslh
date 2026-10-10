@@ -1,0 +1,2 @@
+// A normal preprocessing include, with no independent resource metadata.
+const float stage_bias = 0.125;

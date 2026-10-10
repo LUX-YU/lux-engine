@@ -63,6 +63,51 @@ target_link_libraries(
 component_add_internal_dependencies(meta type_info)
 
 if(BUILD_TESTING)
+    find_package(lux-cxx CONFIG REQUIRED COMPONENTS serialization)
+    include_component_cmake_scripts(lux::cxx::serialization)
+
+    add_executable(meta_projection_compatibility_test test/ProjectionCompatibility.cpp)
+    target_include_directories(meta_projection_compatibility_test PRIVATE test)
+    target_link_libraries(
+        meta_projection_compatibility_test
+        PRIVATE type_info lux::cxx::serialization lux::cxx::reflection_runtime
+    )
+    if(MSVC)
+        target_compile_options(meta_projection_compatibility_test PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(meta_projection_compatibility_test PRIVATE -UNDEBUG)
+    endif()
+    # One real parser job, two unmodified production templates; no handwritten metadata substitute.
+    lux_add_codegen_job(
+        NAME meta_projection_compatibility
+        GENERATOR "${LUX_META_GENERATOR}"
+        MARKER luxref
+        SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/test/ProjectionCompatibility.cpp"
+        TARGET_FILES "${CMAKE_CURRENT_SOURCE_DIR}/test/ProjectionTypes.hpp"
+        LOGICAL_PATHS ProjectionTypes.hpp
+    )
+    engine_type_static_info_template(static_info_template)
+    lux_codegen_add_projection(
+        JOB meta_projection_compatibility
+        NAME engine_fields
+        TEMPLATE "${static_info_template}"
+        OUTPUT_ROOT "${CMAKE_CURRENT_BINARY_DIR}/projection_test"
+        OUTPUT_SUFFIX .type_static_info.hpp
+    )
+    lux_codegen_add_projection(
+        JOB meta_projection_compatibility
+        NAME serialization_fields
+        TEMPLATE "${LUX_SERIALIZATION_TEMPLATE}"
+        OUTPUT_ROOT "${CMAKE_CURRENT_BINARY_DIR}/projection_test"
+        OUTPUT_SUFFIX .serialize.hpp
+    )
+    lux_target_add_codegen(
+        TARGET meta_projection_compatibility_test
+        JOB meta_projection_compatibility
+        DONT_ADD_TO_SOURCE
+    )
+    add_test(NAME meta.projection_compatibility COMMAND meta_projection_compatibility_test)
+
     add_executable(meta_runtime_object_test test/RuntimeObjectTest.cpp)
 
     target_link_libraries(meta_runtime_object_test PRIVATE lux::engine::core::meta)

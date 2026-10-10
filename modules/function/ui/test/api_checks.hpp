@@ -9,10 +9,12 @@
 namespace api_checks
 {
     using namespace lux;
+
     class CommandPane final : public ui::Pane
     {
     public:
         CommandPane() : Pane("Identical title") {}
+
         unsigned queries{}, executions{};
         bool enabled{true};
 
@@ -35,6 +37,7 @@ namespace api_checks
             }
         }
     };
+
     inline void run()
     {
         auto created = ui::Root::create();
@@ -103,12 +106,12 @@ namespace api_checks
         frame();
         // Every text/command value survives its builder. No source token is necessary.
         {
-            ui::MenuItem
+            ui::ActionDescriptor
                 action{ui::CommandId{"test.owned.menu"}, std::string("Execute"), std::string("K"), {ui::EKey::K}};
-            ui::MenuItem menu{{}, std::string("Actions"), {}, {}, {std::move(action)}};
-            root.setMenu({std::move(menu)});
+            ui::MenuNode menu{ui::MenuId{"test.menu"}, std::string("Actions"), {ui::MenuAction{action.id}}};
+            assert(root.setMenu({{std::move(action)}, {std::move(menu)}}));
         }
-        assert(root.menu()[0].children[0].label == "Execute");
+        assert(root.menu().actions[0].label == "Execute");
         assert(root.requestFocus(a));
         frame();
         assert(root.feedInput(ui::Key{ui::EKey::K, true}));

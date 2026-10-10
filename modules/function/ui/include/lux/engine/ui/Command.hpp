@@ -1,6 +1,6 @@
 #pragma once
-#include <lux/engine/ui/Ids.hpp>
 #include <cstdint>
+#include <lux/engine/ui/Ids.hpp>
 
 namespace lux::ui
 {
@@ -18,7 +18,7 @@ namespace lux::ui
     };
 
     // A synchronous request, routed through the existing Object parent chain.
-    // The first owner accepts it even when disabled. Labels belong to the menu.
+    // The first owner accepts it even when disabled. Labels belong to ActionDescriptor.
     struct Command final
     {
         CommandIdView id;

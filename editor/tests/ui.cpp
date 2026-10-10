@@ -1,4 +1,5 @@
 #include "../../cmake/installed-consumers/common/UiTestContent.hpp"
+#include "MenuCompositionChecks.hpp"
 #include "api_contract.hpp"
 #include <algorithm>
 #include <cassert>
@@ -28,6 +29,7 @@ namespace
         {
             assert(layout_.addElement(text_) && addElement(layout_));
         }
+
         ~Pane() override
         {
             ++destroyed_;
@@ -38,22 +40,27 @@ namespace
         ui::Layout layout_;
         ui::Label text_;
     };
+
     class Listener final : public object::LuxObject
     {
     public:
         Listener(ui::Root& root) : LuxObject(), root_(root) {}
+
         void changed(const ui::PaneChanged&) noexcept
         {
             ++calls;
             auto blocked = root_.clearPanes();
             assert(!blocked && blocked.error() == ui::EPaneError::BUSY);
         }
+
         ui::Root& root_;
         unsigned calls{};
     };
 } // namespace
+
 int main()
 {
+    menu_composition_checks::run();
     auto& queue = object::ObjectRuntime::instance();
     auto created = ui::Root::create();
     assert(created);

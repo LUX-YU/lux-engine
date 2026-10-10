@@ -161,3 +161,22 @@ The installed consumer uses public run/Project Events, not private pumping. Gran
 safe-point, queued-stale, callback and shortcut assertions through private test access. SDK tests separately verify
 complete Contexts, the same service/VFS assertions, blocked-worker replacement, global UI, candidate rollback,
 metrics, real rendering and final posted-completion drain. A minimal consumer requests only the app component.
+
+## Action and menu composition
+
+`lux_editor_ui` provides the pure `composeEditorMenu(EditorMenuComposition)` algorithm. Products and external
+extensions append owning action, menu, group and placement declarations; they do not register handlers here.
+The product contributes project and editing commands through this same public input instead of assembling a
+complete hard-coded menu tree. `EditorComposition`/Context does not acquire a dependency on UI for this purpose.
+
+Menu and group before/after anchors address siblings. Action anchors address placements in the same menu,
+including other groups. Explicit edges win; ready placements use group rank, descending priority and canonical
+ID as tie-breakers. A group transition inserts a separator. Nested menus precede a parent's action groups.
+Unknown names, duplicate placements and cycles return owning diagnostics, never depend on extension load order.
+The result is an owned generic UI MenuDefinition; Root separately validates presentation/action references before
+adoption. There is no mutable command registry, plugin callback, runtime enabled/checked cache or second dispatcher.
+
+Menu placement/order and descriptor shortcut customization leave CommandId and its routed handler unchanged.
+Descriptor values can outlive their declaring DLL; no plugin code is required to interpret them. The receiver's
+own endpoint still governs business execution and lifetime. `cmake/installed-consumers/ui-actions` exercises the
+public contract, including actual DLL declarations and UI input after that DLL has unloaded.

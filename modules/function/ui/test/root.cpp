@@ -34,6 +34,7 @@ namespace
     struct Resource final
     {
         Lifetime& lifetime;
+
         ~Resource()
         {
             assert(lifetime.elements_destroyed == 4 && lifetime.panes_destroyed == 1);
@@ -50,6 +51,7 @@ namespace
         {
             assert(parent.addElement(*this));
         }
+
         ~LifetimeElement() override
         {
             assert(lifetime_.resource_alive);
@@ -58,6 +60,7 @@ namespace
 
     private:
         void draw() noexcept override {}
+
         Lifetime& lifetime_;
     };
 
@@ -72,10 +75,12 @@ namespace
             fields_.push_back(std::make_unique<LifetimeElement>(content_, lifetime, "first"));
             fields_.push_back(std::make_unique<LifetimeElement>(content_, lifetime, "second"));
         }
+
         ~LifetimeOwner() override
         {
             ++resource_.lifetime.panes_destroyed;
         }
+
         void capture()
         {
             assert(root().requestFocus(*fields_.front()));
@@ -96,6 +101,7 @@ namespace
     {
     public:
         ChangeElement() : Element{} {}
+
         unsigned applications{}, updates{}, draws{}, extra{};
         bool defer_draw{}, defer_update{}, repeat{};
         void (*on_apply)(ChangeElement&) noexcept {};
@@ -130,6 +136,7 @@ namespace
                 on_draw(*this);
             }
         }
+
         void update() noexcept override
         {
             ++updates;
@@ -142,6 +149,7 @@ namespace
                 on_update(*this);
             }
         }
+
         void event(lux::object::EventView&) noexcept override
         {
             root().deferChange(*this, apply);
@@ -159,7 +167,9 @@ namespace
         {
             replace();
         }
+
         std::optional<ChangeElement> content;
+
         void replace() noexcept
         {
             content.emplace(); // Deliberate address reuse: old intents must not follow the pointer.
@@ -325,6 +335,7 @@ namespace
         {
             assert(addElement(probe_content_));
         }
+
         unsigned draws{}, updates{}, keys{}, undo{}, redo{}, moves{}, losses{};
         bool nested{}, reject_capture{}, edit_text{}, consume_keys{true}, immediate_input{};
         Probe* transfer_capture{};
@@ -334,6 +345,7 @@ namespace
     private:
     public:
         TUiTestContent<Probe> probe_content_{*this};
+
         void drawTestContent(lux::ui::Element&) noexcept
         {
             ++draws;
@@ -353,10 +365,12 @@ namespace
                 assert(!result && result.error() == lux::ui::ECaptureError::FRAME_OPEN);
             }
         }
+
         void update() noexcept override
         {
             ++updates;
         }
+
         void event(lux::object::EventView& event) noexcept override
         {
             const auto* input = event.getIf<lux::ui::VInputEvent>();
@@ -569,10 +583,11 @@ int main(int argc, char** argv)
         auto& root = **bounded;
         auto& pane = ui_test::makePane<Probe>(root, "input");
         pane.consume_keys = false;
-        root.setMenu(
-            {{ui::CommandId{"lux.edit.undo"}, "Undo", "Ctrl+Z", {ui::EKey::Z, true}},
-             {ui::CommandId{"lux.edit.redo"}, "Redo", "Ctrl+Y", {ui::EKey::Y, true}}}
-        );
+        assert(root.setMenu(
+            {{{ui::CommandId{"lux.edit.undo"}, "Undo", "Ctrl+Z", {ui::EKey::Z, true}},
+              {ui::CommandId{"lux.edit.redo"}, "Redo", "Ctrl+Y", {ui::EKey::Y, true}}},
+             {}}
+        ));
         for (unsigned index{}; index != 3; ++index)
         {
             assert(root.update({{640, 480}, 0.016F}, slot));

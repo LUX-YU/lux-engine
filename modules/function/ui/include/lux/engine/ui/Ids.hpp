@@ -10,9 +10,15 @@ namespace lux::ui
     struct PaneIdTag final
     {
     };
+
     struct CommandIdTag final
     {
     };
+
+    struct MenuIdTag final
+    {
+    };
+
     struct PayloadTypeIdTag final
     {
     };
@@ -20,6 +26,7 @@ namespace lux::ui
     using PaneId = lux::cxx::SlotKey<PaneIdTag>;
     using CommandId = lux::cxx::StableNameId<CommandIdTag>;
     using CommandIdView = lux::cxx::StableNameIdView<CommandIdTag>;
+    using MenuId = lux::cxx::StableNameId<MenuIdTag>;
     using PayloadTypeId = lux::cxx::StableNameId<PayloadTypeIdTag>;
     using PayloadTypeIdView = lux::cxx::StableNameIdView<PayloadTypeIdTag>;
 

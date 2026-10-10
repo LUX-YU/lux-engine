@@ -1,6 +1,7 @@
 #include <cstdio>
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
+#include <lux/engine/editor/EditorMenuComposition.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
 #include <lux/engine/editor/SceneProfile3D.hpp>
@@ -15,6 +16,38 @@
 
 namespace
 {
+    void contributeProjectMenu(lux::editor::EditorMenuComposition& composition)
+    {
+        using namespace lux;
+        const ui::MenuId menu{"lux.menu.file"};
+        const editor::MenuGroupId group{"lux.group.file.project"};
+        composition.menus.push_back({menu, "Project"});
+        composition.groups.push_back({menu, group});
+        composition.actions.push_back(
+            {ui::CommandId{"lux.project.close"}, "Close project", "Ctrl+W", {ui::EKey::W, true}}
+        );
+        composition.actions.push_back({ui::CommandId{"lux.project.cancel_open"}, "Cancel opening"});
+        composition.contributions.push_back({menu, group, ui::CommandId{"lux.project.close"}});
+        composition.contributions.push_back(
+            {menu, group, ui::CommandId{"lux.project.cancel_open"}, {{}, ui::CommandId{"lux.project.close"}}}
+        );
+    }
+
+    void contributeEditingMenu(lux::editor::EditorMenuComposition& composition)
+    {
+        using namespace lux;
+        const ui::MenuId menu{"lux.menu.edit"};
+        const editor::MenuGroupId group{"lux.group.edit.history"};
+        composition.menus.push_back({menu, "Edit", {}, {{}, ui::MenuId{"lux.menu.file"}}});
+        composition.groups.push_back({menu, group});
+        composition.actions.push_back({ui::CommandId{"lux.edit.undo"}, "Undo", "Ctrl+Z", {ui::EKey::Z, true}});
+        composition.actions.push_back({ui::CommandId{"lux.edit.redo"}, "Redo", "Ctrl+Y", {ui::EKey::Y, true}});
+        composition.contributions.push_back({menu, group, ui::CommandId{"lux.edit.undo"}});
+        composition.contributions.push_back(
+            {menu, group, ui::CommandId{"lux.edit.redo"}, {{}, ui::CommandId{"lux.edit.undo"}}}
+        );
+    }
+
     class WelcomePane final : public lux::ui::Pane
     {
     public:
@@ -42,6 +75,7 @@ namespace
         lux::ui::Label label_, detail_;
         std::vector<std::unique_ptr<lux::ui::Label>> profiles_;
     };
+
     class ProjectStatusPane final : public lux::ui::Pane
     {
     public:
@@ -77,11 +111,13 @@ namespace
             auto* project = engine_.project();
             label_.setText(project ? "Project: " + project->project().name : "No project");
         }
+
         lux::editor::LuxEngine& engine_;
         lux::ui::Label label_;
         lux::object::Connection changed_, failed_;
     };
 } // namespace
+
 int main(int argc, char** argv)
 {
     auto arguments = lux::engine::platform::processArguments(argc, argv);
@@ -169,20 +205,25 @@ int main(int argc, char** argv)
         return 2;
     }
     // Product key bindings, transported by the same menu/shortcut path as external commands.
-    (*engine)->window().uiRoot().setMenu(
-        {{{},
-          "Project",
-          {},
-          {},
-          {{lux::ui::CommandId{"lux.project.close"}, "Close project", "Ctrl+W", {lux::ui::EKey::W, true}},
-           {lux::ui::CommandId{"lux.project.cancel_open"}, "Cancel opening", {}, {}}}},
-         {{},
-          "Edit",
-          {},
-          {},
-          {{lux::ui::CommandId{"lux.edit.undo"}, "Undo", "Ctrl+Z", {lux::ui::EKey::Z, true}},
-           {lux::ui::CommandId{"lux.edit.redo"}, "Redo", "Ctrl+Y", {lux::ui::EKey::Y, true}}}}}
-    );
+    lux::editor::EditorMenuComposition contributions;
+    contributeProjectMenu(contributions);
+    contributeEditingMenu(contributions);
+    auto menu = lux::editor::composeEditorMenu(contributions);
+    if (!menu)
+    {
+        std::fprintf(
+            stderr,
+            "Invalid menu contribution: %s (%u)\n",
+            menu.error().id.c_str(),
+            static_cast<unsigned>(menu.error().code)
+        );
+        return 2;
+    }
+    if (auto installed = (*engine)->window().uiRoot().setMenu(std::move(*menu)); !installed)
+    {
+        std::fprintf(stderr, "Invalid product menu: %u\n", static_cast<unsigned>(installed.error()));
+        return 2;
+    }
     auto result = (*engine)->run();
     if (!result)
     {

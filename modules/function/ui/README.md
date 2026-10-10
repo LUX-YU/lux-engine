@@ -64,15 +64,19 @@ DrawData 拥有顶点、索引、命令和图像 ID，复用缓冲，不传 CPU 
 字体 atlas 是拥有型像素副本。ImageElement 只显示非拥有 TextureHandle，不读资产或 retain/release GPU。
 业务 owner 和发布 owner 分别保证资源需求与已捕获帧使用责任，退休仍由原渲染链处理。
 
-setMenu 接收拥有 CommandId 和标签字符串的值树，不保存外部 source token，复用 Command QUERY/EXECUTE。菜单打开时固定目标；实际执行离开绘制栈，
-验证对象及窗口代际，不改投新焦点窗口。业务身份和历史校验属于 Editor。
+setMenu 接收完整 MenuDefinition：ActionDescriptor 唯一拥有默认标签、快捷键和 checkable；
+MenuNode/MenuAction/MenuSeparator 只组织呈现位置，MenuAction 仅引用 CommandId。
+同一动作可出现在多个菜单，也可只绑定快捷键。Root 在接纳时检查重复声明、快捷键冲突、菜单身份及未知引用，
+一次解析动作索引后才替换；失败保留原菜单。绘制不再按名字解析动作，动态 enabled/checked 仍查询原接收者。
+菜单打开时固定目标；实际执行离开绘制栈，验证对象及窗口代际，不改投新焦点窗口。
+替换菜单不撤销已接受的命令；队列拥有 CommandId，源描述释放后仍安全。业务身份和历史校验属于 Editor。
 
 测试覆盖布局、控件输入、固定批次、所有权、拓扑、代际及同步回调冻结。
 CPU 模拟输入不代表系统 IME 或原生输入接管资格。
 
 ## Generic commands and measurement
 
-Concrete controls use protected `Element::menuActive()`; Root does not friend particular controls. Menu items own
+Concrete controls use protected `Element::menuActive()`; Root does not friend particular controls. Action descriptors own
 labels and CommandId. Shortcuts are supplied by the host and follow the same query/deferred-execute path, preserving
 focus and stale-target checks. Root has no implicit Ctrl+Z/Ctrl+Y policy or MenuRequest host hook.
 

@@ -146,7 +146,7 @@ namespace
         auto owner = std::make_unique<OrderedPane>(order);
         auto& pane = *owner;
         assert(root.addPane(std::move(owner)));
-        root.setMenu({{ui::CommandId{"test.ordered"}, "Ordered", "Ctrl+K", {ui::EKey::K, true}}});
+        assert(root.setMenu({{{ui::CommandId{"test.ordered"}, "Ordered", "Ctrl+K", {ui::EKey::K, true}}}, {}}));
         ui::DrawData draw;
         for (unsigned index{}; index != 3; ++index)
         {
@@ -187,7 +187,7 @@ namespace
         assert(root.addPane(std::move(first)));
         assert(root.addPane(std::move(victim)));
         survivor.erase_target = root.paneHandle(removed_pane);
-        root.setMenu({{ui::CommandId{"test.removed"}, "Removed", "Ctrl+K", {ui::EKey::K, true}}});
+        assert(root.setMenu({{{ui::CommandId{"test.removed"}, "Removed", "Ctrl+K", {ui::EKey::K, true}}}, {}}));
         Counts application;
         Fallback fallback(application);
         root.setCommandFallback(&fallback);
@@ -208,6 +208,150 @@ namespace
         assert(root.update());
         assert((order == std::vector<unsigned>{4, 3}));
         assert(root.clearPanes());
+    }
+
+    class ActionReceiver final : public object::LuxObject
+    {
+    public:
+        explicit ActionReceiver(ui::Root& root) noexcept : root_(root) {}
+
+        unsigned queried{}, executed{};
+        bool enabled{true};
+
+    private:
+        void event(object::EventView& event) noexcept override
+        {
+            auto* request = event.getIf<ui::Command>();
+            if (!request)
+            {
+                return;
+            }
+            assert(request->id == ui::CommandIdView{"test.shared.action"});
+            const auto refused = root_.setMenu({});
+            assert(!refused && refused.error() == ui::EMenuError::BUSY);
+            event.accept();
+            if (request->phase == ui::ECommandPhase::QUERY)
+            {
+                ++queried;
+                request->enabled = enabled;
+                request->checked = true;
+            }
+            else
+            {
+                ++executed;
+            }
+        }
+
+        ui::Root& root_;
+    };
+
+    void actionProjection()
+    {
+        auto made = ui::Root::create({.docking = false});
+        assert(made);
+        auto& root = **made;
+        ActionReceiver receiver(root);
+        root.setCommandFallback(&receiver);
+        const ui::CommandId action{"test.shared.action"};
+        {
+            ui::MenuDefinition definition{
+                {{action, "Shared", "Ctrl+K", {ui::EKey::K, true}, true}},
+                {{ui::MenuId{"test.one"}, "One", {ui::MenuAction{action}}},
+                 {ui::MenuId{"test.two"}, "Two", {ui::MenuAction{action}}}}
+            };
+            assert(root.setMenu(std::move(definition)));
+        }
+        assert(root.menu().actions.size() == 1 && root.menu().menus.size() == 2);
+        assert(root.menu().actions[0].label == "Shared");
+        const auto* installed = &root.menu();
+        auto rejected = [&](ui::MenuDefinition candidate, ui::EMenuError expected)
+        {
+            const auto result = root.setMenu(std::move(candidate));
+            assert(!result && result.error() == expected);
+            assert(&root.menu() == installed);
+        };
+        auto invalid = root.menu();
+        invalid.actions.push_back(invalid.actions[0]);
+        rejected(std::move(invalid), ui::EMenuError::DUPLICATE_ACTION);
+        invalid = root.menu();
+        invalid.actions[0].id = {};
+        rejected(std::move(invalid), ui::EMenuError::INVALID_ACTION);
+        invalid = root.menu();
+        invalid.actions.push_back({ui::CommandId{"test.other"}, "Other", "Ctrl+K", {ui::EKey::K, true}});
+        rejected(std::move(invalid), ui::EMenuError::DUPLICATE_SHORTCUT);
+        invalid = root.menu();
+        invalid.menus[1].id = invalid.menus[0].id;
+        rejected(std::move(invalid), ui::EMenuError::DUPLICATE_MENU);
+        invalid = root.menu();
+        invalid.menus[1].children.push_back(ui::MenuAction{ui::CommandId{"missing"}});
+        rejected(std::move(invalid), ui::EMenuError::UNKNOWN_ACTION);
+        invalid = root.menu();
+        invalid.menus[1].id = {};
+        rejected(std::move(invalid), ui::EMenuError::INVALID_MENU);
+
+        ui::DrawData draw;
+        const auto frame = [&] { assert(root.update({{640, 480}, 0.016f}, draw)); };
+        for (unsigned index{}; index != 3; ++index)
+        {
+            frame();
+        }
+        const auto point = [&](float x, float y)
+        {
+            assert(root.feedInput(ui::PointerMove{{x, y}}));
+            frame();
+        };
+        const auto button = [&](bool down)
+        {
+            assert(root.feedInput(ui::PointerButton{ui::EPointerButton::LEFT, down}));
+            frame();
+        };
+        for (float x : {15.f, 60.f})
+        {
+            const auto queries = receiver.queried;
+            const auto executions = receiver.executed;
+            point(x, 10);
+            button(true);
+            button(false);
+            assert(receiver.queried > queries && receiver.executed == executions);
+            point(x, 38);
+            button(true);
+            button(false);
+            assert(receiver.executed == executions); // EXECUTE remains outside the drawing/input stack.
+            assert(root.update());
+            assert(receiver.executed == executions + 1);
+        }
+        // Surface placement is independent of the one action and shortcut registration.
+        auto customized = root.menu();
+        customized.menus.clear();
+        assert(root.setMenu(std::move(customized)));
+        assert(root.feedInput(ui::Key{ui::EKey::LEFT_CONTROL, true}));
+        assert(root.feedInput(ui::Key{ui::EKey::K, true}));
+        frame();
+        assert(receiver.executed == 2);
+        assert(root.setMenu({})); // Already accepted command keeps its owning semantic identity.
+        assert(root.update());
+        assert(receiver.executed == 3);
+        assert(root.feedInput(ui::Key{ui::EKey::K, false}));
+        frame();
+        assert(root.setMenu({{{action, "Customized label", "Ctrl+J", {ui::EKey::J, true}}}, {}}));
+        assert(root.feedInput(ui::Key{ui::EKey::K, true}));
+        frame();
+        assert(root.update());
+        assert(receiver.executed == 3);
+        assert(root.feedInput(ui::Key{ui::EKey::K, false}));
+        frame();
+        assert(root.feedInput(ui::Key{ui::EKey::J, true}));
+        frame();
+        assert(receiver.executed == 3);
+        assert(root.update());
+        assert(receiver.executed == 4);
+        assert(root.feedInput(ui::Key{ui::EKey::J, false}));
+        frame();
+        receiver.enabled = false;
+        assert(root.feedInput(ui::Key{ui::EKey::J, true}));
+        frame();
+        assert(root.update());
+        assert(receiver.executed == 4); // Dynamic QUERY policy remains at the receiver.
     }
 
     void replacement()
@@ -302,7 +446,7 @@ namespace
         Counts local, application;
         auto fallback = std::make_unique<Fallback>(application);
         root.setCommandFallback(fallback.get());
-        root.setMenu({{ui::CommandId{"test.global"}, "Global", "Ctrl+Z", {ui::EKey::Z, true}}});
+        assert(root.setMenu({{{ui::CommandId{"test.global"}, "Global", "Ctrl+Z", {ui::EKey::Z, true}}}, {}}));
         Pane* pane{};
         if (with_pane)
         {
@@ -363,5 +507,6 @@ int main()
     fallback(false, false, true, false, true);
     mixedSafePointOrder();
     mixedTargetRemoval();
+    actionProjection();
     std::cout << "PASS: atomic replacement, retained owners, stale handles, semantic commit and command fallback\n";
 }

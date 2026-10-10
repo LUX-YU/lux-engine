@@ -2,16 +2,111 @@
 
 namespace lux::ui
 {
-    void Root::setMenu(std::vector<MenuItem> menu)
+    cxx::expected<void, EMenuError> Root::setMenu(MenuDefinition menu) noexcept
     {
-        checkContentChange();
-        impl_->menu_state.items = std::move(menu);
+        if (auto ready = checkStructureSafe(); !ready)
+        {
+            if (ready.error() == EPaneError::WRONG_THREAD)
+            {
+                return cxx::unexpected(EMenuError::WRONG_THREAD);
+            }
+            return cxx::unexpected(ready.error() == EPaneError::CLOSED ? EMenuError::CLOSED : EMenuError::BUSY);
+        }
+        auto definition = std::make_unique<const MenuDefinition>(std::move(menu));
+        const auto& actions = definition->actions;
+        for (std::size_t index{}; index < actions.size(); ++index)
+        {
+            const auto& action = actions[index];
+            const bool is_invalid_action =
+                !action.id.isValid() || action.id.name().find('\0') != std::string_view::npos;
+            if (is_invalid_action)
+            {
+                return cxx::unexpected(EMenuError::INVALID_ACTION);
+            }
+            for (std::size_t previous{}; previous < index; ++previous)
+            {
+                if (actions[previous].id == action.id)
+                {
+                    return cxx::unexpected(EMenuError::DUPLICATE_ACTION);
+                }
+                const bool is_duplicate_shortcut =
+                    action.shortcut.key != EKey::NONE && actions[previous].shortcut == action.shortcut;
+                if (is_duplicate_shortcut)
+                {
+                    return cxx::unexpected(EMenuError::DUPLICATE_SHORTCUT);
+                }
+            }
+        }
+        using BoundNode = Impl::MenuState::BoundNode;
+        std::vector<const MenuNode*> seen;
+        auto resolve = [&](auto&& self, const MenuNode& node) noexcept -> cxx::expected<BoundNode, EMenuError>
+        {
+            const bool is_invalid_menu = !node.id.isValid() || node.id.name().find('\0') != std::string_view::npos;
+            if (is_invalid_menu)
+            {
+                return cxx::unexpected(EMenuError::INVALID_MENU);
+            }
+            for (const auto* previous : seen)
+            {
+                if (previous->id == node.id)
+                {
+                    return cxx::unexpected(EMenuError::DUPLICATE_MENU);
+                }
+            }
+            seen.push_back(&node);
+            BoundNode bound{&node, {}};
+            bound.children.reserve(node.children.size());
+            for (const auto& entry : node.children)
+            {
+                if (const auto* reference = std::get_if<MenuAction>(&entry))
+                {
+                    const auto action = std::ranges::find(actions, reference->action, &ActionDescriptor::id);
+                    if (action == actions.end())
+                    {
+                        return cxx::unexpected(EMenuError::UNKNOWN_ACTION);
+                    }
+                    bound.children.emplace_back(static_cast<std::size_t>(action - actions.begin()));
+                }
+                else if (const auto* child = std::get_if<MenuNode>(&entry))
+                {
+                    auto result = self(self, *child);
+                    if (!result)
+                    {
+                        return cxx::unexpected(result.error());
+                    }
+                    bound.children.emplace_back(std::move(*result));
+                }
+                else
+                {
+                    bound.children.emplace_back(MenuSeparator{});
+                }
+            }
+            return bound;
+        };
+        std::vector<BoundNode> menus;
+        menus.reserve(definition->menus.size());
+        for (const auto& node : definition->menus)
+        {
+            auto result = resolve(resolve, node);
+            if (!result)
+            {
+                return cxx::unexpected(result.error());
+            }
+            menus.push_back(std::move(*result));
+        }
+        auto& state = impl_->menu_state;
+        state.menus = std::move(menus);
+        state.definition = std::move(definition);
+        state.open = false;
+        state.pane = nullptr;
+        state.element = nullptr;
+        return {};
     }
 
-    std::span<const MenuItem> Root::menu() const noexcept
+    const MenuDefinition& Root::menu() const noexcept
     {
         requireOwner();
-        return impl_->menu_state.items;
+        return *impl_->menu_state.definition;
     }
 
     bool Root::menuTargets(const Element& element) const noexcept
@@ -70,40 +165,37 @@ namespace lux::ui
         }
     }
 
-    void Root::Impl::drawMenuItems(Root& root, std::span<const MenuItem> items) noexcept
+    void Root::Impl::drawMenuItems(Root& root, std::span<const MenuState::VBoundEntry> items) noexcept
     {
-        for (const auto& item : items)
+        for (std::size_t index{}; index < items.size(); ++index)
         {
-            const auto* label = item.label.empty() ? "" : item.label.data();
-            if (!item.children.empty())
+            const auto& item = items[index];
+            ImGui::PushID(static_cast<int>(index));
+            if (const auto* node = std::get_if<MenuState::BoundNode>(&item))
             {
-                if (ImGui::BeginMenu(label))
+                if (ImGui::BeginMenu(node->source->label.c_str()))
                 {
-                    drawMenuItems(root, item.children);
+                    drawMenuItems(root, node->children);
                     ImGui::EndMenu();
                 }
-                continue;
             }
-            if (!item.command.isValid())
+            else if (const auto* action_index = std::get_if<std::size_t>(&item))
             {
-                if (item.label.empty())
-                {
-                    ImGui::Separator();
-                }
-                else
-                {
-                    ImGui::TextDisabled("%s", label);
-                }
-                continue;
-            }
-            Command command{item.command.view()};
-            menuCommand(root, command);
-            const auto* shortcut = item.shortcut_label.empty() ? "" : item.shortcut_label.data();
-            if (ImGui::MenuItem(label, shortcut, command.checked, command.enabled))
-            {
-                command.phase = ECommandPhase::EXECUTE;
+                const auto& action = menu_state.definition->actions[*action_index];
+                Command command{action.id.view()};
                 menuCommand(root, command);
+                const bool checked = action.checkable && command.checked;
+                if (ImGui::MenuItem(action.label.c_str(), action.shortcut_label.c_str(), checked, command.enabled))
+                {
+                    command.phase = ECommandPhase::EXECUTE;
+                    menuCommand(root, command);
+                }
             }
+            else
+            {
+                ImGui::Separator();
+            }
+            ImGui::PopID();
         }
     }
 
@@ -111,12 +203,14 @@ namespace lux::ui
     {
         menu_state.height = 0;
         bool opened{};
-        if (!menu_state.items.empty() && ImGui::BeginMainMenuBar())
+        if (!menu_state.menus.empty() && ImGui::BeginMainMenuBar())
         {
             menu_state.height = ImGui::GetWindowHeight();
-            for (const auto& item : menu_state.items)
+            for (const auto& item : menu_state.menus)
             {
-                if (ImGui::BeginMenu((item.label.empty() ? "" : item.label.data()), !focus_state.modal))
+                const auto name = item.source->id.name();
+                ImGui::PushID(name.data(), name.data() + name.size());
+                if (ImGui::BeginMenu(item.source->label.c_str(), !focus_state.modal))
                 {
                     opened = true;
                     if (!menu_state.open)
@@ -128,6 +222,7 @@ namespace lux::ui
                     drawMenuItems(root, item.children);
                     ImGui::EndMenu();
                 }
+                ImGui::PopID();
             }
             ImGui::EndMainMenuBar();
         }
@@ -148,32 +243,23 @@ namespace lux::ui
         const bool control = (input_state.modifiers & ImGuiMod_Ctrl) != 0;
         const bool shift = (input_state.modifiers & ImGuiMod_Shift) != 0;
         const bool alt = (input_state.modifiers & ImGuiMod_Alt) != 0;
-        const auto find = [&](auto&& self, std::span<const MenuItem> items) -> const MenuItem*
-        {
-            for (const auto& item : items)
+        const auto& actions = menu_state.definition->actions;
+        const auto item = std::ranges::find_if(
+            actions,
+            [&](const ActionDescriptor& action) noexcept
             {
-                const auto& binding = item.shortcut;
-                const bool matches = binding.key == key.key && binding.control == control && binding.shift == shift &&
-                                     binding.alt == alt;
-                if (item.command.isValid() && matches)
-                {
-                    return &item;
-                }
-                if (const auto* nested = self(self, item.children))
-                {
-                    return nested;
-                }
+                const auto& binding = action.shortcut;
+                return binding.key == key.key && binding.control == control && binding.shift == shift &&
+                       binding.alt == alt;
             }
-            return nullptr;
-        };
-        const auto* item = find(find, menu_state.items);
-        if (!item)
+        );
+        if (item == actions.end())
         {
             return false;
         }
         menu_state.pane = focus_state.focused;
         menu_state.element = focus_state.focused_element;
-        Command command{item->command.view()};
+        Command command{item->id.view()};
         menuCommand(root, command);
         if (command.enabled)
         {

@@ -10,6 +10,7 @@
 #include <vector>
 
 using namespace lux;
+
 namespace
 {
     class ExternalControl final : public ui::Element
@@ -19,7 +20,9 @@ namespace
         {
             return menuActive();
         }
+
         unsigned queries{}, executions{};
+
         void event(object::EventView& event) noexcept override
         {
             auto* command = event.getIf<ui::Command>();
@@ -38,8 +41,10 @@ namespace
             }
             event.accept();
         }
+
         void draw() noexcept override {}
     };
+
     class CommandPane final : public ui::Pane
     {
     public:
@@ -47,12 +52,15 @@ namespace
         {
             assert(addElement(control));
         }
+
         void event(object::EventView& event) noexcept override
         {
             control.event(event);
         }
+
         ExternalControl control;
     };
+
     void shortcuts()
     {
         ExternalControl detached;
@@ -81,7 +89,8 @@ namespace
         {
             assert(root.update({{640, 480}, 0.016F}, data));
         }
-        root.setMenu({{ui::CommandId{"test.external.action"}, "External", "Ctrl+K", {ui::EKey::K, true}}});
+        assert(root.setMenu({{{ui::CommandId{"test.external.action"}, "External", "Ctrl+K", {ui::EKey::K, true}}}, {}})
+        );
         // Creating the menu bar is a new ImGui window. Establish focus after that first frame.
         assert(root.update({{640, 480}, 0.016F}, data));
         assert(root.requestFocus(pane));
@@ -95,6 +104,7 @@ namespace
         assert(root.update());
         assert(pane.control.executions == 1);
     }
+
     class Tree final : public ui::Pane
     {
     public:
@@ -108,9 +118,11 @@ namespace
                 labels.push_back(std::move(label));
             }
         }
+
         ui::Layout layout;
         std::vector<std::unique_ptr<ui::Label>> labels;
     };
+
     void statistics(unsigned panes, unsigned elements)
     {
         auto made = ui::Root::create();
@@ -160,6 +172,7 @@ namespace
         assert(!idle.captured && idle.draw.count() == 0 && idle.capture.count() == 0 && idle.draw_vertices == 0);
     }
 } // namespace
+
 int main()
 {
     shortcuts();

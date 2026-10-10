@@ -1,4 +1,3 @@
-#include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include "support/ProjectRequests.hpp"
 #include <atomic>
 #include <chrono>
@@ -6,6 +5,7 @@
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
+#include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -23,17 +23,21 @@ namespace
     {
         unsigned panes{}, contexts{}, constructions{};
     };
+
     struct Service final
     {
         explicit Service(Lifetime& value) : value(value) {}
+
         ~Service()
         {
             *alive = false;
             ++value.contexts;
         }
+
         Lifetime& value;
         std::shared_ptr<bool> alive{std::make_shared<bool>(true)};
     };
+
     class Pane final : public ui::Pane
     {
     public:
@@ -49,6 +53,7 @@ namespace
                 beginDestruction();
             }
         }
+
         ~Pane() override
         {
             assert(!context_.project().name.empty());
@@ -61,12 +66,14 @@ namespace
         Lifetime& lifetime_;
         std::shared_ptr<const bool> service_alive_;
     };
+
     struct Held final
     {
         std::counting_semaphore<2> release{0};
         std::atomic_uint started{}, delivered{};
         std::atomic_bool stopped{};
     };
+
     void hold(process::TaskScope& scope, const std::shared_ptr<Held>& held)
     {
         auto scheduler = scope.execution().blocking();
@@ -286,7 +293,7 @@ int main(int argc, char** argv)
     // L12: the real Root forwards an unfocused shortcut to LuxEngine, not a test dispatcher.
     open(a);
     assert(root.clearPanes());
-    root.setMenu({{ui::CommandId{"lux.project.close"}, "Close project", "Ctrl+W", {ui::EKey::W, true}}});
+    assert(root.setMenu({{{ui::CommandId{"lux.project.close"}, "Close project", "Ctrl+W", {ui::EKey::W, true}}}, {}}));
     ui::DrawData draw;
     for (unsigned i{}; i != 3; ++i)
     {
@@ -298,7 +305,7 @@ int main(int argc, char** argv)
     assert(root.update());
     assert(engine->project()); // Event accepted; structural change waits for the host safe point.
     until([&] { return !engine->project(); });
-    root.setMenu({});
+    assert(root.setMenu({}));
 
     // L13: a notification sees B already current; its close request is retained for the next batch.
     const auto changed = facts.changed;

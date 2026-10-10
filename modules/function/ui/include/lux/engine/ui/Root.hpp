@@ -30,6 +30,7 @@ namespace lux::ui
     struct ObjectRemoved final
     {
         explicit ObjectRemoved(object::LuxObject& value) noexcept : object(&value) {}
+
         ObjectRemoved(const ObjectRemoved&) = delete;
         ObjectRemoved& operator=(const ObjectRemoved&) = delete;
         object::LuxObject* object;
@@ -114,8 +115,9 @@ namespace lux::ui
 
         // Non-owning endpoint for unhandled commands, including commands with no focused Pane.
         void setCommandFallback(object::LuxObject*) noexcept;
-        void setMenu(std::vector<MenuItem>);
-        [[nodiscard]] std::span<const MenuItem> menu() const noexcept;
+        // Validate and resolve a whole owned candidate before adoption; rejection preserves the prior menu.
+        [[nodiscard]] cxx::expected<void, EMenuError> setMenu(MenuDefinition) noexcept;
+        [[nodiscard]] const MenuDefinition& menu() const noexcept;
         // Borrowed enumeration freezes structure until every callback has returned.
         [[nodiscard]] PaneResult<void> forEachPane(cxx::function_ref<void(Pane&) noexcept>) noexcept;
         // DIRECT notification; receivers may only invalidate borrows, never destroy other UI objects.
@@ -160,10 +162,12 @@ namespace lux::ui
         void releaseElement(Element&) noexcept;
         void notifyRemoved(object::LuxObject&) noexcept;
         [[nodiscard]] bool attachmentSafe() const noexcept;
+
         bool allowsGenericStructure() const noexcept override
         {
             return false;
         }
+
         void drawElement(Element&, Point) noexcept;
         [[nodiscard]] SizeHint measureElement(Element&, float width, bool intrinsic) noexcept;
         void arrangeElement(Element&) noexcept;

@@ -157,7 +157,18 @@ namespace lux::ui
 
         struct MenuState final
         {
-            std::vector<MenuItem> items;
+            struct BoundNode;
+            using VBoundEntry = std::variant<std::size_t, MenuSeparator, BoundNode>;
+
+            struct BoundNode final
+            {
+                const MenuNode* source{};
+                std::vector<VBoundEntry> children;
+            };
+
+            // The immutable input allocation outlives its resolved projection. No external borrow is retained.
+            std::unique_ptr<const MenuDefinition> definition{std::make_unique<MenuDefinition>()};
+            std::vector<BoundNode> menus;
             Pane* pane{};
             Element* element{};
             bool open{};
@@ -205,7 +216,7 @@ namespace lux::ui
         void cancelActions(object::LuxObject&) noexcept;
         void applyPendingChanges(Root&) noexcept;
         void drawMenu(Root&) noexcept;
-        void drawMenuItems(Root&, std::span<const MenuItem>) noexcept;
+        void drawMenuItems(Root&, std::span<const MenuState::VBoundEntry>) noexcept;
         void routeCommand(Root&, object::LuxObject*, Command&) noexcept;
         void menuCommand(Root&, Command&) noexcept;
         bool shortcut(Root&, const Key&) noexcept;

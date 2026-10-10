@@ -118,6 +118,7 @@ add_component(
     SOURCE_FILES
         ui/src/EditorUiErrors.cpp
         ui/src/EditorUiFactories.cpp
+        ui/src/EditorMenuComposition.cpp
         ui/src/WindowInput.cpp
         window/src/EditorWindow.cpp
 )

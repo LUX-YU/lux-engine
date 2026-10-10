@@ -1,6 +1,7 @@
 #include <lux/engine/flowforge/FlowExecutionCompiler.hpp>
 #include <lux/engine/flowforge/ObjectNodes.hpp>
 #include <lux/engine/flowforge/detail/FlowPinSchema.hpp>
+#include <lux/engine/flowforge/detail/FlowSourceMetadata.hpp>
 #include <lux/engine/meta/Meta.hpp>
 
 #include <type_traits>
@@ -112,6 +113,86 @@ namespace lux::flowforge
                     }
                 };
             }
+            result.capture_source = [](const FlowNodePayload& payload
+                                    ) noexcept -> FlowSourceResult<VFlowSourceParameters>
+            {
+                const auto& value = *payload.get<T>();
+                if constexpr (std::is_same_v<T, GetVariablePayload> || std::is_same_v<T, SetVariablePayload>)
+                {
+                    return FlowSourceReference{value.variable};
+                }
+                else if constexpr (std::is_same_v<T, GetObjectPayload> || std::is_same_v<T, SetObjectPayload>)
+                {
+                    return FlowSourceType{std::string(value.type->name)};
+                }
+                else
+                {
+                    return FlowSourceField{
+                        std::string(value.owner->full_name),
+                        std::string(value.field->name),
+                        std::string(value.field->type.name)
+                    };
+                }
+            };
+            result.restore_source = [](const FlowSourceNode& source,
+                                       const FlowSourceEnvironment& environment,
+                                       FlowReferenceView references,
+                                       const object::CodeLease& lease) noexcept -> FlowSourceResult<FlowNodePayload>
+            {
+                if constexpr (std::is_same_v<T, GetVariablePayload> || std::is_same_v<T, SetVariablePayload>)
+                {
+                    const auto* saved = std::get_if<FlowSourceReference>(&source.parameters);
+                    if (!saved)
+                    {
+                        return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
+                    }
+                    const auto* type = references.variable_type(saved->id);
+                    if (!type)
+                    {
+                        return detail::sourceFailure(EFlowSourceError::INVALID_IDENTITY, "variable", source.id);
+                    }
+                    return detail::sourcePayload<T, cloneObject<T>>(lease, T{saved->id, type});
+                }
+                else if constexpr (std::is_same_v<T, GetObjectPayload> || std::is_same_v<T, SetObjectPayload>)
+                {
+                    const auto* saved = std::get_if<FlowSourceType>(&source.parameters);
+                    if (!saved)
+                    {
+                        return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
+                    }
+                    const auto* type = detail::findSourceType(saved->name, environment);
+                    if (!type)
+                    {
+                        return detail::sourceFailure(EFlowSourceError::UNKNOWN_TYPE, saved->name, source.id);
+                    }
+                    return detail::sourcePayload<T, cloneObject<T>>(lease, T{type});
+                }
+                else
+                {
+                    const auto* saved = std::get_if<FlowSourceField>(&source.parameters);
+                    if (!saved)
+                    {
+                        return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
+                    }
+                    const auto* owner = detail::findSourceClass(saved->owner, environment);
+                    if (owner)
+                    {
+                        for (const auto& field : owner->fields)
+                        {
+                            const bool is_matching = field.name == saved->member && field.type.name == saved->type;
+                            if (is_matching)
+                            {
+                                return detail::sourcePayload<T, cloneObject<T>>(lease, T{owner, &field});
+                            }
+                        }
+                    }
+                    return detail::sourceFailure(
+                        EFlowSourceError::UNKNOWN_REFLECTION_MEMBER,
+                        saved->owner + "::" + saved->member,
+                        source.id
+                    );
+                }
+            };
             return result;
         }
 

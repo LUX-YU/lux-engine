@@ -7,6 +7,7 @@
 #include <lux/engine/flowforge/script/ScriptAbilityPayload.hpp>
 #include <lux/engine/flowforge/script/ScriptEventPayload.hpp>
 
+#include <lux/engine/flowforge/detail/FlowSourceMetadata.hpp>
 #include <lux/engine/meta/Meta.hpp>
 
 #include <algorithm>
@@ -28,11 +29,14 @@ namespace lux::flowforge
             const bool has_code = value.code.valid();
             const bool has_one_compiler = (value.compile != nullptr) != (value.compile_execution != nullptr);
             const bool has_callbacks = value.create && value.describe_pins && value.validate && has_one_compiler;
-            const bool has_codec_pair = (value.encode != nullptr) == (value.decode != nullptr);
+            const bool has_codec_pair = (value.capture_source != nullptr) == (value.restore_source != nullptr);
             const bool has_evaluation =
                 value.value_evaluation == EFlowValueEvaluation::PURE ||
                 (value.value_evaluation == EFlowValueEvaluation::READS_STATE && value.compile != nullptr);
-            return has_identity && has_payload_type && has_code && has_callbacks && has_codec_pair && has_evaluation;
+            const bool has_source_stage =
+                value.source_stage == EFlowSourceStage::DECLARATION || value.source_stage == EFlowSourceStage::BODY;
+            return has_identity && has_payload_type && has_code && has_callbacks && has_codec_pair && has_evaluation &&
+                   has_source_stage;
         }
 
         const FlowNodeRegistration* builtinRegistration(std::string_view name) noexcept
@@ -70,7 +74,9 @@ namespace lux::flowforge
                                       candidate.compile_execution == value.compile_execution &&
                                       candidate.validate_references == value.validate_references &&
                                       candidate.value_evaluation == value.value_evaluation;
-            const bool has_codec = candidate.encode == value.encode && candidate.decode == value.decode;
+            const bool has_codec = candidate.capture_source == value.capture_source &&
+                                   candidate.restore_source == value.restore_source &&
+                                   candidate.source_stage == value.source_stage;
             return has_identity && has_factory && has_behavior && has_codec;
         }
 
@@ -132,35 +138,59 @@ namespace lux::flowforge
         return {};
     }
 
-    FlowForgeResult<std::string> FlowNodeType::encode(const FlowNodePayload& payload) const noexcept
+    EFlowSourceStage FlowNodeType::sourceStage() const noexcept
+    {
+        return registration_.source_stage;
+    }
+
+    FlowSourceResult<VFlowSourceParameters> FlowNodeType::captureSource(const FlowNodePayload& payload) const noexcept
     {
         auto schema = describePins(payload);
         if (!schema)
         {
-            return cxx::unexpected(std::move(schema.error()));
+            return detail::sourceCodecFailure(std::move(schema.error()), registration_.identity.canonical_name);
         }
-        if (!registration_.encode)
+        if (!registration_.capture_source)
         {
-            return cxx::unexpected(invalid("node definition has no source codec"));
+            return detail::sourceCodecFailure(
+                invalid("node definition has no source codec"),
+                registration_.identity.canonical_name
+            );
         }
-        return registration_.encode(payload);
+        return registration_.capture_source(payload);
     }
 
-    FlowForgeResult<FlowNodePayload> FlowNodeType::decode(std::string_view bytes) const noexcept
+    FlowSourceResult<FlowNodePayload> FlowNodeType::restoreSource(
+        const FlowSourceNode& source,
+        const FlowSourceEnvironment& environment,
+        FlowReferenceView references
+    ) const noexcept
     {
-        if (!registration_.decode)
+        const bool is_identity_mismatch =
+            source.type != registration_.identity.canonical_name || source.version != registration_.identity.version;
+        if (is_identity_mismatch)
         {
-            return cxx::unexpected(invalid("node definition has no source codec"));
+            return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
         }
-        auto payload = registration_.decode(bytes, registration_.code);
+        if (!registration_.restore_source)
+        {
+            return detail::sourceCodecFailure(invalid("node definition has no source codec"), source.type, source.id);
+        }
+        auto payload = registration_.restore_source(source, environment, references, registration_.code);
         if (!payload)
         {
-            return cxx::unexpected(std::move(payload.error()));
+            auto error = std::move(payload.error());
+            if (error.code == EFlowSourceError::NODE_CODEC_FAILURE)
+            {
+                error.field = source.type;
+                error.node = source.id;
+            }
+            return cxx::unexpected(std::move(error));
         }
         auto schema = describePins(*payload);
         if (!schema)
         {
-            return cxx::unexpected(std::move(schema.error()));
+            return detail::sourceCodecFailure(std::move(schema.error()), source.type, source.id);
         }
         return payload;
     }

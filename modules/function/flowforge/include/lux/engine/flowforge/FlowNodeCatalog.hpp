@@ -3,6 +3,7 @@
 #include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/flowforge/FlowNodePayload.hpp>
 #include <lux/engine/flowforge/FlowValueCompiler.hpp>
+#include <lux/engine/flowforge/graph/FlowSourceData.hpp>
 #include <lux/engine/function/graph/GraphNodeTypeIdentity.hpp>
 #include <lux/engine/meta/RuntimeObject.hpp>
 
@@ -13,6 +14,14 @@
 namespace lux::flowforge
 {
     struct FlowNode;
+    struct FlowSourceEnvironment;
+
+    // Declarations are restored before bodies, within the same unpublished graph candidate.
+    enum class EFlowSourceStage : std::uint8_t
+    {
+        DECLARATION,
+        BODY
+    };
     class FlowExecutionCompiler;
 
     // Borrowed only for a synchronous candidate validation call. Lookups see the complete
@@ -65,8 +74,14 @@ namespace lux::flowforge
         using Validate = FlowForgeResult<void> (*)(const FlowNodePayload&) noexcept;
         using Compile =
             ValueResult (*)(const FlowNodePayload&, std::span<const FlowValue>, FlowValueCompiler&) noexcept;
-        using Encode = FlowForgeResult<std::string> (*)(const FlowNodePayload&) noexcept;
-        using Decode = FlowForgeResult<FlowNodePayload> (*)(std::string_view, const object::CodeLease&) noexcept;
+        using CaptureSource = FlowSourceResult<VFlowSourceParameters> (*)(const FlowNodePayload&) noexcept;
+        using RestoreResult = FlowSourceResult<FlowNodePayload>;
+        using RestoreSource = RestoreResult (*)(
+            const FlowSourceNode&,
+            const FlowSourceEnvironment&,
+            FlowReferenceView,
+            const object::CodeLease&
+        ) noexcept;
         using ValidateReferences = FlowForgeResult<void> (*)(const FlowNodePayload&, FlowReferenceView) noexcept;
         using CompileExecution = FlowForgeResult<void> (*)(const FlowNodePayload&, FlowExecutionCompiler&) noexcept;
 
@@ -77,11 +92,14 @@ namespace lux::flowforge
         DescribePins describe_pins{};
         Validate validate{};
         Compile compile{};
-        Encode encode{};
-        Decode decode{};
+        // Synchronous source conversion only; callbacks cannot retain source/environment/reference views.
+        // No pair means an explicitly unsavable definition. A half pair is rejected during registration.
+        CaptureSource capture_source{};
+        RestoreSource restore_source{};
         ValidateReferences validate_references{};
         CompileExecution compile_execution{};
         EFlowValueEvaluation value_evaluation{EFlowValueEvaluation::PURE};
+        EFlowSourceStage source_stage{EFlowSourceStage::BODY};
     };
 
     class LUX_ENGINE_FLOWFORGE_PUBLIC FlowNodeType final
@@ -99,8 +117,13 @@ namespace lux::flowforge
         [[nodiscard]] FlowForgeResult<void>
         validateReferences(const FlowNodePayload&, FlowReferenceView) const noexcept;
         [[nodiscard]] FlowNodeRegistration::PinResult describePins(const FlowNodePayload&) const noexcept;
-        [[nodiscard]] FlowForgeResult<std::string> encode(const FlowNodePayload&) const noexcept;
-        [[nodiscard]] FlowForgeResult<FlowNodePayload> decode(std::string_view) const noexcept;
+        [[nodiscard]] EFlowSourceStage sourceStage() const noexcept;
+        [[nodiscard]] FlowSourceResult<VFlowSourceParameters> captureSource(const FlowNodePayload&) const noexcept;
+        [[nodiscard]] FlowSourceResult<FlowNodePayload> restoreSource(
+            const FlowSourceNode&,
+            const FlowSourceEnvironment&,
+            FlowReferenceView
+        ) const noexcept;
         // A failed callback invalidates the caller's disposable compile candidate. Never publish it.
         [[nodiscard]] FlowNodeRegistration::ValueResult
         compile(const FlowNodePayload&, std::span<const FlowValue>, FlowValueCompiler&) const noexcept;

@@ -1,4 +1,5 @@
 #include <lux/engine/flowforge/ScalarNodes.hpp>
+#include <lux/engine/flowforge/detail/FlowSourceMetadata.hpp>
 
 #include <array>
 #include <lux/engine/flowforge/detail/FlowPinSchema.hpp>
@@ -104,34 +105,29 @@ namespace lux::flowforge
             return std::vector<FlowValue>{*result};
         }
 
-        FlowForgeResult<std::string> encodeScalar(const FlowNodePayload& payload) noexcept
+        FlowSourceResult<VFlowSourceParameters> captureScalar(const FlowNodePayload& payload) noexcept
         {
-            return std::string(payload.get<ScalarNodePayload>()->operand_type->name);
+            return FlowSourceType{std::string(payload.get<ScalarNodePayload>()->operand_type->name)};
         }
 
-        FlowForgeResult<FlowNodePayload> decodeScalar(std::string_view name, const object::CodeLease& code) noexcept
+        FlowSourceResult<FlowNodePayload> restoreScalar(
+            const FlowSourceNode& source,
+            const FlowSourceEnvironment& environment,
+            FlowReferenceView,
+            const object::CodeLease& code
+        ) noexcept
         {
-            const std::array types{
-                &meta::ref_type_of_v<bool>,
-                &meta::ref_type_of_v<std::int8_t>,
-                &meta::ref_type_of_v<std::uint8_t>,
-                &meta::ref_type_of_v<std::int16_t>,
-                &meta::ref_type_of_v<std::uint16_t>,
-                &meta::ref_type_of_v<std::int32_t>,
-                &meta::ref_type_of_v<std::uint32_t>,
-                &meta::ref_type_of_v<std::int64_t>,
-                &meta::ref_type_of_v<std::uint64_t>,
-                &meta::ref_type_of_v<float>,
-                &meta::ref_type_of_v<double>
-            };
-            for (const auto* type : types)
+            const auto* saved = std::get_if<FlowSourceType>(&source.parameters);
+            if (!saved)
             {
-                if (type->name == name)
-                {
-                    return FlowNodePayload::make<ScalarNodePayload, cloneScalar>(code, type);
-                }
+                return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
             }
-            return cxx::unexpected(invalidScalar("unknown scalar operand type"));
+            const auto* type = detail::findSourceType(saved->name, environment);
+            if (!type)
+            {
+                return detail::sourceFailure(EFlowSourceError::UNKNOWN_TYPE, saved->name, source.id);
+            }
+            return detail::sourcePayload<ScalarNodePayload, cloneScalar>(code, type);
         }
 
         template <EScalarOperation Operation>
@@ -145,8 +141,8 @@ namespace lux::flowforge
                 describeScalar<Operation>,
                 validateScalar,
                 compileScalar<Operation>,
-                encodeScalar,
-                decodeScalar
+                captureScalar,
+                restoreScalar
             };
         }
     } // namespace

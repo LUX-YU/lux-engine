@@ -4,6 +4,7 @@
 #include <lux/engine/flowforge/NativeCallDefinition.hpp>
 #include <lux/engine/flowforge/ObjectNodes.hpp>
 #include <lux/engine/flowforge/graph/FlowGraph.hpp>
+#include <lux/engine/flowforge/graph/FlowSource.hpp>
 #include <lux/engine/flowforge/graph/NodeRegistry.hpp>
 #include <lux/engine/flowforge/script/ScriptAbilityPayload.hpp>
 #include <lux/engine/flowforge/script/ScriptEventPayload.hpp>
@@ -18,6 +19,22 @@ namespace
 {
     using namespace lux;
     using namespace lux::flowforge;
+
+    FlowSourceResult<FlowNodePayload> restorePayload(
+        const FlowNodeType& type,
+        VFlowSourceParameters parameters,
+        std::size_t output_count = 1
+    ) noexcept
+    {
+        FlowSourceNode source;
+        source.type = type.identity().canonical_name;
+        source.version = type.identity().version;
+        source.parameters = std::move(parameters);
+        source.outputs.resize(output_count);
+        const auto node = [](NodeId) noexcept -> const FlowNode* { return nullptr; };
+        const auto variable = [](std::uint64_t) noexcept -> const meta::RefType* { return nullptr; };
+        return type.restoreSource(source, {}, {node, variable});
+    }
 
     void require(bool condition, std::source_location at = std::source_location::current()) noexcept
     {
@@ -408,15 +425,15 @@ namespace
         {
             const auto node = makeNode(catalog, entry.identity.canonical_name);
             require(node.definition->hasExecutionCompiler());
-            const auto encoded = node.definition->encode(node.payload);
+            const auto encoded = node.definition->captureSource(node.payload);
             require(encoded.has_value());
-            auto decoded = node.definition->decode(*encoded);
+            auto decoded = restorePayload(*node.definition, *encoded);
             require(decoded.has_value());
             auto cloned = decoded->clone();
             require(cloned.has_value());
-            const auto reencoded = node.definition->encode(*cloned);
+            const auto reencoded = node.definition->captureSource(*cloned);
             require(reencoded.has_value() && *reencoded == *encoded);
-            require(!node.definition->decode("invalid"));
+            require(!restorePayload(*node.definition, FlowSourcePayload{"invalid"}));
             const auto before = compiler.calls;
             const auto compiled = node.definition->compileExecution(*cloned, compiler);
             if (entry.identity.canonical_name == "lux.flow.start")
@@ -453,9 +470,9 @@ namespace
         sequence.payload.get<SequencePayload>()->additional_outputs = 3;
         require(sequence.definition->compileExecution(sequence.payload, compiler).has_value());
         require(compiler.pins == std::vector{leg(0), leg(1), leg(2), leg(3)});
-        const auto encoded = sequence.definition->encode(sequence.payload);
-        require(encoded.has_value() && *encoded == "3");
-        const auto decoded = sequence.definition->decode(*encoded);
+        const auto encoded = sequence.definition->captureSource(sequence.payload);
+        require(encoded.has_value() && std::holds_alternative<std::monostate>(*encoded));
+        const auto decoded = restorePayload(*sequence.definition, *encoded, 4);
         require(decoded.has_value() && decoded->get<SequencePayload>()->additional_outputs == 3);
         compiler.reject = true;
         const auto refused = sequence.definition->compileExecution(sequence.payload, compiler);

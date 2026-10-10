@@ -2,6 +2,7 @@
 #include <lux/engine/flowforge/FunctionNodes.hpp>
 #include <lux/engine/flowforge/NativeCallDefinition.hpp>
 #include <lux/engine/flowforge/detail/FlowPinSchema.hpp>
+#include <lux/engine/flowforge/detail/FlowSourceMetadata.hpp>
 #include <lux/engine/flowforge/graph/FlowNode.hpp>
 
 #include <type_traits>
@@ -10,6 +11,25 @@ namespace lux::flowforge
 {
     namespace
     {
+        bool signatureMatches(const lux::meta::RefInvokable& info, const FlowSourceNativeCall& source) noexcept
+        {
+            const bool mismatch = info.full_name != source.member || info.type_signature != source.signature ||
+                                  info.parameters.size() != source.parameters.arguments.size();
+            if (mismatch)
+            {
+                return false;
+            }
+            for (std::size_t i{}; i < info.parameters.size(); ++i)
+            {
+                if (info.parameters[i].type.name != source.parameters.arguments[i].type)
+                {
+                    return false;
+                }
+            }
+            return source.parameters.results.size() == 1 &&
+                   info.return_type.name == source.parameters.results.front().type;
+        }
+
         template <class T> FlowForgeResult<std::unique_ptr<T>> cloneFunction(const T& value) noexcept
         {
             return std::make_unique<T>(value);
@@ -68,6 +88,93 @@ namespace lux::flowforge
                     return cxx::unexpected(
                         FlowForgeFailure{EFlowForgeError::GRAPH_INVALID, "entry node reached mid-chain"}
                     );
+                }
+            };
+            result.source_stage =
+                std::is_same_v<T, FunctionPayload> ? EFlowSourceStage::DECLARATION : EFlowSourceStage::BODY;
+            result.capture_source = [](const FlowNodePayload& payload
+                                    ) noexcept -> FlowSourceResult<VFlowSourceParameters>
+            {
+                const auto& value = *payload.get<T>();
+                if constexpr (std::is_same_v<T, FunctionPayload>)
+                {
+                    return FlowSourceSignature{
+                        detail::captureSourceArguments(value.arguments),
+                        detail::captureSourceArguments(value.results)
+                    };
+                }
+                else if constexpr (std::is_same_v<T, EventEntryPayload>)
+                {
+                    return FlowSourceSignature{detail::captureSourceArguments(value.parameters), {}};
+                }
+                else if constexpr (std::is_same_v<T, FunctionReturnPayload>)
+                {
+                    return FlowSourceReference{value.definition.value};
+                }
+                else
+                {
+                    return FlowSourceReference{value.callee.value};
+                }
+            };
+            result.restore_source = [](const FlowSourceNode& source,
+                                       const FlowSourceEnvironment& environment,
+                                       FlowReferenceView references,
+                                       const object::CodeLease& lease) noexcept -> FlowSourceResult<FlowNodePayload>
+            {
+                if constexpr (std::is_same_v<T, FunctionPayload> || std::is_same_v<T, EventEntryPayload>)
+                {
+                    const auto* signature = std::get_if<FlowSourceSignature>(&source.parameters);
+                    if (!signature)
+                    {
+                        return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
+                    }
+                    auto args = detail::restoreSourceArguments(signature->arguments, environment);
+                    if (!args)
+                    {
+                        return cxx::unexpected(std::move(args.error()));
+                    }
+                    if constexpr (std::is_same_v<T, EventEntryPayload>)
+                    {
+                        return detail::sourcePayload<T, cloneFunction<T>>(lease, T{std::move(*args)});
+                    }
+                    else
+                    {
+                        auto results = detail::restoreSourceArguments(signature->results, environment);
+                        if (!results)
+                        {
+                            return cxx::unexpected(std::move(results.error()));
+                        }
+                        return detail::sourcePayload<T, cloneFunction<T>>(
+                            lease,
+                            T{std::move(*args), std::move(*results)}
+                        );
+                    }
+                }
+                else
+                {
+                    const auto* saved = std::get_if<FlowSourceReference>(&source.parameters);
+                    if (!saved)
+                    {
+                        return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
+                    }
+                    const graph::NodeId reference{saved->id};
+                    const auto* node = references.node(reference);
+                    const auto* definition = node ? node->payload.get<FunctionPayload>() : nullptr;
+                    if (!definition)
+                    {
+                        return detail::sourceFailure(EFlowSourceError::INVALID_IDENTITY, "function", source.id);
+                    }
+                    if constexpr (std::is_same_v<T, FunctionReturnPayload>)
+                    {
+                        return detail::sourcePayload<T, cloneFunction<T>>(lease, T{reference, definition->results});
+                    }
+                    else
+                    {
+                        return detail::sourcePayload<T, cloneFunction<T>>(
+                            lease,
+                            T{reference, definition->arguments, definition->results}
+                        );
+                    }
                 }
             };
             return result;
@@ -336,6 +443,71 @@ namespace lux::flowforge
                 detail::pinSemantic(EFlowPinRole::DATA, graph::EPinDirection::OUTPUT, 1),
                 detail::pinSemantic(EFlowPinRole::EXECUTION, graph::EPinDirection::OUTPUT, 0)
             );
+        };
+        result.capture_source = [](const FlowNodePayload& payload) noexcept -> FlowSourceResult<VFlowSourceParameters>
+        {
+            const auto& call = *payload.get<NativeCallPayload>()->definition;
+            FlowSourceNativeCall value;
+            value.member = call.signature().full_name;
+            value.signature = call.signature().type_signature;
+            if (call.receiver())
+            {
+                value.owner = call.receiver()->name;
+            }
+            for (const auto& parameter : call.signature().parameters)
+            {
+                value.parameters.arguments.push_back({std::string(parameter.name), std::string(parameter.type.name)});
+            }
+            value.parameters.results.push_back({{}, std::string(call.signature().return_type.name)});
+            return value;
+        };
+        result.restore_source = [](const FlowSourceNode& source,
+                                   const FlowSourceEnvironment& environment,
+                                   FlowReferenceView,
+                                   const object::CodeLease& lease) noexcept -> FlowSourceResult<FlowNodePayload>
+        {
+            const auto* saved = std::get_if<FlowSourceNativeCall>(&source.parameters);
+            if (!saved)
+            {
+                return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
+            }
+            const auto& call = *saved;
+            const auto create_call = [&](const meta::RefInvokable& signature,
+                                         const meta::RefType* receiver) noexcept -> FlowSourceResult<FlowNodePayload>
+            {
+                auto code = environment.code_lifetime ? object::CodeLease::plugin(environment.code_lifetime)
+                                                      : object::CodeLease::builtin();
+                auto definition = NativeCallDefinition::create(signature, std::move(code), receiver);
+                if (!definition)
+                {
+                    return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, call.member, source.id);
+                }
+                return detail::sourcePayload<NativeCallPayload, cloneNativeCall>(
+                    lease,
+                    NativeCallPayload{std::move(*definition)}
+                );
+            };
+            if (call.owner.empty())
+            {
+                for (const auto* function : environment.functions)
+                {
+                    if (function && signatureMatches(function->invokable, call))
+                    {
+                        return create_call(function->invokable, nullptr);
+                    }
+                }
+            }
+            else if (const auto* owner = detail::findSourceClass(call.owner, environment))
+            {
+                for (const auto& method : owner->methods)
+                {
+                    if (signatureMatches(method.invokable, call))
+                    {
+                        return create_call(method.invokable, &owner->type);
+                    }
+                }
+            }
+            return detail::sourceFailure(EFlowSourceError::UNKNOWN_REFLECTION_MEMBER, call.member, source.id);
         };
         return result;
     }

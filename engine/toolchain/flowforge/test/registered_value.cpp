@@ -123,9 +123,15 @@ namespace
             require(payload.has_value());
             auto copy = payload->clone();
             require(copy.has_value());
-            auto encoded = definition->encode(*copy);
+            auto encoded = definition->captureSource(*copy);
             require(encoded.has_value());
-            auto decoded = definition->decode(*encoded);
+            FlowSourceNode source;
+            source.type = definition->identity().canonical_name;
+            source.version = definition->identity().version;
+            source.parameters = *encoded;
+            const auto find_node = [](graph::NodeId) noexcept -> const FlowNode* { return nullptr; };
+            const auto find_variable = [](std::uint64_t) noexcept -> const meta::RefType* { return nullptr; };
+            auto decoded = definition->restoreSource(source, {}, {find_node, find_variable});
             require(decoded.has_value());
             const std::array<FlowValue, 2> inputs{0, 0};
             require(definition->compile(*decoded, inputs, compiler).has_value());

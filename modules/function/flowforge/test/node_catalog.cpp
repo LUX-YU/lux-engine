@@ -67,19 +67,53 @@ namespace
             }
             return std::vector<FlowValue>{values.front()};
         };
-        result.encode = [](const FlowNodePayload& payload) noexcept -> FlowForgeResult<std::string>
-        { return std::to_string(payload.get<Payload>()->mode); };
-        result.decode = [](std::string_view bytes,
-                           const object::CodeLease& code) noexcept -> FlowForgeResult<FlowNodePayload>
+        result.capture_source = [](const FlowNodePayload& payload) noexcept -> FlowSourceResult<VFlowSourceParameters>
+        { return FlowSourcePayload{std::to_string(payload.get<Payload>()->mode)}; };
+        result.restore_source = [](const FlowSourceNode& source,
+                                   const FlowSourceEnvironment&,
+                                   FlowReferenceView,
+                                   const object::CodeLease& code) noexcept -> FlowSourceResult<FlowNodePayload>
         {
+            const auto* saved = std::get_if<FlowSourcePayload>(&source.parameters);
+            if (!saved)
+            {
+                return cxx::unexpected(FlowSourceFailure{EFlowSourceError::SCHEMA_MISMATCH});
+            }
+            const std::string_view bytes = saved->bytes;
             const bool is_valid = bytes.size() == 1 && bytes.front() >= '0' && bytes.front() <= '3';
             if (!is_valid)
             {
-                return cxx::unexpected(FlowForgeFailure{EFlowForgeError::INVALID_DESCRIPTION, "invalid payload"});
+                return cxx::unexpected(FlowSourceFailure{
+                    EFlowSourceError::NODE_CODEC_FAILURE,
+                    {},
+                    {},
+                    {},
+                    0,
+                    0,
+                    FlowForgeFailure{EFlowForgeError::INVALID_DESCRIPTION, "invalid payload"}
+                });
             }
-            return FlowNodePayload::make<Payload, clone>(code, Payload{bytes.front() - '0'});
+            auto result = FlowNodePayload::make<Payload, clone>(code, Payload{bytes.front() - '0'});
+            require(result.has_value());
+            return std::move(*result);
         };
         return result;
+    }
+
+    FlowSourceResult<FlowNodePayload> restorePayload(
+        const FlowNodeType& type,
+        VFlowSourceParameters parameters,
+        std::size_t output_count = 1
+    ) noexcept
+    {
+        FlowSourceNode source;
+        source.type = type.identity().canonical_name;
+        source.version = type.identity().version;
+        source.parameters = std::move(parameters);
+        source.outputs.resize(output_count);
+        const auto node = [](NodeId) noexcept -> const FlowNode* { return nullptr; };
+        const auto variable = [](std::uint64_t) noexcept -> const meta::RefType* { return nullptr; };
+        return type.restoreSource(source, {}, {node, variable});
     }
 
     class RecordingCompiler final : public FlowValueCompiler
@@ -134,11 +168,11 @@ namespace
             auto clone = payload->clone();
             require(clone.has_value() && clone->get<ScalarNodePayload>() != payload->get<ScalarNodePayload>());
             require(clone->get<ScalarNodePayload>()->operand_type == operand);
-            auto encoded = type->encode(*payload);
-            require(encoded.has_value() && *encoded == operand->name);
-            auto decoded = type->decode(*encoded);
+            auto encoded = type->captureSource(*payload);
+            require(encoded.has_value() && std::get<FlowSourceType>(*encoded).name == operand->name);
+            auto decoded = restorePayload(*type, *encoded);
             require(decoded.has_value() && decoded->get<ScalarNodePayload>()->operand_type == operand);
-            require(!type->decode("not a reflected scalar"));
+            require(!restorePayload(*type, FlowSourceType{"not a reflected scalar"}));
             auto pins = type->describePins(*payload);
             require(pins.has_value());
             RecordingCompiler compiler;
@@ -165,7 +199,7 @@ namespace
             const asset::AssetId asset_id{std::array<std::uint8_t, 16>{1}};
             auto source = captureFlowSource(asset_id, "scalar", graph);
             require(source.has_value());
-            require(std::get<FlowSourceType>(source->nodes.front().parameters).name == *encoded);
+            require(source->nodes.front().parameters == *encoded);
             auto restored = materializeFlowSource(*source);
             require(restored.has_value());
             require(*captureFlowSource(asset_id, "scalar", *restored) == *source);
@@ -208,12 +242,12 @@ int main()
         payload->get<Payload>()->mode = 1;
         require(type->describePins(*payload).has_value());
         require(!type->compile(*payload, inputs, compiler));
-        auto encoded = type->encode(*payload);
-        require(encoded.has_value() && *encoded == "1");
-        auto decoded = type->decode(*encoded);
+        auto encoded = type->captureSource(*payload);
+        require(encoded.has_value() && std::get<FlowSourcePayload>(*encoded).bytes == "1");
+        auto decoded = restorePayload(*type, *encoded);
         require(decoded.has_value() && decoded->get<Payload>()->mode == 1);
-        require(!type->decode("3"));
-        require(!type->decode("bad"));
+        require(!restorePayload(*type, FlowSourcePayload{"3"}));
+        require(!restorePayload(*type, FlowSourcePayload{"bad"}));
         auto foreign = FlowNodePayload::make<Payload, clone>(object::CodeLease::plugin(std::make_shared<int>(1)));
         require(foreign.has_value() && !type->describePins(*foreign));
         payload->get<Payload>()->mode = 2;

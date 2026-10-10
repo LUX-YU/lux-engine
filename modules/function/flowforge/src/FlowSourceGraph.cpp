@@ -1,6 +1,5 @@
 #include <lux/engine/flowforge/FlowNodeCatalog.hpp>
-#include <lux/engine/flowforge/NativeCallDefinition.hpp>
-#include <lux/engine/flowforge/detail/FlowNodeIdentity.hpp>
+#include <lux/engine/flowforge/detail/FlowSourceMetadata.hpp>
 
 #include <algorithm>
 #include <charconv>
@@ -193,407 +192,24 @@ namespace lux::flowforge
             return input ? EFlowSourcePinKind::DATA_IN : EFlowSourcePinKind::DATA_OUT;
         }
 
-        std::vector<FlowSourceArgument> captureArguments(const std::vector<FuncArgInfo>& values)
-        {
-            std::vector<FlowSourceArgument> result;
-            for (const auto& value : values)
-            {
-                result.push_back({value.name, value.type ? std::string(value.type->name) : std::string{}});
-            }
-            return result;
-        }
-
-        const lux::meta::RefType* findType(std::string_view name, const FlowSourceEnvironment& environment) noexcept
-        {
-            const lux::meta::RefType* result{};
-            const auto builtin = [&]<class... T>()
-            {
-                ((name == lux::meta::builtin_ref_type_ptr<T>()->name ? result = lux::meta::builtin_ref_type_ptr<T>()
-                                                                     : result),
-                 ...);
-            };
-            builtin.template operator(
-            )<void,
-              bool,
-              char,
-              signed char,
-              unsigned char,
-              short,
-              unsigned short,
-              int,
-              unsigned int,
-              long,
-              unsigned long,
-              long long,
-              unsigned long long,
-              float,
-              double,
-              void*>();
-            if (result)
-            {
-                return result;
-            }
-            for (const auto* type : environment.types)
-            {
-                if (type && type->name == name)
-                {
-                    return type;
-                }
-            }
-            for (const auto* type : environment.classes)
-            {
-                if (type && type->type.name == name)
-                {
-                    return &type->type;
-                }
-            }
-            return nullptr;
-        }
-
-        const lux::meta::RefClass* findClass(std::string_view name, const FlowSourceEnvironment& environment) noexcept
-        {
-            for (const auto* type : environment.classes)
-            {
-                if (type && type->full_name == name)
-                {
-                    return type;
-                }
-            }
-            return nullptr;
-        }
-
-        FlowSourceResult<std::vector<FuncArgInfo>> materializeArguments(
-            const std::vector<FlowSourceArgument>& values,
-            const FlowSourceEnvironment& environment
-        ) noexcept
-        {
-            std::vector<FuncArgInfo> result;
-            for (const auto& value : values)
-            {
-                const auto* type = findType(value.type, environment);
-                if (!type)
-                {
-                    return fail(EFlowSourceError::UNKNOWN_TYPE, value.type);
-                }
-                result.push_back({type, value.name});
-            }
-            return result;
-        }
-
-        bool signatureMatches(const lux::meta::RefInvokable& info, const FlowSourceNativeCall& source) noexcept
-        {
-            const bool mismatch = info.full_name != source.member || info.type_signature != source.signature ||
-                                  info.parameters.size() != source.parameters.arguments.size();
-            if (mismatch)
-            {
-                return false;
-            }
-            for (std::size_t i{}; i < info.parameters.size(); ++i)
-            {
-                if (info.parameters[i].type.name != source.parameters.arguments[i].type)
-                {
-                    return false;
-                }
-            }
-            return source.parameters.results.size() == 1 &&
-                   info.return_type.name == source.parameters.results.front().type;
-        }
-
         FlowSourceResult<FlowNode> makeNode(
             const FlowSourceNode& source,
-            const FlowGraph& graph,
-            const std::map<NodeId, FlowNode>& prepared,
-            const FlowNodeCatalog& builtins,
+            std::shared_ptr<const FlowNodeType> definition,
+            FlowReferenceView references,
             const FlowSourceEnvironment& environment
         ) noexcept
         {
-            const auto operation = detail::builtinSourceKind(source.type);
-            if (operation == detail::EBuiltinSourceKind::EXTENSION)
+            auto payload = definition->restoreSource(source, environment, references);
+            if (!payload)
             {
-                const auto definition =
-                    environment.nodes ? environment.nodes->find(graph::nodeTypeId(source.type)) : nullptr;
-                if (!definition)
-                {
-                    return fail(EFlowSourceError::UNKNOWN_NODE_KIND, source.type, source.id);
-                }
-                const bool is_identity_mismatch = definition->identity().canonical_name != source.type ||
-                                                  definition->identity().version != source.version;
-                if (is_identity_mismatch)
-                {
-                    return fail(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
-                }
-                auto payload = definition->decode(std::get<FlowSourcePayload>(source.parameters).bytes);
-                if (!payload)
-                {
-                    FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
-                    error.cause = std::move(payload.error());
-                    return cxx::unexpected(std::move(error));
-                }
-                auto node = createFlowNode(definition, std::move(*payload));
-                if (!node)
-                {
-                    FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
-                    error.cause = std::move(node.error());
-                    return cxx::unexpected(std::move(error));
-                }
-                return std::move(*node);
+                return cxx::unexpected(std::move(payload.error()));
             }
-            if (detail::isScalarSourceKind(operation))
+            auto node = createFlowNode(std::move(definition), std::move(*payload));
+            if (!node)
             {
-                const auto* type = findType(std::get<FlowSourceType>(source.parameters).name, environment);
-                if (!type)
-                {
-                    return fail(
-                        EFlowSourceError::UNKNOWN_TYPE,
-                        std::get<FlowSourceType>(source.parameters).name,
-                        source.id
-                    );
-                }
-                auto definition = builtins.find(graph::nodeTypeId(source.type));
-                auto payload = definition->create();
-                if (!payload)
-                {
-                    FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
-                    error.cause = std::move(payload.error());
-                    return cxx::unexpected(std::move(error));
-                }
-                payload->get<ScalarNodePayload>()->operand_type = type;
-                auto node = createFlowNode(std::move(definition), std::move(*payload));
-                if (!node)
-                {
-                    FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
-                    error.cause = std::move(node.error());
-                    return cxx::unexpected(std::move(error));
-                }
-                return std::move(*node);
+                return detail::sourceCodecFailure(std::move(node.error()), source.type, source.id);
             }
-            // The fixed wire adapters only resolve saved metadata. The registered definition
-            // remains the sole schema, validation and compile provider.
-            const auto make = [&]<class T>(T value) noexcept -> FlowSourceResult<FlowNode>
-            {
-                auto definition = builtins.find(graph::nodeTypeId(source.type));
-                if (!definition)
-                {
-                    return fail(EFlowSourceError::UNKNOWN_NODE_KIND, source.type, source.id);
-                }
-                auto payload = definition->create();
-                if (!payload)
-                {
-                    FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
-                    error.cause = std::move(payload.error());
-                    return cxx::unexpected(std::move(error));
-                }
-                auto* target = payload->get<T>();
-                if (!target)
-                {
-                    return fail(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
-                }
-                *target = std::move(value);
-                auto node = createFlowNode(std::move(definition), std::move(*payload));
-                if (!node)
-                {
-                    FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, source.type, source.id};
-                    error.cause = std::move(node.error());
-                    return cxx::unexpected(std::move(error));
-                }
-                return std::move(*node);
-            };
-            switch (operation)
-            {
-            case detail::EBuiltinSourceKind::START:
-                return make(StartPayload{});
-            case detail::EBuiltinSourceKind::BRANCH:
-                return make(BranchPayload{});
-            case detail::EBuiltinSourceKind::FOR_LOOP:
-                return make(ForLoopPayload{});
-            case detail::EBuiltinSourceKind::WHILE_LOOP:
-                return make(WhileLoopPayload{});
-            case detail::EBuiltinSourceKind::RETURN:
-                return make(ReturnPayload{});
-            case detail::EBuiltinSourceKind::BREAK:
-                return make(BreakPayload{});
-            case detail::EBuiltinSourceKind::SEQUENCE:
-            {
-                if (source.outputs.empty())
-                {
-                    return fail(EFlowSourceError::SCHEMA_MISMATCH, "sequence outputs", source.id);
-                }
-                return make(SequencePayload{source.outputs.size() - 1});
-            }
-            case detail::EBuiltinSourceKind::FUNC_DEF_START:
-            case detail::EBuiltinSourceKind::ON_EVENT:
-            {
-                auto args =
-                    materializeArguments(std::get<FlowSourceSignature>(source.parameters).arguments, environment);
-                if (!args)
-                {
-                    return lux::cxx::unexpected(args.error());
-                }
-                if (operation == detail::EBuiltinSourceKind::ON_EVENT)
-                {
-                    return make(EventEntryPayload{std::move(*args)});
-                }
-                auto results =
-                    materializeArguments(std::get<FlowSourceSignature>(source.parameters).results, environment);
-                if (!results)
-                {
-                    return lux::cxx::unexpected(results.error());
-                }
-                return make(FunctionPayload{std::move(*args), std::move(*results)});
-            }
-            case detail::EBuiltinSourceKind::FUNC_RETURN:
-            case detail::EBuiltinSourceKind::GRAPH_FUNC_CALL:
-            {
-                const NodeId reference{std::get<FlowSourceReference>(source.parameters).id};
-                const auto found = prepared.find(reference);
-                const auto* target = found == prepared.end() ? nullptr : found->second.payload.get<FunctionPayload>();
-                if (!target)
-                {
-                    return fail(EFlowSourceError::INVALID_IDENTITY, "function", source.id);
-                }
-                const auto& definition = *target;
-                if (operation == detail::EBuiltinSourceKind::FUNC_RETURN)
-                {
-                    return make(FunctionReturnPayload{reference, definition.results});
-                }
-                return make(FunctionCallPayload{reference, definition.arguments, definition.results});
-            }
-            case detail::EBuiltinSourceKind::GET_VARIABLE:
-            case detail::EBuiltinSourceKind::SET_VARIABLE:
-            {
-                const auto* variable = graph.findVariable(std::get<FlowSourceReference>(source.parameters).id);
-                if (!variable)
-                {
-                    return fail(EFlowSourceError::INVALID_IDENTITY, "variable", source.id);
-                }
-                if (operation == detail::EBuiltinSourceKind::GET_VARIABLE)
-                {
-                    return make(GetVariablePayload{variable->id, variable->type});
-                }
-                return make(SetVariablePayload{variable->id, variable->type});
-            }
-            case detail::EBuiltinSourceKind::GET_OBJECT:
-            case detail::EBuiltinSourceKind::SET_OBJECT:
-            {
-                const auto* type = findType(std::get<FlowSourceType>(source.parameters).name, environment);
-                if (!type)
-                {
-                    return fail(
-                        EFlowSourceError::UNKNOWN_TYPE,
-                        std::get<FlowSourceType>(source.parameters).name,
-                        source.id
-                    );
-                }
-                if (operation == detail::EBuiltinSourceKind::GET_OBJECT)
-                {
-                    return make(GetObjectPayload{type});
-                }
-                return make(SetObjectPayload{type});
-            }
-            case detail::EBuiltinSourceKind::GET_FIELD:
-            case detail::EBuiltinSourceKind::SET_FIELD:
-            {
-                const auto& field_source = std::get<FlowSourceField>(source.parameters);
-                const auto* owner = findClass(field_source.owner, environment);
-                if (owner)
-                {
-                    for (const auto& field : owner->fields)
-                    {
-                        const bool is_matching_field =
-                            field.name == field_source.member && field.type.name == field_source.type;
-                        if (is_matching_field)
-                        {
-                            if (operation == detail::EBuiltinSourceKind::GET_FIELD)
-                            {
-                                return make(GetFieldPayload{owner, &field});
-                            }
-                            return make(SetFieldPayload{owner, &field});
-                        }
-                    }
-                }
-                return fail(
-                    EFlowSourceError::UNKNOWN_REFLECTION_MEMBER,
-                    field_source.owner + "::" + field_source.member,
-                    source.id
-                );
-            }
-            case detail::EBuiltinSourceKind::NATIVE_FUNC_CALL:
-            {
-                const auto& call = std::get<FlowSourceNativeCall>(source.parameters);
-                const auto create_call = [&](const meta::RefInvokable& signature,
-                                             const meta::RefType* receiver) noexcept -> FlowSourceResult<FlowNode>
-                {
-                    auto code = environment.code_lifetime ? object::CodeLease::plugin(environment.code_lifetime)
-                                                          : object::CodeLease::builtin();
-                    auto definition = NativeCallDefinition::create(signature, std::move(code), receiver);
-                    if (!definition)
-                    {
-                        return fail(EFlowSourceError::SCHEMA_MISMATCH, call.member, source.id);
-                    }
-                    return make(NativeCallPayload{std::move(*definition)});
-                };
-                if (call.owner.empty())
-                {
-                    for (const auto* function : environment.functions)
-                    {
-                        if (function && signatureMatches(function->invokable, call))
-                        {
-                            return create_call(function->invokable, nullptr);
-                        }
-                    }
-                }
-                else if (const auto* owner = findClass(call.owner, environment))
-                {
-                    for (const auto& method : owner->methods)
-                    {
-                        if (signatureMatches(method.invokable, call))
-                        {
-                            return create_call(method.invokable, &owner->type);
-                        }
-                    }
-                }
-                return fail(EFlowSourceError::UNKNOWN_REFLECTION_MEMBER, call.member, source.id);
-            }
-            case detail::EBuiltinSourceKind::SCRIPT_ABILITY_CALL:
-            {
-                const auto& ability = std::get<FlowSourceAbility>(source.parameters);
-                const auto* description = environment.abilities.find(
-                    lux::script::ScriptApiContractIdView{ability.contract},
-                    lux::script::ScriptApiMethodIdView{ability.method}
-                );
-                if (!description)
-                {
-                    return fail(EFlowSourceError::UNKNOWN_ABILITY, ability.method, source.id);
-                }
-                const bool is_schema_mismatch = description->schema_version != ability.schema_version ||
-                                                description->schema_hash != ability.schema_hash;
-                if (is_schema_mismatch)
-                {
-                    return fail(EFlowSourceError::SCHEMA_MISMATCH, ability.method, source.id);
-                }
-                return make(ScriptAbilityPayload{*description});
-            }
-            case detail::EBuiltinSourceKind::SCRIPT_EVENT_WAIT:
-            {
-                const auto& saved_event = std::get<lux::script::ScriptEventSourceDescription>(source.parameters);
-                for (const auto& event : environment.events)
-                {
-                    const bool is_matching_event =
-                        event.system_id == saved_event.system_id && event.event_id == saved_event.event_id;
-                    if (is_matching_event)
-                    {
-                        if (event != saved_event)
-                        {
-                            return fail(EFlowSourceError::SCHEMA_MISMATCH, "event", source.id);
-                        }
-                        return make(ScriptEventPayload{event});
-                    }
-                }
-                return fail(EFlowSourceError::SCHEMA_MISMATCH, "missing event", source.id);
-            }
-            default:
-                return fail(EFlowSourceError::UNKNOWN_NODE_KIND, "operation", source.id);
-            }
+            return std::move(*node);
         }
     } // namespace
 
@@ -687,7 +303,7 @@ namespace lux::flowforge
             {
                 return fail(EFlowSourceError::INVALID_VALUE, "argument.name");
             }
-            const auto* type = findType(value.type, environment);
+            const auto* type = detail::findSourceType(value.type, environment);
             if (!type || !type->size)
             {
                 return fail(EFlowSourceError::UNKNOWN_TYPE, value.type);
@@ -747,112 +363,14 @@ namespace lux::flowforge
         item.version = definition.identity().version;
         item.name = node.name;
         item.creator = node.creator;
-        const auto operation = detail::builtinSourceKind(item.type);
-        const bool is_scalar = detail::isScalarSourceKind(operation);
-        const bool is_extension = operation == detail::EBuiltinSourceKind::EXTENSION;
-        if (is_scalar || is_extension)
+        auto parameters = definition.captureSource(node.payload);
+        if (!parameters)
         {
-            auto encoded = definition.encode(node.payload);
-            if (!encoded)
-            {
-                FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE, item.type, id};
-                error.cause = std::move(encoded.error());
-                return cxx::unexpected(std::move(error));
-            }
-            if (is_scalar)
-            {
-                item.parameters = FlowSourceType{std::move(*encoded)};
-            }
-            else
-            {
-                item.parameters = FlowSourcePayload{std::move(*encoded)};
-            }
+            auto error = std::move(parameters.error());
+            error.node = id;
+            return cxx::unexpected(std::move(error));
         }
-        switch (operation)
-        {
-        case detail::EBuiltinSourceKind::FUNC_DEF_START:
-            item.parameters = FlowSourceSignature{
-                captureArguments(node.payload.get<FunctionPayload>()->arguments),
-                captureArguments(node.payload.get<FunctionPayload>()->results)
-            };
-            break;
-        case detail::EBuiltinSourceKind::ON_EVENT:
-            item.parameters =
-                FlowSourceSignature{captureArguments(node.payload.get<EventEntryPayload>()->parameters), {}};
-            break;
-        case detail::EBuiltinSourceKind::FUNC_RETURN:
-            item.parameters = FlowSourceReference{node.payload.get<FunctionReturnPayload>()->definition.value};
-            break;
-        case detail::EBuiltinSourceKind::GRAPH_FUNC_CALL:
-            item.parameters = FlowSourceReference{node.payload.get<FunctionCallPayload>()->callee.value};
-            break;
-        case detail::EBuiltinSourceKind::GET_VARIABLE:
-            item.parameters = FlowSourceReference{node.payload.get<GetVariablePayload>()->variable};
-            break;
-        case detail::EBuiltinSourceKind::SET_VARIABLE:
-            item.parameters = FlowSourceReference{node.payload.get<SetVariablePayload>()->variable};
-            break;
-        case detail::EBuiltinSourceKind::GET_OBJECT:
-            item.parameters = FlowSourceType{std::string(node.payload.get<GetObjectPayload>()->type->name)};
-            break;
-        case detail::EBuiltinSourceKind::SET_OBJECT:
-            item.parameters = FlowSourceType{std::string(node.payload.get<SetObjectPayload>()->type->name)};
-            break;
-        case detail::EBuiltinSourceKind::GET_FIELD:
-        {
-            const auto& field = *node.payload.get<GetFieldPayload>();
-            item.parameters = FlowSourceField{
-                std::string(field.owner->full_name),
-                std::string(field.field->name),
-                std::string(field.field->type.name)
-            };
-            break;
-        }
-        case detail::EBuiltinSourceKind::SET_FIELD:
-        {
-            const auto& field = *node.payload.get<SetFieldPayload>();
-            item.parameters = FlowSourceField{
-                std::string(field.owner->full_name),
-                std::string(field.field->name),
-                std::string(field.field->type.name)
-            };
-            break;
-        }
-        case detail::EBuiltinSourceKind::NATIVE_FUNC_CALL:
-        {
-            const auto& call = *node.payload.get<NativeCallPayload>()->definition;
-            FlowSourceNativeCall value;
-            value.member = call.signature().full_name;
-            value.signature = call.signature().type_signature;
-            if (call.receiver())
-            {
-                value.owner = call.receiver()->name;
-            }
-            for (const auto& parameter : call.signature().parameters)
-            {
-                value.parameters.arguments.push_back({std::string(parameter.name), std::string(parameter.type.name)});
-            }
-            value.parameters.results.push_back({{}, std::string(call.signature().return_type.name)});
-            item.parameters = std::move(value);
-            break;
-        }
-        case detail::EBuiltinSourceKind::SCRIPT_ABILITY_CALL:
-        {
-            const auto& ability = *node.payload.get<ScriptAbilityPayload>();
-            item.parameters = FlowSourceAbility{
-                std::string(ability.contract().name()),
-                std::string(ability.method().name()),
-                ability.expectedSchemaVersion(),
-                ability.expectedSchemaHash()
-            };
-            break;
-        }
-        case detail::EBuiltinSourceKind::SCRIPT_EVENT_WAIT:
-            item.parameters = node.payload.get<ScriptEventPayload>()->source();
-            break;
-        default:
-            break;
-        }
+        item.parameters = std::move(*parameters);
         auto declarations = definition.describePins(node.payload);
         if (!declarations)
         {
@@ -957,8 +475,8 @@ namespace lux::flowforge
         {
             return fail(EFlowSourceError::INVALID_TOPOLOGY, "pin direction", {}, to.id);
         }
-        const auto* output = findType(from.type, environment);
-        const auto* input = findType(to.type, environment);
+        const auto* output = detail::findSourceType(from.type, environment);
+        const auto* input = detail::findSourceType(to.type, environment);
         if (!output)
         {
             return fail(EFlowSourceError::UNKNOWN_TYPE, from.type, {}, from.id);
@@ -983,7 +501,7 @@ namespace lux::flowforge
         {
             return fail(EFlowSourceError::INVALID_VALUE, "literal direction", {}, pin.id);
         }
-        const auto* type = findType(pin.type, environment);
+        const auto* type = detail::findSourceType(pin.type, environment);
         if (!type)
         {
             return fail(EFlowSourceError::UNKNOWN_TYPE, pin.type, {}, pin.id);
@@ -1021,7 +539,7 @@ namespace lux::flowforge
         {
             return lux::cxx::unexpected(valid.error());
         }
-        const auto* type = findType(variable.type, environment);
+        const auto* type = detail::findSourceType(variable.type, environment);
         if (!type)
         {
             return fail(EFlowSourceError::UNKNOWN_TYPE, variable.type);
@@ -1091,15 +609,44 @@ namespace lux::flowforge
         restored.reserve(source.nodes.size());
         entries.reserve(source.nodes.size());
         placements.reserve(source.nodes.size());
-        for (const bool definitions : {true, false})
+        const auto find_node = [&](NodeId id) noexcept -> const FlowNode*
         {
-            for (const auto& item : source.nodes)
+            const auto found = prepared.find(id);
+            return found == prepared.end() ? nullptr : &found->second;
+        };
+        const auto find_variable_type = [&](std::uint64_t id) noexcept -> const meta::RefType*
+        {
+            const auto* variable = graph.findVariable(id);
+            return variable ? variable->type : nullptr;
+        };
+        // Resolve every immutable provider once. No names are reinterpreted during staged restoration.
+        std::vector<std::shared_ptr<const FlowNodeType>> definitions;
+        definitions.reserve(source.nodes.size());
+        for (const auto& item : source.nodes)
+        {
+            const auto id = graph::nodeTypeId(item.type);
+            auto definition = builtins.find(id);
+            if (!definition && environment.nodes)
             {
-                if ((detail::builtinSourceKind(item.type) == detail::EBuiltinSourceKind::FUNC_DEF_START) != definitions)
+                definition = environment.nodes->find(id);
+            }
+            if (!definition)
+            {
+                return fail(EFlowSourceError::UNKNOWN_NODE_KIND, item.type, item.id);
+            }
+            definitions.push_back(std::move(definition));
+        }
+        for (const auto stage : {EFlowSourceStage::DECLARATION, EFlowSourceStage::BODY})
+        {
+            for (std::size_t i = 0; i < source.nodes.size(); ++i)
+            {
+                const auto& definition = definitions[i];
+                if (definition->sourceStage() != stage)
                 {
                     continue;
                 }
-                auto result = makeNode(item, graph, prepared, builtins, environment);
+                const auto& item = source.nodes[i];
+                auto result = makeNode(item, definition, {find_node, find_variable_type}, environment);
                 if (!result)
                 {
                     return cxx::unexpected(std::move(result.error()));

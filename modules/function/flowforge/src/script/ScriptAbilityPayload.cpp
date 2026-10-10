@@ -1,5 +1,6 @@
 #include <lux/engine/flowforge/FlowExecutionCompiler.hpp>
 #include <lux/engine/flowforge/detail/FlowPinSchema.hpp>
+#include <lux/engine/flowforge/detail/FlowSourceMetadata.hpp>
 #include <lux/engine/flowforge/script/ScriptAbilityNodeStorage.hpp>
 #include <lux/engine/flowforge/script/ScriptAbilityPayload.hpp>
 #include <lux/engine/flowforge/script/ScriptValueType.hpp>
@@ -47,6 +48,43 @@ namespace lux::flowforge
                 results,
                 detail::pinSemantic(EFlowPinRole::EXECUTION, graph::EPinDirection::OUTPUT, 0)
             );
+        };
+        result.capture_source = [](const FlowNodePayload& payload) noexcept -> FlowSourceResult<VFlowSourceParameters>
+        {
+            const auto& ability = *payload.get<ScriptAbilityPayload>();
+            return FlowSourceAbility{
+                std::string(ability.contract().name()),
+                std::string(ability.method().name()),
+                ability.expectedSchemaVersion(),
+                ability.expectedSchemaHash()
+            };
+        };
+        result.restore_source = [](const FlowSourceNode& source,
+                                   const FlowSourceEnvironment& environment,
+                                   FlowReferenceView,
+                                   const object::CodeLease& lease) noexcept -> FlowSourceResult<FlowNodePayload>
+        {
+            const auto* saved = std::get_if<FlowSourceAbility>(&source.parameters);
+            if (!saved)
+            {
+                return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
+            }
+            const auto& ability = *saved;
+            const auto* description = environment.abilities.find(
+                lux::script::ScriptApiContractIdView{ability.contract},
+                lux::script::ScriptApiMethodIdView{ability.method}
+            );
+            if (!description)
+            {
+                return detail::sourceFailure(EFlowSourceError::UNKNOWN_ABILITY, ability.method, source.id);
+            }
+            const bool is_schema_mismatch = description->schema_version != ability.schema_version ||
+                                            description->schema_hash != ability.schema_hash;
+            if (is_schema_mismatch)
+            {
+                return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, ability.method, source.id);
+            }
+            return detail::sourcePayload<ScriptAbilityPayload, cloneAbility>(lease, *description);
         };
         return result;
     }

@@ -1,5 +1,6 @@
 #include <lux/engine/flowforge/FlowExecutionCompiler.hpp>
 #include <lux/engine/flowforge/detail/FlowPinSchema.hpp>
+#include <lux/engine/flowforge/detail/FlowSourceMetadata.hpp>
 #include <lux/engine/flowforge/script/ScriptEventPayload.hpp>
 #include <lux/engine/flowforge/script/ScriptValueType.hpp>
 
@@ -43,6 +44,34 @@ namespace lux::flowforge
                 detail::pinSemantic(EFlowPinRole::DATA, graph::EPinDirection::OUTPUT, 1),
                 detail::pinSemantic(EFlowPinRole::EXECUTION, graph::EPinDirection::OUTPUT, 0)
             );
+        };
+        result.capture_source = [](const FlowNodePayload& payload) noexcept -> FlowSourceResult<VFlowSourceParameters>
+        { return payload.get<ScriptEventPayload>()->source(); };
+        result.restore_source = [](const FlowSourceNode& source,
+                                   const FlowSourceEnvironment& environment,
+                                   FlowReferenceView,
+                                   const object::CodeLease& lease) noexcept -> FlowSourceResult<FlowNodePayload>
+        {
+            const auto* saved = std::get_if<lux::script::ScriptEventSourceDescription>(&source.parameters);
+            if (!saved)
+            {
+                return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
+            }
+            const auto& saved_event = *saved;
+            for (const auto& event : environment.events)
+            {
+                const bool is_matching_event =
+                    event.system_id == saved_event.system_id && event.event_id == saved_event.event_id;
+                if (is_matching_event)
+                {
+                    if (event != saved_event)
+                    {
+                        return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, "event", source.id);
+                    }
+                    return detail::sourcePayload<ScriptEventPayload, cloneEvent>(lease, event);
+                }
+            }
+            return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, "missing event", source.id);
         };
         return result;
     }

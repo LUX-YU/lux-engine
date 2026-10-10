@@ -63,16 +63,33 @@ namespace flow_test
             }
             return std::vector<FlowValue>{*square, *sum};
         };
-        result.encode = [](const FlowNodePayload& payload) noexcept -> FlowForgeResult<std::string>
-        { return std::string(payload.get<Polynomial>()->reject ? "1" : "0"); };
-        result.decode = [](std::string_view bytes,
-                           const object::CodeLease& code) noexcept -> FlowForgeResult<FlowNodePayload>
+        result.capture_source = [](const FlowNodePayload& payload) noexcept -> FlowSourceResult<VFlowSourceParameters>
+        { return FlowSourcePayload{payload.get<Polynomial>()->reject ? "1" : "0"}; };
+        result.restore_source = [](const FlowSourceNode& source,
+                                   const FlowSourceEnvironment&,
+                                   FlowReferenceView,
+                                   const object::CodeLease& code) noexcept -> FlowSourceResult<FlowNodePayload>
         {
+            const auto* saved = std::get_if<FlowSourcePayload>(&source.parameters);
+            if (!saved)
+            {
+                return cxx::unexpected(FlowSourceFailure{EFlowSourceError::SCHEMA_MISMATCH});
+            }
+            const auto& bytes = saved->bytes;
             if (bytes != "0" && bytes != "1")
             {
-                return cxx::unexpected(FlowForgeFailure{EFlowForgeError::GRAPH_INVALID, "invalid polynomial source"});
+                FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE};
+                error.cause = FlowForgeFailure{EFlowForgeError::GRAPH_INVALID, "invalid polynomial source"};
+                return cxx::unexpected(std::move(error));
             }
-            return FlowNodePayload::make<Polynomial, clone>(code, bytes == "1");
+            auto payload = FlowNodePayload::make<Polynomial, clone>(code, bytes == "1");
+            if (!payload)
+            {
+                FlowSourceFailure error{EFlowSourceError::NODE_CODEC_FAILURE};
+                error.cause = std::move(payload.error());
+                return cxx::unexpected(std::move(error));
+            }
+            return std::move(*payload);
         };
         return result;
     }

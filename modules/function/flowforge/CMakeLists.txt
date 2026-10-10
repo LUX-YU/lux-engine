@@ -30,6 +30,7 @@ add_component(
         src/FlowGraph.cpp
         src/FlowSource.cpp
         src/FlowSourceGraph.cpp
+        src/FlowSourceMetadata.cpp
         src/StateLayout.cpp
         src/script/ScriptGraph.cpp
         src/script/ScriptAbilityCatalog.cpp

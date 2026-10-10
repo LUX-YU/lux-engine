@@ -79,9 +79,18 @@ No second reflection registry or module loader is introduced.
 Source v2 stores canonical names, versions, semantic pin identities and owning values.
 The frozen v1 reader remains supported. Historical builtin wire tags are private codec
 implementation details, not runtime operation IDs or extensible compiler dispatch.
-Registered custom payloads use their declared binary codecs. Builtin parameter adapters
-remain in the source codec; this closure does not claim all metadata-dependent codecs have
-been distributed into registrations.
+Each immutable definition owns one `capture_source` / `restore_source` pair. Builtin
+providers resolve their own types, reflected fields, function signatures and Script contracts;
+custom providers use the same public contract and preserve their owning `FlowSourcePayload`
+bytes. Source values are declared independently in `FlowSourceData.hpp`; the graph loader
+does not inspect concrete payload types or dispatch on historical builtin wire tags.
+
+Restoration callbacks synchronously borrow an immutable `FlowSourceEnvironment` and a
+`FlowReferenceView` over the unpublished candidate. They must not retain either view.
+Definitions declare `DECLARATION` or `BODY` restoration stage, preserving forward function
+references without publishing a partial graph. This is a two-stage source contract, not a
+runtime dependency scheduler. Definition identity/version, code ownership and resulting
+pin schemas are checked before admission. Original v1/v2 parameter schemas remain unchanged.
 
 Materialization resolves metadata and forward references, builds detached values and admits
 the entire graph through one `FlowGraphEdit`. Source capture validates reference kind and

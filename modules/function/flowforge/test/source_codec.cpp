@@ -56,12 +56,9 @@ namespace
             std::vector<FlowPinDeclaration> pins;
             for (unsigned i{}; i != count; ++i)
             {
-                pins.push_back(FlowPinDeclaration{
-                    graph::PinSemanticId{100U + i},
-                    "out" + std::to_string(i),
-                    graph::EPinDirection::OUTPUT,
-                    &meta::ref_type_of_v<int>
-                });
+                pins.push_back(
+                    FlowPinDeclaration{graph::PinSemanticId{100U + i}, "out" + std::to_string(i), graph::EPinDirection::OUTPUT, &meta::ref_type_of_v<int>}
+                );
             }
             return pins;
         };
@@ -77,22 +74,42 @@ namespace
                             std::span<const FlowValue>,
                             FlowValueCompiler&) noexcept -> FlowNodeRegistration::ValueResult
         { return cxx::unexpected(FlowForgeFailure{EFlowForgeError::GRAPH_INVALID, "not a compile fixture"}); };
-        result.encode = [](const FlowNodePayload& value) noexcept -> FlowForgeResult<std::string>
+        result.capture_source = [](const FlowNodePayload& value) noexcept -> FlowSourceResult<VFlowSourceParameters>
         {
             const auto& payload = *value.get<Payload>();
-            return std::string{static_cast<char>(payload.outputs), static_cast<char>(payload.reject), '\0', '\xff'};
+            return FlowSourcePayload{
+                std::string{static_cast<char>(payload.outputs), static_cast<char>(payload.reject), '\0', '\xff'}
+            };
         };
-        result.decode = [](std::string_view bytes,
-                           const object::CodeLease& code) noexcept -> FlowForgeResult<FlowNodePayload>
+        result.restore_source = [](const FlowSourceNode& source,
+                                   const FlowSourceEnvironment&,
+                                   FlowReferenceView,
+                                   const object::CodeLease& code) noexcept -> FlowSourceResult<FlowNodePayload>
         {
+            const auto* saved = std::get_if<FlowSourcePayload>(&source.parameters);
+            if (!saved)
+            {
+                return cxx::unexpected(FlowSourceFailure{EFlowSourceError::SCHEMA_MISMATCH});
+            }
+            const std::string_view bytes = saved->bytes;
             const bool has_size = bytes.size() == 4;
             const bool has_schema = has_size && bytes[0] > 0 && bytes[0] <= 4 && (bytes[1] == 0 || bytes[1] == 1) &&
                                     bytes[2] == 0 && static_cast<unsigned char>(bytes[3]) == 255;
             if (!has_schema)
             {
-                return cxx::unexpected(FlowForgeFailure{EFlowForgeError::GRAPH_INVALID, "invalid source payload"});
+                return cxx::unexpected(FlowSourceFailure{
+                    EFlowSourceError::NODE_CODEC_FAILURE,
+                    {},
+                    {},
+                    {},
+                    0,
+                    0,
+                    FlowForgeFailure{EFlowForgeError::GRAPH_INVALID, "invalid source payload"}
+                });
             }
-            return FlowNodePayload::make<Payload, clone>(code, static_cast<unsigned>(bytes[0]), bytes[1] != 0);
+            auto result = FlowNodePayload::make<Payload, clone>(code, static_cast<unsigned>(bytes[0]), bytes[1] != 0);
+            require(result.has_value());
+            return std::move(*result);
         };
         return result;
     }
@@ -188,8 +205,8 @@ namespace
 
         auto missing_codec = registration();
         missing_codec.identity = {graph::nodeTypeId("test.no_codec"), "test.no_codec", 1};
-        missing_codec.encode = nullptr;
-        missing_codec.decode = nullptr;
+        missing_codec.capture_source = nullptr;
+        missing_codec.restore_source = nullptr;
         require(catalog.add(std::span{&missing_codec, 1}).has_value());
         auto no_codec = catalog.find(missing_codec.identity.id);
         auto unencodable = no_codec->create();
@@ -201,6 +218,101 @@ namespace
         auto rejected = captureFlowSource(assetId(), "unencodable", unsaved);
         require(!rejected && rejected.error().code == EFlowSourceError::NODE_CODEC_FAILURE);
         require(rejected.error().cause && rejected.error().cause->message == "node definition has no source codec");
+    }
+
+    unsigned restored_declarations{};
+    unsigned restored_bodies{};
+
+    void registeredMetadataInputs()
+    {
+        FlowNodeCatalog catalog;
+        auto declaration = registration();
+        declaration.identity = {graph::nodeTypeId("test.source_declaration"), "test.source_declaration", 1};
+        declaration.source_stage = EFlowSourceStage::DECLARATION;
+        declaration.restore_source = [](const FlowSourceNode& source,
+                                        const FlowSourceEnvironment& environment,
+                                        FlowReferenceView references,
+                                        const object::CodeLease& code) noexcept -> FlowSourceResult<FlowNodePayload>
+        {
+            ++restored_declarations;
+            return registration().restore_source(source, environment, references, code);
+        };
+        auto body = registration();
+        body.identity = {graph::nodeTypeId("test.source_body"), "test.source_body", 1};
+        body.restore_source = [](const FlowSourceNode& source,
+                                 const FlowSourceEnvironment& environment,
+                                 FlowReferenceView references,
+                                 const object::CodeLease& code) noexcept -> FlowSourceResult<FlowNodePayload>
+        {
+            ++restored_bodies;
+            const bool has_metadata =
+                environment.types.size() == 1 && environment.types.front() == &meta::ref_type_of_v<int>;
+            if (!has_metadata)
+            {
+                return cxx::unexpected(FlowSourceFailure{EFlowSourceError::UNKNOWN_TYPE, "external metadata", source.id}
+                );
+            }
+            const auto* declared = references.node(NodeId{99});
+            const bool has_declaration =
+                declared && declared->definition->sourceStage() == EFlowSourceStage::DECLARATION;
+            const bool has_variable = references.variable_type(7) == environment.types.front();
+            if (!has_declaration || !has_variable)
+            {
+                return cxx::unexpected(
+                    FlowSourceFailure{EFlowSourceError::INVALID_IDENTITY, "external reference", source.id}
+                );
+            }
+            return registration().restore_source(source, environment, references, code);
+        };
+        const std::array entries{declaration, body};
+        require(catalog.add(entries).has_value());
+        auto invalid = registration();
+        invalid.restore_source = nullptr;
+        require(!catalog.add(std::span{&invalid, 1}));
+        invalid = registration();
+        invalid.source_stage = static_cast<EFlowSourceStage>(255);
+        require(!catalog.add(std::span{&invalid, 1}));
+
+        FlowGraph graph;
+        require(graph.addVariableWithId(7, "state", &meta::ref_type_of_v<int>, meta::RuntimeObject{12}));
+        for (const auto& entry : entries)
+        {
+            auto definition = catalog.find(entry.identity.id);
+            auto payload = definition->create();
+            require(payload.has_value());
+            auto node = createFlowNode(definition, std::move(*payload));
+            require(node.has_value());
+            const NodeId id{entry.source_stage == EFlowSourceStage::DECLARATION ? 99U : 1U};
+            require(graph.addNodeWithId(id, std::move(*node)).has_value());
+        }
+        const auto captured = captureFlowSource(assetId(), "registered metadata", graph);
+        require(captured.has_value() && captured->nodes.front().id == NodeId{1});
+        const auto bytes = encodeFlowSource(*captured);
+        require(bytes.has_value());
+        const std::array types{&meta::ref_type_of_v<int>};
+        FlowSourceEnvironment environment;
+        environment.nodes = &catalog;
+        environment.types = types;
+        auto restored = materializeFlowSource(*captured, environment);
+        require(restored.has_value() && restored_declarations == 1 && restored_bodies == 1);
+        require(*captureFlowSource(assetId(), "registered metadata", *restored) == *captured);
+        require(*encodeFlowSource(*captureFlowSource(assetId(), "registered metadata", *restored)) == *bytes);
+        environment.types = {};
+        const auto refused = materializeFlowSource(*captured, environment);
+        require(!refused && refused.error().code == EFlowSourceError::UNKNOWN_TYPE);
+        require(refused.error().field == "external metadata" && refused.error().node == NodeId{1});
+        require(*captureFlowSource(assetId(), "registered metadata", graph) == *captured);
+        auto wrong_version = captured->nodes.front();
+        wrong_version.version = 2;
+        const auto find_node = [](NodeId) noexcept -> const FlowNode* { return nullptr; };
+        const auto find_variable = [](std::uint64_t) noexcept -> const meta::RefType* { return nullptr; };
+        const auto before = restored_bodies;
+        const auto version_rejected =
+            catalog.find(body.identity.id)->restoreSource(wrong_version, environment, {find_node, find_variable});
+        require(!version_rejected && version_rejected.error().code == EFlowSourceError::SCHEMA_MISMATCH);
+        require(restored_bodies == before);
+        std::puts("PASS external source provider: metadata, staged forward reference, variable lookup, exact failure "
+                  "and unchanged graph");
     }
 
     void functionForwardReferences()
@@ -370,6 +482,7 @@ int main(int argc, char** argv)
     require(argc == 2);
     meta::meta_module_init();
     registeredRoundtrip();
+    registeredMetadataInputs();
     functionForwardReferences();
     restoredMetadataLifetime();
     legacyRoundtrip(argv[1]);

@@ -3,7 +3,7 @@
 #include <lux/engine/flowforge/detail/FlowPinSchema.hpp>
 #include <lux/engine/meta/Meta.hpp>
 
-#include <charconv>
+#include <lux/engine/flowforge/detail/FlowSourceMetadata.hpp>
 #include <type_traits>
 
 namespace lux::flowforge
@@ -101,41 +101,27 @@ namespace lux::flowforge
             { return payload.get<T>()->describePins(); };
             result.validate = validateControl<T>;
             result.compile_execution = compileControl<T>;
-            result.encode = [](const FlowNodePayload& payload) noexcept -> FlowForgeResult<std::string>
+            result.capture_source = [](const FlowNodePayload&) noexcept -> FlowSourceResult<VFlowSourceParameters>
+            { return std::monostate{}; };
+            result.restore_source = [](const FlowSourceNode& source,
+                                       const FlowSourceEnvironment&,
+                                       FlowReferenceView,
+                                       const object::CodeLease& lease) noexcept -> FlowSourceResult<FlowNodePayload>
             {
-                if constexpr (std::is_same_v<T, SequencePayload>)
+                if (!std::holds_alternative<std::monostate>(source.parameters))
                 {
-                    return std::to_string(payload.get<T>()->additional_outputs);
+                    return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, source.type, source.id);
                 }
-                else
-                {
-                    return std::string{};
-                }
-            };
-            result.decode = [](std::string_view bytes,
-                               const object::CodeLease& lease) noexcept -> FlowForgeResult<FlowNodePayload>
-            {
                 T value;
                 if constexpr (std::is_same_v<T, SequencePayload>)
                 {
-                    if (bytes.empty())
+                    if (source.outputs.empty())
                     {
-                        return cxx::unexpected(invalidControl());
+                        return detail::sourceFailure(EFlowSourceError::SCHEMA_MISMATCH, "sequence outputs", source.id);
                     }
-                    const auto parsed =
-                        std::from_chars(bytes.data(), bytes.data() + bytes.size(), value.additional_outputs);
-                    const bool has_number = parsed.ec == std::errc{} && parsed.ptr == bytes.data() + bytes.size();
-                    const bool is_invalid_count = !has_number || !sequenceFits(value.additional_outputs);
-                    if (is_invalid_count)
-                    {
-                        return cxx::unexpected(invalidControl());
-                    }
+                    value.additional_outputs = source.outputs.size() - 1;
                 }
-                else if (!bytes.empty())
-                {
-                    return cxx::unexpected(invalidControl());
-                }
-                return FlowNodePayload::make<T, cloneControl<T>>(lease, value);
+                return detail::sourcePayload<T, cloneControl<T>>(lease, value);
             };
             return result;
         }

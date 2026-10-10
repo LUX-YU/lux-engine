@@ -59,7 +59,26 @@ target_link_libraries(connection_authority PRIVATE lux::engine::function::flowfo
 
 add_test(NAME installed.flow_connection_authority COMMAND connection_authority)
 
-foreach(target flow_analysis flow_analysis_header flow_control_flow flow_control_header source_codec flow_source_header connection_authority)
+file(
+    WRITE "${CMAKE_CURRENT_BINARY_DIR}/source_data_header.cpp"
+    "#include <lux/engine/flowforge/graph/FlowSourceData.hpp>\n"
+)
+
+add_library(flow_source_data_header OBJECT "${CMAKE_CURRENT_BINARY_DIR}/source_data_header.cpp")
+
+target_link_libraries(flow_source_data_header PRIVATE lux::engine::function::flowforge)
+
+foreach(
+    target
+    flow_analysis
+    flow_analysis_header
+    flow_control_flow
+    flow_control_header
+    source_codec
+    flow_source_header
+    flow_source_data_header
+    connection_authority
+)
     if(MSVC)
         target_compile_options(${target} PRIVATE /permissive- /GR- /utf-8)
     else()

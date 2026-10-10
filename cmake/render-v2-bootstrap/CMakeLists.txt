@@ -15,3 +15,5 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/core" 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/transport" render_transport)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/graph" render_graph)
+
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/vulkan" render_vulkan)

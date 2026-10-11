@@ -146,7 +146,8 @@ if '/fsanitize=address' in (build/'CMakeCache.txt').read_text():
  check(all('/fsanitize=address' in v['command'] for v in commands),'full ASan missing on a translation unit')
  check('spirv-asan-install' in (build/'CMakeCache.txt').read_text(),'incompatible SPIRV-Cross ASan dependency')
 runtime_dependencies={targets[d['id']]['name'] for d in names['render_runtime'].get('dependencies',[])}
-check(runtime_dependencies == {'render_core','render_transport','render_graph','render_vulkan','render_vulkan_graph'}, 'Runtime actual closure '+str(runtime_dependencies))
+check(runtime_dependencies == {'render_core','render_transport','render_graph','render_vulkan','render_vulkan_graph','render_runtime_operations_generate'}, 'Runtime actual closure '+str(runtime_dependencies))
+check(names['render_runtime_operations_generate']['type']=='UTILITY', 'Runtime generator is a build dependency, not a linked framework')
 for header in ('Types_hpp','RuntimeMessages_hpp','RuntimeMessages_ops_hpp','Runtime_hpp','NativeAssembly_hpp'):
  check('render_runtime_header_'+header in names, 'Runtime public TU '+header)
 neutral={k: v for k,v in includes.items() if k.startswith('render_runtime_header_') and 'NativeAssembly' not in k}
@@ -163,8 +164,11 @@ check('runtime_codegen' in report, 'Runtime codegen job missing')
 mapfile=build/'runtime-hot.map'
 link_map=mapfile.read_text(errors='replace')
 check('Runtime.cpp.obj' in link_map and 'Record.cpp.obj' in link_map,'Runtime actual hot closure')
-check(not any(v in link_map for v in ('PassValidation.cpp.obj','SpirvRelocation.cpp.obj','ShaderAssets.cpp.obj','Program.cpp.obj','spirv_cross','ProfileFrame.cpp.obj')), 'cold tooling/profile in Runtime')
+check(not any(v in link_map for v in ('PassValidation.cpp.obj','SpirvRelocation.cpp.obj','ShaderAssets.cpp.obj','Program.cpp.obj','spirv_cross','ProfileFrame.cpp.obj','ProfileNativeFrame.cpp.obj')), 'cold tooling/profile in Runtime')
 (out/'runtime-hot.map').write_bytes(mapfile.read_bytes())
+profile_map=(build/'runtime-profile.map').read_text(errors='replace')
+check('ProfileFrame.cpp.obj' in profile_map and 'ProfileNativeFrame.cpp.obj' in profile_map, 'real profiling wrappers missing')
+(out/'runtime-profile.map').write_text(profile_map)
 report['runtime_dependencies']=sorted(runtime_dependencies)
 report['runtime_header_closure']=neutral
 (out/'closure.json').write_text(json.dumps(report,indent=2),encoding='utf-8')

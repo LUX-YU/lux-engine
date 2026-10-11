@@ -46,3 +46,14 @@ must remain visible in the final qualification decision.
 Warm production correctness fixtures additionally verify zero first-party C++
 allocations, no new native shader/layout/pipeline creation and no repeated graph
 compilation. Cold resize/path replacement is separately classified.
+
+Instrumentation detail fixed before formal timing: the profiling Native preparation TU
+includes the exact production Frame.cpp with a renamed function and wraps that function
+only. `native_import_validation_and_binding_preparation` times its actual validation,
+import/view/descriptor preparation together. It is a subset of CPU frame record/submit,
+not an independent sum or a pure validation-only estimate. Query commands add per-queue
+GPU submission gaps; timestamps are labelled accordingly. No per-frame CPU fence wait
+is inserted. Link maps must show these wrappers only in the profiling binary. Workload
+is the real F5 shared-buffer compute/readback fixture (2x2 RGBA32F), multiple native
+queues, with 1 Scene/1 View, 1 Scene/4 Views, and 2 Scenes/4 Views. This establishes a
+small reproducible mechanism baseline, not a representative product FPS claim.

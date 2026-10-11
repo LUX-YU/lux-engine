@@ -248,6 +248,28 @@ endforeach()
 
 find_package(VulkanMemoryAllocator 3 CONFIG REQUIRED)
 
+# Reuse the exact Native graph source list, replacing only the preparation TU
+# with a source-inclusion timing wrapper. The production target is untouched.
+get_target_property(f5_native_sources render_vulkan_graph SOURCES)
+get_target_property(f5_native_source_dir render_vulkan_graph SOURCE_DIR)
+set(f5_profile_sources)
+foreach(source IN LISTS f5_native_sources)
+    if(source STREQUAL "src/graph/Frame.cpp")
+        list(APPEND f5_profile_sources "${f5_test}/ProfileNativeFrame.cpp")
+    else()
+        list(APPEND f5_profile_sources "${f5_native_source_dir}/${source}")
+    endif()
+endforeach()
+
+add_library(render_vulkan_graph_profile STATIC ${f5_profile_sources})
+
+target_include_directories(render_vulkan_graph_profile PUBLIC
+    "${f5_native_source_dir}/include" "${f5_native_source_dir}/../../../../engine/toolchain/shader/include"
+    PRIVATE "${f5_native_source_dir}/pinclude"
+)
+
+target_link_libraries(render_vulkan_graph_profile PUBLIC render_vulkan shader_metadata render_graph)
+
 # Profiling uses an exact source inclusion with a test-only free-function wrapper.
 # Neither timestamps nor instrumentation are linked into render_runtime.
 add_library(render_runtime_profile STATIC
@@ -264,7 +286,7 @@ target_include_directories(render_runtime_profile PUBLIC
 target_compile_definitions(render_runtime_profile PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 
 target_link_libraries(render_runtime_profile PUBLIC render_core render_transport render_graph
-    PRIVATE render_vulkan_graph GPUOpen::VulkanMemoryAllocator
+    PRIVATE render_vulkan_graph_profile GPUOpen::VulkanMemoryAllocator
 )
 
 add_dependencies(render_runtime_profile render_runtime)
@@ -274,6 +296,8 @@ add_executable(render_runtime_benchmark
 )
 
 target_link_libraries(render_runtime_benchmark PRIVATE render_runtime_profile render_vulkan_shader_compiler)
+
+target_link_options(render_runtime_benchmark PRIVATE "/MAP:${CMAKE_BINARY_DIR}/runtime-profile.map")
 
 target_include_directories(render_runtime_benchmark PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/generated" "${f5_test}/shader"

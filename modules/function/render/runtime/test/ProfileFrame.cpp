@@ -13,7 +13,8 @@ namespace
     VkDevice device{};
     VkQueryPool queries{};
     double period{};
-    std::array<std::array<double, 240>, 5> samples{};
+    std::array<std::array<double, 240>, 6> samples{};
+    double import_ns{};
     std::array<bool, 3> active{};
     std::uint64_t peak_bytes{}, previous_time{};
     unsigned completed{};
@@ -36,6 +37,11 @@ namespace
         std::puts("]}");
     }
 } // namespace
+
+void recordRuntimeImportProfile(double nanoseconds) noexcept
+{
+    import_ns += nanoseconds;
+}
 
 namespace lux::render::detail
 {
@@ -86,6 +92,7 @@ namespace lux::render::detail
                 }
             }
         }
+        import_ns = 0;
         const auto start = Clock::now();
         auto result = executeRuntimeFrameUninstrumented(backend, serial, ns);
         const double elapsed = std::chrono::duration<double, std::nano>(Clock::now() - start).count();
@@ -124,6 +131,7 @@ namespace lux::render::detail
             if (serial > 24)
             {
                 samples[0][serial - 25] = elapsed;
+                samples[5][serial - 25] = import_ns;
                 samples[1][serial - 25] = double(ns - previous_time);
             }
             completed = static_cast<unsigned>(serial);
@@ -166,6 +174,7 @@ void finishRuntimeProfile()
     }
     report("runtime_CPU_frame_including_import_validation_record_submit", samples[0]);
     report("runtime_pacing_interval", samples[1]);
+    report("native_import_validation_and_binding_preparation", samples[5]);
     const char* names[]{
         "graphics_GPU_interval_including_submission_gaps",
         "compute_GPU_interval_including_submission_gaps",

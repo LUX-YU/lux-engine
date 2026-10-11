@@ -40,3 +40,12 @@ The construction checkout corrects that consumer to NativeGraphInvocations::subm
 Native/Foundation Runtime-negative includes now use the actual Runtime.hpp header,
 retaining the same test names and real rejection obligation. New I qualification
 must run the complete matrix again; the failed clone is not patched.
+
+Candidate 77a97ee3754d completed Normal all/no-work and 168/168 CTest. The closure
+checker stopped because it had omitted the actual `render_runtime_operations_generate`
+UTILITY dependency from its expected set. The revised checker explicitly verifies
+that build-time generator, its real luxop job/template and the separate native link
+closure. This is a checker correction, not removal of a forbidden dependency gate.
+Full ASan had not begun for that candidate. Final independent I will rerun both modes.
+Profiling adds a separate exact-source preparation wrapper and verifies its map-only
+presence in the profiling executable; no production C++ changes since 77a97ee3754d.

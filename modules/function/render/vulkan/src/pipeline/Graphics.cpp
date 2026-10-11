@@ -3,6 +3,7 @@
 #include "Native.hpp"
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <utility>
 
 namespace lux::render::vulkan
@@ -83,6 +84,42 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kUnsupported});
         }
         const auto& limits = device.properties().limits;
+        if (!description.color_input_indices.empty())
+        {
+            if (!device.localRead())
+            {
+                return cxx::unexpected(RenderError{kUnsupported});
+            }
+            if (description.color_input_indices.size() != description.color_formats.size())
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument});
+            }
+            for (std::size_t i = 0; i < description.color_input_indices.size(); ++i)
+            {
+                const auto index = description.color_input_indices[i];
+                const bool invalid_index =
+                    index != VK_ATTACHMENT_UNUSED && (index >= limits.maxPerStageDescriptorInputAttachments ||
+                                                      std::find(
+                                                          description.color_input_indices.begin(),
+                                                          description.color_input_indices.begin() + i,
+                                                          index
+                                                      ) != description.color_input_indices.begin() + i);
+                if (invalid_index)
+                {
+                    return cxx::unexpected(RenderError{kInvalidArgument});
+                }
+            }
+        }
+        if (description.view_mask != 0)
+        {
+            VkPhysicalDeviceMultiviewProperties multiview{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_PROPERTIES};
+            VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &multiview};
+            vkGetPhysicalDeviceProperties2(device.physical(), &properties);
+            if (!device.multiview() || std::bit_width(description.view_mask) > multiview.maxMultiviewViewCount)
+            {
+                return cxx::unexpected(RenderError{kUnsupported});
+            }
+        }
         const bool invalid_counts = description.color_formats.size() != description.blends.size() ||
                                     description.color_formats.size() > limits.maxColorAttachments ||
                                     description.vertex_bindings.size() > limits.maxVertexInputBindings ||
@@ -258,11 +295,20 @@ namespace lux::render::vulkan
         dynamic.dynamicStateCount = static_cast<std::uint32_t>(dynamic_states.size());
         dynamic.pDynamicStates = dynamic_states.data();
         VkPipelineRenderingCreateInfo rendering{VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
+        rendering.viewMask = description.view_mask;
         rendering.colorAttachmentCount = static_cast<std::uint32_t>(description.color_formats.size());
         rendering.pColorAttachmentFormats = description.color_formats.data();
         rendering.depthAttachmentFormat = description.depth_format;
         rendering.stencilAttachmentFormat = description.stencil_format;
         VkGraphicsPipelineCreateInfo info{VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+        VkRenderingInputAttachmentIndexInfoKHR input_indices{VK_STRUCTURE_TYPE_RENDERING_INPUT_ATTACHMENT_INDEX_INFO_KHR
+        };
+        if (!description.color_input_indices.empty())
+        {
+            input_indices.colorAttachmentCount = static_cast<std::uint32_t>(description.color_input_indices.size());
+            input_indices.pColorAttachmentInputIndices = description.color_input_indices.data();
+            rendering.pNext = &input_indices;
+        }
         info.pNext = &rendering;
         info.stageCount = static_cast<std::uint32_t>(stages.size());
         info.pStages = stages.data();

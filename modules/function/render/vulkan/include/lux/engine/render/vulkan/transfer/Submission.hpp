@@ -63,6 +63,7 @@ namespace lux::render::vulkan
         }
 
         [[nodiscard]] RenderResult<SubmissionTicket> submit() && noexcept;
+        [[nodiscard]] RenderResult<SubmissionTicket> submit(std::span<const struct SubmissionWait> waits) && noexcept;
 
     private:
         friend class SubmissionQueue;
@@ -75,13 +76,21 @@ namespace lux::render::vulkan
         std::uint64_t recording_id_;
     };
 
+    struct SubmissionWait
+    {
+        SubmissionTicket ticket;
+        VkPipelineStageFlags2 stages;
+    };
+
     // One externally serialized owner domain; no thread, frame loop or transport.
     // The owning unique_ptr can move, while this address stays stable for borrows.
     class SubmissionQueue
     {
     public:
         [[nodiscard]] static RenderResult<std::unique_ptr<SubmissionQueue>> create(
-            const VulkanDevice &device, std::uint32_t capacity
+            const VulkanDevice& device,
+            std::uint32_t capacity,
+            EQueueRole role = EQueueRole::GRAPHICS
         ) noexcept;
         ~SubmissionQueue() noexcept;
         SubmissionQueue(const SubmissionQueue &) = delete;
@@ -97,6 +106,7 @@ namespace lux::render::vulkan
         [[nodiscard]] VkDevice device() const noexcept;
         [[nodiscard]] bool recording() const noexcept;
         [[nodiscard]] bool deviceLost() const noexcept;
+        [[nodiscard]] NativeQueue nativeQueue() const noexcept;
 
     private:
         friend class CommandBatch;
@@ -104,7 +114,7 @@ namespace lux::render::vulkan
         friend class RetirementQueue;
         struct Backing;
         explicit SubmissionQueue(std::unique_ptr<Backing> backing) noexcept;
-        [[nodiscard]] RenderResult<SubmissionTicket> submit() noexcept;
+        [[nodiscard]] RenderResult<SubmissionTicket> submit(std::span<const SubmissionWait> waits) noexcept;
         void cancel() noexcept;
         // Final owner teardown only; never used by ordinary backing destruction.
         void completePending() noexcept;

@@ -29,7 +29,11 @@ namespace lux::render::vulkan
 
         bool matchesImage(const OwnerField& field, const ImageView& image) noexcept
         {
-            const bool wrong_dimension = field.dimension != "2D" || image.samples() != VK_SAMPLE_COUNT_1_BIT;
+            const bool is_array = image.type() == VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+            const bool is_ms = image.samples() != VK_SAMPLE_COUNT_1_BIT;
+            const std::string_view dimension =
+                is_ms ? (is_array ? "2DMSArray" : "2DMS") : (is_array ? "2DArray" : "2D");
+            const bool wrong_dimension = field.dimension != dimension;
             const bool wrong_storage = field.type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE &&
                                        (storageFormat(field.image_format) == VK_FORMAT_UNDEFINED ||
                                         storageFormat(field.image_format) != image.format());
@@ -87,6 +91,7 @@ namespace lux::render::vulkan
         }
         std::vector<VkDescriptorSet> sets;
         std::vector<DynamicRange> dynamic;
+        std::vector<WriteRecipe> writes;
         const auto& limits = device.properties().limits;
         for (std::size_t set_index = 0; set_index < layout.sets.size(); ++set_index)
         {
@@ -151,13 +156,17 @@ namespace lux::render::vulkan
                                 const auto& texture = declaration.texture();
                                 const auto& view = image->image.get();
                                 const auto* range = std::get_if<ImageRange>(&resource->range);
-                                const bool wrong_backing = nativeTextureFormat(texture.format) != view.format() ||
-                                                           texture.width != view.extent().width ||
-                                                           texture.height != view.extent().height ||
-                                                           texture.depth != 1 || texture.mip_count != 1 ||
-                                                           texture.array_layers != 1 || texture.samples != 1;
-                                const bool wrong_range = !range || range->base_mip != 0 || range->mip_count != 1 ||
-                                                         range->base_layer != 0 || range->layer_count != 1 ||
+                                const auto& backing = view.backingDescription();
+                                const auto& native_range = view.range();
+                                const bool wrong_backing =
+                                    nativeTextureFormat(texture.format) != view.format() ||
+                                    texture.width != backing.extent.width || texture.height != backing.extent.height ||
+                                    texture.depth != 1 || texture.mip_count != backing.mip_levels ||
+                                    texture.array_layers != backing.array_layers || texture.samples != backing.samples;
+                                const bool wrong_range = !range || range->base_mip != native_range.baseMipLevel ||
+                                                         range->mip_count != native_range.levelCount ||
+                                                         range->base_layer != native_range.baseArrayLayer ||
+                                                         range->layer_count != native_range.layerCount ||
                                                          static_cast<std::uint32_t>(range->aspect) != view.aspect();
                                 if (wrong_backing || wrong_range)
                                 {
@@ -175,6 +184,7 @@ namespace lux::render::vulkan
                         }
                     }
                     RenderResult<void> written = cxx::unexpected(RenderError{kInvalidArgument});
+                    const auto input = static_cast<std::uint32_t>(&value - values.data());
                     if (const auto* buffer = std::get_if<BufferDescriptorValue>(&value.value))
                     {
                         const auto& backing = buffer->buffer.get();
@@ -196,13 +206,25 @@ namespace lux::render::vulkan
                         );
                         const bool is_dynamic = field.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
                                                 field.type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+                        const bool uniform = field.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+                                             field.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+                        const auto alignment =
+                            uniform ? limits.minUniformBufferOffsetAlignment : limits.minStorageBufferOffsetAlignment;
+                        BufferWrite shape{
+                            buffer->offset,
+                            buffer->range,
+                            alignment,
+                            static_cast<VkBufferUsageFlags>(
+                                uniform ? VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT : VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
+                            ),
+                            {}
+                        };
                         if (written && is_dynamic)
                         {
-                            const auto alignment = field.type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
-                                                       ? limits.minUniformBufferOffsetAlignment
-                                                       : limits.minStorageBufferOffsetAlignment;
+                            shape.dynamic = static_cast<std::uint32_t>(dynamic.size());
                             dynamic.push_back({alignment, backing.size() - buffer->offset - buffer->range});
                         }
+                        writes.push_back({*set, binding.binding, element, input, field.type, shape});
                     }
                     else if (const auto* image = std::get_if<ImageDescriptorValue>(&value.value))
                     {
@@ -219,6 +241,26 @@ namespace lux::render::vulkan
                             image->layout,
                             image->combined_sampler
                         );
+                        const auto& view = image->image.get();
+                        const VkImageUsageFlags usage =
+                            field.type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE      ? VK_IMAGE_USAGE_STORAGE_BIT
+                            : field.type == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT ? VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT
+                                                                                : VK_IMAGE_USAGE_SAMPLED_BIT;
+                        writes.push_back(
+                            {*set,
+                             binding.binding,
+                             element,
+                             input,
+                             field.type,
+                             ImageWrite{
+                                 view.backingDescription(),
+                                 view.range(),
+                                 view.type(),
+                                 image->layout,
+                                 usage,
+                                 image->combined_sampler != nullptr
+                             }}
+                        );
                     }
                     else if (field.type == VK_DESCRIPTOR_TYPE_SAMPLER)
                     {
@@ -228,6 +270,7 @@ namespace lux::render::vulkan
                             element,
                             std::get<std::reference_wrapper<const Sampler>>(value.value).get()
                         );
+                        writes.push_back({*set, binding.binding, element, input, field.type, SamplerWrite{}});
                     }
                     if (!written)
                     {
@@ -256,7 +299,9 @@ namespace lux::render::vulkan
             point,
             std::move(dynamic),
             std::move(push),
-            scalar_size
+            scalar_size,
+            device.native(),
+            std::move(writes)
         };
     }
 
@@ -267,11 +312,136 @@ namespace lux::render::vulkan
         VkPipelineBindPoint point,
         std::vector<DynamicRange> dynamic,
         std::vector<VkPushConstantRange> push,
-        std::size_t scalar_size
+        std::size_t scalar_size,
+        VkDevice device,
+        std::vector<WriteRecipe> writes
     ) noexcept
         : pool_(std::move(pool)), sets_(std::move(sets)), layout_(layout), point_(point), dynamic_(std::move(dynamic)),
-          push_(std::move(push)), scalar_size_(scalar_size)
+          push_(std::move(push)), scalar_size_(scalar_size), device_(device), writes_(std::move(writes))
     {
+    }
+
+    RenderResult<void> BoundDescriptorSets::rewrite(
+        std::span<const VDescriptorValue> values,
+        std::span<const SubmissionTicket> last_uses
+    ) noexcept
+    {
+        if (values.size() != writes_.size())
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        for (const auto& ticket : last_uses)
+        {
+            if (ticket.owner().device() != device_ || !ticket.owner().owns(ticket))
+            {
+                return cxx::unexpected(RenderError{kWrongOwner});
+            }
+            if (ticket.owner().deviceLost())
+            {
+                return cxx::unexpected(nativeError(VK_ERROR_DEVICE_LOST));
+            }
+            if (ticket.serial() > ticket.owner().completed())
+            {
+                return cxx::unexpected(RenderError{kBusy});
+            }
+        }
+        // Validate the entire candidate before the first vkUpdateDescriptorSets.
+        for (const auto& recipe : writes_)
+        {
+            const auto& value = values[recipe.input];
+            bool valid = false;
+            if (const auto* shape = std::get_if<BufferWrite>(&recipe.shape))
+            {
+                const auto* buffer = std::get_if<BufferDescriptorValue>(&value);
+                valid = buffer && buffer->buffer.get().device() == device_ && buffer->buffer.get().native() &&
+                        buffer->offset % shape->alignment == 0 && buffer->range == shape->range &&
+                        buffer->offset <= buffer->buffer.get().size() &&
+                        buffer->range <= buffer->buffer.get().size() - buffer->offset &&
+                        (buffer->buffer.get().usage() & shape->usage) == shape->usage;
+            }
+            else if (const auto* shape = std::get_if<ImageWrite>(&recipe.shape))
+            {
+                const auto* image = std::get_if<ImageDescriptorValue>(&value);
+                if (image)
+                {
+                    const auto& view = image->image.get();
+                    const auto& actual = view.backingDescription();
+                    const auto& range = view.range();
+                    const auto& expected = shape->backing;
+                    valid = view.device() == device_ && view.native() && view.type() == shape->type &&
+                            image->layout == shape->layout && actual.extent.width == expected.extent.width &&
+                            actual.extent.height == expected.extent.height && actual.format == expected.format &&
+                            actual.samples == expected.samples && actual.mip_levels == expected.mip_levels &&
+                            actual.array_layers == expected.array_layers &&
+                            (actual.usage & shape->usage) == shape->usage &&
+                            range.aspectMask == shape->range.aspectMask &&
+                            range.baseMipLevel == shape->range.baseMipLevel &&
+                            range.levelCount == shape->range.levelCount &&
+                            range.baseArrayLayer == shape->range.baseArrayLayer &&
+                            range.layerCount == shape->range.layerCount &&
+                            (image->combined_sampler != nullptr) == shape->combined &&
+                            (!image->combined_sampler ||
+                             (image->combined_sampler->device() == device_ && image->combined_sampler->native()));
+                }
+            }
+            else if (const auto* sampler = std::get_if<std::reference_wrapper<const Sampler>>(&value))
+            {
+                valid = sampler->get().device() == device_ && sampler->get().native();
+            }
+            if (!valid)
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument, {recipe.input}});
+            }
+        }
+        for (const auto& recipe : writes_)
+        {
+            const auto& value = values[recipe.input];
+            RenderResult<void> written;
+            if (const auto* buffer = std::get_if<BufferDescriptorValue>(&value))
+            {
+                written = pool_.writeBuffer(
+                    recipe.set,
+                    recipe.binding,
+                    recipe.element,
+                    recipe.type,
+                    buffer->buffer,
+                    buffer->offset,
+                    buffer->range
+                );
+                const auto& shape = std::get<BufferWrite>(recipe.shape);
+                if (shape.dynamic)
+                {
+                    dynamic_[*shape.dynamic].maximum_offset =
+                        buffer->buffer.get().size() - buffer->offset - buffer->range;
+                }
+            }
+            else if (const auto* image = std::get_if<ImageDescriptorValue>(&value))
+            {
+                written = pool_.writeImage(
+                    recipe.set,
+                    recipe.binding,
+                    recipe.element,
+                    recipe.type,
+                    image->image,
+                    image->layout,
+                    image->combined_sampler
+                );
+            }
+            else
+            {
+                written = pool_.writeSampler(
+                    recipe.set,
+                    recipe.binding,
+                    recipe.element,
+                    std::get<std::reference_wrapper<const Sampler>>(value)
+                );
+            }
+            if (!written)
+            {
+                std::terminate(); // Identical constraints were validated before any native write.
+            }
+        }
+        return {};
     }
 
     RenderResult<void> BoundDescriptorSets::bind(

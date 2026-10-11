@@ -1,0 +1,14 @@
+#version 450
+#extension GL_EXT_multiview : require
+//! lux-shader stage=vertex entry=main
+layout(location=0) flat out uint selected_view;
+void main()
+{
+    vec2 point = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
+    gl_Position = vec4(point * 2.0 - 1.0, 0.0, 1.0);
+#ifdef F4_MULTIVIEW
+    selected_view = gl_ViewIndex;
+#else
+    selected_view = uint(lux_push.p_view_index);
+#endif
+}

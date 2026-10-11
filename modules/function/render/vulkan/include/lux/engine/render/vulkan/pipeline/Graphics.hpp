@@ -53,6 +53,10 @@ namespace lux::render::vulkan
         bool depth_test{false}, depth_write{false}, stencil_test{false};
         VkCompareOp depth_compare{VK_COMPARE_OP_LESS};
         StencilFace front, back;
+        std::uint32_t view_mask{};
+        // Empty retains Vulkan's default color-index mapping. Explicit UNUSED entries
+        // permit descriptor-only input attachments; required for local-read consumers.
+        std::vector<std::uint32_t> color_input_indices;
         bool operator==(const GraphicsDescription&) const noexcept = default;
     };
 

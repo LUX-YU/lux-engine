@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <limits>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/vulkan/Error.hpp>
@@ -45,7 +46,43 @@ namespace lux::render::vulkan
         // Explicit enumeration index, or prefer a discrete eligible device.
         std::uint32_t physical_device_index{std::numeric_limits<std::uint32_t>::max()};
         bool dynamic_rendering{false};
+        bool multiple_queues{false};
+        bool multiview{false};
+        bool local_read{false};
+        bool separate_depth_stencil{false};
+        bool prefer_dedicated_queues{true};
     };
+
+    enum class EQueueRole
+    {
+        GRAPHICS,
+        COMPUTE,
+        TRANSFER
+    };
+
+    // A borrowed native queue selected at device construction. Roles may share
+    // one queue on constrained devices; family/index are the actual identity.
+    struct NativeQueue
+    {
+        VkQueue handle;
+        std::uint32_t family;
+        std::uint32_t index;
+        VkQueueFlags flags;
+        bool operator==(const NativeQueue&) const noexcept = default;
+    };
+
+    struct QueueLocation
+    {
+        std::uint32_t family;
+        std::uint32_t index;
+        bool operator==(const QueueLocation&) const noexcept = default;
+    };
+
+    [[nodiscard]] RenderResult<std::array<QueueLocation, 3>> selectQueues(
+        std::span<const VkQueueFamilyProperties> families,
+        bool multiple,
+        bool prefer_dedicated = true
+    ) noexcept;
 
     [[nodiscard]] RenderResult<std::uint32_t> selectQueueFamily(std::span<const VkQueueFamilyProperties> families
     ) noexcept;
@@ -102,13 +139,38 @@ namespace lux::render::vulkan
             return dynamic_rendering_;
         }
 
+        [[nodiscard]] NativeQueue queue(EQueueRole role) const noexcept
+        {
+            return queues_[static_cast<std::size_t>(role)];
+        }
+
+        [[nodiscard]] bool multiview() const noexcept
+        {
+            return multiview_;
+        }
+
+        [[nodiscard]] bool localRead() const noexcept
+        {
+            return local_read_;
+        }
+
+        [[nodiscard]] bool separateDepthStencil() const noexcept
+        {
+            return separate_depth_stencil_;
+        }
+
+        [[nodiscard]] bool timelineSemaphore() const noexcept
+        {
+            return timeline_;
+        }
+
     private:
         VulkanDevice(
             VkInstance instance,
             VkPhysicalDevice physical,
             VkDevice device,
-            std::uint32_t family,
-            bool dynamic_rendering
+            std::array<NativeQueue, 3> queues,
+            const DeviceOptions& options
         ) noexcept;
         void release() noexcept;
 
@@ -119,6 +181,11 @@ namespace lux::render::vulkan
         std::uint32_t queue_family_;
         VkPhysicalDeviceProperties properties_;
         bool dynamic_rendering_;
+        std::array<NativeQueue, 3> queues_;
+        bool multiview_;
+        bool local_read_;
+        bool timeline_;
+        bool separate_depth_stencil_;
     };
 
     // Borrows device/instance; allocations must be destroyed before this owner.

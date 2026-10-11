@@ -53,6 +53,7 @@ namespace lux::render::vulkan
         // the caller has obtained GPU completion and a HOST_READ memory barrier.
         [[nodiscard]] RenderResult<void> write(VkDeviceSize offset, std::span<const std::byte> bytes) noexcept;
         [[nodiscard]] RenderResult<void> read(VkDeviceSize offset, std::span<std::byte> bytes) const noexcept;
+        [[nodiscard]] VkDeviceSize allocationBytes() const noexcept;
 
     private:
         Buffer(
@@ -77,10 +78,40 @@ namespace lux::render::vulkan
         EMemoryAccess access_;
     };
 
-    // Optimal tiled 2D, one mip/layer; explicit sample count, no asset schema.
+    struct ImageDescription
+    {
+        VkExtent2D extent;
+        VkFormat format;
+        VkImageUsageFlags usage;
+        VkSampleCountFlagBits samples{VK_SAMPLE_COUNT_1_BIT};
+        std::uint32_t mip_levels{1};
+        std::uint32_t array_layers{1};
+        bool aliasable{false};
+    };
+
+    struct ImageMemoryBinding
+    {
+        VkDeviceMemory memory;
+        VkDeviceSize offset, size;
+        std::uint32_t memory_type;
+        bool owns_allocation;
+    };
+
+    // Optimal tiled 2D backing. Views borrow it; array layers and mip levels
+    // belong to this allocation, not to independent per-mip resource owners.
     class Image
     {
     public:
+        [[nodiscard]] static RenderResult<Image> create(
+            const VulkanAllocator& allocator,
+            const ImageDescription& description
+        ) noexcept;
+        // Same native image shape, distinct VkImage, borrowed existing allocation.
+        // The source allocation must outlive this alias. GPU non-overlap is the
+        // caller's explicit synchronization obligation, not implied by this factory.
+        [[nodiscard]] static RenderResult<Image> alias(const Image& source) noexcept;
+        static RenderResult<Image> alias(const Image&&) = delete;
+        [[nodiscard]] ImageMemoryBinding memoryBinding() const noexcept;
         [[nodiscard]] static RenderResult<Image> create(
             const VulkanAllocator& allocator,
             VkExtent2D extent,
@@ -106,22 +137,27 @@ namespace lux::render::vulkan
 
         [[nodiscard]] VkExtent2D extent() const noexcept
         {
-            return extent_;
+            return description_.extent;
         }
 
         [[nodiscard]] VkFormat format() const noexcept
         {
-            return format_;
+            return description_.format;
         }
 
         [[nodiscard]] VkImageUsageFlags usage() const noexcept
         {
-            return usage_;
+            return description_.usage;
         }
 
         [[nodiscard]] VkSampleCountFlagBits samples() const noexcept
         {
-            return samples_;
+            return description_.samples;
+        }
+
+        [[nodiscard]] const ImageDescription& description() const noexcept
+        {
+            return description_;
         }
 
     private:
@@ -130,10 +166,7 @@ namespace lux::render::vulkan
             VkDevice device,
             VkImage image,
             VmaAllocation_T* allocation,
-            VkExtent2D extent,
-            VkFormat format,
-            VkImageUsageFlags usage,
-            VkSampleCountFlagBits samples
+            const ImageDescription& description
         ) noexcept;
         void release() noexcept;
 
@@ -141,9 +174,7 @@ namespace lux::render::vulkan
         VkDevice device_;
         VkImage image_;
         VmaAllocation_T* allocation_;
-        VkExtent2D extent_;
-        VkFormat format_;
-        VkImageUsageFlags usage_;
-        VkSampleCountFlagBits samples_;
+        ImageDescription description_;
+        bool owns_allocation_{true};
     };
 } // namespace lux::render::vulkan

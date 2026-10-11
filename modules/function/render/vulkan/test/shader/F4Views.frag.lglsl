@@ -1,0 +1,8 @@
+#version 450
+//! lux-shader stage=fragment entry=main
+layout(location=0) flat in uint selected_view;
+layout(location=0) out vec4 color;
+void main()
+{
+    color = vec4(selected_view == 0 ? lux_push.p_first_value : lux_push.p_second_value, float(selected_view), 0.0, 1.0);
+}

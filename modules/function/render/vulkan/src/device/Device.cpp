@@ -244,17 +244,74 @@ namespace lux::render::vulkan
         return cxx::unexpected(RenderError{kUnsupported});
     }
 
+    RenderResult<std::array<QueueLocation, 3>> selectQueues(
+        std::span<const VkQueueFamilyProperties> families,
+        bool multiple,
+        bool prefer_dedicated
+    ) noexcept
+    {
+        auto graphics = selectQueueFamily(families);
+        if (!graphics)
+        {
+            return cxx::unexpected(graphics.error());
+        }
+        std::array<QueueLocation, 3> result{{{*graphics, 0}, {*graphics, 0}, {*graphics, 0}}};
+        if (!multiple)
+        {
+            return result;
+        }
+        // Prefer dedicated families; otherwise use distinct indices when available.
+        for (std::uint32_t role = 1; role < result.size(); ++role)
+        {
+            const auto required = role == 1 ? VK_QUEUE_COMPUTE_BIT : VK_QUEUE_TRANSFER_BIT;
+            int best = -1;
+            for (std::uint32_t f = 0; f < families.size(); ++f)
+            {
+                const auto flags = families[f].queueFlags;
+                const bool supports = (flags & required) != 0 ||
+                                      (role == 2 && (flags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) != 0);
+                if (families[f].queueCount == 0 || !supports || (!prefer_dedicated && f != *graphics))
+                {
+                    continue;
+                }
+                const int score = role == 1 ? ((flags & VK_QUEUE_GRAPHICS_BIT) == 0 ? 2 : 0)
+                                            : ((flags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) == 0 ? 3
+                                               : (flags & VK_QUEUE_GRAPHICS_BIT) == 0                        ? 2
+                                                                                                             : 0);
+                if (score > best)
+                {
+                    best = score;
+                    result[role] = {f, 0};
+                }
+            }
+            auto& selected = result[role];
+            for (std::uint32_t previous = 0; previous < role; ++previous)
+            {
+                if (result[previous].family == selected.family)
+                {
+                    selected.index = std::max(selected.index, result[previous].index + 1);
+                }
+            }
+            if (selected.index >= families[selected.family].queueCount)
+            {
+                selected.index = 0;
+            }
+        }
+        return result;
+    }
+
     VulkanDevice::VulkanDevice(
         VkInstance instance,
         VkPhysicalDevice physical,
         VkDevice device,
-        std::uint32_t family,
-        bool dynamic_rendering
+        std::array<NativeQueue, 3> queues,
+        const DeviceOptions& options
     ) noexcept
-        : instance_(instance), physical_(physical), device_(device), queue_family_(family),
-          dynamic_rendering_(dynamic_rendering)
+        : instance_(instance), physical_(physical), device_(device), queue_(queues[0].handle),
+          queue_family_(queues[0].family), dynamic_rendering_(options.dynamic_rendering), queues_(queues),
+          multiview_(options.multiview), local_read_(options.local_read), timeline_(options.multiple_queues),
+          separate_depth_stencil_(options.separate_depth_stencil)
     {
-        vkGetDeviceQueue(device, family, 0, &queue_);
         vkGetPhysicalDeviceProperties(physical, &properties_);
     }
 
@@ -263,10 +320,19 @@ namespace lux::render::vulkan
         const DeviceOptions& options
     ) noexcept
     {
+        if (options.local_read && !options.dynamic_rendering)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
         auto requested = extensionNames(options.extensions);
         if (!requested)
         {
             return cxx::unexpected(requested.error());
+        }
+        if (options.local_read)
+        {
+            requested->push_back(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
+            requested = extensionNames(*requested);
         }
         auto devices =
             enumerate<VkPhysicalDevice>([&](auto* count, auto* values)
@@ -283,7 +349,7 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
         VkPhysicalDevice selected{};
-        std::uint32_t family{};
+        std::array<NativeQueue, 3> queues{};
         int best_score = -1;
         for (std::uint32_t index = 0; index < devices->size(); ++index)
         {
@@ -297,11 +363,23 @@ namespace lux::render::vulkan
             VkPhysicalDeviceProperties properties{};
             vkGetPhysicalDeviceProperties(physical, &properties);
             VkPhysicalDeviceVulkan13Features supported{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+            VkPhysicalDeviceVulkan12Features supported12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+            VkPhysicalDeviceVulkan11Features supported11{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
+            VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR supported_local{
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES_KHR
+            };
+            supported.pNext = &supported12;
+            supported12.pNext = &supported11;
+            supported11.pNext = options.local_read ? &supported_local : nullptr;
             VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
             features.pNext = &supported;
             vkGetPhysicalDeviceFeatures2(physical, &features);
             const bool is_unsupported = properties.apiVersion < VK_API_VERSION_1_3 || !supported.synchronization2 ||
-                                        (options.dynamic_rendering && !supported.dynamicRendering);
+                                        (options.dynamic_rendering && !supported.dynamicRendering) ||
+                                        (options.multiple_queues && !supported12.timelineSemaphore) ||
+                                        (options.multiview && !supported11.multiview) ||
+                                        (options.separate_depth_stencil && !supported12.separateDepthStencilLayouts) ||
+                                        (options.local_read && !supported_local.dynamicRenderingLocalRead);
             if (is_unsupported)
             {
                 continue;
@@ -328,7 +406,7 @@ namespace lux::render::vulkan
             std::vector<VkQueueFamilyProperties> families(count);
             vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, families.data());
             families.resize(count);
-            auto eligible = selectQueueFamily(families);
+            auto eligible = selectQueues(families, options.multiple_queues, options.prefer_dedicated_queues);
             if (!eligible)
             {
                 continue;
@@ -337,7 +415,11 @@ namespace lux::render::vulkan
             if (score > best_score)
             {
                 selected = physical;
-                family = *eligible;
+                for (std::size_t q = 0; q < queues.size(); ++q)
+                {
+                    const auto location = (*eligible)[q];
+                    queues[q] = {VK_NULL_HANDLE, location.family, location.index, families[location.family].queueFlags};
+                }
                 best_score = score;
             }
         }
@@ -345,18 +427,44 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kUnsupported});
         }
-        const float priority = 1.0f;
-        VkDeviceQueueCreateInfo queue{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
-        queue.queueFamilyIndex = family;
-        queue.queueCount = 1;
-        queue.pQueuePriorities = &priority;
+        const std::array priorities{1.0f, 1.0f, 1.0f};
+        std::array<VkDeviceQueueCreateInfo, 3> queue_infos{};
+        std::uint32_t queue_count = 0;
+        for (const auto& queue : queues)
+        {
+            std::uint32_t index = 0;
+            while (index < queue_count && queue_infos[index].queueFamilyIndex != queue.family)
+            {
+                ++index;
+            }
+            if (index == queue_count)
+            {
+                queue_infos[index] = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+                queue_infos[index].queueFamilyIndex = queue.family;
+                queue_infos[index].pQueuePriorities = priorities.data();
+                ++queue_count;
+            }
+            queue_infos[index].queueCount = std::max(queue_infos[index].queueCount, queue.index + 1);
+        }
         VkPhysicalDeviceVulkan13Features enabled{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
         enabled.synchronization2 = VK_TRUE;
         enabled.dynamicRendering = options.dynamic_rendering;
+        VkPhysicalDeviceVulkan12Features enabled12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+        enabled12.timelineSemaphore = options.multiple_queues;
+        enabled12.separateDepthStencilLayouts = options.separate_depth_stencil;
+        VkPhysicalDeviceVulkan11Features enabled11{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
+        enabled11.multiview = options.multiview;
+        VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR enabled_local{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES_KHR
+        };
+        enabled_local.dynamicRenderingLocalRead = options.local_read;
+        enabled.pNext = &enabled12;
+        enabled12.pNext = &enabled11;
+        enabled11.pNext = options.local_read ? &enabled_local : nullptr;
         VkDeviceCreateInfo info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
         info.pNext = &enabled;
-        info.queueCreateInfoCount = 1;
-        info.pQueueCreateInfos = &queue;
+        info.queueCreateInfoCount = queue_count;
+        info.pQueueCreateInfos = queue_infos.data();
         info.enabledExtensionCount = static_cast<std::uint32_t>(requested->size());
         info.ppEnabledExtensionNames = requested->data();
         VkDevice device{};
@@ -365,7 +473,11 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(nativeError(result));
         }
-        return VulkanDevice{instance.native(), selected, device, family, options.dynamic_rendering};
+        for (auto& queue : queues)
+        {
+            vkGetDeviceQueue(device, queue.family, queue.index, &queue.handle);
+        }
+        return VulkanDevice{instance.native(), selected, device, queues, options};
     }
 
     void VulkanDevice::release() noexcept
@@ -386,7 +498,9 @@ namespace lux::render::vulkan
     VulkanDevice::VulkanDevice(VulkanDevice&& other) noexcept
         : instance_(other.instance_), physical_(other.physical_), device_(std::exchange(other.device_, VK_NULL_HANDLE)),
           queue_(other.queue_), queue_family_(other.queue_family_), properties_(other.properties_),
-          dynamic_rendering_(other.dynamic_rendering_)
+          dynamic_rendering_(other.dynamic_rendering_), queues_(other.queues_), multiview_(other.multiview_),
+          local_read_(other.local_read_), timeline_(other.timeline_),
+          separate_depth_stencil_(other.separate_depth_stencil_)
     {
     }
 
@@ -402,6 +516,11 @@ namespace lux::render::vulkan
             queue_family_ = other.queue_family_;
             properties_ = other.properties_;
             dynamic_rendering_ = other.dynamic_rendering_;
+            queues_ = other.queues_;
+            multiview_ = other.multiview_;
+            local_read_ = other.local_read_;
+            timeline_ = other.timeline_;
+            separate_depth_stencil_ = other.separate_depth_stencil_;
         }
         return *this;
     }

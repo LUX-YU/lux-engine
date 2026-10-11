@@ -1,0 +1,8 @@
+#version 450
+//! lux-shader stage=compute entry=main
+layout(local_size_x=1,local_size_y=1) in;
+void main()
+{
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    imageStore(p_image, p, imageLoad(p_image, p) + vec4(1.0));
+}

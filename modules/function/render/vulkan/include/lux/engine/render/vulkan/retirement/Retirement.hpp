@@ -50,9 +50,47 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<std::size_t> collect() noexcept;
         [[nodiscard]] std::size_t pending() const noexcept;
 
+        // A cold composite candidate already owns its allocation. Type erasure
+        // happens once at retirement, with no heap state or shared reference count.
+        // The supplied LAST ticket must cover every queue using this composite.
+        template <class T>
+            requires requires(const T& value) {
+                { value.device() } noexcept -> std::same_as<VkDevice>;
+            }
+        [[nodiscard]] RenderResult<void> retire(SubmissionTicket last_use, std::unique_ptr<T>&& backing) noexcept
+        {
+            static_assert(std::is_nothrow_destructible_v<T>);
+            if (!backing)
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument});
+            }
+            if (!queue_->owns(last_use) || backing->device() != queue_->device())
+            {
+                return cxx::unexpected(RenderError{kWrongOwner});
+            }
+            for (auto& entry : entries_)
+            {
+                if (!entry)
+                {
+                    CompositeBacking owned{backing.release(), [](void* value) { delete static_cast<T*>(value); }};
+                    entry.emplace(last_use.serial(), VBacking{std::in_place_type<CompositeBacking>, std::move(owned)});
+                    return {};
+                }
+            }
+            return cxx::unexpected(RenderError{kCapacity});
+        }
+
     private:
-        using VBacking = std::
-            variant<Buffer, Image, DescriptorPool, DescriptorSetLayout, ShaderModule, PipelineLayout, ComputePipeline>;
+        using CompositeBacking = std::unique_ptr<void, void (*)(void*)>;
+        using VBacking = std::variant<
+            Buffer,
+            Image,
+            DescriptorPool,
+            DescriptorSetLayout,
+            ShaderModule,
+            PipelineLayout,
+            ComputePipeline,
+            CompositeBacking>;
 
         struct Entry
         {

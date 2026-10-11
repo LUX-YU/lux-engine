@@ -10,6 +10,16 @@ namespace lux::render::vulkan
     public:
         [[nodiscard]] static RenderResult<ImageView> create(const Image& image, VkImageAspectFlags aspect) noexcept;
         static RenderResult<ImageView> create(const Image&&, VkImageAspectFlags) = delete;
+        [[nodiscard]] static RenderResult<ImageView> create(
+            const Image& image,
+            VkImageSubresourceRange range,
+            VkImageViewType type = VK_IMAGE_VIEW_TYPE_2D
+        ) noexcept;
+        static RenderResult<ImageView> create(
+            const Image&&,
+            VkImageSubresourceRange,
+            VkImageViewType = VK_IMAGE_VIEW_TYPE_2D
+        ) = delete;
         ~ImageView() noexcept;
         ImageView(ImageView&& other) noexcept;
         ImageView& operator=(ImageView&& other) noexcept;
@@ -43,7 +53,27 @@ namespace lux::render::vulkan
 
         [[nodiscard]] VkImageAspectFlags aspect() const noexcept
         {
-            return aspect_;
+            return range_.aspectMask;
+        }
+
+        [[nodiscard]] const VkImageSubresourceRange& range() const noexcept
+        {
+            return range_;
+        }
+
+        [[nodiscard]] VkImageViewType type() const noexcept
+        {
+            return type_;
+        }
+
+        [[nodiscard]] VkImage image() const noexcept
+        {
+            return image_;
+        }
+
+        [[nodiscard]] const ImageDescription& backingDescription() const noexcept
+        {
+            return description_;
         }
 
         [[nodiscard]] VkSampleCountFlagBits samples() const noexcept
@@ -52,14 +82,17 @@ namespace lux::render::vulkan
         }
 
     private:
-        ImageView(const Image& image, VkImageView handle, VkImageAspectFlags aspect) noexcept;
+        ImageView(const Image& image, VkImageView handle, VkImageSubresourceRange range, VkImageViewType type) noexcept;
         void release() noexcept;
         VkDevice device_;
         VkImageView handle_;
         VkImageUsageFlags usage_;
         VkFormat format_;
         VkExtent2D extent_;
-        VkImageAspectFlags aspect_;
+        VkImageSubresourceRange range_;
+        VkImageViewType type_;
+        VkImage image_;
+        ImageDescription description_;
         VkSampleCountFlagBits samples_;
     };
 

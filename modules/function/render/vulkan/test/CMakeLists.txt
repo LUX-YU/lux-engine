@@ -2,6 +2,58 @@ add_executable(render_vulkan_device Device.cpp)
 
 add_subdirectory(shader)
 
+set(F4_GRAPH_TEST_SOURCES
+    NativeGraphSupport.cpp NativeGraphCopy.cpp NativeGraphImport.cpp NativeGraphRaster.cpp
+    NativeGraphConditional.cpp NativeGraphViews.cpp NativeGraphHzb.cpp NativeGraphAlias.cpp NativeGraphShared.cpp NativeGraphReadWrite.cpp
+)
+
+add_executable(render_vulkan_native_graph NativeGraph.cpp ${F4_GRAPH_TEST_SOURCES})
+
+target_link_libraries(render_vulkan_native_graph PRIVATE render_vulkan_shader_compiler)
+
+target_include_directories(
+    render_vulkan_native_graph PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shader/generated"
+        "${CMAKE_CURRENT_SOURCE_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+add_dependencies(
+    render_vulkan_native_graph render_vulkan_spv_F4Fill_comp render_vulkan_schema_F4Readback render_vulkan_spv_F4Hzb_comp
+        render_vulkan_schema_F4HostRead render_vulkan_schema_F4CopyUpload render_vulkan_schema_F4CopyImage
+        render_vulkan_schema_F4CopyBuffer render_vulkan_spv_F4Accumulate_comp
+        render_vulkan_spv_F3SharedA_vert render_vulkan_spv_F3SharedA_frag
+        render_vulkan_spv_F3SharedB_vert render_vulkan_spv_F3SharedB_frag
+        render_vulkan_spv_F4Views_frag render_vulkan_spv_multiview
+        render_vulkan_spv_F4Local_vert render_vulkan_spv_F4Local_frag
+        render_vulkan_spv_F4Raster_vert render_vulkan_spv_F4Raster_frag
+        render_vulkan_spv_F3Tonemap_frag render_vulkan_spv_F3Tonemap_vert
+)
+
+add_test(
+    NAME render.vulkan.native_graph
+    COMMAND render_vulkan_native_graph "${CMAKE_CURRENT_BINARY_DIR}/shader"
+)
+
+set_tests_properties(render.vulkan.native_graph PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+add_executable(render_vulkan_graph_benchmark NativeGraphBenchmark.cpp NativeGraphSupport.cpp)
+
+target_link_libraries(render_vulkan_graph_benchmark PRIVATE render_vulkan_shader_compiler)
+
+target_include_directories(
+    render_vulkan_graph_benchmark PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shader/generated"
+        "${CMAKE_CURRENT_SOURCE_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+add_dependencies(
+    render_vulkan_graph_benchmark render_vulkan_spv_F4Fill_comp render_vulkan_schema_F4Readback
+        render_vulkan_spv_F3Tonemap_frag render_vulkan_spv_F3Tonemap_vert render_vulkan_spv_F4Local_frag
+)
+
+if(NOT LUX_R4_ASAN)
+    add_test(NAME render.vulkan.graph_benchmark COMMAND render_vulkan_graph_benchmark "${CMAKE_CURRENT_BINARY_DIR}/shader")
+    set_tests_properties(render.vulkan.graph_benchmark PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+endif()
+
 add_executable(render_vulkan_shader_benchmark ShaderBenchmark.cpp)
 
 target_link_libraries(render_vulkan_shader_benchmark PRIVATE render_vulkan_shader_compiler)
@@ -26,7 +78,7 @@ set_tests_properties(render.vulkan.shader_benchmark PROPERTIES RUN_SERIAL TRUE T
 
 add_executable(render_vulkan_shader_hot_link ShaderHotLink.cpp)
 
-target_link_libraries(render_vulkan_shader_hot_link PRIVATE render_vulkan_shader_compiler)
+target_link_libraries(render_vulkan_shader_hot_link PRIVATE render_vulkan_graph)
 
 if(MSVC)
     target_link_options(render_vulkan_shader_hot_link PRIVATE "/MAP:${CMAKE_CURRENT_BINARY_DIR}/shader-hot.map")
@@ -251,7 +303,7 @@ target_link_libraries(
 )
 
 add_library(
-    render_vulkan_shader_fault STATIC ../src/shader/Layout.cpp ../src/shader/Program.cpp ../src/shader/Bindings.cpp
+    render_vulkan_shader_fault STATIC ../src/shader/Layout.cpp ../src/shader/Program.cpp ../src/shader/ProgramValue.cpp ../src/shader/Bindings.cpp
 )
 
 target_include_directories(
@@ -261,6 +313,37 @@ target_include_directories(
 target_link_libraries(
     render_vulkan_shader_fault PUBLIC render_vulkan_fault shader_metadata render_graph PRIVATE toolchain_shader_reflection
 )
+
+list(TRANSFORM LUX_VULKAN_GRAPH_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/../" OUTPUT_VARIABLE graph_fault_sources)
+
+add_library(render_vulkan_graph_fault STATIC ${graph_fault_sources} ../src/shader/Program.cpp)
+
+target_include_directories(
+    render_vulkan_graph_fault
+    PUBLIC ../include "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../engine/toolchain/shader/include"
+    PRIVATE ../pinclude
+)
+
+target_link_libraries(
+    render_vulkan_graph_fault PUBLIC render_vulkan_fault shader_metadata render_graph PRIVATE toolchain_shader_reflection
+)
+
+add_executable(render_vulkan_graph_candidate NativeGraphCandidate.cpp NativeGraphSupport.cpp)
+
+target_link_libraries(render_vulkan_graph_candidate PRIVATE render_vulkan_graph_fault)
+
+target_include_directories(
+    render_vulkan_graph_candidate PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shader/generated"
+        "${CMAKE_CURRENT_SOURCE_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+add_dependencies(
+    render_vulkan_graph_candidate render_vulkan_spv_F4Fill_comp render_vulkan_schema_F4HostRead
+)
+
+add_test(NAME render.vulkan.graph_candidate COMMAND render_vulkan_graph_candidate "${CMAKE_CURRENT_BINARY_DIR}/shader")
+
+set_tests_properties(render.vulkan.graph_candidate PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
 
 add_executable(render_vulkan_shader_candidate ShaderCandidate.cpp)
 
@@ -371,4 +454,23 @@ foreach(index RANGE 0 6)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/RejectCompile.cmake"
     )
     set_tests_properties(render.vulkan.reject_${probe} PROPERTIES RUN_SERIAL TRUE)
+endforeach()
+
+set(native_header "${CMAKE_CURRENT_BINARY_DIR}/header_graph_Executable.cpp")
+file(WRITE "${native_header}" "#include <lux/engine/render/vulkan/graph/Executable.hpp>\n")
+add_library(render_vulkan_header_graph_Executable OBJECT "${native_header}")
+target_link_libraries(render_vulkan_header_graph_Executable PRIVATE render_vulkan_graph)
+
+foreach(probe IN ITEMS SCENE RUNTIME TRANSPORT LEGACY EDITOR FEATURE)
+    list(FIND probes ${probe} index)
+    list(GET rejected_headers ${index} header)
+    add_executable(render_vulkan_reject_NATIVE_${probe} EXCLUDE_FROM_ALL Probe.cpp)
+    target_compile_definitions(render_vulkan_reject_NATIVE_${probe} PRIVATE "LUX_FORBIDDEN_INCLUDE=\"${header}\"")
+    target_link_libraries(render_vulkan_reject_NATIVE_${probe} PRIVATE render_vulkan_graph)
+    add_test(
+        NAME render.vulkan.reject_NATIVE_${probe}
+        COMMAND "${CMAKE_COMMAND}" "-DBUILD_DIR=${CMAKE_BINARY_DIR}" "-DPROBE=NATIVE_${probe}" "-DHEADER=${header}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/RejectCompile.cmake"
+    )
+    set_tests_properties(render.vulkan.reject_NATIVE_${probe} PROPERTIES RUN_SERIAL TRUE)
 endforeach()

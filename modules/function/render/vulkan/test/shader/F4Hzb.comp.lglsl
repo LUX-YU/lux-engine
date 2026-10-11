@@ -1,0 +1,13 @@
+#version 450
+//! lux-shader stage=compute entry=main
+layout(local_size_x = 1, local_size_y = 1) in;
+void main()
+{
+    ivec2 destination_pixel = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 source_pixel = destination_pixel * 2;
+    vec4 a = texelFetch(sampler2D(p_source, p_nearest), source_pixel, 0);
+    vec4 b = texelFetch(sampler2D(p_source, p_nearest), source_pixel + ivec2(1, 0), 0);
+    vec4 c = texelFetch(sampler2D(p_source, p_nearest), source_pixel + ivec2(0, 1), 0);
+    vec4 d = texelFetch(sampler2D(p_source, p_nearest), source_pixel + ivec2(1, 1), 0);
+    imageStore(p_destination, destination_pixel, min(min(a, b), min(c, d)));
+}

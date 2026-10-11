@@ -1,10 +1,11 @@
 #include "Support.hpp"
 
-#include <lux/engine/render/vulkan/memory/Memory.hpp>
-#include <lux/engine/render/vulkan/descriptor/Descriptors.hpp>
-#include <lux/engine/render/vulkan/pipeline/Pipeline.hpp>
 #include <array>
 #include <fstream>
+#include <lux/engine/render/vulkan/descriptor/Descriptors.hpp>
+#include <lux/engine/render/vulkan/descriptor/ImageBindings.hpp>
+#include <lux/engine/render/vulkan/memory/Memory.hpp>
+#include <lux/engine/render/vulkan/pipeline/Pipeline.hpp>
 #include <vector>
 
 using namespace foundation_test;
@@ -48,6 +49,24 @@ int main(int argc, char **argv)
         ));
         auto moved_image = std::move(image);
         CHECK(!image.native() && moved_image.extent().width == 8);
+        {
+            ImageDescription
+                description{{16, 8}, VK_FORMAT_R32_SFLOAT, VK_IMAGE_USAGE_SAMPLED_BIT, VK_SAMPLE_COUNT_1_BIT, 5, 2};
+            auto layered = take(Image::create(allocator, description));
+            auto view =
+                take(ImageView::create(layered, {VK_IMAGE_ASPECT_COLOR_BIT, 2, 2, 0, 2}, VK_IMAGE_VIEW_TYPE_2D_ARRAY));
+            CHECK(view.extent().width == 4 && view.extent().height == 2);
+            CHECK(view.range().levelCount == 2 && view.range().layerCount == 2);
+            CHECK(view.image() == layered.native());
+            CHECK(!ImageView::create(layered, {VK_IMAGE_ASPECT_COLOR_BIT, 5, 1, 0, 1}));
+            CHECK(!ImageView::create(layered, {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1}));
+            CHECK(!ImageView::create(layered, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 2}));
+            description.mip_levels = 6;
+            CHECK(!Image::create(allocator, description));
+            description.mip_levels = 2;
+            description.samples = VK_SAMPLE_COUNT_4_BIT;
+            CHECK(!Image::create(allocator, description));
+        }
         const std::array bindings{
             VkDescriptorSetLayoutBinding{0, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr}
         };

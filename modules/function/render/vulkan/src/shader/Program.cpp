@@ -8,12 +8,10 @@ namespace lux::render::vulkan
 {
     namespace
     {
-        bool supportedInterface(
-            const toolchain::PassStageInterface& interface,
-            const VkPhysicalDeviceLimits& limits
-        ) noexcept
+        bool supportedInterface(const toolchain::PassStageInterface& interface, const VulkanDevice& device) noexcept
         {
             // Matches the features actually enabled by the existing Device factory, not merely physical support.
+            const auto& limits = device.properties().limits;
             for (const auto capability : interface.capabilities)
             {
                 switch (static_cast<spv::Capability>(capability))
@@ -22,6 +20,18 @@ namespace lux::render::vulkan
                 case spv::CapabilityShader:
                 case spv::CapabilityImageQuery:
                 case spv::CapabilityDerivativeControl:
+                    break;
+                case spv::CapabilityMultiView:
+                    if (!device.multiview())
+                    {
+                        return false;
+                    }
+                    break;
+                case spv::CapabilityInputAttachment:
+                    if (!device.localRead())
+                    {
+                        return false;
+                    }
                     break;
                 default:
                     return false;
@@ -285,7 +295,7 @@ namespace lux::render::vulkan
         for (const auto& stage : variant.stages)
         {
             const auto interface = toolchain::reflectPassInterface(stage.words);
-            if (!interface || !supportedInterface(*interface, device.properties().limits))
+            if (!interface || !supportedInterface(*interface, device))
             {
                 return cxx::unexpected(RenderError{kUnsupported, {2, stage.stage}});
             }
@@ -412,20 +422,4 @@ namespace lux::render::vulkan
         };
     }
 
-    NativeShaderProgram::NativeShaderProgram(
-        NativeProgramIdentity identity,
-        std::vector<DescriptorSetLayout> sets,
-        PipelineLayout layout,
-        std::vector<ShaderModule> modules,
-        VPipeline pipeline
-    ) noexcept
-        : identity_(std::move(identity)), sets_(std::move(sets)), pipeline_layout_(std::move(layout)),
-          modules_(std::move(modules)), pipeline_(std::move(pipeline))
-    {
-    }
-
-    VkPipeline NativeShaderProgram::native() const noexcept
-    {
-        return std::visit([](const auto& pipeline) { return pipeline.native(); }, pipeline_);
-    }
 } // namespace lux::render::vulkan

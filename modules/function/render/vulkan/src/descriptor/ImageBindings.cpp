@@ -1,6 +1,7 @@
 #include <lux/engine/render/vulkan/descriptor/ImageBindings.hpp>
 
 #include "Native.hpp"
+#include <algorithm>
 #include <cmath>
 #include <utility>
 
@@ -8,6 +9,16 @@ namespace lux::render::vulkan
 {
     RenderResult<ImageView> ImageView::create(const Image& image, VkImageAspectFlags aspect) noexcept
     {
+        return create(image, VkImageSubresourceRange{aspect, 0, 1, 0, 1});
+    }
+
+    RenderResult<ImageView> ImageView::create(
+        const Image& image,
+        VkImageSubresourceRange range,
+        VkImageViewType type
+    ) noexcept
+    {
+        const auto aspect = range.aspectMask;
         VkImageAspectFlags allowed = VK_IMAGE_ASPECT_COLOR_BIT;
         switch (image.format())
         {
@@ -28,27 +39,44 @@ namespace lux::render::vulkan
             break;
         }
         const bool invalid_aspect = aspect == 0 || (aspect & ~allowed) != 0;
-        if (invalid_aspect || !image.native())
+        const auto& desc = image.description();
+        const bool invalid_range = range.baseMipLevel >= desc.mip_levels || range.levelCount == 0 ||
+                                   range.levelCount > desc.mip_levels - range.baseMipLevel ||
+                                   range.baseArrayLayer >= desc.array_layers || range.layerCount == 0 ||
+                                   range.layerCount > desc.array_layers - range.baseArrayLayer;
+        const bool invalid_type = (type != VK_IMAGE_VIEW_TYPE_2D && type != VK_IMAGE_VIEW_TYPE_2D_ARRAY) ||
+                                  (type == VK_IMAGE_VIEW_TYPE_2D && range.layerCount != 1);
+        if (invalid_aspect || invalid_range || invalid_type || !image.native())
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
         VkImageViewCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
         info.image = image.native();
-        info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+        info.viewType = type;
         info.format = image.format();
-        info.subresourceRange = {aspect, 0, 1, 0, 1};
+        info.subresourceRange = range;
         VkImageView view{};
         const auto result = LUX_NATIVE("image_view", vkCreateImageView(image.device(), &info, nullptr, &view));
         if (result != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(result));
         }
-        return ImageView{image, view, aspect};
+        return ImageView{image, view, range, type};
     }
 
-    ImageView::ImageView(const Image& image, VkImageView handle, VkImageAspectFlags aspect) noexcept
+    ImageView::ImageView(
+        const Image& image,
+        VkImageView handle,
+        VkImageSubresourceRange range,
+        VkImageViewType type
+    ) noexcept
         : device_(image.device()), handle_(handle), usage_(image.usage()), format_(image.format()),
-          extent_(image.extent()), aspect_(aspect), samples_(image.samples())
+          extent_{
+              std::max(1u, image.extent().width >> range.baseMipLevel),
+              std::max(1u, image.extent().height >> range.baseMipLevel)
+          },
+          range_(range), type_(type), image_(image.native()), description_(image.description()),
+          samples_(image.samples())
     {
     }
 
@@ -67,7 +95,8 @@ namespace lux::render::vulkan
 
     ImageView::ImageView(ImageView&& other) noexcept
         : device_(other.device_), handle_(std::exchange(other.handle_, VK_NULL_HANDLE)), usage_(other.usage_),
-          format_(other.format_), extent_(other.extent_), aspect_(other.aspect_), samples_(other.samples_)
+          format_(other.format_), extent_(other.extent_), range_(other.range_), type_(other.type_),
+          image_(other.image_), description_(other.description_), samples_(other.samples_)
     {
     }
 
@@ -81,7 +110,10 @@ namespace lux::render::vulkan
             usage_ = other.usage_;
             format_ = other.format_;
             extent_ = other.extent_;
-            aspect_ = other.aspect_;
+            range_ = other.range_;
+            type_ = other.type_;
+            image_ = other.image_;
+            description_ = other.description_;
             samples_ = other.samples_;
         }
         return *this;

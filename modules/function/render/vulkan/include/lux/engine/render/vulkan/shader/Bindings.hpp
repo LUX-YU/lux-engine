@@ -3,6 +3,7 @@
 #include <functional>
 #include <lux/engine/render/vulkan/descriptor/ImageBindings.hpp>
 #include <lux/engine/render/vulkan/shader/Program.hpp>
+#include <lux/engine/render/vulkan/transfer/Submission.hpp>
 
 namespace lux::render::vulkan
 {
@@ -30,8 +31,8 @@ namespace lux::render::vulkan
         VDescriptorValue value;
     };
 
-    // Complete immutable sets. Creation writes each declared descriptor once, before publication.
-    // Borrows program layout and all native resources through the last GPU use. No update-in-flight API.
+    // Complete sets, with fixed layout. Borrows native resources through the last GPU use.
+    // A rewrite requires completion of ALL prior users; it never updates in-flight descriptors.
     class BoundDescriptorSets
     {
     public:
@@ -56,10 +57,48 @@ namespace lux::render::vulkan
             std::span<const std::byte> invocation_scalars
         ) const noexcept;
 
+        // Values retain the order supplied to create(). Fixed numeric recipes only.
+        // last_uses is an explicit borrow proof supplied by the execution owner, not a wait request.
+        [[nodiscard]] RenderResult<void> rewrite(
+            std::span<const VDescriptorValue> values,
+            std::span<const SubmissionTicket> last_uses
+        ) noexcept;
+
     private:
         struct DynamicRange
         {
             VkDeviceSize alignment, maximum_offset;
+        };
+
+        struct BufferWrite
+        {
+            VkDeviceSize offset, range, alignment;
+            VkBufferUsageFlags usage;
+            std::optional<std::uint32_t> dynamic;
+        };
+
+        struct ImageWrite
+        {
+            ImageDescription backing;
+            VkImageSubresourceRange range;
+            VkImageViewType type;
+            VkImageLayout layout;
+            VkImageUsageFlags usage;
+            bool combined;
+        };
+
+        struct SamplerWrite
+        {
+        };
+
+        using VWriteShape = std::variant<BufferWrite, ImageWrite, SamplerWrite>;
+
+        struct WriteRecipe
+        {
+            VkDescriptorSet set;
+            std::uint32_t binding, element, input;
+            VkDescriptorType type;
+            VWriteShape shape;
         };
 
         BoundDescriptorSets(
@@ -69,7 +108,9 @@ namespace lux::render::vulkan
             VkPipelineBindPoint point,
             std::vector<DynamicRange> dynamic,
             std::vector<VkPushConstantRange> push,
-            std::size_t scalar_size
+            std::size_t scalar_size,
+            VkDevice device,
+            std::vector<WriteRecipe> writes
         ) noexcept;
 
         DescriptorPool pool_;
@@ -79,6 +120,8 @@ namespace lux::render::vulkan
         std::vector<DynamicRange> dynamic_;
         std::vector<VkPushConstantRange> push_;
         std::size_t scalar_size_;
+        VkDevice device_;
+        std::vector<WriteRecipe> writes_;
     };
 
     [[nodiscard]] VkClearColorValue nativeColorClear(const ColorClearValue& clear) noexcept;

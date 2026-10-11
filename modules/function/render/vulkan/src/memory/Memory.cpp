@@ -1,6 +1,7 @@
 #include <lux/engine/render/vulkan/memory/Memory.hpp>
 
 #include "Native.hpp"
+#include <algorithm>
 #include <cstring>
 #include <utility>
 #include <vk_mem_alloc.h>
@@ -155,18 +156,21 @@ namespace lux::render::vulkan
         return {};
     }
 
+    VkDeviceSize Buffer::allocationBytes() const noexcept
+    {
+        VmaAllocationInfo info{};
+        vmaGetAllocationInfo(allocator_, allocation_, &info);
+        return info.size;
+    }
+
     Image::Image(
         VmaAllocator_T* allocator,
         VkDevice device,
         VkImage image,
         VmaAllocation_T* allocation,
-        VkExtent2D extent,
-        VkFormat format,
-        VkImageUsageFlags usage,
-        VkSampleCountFlagBits samples
+        const ImageDescription& description
     ) noexcept
-        : allocator_(allocator), device_(device), image_(image), allocation_(allocation), extent_(extent),
-          format_(format), usage_(usage), samples_(samples)
+        : allocator_(allocator), device_(device), image_(image), allocation_(allocation), description_(description)
     {
     }
 
@@ -178,10 +182,28 @@ namespace lux::render::vulkan
         VkSampleCountFlagBits samples
     ) noexcept
     {
+        return create(allocator, ImageDescription{extent, format, usage, samples});
+    }
+
+    RenderResult<Image> Image::create(const VulkanAllocator& allocator, const ImageDescription& description) noexcept
+    {
+        const auto extent = description.extent;
+        const auto format = description.format;
+        const auto usage = description.usage;
+        const auto samples = description.samples;
+        const auto mip_levels = description.mip_levels;
+        const auto array_layers = description.array_layers;
+        std::uint32_t max_levels = 0;
+        for (auto dimension = std::max(extent.width, extent.height); dimension != 0; dimension >>= 1)
+        {
+            ++max_levels;
+        }
+        const bool invalid_subresources = mip_levels == 0 || array_layers == 0 || mip_levels > max_levels ||
+                                          (samples != VK_SAMPLE_COUNT_1_BIT && mip_levels != 1);
         const bool is_invalid_config =
             extent.width == 0 || extent.height == 0 || format == VK_FORMAT_UNDEFINED || usage == 0 || samples == 0 ||
             (static_cast<std::uint32_t>(samples) & (static_cast<std::uint32_t>(samples) - 1)) != 0;
-        if (is_invalid_config)
+        if (is_invalid_config || invalid_subresources)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
@@ -194,31 +216,34 @@ namespace lux::render::vulkan
             VK_IMAGE_TYPE_2D,
             VK_IMAGE_TILING_OPTIMAL,
             usage,
-            0,
+            description.aliasable ? VK_IMAGE_CREATE_ALIAS_BIT : 0,
             &supported
         );
         if (support != VK_SUCCESS)
         {
             return cxx::unexpected(nativeError(support));
         }
-        const bool is_too_large =
-            extent.width > supported.maxExtent.width || extent.height > supported.maxExtent.height;
+        const bool is_too_large = extent.width > supported.maxExtent.width ||
+                                  extent.height > supported.maxExtent.height || mip_levels > supported.maxMipLevels ||
+                                  array_layers > supported.maxArrayLayers;
         if (is_too_large || (supported.sampleCounts & samples) == 0)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
         VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        info.flags = description.aliasable ? VK_IMAGE_CREATE_ALIAS_BIT : 0;
         info.imageType = VK_IMAGE_TYPE_2D;
         info.format = format;
         info.extent = {extent.width, extent.height, 1};
-        info.mipLevels = 1;
-        info.arrayLayers = 1;
+        info.mipLevels = mip_levels;
+        info.arrayLayers = array_layers;
         info.samples = samples;
         info.tiling = VK_IMAGE_TILING_OPTIMAL;
         info.usage = usage;
         info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
         info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         VmaAllocationCreateInfo memory{};
+        memory.flags = description.aliasable ? VMA_ALLOCATION_CREATE_CAN_ALIAS_BIT : 0;
         memory.usage = VMA_MEMORY_USAGE_AUTO;
         memory.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
         VkImage image{};
@@ -229,14 +254,17 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(nativeError(result));
         }
-        return Image{allocator.native(), allocator.device(), image, allocation, extent, format, usage, samples};
+        return Image{allocator.native(), allocator.device(), image, allocation, description};
     }
 
     void Image::release() noexcept
     {
         if (image_)
         {
-            LUX_DESTROY("image", vmaDestroyImage(allocator_, image_, allocation_));
+            LUX_DESTROY(
+                owns_allocation_ ? "image" : "image_alias",
+                vmaDestroyImage(allocator_, image_, owns_allocation_ ? allocation_ : nullptr)
+            );
         }
     }
 
@@ -247,8 +275,7 @@ namespace lux::render::vulkan
 
     Image::Image(Image&& other) noexcept
         : allocator_(other.allocator_), device_(other.device_), image_(std::exchange(other.image_, VK_NULL_HANDLE)),
-          allocation_(other.allocation_), extent_(other.extent_), format_(other.format_), usage_(other.usage_),
-          samples_(other.samples_)
+          allocation_(other.allocation_), description_(other.description_), owns_allocation_(other.owns_allocation_)
     {
     }
 
@@ -261,11 +288,65 @@ namespace lux::render::vulkan
             device_ = other.device_;
             image_ = std::exchange(other.image_, VK_NULL_HANDLE);
             allocation_ = other.allocation_;
-            extent_ = other.extent_;
-            format_ = other.format_;
-            usage_ = other.usage_;
-            samples_ = other.samples_;
+            description_ = other.description_;
+            owns_allocation_ = other.owns_allocation_;
         }
         return *this;
+    }
+
+    ImageMemoryBinding Image::memoryBinding() const noexcept
+    {
+        VmaAllocationInfo info{};
+        vmaGetAllocationInfo(allocator_, allocation_, &info);
+        return {info.deviceMemory, info.offset, info.size, info.memoryType, owns_allocation_};
+    }
+
+    RenderResult<Image> Image::alias(const Image& source) noexcept
+    {
+        if (!source.native() || !source.description_.aliasable)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        const auto& description = source.description_;
+        VkImageCreateInfo info{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        info.flags = VK_IMAGE_CREATE_ALIAS_BIT;
+        info.imageType = VK_IMAGE_TYPE_2D;
+        info.format = description.format;
+        info.extent = {description.extent.width, description.extent.height, 1};
+        info.mipLevels = description.mip_levels;
+        info.arrayLayers = description.array_layers;
+        info.samples = description.samples;
+        info.tiling = VK_IMAGE_TILING_OPTIMAL;
+        info.usage = description.usage;
+        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        VkImage image{};
+        auto created = LUX_NATIVE("image_alias", vkCreateImage(source.device_, &info, nullptr, &image));
+        if (created != VK_SUCCESS)
+        {
+            return cxx::unexpected(nativeError(created));
+        }
+        Image candidate{source.allocator_, source.device_, image, source.allocation_, description};
+        candidate.owns_allocation_ = false;
+        VkMemoryDedicatedRequirements dedicated{VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS};
+        VkMemoryRequirements2 requirements{VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2};
+        requirements.pNext = &dedicated;
+        VkImageMemoryRequirementsInfo2 query{VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2};
+        query.image = image;
+        vkGetImageMemoryRequirements2(source.device_, &query, &requirements);
+        const auto binding = source.memoryBinding();
+        const auto& required = requirements.memoryRequirements;
+        const bool incompatible = dedicated.requiresDedicatedAllocation || required.size > binding.size ||
+                                  (required.memoryTypeBits & (1u << binding.memory_type)) == 0 ||
+                                  binding.offset % required.alignment != 0;
+        if (incompatible)
+        {
+            return cxx::unexpected(RenderError{kUnsupported});
+        }
+        created = LUX_NATIVE("image_alias_bind", vmaBindImageMemory(source.allocator_, source.allocation_, image));
+        if (created != VK_SUCCESS)
+        {
+            return cxx::unexpected(nativeError(created));
+        }
+        return candidate;
     }
 } // namespace lux::render::vulkan

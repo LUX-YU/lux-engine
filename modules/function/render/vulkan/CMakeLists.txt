@@ -40,17 +40,34 @@ target_link_libraries(
 
 target_compile_features(render_vulkan PUBLIC cxx_std_20)
 
-# Cold Shader/Pipeline compilation consumes neutral metadata without widening Foundation's DAG.
-add_library(render_vulkan_shader_compiler STATIC src/shader/Layout.cpp src/shader/Program.cpp src/shader/Bindings.cpp)
+# Native plan ownership and execution have no reflection/link dependency. Offline
+# shader creation is a separate cold compilation target in this same component.
+set(LUX_VULKAN_GRAPH_SOURCES
+    src/shader/Layout.cpp src/shader/Bindings.cpp src/shader/ProgramValue.cpp
+    src/graph/Compile.cpp src/graph/Copy.cpp src/graph/Resources.cpp src/graph/Recipes.cpp
+    src/graph/Sync.cpp src/graph/Record.cpp src/graph/Frame.cpp src/graph/Export.cpp src/graph/Diagnostics.cpp
+)
+
+add_library(render_vulkan_graph STATIC ${LUX_VULKAN_GRAPH_SOURCES})
 
 target_include_directories(
-    render_vulkan_shader_compiler PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    render_vulkan_graph
+    PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/include"
         "${CMAKE_CURRENT_SOURCE_DIR}/../../../../engine/toolchain/shader/include"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pinclude"
 )
+
+target_link_libraries(render_vulkan_graph PUBLIC render_vulkan shader_metadata render_graph)
+
+target_compile_features(render_vulkan_graph PUBLIC cxx_std_20)
+
+add_library(render_vulkan_shader_compiler STATIC src/shader/Program.cpp)
+
+target_include_directories(render_vulkan_shader_compiler PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pinclude")
 
 target_link_libraries(
     render_vulkan_shader_compiler
-    PUBLIC render_vulkan shader_metadata render_graph
+    PUBLIC render_vulkan_graph
     PRIVATE toolchain_shader_reflection
 )
 

@@ -227,3 +227,12 @@ production emitter ordering. REQ13/14/15/19/44 receive F3 sub-evidence from that
 requirements remain OPEN. Native RenderGraph and Runtime remain NOT_IMPLEMENTED; product remains
 EXPECTED_UNAVAILABLE. F4 requires separate user authorization. Frozen CSV content and historical
 reports have not been rewritten.
+
+
+## F4 native implementation index (qualification pending)
+
+F3 completion remains [25bd4e16358b](F3_COMPLETION_VERIFICATION.md); the older PARTIAL receipt is unchanged.
+F4 implementation responsibilities and exact test mapping: [F4_IMPLEMENTATION.md](F4_IMPLEMENTATION.md).
+I03/I04/I05/I13/I14/I35/I36/I37/I44 and W02/W03/W04/W16 are pending independent F4 qualification.
+Any final result is recorded only in F4_VERIFICATION.md, bound to its implementation SHA.
+This entry does not close F5 Runtime, F6 SDK, F8 Material, F11 product or any H-stage capability.

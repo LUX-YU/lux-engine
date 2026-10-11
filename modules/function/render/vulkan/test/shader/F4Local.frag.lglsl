@@ -1,0 +1,8 @@
+#version 450
+//! lux-shader stage=fragment entry=main
+layout(location=0) out vec4 color;
+void main()
+{
+    vec4 value = subpassLoad(p_input);
+    color = vec4(value.rgb / (vec3(1.0) + value.rgb), 1.0);
+}

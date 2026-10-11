@@ -41,6 +41,7 @@ namespace lux::render::detail
         RenderTargetId target;
         RuntimePathId path;
         std::uint32_t variant;
+        std::uint32_t invocation_first;
         GraphInvocationData values;
         std::vector<GraphImportBinding> logical_imports;
         std::vector<vulkan::NativeImportBinding> native_imports;
@@ -148,6 +149,12 @@ namespace lux::render::detail
         RuntimePathId path,
         VkExtent2D extent,
         std::span<const std::uint32_t> candidate_pins = {}
+    ) noexcept;
+
+    [[nodiscard]] RenderResult<std::uint32_t> acquireRuntimeSlots(
+        RuntimeBackendState& backend,
+        std::uint32_t variant_index,
+        std::span<const std::pair<std::uint32_t, std::uint32_t>> candidate_slots = {}
     ) noexcept;
 
     [[nodiscard]] RenderResult<void> drainRuntimeNative(RuntimeBackendState& backend) noexcept;

@@ -59,7 +59,7 @@ namespace lux::render::detail
                 continue;
             }
             auto& invocations = backend.variants[view.variant]->invocations;
-            auto complete = invocations.slotReady(view.identity.index * backend.capacity.frames_in_flight + frame_slot);
+            auto complete = invocations.slotReady(view.invocation_first + frame_slot);
             if (!complete)
             {
                 return cxx::unexpected(complete.error());
@@ -167,7 +167,7 @@ namespace lux::render::detail
                     std::memcpy(bytes, &value, sizeof(value));
                 }
             }
-            const auto slot = view.identity.index * backend.capacity.frames_in_flight + frame_slot;
+            const auto slot = view.invocation_first + frame_slot;
             auto& native_inputs = variant.targets[slot].imports;
             for (const auto& target_backing : variant.targets[slot].images)
             {
@@ -485,6 +485,7 @@ namespace lux::render::detail
             // leaves all live View/Target identities and bindings unchanged.
             std::vector<std::pair<RuntimeViewState*, std::uint32_t>> replacements;
             std::vector<std::uint32_t> pins;
+            std::vector<std::pair<std::uint32_t, std::uint32_t>> slots;
             if (request.first != 0 && request.second != 0)
             {
                 for (const auto& layer : target->layers)
@@ -515,6 +516,13 @@ namespace lux::render::detail
                     {
                         return cxx::unexpected(candidate.error());
                     }
+                    auto first = view.variant == *candidate ? RenderResult<std::uint32_t>{view.invocation_first}
+                                                            : acquireRuntimeSlots(backend, *candidate, slots);
+                    if (!first)
+                    {
+                        return cxx::unexpected(first.error());
+                    }
+                    slots.emplace_back(*candidate, *first);
                     replacements.emplace_back(&view, *candidate);
                     pins.push_back(*candidate);
                 }
@@ -534,9 +542,11 @@ namespace lux::render::detail
             target->width = request.first;
             target->height = request.second;
             ++target->epoch;
-            for (auto [view, variant] : replacements)
+            for (std::size_t i = 0; i < replacements.size(); ++i)
             {
+                auto [view, variant] = replacements[i];
                 view->variant = variant;
+                view->invocation_first = slots[i].second;
                 view->values.history_epoch = target->epoch;
                 for (auto& input : view->logical_imports)
                 {
@@ -697,6 +707,13 @@ namespace lux::render::detail
             {
                 return cxx::unexpected(valid.error());
             }
+            auto first = view->variant == *candidate ? RenderResult<std::uint32_t>{view->invocation_first}
+                                                     : acquireRuntimeSlots(backend, *candidate);
+            if (!first)
+            {
+                return cxx::unexpected(first.error());
+            }
+            view->invocation_first = *first;
             view->values = std::move(values);
             view->logical_imports = std::move(imports);
             view->native_imports = std::move(new_native_inputs);

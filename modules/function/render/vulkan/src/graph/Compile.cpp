@@ -208,4 +208,45 @@ namespace lux::render::vulkan
         return NativeGraphInvocations{std::move(result)};
     }
 
+    RenderResult<std::uint32_t> NativeGraphInvocations::append(const NativeInvocationInputs& inputs) noexcept
+    {
+        if (backing_->terminal)
+        {
+            return cxx::unexpected(*backing_->terminal);
+        }
+        const bool exceeds_capacity = inputs.capacity > UINT32_MAX - backing_->slots.size();
+        const bool different_samplers =
+            inputs.samplers.size() != backing_->samplers.size() ||
+            !std::equal(
+                inputs.samplers.begin(),
+                inputs.samplers.end(),
+                backing_->samplers.begin(),
+                [](const auto& a, const auto& b) { return a.first == b.first && &a.second.get() == &b.second.get(); }
+            );
+        if (exceeds_capacity || different_samplers)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        auto candidate = create(ExecutableGraphPlan{backing_->code}, inputs);
+        if (!candidate)
+        {
+            return cxx::unexpected(candidate.error());
+        }
+        const auto first = static_cast<std::uint32_t>(backing_->slots.size());
+        backing_->slots.reserve(first + inputs.capacity);
+        for (auto& slot : candidate->backing_->slots)
+        {
+            backing_->slots.push_back(std::move(slot));
+        }
+        const auto& added = candidate->backing_->statistics;
+        backing_->statistics.allocations += added.allocations;
+        backing_->statistics.allocated_bytes += added.allocated_bytes;
+        backing_->statistics.aliased_resources += added.aliased_resources;
+        for (std::size_t i = 0; i < added.compile_ns.size(); ++i)
+        {
+            backing_->statistics.compile_ns[i] += added.compile_ns[i];
+        }
+        return first;
+    }
+
 } // namespace lux::render::vulkan

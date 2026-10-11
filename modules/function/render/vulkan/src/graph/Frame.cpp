@@ -60,6 +60,23 @@ namespace lux::render::vulkan::detail
     ) noexcept
     {
         const auto& graph = plan.code->logical.identity();
+        // Completion is monotonic and this owner is externally serialized.
+        // Inspect the exact cell evidence once, including imported and donor
+        // tickets; a frame serial or the slot's older completion is insufficient.
+        const bool has_pending_cells =
+            !imports.empty() &&
+            std::any_of(
+                plan.slots.begin(),
+                plan.slots.end(),
+                [](const auto& previous)
+                {
+                    return std::any_of(
+                        previous.cell_tickets.begin(),
+                        previous.cell_tickets.end(),
+                        [](const auto& ticket) { return ticket && ticket->serial() > ticket->owner().completed(); }
+                    );
+                }
+            );
         for (std::uint32_t i = 0; i < imports.size(); ++i)
         {
             const auto& input = imports[i];
@@ -175,6 +192,10 @@ namespace lux::render::vulkan::detail
                     supplied.state.layout == VK_IMAGE_LAYOUT_UNDEFINED)
                 {
                     return cxx::unexpected(RenderError{kInvalidArgument, {i, c}});
+                }
+                if (!has_pending_cells)
+                {
+                    continue;
                 }
                 for (const auto& previous : plan.slots)
                 {

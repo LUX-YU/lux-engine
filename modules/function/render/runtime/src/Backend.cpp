@@ -6,6 +6,10 @@ namespace lux::render
 {
     namespace detail
     {
+#if defined(LUX_RUNTIME_FOOTPRINT)
+        void observeRuntimeFootprint(const RuntimeBackendState& backend) noexcept;
+#endif
+
         std::uint32_t runtimeAssetIndex(
             const RuntimeBackendState& backend,
             const vulkan::NativeImportBinding& input
@@ -91,6 +95,89 @@ namespace lux::render
                 return cxx::unexpected(collected.error());
             }
             return {};
+        }
+
+        static RenderResult<std::vector<RuntimeNativeVariant::InvocationTargets>> makeInvocationTargets(
+            RuntimeBackendState& backend,
+            const RuntimePathState& path_state,
+            const vulkan::ExecutableGraphPlan& code,
+            VkExtent2D extent
+        ) noexcept
+        {
+            std::vector<RuntimeNativeVariant::InvocationTargets> targets(backend.capacity.frames_in_flight);
+            for (auto& invocation : targets)
+            {
+                invocation.images.reserve(code.logical().imports().size());
+                invocation.imports.reserve(code.logical().imports().size());
+                for (const auto id : code.logical().imports())
+                {
+                    const auto& resource = code.logical().identity().resources[id.value() - 1];
+                    if (!resource.target_semantic.isValid())
+                    {
+                        const auto input = std::find_if(
+                            path_state.imports.begin(),
+                            path_state.imports.end(),
+                            [&](const auto& value) { return value.resource == id; }
+                        );
+                        if (input == path_state.imports.end())
+                        {
+                            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+                        }
+                        invocation.imports.push_back(*input);
+                        continue;
+                    }
+                    const auto& texture = resource.texture();
+                    const auto shape = texture.extent_kind == EExtentKind::TARGET_RELATIVE
+                                           ? extent
+                                           : VkExtent2D{texture.width, texture.height};
+                    auto usage = code.resourceUsage(id);
+                    if (!usage)
+                    {
+                        return cxx::unexpected(usage.error());
+                    }
+                    vulkan::ImageDescription description;
+                    description.extent = shape;
+                    description.format = vulkan::nativeTextureFormat(texture.format);
+                    description.usage = static_cast<VkImageUsageFlags>(*usage);
+                    description.samples = static_cast<VkSampleCountFlagBits>(texture.samples);
+                    description.mip_levels = texture.mip_count;
+                    description.array_layers = texture.array_layers;
+                    auto image = vulkan::Image::create(backend.allocator, description);
+                    if (!image)
+                    {
+                        return cxx::unexpected(image.error());
+                    }
+                    if (backend.next_backing == UINT64_MAX)
+                    {
+                        return cxx::unexpected(RenderError{vulkan::kCapacity});
+                    }
+                    auto owned =
+                        std::make_unique<RuntimeNativeVariant::TargetBacking>(RuntimeNativeVariant::TargetBacking{
+                            id,
+                            GraphBackingId{backend.next_backing++},
+                            std::move(*image)
+                        });
+                    owned->states.resize(backend.capacity.native_state_ranges);
+                    const auto requirements = code.importViews(id);
+                    owned->views.reserve(requirements.size());
+                    owned->view_borrows.reserve(requirements.size());
+                    for (const auto& required : requirements)
+                    {
+                        auto view = vulkan::ImageView::create(owned->image, required.range, required.type);
+                        if (!view)
+                        {
+                            return cxx::unexpected(view.error());
+                        }
+                        owned->views.push_back(std::move(*view));
+                        owned->view_borrows.push_back(std::cref(owned->views.back()));
+                    }
+                    invocation.imports.push_back(
+                        {id, owned->identity, std::cref(owned->image), {}, {}, true, owned->view_borrows}
+                    );
+                    invocation.images.push_back(std::move(owned));
+                }
+            }
+            return targets;
         }
 
         RenderResult<std::uint32_t> findRuntimeVariant(
@@ -192,81 +279,12 @@ namespace lux::render
             {
                 samplers.emplace_back(GraphSampler{i + 1}, std::cref(backend.samplers[i]));
             }
-            std::vector<RuntimeNativeVariant::InvocationTargets> targets(
-                backend.capacity.views * backend.capacity.frames_in_flight
-            );
-            for (auto& invocation : targets)
+            auto candidate_targets = makeInvocationTargets(backend, path_state, *code, extent);
+            if (!candidate_targets)
             {
-                invocation.images.reserve(code->logical().imports().size());
-                invocation.imports.reserve(code->logical().imports().size());
-                for (const auto id : code->logical().imports())
-                {
-                    const auto& resource = code->logical().identity().resources[id.value() - 1];
-                    if (!resource.target_semantic.isValid())
-                    {
-                        const auto input = std::find_if(
-                            path_state.imports.begin(),
-                            path_state.imports.end(),
-                            [&](const auto& value) { return value.resource == id; }
-                        );
-                        if (input == path_state.imports.end())
-                        {
-                            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-                        }
-                        invocation.imports.push_back(*input);
-                        continue;
-                    }
-                    const auto& texture = resource.texture();
-                    const auto shape = texture.extent_kind == EExtentKind::TARGET_RELATIVE
-                                           ? extent
-                                           : VkExtent2D{texture.width, texture.height};
-                    auto usage = code->resourceUsage(id);
-                    if (!usage)
-                    {
-                        return cxx::unexpected(usage.error());
-                    }
-                    vulkan::ImageDescription description;
-                    description.extent = shape;
-                    description.format = vulkan::nativeTextureFormat(texture.format);
-                    description.usage = static_cast<VkImageUsageFlags>(*usage);
-                    description.samples = static_cast<VkSampleCountFlagBits>(texture.samples);
-                    description.mip_levels = texture.mip_count;
-                    description.array_layers = texture.array_layers;
-                    auto image = vulkan::Image::create(backend.allocator, description);
-                    if (!image)
-                    {
-                        return cxx::unexpected(image.error());
-                    }
-                    if (backend.next_backing == UINT64_MAX)
-                    {
-                        return cxx::unexpected(RenderError{vulkan::kCapacity});
-                    }
-                    auto owned =
-                        std::make_unique<RuntimeNativeVariant::TargetBacking>(RuntimeNativeVariant::TargetBacking{
-                            id,
-                            GraphBackingId{backend.next_backing++},
-                            std::move(*image)
-                        });
-                    owned->states.resize(backend.capacity.native_state_ranges);
-                    const auto requirements = code->importViews(id);
-                    owned->views.reserve(requirements.size());
-                    owned->view_borrows.reserve(requirements.size());
-                    for (const auto& required : requirements)
-                    {
-                        auto view = vulkan::ImageView::create(owned->image, required.range, required.type);
-                        if (!view)
-                        {
-                            return cxx::unexpected(view.error());
-                        }
-                        owned->views.push_back(std::move(*view));
-                        owned->view_borrows.push_back(std::cref(owned->views.back()));
-                    }
-                    invocation.imports.push_back(
-                        {id, owned->identity, std::cref(owned->image), {}, {}, true, owned->view_borrows}
-                    );
-                    invocation.images.push_back(std::move(owned));
-                }
+                return cxx::unexpected(candidate_targets.error());
             }
+            auto targets = std::move(*candidate_targets);
             auto invocations = vulkan::NativeGraphInvocations::create(
                 *code,
                 {backend.device,
@@ -274,7 +292,7 @@ namespace lux::render
                  targets[0].imports,
                  path_state.initial_values,
                  samplers,
-                 backend.capacity.views * backend.capacity.frames_in_flight}
+                 backend.capacity.frames_in_flight}
             );
             if (!invocations)
             {
@@ -289,8 +307,83 @@ namespace lux::render
                 std::move(*invocations),
                 std::move(trace)
             });
+#if defined(LUX_RUNTIME_FOOTPRINT)
+            observeRuntimeFootprint(backend);
+#endif
             return *available;
         }
+
+        RenderResult<std::uint32_t> acquireRuntimeSlots(
+            RuntimeBackendState& backend,
+            std::uint32_t variant_index,
+            std::span<const std::pair<std::uint32_t, std::uint32_t>> candidate_slots
+        ) noexcept
+        {
+            auto& variant = *backend.variants[variant_index];
+            const auto count = backend.capacity.frames_in_flight;
+            for (std::uint32_t first = 0; first < variant.targets.size(); first += count)
+            {
+                const bool referenced = std::any_of(
+                    backend.views.begin(),
+                    backend.views.end(),
+                    [&](const auto& view) { return view.variant == variant_index && view.invocation_first == first; }
+                );
+                const bool candidate =
+                    std::find(candidate_slots.begin(), candidate_slots.end(), std::pair{variant_index, first}) !=
+                    candidate_slots.end();
+                if (referenced || candidate)
+                {
+                    continue;
+                }
+                bool ready = true;
+                for (std::uint32_t i = 0; i < count; ++i)
+                {
+                    auto complete = variant.invocations.slotReady(first + i);
+                    if (!complete)
+                    {
+                        return cxx::unexpected(complete.error());
+                    }
+                    ready = ready && *complete;
+                }
+                if (ready)
+                {
+                    return first;
+                }
+            }
+            if (variant.targets.size() >= backend.capacity.views * count)
+            {
+                return cxx::unexpected(RenderError{vulkan::kCapacity});
+            }
+            const auto& path = backend.paths[variant.path.value() - 1];
+            auto targets = makeInvocationTargets(backend, path, variant.code, variant.extent);
+            if (!targets)
+            {
+                return cxx::unexpected(targets.error());
+            }
+            std::vector<std::pair<GraphSampler, std::reference_wrapper<const vulkan::Sampler>>> samplers;
+            for (std::uint32_t i = 0; i < backend.samplers.size(); ++i)
+            {
+                samplers.emplace_back(GraphSampler{i + 1}, std::cref(backend.samplers[i]));
+            }
+            auto first = variant.invocations.append(
+                {backend.device, backend.allocator, targets->front().imports, path.initial_values, samplers, count}
+            );
+            if (!first)
+            {
+                return cxx::unexpected(first.error());
+            }
+            // All fallible native construction has succeeded. Moves preserve
+            // Image/ImageView addresses and every old GraphSubmission identity.
+            for (auto& target : *targets)
+            {
+                variant.targets.push_back(std::move(target));
+            }
+#if defined(LUX_RUNTIME_FOOTPRINT)
+            observeRuntimeFootprint(backend);
+#endif
+            return *first;
+        }
+
     } // namespace detail
 
     VulkanBackend::VulkanBackend(std::unique_ptr<detail::RuntimeBackendState> backing) noexcept
@@ -923,12 +1016,18 @@ namespace lux::render
         {
             return cxx::unexpected(validated.error());
         }
+        auto first = detail::acquireRuntimeSlots(state, *variant);
+        if (!first)
+        {
+            return cxx::unexpected(first.error());
+        }
         const auto key = state.views.emplace(detail::RuntimeViewState{
             {},
             scene.local,
             target.local,
             path.local,
             *variant,
+            *first,
             std::move(values),
             std::move(logical_imports),
             std::move(imports),

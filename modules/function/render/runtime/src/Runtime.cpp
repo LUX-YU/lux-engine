@@ -622,7 +622,12 @@ namespace lux::render
         );
         if (!worker)
         {
-            return cxx::unexpected(RenderError{kRuntimeHostFailure, {GetLastError()}});
+            const auto error = GetLastError();
+            // No worker exists: return both owners before the temporary packets
+            // and host handles are destroyed. The same Builder remains retryable.
+            assembly_->backend = std::move(implementation->backend);
+            assembly_->transport = std::move(implementation->transport);
+            return cxx::unexpected(RenderError{kRuntimeHostFailure, {error}});
         }
         implementation->thread.emplace(worker);
         assembly_.reset();

@@ -2,6 +2,22 @@ set(f5_test "${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/runtime/tes
 set(f5_native_test "${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/vulkan/test")
 set(f5_shader "${CMAKE_BINARY_DIR}/render_vulkan/test/shader")
 
+add_executable(render_runtime_host_failures
+    "${f5_test}/HostFailures.cpp" "${f5_test}/HostFaultRuntime.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
+)
+
+target_link_libraries(render_runtime_host_failures PRIVATE render_runtime render_vulkan_shader_compiler)
+
+target_include_directories(render_runtime_host_failures PRIVATE
+    "${f5_test}/../pinclude" "${f5_native_test}"
+)
+
+target_compile_definitions(render_runtime_host_failures PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+
+add_test(NAME render.runtime.host_failures COMMAND render_runtime_host_failures)
+
+set_tests_properties(render.runtime.host_failures PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
 add_executable(render_runtime_native_invocations
     "${f5_test}/NativeInvocations.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
 )
@@ -150,6 +166,38 @@ target_link_libraries(render_runtime_fault PUBLIC render_core render_transport r
 
 add_dependencies(render_runtime_fault render_runtime)
 
+add_executable(render_runtime_footprint
+    "${f5_test}/Footprint.cpp" "${f5_test}/../src/Backend.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
+)
+
+target_compile_definitions(render_runtime_footprint PRIVATE LUX_RUNTIME_FOOTPRINT NOMINMAX WIN32_LEAN_AND_MEAN)
+
+target_link_libraries(render_runtime_footprint PRIVATE render_runtime_fault render_vulkan_graph_fault
+    GPUOpen::VulkanMemoryAllocator
+)
+
+target_include_directories(render_runtime_footprint PRIVATE
+    "${f5_test}/../pinclude" "${f5_native_test}" "${f5_native_test}/shader" "${f5_shader}/generated"
+)
+
+add_dependencies(render_runtime_footprint render_vulkan_spv_F4Fill_comp render_vulkan_schema_F4HostRead)
+
+foreach(fif 2 3)
+    add_test(NAME render.runtime.slot_transactions_${fif}
+        COMMAND render_runtime_footprint "${f5_shader}" 64 32 ${fif} 1
+    )
+    add_test(NAME render.runtime.footprint_1080_${fif}
+        COMMAND render_runtime_footprint "${f5_shader}" 1920 1080 ${fif} 1
+    )
+    set_tests_properties(render.runtime.slot_transactions_${fif} render.runtime.footprint_1080_${fif}
+        PROPERTIES RUN_SERIAL TRUE TIMEOUT 120
+    )
+endforeach()
+
+add_test(NAME render.runtime.footprint_4k COMMAND render_runtime_footprint "${f5_shader}" 3840 2160 2 0)
+
+set_tests_properties(render.runtime.footprint_4k PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
 add_executable(render_runtime_lifecycle
     "${f5_test}/Lifecycle.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
 )
@@ -269,6 +317,20 @@ target_include_directories(render_vulkan_graph_profile PUBLIC
 )
 
 target_link_libraries(render_vulkan_graph_profile PUBLIC render_vulkan shader_metadata render_graph)
+
+add_executable(render_runtime_import_scale "${f5_test}/ImportScale.cpp")
+
+target_link_libraries(render_runtime_import_scale PRIVATE render_vulkan_graph_profile)
+
+target_include_directories(render_runtime_import_scale PRIVATE
+    "${f5_test}/shader" "${f5_native_test}" "${f5_native_test}/../../../../core/type_info/include"
+)
+
+render_pass_schema(render_runtime_import_scale "${f5_test}/shader/F5CReadBuffer.hpp")
+
+add_test(NAME render.runtime.import_scale COMMAND render_runtime_import_scale)
+
+set_tests_properties(render.runtime.import_scale PROPERTIES RUN_SERIAL TRUE TIMEOUT 180)
 
 # Profiling uses an exact source inclusion with a test-only free-function wrapper.
 # Neither timestamps nor instrumentation are linked into render_runtime.

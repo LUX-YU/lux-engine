@@ -274,6 +274,11 @@ namespace lux::render::vulkan
         NativeGraphInvocations(const NativeGraphInvocations&) = delete;
         NativeGraphInvocations& operator=(const NativeGraphInvocations&) = delete;
 
+        // Owner-thread cold transaction. Fully constructs inputs.capacity new
+        // slots before appending them; existing receipts/backing stay stable.
+        // No submission or GPU wait. Caller bounds capacity and serializes CPU access.
+        [[nodiscard]] RenderResult<std::uint32_t> append(const NativeInvocationInputs& inputs) noexcept;
+
         [[nodiscard]] const LogicalGraphPlan& logical() const noexcept;
         [[nodiscard]] VkDevice device() const noexcept;
         // Latest completion join covers all successful invocations on all native queues.

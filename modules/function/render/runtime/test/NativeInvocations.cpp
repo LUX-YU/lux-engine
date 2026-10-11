@@ -57,10 +57,11 @@ void invocationCase(const std::filesystem::path& shaders, Validation& validation
     );
     const std::array samplers{std::pair{GraphSampler{1}, std::cref(sampler)}};
     const unsigned capacity = 4 * frames;
-    auto invocations =
-        checked(NativeGraphInvocations::create(plan, {device, allocator, {}, initial, samplers, capacity}));
+    auto invocations = checked(NativeGraphInvocations::create(plan, {device, allocator, {}, initial, samplers, 1}));
     auto other = checked(NativeGraphInvocations::create(plan, {device, allocator, {}, initial, samplers, 1}));
     CHECK(&invocations.logical() == &plan.logical() && &other.logical() == &plan.logical());
+    CHECK(!invocations.append({device, allocator, {}, initial, samplers, 0}));
+    CHECK(!invocations.append({device, allocator, {}, initial, {}, 1}));
     std::array<GraphInvocationData, 4> values{initial, initial, initial, initial};
     const auto& fields = logical.identity().passes[graphics.value() - 1].scalar_fields;
     CHECK(fields.size() == 1 && fields[0].size == sizeof(float));
@@ -89,6 +90,12 @@ void invocationCase(const std::filesystem::path& shaders, Validation& validation
         {
             for (unsigned view = 0; view < 4; ++view)
             {
+                if (round == 0 && frame == 0 && view == 1)
+                {
+                    // The first real submission is already accepted. Cold growth
+                    // must preserve its receipt and Scene donor addresses.
+                    CHECK(checked(invocations.append({device, allocator, {}, initial, samplers, capacity - 1})) == 1);
+                }
                 const auto slot = frame * 4 + view;
                 const auto bindings = checked(FrameGraphBindings::create(
                     plan.logical(),

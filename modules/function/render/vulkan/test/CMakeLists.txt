@@ -432,7 +432,7 @@ add_test(NAME render.vulkan.probe_control COMMAND render_vulkan_probe_control)
 
 set(rejected_headers
     lux/engine/scene/SceneSystem.hpp
-    lux/engine/render/runtime/RenderRuntime.hpp
+    lux/engine/render/runtime/Runtime.hpp
     lux/engine/render/transport/Transport.hpp
     lux/engine/render/graph/Bindings.hpp
     lux/engine/function/render/graph/DependencyAnalyzer.hpp

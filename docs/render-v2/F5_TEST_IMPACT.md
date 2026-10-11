@@ -32,3 +32,11 @@ injection traverses the real Runtime failure path after legal test-only GPU drai
 
 F4 cold p95 uncertainty remains PARTIAL under the user's entry decision. The fixed
 F5 protocol governs hot regression and new Runtime baseline; no retry-until-green.
+
+The first independent candidate ac5312c6de0f failed all-build because ShaderHotLink
+still referenced the old owner member. Its unchanged GPU/Runtime diagnostics passed
+55/55 runnable affected tests; the missing hot-link executable remained NOT_RUN.
+The construction checkout corrects that consumer to NativeGraphInvocations::submit.
+Native/Foundation Runtime-negative includes now use the actual Runtime.hpp header,
+retaining the same test names and real rejection obligation. New I qualification
+must run the complete matrix again; the failed clone is not patched.

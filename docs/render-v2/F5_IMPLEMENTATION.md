@@ -146,3 +146,19 @@ have not been relabelled as rerun. All development failures remain in the extern
   cover publication, path changes, activation, resize, removal, readback and stop.
 - F4 cold p95 debt remains PARTIAL under the user's limited deferral. F5 hot correctness,
   allocation, lifecycle and independent qualification have no such waiver.
+
+## Shared native Buffer partition refinement
+
+All RenderPaths are assembled before Scenes. Cold assembly unions the declared
+boundaries for each shared actual Buffer, then the existing Native Sync2 compiler
+refines affected plans. Candidate plans share the exact Shader/PSO/Layout owners;
+publication is transactional, capacity checked, and counted as cold compilation.
+There is no hot repartition, F2 algorithm change or second state/resource authority.
+Extent specialization preserves these boundaries. The two-Scene fixture covers
+[0,16) versus [0,32) access to the same 32-byte backing through different paths.
+
+The 32-byte shared Buffer fixture uses only its first 16 bytes. `range-before.log`
+records the real Runtime failure after CPU-ready evidence for the untouched cell was
+lost. The correction retains that initial evidence; touched cells still carry their
+actual native tickets. `range-after.log` verifies both real GPU pixel oracles and zero
+warm heap with the same fixture. No historical report is changed.

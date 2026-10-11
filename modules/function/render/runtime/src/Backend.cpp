@@ -568,6 +568,15 @@ namespace lux::render
             {
                 return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
             }
+            const auto& resource = source.logical.identity().resources[output.resource.value() - 1];
+            const bool invalid_output = resource.kind() != EGraphResourceKind::IMAGE ||
+                                        resource.texture().mip_count != 1 || resource.texture().array_layers != 1 ||
+                                        resource.texture().samples != 1 ||
+                                        rdesc::textureAspectMask(resource.texture().format) != 1;
+            if (invalid_output)
+            {
+                return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+            }
             present_output = output.resource;
         }
         // Only publish borrowed initial-state bytes after all fallible path
@@ -601,6 +610,120 @@ namespace lux::render
         if (state.scenes.size() == state.capacity.scenes)
         {
             return cxx::unexpected(RenderError{vulkan::kCapacity});
+        }
+        // All paths are assembled before Scenes. Refine shared native Buffer
+        // cells once, transactionally, without changing logical versions or PSOs.
+        if (state.scenes.empty())
+        {
+            std::vector<std::optional<vulkan::ExecutableGraphPlan>> candidates(state.paths.size());
+            for (std::size_t p = 0; p < state.paths.size(); ++p)
+            {
+                const auto& path = state.paths[p];
+                std::vector<vulkan::NativeBufferBoundary> extra;
+                for (const auto& input : path.imports)
+                {
+                    const auto& declaration = path.code.logical().identity().resources[input.resource.value() - 1];
+                    if (declaration.kind() != EGraphResourceKind::BUFFER)
+                    {
+                        continue;
+                    }
+                    const auto asset = detail::runtimeAssetIndex(state, input);
+                    const auto boundaries = [](const LogicalGraphPlan& logical, GraphResourceId resource)
+                    {
+                        std::vector<std::uint64_t> offsets;
+                        const auto append = [&](const VGraphRange& value)
+                        {
+                            if (const auto* range = std::get_if<BufferRange>(&value))
+                            {
+                                offsets.push_back(range->byte_offset);
+                                offsets.push_back(range->byte_offset + range->byte_count);
+                            }
+                        };
+                        for (const auto& pass : logical.identity().passes)
+                        {
+                            for (const auto& use : pass.uses)
+                            {
+                                if (use.resource == resource || (use.fallback && use.fallback->resource == resource))
+                                {
+                                    append(use.range);
+                                }
+                            }
+                        }
+                        for (const auto& output : logical.identity().outputs)
+                        {
+                            if (output.resource == resource)
+                            {
+                                append(output.range);
+                            }
+                        }
+                        return offsets;
+                    };
+                    const auto own = boundaries(path.code.logical(), input.resource);
+                    for (const auto& other : state.paths)
+                    {
+                        for (const auto& imported : other.imports)
+                        {
+                            if (detail::runtimeAssetIndex(state, imported) != asset)
+                            {
+                                continue;
+                            }
+                            const auto& shape =
+                                other.code.logical().identity().resources[imported.resource.value() - 1];
+                            if (shape.description != declaration.description)
+                            {
+                                return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+                            }
+                            for (const auto offset : boundaries(other.code.logical(), imported.resource))
+                            {
+                                if (offset != 0 && offset < declaration.buffer().byte_size &&
+                                    std::find(own.begin(), own.end(), offset) == own.end())
+                                {
+                                    extra.push_back({input.resource, offset});
+                                }
+                            }
+                        }
+                    }
+                }
+                if (extra.empty())
+                {
+                    continue;
+                }
+                auto refined = vulkan::specializeVulkanGraph(
+                    {path.code.logical(),
+                     state.device,
+                     state.queues,
+                     path.commands,
+                     true,
+                     path.code.targetExtent(),
+                     extra},
+                    path.code
+                );
+                if (!refined)
+                {
+                    return cxx::unexpected(refined.error());
+                }
+                for (const auto resource : refined->logical().imports())
+                {
+                    auto count = refined->resourceStateCount(resource);
+                    if (!count)
+                    {
+                        return cxx::unexpected(count.error());
+                    }
+                    if (*count > state.capacity.native_state_ranges)
+                    {
+                        return cxx::unexpected(RenderError{vulkan::kCapacity});
+                    }
+                }
+                candidates[p] = std::move(*refined);
+            }
+            for (std::size_t p = 0; p < candidates.size(); ++p)
+            {
+                if (candidates[p])
+                {
+                    state.paths[p].code = std::move(*candidates[p]);
+                    ++state.progress.native_compilations;
+                }
+            }
         }
         detail::RuntimeSceneState scene;
         for (std::uint32_t path = 0; path < state.paths.size(); ++path)

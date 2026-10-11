@@ -115,6 +115,28 @@ int main(int argc, char** argv)
         {
             target = checked(backend.addOffscreenTarget(1, 1));
         }
+        const auto reject_fields = [&](std::vector<RuntimeFrameField> invalid)
+        {
+            auto rejected =
+                backend.addPath(targets[0], {logical, {}, commands, values, {imported(0)}, std::move(invalid)});
+            CHECK(!rejected && rejected.error().type == kInvalidArgument);
+        };
+        auto duplicate_fields = fields;
+        duplicate_fields.push_back(fields.front());
+        reject_fields(std::move(duplicate_fields));
+        auto wrong_type = fields;
+        wrong_type.front().value = ERuntimeFrameValue::HISTORY_EPOCH;
+        reject_fields(std::move(wrong_type));
+        bool checked_resource_member = false;
+        for (std::uint32_t i = 0; i < scalars.size(); ++i)
+        {
+            if (scalars[i].path.starts_with("history."))
+            {
+                reject_fields({{compute, i, ERuntimeFrameValue::HISTORY_EPOCH}});
+                checked_resource_member = true;
+            }
+        }
+        CHECK(checked_resource_member);
         const auto path = checked(backend.addPath(
             targets[0],
             {std::move(logical), std::move(programs), std::move(commands), values, {imported(0)}, std::move(fields)}

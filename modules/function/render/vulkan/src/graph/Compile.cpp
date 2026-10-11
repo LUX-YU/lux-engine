@@ -11,7 +11,8 @@ namespace lux::render::vulkan
             std::shared_ptr<const std::vector<NativeShaderProgram>> candidates
         ) noexcept
             : logical(inputs.logical), device(inputs.device.native()), queues(inputs.queues),
-              program_owner(std::move(candidates)), programs(*program_owner), target_extent(inputs.target_extent)
+              program_owner(std::move(candidates)), programs(*program_owner), target_extent(inputs.target_extent),
+              buffer_boundaries(inputs.buffer_boundaries.begin(), inputs.buffer_boundaries.end())
         {
         }
 
@@ -66,6 +67,21 @@ namespace lux::render::vulkan
             if (!queue || queue->device() != inputs.device.native())
             {
                 return cxx::unexpected(RenderError{kWrongOwner});
+            }
+        }
+        for (const auto& boundary : inputs.buffer_boundaries)
+        {
+            if (!boundary.resource.isValid() || boundary.resource.value() > identity.resources.size())
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument});
+            }
+            const auto& resource = identity.resources[boundary.resource.value() - 1];
+            const bool invalid_boundary =
+                resource.kind() != EGraphResourceKind::BUFFER || resource.origin != EGraphResourceOrigin::IMPORTED ||
+                boundary.byte_offset == 0 || boundary.byte_offset >= resource.buffer().byte_size;
+            if (invalid_boundary)
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument});
             }
         }
         std::vector<bool> covered(identity.passes.size());
@@ -138,7 +154,12 @@ namespace lux::render::vulkan
         const ExecutableGraphPlan& shaders
     ) noexcept
     {
-        auto code = compileNativeCode(inputs, shaders.code_->program_owner);
+        auto specialized = inputs;
+        if (specialized.buffer_boundaries.empty())
+        {
+            specialized.buffer_boundaries = shaders.code_->buffer_boundaries;
+        }
+        auto code = compileNativeCode(specialized, shaders.code_->program_owner);
         if (!code)
         {
             return cxx::unexpected(code.error());

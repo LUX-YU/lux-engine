@@ -89,6 +89,13 @@ namespace lux::render::vulkan::detail
             if (declaration.kind() == EGraphResourceKind::BUFFER)
             {
                 std::vector<std::uint64_t> boundaries{0, declaration.buffer().byte_size};
+                for (const auto& boundary : result.buffer_boundaries)
+                {
+                    if (boundary.resource == resource)
+                    {
+                        boundaries.push_back(boundary.byte_offset);
+                    }
+                }
                 for (const auto& pass : graph.passes)
                 {
                     for (const auto& use : pass.uses)

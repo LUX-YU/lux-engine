@@ -139,6 +139,7 @@ namespace lux::render::vulkan::detail
         std::shared_ptr<const std::vector<NativeShaderProgram>> program_owner;
         std::span<const NativeShaderProgram> programs;
         VkExtent2D target_extent;
+        std::vector<NativeBufferBoundary> buffer_boundaries;
         std::vector<VkExtent2D> resource_extents;
         std::vector<ResourceCell> cells;
         std::vector<NativePassRecipe> recipes;

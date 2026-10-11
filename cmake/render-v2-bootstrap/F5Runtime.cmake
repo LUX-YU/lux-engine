@@ -214,3 +214,89 @@ add_dependencies(render_runtime_history render_runtime_spv_F5History render_vulk
 add_test(NAME render.runtime.history COMMAND render_runtime_history "${f5_shader}")
 
 set_tests_properties(render.runtime.history PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+# Each public header is parsed as the first include in a distinct translation unit.
+foreach(header Types.hpp RuntimeMessages.hpp RuntimeMessages.ops.hpp Runtime.hpp NativeAssembly.hpp)
+    string(REPLACE "." "_" header_target "${header}")
+    set(header_source "${CMAKE_CURRENT_BINARY_DIR}/f5_header_${header_target}.cpp")
+    file(WRITE "${header_source}" "#include <lux/engine/render/runtime/${header}>\n")
+    add_library(render_runtime_header_${header_target} OBJECT "${header_source}")
+    target_link_libraries(render_runtime_header_${header_target} PRIVATE render_runtime)
+    if(header STREQUAL "NativeAssembly.hpp")
+        target_link_libraries(render_runtime_header_${header_target} PRIVATE render_vulkan_graph)
+    else()
+        file(APPEND "${header_source}" "#ifdef VK_VERSION_1_0\n#error Neutral Runtime header leaked Vulkan\n#endif\n")
+    endif()
+endforeach()
+
+add_executable(render_runtime_probe_control "${f5_test}/Probe.cpp")
+
+target_link_libraries(render_runtime_probe_control PRIVATE render_runtime)
+
+add_test(NAME render.runtime.public_contract COMMAND render_runtime_probe_control)
+
+foreach(probe ID REQUEST_COPY)
+    add_executable(render_runtime_reject_${probe} EXCLUDE_FROM_ALL "${f5_test}/Probe.cpp")
+    target_link_libraries(render_runtime_reject_${probe} PRIVATE render_runtime)
+    target_compile_definitions(render_runtime_reject_${probe} PRIVATE LUX_PROBE_${probe})
+    add_test(NAME render.runtime.reject_${probe}
+        COMMAND "${CMAKE_COMMAND}" "-DBUILD_DIR=${CMAKE_BINARY_DIR}" "-DPROBE=${probe}"
+            -P "${f5_test}/RejectCompile.cmake"
+    )
+    set_tests_properties(render.runtime.reject_${probe} PROPERTIES RUN_SERIAL TRUE)
+endforeach()
+
+find_package(VulkanMemoryAllocator 3 CONFIG REQUIRED)
+
+# Profiling uses an exact source inclusion with a test-only free-function wrapper.
+# Neither timestamps nor instrumentation are linked into render_runtime.
+add_library(render_runtime_profile STATIC
+    "${f5_test}/../src/Backend.cpp" "${f5_test}/ProfileFrame.cpp"
+    "${f5_test}/../src/Runtime.cpp" "${f5_test}/../src/Presentation.cpp"
+)
+
+target_include_directories(render_runtime_profile PUBLIC
+    "${f5_test}/../include" "${CMAKE_BINARY_DIR}/render_runtime/generated"
+    "${f5_native_test}/../../../../core/type_info/include"
+    PRIVATE "${f5_test}/../pinclude"
+)
+
+target_compile_definitions(render_runtime_profile PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+
+target_link_libraries(render_runtime_profile PUBLIC render_core render_transport render_graph
+    PRIVATE render_vulkan_graph GPUOpen::VulkanMemoryAllocator
+)
+
+add_dependencies(render_runtime_profile render_runtime)
+
+add_executable(render_runtime_benchmark
+    "${f5_test}/RuntimeBenchmark.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
+)
+
+target_link_libraries(render_runtime_benchmark PRIVATE render_runtime_profile render_vulkan_shader_compiler)
+
+target_include_directories(render_runtime_benchmark PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/generated" "${f5_test}/shader"
+    "${f5_native_test}" "${f5_native_test}/shader" "${f5_shader}/generated"
+    "${f5_native_test}/../../../../core/type_info/include"
+)
+
+add_dependencies(render_runtime_benchmark render_runtime_spv_F5Shared render_vulkan_schema_F4HostRead)
+
+add_executable(render_runtime_hot_link "${f5_test}/HotLink.cpp")
+
+target_link_libraries(render_runtime_hot_link PRIVATE render_runtime render_vulkan_graph)
+
+target_link_options(render_runtime_hot_link PRIVATE "/MAP:${CMAKE_BINARY_DIR}/runtime-hot.map")
+
+add_test(NAME render.runtime.shared_asset_partial_range
+    COMMAND render_runtime_shared_asset "${f5_shader}" partial-range
+)
+
+set_tests_properties(render.runtime.shared_asset_partial_range PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+add_test(NAME render.runtime.shared_asset_partition_refinement
+    COMMAND render_runtime_shared_asset "${f5_shader}" partial-range different-partition
+)
+
+set_tests_properties(render.runtime.shared_asset_partition_refinement PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)

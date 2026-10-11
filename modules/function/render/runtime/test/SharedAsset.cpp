@@ -10,7 +10,8 @@ using namespace native_graph_test;
 
 int main(int argc, char** argv)
 {
-    CHECK(argc == 2);
+    CHECK(argc >= 2 && argc <= 4);
+    const unsigned backing_bytes = argc >= 3 ? 32 : 16;
     Validation validation;
     {
         RuntimeNativeOptions native;
@@ -22,15 +23,19 @@ int main(int argc, char** argv)
         auto builder = checked(RenderRuntimeBuilder::create(native, settings));
         auto& backend = builder.backend();
         CHECK(checked(backend.retain(checked(Sampler::create(backend.device())))) == GraphSampler{1});
-        auto asset =
-            checked(Buffer::create(backend.allocator(), 16, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, EMemoryAccess::UPLOAD));
+        auto asset = checked(Buffer::create(
+            backend.allocator(),
+            backing_bytes,
+            VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+            EMemoryAccess::UPLOAD
+        ));
         const std::array<float, 4> input{2, 3, 5, 1};
         CHECK(asset.write(0, std::as_bytes(std::span{input})));
         const auto raw_buffer = asset.native();
         const auto retained = checked(backend.retain(std::move(asset)));
         CHECK(retained.get().native() == raw_buffer);
         RenderGraphBuilder graph;
-        const auto source = graph.importBuffer("shared.asset", {16, 16}, EPersistentScope::RUNTIME);
+        const auto source = graph.importBuffer("shared.asset", {backing_bytes, 16}, EPersistentScope::RUNTIME);
         TextureDesc texture;
         texture.width = texture.height = 2;
         F5Shared params;
@@ -69,9 +74,14 @@ int main(int argc, char** argv)
             {std::move(logical), std::move(programs), std::move(commands), values, std::move(imports)}
         ));
         RenderGraphBuilder alternate;
-        const auto second_source = alternate.importBuffer("shared.asset", {16, 16}, EPersistentScope::RUNTIME);
+        const auto second_source =
+            alternate.importBuffer("shared.asset", {backing_bytes, 16}, EPersistentScope::RUNTIME);
         F5Shared second_params;
         second_params.asset.buffer = second_source;
+        if (argc == 4)
+        {
+            second_params.asset.range.byte_count = 32;
+        }
         second_params.output.texture = alternate.texture(texture, "alternate.hdr");
         const auto second_compute = checked(
             alternate.compute("alternate.fill", {{"F5Shared", "default"}}, EExecutionScope::SCENE, second_params)
@@ -120,14 +130,15 @@ int main(int argc, char** argv)
              {},
              true}
         };
-        const auto second_path = checked(backend.addPath(
+        auto second_candidate = backend.addPath(
             first_target,
             {std::move(second_logical),
              std::move(second_programs),
              std::move(second_commands),
              second_values,
              std::move(second_imports)}
-        ));
+        );
+        const auto second_path = checked(std::move(second_candidate));
         const auto first_scene = checked(backend.addScene());
         const auto second_scene = checked(backend.addScene());
         const auto first_view = checked(backend.addView(first_scene, first_target, path, values));
@@ -185,7 +196,10 @@ int main(int argc, char** argv)
         wait_frames(runtime->progress().render_frames + 24);
         measuring = false;
         CHECK(allocation_count == 0 && allocation_bytes == 0);
-        CHECK(runtime->progress().native_compilations == 2 && runtime->progress().reused_scene_passes == 0);
+        CHECK(
+            runtime->progress().native_compilations == (argc == 4 ? 3 : 2) &&
+            runtime->progress().reused_scene_passes == 0
+        );
         const auto await = [&](RuntimeRequest request)
         {
             for (unsigned i = 0; i < 5000; ++i)
@@ -227,7 +241,7 @@ int main(int argc, char** argv)
         {
             CHECK(original_pixels[i] == input[i % 4] * factor);
         }
-        CHECK(runtime->progress().native_compilations == 2);
+        CHECK(runtime->progress().native_compilations == (argc == 4 ? 3 : 2));
         runtime->requestStop();
         CHECK(checked(runtime->waitStopped(5000)));
         CHECK(runtime->state() == ERuntimeState::STOPPED);

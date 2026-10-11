@@ -131,6 +131,50 @@ int main(int argc, char** argv)
             target,
             {std::move(logical), std::move(programs), std::move(commands), values, std::move(imports)}
         ));
+        // A valid offscreen-only path is not a valid replacement for a View
+        // already consumed by either swapchain. Rejection must be transactional.
+        RenderGraphBuilder offscreen_graph;
+        F5Shared offscreen_params;
+        offscreen_params.asset.buffer =
+            offscreen_graph.importBuffer("present.color", {16, 16}, EPersistentScope::RUNTIME);
+        offscreen_params.output.texture =
+            offscreen_graph.importTarget("present.output", texture, renderTargetSemanticId("f5.output"));
+        CHECK(
+            checked(
+                offscreen_graph
+                    .compute("present.compute", {{"F5Shared", "default"}}, EExecutionScope::TARGET, offscreen_params)
+            ) == compute
+        );
+        F4HostRead offscreen_read;
+        offscreen_read.source.texture = offscreen_params.output.texture;
+        CHECK(checked(offscreen_graph.readback("present.read", EExecutionScope::TARGET, offscreen_read)) == output);
+        CHECK(offscreen_graph.source(passKey("present.read"), "source", PassProducer{passKey("present.compute")}));
+        auto offscreen_definition = checked(std::move(offscreen_graph).finish());
+        auto offscreen_logical = checked(compileLogicalGraph(offscreen_definition));
+        std::vector<NativeShaderProgram> offscreen_programs;
+        offscreen_programs.push_back(program(
+            backend.device(),
+            offscreen_logical,
+            compute,
+            "F5Shared",
+            PassSchema<F5Shared>::contract(),
+            argv[1],
+            true
+        ));
+        const auto offscreen_path = checked(backend.addPath(
+            target,
+            {std::move(offscreen_logical),
+             std::move(offscreen_programs),
+             {{compute, DispatchCommand{64, 64, 1}, EQueueRole::COMPUTE}, {output, CopyCommand{}, EQueueRole::TRANSFER}
+             },
+             values,
+             {{GraphResourceId{source.value()},
+               GraphBackingId{1},
+               retained,
+               {VK_PIPELINE_STAGE_2_HOST_BIT, VK_ACCESS_2_HOST_WRITE_BIT},
+               {},
+               true}}}
+        ));
         const auto scene = checked(backend.addScene());
         auto overlay_values = values;
         const float half = 0.5f;
@@ -183,6 +227,25 @@ int main(int argc, char** argv)
             }
         };
         verify();
+        auto rejected = checked(runtime->setPath(view, offscreen_path));
+        bool rejected_path = false;
+        for (unsigned i = 0; i < 3000 && !rejected_path; ++i)
+        {
+            auto result = rejected.poll();
+            if (!result)
+            {
+                CHECK(result.error().type == kInvalidArgument);
+                rejected_path = true;
+            }
+            else
+            {
+                CHECK(!result->has_value());
+                pump();
+            }
+        }
+        CHECK(rejected_path && !runtime->terminalError());
+        frames(runtime->progress().render_frames + 4);
+        verify();
         allocation_count = allocation_bytes = 0;
         measuring = true;
         frames(runtime->progress().render_frames + 24);
@@ -211,7 +274,7 @@ int main(int argc, char** argv)
         target_width = 48;
         frames(paused + 24);
         verify();
-        CHECK(runtime->progress().native_compilations == 2);
+        CHECK(runtime->progress().native_compilations == 3);
         runtime->requestStop();
         CHECK(checked(runtime->waitStopped(5000)));
         CHECK(runtime->state() == ERuntimeState::STOPPED);

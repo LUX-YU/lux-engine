@@ -122,3 +122,21 @@ Runtime Presentation uses existing SubmissionQueue, Native exports/retainExterna
 Sync2. Output queue ownership and present completion remain distinct facts. Native Graph
 source resources are retained through all output consumers, including a second Swapchain.
 No extra renderer, queue owner, Shader parser or Graph compiler is introduced.
+
+## Cross-path native Buffer partition refinement — pre-edit impact
+
+Real F5 consumer: two RenderPaths share one 32-byte VkBuffer; generated UBO access
+is [0,16) in one path and [0,32) in the other. F4 importState requires a supplied
+range to contain each native cell. The first plan exports [0,16),[16,32), which
+cannot cover the second plan's unsplit [0,32) cell. Silently merging different
+state/ticket facts is invalid. This is a Native composition seam, not an F2 bug.
+
+Minimal remedy: cold Runtime assembly unions declared buffer boundaries for the
+same already-owned backing; NativeCompileInputs accepts additional structural
+boundaries and existing compileSync refines its cells. Immutable Shader/PSO owners
+are shared through existing specializeVulkanGraph. No extra GPU owner, live lookup,
+new scheduler or F2 API. Extent specializations retain these structural boundaries.
+Files: Executable.hpp, GraphNative.hpp, Compile.cpp, Sync.cpp, Runtime Backend.cpp;
+SharedAsset existing real GPU fixture gains the different-partition case. All
+Native/regression/ASan/performance gates remain required. Additional state capacity
+is checked before starting Runtime. Cold refinement is counted as compilation.

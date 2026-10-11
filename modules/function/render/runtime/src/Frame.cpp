@@ -1,6 +1,7 @@
 #include "RuntimeBackend.hpp"
 #include <algorithm>
 #include <cstring>
+#include <lux/engine/render/vulkan/shader/Format.hpp>
 
 namespace lux::render::detail
 {
@@ -205,7 +206,9 @@ namespace lux::render::detail
                 if (asset.state_count != 0)
                 {
                     view.native_imports[i].ranges = std::span{asset.states}.first(asset.state_count);
-                    view.native_imports[i].host_ready = false;
+                    // Preserve the original CPU initialization proof for cells
+                    // never touched by the GPU. Used cells carry actual tickets;
+                    // host_ready never replaces or weakens those ticket checks.
                 }
             }
             auto bindings = FrameGraphBindings::create(
@@ -619,6 +622,31 @@ namespace lux::render::detail
                 return cxx::unexpected(candidate.error());
             }
             const auto& source = backend.paths[path.value() - 1];
+            // A View can feed several real Targets. Validate every consumer
+            // before publishing a path candidate, preserving the last-good View.
+            for (const auto& output : backend.targets)
+            {
+                const bool consumes = std::any_of(
+                    output.layers.begin(),
+                    output.layers.end(),
+                    [&](const auto& layer) { return layer.view == key; }
+                );
+                if (!consumes || !output.presentation)
+                {
+                    continue;
+                }
+                if (!source.output)
+                {
+                    return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+                }
+                const auto& resource = source.code.logical().identity().resources[source.output->value() - 1];
+                auto supported =
+                    output.presentation->validateSource(vulkan::nativeTextureFormat(resource.texture().format));
+                if (!supported)
+                {
+                    return cxx::unexpected(supported.error());
+                }
+            }
             auto values = source.initial_values;
             values.scene = view->values.scene;
             values.view = view->values.view;

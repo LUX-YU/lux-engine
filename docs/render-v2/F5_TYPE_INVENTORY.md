@@ -43,3 +43,10 @@ Runtime/Vulkan dependency and declare plugin codegen at plugin build/install tim
 F5 assembly and fixed consumers are not that SDK. Future F7 responsibility: replace
 fixed F5 payload assembly with the actual Scope-owned DataSet/Storage and asset
 ready/receipt data chain. F5 shared native backing tests do not close F7 obligations.
+
+`NativeBufferBoundary` is a cold structural value `{GraphResourceId, byte_offset}`.
+It refines the existing compiler's imported Buffer cells for several paths sharing
+backing; it is not a handle, GPU owner or independent hazard algorithm. Native code
+copies it, and physical specialization preserves it. Failure is InvalidArgument for
+non-imported/non-buffer/out-of-range boundaries; state capacity is checked by Runtime.
+The profiling wrapper/query pool is test-only and absent from the production link map.

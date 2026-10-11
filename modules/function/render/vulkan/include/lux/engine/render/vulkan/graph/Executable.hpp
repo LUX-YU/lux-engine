@@ -143,6 +143,14 @@ namespace lux::render::vulkan
         std::span<const NativeRangeState> ranges{};
     };
 
+    // Structural refinement for composition of imported Buffer state cells.
+    // It carries no runtime backing identity and owns no resource.
+    struct NativeBufferBoundary
+    {
+        GraphResourceId resource;
+        std::uint64_t byte_offset;
+    };
+
     struct NativeCompileInputs
     {
         const LogicalGraphPlan& logical;
@@ -152,6 +160,7 @@ namespace lux::render::vulkan
         bool alias{true};
         // Physical 1:1 TARGET_RELATIVE extent; zero is only legal for absolute graphs.
         VkExtent2D target_extent{};
+        std::span<const NativeBufferBoundary> buffer_boundaries{};
     };
 
     // Cold allocation inputs for a fixed, bounded number of independent

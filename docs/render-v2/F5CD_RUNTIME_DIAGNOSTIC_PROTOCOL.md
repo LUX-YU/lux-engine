@@ -95,3 +95,39 @@ F5-C, not rerun by these benchmark processes. This task does not require full
 CTest/ASan/GPU qualification without a production change. Platform/SDK/product
 tests not executed are NOT_RUN. Report Q1–Q5, recommend ELIGIBLE_WITH_EXPLICIT_USER_DEFERRAL
 or HOLD from evidence, push I/V and STOP. Neither recommendation authorizes F6.a.
+
+## Bounded local observation — fixed after the 48-process diagnostic
+
+The first experiment completed all 48 planned processes without exclusions. It did
+not reproduce the historical large p50 increase. Its timer aggregates validation,
+view/binding preparation and other work, and does not identify pending-cell states
+or actual Queue submissions. One additional **eight-process**, test-only observation
+is now fixed; it is not another A/B qualification or a repeat of those samples.
+
+- A/B remain the same exact clean production commits. Separate `build-local/`
+  directories preserve the original executables and evidence.
+- One process per A/B × 1/4 Views × 2/3 FIF, one Scene. Shuffle these eight cells
+  with seed 20261011. Keep 24 warm-up and 240 measured frames, Shader and pixel
+  oracle. FIF is an explicit diagnostic variable, identical for each matched pair.
+- Mechanically derive a test-only copy of Native Frame.cpp, rename only the
+  validateImports body and wrap it with a timer. Before that timer, count actual
+  optional cell tickets, retained-completed tickets, pending tickets and predicate
+  probes to first pending. Store bounded observations in a fixed test array, print
+  only after stop. All original predicates/return paths remain intact.
+- Observe actual Queue submitted serial deltas around executeRuntimeFrame in the
+  existing profiling wrapper, outside its timing boundary. No Queue implementation
+  or production target modification. Report all observations, including warm-up;
+  use the first 24×View preparation calls only as warm-up for summaries.
+- These extra reads warm caches and the extra clocks perturb timing. The observed
+  validateImports duration is for attribution within this instrumented workload;
+  it is not the isolated cost of has_pending_cells and is never mixed with the
+  original six metrics or used for the 5% gate. Unobserved pending categories are
+  explicitly NOT_OBSERVED; no synthetic completion or forced delay is introduced.
+- No repeat, extra pairs or follow-on instrumentation based on results. Freeze
+  script/protocol and derived inputs before these eight executions. Any failure
+  preserves its logs and ends this observation. Production correctness fixes remain
+  outside this task's authorization.
+
+The initial I and its frozen protocol/script remain identified in the first
+experiment lock. This additional diagnostic implementation does not overwrite
+that lock, the 48 samples, the original executable bytes or historical qualification.

@@ -14,6 +14,20 @@ namespace
     std::map<std::string, std::uint64_t> created, destroyed;
     unsigned fail_image_after{};
     unsigned fail_descriptor_after{};
+    VmaAllocator measured_allocator{};
+    bool capture_peak{};
+    VkDeviceSize peak_used{}, peak_reserved{};
+
+    void captureAllocationPeak()
+    {
+        if (capture_peak)
+        {
+            VmaTotalStatistics stats{};
+            vmaCalculateStatistics(measured_allocator, &stats);
+            peak_used = std::max(peak_used, stats.total.statistics.allocationBytes);
+            peak_reserved = std::max(peak_reserved, stats.total.statistics.blockBytes);
+        }
+    }
 
     void sample(const char* phase, const VulkanBackend& backend, std::uint32_t actual_views)
     {
@@ -64,6 +78,7 @@ namespace lux::render::vulkan::test
 {
     VkResult before(const char* operation) noexcept
     {
+        captureAllocationPeak();
         if (std::string_view{operation} == "image" && fail_image_after != 0 && --fail_image_after == 0)
         {
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
@@ -78,6 +93,7 @@ namespace lux::render::vulkan::test
 
     VkResult after(const char* operation, VkResult result) noexcept
     {
+        captureAllocationPeak();
         if (result == VK_SUCCESS)
         {
             ++created[operation];
@@ -106,6 +122,7 @@ int main(int argc, char** argv)
         native.capacity.frames_in_flight = fif;
         auto builder = checked(RenderRuntimeBuilder::create(native));
         auto& backend = builder.backend();
+        measured_allocator = backend.allocator().native();
         const auto target = checked(backend.addOffscreenTarget(width, height));
         RenderGraphBuilder graph;
         TextureDesc texture;
@@ -154,6 +171,9 @@ int main(int argc, char** argv)
         // both the committed storage and all existing semantic Views.
         VmaTotalStatistics before{};
         vmaCalculateStatistics(backend.allocator().native(), &before);
+        peak_used = before.total.statistics.allocationBytes;
+        peak_reserved = before.total.statistics.blockBytes;
+        capture_peak = true;
         fail_image_after = 2;
         auto failed = backend.addView(scene, target, path, values);
         CHECK(!failed && fail_image_after == 0);
@@ -172,6 +192,15 @@ int main(int argc, char** argv)
         CHECK(before.total.statistics.allocationCount == after.total.statistics.allocationCount);
         CHECK(observed->views.size() == 4);
         sample("failed_descriptor_growth_rolled_back", backend, 4);
+        capture_peak = false;
+        std::printf(
+            "{\"candidate_failure_peak_used_bytes\":%llu,\"candidate_failure_peak_reserved_bytes\":%llu,"
+            "\"restored_used_bytes\":%llu}\n",
+            peak_used,
+            peak_reserved,
+            after.total.statistics.allocationBytes
+        );
+        CHECK(peak_used > after.total.statistics.allocationBytes);
         if (second_extent)
         {
             const auto other = checked(backend.addOffscreenTarget(width / 2, height / 2));

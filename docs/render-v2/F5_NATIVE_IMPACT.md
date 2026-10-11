@@ -41,3 +41,26 @@ Plan/Invocation 分离会改变 C10/C11 的计时边界。等价冷态比较必�
 开发期只编译受影响 targets；最终 I 上执行一次完整 Normal/Full ASan/真实 GPU/closure。四 View/多 Scene 的热态单独建立真实工作量基线；F4 冷 p95 债务继续引用入场记录，不开展无界重复测量。
 
 本文是实施前影响审查，不是完成声明；Native Invocation、Presentation 与 Runtime 的新行为尚未取得 F5 资格。
+
+## Target extent consumer and bounded native changes
+
+F5 Resize needs the same Shader/PSO/Layout owners with a new physical target signature.
+Current `Resources.cpp` rejects `TARGET_RELATIVE`; `Copy.cpp` bakes nominal author dimensions.
+A 1:1 target-relative VIEW texture therefore cannot allocate/execute at a real target size.
+The native compiler will resolve 1:1 target extent before C10/copy recipes, retaining the
+unchanged F2 logical identity. A cold specialization shares the existing immutable native
+program vector and reruns the same native resource/recipe/sync algorithm. It is not a
+second compiler. Invalid/minimized extents are rejected before native allocation; the
+Runtime will suspend minimized targets. No F2 or Shader contract change is required.
+Files: Executable.hpp, GraphNative.hpp, Compile/Resources/Copy/Recipes/Frame.cpp and direct
+GPU tests. Target signature and actual resolved dimensions enter the native cache facts;
+Scene/View instances do not. No production Runtime result is claimed by these fixtures.
+
+The real relative-target fixture reached Descriptor construction and failed with
+`kInvalidArgument {5}` (`extent-gpu.log`, TargetExtent.cpp:51). F3
+`src/shader/Bindings.cpp:wrong_backing` compares nominal TextureDesc.width/height even
+for TARGET_RELATIVE. Minimal lower change: add the resolved Target extent to cold
+`BoundDescriptorSets::create`, including its rvalue-rejection overload; validate relative
+shape against that explicit extent. Absolute checks and warmed rewrite/bind remain
+unchanged. Graph Recipes supplies the already validated native signature. Re-run F3
+Descriptor negative/GPU tests and fixed Binding performance with the final lock.

@@ -93,6 +93,11 @@ namespace lux::render::vulkan::detail
     struct GraphSlot
     {
         std::vector<VResourceBacking> resources;
+        std::vector<const VResourceBacking*> shared_resources;
+        GraphInvocationData accepted_values;
+        std::vector<GraphImportBinding> accepted_imports;
+        GraphFrameValues accepted_frame;
+        std::optional<std::uint32_t> scene_source;
         std::vector<SlotPass> passes;
         std::vector<NativeResourceState> states;
         std::vector<std::optional<SubmissionTicket>> pass_tickets;
@@ -118,6 +123,11 @@ namespace lux::render::vulkan::detail
         }
     };
 
+    [[nodiscard]] inline const VResourceBacking& resourceAt(const GraphSlot& slot, std::size_t resource) noexcept
+    {
+        return slot.shared_resources[resource] ? *slot.shared_resources[resource] : slot.resources[resource];
+    }
+
     // Cold-constructed native code and structural resource recipes. Execution
     // storage is separate; no per-View shader/pipeline/layout copy is required.
     struct NativeGraphCode
@@ -126,17 +136,25 @@ namespace lux::render::vulkan::detail
         VkDevice device;
         PFN_vkCmdSetRenderingInputAttachmentIndicesKHR set_input_indices{};
         std::array<SubmissionQueue*, 3> queues;
-        std::vector<NativeShaderProgram> programs;
+        std::shared_ptr<const std::vector<NativeShaderProgram>> program_owner;
+        std::span<const NativeShaderProgram> programs;
+        VkExtent2D target_extent;
+        std::vector<VkExtent2D> resource_extents;
         std::vector<ResourceCell> cells;
         std::vector<NativePassRecipe> recipes;
         std::vector<std::optional<std::uint32_t>> import_positions;
         std::vector<std::vector<NativeViewRequirement>> import_views;
         std::vector<std::uint32_t> resource_usage;
+        std::vector<bool> scene_resources;
+        bool scene_reuse_supported{true};
         std::vector<std::optional<GraphResourceId>> alias_sources;
         std::array<std::uint32_t, 3> admission{};
         NativeGraphStatistics statistics;
 
-        NativeGraphCode(const NativeCompileInputs& inputs, std::vector<NativeShaderProgram> candidates) noexcept;
+        NativeGraphCode(
+            const NativeCompileInputs& inputs,
+            std::shared_ptr<const std::vector<NativeShaderProgram>> candidates
+        ) noexcept;
     };
 
     struct NativeGraphBacking
@@ -169,7 +187,11 @@ namespace lux::render::vulkan::detail
     [[nodiscard]] RenderResult<void> allocateInvocations(NativeGraphBacking&, const NativeInvocationInputs&) noexcept;
     [[nodiscard]] RenderResult<void> assembleInvocations(NativeGraphBacking&, const NativeInvocationInputs&) noexcept;
     [[nodiscard]] RenderResult<void> compileSync(NativeGraphCode& result) noexcept;
-    [[nodiscard]] RenderResult<void> compileCopies(NativePassRecipe& recipe, const LogicalGraphPlan& plan) noexcept;
+    [[nodiscard]] RenderResult<void> compileCopies(
+        NativePassRecipe& recipe,
+        const LogicalGraphPlan& plan,
+        std::span<const VkExtent2D> extents
+    ) noexcept;
     void recordCopies(
         VkCommandBuffer command,
         const NativePassRecipe& recipe,
@@ -180,7 +202,8 @@ namespace lux::render::vulkan::detail
         NativeGraphBacking& plan,
         GraphSlot& slot,
         const FrameGraphBindings& bindings,
-        std::span<const NativeImportBinding> imports
+        std::span<const NativeImportBinding> imports,
+        const GraphSlot* scene_source
     ) noexcept;
     [[nodiscard]] NativeResourceState useState(const GraphResourceUse& use, std::uint32_t family) noexcept;
     [[nodiscard]] VkImageSubresourceRange imageRange(const ImageRange& range) noexcept;

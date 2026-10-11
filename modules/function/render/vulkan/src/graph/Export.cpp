@@ -33,7 +33,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        const auto& native = backing_->slots[receipt.slot].resources[resource.value() - 1];
+        const auto& native = detail::resourceAt(backing_->slots[receipt.slot], resource.value() - 1);
         if (const auto* image = detail::imageOf(native))
         {
             return VNativeImport{std::cref(*image)};
@@ -137,6 +137,12 @@ namespace lux::render::vulkan
             return cxx::unexpected(completion.error());
         }
         slot.completion = slot.queue_tickets[0] = *completion;
+        if (slot.scene_source)
+        {
+            auto& donor = plan.slots[*slot.scene_source];
+            donor.queue_tickets[0] = *completion;
+            donor.external_use = true; // External recording owns the shared resource state facts.
+        }
         return GraphSubmission{*completion, receipt.slot};
     }
 } // namespace lux::render::vulkan

@@ -1,5 +1,6 @@
 #include "GraphNative.hpp"
 #include <algorithm>
+#include <bit>
 #include <lux/engine/render/vulkan/shader/Format.hpp>
 
 namespace lux::render::vulkan::detail
@@ -69,6 +70,10 @@ namespace lux::render::vulkan::detail
                 {
                     uses_a = uses_a || use.resource == earlier || (use.fallback && use.fallback->resource == earlier);
                     uses_b = uses_b || use.resource == later || (use.fallback && use.fallback->resource == later);
+                }
+                if ((uses_a || uses_b) && inputs.logical.sceneShareEligible()[pass_id.value() - 1])
+                {
+                    return false; // Shared scene outputs must not alias per-View scratch.
                 }
                 if (!uses_a && !uses_b)
                 {
@@ -189,9 +194,68 @@ namespace lux::render::vulkan::detail
         result.import_positions.resize(graph.resources.size());
         result.import_views.resize(graph.resources.size());
         result.resource_usage.resize(graph.resources.size());
+        result.resource_extents.resize(graph.resources.size());
+        for (std::size_t r = 0; r < graph.resources.size(); ++r)
+        {
+            if (graph.resources[r].kind() != EGraphResourceKind::IMAGE)
+            {
+                continue;
+            }
+            const auto& texture = graph.resources[r].texture();
+            if (texture.extent_kind == EExtentKind::DYNAMIC)
+            {
+                return cxx::unexpected(RenderError{kUnsupported, {r + 1}});
+            }
+            const bool relative = texture.extent_kind == EExtentKind::TARGET_RELATIVE;
+            // The present authoring contract has no scale/rounding expression.
+            // 1:1 is explicit; other values cannot silently invent one.
+            if (relative && (texture.width != 1 || texture.height != 1))
+            {
+                return cxx::unexpected(RenderError{kUnsupported, {r + 1}});
+            }
+            const auto extent = relative ? inputs.target_extent : VkExtent2D{texture.width, texture.height};
+            const auto maximum = inputs.device.properties().limits.maxImageDimension2D;
+            const bool invalid_extent = extent.width == 0 || extent.height == 0 || extent.width > maximum ||
+                                        extent.height > maximum ||
+                                        texture.mip_count > std::bit_width(std::max(extent.width, extent.height));
+            if (invalid_extent)
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument, {r + 1}});
+            }
+            result.resource_extents[r] = extent;
+        }
         for (std::uint32_t i = 0; i < result.logical.imports().size(); ++i)
         {
             result.import_positions[result.logical.imports()[i].value() - 1] = i;
+        }
+        result.scene_resources.resize(graph.resources.size());
+        for (const auto id : result.logical.executionOrder())
+        {
+            if (!result.logical.sceneShareEligible()[id.value() - 1])
+            {
+                continue;
+            }
+            for (const auto& use : graph.passes[id.value() - 1].uses)
+            {
+                if (use.access != EGraphAccess::READ)
+                {
+                    result.scene_resources[use.resource.value() - 1] = true;
+                }
+            }
+        }
+        for (const auto id : result.logical.executionOrder())
+        {
+            if (result.logical.sceneShareEligible()[id.value() - 1])
+            {
+                continue;
+            }
+            for (const auto& use : graph.passes[id.value() - 1].uses)
+            {
+                if (use.access != EGraphAccess::READ && result.scene_resources[use.resource.value() - 1])
+                {
+                    result.scene_reuse_supported = false;
+                }
+            }
         }
         result.alias_sources.resize(graph.resources.size());
         if (inputs.alias)
@@ -240,6 +304,9 @@ namespace lux::render::vulkan::detail
         {
             auto& slot = result.slots.emplace_back();
             slot.resources.reserve(graph.resources.size());
+            slot.shared_resources.resize(graph.resources.size());
+            slot.accepted_values = inputs.initial_values;
+            slot.accepted_imports.resize(inputs.imports.size());
             slot.passes.resize(graph.passes.size());
             slot.pass_tickets.resize(graph.passes.size());
             slot.buffer_offsets.resize(graph.resources.size());
@@ -282,11 +349,12 @@ namespace lux::render::vulkan::detail
                         }
                         const auto& actual = image->get().description();
                         const auto& expected = declaration.texture();
-                        const bool mismatch =
-                            actual.extent.width != expected.width || actual.extent.height != expected.height ||
-                            actual.format != nativeTextureFormat(expected.format) ||
-                            actual.mip_levels != expected.mip_count || actual.array_layers != expected.array_layers ||
-                            actual.samples != expected.samples;
+                        const bool mismatch = actual.extent.width != result.code->resource_extents[r].width ||
+                                              actual.extent.height != result.code->resource_extents[r].height ||
+                                              actual.format != nativeTextureFormat(expected.format) ||
+                                              actual.mip_levels != expected.mip_count ||
+                                              actual.array_layers != expected.array_layers ||
+                                              actual.samples != expected.samples;
                         if (mismatch)
                         {
                             return cxx::unexpected(RenderError{kInvalidArgument, {id.value()}});
@@ -314,7 +382,7 @@ namespace lux::render::vulkan::detail
                         return cxx::unexpected(RenderError{kUnsupported, {id.value()}});
                     }
                     const bool unsupported = texture.dimension != ETextureDimension::D2 || texture.depth != 1 ||
-                                             texture.extent_kind != EExtentKind::ABSOLUTE;
+                                             texture.extent_kind == EExtentKind::DYNAMIC;
                     if (unsupported)
                     {
                         return cxx::unexpected(RenderError{kUnsupported, {id.value()}});
@@ -331,7 +399,7 @@ namespace lux::render::vulkan::detail
                             : Image::create(
                                   inputs.allocator,
                                   ImageDescription{
-                                      {texture.width, texture.height},
+                                      result.code->resource_extents[r],
                                       nativeTextureFormat(texture.format),
                                       usage,
                                       static_cast<VkSampleCountFlagBits>(texture.samples),

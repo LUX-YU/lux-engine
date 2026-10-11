@@ -46,15 +46,16 @@ namespace lux::render::vulkan
             const VulkanDevice& device,
             const NativeShaderProgram& program,
             std::span<const OwnerDescriptorValue> values,
-            EDescriptorUpdates updates = EDescriptorUpdates::IMMUTABLE
+            EDescriptorUpdates updates = EDescriptorUpdates::IMMUTABLE,
+            VkExtent2D target_extent = {}
         ) noexcept;
 
-        static RenderResult<BoundDescriptorSets>
-        create(
+        static RenderResult<BoundDescriptorSets> create(
             const VulkanDevice&,
             const NativeShaderProgram&&,
             std::span<const OwnerDescriptorValue>,
-            EDescriptorUpdates = EDescriptorUpdates::IMMUTABLE
+            EDescriptorUpdates = EDescriptorUpdates::IMMUTABLE,
+            VkExtent2D = {}
         ) = delete;
 
         BoundDescriptorSets(BoundDescriptorSets&&) noexcept = default;

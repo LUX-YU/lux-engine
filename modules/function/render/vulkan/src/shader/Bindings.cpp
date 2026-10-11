@@ -45,7 +45,8 @@ namespace lux::render::vulkan
         const VulkanDevice& device,
         const NativeShaderProgram& program,
         std::span<const OwnerDescriptorValue> values,
-        EDescriptorUpdates updates
+        EDescriptorUpdates updates,
+        VkExtent2D target_extent
     ) noexcept
     {
         if (program.device() != device.native())
@@ -164,10 +165,15 @@ namespace lux::render::vulkan
                                 const auto* range = std::get_if<ImageRange>(&resource->range);
                                 const auto& backing = view.backingDescription();
                                 const auto& native_range = view.range();
+                                const auto expected_extent = texture.extent_kind == EExtentKind::TARGET_RELATIVE
+                                                                 ? target_extent
+                                                                 : VkExtent2D{texture.width, texture.height};
                                 const bool wrong_backing =
+                                    texture.extent_kind == EExtentKind::DYNAMIC ||
                                     nativeTextureFormat(texture.format) != view.format() ||
-                                    texture.width != backing.extent.width || texture.height != backing.extent.height ||
-                                    texture.depth != 1 || texture.mip_count != backing.mip_levels ||
+                                    expected_extent.width != backing.extent.width ||
+                                    expected_extent.height != backing.extent.height || texture.depth != 1 ||
+                                    texture.mip_count != backing.mip_levels ||
                                     texture.array_layers != backing.array_layers || texture.samples != backing.samples;
                                 const bool wrong_range = !range || range->base_mip != native_range.baseMipLevel ||
                                                          range->mip_count != native_range.levelCount ||

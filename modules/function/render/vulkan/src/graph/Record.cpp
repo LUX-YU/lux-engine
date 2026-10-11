@@ -215,7 +215,7 @@ namespace lux::render::vulkan
             {
                 const auto resource = bindings.resourceFor(recipe.command.pass, use).value() - 1;
                 return std::pair{
-                    detail::bufferOf(slot.resources[resource])->native(),
+                    detail::bufferOf(detail::resourceAt(slot, resource))->native(),
                     std::get<BufferRange>(uses[use].range).byte_offset + relative + slot.buffer_offsets[resource]
                 };
             };
@@ -280,6 +280,16 @@ namespace lux::render::vulkan
         return code_->device;
     }
 
+    VkExtent2D ExecutableGraphPlan::targetExtent() const noexcept
+    {
+        return code_->target_extent;
+    }
+
+    std::span<const NativeShaderProgram> ExecutableGraphPlan::shaderPrograms() const noexcept
+    {
+        return code_->programs;
+    }
+
     NativeGraphStatistics ExecutableGraphPlan::statistics() const noexcept
     {
         return code_->statistics;
@@ -322,9 +332,10 @@ namespace lux::render::vulkan
         std::optional<SubmissionTicket> result;
         for (const auto& slot : backing_->slots)
         {
-            if (slot.completion && (!result || slot.completion->serial() > result->serial()))
+            const auto& retained = slot.queue_tickets[0];
+            if (retained && (!result || retained->serial() > result->serial()))
             {
-                result = slot.completion;
+                result = retained;
             }
         }
         return result;
@@ -348,7 +359,8 @@ namespace lux::render::vulkan
         std::uint32_t invocation_slot,
         const FrameGraphBindings& bindings,
         std::span<const NativeImportBinding> imports,
-        std::span<NativeTraceEvent> trace
+        std::span<NativeTraceEvent> trace,
+        std::optional<GraphSubmission> scene_source
     ) noexcept
     {
         auto& plan = *backing_;
@@ -380,6 +392,51 @@ namespace lux::render::vulkan
             }
         };
         auto& slot = plan.slots[invocation_slot];
+        detail::GraphSlot* donor = nullptr;
+        if (scene_source)
+        {
+            const bool invalid_receipt =
+                !detail::matchesReceipt(plan, *scene_source) || scene_source->slot == invocation_slot;
+            if (invalid_receipt)
+            {
+                return cxx::unexpected(RenderError{kWrongOwner});
+            }
+            donor = &plan.slots[scene_source->slot];
+            const bool invalid_source = donor->scene_source.has_value() || donor->external_use ||
+                                        donor->accepted_frame.frame_serial != bindings.frame().frame_serial ||
+                                        !plan.code->scene_reuse_supported;
+            if (invalid_source)
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument});
+            }
+            auto source = FrameGraphBindings::create(
+                plan.code->logical,
+                donor->accepted_frame,
+                donor->accepted_imports,
+                donor->accepted_values
+            );
+            if (!source)
+            {
+                return cxx::unexpected(source.error());
+            }
+            bool found = false;
+            for (const auto id : plan.code->logical.executionOrder())
+            {
+                if (!plan.code->logical.sceneShareEligible()[id.value() - 1])
+                {
+                    continue;
+                }
+                found = true;
+                if (!mayShareSceneInvocation(id, *source, bindings))
+                {
+                    return cxx::unexpected(RenderError{kInvalidArgument, {id.value()}});
+                }
+            }
+            if (!found)
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument});
+            }
+        }
         for (auto* queue : plan.code->queues)
         {
             auto completion = queue->poll();
@@ -416,7 +473,18 @@ namespace lux::render::vulkan
                 return cxx::unexpected(RenderError{kCapacity});
             }
         }
-        auto prepared = detail::prepareSlot(plan, slot, bindings, imports);
+        std::fill(slot.shared_resources.begin(), slot.shared_resources.end(), nullptr);
+        if (donor)
+        {
+            for (std::size_t r = 0; r < slot.shared_resources.size(); ++r)
+            {
+                if (plan.code->scene_resources[r])
+                {
+                    slot.shared_resources[r] = &detail::resourceAt(*donor, r);
+                }
+            }
+        }
+        auto prepared = detail::prepareSlot(plan, slot, bindings, imports, donor);
         if (!prepared)
         {
             return cxx::unexpected(prepared.error());
@@ -436,6 +504,17 @@ namespace lux::render::vulkan
                 }
             }
         }
+        if (donor)
+        {
+            for (std::size_t c = 0; c < plan.code->cells.size(); ++c)
+            {
+                if (plan.code->scene_resources[plan.code->cells[c].resource.value() - 1])
+                {
+                    slot.states[c] = donor->states[c];
+                    slot.cell_tickets[c] = donor->cell_tickets[c];
+                }
+            }
+        }
         for (auto& ticket : slot.pass_tickets)
         {
             ticket.reset();
@@ -446,8 +525,11 @@ namespace lux::render::vulkan
             const auto pass_index = recipe.command.pass.value() - 1;
             const auto& invocation = *bindings.invocation(recipe.command.pass);
             const auto pass_key = plan.code->logical.identity().passes[pass_index].key;
+            const bool reuse = donor && plan.code->logical.sceneShareEligible()[pass_index];
             observe(
-                {invocation.enabled ? ENativeTrace::PASS : ENativeTrace::SKIP,
+                {reuse                ? ENativeTrace::REUSE_SCENE
+                 : invocation.enabled ? ENativeTrace::PASS
+                                      : ENativeTrace::SKIP,
                  recipe.command.pass,
                  pass_key,
                  {},
@@ -457,6 +539,11 @@ namespace lux::render::vulkan
                  {},
                  {}}
             );
+            if (reuse)
+            {
+                slot.pass_tickets[pass_index] = donor->pass_tickets[pass_index];
+                continue;
+            }
             if (!invocation.enabled)
             {
                 continue;
@@ -521,7 +608,7 @@ namespace lux::render::vulkan
                         barrier(
                             release->native(),
                             cell,
-                            slot.resources[cell.resource.value() - 1],
+                            detail::resourceAt(slot, cell.resource.value() - 1),
                             slot.states[c],
                             use.destination,
                             EBarrierPart::RELEASE,
@@ -627,7 +714,7 @@ namespace lux::render::vulkan
                     barrier(
                         command,
                         cell,
-                        slot.resources[cell.resource.value() - 1],
+                        detail::resourceAt(slot, cell.resource.value() - 1),
                         source,
                         use.destination,
                         acquire ? EBarrierPart::ACQUIRE : EBarrierPart::COMPLETE,
@@ -693,7 +780,7 @@ namespace lux::render::vulkan
                     barrier(
                         command,
                         cell,
-                        slot.resources[cell.resource.value() - 1],
+                        detail::resourceAt(slot, cell.resource.value() - 1),
                         use.destination,
                         host,
                         EBarrierPart::COMPLETE,
@@ -758,6 +845,25 @@ namespace lux::render::vulkan
         slot.queue_tickets[0] = *last;
         slot.completion = *last;
         slot.frame_serial = bindings.frame().frame_serial;
+        slot.accepted_frame = bindings.frame();
+        slot.accepted_values = *bindings.values();
+        std::copy(bindings.imports().begin(), bindings.imports().end(), slot.accepted_imports.begin());
+        slot.scene_source = scene_source ? std::optional{scene_source->slot} : std::nullopt;
+        if (donor)
+        {
+            // A consumer's join covers every queue, including unchanged Scene
+            // output borrows. Keep the donor receipt stable while extending its
+            // lifetime; serials never compare across queue owners.
+            donor->queue_tickets[0] = *last;
+            for (std::size_t c = 0; c < plan.code->cells.size(); ++c)
+            {
+                if (plan.code->scene_resources[plan.code->cells[c].resource.value() - 1])
+                {
+                    donor->states[c] = slot.states[c];
+                    donor->cell_tickets[c] = slot.cell_tickets[c];
+                }
+            }
+        }
         return GraphSubmission{*last, invocation_slot, trace_count};
     }
 
@@ -811,7 +917,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        const auto* buffer = detail::bufferOf(resources[resource.value() - 1]);
+        const auto* buffer = detail::bufferOf(detail::resourceAt(backing_->slots[receipt.slot], resource.value() - 1));
         if (!buffer)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});

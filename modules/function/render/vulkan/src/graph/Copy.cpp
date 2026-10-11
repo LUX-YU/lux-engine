@@ -110,6 +110,7 @@ namespace lux::render::vulkan::detail
 
         RenderResult<CopyRecipe> bufferImage(
             const GraphResource& image,
+            VkExtent2D extent,
             ImageRange range,
             BufferRange bytes,
             std::uint32_t source,
@@ -133,8 +134,8 @@ namespace lux::render::vulkan::detail
             for (std::uint32_t m = 0; m < range.mip_count; ++m)
             {
                 const auto mip = range.base_mip + m;
-                const auto width = std::max(1u, image.texture().width >> mip);
-                const auto height = std::max(1u, image.texture().height >> mip);
+                const auto width = std::max(1u, extent.width >> mip);
+                const auto height = std::max(1u, extent.height >> mip);
                 const auto size = VkDeviceSize{(width + block.width - 1) / block.width} *
                                   ((height + block.width - 1) / block.width) * range.layer_count * block.bytes;
                 cursor += (alignment - cursor % alignment) % alignment;
@@ -157,7 +158,11 @@ namespace lux::render::vulkan::detail
         }
     } // namespace
 
-    RenderResult<void> compileCopies(NativePassRecipe& recipe, const LogicalGraphPlan& plan) noexcept
+    RenderResult<void> compileCopies(
+        NativePassRecipe& recipe,
+        const LogicalGraphPlan& plan,
+        std::span<const VkExtent2D> extents
+    ) noexcept
     {
         const auto p = recipe.command.pass.value() - 1;
         const auto& pass = plan.identity().passes[p];
@@ -199,10 +204,10 @@ namespace lux::render::vulkan::detail
                 for (std::uint32_t m = 0; m < from_image->mip_count; ++m)
                 {
                     const auto a = from_image->base_mip + m, b = to_image->base_mip + m;
-                    const auto width = std::max(1u, image_or_buffer.texture().width >> a);
-                    const auto height = std::max(1u, image_or_buffer.texture().height >> a);
-                    if (width != std::max(1u, target.texture().width >> b) ||
-                        height != std::max(1u, target.texture().height >> b))
+                    const auto width = std::max(1u, extents[source.resource.value() - 1].width >> a);
+                    const auto height = std::max(1u, extents[source.resource.value() - 1].height >> a);
+                    if (width != std::max(1u, extents[pass.uses[*destination].resource.value() - 1].width >> b) ||
+                        height != std::max(1u, extents[pass.uses[*destination].resource.value() - 1].height >> b))
                     {
                         return cxx::unexpected(RenderError{kInvalidArgument});
                     }
@@ -230,7 +235,14 @@ namespace lux::render::vulkan::detail
                 const auto bytes =
                     !destination ? BufferRange{0, std::numeric_limits<std::uint64_t>::max()}
                                  : std::get<BufferRange>(from_image ? pass.uses[*destination].range : source.range);
-                auto copy = bufferImage(image, from_image ? *from_image : *to_image, bytes, u, destination);
+                auto copy = bufferImage(
+                    image,
+                    extents[(from_image ? source.resource : pass.uses[*destination].resource).value() - 1],
+                    from_image ? *from_image : *to_image,
+                    bytes,
+                    u,
+                    destination
+                );
                 if (!copy)
                 {
                     return cxx::unexpected(copy.error());
@@ -273,10 +285,10 @@ namespace lux::render::vulkan::detail
             const auto a = bindings.resourceFor(recipe.command.pass, copy.source_use).value() - 1;
             const auto b =
                 copy.destination_use ? bindings.resourceFor(recipe.command.pass, *copy.destination_use).value() - 1 : 0;
-            const auto* from_image = imageOf(slot.resources[a]);
-            const auto* from_buffer = bufferOf(slot.resources[a]);
-            const auto* to_image = copy.destination_use ? imageOf(slot.resources[b]) : nullptr;
-            const auto* to_buffer = copy.destination_use ? bufferOf(slot.resources[b])
+            const auto* from_image = imageOf(resourceAt(slot, a));
+            const auto* from_buffer = bufferOf(resourceAt(slot, a));
+            const auto* to_image = copy.destination_use ? imageOf(resourceAt(slot, b)) : nullptr;
+            const auto* to_buffer = copy.destination_use ? bufferOf(resourceAt(slot, b))
                                                          : &slot.passes[recipe.command.pass.value() - 1].readbacks[c];
             const auto destination_offset = copy.destination_use ? slot.buffer_offsets[b] : 0;
             if (const auto* buffer = std::get_if<VkBufferCopy>(&copy.regions))

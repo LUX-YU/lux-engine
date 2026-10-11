@@ -7,7 +7,7 @@
 
 using namespace native_graph_test;
 
-void invocationCase(const std::filesystem::path& shaders, Validation& validation, unsigned frames)
+void invocationCase(const std::filesystem::path& shaders, Validation& validation, unsigned frames, bool sharing)
 {
     auto host = instance(validation);
     DeviceOptions options;
@@ -24,7 +24,9 @@ void invocationCase(const std::filesystem::path& shaders, Validation& validation
     const auto output = builder.buffer({256, 4}, "invocation.readback");
     F4Fill fill;
     fill.output.texture = hdr;
-    const auto compute = checked(builder.compute("fill", {{"F4Fill", "default"}}, EExecutionScope::VIEW, fill));
+    const auto compute = checked(
+        builder.compute("fill", {{"F4Fill", "default"}}, sharing ? EExecutionScope::SCENE : EExecutionScope::VIEW, fill)
+    );
     F3Tonemap tonemap;
     tonemap.input.texture = hdr;
     tonemap.nearest.sampler = GraphSampler{1};
@@ -78,6 +80,7 @@ void invocationCase(const std::filesystem::path& shaders, Validation& validation
     }
     std::array<GraphImportBinding, 0> imports;
     std::array<std::optional<GraphSubmission>, 12> receipts;
+    std::vector<NativeTraceEvent> trace(invocations.traceCapacity());
     for (unsigned round = 0; round < 25; ++round)
     {
         allocation_count = allocation_bytes = 0;
@@ -93,7 +96,18 @@ void invocationCase(const std::filesystem::path& shaders, Validation& validation
                     imports,
                     values[view]
                 ));
-                receipts[slot] = checked(invocations.submit(slot, bindings, {}));
+                const auto source = sharing && view != 0 ? receipts[frame * 4] : std::optional<GraphSubmission>{};
+                receipts[slot] = checked(invocations.submit(slot, bindings, {}, trace, source));
+                unsigned executed = 0, reused = 0;
+                for (unsigned t = 0; t < receipts[slot]->trace_count; ++t)
+                {
+                    if (trace[t].pass == compute)
+                    {
+                        executed += trace[t].operation == ENativeTrace::PASS;
+                        reused += trace[t].operation == ENativeTrace::REUSE_SCENE;
+                    }
+                }
+                CHECK(executed == (source ? 0u : 1u) && reused == (source ? 1u : 0u));
             }
         }
         measuring = false;
@@ -127,10 +141,28 @@ void invocationCase(const std::filesystem::path& shaders, Validation& validation
         const auto wrong = other.completed(*receipts[0]);
         CHECK(!wrong && wrong.error().type == kWrongOwner);
     }
+    if (sharing)
+    {
+        const auto frame = GraphFrameValues{1000, 0, 0};
+        const auto first = checked(FrameGraphBindings::create(plan.logical(), frame, imports, values[0]));
+        const auto donor = checked(invocations.submit(0, first, {}));
+        ++values[1].scene_revision;
+        const auto changed = checked(FrameGraphBindings::create(plan.logical(), frame, imports, values[1]));
+        const auto refused = invocations.submit(1, changed, {}, {}, donor);
+        CHECK(!refused && refused.error().type == kInvalidArgument);
+        --values[1].scene_revision;
+        // The donor's accepted snapshot survives host-side source mutation.
+        ++values[0].scene_revision;
+        const auto compatible = checked(FrameGraphBindings::create(plan.logical(), frame, imports, values[1]));
+        const auto reused = checked(invocations.submit(1, compatible, {}, {}, donor));
+        CHECK(checked(queue->wait(reused.completion, UINT64_MAX)));
+    }
     std::printf(
-        "NATIVE_INVOCATIONS views=4 FIF=%u capacity=%u plans=1 pixel_oracles=PASS warmed_allocations=0\n",
+        "NATIVE_INVOCATIONS views=4 FIF=%u capacity=%u plans=1 scene_reuse=%u pixel_oracles=PASS "
+        "warmed_allocations=0\n",
         frames,
-        capacity
+        capacity,
+        sharing
     );
 }
 
@@ -138,8 +170,10 @@ int main(int argc, char** argv)
 {
     CHECK(argc == 2);
     Validation validation;
-    invocationCase(argv[1], validation, 2);
-    invocationCase(argv[1], validation, 3);
+    invocationCase(argv[1], validation, 2, false);
+    invocationCase(argv[1], validation, 2, true);
+    invocationCase(argv[1], validation, 3, false);
+    invocationCase(argv[1], validation, 3, true);
     CHECK(validation.errors == 0);
     std::printf("validation_errors=%u\n", validation.errors.load());
 }

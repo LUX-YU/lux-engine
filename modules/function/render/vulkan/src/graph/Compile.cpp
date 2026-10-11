@@ -8,10 +8,10 @@ namespace lux::render::vulkan
     {
         NativeGraphCode::NativeGraphCode(
             const NativeCompileInputs& inputs,
-            std::vector<NativeShaderProgram> candidates
+            std::shared_ptr<const std::vector<NativeShaderProgram>> candidates
         ) noexcept
             : logical(inputs.logical), device(inputs.device.native()), queues(inputs.queues),
-              programs(std::move(candidates))
+              program_owner(std::move(candidates)), programs(*program_owner), target_extent(inputs.target_extent)
         {
         }
 
@@ -46,9 +46,9 @@ namespace lux::render::vulkan
         }
     } // namespace detail
 
-    RenderResult<ExecutableGraphPlan> compileVulkanGraph(
+    static RenderResult<std::shared_ptr<const detail::NativeGraphCode>> compileNativeCode(
         const NativeCompileInputs& inputs,
-        std::vector<NativeShaderProgram> programs
+        std::shared_ptr<const std::vector<NativeShaderProgram>> programs
     ) noexcept
     {
         const auto started = std::chrono::steady_clock::now();
@@ -69,7 +69,7 @@ namespace lux::render::vulkan
             }
         }
         std::vector<bool> covered(identity.passes.size());
-        for (const auto& program : programs)
+        for (const auto& program : *programs)
         {
             const auto& key = program.identity();
             const bool invalid = key.device_scope != inputs.device.native() ||
@@ -116,7 +116,34 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(sync.error());
         }
-        return ExecutableGraphPlan{std::move(result)};
+        return std::shared_ptr<const detail::NativeGraphCode>{std::move(result)};
+    }
+
+    RenderResult<ExecutableGraphPlan> compileVulkanGraph(
+        const NativeCompileInputs& inputs,
+        std::vector<NativeShaderProgram> programs
+    ) noexcept
+    {
+        auto code =
+            compileNativeCode(inputs, std::make_shared<const std::vector<NativeShaderProgram>>(std::move(programs)));
+        if (!code)
+        {
+            return cxx::unexpected(code.error());
+        }
+        return ExecutableGraphPlan{std::move(*code)};
+    }
+
+    RenderResult<ExecutableGraphPlan> specializeVulkanGraph(
+        const NativeCompileInputs& inputs,
+        const ExecutableGraphPlan& shaders
+    ) noexcept
+    {
+        auto code = compileNativeCode(inputs, shaders.code_->program_owner);
+        if (!code)
+        {
+            return cxx::unexpected(code.error());
+        }
+        return ExecutableGraphPlan{std::move(*code)};
     }
 
     RenderResult<NativeGraphInvocations> NativeGraphInvocations::create(

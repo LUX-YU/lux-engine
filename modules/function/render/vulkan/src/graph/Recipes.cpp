@@ -685,8 +685,13 @@ namespace lux::render::vulkan::detail
             if (recipe.program)
             {
                 const auto& program = result.code->programs[*recipe.program];
-                auto descriptors =
-                    BoundDescriptorSets::create(inputs.device, program, values, EDescriptorUpdates::COMPLETED_ONLY);
+                auto descriptors = BoundDescriptorSets::create(
+                    inputs.device,
+                    program,
+                    values,
+                    EDescriptorUpdates::COMPLETED_ONLY,
+                    result.code->target_extent
+                );
                 if (!descriptors)
                 {
                     return cxx::unexpected(descriptors.error());
@@ -769,7 +774,7 @@ namespace lux::render::vulkan::detail
             NativePassRecipe recipe{command};
             if (std::holds_alternative<CopyCommand>(command.command))
             {
-                auto copies = compileCopies(recipe, result.logical);
+                auto copies = compileCopies(recipe, result.logical, result.resource_extents);
                 if (!copies)
                 {
                     return cxx::unexpected(copies.error());

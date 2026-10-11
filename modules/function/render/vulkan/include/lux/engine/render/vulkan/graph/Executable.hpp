@@ -150,6 +150,8 @@ namespace lux::render::vulkan
         std::array<SubmissionQueue*, 3> queues;
         std::span<const NativePassCommand> commands;
         bool alias{true};
+        // Physical 1:1 TARGET_RELATIVE extent; zero is only legal for absolute graphs.
+        VkExtent2D target_extent{};
     };
 
     // Cold allocation inputs for a fixed, bounded number of independent
@@ -186,6 +188,7 @@ namespace lux::render::vulkan
     {
         PASS,
         SKIP,
+        REUSE_SCENE,
         TRANSITION,
         RELEASE,
         ACQUIRE,
@@ -212,6 +215,13 @@ namespace lux::render::vulkan
         std::vector<NativeShaderProgram> programs
     ) noexcept;
 
+    // Cold physical specialization, retaining the exact immutable Shader/PSO/Layout
+    // owners from compatible code. Uses the same compiler and full identity checks.
+    [[nodiscard]] RenderResult<ExecutableGraphPlan> specializeVulkanGraph(
+        const NativeCompileInputs& inputs,
+        const ExecutableGraphPlan& shaders
+    ) noexcept;
+
     // Immutable native code. Invocation owners pin this code once at cold
     // construction; submission does not copy pipelines or churn shared owners.
     class ExecutableGraphPlan
@@ -224,11 +234,15 @@ namespace lux::render::vulkan
         ExecutableGraphPlan& operator=(const ExecutableGraphPlan&) = delete;
         [[nodiscard]] const LogicalGraphPlan& logical() const noexcept;
         [[nodiscard]] VkDevice device() const noexcept;
+        [[nodiscard]] VkExtent2D targetExtent() const noexcept;
+        [[nodiscard]] std::span<const NativeShaderProgram> shaderPrograms() const noexcept;
         [[nodiscard]] NativeGraphStatistics statistics() const noexcept;
         [[nodiscard]] std::span<const NativeViewRequirement> importViews(GraphResourceId resource) const noexcept;
 
     private:
         friend class NativeGraphInvocations;
+        friend RenderResult<ExecutableGraphPlan>
+        specializeVulkanGraph(const NativeCompileInputs&, const ExecutableGraphPlan&) noexcept;
         friend RenderResult<ExecutableGraphPlan>
         compileVulkanGraph(const NativeCompileInputs&, std::vector<NativeShaderProgram>) noexcept;
         ExecutableGraphPlan(std::shared_ptr<const detail::NativeGraphCode> code) noexcept;
@@ -258,11 +272,15 @@ namespace lux::render::vulkan
         [[nodiscard]] std::size_t traceCapacity() const noexcept;
         [[nodiscard]] std::span<const NativeViewRequirement> importViews(GraphResourceId resource) const noexcept;
 
+        // Reuse requires an accepted same-frame donor in this owner. The owner
+        // compares captured inputs with F2 scope proof, retains actual backing
+        // through every consumer completion, and never treats revision as a fence.
         [[nodiscard]] RenderResult<GraphSubmission> submit(
             std::uint32_t invocation_slot,
             const FrameGraphBindings& bindings,
             std::span<const NativeImportBinding> imports,
-            std::span<NativeTraceEvent> trace = {}
+            std::span<NativeTraceEvent> trace = {},
+            std::optional<GraphSubmission> scene_source = {}
         ) noexcept;
 
         [[nodiscard]] RenderResult<bool> completed(GraphSubmission receipt) noexcept;

@@ -192,12 +192,12 @@ namespace lux::render::vulkan::detail
                                 using T = std::remove_cvref_t<decltype(owner.get())>;
                                 if constexpr (std::same_as<T, Buffer>)
                                 {
-                                    const auto* buffer = bufferOf(previous.resources[previous_resource]);
+                                    const auto* buffer = bufferOf(resourceAt(previous, previous_resource));
                                     return buffer && buffer->native() == owner.get().native();
                                 }
                                 else
                                 {
-                                    const auto* image = imageOf(previous.resources[previous_resource]);
+                                    const auto* image = imageOf(resourceAt(previous, previous_resource));
                                     return image && image->native() == owner.get().native();
                                 }
                             },
@@ -219,7 +219,7 @@ namespace lux::render::vulkan::detail
                                     return false;
                                 }
                             },
-                            previous.resources[previous_resource]
+                            resourceAt(previous, previous_resource)
                         );
                         // An ordering ticket proves execution order, not the
                         // distinct-handle alias memory dependency/layout recipe.
@@ -247,13 +247,15 @@ namespace lux::render::vulkan::detail
                 const auto& image = std::get<std::reference_wrapper<const Image>>(input.backing).get();
                 const auto& actual = image.description();
                 const auto& expected = declaration.texture();
-                const bool invalid =
-                    image.device() != plan.code->device || !image.native() ||
-                    (actual.usage & plan.code->resource_usage[r]) != plan.code->resource_usage[r] ||
-                    actual.format != nativeTextureFormat(expected.format) || actual.extent.width != expected.width ||
-                    actual.extent.height != expected.height || actual.mip_levels != expected.mip_count ||
-                    actual.array_layers != expected.array_layers || actual.samples != expected.samples ||
-                    (!input.views.empty() && input.views.size() != plan.code->import_views[r].size());
+                const bool invalid = image.device() != plan.code->device || !image.native() ||
+                                     (actual.usage & plan.code->resource_usage[r]) != plan.code->resource_usage[r] ||
+                                     actual.format != nativeTextureFormat(expected.format) ||
+                                     actual.extent.width != plan.code->resource_extents[r].width ||
+                                     actual.extent.height != plan.code->resource_extents[r].height ||
+                                     actual.mip_levels != expected.mip_count ||
+                                     actual.array_layers != expected.array_layers ||
+                                     actual.samples != expected.samples ||
+                                     (!input.views.empty() && input.views.size() != plan.code->import_views[r].size());
                 if (invalid)
                 {
                     return cxx::unexpected(RenderError{kInvalidArgument, {i}});
@@ -283,7 +285,8 @@ namespace lux::render::vulkan::detail
         NativeGraphBacking& plan,
         GraphSlot& slot,
         const FrameGraphBindings& bindings,
-        std::span<const NativeImportBinding> imports
+        std::span<const NativeImportBinding> imports,
+        const GraphSlot* scene_source
     ) noexcept
     {
         auto valid = validateImports(plan, bindings, imports);
@@ -329,6 +332,11 @@ namespace lux::render::vulkan::detail
                 const auto& patch = pass.view_patches[v];
                 const auto r = patch.resource.value() - 1;
                 pass.current_views[v] = &pass.views[v];
+                if (scene_source && plan.code->scene_resources[r])
+                {
+                    pass.current_views[v] = scene_source->passes[p].current_views[v];
+                    continue;
+                }
                 if (patch.import_view)
                 {
                     const auto& input = imports[*plan.code->import_positions[r]];
@@ -336,7 +344,7 @@ namespace lux::render::vulkan::detail
                     {
                         pass.current_views[v] = &input.views[*patch.import_view].get();
                     }
-                    else if (pass.views[v].image() != imageOf(slot.resources[r])->native())
+                    else if (pass.views[v].image() != imageOf(resourceAt(slot, r))->native())
                     {
                         return cxx::unexpected(RenderError{kInvalidArgument, {r + 1, v}});
                     }
@@ -378,7 +386,7 @@ namespace lux::render::vulkan::detail
                 {
                     const auto range = std::get<BufferRange>(use.range);
                     value = BufferDescriptorValue{
-                        std::cref(*bufferOf(slot.resources[selected.value() - 1])),
+                        std::cref(*bufferOf(resourceAt(slot, selected.value() - 1))),
                         range.byte_offset + slot.buffer_offsets[selected.value() - 1],
                         range.byte_count
                     };

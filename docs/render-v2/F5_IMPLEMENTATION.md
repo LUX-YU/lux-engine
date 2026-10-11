@@ -35,3 +35,32 @@
 
 Runtime 执行线程与 Transport 装配、Scene 工作共享的原生证明、共享 Asset backing、真实 Target-relative extent/Resize/Minimize/Presentation、Stop/Device Lost、独立 pacing、诊断出口、完整类型/依赖清单、最终 I/V 和性能资格仍须完成。
 F4 冷态 p95 的延期结论保持原样；F6/F7 尚未授权。
+
+## Scene reuse / Target physical specialization development evidence
+
+- `native-regression.log`: 19/19, including W01, shared owners, compute descriptors,
+  Shader/Graph candidate rollback, Native Graph, C1/C2/C3, all five Draw modes, and two F5 fixtures.
+- `NativeInvocations` now also runs Scene compute once with four View executions in 2/3 FIF.
+  Native owner captures the accepted values/imports; a same-frame donor is checked using F2
+  `mayShareSceneInvocation`. Changed revision is rejected. Caller mutation cannot rewrite the
+  donor snapshot. Actual shared resource states/tickets advance with each consumer; donor
+  retention follows their GPU joins. External borrowing also extends the donor and invalidates
+  state reuse until its owner supplies a new invocation. No revision is treated as a fence.
+- Shared outputs cannot alias View scratch; a non-shared writer to that backing disallows this
+  reuse path. Native fixture allocation still reserves bounded private scratch per invocation;
+  these are not duplicate Scene data authorities. Runtime owns the eventual sharing/cache policy.
+- `TargetExtent`: 1:1 TARGET_RELATIVE 4x4→6x3, explicit physical dimensions in allocation, copy,
+  and descriptor validation. Actual Shader/PSO/Layout owner address is identical across physical
+  specializations. Zero extent is rejected before allocation; old invocation remains readable
+  after failed candidate and while new size executes. CPU pixel oracle passes, validation 0 error.
+- The public Plan handle can be destroyed while invocation/code pins retain native programs.
+  Cold `specializeVulkanGraph` calls the same native compiler, not a parallel compiler.
+- Relative scaling expressions and DYNAMIC extent classes are not inferred from nominal width/
+  height. Current native 1:1 contract requires nominal width=height=1. This limitation must remain
+  explicit when reviewing Target authoring consumers; it is not a hardware fallback.
+- Original failures `target-entry-gpu.log` (Unsupported) and `extent-gpu.log` (descriptor extent
+  mismatch) remain archived. Corrected result is `extent-gpu-2.log`.
+
+These are development results, not the final independent F5 qualification. Runtime, WSI,
+independent pacing, lifecycle/failure integration, final hot performance and clean-clone I/V
+remain outstanding. No F6/F7 authorization is inferred.

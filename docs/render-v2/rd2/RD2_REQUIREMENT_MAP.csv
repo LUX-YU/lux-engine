@@ -1,0 +1,163 @@
+SourceTable,Id,Name,OriginalPhase,RD2Chapters,Disposition,SourceRowSHA256,NewFunctionalEvidence
+LegacyCapabilityMatrix.csv,F01,MeshStack instance/transform/visibility/retire,F8,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,b2b492d28231b361c0ae1683dc3d27bf2051328e67f03d6b70bb4a720765bc11,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F02,Forward GPU-driven mesh,F8,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,206bf1937e92ce8d58d053bcc1749db7102c0c44b9237aa3dafc7ff63a07422b,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F03,Deferred GBuffer GPU-driven mesh,F8,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,e99d81180716d45419143b6aeb05bbd1153271b7e02f71295b70fee9e643da3e,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F04,Deferred clustered lighting,F9,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,8efe632fd87777c4c0494c51145cfe64829ca10ece204f68bb190a79364b0dd1,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F05,Light scene data provider,F9,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,0be85ac71c4faecc8f4faa3f75682b6a9f03c89000d358dd4d97eff2c21d0dcd,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F06,StandardMaterial / graph materials,F8,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,7d7dbf19d44c9c39d002003b944ceee32f206257c7b68aa0ce1f6a8f9e64bf71,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F07,Depth prepass,F8,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,0009cb39a2fe79e201abd133f806aa721a9b92fa5c3b4ed1ee3d057cf09b5068,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F08,ShadowMap PCF/EVSM/CSM,F9,"12,13",保留原要求与全部验收义务；本轮仅文档对账。,9f809e32b687468d3128fe32c15ff237ab403cd62c1f105ac290cb43aaac12b5,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F09,Mesh shadow GPU-driven casting,F9,"12,13",保留原要求与全部验收义务；本轮仅文档对账。,2fd7309fded2f31ee6c385e698ab3eea2675bd0993e34761e75a1ab72c6e7c1c,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F10,HZB mip build and view history,F9,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,94a4634b45d3d13c7a628260e5097142fe2eba52e3701cffa1bac35dfeac4fd9,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F11,Spatial cell coarse culling,F8,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,f82347d7e2d49be50e368c70ff51ad49cc6c551e0d36ad0a9bdc7557b442fb80,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F12,GPU pre-skinning / bone palette,F8,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,523142b7e500fb902c6f353be204d54403f8c73e8f810bbae5129fe6245da6ec,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F13,RenderCluster hierarchy / GPU cull / raster picking,F8,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,cb7ae22cf92a26d8e64867978295b8b05febd48bb4d931ac155964dab1066370,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F14,Standard per-View camera,F8,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,02770366b4f211cff30410edd99e0a8cd7b18bebf5ac1cba4e223ac8e57b0f70,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F15,Tonemap / exposure,F9,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,2ac4b3c12ffcd39e27bef700e93692d879d477a9f21a5bfec11c018480c80f80,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F16,SSAO,F9,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,8378b98db784b1a10b67b43bd99e57fa2773861a834a790c503f400f7873e00f,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F17,Linear Depth,F9,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,a638287adf291032ce6e4cbe6ab0a5eaf2f02c0f8d158b6e1406b9c0e0f8a3d1,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F18,Fog,F9,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,d7b025e3239542da5313d686d2b0ff5aae7a55ccb949ae646b16dfc527c8a255,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F19,Highlight mask blur composite,F9,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,e8134de9250d315aee109455c98b2091a1c9cb2f765dcc49d9407290c1250944,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F20,Skybox cubemap/equirect,F9,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,049686a7976fd1e872a1dd1fcced84f6babd18fc66445ad629295c88f252e5e8,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F21,Grid 2D,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,a394b0a101c37bbe0973bb164b8a44a117f3e9970ce3e2469489dc51749c0141,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F22,Grid 3D,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,fb6ee60f264b78052d89f473a2da0cb749ec18c580315b7a6572fac36cc77ffe,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F23,Gizmo transient line,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,59ebc56999b79670f5718c9a81c3000d5abbed1c4140434352046723d5b3a040,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F24,Gizmo transient triangle,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,6e5439cc6e9cc0a2653a300f4a05ce55d126de62b75cac1bba2a6556832aa2e8,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F25,Canvas2D image/pixel field/tilemap/grouping,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,cf6d9ae1c2acec93d1b76fb4c7c138364f0113a46b87cbd06e32d5e112ac9066,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F26,Terrain page stream/LOD/fallback,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,b56a78fbe08552fce5f35ebf1020f7caf05fa70c38525c436068ea82241383b4,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F27,Water surfaces,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,0272e87e59a148dc60a05955c8ec1558bbee3e722dc52c556a3234d5142c32c4,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F28,Trajectory lines,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,cc675302a17c8aa50ce7171c958687f4cdf4c7ecb51d1c052ccc63af0d56b7dc,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F29,Streaming visual feedback,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,5cf301f4bc6f2c44bc58dba18468561cd205480eb57ca38ca7ead5d9076e0cbd,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F30,PointCloud Simple: CPU-fed direct point cloud,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,32996919ab9a1d4bd8260bedbbe38d67fb9eb4f0a8a074f32817b0f939c46afc,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F31,PointCloud GPUDriven: compute cull/indirect GPU-driven points,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,79a37239264940a81dd04a6e40cffd72a5432efddecfac2074cdce8e579d384c,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F32,PointCloud LOD: point size/depth LOD octree,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,2144a9917766cedef4d4423b308bdd03a158e26fd9b404b9eeeb60ee101562c4,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F33,PointCloud Splatting: Gaussian soft-splat point cloud (not full 3DGS),F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,ee2dd3588c32532a3aaff90ae995ade68b9e6c3838b53cb7cf89f61201dcf955,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F34,PointCloud Transient: per-frame transient points,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,5de5feda3a663e03796b387325f26b252a957b73ddb4dfa4163c4b484265f39f,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F35,GPU point resource storage & octree,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,64dba1a7ca881f9f32695ca095ef6a1e1e150f2eb906b39f035313558d4cdf19,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,F36,Scene-level trajectory global buffer,F10,"05,06,11,12",保留原要求与全部验收义务；本轮仅文档对账。,c06987ea257cfcd3c037aec8fc8f1027f133642f0eac4fe5e877cd86f395b7d4,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I01,Fluent graph authoring/Pass builder,F1,"06,07,09",保留原要求与全部验收义务；本轮仅文档对账。,1052c55baa129599ec8b0ee41acd12bb165089145fe414fb435f4a263f29426b,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I02,Logical hazard analyzer,F2,"06,07,09",保留原要求与全部验收义务；本轮仅文档对账。,7341f7a9c3038e86220c7c6afb756ee70e3213a63a86869e56f68143d20665fa,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I03,Native graph compilation/barriers,F4,"06,07,09",保留原要求与全部验收义务；本轮仅文档对账。,35da21b3430d695da7cfe49282b6abcdae925af42bb087f811e8a81fcc7ada22,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I04,Graph recorder and executable program,F4,"06,07,09",保留原要求与全部验收义务；本轮仅文档对账。,f21b8e4ad946a395b28183dc56f4f345fe8a967e679c1eef25dc4d5718c4f6b9,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I05,Physical transient allocator/aliasing,F4,"06,07,09",保留原要求与全部验收义务；本轮仅文档对账。,22023ac96a6546562ef94fc15546bac00903123626083924853941d01b3ad9e7,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I06,Transactional graph cache,F5,"06,07,09",保留原要求与全部验收义务；本轮仅文档对账。,1fd4990aee776793b95db3307551faaafabf8928146436ce204f12912286ad8a,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I07,Generated PassParams HPP,F1,"03,08",保留原要求与全部验收义务；本轮仅文档对账。,69a3afe43f1b2e97f2fc8a04e369a0f0ef1c04dcab889024005c2bdd2b7b996d,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I08,Generated PassParams GLSL,F1,"03,08",保留原要求与全部验收义务；本轮仅文档对账。,20cddb699b65b653eb97f2ecac48396d07df5c33d26e60f11d1f31cd05684f5c,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I09,Layout plan/descriptor layout,F3,"03,08",保留原要求与全部验收义务；本轮仅文档对账。,8eb521f0d0a46d7b93d501b61af775f72cc1978803182140f6772cb2f72013de,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I10,SPIR-V binding relocation,F3,"03,08",保留原要求与全部验收义务；本轮仅文档对账。,b718b8fa416d0b33399a5c4c002918030a5bd9ab09c6c96da626fa6cb71d25a5,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I11,Engine shared descriptor set shapes,F3,"03,08",D16 修改未来 full-shape authority；F3 历史资格保留，F6 重验 multi-owner。,ab09f011e3650e6259e296c72fb6490ffc1063fb610d3796c1cd83449cfaff31,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I12,Shader resource catalog and variants,F3,"03,08",保留原要求与全部验收义务；本轮仅文档对账。,06b9a32404003fd4e248de5bf19afc0be9dfb5425aa1f2203c7014f1a4b7a5aa,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I13,Staging/native transfer,F4,09,保留原要求与全部验收义务；本轮仅文档对账。,85241aa7e00d36b5c51d33b81236ed26efefdad38a9e868beac4732d947da222,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I14,GPU deferred destruction,F4,09,保留原要求与全部验收义务；本轮仅文档对账。,6f1fa6300cfd1b35f0bbb8307402af2f7d9e0711f5281bcb3d3184ba015bb08d,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I15,Runtime owner/lifecycle/reply pump,F5,10,保留原要求与全部验收义务；本轮仅文档对账。,34f4703871153c3906b8ce4073ead51a2cdf91c38d8e0ec82e985f70a424e7e1,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I16,Frame Driver GPU fences,F5,10,保留原要求与全部验收义务；本轮仅文档对账。,eef40d09712f1687c3139282bfe8b2a524c1f61dd3df891550d2e66ca3df7b9b,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I17,Frame Orchestration/target layers,F5,10,保留原要求与全部验收义务；本轮仅文档对账。,3f61595745e045335543c70dc43f424518ed4f5c49483324ef3db5e91ddb0497,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I18,Multi scene/multi view Renderer,F5,10,保留原要求与全部验收义务；本轮仅文档对账。,0cd04441ac72d92ca309bc788f4ff7a3276eb2ae0a47207bedcaf2210897762e,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I19,Surface/offscreen target registry,F5,10,保留原要求与全部验收义务；本轮仅文档对账。,1d443f6eb66079418e5a00cb1e8eeaba81f1badcd9328290fa78afee49978ab1,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I20,Scene RenderSystem/transaction,F7,"05,10",保留原要求与全部验收义务；本轮仅文档对账。,63b0dfb90bff1862b9e539e40cb4a77765d8e62cde6896b97a613b8fdbe4cd44,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I21,Asset request and resource dedupe,F7,"05,10",保留原要求与全部验收义务；本轮仅文档对账。,e368b5448f4b8c315491a887f42bc2484f84cad715a6dfc23e347db9c912fbea,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I22,Scene resource/view receipts,F7,"05,10",保留原要求与全部验收义务；本轮仅文档对账。,c633f017a01551906e9c47a0bcae9364c13afa0ed25065c995da69265c942089,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I23,View camera extraction,F7,"05,10",保留原要求与全部验收义务；本轮仅文档对账。,6330191d57590bc07c93f5b4516fb25c9bcdba02729d09a04bdc3e792fbdd84c,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I24,Feature-centric old sync stage replacement,F7,"05,10",保留原要求与全部验收义务；本轮仅文档对账。,09e52174aa1e641b7a490b0b91d0171d59acfdc6c4148dcd650db543a8a76a43,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I25,UI graphics feature and compositing,F10,12,保留原要求与全部验收义务；本轮仅文档对账。,a575c399533c37fed535be000ec4604ecb19306f47ba935e0f922231716f5bed,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I26,External feature SDK sample,F6,"06,11",保留原要求与全部验收义务；本轮仅文档对账。,53ec7bca7526eb7c4cfbdfe91f0d269200517c84a2675a889abb650eb0b0d85c,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I27,EngineRendering product integration,F11,"02,03,04,10",保留原要求与全部验收义务；本轮仅文档对账。,c0b77842835d5d4b8e7cf0666d113fcd7cb021a2cb1e76a26ce2a62482a76d1d,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I28,GLSL canonical resource emitter,F1,"03,08",保留原要求与全部验收义务；本轮仅文档对账。,2e13d6879f51739290e692c9f896da19f8d4036e11a95fff90ff68198dff15e5,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I29,SPIR-V reflection,F1,"03,08",保留原要求与全部验收义务；本轮仅文档对账。,7019124f2cb41d9681fea7571a0aade2d4eff36ddf1ccbe471e1b04b62c79c2f,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I30,Logical LayoutContract,F1,"03,08",保留原要求与全部验收义务；本轮仅文档对账。,ff64bd9360cbee631045044ebe1661363609de7ec1263c2b81caf2fbc9aad44e,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I31,Per-view shared graph plan and native key,F5,"06,07,10",保留原要求与全部验收义务；本轮仅文档对账。,4cbcb9e56f548762acab7d53502076ceb884a91192ca89b1218ed426dedce92d,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I32,Pass-scope verified scene work sharing,F5,"06,07,10",F5 共享调度证明；F8 真实 Skinning 补齐，不提前实现业务。,87e23eecd3415cfd3b077827efd2724b3549aec54406396cc90bbf5db3906efc,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I33,Vulkan Multiview and fallback,F5,"09,10",F4 native multiview 与 F5 Runtime/View 集成分开。,dbfa9923ac4d646012cb8dbc433a5c15dffd80487e1fd01813615a240935ad4a,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I34,Subresource mip/layer and buffer range exact hazards,F2,"06,07",保留原要求与全部验收义务；本轮仅文档对账。,b8c25719c6619010781da7693e455594b03769e9e217469d8fff93632f3c363b,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I35,Actual multi-queue Sync2 and ownership fallback,F4,09,保留原要求与全部验收义务；本轮仅文档对账。,17049ad06a55b8ba481002c77c897ad640103fbb18b3d5f74639aa17e89b0a61,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I36,History and conditional pass safe fallback,F4,"06,07,10",F4 native history fixture 不替代 F5 View 生命周期、F9 HZB。,ae18b2f45d1c26be811b763abfa52ca014ffcc950fddfbcf77a3f4411a97d1e1,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I37,Local read and attachment load/store resolve,F4,"06,07,09",保留原要求与全部验收义务；本轮仅文档对账。,9dcc3efa30b749542b5005a231eecf0a21e2ced3bd4f6e6661ba47c43b44fe16,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I38,C++20 PassSchema concepts and generated optional ops,F1,"03,08,06,11,14",PassSchema 已有历史证据；Feature optional ops 部分仍需 F6，不关闭整行。,5d796c1848d6e4dda80c9df37845a4836784e262e01c6a2ebc515ad27e41c87a,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I39,Unsolicited diagnostic port separate from replies,F5,"05,10",保留原要求与全部验收义务；本轮仅文档对账。,363e2c64c081ce0bb52e847613f7e3469b1c041d0cd94861619cbe9f7dcfe83c,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I40,Render projection retained revision backpressure,F7,05,保留原要求与全部验收义务；本轮仅文档对账。,f14a0f54888c5164f4c927ac74b09bbfe6417b2ea78ebb724e2c704041547999,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I41,Plugin code pin native graph in-flight retirement,F6,"06,11,02,04,09,16",保留原要求与全部验收义务；本轮仅文档对账。,da22079cf789f005422677b8d28a052d8eb06ac5c17e35c83b8eb5f67ec7d426,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I42,Shader cache/material last-good hot reload,F3,"03,08,09",F3 Shader/PSO last-good 与 F8 Material 业务证据分开。,0f3b60c3bc094d031d6d418b0438e520a00dcf07d99ed4c1624e61f6aec12878,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I43,Multi target scene-view layer composition,F5,10,保留原要求与全部验收义务；本轮仅文档对账。,666d846907ff4b2cc4e6dd5677bec1962544cc7e637072345ad2e538a2f2af56,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,I44,Record hot path no lazy pipeline or heap,F4,"09,02,04,16",保留原要求与全部验收义务；本轮仅文档对账。,221143c5b195539d7776a788a405fab2e172ac0fea8825ff4d5182ff390d2a10,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,H01,Virtual Geometry / Nanite-like,F11+H1,13,高级算法在 H 阶段独立资格；F11 只完成前置产品/机制，不提前关闭。,6abde851684acd1c835a4e4a1123446dc4b70d3181d81def6897ce79ba12d19b,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,H02,Dynamic GI and Reflections / Lumen-like,H2,13,高级算法在 H 阶段独立资格；F11 只完成前置产品/机制，不提前关闭。,0864b93a38d11729fcabef6fc96663cff7e116622047a11b4aa9a9393d5046b6,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,H03,Temporal Upscaling / TSR-like,H3,13,高级算法在 H 阶段独立资格；F11 只完成前置产品/机制，不提前关闭。,043500e5d8c70486c5d07a1bb8f1406d1a6bc4f90e2dc6a7f1e29123ba41e055,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,H04,Virtual Shadow Maps / VSM-like,H4,13,高级算法在 H 阶段独立资格；F11 只完成前置产品/机制，不提前关闭。,120adf0a01b36acfcafd8a9a33423bbca5cba96c73ac9aa2acd1246fefd4d5e3,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,H05,Advanced BSDF / Volumetric and multiview quality,H5,13,高级算法在 H 阶段独立资格；F11 只完成前置产品/机制，不提前关闭。,7e1354bff7adb182bff4e1c88e8a6979cd27330d07d53c4c6a6f4cb85c7524b8,NONE_DOC_ONLY
+LegacyCapabilityMatrix.csv,H06,3DGS and mixed representations,H6,13,高级算法在 H 阶段独立资格；F11 只完成前置产品/机制，不提前关闭。,a504d33f91ec7df9e7841aa8c914b57a3d3b9b6e4a91d0fa615ff34414c786e1,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ01,One runtime/backend/frame loop,F5,"00,02,03,04,10,work_orders",保留原要求与全部验收义务；本轮仅文档对账。,fe084a42592fe7f81f7b089583116a82f23076857e2fc13ed872de58aecf561e,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ02,View does not own graph by default,F5,"06,07,10,19",保留原要求与全部验收义务；本轮仅文档对账。,13fff1f9ebefd0dc2ba23cc6cd0e8a65e7a2d3b2d49ab0d6c39c381a0879abb9,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ03,Same path views plan reuse,F5,"06,07,10",保留原要求与全部验收义务；本轮仅文档对账。,a5b2a10efcabe6ab48b324e5447b0a035a5f28abc98b7ae30345d39a74c961c7,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ04,Scene shared GPU works once only when proven,F5/F8,"06,07,10",F5 共享调度证明；F8 真实 Skinning 补齐，不提前实现业务。,d385e84daf2e0689fb71dbd48f514cf6703ecc0cbe68fc5bf4fa99cd72e05e28,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ05,Multiview optional and separate fallback,F5,"09,10",保留原要求与全部验收义务；本轮仅文档对账。,12bd4610436ebed21d28d95e5aac165c65bde25f5057ab42eb5bf9b01016373d,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ06,Independent Sim/Publication/Render,F5/F7,"05,10",保留原要求与全部验收义务；本轮仅文档对账。,6ce4eb199af9c3dcbcef73e0effb066228e421342fb6efaca21321f71ecd8b86,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ07,Three transport lanes without global order,R2/F7,"05,02,04,09,16",保留原要求与全部验收义务；本轮仅文档对账。,e506a666de8e66739809b67f096a667c10aec471e0f8469422be72e2a8b5cafa,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ08,Reply consume or abandon pre-reserved slot,R2 preserve,"05,02,04,09,16",保留原要求与全部验收义务；本轮仅文档对账。,6f9a8201fb823f6d32926cf2d62536cddde951d558e67d37aa2e712f3ea01976,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ09,Revision retained on backpressure,F7,05,保留原要求与全部验收义务；本轮仅文档对账。,f70b2bbfcfb88c5c032859ffeec6c533dd1b5b1e6a018ea98420e79da625cf9a,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ10,"AssetDomain shared across Scenes, no GPU double owner",F7,"02,03,04,05",保留原要求与全部验收义务；本轮仅文档对账。,67b70679983b1b036435cb1e5a0b89625045fe9a2c5e62991a3da9dd54e02d60,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ11,RenderData Capability GraphResource orthogonal,F1/F7,"01,14,02,03,04,05",保留原要求与全部验收义务；本轮仅文档对账。,f155905746aed62b36b2815f959b0ab7e2050ce7ab3e252eeb9cd658a311e6d7,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ12,GraphBuilder typed PassParams interface,F1,"06,07",保留原要求与全部验收义务；本轮仅文档对账。,b3bed5ed9a5ffae061e6b9ca91a019ef3120ea1f593f018d00e821078bb524a0,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ13,Pass schema same source C++ Shader Graph,F1/F3,"06,07,03,08",保留原要求与全部验收义务；本轮仅文档对账。,106179876b96349dcb9f99150b838c2fa029aabbd517fd3290febcaef86b1e02,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ14,Shader metadata/refl/LayoutPlan full shape and relocation,F3,"03,08",保留原要求与全部验收义务；本轮仅文档对账。,00adfff153192be70b2b0a5f859e4b978930ed3957f38514f69ca09e87d9934f,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ15,No manual author shader set binding,F1/F3,"03,08",保留原要求与全部验收义务；本轮仅文档对账。,b127fe360500d364866c05d3f056e2561d02fa6849aa349a2ce3c5d15f90e267,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ16,Per-mip/layer/buffer range logical hazards,F2,"06,07",保留原要求与全部验收义务；本轮仅文档对账。,cc4130e060b108ba5bb4df3f58c15214244642391366a13d8b36037474db54ee,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ17,Versioned RAW WAW WAR and init proof,F2,07,保留原要求与全部验收义务；本轮仅文档对账。,bdef5c91df8fce6ed5299558c02c4c24795550bf52bee84897933c3b1fcab02d,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ18,Complete logical Graph compile and culling/conditional,F2,07,保留原要求与全部验收义务；本轮仅文档对账。,e784dfe28a50df1d1bc770a3a8891818c9adc4c44c3c36f7376a6e01d8780134,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ19,Native plan distinct shader/pipeline/device key,F3/F4,"07,09",保留原要求与全部验收义务；本轮仅文档对账。,ad39c1ecc9badfd2b11a1b37865683b7893cb5dd2d3b2d78bfa2e463e2407ce3,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ20,Queue sync2 and real async fallback,F4,09,保留原要求与全部验收义务；本轮仅文档对账。,539d1c6b55f9037f1820f3dc6a40dffa202756ac84c3c3a0afbbb6d6db4e38a3,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ21,Transient alias based on GPU overlap,F4,"07,09",保留原要求与全部验收义务；本轮仅文档对账。,d6d0f1be8ff8119b07846d5aac7efb677e948c94ee6409896551bad335994b47,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ22,"History View owned, resize invalidation",F4/F5,"06,07,10",F4 native history fixture 不替代 F5 View 生命周期、F9 HZB。,1fd5842020dc972568d2f2fa68c4630d21ef1e58cc2a4a5c747b5a2a0c45d7d3,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ23,Target color depth/MSAA local read present,F4/F5,"09,10",保留原要求与全部验收义务；本轮仅文档对账。,32d6f3a2d2d856bd595546f357242d8949df70b7d5c2e8d635d9af4a8eb2dbae,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ24,R4 RAII owner single lifetime,R4 preserve/F4,"02,03,04,09,16",保留原要求与全部验收义务；本轮仅文档对账。,ef8be096ceb75cdab4e7a89ef61e19a47329202c42cab4f8d0e8760f5f3c3f3d,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ25,Feature concrete and optional Concepts hooks,F6,"06,11,14",保留原要求与全部验收义务；本轮仅文档对账。,ce532054792a42bb4279d7257e89bb304057092ed0248ba52743c19b16db8ce0,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ26,Plugin installed SDK and code pin unload,F6,"06,11",保留原要求与全部验收义务；本轮仅文档对账。,98b44bbb2a5dfa1b11c14c0f15906b85e2d721d98cc9f1e9c188c322a3086add,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ27,Mesh GPUdriven material variants,F8,12,保留原要求与全部验收义务；本轮仅文档对账。,2124a82a13d6e715653ee9d51adb161fdf9bf85490b96bf6c57b599aad76372b,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ28,Light PBR Forward Deferred Clustered,F9,12,保留原要求与全部验收义务；本轮仅文档对账。,bb8001faf5ed54b1b41896bfd2866cc2a866b00de8bb0cb28ab345d51687ff56,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ29,PCF EVSM CSM MeshShadow,F9,12,保留原要求与全部验收义务；本轮仅文档对账。,9c9c91c50ab1965bfe4191247ce75b42892627b7a570abc76c6af0caf019aa24,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ30,Hzb cull Skinning WAR,F8/F9,12,保留原要求与全部验收义务；本轮仅文档对账。,a009ede349325f541a2075e38f63c4f536f8bdedcdb6a4eb8f95bdb95586b671,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ31,Terrain/Water/Canvas/5point/Trajectory/RenderCluster,F10,12,保留原要求与全部验收义务；本轮仅文档对账。,db50d3cd9b78dc6c423bd3872538e4b3218f1685aeaf75ec2259f8a0c000c178,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ32,UE virtual geometry algorithm,H1,13,保留原要求与全部验收义务；本轮仅文档对账。,dad832e0cd6e1b436be16254df29ca49102fbcd5acb925b30c69b9c45ae9d8fe,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ33,UE dynamic GI reflections algorithm,H2,13,保留原要求与全部验收义务；本轮仅文档对账。,e98325d8ef223a9c132063b137ce30d8887bfdf2879480a8bd5945d0360c5e65,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ34,UE temporal superresolution algorithm,H3,13,保留原要求与全部验收义务；本轮仅文档对账。,d1c67bf4314c2aa3fd19c2e40926a727db9f69dca5b76e8563bae2d8818c1ffe,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ35,UE virtual shadow mapping algorithm,H4,13,保留原要求与全部验收义务；本轮仅文档对账。,781aacd9a4548dfacec4c9592e341456712f23b412ccac00c5110c9cc21e0196,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ36,UE advanced material/volumetric algorithm,H5,13,保留原要求与全部验收义务；本轮仅文档对账。,1967fd97aac1f3e11a7f85e2624d2e12d92aa5d040489979c9cb6d6bca5f399b,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ37,"C++20-only no C++23, value/algorithm/RAII",all,14,保留原要求与全部验收义务；本轮仅文档对账。,aaed277285230dd29f84ca05e2b8cbf2702db3ef8965c05b9b375c509a03bdd0,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ38,Zero first-party warm frame allocations,F4 onward,"02,04,09,16",保留原要求与全部验收义务；本轮仅文档对账。,b9534c82071334d81ebf4ebaddb4c4a5e888d07273717ad18355f20ef11aa546,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ39,Stop/terminal/device lost fence proof,F5,"10,02,04,09,16",保留原要求与全部验收义务；本轮仅文档对账。,c49f1ebed068b3135177e8d6963b9a2b0525646c0f946c6038dd856385c22fad,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ40,Independent clean clone I/V STOP,all,"18,17,work_orders",保留原要求与全部验收义务；本轮仅文档对账。,562ae3478104f1c263b0b88ea7b8fbd4e60a28a4508c42d3af460a1c316af1ff,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ41,F0 docs authority no historical report rewrites,F0,"work_orders,00,20",保留原要求与全部验收义务；本轮仅文档对账。,0928e03de0c508fedec3535ae8f7cb3c6279dce2954ab3b4d368ab80bc355140,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ42,Legacy frozen 719 blobs and complete parity,all/F11,"01,14,12,18",保留原要求与全部验收义务；本轮仅文档对账。,55008a6ba4983e399d176066d3490c3d466bec2b8751f02753cc288a2a2d8aca,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ43,Avoid fake GPU and placeholder unsupported claim,all,"17,work_orders",保留原要求与全部验收义务；本轮仅文档对账。,c1ae8ccfd7fc833f7bd278b2faf2e2002e17627a6c3c8b04909f3a8744a5ed84,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ44,No second parser/Shader metadata registry,F1,"03,08,14",保留原要求与全部验收义务；本轮仅文档对账。,770d6e4c7f844bb2505c04a2f41576bb1b24231502b101e8eb0e6d0eca5e3eed,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ45,External Feature cannot include backend private,F6,"06,11,14",保留原要求与全部验收义务；本轮仅文档对账。,7eebb0f2657002e3b2767ca3a854f20d89d3ea0ffb548f15857d35bc5aef3888,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ46,Device capability fallback correct and explicit,F4 onward,"09,13,19",保留原要求与全部验收义务；本轮仅文档对账。,d45e72f6d78dd4b7085b6ceed5bc88c4da6a766d5ca7bbd2e35fa3343e33762a,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ47,Runtime diagnostics separate from reply,F5,"05,10",保留原要求与全部验收义务；本轮仅文档对账。,77331285e72d742fe4331c9cc339d0f17544a02eeff300b6215bf72813342a65,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ48,No hidden per Feature SceneSystem/FrameLoop,F6/F7,"01,14,06,11",保留原要求与全部验收义务；本轮仅文档对账。,5deafd8545a4da31c41c20e7e42fcb4d3c755589182aee4b9f962e4edaf2b514,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ49,Plugin ABI cross DLL no leaking owning STL,F6,"06,11,14",保留原要求与全部验收义务；本轮仅文档对账。,6ec26220f83ff42ef544bade77f44af479ea6e01177b8a93cc0607d976429f37,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ50,R0–R4 historical PASS/NOT_RUN preserved,F0,"00,20",保留原要求与全部验收义务；本轮仅文档对账。,c210cf6dec415b8d18eace8a4b0f4deadf273c7e9e301bd4c02420ac9cf3a909,NONE_DOC_ONLY
+RequirementsTrace.csv,REQ51,3DGS same Scene/View/Graph mixed without separate renderer,H6,"12,13",保留原要求与全部验收义务；本轮仅文档对账。,23e69a6c67147b073645546bb58a4b9c16e1eb965466332ad2934419c15db66d,NONE_DOC_ONLY
+GoldenWorkloads.csv,W01,Tonemap+Generated Blur+Composite,F3,,保留原要求与全部验收义务；本轮仅文档对账。,8c8a6c6254ae65dfc9cd6890b664c65ca857548b39a7a7d88547c58b1159c0f3,NONE_DOC_ONLY
+GoldenWorkloads.csv,W02,HZB mip chain,F4,,F4 native history fixture 不替代 F5 View 生命周期、F9 HZB。,076023d0b29730f889fa55a1694ee5e556dd09c1ac8c81ae9cb171d37a35b811,NONE_DOC_ONLY
+GoldenWorkloads.csv,W03,Compute-Graphics-Readback,F4,,保留原要求与全部验收义务；本轮仅文档对账。,5c48bda0957abada8dd901fb9299d8843cafaac10f8396d1149ef936327e9288,NONE_DOC_ONLY
+GoldenWorkloads.csv,W04,Transient alias/noalias,F4,,保留原要求与全部验收义务；本轮仅文档对账。,2958fbcae06604b22a2a9cc636f3838f76faf850929a6ea74a9e249745b36b66,NONE_DOC_ONLY
+GoldenWorkloads.csv,W05,N Views same RenderPath,F5,,F5 共享调度证明；F8 真实 Skinning 补齐，不提前实现业务。,5e580f4488decf7d8b2ebd7141c7814f46e4febaf1f2bcca693cf2c6ecd0d033,NONE_DOC_ONLY
+GoldenWorkloads.csv,W06,2 Scenes shared asset,F7,,保留原要求与全部验收义务；本轮仅文档对账。,26433a87749c1ec6af3cd43a9100e62ad64b0be104f55aa990c4461bb947b14a,NONE_DOC_ONLY
+GoldenWorkloads.csv,W07,Skinning 3 FIF,F8,,保留原要求与全部验收义务；本轮仅文档对账。,c649878f1ddc3bfc65a06eba53090dd4e2590b6acc20be1723e309d55ec65493,NONE_DOC_ONLY
+GoldenWorkloads.csv,W08,Shadow PCF EVSM CSM,F9,,保留原要求与全部验收义务；本轮仅文档对账。,424df9b3e33ff6341469c5bae77fe99cf8c6d9877784da52bab8a43de312dbe2,NONE_DOC_ONLY
+GoldenWorkloads.csv,W09,Terrain streaming fallback,F10,,保留原要求与全部验收义务；本轮仅文档对账。,7a125a71e8cf7079d3694c16b8381c365b3d1bef73dfc9c2b26afd5f07212c98,NONE_DOC_ONLY
+GoldenWorkloads.csv,W10,Five PointCloud implementations,F10,,保留原要求与全部验收义务；本轮仅文档对账。,1a46757d3b490062181387dd55d534f6d04b9d8b1db5f569144a54cb9534f0f8,NONE_DOC_ONLY
+GoldenWorkloads.csv,W11,Canvas+UI+Picking,F10,,保留原要求与全部验收义务；本轮仅文档对账。,05b2f64acae11dea331312a6ab787c0ba05659d4322cbd1fecfae0fd7c26c6c3,NONE_DOC_ONLY
+GoldenWorkloads.csv,W12,External Plugin SDK code pin,F6,,保留原要求与全部验收义务；本轮仅文档对账。,1fba0cd9c4d56bab39b55dab0f0cdab369efb34e6b9cd902afa50cfaa20e34c6,NONE_DOC_ONLY
+GoldenWorkloads.csv,W13,10Hz Simulation 144Hz Render,F5,,保留原要求与全部验收义务；本轮仅文档对账。,3a6f2abedc6a5a4adc7bbbabb61365049e2610b61b80163229d8b0ba656ba6d3,NONE_DOC_ONLY
+GoldenWorkloads.csv,W14,Resize minimize lost,F5,,保留原要求与全部验收义务；本轮仅文档对账。,22b190f37a6f99e95e873c53bf13f58bc4126043a678ad1f2dcd78f2ddd31641,NONE_DOC_ONLY
+GoldenWorkloads.csv,W15,Shared descriptor full layout,F3,,保留原要求与全部验收义务；本轮仅文档对账。,76dbb57e297bbbebf3d1cf3ee27238c7ae689ac4099db9360d96213d2bd4e64a,NONE_DOC_ONLY
+GoldenWorkloads.csv,W16,Multiview and separate fallback,F4,,F4 native multiview 与 F5 Runtime/View 集成分开。,ac6e39ecd9355e12d7411ab9babd327c5bc6872b0d7fc2bf1384b4445f2cb163,NONE_DOC_ONLY
+GoldenWorkloads.csv,W17,Create update update delete under backpressure,F7,,保留原要求与全部验收义务；本轮仅文档对账。,4e344936c74460232d288803d95a9ba35d2a3b6d1f79b6feb24d6020e14b5c1c,NONE_DOC_ONLY
+GoldenWorkloads.csv,W18,Modern C++20 compile rejects,F1,,PassSchema 已有历史证据；Feature optional ops 部分仍需 F6，不关闭整行。,6cdda380ae810ee41c593b0a5204666f4e7c45d254653a3ded0cdba7beab22a6,NONE_DOC_ONLY
+GoldenWorkloads.csv,W19,Full Legacy parity/product,F11,,保留原要求与全部验收义务；本轮仅文档对账。,612983472cd230f93901e16ac9a5f57e69c361031d404a87b3abfc706c2d5ce0,NONE_DOC_ONLY
+GoldenWorkloads.csv,W20,Virtual geometry,H1,,高级算法在 H 阶段独立资格；F11 只完成前置产品/机制，不提前关闭。,50d6b2cbc69dbfa2817d732cd720a5f7cce2ddef66d9addf19472658ae2fcd7b,NONE_DOC_ONLY
+GoldenWorkloads.csv,W21,Dynamic GI/reflections,H2,,高级算法在 H 阶段独立资格；F11 只完成前置产品/机制，不提前关闭。,7444e5921dd27421ac30e75ea552ce615511fce4a258f9e162126e369e13da9e,NONE_DOC_ONLY
+GoldenWorkloads.csv,W22,Temporal upscaling,H3,,高级算法在 H 阶段独立资格；F11 只完成前置产品/机制，不提前关闭。,87e3c2ea5ee02d63103739f011a7e405fa419e5dc5fc76aaded022096973653e,NONE_DOC_ONLY
+GoldenWorkloads.csv,W23,Virtual shadow maps,H4,,高级算法在 H 阶段独立资格；F11 只完成前置产品/机制，不提前关闭。,0a5732f8acf319c8b2e08d16f01c866690bd72fa7c8fdef9645502e76e318998,NONE_DOC_ONLY
+GoldenWorkloads.csv,W24,Layered material/volumetric,H5,,高级算法在 H 阶段独立资格；F11 只完成前置产品/机制，不提前关闭。,6fabab5fe3945c881153b97999fce540154a32699bf0cfddcd327bcef51809d0,NONE_DOC_ONLY
+GoldenWorkloads.csv,W25,3D Gaussian Splatting mixed rendering,H6,,高级算法在 H 阶段独立资格；F11 只完成前置产品/机制，不提前关闭。,b1e6e2d31a8f7d8287e728568349be46a2e511839ea5e6f67833cb6494eb640d,NONE_DOC_ONLY

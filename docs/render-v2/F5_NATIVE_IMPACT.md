@@ -64,3 +64,61 @@ for TARGET_RELATIVE. Minimal lower change: add the resolved Target extent to col
 shape against that explicit extent. Absolute checks and warmed rewrite/bind remain
 unchanged. Graph Recipes supplies the already validated native signature. Re-run F3
 Descriptor negative/GPU tests and fixed Binding performance with the final lock.
+
+## Runtime admission and actual backing consumer (development)
+
+The Runtime now submits several independent Views on one owner domain. A frame may
+not begin and then discover that a later View's old slot or queue budget is still
+occupied. `slotReady()` and the existing cold `admission[3]` value are exposed for
+bounded frame admission; these do not establish a second scheduling algorithm.
+Record keeps its authoritative admission checks. Changes are confined to
+Executable.hpp/Record.cpp and Runtime consumers; old Native admission negatives and
+multi-queue tests remain required.
+
+`shared-gpu.log` retained a real readback failure: the original donor receipt can
+precede later View reads of shared Scene backing. Runtime's cold readback now waits
+the existing Native owner's final lastUse join, not that original receipt alone.
+`lifecycle-gpu.log` records both Runtime progress and two-Scene shared Buffer pixel
+oracles passing after correction. No F4 historical finding is rewritten.
+
+## Presentation lower-seam review before implementation
+
+Real consumer: one F5 Runtime FrameDriver acquiring a Win32 swapchain image and
+presenting the Graph's exported output, through the existing SubmissionQueue.
+`development/PresentationEntry.cpp` and `presentation-entry.log` demonstrate C2661:
+the current CommandBatch cannot accept WSI acquire/present binary semaphores.
+This is a missing F5 integration seam, not a historical F4 bug.
+
+Minimal files: Vulkan transfer/Submission.hpp/.cpp add a bounded binary wait/signal
+to the same Sync2 submission; device/Device.hpp/.cpp explicitly query/enable
+VK_EXT_swapchain_maintenance1 for actual Present fence lifetime. No new queue owner,
+Renderer, Graph compiler or resource registry. Runtime owns Surface/Swapchain and
+per-image Present completion; Foundation still does not depend on Runtime.
+
+Present completion cannot be inferred from the render submission fence. The
+[Khronos semaphore lifetime guidance](https://docs.vulkan.org/guide/latest/swapchain_semaphore_reuse.html)
+and [maintenance proposal](https://github.com/KhronosGroup/Vulkan-Docs/blob/main/proposals/VK_EXT_swapchain_maintenance1.adoc)
+require distinct proof for presentation semaphore release. Explicit support is
+checked; missing native capability must be reported as such, never simulated with
+a fake Present success. Required regressions: Submission/Fault/retirement, new
+WSI acquire/resize/stop, real pixel readback and Validation/SyncValidation, plus
+the final fixed Native hot benchmark and Full ASan.
+
+
+## Runtime output and bounded state capture
+
+Runtime target backing must allocate a complete state array before any submission;
+`resourceStateCount(resource)` exposes the already-compiled native cell count, like
+`resourceUsage`, without another hazard algorithm. Runtime rejects insufficient declared
+state capacity during native-variant construction. Files: Executable.hpp/Export.cpp and
+Runtime Backend. No F2/Shader/Transport API change.
+
+Initial import range spans are copied into the sole Backend backing owner only after
+fallible native path compilation succeeds. Dynamic imports carry the real backing owner's
+ready/last-use evidence. View history replacement uses a separate typed import instance;
+no concrete View/Scene identity enters the immutable program key.
+
+Runtime Presentation uses existing SubmissionQueue, Native exports/retainExternalUse and
+Sync2. Output queue ownership and present completion remain distinct facts. Native Graph
+source resources are retained through all output consumers, including a second Swapchain.
+No extra renderer, queue owner, Shader parser or Graph compiler is introduced.

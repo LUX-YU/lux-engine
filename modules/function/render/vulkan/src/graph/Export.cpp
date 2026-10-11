@@ -3,6 +3,28 @@
 
 namespace lux::render::vulkan
 {
+    RenderResult<std::uint32_t> ExecutableGraphPlan::resourceStateCount(GraphResourceId resource) const noexcept
+    {
+        if (!resource.isValid() || resource.value() > code_->resource_usage.size())
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        return static_cast<std::uint32_t>(std::count_if(
+            code_->cells.begin(),
+            code_->cells.end(),
+            [&](const auto& cell) { return cell.resource == resource; }
+        ));
+    }
+
+    RenderResult<std::uint64_t> ExecutableGraphPlan::resourceUsage(GraphResourceId resource) const noexcept
+    {
+        if (!resource.isValid() || resource.value() > code_->resource_usage.size())
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        return code_->resource_usage[resource.value() - 1];
+    }
+
     bool detail::matchesReceipt(const NativeGraphBacking& plan, GraphSubmission receipt) noexcept
     {
         if (receipt.slot >= plan.slots.size())

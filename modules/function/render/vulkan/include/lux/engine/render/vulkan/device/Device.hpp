@@ -51,6 +51,7 @@ namespace lux::render::vulkan
         bool local_read{false};
         bool separate_depth_stencil{false};
         bool prefer_dedicated_queues{true};
+        bool swapchain_maintenance{false};
     };
 
     enum class EQueueRole
@@ -164,6 +165,11 @@ namespace lux::render::vulkan
             return timeline_;
         }
 
+        [[nodiscard]] bool swapchainMaintenance() const noexcept
+        {
+            return swapchain_maintenance_;
+        }
+
     private:
         VulkanDevice(
             VkInstance instance,
@@ -186,6 +192,7 @@ namespace lux::render::vulkan
         bool local_read_;
         bool timeline_;
         bool separate_depth_stencil_;
+        bool swapchain_maintenance_;
     };
 
     // Borrows device/instance; allocations must be destroyed before this owner.

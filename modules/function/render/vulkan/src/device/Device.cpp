@@ -310,7 +310,7 @@ namespace lux::render::vulkan
         : instance_(instance), physical_(physical), device_(device), queue_(queues[0].handle),
           queue_family_(queues[0].family), dynamic_rendering_(options.dynamic_rendering), queues_(queues),
           multiview_(options.multiview), local_read_(options.local_read), timeline_(options.multiple_queues),
-          separate_depth_stencil_(options.separate_depth_stencil)
+          separate_depth_stencil_(options.separate_depth_stencil), swapchain_maintenance_(options.swapchain_maintenance)
     {
         vkGetPhysicalDeviceProperties(physical, &properties_);
     }
@@ -332,6 +332,12 @@ namespace lux::render::vulkan
         if (options.local_read)
         {
             requested->push_back(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
+            requested = extensionNames(*requested);
+        }
+        if (options.swapchain_maintenance)
+        {
+            requested->push_back(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+            requested->push_back(VK_EXT_SWAPCHAIN_MAINTENANCE_1_EXTENSION_NAME);
             requested = extensionNames(*requested);
         }
         auto devices =
@@ -370,7 +376,15 @@ namespace lux::render::vulkan
             };
             supported.pNext = &supported12;
             supported12.pNext = &supported11;
-            supported11.pNext = options.local_read ? &supported_local : nullptr;
+            VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT supported_present{
+                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT
+            };
+            supported11.pNext = options.swapchain_maintenance ? &supported_present : nullptr;
+            supported_present.pNext = options.local_read ? &supported_local : nullptr;
+            if (!options.swapchain_maintenance && options.local_read)
+            {
+                supported11.pNext = &supported_local;
+            }
             VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
             features.pNext = &supported;
             vkGetPhysicalDeviceFeatures2(physical, &features);
@@ -379,7 +393,8 @@ namespace lux::render::vulkan
                                         (options.multiple_queues && !supported12.timelineSemaphore) ||
                                         (options.multiview && !supported11.multiview) ||
                                         (options.separate_depth_stencil && !supported12.separateDepthStencilLayouts) ||
-                                        (options.local_read && !supported_local.dynamicRenderingLocalRead);
+                                        (options.local_read && !supported_local.dynamicRenderingLocalRead) ||
+                                        (options.swapchain_maintenance && !supported_present.swapchainMaintenance1);
             if (is_unsupported)
             {
                 continue;
@@ -460,7 +475,16 @@ namespace lux::render::vulkan
         enabled_local.dynamicRenderingLocalRead = options.local_read;
         enabled.pNext = &enabled12;
         enabled12.pNext = &enabled11;
-        enabled11.pNext = options.local_read ? &enabled_local : nullptr;
+        VkPhysicalDeviceSwapchainMaintenance1FeaturesEXT enabled_present{
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SWAPCHAIN_MAINTENANCE_1_FEATURES_EXT
+        };
+        enabled_present.swapchainMaintenance1 = options.swapchain_maintenance;
+        enabled11.pNext = options.swapchain_maintenance ? &enabled_present : nullptr;
+        enabled_present.pNext = options.local_read ? &enabled_local : nullptr;
+        if (!options.swapchain_maintenance && options.local_read)
+        {
+            enabled11.pNext = &enabled_local;
+        }
         VkDeviceCreateInfo info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
         info.pNext = &enabled;
         info.queueCreateInfoCount = queue_count;
@@ -500,7 +524,7 @@ namespace lux::render::vulkan
           queue_(other.queue_), queue_family_(other.queue_family_), properties_(other.properties_),
           dynamic_rendering_(other.dynamic_rendering_), queues_(other.queues_), multiview_(other.multiview_),
           local_read_(other.local_read_), timeline_(other.timeline_),
-          separate_depth_stencil_(other.separate_depth_stencil_)
+          separate_depth_stencil_(other.separate_depth_stencil_), swapchain_maintenance_(other.swapchain_maintenance_)
     {
     }
 
@@ -521,6 +545,7 @@ namespace lux::render::vulkan
             local_read_ = other.local_read_;
             timeline_ = other.timeline_;
             separate_depth_stencil_ = other.separate_depth_stencil_;
+            swapchain_maintenance_ = other.swapchain_maintenance_;
         }
         return *this;
     }

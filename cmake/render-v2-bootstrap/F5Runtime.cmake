@@ -41,3 +41,176 @@ add_dependencies(render_runtime_target_extent
 add_test(NAME render.runtime.target_extent COMMAND render_runtime_target_extent "${f5_shader}")
 
 set_tests_properties(render.runtime.target_extent PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+add_executable(render_runtime_progress
+    "${f5_test}/RuntimeProgress.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
+)
+
+target_link_libraries(render_runtime_progress PRIVATE render_runtime render_vulkan_shader_compiler)
+
+target_include_directories(render_runtime_progress PRIVATE
+    "${f5_native_test}" "${f5_native_test}/shader" "${f5_shader}/generated"
+    "${f5_native_test}/../../../../core/type_info/include"
+)
+
+add_dependencies(render_runtime_progress
+    render_vulkan_spv_F4Fill_comp render_vulkan_spv_F3Tonemap_vert render_vulkan_spv_F3Tonemap_frag
+    render_vulkan_schema_F4HostRead
+)
+
+add_test(NAME render.runtime.progress COMMAND render_runtime_progress "${f5_shader}")
+
+set_tests_properties(render.runtime.progress PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+add_executable(render_runtime_schema_F5Shared "${f5_native_test}/../../graph/test/authoring/Fixture.cpp")
+
+target_link_libraries(render_runtime_schema_F5Shared PRIVATE
+    render_graph toolchain_shader_emitter toolchain_shader_reflection
+)
+
+target_include_directories(render_runtime_schema_F5Shared PRIVATE
+    "${f5_test}/shader" "${f5_native_test}/../../../../core/type_info/include"
+)
+
+target_compile_definitions(render_runtime_schema_F5Shared PRIVATE
+    "LUX_FIXTURE_HEADER=\"F5Shared.pass.hpp\"" "LUX_FIXTURE_TYPE=F5Shared"
+)
+
+render_pass_schema(render_runtime_schema_F5Shared "${f5_test}/shader/F5Shared.hpp")
+
+add_custom_command(
+    OUTPUT "${f5_shader}/F5Shared.comp.glsl" "${f5_shader}/F5Shared.comp.spv"
+    COMMAND render_runtime_schema_F5Shared "${f5_test}/shader/F5Shared.comp.lglsl" "${f5_shader}/F5Shared.comp.glsl"
+    COMMAND "${Vulkan_GLSLC_EXECUTABLE}" -fshader-stage=comp --target-env=vulkan1.3
+        "${f5_shader}/F5Shared.comp.glsl" -o "${f5_shader}/F5Shared.comp.spv"
+    COMMAND "${LUX_SPIRV_VAL}" --target-env vulkan1.3 "${f5_shader}/F5Shared.comp.spv"
+    COMMAND render_runtime_schema_F5Shared "${f5_shader}/F5Shared.comp.spv" validate
+    DEPENDS render_runtime_schema_F5Shared "${f5_test}/shader/F5Shared.comp.lglsl"
+    VERBATIM
+)
+
+add_custom_target(render_runtime_spv_F5Shared ALL DEPENDS "${f5_shader}/F5Shared.comp.spv")
+
+add_executable(render_runtime_shared_asset
+    "${f5_test}/SharedAsset.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
+)
+
+target_link_libraries(render_runtime_shared_asset PRIVATE render_runtime render_vulkan_shader_compiler)
+
+target_include_directories(render_runtime_shared_asset PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/generated" "${f5_test}/shader"
+    "${f5_native_test}" "${f5_native_test}/shader" "${f5_shader}/generated"
+    "${f5_native_test}/../../../../core/type_info/include"
+)
+
+add_dependencies(render_runtime_shared_asset render_runtime_spv_F5Shared render_vulkan_schema_F4HostRead
+    render_vulkan_spv_F3Tonemap_vert render_vulkan_spv_F3Tonemap_frag
+)
+
+add_test(NAME render.runtime.shared_asset COMMAND render_runtime_shared_asset "${f5_shader}")
+
+set_tests_properties(render.runtime.shared_asset PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+add_executable(render_runtime_presentation
+    "${f5_test}/Presentation.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
+)
+
+target_link_libraries(render_runtime_presentation PRIVATE render_runtime render_vulkan_shader_compiler user32)
+
+target_include_directories(render_runtime_presentation PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/generated" "${f5_test}/shader"
+    "${f5_native_test}" "${f5_native_test}/shader" "${f5_shader}/generated"
+    "${f5_native_test}/../../../../core/type_info/include"
+)
+
+add_dependencies(render_runtime_presentation render_runtime_spv_F5Shared render_vulkan_schema_F4HostRead)
+
+add_test(NAME render.runtime.presentation COMMAND render_runtime_presentation "${f5_shader}")
+
+set_tests_properties(render.runtime.presentation PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+
+# The same Runtime implementation, with only the already existing native
+# Foundation fault seam beneath it. No test controls enter Runtime's public ABI.
+add_library(render_runtime_fault STATIC
+    "${f5_test}/../src/Backend.cpp" "${f5_test}/../src/Frame.cpp"
+    "${f5_test}/../src/Runtime.cpp" "${f5_test}/../src/Presentation.cpp"
+)
+
+target_include_directories(render_runtime_fault PUBLIC
+    "${f5_test}/../include" "${CMAKE_BINARY_DIR}/render_runtime/generated"
+    "${f5_native_test}/../../../../core/type_info/include"
+    PRIVATE "${f5_test}/../pinclude"
+)
+
+target_compile_definitions(render_runtime_fault PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+
+target_link_libraries(render_runtime_fault PUBLIC render_core render_transport render_graph
+    PRIVATE render_vulkan_graph_fault
+)
+
+add_dependencies(render_runtime_fault render_runtime)
+
+add_executable(render_runtime_lifecycle
+    "${f5_test}/Lifecycle.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
+)
+
+target_link_libraries(render_runtime_lifecycle PRIVATE render_runtime_fault render_vulkan_graph_fault)
+
+target_include_directories(render_runtime_lifecycle PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/generated" "${f5_test}/shader"
+    "${f5_native_test}" "${f5_native_test}/shader" "${f5_shader}/generated"
+    "${f5_native_test}/../../../../core/type_info/include"
+)
+
+add_dependencies(render_runtime_lifecycle render_runtime_spv_F5Shared render_vulkan_schema_F4HostRead)
+
+add_test(NAME render.runtime.lifecycle COMMAND render_runtime_lifecycle "${f5_shader}")
+
+set_tests_properties(render.runtime.lifecycle PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
+add_executable(render_runtime_schema_F5History "${f5_native_test}/../../graph/test/authoring/Fixture.cpp")
+
+target_link_libraries(render_runtime_schema_F5History PRIVATE
+    render_graph toolchain_shader_emitter toolchain_shader_reflection
+)
+
+target_include_directories(render_runtime_schema_F5History PRIVATE
+    "${f5_test}/shader" "${f5_native_test}/../../../../core/type_info/include"
+)
+
+target_compile_definitions(render_runtime_schema_F5History PRIVATE
+    "LUX_FIXTURE_HEADER=\"F5History.pass.hpp\"" "LUX_FIXTURE_TYPE=F5History"
+)
+
+render_pass_schema(render_runtime_schema_F5History "${f5_test}/shader/F5History.hpp")
+
+add_custom_command(
+    OUTPUT "${f5_shader}/F5History.comp.glsl" "${f5_shader}/F5History.comp.spv"
+    COMMAND render_runtime_schema_F5History "${f5_test}/shader/F5History.comp.lglsl" "${f5_shader}/F5History.comp.glsl"
+    COMMAND "${Vulkan_GLSLC_EXECUTABLE}" -fshader-stage=comp --target-env=vulkan1.3
+        "${f5_shader}/F5History.comp.glsl" -o "${f5_shader}/F5History.comp.spv"
+    COMMAND "${LUX_SPIRV_VAL}" --target-env vulkan1.3 "${f5_shader}/F5History.comp.spv"
+    COMMAND render_runtime_schema_F5History "${f5_shader}/F5History.comp.spv" validate
+    DEPENDS render_runtime_schema_F5History "${f5_test}/shader/F5History.comp.lglsl"
+    VERBATIM
+)
+
+add_custom_target(render_runtime_spv_F5History ALL DEPENDS "${f5_shader}/F5History.comp.spv")
+
+
+add_executable(render_runtime_history
+    "${f5_test}/History.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
+)
+
+target_link_libraries(render_runtime_history PRIVATE render_runtime render_vulkan_shader_compiler)
+
+target_include_directories(render_runtime_history PRIVATE
+    "${CMAKE_CURRENT_BINARY_DIR}/generated" "${f5_test}/shader"
+    "${f5_native_test}" "${f5_native_test}/shader" "${f5_shader}/generated"
+    "${f5_native_test}/../../../../core/type_info/include"
+)
+
+add_dependencies(render_runtime_history render_runtime_spv_F5History render_vulkan_schema_F4HostRead)
+
+add_test(NAME render.runtime.history COMMAND render_runtime_history "${f5_shader}")
+
+set_tests_properties(render.runtime.history PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)

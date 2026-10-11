@@ -1,7 +1,7 @@
 #pragma once
 
-#include <memory>
 #include <lux/engine/render/vulkan/device/Device.hpp>
+#include <memory>
 
 namespace lux::render::vulkan
 {
@@ -17,7 +17,7 @@ namespace lux::render::vulkan
             return serial_;
         }
 
-        [[nodiscard]] const SubmissionQueue &owner() const noexcept
+        [[nodiscard]] const SubmissionQueue& owner() const noexcept
         {
             return *owner_;
         }
@@ -25,11 +25,11 @@ namespace lux::render::vulkan
     private:
         friend class SubmissionQueue;
 
-        SubmissionTicket(const SubmissionQueue &owner, std::uint64_t serial) noexcept : owner_(&owner), serial_(serial)
+        SubmissionTicket(const SubmissionQueue& owner, std::uint64_t serial) noexcept : owner_(&owner), serial_(serial)
         {
         }
 
-        const SubmissionQueue *owner_;
+        const SubmissionQueue* owner_;
         std::uint64_t serial_;
     };
 
@@ -37,17 +37,17 @@ namespace lux::render::vulkan
     {
     public:
         ~CommandBatch() noexcept;
-        CommandBatch(CommandBatch &&other) noexcept;
-        CommandBatch &operator=(CommandBatch &&) = delete;
-        CommandBatch(const CommandBatch &) = delete;
-        CommandBatch &operator=(const CommandBatch &) = delete;
+        CommandBatch(CommandBatch&& other) noexcept;
+        CommandBatch& operator=(CommandBatch&&) = delete;
+        CommandBatch(const CommandBatch&) = delete;
+        CommandBatch& operator=(const CommandBatch&) = delete;
 
         [[nodiscard]] VkCommandBuffer native() const noexcept
         {
             return command_;
         }
 
-        [[nodiscard]] const SubmissionQueue &owner() const noexcept
+        [[nodiscard]] const SubmissionQueue& owner() const noexcept
         {
             return *owner_;
         }
@@ -64,13 +64,23 @@ namespace lux::render::vulkan
 
         [[nodiscard]] RenderResult<SubmissionTicket> submit() && noexcept;
         [[nodiscard]] RenderResult<SubmissionTicket> submit(std::span<const struct SubmissionWait> waits) && noexcept;
+        // Synchronous native WSI borrows. Caller retains semaphores until actual
+        // acquire consumption / Present completion, independently of this ticket.
+        [[nodiscard]] RenderResult<SubmissionTicket> submit(
+            std::span<const struct SubmissionWait> waits,
+            VkSemaphore acquired,
+            VkSemaphore present
+        ) && noexcept;
 
     private:
         friend class SubmissionQueue;
         CommandBatch(
-            SubmissionQueue &owner, VkCommandBuffer command, std::uint32_t slot, std::uint64_t recording
+            SubmissionQueue& owner,
+            VkCommandBuffer command,
+            std::uint32_t slot,
+            std::uint64_t recording
         ) noexcept;
-        SubmissionQueue *owner_;
+        SubmissionQueue* owner_;
         VkCommandBuffer command_;
         std::uint32_t slot_;
         std::uint64_t recording_id_;
@@ -93,8 +103,8 @@ namespace lux::render::vulkan
             EQueueRole role = EQueueRole::GRAPHICS
         ) noexcept;
         ~SubmissionQueue() noexcept;
-        SubmissionQueue(const SubmissionQueue &) = delete;
-        SubmissionQueue &operator=(const SubmissionQueue &) = delete;
+        SubmissionQueue(const SubmissionQueue&) = delete;
+        SubmissionQueue& operator=(const SubmissionQueue&) = delete;
 
         [[nodiscard]] RenderResult<CommandBatch> begin() noexcept;
         [[nodiscard]] RenderResult<std::uint64_t> poll() noexcept;
@@ -114,7 +124,11 @@ namespace lux::render::vulkan
         friend class RetirementQueue;
         struct Backing;
         explicit SubmissionQueue(std::unique_ptr<Backing> backing) noexcept;
-        [[nodiscard]] RenderResult<SubmissionTicket> submit(std::span<const SubmissionWait> waits) noexcept;
+        [[nodiscard]] RenderResult<SubmissionTicket> submit(
+            std::span<const SubmissionWait> waits,
+            VkSemaphore acquired = {},
+            VkSemaphore present = {}
+        ) noexcept;
         void cancel() noexcept;
         // Final owner teardown only; never used by ordinary backing destruction.
         void completePending() noexcept;

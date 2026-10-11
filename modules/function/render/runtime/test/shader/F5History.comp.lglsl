@@ -1,0 +1,14 @@
+#version 450
+//! lux-shader stage=compute entry=main
+layout(local_size_x=1) in;
+void main()
+{
+    if (p_history.data[0] != lux_push.p_epoch)
+    {
+        p_history.data[0] = lux_push.p_epoch;
+        p_history.data[1] = 0u;
+    }
+    p_history.data[1] += 1u;
+    imageStore(p_output, ivec2(0), vec4(lux_push.p_camera, float(p_history.data[1]),
+        float(p_history.data[0]), lux_push.p_seconds));
+}

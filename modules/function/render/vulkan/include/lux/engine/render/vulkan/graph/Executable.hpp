@@ -230,12 +230,15 @@ namespace lux::render::vulkan
         ~ExecutableGraphPlan() noexcept;
         ExecutableGraphPlan(ExecutableGraphPlan&&) noexcept;
         ExecutableGraphPlan& operator=(ExecutableGraphPlan&&) noexcept;
-        ExecutableGraphPlan(const ExecutableGraphPlan&) = delete;
-        ExecutableGraphPlan& operator=(const ExecutableGraphPlan&) = delete;
+        // Cold cache handles share immutable code; no native owner is copied.
+        ExecutableGraphPlan(const ExecutableGraphPlan&) noexcept = default;
+        ExecutableGraphPlan& operator=(const ExecutableGraphPlan&) noexcept = default;
         [[nodiscard]] const LogicalGraphPlan& logical() const noexcept;
         [[nodiscard]] VkDevice device() const noexcept;
         [[nodiscard]] VkExtent2D targetExtent() const noexcept;
         [[nodiscard]] std::span<const NativeShaderProgram> shaderPrograms() const noexcept;
+        [[nodiscard]] RenderResult<std::uint64_t> resourceUsage(GraphResourceId resource) const noexcept;
+        [[nodiscard]] RenderResult<std::uint32_t> resourceStateCount(GraphResourceId resource) const noexcept;
         [[nodiscard]] NativeGraphStatistics statistics() const noexcept;
         [[nodiscard]] std::span<const NativeViewRequirement> importViews(GraphResourceId resource) const noexcept;
 
@@ -270,6 +273,10 @@ namespace lux::render::vulkan
         [[nodiscard]] NativeGraphStatistics statistics() const noexcept;
         [[nodiscard]] std::string diagnostics() const noexcept;
         [[nodiscard]] std::size_t traceCapacity() const noexcept;
+        // Owner-domain admission inspection. A Runtime can sum these bounds
+        // across all planned invocations before beginning one frame transaction.
+        [[nodiscard]] std::array<std::uint32_t, 3> submissionBudget() const noexcept;
+        [[nodiscard]] RenderResult<bool> slotReady(std::uint32_t invocation_slot) noexcept;
         [[nodiscard]] std::span<const NativeViewRequirement> importViews(GraphResourceId resource) const noexcept;
 
         // Reuse requires an accepted same-frame donor in this owner. The owner

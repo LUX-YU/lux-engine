@@ -355,6 +355,45 @@ namespace lux::render::vulkan
         return backing_->code->import_views[resource.value() - 1];
     }
 
+    std::array<std::uint32_t, 3> NativeGraphInvocations::submissionBudget() const noexcept
+    {
+        return backing_->code->admission;
+    }
+
+    RenderResult<bool> NativeGraphInvocations::slotReady(std::uint32_t invocation_slot) noexcept
+    {
+        auto& plan = *backing_;
+        if (plan.terminal)
+        {
+            return cxx::unexpected(*plan.terminal);
+        }
+        if (invocation_slot >= plan.slots.size())
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        for (auto* queue : plan.code->queues)
+        {
+            auto completed = queue->poll();
+            if (!completed)
+            {
+                plan.terminal = completed.error();
+                return cxx::unexpected(completed.error());
+            }
+            if (queue->recording())
+            {
+                return false;
+            }
+        }
+        for (const auto& ticket : plan.slots[invocation_slot].queue_tickets)
+        {
+            if (ticket && ticket->serial() > ticket->owner().completed())
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
     RenderResult<GraphSubmission> NativeGraphInvocations::submit(
         std::uint32_t invocation_slot,
         const FrameGraphBindings& bindings,

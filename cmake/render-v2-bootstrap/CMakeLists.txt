@@ -20,6 +20,8 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/graph"
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/vulkan" render_vulkan)
 
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/runtime" render_runtime)
+
 if(BUILD_TESTING)
     include("${CMAKE_CURRENT_LIST_DIR}/F4Closeout.cmake")
 

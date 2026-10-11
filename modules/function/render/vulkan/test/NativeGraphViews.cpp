@@ -82,6 +82,12 @@ namespace native_graph_test
             }
         }
         std::printf("MULTIVIEW native=%u distinct_layer_values=PASS\n", unsigned(native));
+        recordReadback(
+            "W16.native",
+            native,
+            GraphResourceId{read.destination.buffer.value()},
+            std::as_bytes(std::span{pixels})
+        );
         return pixels;
     }
 } // namespace native_graph_test

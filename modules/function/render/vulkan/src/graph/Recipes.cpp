@@ -434,7 +434,8 @@ namespace lux::render::vulkan::detail
             if (recipe.program)
             {
                 const auto& program = result.programs[*recipe.program];
-                auto descriptors = BoundDescriptorSets::create(inputs.device, program, values);
+                auto descriptors =
+                    BoundDescriptorSets::create(inputs.device, program, values, EDescriptorUpdates::COMPLETED_ONLY);
                 if (!descriptors)
                 {
                     return cxx::unexpected(descriptors.error());

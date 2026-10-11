@@ -2,6 +2,21 @@
 
 namespace native_graph_test
 {
+    void recordReadback(
+        const char* workload,
+        std::uint64_t sample,
+        GraphResourceId resource,
+        std::span<const std::byte> bytes
+    )
+    {
+        std::printf("READBACK %s sample=%llu resource=%u hex=", workload, sample, resource.value());
+        for (const auto byte : bytes)
+        {
+            std::printf("%02x", std::to_integer<unsigned>(byte));
+        }
+        std::puts("");
+    }
+
     NativeShaderProgram program(
         const VulkanDevice& device,
         const LogicalGraphPlan& graph,

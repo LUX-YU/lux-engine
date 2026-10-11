@@ -136,6 +136,15 @@ int main(int argc, char** argv)
             CHECK(executable
                       .readback(receipt, GraphResourceId{output.value()}, 0, std::as_writable_bytes(std::span{pixels}))
             );
+            if (frame == 0)
+            {
+                recordReadback(
+                    "W03.queue_mode",
+                    mode,
+                    GraphResourceId{output.value()},
+                    std::as_bytes(std::span{pixels})
+                );
+            }
             for (unsigned y = 0; y < 4; ++y)
             {
                 for (unsigned x = 0; x < 4; ++x)

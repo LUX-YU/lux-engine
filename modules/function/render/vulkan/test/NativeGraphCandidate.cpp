@@ -131,8 +131,12 @@ int main(int argc, char** argv)
             const std::array original{
                 OwnerDescriptorValue{owner, "output", 0, ImageDescriptorValue{std::cref(view), VK_IMAGE_LAYOUT_GENERAL}}
             };
-            auto descriptor = checked(BoundDescriptorSets::create(device, candidate, original));
+            auto immutable = checked(BoundDescriptorSets::create(device, candidate, original));
+            auto descriptor =
+                checked(BoundDescriptorSets::create(device, candidate, original, EDescriptorUpdates::COMPLETED_ONLY));
             std::array<VDescriptorValue, 1> values{original[0].value};
+            const auto immutable_rewrite = immutable.rewrite(values, {});
+            CHECK(!immutable_rewrite && immutable_rewrite.error().type == kInvalidArgument);
             auto batch = checked(queue->begin());
             const auto ticket = checked(std::move(batch).submit());
             const std::array last_use{ticket};

@@ -46,6 +46,7 @@ namespace native_graph_test
     );
 
     void sharedCase(const std::filesystem::path&, Validation&);
+    void recordReadback(const char* workload, std::uint64_t sample, GraphResourceId, std::span<const std::byte>);
     void readWriteCase(const std::filesystem::path&, Validation&);
     void copyCase(Validation&);
     void importedCase(const std::filesystem::path&, Validation&);

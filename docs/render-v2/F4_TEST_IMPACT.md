@@ -35,3 +35,10 @@ creation and report total allocation census separately from phase timings.
 Independent V must include precise archive/hash references and run/reuse/NOT_RUN distinctions.
 Linux/Android/product/installed SDK/Runtime/presentation remain NOT_RUN; install-header sync
 is three-prefix byte synchronization, not an installed consumer qualification.
+
+Qualification iteration: I 6556c20 passed functionality/ASan but failed the descriptor/bind performance gate.
+Its evidence is retained and does not qualify the corrected production ABI. The correction affects
+BoundDescriptorSets, its Native Graph caller and candidate negatives; unchanged benchmark sources remain
+byte-identical. Development rebuilds those actual consumers. The final new I receives normal/full-ASan
+integration again, since a public native owner layout changed. Readback logging is confined to GPU tests,
+outside both performance workloads and production code.

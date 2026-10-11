@@ -31,6 +31,12 @@ namespace lux::render::vulkan
         VDescriptorValue value;
     };
 
+    enum class EDescriptorUpdates
+    {
+        IMMUTABLE,
+        COMPLETED_ONLY
+    };
+
     // Complete sets, with fixed layout. Borrows native resources through the last GPU use.
     // A rewrite requires completion of ALL prior users; it never updates in-flight descriptors.
     class BoundDescriptorSets
@@ -39,11 +45,17 @@ namespace lux::render::vulkan
         [[nodiscard]] static RenderResult<BoundDescriptorSets> create(
             const VulkanDevice& device,
             const NativeShaderProgram& program,
-            std::span<const OwnerDescriptorValue> values
+            std::span<const OwnerDescriptorValue> values,
+            EDescriptorUpdates updates = EDescriptorUpdates::IMMUTABLE
         ) noexcept;
 
         static RenderResult<BoundDescriptorSets>
-        create(const VulkanDevice&, const NativeShaderProgram&&, std::span<const OwnerDescriptorValue>) = delete;
+        create(
+            const VulkanDevice&,
+            const NativeShaderProgram&&,
+            std::span<const OwnerDescriptorValue>,
+            EDescriptorUpdates = EDescriptorUpdates::IMMUTABLE
+        ) = delete;
 
         BoundDescriptorSets(BoundDescriptorSets&&) noexcept = default;
         BoundDescriptorSets& operator=(BoundDescriptorSets&&) = delete;
@@ -110,16 +122,19 @@ namespace lux::render::vulkan
             std::vector<VkPushConstantRange> push,
             std::size_t scalar_size,
             VkDevice device,
-            std::vector<WriteRecipe> writes
+            std::vector<WriteRecipe> writes,
+            EDescriptorUpdates updates
         ) noexcept;
 
-        DescriptorPool pool_;
+        // Keep the direct bind recipe together; cold ownership and rewrite data follow it.
         std::vector<VkDescriptorSet> sets_;
         VkPipelineLayout layout_;
         VkPipelineBindPoint point_;
+        EDescriptorUpdates updates_;
         std::vector<DynamicRange> dynamic_;
         std::vector<VkPushConstantRange> push_;
         std::size_t scalar_size_;
+        DescriptorPool pool_;
         VkDevice device_;
         std::vector<WriteRecipe> writes_;
     };

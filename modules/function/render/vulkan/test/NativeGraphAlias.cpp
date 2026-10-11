@@ -123,6 +123,8 @@ namespace native_graph_test
             std::array<float, 64> a{}, b{};
             CHECK(executable.readback(*receipt, outputs[0], 0, std::as_writable_bytes(std::span{a})));
             CHECK(executable.readback(*receipt, outputs[1], 0, std::as_writable_bytes(std::span{b})));
+            recordReadback("W04.first", receipt->slot, outputs[0], std::as_bytes(std::span{a}));
+            recordReadback("W04.second", receipt->slot, outputs[1], std::as_bytes(std::span{b}));
             CHECK(a == b);
             for (unsigned y = 0; y < 4; ++y)
             {

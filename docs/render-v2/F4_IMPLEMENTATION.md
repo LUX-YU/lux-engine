@@ -29,6 +29,7 @@ Paths below are under `modules/function/render/vulkan`.
 | `EQueueRole`, `QueueLocation`, `NativeQueue` / Device.hpp | Role and actual family/index/handle facts, borrowed from VulkanDevice | Real same-family/different-family queues and fallback share handles |
 | `ImageDescription`, `ImageMemoryBinding` / Memory.hpp | Single native image shape and actual VMA binding receipt | Multi mip/layer/sample owners and proved physical alias |
 | `SubmissionWait` / Submission.hpp | Borrowed existing ticket + validated stage mask | Bounded three-owner wait closure, no new transport |
+| `EDescriptorUpdates` / shader/Bindings.hpp | Closed creation policy: immutable (existing F3) or rewrite only after completion (F4); no owner | Immutable rewrite rejects; only rewritable sets store cold validation recipes |
 | `BoundDescriptorSets::{BufferWrite,ImageWrite,SamplerWrite,VWriteShape,WriteRecipe}` | Private numeric validation/write recipes in the existing descriptor owner | All writes validated first; busy/foreign/shape negatives |
 | `RetirementQueue::Composite` | Private type-erased destruction of an already allocated unique owner | No per-retire allocation; capacity rejection keeps caller's unique_ptr |
 
@@ -111,3 +112,22 @@ responsibilities. Device Lost is injected after real outstanding work completes;
 No Linux, Android, installed-SDK consumer, product, Runtime/pacing or business Feature qualification is claimed here.
 Historical transfer_idle and skinning WAR remain historical findings; F4 tests cannot rewrite their old verdicts.
 V2_PRODUCT=EXPECTED_UNAVAILABLE; F5=NOT_AUTHORIZED; F6/F8/F11 remain future stage obligations.
+
+## Qualification-discovered descriptor cost correction
+
+Candidate I `6556c20c9d0a6ea28ba05628e84e7476a9afd61b` passed 146 normal and 146 full-ASan tests,
+but its independent performance gate did not pass. The external archive retains all nine paired A/B runs,
+A/A and B/B controls, raw samples, binaries and bind disassembly. Per 100 immutable descriptor creations,
+first-party allocation count rose from 200 to 600 because every owner unconditionally captured rewrite recipes.
+Fixed binding also regressed despite byte-identical bind function disassembly; whole-binary layout cannot be
+inferred from that function alone, so this result was not dismissed as noise.
+
+The correction keeps immutable creation as the existing default and explicitly requests COMPLETED_ONLY
+for Native Graph consumers. Only that policy pre-reserves and owns rewrite recipes. No lazy preparation
+or hot allocation is introduced. Direct bind fields precede cold pool/update ownership in the existing
+owner, avoiding interleaved cold fields; the bind algorithm and all failure checks remain unchanged.
+Tests reject immutable rewrite and preserve busy/foreign/shape checks. This is a bounded correction inside
+the existing F4 responsibility, not a new descriptor system. Final performance facts belong to V.
+
+Golden workload fixtures now print exact sampled readback bytes in addition to CPU-oracle checks;
+qualification extracts these bytes with source/test identity into the external evidence archive.

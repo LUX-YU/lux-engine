@@ -44,7 +44,8 @@ namespace lux::render::vulkan
     RenderResult<BoundDescriptorSets> BoundDescriptorSets::create(
         const VulkanDevice& device,
         const NativeShaderProgram& program,
-        std::span<const OwnerDescriptorValue> values
+        std::span<const OwnerDescriptorValue> values,
+        EDescriptorUpdates updates
     ) noexcept
     {
         if (program.device() != device.native())
@@ -92,6 +93,11 @@ namespace lux::render::vulkan
         std::vector<VkDescriptorSet> sets;
         std::vector<DynamicRange> dynamic;
         std::vector<WriteRecipe> writes;
+        const bool rewritable = updates == EDescriptorUpdates::COMPLETED_ONLY;
+        if (rewritable)
+        {
+            writes.reserve(values.size());
+        }
         const auto& limits = device.properties().limits;
         for (std::size_t set_index = 0; set_index < layout.sets.size(); ++set_index)
         {
@@ -224,7 +230,10 @@ namespace lux::render::vulkan
                             shape.dynamic = static_cast<std::uint32_t>(dynamic.size());
                             dynamic.push_back({alignment, backing.size() - buffer->offset - buffer->range});
                         }
-                        writes.push_back({*set, binding.binding, element, input, field.type, shape});
+                        if (rewritable)
+                        {
+                            writes.push_back({*set, binding.binding, element, input, field.type, shape});
+                        }
                     }
                     else if (const auto* image = std::get_if<ImageDescriptorValue>(&value.value))
                     {
@@ -246,21 +255,24 @@ namespace lux::render::vulkan
                             field.type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE      ? VK_IMAGE_USAGE_STORAGE_BIT
                             : field.type == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT ? VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT
                                                                                 : VK_IMAGE_USAGE_SAMPLED_BIT;
-                        writes.push_back(
-                            {*set,
-                             binding.binding,
-                             element,
-                             input,
-                             field.type,
-                             ImageWrite{
-                                 view.backingDescription(),
-                                 view.range(),
-                                 view.type(),
-                                 image->layout,
-                                 usage,
-                                 image->combined_sampler != nullptr
-                             }}
-                        );
+                        if (rewritable)
+                        {
+                            writes.push_back(
+                                {*set,
+                                 binding.binding,
+                                 element,
+                                 input,
+                                 field.type,
+                                 ImageWrite{
+                                     view.backingDescription(),
+                                     view.range(),
+                                     view.type(),
+                                     image->layout,
+                                     usage,
+                                     image->combined_sampler != nullptr
+                                 }}
+                            );
+                        }
                     }
                     else if (field.type == VK_DESCRIPTOR_TYPE_SAMPLER)
                     {
@@ -270,7 +282,10 @@ namespace lux::render::vulkan
                             element,
                             std::get<std::reference_wrapper<const Sampler>>(value.value).get()
                         );
-                        writes.push_back({*set, binding.binding, element, input, field.type, SamplerWrite{}});
+                        if (rewritable)
+                        {
+                            writes.push_back({*set, binding.binding, element, input, field.type, SamplerWrite{}});
+                        }
                     }
                     if (!written)
                     {
@@ -301,7 +316,8 @@ namespace lux::render::vulkan
             std::move(push),
             scalar_size,
             device.native(),
-            std::move(writes)
+            std::move(writes),
+            updates
         };
     }
 
@@ -314,10 +330,12 @@ namespace lux::render::vulkan
         std::vector<VkPushConstantRange> push,
         std::size_t scalar_size,
         VkDevice device,
-        std::vector<WriteRecipe> writes
+        std::vector<WriteRecipe> writes,
+        EDescriptorUpdates updates
     ) noexcept
-        : pool_(std::move(pool)), sets_(std::move(sets)), layout_(layout), point_(point), dynamic_(std::move(dynamic)),
-          push_(std::move(push)), scalar_size_(scalar_size), device_(device), writes_(std::move(writes))
+        : sets_(std::move(sets)), layout_(layout), point_(point), updates_(updates), dynamic_(std::move(dynamic)),
+          push_(std::move(push)), scalar_size_(scalar_size), pool_(std::move(pool)), device_(device),
+          writes_(std::move(writes))
     {
     }
 
@@ -326,7 +344,7 @@ namespace lux::render::vulkan
         std::span<const SubmissionTicket> last_uses
     ) noexcept
     {
-        if (values.size() != writes_.size())
+        if (updates_ != EDescriptorUpdates::COMPLETED_ONLY || values.size() != writes_.size())
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }

@@ -102,6 +102,10 @@ namespace native_graph_test
                 const auto size = 8u >> mip;
                 std::vector<float> pixels(size * size * 4);
                 CHECK(executable.readback(receipt, outputs[i], 0, std::as_writable_bytes(std::span{pixels})));
+                if (serial == 0)
+                {
+                    recordReadback("W02.layer_mip", i, outputs[i], std::as_bytes(std::span{pixels}));
+                }
                 for (unsigned y = 0; y < size; ++y)
                 {
                     for (unsigned x = 0; x < size; ++x)

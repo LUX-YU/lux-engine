@@ -183,24 +183,15 @@ namespace lux::render::vulkan::detail
         }
     } // namespace
 
-    RenderResult<void> compileResources(NativeGraphBacking& result, const NativeCompileInputs& inputs) noexcept
+    RenderResult<void> compileResources(NativeGraphCode& result, const NativeCompileInputs& inputs) noexcept
     {
         const auto& graph = result.logical.identity();
-        if (inputs.imports.size() != result.logical.imports().size())
-        {
-            return cxx::unexpected(RenderError{kInvalidArgument});
-        }
-        result.slots.reserve(inputs.frame_capacity);
         result.import_positions.resize(graph.resources.size());
         result.import_views.resize(graph.resources.size());
         result.resource_usage.resize(graph.resources.size());
-        for (std::uint32_t i = 0; i < inputs.imports.size(); ++i)
+        for (std::uint32_t i = 0; i < result.logical.imports().size(); ++i)
         {
-            if (inputs.imports[i].resource != result.logical.imports()[i])
-            {
-                return cxx::unexpected(RenderError{kInvalidArgument});
-            }
-            result.import_positions[inputs.imports[i].resource.value() - 1] = i;
+            result.import_positions[result.logical.imports()[i].value() - 1] = i;
         }
         result.alias_sources.resize(graph.resources.size());
         if (inputs.alias)
@@ -230,20 +221,36 @@ namespace lux::render::vulkan::detail
                 }
             }
         }
-        for (std::uint32_t slot_index = 0; slot_index < inputs.frame_capacity; ++slot_index)
+        for (std::uint32_t r = 0; r < graph.resources.size(); ++r)
+        {
+            result.resource_usage[r] = resourceUsage(
+                inputs.logical,
+                GraphResourceId{r + 1},
+                graph.resources[r].kind() == EGraphResourceKind::IMAGE
+            );
+        }
+        return {};
+    }
+
+    RenderResult<void> allocateInvocations(NativeGraphBacking& result, const NativeInvocationInputs& inputs) noexcept
+    {
+        const auto& graph = result.code->logical.identity();
+        result.slots.reserve(inputs.capacity);
+        for (std::uint32_t slot_index = 0; slot_index < inputs.capacity; ++slot_index)
         {
             auto& slot = result.slots.emplace_back();
             slot.resources.reserve(graph.resources.size());
             slot.passes.resize(graph.passes.size());
             slot.pass_tickets.resize(graph.passes.size());
             slot.buffer_offsets.resize(graph.resources.size());
+            slot.states.resize(result.code->cells.size());
+            slot.cell_tickets.resize(result.code->cells.size());
             for (std::uint32_t r = 0; r < graph.resources.size(); ++r)
             {
                 const auto id = GraphResourceId{r + 1};
                 const auto& declaration = graph.resources[r];
                 const bool is_image = declaration.kind() == EGraphResourceKind::IMAGE;
-                const auto usage = resourceUsage(inputs.logical, id, is_image);
-                result.resource_usage[r] = usage;
+                const auto usage = result.code->resource_usage[r];
                 if (is_image && rdesc::textureAspectMask(declaration.texture().format) == 6 &&
                     !inputs.device.separateDepthStencil())
                 {
@@ -268,7 +275,8 @@ namespace lux::render::vulkan::detail
                     if (is_image)
                     {
                         auto* image = std::get_if<std::reference_wrapper<const Image>>(&import.backing);
-                        if (!image || image->get().device() != result.device || (image->get().usage() & usage) != usage)
+                        if (!image || image->get().device() != result.code->device ||
+                            (image->get().usage() & usage) != usage)
                         {
                             return cxx::unexpected(RenderError{kInvalidArgument, {id.value()}});
                         }
@@ -288,7 +296,7 @@ namespace lux::render::vulkan::detail
                     else
                     {
                         auto* buffer = std::get_if<std::reference_wrapper<const Buffer>>(&import.backing);
-                        const bool invalid = !buffer || buffer->get().device() != result.device ||
+                        const bool invalid = !buffer || buffer->get().device() != result.code->device ||
                                              buffer->get().size() < declaration.buffer().byte_size ||
                                              (buffer->get().usage() & usage) != usage;
                         if (invalid)
@@ -311,26 +319,27 @@ namespace lux::render::vulkan::detail
                     {
                         return cxx::unexpected(RenderError{kUnsupported, {id.value()}});
                     }
-                    const bool aliasable = result.alias_sources[r].has_value() ||
+                    const bool aliasable = result.code->alias_sources[r].has_value() ||
                                            std::any_of(
-                                               result.alias_sources.begin(),
-                                               result.alias_sources.end(),
+                                               result.code->alias_sources.begin(),
+                                               result.code->alias_sources.end(),
                                                [&](const auto& value) { return value && *value == id; }
                                            );
-                    auto image = result.alias_sources[r]
-                                     ? Image::alias(*imageOf(slot.resources[result.alias_sources[r]->value() - 1]))
-                                     : Image::create(
-                                           inputs.allocator,
-                                           ImageDescription{
-                                               {texture.width, texture.height},
-                                               nativeTextureFormat(texture.format),
-                                               usage,
-                                               static_cast<VkSampleCountFlagBits>(texture.samples),
-                                               texture.mip_count,
-                                               texture.array_layers,
-                                               aliasable
-                                           }
-                                       );
+                    auto image =
+                        result.code->alias_sources[r]
+                            ? Image::alias(*imageOf(slot.resources[result.code->alias_sources[r]->value() - 1]))
+                            : Image::create(
+                                  inputs.allocator,
+                                  ImageDescription{
+                                      {texture.width, texture.height},
+                                      nativeTextureFormat(texture.format),
+                                      usage,
+                                      static_cast<VkSampleCountFlagBits>(texture.samples),
+                                      texture.mip_count,
+                                      texture.array_layers,
+                                      aliasable
+                                  }
+                              );
                     if (!image)
                     {
                         return cxx::unexpected(image.error());

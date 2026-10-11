@@ -57,15 +57,15 @@ namespace native_graph_test
                 native ? 3 : 0
             ));
         }
-        NativeCompileInputs
+        NativeGraphFixtureInputs
             inputs{logical, device, allocator, {queue.get(), queue.get(), queue.get()}, commands, {}, invocation};
-        auto executable = checked(compileVulkanGraph(inputs, std::move(programs)));
+        auto executable = checked(compileFixture(inputs, std::move(programs)));
         std::array<GraphImportBinding, 0> imports;
-        auto frame = checked(FrameGraphBindings::create(executable.logical(), {}, imports, invocation));
-        auto receipt = checked(executable.submit(frame, {}));
+        auto frame = checked(FrameGraphBindings::create(executable.plan.logical(), {}, imports, invocation));
+        auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, {}));
         CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
         std::array<float, 128> pixels;
-        CHECK(executable.readback(
+        CHECK(executable.invocations.readback(
             receipt,
             GraphResourceId{read.destination.buffer.value()},
             0,

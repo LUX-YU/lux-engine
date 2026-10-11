@@ -51,7 +51,7 @@ namespace native_graph_test
                 program(device, logical, update, "F4Accumulate", PassSchema<F4Accumulate>::contract(), shaders, true)
             );
         }
-        auto executable = checked(compileVulkanGraph(
+        auto executable = checked(compileFixture(
             {logical, device, allocator, {queue.get(), queue.get(), queue.get()}, commands, {}, invocation},
             std::move(programs)
         ));
@@ -59,14 +59,15 @@ namespace native_graph_test
         for (unsigned serial = 0; serial < 6; ++serial)
         {
             auto frame = checked(
-                FrameGraphBindings::create(executable.logical(), {serial, serial, serial % 2}, imports, invocation)
+                FrameGraphBindings::create(executable.plan.logical(), {serial, serial, serial % 2}, imports, invocation)
             );
-            const auto receipt = checked(executable.submit(frame, {}));
+            const auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, {}));
             CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
             for (unsigned i = 0; i < 3; ++i)
             {
                 std::array<float, 64> pixels;
-                CHECK(executable.readbackPass(receipt, reads[i], 0, 0, std::as_writable_bytes(std::span{pixels})));
+                CHECK(executable.invocations
+                          .readbackPass(receipt, reads[i], 0, 0, std::as_writable_bytes(std::span{pixels})));
                 for (unsigned y = 0; y < 4; ++y)
                 {
                     for (unsigned x = 0; x < 4; ++x)

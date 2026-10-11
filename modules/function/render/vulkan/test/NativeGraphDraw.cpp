@@ -202,7 +202,7 @@ void drawCase(
         programs.push_back(
             program(device, logical, pass, name, PassSchema<Params>::contract(), shaders, false, 0, &graphics)
         );
-        return compileVulkanGraph(
+        return compileFixture(
             {logical,
              device,
              allocator,
@@ -352,20 +352,20 @@ void drawCase(
             std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - start).count();
         {
             imports[0].dynamic_offset = 2;
-            auto invalid_frame = checked(FrameGraphBindings::create(plan.logical(), {}, imports, invocation));
-            auto bad = plan.submit(invalid_frame, native);
+            auto invalid_frame = checked(FrameGraphBindings::create(plan.plan.logical(), {}, imports, invocation));
+            auto bad = plan.invocations.submit(invalid_frame.frame().frame_slot, invalid_frame, native);
             CHECK(!bad && bad.error().type == kInvalidArgument);
             imports[0].dynamic_offset = 0;
-            auto frame = checked(FrameGraphBindings::create(plan.logical(), {}, imports, invocation));
+            auto frame = checked(FrameGraphBindings::create(plan.plan.logical(), {}, imports, invocation));
             auto wrong_usage =
                 checked(Buffer::create(allocator, 64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD));
             native[0].backing = std::cref(wrong_usage);
-            bad = plan.submit(frame, native);
+            bad = plan.invocations.submit(frame.frame().frame_slot, frame, native);
             CHECK(!bad && bad.error().type == kInvalidArgument);
             native[0].backing = std::cref(vertices);
             std::puts("REJECT invocation-offset native-vertex-usage");
         }
-        std::vector<NativeTraceEvent> trace(plan.traceCapacity());
+        std::vector<NativeTraceEvent> trace(plan.invocations.traceCapacity());
         std::array<std::uint64_t, 24> times{};
         std::array<float, 64> pixels{};
         bool saw_vertex = false, saw_index = !indexed, saw_indirect = !indirect;
@@ -373,7 +373,7 @@ void drawCase(
         {
             GraphFrameValues values;
             values.frame_serial = serial;
-            auto frame = checked(FrameGraphBindings::create(plan.logical(), values, imports, invocation));
+            auto frame = checked(FrameGraphBindings::create(plan.plan.logical(), values, imports, invocation));
             if (serial >= 3)
             {
                 allocation_count = 0;
@@ -381,7 +381,7 @@ void drawCase(
                 measuring = true;
             }
             const auto begin = std::chrono::steady_clock::now();
-            auto submitted = plan.submit(frame, native, trace);
+            auto submitted = plan.invocations.submit(frame.frame().frame_slot, frame, native, trace);
             const auto ns =
                 std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - begin).count();
             measuring = false;
@@ -392,7 +392,7 @@ void drawCase(
                 times[serial - 3] = ns;
             }
             CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
-            CHECK(plan.readback(
+            CHECK(plan.invocations.readback(
                 receipt,
                 GraphResourceId{read.destination.buffer.value()},
                 0,

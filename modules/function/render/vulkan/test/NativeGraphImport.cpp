@@ -74,7 +74,7 @@ namespace native_graph_test
             },
             ready[0]
         }};
-        NativeCompileInputs inputs{
+        NativeGraphFixtureInputs inputs{
             logical,
             device,
             allocator,
@@ -84,8 +84,8 @@ namespace native_graph_test
             invocation,
             samplers
         };
-        auto executable = checked(compileVulkanGraph(inputs, std::move(programs)));
-        const auto requirements = executable.importViews(GraphResourceId{input.value()});
+        auto executable = checked(compileFixture(inputs, std::move(programs)));
+        const auto requirements = executable.plan.importViews(GraphResourceId{input.value()});
         CHECK(requirements.size() == 1);
         std::vector<ImageView> views;
         for (const auto& image : images)
@@ -108,7 +108,7 @@ namespace native_graph_test
                 : NativeResourceState{VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
                                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, device.queueFamily()};
             auto frame = checked(FrameGraphBindings::create(
-                executable.logical(),
+                executable.plan.logical(),
                 {serial, serial, serial % 2},
                 logical_imports,
                 invocation
@@ -117,33 +117,33 @@ namespace native_graph_test
             {
                 const auto submitted = queue->submitted();
                 native_imports[0].ready.reset();
-                CHECK(!executable.submit(frame, native_imports));
+                CHECK(!executable.invocations.submit(frame.frame().frame_slot, frame, native_imports));
                 native_imports[0].ready = ready[selected];
                 native_imports[0].identity = GraphBackingId{99};
-                CHECK(!executable.submit(frame, native_imports));
+                CHECK(!executable.invocations.submit(frame.frame().frame_slot, frame, native_imports));
                 native_imports[0].identity = logical_imports[0].backing;
                 logical_imports[0].history_epoch = 2;
-                CHECK(!FrameGraphBindings::create(executable.logical(), {}, logical_imports, invocation));
+                CHECK(!FrameGraphBindings::create(executable.plan.logical(), {}, logical_imports, invocation));
                 logical_imports[0].history_epoch = 1;
                 native_imports[0].initial.family = device.queueFamily() + 100;
-                auto wrong_family = executable.submit(frame, native_imports);
+                auto wrong_family = executable.invocations.submit(frame.frame().frame_slot, frame, native_imports);
                 CHECK(!wrong_family && wrong_family.error().type == kWrongOwner);
                 native_imports[0].initial.family = device.queueFamily();
                 auto foreign_queue = checked(SubmissionQueue::create(device, 1));
                 auto foreign_batch = checked(foreign_queue->begin());
                 auto foreign_ticket = checked(std::move(foreign_batch).submit());
                 native_imports[0].ready = foreign_ticket;
-                auto wrong_ticket = executable.submit(frame, native_imports);
+                auto wrong_ticket = executable.invocations.submit(frame.frame().frame_slot, frame, native_imports);
                 CHECK(!wrong_ticket && wrong_ticket.error().type == kWrongOwner);
                 CHECK(checked(foreign_queue->wait(foreign_ticket, UINT64_MAX)));
                 native_imports[0].ready = ready[selected];
                 CHECK(queue->submitted() == submitted);
             }
-            auto receipt = checked(executable.submit(frame, native_imports));
+            auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, native_imports));
             CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
             ready[selected] = receipt.completion;
             std::array<float, 64> pixels;
-            CHECK(executable.readback(
+            CHECK(executable.invocations.readback(
                 receipt,
                 GraphResourceId{read.destination.buffer.value()},
                 0,

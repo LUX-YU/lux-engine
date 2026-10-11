@@ -96,7 +96,7 @@ namespace native_graph_test
             ));
         }
         const std::array samplers{std::pair{GraphSampler{1}, std::cref(sampler)}};
-        NativeCompileInputs inputs{
+        NativeGraphFixtureInputs inputs{
             logical,
             device,
             allocator,
@@ -108,21 +108,21 @@ namespace native_graph_test
             3,
             allow_alias
         };
-        auto executable = checked(compileVulkanGraph(inputs, std::move(programs)));
+        auto executable = checked(compileFixture(inputs, std::move(programs)));
         std::array<GraphImportBinding, 0> imports;
         std::array<std::optional<GraphSubmission>, 3> receipts;
         for (unsigned slot = 0; slot < 3; ++slot)
         {
             auto frame =
-                checked(FrameGraphBindings::create(executable.logical(), {slot, slot, slot}, imports, invocation));
-            receipts[slot] = checked(executable.submit(frame, {}));
+                checked(FrameGraphBindings::create(executable.plan.logical(), {slot, slot, slot}, imports, invocation));
+            receipts[slot] = checked(executable.invocations.submit(frame.frame().frame_slot, frame, {}));
         }
         CHECK(checked(queue->wait(receipts[2]->completion, UINT64_MAX)));
         for (const auto& receipt : receipts)
         {
             std::array<float, 64> a{}, b{};
-            CHECK(executable.readback(*receipt, outputs[0], 0, std::as_writable_bytes(std::span{a})));
-            CHECK(executable.readback(*receipt, outputs[1], 0, std::as_writable_bytes(std::span{b})));
+            CHECK(executable.invocations.readback(*receipt, outputs[0], 0, std::as_writable_bytes(std::span{a})));
+            CHECK(executable.invocations.readback(*receipt, outputs[1], 0, std::as_writable_bytes(std::span{b})));
             recordReadback("W04.first", receipt->slot, outputs[0], std::as_bytes(std::span{a}));
             recordReadback("W04.second", receipt->slot, outputs[1], std::as_bytes(std::span{b}));
             CHECK(a == b);
@@ -134,8 +134,12 @@ namespace native_graph_test
                 }
             }
         }
-        std::printf("NATIVE_ALLOCATION alias=%u %s\n", unsigned(allow_alias), executable.diagnostics().c_str());
-        const auto stats = executable.statistics();
+        std::printf(
+            "NATIVE_ALLOCATION alias=%u %s\n",
+            unsigned(allow_alias),
+            executable.invocations.diagnostics().c_str()
+        );
+        const auto stats = fixtureStatistics(executable);
         std::printf(
             "ALIAS scenario=%u enabled=%u allocations=%u bytes=%llu aliases=%u FIF=3\n",
             unsigned(scenario),

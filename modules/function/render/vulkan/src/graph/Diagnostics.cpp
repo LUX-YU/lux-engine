@@ -30,10 +30,10 @@ namespace lux::render::vulkan
         }
     } // namespace
 
-    std::size_t ExecutableGraphPlan::traceCapacity() const noexcept
+    std::size_t NativeGraphInvocations::traceCapacity() const noexcept
     {
         std::size_t result = 0;
-        for (const auto& recipe : backing_->recipes)
+        for (const auto& recipe : backing_->code->recipes)
         {
             result += 1 + recipe.alias_barriers.size();
             for (const auto& use : recipe.uses)
@@ -66,13 +66,13 @@ namespace lux::render::vulkan
         return output.str();
     }
 
-    std::string ExecutableGraphPlan::diagnostics() const noexcept
+    std::string NativeGraphInvocations::diagnostics() const noexcept
     {
         std::ostringstream output;
         output << "{\"queues\":[";
         for (unsigned q = 0; q < 3; ++q)
         {
-            const auto queue = backing_->queues[q]->nativeQueue();
+            const auto queue = backing_->code->queues[q]->nativeQueue();
             output << (q ? ",{" : "{") << "\"family\":" << queue.family << ",\"index\":" << queue.index << '}';
         }
         output << "],\"images\":[";
@@ -98,7 +98,7 @@ namespace lux::render::vulkan
         output << "],\"versions\":[";
         first = true;
         std::uint32_t index = 0;
-        for (const auto& version : backing_->logical.versions())
+        for (const auto& version : backing_->code->logical.versions())
         {
             output << (first ? "{" : ",{") << "\"index\":" << index++ << ",\"resource\":" << version.resource.value()
                    << ",\"writer\":" << version.writer.value() << ",\"range\":";

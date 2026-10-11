@@ -118,9 +118,9 @@ namespace lux::render::vulkan::detail
         }
     };
 
-    // Single composite owner. Destruction completes outstanding borrows before
-    // slots (descriptors/views/backing), then programs (pipeline/layout) die.
-    struct NativeGraphBacking
+    // Cold-constructed native code and structural resource recipes. Execution
+    // storage is separate; no per-View shader/pipeline/layout copy is required.
+    struct NativeGraphCode
     {
         LogicalGraphPlan logical;
         VkDevice device;
@@ -129,18 +129,28 @@ namespace lux::render::vulkan::detail
         std::vector<NativeShaderProgram> programs;
         std::vector<ResourceCell> cells;
         std::vector<NativePassRecipe> recipes;
-        std::vector<NativeImportBinding> imports;
         std::vector<std::optional<std::uint32_t>> import_positions;
         std::vector<std::vector<NativeViewRequirement>> import_views;
-        std::vector<std::pair<GraphSampler, std::reference_wrapper<const Sampler>>> samplers;
         std::vector<std::uint32_t> resource_usage;
         std::vector<std::optional<GraphResourceId>> alias_sources;
+        std::array<std::uint32_t, 3> admission{};
+        NativeGraphStatistics statistics;
+
+        NativeGraphCode(const NativeCompileInputs& inputs, std::vector<NativeShaderProgram> candidates) noexcept;
+    };
+
+    struct NativeGraphBacking
+    {
+        std::shared_ptr<const NativeGraphCode> code;
+        std::vector<std::pair<GraphSampler, std::reference_wrapper<const Sampler>>> samplers;
         std::vector<GraphSlot> slots;
         NativeGraphStatistics statistics;
-        std::array<std::uint32_t, 3> admission{};
         std::optional<RenderError> terminal;
 
-        NativeGraphBacking(const NativeCompileInputs& inputs, std::vector<NativeShaderProgram> programs) noexcept;
+        NativeGraphBacking(
+            std::shared_ptr<const NativeGraphCode> compiled,
+            const NativeInvocationInputs& inputs
+        ) noexcept;
         ~NativeGraphBacking() noexcept;
     };
 
@@ -149,14 +159,16 @@ namespace lux::render::vulkan::detail
     [[nodiscard]] const IndirectArguments* indirectArguments(const VNativeCommand& command) noexcept;
 
     [[nodiscard]] RenderResult<void> compileResources(
-        NativeGraphBacking& result,
+        NativeGraphCode& result,
         const NativeCompileInputs& inputs
     ) noexcept;
     [[nodiscard]] RenderResult<void> compileRecipes(
-        NativeGraphBacking& result,
+        NativeGraphCode& result,
         const NativeCompileInputs& inputs
     ) noexcept;
-    [[nodiscard]] RenderResult<void> compileSync(NativeGraphBacking& result) noexcept;
+    [[nodiscard]] RenderResult<void> allocateInvocations(NativeGraphBacking&, const NativeInvocationInputs&) noexcept;
+    [[nodiscard]] RenderResult<void> assembleInvocations(NativeGraphBacking&, const NativeInvocationInputs&) noexcept;
+    [[nodiscard]] RenderResult<void> compileSync(NativeGraphCode& result) noexcept;
     [[nodiscard]] RenderResult<void> compileCopies(NativePassRecipe& recipe, const LogicalGraphPlan& plan) noexcept;
     void recordCopies(
         VkCommandBuffer command,

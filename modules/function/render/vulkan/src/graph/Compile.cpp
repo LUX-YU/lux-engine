@@ -6,19 +6,21 @@ namespace lux::render::vulkan
 {
     namespace detail
     {
-        NativeGraphBacking::NativeGraphBacking(
+        NativeGraphCode::NativeGraphCode(
             const NativeCompileInputs& inputs,
             std::vector<NativeShaderProgram> candidates
         ) noexcept
             : logical(inputs.logical), device(inputs.device.native()), queues(inputs.queues),
-              programs(std::move(candidates)), imports(inputs.imports.begin(), inputs.imports.end())
+              programs(std::move(candidates))
         {
-            samplers.assign(inputs.samplers.begin(), inputs.samplers.end());
-            for (auto& import : imports)
-            {
-                import.views = {}; // never persist the caller's span
-                import.ranges = {};
-            }
+        }
+
+        NativeGraphBacking::NativeGraphBacking(
+            std::shared_ptr<const NativeGraphCode> compiled,
+            const NativeInvocationInputs& inputs
+        ) noexcept
+            : code(std::move(compiled)), samplers(inputs.samplers.begin(), inputs.samplers.end())
+        {
         }
 
         NativeGraphBacking::~NativeGraphBacking() noexcept
@@ -59,13 +61,6 @@ namespace lux::render::vulkan
             return static_cast<std::uint64_t>(ns);
         };
         const auto& identity = inputs.logical.identity();
-        const bool invalid_owner = inputs.allocator.device() != inputs.device.native();
-        const bool invalid_capacity = inputs.frame_capacity < 2 || inputs.frame_capacity > 3;
-        const bool invalid_values = inputs.initial_values.passes.size() != identity.passes.size();
-        if (invalid_owner || invalid_capacity || invalid_values)
-        {
-            return cxx::unexpected(RenderError{kInvalidArgument});
-        }
         for (auto* queue : inputs.queues)
         {
             if (!queue || queue->device() != inputs.device.native())
@@ -101,7 +96,7 @@ namespace lux::render::vulkan
                 return cxx::unexpected(RenderError{kInvalidArgument, {pass.value()}});
             }
         }
-        auto result = std::make_unique<detail::NativeGraphBacking>(inputs, std::move(programs));
+        auto result = std::make_shared<detail::NativeGraphCode>(inputs, std::move(programs));
         result->statistics.compile_ns[0] = elapsed();
         auto resources = detail::compileResources(*result, inputs);
         result->statistics.compile_ns[1] = elapsed();
@@ -123,4 +118,46 @@ namespace lux::render::vulkan
         }
         return ExecutableGraphPlan{std::move(result)};
     }
+
+    RenderResult<NativeGraphInvocations> NativeGraphInvocations::create(
+        const ExecutableGraphPlan& plan,
+        const NativeInvocationInputs& inputs
+    ) noexcept
+    {
+        const bool wrong_owner = inputs.device.native() != plan.device() || inputs.allocator.device() != plan.device();
+        const bool wrong_capacity = inputs.capacity == 0;
+        const bool wrong_inputs = inputs.imports.size() != plan.logical().imports().size() ||
+                                  inputs.initial_values.passes.size() != plan.logical().identity().passes.size();
+        if (wrong_owner || wrong_capacity || wrong_inputs)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
+        for (std::size_t i = 0; i < inputs.imports.size(); ++i)
+        {
+            if (inputs.imports[i].resource != plan.logical().imports()[i])
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument});
+            }
+        }
+        auto result = std::make_unique<detail::NativeGraphBacking>(plan.code_, inputs);
+        const auto started = std::chrono::steady_clock::now();
+        auto allocated = detail::allocateInvocations(*result, inputs);
+        const auto allocated_at = std::chrono::steady_clock::now();
+        result->statistics.compile_ns[1] =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(allocated_at - started).count();
+        if (!allocated)
+        {
+            return cxx::unexpected(allocated.error());
+        }
+        auto assembled = detail::assembleInvocations(*result, inputs);
+        result->statistics.compile_ns[2] =
+            std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - allocated_at)
+                .count();
+        if (!assembled)
+        {
+            return cxx::unexpected(assembled.error());
+        }
+        return NativeGraphInvocations{std::move(result)};
+    }
+
 } // namespace lux::render::vulkan

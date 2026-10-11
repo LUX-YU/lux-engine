@@ -31,6 +31,76 @@ namespace native_graph_test
         return std::move(*value);
     }
 
+    // Test assembly value, not a production compatibility API. Old oracles now
+    // explicitly address the immutable plan or the independent execution owner.
+    struct NativeGraphFixtureInputs
+    {
+        const LogicalGraphPlan& logical;
+        const VulkanDevice& device;
+        const VulkanAllocator& allocator;
+        std::array<SubmissionQueue*, 3> queues;
+        std::span<const NativePassCommand> commands;
+        std::span<const NativeImportBinding> imports;
+        const GraphInvocationData& initial_values;
+        std::span<const std::pair<GraphSampler, std::reference_wrapper<const Sampler>>> samplers{};
+        std::uint32_t frame_capacity{2};
+        bool alias{true};
+    };
+
+    struct NativeGraphFixture
+    {
+        ExecutableGraphPlan plan;
+        NativeGraphInvocations invocations;
+
+        [[nodiscard]] VkDevice device() const noexcept
+        {
+            return plan.device();
+        }
+    };
+
+    inline NativeGraphStatistics fixtureStatistics(const NativeGraphFixture& fixture)
+    {
+        auto result = fixture.plan.statistics();
+        const auto actual = fixture.invocations.statistics();
+        result.allocated_bytes = actual.allocated_bytes;
+        result.allocations = actual.allocations;
+        result.aliased_resources = actual.aliased_resources;
+        for (std::size_t i = 0; i < result.compile_ns.size(); ++i)
+        {
+            result.compile_ns[i] += actual.compile_ns[i];
+        }
+        return result;
+    }
+
+    inline RenderResult<NativeGraphFixture> compileFixture(
+        const NativeGraphFixtureInputs& inputs,
+        std::vector<NativeShaderProgram> programs
+    ) noexcept
+    {
+        auto plan = compileVulkanGraph(
+            {inputs.logical, inputs.device, inputs.queues, inputs.commands, inputs.alias},
+            std::move(programs)
+        );
+        if (!plan)
+        {
+            return lux::cxx::unexpected(plan.error());
+        }
+        auto invocations = NativeGraphInvocations::create(
+            *plan,
+            {inputs.device,
+             inputs.allocator,
+             inputs.imports,
+             inputs.initial_values,
+             inputs.samplers,
+             inputs.frame_capacity}
+        );
+        if (!invocations)
+        {
+            return lux::cxx::unexpected(invocations.error());
+        }
+        return NativeGraphFixture{std::move(*plan), std::move(*invocations)};
+    }
+
     NativeShaderProgram program(
         const VulkanDevice& device,
         const LogicalGraphPlan& graph,

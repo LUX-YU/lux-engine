@@ -64,7 +64,7 @@ namespace native_graph_test
             NativePassCommand{copy, CopyCommand{}, EQueueRole::TRANSFER}
         };
         const std::array samplers{std::pair{GraphSampler{1}, std::cref(sampler)}};
-        NativeCompileInputs inputs{
+        NativeGraphFixtureInputs inputs{
             logical,
             device,
             allocator,
@@ -74,10 +74,10 @@ namespace native_graph_test
             invocation,
             samplers
         };
-        auto executable = checked(compileVulkanGraph(inputs, std::move(programs)));
+        auto executable = checked(compileFixture(inputs, std::move(programs)));
         std::array<GraphImportBinding, 0> imports;
-        std::puts(executable.diagnostics().c_str());
-        std::vector<NativeTraceEvent> trace(executable.traceCapacity());
+        std::puts(executable.invocations.diagnostics().c_str());
+        std::vector<NativeTraceEvent> trace(executable.invocations.traceCapacity());
         for (unsigned serial = 0; serial < 8; ++serial)
         {
             // Each slot observes both choices, including after a previously enabled producer.
@@ -85,9 +85,9 @@ namespace native_graph_test
             invocation.passes[producer.value() - 1].enabled = enabled;
             std::printf("CONDITIONAL serial=%u enabled=%u\n", serial, unsigned(enabled));
             auto frame = checked(
-                FrameGraphBindings::create(executable.logical(), {serial, serial, serial % 2}, imports, invocation)
+                FrameGraphBindings::create(executable.plan.logical(), {serial, serial, serial % 2}, imports, invocation)
             );
-            auto receipt = checked(executable.submit(frame, {}, trace));
+            auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, {}, trace));
             const auto observed = std::span{trace}.first(receipt.trace_count);
             const auto skips = std::count_if(
                 observed.begin(),
@@ -101,7 +101,7 @@ namespace native_graph_test
             }
             CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
             std::array<float, 64> pixels;
-            CHECK(executable.readback(
+            CHECK(executable.invocations.readback(
                 receipt,
                 GraphResourceId{read.destination.buffer.value()},
                 0,

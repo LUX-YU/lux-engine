@@ -129,7 +129,7 @@ int main(int argc, char** argv)
         NativePassCommand{transfer, CopyCommand{}, multiple ? EQueueRole::TRANSFER : EQueueRole::GRAPHICS}
     };
     const std::array samplers{std::pair{GraphSampler{1}, std::cref(sampler)}};
-    NativeCompileInputs inputs{
+    NativeGraphFixtureInputs inputs{
         logical,
         device,
         allocator,
@@ -140,7 +140,7 @@ int main(int argc, char** argv)
         samplers
     };
 
-    auto executable = checked(compileVulkanGraph(inputs, std::move(programs)));
+    auto executable = checked(compileFixture(inputs, std::move(programs)));
     std::array<GraphImportBinding, 0> imports;
     std::array<double, 100> cpu{}, gpu{};
     TimestampQueries queries(device.native());
@@ -151,13 +151,13 @@ int main(int argc, char** argv)
         vkCmdResetQueryPool(start_batch.native(), queries.pool, 0, 2);
         vkCmdWriteTimestamp2(start_batch.native(), VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, queries.pool, 0);
         CHECK(std::move(start_batch).submit());
-        auto frame =
-            checked(FrameGraphBindings::create(executable.logical(), {serial, serial, serial % 2}, imports, invocation)
-            );
+        auto frame = checked(
+            FrameGraphBindings::create(executable.plan.logical(), {serial, serial, serial % 2}, imports, invocation)
+        );
         allocation_count = allocation_bytes = 0;
         measuring = serial >= 10;
         const auto start = Clock::now();
-        auto receipt = checked(executable.submit(frame, {}));
+        auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, {}));
         const auto ns = std::chrono::duration<double, std::nano>(Clock::now() - start).count();
         measuring = false;
         auto end_batch = checked(queue->begin());
@@ -187,7 +187,7 @@ int main(int argc, char** argv)
         if (serial == 109)
         {
             std::vector<float> pixels(256 * 256 * 4);
-            CHECK(executable
+            CHECK(executable.invocations
                       .readback(receipt, GraphResourceId{output.value()}, 0, std::as_writable_bytes(std::span{pixels}))
             );
             for (unsigned y = 0; y < 256; ++y)
@@ -215,12 +215,12 @@ int main(int argc, char** argv)
         allocation_count = allocation_bytes = 0;
         measuring = true;
         const auto start = Clock::now();
-        auto candidate = checked(compileVulkanGraph(inputs, std::move(candidates)));
+        auto candidate = checked(compileFixture(inputs, std::move(candidates)));
         cold[4][sample] = std::chrono::duration<double, std::nano>(Clock::now() - start).count();
         measuring = false;
         allocations += allocation_count.load();
         bytes += allocation_bytes.load();
-        const auto statistics = candidate.statistics();
+        const auto statistics = fixtureStatistics(candidate);
         for (unsigned phase = 0; phase < 4; ++phase)
         {
             cold[phase][sample] = double(statistics.compile_ns[phase]);

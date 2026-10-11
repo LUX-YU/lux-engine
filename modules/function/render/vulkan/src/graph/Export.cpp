@@ -14,14 +14,16 @@ namespace lux::render::vulkan
                current->serial() == receipt.completion.serial();
     }
 
-    RenderResult<VNativeImport> ExecutableGraphPlan::exportedBacking(GraphSubmission receipt, GraphResourceId resource)
-        const noexcept
+    RenderResult<VNativeImport> NativeGraphInvocations::exportedBacking(
+        GraphSubmission receipt,
+        GraphResourceId resource
+    ) const noexcept
     {
         if (!detail::matchesReceipt(*backing_, receipt))
         {
             return cxx::unexpected(RenderError{kWrongOwner});
         }
-        const auto& outputs = backing_->logical.identity().outputs;
+        const auto& outputs = backing_->code->logical.identity().outputs;
         const auto declared = std::find_if(
             outputs.begin(),
             outputs.end(),
@@ -43,7 +45,7 @@ namespace lux::render::vulkan
         return cxx::unexpected(RenderError{kInvalidArgument});
     }
 
-    RenderResult<std::uint32_t> ExecutableGraphPlan::resourceStates(
+    RenderResult<std::uint32_t> NativeGraphInvocations::resourceStates(
         GraphSubmission receipt,
         GraphResourceId resource,
         std::span<NativeRangeState> destination
@@ -54,8 +56,8 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kWrongOwner});
         }
         const auto count = std::count_if(
-            backing_->cells.begin(),
-            backing_->cells.end(),
+            backing_->code->cells.begin(),
+            backing_->code->cells.end(),
             [&](const auto& cell) { return cell.resource == resource; }
         );
         if (count == 0)
@@ -74,17 +76,17 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
         std::uint32_t written = 0;
-        for (std::uint32_t c = 0; c < backing_->cells.size(); ++c)
+        for (std::uint32_t c = 0; c < backing_->code->cells.size(); ++c)
         {
-            if (backing_->cells[c].resource == resource)
+            if (backing_->code->cells[c].resource == resource)
             {
-                destination[written++] = {backing_->cells[c].range, slot.states[c], slot.cell_tickets[c]};
+                destination[written++] = {backing_->code->cells[c].range, slot.states[c], slot.cell_tickets[c]};
             }
         }
         return written;
     }
 
-    RenderResult<GraphSubmission> ExecutableGraphPlan::retainExternalUse(
+    RenderResult<GraphSubmission> NativeGraphInvocations::retainExternalUse(
         GraphSubmission receipt,
         SubmissionTicket last_use
     ) noexcept
@@ -94,15 +96,15 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(*plan.terminal);
         }
-        const auto queue = std::find(plan.queues.begin(), plan.queues.end(), &last_use.owner());
-        const bool wrong_ticket =
-            !detail::matchesReceipt(plan, receipt) || queue == plan.queues.end() || !last_use.owner().owns(last_use);
+        const auto queue = std::find(plan.code->queues.begin(), plan.code->queues.end(), &last_use.owner());
+        const bool wrong_ticket = !detail::matchesReceipt(plan, receipt) || queue == plan.code->queues.end() ||
+                                  !last_use.owner().owns(last_use);
         if (wrong_ticket)
         {
             return cxx::unexpected(RenderError{kWrongOwner});
         }
         auto& slot = plan.slots[receipt.slot];
-        auto& retained = slot.queue_tickets[queue - plan.queues.begin()];
+        auto& retained = slot.queue_tickets[queue - plan.code->queues.begin()];
         if (retained && retained->serial() > last_use.serial())
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
@@ -118,14 +120,14 @@ namespace lux::render::vulkan
         }
         // Retain first: even if admission fails, teardown still waits for every
         // external borrower. No failed join can make the old receipt safe to recycle.
-        auto join = plan.queues[0]->begin();
+        auto join = plan.code->queues[0]->begin();
         if (!join)
         {
             plan.terminal = join.error();
             return cxx::unexpected(join.error());
         }
         const SubmissionWait wait{last_use, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT};
-        const auto waits = last_use.owner().nativeQueue().handle == plan.queues[0]->nativeQueue().handle
+        const auto waits = last_use.owner().nativeQueue().handle == plan.code->queues[0]->nativeQueue().handle
                                ? std::span<const SubmissionWait>{}
                                : std::span<const SubmissionWait>{&wait, 1};
         auto completion = std::move(*join).submit(waits);

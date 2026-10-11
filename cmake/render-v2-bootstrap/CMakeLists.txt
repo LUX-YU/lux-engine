@@ -22,4 +22,6 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/vulkan
 
 if(BUILD_TESTING)
     include("${CMAKE_CURRENT_LIST_DIR}/F4Closeout.cmake")
+
+    include("${CMAKE_CURRENT_LIST_DIR}/F5Runtime.cmake")
 endif()

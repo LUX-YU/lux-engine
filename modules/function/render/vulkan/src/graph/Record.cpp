@@ -173,7 +173,7 @@ namespace lux::render::vulkan
             }
             VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
             rendering.viewMask =
-                std::get<GraphicsDescription>(plan.programs[*recipe.program].identity().pipeline).view_mask;
+                std::get<GraphicsDescription>(plan.code->programs[*recipe.program].identity().pipeline).view_mask;
             rendering.renderArea.extent = bound.extent;
             rendering.layerCount = 1;
             rendering.colorAttachmentCount = static_cast<std::uint32_t>(bound.color_scratch.size());
@@ -194,7 +194,8 @@ namespace lux::render::vulkan
                 rendering.pStencilAttachment = &stencil;
             }
             vkCmdBeginRendering(command, &rendering);
-            const auto& graphics = std::get<GraphicsDescription>(plan.programs[*recipe.program].identity().pipeline);
+            const auto& graphics =
+                std::get<GraphicsDescription>(plan.code->programs[*recipe.program].identity().pipeline);
             if (!graphics.color_input_indices.empty())
             {
                 VkRenderingInputAttachmentIndexInfoKHR indices{
@@ -202,14 +203,14 @@ namespace lux::render::vulkan
                 };
                 indices.colorAttachmentCount = static_cast<std::uint32_t>(graphics.color_input_indices.size());
                 indices.pColorAttachmentInputIndices = graphics.color_input_indices.data();
-                plan.set_input_indices(command, &indices);
+                plan.code->set_input_indices(command, &indices);
             }
             VkViewport
                 viewport{0, 0, static_cast<float>(bound.extent.width), static_cast<float>(bound.extent.height), 0, 1};
             VkRect2D scissor{{0, 0}, bound.extent};
             vkCmdSetViewport(command, 0, 1, &viewport);
             vkCmdSetScissor(command, 0, 1, &scissor);
-            const auto& uses = plan.logical.identity().passes[recipe.command.pass.value() - 1].uses;
+            const auto& uses = plan.code->logical.identity().passes[recipe.command.pass.value() - 1].uses;
             const auto bufferAt = [&](std::uint32_t use, VkDeviceSize relative)
             {
                 const auto resource = bindings.resourceFor(recipe.command.pass, use).value() - 1;
@@ -260,8 +261,8 @@ namespace lux::render::vulkan
         }
     } // namespace
 
-    ExecutableGraphPlan::ExecutableGraphPlan(std::unique_ptr<detail::NativeGraphBacking> backing) noexcept
-        : backing_(std::move(backing))
+    ExecutableGraphPlan::ExecutableGraphPlan(std::shared_ptr<const detail::NativeGraphCode> code) noexcept
+        : code_(std::move(code))
     {
     }
 
@@ -271,15 +272,48 @@ namespace lux::render::vulkan
 
     const LogicalGraphPlan& ExecutableGraphPlan::logical() const noexcept
     {
-        return backing_->logical;
+        return code_->logical;
     }
 
     VkDevice ExecutableGraphPlan::device() const noexcept
     {
-        return backing_->device;
+        return code_->device;
     }
 
-    RenderResult<std::optional<SubmissionTicket>> ExecutableGraphPlan::lastUse() const noexcept
+    NativeGraphStatistics ExecutableGraphPlan::statistics() const noexcept
+    {
+        return code_->statistics;
+    }
+
+    std::span<const NativeViewRequirement> ExecutableGraphPlan::importViews(GraphResourceId resource) const noexcept
+    {
+        if (!resource.isValid() || resource.value() > code_->import_views.size())
+        {
+            return {};
+        }
+        return code_->import_views[resource.value() - 1];
+    }
+
+    NativeGraphInvocations::NativeGraphInvocations(std::unique_ptr<detail::NativeGraphBacking> backing) noexcept
+        : backing_(std::move(backing))
+    {
+    }
+
+    NativeGraphInvocations::~NativeGraphInvocations() noexcept = default;
+    NativeGraphInvocations::NativeGraphInvocations(NativeGraphInvocations&&) noexcept = default;
+    NativeGraphInvocations& NativeGraphInvocations::operator=(NativeGraphInvocations&&) noexcept = default;
+
+    const LogicalGraphPlan& NativeGraphInvocations::logical() const noexcept
+    {
+        return backing_->code->logical;
+    }
+
+    VkDevice NativeGraphInvocations::device() const noexcept
+    {
+        return backing_->code->device;
+    }
+
+    RenderResult<std::optional<SubmissionTicket>> NativeGraphInvocations::lastUse() const noexcept
     {
         if (backing_->terminal)
         {
@@ -296,21 +330,22 @@ namespace lux::render::vulkan
         return result;
     }
 
-    NativeGraphStatistics ExecutableGraphPlan::statistics() const noexcept
+    NativeGraphStatistics NativeGraphInvocations::statistics() const noexcept
     {
         return backing_->statistics;
     }
 
-    std::span<const NativeViewRequirement> ExecutableGraphPlan::importViews(GraphResourceId resource) const noexcept
+    std::span<const NativeViewRequirement> NativeGraphInvocations::importViews(GraphResourceId resource) const noexcept
     {
-        if (!resource.isValid() || resource.value() > backing_->import_views.size())
+        if (!resource.isValid() || resource.value() > backing_->code->import_views.size())
         {
             return {};
         }
-        return backing_->import_views[resource.value() - 1];
+        return backing_->code->import_views[resource.value() - 1];
     }
 
-    RenderResult<GraphSubmission> ExecutableGraphPlan::submit(
+    RenderResult<GraphSubmission> NativeGraphInvocations::submit(
+        std::uint32_t invocation_slot,
         const FrameGraphBindings& bindings,
         std::span<const NativeImportBinding> imports,
         std::span<NativeTraceEvent> trace
@@ -321,9 +356,9 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(*plan.terminal);
         }
-        const bool wrong_bindings = &bindings.plan() != &plan.logical || !bindings.values() ||
-                                    bindings.frame().frame_slot >= plan.slots.size() ||
-                                    imports.size() != plan.imports.size();
+        const bool wrong_bindings = &bindings.plan() != &plan.code->logical || !bindings.values() ||
+                                    invocation_slot >= plan.slots.size() ||
+                                    imports.size() != plan.code->logical.imports().size();
         if (wrong_bindings)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
@@ -344,8 +379,8 @@ namespace lux::render::vulkan
                 trace[trace_count++] = event;
             }
         };
-        auto& slot = plan.slots[bindings.frame().frame_slot];
-        for (auto* queue : plan.queues)
+        auto& slot = plan.slots[invocation_slot];
+        for (auto* queue : plan.code->queues)
         {
             auto completion = queue->poll();
             if (!completion)
@@ -366,14 +401,14 @@ namespace lux::render::vulkan
             }
         }
         // Admission is bounded before accepting any GPU work.
-        for (auto* queue : plan.queues)
+        for (auto* queue : plan.code->queues)
         {
             std::uint64_t needed = 0;
             for (unsigned q = 0; q < 3; ++q)
             {
-                if (plan.queues[q] == queue)
+                if (plan.code->queues[q] == queue)
                 {
-                    needed += plan.admission[q];
+                    needed += plan.code->admission[q];
                 }
             }
             if (needed > queue->capacity() - (queue->submitted() - queue->completed()))
@@ -391,11 +426,11 @@ namespace lux::render::vulkan
         std::fill(slot.cell_tickets.begin(), slot.cell_tickets.end(), std::nullopt);
         for (const auto& input : imports)
         {
-            for (std::uint32_t c = 0; c < plan.cells.size(); ++c)
+            for (std::uint32_t c = 0; c < plan.code->cells.size(); ++c)
             {
-                if (plan.cells[c].resource == input.resource)
+                if (plan.code->cells[c].resource == input.resource)
                 {
-                    const auto initial = detail::importState(input, plan.cells[c]);
+                    const auto initial = detail::importState(input, plan.code->cells[c]);
                     slot.states[c] = initial.state;
                     slot.cell_tickets[c] = initial.ready;
                 }
@@ -406,11 +441,11 @@ namespace lux::render::vulkan
             ticket.reset();
         }
         slot.queue_tickets = {};
-        for (const auto& recipe : plan.recipes)
+        for (const auto& recipe : plan.code->recipes)
         {
             const auto pass_index = recipe.command.pass.value() - 1;
             const auto& invocation = *bindings.invocation(recipe.command.pass);
-            const auto pass_key = plan.logical.identity().passes[pass_index].key;
+            const auto pass_key = plan.code->logical.identity().passes[pass_index].key;
             observe(
                 {invocation.enabled ? ENativeTrace::PASS : ENativeTrace::SKIP,
                  recipe.command.pass,
@@ -426,7 +461,7 @@ namespace lux::render::vulkan
             {
                 continue;
             }
-            auto& queue = *plan.queues[static_cast<unsigned>(recipe.command.queue)];
+            auto& queue = *plan.code->queues[static_cast<unsigned>(recipe.command.queue)];
             std::array<std::optional<SubmissionWait>, 3> waits{};
             VkPipelineStageFlags2 first_stages = 0;
             for (const auto& use : recipe.uses)
@@ -451,11 +486,12 @@ namespace lux::render::vulkan
             // queue, then acquired below with identical layouts and exact ranges.
             for (unsigned q = 0; q < 3; ++q)
             {
-                if (std::find(plan.queues.begin(), plan.queues.begin() + q, plan.queues[q]) != plan.queues.begin() + q)
+                if (std::find(plan.code->queues.begin(), plan.code->queues.begin() + q, plan.code->queues[q]) !=
+                    plan.code->queues.begin() + q)
                 {
                     continue;
                 }
-                auto& source_queue = *plan.queues[q];
+                auto& source_queue = *plan.code->queues[q];
                 std::optional<CommandBatch> release;
                 VkPipelineStageFlags2 destinations = 0;
                 for (const auto& use : recipe.uses)
@@ -463,7 +499,7 @@ namespace lux::render::vulkan
                     const auto selected = bindings.resourceFor(recipe.command.pass, use.use_index);
                     for (auto c : use.cells)
                     {
-                        const auto& cell = plan.cells[c];
+                        const auto& cell = plan.code->cells[c];
                         const auto& ticket = slot.cell_tickets[c];
                         const bool needs_release = cell.resource == selected && ticket &&
                                                    &ticket->owner() == &source_queue &&
@@ -554,7 +590,7 @@ namespace lux::render::vulkan
                 const auto selected = bindings.resourceFor(recipe.command.pass, use.use_index);
                 for (const auto c : use.cells)
                 {
-                    const auto& cell = plan.cells[c];
+                    const auto& cell = plan.code->cells[c];
                     if (cell.resource != selected)
                     {
                         continue;
@@ -614,7 +650,7 @@ namespace lux::render::vulkan
             auto& bound = slot.passes[pass_index];
             if (recipe.program)
             {
-                const auto& program = plan.programs[*recipe.program];
+                const auto& program = plan.code->programs[*recipe.program];
                 const auto point = std::holds_alternative<DispatchCommand>(recipe.command.command)
                                        ? VK_PIPELINE_BIND_POINT_COMPUTE
                                        : VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -643,7 +679,7 @@ namespace lux::render::vulkan
                 const auto selected = bindings.resourceFor(recipe.command.pass, use.use_index);
                 for (const auto c : use.host_readback_cells)
                 {
-                    const auto& cell = plan.cells[c];
+                    const auto& cell = plan.code->cells[c];
                     if (cell.resource != selected)
                     {
                         continue;
@@ -692,7 +728,7 @@ namespace lux::render::vulkan
                 const auto selected = bindings.resourceFor(recipe.command.pass, use.use_index);
                 for (auto c : use.cells)
                 {
-                    if (plan.cells[c].resource == selected)
+                    if (plan.code->cells[c].resource == selected)
                     {
                         slot.cell_tickets[c] = *submitted;
                     }
@@ -702,12 +738,12 @@ namespace lux::render::vulkan
         std::array<std::optional<SubmissionWait>, 3> final_waits{};
         for (const auto& ticket : slot.queue_tickets)
         {
-            if (ticket && ticket->owner().nativeQueue().handle != plan.queues[0]->nativeQueue().handle)
+            if (ticket && ticket->owner().nativeQueue().handle != plan.code->queues[0]->nativeQueue().handle)
             {
                 addWait(final_waits, *ticket, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT);
             }
         }
-        auto join = plan.queues[0]->begin();
+        auto join = plan.code->queues[0]->begin();
         if (!join)
         {
             plan.terminal = join.error();
@@ -722,10 +758,10 @@ namespace lux::render::vulkan
         slot.queue_tickets[0] = *last;
         slot.completion = *last;
         slot.frame_serial = bindings.frame().frame_serial;
-        return GraphSubmission{*last, bindings.frame().frame_slot, trace_count};
+        return GraphSubmission{*last, invocation_slot, trace_count};
     }
 
-    RenderResult<bool> ExecutableGraphPlan::completed(GraphSubmission receipt) noexcept
+    RenderResult<bool> NativeGraphInvocations::completed(GraphSubmission receipt) noexcept
     {
         if (receipt.slot >= backing_->slots.size())
         {
@@ -754,7 +790,7 @@ namespace lux::render::vulkan
         return done;
     }
 
-    RenderResult<void> ExecutableGraphPlan::readback(
+    RenderResult<void> NativeGraphInvocations::readback(
         GraphSubmission receipt,
         GraphResourceId resource,
         VkDeviceSize offset,
@@ -780,8 +816,8 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        const auto& outputs = backing_->logical.identity().outputs;
-        const auto size = backing_->logical.identity().resources[resource.value() - 1].buffer().byte_size;
+        const auto& outputs = backing_->code->logical.identity().outputs;
+        const auto size = backing_->code->logical.identity().resources[resource.value() - 1].buffer().byte_size;
         if (offset > size || destination.size() > size - offset)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
@@ -805,7 +841,7 @@ namespace lux::render::vulkan
         return buffer->read(offset + base, destination);
     }
 
-    RenderResult<void> ExecutableGraphPlan::readbackPass(
+    RenderResult<void> NativeGraphInvocations::readbackPass(
         GraphSubmission receipt,
         GraphPassId pass,
         std::uint32_t input,

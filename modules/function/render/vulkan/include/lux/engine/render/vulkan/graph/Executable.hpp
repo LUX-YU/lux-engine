@@ -9,7 +9,8 @@ namespace lux::render::vulkan
     namespace detail
     {
         struct NativeGraphBacking;
-    }
+        struct NativeGraphCode;
+    } // namespace detail
 
     struct DispatchCommand
     {
@@ -146,14 +147,22 @@ namespace lux::render::vulkan
     {
         const LogicalGraphPlan& logical;
         const VulkanDevice& device;
-        const VulkanAllocator& allocator;
         std::array<SubmissionQueue*, 3> queues;
         std::span<const NativePassCommand> commands;
+        bool alias{true};
+    };
+
+    // Cold allocation inputs for a fixed, bounded number of independent
+    // invocations. Capacity is not frames-in-flight and is never inferred from
+    // GraphFrameValues. Native borrows must outlive their invocation use.
+    struct NativeInvocationInputs
+    {
+        const VulkanDevice& device;
+        const VulkanAllocator& allocator;
         std::span<const NativeImportBinding> imports;
         const GraphInvocationData& initial_values;
         std::span<const std::pair<GraphSampler, std::reference_wrapper<const Sampler>>> samplers{};
-        std::uint32_t frame_capacity{2};
-        bool alias{true};
+        std::uint32_t capacity{2};
     };
 
     struct NativeGraphStatistics
@@ -203,6 +212,8 @@ namespace lux::render::vulkan
         std::vector<NativeShaderProgram> programs
     ) noexcept;
 
+    // Immutable native code. Invocation owners pin this code once at cold
+    // construction; submission does not copy pipelines or churn shared owners.
     class ExecutableGraphPlan
     {
     public:
@@ -211,6 +222,31 @@ namespace lux::render::vulkan
         ExecutableGraphPlan& operator=(ExecutableGraphPlan&&) noexcept;
         ExecutableGraphPlan(const ExecutableGraphPlan&) = delete;
         ExecutableGraphPlan& operator=(const ExecutableGraphPlan&) = delete;
+        [[nodiscard]] const LogicalGraphPlan& logical() const noexcept;
+        [[nodiscard]] VkDevice device() const noexcept;
+        [[nodiscard]] NativeGraphStatistics statistics() const noexcept;
+        [[nodiscard]] std::span<const NativeViewRequirement> importViews(GraphResourceId resource) const noexcept;
+
+    private:
+        friend class NativeGraphInvocations;
+        friend RenderResult<ExecutableGraphPlan>
+        compileVulkanGraph(const NativeCompileInputs&, std::vector<NativeShaderProgram>) noexcept;
+        ExecutableGraphPlan(std::shared_ptr<const detail::NativeGraphCode> code) noexcept;
+        std::shared_ptr<const detail::NativeGraphCode> code_;
+    };
+
+    class NativeGraphInvocations
+    {
+    public:
+        [[nodiscard]] static RenderResult<NativeGraphInvocations> create(
+            const ExecutableGraphPlan& plan,
+            const NativeInvocationInputs& inputs
+        ) noexcept;
+        ~NativeGraphInvocations() noexcept;
+        NativeGraphInvocations(NativeGraphInvocations&&) noexcept;
+        NativeGraphInvocations& operator=(NativeGraphInvocations&&) noexcept;
+        NativeGraphInvocations(const NativeGraphInvocations&) = delete;
+        NativeGraphInvocations& operator=(const NativeGraphInvocations&) = delete;
 
         [[nodiscard]] const LogicalGraphPlan& logical() const noexcept;
         [[nodiscard]] VkDevice device() const noexcept;
@@ -223,6 +259,7 @@ namespace lux::render::vulkan
         [[nodiscard]] std::span<const NativeViewRequirement> importViews(GraphResourceId resource) const noexcept;
 
         [[nodiscard]] RenderResult<GraphSubmission> submit(
+            std::uint32_t invocation_slot,
             const FrameGraphBindings& bindings,
             std::span<const NativeImportBinding> imports,
             std::span<NativeTraceEvent> trace = {}
@@ -258,9 +295,7 @@ namespace lux::render::vulkan
         ) noexcept;
 
     private:
-        friend RenderResult<ExecutableGraphPlan>
-        compileVulkanGraph(const NativeCompileInputs&, std::vector<NativeShaderProgram>) noexcept;
-        explicit ExecutableGraphPlan(std::unique_ptr<detail::NativeGraphBacking> backing) noexcept;
+        explicit NativeGraphInvocations(std::unique_ptr<detail::NativeGraphBacking> backing) noexcept;
         std::unique_ptr<detail::NativeGraphBacking> backing_;
     };
 } // namespace lux::render::vulkan

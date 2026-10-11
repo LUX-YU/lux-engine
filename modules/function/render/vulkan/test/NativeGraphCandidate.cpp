@@ -109,7 +109,7 @@ int main(int argc, char** argv)
             NativePassCommand{compute, DispatchCommand{4, 4, 1}, EQueueRole::GRAPHICS},
             NativePassCommand{copy, CopyCommand{}, EQueueRole::GRAPHICS}
         };
-        NativeCompileInputs
+        NativeGraphFixtureInputs
             inputs{logical, device, allocator, {queue.get(), queue.get(), queue.get()}, commands, {}, values};
         const auto shaders = [&]
         {
@@ -158,7 +158,7 @@ int main(int argc, char** argv)
             CHECK(checked(other_queue->wait(foreign[0], UINT64_MAX)));
             std::puts("DESCRIPTOR_REWRITE busy_foreign_shape_negative=PASS");
         }
-        auto active = std::make_unique<ExecutableGraphPlan>(checked(compileVulkanGraph(inputs, shaders())));
+        auto active = std::make_unique<NativeGraphFixture>(checked(compileFixture(inputs, shaders())));
         const auto* last_good = active.get();
         unsigned failures = 0;
         auto wrong_commands = commands;
@@ -166,12 +166,12 @@ int main(int argc, char** argv)
             device.properties().limits.maxComputeWorkGroupCount[0] + 1;
         auto wrong_inputs = inputs;
         wrong_inputs.commands = wrong_commands;
-        CHECK(!compileVulkanGraph(wrong_inputs, shaders()));
+        CHECK(!compileFixture(wrong_inputs, shaders()));
         wrong_commands[0].command = DrawCommand{};
-        CHECK(!compileVulkanGraph(wrong_inputs, shaders()));
+        CHECK(!compileFixture(wrong_inputs, shaders()));
         wrong_inputs.commands = inputs.commands;
-        wrong_inputs.frame_capacity = 1;
-        CHECK(!compileVulkanGraph(wrong_inputs, shaders()));
+        wrong_inputs.frame_capacity = 0;
+        CHECK(!compileFixture(wrong_inputs, shaders()));
         for (const auto operation : {"image", "buffer", "mapping", "image_view", "descriptor_pool", "descriptor_set"})
         {
             for (unsigned occurrence : {1u, 2u})
@@ -180,7 +180,7 @@ int main(int argc, char** argv)
                 auto programs = shaders();
                 failure = operation;
                 countdown = occurrence;
-                const auto candidate = compileVulkanGraph(inputs, std::move(programs));
+                const auto candidate = compileFixture(inputs, std::move(programs));
                 CHECK(!candidate && countdown == 0);
                 CHECK(candidate.error().type == kNativeFailure);
                 CHECK(candidate.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_OUT_OF_DEVICE_MEMORY));
@@ -194,17 +194,18 @@ int main(int argc, char** argv)
         hold_evidence = true;
         for (unsigned slot = 0; slot < 2; ++slot)
         {
-            auto frame = checked(FrameGraphBindings::create(active->logical(), {slot, slot, slot}, imports, values));
+            auto frame =
+                checked(FrameGraphBindings::create(active->plan.logical(), {slot, slot, slot}, imports, values));
             const auto created_before = creations;
-            receipts[slot] = checked(active->submit(frame, {}));
+            receipts[slot] = checked(active->invocations.submit(frame.frame().frame_slot, frame, {}));
             CHECK(creations == created_before);
         }
-        auto busy_frame = checked(FrameGraphBindings::create(active->logical(), {2, 2, 0}, imports, values));
-        auto busy = active->submit(busy_frame, {});
+        auto busy_frame = checked(FrameGraphBindings::create(active->plan.logical(), {2, 2, 0}, imports, values));
+        auto busy = active->invocations.submit(busy_frame.frame().frame_slot, busy_frame, {});
         CHECK(!busy && busy.error().type == kBusy);
-        auto replacement = std::make_unique<ExecutableGraphPlan>(checked(compileVulkanGraph(inputs, shaders())));
+        auto replacement = std::make_unique<NativeGraphFixture>(checked(compileFixture(inputs, shaders())));
         auto retirement = checked(RetirementQueue::create(*queue, 1));
-        const auto last = *checked(active->lastUse());
+        const auto last = *checked(active->invocations.lastUse());
         CHECK(retirement.retire(last, std::move(active)));
         CHECK(!active && retirement.pending() == 1);
         const auto pinned = live;
@@ -214,24 +215,24 @@ int main(int argc, char** argv)
         hold_evidence = false;
         CHECK(checked(queue->wait(last, UINT64_MAX)));
         std::array<float, 64> pixels;
-        CHECK(const_cast<ExecutableGraphPlan*>(last_good)
-                  ->readbackPass(*receipts[1], copy, 0, 0, std::as_writable_bytes(std::span{pixels})));
+        CHECK(const_cast<NativeGraphFixture*>(last_good)
+                  ->invocations.readbackPass(*receipts[1], copy, 0, 0, std::as_writable_bytes(std::span{pixels})));
         CHECK(pixels[0] == 1.0f && pixels[1] == 2.0f && pixels[2] == 3.0f);
         CHECK(checked(retirement.collect()) == 1 && retirement.pending() == 0);
         active = std::move(replacement);
-        auto frame = checked(FrameGraphBindings::create(active->logical(), {}, imports, values));
-        auto receipt = checked(active->submit(frame, {}));
+        auto frame = checked(FrameGraphBindings::create(active->plan.logical(), {}, imports, values));
+        auto receipt = checked(active->invocations.submit(frame.frame().frame_slot, frame, {}));
         CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
-        CHECK(active->readbackPass(receipt, copy, 0, 0, std::as_writable_bytes(std::span{pixels})));
+        CHECK(active->invocations.readbackPass(receipt, copy, 0, 0, std::as_writable_bytes(std::span{pixels})));
 
         // Driver failure is injected only after real outstanding GPU work has
         // completed; this cannot use a simulated loss to hide live native work.
         device_lost = true;
-        auto failed = active->submit(frame, {});
+        auto failed = active->invocations.submit(frame.frame().frame_slot, frame, {});
         CHECK(!failed && failed.error().type == kNativeFailure);
         CHECK(failed.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST));
-        CHECK(!active->lastUse());
-        CHECK(!active->submit(frame, {}));
+        CHECK(!active->invocations.lastUse());
+        CHECK(!active->invocations.submit(frame.frame().frame_slot, frame, {}));
         std::printf(
             "GRAPH_FAULTS failures=%u last_good=PASS FIF=2 retirement_capacity=PASS device_lost_terminal=PASS "
             "hot_native_creations=0\n",

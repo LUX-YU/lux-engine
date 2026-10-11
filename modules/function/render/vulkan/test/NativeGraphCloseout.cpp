@@ -64,15 +64,15 @@ void computeHost(const std::filesystem::path& shaders, Validation& validation, b
         {},
         true
     }};
-    auto plan = checked(compileVulkanGraph(
+    auto plan = checked(compileFixture(
         {logical, device, allocator, {queue.get(), compute.get(), transfer.get()}, commands, native, invocation},
         std::move(programs)
     ));
     std::array imports{GraphImportBinding{GraphResourceId{source.value()}, GraphBackingId{1}, 0, 1}};
-    auto bindings = checked(FrameGraphBindings::create(plan.logical(), {}, imports, invocation));
-    std::vector<NativeTraceEvent> trace(plan.traceCapacity());
+    auto bindings = checked(FrameGraphBindings::create(plan.plan.logical(), {}, imports, invocation));
+    std::vector<NativeTraceEvent> trace(plan.invocations.traceCapacity());
     native[0].host_ready = false;
-    const auto not_ready = plan.submit(bindings, native);
+    const auto not_ready = plan.invocations.submit(bindings.frame().frame_slot, bindings, native);
     CHECK(!not_ready && not_ready.error().type == kInvalidArgument);
     native[0].host_ready = true;
     VkEventCreateInfo event_info{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
@@ -93,10 +93,11 @@ void computeHost(const std::filesystem::path& shaders, Validation& validation, b
         nullptr
     );
     const auto gate_ticket = checked(std::move(pending).submit());
-    auto submission = plan.submit(bindings, native, trace);
+    auto submission = plan.invocations.submit(bindings.frame().frame_slot, bindings, native, trace);
     std::array<std::byte, 4> premature_bytes{};
     RenderResult<void> premature =
-        submission ? plan.readback(*submission, GraphResourceId{output.value()}, exported.byte_offset, premature_bytes)
+        submission ? plan.invocations
+                         .readback(*submission, GraphResourceId{output.value()}, exported.byte_offset, premature_bytes)
                    : lux::cxx::unexpected(submission.error());
     // Release the actual GPU before asserting results, including a failed admission.
     CHECK(vkSetEvent(device.native(), gate) == VK_SUCCESS);
@@ -109,7 +110,7 @@ void computeHost(const std::filesystem::path& shaders, Validation& validation, b
     std::array<unsigned, 16> actual{};
     const auto first = unsigned(exported.byte_offset / sizeof(unsigned));
     const auto count = unsigned(exported.byte_count / sizeof(unsigned));
-    CHECK(plan.readback(
+    CHECK(plan.invocations.readback(
         receipt,
         GraphResourceId{output.value()},
         exported.byte_offset,
@@ -130,7 +131,7 @@ void computeHost(const std::filesystem::path& shaders, Validation& validation, b
     CHECK(compute_host);
     if (partial)
     {
-        auto outside = plan.readback(
+        auto outside = plan.invocations.readback(
             receipt,
             GraphResourceId{output.value()},
             0,
@@ -199,7 +200,7 @@ void aliasImport(Validation& validation)
         NativeImportBinding{GraphResourceId{images[0].value()}, GraphBackingId{2}, std::cref(first), {}, {}, true},
         NativeImportBinding{GraphResourceId{images[1].value()}, GraphBackingId{3}, std::cref(second), {}, {}, true}
     };
-    auto plan = checked(compileVulkanGraph(
+    auto plan = checked(compileFixture(
         {logical, device, allocator, {queue.get(), queue.get(), queue.get()}, commands, native, values},
         {}
     ));
@@ -208,8 +209,8 @@ void aliasImport(Validation& validation)
         GraphImportBinding{GraphResourceId{images[0].value()}, GraphBackingId{2}, 0, 1},
         GraphImportBinding{GraphResourceId{images[1].value()}, GraphBackingId{3}, 0, 1}
     };
-    auto frame = checked(FrameGraphBindings::create(plan.logical(), {}, imports, values));
-    auto result = plan.submit(frame, native);
+    auto frame = checked(FrameGraphBindings::create(plan.plan.logical(), {}, imports, values));
+    auto result = plan.invocations.submit(frame.frame().frame_slot, frame, native);
     if (result)
     {
         CHECK(checked(queue->wait(result->completion, UINT64_MAX)));
@@ -222,11 +223,11 @@ void aliasImport(Validation& validation)
     CHECK(!result && result.error().type == kInvalidArgument);
     auto independent = checked(Image::create(allocator, desc));
     native[2].backing = std::cref(independent);
-    auto accepted = checked(plan.submit(frame, native));
+    auto accepted = checked(plan.invocations.submit(frame.frame().frame_slot, frame, native));
     CHECK(checked(queue->wait(accepted.completion, UINT64_MAX)));
     std::puts("C2 nonoverlapping_native_allocations=ACCEPTED");
     native[2].backing = std::cref(first);
-    auto duplicate = plan.submit(frame, native);
+    auto duplicate = plan.invocations.submit(frame.frame().frame_slot, frame, native);
     CHECK(!duplicate && duplicate.error().type == kInvalidArgument);
     std::puts("C2 same_native_handle=REJECTED");
     native[2].backing = std::cref(independent);
@@ -248,7 +249,7 @@ void aliasImport(Validation& validation)
         nullptr
     );
     auto gate_ticket = checked(std::move(pending).submit());
-    auto active = plan.submit(frame, native);
+    auto active = plan.invocations.submit(frame.frame().frame_slot, frame, native);
     RenderResult<GraphSubmission> overlapping = lux::cxx::unexpected(RenderError{kInvalidArgument});
     if (active)
     {
@@ -258,8 +259,8 @@ void aliasImport(Validation& validation)
         }
         native[1].backing = std::cref(second);
         native[1].identity = imports[1].backing = GraphBackingId{4};
-        auto next = checked(FrameGraphBindings::create(plan.logical(), {1, 1, 1}, imports, values));
-        overlapping = plan.submit(next, native);
+        auto next = checked(FrameGraphBindings::create(plan.plan.logical(), {1, 1, 1}, imports, values));
+        overlapping = plan.invocations.submit(next.frame().frame_slot, next, native);
     }
     CHECK(vkSetEvent(device.native(), gate) == VK_SUCCESS);
     CHECK(checked(queue->wait(gate_ticket, UINT64_MAX)));
@@ -346,7 +347,7 @@ namespace native_graph_test
             },
             ready[0]
         }};
-        NativeCompileInputs inputs{
+        NativeGraphFixtureInputs inputs{
             logical,
             device,
             allocator,
@@ -356,8 +357,8 @@ namespace native_graph_test
             invocation,
             samplers
         };
-        auto executable = checked(compileVulkanGraph(inputs, std::move(programs)));
-        const auto requirements = executable.importViews(GraphResourceId{input.value()});
+        auto executable = checked(compileFixture(inputs, std::move(programs)));
+        const auto requirements = executable.plan.importViews(GraphResourceId{input.value()});
         CHECK(requirements.size() == 1);
         std::vector<std::unique_ptr<ImageView>> views;
         for (const auto& image : images)
@@ -382,7 +383,7 @@ namespace native_graph_test
                 : NativeResourceState{VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
                                       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, device.queueFamily()};
             auto frame = checked(FrameGraphBindings::create(
-                executable.logical(),
+                executable.plan.logical(),
                 {serial, serial, serial % 2},
                 logical_imports,
                 invocation
@@ -391,29 +392,29 @@ namespace native_graph_test
             {
                 const auto submitted = queue->submitted();
                 native_imports[0].ready.reset();
-                CHECK(!executable.submit(frame, native_imports));
+                CHECK(!executable.invocations.submit(frame.frame().frame_slot, frame, native_imports));
                 native_imports[0].ready = ready[selected];
                 native_imports[0].identity = GraphBackingId{99};
-                CHECK(!executable.submit(frame, native_imports));
+                CHECK(!executable.invocations.submit(frame.frame().frame_slot, frame, native_imports));
                 native_imports[0].identity = logical_imports[0].backing;
                 logical_imports[0].history_epoch = 2;
-                CHECK(!FrameGraphBindings::create(executable.logical(), {}, logical_imports, invocation));
+                CHECK(!FrameGraphBindings::create(executable.plan.logical(), {}, logical_imports, invocation));
                 logical_imports[0].history_epoch = 1;
                 native_imports[0].initial.family = device.queueFamily() + 100;
-                auto wrong_family = executable.submit(frame, native_imports);
+                auto wrong_family = executable.invocations.submit(frame.frame().frame_slot, frame, native_imports);
                 CHECK(!wrong_family && wrong_family.error().type == kWrongOwner);
                 native_imports[0].initial.family = device.queueFamily();
                 auto foreign_queue = checked(SubmissionQueue::create(device, 1));
                 auto foreign_batch = checked(foreign_queue->begin());
                 auto foreign_ticket = checked(std::move(foreign_batch).submit());
                 native_imports[0].ready = foreign_ticket;
-                auto wrong_ticket = executable.submit(frame, native_imports);
+                auto wrong_ticket = executable.invocations.submit(frame.frame().frame_slot, frame, native_imports);
                 CHECK(!wrong_ticket && wrong_ticket.error().type == kWrongOwner);
                 CHECK(checked(foreign_queue->wait(foreign_ticket, UINT64_MAX)));
                 native_imports[0].ready = ready[selected];
                 CHECK(queue->submitted() == submitted);
             }
-            auto receipt = checked(executable.submit(frame, native_imports));
+            auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, native_imports));
             CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
             ready[selected] = receipt.completion;
             if (serial == 2)
@@ -423,7 +424,7 @@ namespace native_graph_test
                 std::puts("C3 A_image_and_external_view_destroyed plan_alive one_completed_slot_still_references_A");
             }
             std::array<float, 64> pixels;
-            CHECK(executable.readback(
+            CHECK(executable.invocations.readback(
                 receipt,
                 GraphResourceId{read.destination.buffer.value()},
                 0,

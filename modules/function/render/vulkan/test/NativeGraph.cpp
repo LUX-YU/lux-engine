@@ -110,7 +110,7 @@ int main(int argc, char** argv)
             NativePassCommand{transfer, CopyCommand{}, multiple ? EQueueRole::TRANSFER : EQueueRole::GRAPHICS}
         };
         const std::array samplers{std::pair{GraphSampler{1}, std::cref(sampler)}};
-        NativeCompileInputs inputs{
+        NativeGraphFixtureInputs inputs{
             logical,
             device,
             allocator,
@@ -120,20 +120,20 @@ int main(int argc, char** argv)
             invocation,
             samplers
         };
-        auto executable = checked(compileVulkanGraph(inputs, std::move(programs)));
+        auto executable = checked(compileFixture(inputs, std::move(programs)));
         std::array<GraphImportBinding, 0> imports;
         for (std::uint64_t frame = 0; frame < 6; ++frame)
         {
             auto bindings = checked(FrameGraphBindings::create(
-                executable.logical(),
+                executable.plan.logical(),
                 {frame, frame, static_cast<unsigned>(frame % 2)},
                 imports,
                 invocation
             ));
-            auto receipt = checked(executable.submit(bindings, {}));
+            auto receipt = checked(executable.invocations.submit(bindings.frame().frame_slot, bindings, {}));
             CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
             std::array<float, 64> pixels{};
-            CHECK(executable
+            CHECK(executable.invocations
                       .readback(receipt, GraphResourceId{output.value()}, 0, std::as_writable_bytes(std::span{pixels}))
             );
             if (frame == 0)
@@ -158,7 +158,7 @@ int main(int argc, char** argv)
                 }
             }
         }
-        std::puts(executable.diagnostics().c_str());
+        std::puts(executable.invocations.diagnostics().c_str());
         std::printf(
             "QUEUE_MODE multiple=%u local_read=%u same_family=%u\n",
             unsigned(multiple),

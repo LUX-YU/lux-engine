@@ -79,7 +79,7 @@ namespace lux::render::vulkan::detail
                b->base_layer >= a->base_layer && b->base_layer + b->layer_count <= a->base_layer + a->layer_count;
     }
 
-    RenderResult<void> compileSync(NativeGraphBacking& result) noexcept
+    RenderResult<void> compileSync(NativeGraphCode& result) noexcept
     {
         const auto& graph = result.logical.identity();
         for (std::uint32_t r = 0; r < graph.resources.size(); ++r)
@@ -294,11 +294,6 @@ namespace lux::render::vulkan::detail
                     }
                 }
             }
-        }
-        for (auto& slot : result.slots)
-        {
-            slot.states.resize(result.cells.size());
-            slot.cell_tickets.resize(result.cells.size());
         }
         // Capacity admission includes at most one ownership-release batch per
         // prior queue per pass, plus one completion join. Conditional selection

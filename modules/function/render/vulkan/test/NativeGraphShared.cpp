@@ -79,17 +79,17 @@ namespace native_graph_test
         programs.push_back(
             program(device, logical, pb, "F3SharedB", schemas[1], shaders, false, 0, nullptr, owners, assignment)
         );
-        auto executable = checked(compileVulkanGraph(
+        auto executable = checked(compileFixture(
             {logical, device, allocator, {queue.get(), queue.get(), queue.get()}, commands, native_imports, invocation},
             std::move(programs)
         ));
-        auto bindings = checked(FrameGraphBindings::create(executable.logical(), {}, imports, invocation));
-        auto submitted = checked(executable.submit(bindings, native_imports));
+        auto bindings = checked(FrameGraphBindings::create(executable.plan.logical(), {}, imports, invocation));
+        auto submitted = checked(executable.invocations.submit(bindings.frame().frame_slot, bindings, native_imports));
         CHECK(checked(queue->wait(submitted.completion, UINT64_MAX)));
         for (unsigned i = 0; i < 2; ++i)
         {
             std::array<float, 16> pixels;
-            CHECK(executable.readback(
+            CHECK(executable.invocations.readback(
                 submitted,
                 GraphResourceId{outputs[i].value()},
                 0,

@@ -289,9 +289,9 @@ namespace lux::render::vulkan::detail
                 return cxx::unexpected(view.error());
             }
             SlotPass::ViewPatch patch{resource, {}};
-            if (plan.import_positions[resource.value() - 1])
+            if (plan.code->import_positions[resource.value() - 1])
             {
-                auto& requirements = plan.import_views[resource.value() - 1];
+                auto& requirements = plan.code->import_views[resource.value() - 1];
                 const auto native_range = imageRange(range);
                 const auto found = std::find_if(
                     requirements.begin(),
@@ -308,7 +308,7 @@ namespace lux::render::vulkan::detail
                 patch.import_view = static_cast<std::uint32_t>(found - requirements.begin());
                 if (found == requirements.end())
                 {
-                    requirements.push_back({native_range, type});
+                    std::terminate(); // Immutable recipe must contain every imported view shape.
                 }
             }
             const auto index = static_cast<std::uint32_t>(pass.views.size());
@@ -318,7 +318,7 @@ namespace lux::render::vulkan::detail
         }
 
         RenderResult<std::vector<std::pair<GraphPassId, std::uint32_t>>> descriptorSources(
-            const NativeGraphBacking& result,
+            const NativeGraphCode& result,
             GraphPassId pass_id,
             std::optional<std::uint32_t> program_index
         ) noexcept
@@ -399,15 +399,15 @@ namespace lux::render::vulkan::detail
 
         RenderResult<void> assemblePass(
             NativeGraphBacking& result,
-            const NativeCompileInputs& inputs,
+            const NativeInvocationInputs& inputs,
             const NativePassRecipe& recipe,
             GraphSlot& slot
         ) noexcept
         {
             const auto index = recipe.command.pass.value() - 1;
-            const auto& pass = result.logical.identity().passes[index];
+            const auto& pass = result.code->logical.identity().passes[index];
             auto& output = slot.passes[index];
-            auto captured = descriptorSources(result, recipe.command.pass, recipe.program);
+            auto captured = descriptorSources(*result.code, recipe.command.pass, recipe.program);
             if (!captured)
             {
                 return cxx::unexpected(captured.error());
@@ -417,7 +417,7 @@ namespace lux::render::vulkan::detail
             std::vector<OwnerDescriptorValue> values;
             for (const auto [source_pass, f] : fields)
             {
-                const auto& source = result.logical.identity().passes[source_pass.value() - 1];
+                const auto& source = result.code->logical.identity().passes[source_pass.value() - 1];
                 const auto& source_values = inputs.initial_values.passes[source_pass.value() - 1];
                 const auto& field = source.bindings[f];
                 const auto* attachment = std::get_if<AttachmentBinding>(&field.value);
@@ -443,7 +443,7 @@ namespace lux::render::vulkan::detail
                     const auto* view = &output.views[*view_index];
                     const auto extent = view->extent();
                     const auto& graphics =
-                        std::get<GraphicsDescription>(result.programs[*recipe.program].identity().pipeline);
+                        std::get<GraphicsDescription>(result.code->programs[*recipe.program].identity().pipeline);
                     if (attachment->range.layer_count < std::max(1, std::bit_width(graphics.view_mask)))
                     {
                         return cxx::unexpected(RenderError{kInvalidArgument});
@@ -503,7 +503,7 @@ namespace lux::render::vulkan::detail
                 {
                     continue;
                 }
-                const auto& program = result.programs[*recipe.program];
+                const auto& program = result.code->programs[*recipe.program];
                 const auto& layout = program.identity().layout;
                 const auto owner = std::find_if(
                     layout.owners.begin(),
@@ -649,7 +649,7 @@ namespace lux::render::vulkan::detail
                     return cxx::unexpected(RenderError{kInvalidArgument});
                 }
                 const auto clear_class = rdesc::textureClearClass(
-                    result.logical.identity().resources[resolve->resource.value() - 1].texture().format
+                    result.code->logical.identity().resources[resolve->resource.value() - 1].texture().format
                 );
                 source->native.resolveMode = clear_class == rdesc::ETextureClearClass::FLOAT
                                                  ? VK_RESOLVE_MODE_AVERAGE_BIT
@@ -684,7 +684,7 @@ namespace lux::render::vulkan::detail
             }
             if (recipe.program)
             {
-                const auto& program = result.programs[*recipe.program];
+                const auto& program = result.code->programs[*recipe.program];
                 auto descriptors =
                     BoundDescriptorSets::create(inputs.device, program, values, EDescriptorUpdates::COMPLETED_ONLY);
                 if (!descriptors)
@@ -702,7 +702,7 @@ namespace lux::render::vulkan::detail
         }
     } // namespace
 
-    RenderResult<void> compileRecipes(NativeGraphBacking& result, const NativeCompileInputs& inputs) noexcept
+    RenderResult<void> compileRecipes(NativeGraphCode& result, const NativeCompileInputs& inputs) noexcept
     {
         if (inputs.device.localRead())
         {
@@ -801,9 +801,71 @@ namespace lux::render::vulkan::detail
             }
             result.recipes.push_back(std::move(recipe));
         }
+        const auto requireView = [&](GraphResourceId resource, ImageRange range, VkImageViewType type)
+        {
+            if (!result.import_positions[resource.value() - 1])
+            {
+                return;
+            }
+            auto& requirements = result.import_views[resource.value() - 1];
+            const auto native = imageRange(range);
+            const auto same = [&](const NativeViewRequirement& value)
+            {
+                return value.type == type && value.range.aspectMask == native.aspectMask &&
+                       value.range.baseMipLevel == native.baseMipLevel && value.range.levelCount == native.levelCount &&
+                       value.range.baseArrayLayer == native.baseArrayLayer &&
+                       value.range.layerCount == native.layerCount;
+            };
+            if (std::none_of(requirements.begin(), requirements.end(), same))
+            {
+                requirements.push_back({native, type});
+            }
+        };
+        for (const auto& recipe : result.recipes)
+        {
+            auto fields = descriptorSources(result, recipe.command.pass, recipe.program);
+            if (!fields)
+            {
+                return cxx::unexpected(fields.error());
+            }
+            for (const auto [source_pass, f] : *fields)
+            {
+                const auto& source = graph.passes[source_pass.value() - 1];
+                const auto& field = source.bindings[f];
+                if (const auto* attachment = std::get_if<AttachmentBinding>(&field.value))
+                {
+                    requireView(
+                        attachment->resource,
+                        attachment->range,
+                        attachment->range.layer_count == 1 ? VK_IMAGE_VIEW_TYPE_2D : VK_IMAGE_VIEW_TYPE_2D_ARRAY
+                    );
+                }
+                if (const auto* resource = std::get_if<ShaderResourceBinding>(&field.value))
+                {
+                    if (const auto* range = std::get_if<ImageRange>(&resource->range))
+                    {
+                        const auto type = resource->dimension.ends_with("Array") ? VK_IMAGE_VIEW_TYPE_2D_ARRAY
+                                                                                 : VK_IMAGE_VIEW_TYPE_2D;
+                        requireView(resource->resource, *range, type);
+                        for (const auto& use : source.uses)
+                        {
+                            if (use.field_index == f && use.fallback)
+                            {
+                                requireView(use.fallback->resource, *range, type);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return {};
+    }
+
+    RenderResult<void> assembleInvocations(NativeGraphBacking& result, const NativeInvocationInputs& inputs) noexcept
+    {
         for (auto& slot : result.slots)
         {
-            for (const auto& recipe : result.recipes)
+            for (const auto& recipe : result.code->recipes)
             {
                 auto assembled = assemblePass(result, inputs, recipe, slot);
                 if (!assembled)

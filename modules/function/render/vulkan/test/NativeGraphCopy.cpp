@@ -62,29 +62,33 @@ namespace native_graph_test
             {},
             true
         }};
-        NativeCompileInputs
+        NativeGraphFixtureInputs
             inputs{logical, device, allocator, {queue.get(), queue.get(), queue.get()}, commands, native, invocation};
-        auto executable = checked(compileVulkanGraph(inputs, {}));
+        auto executable = checked(compileFixture(inputs, {}));
         std::array imports{GraphImportBinding{GraphResourceId{input.value()}, GraphBackingId{1}, 16, 1}};
         std::optional<GraphSubmission> last_receipt;
         for (unsigned serial = 0; serial < 4; ++serial)
         {
             imports[0].dynamic_offset = 16 + (serial / 2) * 16;
             auto frame = checked(
-                FrameGraphBindings::create(executable.logical(), {serial, serial, serial % 2}, imports, invocation)
+                FrameGraphBindings::create(executable.plan.logical(), {serial, serial, serial % 2}, imports, invocation)
             );
-            const auto receipt = checked(executable.submit(frame, native));
+            const auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, native));
             last_receipt = receipt;
             CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
             std::array<std::byte, 80> actual;
-            CHECK(executable.readbackPass(receipt, d, 0, 0, actual));
+            CHECK(executable.invocations.readbackPass(receipt, d, 0, 0, actual));
             CHECK(std::equal(actual.begin(), actual.end(), bytes.begin() + imports[0].dynamic_offset));
-            CHECK(!executable.readbackPass(receipt, d, 1, 0, actual));
+            CHECK(!executable.invocations.readbackPass(receipt, d, 1, 0, actual));
         }
-        const auto exported = checked(executable.exportedBacking(*last_receipt, GraphResourceId{second.value()}));
+        const auto exported =
+            checked(executable.invocations.exportedBacking(*last_receipt, GraphResourceId{second.value()}));
         std::array<NativeRangeState, 2> states;
-        CHECK(checked(executable.resourceStates(*last_receipt, GraphResourceId{second.value()}, states)) == 2);
-        CHECK(!executable.resourceStates(*last_receipt, GraphResourceId{second.value()}, std::span{states}.first(1)));
+        CHECK(
+            checked(executable.invocations.resourceStates(*last_receipt, GraphResourceId{second.value()}, states)) == 2
+        );
+        CHECK(!executable.invocations
+                   .resourceStates(*last_receipt, GraphResourceId{second.value()}, std::span{states}.first(1)));
         RenderGraphBuilder consumer;
         const auto borrowed = consumer.importTexture("external.image", texture, EPersistentScope::VIEW);
         F4HostRead external_read;
@@ -104,7 +108,7 @@ namespace native_graph_test
             {},
             states
         }};
-        NativeCompileInputs consumer_inputs{
+        NativeGraphFixtureInputs consumer_inputs{
             consumer_logical,
             device,
             allocator,
@@ -113,28 +117,31 @@ namespace native_graph_test
             consumer_imports,
             consumer_values
         };
-        auto consumer_plan = checked(compileVulkanGraph(consumer_inputs, {}));
+        auto consumer_plan = checked(compileFixture(consumer_inputs, {}));
         std::array consumer_bindings{GraphImportBinding{GraphResourceId{borrowed.value()}, GraphBackingId{100}, 0, 1}};
         auto external_frame =
-            checked(FrameGraphBindings::create(consumer_plan.logical(), {}, consumer_bindings, consumer_values));
+            checked(FrameGraphBindings::create(consumer_plan.plan.logical(), {}, consumer_bindings, consumer_values));
         consumer_imports[0].ranges = std::span{states}.first(1);
         const auto before_invalid = queue->submitted();
-        CHECK(!consumer_plan.submit(external_frame, consumer_imports));
+        CHECK(!consumer_plan.invocations.submit(external_frame.frame().frame_slot, external_frame, consumer_imports));
         CHECK(queue->submitted() == before_invalid);
         consumer_imports[0].ranges = states;
-        const auto external_receipt = checked(consumer_plan.submit(external_frame, consumer_imports));
-        const auto extended = checked(executable.retainExternalUse(*last_receipt, external_receipt.completion));
-        CHECK(!executable.completed(*last_receipt));
-        CHECK(!executable.resourceStates(extended, GraphResourceId{second.value()}, states));
-        const auto last = checked(executable.lastUse());
+        const auto external_receipt = checked(
+            consumer_plan.invocations.submit(external_frame.frame().frame_slot, external_frame, consumer_imports)
+        );
+        const auto extended =
+            checked(executable.invocations.retainExternalUse(*last_receipt, external_receipt.completion));
+        CHECK(!executable.invocations.completed(*last_receipt));
+        CHECK(!executable.invocations.resourceStates(extended, GraphResourceId{second.value()}, states));
+        const auto last = checked(executable.invocations.lastUse());
         CHECK(last);
         auto retired = checked(RetirementQueue::create(*queue, 1));
-        auto owned = std::make_unique<ExecutableGraphPlan>(std::move(executable));
+        auto owned = std::make_unique<NativeGraphFixture>(std::move(executable));
         CHECK(retired.retire(*last, std::move(owned)));
         CHECK(!owned && retired.pending() == 1);
         CHECK(checked(queue->wait(extended.completion, UINT64_MAX)));
         std::array<std::byte, 80> external_pixels;
-        CHECK(consumer_plan.readbackPass(external_receipt, host_pass, 0, 0, external_pixels));
+        CHECK(consumer_plan.invocations.readbackPass(external_receipt, host_pass, 0, 0, external_pixels));
         CHECK(std::equal(external_pixels.begin(), external_pixels.end(), bytes.begin() + 32));
         CHECK(checked(retired.collect()) == 1 && retired.pending() == 0);
         std::puts("COPY buffer-buffer-image-image-host mips=2 dynamic_offsets=16,32 oracle=PASS "

@@ -77,7 +77,7 @@ namespace native_graph_test
             ));
         }
         const std::array samplers{std::pair{GraphSampler{1}, std::cref(sampler)}};
-        NativeCompileInputs inputs{
+        NativeGraphFixtureInputs inputs{
             logical,
             device,
             allocator,
@@ -87,21 +87,22 @@ namespace native_graph_test
             invocation,
             samplers
         };
-        auto executable = checked(compileVulkanGraph(inputs, std::move(programs)));
+        auto executable = checked(compileFixture(inputs, std::move(programs)));
         std::array<GraphImportBinding, 0> imports;
         for (unsigned serial = 0; serial < 4; ++serial)
         {
             auto frame = checked(
-                FrameGraphBindings::create(executable.logical(), {serial, serial, serial % 2}, imports, invocation)
+                FrameGraphBindings::create(executable.plan.logical(), {serial, serial, serial % 2}, imports, invocation)
             );
-            auto receipt = checked(executable.submit(frame, {}));
+            auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, {}));
             CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
             for (unsigned i = 0; i < outputs.size(); ++i)
             {
                 const auto mip = i % 4;
                 const auto size = 8u >> mip;
                 std::vector<float> pixels(size * size * 4);
-                CHECK(executable.readback(receipt, outputs[i], 0, std::as_writable_bytes(std::span{pixels})));
+                CHECK(executable.invocations.readback(receipt, outputs[i], 0, std::as_writable_bytes(std::span{pixels}))
+                );
                 if (serial == 0)
                 {
                     recordReadback("W02.layer_mip", i, outputs[i], std::as_bytes(std::span{pixels}));

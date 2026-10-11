@@ -59,14 +59,16 @@ namespace lux::render::vulkan::detail
         std::span<const NativeImportBinding> imports
     ) noexcept
     {
-        const auto& graph = plan.logical.identity();
+        const auto& graph = plan.code->logical.identity();
         for (std::uint32_t i = 0; i < imports.size(); ++i)
         {
             const auto& input = imports[i];
             const auto& logical = bindings.imports()[i];
-            const bool wrong_identity = input.resource != plan.imports[i].resource ||
-                                        input.identity != logical.backing ||
-                                        input.backing.index() != plan.imports[i].backing.index();
+            const bool wrong_identity =
+                input.resource != plan.code->logical.imports()[i] || input.identity != logical.backing ||
+                (input.backing.index() == 1) !=
+                    (plan.code->logical.identity().resources[input.resource.value() - 1].kind() ==
+                     EGraphResourceKind::IMAGE);
             if (wrong_identity || (!input.host_ready && !input.ready && input.ranges.empty()))
             {
                 return cxx::unexpected(RenderError{kInvalidArgument, {i}});
@@ -74,7 +76,7 @@ namespace lux::render::vulkan::detail
             const auto r = input.resource.value() - 1;
             const auto& declaration = graph.resources[r];
             const bool invalid_native = std::visit(
-                [&](const auto& owner) { return !owner.get().native() || owner.get().device() != plan.device; },
+                [&](const auto& owner) { return !owner.get().native() || owner.get().device() != plan.code->device; },
                 input.backing
             );
             if (invalid_native)
@@ -99,13 +101,13 @@ namespace lux::render::vulkan::detail
                     return cxx::unexpected(RenderError{kInvalidArgument, {i, other}});
                 }
             }
-            for (std::uint32_t c = 0; c < plan.cells.size(); ++c)
+            for (std::uint32_t c = 0; c < plan.code->cells.size(); ++c)
             {
-                if (plan.cells[c].resource != input.resource)
+                if (plan.code->cells[c].resource != input.resource)
                 {
                     continue;
                 }
-                const auto& cell = plan.cells[c];
+                const auto& cell = plan.code->cells[c];
                 if (!input.ranges.empty() &&
                     std::count_if(
                         input.ranges.begin(),
@@ -123,19 +125,19 @@ namespace lux::render::vulkan::detail
                 if (supplied.ready)
                 {
                     const auto& owner = supplied.ready->owner();
-                    const bool wrong_ticket =
-                        owner.device() != plan.device || !owner.owns(*supplied.ready) ||
-                        std::find(plan.queues.begin(), plan.queues.end(), &owner) == plan.queues.end() ||
-                        (supplied.state.family != VK_QUEUE_FAMILY_IGNORED &&
-                         supplied.state.family != owner.nativeQueue().family);
+                    const bool wrong_ticket = owner.device() != plan.code->device || !owner.owns(*supplied.ready) ||
+                                              std::find(plan.code->queues.begin(), plan.code->queues.end(), &owner) ==
+                                                  plan.code->queues.end() ||
+                                              (supplied.state.family != VK_QUEUE_FAMILY_IGNORED &&
+                                               supplied.state.family != owner.nativeQueue().family);
                     if (wrong_ticket)
                     {
                         return cxx::unexpected(RenderError{kWrongOwner, {i, c}});
                     }
                 }
                 const auto first = std::find_if(
-                    plan.recipes.begin(),
-                    plan.recipes.end(),
+                    plan.code->recipes.begin(),
+                    plan.code->recipes.end(),
                     [&](const auto& recipe)
                     {
                         if (!bindings.invocation(recipe.command.pass)->enabled)
@@ -153,12 +155,12 @@ namespace lux::render::vulkan::detail
                         );
                     }
                 );
-                if (first == plan.recipes.end())
+                if (first == plan.code->recipes.end())
                 {
                     continue;
                 }
                 if (!supplied.ready && supplied.state.family != VK_QUEUE_FAMILY_IGNORED &&
-                    plan.queues[static_cast<unsigned>(first->command.queue)]->nativeQueue().family !=
+                    plan.code->queues[static_cast<unsigned>(first->command.queue)]->nativeQueue().family !=
                         supplied.state.family)
                 {
                     return cxx::unexpected(RenderError{kWrongOwner, {i}});
@@ -176,9 +178,9 @@ namespace lux::render::vulkan::detail
                 }
                 for (const auto& previous : plan.slots)
                 {
-                    for (std::uint32_t previous_cell = 0; previous_cell < plan.cells.size(); ++previous_cell)
+                    for (std::uint32_t previous_cell = 0; previous_cell < plan.code->cells.size(); ++previous_cell)
                     {
-                        const auto previous_resource = plan.cells[previous_cell].resource.value() - 1;
+                        const auto previous_resource = plan.code->cells[previous_cell].resource.value() - 1;
                         const auto& ticket = previous.cell_tickets[previous_cell];
                         if (!ticket || ticket->serial() <= ticket->owner().completed())
                         {
@@ -231,8 +233,8 @@ namespace lux::render::vulkan::detail
             if (const auto* buffer = std::get_if<std::reference_wrapper<const Buffer>>(&input.backing))
             {
                 const auto& actual = buffer->get();
-                const bool invalid = actual.device() != plan.device || !actual.native() ||
-                                     (actual.usage() & plan.resource_usage[r]) != plan.resource_usage[r] ||
+                const bool invalid = actual.device() != plan.code->device || !actual.native() ||
+                                     (actual.usage() & plan.code->resource_usage[r]) != plan.code->resource_usage[r] ||
                                      logical.dynamic_offset > actual.size() ||
                                      declaration.buffer().byte_size > actual.size() - logical.dynamic_offset;
                 if (invalid)
@@ -246,12 +248,12 @@ namespace lux::render::vulkan::detail
                 const auto& actual = image.description();
                 const auto& expected = declaration.texture();
                 const bool invalid =
-                    image.device() != plan.device || !image.native() ||
-                    (actual.usage & plan.resource_usage[r]) != plan.resource_usage[r] ||
+                    image.device() != plan.code->device || !image.native() ||
+                    (actual.usage & plan.code->resource_usage[r]) != plan.code->resource_usage[r] ||
                     actual.format != nativeTextureFormat(expected.format) || actual.extent.width != expected.width ||
                     actual.extent.height != expected.height || actual.mip_levels != expected.mip_count ||
                     actual.array_layers != expected.array_layers || actual.samples != expected.samples ||
-                    (!input.views.empty() && input.views.size() != plan.import_views[r].size());
+                    (!input.views.empty() && input.views.size() != plan.code->import_views[r].size());
                 if (invalid)
                 {
                     return cxx::unexpected(RenderError{kInvalidArgument, {i}});
@@ -259,7 +261,7 @@ namespace lux::render::vulkan::detail
                 for (std::size_t v = 0; v < input.views.size(); ++v)
                 {
                     const auto& view = input.views[v].get();
-                    const auto& shape = plan.import_views[r][v];
+                    const auto& shape = plan.code->import_views[r][v];
                     const auto& range = view.range();
                     const bool mismatch = view.image() != image.native() || view.type() != shape.type ||
                                           range.aspectMask != shape.range.aspectMask ||
@@ -289,7 +291,7 @@ namespace lux::render::vulkan::detail
         {
             return cxx::unexpected(valid.error());
         }
-        const auto& graph = plan.logical.identity();
+        const auto& graph = plan.code->logical.identity();
         std::fill(slot.buffer_offsets.begin(), slot.buffer_offsets.end(), 0);
         for (std::uint32_t i = 0; i < imports.size(); ++i)
         {
@@ -297,7 +299,7 @@ namespace lux::render::vulkan::detail
             slot.buffer_offsets[r] = bindings.imports()[i].dynamic_offset;
             std::visit([&](const auto& backing) { slot.resources[r] = backing; }, imports[i].backing);
         }
-        for (const auto& recipe : plan.recipes)
+        for (const auto& recipe : plan.code->recipes)
         {
             const auto p = recipe.command.pass.value() - 1;
             auto& pass = slot.passes[p];
@@ -329,7 +331,7 @@ namespace lux::render::vulkan::detail
                 pass.current_views[v] = &pass.views[v];
                 if (patch.import_view)
                 {
-                    const auto& input = imports[*plan.import_positions[r]];
+                    const auto& input = imports[*plan.code->import_positions[r]];
                     if (!input.views.empty())
                     {
                         pass.current_views[v] = &input.views[*patch.import_view].get();

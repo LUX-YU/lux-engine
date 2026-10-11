@@ -116,7 +116,7 @@ foreach(fixture IN ITEMS F4CVertex F4CIndexed F4CIndirect F4CIndexedIndirect)
     add_dependencies(render_vulkan_graph_draw render_vulkan_spv_${fixture}_vert render_vulkan_spv_${fixture}_frag)
 endforeach()
 
-foreach(mode IN ITEMS vertex indexed indirect indexed-indirect)
+foreach(mode IN ITEMS vertex indexed indirect indexed-indirect indexed-u32)
     add_test(NAME render.vulkan.closeout_draw_${mode} COMMAND render_vulkan_graph_draw "${mode}" "${f4c_shader}")
     set_tests_properties(render.vulkan.closeout_draw_${mode} PROPERTIES RUN_SERIAL TRUE TIMEOUT 180)
 endforeach()

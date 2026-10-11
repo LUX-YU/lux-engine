@@ -10,7 +10,13 @@
 
 using namespace native_graph_test;
 
-template <class Params> void drawCase(const std::filesystem::path& shaders, Validation& validation, const char* name)
+template <class Params>
+void drawCase(
+    const std::filesystem::path& shaders,
+    Validation& validation,
+    const char* name,
+    VkIndexType index_type = VK_INDEX_TYPE_UINT16
+)
 {
     constexpr bool indexed = requires(Params p) { p.indices; };
     constexpr bool indirect = requires(Params p) { p.arguments; };
@@ -33,13 +39,24 @@ template <class Params> void drawCase(const std::filesystem::path& shaders, Vali
         transfer->nativeQueue().family
     );
     auto vertices = checked(Buffer::create(allocator, 64, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, EMemoryAccess::UPLOAD));
-    auto indices = checked(Buffer::create(allocator, 16, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, EMemoryAccess::UPLOAD));
+    const unsigned index_bytes = index_type == VK_INDEX_TYPE_UINT32 ? 4u : 2u;
+    auto indices =
+        checked(Buffer::create(allocator, 8 * index_bytes, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, EMemoryAccess::UPLOAD));
     auto initial = checked(Buffer::create(allocator, 32, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD));
     const std::array<float, 12> geometry{0, 0, 20, 20, -1, -1, 3, -1, -1, 3, 0, 0};
     const std::array<std::uint16_t, 8> elements{0, 0, 1, 2, 3, 0, 0, 0};
     std::array<unsigned, 8> zeros{};
     CHECK(vertices.write(0, std::as_bytes(std::span{geometry})));
-    CHECK(indices.write(0, std::as_bytes(std::span{elements})));
+    if (index_type == VK_INDEX_TYPE_UINT32)
+    {
+        const std::array<std::uint32_t, 8> wide_elements{0, 0, 1, 2, 3, 0, 0, 0};
+        CHECK(indices.write(0, std::as_bytes(std::span{wide_elements})));
+    }
+    else
+    {
+        CHECK(indices.write(0, std::as_bytes(std::span{elements})));
+    }
+    std::printf("INDEX element_bytes=%u offset=%u count=3 values=1,2,3\n", index_bytes, 2 * index_bytes);
     CHECK(initial.write(0, std::as_bytes(std::span{zeros})));
     RenderGraphBuilder builder;
     auto vertex = builder.importBuffer("draw.vertices", {48, 4}, EPersistentScope::VIEW);
@@ -62,8 +79,8 @@ template <class Params> void drawCase(const std::filesystem::path& shaders, Vali
     params.vertices = {vertex, {8, 32}};
     if constexpr (indexed)
     {
-        auto index = builder.importBuffer("draw.indices", {16, 2}, EPersistentScope::VIEW);
-        params.indices = {index, {4, 6}};
+        auto index = builder.importBuffer("draw.indices", {8 * index_bytes, index_bytes}, EPersistentScope::VIEW);
+        params.indices = {index, {2 * index_bytes, 3 * index_bytes}};
         import(index, indices, 2);
     }
     std::vector<NativePassCommand> commands;
@@ -122,7 +139,7 @@ template <class Params> void drawCase(const std::filesystem::path& shaders, Vali
     if constexpr (indexed && indirect)
     {
         draw = DrawIndexedIndirectCommand{
-            {use(EGraphUsage::INDEX), VK_INDEX_TYPE_UINT16, 0},
+            {use(EGraphUsage::INDEX), index_type, 0},
             {use(EGraphUsage::INDIRECT), 0, 20, 1},
             {{0, use(EGraphUsage::VERTEX), 0}}
         };
@@ -134,7 +151,7 @@ template <class Params> void drawCase(const std::filesystem::path& shaders, Vali
     else if constexpr (indexed)
     {
         draw = DrawIndexedCommand{
-            {use(EGraphUsage::INDEX), VK_INDEX_TYPE_UINT16, 0},
+            {use(EGraphUsage::INDEX), index_type, 0},
             3,
             1,
             0,
@@ -429,6 +446,10 @@ int main(int argc, char** argv)
     else if (mode == "indexed")
     {
         drawCase<F4CIndexed>(argv[2], validation, "F4CIndexed");
+    }
+    else if (mode == "indexed-u32")
+    {
+        drawCase<F4CIndexed>(argv[2], validation, "F4CIndexed", VK_INDEX_TYPE_UINT32);
     }
     else if (mode == "indirect")
     {

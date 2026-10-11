@@ -5,8 +5,11 @@ BASE='25bd4e16358bfe3a8c1163a18b17b807bd6a5505'
 p=argparse.ArgumentParser()
 for key in ('source','build','output','baseline-tests'):p.add_argument('--'+key,type=Path,required=True)
 p.add_argument('--closeout', action='store_true', help='Apply RD2-F4-C entry and narrow mutation policy')
+p.add_argument('--performance-closeout', action='store_true', help='Test-only RD2-F4-C-P scope and retained 155 tests')
 a=p.parse_args();source=a.source.resolve();build=a.build.resolve();out=a.output.resolve();out.mkdir(exist_ok=True,parents=True)
 if a.closeout:BASE='6b777c96bbe3986c940cafe4a3e213ae2e0a3194'
+if a.performance_closeout:
+ BASE='6342d56caf826504278399e2430a2a4499d9d3c2';a.closeout=True
 def git(*args):return subprocess.check_output(['git','-c','core.quotepath=false','-C',str(source),*args])
 def check(value,message):
  if not value:raise RuntimeError(message)
@@ -16,7 +19,12 @@ check(not git('status','--porcelain','--untracked-files=all'),'qualification clo
 check(not build.is_relative_to(source),'build in source')
 changed=git('diff','--name-only',BASE,'HEAD').decode().splitlines()
 allowed=('modules/function/render/vulkan/','docs/render-v2/F4_','cmake/render-v2-bootstrap/')
-if a.closeout:
+if a.performance_closeout:
+ exact={'modules/function/render/vulkan/test/NativeGraphDraw.cpp',
+        'cmake/render-v2-bootstrap/F4Closeout.cmake','cmake/render-v2-bootstrap/verify_f4.py',
+        'cmake/render-v2-bootstrap/measure_f4cp.py'}
+ check(all(v in exact or v.startswith('docs/render-v2/F4CP_') for v in changed),'F4-C-P scope violation')
+elif a.closeout:
  exact={
   'include/lux/engine/render/vulkan/memory/Memory.hpp','src/memory/Memory.cpp','pinclude/GraphNative.hpp',
   'src/graph/Frame.cpp','src/graph/Sync.cpp','src/graph/Record.cpp','src/graph/Recipes.cpp',
@@ -132,7 +140,7 @@ ninja=(build/'build.ninja').read_text().lower();check('render_legacy' not in nin
 current_tests=json.loads(subprocess.check_output(['D:/Development/CMake/bin/ctest.exe','--test-dir',str(build),'--show-only=json-v1']))
 previous_tests=json.loads(a.baseline_tests.read_text())
 old_names={v['name'] for v in previous_tests['tests']};new_names={v['name'] for v in current_tests['tests']}
-expected_old=146 if a.closeout else 137
+expected_old=155 if a.performance_closeout else 146 if a.closeout else 137
 check(len(old_names)==expected_old and old_names<=new_names,'original CTest obligations missing')
 if a.closeout:
  for fixture in ('F4CWrite','F4CVertex','F4CIndexed','F4CIndirect','F4CIndexedIndirect','F4CArguments'):
@@ -144,7 +152,9 @@ if a.closeout:
     f=build/'render_vulkan/test/shader'/(fixture+'.'+stage+suffix)
     check(f.is_file(),'missing closeout shader '+str(f));generated['closeout/'+f.name]=sha(f)
  for name in ('render_vulkan_graph_closeout','render_vulkan_graph_draw'):check(name in names,'real closeout GPU consumer missing')
- check(len(new_names)==155,'F4-C exact test inventory')
+ check(len(new_names)==(156 if a.performance_closeout else 155),'F4-C exact test inventory')
+ if a.performance_closeout:
+  check(new_names-old_names=={'render.vulkan.closeout_draw_indexed-u32'},'exact UINT32 addition')
 for fixture in ('F3Tonemap','F3Blur','F3Composite','F3Storage','F3SharedA','F3SharedB','F3Raster',
                 'F4Fill','F4Hzb','F4Views','F4Local','F4Raster','F4Accumulate'):
  for suffix in ('.schema.json','.pass.hpp','.lglslh'):

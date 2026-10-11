@@ -1,4 +1,4 @@
-# RD2-D0-C1 来源与保护清单
+# RD2-D0-C2 来源与保护清单
 
 基线：`b9f9a909bc34ac87f00c594996201a20f0af00c8`。Frozen Legacy：`a669409a289a6fa4092f21176397795b1cdb7f3e`。
 

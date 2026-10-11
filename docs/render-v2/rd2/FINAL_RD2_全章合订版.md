@@ -1,4 +1,4 @@
-# RD2-D0-C1 全章合订版（机械生成，只读）
+# RD2-D0-C2 全章合订版（机械生成，只读）
 
 来源为同目录 00–20；不独立编辑，不构成第二权威。候选仍待用户批准。
 
@@ -9,7 +9,7 @@
 
 # Render V2 · RD2 Data-First 统一架构：权威总纲
 
-版本：**RD2-D0-C1 — 2026-10-11，已按用户歧义裁决修订的候选设计；仍待用户架构审查批准**。对象：`LUX-YU/lux-engine`, `codex/render-v2`，审查基线 `b9f9a909bc34ac87f00c594996201a20f0af00c8`。冻结 Legacy 来源 `a669409a289a6fa4092f21176397795b1cdb7f3e`。**本包是可评审的目标架构与阶段工作单，不是已实现的生产 API 或功能资格。**
+版本：**RD2-D0-C2 — 2026-10-11，已按用户歧义裁决修订的候选设计；仍待用户架构审查批准**。对象：`LUX-YU/lux-engine`, `codex/render-v2`，审查基线 `b9f9a909bc34ac87f00c594996201a20f0af00c8`。冻结 Legacy 来源 `a669409a289a6fa4092f21176397795b1cdb7f3e`。**本包是可评审的目标架构与阶段工作单，不是已实现的生产 API 或功能资格。**
 
 > 一句话终态：一个 RenderRuntime，一个 VulkanBackend，一个 FrameExecutor，一个 RenderGraph；数据先以 C++20 强类型 Schema 声明，由 Scope 拥有的 Typed DataSet 管理逻辑状态，由 Backend Native Storage 管理 GPU 驻留；Feature 只声明需要/产生哪些数据及具体 GPU Pass，冷态 Feature Composition 先解析数据需求，再降低为 typed Graph 资源和 Pass；唯一 Graph 从实际访问推导依赖，统一编译、同步和执行。业务类型开放、GPU 机制受控、无 Universal Instance、无第二 ECS/Renderer。
 
@@ -343,11 +343,11 @@ FreeSlots/RetiredSlots: 可复用条件由 GPU completion/读者使用证明确�
 下述 Graph/Native 路径只适用于需要 GPU 表示的集合；纯 CPU-only DataSet 只选择合法 CPU 策略，不制造 GPU shape/backing 或伪 Pass。
 
 ```text
-DataSchema<T> + DataSet requested scope/count/budget + optional GPU profile/Caps
-             ↓ derive **logical StorageInterfaceShape** (GPU ABI/format,
-               addressability/capacity guarantees) WITHOUT allocating VkBuffer
-Cold Feature Composition resolves DataSet/Capability requirements
-             ↓ typed logical views contribute PassSchema/Graph declarations
+DataSchema/type registration + Scope declarations + requests/budget + optional GPU profile/Caps
+             ↓ cold Feature Composition resolves DataSet/Capability/Writer requirements
+             ↓ freeze neutral StorageInterfaceShape + structural BindingSlotKey
+               (GPU ABI/format/addressability/capacity guarantees; no VkBuffer allocation)
+             ↓ resolved typed logical views contribute PassSchema/Graph declarations
 RenderGraph logical C0–C8 (no DataSet registry lookup)
              ↓ compile NativeStoragePlan from real uses WITHOUT changing
                that already-frozen logical Shader/Graph interface
@@ -576,7 +576,7 @@ Feature 依赖解析以 Scope+Type+Key 确定当次运行中实际 `DataSetId`�
 
 ## 7.1 Graph 只理解 GPU 值与工作，不理解业务 Data T
 
-`RenderGraphDefinition` 仍保存 `GraphResource`（Buffer/Image 与 Import/Transient/Export）、`GraphPass`、`GraphResourceUse`、`Producer`、`Dependency`、`Scope` 与输出合同。Graph 作者看到的是 DataSet 的**结构性逻辑 DataView**（Schema、Scope、资源界面形状、BindingSlot），不要求 GPU VkBuffer 已经分配。`GraphResourceId` 是单份 Definition 局部 ID，GPU DataTypeId 不进入 Graph 通用变体。Typed Data Views 在 Graph Composition 期间被冷态降低成已验证 `GraphBuffer` / `GraphTexture` 及结构性 owner slot；真正 DataSet/backing/Ready 在 Invocation/Native Import 绑定。新增 Gaussian/Light/Sprite 不改 `RenderGraph` 核心算法；Native 新 GPU primitive 按真正需要扩展。
+`RenderGraphDefinition` 仍保存 `GraphResource`（Buffer/Image 与 Import/Transient/Export）、`GraphPass`、`GraphResourceUse`、`Producer`、`Dependency`、`Scope` 与输出合同。Graph 作者看到的是 DataSet 的**结构性逻辑 DataView**（Schema、Scope、资源界面形状、BindingSlot），不要求 GPU VkBuffer 已经分配。`GraphResourceId` 是单份 Definition 局部 ID，业务 RenderDataTypeId 不进入 Graph 通用变体；不创建平行 GPU Type ID。Typed Data Views 在 Graph 编译之前的冷态 Feature Composition 期间被冷态降低成已验证 `GraphBuffer` / `GraphTexture` 及结构性 owner slot；真正 DataSet/backing/Ready 在 Invocation/Native Import 绑定。新增 Gaussian/Light/Sprite 不改 `RenderGraph` 核心算法；Native 新 GPU primitive 按真正需要扩展。
 
 ## 7.2 完整保留 C0–C8 编号和职责
 
@@ -659,7 +659,7 @@ F3 当前 `OwnerAssignment {scene, feature, pass_local}` 每类只有一个 `Sha
 
 目标冷态 `BindingSlotKey`：`{BindingNamespace, TypeSchemaLayoutFingerprint, ResourceSemantic, ScopeClass, AccessRole, StageVisibility, ArrayShape}`；它**不是** `{DataSetId}`。Cold Composition 将 Pass Field 按 Type/Key 解析到这些独立槽，Frame Invocation 将槽映射到当前真实 `DataSetId` 与 backing。物理 Set 的数目必须由 LayoutPlan 按设备限制、Owner full shape 和更新频率合并，不准每个 DataSet 实例强制一个 Vulkan Set。完整 Owner Shape 来自稳定 DataSchema/Storage contract，不因某个 Shader 使用字段子集就裁剪成不兼容 set。
 
-例子：一个 Shader 的 `LightGpu`、`MaterialGpu` 都可来自 Scene DataSet，不能因为二者都是 `scope=feature` 就重叠绑定；F6 内以两个独立的共享 Owner、相同 role、不同 canonical Data Schema 的真实 GPU oracle 验收。
+例子：一个 Shader 的 `LightGpu`、`MaterialGpu` 都可来自 Scene DataSet，不能因为二者落入旧 `OwnerAssignment.feature` 类别（不是 DataSet 的实际 Scope） 就重叠绑定；F6 内以两个独立的共享 Owner、相同 role、不同 canonical Data Schema 的真实 GPU oracle 验收。
 
 ## 8.3 不同数据访问形式
 

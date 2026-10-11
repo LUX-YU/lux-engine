@@ -26,11 +26,11 @@ FreeSlots/RetiredSlots: 可复用条件由 GPU completion/读者使用证明确�
 下述 Graph/Native 路径只适用于需要 GPU 表示的集合；纯 CPU-only DataSet 只选择合法 CPU 策略，不制造 GPU shape/backing 或伪 Pass。
 
 ```text
-DataSchema<T> + DataSet requested scope/count/budget + optional GPU profile/Caps
-             ↓ derive **logical StorageInterfaceShape** (GPU ABI/format,
-               addressability/capacity guarantees) WITHOUT allocating VkBuffer
-Cold Feature Composition resolves DataSet/Capability requirements
-             ↓ typed logical views contribute PassSchema/Graph declarations
+DataSchema/type registration + Scope declarations + requests/budget + optional GPU profile/Caps
+             ↓ cold Feature Composition resolves DataSet/Capability/Writer requirements
+             ↓ freeze neutral StorageInterfaceShape + structural BindingSlotKey
+               (GPU ABI/format/addressability/capacity guarantees; no VkBuffer allocation)
+             ↓ resolved typed logical views contribute PassSchema/Graph declarations
 RenderGraph logical C0–C8 (no DataSet registry lookup)
              ↓ compile NativeStoragePlan from real uses WITHOUT changing
                that already-frozen logical Shader/Graph interface

@@ -20,7 +20,7 @@ F3 当前 `OwnerAssignment {scene, feature, pass_local}` 每类只有一个 `Sha
 
 目标冷态 `BindingSlotKey`：`{BindingNamespace, TypeSchemaLayoutFingerprint, ResourceSemantic, ScopeClass, AccessRole, StageVisibility, ArrayShape}`；它**不是** `{DataSetId}`。Cold Composition 将 Pass Field 按 Type/Key 解析到这些独立槽，Frame Invocation 将槽映射到当前真实 `DataSetId` 与 backing。物理 Set 的数目必须由 LayoutPlan 按设备限制、Owner full shape 和更新频率合并，不准每个 DataSet 实例强制一个 Vulkan Set。完整 Owner Shape 来自稳定 DataSchema/Storage contract，不因某个 Shader 使用字段子集就裁剪成不兼容 set。
 
-例子：一个 Shader 的 `LightGpu`、`MaterialGpu` 都可来自 Scene DataSet，不能因为二者都是 `scope=feature` 就重叠绑定；F6 内以两个独立的共享 Owner、相同 role、不同 canonical Data Schema 的真实 GPU oracle 验收。
+例子：一个 Shader 的 `LightGpu`、`MaterialGpu` 都可来自 Scene DataSet，不能因为二者落入旧 `OwnerAssignment.feature` 类别（不是 DataSet 的实际 Scope） 就重叠绑定；F6 内以两个独立的共享 Owner、相同 role、不同 canonical Data Schema 的真实 GPU oracle 验收。
 
 ## 8.3 不同数据访问形式
 

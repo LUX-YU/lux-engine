@@ -1,6 +1,6 @@
 # LuxEngine Render V2 — RD2 Data-First Architecture
 
-**RD2-D0-C1 · 2026-10-11 · 已按用户裁决修订的设计候选，未替代仓库当前已批准的 2026-10-10 FINAL。** 以用户原 ZIP 和 `codex/render-v2` 当前 F4 PARTIAL 的实际源码/验证为基准，重写完整架构并给出独立阶段工作单。**请从 [00 权威总纲](00_README_权威总纲.md) 开始读，不能只看本 README。**
+**RD2-D0-C2 · 2026-10-11 · 已按用户裁决修订的设计候选，未替代仓库当前已批准的 2026-10-10 FINAL。** 以用户原 ZIP 和 `codex/render-v2` 当前 F4 PARTIAL 的实际源码/验证为基准，重写完整架构并给出独立阶段工作单。**请从 [00 权威总纲](00_README_权威总纲.md) 开始读，不能只看本 README。**
 
 ## 本轮裁决与文档资格入口
 

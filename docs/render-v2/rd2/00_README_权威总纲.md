@@ -1,6 +1,6 @@
 # Render V2 · RD2 Data-First 统一架构：权威总纲
 
-版本：**RD2-D0-C1 — 2026-10-11，已按用户歧义裁决修订的候选设计；仍待用户架构审查批准**。对象：`LUX-YU/lux-engine`, `codex/render-v2`，审查基线 `b9f9a909bc34ac87f00c594996201a20f0af00c8`。冻结 Legacy 来源 `a669409a289a6fa4092f21176397795b1cdb7f3e`。**本包是可评审的目标架构与阶段工作单，不是已实现的生产 API 或功能资格。**
+版本：**RD2-D0-C2 — 2026-10-11，已按用户歧义裁决修订的候选设计；仍待用户架构审查批准**。对象：`LUX-YU/lux-engine`, `codex/render-v2`，审查基线 `b9f9a909bc34ac87f00c594996201a20f0af00c8`。冻结 Legacy 来源 `a669409a289a6fa4092f21176397795b1cdb7f3e`。**本包是可评审的目标架构与阶段工作单，不是已实现的生产 API 或功能资格。**
 
 > 一句话终态：一个 RenderRuntime，一个 VulkanBackend，一个 FrameExecutor，一个 RenderGraph；数据先以 C++20 强类型 Schema 声明，由 Scope 拥有的 Typed DataSet 管理逻辑状态，由 Backend Native Storage 管理 GPU 驻留；Feature 只声明需要/产生哪些数据及具体 GPU Pass，冷态 Feature Composition 先解析数据需求，再降低为 typed Graph 资源和 Pass；唯一 Graph 从实际访问推导依赖，统一编译、同步和执行。业务类型开放、GPU 机制受控、无 Universal Instance、无第二 ECS/Renderer。
 

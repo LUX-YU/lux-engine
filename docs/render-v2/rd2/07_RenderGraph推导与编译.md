@@ -2,7 +2,7 @@
 
 ## 7.1 Graph 只理解 GPU 值与工作，不理解业务 Data T
 
-`RenderGraphDefinition` 仍保存 `GraphResource`（Buffer/Image 与 Import/Transient/Export）、`GraphPass`、`GraphResourceUse`、`Producer`、`Dependency`、`Scope` 与输出合同。Graph 作者看到的是 DataSet 的**结构性逻辑 DataView**（Schema、Scope、资源界面形状、BindingSlot），不要求 GPU VkBuffer 已经分配。`GraphResourceId` 是单份 Definition 局部 ID，GPU DataTypeId 不进入 Graph 通用变体。Typed Data Views 在 Graph Composition 期间被冷态降低成已验证 `GraphBuffer` / `GraphTexture` 及结构性 owner slot；真正 DataSet/backing/Ready 在 Invocation/Native Import 绑定。新增 Gaussian/Light/Sprite 不改 `RenderGraph` 核心算法；Native 新 GPU primitive 按真正需要扩展。
+`RenderGraphDefinition` 仍保存 `GraphResource`（Buffer/Image 与 Import/Transient/Export）、`GraphPass`、`GraphResourceUse`、`Producer`、`Dependency`、`Scope` 与输出合同。Graph 作者看到的是 DataSet 的**结构性逻辑 DataView**（Schema、Scope、资源界面形状、BindingSlot），不要求 GPU VkBuffer 已经分配。`GraphResourceId` 是单份 Definition 局部 ID，业务 RenderDataTypeId 不进入 Graph 通用变体；不创建平行 GPU Type ID。Typed Data Views 在 Graph 编译之前的冷态 Feature Composition 期间被冷态降低成已验证 `GraphBuffer` / `GraphTexture` 及结构性 owner slot；真正 DataSet/backing/Ready 在 Invocation/Native Import 绑定。新增 Gaussian/Light/Sprite 不改 `RenderGraph` 核心算法；Native 新 GPU primitive 按真正需要扩展。
 
 ## 7.2 完整保留 C0–C8 编号和职责
 

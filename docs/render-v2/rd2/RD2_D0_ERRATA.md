@@ -1,6 +1,6 @@
-# RD2-D0-C1 正文勘误与版本身份
+# RD2-D0-C2 正文勘误与版本身份
 
-修订标识：**RD2-D0-C1**，2026-10-11。只修订 RD2 候选；原 FINAL、输入 ZIP、原 CSV、历史验收与生产代码不动。用户四项裁决原文存于 work_orders/00_D0_用户歧义裁决_只读.md，SHA 见来源清单。
+修订标识：**RD2-D0-C2**，2026-10-11。只修订 RD2 候选；原 FINAL、输入 ZIP、原 CSV、历史验收与生产代码不动。用户四项裁决原文存于 work_orders/00_D0_用户歧义裁决_只读.md，SHA 见来源清单。
 
 四项裁决直接反映在正文：A 保留 Core 身份域；B 恢复 C0–C13；C Composition 先解析 DataSet/Feature；D CPU/Wire/GPU 分层。另按批准计划同步 F6/F7 交付时间、F11 与 H 阶段边界、Device Lost 及明确示例字段。未扩大生产范围。
 
@@ -10,15 +10,15 @@ MANIFEST 自身的原哈希在来源 ZIP 中保存；新 MANIFEST 的哈希由�
 
 | 相对路径 | 原 SHA-256 | 候选 SHA-256 | 处理 |
 |---|---|---|---|
-| `00_README_权威总纲.md` | `91070f83f463cdea44204e9856fae5da56079b44485de9a8cad892f9f928038a` | `31d086a1579b9292ef89f9e5603b631d57256c3c111da1526935088484edb717` | 候选修订/机械生成 |
+| `00_README_权威总纲.md` | `91070f83f463cdea44204e9856fae5da56079b44485de9a8cad892f9f928038a` | `1bb515a5a90ad86716f5fc69d60772c6e694f4e80f5282ef53b5c5c43dd0bbd4` | 候选修订/机械生成 |
 | `01_设计哲学与成熟引擎对照.md` | `3bbf69da8ae722ac5ff69cde960163de721d99a41c903a7386c2344dbd2036f8` | `3bbf69da8ae722ac5ff69cde960163de721d99a41c903a7386c2344dbd2036f8` | 原字节保留 |
 | `02_模块分层与所有权.md` | `b07460304e9e3738c1872b4c6900890563212009a89ce7775709eaae0680d83c` | `3cbf6519b6d000d42d08120255bacc316d1de2921e13b19383db5f6f629b43f1` | 候选修订/机械生成 |
 | `03_数据描述与类型身份.md` | `95c79365b58bbc347d0d4b81ecfe336feff8ae40ddd4602192783fcd253b0bed` | `a2d68cad057806ffacc0cb78cd319c7202d3bbdc05c1f2c210727c0a9cb1eb98` | 候选修订/机械生成 |
-| `04_类型化存储与GPU布局.md` | `9eabf53b70ca8a6e7d9a91913c30ff04c6121da9612a446ae10b50078f86a5d2` | `aee7133e38942c280a220e816f19ce9aa86fd9c554b837167e5667df30f5c03e` | 候选修订/机械生成 |
+| `04_类型化存储与GPU布局.md` | `9eabf53b70ca8a6e7d9a91913c30ff04c6121da9612a446ae10b50078f86a5d2` | `746adb8e84fd1a6ce252e87cca219cc81949f420e359402aea94a84e22fb2550` | 候选修订/机械生成 |
 | `05_通信与发布事务.md` | `7d60931ff46d8d30ccd6b3d7474ac092560c5c12ab5c04b66fe341ee33c0bd4c` | `8018401da1b857479041394f2492e193a3d7c4b5a948198eb8eda54a36181572` | 候选修订/机械生成 |
 | `06_Feature组合与数据依赖.md` | `d9e19c54b1a148633a5aa77484aa5d0cbe3a1bdc03b1bfea78c2d3e09de8e9de` | `ec68b51852fd1092a78044f983337187ea0aeab0c18c7a2961c132f599fba593` | 候选修订/机械生成 |
-| `07_RenderGraph推导与编译.md` | `b85b4b2ea2bba57b8f74ef204962bab1a63919e80a5f54fa787259685fc10cdf` | `ac7136b67fa9f454bc537095f6980a65007df431206118be01bca96c4fa3bd8b` | 候选修订/机械生成 |
-| `08_Shader与布局自动生成.md` | `520936fec44832156ca6ebc677bd07540d46e8d86f08956c4d09c72f180a51f3` | `31687d86254c04c26ba2aa7a78adf7f5f52084a85f20bc875689851813414176` | 候选修订/机械生成 |
+| `07_RenderGraph推导与编译.md` | `b85b4b2ea2bba57b8f74ef204962bab1a63919e80a5f54fa787259685fc10cdf` | `1f3203962f305879d422def70f2c7de3997c670ebc98d767e1fa1e094bacd5f2` | 候选修订/机械生成 |
+| `08_Shader与布局自动生成.md` | `520936fec44832156ca6ebc677bd07540d46e8d86f08956c4d09c72f180a51f3` | `368e9da40b35e62dd0d5bd6eca1907cf78db255072d64a45c91c6699fda5ee99` | 候选修订/机械生成 |
 | `09_VulkanNative与执行.md` | `b02373b5ebbc3dfd7b78e8e87fe9b982132d95dd60301f586601542176773441` | `b02373b5ebbc3dfd7b78e8e87fe9b982132d95dd60301f586601542176773441` | 原字节保留 |
 | `10_Runtime多Scene多ViewTarget.md` | `4dd4223f88ae41a514a6da2c90e58759f12a3af6f860baed88400477cdf20caf` | `c02687f35ff55222a4d23c2e2e0bfd48dc2b51999c6fd3e525c7786c4bd5f0c3` | 候选修订/机械生成 |
 | `11_插件SDK与扩展边界.md` | `5fbbe1c40cbb688e767f8e6b04ebd7ead8020ded54f743d3f7815edfbbc81a10` | `5fbbe1c40cbb688e767f8e6b04ebd7ead8020ded54f743d3f7815edfbbc81a10` | 原字节保留 |
@@ -31,9 +31,9 @@ MANIFEST 自身的原哈希在来源 ZIP 中保存；新 MANIFEST 的哈希由�
 | `18_阶段计划与交付门禁.md` | `400f0ec018108b0532918486fa78c86c5a2c099b0e8b0a058f06a107e304d795` | `911492bb0c2f026abb5830e46b48118f2cdd4434de49adcb36ef22b1579fecea` | 候选修订/机械生成 |
 | `19_冻结设计决策RD2.md` | `c3c7e3667473ec892f35f8de7e09e9f9c79ee66172f6836e54679cbc49ef23db` | `59461a4f79b0f8874ec8b491823df35af6d96dbdbc5735dc0193f7735796140a` | 候选修订/机械生成 |
 | `20_原设计迁移对照.md` | `18c3d823deb80345a3f971cf646946ce51762ba63345112cc40de6f6b460d1fe` | `28d191c332231ef1de3cb433c761bb373ddd28e947eb8e3a19a6102195d19fab` | 候选修订/机械生成 |
-| `AUDIT_来源与一致性.md` | `4eafabe5ef9b9c0450b5d4664671b3f53bdbed9ecc88426a1a702f5313bc801c` | `875c00ad5c27aef3a3f550bf520640daefb69b08425d028f0ccd8098b590b4e9` | 候选修订/机械生成 |
-| `FINAL_RD2_全章合订版.md` | `cd549e912ffbe081ef37227c2fd276ddf7a9b2d76acb9a952e0aff6c036468f8` | `8aa0b48d93f5ea94cbcbb48497b03f1e4d7a3c23c9989a28e12ad4b0004f81eb` | 候选修订/机械生成 |
-| `README.md` | `afd767efb90eb0963e88d4b1d9e6aaca2598cd44e6f8e52a5b4a94781c93367b` | `7499d0881048acf1c8025ee0cf4c368c4e4a20d6df0421af1e0d61a04cdd49a9` | 候选修订/机械生成 |
+| `AUDIT_来源与一致性.md` | `4eafabe5ef9b9c0450b5d4664671b3f53bdbed9ecc88426a1a702f5313bc801c` | `87eada5a8e436a6985d1c5a43276ea78f63119b70f70401d6917b2e10a5b33a8` | 候选修订/机械生成 |
+| `FINAL_RD2_全章合订版.md` | `cd549e912ffbe081ef37227c2fd276ddf7a9b2d76acb9a952e0aff6c036468f8` | `3dc47c4dbc214b1b85c16947233b369a9442805c936660aeda91a54c37e5dac6` | 候选修订/机械生成 |
+| `README.md` | `afd767efb90eb0963e88d4b1d9e6aaca2598cd44e6f8e52a5b4a94781c93367b` | `be5d5144462198bd69428f21b47c9f995b66730dc82d29416d9056b0bbc471b4` | 候选修订/机械生成 |
 | `appendix/GoldenWorkloads.csv` | `bc9fd980b4d6455bc981a2f458ba53e427da1fceccb7e44b63ffc5a9c0f31b42` | `bc9fd980b4d6455bc981a2f458ba53e427da1fceccb7e44b63ffc5a9c0f31b42` | 原字节保留 |
 | `appendix/LegacyCapabilityMatrix.csv` | `ce3555c7eaf50a981a53ec22a9ae41f5bfbe35e626970a891623c8c4448451b6` | `ce3555c7eaf50a981a53ec22a9ae41f5bfbe35e626970a891623c8c4448451b6` | 原字节保留 |
 | `appendix/RequirementsTrace.csv` | `9f04107bcf5d06a77c42637614f8a315abf98c211aad101bca3340bdcbb5b9a0` | `9f04107bcf5d06a77c42637614f8a315abf98c211aad101bca3340bdcbb5b9a0` | 原字节保留 |
@@ -48,6 +48,8 @@ MANIFEST 自身的原哈希在来源 ZIP 中保存；新 MANIFEST 的哈希由�
 
 以下列旧句与新句，引用旧句只为审计，不具有覆盖修订正文的效力。
 
+首个 Implementation `264e285d6948fadf24feee56efc828eaa8bbb5e6` 的机械检查 4492/4492 通过，但独立语义复核发现第 04 章顺序图未与裁决同步及第 07/08 章旧术语残留，未给整体 PASS。当前 C2 在施工检出修正这些正文并重生成合订版；旧 clean clone 未修改，首轮原始证据保留。新的 Implementation 需重新独立资格，不由 V 修正文。
+
 ### E001 · 00_README_权威总纲.md
 
 理由：候选身份与权威分离。
@@ -61,7 +63,7 @@ MANIFEST 自身的原哈希在来源 ZIP 中保存；新 MANIFEST 的哈希由�
 修订：
 
 ````text
-版本：**RD2-D0-C1 — 2026-10-11，已按用户歧义裁决修订的候选设计；仍待用户架构审查批准**
+版本：**RD2-D0-C2 — 2026-10-11，已按用户歧义裁决修订的候选设计；仍待用户架构审查批准**
 ````
 
 ### E002 · 00_README_权威总纲.md
@@ -503,6 +505,32 @@ RenderGraph logical C0–C8 (no DataSet registry lookup)
 
 ### E026 · 04_类型化存储与GPU布局.md
 
+理由：独立复核 S01：解析需求先于接口形状冻结，与用户裁决顺序严格一致。
+
+原文：
+
+````text
+DataSchema<T> + DataSet requested scope/count/budget + optional GPU profile/Caps
+             ↓ derive **logical StorageInterfaceShape** (GPU ABI/format,
+               addressability/capacity guarantees) WITHOUT allocating VkBuffer
+Cold Feature Composition resolves DataSet/Capability requirements
+             ↓ typed logical views contribute PassSchema/Graph declarations
+RenderGraph logical C0–C8 (no DataSet registry lookup)
+````
+
+修订：
+
+````text
+DataSchema/type registration + Scope declarations + requests/budget + optional GPU profile/Caps
+             ↓ cold Feature Composition resolves DataSet/Capability/Writer requirements
+             ↓ freeze neutral StorageInterfaceShape + structural BindingSlotKey
+               (GPU ABI/format/addressability/capacity guarantees; no VkBuffer allocation)
+             ↓ resolved typed logical views contribute PassSchema/Graph declarations
+RenderGraph logical C0–C8 (no DataSet registry lookup)
+````
+
+### E027 · 04_类型化存储与GPU布局.md
+
 理由：裁决 B。
 
 原文：
@@ -517,7 +545,7 @@ Graph C0–C8 计算实际访问后，再在 C9–C13 选择相容 Native 物理
 Graph C0–C8 计算实际访问后，再在 C10 选择相容 Native 物理方案和分配 Backing；C9/C11/C12/C13 保持既有 Layout/执行配方/同步/装配职责
 ````
 
-### E027 · 04_类型化存储与GPU布局.md
+### E028 · 04_类型化存储与GPU布局.md
 
 理由：裁决 D。
 
@@ -533,7 +561,7 @@ Graph C0–C8 计算实际访问后，再在 C10 选择相容 Native 物理方�
 CPU-only `TypedStorage<T>` 无需 GPU ABI，其合法性由 CPU 存储策略的生命周期约束决定；需要 GPU view 才应用可选 GPU Layout/Representation 合同。`TypedStorage<T>` 的 CPU 端复用数据结构算法
 ````
 
-### E028 · 04_类型化存储与GPU布局.md
+### E029 · 04_类型化存储与GPU布局.md
 
 理由：裁决 D：CPU-only 不被迫进入 Graph。
 
@@ -551,7 +579,7 @@ CPU-only `TypedStorage<T>` 无需 GPU ABI，其合法性由 CPU 存储策略的�
 下述 Graph/Native 路径只适用于需要 GPU 表示的集合；纯 CPU-only DataSet 只选择合法 CPU 策略，不制造 GPU shape/backing 或伪 Pass。
 ````
 
-### E029 · 04_类型化存储与GPU布局.md
+### E030 · 04_类型化存储与GPU布局.md
 
 理由：示例字段与 LightGpu 声明一致。
 
@@ -567,7 +595,7 @@ value.intensity = 3.5f
 value.color_intensity[3] = 3.5f
 ````
 
-### E030 · 05_通信与发布事务.md
+### E031 · 05_通信与发布事务.md
 
 理由：裁决 D。
 
@@ -583,7 +611,7 @@ value.color_intensity[3] = 3.5f
 三个可选契约复用同一现有 generator 但职责不同：CPU-only 不要求 Wire/GPU；Wire-only 不要求 GPU；需要 Shader-visible 数据才生成并验证 GPU 表示
 ````
 
-### E031 · 06_Feature组合与数据依赖.md
+### E032 · 06_Feature组合与数据依赖.md
 
 理由：裁决 C。
 
@@ -599,7 +627,7 @@ Type-safe **logical** DataSet slots + initial compatible interface shape;
 Type-safe **logical** DataSet slots + frozen neutral StorageInterfaceShape;
 ````
 
-### E032 · 06_Feature组合与数据依赖.md
+### E033 · 06_Feature组合与数据依赖.md
 
 理由：裁决 B/C。
 
@@ -616,7 +644,7 @@ RenderGraphDefinition → existing compileLogicalGraph [C0–C8]
        ↓ [C1 graph producers/semantics/import-export; C2 pass resource interfaces only]
 ````
 
-### E033 · 06_Feature组合与数据依赖.md
+### E034 · 06_Feature组合与数据依赖.md
 
 理由：裁决 B。
 
@@ -633,7 +661,7 @@ C9 Layout/Shader; C10 physical backing; C11 native pass recipes;
 C12 queue/sync; C13 executable assembly [existing responsibilities]
 ````
 
-### E034 · 06_Feature组合与数据依赖.md
+### E035 · 06_Feature组合与数据依赖.md
 
 理由：裁决 C。
 
@@ -649,7 +677,7 @@ Generated PassSchema<T> 将 Shader Buffer/Image 字段映射成确切 DataSet �
 Composition 用已解析 Typed DataView 与 Generated PassSchema 将字段降低成中立 Graph Buffer/Image range、read/write、stages 和 producers。Graph 不查 DataSet Registry；实际实例/backing 留到 Invocation 绑定。
 ````
 
-### E035 · 07_RenderGraph推导与编译.md
+### E036 · 07_RenderGraph推导与编译.md
 
 理由：裁决 B/C：恢复 14 阶段，消除 Graph/Data 依赖倒置。
 
@@ -729,7 +757,7 @@ Invocation 才将结构槽绑定到实际 DataSet/NativeBackingGeneration，并�
 
 ````
 
-### E036 · 07_RenderGraph推导与编译.md
+### E037 · 07_RenderGraph推导与编译.md
 
 理由：裁决 C。
 
@@ -745,7 +773,39 @@ Invocation 才将结构槽绑定到实际 DataSet/NativeBackingGeneration，并�
 及结构性 owner slot；真正 DataSet/backing/Ready 在 Invocation/Native Import 绑定
 ````
 
-### E037 · 08_Shader与布局自动生成.md
+### E038 · 07_RenderGraph推导与编译.md
+
+理由：独立复核 S02：保留唯一类型域。
+
+原文：
+
+````text
+GPU DataTypeId 不进入 Graph 通用变体
+````
+
+修订：
+
+````text
+业务 RenderDataTypeId 不进入 Graph 通用变体；不创建平行 GPU Type ID
+````
+
+### E039 · 07_RenderGraph推导与编译.md
+
+理由：独立复核 S02：明确在 Graph 之外降低。
+
+原文：
+
+````text
+在 Graph Composition 期间
+````
+
+修订：
+
+````text
+在 Graph 编译之前的冷态 Feature Composition 期间
+````
+
+### E040 · 08_Shader与布局自动生成.md
 
 理由：裁决 D。
 
@@ -761,7 +821,7 @@ Invocation 才将结构槽绑定到实际 DataSet/NativeBackingGeneration，并�
 `DataSchema<T>`：稳定数据类型/字段/CPU 存储约束、Schema 兼容性；不声明某个 Pass 的 access。GPU-facing 数据另由同源可选 GpuLayout/GpuRepresentation 描述 Shader ABI，CPU-only 不要求 GPU Layout。
 ````
 
-### E038 · 08_Shader与布局自动生成.md
+### E041 · 08_Shader与布局自动生成.md
 
 理由：与 F6.b 的正式责任一致。
 
@@ -777,7 +837,23 @@ F6 前以两个独立的共享 Owner
 F6 内以两个独立的共享 Owner
 ````
 
-### E039 · 08_Shader与布局自动生成.md
+### E042 · 08_Shader与布局自动生成.md
+
+理由：独立复核 S03：更新频率类别不冒充 Scope owner。
+
+原文：
+
+````text
+二者都是 `scope=feature`
+````
+
+修订：
+
+````text
+二者落入旧 `OwnerAssignment.feature` 类别（不是 DataSet 的实际 Scope）
+````
+
+### E043 · 08_Shader与布局自动生成.md
 
 理由：裁决 D。
 
@@ -793,7 +869,7 @@ F6 内以两个独立的共享 Owner
 同源生成的可选 GPU 表示、布局声明、必要打包转换与函数
 ````
 
-### E040 · 10_Runtime多Scene多ViewTarget.md
+### E044 · 10_Runtime多Scene多ViewTarget.md
 
 理由：继承终态失败。
 
@@ -809,7 +885,7 @@ Device Lost 触发明确终止/恢复政策
 Device Lost 令当前 Runtime 终态失败；宿主只能按后续授权另建 Runtime，不在此引入自动恢复状态机
 ````
 
-### E041 · 12_Legacy功能完整迁移.md
+### E045 · 12_Legacy功能完整迁移.md
 
 理由：纠正 86 项与高级算法阶段边界。
 
@@ -825,7 +901,7 @@ Device Lost 令当前 Runtime 终态失败；宿主只能按后续授权另建 R
 F01–F36/I01–I44 的完整端到端闭环到 F11 产品切换为止；H01–H06 的算法分别由 F11 之后的 H1–H6 验收
 ````
 
-### E042 · 12_Legacy功能完整迁移.md
+### E046 · 12_Legacy功能完整迁移.md
 
 理由：避免第二 Editor frame loop 歧义。
 
@@ -841,7 +917,7 @@ F01–F36/I01–I44 的完整端到端闭环到 F11 产品切换为止；H01–H
 Editor 独立于 Simulation 的渲染进度，仍使用唯一 FrameDriver
 ````
 
-### E043 · 14_Cpp20类型和编码纪律.md
+### E047 · 14_Cpp20类型和编码纪律.md
 
 理由：与分层目标 Concept 一致。
 
@@ -857,7 +933,7 @@ Editor 独立于 Simulation 的渲染进度，仍使用唯一 FrameDriver
 `template<DescribedData T>`
 ````
 
-### E044 · 14_Cpp20类型和编码纪律.md
+### E048 · 14_Cpp20类型和编码纪律.md
 
 理由：裁决 D。
 
@@ -873,7 +949,7 @@ Generated Shader Data structs 需满足真实布局，不可凭 `trivially_copya
 仅 Shader-visible representation 需满足经生成器/反射核对的 GPU 布局。CPU-only T 不要求平凡复制或 standard-layout；Wire-only 遵守既有 PacketValue/codec。不凭 trivially_copyable 断言可以直接跨 DLL/Shader memcpy。
 ````
 
-### E045 · 14_Cpp20类型和编码纪律.md
+### E049 · 14_Cpp20类型和编码纪律.md
 
 理由：LightGpu 字段一致。
 
@@ -889,7 +965,7 @@ x.intensity = 4
 x.color_intensity[3] = 4
 ````
 
-### E046 · 14_Cpp20类型和编码纪律.md
+### E050 · 14_Cpp20类型和编码纪律.md
 
 理由：保留仓库 OOM 约定。
 
@@ -905,7 +981,7 @@ x.color_intensity[3] = 4
 - 普通 new/STL OOM 继续为 fatal，不新增可恢复 ALLOCATION_FAILURE 或热路径 catch。`RenderResult` 用于可预期的 invalid type/range/owner/DeviceCaps/Capacity/Busy/Ready error；
 ````
 
-### E047 · 14_Cpp20类型和编码纪律.md
+### E051 · 14_Cpp20类型和编码纪律.md
 
 理由：不新增与仓库 fatal/OOM 相冲突的规则。
 
@@ -921,7 +997,7 @@ x.color_intensity[3] = 4
 除普通堆 OOM 的既有 fatal 合同外，不可恢复的内部不变量破坏使用已有 fatal 出口（不依赖 release assert），并有独立反证测试
 ````
 
-### E048 · 15_端到端API示例.md
+### E052 · 15_端到端API示例.md
 
 理由：裁决 D。
 
@@ -937,7 +1013,7 @@ x.color_intensity[3] = 4
 现有 Generator、MSVC C++20、分离 CPU/Wire/GPU 合同、安装 SDK
 ````
 
-### E049 · 15_端到端API示例.md
+### E053 · 15_端到端API示例.md
 
 理由：裁决 D。
 
@@ -954,7 +1030,7 @@ x.color_intensity[3] = 4
 // 这不要求所有 CPU-only 类型具有此布局，也不将 CPU bytes 默认视为 Wire bytes。
 ````
 
-### E050 · 15_端到端API示例.md
+### E054 · 15_端到端API示例.md
 
 理由：避免把实例写入布局缓存。
 
@@ -970,7 +1046,7 @@ x.color_intensity[3] = 4
 结构性 Owner 依据 Schema/semantic/scope/full shape；实际 DataSetRef 留到 Invocation
 ````
 
-### E051 · 17_完整验收与正确性矩阵.md
+### E055 · 17_完整验收与正确性矩阵.md
 
 理由：裁决 D。
 
@@ -986,7 +1062,7 @@ x.color_intensity[3] = 4
 一份源类型按实际用途生成 CPU Schema、可选 Wire/GLSL/GPU Layout；三类独立正负例与 Type Collision/ABI 检查
 ````
 
-### E052 · 17_完整验收与正确性矩阵.md
+### E056 · 17_完整验收与正确性矩阵.md
 
 理由：裁决 D。
 
@@ -1002,7 +1078,7 @@ x.color_intensity[3] = 4
 CPU-only 非平凡类型、Wire-only 显式编码、LightGpu/SpriteGpu GPU 表示分别验证；GPU align/array/struct 与 GLSL/SPIRV 对账；错 schema/version/stride
 ````
 
-### E053 · 18_阶段计划与交付门禁.md
+### E057 · 18_阶段计划与交付门禁.md
 
 理由：权威状态。
 
@@ -1018,7 +1094,7 @@ D0 文档设计门禁（doc only; 仅批准设计）
 D0 文档设计门禁（doc only; 候选文档资格不等于用户批准架构）
 ````
 
-### E054 · 18_阶段计划与交付门禁.md
+### E058 · 18_阶段计划与交付门禁.md
 
 理由：与 F5 工作单两 Scene 共享资产一致。
 
@@ -1034,7 +1110,7 @@ D0 文档设计门禁（doc only; 候选文档资格不等于用户批准架构�
 2 Scenes×1 shared Asset
 ````
 
-### E055 · 18_阶段计划与交付门禁.md
+### E059 · 18_阶段计划与交付门禁.md
 
 理由：裁决 D。
 
@@ -1050,7 +1126,7 @@ portable wire/layout/ABI
 按用途可选的 wire/GPU layout 合同；CPU-only 不强制 GPU ABI
 ````
 
-### E056 · 18_阶段计划与交付门禁.md
+### E060 · 18_阶段计划与交付门禁.md
 
 理由：阶段义务不提前关闭。
 
@@ -1066,7 +1142,7 @@ F11 冻结全部 86 ID 原责任与 Editor/Player/Toolchain/Installed SDK produc
 F11 完成 F01–F36/I01–I44 及 Editor/Player/Toolchain/Installed SDK product cutover，保留全部 86 ID 追踪；H01–H06 不能在 F11 提前关闭，H1–H6
 ````
 
-### E057 · 19_冻结设计决策RD2.md
+### E061 · 19_冻结设计决策RD2.md
 
 理由：裁决 D。
 
@@ -1082,7 +1158,7 @@ F11 完成 F01–F36/I01–I44 及 Editor/Player/Toolchain/Installed SDK product
 增加可选 GPU Layout/Representation↔PassSchema 对账，CPU-only/Wire-only 分别验证
 ````
 
-### E058 · 19_冻结设计决策RD2.md
+### E062 · 19_冻结设计决策RD2.md
 
 理由：裁决 D。
 
@@ -1098,7 +1174,7 @@ C++20 `TypedStorage<T>`
 C++20 `TypedStorage<T>`（CPU-only 仅按真实生命周期策略约束，不要求 GPU ABI）
 ````
 
-### E059 · 19_冻结设计决策RD2.md
+### E063 · 19_冻结设计决策RD2.md
 
 理由：裁决 B/C。
 
@@ -1114,7 +1190,7 @@ StoragePlan 冷态根据数据约束+真实 Pass Access+Caps 决策，非法形�
 Composition 先冻结中立 StorageInterfaceShape；原 C10 根据实际 Pass Access+Caps 决定相容 backing，不晚改 ABI，非法形状明确拒绝
 ````
 
-### E060 · 19_冻结设计决策RD2.md
+### E064 · 19_冻结设计决策RD2.md
 
 理由：裁决 C。
 
@@ -1130,7 +1206,7 @@ Feature 先声明所需/产生的 Type/Key/Scope/Access/Capability，Graph 再�
 Feature Composition 先解析 Type/Key/Scope/Access/Capability，降低成 typed Graph 声明；原 C1 只解析图内关系，原 C2 只验证 Pass 接口，版本算法从真实访问建立依赖
 ````
 
-### E061 · 19_冻结设计决策RD2.md
+### E065 · 19_冻结设计决策RD2.md
 
 理由：裁决 D。
 
@@ -1146,7 +1222,7 @@ Shader Structured Type 与 C++ DataSchema 同一 generator/ABI fingerprint
 CPU Schema、可选 Wire 编码和可选 Shader GPU representation 由同一现有 generator 生成；GPU 布局另验证 fingerprint，不改 Core descriptor 含义
 ````
 
-### E062 · 19_冻结设计决策RD2.md
+### E066 · 19_冻结设计决策RD2.md
 
 理由：裁决 D。
 
@@ -1162,7 +1238,7 @@ DataSchema/Typed DataSet views
 DataSchema/Typed DataSet views 及按用途可选的 Wire/GPU 合同
 ````
 
-### E063 · 19_冻结设计决策RD2.md
+### E067 · 19_冻结设计决策RD2.md
 
 理由：裁决 A。
 
@@ -1178,7 +1254,7 @@ DataSchema/Typed DataSet views 及按用途可选的 Wire/GPU 合同
 另外 DataSetId 为 Scope/Runtime-local 实例身份、RecordHandle 受 DataSet 约束；既有 renderDataTypeId(canonical_name) 与版本字段不改
 ````
 
-### E064 · 19_冻结设计决策RD2.md
+### E068 · 19_冻结设计决策RD2.md
 
 理由：裁决 B/C。
 
@@ -1194,7 +1270,7 @@ DataSet 不重写 Graph 算法
 DataSet/Feature 解析在 Composition；不改原 C0–C8 职责或 Graph 算法
 ````
 
-### E065 · 19_冻结设计决策RD2.md
+### E069 · 19_冻结设计决策RD2.md
 
 理由：裁决 B。
 
@@ -1210,7 +1286,7 @@ DataSet/Feature 解析在 Composition；不改原 C0–C8 职责或 Graph 算法
 唯一 Native Compiler C9–C13；C11=Native pass execution、C12=Queue/sync，保持 FINAL 分工，不冒称产品已可用
 ````
 
-### E066 · 20_原设计迁移对照.md
+### E070 · 20_原设计迁移对照.md
 
 理由：裁决 B/C。
 
@@ -1226,7 +1302,7 @@ C1/C2 的输入解析扩展，不重写依赖算法
 Composition 先解析 DataSet/Feature，降低中立声明；原 C1/C2 职责与 C0–C13 编号保持，不重写依赖算法
 ````
 
-### E067 · 20_原设计迁移对照.md
+### E071 · 20_原设计迁移对照.md
 
 理由：裁决 D。
 
@@ -1242,7 +1318,7 @@ Composition 先解析 DataSet/Feature，降低中立声明；原 C1/C2 职责与
 增加可选 GPU Layout/Representation，不要求 CPU-only 满足 GPU ABI
 ````
 
-### E068 · work_orders/01_D0_文档架构冻结工作单.md
+### E072 · work_orders/01_D0_文档架构冻结工作单.md
 
 理由：裁决 D：限定 GPU-facing，不误拒绝 CPU-only。
 
@@ -1258,7 +1334,7 @@ DataSchema 可以不验证 GPU Shader ABI
 Shader-visible representation 可以不验证 GPU Shader ABI
 ````
 
-### E069 · work_orders/04_F6_DataSchema_FeatureSDK_预备范围.md
+### E073 · work_orders/04_F6_DataSchema_FeatureSDK_预备范围.md
 
 理由：裁决 D：直接修正文。
 
@@ -1274,7 +1350,7 @@ GPU field ABI (`offsetof`, `stride`, `align`, type`, matrix major`)、C++ `DataS
 C++ DataSchema<T> Traits；CPU-only 按真实存储生命周期约束，跨线程/ABI 时才生成既有 PacketValue/codec 所需 Wire schema，Shader-visible 时才生成可选 GPU Layout/Representation（offset/stride/alignment/type/matrix major）、GLSL 与必要打包转换
 ````
 
-### E070 · work_orders/04_F6_DataSchema_FeatureSDK_预备范围.md
+### E074 · work_orders/04_F6_DataSchema_FeatureSDK_预备范围.md
 
 理由：裁决 D。
 
@@ -1290,7 +1366,7 @@ TypeID 碰撞、同名 layout/version mismatch、invalid std430/struct, illegal 
 TypeID 碰撞和不兼容版本须 fail；invalid std430/struct 仅适用于 GPU-facing 表示；裸指针/任意 C++ T 不得绕过 Wire/GPU 合同，合法 CPU-only 非平凡类型不因此被拒绝
 ````
 
-### E071 · work_orders/04_F6_DataSchema_FeatureSDK_预备范围.md
+### E075 · work_orders/04_F6_DataSchema_FeatureSDK_预备范围.md
 
 理由：裁决 C。
 
@@ -1306,7 +1382,7 @@ TypeID 碰撞和不兼容版本须 fail；invalid std430/struct 仅适用于 GPU
 冷态 Composition 在 Graph 前解析 DataSet/Capability/权限，降低 typed Graph 声明，原 C1/C2 只解析图内关系和验证 Pass 接口；完整候选事务
 ````
 
-### E072 · work_orders/05_F7_TypedStorage_GPUResident_预备范围.md
+### E076 · work_orders/05_F7_TypedStorage_GPUResident_预备范围.md
 
 理由：裁决 D。
 
@@ -1322,7 +1398,7 @@ template<RenderDataRecord T>
 template<DescribedData T>
 ````
 
-### E073 · work_orders/05_F7_TypedStorage_GPUResident_预备范围.md
+### E077 · work_orders/05_F7_TypedStorage_GPUResident_预备范围.md
 
 理由：裁决 D。
 
@@ -1338,7 +1414,7 @@ template<DescribedData T>
 CPU-only T 仅受真实存储生命周期约束，GPU-facing view 另受同源 GPU Layout/Representation 验证；小而可复用的 slot/dirty算法
 ````
 
-### E074 · README.md
+### E078 · README.md
 
 理由：候选版本。
 
@@ -1351,10 +1427,10 @@ CPU-only T 仅受真实存储生命周期约束，GPU-facing view 另受同源 G
 修订：
 
 ````text
-**RD2-D0-C1 · 2026-10-11 · 已按用户裁决修订的设计候选
+**RD2-D0-C2 · 2026-10-11 · 已按用户裁决修订的设计候选
 ````
 
-### E075 · README.md
+### E079 · README.md
 
 理由：补充可审阅入口。
 
@@ -1382,7 +1458,7 @@ D0 独立报告在 Verification 提交中新增；文档 PASS 不激活候选架
 ## 读者入口
 ````
 
-### E076 · AUDIT_来源与一致性.md
+### E080 · AUDIT_来源与一致性.md
 
 理由：原包审计与当前资格分离。
 
@@ -1397,10 +1473,10 @@ D0 独立报告在 Verification 提交中新增；文档 PASS 不激活候选架
 ````text
 # RD2 原来源、机器校验与身份说明
 
-候选修订 RD2-D0-C1。下列原包审计是来源声明，不是本轮独立 Verification；本轮裁决、来源与检查分别见 RD2_D0_ERRATA、RD2_PROVENANCE 和后续独立报告。
+候选修订 RD2-D0-C2。下列原包审计是来源声明，不是本轮独立 Verification；本轮裁决、来源与检查分别见 RD2_D0_ERRATA、RD2_PROVENANCE 和后续独立报告。
 ````
 
-### E077 · AUDIT_来源与一致性.md
+### E081 · AUDIT_来源与一致性.md
 
 理由：裁决 D。
 
@@ -1416,7 +1492,7 @@ D0 独立报告在 Verification 提交中新增；文档 PASS 不激活候选架
 `DataSchema`（语义类型及按用途可选的 Wire/GPU 表示）
 ````
 
-### E078 · AUDIT_来源与一致性.md
+### E082 · AUDIT_来源与一致性.md
 
 理由：裁决 B/C。
 
@@ -1432,7 +1508,7 @@ D0 独立报告在 Verification 提交中新增；文档 PASS 不激活候选架
 冷态 Composition 先解析 DataSet/Feature 并冻结逻辑 StorageInterfaceShape，Feature 写 Graph → 原 C0–C8 → 原 C9–C13（C10 物理 backing；C11 native recipes；C12 queue/sync）。
 ````
 
-### E079 · AUDIT_来源与一致性.md
+### E083 · AUDIT_来源与一致性.md
 
 理由：文档资格不冒充构建。
 

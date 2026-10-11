@@ -1,4 +1,4 @@
-# RD2-D0-C1 一致性审阅与目标 API 责任
+# RD2-D0-C2 一致性审阅与目标 API 责任
 
 本页是 Implementation 的设计审阅材料，**不是独立 Verification**。基线 b9f9a909bc34；全部新 API 均为目标设计。本轮未编译示例或执行 CPU/GPU 测试。具体源码锚点及 Git blob 见 RD2_PROVENANCE。
 

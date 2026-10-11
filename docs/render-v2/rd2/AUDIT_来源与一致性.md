@@ -1,6 +1,6 @@
 # RD2 原来源、机器校验与身份说明
 
-候选修订 RD2-D0-C1。下列原包审计是来源声明，不是本轮独立 Verification；本轮裁决、来源与检查分别见 RD2_D0_ERRATA、RD2_PROVENANCE 和后续独立报告。
+候选修订 RD2-D0-C2。下列原包审计是来源声明，不是本轮独立 Verification；本轮裁决、来源与检查分别见 RD2_D0_ERRATA、RD2_PROVENANCE 和后续独立报告。
 
 - 设计源文件：`LuxEngine_RenderV2_FINAL_Architecture_2026-10-10(4).zip`；SHA-256：`39be1dd08ca4e30964ef47fa0b274054bc426e79472a1d0e733deaa0fe83d551`。
 - Git 审查基线：`b9f9a909bc34ac87f00c594996201a20f0af00c8`，审查时 F4 PARTIAL，F5 不授权；不是本包重新运行的验证。

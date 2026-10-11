@@ -19,3 +19,7 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../engine/toolchain/shader" toolc
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/graph" render_graph)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/vulkan" render_vulkan)
+
+if(BUILD_TESTING)
+    include("${CMAKE_CURRENT_LIST_DIR}/F4Closeout.cmake")
+endif()

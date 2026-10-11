@@ -152,11 +152,12 @@ namespace lux::render::vulkan
 
         void recordDraw(
             VkCommandBuffer command,
-            const DrawCommand& draw,
             const detail::NativePassRecipe& recipe,
             const detail::NativeGraphBacking& plan,
             detail::SlotPass& bound,
-            const GraphPassInvocation& invocation
+            const GraphPassInvocation& invocation,
+            const detail::GraphSlot& slot,
+            const FrameGraphBindings& bindings
         ) noexcept
         {
             for (std::size_t i = 0; i < bound.colors.size(); ++i)
@@ -208,7 +209,53 @@ namespace lux::render::vulkan
             VkRect2D scissor{{0, 0}, bound.extent};
             vkCmdSetViewport(command, 0, 1, &viewport);
             vkCmdSetScissor(command, 0, 1, &scissor);
-            vkCmdDraw(command, draw.vertices, draw.instances, draw.first_vertex, draw.first_instance);
+            const auto& uses = plan.logical.identity().passes[recipe.command.pass.value() - 1].uses;
+            const auto bufferAt = [&](std::uint32_t use, VkDeviceSize relative)
+            {
+                const auto resource = bindings.resourceFor(recipe.command.pass, use).value() - 1;
+                return std::pair{
+                    detail::bufferOf(slot.resources[resource])->native(),
+                    std::get<BufferRange>(uses[use].range).byte_offset + relative + slot.buffer_offsets[resource]
+                };
+            };
+            for (const auto& stream : detail::vertexStreams(recipe.command.command))
+            {
+                const auto [buffer, offset] = bufferAt(stream.use_index, stream.offset);
+                vkCmdBindVertexBuffers(command, stream.binding, 1, &buffer, &offset);
+            }
+            if (const auto* index = detail::indexStream(recipe.command.command))
+            {
+                const auto [buffer, offset] = bufferAt(index->use_index, index->offset);
+                vkCmdBindIndexBuffer(command, buffer, offset, index->type);
+            }
+            if (const auto* indirect = detail::indirectArguments(recipe.command.command))
+            {
+                const auto [buffer, offset] = bufferAt(indirect->use_index, indirect->offset);
+                if (detail::indexStream(recipe.command.command))
+                {
+                    vkCmdDrawIndexedIndirect(command, buffer, offset, indirect->count, indirect->stride);
+                }
+                else
+                {
+                    vkCmdDrawIndirect(command, buffer, offset, indirect->count, indirect->stride);
+                }
+            }
+            else if (const auto* indexed = std::get_if<DrawIndexedCommand>(&recipe.command.command))
+            {
+                vkCmdDrawIndexed(
+                    command,
+                    indexed->indices_count,
+                    indexed->instances,
+                    indexed->first_index,
+                    indexed->vertex_offset,
+                    indexed->first_instance
+                );
+            }
+            else
+            {
+                const auto& draw = std::get<DrawCommand>(recipe.command.command);
+                vkCmdDraw(command, draw.vertices, draw.instances, draw.first_vertex, draw.first_instance);
+            }
             vkCmdEndRendering(command);
         }
     } // namespace
@@ -568,9 +615,9 @@ namespace lux::render::vulkan
             if (recipe.program)
             {
                 const auto& program = plan.programs[*recipe.program];
-                const auto point = std::holds_alternative<DrawCommand>(recipe.command.command)
-                                       ? VK_PIPELINE_BIND_POINT_GRAPHICS
-                                       : VK_PIPELINE_BIND_POINT_COMPUTE;
+                const auto point = std::holds_alternative<DispatchCommand>(recipe.command.command)
+                                       ? VK_PIPELINE_BIND_POINT_COMPUTE
+                                       : VK_PIPELINE_BIND_POINT_GRAPHICS;
                 vkCmdBindPipeline(command, point, program.native());
                 auto bound_result = bound.descriptors->bind(command, bound.dynamic_offsets, invocation.scalars);
                 if (!bound_result)
@@ -583,69 +630,53 @@ namespace lux::render::vulkan
             {
                 vkCmdDispatch(command, dispatch->x, dispatch->y, dispatch->z);
             }
-            else if (const auto* draw = std::get_if<DrawCommand>(&recipe.command.command))
+            else if (recipe.program)
             {
-                recordDraw(command, *draw, recipe, plan, bound, invocation);
+                recordDraw(command, recipe, plan, bound, invocation, slot, bindings);
             }
             else
             {
                 detail::recordCopies(command, recipe, slot, bindings);
             }
-            // Explicit host visibility is part of an output contract, never inferred from fence polling alone.
-            for (const auto& output : plan.logical.identity().outputs)
+            for (const auto& use : recipe.uses)
             {
-                if (output.kind != EGraphOutput::READBACK)
-                {
-                    continue;
-                }
-                for (std::uint32_t c = 0; c < plan.cells.size(); ++c)
+                const auto selected = bindings.resourceFor(recipe.command.pass, use.use_index);
+                for (const auto c : use.host_readback_cells)
                 {
                     const auto& cell = plan.cells[c];
-                    const bool written_here = std::any_of(
-                        recipe.uses.begin(),
-                        recipe.uses.end(),
-                        [&](const auto& use)
-                        {
-                            return bindings.resourceFor(recipe.command.pass, use.use_index) == cell.resource &&
-                                   (use.destination.access & VK_ACCESS_2_TRANSFER_WRITE_BIT) != 0 &&
-                                   std::find(use.cells.begin(), use.cells.end(), c) != use.cells.end();
-                        }
-                    );
-                    if (written_here && cell.resource == output.resource &&
-                        detail::bufferOf(slot.resources[cell.resource.value() - 1]))
+                    if (cell.resource != selected)
                     {
-                        const auto state = slot.states[c];
-                        if (state.access == VK_ACCESS_2_TRANSFER_WRITE_BIT)
-                        {
-                            NativeResourceState host{
-                                VK_PIPELINE_STAGE_2_HOST_BIT,
-                                VK_ACCESS_2_HOST_READ_BIT,
-                                VK_IMAGE_LAYOUT_UNDEFINED,
-                                state.family
-                            };
-                            barrier(
-                                command,
-                                cell,
-                                slot.resources[cell.resource.value() - 1],
-                                state,
-                                host,
-                                EBarrierPart::COMPLETE,
-                                slot.buffer_offsets[cell.resource.value() - 1]
-                            );
-                            observe(
-                                {ENativeTrace::TRANSITION,
-                                 recipe.command.pass,
-                                 pass_key,
-                                 cell.resource,
-                                 ~0u,
-                                 cell.range,
-                                 recipe.command.queue,
-                                 state,
-                                 host}
-                            );
-                            slot.states[c] = host;
-                        }
+                        continue;
                     }
+                    const NativeResourceState host{
+                        VK_PIPELINE_STAGE_2_HOST_BIT,
+                        VK_ACCESS_2_HOST_READ_BIT,
+                        VK_IMAGE_LAYOUT_UNDEFINED,
+                        use.destination.family
+                    };
+                    barrier(
+                        command,
+                        cell,
+                        slot.resources[cell.resource.value() - 1],
+                        use.destination,
+                        host,
+                        EBarrierPart::COMPLETE,
+                        slot.buffer_offsets[cell.resource.value() - 1]
+                    );
+                    observe(
+                        {ENativeTrace::TRANSITION,
+                         recipe.command.pass,
+                         pass_key,
+                         cell.resource,
+                         ~0u,
+                         cell.range,
+                         recipe.command.queue,
+                         use.destination,
+                         host}
+                    );
+                    // Keep GPU last-access for a later queue-family release.
+                    // The publication edge neither transfers ownership to the
+                    // host nor permits a CPU read before the completion receipt.
                 }
             }
             auto submitted = submitWaits(std::move(*batch), waits);
@@ -750,14 +781,24 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
         const auto& outputs = backing_->logical.identity().outputs;
+        const auto size = backing_->logical.identity().resources[resource.value() - 1].buffer().byte_size;
+        if (offset > size || destination.size() > size - offset)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
         const bool is_readback = std::any_of(
             outputs.begin(),
             outputs.end(),
-            [&](const auto& output) { return output.resource == resource && output.kind == EGraphOutput::READBACK; }
+            [&](const auto& output)
+            {
+                const bool matching_output = output.resource == resource && output.kind == EGraphOutput::READBACK;
+                const bool covers_read = std::holds_alternative<WholeResource>(output.range) ||
+                                         detail::containsRange(output.range, BufferRange{offset, destination.size()});
+                return matching_output && covers_read;
+            }
         );
         const auto base = backing_->slots[receipt.slot].buffer_offsets[resource.value() - 1];
-        const auto size = backing_->logical.identity().resources[resource.value() - 1].buffer().byte_size;
-        if (!is_readback || offset > size || destination.size() > size - offset)
+        if (!is_readback)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }

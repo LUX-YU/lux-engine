@@ -28,6 +28,7 @@ namespace lux::render::vulkan::detail
         std::vector<std::uint32_t> cells;
         NativeResourceState destination;
         VkPipelineStageFlags2 alias_source_stages{};
+        std::vector<std::uint32_t> host_readback_cells;
     };
 
     struct AttachmentRecipe
@@ -57,6 +58,7 @@ namespace lux::render::vulkan::detail
         std::vector<std::uint32_t> predecessors;
         std::vector<VkMemoryBarrier2> alias_barriers;
         std::vector<CopyRecipe> copies;
+        std::vector<std::pair<std::uint32_t, unsigned>> buffer_alignments;
     };
 
     struct SlotPass
@@ -141,6 +143,10 @@ namespace lux::render::vulkan::detail
         NativeGraphBacking(const NativeCompileInputs& inputs, std::vector<NativeShaderProgram> programs) noexcept;
         ~NativeGraphBacking() noexcept;
     };
+
+    [[nodiscard]] std::span<const VertexStream> vertexStreams(const VNativeCommand& command) noexcept;
+    [[nodiscard]] const IndexStream* indexStream(const VNativeCommand& command) noexcept;
+    [[nodiscard]] const IndirectArguments* indirectArguments(const VNativeCommand& command) noexcept;
 
     [[nodiscard]] RenderResult<void> compileResources(
         NativeGraphBacking& result,

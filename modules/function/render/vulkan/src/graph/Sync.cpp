@@ -101,6 +101,15 @@ namespace lux::render::vulkan::detail
                         }
                     }
                 }
+                for (const auto& output : graph.outputs)
+                {
+                    const auto* range = std::get_if<BufferRange>(&output.range);
+                    if (output.resource == resource && range)
+                    {
+                        boundaries.push_back(range->byte_offset);
+                        boundaries.push_back(range->byte_offset + range->byte_count);
+                    }
+                }
                 std::sort(boundaries.begin(), boundaries.end());
                 boundaries.erase(std::unique(boundaries.begin(), boundaries.end()), boundaries.end());
                 for (std::size_t i = 1; i < boundaries.size(); ++i)
@@ -213,6 +222,47 @@ namespace lux::render::vulkan::detail
                     }
                 );
                 recipe.uses.push_back(std::move(access));
+            }
+        }
+        // Host visibility is a separate publication edge, not the resource's
+        // next GPU access or a queue-family ownership transfer. Resolve output
+        // ranges and possible final writers once; record only executes indices.
+        for (std::uint32_t c = 0; c < result.cells.size(); ++c)
+        {
+            const auto& cell = result.cells[c];
+            const bool host_output = std::holds_alternative<BufferRange>(cell.range) &&
+                                     std::any_of(
+                                         graph.outputs.begin(),
+                                         graph.outputs.end(),
+                                         [&](const auto& output)
+                                         {
+                                             return output.kind == EGraphOutput::READBACK &&
+                                                    output.resource == cell.resource &&
+                                                    (std::holds_alternative<WholeResource>(output.range) ||
+                                                     containsRange(output.range, cell.range));
+                                         }
+                                     );
+            if (!host_output)
+            {
+                continue;
+            }
+            for (auto recipe = result.recipes.rbegin(); recipe != result.recipes.rend(); ++recipe)
+            {
+                bool writes_cell = false;
+                for (auto& use : recipe->uses)
+                {
+                    const bool writes = (use.destination.access &
+                                         (VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT)) != 0;
+                    if (writes && std::find(use.cells.begin(), use.cells.end(), c) != use.cells.end())
+                    {
+                        use.host_readback_cells.push_back(c);
+                        writes_cell = true;
+                    }
+                }
+                if (writes_cell && !graph.passes[recipe->command.pass.value() - 1].condition.isValid())
+                {
+                    break;
+                }
             }
         }
         for (std::uint32_t r = 0; r < result.alias_sources.size(); ++r)

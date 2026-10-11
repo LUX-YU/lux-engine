@@ -4,8 +4,259 @@
 
 namespace lux::render::vulkan::detail
 {
+    std::span<const VertexStream> vertexStreams(const VNativeCommand& command) noexcept
+    {
+        return std::visit(
+            [](const auto& value) -> std::span<const VertexStream>
+            {
+                if constexpr (requires { value.streams; })
+                {
+                    return value.streams;
+                }
+                else
+                {
+                    return {};
+                }
+            },
+            command
+        );
+    }
+
+    const IndexStream* indexStream(const VNativeCommand& command) noexcept
+    {
+        if (const auto* draw = std::get_if<DrawIndexedCommand>(&command))
+        {
+            return &draw->indices;
+        }
+        if (const auto* draw = std::get_if<DrawIndexedIndirectCommand>(&command))
+        {
+            return &draw->indices;
+        }
+        return nullptr;
+    }
+
+    const IndirectArguments* indirectArguments(const VNativeCommand& command) noexcept
+    {
+        if (const auto* draw = std::get_if<DrawIndirectCommand>(&command))
+        {
+            return &draw->arguments;
+        }
+        if (const auto* draw = std::get_if<DrawIndexedIndirectCommand>(&command))
+        {
+            return &draw->arguments;
+        }
+        return nullptr;
+    }
+
     namespace
     {
+        // Native vertex byte footprint; unsupported packed/64-bit shader formats
+        // are rejected explicitly rather than guessed from enum ordering.
+        std::pair<unsigned, unsigned> vertexFootprint(VkFormat format) noexcept
+        {
+            switch (format)
+            {
+            case VK_FORMAT_R8_UNORM:
+            case VK_FORMAT_R8_SNORM:
+            case VK_FORMAT_R8_UINT:
+            case VK_FORMAT_R8_SINT:
+                return {1, 1};
+            case VK_FORMAT_R8G8_UNORM:
+            case VK_FORMAT_R8G8_SNORM:
+            case VK_FORMAT_R8G8_UINT:
+            case VK_FORMAT_R8G8_SINT:
+                return {2, 1};
+            case VK_FORMAT_R8G8B8A8_UNORM:
+            case VK_FORMAT_R8G8B8A8_SNORM:
+            case VK_FORMAT_R8G8B8A8_UINT:
+            case VK_FORMAT_R8G8B8A8_SINT:
+                return {4, 1};
+            case VK_FORMAT_R16_UNORM:
+            case VK_FORMAT_R16_SNORM:
+            case VK_FORMAT_R16_UINT:
+            case VK_FORMAT_R16_SINT:
+            case VK_FORMAT_R16_SFLOAT:
+                return {2, 2};
+            case VK_FORMAT_R16G16_UNORM:
+            case VK_FORMAT_R16G16_SNORM:
+            case VK_FORMAT_R16G16_UINT:
+            case VK_FORMAT_R16G16_SINT:
+            case VK_FORMAT_R16G16_SFLOAT:
+                return {4, 2};
+            case VK_FORMAT_R16G16B16_UNORM:
+            case VK_FORMAT_R16G16B16_SNORM:
+            case VK_FORMAT_R16G16B16_UINT:
+            case VK_FORMAT_R16G16B16_SINT:
+            case VK_FORMAT_R16G16B16_SFLOAT:
+                return {6, 2};
+            case VK_FORMAT_R16G16B16A16_UNORM:
+            case VK_FORMAT_R16G16B16A16_SNORM:
+            case VK_FORMAT_R16G16B16A16_UINT:
+            case VK_FORMAT_R16G16B16A16_SINT:
+            case VK_FORMAT_R16G16B16A16_SFLOAT:
+                return {8, 2};
+            case VK_FORMAT_R32_UINT:
+            case VK_FORMAT_R32_SINT:
+            case VK_FORMAT_R32_SFLOAT:
+                return {4, 4};
+            case VK_FORMAT_R32G32_UINT:
+            case VK_FORMAT_R32G32_SINT:
+            case VK_FORMAT_R32G32_SFLOAT:
+                return {8, 4};
+            case VK_FORMAT_R32G32B32_UINT:
+            case VK_FORMAT_R32G32B32_SINT:
+            case VK_FORMAT_R32G32B32_SFLOAT:
+                return {12, 4};
+            case VK_FORMAT_R32G32B32A32_UINT:
+            case VK_FORMAT_R32G32B32A32_SINT:
+            case VK_FORMAT_R32G32B32A32_SFLOAT:
+                return {16, 4};
+            case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+            case VK_FORMAT_A2B10G10R10_UINT_PACK32:
+                return {4, 4};
+            default:
+                return {};
+            }
+        }
+
+        RenderResult<void> validateDraw(
+            const LogicalPass& pass,
+            NativePassRecipe& recipe,
+            const GraphicsDescription& graphics,
+            const VkPhysicalDeviceLimits& limits
+        ) noexcept
+        {
+            const auto& command = recipe.command.command;
+            const auto rangeFor = [&](std::uint32_t index, EGraphUsage usage) -> const BufferRange*
+            {
+                if (index >= pass.uses.size())
+                {
+                    return nullptr;
+                }
+                const auto& use = pass.uses[index];
+                if (use.usage != usage || use.access != EGraphAccess::READ)
+                {
+                    return nullptr;
+                }
+                return std::get_if<BufferRange>(&use.range);
+            };
+            const auto streams = vertexStreams(command);
+            if (streams.size() != graphics.vertex_bindings.size())
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument});
+            }
+            for (std::size_t i = 0; i < streams.size(); ++i)
+            {
+                const auto& stream = streams[i];
+                const auto binding = std::find_if(
+                    graphics.vertex_bindings.begin(),
+                    graphics.vertex_bindings.end(),
+                    [&](const auto& b) { return b.binding == stream.binding; }
+                );
+                const auto* range = rangeFor(stream.use_index, EGraphUsage::VERTEX);
+                const bool duplicate = std::any_of(
+                    streams.begin(),
+                    streams.begin() + i,
+                    [&](const auto& prior) { return prior.binding == stream.binding; }
+                );
+                const bool invalid = !range || binding == graphics.vertex_bindings.end() || duplicate;
+                if (invalid)
+                {
+                    return cxx::unexpected(RenderError{kInvalidArgument});
+                }
+                if (stream.offset >= range->byte_count)
+                {
+                    return cxx::unexpected(RenderError{kInvalidArgument});
+                }
+                std::uint64_t first = 0, count = 1;
+                if (const auto* direct = std::get_if<DrawCommand>(&command))
+                {
+                    first =
+                        binding->rate == VK_VERTEX_INPUT_RATE_VERTEX ? direct->first_vertex : direct->first_instance;
+                    count = binding->rate == VK_VERTEX_INPUT_RATE_VERTEX ? direct->vertices : direct->instances;
+                }
+                if (const auto* indexed = std::get_if<DrawIndexedCommand>(&command);
+                    indexed && binding->rate == VK_VERTEX_INPUT_RATE_INSTANCE)
+                {
+                    first = indexed->first_instance;
+                    count = indexed->instances;
+                }
+                for (const auto& attribute : graphics.attributes)
+                {
+                    if (attribute.binding != stream.binding)
+                    {
+                        continue;
+                    }
+                    const auto [bytes, alignment] = vertexFootprint(attribute.format);
+                    if (!bytes)
+                    {
+                        return cxx::unexpected(RenderError{kUnsupported});
+                    }
+                    recipe.buffer_alignments.emplace_back(stream.use_index, alignment);
+                    const bool misaligned = (range->byte_offset + stream.offset + attribute.offset) % alignment != 0 ||
+                                            binding->stride % alignment != 0;
+                    const auto available = range->byte_count - stream.offset;
+                    const auto end = std::uint64_t(attribute.offset) + bytes;
+                    const bool out_of_range =
+                        end > available ||
+                        (count != 0 && binding->stride != 0 && first + count - 1 > (available - end) / binding->stride);
+                    if (misaligned || out_of_range)
+                    {
+                        return cxx::unexpected(RenderError{kInvalidArgument});
+                    }
+                }
+            }
+            if (const auto* index = indexStream(command))
+            {
+                const auto* range = rangeFor(index->use_index, EGraphUsage::INDEX);
+                const auto size = index->type == VK_INDEX_TYPE_UINT16   ? 2u
+                                  : index->type == VK_INDEX_TYPE_UINT32 ? 4u
+                                                                        : 0u;
+                if (!range || !size)
+                {
+                    return cxx::unexpected(RenderError{kInvalidArgument});
+                }
+                const bool invalid =
+                    index->offset >= range->byte_count || (range->byte_offset + index->offset) % size != 0;
+                if (invalid)
+                {
+                    return cxx::unexpected(RenderError{kInvalidArgument});
+                }
+                recipe.buffer_alignments.emplace_back(index->use_index, size);
+                std::uint64_t end = 1;
+                if (const auto* direct = std::get_if<DrawIndexedCommand>(&command))
+                {
+                    end = std::uint64_t(direct->first_index) + direct->indices_count;
+                }
+                if (end > (range->byte_count - index->offset) / size)
+                {
+                    return cxx::unexpected(RenderError{kInvalidArgument});
+                }
+            }
+            if (const auto* arguments = indirectArguments(command))
+            {
+                const auto* range = rangeFor(arguments->use_index, EGraphUsage::INDIRECT);
+                recipe.buffer_alignments.emplace_back(arguments->use_index, 4);
+                const auto size =
+                    indexStream(command) ? sizeof(VkDrawIndexedIndirectCommand) : sizeof(VkDrawIndirectCommand);
+                const bool invalid = !range || arguments->count != 1 ||
+                                     arguments->count > limits.maxDrawIndirectCount || arguments->stride < size ||
+                                     arguments->stride % 4 != 0;
+                if (invalid)
+                {
+                    return cxx::unexpected(RenderError{kInvalidArgument});
+                }
+                const bool invalid_range = arguments->offset > range->byte_count ||
+                                           size > range->byte_count - arguments->offset ||
+                                           (range->byte_offset + arguments->offset) % 4 != 0;
+                if (invalid_range)
+                {
+                    return cxx::unexpected(RenderError{kInvalidArgument});
+                }
+            }
+            return {};
+        }
+
         VkAttachmentLoadOp loadOp(ELoadOp load) noexcept
         {
             return load == ELoadOp::LOAD    ? VK_ATTACHMENT_LOAD_OP_LOAD
@@ -478,7 +729,8 @@ namespace lux::render::vulkan::detail
             const auto& command = *std::find_if(inputs.commands.begin(), inputs.commands.end(), matches);
             const auto kind = graph.passes[pass.value() - 1].kind;
             const bool wrong_command =
-                (kind == EPassKind::GRAPHICS && !std::holds_alternative<DrawCommand>(command.command)) ||
+                (kind == EPassKind::GRAPHICS && (std::holds_alternative<DispatchCommand>(command.command) ||
+                                                 std::holds_alternative<CopyCommand>(command.command))) ||
                 (kind == EPassKind::COMPUTE && !std::holds_alternative<DispatchCommand>(command.command)) ||
                 ((kind == EPassKind::TRANSFER || kind == EPassKind::HOST_READBACK) &&
                  !std::holds_alternative<CopyCommand>(command.command));
@@ -534,10 +786,10 @@ namespace lux::render::vulkan::detail
             {
                 const auto& graphics =
                     std::get<GraphicsDescription>(result.programs[*recipe.program].identity().pipeline);
-                if (!graphics.vertex_bindings.empty())
+                auto valid = validateDraw(declaration, recipe, graphics, inputs.device.properties().limits);
+                if (!valid)
                 {
-                    // Direct procedural draw recipes have no vertex-stream mapping.
-                    return cxx::unexpected(RenderError{kUnsupported, {pass.value()}});
+                    return cxx::unexpected(valid.error());
                 }
             }
             for (const auto& edge : result.logical.dependencies())

@@ -14,6 +14,12 @@ namespace lux::render::vulkan
         READBACK
     };
 
+    struct BufferMemoryBinding
+    {
+        VkDeviceMemory memory;
+        VkDeviceSize offset, size;
+    };
+
     class Buffer
     {
     public:
@@ -54,6 +60,8 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> write(VkDeviceSize offset, std::span<const std::byte> bytes) noexcept;
         [[nodiscard]] RenderResult<void> read(VkDeviceSize offset, std::span<std::byte> bytes) const noexcept;
         [[nodiscard]] VkDeviceSize allocationBytes() const noexcept;
+        // Allocation facts only; this value does not retain native backing.
+        [[nodiscard]] BufferMemoryBinding memoryBinding() const noexcept;
 
     private:
         Buffer(

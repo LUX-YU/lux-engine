@@ -32,6 +32,27 @@ namespace lux::render::vulkan::detail
         return result;
     }
 
+    static bool memoryOverlap(const VNativeImport& first, const VNativeImport& second) noexcept
+    {
+        return std::visit(
+            [](const auto& a, const auto& b)
+            {
+                if (a.get().device() != b.get().device())
+                {
+                    return false;
+                }
+                const auto left = a.get().memoryBinding();
+                const auto right = b.get().memoryBinding();
+                const bool same_memory = left.memory == right.memory;
+                const bool intersects = left.offset <= right.offset ? right.offset - left.offset < left.size
+                                                                    : left.offset - right.offset < right.size;
+                return same_memory && left.size != 0 && right.size != 0 && intersects;
+            },
+            first,
+            second
+        );
+    }
+
     static RenderResult<void> validateImports(
         const NativeGraphBacking& plan,
         const FrameGraphBindings& bindings,
@@ -52,6 +73,14 @@ namespace lux::render::vulkan::detail
             }
             const auto r = input.resource.value() - 1;
             const auto& declaration = graph.resources[r];
+            const bool invalid_native = std::visit(
+                [&](const auto& owner) { return !owner.get().native() || owner.get().device() != plan.device; },
+                input.backing
+            );
+            if (invalid_native)
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument, {i}});
+            }
             for (std::uint32_t other = 0; other < i; ++other)
             {
                 const bool same_native = std::visit(
@@ -63,7 +92,7 @@ namespace lux::render::vulkan::detail
                     },
                     input.backing
                 );
-                if (same_native)
+                if (same_native || memoryOverlap(input.backing, imports[other].backing))
                 {
                     // Distinct logical identities cannot secretly alias imported
                     // native storage outside the compiler's alias proof.
@@ -174,7 +203,25 @@ namespace lux::render::vulkan::detail
                         );
                         const bool ordered = supplied.ready && &supplied.ready->owner() == &ticket->owner() &&
                                              supplied.ready->serial() >= ticket->serial();
-                        if (same_backing && !ordered)
+                        const bool overlaps_active = std::visit(
+                            [&](const auto& previous_owner)
+                            {
+                                using T = std::remove_cvref_t<decltype(previous_owner)>;
+                                if constexpr (std::same_as<T, std::reference_wrapper<const Buffer>> ||
+                                              std::same_as<T, std::reference_wrapper<const Image>>)
+                                {
+                                    return memoryOverlap(input.backing, VNativeImport{previous_owner});
+                                }
+                                else
+                                {
+                                    return false;
+                                }
+                            },
+                            previous.resources[previous_resource]
+                        );
+                        // An ordering ticket proves execution order, not the
+                        // distinct-handle alias memory dependency/layout recipe.
+                        if ((same_backing && !ordered) || (overlaps_active && !same_backing))
                         {
                             return cxx::unexpected(RenderError{kBusy, {i, c}});
                         }
@@ -254,6 +301,14 @@ namespace lux::render::vulkan::detail
         {
             const auto p = recipe.command.pass.value() - 1;
             auto& pass = slot.passes[p];
+            for (const auto& [use, alignment] : recipe.buffer_alignments)
+            {
+                const auto resource = bindings.resourceFor(recipe.command.pass, use).value() - 1;
+                if (slot.buffer_offsets[resource] % alignment != 0)
+                {
+                    return cxx::unexpected(RenderError{kInvalidArgument, {p + 1, use}});
+                }
+            }
             for (const auto& copy : recipe.copies)
             {
                 const auto source = bindings.resourceFor(recipe.command.pass, copy.source_use).value() - 1;

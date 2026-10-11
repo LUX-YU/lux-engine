@@ -163,6 +163,13 @@ namespace lux::render::vulkan
         return info.size;
     }
 
+    BufferMemoryBinding Buffer::memoryBinding() const noexcept
+    {
+        VmaAllocationInfo info{};
+        vmaGetAllocationInfo(allocator_, allocation_, &info);
+        return {info.deviceMemory, info.offset, info.size};
+    }
+
     Image::Image(
         VmaAllocator_T* allocator,
         VkDevice device,

@@ -4,7 +4,9 @@ from pathlib import Path
 BASE='25bd4e16358bfe3a8c1163a18b17b807bd6a5505'
 p=argparse.ArgumentParser()
 for key in ('source','build','output','baseline-tests'):p.add_argument('--'+key,type=Path,required=True)
+p.add_argument('--closeout', action='store_true', help='Apply RD2-F4-C entry and narrow mutation policy')
 a=p.parse_args();source=a.source.resolve();build=a.build.resolve();out=a.output.resolve();out.mkdir(exist_ok=True,parents=True)
+if a.closeout:BASE='6b777c96bbe3986c940cafe4a3e213ae2e0a3194'
 def git(*args):return subprocess.check_output(['git','-c','core.quotepath=false','-C',str(source),*args])
 def check(value,message):
  if not value:raise RuntimeError(message)
@@ -14,11 +16,23 @@ check(not git('status','--porcelain','--untracked-files=all'),'qualification clo
 check(not build.is_relative_to(source),'build in source')
 changed=git('diff','--name-only',BASE,'HEAD').decode().splitlines()
 allowed=('modules/function/render/vulkan/','docs/render-v2/F4_','cmake/render-v2-bootstrap/')
-check(all(v.startswith(allowed) or v=='docs/render-v2/F3_CAPABILITY_STATUS.md' for v in changed),'scope violation')
+if a.closeout:
+ exact={
+  'include/lux/engine/render/vulkan/memory/Memory.hpp','src/memory/Memory.cpp','pinclude/GraphNative.hpp',
+  'src/graph/Frame.cpp','src/graph/Sync.cpp','src/graph/Record.cpp','src/graph/Recipes.cpp',
+  'include/lux/engine/render/vulkan/graph/Executable.hpp','test/NativeGraphDraw.cpp',
+  'test/NativeGraphCloseout.cpp','test/shader/F4CWrite.hpp','test/shader/F4CWrite.comp.lglsl'}
+ for fixture in ('F4CVertex','F4CIndexed','F4CIndirect','F4CIndexedIndirect','F4CArguments'):
+  exact.add('test/shader/'+fixture+'.hpp')
+  for stage in (['comp'] if fixture=='F4CArguments' else ['vert','frag']):exact.add('test/shader/'+fixture+'.'+stage+'.lglsl')
+ exact={'modules/function/render/vulkan/'+v for v in exact}
+ check(all(v in exact or v.startswith(('cmake/render-v2-bootstrap/','docs/render-v2/F4C_')) for v in changed),'F4-C scope violation')
+else:
+ check(all(v.startswith(allowed) or v=='docs/render-v2/F3_CAPABILITY_STATUS.md' for v in changed),'scope violation')
 protected=['modules/function/render/'+v for v in ('core','transport','graph')]+['render_legacy','docs/render-v2/final',
  'engine/toolchain/shader','modules/resource/description']
 protected += [v for v in git('ls-tree','-r','--name-only',BASE,'--','docs/render-v2').decode().splitlines()
-              if v != 'docs/render-v2/F3_CAPABILITY_STATUS.md']
+              if a.closeout or v != 'docs/render-v2/F3_CAPABILITY_STATUS.md']
 for v in protected:check(git('rev-parse',BASE+':'+v)==git('rev-parse','HEAD:'+v),'protected '+v)
 status='docs/render-v2/F3_CAPABILITY_STATUS.md'
 check(git('show','HEAD:'+status).startswith(git('show',BASE+':'+status)),'cumulative status must append only')
@@ -92,12 +106,12 @@ cmake_model=json.loads((reply/index['reply']['cmakeFiles-v1']['jsonFile']).read_
 for entry in cmake_model['inputs']:
  v=Path(entry['path']);v=norm(v if v.is_absolute() else source/'cmake/render-v2-bootstrap'/v);input_check(v);cmake_inputs.append(v)
 jobs=[];codegen_inputs=[]
-for jobfile in list((build/'render_graph/test/lux_codegen').glob('*.json'))+list((build/'render_vulkan/test/shader/lux_codegen').glob('*.json')):
+for jobfile in build.glob('**/lux_codegen/*_schema.json'):
  job=json.loads(jobfile.read_text());check(job['marker']=='luxpass' and not job['dry_run'],'non-production codegen')
  for v in job['target_files']:input_check(norm(v['physical_path']))
  for v in job['projections']:check(norm(v['template_path'])==norm(source/'modules/function/render/graph/cmake/pass_schema.template'),'projection input')
  jobs.append(job)
-for depfile in list((build/'render_graph/test/lux_codegen').glob('*.d'))+list((build/'render_vulkan/test/shader/lux_codegen').glob('*.d')):
+for depfile in build.glob('**/lux_codegen/*_schema.d'):
  for line in depfile.read_text().splitlines()[1:]:
   v=line.strip().removesuffix('\\').strip()
   if v:
@@ -118,7 +132,19 @@ ninja=(build/'build.ninja').read_text().lower();check('render_legacy' not in nin
 current_tests=json.loads(subprocess.check_output(['D:/Development/CMake/bin/ctest.exe','--test-dir',str(build),'--show-only=json-v1']))
 previous_tests=json.loads(a.baseline_tests.read_text())
 old_names={v['name'] for v in previous_tests['tests']};new_names={v['name'] for v in current_tests['tests']}
-check(len(old_names)==137 and old_names<=new_names,'original 137 CTest obligations missing')
+expected_old=146 if a.closeout else 137
+check(len(old_names)==expected_old and old_names<=new_names,'original CTest obligations missing')
+if a.closeout:
+ for fixture in ('F4CWrite','F4CVertex','F4CIndexed','F4CIndirect','F4CIndexedIndirect','F4CArguments'):
+  for suffix in ('.schema.json','.pass.hpp','.lglslh'):
+   f=build/'generated'/(fixture+suffix)
+   check(f.is_file(),'missing closeout generated schema '+str(f));generated['closeout/'+f.name]=sha(f)
+  for stage in (['comp'] if fixture in ('F4CWrite','F4CArguments') else ['vert','frag']):
+   for suffix in ('.glsl','.spv'):
+    f=build/'render_vulkan/test/shader'/(fixture+'.'+stage+suffix)
+    check(f.is_file(),'missing closeout shader '+str(f));generated['closeout/'+f.name]=sha(f)
+ for name in ('render_vulkan_graph_closeout','render_vulkan_graph_draw'):check(name in names,'real closeout GPU consumer missing')
+ check(len(new_names)==155,'F4-C exact test inventory')
 for fixture in ('F3Tonemap','F3Blur','F3Composite','F3Storage','F3SharedA','F3SharedB','F3Raster',
                 'F4Fill','F4Hzb','F4Views','F4Local','F4Raster','F4Accumulate'):
  for suffix in ('.schema.json','.pass.hpp','.lglslh'):

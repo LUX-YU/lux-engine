@@ -17,10 +17,64 @@ namespace lux::render::vulkan
         bool operator==(const DispatchCommand&) const noexcept = default;
     };
 
+    // References a pass's already validated ResourceUse. Offset is relative to
+    // that use's declared byte range; stride remains the pipeline's sole fact.
+    struct VertexStream
+    {
+        std::uint32_t binding{}, use_index{};
+        VkDeviceSize offset{};
+        bool operator==(const VertexStream&) const noexcept = default;
+    };
+
+    struct IndexStream
+    {
+        std::uint32_t use_index{};
+        VkIndexType type{VK_INDEX_TYPE_UINT32};
+        VkDeviceSize offset{};
+        bool operator==(const IndexStream&) const noexcept = default;
+    };
+
     struct DrawCommand
     {
         std::uint32_t vertices{3}, instances{1}, first_vertex{}, first_instance{};
+        std::vector<VertexStream> streams;
         bool operator==(const DrawCommand&) const noexcept = default;
+    };
+
+    struct DrawIndexedCommand
+    {
+        IndexStream indices;
+        std::uint32_t indices_count{3}, instances{1}, first_index{};
+        std::int32_t vertex_offset{};
+        std::uint32_t first_instance{};
+        std::vector<VertexStream> streams;
+        bool operator==(const DrawIndexedCommand&) const noexcept = default;
+    };
+
+    // Exactly one command. GPU producers must bound command contents to the
+    // declared geometry ranges and use firstInstance=0 (feature not enabled).
+    // Admission validates storage/offset/stride; it never reads GPU arguments.
+    struct IndirectArguments
+    {
+        std::uint32_t use_index{};
+        VkDeviceSize offset{};
+        std::uint32_t stride{sizeof(VkDrawIndirectCommand)}, count{1};
+        bool operator==(const IndirectArguments&) const noexcept = default;
+    };
+
+    struct DrawIndirectCommand
+    {
+        IndirectArguments arguments;
+        std::vector<VertexStream> streams;
+        bool operator==(const DrawIndirectCommand&) const noexcept = default;
+    };
+
+    struct DrawIndexedIndirectCommand
+    {
+        IndexStream indices;
+        IndirectArguments arguments{0, 0, sizeof(VkDrawIndexedIndirectCommand), 1};
+        std::vector<VertexStream> streams;
+        bool operator==(const DrawIndexedIndirectCommand&) const noexcept = default;
     };
 
     // Typed resource uses already specify source/destination and exact ranges.
@@ -30,7 +84,13 @@ namespace lux::render::vulkan
         bool operator==(const CopyCommand&) const noexcept = default;
     };
 
-    using VNativeCommand = std::variant<DispatchCommand, DrawCommand, CopyCommand>;
+    using VNativeCommand = std::variant<
+        DispatchCommand,
+        DrawCommand,
+        DrawIndexedCommand,
+        DrawIndirectCommand,
+        DrawIndexedIndirectCommand,
+        CopyCommand>;
 
     struct NativePassCommand
     {

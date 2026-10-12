@@ -8,9 +8,12 @@ int main()
     ComplexGpu value{};
     std::array<std::byte, DataSchema<ComplexGpu>::gpuLayout().size> output{};
     std::array<double, 1000> samples{};
+    using PackFunction = RenderResult<void> (*)(const ComplexGpu&, std::span<std::byte>) noexcept;
+    // A volatile function pointer prevents folding the generated pack into its known caller inputs.
+    PackFunction volatile pack = &DataSchema<ComplexGpu>::pack;
     for (unsigned i = 0; i < 100; ++i)
     {
-        if (!DataSchema<ComplexGpu>::pack(value, output))
+        if (!pack(value, output))
         {
             std::abort();
         }
@@ -21,7 +24,7 @@ int main()
     {
         value.basis[1][1] = float(i);
         const auto start = std::chrono::steady_clock::now();
-        auto result = DataSchema<ComplexGpu>::pack(value, output);
+        auto result = pack(value, output);
         samples[i] = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count();
         if (!result)
         {

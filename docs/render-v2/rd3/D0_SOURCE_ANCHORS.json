@@ -1,0 +1,773 @@
+{
+  "source_commit": "246fe21eb6d060801b9a16ddcadde2be89dbbecc",
+  "anchors": [
+    {
+      "path": "docs/render-v2/F4CP_VERIFICATION.md",
+      "blob": "f2189a208c80c3ba4998dc805130e815ca88555a",
+      "sha256": "7bc2a07c4132d37b01ef1bab7095ed1aa8aaec961c34206b6a71b9f912203ea3",
+      "bytes": 12553
+    },
+    {
+      "path": "docs/render-v2/F4C_VERIFICATION.md",
+      "blob": "4743389d677000d040c8e9f96b95d550c04fd0b1",
+      "sha256": "0d84383256ccee67f2bcccfce6cc5b1833644cf4703280455ea5f263acf66306",
+      "bytes": 15090
+    },
+    {
+      "path": "docs/render-v2/F4_VERIFICATION.md",
+      "blob": "c6b6ed827800fb98d96b28cd026202c0130abdec",
+      "sha256": "13b7feccc39890141b40d2a6c181fbb5c2dae10155b177e1047db22dfd746f1e",
+      "bytes": 21468
+    },
+    {
+      "path": "docs/render-v2/F5CD_VERIFICATION.md",
+      "blob": "07b0b162e967f26d62728d232b147d37bff88f03",
+      "sha256": "4d49a7c7d00f865ec9c624f8cd69a81619e866d716c8658edfaad7d9be900270",
+      "bytes": 14181
+    },
+    {
+      "path": "docs/render-v2/F5C_VERIFICATION.md",
+      "blob": "b8419e0389df5fceaac972ce86eb0ee37424b24f",
+      "sha256": "edb4ac8fb2799ad122608bc8839faf64b27674314f767ba4df11ccc730a5153e",
+      "bytes": 15615
+    },
+    {
+      "path": "docs/render-v2/F5_VERIFICATION.md",
+      "blob": "ebd68d054bfd818b4cdb00b4bfc0c11c6fa3d732",
+      "sha256": "919e8b0a0b825480b28dfbb9efb013506c897c5035e64447c2f5176238729e88",
+      "bytes": 24002
+    },
+    {
+      "path": "docs/render-v2/F6A_VERIFICATION.md",
+      "blob": "0479f682c658cf6c9d98df91a7168eeda8512687",
+      "sha256": "b8d219d618a93e5d9362485765bbf64a911d6bc66a73cbfcabd93c38e5eae0d3",
+      "bytes": 11190
+    },
+    {
+      "path": "docs/render-v2/F6B_IMPLEMENTATION.md",
+      "blob": "e4c1900f94121a8202c49133a8953391399ad48c",
+      "sha256": "386a0ecdcbe8bd604d87715816ee178fdf9d920875291c7ff39ce638017eb261",
+      "bytes": 9220
+    },
+    {
+      "path": "docs/render-v2/F6B_VERIFICATION.md",
+      "blob": "07324cc4fd67d7e00758dffaa26a384b06f351d1",
+      "sha256": "b5dd32ace33efc4355569920ee0c957b5afb46051ad5678e284eda47b87d8208",
+      "bytes": 22322
+    },
+    {
+      "path": "docs/render-v2/LEGACY_SOURCE_MANIFEST.json",
+      "blob": "c4c94b8c4942e460458e0a2cd110f8e809081e63",
+      "sha256": "b4a4cb0b92479ba1b91e99c76aa0f26a1fd01820577a2b0855d2b435613fe91c",
+      "bytes": 242521
+    },
+    {
+      "path": "docs/render-v2/V1_BASELINES.json",
+      "blob": "b94b80a5616fe4e9799c4f96c4bce60d539d36bb",
+      "sha256": "b84b39b8109523b619b86126820fa5a7b3560d1285d918f57e5e86ef4866eb65",
+      "bytes": 21934
+    },
+    {
+      "path": "engine/toolchain/shader/src/SpirvReflection.cpp",
+      "blob": "ef8f4b1dc4325c3b80d8c2fd31d20b2c12f527cf",
+      "sha256": "fc3dfba003d4bdaf1c5b670a8c6b21e008ed4daf3dba7ee59d7e895cdd55174c",
+      "bytes": 14521
+    },
+    {
+      "path": "engine/toolchain/shader/src/lglsl/LglslEmitter.cpp",
+      "blob": "019432246f3f427e1516685803d00cc0176a83d6",
+      "sha256": "f6c4b3ef0b38017d9e9aa6dbad0d748886e5c4a201a514c41793b3eac7f48633",
+      "bytes": 29481
+    },
+    {
+      "path": "modules/function/render/data/src/Schema.cpp",
+      "blob": "9b2121e44d48bcd3878b5ec54b0b364ac5335eae",
+      "sha256": "e6437045dd2af5e2338568a726bcf20a08d13d365f578cd76eb10588503f2e09",
+      "bytes": 8076
+    },
+    {
+      "path": "modules/function/render/graph/src/Plan.cpp",
+      "blob": "ce15044131c9d1ebabd4e50f521c7e8aaed93e7c",
+      "sha256": "7152e64483c0c34a3f4186cdf81958a6cd3031b28e66e698d5a74598bcc28725",
+      "bytes": 71342
+    },
+    {
+      "path": "modules/function/render/runtime/CMakeLists.txt",
+      "blob": "1062889fc9bddc447eae96b565079634a6e53fa3",
+      "sha256": "2c25ba1628da3686a17f84706c5ae60899ec9fddd07e4f2f1c192825715da449",
+      "bytes": 1716
+    },
+    {
+      "path": "modules/function/render/runtime/include/lux/engine/render/runtime/NativeAssembly.hpp",
+      "blob": "0fa8a6c7e050956e0bd777ad3ee6f942571d9f23",
+      "sha256": "950653629810a934d7ff5ad6519798023b5a1534b6b4ebc1c977eeec5f06a222",
+      "bytes": 5259
+    },
+    {
+      "path": "modules/function/render/runtime/pinclude/RuntimeBackend.hpp",
+      "blob": "582a2430957e6d9397cb80408419aaafad23012b",
+      "sha256": "71f2422e01c1bfbedc2eafafe995cbdb83fa85b0a496257825c1947cb1d98841",
+      "bytes": 6457
+    },
+    {
+      "path": "modules/function/render/runtime/src/Frame.cpp",
+      "blob": "9c765375c724f2bb560a2777c5cee204f991b47f",
+      "sha256": "9e9539fa4377c01e236131aa0e68ab28a6e782f7ef442e518a2003bba05e1491",
+      "bytes": 30667
+    },
+    {
+      "path": "modules/function/render/runtime/src/Presentation.cpp",
+      "blob": "c973b8fdbe4a2499c11f90c554698124c32fe7b0",
+      "sha256": "933c24e72c88e8b1cb46b7b1b4380ade9baa572463afd2d936ff886f65a70912",
+      "bytes": 29143
+    },
+    {
+      "path": "modules/function/render/runtime/src/Runtime.cpp",
+      "blob": "4e71792c9d2ba22a69a31cc1642b5830a6866185",
+      "sha256": "bb56619be50184a42922bd956668eb9cb5f6abd0992a7173686cfdb90a1bc9b6",
+      "bytes": 31724
+    },
+    {
+      "path": "modules/function/render/transport/src/Transport.cpp",
+      "blob": "4b605ca7daee7fc199fdbae78f839cced544e782",
+      "sha256": "3256cbed59f37520a911841cbf2928aa551ec8e8230f9b9d8a2c4289ffed1c06",
+      "bytes": 10745
+    },
+    {
+      "path": "modules/function/render/vulkan/include/lux/engine/render/vulkan/shader/Layout.hpp",
+      "blob": "cc9304424f35b822d3bb72190b9df7cee7c0d257",
+      "sha256": "453ec83b8419eaa43b68ff8efa489de10da6ec97e8bd321071f1c3118e955be8",
+      "bytes": 4644
+    },
+    {
+      "path": "modules/function/render/vulkan/pinclude/GraphNative.hpp",
+      "blob": "23a7fbea514c64b39ce696681e45159848a3cfc4",
+      "sha256": "6bd264a218997c2e24a8b3864002c6c2947024f7ceb90eb0f7b922f65651bab3",
+      "bytes": 8230
+    },
+    {
+      "path": "modules/function/render/vulkan/src/graph/Compile.cpp",
+      "blob": "c0195eb10ff5aa640ab294a3a369abfe6dc9351c",
+      "sha256": "bf4055fb1308d38ae12fbc81995a48723d1c1946b5a0b96a693c7dc6e7008e7c",
+      "bytes": 10298
+    },
+    {
+      "path": "modules/function/render/vulkan/src/graph/Export.cpp",
+      "blob": "c973008809783e93a7ac09515ba74d098c6d47ae",
+      "sha256": "3c53ff058c42244fc52ce2a7f32df5baadc8eeb6a65b5db819cc7c162c7b8f9a",
+      "bytes": 6517
+    },
+    {
+      "path": "modules/function/render/vulkan/src/graph/Frame.cpp",
+      "blob": "6417979e7184eca87b28b95577e548b05d969870",
+      "sha256": "99e84ca9d233b457a0d22572f108cdb1d8d3e925185b1901fe780e3156a9edbd",
+      "bytes": 21079
+    },
+    {
+      "path": "modules/function/render/vulkan/src/graph/Recipes.cpp",
+      "blob": "e34e5a51c8a10e7d7e692db9d10bb07815a0eb9f",
+      "sha256": "eff85d092229df10a8a714fb4b4feb796597320d6d1883ed968ac1eb343f512e",
+      "bytes": 42816
+    },
+    {
+      "path": "modules/function/render/vulkan/src/graph/Record.cpp",
+      "blob": "b58adeb795cd3e9f81773fcb6f1c523c8abcf732",
+      "sha256": "0d9a9518bf748ef8511167abfa2dda74eb4a44c0dc8616b6f923c6746dd7adc1",
+      "bytes": 41327
+    },
+    {
+      "path": "modules/function/render/vulkan/src/graph/Resources.cpp",
+      "blob": "546716937387c87060c1aaa2018d6aa275289a53",
+      "sha256": "060624ff2036602cb18781fcfc230e5eeb5766181d25477e3646198b72a75640",
+      "bytes": 21529
+    },
+    {
+      "path": "modules/function/render/vulkan/src/graph/Sync.cpp",
+      "blob": "f1ccf634d450f27d67fe5361512995ba5a99e0ae",
+      "sha256": "9c787ad310f548311a7b53f6963e29d43d347a43bfcc9639fbb8d3806dcbb889",
+      "bytes": 16889
+    },
+    {
+      "path": "modules/function/render/vulkan/src/retirement/Retirement.cpp",
+      "blob": "02522e6a472b54296dea03f510ac08079afd30cf",
+      "sha256": "5c6399495e9c70f3e152c06fa8d8a870f516d8fcf7b1e4a94f40db7e5cd2de49",
+      "bytes": 1769
+    },
+    {
+      "path": "modules/function/render/vulkan/src/transfer/Submission.cpp",
+      "blob": "41931c6ab4a7dc163436c9c89826ce60b9526d9e",
+      "sha256": "763aa2cb674ec81dd3bf8742c19914d1d41bc536e77cdd8f12bca310c5d90193",
+      "bytes": 16782
+    },
+    {
+      "path": "modules/resource/description/include/lux/engine/description/LayoutContract.hpp",
+      "blob": "55f3efb29f893f932b548165c3abd6d44f826e56",
+      "sha256": "084c4f7056bfe490765898c86036a22263ab49011bbd2f9552e65b1dc17a0e88",
+      "bytes": 23038
+    },
+    {
+      "path": "render_legacy/engine/context/rendering/src/EngineRendering.cpp",
+      "blob": "0b921b670138872432582cf2ad5d8d37ef10ddd6",
+      "sha256": "5b36d73d10e59fc77e801c7fd26969b1c3ec5a77ffeda5071acb791613a1817d",
+      "bytes": 1625
+    },
+    {
+      "path": "render_legacy/engine/scene/builtin_systems/render/include/lux/engine/scene/RenderSyncStage.hpp",
+      "blob": "9affcf6805bb6118c8ebafe26964106f76e912a4",
+      "sha256": "419ff772beeda6ce82612e7ed177f3bfb5d7005ab64d869fd02e4606efe8eafb",
+      "bytes": 2377
+    },
+    {
+      "path": "render_legacy/engine/scene/builtin_systems/render/src/CameraExtraction.cpp",
+      "blob": "4bcd4007839e0fb3597783fccdb32a4af6a2b766",
+      "sha256": "28562e97df8a7baeeb0340c29fcbe28b2dce4dc9adf040648312fa4941af7b0e",
+      "bytes": 10475
+    },
+    {
+      "path": "render_legacy/engine/scene/builtin_systems/render/src/RenderResourceViews.cpp",
+      "blob": "3aa265f41f7d79bc1bf5d1c59d0caf816cf9db84",
+      "sha256": "d466d8376a3d3f0b25976f828f29b13ad23b6eb97ac9dc74cdcfd9857b33fdde",
+      "bytes": 24836
+    },
+    {
+      "path": "render_legacy/engine/scene/builtin_systems/render/src/RenderResources.cpp",
+      "blob": "340143bf3f9aada73143403917c0c8456c4e189f",
+      "sha256": "63472d3fbadf1612f73d2e2aec58ecdd0c0c8b9f8e70d07266718a067c6dda96",
+      "bytes": 20597
+    },
+    {
+      "path": "render_legacy/engine/scene/builtin_systems/render/src/RenderSystem.cpp",
+      "blob": "e5cc5ebba9b520015a34df5de9debc4505403f94",
+      "sha256": "c46e865bd521bf30d249c951b196599f6a120425e5429bd2c2dd98ac33244649",
+      "bytes": 25742
+    },
+    {
+      "path": "render_legacy/examples/render-plugin/ExternalFeatureSample.cpp",
+      "blob": "257bac52e62c862a55e15d9c690e1844be7dbd97",
+      "sha256": "d65c748208ebb3ce676613d0b2f464c316fd7cf407fd21af1df94f8f3b2a1731",
+      "bytes": 8453
+    },
+    {
+      "path": "render_legacy/modules/function/render/cmake/template/pass_params_glslh.template",
+      "blob": "98f101a7b1c5a0af485040edb9b37a7c14ae37c1",
+      "sha256": "40783e8fe39fd3ae621a5ae19d754d8e7a70fd2e0cfa63906d506119a8755125",
+      "bytes": 2890
+    },
+    {
+      "path": "render_legacy/modules/function/render/cmake/template/pass_params_hpp.template",
+      "blob": "9f8a4a451e2b859b44d2546d133f29d005fde76e",
+      "sha256": "2ba6a585ccfe4be664aff606c36965e312cc95452521e1f7542397ef221146a3",
+      "bytes": 6663
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/DepthPrepassOperation.hpp",
+      "blob": "ba8e9b79ce22e6c400495abfdb027062ae55acb0",
+      "sha256": "3c711f118a2f817416e9cbdfbd387478436a61c6c92266015d6e8c3f0f83416e",
+      "bytes": 1944
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/canvas2d/Canvas2DOperation.hpp",
+      "blob": "e0b59904ec74c0c986d768530a695dbc4a275b95",
+      "sha256": "3b3abb7eb8bda9c583eb224bb0a191299d67cf71fe9c19e18e51e6720430015c",
+      "bytes": 23265
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/deferred/DeferredGBufferOperation.hpp",
+      "blob": "1613e8e2eb8259cf27fcb052c46cd0eb6d0b104f",
+      "sha256": "1d9cdc9ae49d3be006c30feb095ee7410405c77155e092d08852281b45747a94",
+      "bytes": 5183
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/deferred/DeferredLightingOperation.hpp",
+      "blob": "82d840bfe0ad77da6b9f7db62bfe178165f7dfd7",
+      "sha256": "6a15e1a039196ad6856366ea8c53933b130a5fb8f5967b059b9350a21015a054",
+      "bytes": 5555
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/forward/ForwardMeshOperation.hpp",
+      "blob": "be42c422638d071f3f93922c7c7f26d03cd657a5",
+      "sha256": "fe9a50014860e039d7b0ccc95e02f823cf120fae03dd8da25bdbe5cd8be6ecfd",
+      "bytes": 4225
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/gizmo/LineListOperation.hpp",
+      "blob": "12e361eff0c27202ed658b732e0975da08a02940",
+      "sha256": "3e84c977dc20e3489ed4e6450a8fc8dc6ba1fd2fc872813d896541ebc4c131f3",
+      "bytes": 2763
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/gizmo/TriOverlayOperation.hpp",
+      "blob": "50496366faefcd2e8ec5304d6c7394bb1bc3f0df",
+      "sha256": "4129a3b875ffc5bde0fcc92d2c885990e32a7f25a7d331677f617cfd659ec582",
+      "bytes": 2553
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/grid/Grid2DOperation.hpp",
+      "blob": "905dcdc491f0748ab22ae4f70d21a34dc18eefc7",
+      "sha256": "9573eb0f61ca3ac165a47ed74d26ffcc7179e5c7f2223275c2a1415669903c8d",
+      "bytes": 2268
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/grid/Grid3DOperation.hpp",
+      "blob": "fa45cab72c7ff7566f0a53a8e100c40be42cc9f8",
+      "sha256": "14d0869658b6ab31383c0717571e7b8195964ebabfbd61d96ea8da9197a75666",
+      "bytes": 3046
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/highlight/HighlightOperation.hpp",
+      "blob": "ea5eaf7a6bf9bf8baeb845e7e0750da2bf916fff",
+      "sha256": "2eb8717cdc02f9aef983feca5e3fd0fc17f0d8bf05b6f901adde128a557ac779",
+      "bytes": 2874
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/hzb/HzbOperation.hpp",
+      "blob": "9409b58a5b70cb1305473124bf3852277706371b",
+      "sha256": "392404c948b41b57bcc4f77064637ba2bb497de341e9000a36fa0c870871000c",
+      "bytes": 877
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/light/LightOperation.hpp",
+      "blob": "bccd87b7d8a124c89a3b1191ac1d6409431688c9",
+      "sha256": "63c97d483297f564e85f999d28ad761bc74701b9d57de6b333cd2e8e0f981892",
+      "bytes": 11737
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/material/MaterialOperation.hpp",
+      "blob": "b8a628f479950d617c20b781e59c27599605ffa4",
+      "sha256": "c88fb7dedb25f5afb419ccbe24e55df398d81ee627a69f989721262dd56e1d1b",
+      "bytes": 6854
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/meshstack/MeshStackOperation.hpp",
+      "blob": "7d64ac8374c9d1b727efa80942dc9bd93a7734c0",
+      "sha256": "a97978d53f2a0772f5f7a1ea7b60e3f52e365a3807347bdb024844026cb1f2fc",
+      "bytes": 16027
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/point_cloud/PointCloudOperation.hpp",
+      "blob": "849a44b58ed413e3318daa3326b32807dda4ad0d",
+      "sha256": "43aec6a694e7f997f898c675ccbacfd4a653adf7c8173b4930de9eaf28dd14cc",
+      "bytes": 12128
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/postprocess/FogOperation.hpp",
+      "blob": "91d7f65256ab34300a1c5fe80c4b37dc603b99f3",
+      "sha256": "df67ecc93a2127590f7a2d664a0334e32677a1101969da07fec115c436247b61",
+      "bytes": 1538
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/postprocess/LinearDepthOperation.hpp",
+      "blob": "25ff3a3ea2f89e23feade7845012e64283d26bd6",
+      "sha256": "c226970a900ccf6ee41e16a299b8c78a192fe7dd226ce0630066065ec66261c8",
+      "bytes": 2165
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/postprocess/SsaoOperation.hpp",
+      "blob": "45886799ff37b0e1866bb845a5dcf630a9318a87",
+      "sha256": "c747367d78a1ab3e78a8b02803162e331872d3dbc2483fdc7fa3c6807dd502cf",
+      "bytes": 1028
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/postprocess/TonemapOperation.hpp",
+      "blob": "32c78d124f4285db630eb0047a05eacd638fc3fe",
+      "sha256": "58686dbf3f902c06f2b5eb5f1123429e6597b7d0ca4922a0649817198102ba79",
+      "bytes": 2553
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/render_cluster/RenderClusterOperation.hpp",
+      "blob": "42b59da2beee5e071e4cacbab999a937488219ca",
+      "sha256": "3ca8cc76e74788f33a59d2f05e70962cd082fdbe962ddc4340308a452b937e52",
+      "bytes": 8003
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/shadow/MeshShadowOperation.hpp",
+      "blob": "26fd4b1d0097b9b54c5c3deff47596e3c4eda5a9",
+      "sha256": "17642bf6805daac2f0fc85d0af40144835fcc7b3f5ff3034844ce3d30c06b9cc",
+      "bytes": 3433
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/shadow/ShadowMapOperation.hpp",
+      "blob": "03ed692a7713287d7474480e9a4e886aeac1d587",
+      "sha256": "241dcc1ed6e1ac4aeab10696454f7b3e7ad914771a3a0a6bf5ee72326c9381c1",
+      "bytes": 4343
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/skinning/SkinningOperation.hpp",
+      "blob": "626e79c06239ac2c35a71efdc30a4407d6fd858c",
+      "sha256": "340483ed3ad4d8e347d1f21b61c5bf8c9b1e76c9e090ac6ae5cf4d225c042514",
+      "bytes": 4528
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/sky_box/SkyboxOperation.hpp",
+      "blob": "6611e02df415b6294b289d1de3aad1c6217ba7fb",
+      "sha256": "953d1c8c7ff35598628ec609b81411f72a3e60353ba0ff76e14ce33355afefbf",
+      "bytes": 4169
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/spatialcull/SpatialCullOperation.hpp",
+      "blob": "caef7ea6494c41b6927e5b16649c088c97d8520d",
+      "sha256": "0405cb4c543749fd1da167130b49d011611062b96c5006685b674f304181b2e2",
+      "bytes": 1211
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/streaming_feedback/StreamingFeedbackOperation.hpp",
+      "blob": "77f9e38bb794668ee69f5a0c8e6d04f4afa8b40d",
+      "sha256": "d3309b3efe85877821259f15ee3d1c07957595d4507edd9051eca91916245fcb",
+      "bytes": 2514
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/terrain/TerrainOperation.hpp",
+      "blob": "9d5f49fe4521962a9e98113cc32391bb81c94702",
+      "sha256": "38494ea40f447c5a8c5902965c150bac320838d5d39e85b275442c17025f5a14",
+      "bytes": 6382
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/trajectory/TrajectoryOperation.hpp",
+      "blob": "bb6ec13b1f1bda38564062dc158e0dda82458ca1",
+      "sha256": "44f6894dfa611e51aa0c7ba8ac82295c7a39fd066d5864ffc5b629eada780d6e",
+      "bytes": 7286
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/view_camera/ViewCameraOperation.hpp",
+      "blob": "bf6c33a9547c6ab9583e503b9f14268d7cc03adb",
+      "sha256": "645afc084b0ac50718eb43a10158e7e5a579612ce10212200d0b7db25f22dfff",
+      "bytes": 3775
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/include/lux/engine/function/render/features/water/WaterOperation.hpp",
+      "blob": "ec6b61697f5128ac746175f9e77904dac90aa1d8",
+      "sha256": "05ddbc1ebb87b9330881c30dd36913ebee11de63c0c59ee6877c69b58755f2f1",
+      "bytes": 4136
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/DepthPrepassFeature.cpp",
+      "blob": "44e5e71ac94c81fd05f53e51ec9df93be20f8852",
+      "sha256": "743a6a5153e48fb134a164653405ea88639342cdc025d6cbd3c5226d936d21f7",
+      "bytes": 2695
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/canvas2d/Canvas2DFeature.cpp",
+      "blob": "feeb9c40e57eee4dbcff6fd5cc81af7c1b17b3eb",
+      "sha256": "4375cc737318dfd36246cb5f542efa7594afab6b1151f70813aec31749e0184b",
+      "bytes": 21386
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/deferred/DeferredGBufferFeature.cpp",
+      "blob": "b9302f3964e847bdd70e214932465a26fa15ae79",
+      "sha256": "ff191e9ffcfafc155b2930e9d590e3e09ec7ffe843b68883643b6495f45dfd05",
+      "bytes": 17766
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/deferred/DeferredLightingFeature.cpp",
+      "blob": "9aea15e7b7be35ac126d1c9e330e49411c6107e1",
+      "sha256": "909c5a8c1e726aa6c48be57f1db16348965d751c68aaa4d014d547c67abb2ce4",
+      "bytes": 48323
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/forward/ForwardMeshFeature.cpp",
+      "blob": "1597201f7c4e7139a7865c7afb538f0edfb65a19",
+      "sha256": "573a21b5125140833217b9e16252b3d7f39456173a14c33b6797bddfb39b226a",
+      "bytes": 16538
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/gizmo/LineListTransientFeature.cpp",
+      "blob": "1b2d342ff73a845aa48384e79277bf4b358a8db1",
+      "sha256": "27fe8de238cee992eda87ee98c71a595ec2bcdfcaf44773c3bbd59f755d05e38",
+      "bytes": 7507
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/gizmo/TriOverlayTransientFeature.cpp",
+      "blob": "06868f950c57d096994dd4fb983ea2d4a5abe151",
+      "sha256": "ee2525751fd624070ada40e2aa78c457c7697ce0f10bce7acff840a07e644794",
+      "bytes": 7106
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/grid/Grid2DPassFeature.cpp",
+      "blob": "6c6c375fb72fbbf95baa806ce9d12483f032be7f",
+      "sha256": "3775bb9419b01b8cc8f7cc8dd67249f4ba94545a22a277075d384597dd9d9424",
+      "bytes": 3735
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/grid/Grid3DPassFeature.cpp",
+      "blob": "8ae98489d7a1374e3c0a99d7827077538fa10313",
+      "sha256": "e6dd7ed5eb1ca3ef9572bba63fe053cf73659bb0b1a3e4ef273c85781cf29281",
+      "bytes": 4160
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/highlight/HighlightFeature.cpp",
+      "blob": "3f514edd02668771d91998557c3216d206f8678d",
+      "sha256": "05ca02d1e0f2c43f440454599717a01d4bd714ab2ac650cbe992082f6252c9be",
+      "bytes": 23350
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/hzb/HzbFeature.cpp",
+      "blob": "17b1605d9187fc24ad06e246a8d797dd24df035f",
+      "sha256": "ee6d3ced8bf2341795e04abe4672204d3d1777262f5bc956bda3c2c08add8b08",
+      "bytes": 17138
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/light/LightFeature.cpp",
+      "blob": "f30da663fdbb91ba6e5077a6a8309b41a02486cf",
+      "sha256": "34ba119bb0b683a01a614b806e9a904d47e6544699a345cfb1aad9bf2d48139f",
+      "bytes": 5233
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/material/StandardMaterialFeature.cpp",
+      "blob": "e2a56854b250ce317d2582b3f1b4720f401673ba",
+      "sha256": "8f25dc2f6dfc8e6efceabbaf21c0e967034624f50d1f91b0b29dd9127045288d",
+      "bytes": 3138
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/meshstack/StandardMeshStackFeature.cpp",
+      "blob": "9e680ada71ffd8d4c3aa6e407738410aa466b858",
+      "sha256": "d6383cd794c888411e09811466903a3443cffef90be70c2f0b7bf2bb338c4a94",
+      "bytes": 8866
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/point_cloud/PCFeatureGPUDriven.cpp",
+      "blob": "c555cccbaded331eaa8a87ff228d17db0e145ba5",
+      "sha256": "968642b2c4249d53b1da6c2bb44166449938744c896bc1fa6e01496db0e8571a",
+      "bytes": 4777
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/point_cloud/PCFeatureLOD.cpp",
+      "blob": "1138b120335df9ac735e0f36336604117696e065",
+      "sha256": "0bc5741a4e8d620b3eec6fce39d9f1fd699e714fa5452767079c05b255f84571",
+      "bytes": 4912
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/point_cloud/PCFeatureSimple.cpp",
+      "blob": "7e745bc479bc0fb980931c6b388f8e67b740a1e0",
+      "sha256": "a0fdbec6dcd88183231338f366a109efadabda1564e5d8b9e28b954cb9e117dc",
+      "bytes": 6350
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/point_cloud/PCFeatureSplatting.cpp",
+      "blob": "289faeedf33804a95d5375da9ce573b538fb6183",
+      "sha256": "d8461c40fcb4484cf6547b3f2345cbf5a6b12535cbe110a4271529208679bc4f",
+      "bytes": 5536
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/point_cloud/PCFeatureTransient.cpp",
+      "blob": "556a92e5954704496d998d61c99a0a84d3f5dbd9",
+      "sha256": "5c524af58a324b974af2a0e5e3807649d2e08b9c16158603a35745ca07f5f2c0",
+      "bytes": 7635
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/postprocess/FogFeature.cpp",
+      "blob": "a7a11abc411b012bc0a823358d4cc1c76437cef3",
+      "sha256": "07ac81595d714ae88be6efeb3bcdb47ffeced068e32133c48b737b87d84d4eba",
+      "bytes": 5333
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/postprocess/LinearDepthFeature.cpp",
+      "blob": "0089e2cf7021dc8b9a91628f33920078e69556be",
+      "sha256": "69e1471e8740ab85b1c32bd558a45b3022f37c82217cb0f28692fbc54a64b05d",
+      "bytes": 4701
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/postprocess/SsaoFeature.cpp",
+      "blob": "aff8b33e58a0eaf59e8eceb932b173bfcb5996f4",
+      "sha256": "7d65a4ee107116c61692a44a7ea32013453ec2c3b43c2836337c7d206a7a7cc2",
+      "bytes": 6068
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/postprocess/TonemapFeature.cpp",
+      "blob": "89275d7c700a20d01ce3a25a23757e03b70a91c0",
+      "sha256": "5e5ddb20a24915b7fdec6df64944b88fc506a6061f20f6f1d0f06b875230b795",
+      "bytes": 8505
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/render_cluster/RenderClusterFeature.cpp",
+      "blob": "4cb3b4b83f4b1fce7dee5faeb92be30c1c8304f2",
+      "sha256": "75ad07de588d0bbc8520c5a473a962aa004e26017da9097f0e66c21366e77397",
+      "bytes": 46731
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/shadow/MeshShadowFeature.cpp",
+      "blob": "3430bcf2fed014588e44bf2c813c060bdee2b658",
+      "sha256": "2620d141804d0e90f61fd4acc415c5b71d6e841d0280b08cde1dd0c443f0f24d",
+      "bytes": 62197
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/shadow/ShadowMapFeature.cpp",
+      "blob": "8f329147ceebc52c05babad212952a00627bf81f",
+      "sha256": "1942ff6d3dda53482226440014097ce6bd4b618d2d2a2b8a710967833b947501",
+      "bytes": 91765
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/skinning/SkinningFeature.cpp",
+      "blob": "9d98fa47ec515687d727eb2595d8a3e1f7aa8e15",
+      "sha256": "fdc95b84638185729b4db1c65a7401b4e7f5f5685e74ca92b89071ee4ab60662",
+      "bytes": 15744
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/sky_box/SkyboxFeature.cpp",
+      "blob": "3095f4b3b059bd8c34bba5e2eb3f0d54eefd4c80",
+      "sha256": "47316a63728fafbed2825abce3021bee8e0127f35571cefb83f2b0c7ec62bc3f",
+      "bytes": 15309
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/spatialcull/SpatialCullFeature.cpp",
+      "blob": "2e381eeb7499bc2a476d7b30cd6bf5e94f24766d",
+      "sha256": "e627ccb4ada78f9f72ce9efd4e58bfe242bf6e0c6f7df967f532da197a113420",
+      "bytes": 5837
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/streaming_feedback/StreamingFeedbackFeature.cpp",
+      "blob": "5d5f5a6ad23d3f0f53608206f489ac681104f091",
+      "sha256": "414a6285469c32082122235f59254582728f5948a211b6433a6d32e6e9aabf96",
+      "bytes": 11875
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/terrain/TerrainFeature.cpp",
+      "blob": "51dd513759e93ec5ba4a2ff79a321cc7ce1415b9",
+      "sha256": "8791625d50601320d7398d9b2c69e1945ae08ccb2b3663cec514ed56ec247897",
+      "bytes": 24686
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/trajectory/TrajectoryLineFeature.cpp",
+      "blob": "9d1c3cb5bc4083960ab389f2721c2255a154f5e5",
+      "sha256": "2a1368315596375a021436a477b0b60dc5d70bd5b137d81e4a3049e9b3304ae7",
+      "bytes": 6893
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/view_camera/StandardViewCameraFeature.cpp",
+      "blob": "e6bdccf11ef07bdf4a9303b531fe8ccef0464b64",
+      "sha256": "e3835d6496b538c51b386135d77ed869ac126d7882c36f686d3c8e9cffc87f48",
+      "bytes": 2967
+    },
+    {
+      "path": "render_legacy/modules/function/render/features/src/renderer/features/water/WaterFeature.cpp",
+      "blob": "ec1998b3f90963bc0c79f52ec835c97fea35143b",
+      "sha256": "1005952afe7e54075d27b2cc98481570ce7051106aaa2349c9c8c512965aebdb",
+      "bytes": 15661
+    },
+    {
+      "path": "render_legacy/modules/function/render/graph/src/DependencyAnalyzer.cpp",
+      "blob": "5c64776485a46b882fce1a232874f357cba9fe36",
+      "sha256": "cbcf940f8133afeadf55ca3645706d44bba607efa683b73606489190573c8384",
+      "bytes": 18533
+    },
+    {
+      "path": "render_legacy/modules/function/render/runtime/src/RenderRuntime.cpp",
+      "blob": "15adb330d7f3912917621b25aa0809b70c2bb038",
+      "sha256": "8efbf4c89261a0d600c183fbba24175ddc84fa2aa7d9df0cbf321903a6563707",
+      "bytes": 26741
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/include/lux/engine/render/gpu/lifecycle/ResourceRegistry.hpp",
+      "blob": "a2d44e8d1990ba296cc2a0a7ff7c894f238c7f08",
+      "sha256": "51c7435c440d919c0172b397b64e7a0ae12023142fbbd7a94fa3a6f95fb173c9",
+      "bytes": 17108
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/include/lux/engine/render/graph/RGBuilder.hpp",
+      "blob": "6f42022cd2442adde8f3d54837d1c69570c7e319",
+      "sha256": "964274042afc4f32eded4b7fc49738dc35dc109fb4ff8ccf336c0c5aa45601eb",
+      "bytes": 22992
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/sinclude/lux/engine/render/gpu/pipeline/EngineSetShapes.hpp",
+      "blob": "5553a7342050baca970e3635a0b2718300d1d8e6",
+      "sha256": "570e5ffe6b71c636b59181462117bb82b357ce221bea46afb9c327edac92d3f2",
+      "bytes": 45094
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/sinclude/lux/engine/render/graph/LayoutPlan.hpp",
+      "blob": "17ba51b9a03eafd7fc5bcb9daa7ceb48be77ac59",
+      "sha256": "e741cb4e318c29ba6914156e492093ebeff9967ca8d28fa79172c758b1cc8af0",
+      "bytes": 19677
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/gpu/lifecycle/DeferredDestroyQueue.cpp",
+      "blob": "4959300f8763430304e89678c730822ff94e359e",
+      "sha256": "9de4df39d3a7aef68e8a28a24ce5679e346efa54c958a17962f8086a2606e4a5",
+      "bytes": 8006
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/gpu/pipeline/SpirvPatcher.cpp",
+      "blob": "42eabc58b5e34329076c43b2492b5f6c7c97cc8a",
+      "sha256": "3427366a6c877715915738a9c45fc0e3d6dcbf7ec7e9c24888beed65646cedac",
+      "bytes": 6334
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/gpu/transfer/TransferScheduler.cpp",
+      "blob": "36c37034fd4e9b31e1b948d9db6fed40a5b636b4",
+      "sha256": "09c88850868276045b662bcbf71c1de89e508304fdb60e7c435961b22662353c",
+      "bytes": 23496
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/graph/RGVulkanRecorder.cpp",
+      "blob": "4f4ac7d2edd59902d0e2201af02ed4c1ee9c1800",
+      "sha256": "743780cf56cb8f9179d9aa5546b52bae6e37f929b7951d40b6024b1fd9a515e6",
+      "bytes": 90909
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/graph/RGVulkanResourceAllocator.cpp",
+      "blob": "272ef6ec17e9c6e2b02c54fb8bfc796627044a8d",
+      "sha256": "eeceaec48fbe9f58f61b6b39ae0349a829b7fdbd7f00e4951ff68dce20ef44d6",
+      "bytes": 26211
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/graph/RenderGraphCompiler.cpp",
+      "blob": "58f88ce9c5ecbfc8e17c2bc390b79a8b95bbfd68",
+      "sha256": "ed58447d8a8e78bc717dc895868691dd671dff9d4624b9e7655991c3d46e6c23",
+      "bytes": 73368
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/renderer/FrameDriver.cpp",
+      "blob": "c846920485fac735d29da2c27ce2f758ecbaae35",
+      "sha256": "c9d33816e80d886c2c27bf999af94982303216513029e8af07c64a2ab5be8b37",
+      "bytes": 38674
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/renderer/FrameOrchestrator.cpp",
+      "blob": "f58be7aa5514d11d716300262a04e555e6059977",
+      "sha256": "ef832ed3523937ca16e4623b0b47deca6571f49f3a8637aa6bc61b43c89b6021",
+      "bytes": 27322
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/renderer/RenderTargetRegistry.cpp",
+      "blob": "d45d3f138eac671d1162cef580fabf6400db7431",
+      "sha256": "60010e471fe4dc7e454b983029f95e813aae53ed5e7157be440b51c42e95a251",
+      "bytes": 3529
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/renderer/Renderer.cpp",
+      "blob": "e1fe2835b4e1eb0cdb56d6982e2ff518f597a72c",
+      "sha256": "a93c4bd0ef7ca8887dfc39fcb23033e19286cf7c2708614044978fba219f184e",
+      "bytes": 25022
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/resources/ShaderResources.cpp",
+      "blob": "0e05c08004e9b33b70a15329581bb43059ca25ca",
+      "sha256": "3d6f00f87e61de4eb5e46259c9bcd05d64e549a5eaed5ded8cb01e35baa4fd29",
+      "bytes": 15967
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/resources/TrajectoryGlobalBuffer.cpp",
+      "blob": "30934e8a612a257050f9434b6d03ffdfa79849df",
+      "sha256": "8290dca298f0f90f9ff337ba88410f881841e32bf27b68c42d262e9e61d92776",
+      "bytes": 4230
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/resources/point_cloud/PointCloudGlobalBuffer.cpp",
+      "blob": "825f3eea79357c32da271d36f2f2c0d9ec7c20d2",
+      "sha256": "96baa231ea18cdb889fa0fd79f4a001c2e4bf7b40cfbe2f1a348d37090eb1c01",
+      "bytes": 1350
+    },
+    {
+      "path": "render_legacy/modules/function/render/vulkan/src/scene/SceneGraphCache.cpp",
+      "blob": "0cdb0406284679d584cb79d16c602f76e7721cac",
+      "sha256": "cdfd7851e98bacd6b4a1fefa7bbf0c01c7fe929a05996e6d9ec0c5cc84a9389b",
+      "bytes": 22430
+    },
+    {
+      "path": "render_legacy/modules/function/ui/rendering/src/RenderFeature.cpp",
+      "blob": "318cf029b99b606d822408181479ebe69c30a5db",
+      "sha256": "4f065ca4fbb21669c6bae7d49064bdf630ebaa8ded7f9a469ae3461dc9791217",
+      "bytes": 15094
+    }
+  ]
+}

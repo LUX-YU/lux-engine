@@ -79,7 +79,7 @@ int main()
             for (unsigned fif : {2, 3})
             {
                 auto invocations =
-                    checked(NativeGraphInvocations::create(code, {device, allocator, native, values, {}, views * fif}));
+                    checked(GraphExecutionContext::create(code, {device, allocator, native, values, {}, views * fif}));
                 recorded = 0;
                 allocation_count = allocation_bytes = 0;
                 for (unsigned serial = 0; serial < 72; ++serial)
@@ -93,7 +93,7 @@ int main()
                             FrameGraphBindings::create(code.logical(), {serial, serial, serial % fif}, imports, values)
                         );
                         measuring = capture;
-                        auto receipt = checked(invocations.submit(slot, frame, native));
+                        auto receipt = checked(executeGraph(invocations, slot, frame, native));
                         measuring = false;
                         CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
                         if (serial == 71)

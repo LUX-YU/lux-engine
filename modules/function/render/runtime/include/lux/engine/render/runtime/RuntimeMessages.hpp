@@ -5,62 +5,47 @@
 
 namespace lux::render
 {
-    // Private transport representation of the F5 fixed authoring consumer.
-    // Public methods accept typed RuntimeAddress/GraphPassId, then copy at the
-    // actual thread boundary. This is not a DataSchema or a Feature wire SDK.
-    struct LUX_OP(lane = reply, name = "lux.render.runtime.reply.v1") RuntimeReply
+    struct LUX_OP(lane = reply, name = "lux.render.rd3.reply.v1") RuntimeReply
     {
         std::uint64_t frame_serial{};
         std::uint32_t byte_count{};
         std::array<std::byte, 224> bytes{};
+        std::uint32_t index{}, generation{}, scene_index{}, scene_generation{};
     };
 
-    struct LUX_OP(lane = program, kind = blob, name = "lux.render.runtime.scene_pass.v1") RuntimeScenePublication
+    struct LUX_OP(lane = program, kind = blob, name = "lux.render.rd3.view_pass.v1") RuntimeViewPublication
     {
         std::uint64_t owner{}, revision{};
-        std::uint32_t index{}, generation{}, path{}, pass{};
-        LUX_OP_BLOB() BlobRef scalars;
-    };
-
-    struct LUX_OP(lane = program, kind = blob, name = "lux.render.runtime.view_pass.v1") RuntimeViewPublication
-    {
-        std::uint64_t owner{}, revision{};
-        std::uint32_t index{}, generation{}, pass{};
-        std::array<float, 16> camera{};
+        std::uint32_t scene_index{}, scene_generation{}, index{}, generation{}, pass{};
         LUX_OP_BLOB() BlobRef scalars;
     };
 
     enum class ERuntimeControl : std::uint32_t
     {
-        RESIZE_TARGET,
-        SET_VIEW_ACTIVE,
-        REMOVE_VIEW,
+        CREATE_SCENE,
+        CREATE_TARGET,
+        CREATE_VIEW,
         REMOVE_SCENE,
         REMOVE_TARGET,
-        SET_VIEW_PATH
+        REMOVE_VIEW,
+        REMOVE_EFFECT,
+        QUERY_GRAPH,
+        SET_VIEW_ACTIVE,
+        READBACK,
+        READBACK_TARGET
     };
 
     struct LUX_OP(
         lane = control,
         kind = resource,
         reply = "lux::render::RuntimeReply",
-        name = "lux.render.runtime.control.v1"
+        name = "lux.render.rd3.control.v1"
     ) RuntimeControl
     {
-        std::uint64_t owner{};
-        std::uint32_t index{}, generation{}, first{}, second{};
-        ERuntimeControl operation{};
-    };
-
-    struct LUX_OP(
-        lane = control,
-        kind = resource,
-        reply = "lux::render::RuntimeReply",
-        name = "lux.render.runtime.readback.v1"
-    ) RuntimeReadback
-    {
         std::uint64_t owner{}, offset{};
-        std::uint32_t index{}, generation{}, pass{}, input{}, bytes{};
-        bool target_output{};
+        std::uint32_t index{}, generation{}, scene_index{}, scene_generation{};
+        std::uint32_t effect_index{}, effect_generation{}, target_index{}, target_generation{};
+        std::uint32_t first{}, second{}, bytes{};
+        ERuntimeControl operation{};
     };
 } // namespace lux::render

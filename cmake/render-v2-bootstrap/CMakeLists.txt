@@ -27,7 +27,7 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/runtim
 if(BUILD_TESTING)
     include("${CMAKE_CURRENT_LIST_DIR}/F4Closeout.cmake")
 
-    include("${CMAKE_CURRENT_LIST_DIR}/F5Runtime.cmake")
+    include("${CMAKE_CURRENT_LIST_DIR}/RD3Runtime.cmake")
 
     include("${CMAKE_CURRENT_LIST_DIR}/F6Data.cmake")
 

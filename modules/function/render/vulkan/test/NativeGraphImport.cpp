@@ -117,29 +117,29 @@ namespace native_graph_test
             {
                 const auto submitted = queue->submitted();
                 native_imports[0].ready.reset();
-                CHECK(!executable.invocations.submit(frame.frame().frame_slot, frame, native_imports));
+                CHECK(!executeGraph(executable.invocations, frame.frame().frame_slot, frame, native_imports));
                 native_imports[0].ready = ready[selected];
                 native_imports[0].identity = GraphBackingId{99};
-                CHECK(!executable.invocations.submit(frame.frame().frame_slot, frame, native_imports));
+                CHECK(!executeGraph(executable.invocations, frame.frame().frame_slot, frame, native_imports));
                 native_imports[0].identity = logical_imports[0].backing;
                 logical_imports[0].history_epoch = 2;
                 CHECK(!FrameGraphBindings::create(executable.plan.logical(), {}, logical_imports, invocation));
                 logical_imports[0].history_epoch = 1;
                 native_imports[0].initial.family = device.queueFamily() + 100;
-                auto wrong_family = executable.invocations.submit(frame.frame().frame_slot, frame, native_imports);
+                auto wrong_family = executeGraph(executable.invocations, frame.frame().frame_slot, frame, native_imports);
                 CHECK(!wrong_family && wrong_family.error().type == kWrongOwner);
                 native_imports[0].initial.family = device.queueFamily();
                 auto foreign_queue = checked(SubmissionQueue::create(device, 1));
                 auto foreign_batch = checked(foreign_queue->begin());
                 auto foreign_ticket = checked(std::move(foreign_batch).submit());
                 native_imports[0].ready = foreign_ticket;
-                auto wrong_ticket = executable.invocations.submit(frame.frame().frame_slot, frame, native_imports);
+                auto wrong_ticket = executeGraph(executable.invocations, frame.frame().frame_slot, frame, native_imports);
                 CHECK(!wrong_ticket && wrong_ticket.error().type == kWrongOwner);
                 CHECK(checked(foreign_queue->wait(foreign_ticket, UINT64_MAX)));
                 native_imports[0].ready = ready[selected];
                 CHECK(queue->submitted() == submitted);
             }
-            auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, native_imports));
+            auto receipt = checked(executeGraph(executable.invocations, frame.frame().frame_slot, frame, native_imports));
             CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
             ready[selected] = receipt.completion;
             std::array<float, 64> pixels;

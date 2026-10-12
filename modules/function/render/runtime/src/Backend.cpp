@@ -1,434 +1,770 @@
-#include "RuntimeBackend.hpp"
+#include "RuntimeChannel.hpp"
 #include <algorithm>
-#include <lux/engine/render/vulkan/shader/Format.hpp>
+#include <chrono>
+#include <lux/cxx/container/BasicSparseSet.hpp>
+#include <lux/engine/render/runtime/NativeAssembly.hpp>
 
 namespace lux::render
 {
-    namespace detail
+    namespace
     {
-#if defined(LUX_RUNTIME_FOOTPRINT)
-        void observeRuntimeFootprint(const RuntimeBackendState& backend) noexcept;
-#endif
+        constexpr auto kHostFailure = error::errorId("lux.render.runtime.host_failure");
+        using Clock = std::chrono::steady_clock;
 
-        std::uint32_t runtimeAssetIndex(
-            const RuntimeBackendState& backend,
-            const vulkan::NativeImportBinding& input
-        ) noexcept
+        struct CompiledGraphEntry
         {
-            for (std::uint32_t i = 0; i < backend.assets.size(); ++i)
-            {
-                const bool found = std::visit(
-                    [&](const auto& value)
-                    {
-                        using T = std::remove_cvref_t<decltype(value)>;
-                        const auto* borrow = std::get_if<std::reference_wrapper<const T>>(&input.backing);
-                        return borrow && &borrow->get() == &value;
-                    },
-                    backend.assets[i].backing
-                );
-                if (found)
-                {
-                    return i;
-                }
-            }
-            return UINT32_MAX;
+            RenderGraphId id;
+            vulkan::Graph code;
+            std::vector<vulkan::NativePassCommand> commands;
+            std::vector<vulkan::ProgramBindings> program_bindings;
+            std::uint32_t width, height;
+        };
+
+        struct ViewExecution
+        {
+            std::optional<ViewRef> view;
+            GraphInvocationData values;
+            std::uint64_t revision{};
+            std::optional<vulkan::GraphSubmission> latest;
+            std::uint64_t latest_frame{};
+        };
+
+        // Independent View/FIF slots share immutable code. Native owns all queue tickets.
+        struct GraphExecution
+        {
+            vulkan::GraphExecutionContext native;
+            std::vector<ViewExecution> views;
+            std::vector<vulkan::NativeTraceEvent> trace;
+        };
+
+        template <typename Key> std::uint64_t scopeIdentity(Key key) noexcept
+        {
+            return (std::uint64_t{key.gen} << 32) | (std::uint64_t{key.index} + 1);
         }
 
-        RuntimeBackendState::RuntimeBackendState(
+        template <typename Key> RuntimeReply identityReply(Key key, std::uint64_t frame) noexcept
+        {
+            RuntimeReply reply;
+            reply.frame_serial = frame;
+            reply.index = key.index;
+            reply.generation = key.gen;
+            return reply;
+        }
+    } // namespace
+
+    struct RenderBackend::Impl
+    {
+        // Reverse destruction: execution before code, queues and device.
+        vulkan::VulkanInstance instance;
+        vulkan::VulkanDevice device;
+        vulkan::VulkanAllocator allocator;
+        std::array<std::unique_ptr<vulkan::SubmissionQueue>, 3> queue_owners;
+        std::array<vulkan::SubmissionQueue*, 3> queues;
+        vulkan::Sampler sampler;
+        cxx::SlotMap<ResourceDomain, ResourceDomainTag> domains;
+        ResourceDomainId root_domain;
+        cxx::SlotMap<Scene, RenderSceneTag> scenes;
+        cxx::SlotMap<Target, RenderTargetTag> targets;
+        cxx::SlotMap<RenderEffect, RenderEffectTag> effects;
+        cxx::SlotMap<CompiledGraphEntry, RenderGraphTag> graphs;
+        cxx::SlotKeySparseSet<RenderGraphId, GraphViewGroup> graph_groups;
+        cxx::SlotKeySparseSet<RenderGraphId, std::unique_ptr<GraphExecution>> contexts;
+        std::vector<ExecutionJob> jobs;
+        std::shared_ptr<detail::RuntimeChannel> channel;
+        RuntimeCapacity capacity;
+        RuntimeOptions options;
+        RuntimeProgress progress;
+        HANDLE worker{};
+        const std::uint64_t assembly_thread{detail::transportThreadIdentity()};
+        bool started{};
+
+        Impl(
             vulkan::VulkanInstance host,
             vulkan::VulkanDevice native,
             vulkan::VulkanAllocator memory,
-            std::array<std::unique_ptr<vulkan::SubmissionQueue>, 3> queue_storage,
-            std::array<vulkan::SubmissionQueue*, 3> native_queues,
-            vulkan::RetirementQueue retired,
+            std::array<std::unique_ptr<vulkan::SubmissionQueue>, 3> owners,
+            std::array<vulkan::SubmissionQueue*, 3> queue_refs,
+            vulkan::Sampler sample,
+            std::shared_ptr<detail::RuntimeChannel> endpoint,
             RuntimeCapacity limits,
-            std::uint64_t identity
+            RuntimeOptions settings
         ) noexcept
             : instance(std::move(host)), device(std::move(native)), allocator(std::move(memory)),
-              queue_owners(std::move(queue_storage)), queues(native_queues), retirement(std::move(retired)),
-              scenes(limits.scenes), targets(limits.targets), views(limits.views), capacity(limits), owner(identity)
+              queue_owners(std::move(owners)), queues(queue_refs), sampler(std::move(sample)),
+              channel(std::move(endpoint)), capacity(limits), options(settings)
         {
-            assets.reserve(limits.assets);
-            samplers.reserve(limits.samplers);
-            paths.reserve(limits.paths);
-            variants.resize(limits.native_variants);
-            output_layers.reserve(limits.views);
-            output_views.reserve(limits.views);
+            root_domain = domains.emplace(ResourceDomain{});
+            jobs.reserve(capacity.views);
+            scenes.reserve(capacity.scenes);
+            targets.reserve(capacity.targets);
+            effects.reserve(capacity.effects);
+            graphs.reserve(capacity.graphs);
+            graph_groups.prepareCapacity(capacity.graphs, capacity.graphs);
+            contexts.prepareCapacity(capacity.graphs, capacity.graphs);
         }
 
-        RuntimeBackendState::~RuntimeBackendState() noexcept
+        View* find(ViewRef ref) noexcept
         {
-            // Each invocation owner also covers partial submissions with no final
-            // join. Its teardown waits all accepted queue tickets before assets die.
-            variants.clear();
+            auto* scene = scenes.find(ref.scene);
+            return scene ? scene->views.find(ref.view) : nullptr;
         }
 
-        RenderResult<void> drainRuntimeNative(RuntimeBackendState& backend) noexcept
+        ExecutionJob* job(ViewRef ref) noexcept
         {
-            for (const auto& variant : backend.variants)
+            const auto found = std::find_if(jobs.begin(), jobs.end(), [&](const auto& j) { return j.view == ref; });
+            return found == jobs.end() ? nullptr : &*found;
+        }
+
+        void snapshot() noexcept
+        {
+            const std::array values{
+                progress.render_frames,
+                progress.native_invocations,
+                progress.reused_scene_passes,
+                progress.publications,
+                progress.native_compilations,
+                progress.native_cache_hits
+            };
+            for (std::size_t i = 0; i < values.size(); ++i)
             {
-                if (!variant)
-                {
-                    continue;
-                }
-                auto last = variant->invocations.lastUse();
-                if (!last)
-                {
-                    return cxx::unexpected(last.error());
-                }
-                if (*last)
-                {
-                    auto completed = backend.queues[0]->wait(**last, UINT64_MAX);
-                    if (!completed)
-                    {
-                        return cxx::unexpected(completed.error());
-                    }
-                    if (!*completed)
-                    {
-                        std::terminate();
-                    }
-                }
+                channel->counters[i].store(values[i], std::memory_order_relaxed);
             }
-            auto collected = backend.retirement.collect();
-            if (!collected)
-            {
-                return cxx::unexpected(collected.error());
-            }
-            return {};
         }
 
-        static RenderResult<std::vector<RuntimeNativeVariant::InvocationTargets>> makeInvocationTargets(
-            RuntimeBackendState& backend,
-            const RuntimePathState& path_state,
-            const vulkan::ExecutableGraphPlan& code,
-            VkExtent2D extent
+        void fail(RenderError error) noexcept
+        {
+            if (!channel->failure)
+            {
+                channel->failure = error;
+                channel->diagnose(error);
+            }
+            channel->stop();
+        }
+
+        RenderResult<std::uint32_t> attach(
+            RenderGraphId graph_id,
+            ViewRef ref,
+            const GraphInvocationData& initial
         ) noexcept
         {
-            std::vector<RuntimeNativeVariant::InvocationTargets> targets(backend.capacity.frames_in_flight);
-            for (auto& invocation : targets)
+            auto& graph = *graphs.find(graph_id);
+            const std::array samplers{std::pair{GraphSampler{1}, std::cref(sampler)}};
+            const vulkan::NativeInvocationInputs
+                inputs{device, allocator, {}, initial, samplers, capacity.frames_in_flight};
+            auto* pool = contexts.tryGet(graph_id);
+            if (!pool)
             {
-                invocation.images.reserve(code.logical().imports().size());
-                invocation.imports.reserve(code.logical().imports().size());
-                for (const auto id : code.logical().imports())
+                auto native = vulkan::GraphExecutionContext::create(graph.code, inputs);
+                if (!native)
                 {
-                    const auto& resource = code.logical().identity().resources[id.value() - 1];
-                    if (!resource.target_semantic.isValid())
-                    {
-                        const auto input = std::find_if(
-                            path_state.imports.begin(),
-                            path_state.imports.end(),
-                            [&](const auto& value) { return value.resource == id; }
-                        );
-                        if (input == path_state.imports.end())
-                        {
-                            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-                        }
-                        invocation.imports.push_back(*input);
-                        continue;
-                    }
-                    const auto& texture = resource.texture();
-                    const auto shape = texture.extent_kind == EExtentKind::TARGET_RELATIVE
-                                           ? extent
-                                           : VkExtent2D{texture.width, texture.height};
-                    auto usage = code.resourceUsage(id);
-                    if (!usage)
-                    {
-                        return cxx::unexpected(usage.error());
-                    }
-                    vulkan::ImageDescription description;
-                    description.extent = shape;
-                    description.format = vulkan::nativeTextureFormat(texture.format);
-                    description.usage = static_cast<VkImageUsageFlags>(*usage);
-                    description.samples = static_cast<VkSampleCountFlagBits>(texture.samples);
-                    description.mip_levels = texture.mip_count;
-                    description.array_layers = texture.array_layers;
-                    auto image = vulkan::Image::create(backend.allocator, description);
-                    if (!image)
-                    {
-                        return cxx::unexpected(image.error());
-                    }
-                    if (backend.next_backing == UINT64_MAX)
-                    {
-                        return cxx::unexpected(RenderError{vulkan::kCapacity});
-                    }
-                    auto owned =
-                        std::make_unique<RuntimeNativeVariant::TargetBacking>(RuntimeNativeVariant::TargetBacking{
-                            id,
-                            GraphBackingId{backend.next_backing++},
-                            std::move(*image)
-                        });
-                    owned->states.resize(backend.capacity.native_state_ranges);
-                    const auto requirements = code.importViews(id);
-                    owned->views.reserve(requirements.size());
-                    owned->view_borrows.reserve(requirements.size());
-                    for (const auto& required : requirements)
-                    {
-                        auto view = vulkan::ImageView::create(owned->image, required.range, required.type);
-                        if (!view)
-                        {
-                            return cxx::unexpected(view.error());
-                        }
-                        owned->views.push_back(std::move(*view));
-                        owned->view_borrows.push_back(std::cref(owned->views.back()));
-                    }
-                    invocation.imports.push_back(
-                        {id, owned->identity, std::cref(owned->image), {}, {}, true, owned->view_borrows}
-                    );
-                    invocation.images.push_back(std::move(owned));
+                    return cxx::unexpected(native.error());
                 }
+                auto context = std::make_unique<GraphExecution>(GraphExecution{std::move(*native), {}, {}});
+                context->trace.resize(context->native.traceCapacity());
+                context->views.reserve(capacity.views);
+                context->views.push_back({ref, initial});
+                contexts.insert(graph_id, std::move(context));
+                return 0;
             }
-            return targets;
-        }
-
-        RenderResult<std::uint32_t> findRuntimeVariant(
-            RuntimeBackendState& backend,
-            RuntimePathId path,
-            VkExtent2D extent,
-            std::span<const std::uint32_t> candidate_pins
-        ) noexcept
-        {
-            if (!path.isValid() || path.value() > backend.paths.size() || extent.width == 0 || extent.height == 0)
+            auto& context = **pool;
+            for (std::uint32_t i = 0; i < context.views.size(); ++i)
             {
-                return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-            }
-            std::optional<std::uint32_t> available;
-            for (std::uint32_t i = 0; i < backend.variants.size(); ++i)
-            {
-                const auto& variant = backend.variants[i];
-                if (!variant)
-                {
-                    available = i;
-                    continue;
-                }
-                if (variant->path == path && variant->extent.width == extent.width &&
-                    variant->extent.height == extent.height)
-                {
-                    ++backend.progress.native_cache_hits;
-                    return i;
-                }
-            }
-            if (!available)
-            {
-                for (std::uint32_t i = 0; i < backend.variants.size(); ++i)
-                {
-                    const bool referenced = std::any_of(
-                        backend.views.begin(),
-                        backend.views.end(),
-                        [&](const auto& view) { return view.variant == i; }
-                    );
-                    const bool candidate =
-                        std::find(candidate_pins.begin(), candidate_pins.end(), i) != candidate_pins.end();
-                    if (referenced || candidate)
-                    {
-                        continue;
-                    }
-                    auto last = backend.variants[i]->invocations.lastUse();
-                    if (!last)
-                    {
-                        return cxx::unexpected(last.error());
-                    }
-                    if (*last)
-                    {
-                        auto retired = backend.retirement.retire(**last, std::move(backend.variants[i]));
-                        if (!retired)
-                        {
-                            return cxx::unexpected(retired.error());
-                        }
-                    }
-                    else
-                    {
-                        backend.variants[i].reset();
-                    }
-                    available = i;
-                    break;
-                }
-            }
-            if (!available)
-            {
-                return cxx::unexpected(RenderError{vulkan::kCapacity});
-            }
-            auto& path_state = backend.paths[path.value() - 1];
-            const auto original_extent = path_state.code.targetExtent();
-            const bool compatible_extent =
-                extent.width == original_extent.width && extent.height == original_extent.height;
-            const vulkan::NativeCompileInputs
-                inputs{path_state.code.logical(), backend.device, backend.queues, path_state.commands, true, extent};
-            RenderResult<vulkan::ExecutableGraphPlan> code =
-                compatible_extent ? RenderResult<vulkan::ExecutableGraphPlan>{path_state.code}
-                                  : vulkan::specializeVulkanGraph(inputs, path_state.code);
-            if (!code)
-            {
-                return cxx::unexpected(code.error());
-            }
-            for (const auto id : code->logical().imports())
-            {
-                auto count = code->resourceStateCount(id);
-                if (!count)
-                {
-                    return cxx::unexpected(count.error());
-                }
-                if (*count > backend.capacity.native_state_ranges)
-                {
-                    return cxx::unexpected(RenderError{vulkan::kCapacity, {*count}});
-                }
-            }
-            backend.progress.native_compilations += !compatible_extent;
-            std::vector<std::pair<GraphSampler, std::reference_wrapper<const vulkan::Sampler>>> samplers;
-            samplers.reserve(backend.samplers.size());
-            for (std::uint32_t i = 0; i < backend.samplers.size(); ++i)
-            {
-                samplers.emplace_back(GraphSampler{i + 1}, std::cref(backend.samplers[i]));
-            }
-            auto candidate_targets = makeInvocationTargets(backend, path_state, *code, extent);
-            if (!candidate_targets)
-            {
-                return cxx::unexpected(candidate_targets.error());
-            }
-            auto targets = std::move(*candidate_targets);
-            auto invocations = vulkan::NativeGraphInvocations::create(
-                *code,
-                {backend.device,
-                 backend.allocator,
-                 targets[0].imports,
-                 path_state.initial_values,
-                 samplers,
-                 backend.capacity.frames_in_flight}
-            );
-            if (!invocations)
-            {
-                return cxx::unexpected(invocations.error());
-            }
-            std::vector<vulkan::NativeTraceEvent> trace(invocations->traceCapacity());
-            backend.variants[*available] = std::make_unique<RuntimeNativeVariant>(RuntimeNativeVariant{
-                path,
-                extent,
-                std::move(*code),
-                std::move(targets),
-                std::move(*invocations),
-                std::move(trace)
-            });
-#if defined(LUX_RUNTIME_FOOTPRINT)
-            observeRuntimeFootprint(backend);
-#endif
-            return *available;
-        }
-
-        RenderResult<std::uint32_t> acquireRuntimeSlots(
-            RuntimeBackendState& backend,
-            std::uint32_t variant_index,
-            std::span<const std::pair<std::uint32_t, std::uint32_t>> candidate_slots
-        ) noexcept
-        {
-            auto& variant = *backend.variants[variant_index];
-            const auto count = backend.capacity.frames_in_flight;
-            for (std::uint32_t first = 0; first < variant.targets.size(); first += count)
-            {
-                const bool referenced = std::any_of(
-                    backend.views.begin(),
-                    backend.views.end(),
-                    [&](const auto& view) { return view.variant == variant_index && view.invocation_first == first; }
-                );
-                const bool candidate =
-                    std::find(candidate_slots.begin(), candidate_slots.end(), std::pair{variant_index, first}) !=
-                    candidate_slots.end();
-                if (referenced || candidate)
+                if (context.views[i].view)
                 {
                     continue;
                 }
                 bool ready = true;
-                for (std::uint32_t i = 0; i < count; ++i)
+                for (std::uint32_t slot = 0; slot < capacity.frames_in_flight; ++slot)
                 {
-                    auto complete = variant.invocations.slotReady(first + i);
-                    if (!complete)
+                    auto result = context.native.slotReady(i * capacity.frames_in_flight + slot);
+                    if (!result)
                     {
-                        return cxx::unexpected(complete.error());
+                        return cxx::unexpected(result.error());
                     }
-                    ready = ready && *complete;
+                    ready = ready && *result;
                 }
                 if (ready)
                 {
-                    return first;
+                    context.views[i] = ViewExecution{ref, initial};
+                    return i;
                 }
             }
-            if (variant.targets.size() >= backend.capacity.views * count)
+            if (context.views.size() >= capacity.views)
+            {
+                return cxx::unexpected(RenderError{vulkan::kBusy});
+            }
+            auto appended = context.native.append(inputs);
+            if (!appended)
+            {
+                return cxx::unexpected(appended.error());
+            }
+            const auto index = static_cast<std::uint32_t>(context.views.size());
+            if (*appended != index * capacity.frames_in_flight)
+            {
+                std::terminate();
+            }
+            context.views.push_back({ref, initial});
+            return index;
+        }
+
+        RenderResult<RuntimeReply> control(const RuntimeControl& request) noexcept;
+        RenderResult<void> publish(const RuntimeViewPublication& request, std::span<const std::byte> bytes) noexcept;
+        RenderResult<void> execute(std::uint64_t time) noexcept;
+        void run() noexcept;
+    };
+
+    RenderResult<RuntimeReply> RenderBackend::Impl::control(const RuntimeControl& request) noexcept
+    {
+        if (request.owner != channel->owner)
+        {
+            return cxx::unexpected(RenderError{kTransportWrongOwner});
+        }
+        const auto invalid = [] { return cxx::unexpected(RenderError{vulkan::kInvalidArgument}); };
+        const auto busy = [] { return cxx::unexpected(RenderError{vulkan::kBusy}); };
+        if (request.operation == ERuntimeControl::CREATE_SCENE)
+        {
+            if (scenes.size() >= capacity.scenes)
             {
                 return cxx::unexpected(RenderError{vulkan::kCapacity});
             }
-            const auto& path = backend.paths[variant.path.value() - 1];
-            auto targets = makeInvocationTargets(backend, path, variant.code, variant.extent);
-            if (!targets)
-            {
-                return cxx::unexpected(targets.error());
-            }
-            std::vector<std::pair<GraphSampler, std::reference_wrapper<const vulkan::Sampler>>> samplers;
-            for (std::uint32_t i = 0; i < backend.samplers.size(); ++i)
-            {
-                samplers.emplace_back(GraphSampler{i + 1}, std::cref(backend.samplers[i]));
-            }
-            auto first = variant.invocations.append(
-                {backend.device, backend.allocator, targets->front().imports, path.initial_values, samplers, count}
-            );
-            if (!first)
-            {
-                return cxx::unexpected(first.error());
-            }
-            // All fallible native construction has succeeded. Moves preserve
-            // Image/ImageView addresses and every old GraphSubmission identity.
-            for (auto& target : *targets)
-            {
-                variant.targets.push_back(std::move(target));
-            }
-#if defined(LUX_RUNTIME_FOOTPRINT)
-            observeRuntimeFootprint(backend);
-#endif
-            return *first;
+            const auto domain = domains.emplace(ResourceDomain{root_domain});
+            Scene scene;
+            scene.domain = domain;
+            scene.views.reserve(capacity.views);
+            return identityReply(scenes.emplace(std::move(scene)), progress.render_frames);
         }
-
-    } // namespace detail
-
-    VulkanBackend::VulkanBackend(std::unique_ptr<detail::RuntimeBackendState> backing) noexcept
-        : backing_(std::move(backing))
-    {
+        if (request.operation == ERuntimeControl::CREATE_TARGET)
+        {
+            if (!request.first || !request.second)
+            {
+                return invalid();
+            }
+            if (targets.size() >= capacity.targets)
+            {
+                return cxx::unexpected(RenderError{vulkan::kCapacity});
+            }
+            return identityReply(targets.emplace(Target{request.first, request.second}), progress.render_frames);
+        }
+        if (request.operation == ERuntimeControl::CREATE_VIEW)
+        {
+            const RenderSceneId scene_id{request.scene_index, request.scene_generation};
+            const RenderTargetId target_id{request.target_index, request.target_generation};
+            const RenderEffectId effect_id{request.effect_index, request.effect_generation};
+            auto* scene = scenes.find(scene_id);
+            auto* target = targets.find(target_id);
+            auto* effect = effects.find(effect_id);
+            if (!scene || !target || !effect)
+            {
+                return invalid();
+            }
+            if (target->view)
+            {
+                return busy();
+            }
+            if (jobs.size() >= capacity.views)
+            {
+                return cxx::unexpected(RenderError{vulkan::kCapacity});
+            }
+            const auto* graph = graphs.find(effect->graph);
+            if (!graph || graph->width != target->width || graph->height != target->height)
+            {
+                return invalid();
+            }
+            const auto domain = domains.emplace(ResourceDomain{scene->domain});
+            const auto view_id = scene->views.emplace(View{effect_id, effect->graph, target_id, domain});
+            const ViewRef ref{scene_id, view_id};
+            auto execution = attach(effect->graph, ref, effect->initial_values);
+            if (!execution)
+            {
+                scene->views.erase(view_id);
+                domains.erase(domain);
+                return cxx::unexpected(execution.error());
+            }
+            auto& values = (*contexts.tryGet(effect->graph))->views[*execution].values;
+            values.scene = scopeIdentity(scene_id);
+            values.view = scopeIdentity(view_id);
+            values.target = scopeIdentity(target_id);
+            auto* group = graph_groups.tryGet(effect->graph);
+            if (!group)
+            {
+                GraphViewGroup new_group;
+                new_group.jobs.reserve(capacity.views);
+                graph_groups.insert(effect->graph, std::move(new_group));
+                group = graph_groups.tryGet(effect->graph);
+            }
+            group->jobs.push_back({ref, effect->graph, *execution});
+            jobs.push_back({ref, effect->graph, *execution});
+            target->view = ref;
+            auto reply = identityReply(view_id, progress.render_frames);
+            reply.scene_index = scene_id.index;
+            reply.scene_generation = scene_id.gen;
+            return reply;
+        }
+        if (request.operation == ERuntimeControl::REMOVE_SCENE)
+        {
+            const RenderSceneId key{request.index, request.generation};
+            auto* scene = scenes.find(key);
+            if (!scene)
+            {
+                return invalid();
+            }
+            if (!scene->views.empty())
+            {
+                return busy();
+            }
+            domains.erase(scene->domain);
+            scenes.erase(key);
+            return RuntimeReply{};
+        }
+        if (request.operation == ERuntimeControl::REMOVE_TARGET)
+        {
+            const RenderTargetId key{request.index, request.generation};
+            auto* target = targets.find(key);
+            if (!target)
+            {
+                return invalid();
+            }
+            if (target->view)
+            {
+                return busy();
+            }
+            targets.erase(key);
+            return RuntimeReply{};
+        }
+        if (request.operation == ERuntimeControl::REMOVE_EFFECT)
+        {
+            const RenderEffectId key{request.index, request.generation};
+            auto* effect = effects.find(key);
+            if (!effect)
+            {
+                return invalid();
+            }
+            for (const auto& j : jobs)
+            {
+                if (find(j.view)->effect == key)
+                {
+                    return busy();
+                }
+            }
+            const auto graph_id = effect->graph;
+            effects.erase(key);
+            const bool referenced =
+                std::any_of(effects.begin(), effects.end(), [&](const auto& other) { return other.graph == graph_id; });
+            if (!referenced)
+            {
+                // Native destruction waits all actual tickets, including partial submissions.
+                contexts.erase(graph_id);
+                graph_groups.erase(graph_id);
+                graphs.erase(graph_id);
+            }
+            return RuntimeReply{};
+        }
+        ViewRef ref{{request.scene_index, request.scene_generation}, {request.index, request.generation}};
+        if (request.operation == ERuntimeControl::READBACK_TARGET)
+        {
+            const auto* target = targets.find({request.index, request.generation});
+            if (!target || !target->view)
+            {
+                return invalid();
+            }
+            ref = *target->view;
+        }
+        auto* view = find(ref);
+        auto* execution_job = job(ref);
+        if (!view || !execution_job)
+        {
+            return invalid();
+        }
+        auto& context = **contexts.tryGet(view->graph);
+        auto& execution = context.views[execution_job->execution];
+        if (request.operation == ERuntimeControl::QUERY_GRAPH)
+        {
+            return identityReply(view->graph, progress.render_frames);
+        }
+        if (request.operation == ERuntimeControl::SET_VIEW_ACTIVE)
+        {
+            view->active = request.first != 0;
+            return RuntimeReply{};
+        }
+        if (request.operation == ERuntimeControl::REMOVE_VIEW)
+        {
+            std::erase_if(graph_groups.tryGet(view->graph)->jobs, [&](const auto& j) { return j.view == ref; });
+            execution.view.reset();
+            targets.find(view->target)->view.reset();
+            domains.erase(view->domain);
+            scenes.find(ref.scene)->views.erase(ref.view);
+            std::erase_if(jobs, [&](const auto& j) { return j.view == ref; });
+            return RuntimeReply{};
+        }
+        if (request.operation == ERuntimeControl::READBACK || request.operation == ERuntimeControl::READBACK_TARGET)
+        {
+            if (!execution.latest || !request.bytes || request.bytes > RuntimeReply{}.bytes.size())
+            {
+                return invalid();
+            }
+            auto last = context.native.lastUse();
+            if (!last)
+            {
+                return cxx::unexpected(last.error());
+            }
+            if (!*last)
+            {
+                return invalid();
+            }
+            while (!channel->stopping.load(std::memory_order_acquire))
+            {
+                auto done = queues[0]->wait(**last, 10'000'000);
+                if (!done)
+                {
+                    return cxx::unexpected(done.error());
+                }
+                if (*done)
+                {
+                    break;
+                }
+            }
+            if (channel->stopping.load(std::memory_order_acquire))
+            {
+                return cxx::unexpected(RenderError{kTransportStopping});
+            }
+            RuntimeReply reply{execution.latest_frame, request.bytes};
+            const bool final_output = request.operation == ERuntimeControl::READBACK_TARGET;
+            const auto pass = final_output ? graphs.find(view->graph)->code.logical().executionOrder().back()
+                                           : GraphPassId{request.first};
+            auto read = context.native.readbackPass(
+                *execution.latest,
+                pass,
+                final_output ? 0 : request.second,
+                request.offset,
+                std::span{reply.bytes}.first(request.bytes)
+            );
+            if (!read)
+            {
+                return cxx::unexpected(read.error());
+            }
+            return reply;
+        }
+        return invalid();
     }
 
-    VulkanBackend::~VulkanBackend() noexcept = default;
-
-    RenderResult<std::unique_ptr<VulkanBackend>> VulkanBackend::create(
-        const RuntimeNativeOptions& options,
-        std::uint64_t owner
+    RenderResult<void> RenderBackend::Impl::publish(
+        const RuntimeViewPublication& request,
+        std::span<const std::byte> bytes
     ) noexcept
     {
-        const auto& c = options.capacity;
-        const bool invalid_capacity = c.scenes == 0 || c.views == 0 || c.targets == 0 || c.paths == 0 ||
-                                      c.native_variants == 0 || c.queue_submissions == 0 || c.frames_in_flight < 2 ||
-                                      c.frames_in_flight > 3 || c.views > UINT32_MAX / c.frames_in_flight ||
-                                      c.native_state_ranges == 0 || owner == 0;
-        if (invalid_capacity)
+        if (request.owner != channel->owner)
+        {
+            return cxx::unexpected(RenderError{kTransportWrongOwner});
+        }
+        const ViewRef ref{{request.scene_index, request.scene_generation}, {request.index, request.generation}};
+        auto* j = job(ref);
+        if (!j)
         {
             return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
         }
-        auto instance_options = options.instance;
-        auto device_options = options.device;
-        std::vector<const char*> extensions(instance_options.extensions.begin(), instance_options.extensions.end());
-        if (options.presentation)
+        auto& execution = (*contexts.tryGet(j->graph))->views[j->execution];
+        const auto& passes = graphs.find(j->graph)->code.logical().identity().passes;
+        const bool invalid_pass = request.pass == 0 || request.pass > passes.size();
+        if (invalid_pass)
         {
-            extensions.insert(
-                extensions.end(),
-                {VK_KHR_SURFACE_EXTENSION_NAME,
-                 "VK_KHR_win32_surface",
-                 VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
-                 VK_EXT_SURFACE_MAINTENANCE_1_EXTENSION_NAME}
-            );
-            instance_options.extensions = extensions;
-            device_options.swapchain_maintenance = true;
-            device_options.multiple_queues = true;
+            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
         }
-        auto instance = vulkan::VulkanInstance::create(instance_options);
+        auto& values = execution.values.passes[request.pass - 1];
+        const bool invalid_values = passes[request.pass - 1].scope == EExecutionScope::SCENE ||
+                                    bytes.size() != values.scalars.size() || request.revision <= execution.revision;
+        if (invalid_values)
+        {
+            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+        }
+        std::copy(bytes.begin(), bytes.end(), values.scalars.begin());
+        execution.revision = request.revision;
+        ++progress.publications;
+        return {};
+    }
+
+    RenderResult<void> RenderBackend::Impl::execute(std::uint64_t time) noexcept
+    {
+        const auto serial = progress.render_frames + 1;
+        const auto frame_slot = static_cast<std::uint32_t>(serial % capacity.frames_in_flight);
+        std::array<std::uint64_t, 3> budget{};
+        for (const auto& j : jobs)
+        {
+            if (!find(j.view)->active)
+            {
+                continue;
+            }
+            auto& context = **contexts.tryGet(j.graph);
+            auto ready = context.native.slotReady(j.execution * capacity.frames_in_flight + frame_slot);
+            if (!ready)
+            {
+                return cxx::unexpected(ready.error());
+            }
+            if (!*ready)
+            {
+                return cxx::unexpected(RenderError{vulkan::kBusy});
+            }
+            const auto needed = context.native.submissionBudget();
+            for (unsigned q = 0; q < 3; ++q)
+            {
+                budget[q] += needed[q];
+            }
+        }
+        for (auto* queue : queues)
+        {
+            std::uint64_t needed{};
+            for (unsigned q = 0; q < 3; ++q)
+            {
+                if (queues[q] == queue)
+                {
+                    needed += budget[q];
+                }
+            }
+            if (needed > queue->capacity())
+            {
+                return cxx::unexpected(RenderError{vulkan::kCapacity});
+            }
+            if (needed > queue->capacity() - (queue->submitted() - queue->completed()))
+            {
+                return cxx::unexpected(RenderError{vulkan::kBusy});
+            }
+        }
+        const std::array<GraphImportBinding, 0> imports{};
+        for (const auto& j : jobs)
+        {
+            if (!find(j.view)->active)
+            {
+                continue;
+            }
+            auto& context = **contexts.tryGet(j.graph);
+            auto& execution = context.views[j.execution];
+            const auto& logical = graphs.find(j.graph)->code.logical();
+            auto bindings = FrameGraphBindings::create(logical, {serial, time, frame_slot}, imports, execution.values);
+            if (!bindings)
+            {
+                return cxx::unexpected(bindings.error());
+            }
+            std::optional<vulkan::GraphSubmission> donor;
+            for (const auto& candidate : graph_groups.tryGet(j.graph)->jobs)
+            {
+                const auto& prior = context.views[candidate.execution];
+                const bool eligible = prior.view && prior.view != execution.view && prior.view->scene == j.view.scene &&
+                                      prior.latest && prior.latest_frame == serial;
+                if (!eligible)
+                {
+                    continue;
+                }
+                auto previous = FrameGraphBindings::create(logical, {serial, time, frame_slot}, imports, prior.values);
+                if (!previous)
+                {
+                    return cxx::unexpected(previous.error());
+                }
+                bool share = false;
+                for (auto pass : logical.executionOrder())
+                {
+                    if (!logical.sceneShareEligible()[pass.value() - 1])
+                    {
+                        continue;
+                    }
+                    share = mayShareSceneInvocation(pass, *previous, *bindings);
+                    if (!share)
+                    {
+                        break;
+                    }
+                }
+                if (share)
+                {
+                    donor = prior.latest;
+                    break;
+                }
+            }
+            auto submitted = vulkan::executeGraph(
+                context.native,
+                j.execution * capacity.frames_in_flight + frame_slot,
+                *bindings,
+                {},
+                context.trace,
+                donor
+            );
+            if (!submitted)
+            {
+                return cxx::unexpected(submitted.error());
+            }
+            execution.latest = *submitted;
+            execution.latest_frame = serial;
+            ++progress.native_invocations;
+            for (std::uint32_t i = 0; i < submitted->trace_count; ++i)
+            {
+                progress.reused_scene_passes += context.trace[i].operation == vulkan::ENativeTrace::REUSE_SCENE;
+            }
+        }
+        ++progress.render_frames;
+        return {};
+    }
+
+    void RenderBackend::Impl::run() noexcept
+    {
+        auto upload = channel->transport->makeUploadPacket();
+        const auto origin = Clock::now();
+        auto deadline = origin;
+        const auto interval = std::chrono::nanoseconds{options.frame_interval_ns};
+        while (!channel->stopping.load(std::memory_order_acquire))
+        {
+            for (unsigned i = 0; i < 3; ++i)
+            {
+                auto result = channel->transport->pollControl(
+                    [&](RenderPacketView& packet) noexcept
+                    {
+                        for (std::size_t record = 0; record < packet.size(); ++record)
+                        {
+                            auto request = packet.read(channel->control, record);
+                            auto answer = request ? control(*request)
+                                                  : RenderResult<RuntimeReply>{cxx::unexpected(request.error())};
+                            auto done = answer ? packet.complete(record, *answer) : packet.fail(record, answer.error());
+                            if (!done && done.error().type != kTransportReply &&
+                                done.error().type != kTransportStopping)
+                            {
+                                channel->diagnose(done.error());
+                            }
+                            if (!answer && answer.error().type == vulkan::kNativeFailure &&
+                                answer.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST))
+                            {
+                                fail(answer.error());
+                            }
+                        }
+                    }
+                );
+                if (!result)
+                {
+                    fail(result.error());
+                    break;
+                }
+                if (!*result)
+                {
+                    break;
+                }
+            }
+            for (unsigned i = 0; i < 3; ++i)
+            {
+                auto result = channel->transport->pollProgram(
+                    [&](RenderPacketView& packet) noexcept
+                    {
+                        for (std::size_t record = 0; record < packet.size(); ++record)
+                        {
+                            auto request = packet.read(channel->publication, record);
+                            if (!request)
+                            {
+                                channel->diagnose(request.error());
+                                continue;
+                            }
+                            auto bytes = packet.blob(request->scalars);
+                            if (!bytes)
+                            {
+                                channel->diagnose(bytes.error());
+                                continue;
+                            }
+                            auto applied = publish(*request, *bytes);
+                            if (!applied)
+                            {
+                                channel->diagnose(applied.error());
+                            }
+                        }
+                    }
+                );
+                if (!result)
+                {
+                    fail(result.error());
+                    break;
+                }
+                if (!*result)
+                {
+                    break;
+                }
+            }
+            if (channel->stopping.load(std::memory_order_acquire))
+            {
+                break;
+            }
+            const auto now = Clock::now();
+            if (!jobs.empty() && now >= deadline)
+            {
+                const auto time = std::chrono::duration_cast<std::chrono::nanoseconds>(now - origin).count();
+                auto rendered = execute(time);
+                if (!rendered && rendered.error().type != vulkan::kBusy)
+                {
+                    fail(rendered.error());
+                    break;
+                }
+                deadline = now + interval;
+            }
+            snapshot();
+            const auto remaining =
+                std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now()).count();
+            const DWORD timeout = jobs.empty() ? INFINITE : static_cast<DWORD>(std::max<std::int64_t>(1, remaining));
+            if (WaitForSingleObject(channel->wake, timeout) == WAIT_FAILED)
+            {
+                fail({kHostFailure, {GetLastError()}});
+            }
+        }
+        channel->state.store(ERuntimeState::STOPPING, std::memory_order_release);
+        channel->transport->requestStop();
+        while (!channel->transport->drained())
+        {
+            const auto epoch = channel->transport->wake().snapshot();
+            auto a = channel->transport->pollProgram([](RenderPacketView&) noexcept {});
+            auto b = channel->transport->pollControl([](RenderPacketView&) noexcept {});
+            auto c = channel->transport->pollUpload(upload, [](RenderPacketView&) noexcept {});
+            if (!a || !b || !c)
+            {
+                std::terminate();
+            }
+            if (!*a && !*b && !*c && !channel->transport->drained())
+            {
+                channel->transport->wake().wait(epoch);
+            }
+        }
+        // Includes partial-submit tickets, not merely the last successful receipt.
+        contexts.clear();
+        snapshot();
+        channel->state.store(
+            channel->failure ? ERuntimeState::FAILED : ERuntimeState::STOPPED,
+            std::memory_order_release
+        );
+    }
+
+    RenderBackend::RenderBackend(std::unique_ptr<Impl> implementation) noexcept : impl_(std::move(implementation)) {}
+
+    RenderBackend::~RenderBackend() noexcept
+    {
+        requestStop();
+        if (impl_->worker)
+        {
+            if (WaitForSingleObject(impl_->worker, INFINITE) != WAIT_OBJECT_0)
+            {
+                std::terminate();
+            }
+            CloseHandle(impl_->worker);
+        }
+    }
+
+    RenderResult<std::unique_ptr<RenderBackend>> RenderBackend::create(
+        const vulkan::BackendOptions& native,
+        RuntimeOptions options
+    ) noexcept
+    {
+        const auto& c = native.capacity;
+        const bool invalid = !c.scenes || !c.views || !c.targets || !c.effects || !c.graphs || !c.frames_in_flight ||
+                             c.frames_in_flight > 3 || !c.queue_submissions || !options.frame_interval_ns ||
+                             options.frame_interval_ns > 10'000'000'000ull;
+        if (invalid)
+        {
+            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+        }
+        auto instance = vulkan::VulkanInstance::create(native.instance);
         if (!instance)
         {
             return cxx::unexpected(instance.error());
         }
-        auto device = vulkan::VulkanDevice::create(*instance, device_options);
+        auto device = vulkan::VulkanDevice::create(*instance, native.device);
         if (!device)
         {
             return cxx::unexpected(device.error());
@@ -464,651 +800,269 @@ namespace lux::render
             owners[role] = std::move(*queue);
             queues[role] = owners[role].get();
         }
-        auto retirement = vulkan::RetirementQueue::create(*queues[0], c.native_variants);
-        if (!retirement)
+        auto sampler = vulkan::Sampler::create(*device);
+        if (!sampler)
         {
-            return cxx::unexpected(retirement.error());
+            return cxx::unexpected(sampler.error());
         }
-        auto state = std::make_unique<detail::RuntimeBackendState>(
+        RenderRouteTable routes{2};
+        auto publication = routes.registerOperation<RuntimeViewPublication>();
+        auto control = routes.registerOperation<RuntimeControl>();
+        if (!publication || !control)
+        {
+            std::terminate();
+        }
+        const auto owner = routes.ownerIdentity();
+        auto transport = RenderTransport::create(std::move(routes), options.transport);
+        if (!transport)
+        {
+            return cxx::unexpected(transport.error());
+        }
+        HANDLE wake = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (!wake)
+        {
+            return cxx::unexpected(RenderError{kHostFailure, {GetLastError()}});
+        }
+        auto channel = std::shared_ptr<detail::RuntimeChannel>{
+            new detail::RuntimeChannel{std::move(*transport), *publication, *control, owner, wake}
+        };
+        return std::unique_ptr<RenderBackend>{new RenderBackend(std::make_unique<Impl>(
             std::move(*instance),
             std::move(*device),
             std::move(*allocator),
             std::move(owners),
             queues,
-            std::move(*retirement),
+            std::move(*sampler),
+            std::move(channel),
             c,
-            owner
-        );
-        return std::unique_ptr<VulkanBackend>{new VulkanBackend(std::move(state))};
+            options
+        ))};
     }
 
-    const vulkan::VulkanDevice& VulkanBackend::device() const noexcept
+    RenderResult<std::reference_wrapper<const vulkan::VulkanDevice>> RenderBackend::assemblyDevice() const noexcept
     {
-        return backing_->device;
-    }
-
-    const vulkan::VulkanAllocator& VulkanBackend::allocator() const noexcept
-    {
-        return backing_->allocator;
-    }
-
-    RenderResult<std::reference_wrapper<const vulkan::Buffer>> VulkanBackend::retain(vulkan::Buffer buffer) noexcept
-    {
-        if (buffer.device() != device().native())
+        if (impl_->assembly_thread != detail::transportThreadIdentity())
         {
-            return cxx::unexpected(RenderError{vulkan::kWrongOwner});
+            return cxx::unexpected(RenderError{kTransportWrongThread});
         }
-        if (backing_->assets.size() == backing_->capacity.assets)
-        {
-            return cxx::unexpected(RenderError{vulkan::kCapacity});
-        }
-        auto& value = backing_->assets.emplace_back(detail::RuntimeAssetBacking{
-            std::move(buffer),
-            std::vector<vulkan::NativeRangeState>(backing_->capacity.native_state_ranges)
-        });
-        return std::cref(std::get<vulkan::Buffer>(value.backing));
-    }
-
-    RenderResult<std::reference_wrapper<const vulkan::Image>> VulkanBackend::retain(vulkan::Image image) noexcept
-    {
-        if (image.device() != device().native())
-        {
-            return cxx::unexpected(RenderError{vulkan::kWrongOwner});
-        }
-        if (backing_->assets.size() == backing_->capacity.assets)
-        {
-            return cxx::unexpected(RenderError{vulkan::kCapacity});
-        }
-        auto& value = backing_->assets.emplace_back(detail::RuntimeAssetBacking{
-            std::move(image),
-            std::vector<vulkan::NativeRangeState>(backing_->capacity.native_state_ranges)
-        });
-        return std::cref(std::get<vulkan::Image>(value.backing));
-    }
-
-    RenderResult<GraphSampler> VulkanBackend::retain(vulkan::Sampler sampler) noexcept
-    {
-        if (sampler.device() != device().native())
-        {
-            return cxx::unexpected(RenderError{vulkan::kWrongOwner});
-        }
-        if (backing_->samplers.size() == backing_->capacity.samplers)
-        {
-            return cxx::unexpected(RenderError{vulkan::kCapacity});
-        }
-        if (!backing_->paths.empty())
+        if (impl_->started)
         {
             return cxx::unexpected(RenderError{vulkan::kBusy});
         }
-        backing_->samplers.push_back(std::move(sampler));
-        return GraphSampler{static_cast<std::uint32_t>(backing_->samplers.size())};
+        return std::cref(impl_->device);
     }
 
-    RenderResult<RuntimePath> VulkanBackend::addPath(RuntimeTarget target, RuntimePathSource source) noexcept
+    RenderResult<RuntimeEffect> RenderBackend::addEffect(vulkan::EffectSource source) noexcept
     {
-        if (target.owner != backing_->owner)
+        auto permitted = assemblyDevice();
+        if (!permitted)
         {
-            return cxx::unexpected(RenderError{vulkan::kWrongOwner});
+            return cxx::unexpected(permitted.error());
         }
-        const auto* output = backing_->targets.find(target.local);
-        if (!output)
-        {
-            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-        }
-        if (!backing_->scenes.empty())
-        {
-            return cxx::unexpected(RenderError{vulkan::kBusy});
-        }
-        if (backing_->paths.size() == backing_->capacity.paths)
+        if (impl_->effects.size() >= impl_->capacity.effects)
         {
             return cxx::unexpected(RenderError{vulkan::kCapacity});
         }
-        const auto required_imports = std::count_if(
-            source.logical.imports().begin(),
-            source.logical.imports().end(),
-            [&](auto id) { return !source.logical.identity().resources[id.value() - 1].target_semantic.isValid(); }
-        );
-        if (source.imports.size() != required_imports)
+        auto logical = compileLogicalGraph(source.definition);
+        if (!logical)
+        {
+            return cxx::unexpected(logical.error());
+        }
+        // P1 has no external GPU asset registry or multi-View Target composition.
+        if (!logical->imports().empty() || !source.width || !source.height)
         {
             return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
         }
-        for (std::size_t i = 0; i < source.frame_fields.size(); ++i)
+        // The P1 Offscreen endpoint publishes the complete graph's final image.
+        // Hidden copy/tonemap/present work outside this definition is not permitted.
+        if (logical->executionOrder().empty())
         {
-            const auto& field = source.frame_fields[i];
-            if (!field.pass.isValid() || field.pass.value() > source.logical.identity().passes.size())
+            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+        }
+        const auto& final_pass = logical->identity().passes[logical->executionOrder().back().value() - 1];
+        const bool invalid_output = final_pass.kind != EPassKind::HOST_READBACK || final_pass.uses.size() != 1;
+        if (invalid_output)
+        {
+            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+        }
+        const auto& output = logical->identity().resources[final_pass.uses[0].resource.value() - 1];
+        if (output.kind() != EGraphResourceKind::IMAGE)
+        {
+            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+        }
+        const auto& texture = output.texture();
+        const bool wrong_extent = texture.extent_kind != EExtentKind::TARGET_RELATIVE &&
+                                  (texture.width != source.width || texture.height != source.height);
+        const bool unsupported_output = wrong_extent || texture.depth != 1 || texture.array_layers != 1 ||
+                                        texture.mip_count != 1 || texture.samples != 1;
+        if (unsupported_output)
+        {
+            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+        }
+        std::vector<vulkan::ProgramBindings> binding_inputs;
+        binding_inputs.reserve(source.programs.size());
+        for (const auto& program : source.programs)
+        {
+            if (toolchain::shaderSchemaIdentity(program.schema) != program.shader.identity().schema_identity)
             {
                 return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
             }
-            const auto& pass = source.logical.identity().passes[field.pass.value() - 1];
-            if (field.scalar_field >= pass.scalar_fields.size())
+            binding_inputs.push_back(program.bindings);
+        }
+        RenderGraphId graph_id;
+        for (const auto& graph : impl_->graphs)
+        {
+            const bool same_structure = graph.width == source.width && graph.height == source.height &&
+                                        graph.code.logical().cacheIdentity() == logical->cacheIdentity() &&
+                                        graph.commands == source.commands && graph.program_bindings == binding_inputs;
+            if (!same_structure)
             {
-                return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+                continue;
             }
-            const auto& scalar = pass.scalar_fields[field.scalar_field];
-            const bool resource_member = std::any_of(
-                pass.bindings.begin(),
-                pass.bindings.end(),
-                [&](const auto& binding)
-                { return scalar.path.starts_with(binding.path + ".") || scalar.path.starts_with(binding.path + "["); }
-            );
-            const bool history = field.value == ERuntimeFrameValue::HISTORY_EPOCH;
-            const bool camera = field.value == ERuntimeFrameValue::CAMERA_FLOAT;
-            const auto required_input = camera ? 1u : history ? 4u : 2u;
-            const bool invalid = resource_member || scalar.size != 4 || scalar.array_count != 1 ||
-                                 scalar.kind != (history ? rdesc::EScalarKind::UINT : rdesc::EScalarKind::FLOAT) ||
-                                 (pass.invocation_inputs & required_input) == 0 ||
-                                 (camera ? field.camera_element >= 16 : field.camera_element != 0) ||
-                                 (field.value != ERuntimeFrameValue::CAMERA_FLOAT &&
-                                  field.value != ERuntimeFrameValue::RENDER_SECONDS && !history);
-            if (invalid)
+            const auto programs = graph.code.shaderPrograms();
+            const bool same_programs = programs.size() == source.programs.size() &&
+                                       std::equal(
+                                           programs.begin(),
+                                           programs.end(),
+                                           source.programs.begin(),
+                                           [](const auto& a, const auto& b)
+                                           {
+                                               return a.identity().pass == b.pass &&
+                                                      a.identity().shader == b.shader.identity() &&
+                                                      a.identity().pipeline == b.pipeline;
+                                           }
+                                       );
+            if (same_programs)
             {
-                return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-            }
-            for (std::size_t j = 0; j < i; ++j)
-            {
-                if (source.frame_fields[j].pass == field.pass &&
-                    source.frame_fields[j].scalar_field == field.scalar_field)
-                {
-                    return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-                }
+                graph_id = graph.id;
+                ++impl_->progress.native_cache_hits;
+                break;
             }
         }
-        for (auto& input : source.imports)
+        if (graph_id.isNull())
         {
-            const auto index = detail::runtimeAssetIndex(*backing_, input);
-            if (index == UINT32_MAX || !input.views.empty())
-            {
-                return cxx::unexpected(RenderError{vulkan::kWrongOwner});
-            }
-            auto& asset = backing_->assets[index];
-            if (input.ranges.size() > asset.states.size())
+            if (impl_->graphs.size() >= impl_->capacity.graphs)
             {
                 return cxx::unexpected(RenderError{vulkan::kCapacity});
             }
-            // No caller-owned range span escapes cold assembly.
-            if (!input.ranges.empty())
+            std::vector<vulkan::NativeShaderProgram> programs;
+            programs.reserve(source.programs.size());
+            for (const auto& input : source.programs)
             {
-                if (asset.state_count != 0)
+                std::vector<vulkan::OwnerAssignment> assignments;
+                assignments.reserve(input.bindings.assignments.size());
+                for (const auto& assignment : input.bindings.assignments)
                 {
-                    return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+                    assignments.push_back({assignment.field_path, assignment.owner});
                 }
-            }
-        }
-        std::span<const GraphImportBinding> no_imports;
-        auto validated = FrameGraphBindings::create(source.logical, {}, no_imports, source.initial_values);
-        // Import readiness is an Invocation fact. Validate complete imported fixtures when views are attached.
-        if (source.logical.imports().empty() && !validated)
-        {
-            return cxx::unexpected(validated.error());
-        }
-        auto code = vulkan::compileVulkanGraph(
-            {source.logical, backing_->device, backing_->queues, source.commands, true, {output->width, output->height}
-            },
-            std::move(source.programs)
-        );
-        if (!code)
-        {
-            return cxx::unexpected(code.error());
-        }
-        std::optional<GraphResourceId> present_output;
-        for (const auto& output : source.logical.identity().outputs)
-        {
-            if (output.kind != EGraphOutput::PRESENT)
-            {
-                continue;
-            }
-            if (present_output)
-            {
-                return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-            }
-            const auto& resource = source.logical.identity().resources[output.resource.value() - 1];
-            const bool invalid_output = resource.kind() != EGraphResourceKind::IMAGE ||
-                                        resource.texture().mip_count != 1 || resource.texture().array_layers != 1 ||
-                                        resource.texture().samples != 1 ||
-                                        rdesc::textureAspectMask(resource.texture().format) != 1;
-            if (invalid_output)
-            {
-                return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-            }
-            present_output = output.resource;
-        }
-        // Only publish borrowed initial-state bytes after all fallible path
-        // construction has succeeded. A failed candidate cannot mutate assets.
-        for (auto& input : source.imports)
-        {
-            if (input.ranges.empty())
-            {
-                continue;
-            }
-            auto& asset = backing_->assets[detail::runtimeAssetIndex(*backing_, input)];
-            std::copy(input.ranges.begin(), input.ranges.end(), asset.states.begin());
-            asset.state_count = static_cast<std::uint32_t>(input.ranges.size());
-            input.ranges = std::span{asset.states}.first(asset.state_count);
-        }
-        backing_->paths.push_back(
-            {std::move(*code),
-             std::move(source.commands),
-             std::move(source.initial_values),
-             std::move(source.imports),
-             present_output,
-             std::move(source.frame_fields)}
-        );
-        ++backing_->progress.native_compilations;
-        return RuntimePath{backing_->owner, RuntimePathId{static_cast<std::uint32_t>(backing_->paths.size())}};
-    }
-
-    RenderResult<RuntimeScene> VulkanBackend::addScene() noexcept
-    {
-        auto& state = *backing_;
-        if (state.scenes.size() == state.capacity.scenes)
-        {
-            return cxx::unexpected(RenderError{vulkan::kCapacity});
-        }
-        // All paths are assembled before Scenes. Refine shared native Buffer
-        // cells once, transactionally, without changing logical versions or PSOs.
-        if (state.scenes.empty())
-        {
-            std::vector<std::optional<vulkan::ExecutableGraphPlan>> candidates(state.paths.size());
-            for (std::size_t p = 0; p < state.paths.size(); ++p)
-            {
-                const auto& path = state.paths[p];
-                std::vector<vulkan::NativeBufferBoundary> extra;
-                for (const auto& input : path.imports)
-                {
-                    const auto& declaration = path.code.logical().identity().resources[input.resource.value() - 1];
-                    if (declaration.kind() != EGraphResourceKind::BUFFER)
-                    {
-                        continue;
-                    }
-                    const auto asset = detail::runtimeAssetIndex(state, input);
-                    const auto boundaries = [](const LogicalGraphPlan& logical, GraphResourceId resource)
-                    {
-                        std::vector<std::uint64_t> offsets;
-                        const auto append = [&](const VGraphRange& value)
-                        {
-                            if (const auto* range = std::get_if<BufferRange>(&value))
-                            {
-                                offsets.push_back(range->byte_offset);
-                                offsets.push_back(range->byte_offset + range->byte_count);
-                            }
-                        };
-                        for (const auto& pass : logical.identity().passes)
-                        {
-                            for (const auto& use : pass.uses)
-                            {
-                                if (use.resource == resource || (use.fallback && use.fallback->resource == resource))
-                                {
-                                    append(use.range);
-                                }
-                            }
-                        }
-                        for (const auto& output : logical.identity().outputs)
-                        {
-                            if (output.resource == resource)
-                            {
-                                append(output.range);
-                            }
-                        }
-                        return offsets;
-                    };
-                    const auto own = boundaries(path.code.logical(), input.resource);
-                    for (const auto& other : state.paths)
-                    {
-                        for (const auto& imported : other.imports)
-                        {
-                            if (detail::runtimeAssetIndex(state, imported) != asset)
-                            {
-                                continue;
-                            }
-                            const auto& shape =
-                                other.code.logical().identity().resources[imported.resource.value() - 1];
-                            if (shape.description != declaration.description)
-                            {
-                                return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-                            }
-                            for (const auto offset : boundaries(other.code.logical(), imported.resource))
-                            {
-                                if (offset != 0 && offset < declaration.buffer().byte_size &&
-                                    std::find(own.begin(), own.end(), offset) == own.end())
-                                {
-                                    extra.push_back({input.resource, offset});
-                                }
-                            }
-                        }
-                    }
-                }
-                if (extra.empty())
-                {
-                    continue;
-                }
-                auto refined = vulkan::specializeVulkanGraph(
-                    {path.code.logical(),
-                     state.device,
-                     state.queues,
-                     path.commands,
-                     true,
-                     path.code.targetExtent(),
-                     extra},
-                    path.code
+                auto program = vulkan::NativeShaderProgram::create(
+                    impl_->device,
+                    *logical,
+                    input.pass,
+                    input.shader,
+                    input.schema,
+                    assignments,
+                    input.bindings.owners,
+                    input.pipeline
                 );
-                if (!refined)
+                if (!program)
                 {
-                    return cxx::unexpected(refined.error());
+                    return cxx::unexpected(program.error());
                 }
-                for (const auto resource : refined->logical().imports())
-                {
-                    auto count = refined->resourceStateCount(resource);
-                    if (!count)
-                    {
-                        return cxx::unexpected(count.error());
-                    }
-                    if (*count > state.capacity.native_state_ranges)
-                    {
-                        return cxx::unexpected(RenderError{vulkan::kCapacity});
-                    }
-                }
-                candidates[p] = std::move(*refined);
+                programs.push_back(std::move(*program));
             }
-            for (std::size_t p = 0; p < candidates.size(); ++p)
-            {
-                if (candidates[p])
-                {
-                    state.paths[p].code = std::move(*candidates[p]);
-                    ++state.progress.native_compilations;
-                }
-            }
-        }
-        detail::RuntimeSceneState scene;
-        for (std::uint32_t path = 0; path < state.paths.size(); ++path)
-        {
-            const auto& source = state.paths[path];
-            for (const auto id : source.code.logical().executionOrder())
-            {
-                if (source.code.logical().identity().passes[id.value() - 1].scope == EExecutionScope::SCENE)
-                {
-                    scene.passes.push_back({RuntimePathId{path + 1}, id, source.initial_values.passes[id.value() - 1]});
-                }
-            }
-        }
-        return RuntimeScene{state.owner, state.scenes.insert(std::move(scene))};
-    }
-
-    RenderResult<RuntimeTarget> VulkanBackend::addOffscreenTarget(std::uint32_t width, std::uint32_t height) noexcept
-    {
-        auto& state = *backing_;
-        if (width == 0 || height == 0)
-        {
-            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-        }
-        if (state.targets.size() == state.capacity.targets)
-        {
-            return cxx::unexpected(RenderError{vulkan::kCapacity});
-        }
-        return RuntimeTarget{state.owner, state.targets.emplace(detail::RuntimeTargetState{width, height})};
-    }
-
-    RenderResult<RuntimeTarget> VulkanBackend::addWindowTarget(
-        void* instance,
-        void* window,
-        std::uint32_t width,
-        std::uint32_t height
-    ) noexcept
-    {
-        auto& state = *backing_;
-        if (state.targets.size() == state.capacity.targets)
-        {
-            return cxx::unexpected(RenderError{vulkan::kCapacity});
-        }
-        auto presentation = detail::PresentationTarget::create(
-            state.device,
-            state.allocator,
-            *state.queues[0],
-            instance,
-            window,
-            {width, height},
-            state.capacity.frames_in_flight
-        );
-        if (!presentation)
-        {
-            return cxx::unexpected(presentation.error());
-        }
-        const auto extent = (*presentation)->extent();
-        return RuntimeTarget{
-            state.owner,
-            state.targets.emplace(detail::RuntimeTargetState{extent.width, extent.height, 1, std::move(*presentation)})
-        };
-    }
-
-    RenderResult<RuntimeView> VulkanBackend::addView(
-        RuntimeScene scene,
-        RuntimeTarget target,
-        RuntimePath path,
-        GraphInvocationData values,
-        std::span<const vulkan::NativeImportBinding> history,
-        RuntimeOutputPlacement placement
-    ) noexcept
-    {
-        auto& state = *backing_;
-        const bool wrong_owner = scene.owner != state.owner || target.owner != state.owner || path.owner != state.owner;
-        if (wrong_owner)
-        {
-            return cxx::unexpected(RenderError{vulkan::kWrongOwner});
-        }
-        const auto* output = state.targets.find(target.local);
-        const bool invalid = !state.scenes.find(scene.local) || !output || !path.local.isValid() ||
-                             path.local.value() > state.paths.size();
-        if (invalid)
-        {
-            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-        }
-        if (output->presentation && !state.paths[path.local.value() - 1].output)
-        {
-            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-        }
-        if (placement.rectangle)
-        {
-            const auto rect = *placement.rectangle;
-            const bool invalid_rect = rect.x > output->width || rect.y > output->height || rect.width == 0 ||
-                                      rect.height == 0 || rect.width > output->width - rect.x ||
-                                      rect.height > output->height - rect.y;
-            if (invalid_rect)
-            {
-                return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-            }
-        }
-        if (output->presentation)
-        {
-            const auto& resource = state.paths[path.local.value() - 1]
-                                       .code.logical()
-                                       .identity()
-                                       .resources[state.paths[path.local.value() - 1].output->value() - 1];
-            auto supported =
-                output->presentation->validateSource(vulkan::nativeTextureFormat(resource.texture().format));
-            if (!supported)
-            {
-                return cxx::unexpected(supported.error());
-            }
-        }
-        if (state.views.size() == state.capacity.views)
-        {
-            return cxx::unexpected(RenderError{vulkan::kCapacity});
-        }
-        auto variant = detail::findRuntimeVariant(state, path.local, {output->width, output->height});
-        if (!variant)
-        {
-            return cxx::unexpected(variant.error());
-        }
-        auto imports = state.variants[*variant]->targets[0].imports;
-        // History identity belongs to this View; native backing remains in the
-        // single Backend owner tree. This is cold assembly, not a DataStorage API.
-        const auto& logical = state.paths[path.local.value() - 1].code.logical();
-        const auto history_count = std::count_if(
-            logical.imports().begin(),
-            logical.imports().end(),
-            [&](auto id)
-            {
-                const auto& resource = logical.identity().resources[id.value() - 1];
-                return resource.import_contract && resource.import_contract->temporal_history;
-            }
-        );
-        if (history.size() != history_count)
-        {
-            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-        }
-        std::vector<std::uint32_t> history_assets;
-        for (const auto& input : history)
-        {
-            auto found = std::find_if(
-                imports.begin(),
-                imports.end(),
-                [&](const auto& value) { return value.resource == input.resource; }
+            auto code = vulkan::compileVulkanGraph(
+                {*logical, impl_->device, impl_->queues, source.commands, true, {source.width, source.height}},
+                std::move(programs)
             );
-            if (found == imports.end())
+            if (!code)
             {
-                return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+                return cxx::unexpected(code.error());
             }
-            const auto& declaration = logical.identity().resources[input.resource.value() - 1];
-            const auto index = detail::runtimeAssetIndex(state, input);
-            const bool invalid_history = declaration.persistent_scope != EPersistentScope::VIEW ||
-                                         !declaration.import_contract ||
-                                         !declaration.import_contract->temporal_history || index == UINT32_MAX ||
-                                         !input.ranges.empty() || !input.views.empty();
-            if (invalid_history)
-            {
-                return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-            }
-            const bool already_bound = std::any_of(
-                state.views.begin(),
-                state.views.end(),
-                [&](const auto& view)
-                {
-                    return std::find(view.import_assets.begin(), view.import_assets.end(), index) !=
-                           view.import_assets.end();
-                }
-            );
-            const bool duplicate =
-                std::find(history_assets.begin(), history_assets.end(), index) != history_assets.end();
-            if (already_bound || duplicate)
-            {
-                return cxx::unexpected(RenderError{vulkan::kWrongOwner});
-            }
-            history_assets.push_back(index);
-            *found = input;
+            graph_id = impl_->graphs.emplace(CompiledGraphEntry{
+                {},
+                std::move(*code),
+                std::move(source.commands),
+                std::move(binding_inputs),
+                source.width,
+                source.height
+            });
+            impl_->graphs.find(graph_id)->id = graph_id;
+            ++impl_->progress.native_compilations;
         }
-        std::vector<std::uint32_t> assets;
-        for (const auto& input : imports)
-        {
-            assets.push_back(detail::runtimeAssetIndex(state, input));
-        }
-        std::vector<GraphImportBinding> logical_imports;
-        for (const auto& input : imports)
-        {
-            logical_imports.push_back({input.resource, input.identity, 0, 1, output->epoch});
-        }
-        values.scene = (std::uint64_t{scene.local.gen} << 32) | (std::uint64_t{scene.local.index} + 1);
-        values.scene_revision = state.scenes.find(scene.local)->revision;
-        values.target = (std::uint64_t{target.local.gen} << 32) | (std::uint64_t{target.local.index} + 1);
-        values.history_epoch = output->epoch;
-        values.view = 1; // The local key is installed atomically with the completed View below.
-        auto validated =
-            FrameGraphBindings::create(state.variants[*variant]->code.logical(), {}, logical_imports, values);
-        if (!validated)
-        {
-            return cxx::unexpected(validated.error());
-        }
-        auto first = detail::acquireRuntimeSlots(state, *variant);
-        if (!first)
-        {
-            return cxx::unexpected(first.error());
-        }
-        const auto key = state.views.emplace(detail::RuntimeViewState{
-            {},
-            scene.local,
-            target.local,
-            path.local,
-            *variant,
-            *first,
-            std::move(values),
-            std::move(logical_imports),
-            std::move(imports),
-            std::move(assets),
-            std::vector<std::optional<vulkan::GraphSubmission>>(state.capacity.frames_in_flight)
-        });
-        auto& view = *state.views.find(key);
-        view.identity = key;
-        view.values.view = (std::uint64_t{key.gen} << 32) | (std::uint64_t{key.index} + 1);
-        auto* target_state = state.targets.find(target.local);
-        target_state->layers.push_back({key, placement});
-        std::sort(
-            target_state->layers.begin(),
-            target_state->layers.end(),
-            [](const auto& a, const auto& b)
-            {
-                return a.placement.layer != b.placement.layer ? a.placement.layer < b.placement.layer
-                                                              : a.view.index < b.view.index;
-            }
-        );
-        return RuntimeView{state.owner, key};
+        auto values = makeGraphInvocationData(source.definition);
+        const auto effect_id =
+            impl_->effects.emplace(RenderEffect{std::move(source.definition), std::move(values), graph_id});
+        return RuntimeEffect{impl_->channel->owner, effect_id};
     }
 
-    RenderResult<void> VulkanBackend::reuseOutput(
-        RuntimeView view,
-        RuntimeTarget target,
-        RuntimeOutputPlacement placement
-    ) noexcept
+    RenderResult<std::unique_ptr<RenderRuntime>> RenderBackend::start() noexcept
     {
-        auto& state = *backing_;
-        if (view.owner != state.owner || target.owner != state.owner)
+        auto permitted = assemblyDevice();
+        if (!permitted)
         {
-            return cxx::unexpected(RenderError{vulkan::kWrongOwner});
+            return cxx::unexpected(permitted.error());
         }
-        const auto* source = state.views.find(view.local);
-        auto* destination = state.targets.find(target.local);
-        if (!source || !destination || !destination->presentation)
+        if (impl_->channel->stopping.load(std::memory_order_acquire))
         {
-            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+            return cxx::unexpected(RenderError{kTransportStopping});
         }
-        const auto& path = state.paths[source->path.value() - 1];
-        if (!path.output)
-        {
-            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-        }
-        const auto& resource = path.code.logical().identity().resources[path.output->value() - 1];
-        auto format = destination->presentation->validateSource(vulkan::nativeTextureFormat(resource.texture().format));
-        if (!format)
-        {
-            return format;
-        }
-        if (placement.rectangle)
-        {
-            const auto rect = *placement.rectangle;
-            const bool invalid = rect.x > destination->width || rect.y > destination->height || rect.width == 0 ||
-                                 rect.height == 0 || rect.width > destination->width - rect.x ||
-                                 rect.height > destination->height - rect.y;
-            if (invalid)
+        impl_->worker = CreateThread(
+            nullptr,
+            0,
+            [](void* value) -> DWORD
             {
-                return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
-            }
-        }
-        const bool duplicate = std::any_of(
-            destination->layers.begin(),
-            destination->layers.end(),
-            [&](const auto& layer) { return layer.view == view.local; }
+                static_cast<Impl*>(value)->run();
+                return 0;
+            },
+            impl_.get(),
+            0,
+            nullptr
         );
-        if (duplicate)
+        if (!impl_->worker)
         {
-            return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
+            return cxx::unexpected(RenderError{kHostFailure, {GetLastError()}});
         }
-        destination->layers.push_back({view.local, placement});
-        std::sort(
-            destination->layers.begin(),
-            destination->layers.end(),
-            [](const auto& a, const auto& b)
-            {
-                return a.placement.layer != b.placement.layer ? a.placement.layer < b.placement.layer
-                                                              : a.view.index < b.view.index;
-            }
-        );
+        impl_->started = true;
+        return std::unique_ptr<RenderRuntime>{new RenderRuntime(impl_->channel)};
+    }
+
+    RenderResult<void> RenderBackend::removeEffect(RuntimeEffect effect) noexcept
+    {
+        auto permitted = assemblyDevice();
+        if (!permitted)
+        {
+            return cxx::unexpected(permitted.error());
+        }
+        RuntimeControl request;
+        request.owner = effect.owner;
+        request.index = effect.local.index;
+        request.generation = effect.local.gen;
+        request.operation = ERuntimeControl::REMOVE_EFFECT;
+        auto result = impl_->control(request);
+        if (!result)
+        {
+            return cxx::unexpected(result.error());
+        }
         return {};
+    }
+
+    void RenderBackend::requestStop() noexcept
+    {
+        impl_->channel->stop();
+    }
+
+    RenderResult<bool> RenderBackend::waitStopped(std::uint32_t timeout_ms) noexcept
+    {
+        if (!impl_->worker)
+        {
+            return true;
+        }
+        const auto result = WaitForSingleObject(impl_->worker, timeout_ms);
+        if (result == WAIT_FAILED)
+        {
+            return cxx::unexpected(RenderError{kHostFailure, {GetLastError()}});
+        }
+        return result == WAIT_OBJECT_0;
     }
 } // namespace lux::render

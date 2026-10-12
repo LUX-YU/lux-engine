@@ -73,7 +73,7 @@ namespace native_graph_test
             auto frame = checked(
                 FrameGraphBindings::create(executable.plan.logical(), {serial, serial, serial % 2}, imports, invocation)
             );
-            const auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, native));
+            const auto receipt = checked(executeGraph(executable.invocations, frame.frame().frame_slot, frame, native));
             last_receipt = receipt;
             CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
             std::array<std::byte, 80> actual;
@@ -123,11 +123,11 @@ namespace native_graph_test
             checked(FrameGraphBindings::create(consumer_plan.plan.logical(), {}, consumer_bindings, consumer_values));
         consumer_imports[0].ranges = std::span{states}.first(1);
         const auto before_invalid = queue->submitted();
-        CHECK(!consumer_plan.invocations.submit(external_frame.frame().frame_slot, external_frame, consumer_imports));
+        CHECK(!executeGraph(consumer_plan.invocations, external_frame.frame().frame_slot, external_frame, consumer_imports));
         CHECK(queue->submitted() == before_invalid);
         consumer_imports[0].ranges = states;
         const auto external_receipt = checked(
-            consumer_plan.invocations.submit(external_frame.frame().frame_slot, external_frame, consumer_imports)
+            executeGraph(consumer_plan.invocations, external_frame.frame().frame_slot, external_frame, consumer_imports)
         );
         const auto extended =
             checked(executable.invocations.retainExternalUse(*last_receipt, external_receipt.completion));

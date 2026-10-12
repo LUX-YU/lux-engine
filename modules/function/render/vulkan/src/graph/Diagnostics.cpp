@@ -30,7 +30,7 @@ namespace lux::render::vulkan
         }
     } // namespace
 
-    std::size_t NativeGraphInvocations::traceCapacity() const noexcept
+    std::size_t GraphExecutionContext::traceCapacity() const noexcept
     {
         std::size_t result = 0;
         for (const auto& recipe : backing_->code->recipes)
@@ -66,7 +66,7 @@ namespace lux::render::vulkan
         return output.str();
     }
 
-    std::string NativeGraphInvocations::diagnostics() const noexcept
+    std::string GraphExecutionContext::diagnostics() const noexcept
     {
         std::ostringstream output;
         output << "{\"queues\":[";

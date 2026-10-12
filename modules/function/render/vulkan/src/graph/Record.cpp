@@ -261,41 +261,41 @@ namespace lux::render::vulkan
         }
     } // namespace
 
-    ExecutableGraphPlan::ExecutableGraphPlan(std::shared_ptr<const detail::NativeGraphCode> code) noexcept
+    Graph::Graph(std::shared_ptr<const detail::NativeGraphCode> code) noexcept
         : code_(std::move(code))
     {
     }
 
-    ExecutableGraphPlan::~ExecutableGraphPlan() noexcept = default;
-    ExecutableGraphPlan::ExecutableGraphPlan(ExecutableGraphPlan&&) noexcept = default;
-    ExecutableGraphPlan& ExecutableGraphPlan::operator=(ExecutableGraphPlan&&) noexcept = default;
+    Graph::~Graph() noexcept = default;
+    Graph::Graph(Graph&&) noexcept = default;
+    Graph& Graph::operator=(Graph&&) noexcept = default;
 
-    const LogicalGraphPlan& ExecutableGraphPlan::logical() const noexcept
+    const LogicalGraphPlan& Graph::logical() const noexcept
     {
         return code_->logical;
     }
 
-    VkDevice ExecutableGraphPlan::device() const noexcept
+    VkDevice Graph::device() const noexcept
     {
         return code_->device;
     }
 
-    VkExtent2D ExecutableGraphPlan::targetExtent() const noexcept
+    VkExtent2D Graph::targetExtent() const noexcept
     {
         return code_->target_extent;
     }
 
-    std::span<const NativeShaderProgram> ExecutableGraphPlan::shaderPrograms() const noexcept
+    std::span<const NativeShaderProgram> Graph::shaderPrograms() const noexcept
     {
         return code_->programs;
     }
 
-    NativeGraphStatistics ExecutableGraphPlan::statistics() const noexcept
+    NativeGraphStatistics Graph::statistics() const noexcept
     {
         return code_->statistics;
     }
 
-    std::span<const NativeViewRequirement> ExecutableGraphPlan::importViews(GraphResourceId resource) const noexcept
+    std::span<const NativeViewRequirement> Graph::importViews(GraphResourceId resource) const noexcept
     {
         if (!resource.isValid() || resource.value() > code_->import_views.size())
         {
@@ -304,26 +304,26 @@ namespace lux::render::vulkan
         return code_->import_views[resource.value() - 1];
     }
 
-    NativeGraphInvocations::NativeGraphInvocations(std::unique_ptr<detail::NativeGraphBacking> backing) noexcept
+    GraphExecutionContext::GraphExecutionContext(std::unique_ptr<detail::NativeGraphBacking> backing) noexcept
         : backing_(std::move(backing))
     {
     }
 
-    NativeGraphInvocations::~NativeGraphInvocations() noexcept = default;
-    NativeGraphInvocations::NativeGraphInvocations(NativeGraphInvocations&&) noexcept = default;
-    NativeGraphInvocations& NativeGraphInvocations::operator=(NativeGraphInvocations&&) noexcept = default;
+    GraphExecutionContext::~GraphExecutionContext() noexcept = default;
+    GraphExecutionContext::GraphExecutionContext(GraphExecutionContext&&) noexcept = default;
+    GraphExecutionContext& GraphExecutionContext::operator=(GraphExecutionContext&&) noexcept = default;
 
-    const LogicalGraphPlan& NativeGraphInvocations::logical() const noexcept
+    const LogicalGraphPlan& GraphExecutionContext::logical() const noexcept
     {
         return backing_->code->logical;
     }
 
-    VkDevice NativeGraphInvocations::device() const noexcept
+    VkDevice GraphExecutionContext::device() const noexcept
     {
         return backing_->code->device;
     }
 
-    RenderResult<std::optional<SubmissionTicket>> NativeGraphInvocations::lastUse() const noexcept
+    RenderResult<std::optional<SubmissionTicket>> GraphExecutionContext::lastUse() const noexcept
     {
         if (backing_->terminal)
         {
@@ -341,12 +341,12 @@ namespace lux::render::vulkan
         return result;
     }
 
-    NativeGraphStatistics NativeGraphInvocations::statistics() const noexcept
+    NativeGraphStatistics GraphExecutionContext::statistics() const noexcept
     {
         return backing_->statistics;
     }
 
-    std::span<const NativeViewRequirement> NativeGraphInvocations::importViews(GraphResourceId resource) const noexcept
+    std::span<const NativeViewRequirement> GraphExecutionContext::importViews(GraphResourceId resource) const noexcept
     {
         if (!resource.isValid() || resource.value() > backing_->code->import_views.size())
         {
@@ -355,12 +355,12 @@ namespace lux::render::vulkan
         return backing_->code->import_views[resource.value() - 1];
     }
 
-    std::array<std::uint32_t, 3> NativeGraphInvocations::submissionBudget() const noexcept
+    std::array<std::uint32_t, 3> GraphExecutionContext::submissionBudget() const noexcept
     {
         return backing_->code->admission;
     }
 
-    RenderResult<bool> NativeGraphInvocations::slotReady(std::uint32_t invocation_slot) noexcept
+    RenderResult<bool> GraphExecutionContext::slotReady(std::uint32_t invocation_slot) noexcept
     {
         auto& plan = *backing_;
         if (plan.terminal)
@@ -394,7 +394,8 @@ namespace lux::render::vulkan
         return true;
     }
 
-    RenderResult<GraphSubmission> NativeGraphInvocations::submit(
+    RenderResult<GraphSubmission> executeGraph(
+        GraphExecutionContext& context,
         std::uint32_t invocation_slot,
         const FrameGraphBindings& bindings,
         std::span<const NativeImportBinding> imports,
@@ -402,7 +403,7 @@ namespace lux::render::vulkan
         std::optional<GraphSubmission> scene_source
     ) noexcept
     {
-        auto& plan = *backing_;
+        auto& plan = *context.backing_;
         if (plan.terminal)
         {
             return cxx::unexpected(*plan.terminal);
@@ -414,7 +415,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        if (!trace.empty() && trace.size() < traceCapacity())
+        if (!trace.empty() && trace.size() < context.traceCapacity())
         {
             return cxx::unexpected(RenderError{kCapacity});
         }
@@ -906,7 +907,7 @@ namespace lux::render::vulkan
         return GraphSubmission{*last, invocation_slot, trace_count};
     }
 
-    RenderResult<bool> NativeGraphInvocations::completed(GraphSubmission receipt) noexcept
+    RenderResult<bool> GraphExecutionContext::completed(GraphSubmission receipt) noexcept
     {
         if (receipt.slot >= backing_->slots.size())
         {
@@ -935,7 +936,7 @@ namespace lux::render::vulkan
         return done;
     }
 
-    RenderResult<void> NativeGraphInvocations::readback(
+    RenderResult<void> GraphExecutionContext::readback(
         GraphSubmission receipt,
         GraphResourceId resource,
         VkDeviceSize offset,
@@ -986,7 +987,7 @@ namespace lux::render::vulkan
         return buffer->read(offset + base, destination);
     }
 
-    RenderResult<void> NativeGraphInvocations::readbackPass(
+    RenderResult<void> GraphExecutionContext::readbackPass(
         GraphSubmission receipt,
         GraphPassId pass,
         std::uint32_t input,

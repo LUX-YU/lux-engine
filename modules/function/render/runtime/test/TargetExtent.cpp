@@ -48,15 +48,15 @@ int main(int argc, char** argv)
             NativePassCommand{graphics, DrawCommand{}, EQueueRole::GRAPHICS},
             NativePassCommand{transfer, CopyCommand{}, EQueueRole::GRAPHICS}
         };
-        std::optional<ExecutableGraphPlan> first{checked(compileVulkanGraph(
+        std::optional<Graph> first{checked(compileVulkanGraph(
             {logical, device, {queue.get(), queue.get(), queue.get()}, commands, true, {4, 4}},
             std::move(programs)
         ))};
         const std::array samplers{std::pair{GraphSampler{1}, std::cref(sampler)}};
-        auto old = checked(NativeGraphInvocations::create(*first, {device, allocator, {}, values, samplers, 2}));
+        auto old = checked(GraphExecutionContext::create(*first, {device, allocator, {}, values, samplers, 2}));
         std::array<GraphImportBinding, 0> imports;
         const auto old_bindings = checked(FrameGraphBindings::create(old.logical(), {1, 0, 0}, imports, values));
-        const auto old_receipt = checked(old.submit(0, old_bindings, {}));
+        const auto old_receipt = checked(executeGraph(old, 0, old_bindings, {}));
         const auto zero = specializeVulkanGraph(
             {logical, device, {queue.get(), queue.get(), queue.get()}, commands, true, {0, 0}},
             *first
@@ -69,13 +69,13 @@ int main(int argc, char** argv)
         ));
         CHECK(resized.shaderPrograms().data() == first->shaderPrograms().data());
         CHECK(resized.targetExtent().width == 6 && resized.targetExtent().height == 3);
-        auto current = checked(NativeGraphInvocations::create(resized, {device, allocator, {}, values, samplers, 3}));
+        auto current = checked(GraphExecutionContext::create(resized, {device, allocator, {}, values, samplers, 3}));
         first.reset(); // Both the old in-flight invocation and the new code retain the same native programs.
         const auto new_bindings = checked(FrameGraphBindings::create(current.logical(), {2, 0, 0}, imports, values));
-        const auto receipt = checked(current.submit(0, new_bindings, {}));
+        const auto receipt = checked(executeGraph(current, 0, new_bindings, {}));
         CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
         const auto verify =
-            [&](NativeGraphInvocations& invocations, GraphSubmission completion, unsigned width, unsigned height)
+            [&](GraphExecutionContext& invocations, GraphSubmission completion, unsigned width, unsigned height)
         {
             std::vector<float> pixels(width * height * 4);
             CHECK(invocations.readbackPass(completion, transfer, 0, 0, std::as_writable_bytes(std::span{pixels})));

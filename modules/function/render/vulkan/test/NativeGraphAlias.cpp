@@ -115,7 +115,7 @@ namespace native_graph_test
         {
             auto frame =
                 checked(FrameGraphBindings::create(executable.plan.logical(), {slot, slot, slot}, imports, invocation));
-            receipts[slot] = checked(executable.invocations.submit(frame.frame().frame_slot, frame, {}));
+            receipts[slot] = checked(executeGraph(executable.invocations, frame.frame().frame_slot, frame, {}));
         }
         CHECK(checked(queue->wait(receipts[2]->completion, UINT64_MAX)));
         for (const auto& receipt : receipts)

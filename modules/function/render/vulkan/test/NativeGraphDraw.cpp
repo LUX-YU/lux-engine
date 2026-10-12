@@ -353,14 +353,14 @@ void drawCase(
         {
             imports[0].dynamic_offset = 2;
             auto invalid_frame = checked(FrameGraphBindings::create(plan.plan.logical(), {}, imports, invocation));
-            auto bad = plan.invocations.submit(invalid_frame.frame().frame_slot, invalid_frame, native);
+            auto bad = executeGraph(plan.invocations, invalid_frame.frame().frame_slot, invalid_frame, native);
             CHECK(!bad && bad.error().type == kInvalidArgument);
             imports[0].dynamic_offset = 0;
             auto frame = checked(FrameGraphBindings::create(plan.plan.logical(), {}, imports, invocation));
             auto wrong_usage =
                 checked(Buffer::create(allocator, 64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD));
             native[0].backing = std::cref(wrong_usage);
-            bad = plan.invocations.submit(frame.frame().frame_slot, frame, native);
+            bad = executeGraph(plan.invocations, frame.frame().frame_slot, frame, native);
             CHECK(!bad && bad.error().type == kInvalidArgument);
             native[0].backing = std::cref(vertices);
             std::puts("REJECT invocation-offset native-vertex-usage");
@@ -381,7 +381,7 @@ void drawCase(
                 measuring = true;
             }
             const auto begin = std::chrono::steady_clock::now();
-            auto submitted = plan.invocations.submit(frame.frame().frame_slot, frame, native, trace);
+            auto submitted = executeGraph(plan.invocations, frame.frame().frame_slot, frame, native, trace);
             const auto ns =
                 std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now() - begin).count();
             measuring = false;

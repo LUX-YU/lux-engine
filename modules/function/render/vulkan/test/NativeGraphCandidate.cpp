@@ -197,11 +197,11 @@ int main(int argc, char** argv)
             auto frame =
                 checked(FrameGraphBindings::create(active->plan.logical(), {slot, slot, slot}, imports, values));
             const auto created_before = creations;
-            receipts[slot] = checked(active->invocations.submit(frame.frame().frame_slot, frame, {}));
+            receipts[slot] = checked(executeGraph(active->invocations, frame.frame().frame_slot, frame, {}));
             CHECK(creations == created_before);
         }
         auto busy_frame = checked(FrameGraphBindings::create(active->plan.logical(), {2, 2, 0}, imports, values));
-        auto busy = active->invocations.submit(busy_frame.frame().frame_slot, busy_frame, {});
+        auto busy = executeGraph(active->invocations, busy_frame.frame().frame_slot, busy_frame, {});
         CHECK(!busy && busy.error().type == kBusy);
         auto replacement = std::make_unique<NativeGraphFixture>(checked(compileFixture(inputs, shaders())));
         auto retirement = checked(RetirementQueue::create(*queue, 1));
@@ -221,18 +221,18 @@ int main(int argc, char** argv)
         CHECK(checked(retirement.collect()) == 1 && retirement.pending() == 0);
         active = std::move(replacement);
         auto frame = checked(FrameGraphBindings::create(active->plan.logical(), {}, imports, values));
-        auto receipt = checked(active->invocations.submit(frame.frame().frame_slot, frame, {}));
+        auto receipt = checked(executeGraph(active->invocations, frame.frame().frame_slot, frame, {}));
         CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
         CHECK(active->invocations.readbackPass(receipt, copy, 0, 0, std::as_writable_bytes(std::span{pixels})));
 
         // Driver failure is injected only after real outstanding GPU work has
         // completed; this cannot use a simulated loss to hide live native work.
         device_lost = true;
-        auto failed = active->invocations.submit(frame.frame().frame_slot, frame, {});
+        auto failed = executeGraph(active->invocations, frame.frame().frame_slot, frame, {});
         CHECK(!failed && failed.error().type == kNativeFailure);
         CHECK(failed.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST));
         CHECK(!active->invocations.lastUse());
-        CHECK(!active->invocations.submit(frame.frame().frame_slot, frame, {}));
+        CHECK(!executeGraph(active->invocations, frame.frame().frame_slot, frame, {}));
         std::printf(
             "GRAPH_FAULTS failures=%u last_good=PASS FIF=2 retirement_capacity=PASS device_lost_terminal=PASS "
             "hot_native_creations=0\n",

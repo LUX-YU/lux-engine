@@ -3,7 +3,7 @@ add_component(
     COMPONENT_NAME render_runtime
     NAMESPACE lux::engine::render
     OUTPUT_NAME lux_engine_render_runtime
-    SOURCE_FILES src/Backend.cpp src/Frame.cpp src/Runtime.cpp src/Presentation.cpp
+    SOURCE_FILES src/Backend.cpp src/Runtime.cpp src/Presentation.cpp
 )
 
 component_include_directories(
@@ -15,7 +15,7 @@ component_include_directories(
 
 target_link_libraries(render_runtime
     PUBLIC lux::engine::render::render_core lux::engine::render::render_transport render_graph
-    PRIVATE render_vulkan_graph
+    PRIVATE render_vulkan_shader_compiler
 )
 
 target_compile_features(render_runtime PUBLIC cxx_std_20)
@@ -47,4 +47,3 @@ lux_codegen_add_projection(
 )
 
 lux_target_add_codegen(TARGET render_runtime JOB render_runtime_operations)
-

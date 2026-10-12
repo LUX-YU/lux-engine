@@ -1,13 +1,16 @@
 #pragma once
 
-#include <lux/engine/render/graph/Definition.hpp>
 #include <lux/engine/render/runtime/RuntimeMessages.ops.hpp>
 #include <lux/engine/render/runtime/Types.hpp>
 #include <lux/engine/render/transport/Transport.hpp>
 
 namespace lux::render
 {
-    class RenderRuntimeBuilder;
+    namespace detail
+    {
+        struct RuntimeChannel;
+    }
+    class RenderBackend;
 
     enum class ERuntimeState
     {
@@ -21,11 +24,8 @@ namespace lux::render
     {
         RenderTransportCapacity transport;
         std::uint64_t frame_interval_ns{16'666'667};
-        std::uint32_t diagnostics{64};
     };
 
-    // One reception obligation, no per-request heap state. Destruction abandons
-    // unread completion capacity. The R2 arena remains safe after Runtime death.
     class RuntimeRequest
     {
     public:
@@ -44,43 +44,26 @@ namespace lux::render
         std::optional<RenderReplyTicket<RuntimeReply>> ticket_;
     };
 
+    // Client owns only protocol packets and an endpoint lease, never Native state or Server.
     class RenderRuntime
     {
     public:
         ~RenderRuntime() noexcept;
         RenderRuntime(const RenderRuntime&) = delete;
         RenderRuntime& operator=(const RenderRuntime&) = delete;
-
-        // Owner-thread PROGRAM. A capacity rejection retains the immutable
-        // candidate; retryPublication() admits that exact candidate before a
-        // later publication can be accepted. Simulation never waits for a frame.
-        [[nodiscard]] RenderResult<void> publishScenePass(
+        [[nodiscard]] RenderResult<RuntimeRequest> createScene() noexcept;
+        [[nodiscard]] RenderResult<RuntimeRequest> createTarget(std::uint32_t width, std::uint32_t height) noexcept;
+        [[nodiscard]] RenderResult<RuntimeRequest> createView(
             RuntimeScene scene,
-            RuntimePath path,
-            GraphPassId pass,
-            std::uint64_t revision,
-            std::span<const std::byte> scalars
-        ) noexcept;
-        [[nodiscard]] RenderResult<void> publishViewPass(
-            RuntimeView view,
-            GraphPassId pass,
-            std::uint64_t revision,
-            const std::array<float, 16>& camera,
-            std::span<const std::byte> scalars
-        ) noexcept;
-        [[nodiscard]] RenderResult<void> retryPublication() noexcept;
-
-        [[nodiscard]] RenderResult<RuntimeRequest> resize(
             RuntimeTarget target,
-            std::uint32_t width,
-            std::uint32_t height
+            RuntimeEffect effect
         ) noexcept;
-        [[nodiscard]] RenderResult<RuntimeRequest> setActive(RuntimeView view, bool active) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> remove(RuntimeView view) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> remove(RuntimeScene scene) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> remove(RuntimeTarget target) noexcept;
-        [[nodiscard]] RenderResult<RuntimeRequest> setPath(RuntimeView view, RuntimePath path) noexcept;
-        // Explicit cold diagnostic request. Completion returns at most 224 owned bytes.
+        [[nodiscard]] RenderResult<RuntimeRequest> remove(RuntimeEffect effect) noexcept;
+        [[nodiscard]] RenderResult<RuntimeRequest> graph(RuntimeView view) noexcept;
+        [[nodiscard]] RenderResult<RuntimeRequest> setActive(RuntimeView view, bool active) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> readback(
             RuntimeView view,
             GraphPassId pass,
@@ -88,26 +71,33 @@ namespace lux::render
             std::uint64_t offset,
             std::uint32_t bytes
         ) noexcept;
+        [[nodiscard]] RenderResult<void> publishViewPass(
+            RuntimeView view,
+            GraphPassId pass,
+            std::uint64_t revision,
+            std::span<const std::byte> scalars
+        ) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> readbackTarget(
             RuntimeTarget target,
             std::uint64_t offset,
             std::uint32_t bytes
         ) noexcept;
-
+        [[nodiscard]] RenderResult<void> retryPublication() noexcept;
         void requestStop() noexcept;
         [[nodiscard]] ERuntimeState state() const noexcept;
-        [[nodiscard]] RenderResult<bool> waitStopped(std::uint32_t timeout_ms) noexcept;
         [[nodiscard]] RuntimeProgress progress() const noexcept;
         [[nodiscard]] std::optional<RenderError> terminalError() const noexcept;
         [[nodiscard]] std::optional<RenderError> pollDiagnostic() noexcept;
-        [[nodiscard]] std::uint64_t droppedDiagnostics() const noexcept;
+        [[nodiscard]] std::uint64_t ownerIdentity() const noexcept;
 
     private:
-        friend class RenderRuntimeBuilder;
-        struct Impl;
-        explicit RenderRuntime(std::unique_ptr<Impl> implementation) noexcept;
+        friend class RenderBackend;
+        explicit RenderRuntime(std::shared_ptr<detail::RuntimeChannel> channel) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> control(RuntimeControl request) noexcept;
-        [[nodiscard]] RenderResult<RuntimeRequest> readbackRequest(RuntimeReadback request) noexcept;
-        std::unique_ptr<Impl> impl_;
+        std::shared_ptr<detail::RuntimeChannel> channel_;
+        RenderProgramPacket program_;
+        RenderControlPacket controls_;
+        bool retained_program_{};
+        std::uint64_t owner_thread_;
     };
 } // namespace lux::render

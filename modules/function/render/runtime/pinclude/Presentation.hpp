@@ -5,7 +5,7 @@ namespace lux::render::detail
 {
     struct PresentationLayer
     {
-        vulkan::NativeGraphInvocations* invocations;
+        vulkan::GraphExecutionContext* invocations;
         vulkan::GraphSubmission receipt;
         GraphResourceId output;
         VkRect2D rectangle;

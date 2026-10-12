@@ -57,8 +57,8 @@ void invocationCase(const std::filesystem::path& shaders, Validation& validation
     );
     const std::array samplers{std::pair{GraphSampler{1}, std::cref(sampler)}};
     const unsigned capacity = 4 * frames;
-    auto invocations = checked(NativeGraphInvocations::create(plan, {device, allocator, {}, initial, samplers, 1}));
-    auto other = checked(NativeGraphInvocations::create(plan, {device, allocator, {}, initial, samplers, 1}));
+    auto invocations = checked(GraphExecutionContext::create(plan, {device, allocator, {}, initial, samplers, 1}));
+    auto other = checked(GraphExecutionContext::create(plan, {device, allocator, {}, initial, samplers, 1}));
     CHECK(&invocations.logical() == &plan.logical() && &other.logical() == &plan.logical());
     CHECK(!invocations.append({device, allocator, {}, initial, samplers, 0}));
     CHECK(!invocations.append({device, allocator, {}, initial, {}, 1}));
@@ -104,7 +104,7 @@ void invocationCase(const std::filesystem::path& shaders, Validation& validation
                     values[view]
                 ));
                 const auto source = sharing && view != 0 ? receipts[frame * 4] : std::optional<GraphSubmission>{};
-                receipts[slot] = checked(invocations.submit(slot, bindings, {}, trace, source));
+                receipts[slot] = checked(executeGraph(invocations, slot, bindings, {}, trace, source));
                 unsigned executed = 0, reused = 0;
                 for (unsigned t = 0; t < receipts[slot]->trace_count; ++t)
                 {
@@ -152,16 +152,16 @@ void invocationCase(const std::filesystem::path& shaders, Validation& validation
     {
         const auto frame = GraphFrameValues{1000, 0, 0};
         const auto first = checked(FrameGraphBindings::create(plan.logical(), frame, imports, values[0]));
-        const auto donor = checked(invocations.submit(0, first, {}));
+        const auto donor = checked(executeGraph(invocations, 0, first, {}));
         ++values[1].scene_revision;
         const auto changed = checked(FrameGraphBindings::create(plan.logical(), frame, imports, values[1]));
-        const auto refused = invocations.submit(1, changed, {}, {}, donor);
+        const auto refused = executeGraph(invocations, 1, changed, {}, {}, donor);
         CHECK(!refused && refused.error().type == kInvalidArgument);
         --values[1].scene_revision;
         // The donor's accepted snapshot survives host-side source mutation.
         ++values[0].scene_revision;
         const auto compatible = checked(FrameGraphBindings::create(plan.logical(), frame, imports, values[1]));
-        const auto reused = checked(invocations.submit(1, compatible, {}, {}, donor));
+        const auto reused = checked(executeGraph(invocations, 1, compatible, {}, {}, donor));
         CHECK(checked(queue->wait(reused.completion, UINT64_MAX)));
     }
     std::printf(

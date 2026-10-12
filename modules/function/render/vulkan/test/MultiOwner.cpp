@@ -313,7 +313,7 @@ static void run(const std::filesystem::path& shaders, Validation& validation, un
     const auto invocation_start = Clock::now();
     allocation_count = allocation_bytes = 0;
     measuring = true;
-    auto invocations = checked(NativeGraphInvocations::create(plan, {device, allocator, imports, values, {}, 4 * fif}));
+    auto invocations = checked(GraphExecutionContext::create(plan, {device, allocator, imports, values, {}, 4 * fif}));
     measuring = false;
     const auto invocation_us = elapsed(invocation_start);
     const auto cold_allocations = allocation_count.load(), cold_bytes = allocation_bytes.load();
@@ -390,7 +390,7 @@ static void run(const std::filesystem::path& shaders, Validation& validation, un
             );
             const auto submit_start = Clock::now();
             receipts[slot] =
-                checked(invocations.submit(slot, frame, imports, trace, reuse ? donors[scene] : std::nullopt));
+                checked(executeGraph(invocations, slot, frame, imports, trace, reuse ? donors[scene] : std::nullopt));
             if (batch != 0)
             {
                 samples[sample_count++] = elapsed(submit_start);

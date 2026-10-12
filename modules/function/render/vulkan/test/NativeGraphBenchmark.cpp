@@ -157,7 +157,7 @@ int main(int argc, char** argv)
         allocation_count = allocation_bytes = 0;
         measuring = serial >= 10;
         const auto start = Clock::now();
-        auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, {}));
+        auto receipt = checked(executeGraph(executable.invocations, frame.frame().frame_slot, frame, {}));
         const auto ns = std::chrono::duration<double, std::nano>(Clock::now() - start).count();
         measuring = false;
         auto end_batch = checked(queue->begin());

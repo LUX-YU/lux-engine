@@ -98,7 +98,7 @@ namespace native_graph_test
         auto executable = checked(compileFixture(inputs, std::move(programs)));
         std::array<GraphImportBinding, 0> imports;
         auto frame = checked(FrameGraphBindings::create(executable.plan.logical(), {}, imports, invocation));
-        auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, {}));
+        auto receipt = checked(executeGraph(executable.invocations, frame.frame().frame_slot, frame, {}));
         CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
         std::array<float, 64> pixels;
         CHECK(executable.invocations.readback(

@@ -135,7 +135,7 @@ namespace lux::render::vulkan
         return std::shared_ptr<const detail::NativeGraphCode>{std::move(result)};
     }
 
-    RenderResult<ExecutableGraphPlan> compileVulkanGraph(
+    RenderResult<Graph> compileVulkanGraph(
         const NativeCompileInputs& inputs,
         std::vector<NativeShaderProgram> programs
     ) noexcept
@@ -146,12 +146,12 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(code.error());
         }
-        return ExecutableGraphPlan{std::move(*code)};
+        return Graph{std::move(*code)};
     }
 
-    RenderResult<ExecutableGraphPlan> specializeVulkanGraph(
+    RenderResult<Graph> specializeVulkanGraph(
         const NativeCompileInputs& inputs,
-        const ExecutableGraphPlan& shaders
+        const Graph& shaders
     ) noexcept
     {
         auto specialized = inputs;
@@ -164,11 +164,11 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(code.error());
         }
-        return ExecutableGraphPlan{std::move(*code)};
+        return Graph{std::move(*code)};
     }
 
-    RenderResult<NativeGraphInvocations> NativeGraphInvocations::create(
-        const ExecutableGraphPlan& plan,
+    RenderResult<GraphExecutionContext> GraphExecutionContext::create(
+        const Graph& plan,
         const NativeInvocationInputs& inputs
     ) noexcept
     {
@@ -205,10 +205,10 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(assembled.error());
         }
-        return NativeGraphInvocations{std::move(result)};
+        return GraphExecutionContext{std::move(result)};
     }
 
-    RenderResult<std::uint32_t> NativeGraphInvocations::append(const NativeInvocationInputs& inputs) noexcept
+    RenderResult<std::uint32_t> GraphExecutionContext::append(const NativeInvocationInputs& inputs) noexcept
     {
         if (backing_->terminal)
         {
@@ -227,7 +227,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        auto candidate = create(ExecutableGraphPlan{backing_->code}, inputs);
+        auto candidate = create(Graph{backing_->code}, inputs);
         if (!candidate)
         {
             return cxx::unexpected(candidate.error());

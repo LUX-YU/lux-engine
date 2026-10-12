@@ -3,7 +3,7 @@
 
 namespace lux::render::vulkan
 {
-    RenderResult<std::uint32_t> ExecutableGraphPlan::resourceStateCount(GraphResourceId resource) const noexcept
+    RenderResult<std::uint32_t> Graph::resourceStateCount(GraphResourceId resource) const noexcept
     {
         if (!resource.isValid() || resource.value() > code_->resource_usage.size())
         {
@@ -16,7 +16,7 @@ namespace lux::render::vulkan
         ));
     }
 
-    RenderResult<std::uint64_t> ExecutableGraphPlan::resourceUsage(GraphResourceId resource) const noexcept
+    RenderResult<std::uint64_t> Graph::resourceUsage(GraphResourceId resource) const noexcept
     {
         if (!resource.isValid() || resource.value() > code_->resource_usage.size())
         {
@@ -36,7 +36,7 @@ namespace lux::render::vulkan
                current->serial() == receipt.completion.serial();
     }
 
-    RenderResult<VNativeImport> NativeGraphInvocations::exportedBacking(
+    RenderResult<VNativeImport> GraphExecutionContext::exportedBacking(
         GraphSubmission receipt,
         GraphResourceId resource
     ) const noexcept
@@ -67,7 +67,7 @@ namespace lux::render::vulkan
         return cxx::unexpected(RenderError{kInvalidArgument});
     }
 
-    RenderResult<std::uint32_t> NativeGraphInvocations::resourceStates(
+    RenderResult<std::uint32_t> GraphExecutionContext::resourceStates(
         GraphSubmission receipt,
         GraphResourceId resource,
         std::span<NativeRangeState> destination
@@ -108,7 +108,7 @@ namespace lux::render::vulkan
         return written;
     }
 
-    RenderResult<GraphSubmission> NativeGraphInvocations::retainExternalUse(
+    RenderResult<GraphSubmission> GraphExecutionContext::retainExternalUse(
         GraphSubmission receipt,
         SubmissionTicket last_use
     ) noexcept

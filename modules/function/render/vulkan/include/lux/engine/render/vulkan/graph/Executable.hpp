@@ -218,30 +218,30 @@ namespace lux::render::vulkan
 
     [[nodiscard]] std::string nativeTraceJson(std::span<const NativeTraceEvent> trace) noexcept;
 
-    class ExecutableGraphPlan;
-    [[nodiscard]] RenderResult<ExecutableGraphPlan> compileVulkanGraph(
+    class Graph;
+    [[nodiscard]] RenderResult<Graph> compileVulkanGraph(
         const NativeCompileInputs& inputs,
         std::vector<NativeShaderProgram> programs
     ) noexcept;
 
     // Cold physical specialization, retaining the exact immutable Shader/PSO/Layout
     // owners from compatible code. Uses the same compiler and full identity checks.
-    [[nodiscard]] RenderResult<ExecutableGraphPlan> specializeVulkanGraph(
+    [[nodiscard]] RenderResult<Graph> specializeVulkanGraph(
         const NativeCompileInputs& inputs,
-        const ExecutableGraphPlan& shaders
+        const Graph& shaders
     ) noexcept;
 
     // Immutable native code. Invocation owners pin this code once at cold
     // construction; submission does not copy pipelines or churn shared owners.
-    class ExecutableGraphPlan
+    class Graph
     {
     public:
-        ~ExecutableGraphPlan() noexcept;
-        ExecutableGraphPlan(ExecutableGraphPlan&&) noexcept;
-        ExecutableGraphPlan& operator=(ExecutableGraphPlan&&) noexcept;
+        ~Graph() noexcept;
+        Graph(Graph&&) noexcept;
+        Graph& operator=(Graph&&) noexcept;
         // Cold cache handles share immutable code; no native owner is copied.
-        ExecutableGraphPlan(const ExecutableGraphPlan&) noexcept = default;
-        ExecutableGraphPlan& operator=(const ExecutableGraphPlan&) noexcept = default;
+        Graph(const Graph&) noexcept = default;
+        Graph& operator=(const Graph&) noexcept = default;
         [[nodiscard]] const LogicalGraphPlan& logical() const noexcept;
         [[nodiscard]] VkDevice device() const noexcept;
         [[nodiscard]] VkExtent2D targetExtent() const noexcept;
@@ -252,27 +252,27 @@ namespace lux::render::vulkan
         [[nodiscard]] std::span<const NativeViewRequirement> importViews(GraphResourceId resource) const noexcept;
 
     private:
-        friend class NativeGraphInvocations;
-        friend RenderResult<ExecutableGraphPlan>
-        specializeVulkanGraph(const NativeCompileInputs&, const ExecutableGraphPlan&) noexcept;
-        friend RenderResult<ExecutableGraphPlan>
+        friend class GraphExecutionContext;
+        friend RenderResult<Graph>
+        specializeVulkanGraph(const NativeCompileInputs&, const Graph&) noexcept;
+        friend RenderResult<Graph>
         compileVulkanGraph(const NativeCompileInputs&, std::vector<NativeShaderProgram>) noexcept;
-        ExecutableGraphPlan(std::shared_ptr<const detail::NativeGraphCode> code) noexcept;
+        Graph(std::shared_ptr<const detail::NativeGraphCode> code) noexcept;
         std::shared_ptr<const detail::NativeGraphCode> code_;
     };
 
-    class NativeGraphInvocations
+    class GraphExecutionContext
     {
     public:
-        [[nodiscard]] static RenderResult<NativeGraphInvocations> create(
-            const ExecutableGraphPlan& plan,
+        [[nodiscard]] static RenderResult<GraphExecutionContext> create(
+            const Graph& plan,
             const NativeInvocationInputs& inputs
         ) noexcept;
-        ~NativeGraphInvocations() noexcept;
-        NativeGraphInvocations(NativeGraphInvocations&&) noexcept;
-        NativeGraphInvocations& operator=(NativeGraphInvocations&&) noexcept;
-        NativeGraphInvocations(const NativeGraphInvocations&) = delete;
-        NativeGraphInvocations& operator=(const NativeGraphInvocations&) = delete;
+        ~GraphExecutionContext() noexcept;
+        GraphExecutionContext(GraphExecutionContext&&) noexcept;
+        GraphExecutionContext& operator=(GraphExecutionContext&&) noexcept;
+        GraphExecutionContext(const GraphExecutionContext&) = delete;
+        GraphExecutionContext& operator=(const GraphExecutionContext&) = delete;
 
         // Owner-thread cold transaction. Fully constructs inputs.capacity new
         // slots before appending them; existing receipts/backing stay stable.
@@ -292,17 +292,6 @@ namespace lux::render::vulkan
         [[nodiscard]] std::array<std::uint32_t, 3> submissionBudget() const noexcept;
         [[nodiscard]] RenderResult<bool> slotReady(std::uint32_t invocation_slot) noexcept;
         [[nodiscard]] std::span<const NativeViewRequirement> importViews(GraphResourceId resource) const noexcept;
-
-        // Reuse requires an accepted same-frame donor in this owner. The owner
-        // compares captured inputs with F2 scope proof, retains actual backing
-        // through every consumer completion, and never treats revision as a fence.
-        [[nodiscard]] RenderResult<GraphSubmission> submit(
-            std::uint32_t invocation_slot,
-            const FrameGraphBindings& bindings,
-            std::span<const NativeImportBinding> imports,
-            std::span<NativeTraceEvent> trace = {},
-            std::optional<GraphSubmission> scene_source = {}
-        ) noexcept;
 
         [[nodiscard]] RenderResult<bool> completed(GraphSubmission receipt) noexcept;
         [[nodiscard]] RenderResult<void> readback(
@@ -334,7 +323,23 @@ namespace lux::render::vulkan
         ) noexcept;
 
     private:
-        explicit NativeGraphInvocations(std::unique_ptr<detail::NativeGraphBacking> backing) noexcept;
+        friend RenderResult<GraphSubmission> executeGraph(
+            GraphExecutionContext&, std::uint32_t, const FrameGraphBindings&,
+            std::span<const NativeImportBinding>, std::span<NativeTraceEvent>, std::optional<GraphSubmission>
+        ) noexcept;
+        explicit GraphExecutionContext(std::unique_ptr<detail::NativeGraphBacking> backing) noexcept;
         std::unique_ptr<detail::NativeGraphBacking> backing_;
     };
+    // Reuse requires an accepted same-frame donor in this owner. The owner
+    // compares captured inputs with F2 scope proof, retains actual backing
+    // through every consumer completion, and never treats revision as a fence.
+    [[nodiscard]] RenderResult<GraphSubmission> executeGraph(
+            GraphExecutionContext& context,
+            std::uint32_t invocation_slot,
+            const FrameGraphBindings& bindings,
+            std::span<const NativeImportBinding> imports,
+            std::span<NativeTraceEvent> trace = {},
+            std::optional<GraphSubmission> scene_source = {}
+        ) noexcept;
+
 } // namespace lux::render::vulkan

@@ -50,8 +50,8 @@ namespace native_graph_test
 
     struct NativeGraphFixture
     {
-        ExecutableGraphPlan plan;
-        NativeGraphInvocations invocations;
+        Graph plan;
+        GraphExecutionContext invocations;
 
         [[nodiscard]] VkDevice device() const noexcept
         {
@@ -86,7 +86,7 @@ namespace native_graph_test
         {
             return lux::cxx::unexpected(plan.error());
         }
-        auto invocations = NativeGraphInvocations::create(
+        auto invocations = GraphExecutionContext::create(
             *plan,
             {inputs.device,
              inputs.allocator,

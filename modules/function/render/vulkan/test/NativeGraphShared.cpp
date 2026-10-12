@@ -116,7 +116,7 @@ namespace native_graph_test
             std::move(programs)
         ));
         auto bindings = checked(FrameGraphBindings::create(executable.plan.logical(), {}, imports, invocation));
-        auto submitted = checked(executable.invocations.submit(bindings.frame().frame_slot, bindings, native_imports));
+        auto submitted = checked(executeGraph(executable.invocations, bindings.frame().frame_slot, bindings, native_imports));
         CHECK(checked(queue->wait(submitted.completion, UINT64_MAX)));
         for (unsigned i = 0; i < 2; ++i)
         {

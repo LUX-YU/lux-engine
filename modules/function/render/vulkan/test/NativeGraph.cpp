@@ -130,7 +130,7 @@ int main(int argc, char** argv)
                 imports,
                 invocation
             ));
-            auto receipt = checked(executable.invocations.submit(bindings.frame().frame_slot, bindings, {}));
+            auto receipt = checked(executeGraph(executable.invocations, bindings.frame().frame_slot, bindings, {}));
             CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
             std::array<float, 64> pixels{};
             CHECK(executable.invocations

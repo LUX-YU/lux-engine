@@ -72,7 +72,7 @@ void computeHost(const std::filesystem::path& shaders, Validation& validation, b
     auto bindings = checked(FrameGraphBindings::create(plan.plan.logical(), {}, imports, invocation));
     std::vector<NativeTraceEvent> trace(plan.invocations.traceCapacity());
     native[0].host_ready = false;
-    const auto not_ready = plan.invocations.submit(bindings.frame().frame_slot, bindings, native);
+    const auto not_ready = executeGraph(plan.invocations, bindings.frame().frame_slot, bindings, native);
     CHECK(!not_ready && not_ready.error().type == kInvalidArgument);
     native[0].host_ready = true;
     VkEventCreateInfo event_info{VK_STRUCTURE_TYPE_EVENT_CREATE_INFO};
@@ -93,7 +93,7 @@ void computeHost(const std::filesystem::path& shaders, Validation& validation, b
         nullptr
     );
     const auto gate_ticket = checked(std::move(pending).submit());
-    auto submission = plan.invocations.submit(bindings.frame().frame_slot, bindings, native, trace);
+    auto submission = executeGraph(plan.invocations, bindings.frame().frame_slot, bindings, native, trace);
     std::array<std::byte, 4> premature_bytes{};
     RenderResult<void> premature =
         submission ? plan.invocations
@@ -210,7 +210,7 @@ void aliasImport(Validation& validation)
         GraphImportBinding{GraphResourceId{images[1].value()}, GraphBackingId{3}, 0, 1}
     };
     auto frame = checked(FrameGraphBindings::create(plan.plan.logical(), {}, imports, values));
-    auto result = plan.invocations.submit(frame.frame().frame_slot, frame, native);
+    auto result = executeGraph(plan.invocations, frame.frame().frame_slot, frame, native);
     if (result)
     {
         CHECK(checked(queue->wait(result->completion, UINT64_MAX)));
@@ -223,11 +223,11 @@ void aliasImport(Validation& validation)
     CHECK(!result && result.error().type == kInvalidArgument);
     auto independent = checked(Image::create(allocator, desc));
     native[2].backing = std::cref(independent);
-    auto accepted = checked(plan.invocations.submit(frame.frame().frame_slot, frame, native));
+    auto accepted = checked(executeGraph(plan.invocations, frame.frame().frame_slot, frame, native));
     CHECK(checked(queue->wait(accepted.completion, UINT64_MAX)));
     std::puts("C2 nonoverlapping_native_allocations=ACCEPTED");
     native[2].backing = std::cref(first);
-    auto duplicate = plan.invocations.submit(frame.frame().frame_slot, frame, native);
+    auto duplicate = executeGraph(plan.invocations, frame.frame().frame_slot, frame, native);
     CHECK(!duplicate && duplicate.error().type == kInvalidArgument);
     std::puts("C2 same_native_handle=REJECTED");
     native[2].backing = std::cref(independent);
@@ -249,7 +249,7 @@ void aliasImport(Validation& validation)
         nullptr
     );
     auto gate_ticket = checked(std::move(pending).submit());
-    auto active = plan.invocations.submit(frame.frame().frame_slot, frame, native);
+    auto active = executeGraph(plan.invocations, frame.frame().frame_slot, frame, native);
     RenderResult<GraphSubmission> overlapping = lux::cxx::unexpected(RenderError{kInvalidArgument});
     if (active)
     {
@@ -260,7 +260,7 @@ void aliasImport(Validation& validation)
         native[1].backing = std::cref(second);
         native[1].identity = imports[1].backing = GraphBackingId{4};
         auto next = checked(FrameGraphBindings::create(plan.plan.logical(), {1, 1, 1}, imports, values));
-        overlapping = plan.invocations.submit(next.frame().frame_slot, next, native);
+        overlapping = executeGraph(plan.invocations, next.frame().frame_slot, next, native);
     }
     CHECK(vkSetEvent(device.native(), gate) == VK_SUCCESS);
     CHECK(checked(queue->wait(gate_ticket, UINT64_MAX)));
@@ -392,29 +392,29 @@ namespace native_graph_test
             {
                 const auto submitted = queue->submitted();
                 native_imports[0].ready.reset();
-                CHECK(!executable.invocations.submit(frame.frame().frame_slot, frame, native_imports));
+                CHECK(!executeGraph(executable.invocations, frame.frame().frame_slot, frame, native_imports));
                 native_imports[0].ready = ready[selected];
                 native_imports[0].identity = GraphBackingId{99};
-                CHECK(!executable.invocations.submit(frame.frame().frame_slot, frame, native_imports));
+                CHECK(!executeGraph(executable.invocations, frame.frame().frame_slot, frame, native_imports));
                 native_imports[0].identity = logical_imports[0].backing;
                 logical_imports[0].history_epoch = 2;
                 CHECK(!FrameGraphBindings::create(executable.plan.logical(), {}, logical_imports, invocation));
                 logical_imports[0].history_epoch = 1;
                 native_imports[0].initial.family = device.queueFamily() + 100;
-                auto wrong_family = executable.invocations.submit(frame.frame().frame_slot, frame, native_imports);
+                auto wrong_family = executeGraph(executable.invocations, frame.frame().frame_slot, frame, native_imports);
                 CHECK(!wrong_family && wrong_family.error().type == kWrongOwner);
                 native_imports[0].initial.family = device.queueFamily();
                 auto foreign_queue = checked(SubmissionQueue::create(device, 1));
                 auto foreign_batch = checked(foreign_queue->begin());
                 auto foreign_ticket = checked(std::move(foreign_batch).submit());
                 native_imports[0].ready = foreign_ticket;
-                auto wrong_ticket = executable.invocations.submit(frame.frame().frame_slot, frame, native_imports);
+                auto wrong_ticket = executeGraph(executable.invocations, frame.frame().frame_slot, frame, native_imports);
                 CHECK(!wrong_ticket && wrong_ticket.error().type == kWrongOwner);
                 CHECK(checked(foreign_queue->wait(foreign_ticket, UINT64_MAX)));
                 native_imports[0].ready = ready[selected];
                 CHECK(queue->submitted() == submitted);
             }
-            auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, native_imports));
+            auto receipt = checked(executeGraph(executable.invocations, frame.frame().frame_slot, frame, native_imports));
             CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
             ready[selected] = receipt.completion;
             if (serial == 2)

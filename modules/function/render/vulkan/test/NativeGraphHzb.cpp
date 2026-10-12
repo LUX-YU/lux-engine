@@ -94,7 +94,7 @@ namespace native_graph_test
             auto frame = checked(
                 FrameGraphBindings::create(executable.plan.logical(), {serial, serial, serial % 2}, imports, invocation)
             );
-            auto receipt = checked(executable.invocations.submit(frame.frame().frame_slot, frame, {}));
+            auto receipt = checked(executeGraph(executable.invocations, frame.frame().frame_slot, frame, {}));
             CHECK(checked(queue->wait(receipt.completion, UINT64_MAX)));
             for (unsigned i = 0; i < outputs.size(); ++i)
             {

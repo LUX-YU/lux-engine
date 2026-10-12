@@ -28,7 +28,7 @@ namespace native_graph_test
         std::uint32_t view_mask,
         const GraphicsDescription* graphics_override,
         std::span<const OwnerShape> shared_owners,
-        OwnerAssignment assignment
+        std::span<const OwnerAssignment> assignment
     )
     {
         ShaderBuildInputs inputs{name, "default", "glslc VulkanSDK 1.4.304.0", "vulkan1.3", {}, {}};
@@ -72,6 +72,14 @@ namespace native_graph_test
             ));
             local = owners.back().identity;
         }
+        std::vector<OwnerAssignment> field_owners(assignment.begin(), assignment.end());
+        for (const auto& field : schema.resources)
+        {
+            if (lux::rdesc::isShaderDescriptorRole(field.role) && field.owner == lux::rdesc::EFieldOwner::PASS_LOCAL)
+            {
+                field_owners.push_back({field.path, local});
+            }
+        }
         GraphicsDescription graphics;
         graphics.color_formats = {VK_FORMAT_R32G32B32A32_SFLOAT};
         graphics.blends.resize(1);
@@ -82,16 +90,10 @@ namespace native_graph_test
         }
         VPipelineDescription description =
             compute ? VPipelineDescription{ComputeDescription{}} : VPipelineDescription{graphics};
-        return checked(NativeShaderProgram::create(
-            device,
-            graph,
-            pass,
-            *variant,
-            schema,
-            {assignment.scene, assignment.feature, local},
-            owners,
-            std::move(description)
-        ));
+        return checked(
+            NativeShaderProgram::
+                create(device, graph, pass, *variant, schema, field_owners, owners, std::move(description))
+        );
     }
 
 } // namespace native_graph_test

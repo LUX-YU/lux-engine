@@ -1,6 +1,7 @@
 #include "F3Blur.pass.hpp"
 #include "F3Composite.pass.hpp"
 #include "F3Tonemap.pass.hpp"
+#include "OwnerAssignments.hpp"
 #include "ShaderTestSupport.hpp"
 #include "Support.hpp"
 #include <algorithm>
@@ -67,18 +68,22 @@ static void transition(
 
 static Image upload(const VulkanAllocator& allocator, SubmissionQueue& queue, const Pixels& data)
 {
-    auto image = take(Image::create(
-        allocator,
-        {width, height},
-        VK_FORMAT_R32G32B32A32_SFLOAT,
-        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
-    ));
-    auto staging = take(Buffer::create(
-        allocator,
-        data.size() * sizeof(data[0]),
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-        EMemoryAccess::UPLOAD
-    ));
+    auto image = take(
+        Image::create(
+            allocator,
+            {width, height},
+            VK_FORMAT_R32G32B32A32_SFLOAT,
+            VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        )
+    );
+    auto staging = take(
+        Buffer::create(
+            allocator,
+            data.size() * sizeof(data[0]),
+            VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+            EMemoryAccess::UPLOAD
+        )
+    );
     CHECK(staging.write(0, std::as_bytes(std::span(data))));
     auto command = take(queue.begin());
     transition(
@@ -207,7 +212,16 @@ static Output run(
     graphics.color_formats = {format};
     graphics.blends = {ColorBlend{}};
     auto program = take(
-        NativeShaderProgram::create(device, graph, pass, *variant, schema, {{}, {}, owner.identity}, owners, graphics)
+        NativeShaderProgram::create(
+            device,
+            graph,
+            pass,
+            *variant,
+            schema,
+            fixtureOwners(schema, {{}, {}, owner.identity}),
+            owners,
+            graphics
+        )
     );
     CHECK(program.identity().shader == variant->identity());
     shader_test::saveProgram(program, evidence_dir, name + "." + variant_name + (srgb ? ".srgb" : ".float"));
@@ -238,20 +252,24 @@ static Output run(
     auto incorrect = values;
     incorrect[0].element = 99;
     CHECK(!BoundDescriptorSets::create(device, program, incorrect));
-    auto target = take(Image::create(
-        allocator,
-        {width, height},
-        format,
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
-    ));
+    auto target = take(
+        Image::create(
+            allocator,
+            {width, height},
+            format,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT
+        )
+    );
     auto target_view = take(ImageView::create(target, VK_IMAGE_ASPECT_COLOR_BIT));
     const auto pixel_bytes = srgb ? 4u : 16u;
-    auto readback = take(Buffer::create(
-        allocator,
-        width * height * pixel_bytes,
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-        EMemoryAccess::READBACK
-    ));
+    auto readback = take(
+        Buffer::create(
+            allocator,
+            width * height * pixel_bytes,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            EMemoryAccess::READBACK
+        )
+    );
     auto command = take(queue.begin());
     transition(
         command.native(),

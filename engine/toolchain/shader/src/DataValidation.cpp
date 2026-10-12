@@ -70,7 +70,8 @@ namespace lux::toolchain
     cxx::expected<void, std::string> validateDataSpirv(
         std::span<const std::uint32_t> words,
         const rdesc::DataGpuLayout& layout,
-        std::string_view resource_name
+        std::string_view resource_name,
+        bool runtime_array
     ) noexcept
     {
         const bool is_invalid_header = words.size() < 5 || words[0] != 0x07230203;
@@ -99,7 +100,11 @@ namespace lux::toolchain
                     return cxx::unexpected(std::string("Data block must contain one record at offset zero"));
                 }
                 const auto& record = compiler.get_type(block.member_types[0]);
-                if (record.basetype != sc::SPIRType::Struct || !record.array.empty())
+                const bool is_wrong_array = runtime_array
+                                                ? record.array.size() != 1 || record.array[0] != 0 ||
+                                                      compiler.type_struct_member_array_stride(block, 0) != layout.size
+                                                : !record.array.empty();
+                if (record.basetype != sc::SPIRType::Struct || is_wrong_array)
                 {
                     return cxx::unexpected(std::string("Data block record shape mismatch"));
                 }

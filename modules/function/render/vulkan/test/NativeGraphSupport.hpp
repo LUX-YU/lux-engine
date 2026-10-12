@@ -1,4 +1,5 @@
 #pragma once
+#include "OwnerAssignments.hpp"
 #include "ShaderTestSupport.hpp"
 #include <cmath>
 #include <lux/engine/render/graph/Builder.hpp>
@@ -112,7 +113,7 @@ namespace native_graph_test
         std::uint32_t view_mask = 0,
         const GraphicsDescription* graphics_override = nullptr,
         std::span<const OwnerShape> shared_owners = {},
-        OwnerAssignment assignment = {}
+        std::span<const OwnerAssignment> assignment = {}
     );
 
     void sharedCase(const std::filesystem::path&, Validation&);

@@ -3,12 +3,19 @@ include("${lux-cxx_DIR}/reflection_generator/cmake_scripts/meta.cmake")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 function(render_data_schema target author_header)
-    cmake_parse_arguments(DATA "SERIALIZATION" "" "" ${ARGN})
+    cmake_parse_arguments(DATA "SERIALIZATION" "OUTPUT_NAME" "" ${ARGN})
     if(DATA_UNPARSED_ARGUMENTS)
         message(FATAL_ERROR "Unknown DataSchema codegen option")
     endif()
     get_filename_component(stem "${author_header}" NAME_WE)
-    set(job "${target}_data")
+    if(DATA_OUTPUT_NAME)
+        set(stem "${DATA_OUTPUT_NAME}")
+    endif()
+    if(IS_ABSOLUTE "${stem}" OR stem MATCHES "(^|/)\\.\\.(/|$)")
+        message(FATAL_ERROR "DataSchema OUTPUT_NAME must stay within generated output")
+    endif()
+    string(SHA256 identity "${stem}")
+    set(job "${target}_${identity}_data")
     set(output "${CMAKE_CURRENT_BINARY_DIR}/generated")
     lux_add_codegen_job(
         NAME "${job}" MARKER luxdata
@@ -49,7 +56,13 @@ function(render_data_schema target author_header)
         VERBATIM
     )
 
-    add_custom_target("${target}_data_schema" DEPENDS "${output}/${stem}.data.hpp" "${output}/${stem}.lglslh")
+    add_custom_target("${job}_projection" DEPENDS "${output}/${stem}.data.hpp" "${output}/${stem}.lglslh")
+
+    if(NOT TARGET "${target}_data_schema")
+        add_custom_target("${target}_data_schema")
+    endif()
+
+    add_dependencies("${target}_data_schema" "${job}_projection")
 
     add_dependencies("${target}" "${target}_data_schema")
 

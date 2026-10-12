@@ -5,6 +5,15 @@
 {% for idx in marked_record_decls %}{% set rec = decl_from_index(idx) %}
 {"id": {{ json_str(rec.id) }}, "params": {{ annotation_has(rec, "luxpass::params") }} },
 {% endfor %}null],
+"data_records": [
+{% for d in declarations %}{% if d.__kind == "CXXRecordDecl" %}
+{"id": {{ json_str(d.id) }}, "schema": {{ annotation_has(d, "luxdata::schema") }},
+ "arguments": {{ annotation_map_for(d, "luxdata::schema") }} },
+{% endif %}{% endfor %}null],
+"gpu_fields": [
+{% for d in declarations %}{% if d.__kind == "FieldDecl" %}
+{"id": {{ json_str(d.id) }}, "arguments": {{ annotation_map_for(d, "luxdata::gpu") }} },
+{% endif %}{% endfor %}null],
 "fields": [
 {% for d in declarations %}{% if d.__kind == "FieldDecl" %}
 {"id": {{ json_str(d.id) }},

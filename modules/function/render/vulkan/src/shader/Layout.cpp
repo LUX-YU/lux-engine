@@ -158,6 +158,53 @@ namespace lux::render::vulkan
         return result;
     }
 
+    ShaderOwnerId shaderOwnerId(const OwnerShape& shape) noexcept
+    {
+        std::string key;
+        const auto number = [&](std::uint64_t value)
+        {
+            for (unsigned byte = 0; byte < 8; ++byte)
+            {
+                key.push_back(static_cast<char>(value >> (byte * 8)));
+            }
+        };
+        const auto text = [&](std::string_view value)
+        {
+            number(value.size());
+            key.append(value);
+        };
+        text(shape.canonical_name);
+        number(shape.revision);
+        number(static_cast<std::uint32_t>(shape.category));
+        number(shape.fields.size());
+        std::vector<const OwnerField*> ordered;
+        ordered.reserve(shape.fields.size());
+        for (const auto& field : shape.fields)
+        {
+            ordered.push_back(&field);
+        }
+        std::sort(
+            ordered.begin(),
+            ordered.end(),
+            [](const auto* a, const auto* b) { return a->semantic < b->semantic; }
+        );
+        for (const auto* value : ordered)
+        {
+            const auto& field = *value;
+            text(field.semantic);
+            number(field.type);
+            number(field.count);
+            number(field.stages);
+            number(field.flags);
+            number(field.element_stride);
+            number(field.element_alignment);
+            text(field.dimension);
+            text(field.image_format);
+            text(field.data_identity);
+        }
+        return ShaderOwnerId{cxx::Fnv1a64::hash(key)};
+    }
+
     RenderResult<OwnerShape> declareOwnerShape(
         std::string_view name,
         std::uint32_t revision,
@@ -187,7 +234,8 @@ namespace lux::render::vulkan
                     field.element_stride,
                     field.element_alignment,
                     std::string(field.dimension),
-                    std::string(field.image_format)
+                    std::string(field.image_format),
+                    field.data ? rdesc::dataBindingIdentity(*field.data) : std::string{}
                 };
                 const auto found = std::find_if(
                     shape.fields.begin(),
@@ -219,16 +267,50 @@ namespace lux::render::vulkan
             shape.fields.end(),
             [](const auto& a, const auto& b) { return a.semantic < b.semantic; }
         );
+        shape.identity = shaderOwnerId(shape);
         return shape;
     }
 
     RenderResult<LayoutPlan> compileLayout(
         const rdesc::PassShaderContract& schema,
-        const OwnerAssignment& assignment,
+        std::span<const OwnerAssignment> assignment,
         std::span<const OwnerShape> complete_owners,
         const DeviceLayoutCaps& caps
     ) noexcept
     {
+        // Every descriptor field has exactly one explicit structural owner association.
+        // Non-descriptor fields and unknown/duplicate paths cannot silently enter a layout.
+        for (std::size_t i = 0; i < assignment.size(); ++i)
+        {
+            const auto& value = assignment[i];
+            const auto source = std::find_if(
+                schema.resources.begin(),
+                schema.resources.end(),
+                [&](const auto& field)
+                { return field.path == value.field_path && rdesc::isShaderDescriptorRole(field.role); }
+            );
+            const bool is_unknown_field = source == schema.resources.end();
+            const bool is_duplicate_field = std::any_of(
+                assignment.begin(),
+                assignment.begin() + i,
+                [&](const auto& old) { return old.field_path == value.field_path; }
+            );
+            if (is_unknown_field || is_duplicate_field || !value.owner.isValid())
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument, {i}});
+            }
+        }
+        const auto descriptor_count = std::count_if(
+            schema.resources.begin(),
+            schema.resources.end(),
+            [](const auto& field) { return rdesc::isShaderDescriptorRole(field.role); }
+        );
+        if (assignment.size() != descriptor_count)
+        {
+            return cxx::unexpected(
+                RenderError{kInvalidArgument, {assignment.size(), static_cast<std::uint64_t>(descriptor_count)}}
+            );
+        }
         LayoutIdentity result;
         result.owners.assign(complete_owners.begin(), complete_owners.end());
         std::sort(
@@ -244,14 +326,15 @@ namespace lux::render::vulkan
             auto& owner = result.owners[i];
             const bool invalid_owner = owner.canonical_name.empty() || owner.revision == 0 || owner.fields.empty() ||
                                        owner.category > rdesc::EFieldOwner::PASS_LOCAL || !owner.identity.isValid() ||
-                                       owner.identity.value() != cxx::Fnv1a64::hash(owner.canonical_name);
+                                       owner.identity != shaderOwnerId(owner);
             if (invalid_owner)
             {
                 return cxx::unexpected(RenderError{kInvalidArgument, {i}});
             }
             for (std::size_t j = 0; j < i; ++j)
             {
-                if (owner.identity == result.owners[j].identity)
+                if (owner.identity == result.owners[j].identity ||
+                    owner.canonical_name == result.owners[j].canonical_name)
                 {
                     return cxx::unexpected(RenderError{kInvalidArgument, {i, j}});
                 }
@@ -355,10 +438,11 @@ namespace lux::render::vulkan
                     {
                         continue;
                     }
-                    const auto assigned = source.owner == rdesc::EFieldOwner::SCENE
-                                              ? assignment.scene
-                                              : (source.owner == rdesc::EFieldOwner::FEATURE ? assignment.feature
-                                                                                             : assignment.pass_local);
+                    const auto assigned = std::find_if(
+                                              assignment.begin(),
+                                              assignment.end(),
+                                              [&](const auto& value) { return value.field_path == source.path; }
+                    )->owner;
                     if (assigned != owner.identity || semantic(source) != field.semantic)
                     {
                         continue;
@@ -368,7 +452,8 @@ namespace lux::render::vulkan
                         source.array_count != field.count || (source.stages & field.stages) != source.stages ||
                         source.element_stride != field.element_stride ||
                         source.element_alignment != field.element_alignment || source.dimension != field.dimension ||
-                        source.image_format != field.image_format;
+                        source.image_format != field.image_format ||
+                        (source.data ? rdesc::dataBindingIdentity(*source.data) : std::string{}) != field.data_identity;
                     if (mismatch)
                     {
                         return cxx::unexpected(RenderError{kInvalidArgument, {f, owner.identity.value()}});
@@ -377,6 +462,7 @@ namespace lux::render::vulkan
                         {f,
                          set,
                          binding.binding,
+                         std::string(source.path),
                          owner.identity,
                          field.type,
                          field.count,

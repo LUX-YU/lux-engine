@@ -1,6 +1,7 @@
 #pragma once
 #include "F3SharedA.pass.hpp"
 #include "F3SharedB.pass.hpp"
+#include "OwnerAssignments.hpp"
 #include "ShaderTestSupport.hpp"
 #include <cstring>
 #include <lux/engine/render/graph/Bindings.hpp>
@@ -70,7 +71,7 @@ static RenderResult<NativeShaderProgram> program(
     graphics.blends = {ColorBlend{}};
     auto wrong = graphics;
     wrong.color_formats[0] = VK_FORMAT_R8G8B8A8_UNORM;
-    const OwnerAssignment assignment{owners[0].identity, owners[1].identity, {}};
+    const auto assignment = fixtureOwners(schema, {owners[0].identity, owners[1].identity, {}});
     CHECK(!NativeShaderProgram::create(device, graph, pass, *variant, schema, assignment, owners, wrong));
     return NativeShaderProgram::create(device, graph, pass, *variant, schema, assignment, owners, graphics);
 }
@@ -91,12 +92,14 @@ static PendingSharedDraw submitSharedDraw(
     VkQueryPool timestamps = VK_NULL_HANDLE
 )
 {
-    auto image = take(Image::create(
-        allocator,
-        {2, 2},
-        VK_FORMAT_R32G32B32A32_SFLOAT,
-        VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-    ));
+    auto image = take(
+        Image::create(
+            allocator,
+            {2, 2},
+            VK_FORMAT_R32G32B32A32_SFLOAT,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+        )
+    );
     auto view = take(ImageView::create(image, VK_IMAGE_ASPECT_COLOR_BIT));
     auto readback = take(Buffer::create(allocator, 64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
     auto command = take(queue.begin());

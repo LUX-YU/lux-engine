@@ -9,7 +9,7 @@ import sys
 
 # Explicit build-tool dependency, never a production Graph include/link.
 sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "engine/toolchain/shader/cmake"))
-from GpuValues import value_declarations
+from GpuValues import value_declarations, gpu_layout
 
 ROLES = {
     "sampled_read": ("SampledTexture", "SAMPLED_READ"),
@@ -45,8 +45,12 @@ def generate(ir, header):
     resources, scalars, capture, abi, glsl = [], [], [], [], []
     shader_structs = {}
     declaration_stages = []
+    data_records = {d["id"]: d["arguments"] for d in ir.get("data_records", []) if d and d["schema"]}
+    shapes = {f["id"]: f["arguments"]["shape"] for f in ir.get("gpu_fields", []) if f and f["arguments"]}
+    data_types = {}
 
-    scalar_type, scalar_declaration = value_declarations(types, decls, abi, shader_structs)
+
+    scalar_type, scalar_declaration = value_declarations(types, decls, abi, shader_structs, shapes)
 
     def leaves(tid, path, offset, block=False, stack=(), stride=0, count=1, metadata=None):
         t = types[tid]
@@ -113,6 +117,7 @@ def generate(ir, header):
         alignment = 1
         stride = 0
         qualifier = ""
+        data_cpp = ""
         if role == "sampler":
             if not options["for"]:
                 raise ValueError("sampler requires explicit for=<sampled field>")
@@ -140,13 +145,23 @@ def generate(ir, header):
             stride = types[tid]["size"]
             alignment = max(16 if role == "uniform_read" else 1, types[tid]["align"])
             ty = scalar_type(tid)
-            leaves(tid, path + ".data", 0, True, metadata=options)
+            data = data_records.get(types[tid].get("decl_id"))
+            if data is not None:
+                storage = "std140" if role == "uniform_read" else "std430"
+                if data.get("gpu") != storage:
+                    raise ValueError("DataSchema GPU storage does not match resource role: " + path)
+                stride, alignment, gpu_fields, _ = gpu_layout(types, decls, tid, storage, shapes)
+                data_cpp = "::" + decls[types[tid]["decl_id"]]["fq_name"]
+                identity = json.dumps([storage, stride, alignment, gpu_fields], separators=(",", ":"))
+                data_types[data_cpp] = (data, identity, stride, alignment)
+            else:
+                leaves(tid, path + ".data", 0, True, metadata=options)
             if role == "uniform_read":
                 glsl.append("layout(std140) uniform LuxBlock_" + name + " { " + ty + " data; } " + name + suffix + ";")
             else:
                 qualifier = "readonly " if role == "read_only_storage" else ""
                 glsl.append("layout(std430) " + qualifier + "buffer LuxBlock_" + name + " { " + ty + " data[]; } " + name + suffix + ";")
-        resources.append((path, name, enum, scope.upper(), frequency.upper(), required, count, stride, options["semantic"], options["for"], options["dimension"] or "2D", options["format"], options["stages"], is_array, alignment))
+        resources.append((path, name, enum, scope.upper(), frequency.upper(), required, count, stride, options["semantic"], options["for"], options["dimension"] or "2D", options["format"], options["stages"], is_array, alignment, data_cpp))
         declaration_stages.extend([options["stages"]] * (len(glsl) - declaration_begin))
         for i in range(count):
             access = path + ("[" + str(i) + "]" if is_array else "")
@@ -215,8 +230,18 @@ def generate(ir, header):
             'namespace lux::render', '{', '    template <>', '    struct PassSchema<::' + cpp + '>', '    {',
             '    static constexpr std::uint32_t version = 1;',
             '    inline static constexpr std::array<rdesc::PassResourceField, ' + str(len(resources)) + '> resources{{']
-    for path, name, role, owner, frequency, required, count, stride, semantic, paired, dimension, image_format, stages, is_array, alignment in resources:
-        text += ['        {', '            ' + ',\n            '.join([json.dumps(path), json.dumps(name), 'rdesc::EPassFieldRole::' + role, 'rdesc::EFieldOwner::' + owner, 'rdesc::EUpdateFrequency::' + frequency, str(required).lower(), str(count), str(stride), json.dumps(semantic), json.dumps(paired), json.dumps(dimension), json.dumps(image_format), str(stages), str(is_array).lower(), str(alignment)]), '        },']
+    resource_open = text.pop()
+    for index, (data_cpp, (data, identity, size, alignment)) in enumerate(data_types.items()):
+        trait = "DataSchema<" + data_cpp + ">"
+        text += ["    static_assert(GpuData<" + data_cpp + ">);",
+                 "    static_assert(" + trait + "::descriptor().canonical_name == " + json.dumps(data["name"]) + ");",
+                 "    static_assert(" + trait + "::descriptor().schema_version == " + str(data["version"]) + ");",
+                 "    static_assert(" + trait + '::gpuLayout().structural_identity == R"LUX(' + identity + ')LUX");',
+                 "    inline static constexpr rdesc::PassDataContract data_" + str(index) + "{" + trait + "::descriptor().id.value(), " +
+                 trait + "::descriptor().canonical_name, " + trait + "::descriptor().schema_version, " + json.dumps(data["scope"]) + ", " + trait + "::gpuLayout()};"]
+    text.append(resource_open)
+    for path, name, role, owner, frequency, required, count, stride, semantic, paired, dimension, image_format, stages, is_array, alignment, data_cpp in resources:
+        text += ['        {', '            ' + ',\n            '.join([json.dumps(path), json.dumps(name), 'rdesc::EPassFieldRole::' + role, 'rdesc::EFieldOwner::' + owner, 'rdesc::EUpdateFrequency::' + frequency, str(required).lower(), str(count), str(stride), json.dumps(semantic), json.dumps(paired), json.dumps(dimension), json.dumps(image_format), str(stages), str(is_array).lower(), str(alignment), ("data_" + str(list(data_types).index(data_cpp)) if data_cpp else "std::nullopt")]), '        },']
     text += ['    }};', '    inline static constexpr std::array<rdesc::PassScalarField, ' + str(len(scalars)) + '> scalars{{']
     for path, kind, offset, size, stride, count, block, owner, frequency, stages in scalars:
         text += ['        {', '            ' + ',\n            '.join([json.dumps(path), 'rdesc::EScalarKind::' + kind, *map(str, [offset,size,stride,count]), 'rdesc::EFieldOwner::' + owner, 'rdesc::EUpdateFrequency::' + frequency, str(stages)]), '        },']

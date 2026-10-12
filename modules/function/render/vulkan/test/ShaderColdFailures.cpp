@@ -1,5 +1,6 @@
 #include "F3SharedA.pass.hpp"
 #include "F3Storage.pass.hpp"
+#include "OwnerAssignments.hpp"
 #include "ShaderTestSupport.hpp"
 #include <lux/engine/render/vulkan/shader/Format.hpp>
 #include <lux/engine/toolchain/shader/SpirvRelocation.hpp>
@@ -24,7 +25,7 @@ int main(int argc, char** argv)
             take(declareOwnerShape("feature", 1, lux::rdesc::EFieldOwner::FEATURE, schemas)),
             take(declareOwnerShape("pass", 1, lux::rdesc::EFieldOwner::PASS_LOCAL, schemas))
         };
-        const OwnerAssignment assignment{owners[0].identity, owners[1].identity, owners[2].identity};
+        const auto assignment = fixtureOwners(schema, {owners[0].identity, owners[1].identity, owners[2].identity});
         const auto plan = take(compileLayout(schema, assignment, owners, caps));
         std::vector<PassDescriptorLocation> locations;
         for (const auto& field : plan.identity().fields)
@@ -58,6 +59,7 @@ int main(int argc, char** argv)
         {
             auto modified = owners;
             modified[0].fields[0].flags = flag;
+            modified[0].identity = shaderOwnerId(modified[0]);
             auto result = compileLayout(schema, assignment, modified, caps);
             CHECK(!result && result.error().type == kUnsupported);
             ++rejected;

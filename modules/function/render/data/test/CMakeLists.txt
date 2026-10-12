@@ -25,7 +25,7 @@ add_dependencies(render_data_wire render_data_test_data_schema)
 
 add_test(NAME render.data.wire COMMAND render_data_wire)
 
-foreach(case IN ITEMS missing scope version borrow shape authority layout private wire)
+foreach(case IN ITEMS missing scope version borrow shape authority layout private wire nested)
     add_executable("render_data_reject_${case}" EXCLUDE_FROM_ALL negative/Main.cpp)
     target_link_libraries("render_data_reject_${case}" PRIVATE render_data)
     render_data_schema("render_data_reject_${case}" "${CMAKE_CURRENT_SOURCE_DIR}/negative/${case}.hpp")
@@ -63,3 +63,13 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/header_DataLayout.cpp" "#include <lux/en
 add_library(render_data_header_DataLayout OBJECT "${CMAKE_CURRENT_BINARY_DIR}/header_DataLayout.cpp")
 
 target_link_libraries(render_data_header_DataLayout PRIVATE shader_metadata)
+
+add_executable(render_data_codegen_identity CodegenIdentity.cpp)
+
+target_link_libraries(render_data_codegen_identity PRIVATE render_data)
+
+render_data_schema(render_data_codegen_identity "${CMAKE_CURRENT_SOURCE_DIR}/installed/a/Types.hpp" OUTPUT_NAME "a/Types")
+
+render_data_schema(render_data_codegen_identity "${CMAKE_CURRENT_SOURCE_DIR}/installed/b/Types.hpp" OUTPUT_NAME "b/Types")
+
+add_test(NAME render.data.codegen_identity COMMAND render_data_codegen_identity)

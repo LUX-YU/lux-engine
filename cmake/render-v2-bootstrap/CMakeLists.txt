@@ -30,4 +30,6 @@ if(BUILD_TESTING)
     include("${CMAKE_CURRENT_LIST_DIR}/F5Runtime.cmake")
 
     include("${CMAKE_CURRENT_LIST_DIR}/F6Data.cmake")
+
+    include("${CMAKE_CURRENT_LIST_DIR}/F6Binding.cmake")
 endif()

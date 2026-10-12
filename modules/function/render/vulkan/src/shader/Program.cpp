@@ -251,7 +251,7 @@ namespace lux::render::vulkan
         GraphPassId pass,
         const toolchain::CompiledShaderVariant& shader,
         const rdesc::PassShaderContract& schema,
-        const OwnerAssignment& assignment,
+        std::span<const OwnerAssignment> assignment,
         std::span<const OwnerShape> owners,
         VPipelineDescription description
     ) noexcept

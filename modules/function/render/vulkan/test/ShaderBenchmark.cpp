@@ -1,4 +1,5 @@
 #include "Allocation.hpp"
+#include "OwnerAssignments.hpp"
 #include "SharedFixture.hpp"
 #include <lux/engine/toolchain/shader/SpirvRelocation.hpp>
 
@@ -71,7 +72,7 @@ int main(int argc, char** argv)
         take(declareOwnerShape("a.scene", 1, lux::rdesc::EFieldOwner::SCENE, schemas)),
         take(declareOwnerShape("b.feature", 1, lux::rdesc::EFieldOwner::FEATURE, schemas))
     };
-    const OwnerAssignment assignment{owners[0].identity, owners[1].identity, {}};
+    const auto assignment = fixtureOwners(schema, {owners[0].identity, owners[1].identity, {}});
     const auto caps = queryLayoutCaps(device);
     const auto layout = take(compileLayout(schema, assignment, owners, caps));
     std::vector<PassDescriptorLocation> locations;
@@ -99,13 +100,15 @@ int main(int argc, char** argv)
         "native_graphics_pipeline_create_destroy",
         [&]
         {
-            CHECK(GraphicsPipeline::create(
-                device,
-                vertex_module,
-                fragment_module,
-                pipeline_layout,
-                std::get<GraphicsDescription>(active.identity().pipeline)
-            ));
+            CHECK(
+                GraphicsPipeline::create(
+                    device,
+                    vertex_module,
+                    fragment_module,
+                    pipeline_layout,
+                    std::get<GraphicsDescription>(active.identity().pipeline)
+                )
+            );
         }
     );
     auto buffer = take(Buffer::create(allocator, 16, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, EMemoryAccess::UPLOAD));

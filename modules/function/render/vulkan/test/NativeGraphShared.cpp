@@ -2,10 +2,11 @@
 #include "F3SharedB.pass.hpp"
 #include "F4Readback.pass.hpp"
 #include "NativeGraphSupport.hpp"
+#include "OwnerAssignments.hpp"
 
 namespace native_graph_test
 {
-    void sharedCase(const std::filesystem::path& shaders, Validation& validation)
+    static void sharedOwners(const std::filesystem::path& shaders, Validation& validation, bool split)
     {
         auto host = instance(validation);
         auto device = checked(VulkanDevice::create(host, DeviceOptions{.dynamic_rendering = true}));
@@ -67,18 +68,49 @@ namespace native_graph_test
         auto logical = checked(compileLogicalGraph(definition));
         auto invocation = makeGraphInvocationData(definition);
         const std::array schemas{PassSchema<F3SharedA>::contract(), PassSchema<F3SharedB>::contract()};
-        const std::array owners{
-            checked(declareOwnerShape("f4.shared.scene", 1, lux::rdesc::EFieldOwner::SCENE, schemas)),
-            checked(declareOwnerShape("f4.shared.feature", 1, lux::rdesc::EFieldOwner::FEATURE, schemas))
-        };
-        const OwnerAssignment assignment{owners[0].identity, owners[1].identity, {}};
+        std::vector<OwnerShape> owners;
+        if (split)
+        {
+            owners.push_back(
+                checked(declareOwnerShape("f6.scene.a", 1, lux::rdesc::EFieldOwner::SCENE, std::span(schemas).first(1)))
+            );
+            owners.push_back(
+                checked(declareOwnerShape("f6.scene.b", 1, lux::rdesc::EFieldOwner::SCENE, std::span(schemas).last(1)))
+            );
+        }
+        else
+        {
+            owners.push_back(checked(declareOwnerShape("f4.shared.scene", 1, lux::rdesc::EFieldOwner::SCENE, schemas)));
+        }
+        owners.push_back(checked(declareOwnerShape("f4.shared.feature", 1, lux::rdesc::EFieldOwner::FEATURE, schemas)));
+        const auto feature = owners.back().identity;
         std::vector<NativeShaderProgram> programs;
-        programs.push_back(
-            program(device, logical, pa, "F3SharedA", schemas[0], shaders, false, 0, nullptr, owners, assignment)
-        );
-        programs.push_back(
-            program(device, logical, pb, "F3SharedB", schemas[1], shaders, false, 0, nullptr, owners, assignment)
-        );
+        programs.push_back(program(
+            device,
+            logical,
+            pa,
+            "F3SharedA",
+            schemas[0],
+            shaders,
+            false,
+            0,
+            nullptr,
+            owners,
+            fixtureOwners(schemas[0], {owners[0].identity, feature, {}})
+        ));
+        programs.push_back(program(
+            device,
+            logical,
+            pb,
+            "F3SharedB",
+            schemas[1],
+            shaders,
+            false,
+            0,
+            nullptr,
+            owners,
+            fixtureOwners(schemas[1], {owners[split ? 1 : 0].identity, feature, {}})
+        ));
         auto executable = checked(compileFixture(
             {logical, device, allocator, {queue.get(), queue.get(), queue.get()}, commands, native_imports, invocation},
             std::move(programs)
@@ -104,5 +136,11 @@ namespace native_graph_test
             }
         }
         std::puts("SHARED native_graph full_owner_shape unused_fields CPU_oracle=PASS");
+    }
+
+    void sharedCase(const std::filesystem::path& shaders, Validation& validation)
+    {
+        sharedOwners(shaders, validation, false);
+        sharedOwners(shaders, validation, true);
     }
 } // namespace native_graph_test

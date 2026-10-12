@@ -29,7 +29,7 @@ def generate(ir, header):
         raise ValueError("missing LUX_RENDER_DATA")
     out = [
         "#pragma once",
-        '#include "' + Path(header).name + '"',
+        '#include "' + Path(header).resolve().as_posix() + '"',
         "#include <lux/engine/render/data/Schema.hpp>",
         "#include <array>",
         "#include <cstdint>",

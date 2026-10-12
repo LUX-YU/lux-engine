@@ -2,7 +2,10 @@
 
 #include <array>
 #include <cstdint>
+#include <lux/engine/description/DataLayout.hpp>
+#include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 
 namespace lux::rdesc
@@ -88,6 +91,56 @@ namespace lux::rdesc
         UINT
     };
 
+    // Synchronous generated DataSchema projection. No DataSet instance or native handle.
+    struct PassDataContract
+    {
+        std::uint64_t type_id;
+        std::string_view canonical_name;
+        std::uint32_t schema_version;
+        std::string_view scope;
+        DataGpuLayout gpu;
+        bool operator==(const PassDataContract&) const noexcept = default;
+    };
+
+    // Owning canonical bytes for cold cache comparison. Do not trust a fingerprint alone.
+    [[nodiscard]] inline std::string dataBindingIdentity(const PassDataContract& data) noexcept
+    {
+        std::string result;
+        const auto number = [&](std::uint64_t value)
+        {
+            for (unsigned byte = 0; byte < 8; ++byte)
+            {
+                result.push_back(static_cast<char>(value >> (byte * 8)));
+            }
+        };
+        const auto text = [&](std::string_view value)
+        {
+            number(value.size());
+            result.append(value);
+        };
+        number(data.type_id);
+        text(data.canonical_name);
+        number(data.schema_version);
+        text(data.scope);
+        number(static_cast<std::uint32_t>(data.gpu.storage));
+        number(data.gpu.size);
+        number(data.gpu.alignment);
+        number(data.gpu.fields.size());
+        for (const auto& field : data.gpu.fields)
+        {
+            text(field.path);
+            number(static_cast<std::uint32_t>(field.scalar));
+            number(field.offset);
+            number(field.rows);
+            number(field.columns);
+            number(field.array_stride);
+            number(field.matrix_stride);
+        }
+        text(data.gpu.structural_identity);
+        number(data.gpu.fingerprint);
+        return result;
+    }
+
     // Generated cold metadata. Names are diagnostics/compile facts, never runtime routes.
     struct PassResourceField
     {
@@ -106,6 +159,8 @@ namespace lux::rdesc
         std::uint32_t stages{7};
         bool descriptor_array{false};
         std::uint32_t element_alignment{1};
+
+        std::optional<PassDataContract> data;
 
         bool operator==(const PassResourceField&) const noexcept = default;
     };

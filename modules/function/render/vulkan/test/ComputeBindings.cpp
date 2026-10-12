@@ -1,4 +1,5 @@
 #include "F3Storage.pass.hpp"
+#include "OwnerAssignments.hpp"
 #include "ShaderTestSupport.hpp"
 #include <algorithm>
 #include <cstring>
@@ -65,17 +66,21 @@ int main(int argc, char** argv)
         auto local = take(declareOwnerShape("c.local", 1, lux::rdesc::EFieldOwner::PASS_LOCAL, schemas));
         scene.fields[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
         feature.fields[0].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+        scene.identity = shaderOwnerId(scene);
+        feature.identity = shaderOwnerId(feature);
         const std::array owners{scene, feature, local};
-        auto program = take(NativeShaderProgram::create(
-            device,
-            graph,
-            pass,
-            *variant,
-            schema,
-            {scene.identity, feature.identity, local.identity},
-            owners,
-            ComputeDescription{}
-        ));
+        auto program = take(
+            NativeShaderProgram::create(
+                device,
+                graph,
+                pass,
+                *variant,
+                schema,
+                fixtureOwners(schema, {scene.identity, feature.identity, local.identity}),
+                owners,
+                ComputeDescription{}
+            )
+        );
         CHECK(program.identity().layout.sets.size() == 2 && program.identity().layout.dynamic_count == 2);
         {
             for (const auto capability : {11u, 40u})
@@ -91,7 +96,7 @@ int main(int argc, char** argv)
                     pass,
                     *unsupported,
                     schema,
-                    {scene.identity, feature.identity, local.identity},
+                    fixtureOwners(schema, {scene.identity, feature.identity, local.identity}),
                     owners,
                     ComputeDescription{}
                 );
@@ -116,7 +121,7 @@ int main(int argc, char** argv)
                 pass,
                 *unsupported,
                 schema,
-                {scene.identity, feature.identity, local.identity},
+                fixtureOwners(schema, {scene.identity, feature.identity, local.identity}),
                 owners,
                 ComputeDescription{}
             );
@@ -138,12 +143,14 @@ int main(int argc, char** argv)
             VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
         auto output0 = take(Buffer::create(allocator, 256, output_usage, EMemoryAccess::DEVICE));
         auto output1 = take(Buffer::create(allocator, 256, output_usage, EMemoryAccess::DEVICE));
-        auto image = take(Image::create(
-            allocator,
-            {4, 1},
-            VK_FORMAT_R32G32B32A32_SFLOAT,
-            VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-        ));
+        auto image = take(
+            Image::create(
+                allocator,
+                {4, 1},
+                VK_FORMAT_R32G32B32A32_SFLOAT,
+                VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+            )
+        );
         auto view = take(ImageView::create(image, VK_IMAGE_ASPECT_COLOR_BIT));
         std::vector<OwnerDescriptorValue> values{
             {scene.identity, "config", 0, BufferDescriptorValue{std::cref(config), 0, 16}},

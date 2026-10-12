@@ -474,3 +474,17 @@ foreach(probe IN ITEMS SCENE RUNTIME TRANSPORT LEGACY EDITOR FEATURE)
     )
     set_tests_properties(render.vulkan.reject_NATIVE_${probe} PROPERTIES RUN_SERIAL TRUE)
 endforeach()
+
+add_executable(render_vulkan_multi_owner MultiOwner.cpp NativeGraphSupport.cpp)
+
+target_link_libraries(render_vulkan_multi_owner PRIVATE render_vulkan_shader_compiler render_data)
+
+target_include_directories(render_vulkan_multi_owner PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/shader/generated"
+    "${CMAKE_CURRENT_SOURCE_DIR}/shader" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../core/type_info/include"
+)
+
+add_dependencies(render_vulkan_multi_owner render_vulkan_spv_F6Multi render_vulkan_schema_F6Readback render_vulkan_schema_F4CopyBuffer)
+
+add_test(NAME render.vulkan.multi_owner COMMAND render_vulkan_multi_owner "${CMAKE_CURRENT_BINARY_DIR}/shader")
+
+set_tests_properties(render.vulkan.multi_owner PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)

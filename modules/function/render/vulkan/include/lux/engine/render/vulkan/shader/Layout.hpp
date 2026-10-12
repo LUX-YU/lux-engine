@@ -19,6 +19,7 @@ namespace lux::render::vulkan
         VkDescriptorBindingFlags flags{};
         std::uint32_t element_stride{}, element_alignment{1};
         std::string dimension, image_format;
+        std::string data_identity;
         bool operator==(const OwnerField&) const noexcept = default;
     };
 
@@ -31,6 +32,9 @@ namespace lux::render::vulkan
         std::vector<OwnerField> fields;
         bool operator==(const OwnerShape&) const noexcept = default;
     };
+
+    // Structural cache discriminator. Full OwnerShape equality remains mandatory on a hit.
+    [[nodiscard]] ShaderOwnerId shaderOwnerId(const OwnerShape& shape) noexcept;
 
     // Full schemas supplied by the actual owner, not a reflected shader subset.
     [[nodiscard]] RenderResult<OwnerShape> declareOwnerShape(
@@ -54,12 +58,15 @@ namespace lux::render::vulkan
 
     struct OwnerAssignment
     {
-        ShaderOwnerId scene, feature, pass_local;
+        // Synchronous cold borrow of a generated field path. Never a DataSet instance key.
+        std::string_view field_path;
+        ShaderOwnerId owner;
     };
 
     struct DescriptorLocation
     {
         std::uint32_t field_index, set, binding;
+        std::string field_path;
         ShaderOwnerId owner;
         VkDescriptorType type;
         std::uint32_t count, stages;
@@ -115,7 +122,7 @@ namespace lux::render::vulkan
 
     private:
         friend RenderResult<LayoutPlan>
-        compileLayout(const rdesc::PassShaderContract&, const OwnerAssignment&, std::span<const OwnerShape>, const DeviceLayoutCaps&) noexcept;
+        compileLayout(const rdesc::PassShaderContract&, std::span<const OwnerAssignment>, std::span<const OwnerShape>, const DeviceLayoutCaps&) noexcept;
 
         explicit LayoutPlan(LayoutIdentity identity) noexcept : identity_(std::move(identity)) {}
 
@@ -124,7 +131,7 @@ namespace lux::render::vulkan
 
     [[nodiscard]] RenderResult<LayoutPlan> compileLayout(
         const rdesc::PassShaderContract& schema,
-        const OwnerAssignment& assignment,
+        std::span<const OwnerAssignment> assignment,
         std::span<const OwnerShape> complete_owners,
         const DeviceLayoutCaps& caps
     ) noexcept;

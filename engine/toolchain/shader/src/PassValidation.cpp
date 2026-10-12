@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <charconv>
 #include <limits>
+#include <lux/cxx/core/StableNameId.hpp>
+#include <lux/engine/toolchain/shader/DataValidation.hpp>
 #include <lux/engine/toolchain/shader/PassValidation.hpp>
 #include <lux/engine/toolchain/shader/SpirvReflection.hpp>
 #include <new>
@@ -256,7 +258,7 @@ namespace lux::toolchain
                 {
                     return cxx::unexpected("Descriptor array shape mismatch: " + std::string(field.path));
                 }
-                if (field.role == ERole::UNIFORM_READ)
+                if (field.role == ERole::UNIFORM_READ && !field.data)
                 {
                     const auto& block = compiler.get_type(resource->base_type_id);
                     if (compiler.get_declared_struct_size(block) != field.element_stride)
@@ -297,6 +299,29 @@ namespace lux::toolchain
                         return cxx::unexpected("Image format mismatch: " + std::string(field.path));
                     }
                 }
+                if (field.data)
+                {
+                    const auto& data = *field.data;
+                    const bool is_invalid_data =
+                        data.canonical_name.empty() || data.schema_version == 0 ||
+                        data.type_id != cxx::Fnv1a64::hash(data.canonical_name) ||
+                        (data.scope != "scene" && data.scope != "view" && data.scope != "runtime") ||
+                        data.gpu.size != field.element_stride || data.gpu.alignment != field.element_alignment;
+                    const bool is_storage =
+                        field.role == ERole::READ_ONLY_STORAGE || field.role == ERole::READ_WRITE_STORAGE;
+                    const bool is_wrong_layout = is_storage ? data.gpu.storage != rdesc::EDataLayout::STD430
+                                                            : field.role != ERole::UNIFORM_READ ||
+                                                                  data.gpu.storage != rdesc::EDataLayout::STD140;
+                    if (is_invalid_data || is_wrong_layout)
+                    {
+                        return cxx::unexpected("DataSchema resource contract mismatch: " + std::string(field.path));
+                    }
+                    auto valid = validateDataSpirv(words, data.gpu, field.shader_name, is_storage);
+                    if (!valid)
+                    {
+                        return cxx::unexpected(valid.error());
+                    }
+                }
                 ++binding;
             }
             if (resources.size() != active_bindings)
@@ -308,7 +333,16 @@ namespace lux::toolchain
             {
                 for (const auto& block : list)
                 {
-                    actual_scalar_count += scalarCount(compiler, compiler.get_type(block.base_type_id));
+                    const bool is_data = std::any_of(
+                        contract.resources.begin(),
+                        contract.resources.end(),
+                        [&](const auto& field)
+                        { return field.data.has_value() && compiler.get_name(block.id) == field.shader_name; }
+                    );
+                    if (!is_data)
+                    {
+                        actual_scalar_count += scalarCount(compiler, compiler.get_type(block.base_type_id));
+                    }
                 }
             }
             if (actual_scalar_count != static_cast<std::size_t>(std::count_if(

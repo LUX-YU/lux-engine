@@ -10,6 +10,7 @@ namespace lux::toolchain
     [[nodiscard]] cxx::expected<void, std::string> validateDataSpirv(
         std::span<const std::uint32_t> words,
         const rdesc::DataGpuLayout& layout,
-        std::string_view resource_name
+        std::string_view resource_name,
+        bool runtime_array = false
     ) noexcept;
 } // namespace lux::toolchain

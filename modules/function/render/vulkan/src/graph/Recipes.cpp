@@ -317,6 +317,26 @@ namespace lux::render::vulkan::detail
             return index;
         }
 
+        ShaderOwnerId fieldOwner(const NativeGraphCode& code, GraphPassId pass, std::string_view path) noexcept
+        {
+            const auto program = std::find_if(
+                code.programs.begin(),
+                code.programs.end(),
+                [&](const auto& candidate) { return candidate.identity().pass == pass; }
+            );
+            if (program == code.programs.end())
+            {
+                return {};
+            }
+            const auto& fields = program->identity().layout.fields;
+            const auto field = std::find_if(
+                fields.begin(),
+                fields.end(),
+                [&](const auto& candidate) { return candidate.field_path == path; }
+            );
+            return field == fields.end() ? ShaderOwnerId{} : field->owner;
+        }
+
         RenderResult<std::vector<std::pair<GraphPassId, std::uint32_t>>> descriptorSources(
             const NativeGraphCode& result,
             GraphPassId pass_id,
@@ -342,13 +362,18 @@ namespace lux::render::vulkan::detail
                     {
                         for (std::uint32_t element = 0; element < shape.count; ++element)
                         {
-                            const auto matches = [&](const GraphFieldBinding& field)
+                            const auto matches = [&](GraphPassId source_pass, const GraphFieldBinding& field)
                             {
                                 const std::string_view semantic = field.semantic.empty() ? field.path : field.semantic;
-                                return field.owner == owner.category && semantic == shape.semantic &&
+                                return fieldOwner(result, source_pass, field.path) == owner.identity &&
+                                       field.owner == owner.category && semantic == shape.semantic &&
                                        field.array_element == element;
                             };
-                            if (std::any_of(pass.bindings.begin(), pass.bindings.end(), matches))
+                            if (std::any_of(
+                                    pass.bindings.begin(),
+                                    pass.bindings.end(),
+                                    [&](const auto& field) { return matches(pass_id, field); }
+                                ))
                             {
                                 continue;
                             }
@@ -365,7 +390,7 @@ namespace lux::render::vulkan::detail
                                 const auto& bindings = result.logical.identity().passes[key.pass.value() - 1].bindings;
                                 for (std::uint32_t f = 0; f < bindings.size(); ++f)
                                 {
-                                    if (!matches(bindings[f]))
+                                    if (!matches(key.pass, bindings[f]))
                                     {
                                         continue;
                                     }
@@ -505,10 +530,11 @@ namespace lux::render::vulkan::detail
                 }
                 const auto& program = result.code->programs[*recipe.program];
                 const auto& layout = program.identity().layout;
+                const auto owner_id = fieldOwner(*result.code, source_pass, field.path);
                 const auto owner = std::find_if(
                     layout.owners.begin(),
                     layout.owners.end(),
-                    [&](const auto& shape) { return shape.category == field.owner; }
+                    [&](const auto& shape) { return shape.identity == owner_id; }
                 );
                 if (owner == layout.owners.end())
                 {

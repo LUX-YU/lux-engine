@@ -16,7 +16,7 @@ function(render_pass_schema target author_header)
     set(output "${CMAKE_CURRENT_BINARY_DIR}/generated")
     lux_add_codegen_job(
         NAME "${job}"
-        MARKER luxpass
+        MARKER lux
         TARGET_FILES "${author_header}"
         LOGICAL_PATHS "${stem}.hpp"
         PARSE_INCLUDED_MARKED

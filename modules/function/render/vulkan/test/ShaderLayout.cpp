@@ -1,4 +1,5 @@
 #include "Complex.pass.hpp"
+#include "OwnerAssignments.hpp"
 #include "Stages.pass.hpp"
 #include "Support.hpp"
 #include <fstream>
@@ -33,7 +34,7 @@ int main(int argc, char** argv)
         auto local = take(declareOwnerShape("pass.local", 1, lux::rdesc::EFieldOwner::PASS_LOCAL, schemas));
         auto other = take(declareOwnerShape("feature.other", 1, lux::rdesc::EFieldOwner::FEATURE, schemas));
         std::array owners{feature, local, other};
-        OwnerAssignment assignment{{}, feature.identity, local.identity};
+        auto assignment = fixtureOwners(schema, {{}, feature.identity, local.identity});
         auto layout = take(compileLayout(schema, assignment, owners, caps));
         CHECK(layout.identity().sets.size() == 2);
         CHECK(layout.identity().sets[0].bindings.size() == 2);
@@ -63,9 +64,15 @@ int main(int argc, char** argv)
         invalid[0].fields.clear();
         CHECK(!compileLayout(schema, assignment, invalid, caps));
         auto missing_owner = assignment;
-        missing_owner.feature = other.identity;
+        for (auto& field : missing_owner)
+        {
+            if (field.owner == feature.identity)
+            {
+                field.owner = other.identity;
+            }
+        }
         CHECK(compileLayout(schema, missing_owner, owners, caps));
-        missing_owner.feature = ShaderOwnerId{123};
+        missing_owner[0].owner = ShaderOwnerId{123};
         CHECK(!compileLayout(schema, missing_owner, owners, caps));
 
         std::vector<lux::toolchain::PassDescriptorLocation> locations;
@@ -105,7 +112,9 @@ int main(int argc, char** argv)
         auto stage_owner =
             take(declareOwnerShape("graphics.local", 1, lux::rdesc::EFieldOwner::PASS_LOCAL, stage_schemas));
         const std::array stage_owners{stage_owner};
-        auto stage_layout = take(compileLayout(stage_schema, {{}, {}, stage_owner.identity}, stage_owners, caps));
+        auto stage_layout = take(
+            compileLayout(stage_schema, fixtureOwners(stage_schema, {{}, {}, stage_owner.identity}), stage_owners, caps)
+        );
         locations.clear();
         for (const auto& field : stage_layout.identity().fields)
         {

@@ -143,8 +143,8 @@ namespace lux::render::vulkan
                         {
                             const auto semantic =
                                 logical_field.semantic.empty() ? logical_field.path : logical_field.semantic;
-                            if (semantic != field.semantic || logical_field.array_element != element ||
-                                logical_field.owner != owner->category)
+                            if (logical_field.path != location.field_path || semantic != field.semantic ||
+                                logical_field.array_element != element || logical_field.owner != owner->category)
                             {
                                 continue;
                             }

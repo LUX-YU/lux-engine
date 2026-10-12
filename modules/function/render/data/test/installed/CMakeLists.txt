@@ -9,3 +9,7 @@ add_executable(consumer Main.cpp)
 target_link_libraries(consumer PRIVATE lux::engine::render::render_data)
 target_include_directories(consumer PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 render_data_schema(consumer "${CMAKE_CURRENT_SOURCE_DIR}/External.hpp")
+
+render_data_schema(consumer "${CMAKE_CURRENT_SOURCE_DIR}/a/Types.hpp" OUTPUT_NAME "a/Types")
+
+render_data_schema(consumer "${CMAKE_CURRENT_SOURCE_DIR}/b/Types.hpp" OUTPUT_NAME "b/Types")

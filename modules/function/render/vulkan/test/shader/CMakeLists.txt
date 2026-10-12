@@ -1,6 +1,6 @@
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
-foreach(fixture IN ITEMS F3Tonemap F3Blur F3Composite F3Storage F3SharedA F3SharedB F3Raster F4Fill F4Readback F4Hzb F4Views F4Local F4Raster F4HostRead F4CopyUpload F4CopyImage F4CopyBuffer F4Accumulate)
+foreach(fixture IN ITEMS F3Tonemap F3Blur F3Composite F3Storage F3SharedA F3SharedB F3Raster F4Fill F4Readback F4Hzb F4Views F4Local F4Raster F4HostRead F4CopyUpload F4CopyImage F4CopyBuffer F4Accumulate F6Readback)
     add_executable(render_vulkan_schema_${fixture} "${CMAKE_CURRENT_SOURCE_DIR}/../../../graph/test/authoring/Fixture.cpp")
 
     target_link_libraries(
@@ -20,7 +20,7 @@ foreach(fixture IN ITEMS F3Tonemap F3Blur F3Composite F3Storage F3SharedA F3Shar
 
     render_pass_schema(render_vulkan_schema_${fixture} "${CMAKE_CURRENT_SOURCE_DIR}/${fixture}.hpp")
 
-    if(fixture MATCHES "^F4(Readback|HostRead|Copy)")
+    if(fixture MATCHES "^F4(Readback|HostRead|Copy)" OR fixture STREQUAL F6Readback)
         set(stages)
     elseif(fixture STREQUAL F3Storage OR fixture STREQUAL F4Fill OR fixture STREQUAL F4Hzb OR fixture STREQUAL F4Accumulate)
         set(stages comp)
@@ -76,3 +76,31 @@ add_custom_command(
 )
 
 add_custom_target(render_vulkan_spv_additive ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/F3Composite.additive.spv")
+
+# Real DataSchema and PassSchema projections feed the same shader consumer.
+add_executable(render_vulkan_schema_F6Multi "${CMAKE_CURRENT_SOURCE_DIR}/../../../graph/test/authoring/Fixture.cpp")
+
+target_link_libraries(render_vulkan_schema_F6Multi PRIVATE render_data render_graph toolchain_shader_emitter toolchain_shader_reflection)
+
+target_include_directories(render_vulkan_schema_F6Multi PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../core/type_info/include")
+
+target_compile_definitions(render_vulkan_schema_F6Multi PRIVATE "LUX_FIXTURE_HEADER=\"F6Multi.pass.hpp\"" "LUX_FIXTURE_TYPE=F6Multi")
+
+render_data_schema(render_vulkan_schema_F6Multi "${CMAKE_CURRENT_SOURCE_DIR}/F6Light.hpp")
+
+render_data_schema(render_vulkan_schema_F6Multi "${CMAKE_CURRENT_SOURCE_DIR}/F6Material.hpp")
+
+render_pass_schema(render_vulkan_schema_F6Multi "${CMAKE_CURRENT_SOURCE_DIR}/F6Multi.hpp")
+
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/F6Multi.comp.glsl" "${CMAKE_CURRENT_BINARY_DIR}/F6Multi.comp.spv"
+    COMMAND render_vulkan_schema_F6Multi "${CMAKE_CURRENT_SOURCE_DIR}/F6Multi.comp.lglsl" "${CMAKE_CURRENT_BINARY_DIR}/F6Multi.comp.glsl"
+    COMMAND "${Vulkan_GLSLC_EXECUTABLE}" -fshader-stage=comp --target-env=vulkan1.3
+        "${CMAKE_CURRENT_BINARY_DIR}/F6Multi.comp.glsl" -o "${CMAKE_CURRENT_BINARY_DIR}/F6Multi.comp.spv"
+    COMMAND "${LUX_SPIRV_VAL}" --target-env vulkan1.3 "${CMAKE_CURRENT_BINARY_DIR}/F6Multi.comp.spv"
+    COMMAND render_vulkan_schema_F6Multi "${CMAKE_CURRENT_BINARY_DIR}/F6Multi.comp.spv" validate
+    DEPENDS render_vulkan_schema_F6Multi "${CMAKE_CURRENT_SOURCE_DIR}/F6Multi.comp.lglsl"
+    VERBATIM
+)
+
+add_custom_target(render_vulkan_spv_F6Multi ALL DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/F6Multi.comp.spv")

@@ -1,10 +1,14 @@
 #include "External.data.hpp"
+#include "a/Types.data.hpp"
+#include "b/Types.data.hpp"
 #include <array>
 
 int main()
 {
     using namespace lux::render;
     static_assert(CpuAuthoredGpuData<External>);
+    static_assert(GpuData<LeftRecord> && GpuData<RightRecord>);
+    static_assert(DataSchema<LeftRecord>::descriptor().id != DataSchema<RightRecord>::descriptor().id);
     constexpr auto layout = DataSchema<External>::gpuLayout();
     static_assert(layout.size == 48);
     std::array<std::byte, layout.size> bytes{};

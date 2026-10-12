@@ -20,7 +20,7 @@ namespace lux::toolchain
             number(value.size());
             result.insert(result.end(), value.begin(), value.end());
         };
-        number(1); // Encoding revision, not a second schema revision authority.
+        number(2); // Encoding revision, not a second schema revision authority.
         text(schema.canonical_name);
         number(schema.parameter_size);
         number(schema.parameter_alignment);
@@ -47,6 +47,11 @@ namespace lux::toolchain
             number(field.stages);
             number(field.descriptor_array);
             number(field.element_alignment);
+            number(field.data.has_value());
+            if (field.data)
+            {
+                text(rdesc::dataBindingIdentity(*field.data));
+            }
         }
         number(schema.scalars.size());
         for (const auto& field : schema.scalars)
@@ -181,8 +186,10 @@ namespace lux::toolchain
         return result != nullptr && result->identity() == identity ? result : nullptr;
     }
 
-    const CompiledShaderVariant* ShaderVariantCatalog::current(std::string_view asset, std::string_view variant)
-        const& noexcept
+    const CompiledShaderVariant* ShaderVariantCatalog::current(
+        std::string_view asset,
+        std::string_view variant
+    ) const& noexcept
     {
         for (const auto& entry : entries_)
         {

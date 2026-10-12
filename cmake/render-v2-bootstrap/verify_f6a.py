@@ -34,7 +34,7 @@ def digest(path):
 
 check(not git("status", "--porcelain", "-uall"), "dirty qualification source")
 check(not build.is_relative_to(src), "build inside source")
-changed = git("diff", "--name-only", BASE, "HEAD").decode().splitlines()
+changed = [v for v in git("diff", "--name-only", "-z", BASE, "HEAD").decode().split("\0") if v]
 allowed = ("modules/function/render/data/", "docs/render-v2/F6", "cmake/render-v2-bootstrap/")
 exact = {
     "modules/function/render/graph/cmake/PassSchema.py",
@@ -48,7 +48,9 @@ exact = {
 check(all(v.startswith(allowed) or v in exact for v in changed), "change scope")
 protected = ["render_legacy", "modules/function/render/" + "core"]
 protected += ["modules/function/render/" + v for v in ("transport", "vulkan", "runtime")]
-protected += [v for v in git("ls-tree", "-r", "--name-only", BASE, "--", "docs/render-v2").decode().splitlines()]
+protected += [
+    v for v in git("ls-tree", "-rz", "--name-only", BASE, "--", "docs/render-v2").decode().split("\0") if v
+]
 protected += ["modules/function/render/graph/" + v for v in ("include", "src", "test")]
 objects = {}
 for path in protected:

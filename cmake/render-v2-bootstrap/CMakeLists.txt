@@ -16,6 +16,8 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/transp
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../engine/toolchain/shader" toolchain_shader)
 
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/data" render_data)
+
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/graph" render_graph)
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render/vulkan" render_vulkan)
@@ -26,4 +28,6 @@ if(BUILD_TESTING)
     include("${CMAKE_CURRENT_LIST_DIR}/F4Closeout.cmake")
 
     include("${CMAKE_CURRENT_LIST_DIR}/F5Runtime.cmake")
+
+    include("${CMAKE_CURRENT_LIST_DIR}/F6Data.cmake")
 endif()

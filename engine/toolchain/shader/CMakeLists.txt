@@ -19,6 +19,7 @@ add_library(
     toolchain_shader_reflection OBJECT
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SpirvReflection.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/PassValidation.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/DataValidation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/SpirvRelocation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ShaderAssets.cpp
 )
@@ -86,7 +87,7 @@ if(LUX_PROFILE_HAS_TOOLCHAIN)
 endif()
 
 if(BUILD_TESTING)
-    foreach(header IN ITEMS PassValidation SpirvRelocation ShaderAssets lglsl/LglslEmitter)
+    foreach(header IN ITEMS DataValidation PassValidation SpirvRelocation ShaderAssets lglsl/LglslEmitter)
         string(REPLACE "/" "_" name "${header}")
         set(header_source "${CMAKE_CURRENT_BINARY_DIR}/header_${name}.cpp")
         file(WRITE "${header_source}" "#include <lux/engine/toolchain/shader/${header}.hpp>\n")

@@ -7,6 +7,10 @@ import json
 from pathlib import Path
 import sys
 
+# Explicit build-tool dependency, never a production Graph include/link.
+sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "engine/toolchain/shader/cmake"))
+from GpuValues import value_declarations
+
 ROLES = {
     "sampled_read": ("SampledTexture", "SAMPLED_READ"),
     "storage_read": ("StorageTexture", "STORAGE_READ"),
@@ -42,34 +46,7 @@ def generate(ir, header):
     shader_structs = {}
     declaration_stages = []
 
-    def scalar_type(tid):
-        t = types[tid]
-        if t["name"] in BUILTINS:
-            if t["size"] != 4:
-                raise ValueError("shader scalar must be 32 bits")
-            return BUILTINS[t["name"]][0]
-        if t["__kind"] == "RecordType" and t.get("decl_id"):
-            d = decls[t["decl_id"]]
-            name = "Lux_" + d["fq_name"].replace("::", "_")
-            abi.append("static_assert(sizeof(::" + d["fq_name"] + ") == " + str(t["size"]) + ");")
-            abi.append("static_assert(alignof(::" + d["fq_name"] + ") == " + str(t["align"]) + ");")
-            if name not in shader_structs:
-                if d.get("bases") or not d["field_decls"]:
-                    raise ValueError("block must be a nonempty field-only value")
-                members = []
-                for fid in d["field_decls"]:
-                    f = decls[fid]
-                    abi.append("static_assert(offsetof(::" + d["fq_name"] + ", " + f["name"] + ") == " + str(f["offset"] // 8) + ");")
-                    members.append("    " + scalar_declaration(f["type_id"], f["name"]) + ";")
-                shader_structs[name] = "struct " + name + " {\n" + "\n".join(members) + "\n};"
-            return name
-        raise ValueError("unsupported shader value type: " + tid)
-
-    def scalar_declaration(tid, name):
-        t = types[tid]
-        if t["__kind"] == "ArrayType":
-            return scalar_declaration(t["element_type_id"], name + "[" + str(t["array_size"]) + "]")
-        return scalar_type(tid) + " " + name
+    scalar_type, scalar_declaration = value_declarations(types, decls, abi, shader_structs)
 
     def leaves(tid, path, offset, block=False, stack=(), stride=0, count=1, metadata=None):
         t = types[tid]

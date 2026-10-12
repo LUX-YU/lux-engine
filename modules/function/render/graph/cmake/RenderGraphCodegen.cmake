@@ -38,6 +38,7 @@ function(render_pass_schema target author_header)
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/PassSchema.py"
             "${output}/${stem}.schema.json" "${author_header}" "${output}/${stem}"
         DEPENDS "${output}/${stem}.schema.json" "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/PassSchema.py"
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../../../../engine/toolchain/shader/cmake/GpuValues.py"
         VERBATIM
     )
 

@@ -2,6 +2,7 @@
 
 import argparse
 import hashlib
+from functools import lru_cache
 import json
 from pathlib import Path
 import subprocess
@@ -24,6 +25,7 @@ def git(*args):
     return subprocess.check_output(["git", "-C", str(src), *args])
 
 
+@lru_cache(maxsize=None)
 def norm(path):
     return str(Path(path).resolve()).replace("\\", "/").lower()
 

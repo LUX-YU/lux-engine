@@ -237,6 +237,54 @@ static void run(const std::filesystem::path& shaders, Validation& validation, un
         const std::array<float, 4> zero{};
         CHECK(buffers.back().write(0, std::as_bytes(std::span(zero))));
     }
+    // The same production descriptor admission also rejects bad multi-owner values.
+    std::array<OwnerDescriptorValue, 4> descriptor_values{
+        OwnerDescriptorValue{
+            owners[0].identity,
+            "records",
+            0,
+            BufferDescriptorValue{std::cref(buffers[0]), 0, sizes[0]}
+        },
+        OwnerDescriptorValue{
+            owners[1].identity,
+            "records",
+            0,
+            BufferDescriptorValue{std::cref(buffers[1]), 0, sizes[1]}
+        },
+        OwnerDescriptorValue{
+            owners[2].identity,
+            "records",
+            0,
+            BufferDescriptorValue{std::cref(buffers[2]), 0, sizes[2]}
+        },
+        OwnerDescriptorValue{
+            owners[3].identity,
+            "output",
+            0,
+            BufferDescriptorValue{std::cref(buffers[scenes * 3]), 0, 16}
+        }
+    };
+    {
+        auto complete_sets = checked(BoundDescriptorSets::create(device, plan.shaderPrograms()[0], descriptor_values));
+        CHECK(!BoundDescriptorSets::create(device, plan.shaderPrograms()[0], std::span(descriptor_values).first(3)));
+        auto duplicate_values = descriptor_values;
+        duplicate_values[1].owner = owners[0].identity;
+        CHECK(!BoundDescriptorSets::create(device, plan.shaderPrograms()[0], duplicate_values));
+        std::vector<OwnerDescriptorValue> extra(descriptor_values.begin(), descriptor_values.end());
+        extra.push_back(descriptor_values[0]);
+        CHECK(!BoundDescriptorSets::create(device, plan.shaderPrograms()[0], extra));
+        if (scenes == 1 && fif == 2 && !reuse)
+        {
+            auto foreign_device = checked(VulkanDevice::create(host));
+            auto foreign_allocator = checked(VulkanAllocator::create(foreign_device));
+            auto foreign_buffer = checked(
+                Buffer::create(foreign_allocator, sizes[0], VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, EMemoryAccess::UPLOAD)
+            );
+            duplicate_values = descriptor_values;
+            duplicate_values[0].value = BufferDescriptorValue{std::cref(foreign_buffer), 0, sizes[0]};
+            CHECK(!BoundDescriptorSets::create(device, plan.shaderPrograms()[0], duplicate_values));
+        }
+    }
     std::vector<NativeImportBinding> imports;
     imports.reserve(4);
     for (unsigned i = 0; i < 4; ++i)
@@ -279,6 +327,20 @@ static void run(const std::filesystem::path& shaders, Validation& validation, un
     // Warm every slot. Next batches have no cold allocation or native creation.
     for (unsigned batch = 0; batch < 3; ++batch)
     {
+        // Change Scene A's actual data only after every previous GPU borrow completed.
+        // Scene B must keep its original result while both retain the same Native program.
+        if (batch == 2)
+        {
+            MaterialGpu changed{};
+            for (unsigned c = 0; c < 4; ++c)
+            {
+                changed.tint[c] = float(c + 2);
+            }
+            changed.roughness = 20.5f;
+            std::array<std::byte, 32> bytes{};
+            CHECK(DataSchema<MaterialGpu>::pack(changed, bytes));
+            CHECK(buffers[2].write(0, bytes));
+        }
         allocation_count = allocation_bytes = 0;
         std::array<std::optional<GraphSubmission>, 2> donors;
         measuring = batch != 0;
@@ -298,6 +360,12 @@ static void run(const std::filesystem::path& shaders, Validation& validation, un
                     imports[i].ready = scene_last_use[scene];
                     imports[i].host_ready = false;
                 }
+            }
+            if (batch == 2 && slot == 0)
+            {
+                imports[2].initial = {VK_PIPELINE_STAGE_2_HOST_BIT, VK_ACCESS_2_HOST_WRITE_BIT};
+                imports[2].ready.reset();
+                imports[2].host_ready = true;
             }
             if (reuse && scene_last_use[scene])
             {
@@ -360,7 +428,8 @@ static void run(const std::filesystem::path& shaders, Validation& validation, un
             {
                 const float main = float(scene * 10 + (batch == 2 ? 4 : 0) + c + 1);
                 const float preview = float(scene * 10 + (batch == 2 ? 0 : 4) + c + 1);
-                CHECK(actual[c] == main * float(c + 2) + preview + 2.5f);
+                const float addition = batch == 2 && scene == 0 ? 22.5f : 2.5f;
+                CHECK(actual[c] == main * float(c + 2) + preview + addition);
             }
         }
     }

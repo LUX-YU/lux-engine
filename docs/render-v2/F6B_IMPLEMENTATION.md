@@ -1,6 +1,6 @@
 # F6.b implementation — structural multi-owner binding
 
-Parent: c6400f4d97af453da1fa2815356c9fea477458ab. F6.a comparison I:
+Approved base: c6400f4d97af453da1fa2815356c9fea477458ab. Initial implementation: fb229ba44fa8211c19e1eefd2717f0f7c3f0e972. The final test-completeness commit is its child. F6.a comparison I:
 bf3223038d415ed6912dcea04dc8f4d195becd3e. This document describes implementation and development evidence;
 only the later independent F6B_VERIFICATION establishes qualification.
 
@@ -51,7 +51,7 @@ configurations: one/two Scene identities, four Views, two/three FIF, with/withou
 One actual Pipeline/PipelineLayout/code is shared within each configuration; every invocation owns
 separate descriptors/output/readback. Light main/preview and Material use generated GPU packing and
 real reflected ABI. Backings differ by Scene, are swapped after completion, and all 4-float outputs
-are independently checked. Scene reuse counts are checked against exact expected counts. Warm
+are independently checked. The final fixture also updates only Scene A MaterialGpu after real completion; Scene B retains its original values. Multi-owner descriptor admission explicitly rejects missing, duplicate, extra and foreign-device values. Scene reuse counts are checked against exact expected counts. Warm
 allocation count/bytes are zero. New cold and warm measurements are labelled new baselines with
 validation enabled, never compared to an invented old equivalent.
 

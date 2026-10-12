@@ -18,9 +18,17 @@ namespace lux::render
     using RuntimeEffect = RuntimeAddress<RenderEffectId>;
     using RuntimeGraph = RuntimeAddress<RenderGraphId>;
 
+    struct RuntimeBinding
+    {
+        RuntimeEffect effect;
+        RuntimeView view;
+        RuntimeTarget target;
+    };
+
     struct RuntimeCapacity
     {
         std::uint32_t scenes{4}, views{8}, targets{8}, effects{4}, graphs{8};
+        std::uint32_t bindings{16};
         std::uint32_t queue_submissions{512}, frames_in_flight{2};
     };
 

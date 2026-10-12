@@ -13,10 +13,11 @@ namespace lux::render
         std::uint32_t index{}, generation{}, scene_index{}, scene_generation{};
     };
 
-    struct LUX_OP(lane = program, kind = blob, name = "lux.render.rd3.view_pass.v1") RuntimeViewPublication
+    struct LUX_OP(lane = program, kind = blob, name = "lux.render.rd3.binding_pass.v2") RuntimeBindingPublication
     {
         std::uint64_t owner{}, revision{};
         std::uint32_t scene_index{}, scene_generation{}, index{}, generation{}, pass{};
+        std::uint32_t effect_index{}, effect_generation{}, target_index{}, target_generation{};
         LUX_OP_BLOB() BlobRef scalars;
     };
 
@@ -25,6 +26,8 @@ namespace lux::render
         CREATE_SCENE,
         CREATE_TARGET,
         CREATE_VIEW,
+        ATTACH_EFFECT,
+        DETACH_EFFECT,
         REMOVE_SCENE,
         REMOVE_TARGET,
         REMOVE_VIEW,
@@ -39,7 +42,7 @@ namespace lux::render
         lane = control,
         kind = resource,
         reply = "lux::render::RuntimeReply",
-        name = "lux.render.rd3.control.v1"
+        name = "lux.render.rd3.control.v2"
     ) RuntimeControl
     {
         std::uint64_t owner{}, offset{};

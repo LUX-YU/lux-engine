@@ -1,16 +1,14 @@
 #pragma once
 
-#include <lux/engine/render/core/Handles.hpp>
 #include <lux/engine/render/graph/Bindings.hpp>
+#include <lux/engine/render/runtime/ResourceDomain.hpp>
 
 namespace lux::render
 {
     struct RenderEffectTag;
     struct RenderGraphTag;
-    struct ResourceDomainTag;
     using RenderEffectId = cxx::SlotKey<RenderEffectTag>;
     using RenderGraphId = cxx::SlotKey<RenderGraphTag>;
-    using ResourceDomainId = cxx::SlotKey<ResourceDomainTag>;
 
     struct ViewRef
     {
@@ -21,9 +19,6 @@ namespace lux::render
 
     struct View
     {
-        RenderEffectId effect;
-        RenderGraphId graph;
-        RenderTargetId target;
         ResourceDomainId domain;
         bool active{true};
     };
@@ -37,12 +32,6 @@ namespace lux::render
     struct Target
     {
         std::uint32_t width{}, height{};
-        std::optional<ViewRef> view;
-    };
-
-    struct ResourceDomain
-    {
-        ResourceDomainId parent;
     };
 
     struct RenderEffect
@@ -52,16 +41,20 @@ namespace lux::render
         RenderGraphId graph;
     };
 
+    struct EffectBinding
+    {
+        ViewRef view;
+        RenderTargetId target;
+        bool operator==(const EffectBinding&) const noexcept = default;
+    };
+
     // Non-owning schedule value. execution is a Native pool offset, never an object identity.
     struct ExecutionJob
     {
-        ViewRef view;
+        RenderEffectId effect;
+        EffectBinding binding;
         RenderGraphId graph;
         std::uint32_t execution;
     };
 
-    struct GraphViewGroup
-    {
-        std::vector<ExecutionJob> jobs;
-    };
 } // namespace lux::render

@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/vulkan/device/Device.hpp>
 #include <memory>
+#include <optional>
 
 namespace lux::render::vulkan
 {
@@ -112,6 +113,14 @@ namespace lux::render::vulkan
         [[nodiscard]] bool owns(SubmissionTicket ticket) const noexcept;
         [[nodiscard]] std::uint64_t completed() const noexcept;
         [[nodiscard]] std::uint64_t submitted() const noexcept;
+
+        // Actual admitted work, including a partial Graph submission. No synthetic frame ticket.
+        [[nodiscard]] std::optional<SubmissionTicket> lastSubmitted() const noexcept
+        {
+            const auto serial = submitted();
+            return serial ? std::optional{SubmissionTicket{*this, serial}} : std::nullopt;
+        }
+
         [[nodiscard]] std::uint32_t capacity() const noexcept;
         [[nodiscard]] VkDevice device() const noexcept;
         [[nodiscard]] bool recording() const noexcept;

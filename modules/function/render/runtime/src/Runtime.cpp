@@ -143,26 +143,57 @@ namespace lux::render
         return control(request);
     }
 
-    RenderResult<RuntimeRequest> RenderRuntime::createView(
-        RuntimeScene scene,
-        RuntimeTarget target,
-        RuntimeEffect effect
-    ) noexcept
+    RenderResult<RuntimeRequest> RenderRuntime::createView(RuntimeScene scene) noexcept
     {
-        if (scene.owner != target.owner || scene.owner != effect.owner)
-        {
-            return cxx::unexpected(RenderError{kTransportWrongOwner});
-        }
         RuntimeControl request;
         request.owner = scene.owner;
         request.scene_index = scene.local.index;
         request.scene_generation = scene.local.gen;
-        request.effect_index = effect.local.index;
-        request.effect_generation = effect.local.gen;
-        request.target_index = target.local.index;
-        request.target_generation = target.local.gen;
         request.operation = ERuntimeControl::CREATE_VIEW;
         return control(request);
+    }
+
+    RenderResult<RuntimeRequest> RenderRuntime::bindingControl(
+        RuntimeBinding binding,
+        ERuntimeControl operation,
+        RuntimeControl request
+    ) noexcept
+    {
+        const bool wrong_owner =
+            binding.effect.owner != binding.view.owner || binding.target.owner != binding.view.owner;
+        if (wrong_owner)
+        {
+            return cxx::unexpected(RenderError{kTransportWrongOwner});
+        }
+        request.owner = binding.view.owner;
+        request.scene_index = binding.view.local.scene.index;
+        request.scene_generation = binding.view.local.scene.gen;
+        request.index = binding.view.local.view.index;
+        request.generation = binding.view.local.view.gen;
+        request.effect_index = binding.effect.local.index;
+        request.effect_generation = binding.effect.local.gen;
+        request.target_index = binding.target.local.index;
+        request.target_generation = binding.target.local.gen;
+        request.operation = operation;
+        return control(request);
+    }
+
+    RenderResult<RuntimeRequest> RenderRuntime::attachEffect(
+        RuntimeEffect effect,
+        RuntimeView view,
+        RuntimeTarget target
+    ) noexcept
+    {
+        return bindingControl({effect, view, target}, ERuntimeControl::ATTACH_EFFECT);
+    }
+
+    RenderResult<RuntimeRequest> RenderRuntime::detachEffect(
+        RuntimeEffect effect,
+        RuntimeView view,
+        RuntimeTarget target
+    ) noexcept
+    {
+        return bindingControl({effect, view, target}, ERuntimeControl::DETACH_EFFECT);
     }
 
     RenderResult<RuntimeRequest> RenderRuntime::remove(RuntimeView view) noexcept
@@ -185,9 +216,9 @@ namespace lux::render
         return control(objectControl(effect, ERuntimeControl::REMOVE_EFFECT));
     }
 
-    RenderResult<RuntimeRequest> RenderRuntime::graph(RuntimeView view) noexcept
+    RenderResult<RuntimeRequest> RenderRuntime::graph(RuntimeBinding binding) noexcept
     {
-        return control(viewControl(view, ERuntimeControl::QUERY_GRAPH));
+        return bindingControl(binding, ERuntimeControl::QUERY_GRAPH);
     }
 
     RenderResult<RuntimeRequest> RenderRuntime::setActive(RuntimeView view, bool active) noexcept
@@ -198,23 +229,23 @@ namespace lux::render
     }
 
     RenderResult<RuntimeRequest> RenderRuntime::readback(
-        RuntimeView view,
+        RuntimeBinding binding,
         GraphPassId pass,
         std::uint32_t input,
         std::uint64_t offset,
         std::uint32_t bytes
     ) noexcept
     {
-        auto request = viewControl(view, ERuntimeControl::READBACK);
+        RuntimeControl request;
         request.first = pass.value();
         request.second = input;
         request.offset = offset;
         request.bytes = bytes;
-        return control(request);
+        return bindingControl(binding, ERuntimeControl::READBACK, request);
     }
 
-    RenderResult<void> RenderRuntime::publishViewPass(
-        RuntimeView view,
+    RenderResult<void> RenderRuntime::publishBindingPass(
+        RuntimeBinding binding,
         GraphPassId pass,
         std::uint64_t revision,
         std::span<const std::byte> scalars
@@ -224,20 +255,30 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{kTransportWrongThread});
         }
+        const bool wrong_owner =
+            binding.effect.owner != binding.view.owner || binding.target.owner != binding.view.owner;
+        if (wrong_owner)
+        {
+            return cxx::unexpected(RenderError{kTransportWrongOwner});
+        }
         if (retained_program_)
         {
             return cxx::unexpected(RenderError{kTransportBusy});
         }
         auto written = program_.writeBlob(
             channel_->publication,
-            RuntimeViewPublication{
-                view.owner,
+            RuntimeBindingPublication{
+                binding.view.owner,
                 revision,
-                view.local.scene.index,
-                view.local.scene.gen,
-                view.local.view.index,
-                view.local.view.gen,
-                pass.value()
+                binding.view.local.scene.index,
+                binding.view.local.scene.gen,
+                binding.view.local.view.index,
+                binding.view.local.view.gen,
+                pass.value(),
+                binding.effect.local.index,
+                binding.effect.local.gen,
+                binding.target.local.index,
+                binding.target.local.gen
             },
             scalars
         );
@@ -250,15 +291,15 @@ namespace lux::render
     }
 
     RenderResult<RuntimeRequest> RenderRuntime::readbackTarget(
-        RuntimeTarget target,
+        RuntimeBinding binding,
         std::uint64_t offset,
         std::uint32_t bytes
     ) noexcept
     {
-        auto request = objectControl(target, ERuntimeControl::READBACK_TARGET);
+        RuntimeControl request;
         request.offset = offset;
         request.bytes = bytes;
-        return control(request);
+        return bindingControl(binding, ERuntimeControl::READBACK_TARGET, request);
     }
 
     RenderResult<void> RenderRuntime::retryPublication() noexcept

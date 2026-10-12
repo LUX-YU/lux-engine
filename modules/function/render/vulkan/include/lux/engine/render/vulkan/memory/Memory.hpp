@@ -50,6 +50,11 @@ namespace lux::render::vulkan
             return size_;
         }
 
+        [[nodiscard]] EMemoryAccess access() const noexcept
+        {
+            return access_;
+        }
+
         [[nodiscard]] VkBufferUsageFlags usage() const noexcept
         {
             return usage_;

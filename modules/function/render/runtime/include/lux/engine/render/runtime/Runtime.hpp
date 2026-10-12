@@ -53,32 +53,38 @@ namespace lux::render
         RenderRuntime& operator=(const RenderRuntime&) = delete;
         [[nodiscard]] RenderResult<RuntimeRequest> createScene() noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> createTarget(std::uint32_t width, std::uint32_t height) noexcept;
-        [[nodiscard]] RenderResult<RuntimeRequest> createView(
-            RuntimeScene scene,
-            RuntimeTarget target,
-            RuntimeEffect effect
+        [[nodiscard]] RenderResult<RuntimeRequest> createView(RuntimeScene scene) noexcept;
+        [[nodiscard]] RenderResult<RuntimeRequest> attachEffect(
+            RuntimeEffect effect,
+            RuntimeView view,
+            RuntimeTarget target
+        ) noexcept;
+        [[nodiscard]] RenderResult<RuntimeRequest> detachEffect(
+            RuntimeEffect effect,
+            RuntimeView view,
+            RuntimeTarget target
         ) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> remove(RuntimeView view) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> remove(RuntimeScene scene) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> remove(RuntimeTarget target) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> remove(RuntimeEffect effect) noexcept;
-        [[nodiscard]] RenderResult<RuntimeRequest> graph(RuntimeView view) noexcept;
+        [[nodiscard]] RenderResult<RuntimeRequest> graph(RuntimeBinding binding) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> setActive(RuntimeView view, bool active) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> readback(
-            RuntimeView view,
+            RuntimeBinding binding,
             GraphPassId pass,
             std::uint32_t input,
             std::uint64_t offset,
             std::uint32_t bytes
         ) noexcept;
-        [[nodiscard]] RenderResult<void> publishViewPass(
-            RuntimeView view,
+        [[nodiscard]] RenderResult<void> publishBindingPass(
+            RuntimeBinding binding,
             GraphPassId pass,
             std::uint64_t revision,
             std::span<const std::byte> scalars
         ) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> readbackTarget(
-            RuntimeTarget target,
+            RuntimeBinding binding,
             std::uint64_t offset,
             std::uint32_t bytes
         ) noexcept;
@@ -94,6 +100,11 @@ namespace lux::render
         friend class RenderBackend;
         explicit RenderRuntime(std::shared_ptr<detail::RuntimeChannel> channel) noexcept;
         [[nodiscard]] RenderResult<RuntimeRequest> control(RuntimeControl request) noexcept;
+        [[nodiscard]] RenderResult<RuntimeRequest> bindingControl(
+            RuntimeBinding binding,
+            ERuntimeControl operation,
+            RuntimeControl request = {}
+        ) noexcept;
         std::shared_ptr<detail::RuntimeChannel> channel_;
         RenderProgramPacket program_;
         RenderControlPacket controls_;

@@ -5,7 +5,7 @@
 #include "NativeGraphSupport.hpp"
 #include <cstring>
 #include <lux/cxx/container/BasicSparseSet.hpp>
-#include <lux/engine/render/runtime/NativeAssembly.hpp>
+#include <lux/engine/render/runtime/DeviceSession.hpp>
 #include <thread>
 
 using namespace native_graph_test;
@@ -29,9 +29,9 @@ RenderResult<RuntimeReply> receive(RuntimeRequest request)
     return lux::cxx::unexpected(RenderError{kBusy});
 }
 
-RuntimeReply await(RuntimeRequest request)
+RuntimeReply await(RuntimeRequest request, std::source_location at = std::source_location::current())
 {
-    return checked(receive(std::move(request)));
+    return checked(receive(std::move(request)), at);
 }
 
 void frames(RenderRuntime& client, std::uint64_t count)
@@ -183,26 +183,26 @@ void identities()
     generations<RenderGraphTag>();
     generations<ResourceDomainTag>();
     lux::cxx::SlotMap<int, RenderGraphTag> graphs;
-    lux::cxx::SlotKeySparseSet<RenderGraphId, GraphViewGroup> groups;
+    lux::cxx::SlotKeySparseSet<RenderGraphId, std::vector<ExecutionJob>> groups;
     const auto a = graphs.emplace(1);
     const auto b = graphs.emplace(2);
-    groups.insert(a, GraphViewGroup{});
-    groups.insert(b, GraphViewGroup{});
+    groups.insert(a, std::vector<ExecutionJob>{});
+    groups.insert(b, std::vector<ExecutionJob>{});
     CHECK(groups.contains(a) && groups.contains(b));
     CHECK(groups.erase(a));
     CHECK(graphs.erase(a));
     const auto replacement = graphs.emplace(3);
     CHECK(replacement.index == a.index && replacement.gen != a.gen);
-    groups.insert(replacement, GraphViewGroup{});
+    groups.insert(replacement, std::vector<ExecutionJob>{});
     CHECK(!groups.tryGet(a) && groups.tryGet(b) && groups.tryGet(replacement));
     groups.clear();
     CHECK(!groups.tryGet(replacement));
     std::puts("RD3 identity allocation/erase/clear/retirement and auxiliary graph index PASS");
 }
 
-void pixel(RenderRuntime& client, RuntimeView view, GraphPassId readback, float exposure)
+void pixel(RenderRuntime& client, RuntimeBinding binding, GraphPassId readback, float exposure)
 {
-    auto reply = await(checked(client.readback(view, readback, 0, 0, 16)));
+    auto reply = await(checked(client.readback(binding, readback, 0, 0, 16)));
     std::array<float, 4> pixel{};
     std::memcpy(pixel.data(), reply.bytes.data(), sizeof(pixel));
     for (unsigned c = 0; c < 3; ++c)
@@ -243,17 +243,21 @@ void gpu(const std::filesystem::path& shaders, unsigned fif, Validation& validat
     std::array<RuntimeTarget, 4> targets;
     std::array<RuntimeView, 4> views;
     std::array<RenderGraphId, 4> graphs;
+    std::array<RuntimeBinding, 4> bindings;
     for (unsigned i = 0; i < 4; ++i)
     {
         const auto target = await(checked(client->createTarget(4, 4)));
         targets[i] = {owner, {target.index, target.generation}};
-        const auto view = await(checked(client->createView(scenes[i / 2], targets[i], selected)));
+        const auto view = await(checked(client->createView(scenes[i / 2])));
         views[i] = {owner, {{view.scene_index, view.scene_generation}, {view.index, view.generation}}};
-        const auto graph = await(checked(client->graph(views[i])));
+        bindings[i] = {selected, views[i], targets[i]};
+        await(checked(client->attachEffect(selected, views[i], targets[i])));
+        await(checked(client->attachEffect(selected, views[i], targets[i]))); // duplicate is idempotent
+        const auto graph = await(checked(client->graph(bindings[i])));
         graphs[i] = {graph.index, graph.generation};
         const float exposure = float(i + 1);
         std::memcpy(values.data() + offset, &exposure, sizeof(exposure));
-        CHECK(client->publishViewPass(views[i], graphics, 1, values));
+        CHECK(client->publishBindingPass(bindings[i], graphics, 1, values));
     }
     CHECK(views[0].local.view == views[2].local.view);
     CHECK(views[0].local.scene != views[2].local.scene);
@@ -263,13 +267,28 @@ void gpu(const std::filesystem::path& shaders, unsigned fif, Validation& validat
     CHECK(client->progress().reused_scene_passes >= 12);
     for (unsigned i = 0; i < 4; ++i)
     {
-        pixel(*client, views[i], readback, float(i + 1));
-        const auto output = await(checked(client->readbackTarget(targets[i], 0, 16)));
+        pixel(*client, bindings[i], readback, float(i + 1));
+        const auto output = await(checked(client->readbackTarget(bindings[i], 0, 16)));
         float red{};
         std::memcpy(&red, output.bytes.data(), sizeof(red));
         const float expected = float(i + 1) / float(i + 2);
         CHECK(std::abs(red - expected) < 1e-6f);
     }
+
+    const auto extra_target_reply = await(checked(client->createTarget(4, 4)));
+    RuntimeTarget extra_target{owner, {extra_target_reply.index, extra_target_reply.generation}};
+    await(checked(client->attachEffect(alternate, views[0], extra_target)));
+    RuntimeBinding extra{alternate, views[0], extra_target};
+    frames(*client, client->progress().render_frames + 1);
+    const auto extra_graph = await(checked(client->graph(extra)));
+    CHECK((RenderGraphId{extra_graph.index, extra_graph.generation} == graphs[0]));
+    CHECK(!receive(checked(client->attachEffect(alternate, views[1], targets[0]))));
+    CHECK(!receive(checked(client->remove(views[0]))));
+    frames(*client, client->progress().render_frames + 4);
+    pixel(*client, extra, readback, 7.0f);
+    pixel(*client, bindings[0], readback, 1.0f);
+    await(checked(client->detachEffect(alternate, views[0], extra_target)));
+    await(checked(client->remove(extra_target)));
 
     allocation_count = allocation_bytes = 0;
     measuring = true;
@@ -277,36 +296,46 @@ void gpu(const std::filesystem::path& shaders, unsigned fif, Validation& validat
     measuring = false;
     CHECK(allocation_count == 0 && allocation_bytes == 0);
 
-    auto foreign = views[0];
-    ++foreign.owner;
-    CHECK(!receive(checked(client->graph(foreign))));
-    auto wrong_scene = views[0];
-    ++wrong_scene.local.scene.gen;
+    auto foreign = bindings[0];
+    ++foreign.view.owner;
+    CHECK(!client->graph(foreign));
+    auto wrong_scene = bindings[0];
+    ++wrong_scene.view.local.scene.gen;
     CHECK(!receive(checked(client->graph(wrong_scene))));
     CHECK(!receive(checked(client->remove(scenes[0]))));
     CHECK(!receive(checked(client->remove(selected))));
     CHECK(!receive(checked(client->remove(targets[0]))));
 
+    CHECK(!receive(checked(client->remove(views[0]))));
+    await(checked(client->detachEffect(bindings[0].effect, views[0], targets[0])));
+    CHECK(!receive(checked(client->detachEffect(bindings[0].effect, views[0], targets[0]))));
     await(checked(client->remove(views[0])));
-    CHECK(!receive(checked(client->graph(views[0]))));
-    const auto replacement = await(checked(client->createView(scenes[0], targets[0], alternate)));
+    CHECK(!receive(checked(client->graph(bindings[0]))));
+    const auto replacement = await(checked(client->createView(scenes[0])));
     RuntimeView recreated{
         owner,
         {{replacement.scene_index, replacement.scene_generation}, {replacement.index, replacement.generation}}
     };
     CHECK(recreated.local.view.index == views[0].local.view.index);
     CHECK(recreated.local.view.gen != views[0].local.view.gen);
-    CHECK(!receive(checked(client->graph(views[0]))));
-    pixel(*client, views[2], readback, 3.0f);
+    CHECK(!receive(checked(client->graph(bindings[0]))));
+    pixel(*client, bindings[2], readback, 3.0f);
+    await(checked(client->attachEffect(alternate, recreated, targets[0])));
+    RuntimeBinding recreated_binding{alternate, recreated, targets[0]};
     frames(*client, client->progress().render_frames + 3);
-    pixel(*client, recreated, readback, 7.0f);
-    const auto shared_again = await(checked(client->graph(recreated)));
+    pixel(*client, recreated_binding, readback, 7.0f);
+    const auto shared_again = await(checked(client->graph(recreated_binding)));
     CHECK((RenderGraphId{shared_again.index, shared_again.generation} == graphs[0]));
     views[0] = recreated;
+    bindings[0] = recreated_binding;
 
+    CHECK(!receive(checked(client->remove(views[0]))));
+    await(checked(client->detachEffect(bindings[0].effect, views[0], targets[0])));
+    CHECK(!receive(checked(client->detachEffect(bindings[0].effect, views[0], targets[0]))));
     await(checked(client->remove(views[0])));
     await(checked(client->remove(alternate)));
-    pixel(*client, views[2], readback, 3.0f);
+    pixel(*client, bindings[2], readback, 3.0f);
+    await(checked(client->detachEffect(selected, views[1], targets[1])));
     await(checked(client->remove(views[1])));
     await(checked(client->remove(scenes[0])));
     const auto new_scene = await(checked(client->createScene()));
@@ -323,12 +352,16 @@ void gpu(const std::filesystem::path& shaders, unsigned fif, Validation& validat
     const auto other_scene = await(checked(other_client->createScene()));
     CHECK(other_scene.index == scenes[0].local.index && other_scene.generation == scenes[0].local.gen);
     CHECK(!receive(checked(other_client->remove(scenes[0]))));
+    CHECK(!receive(checked(other_client->attachEffect(selected, views[2], targets[2]))));
+    RuntimeView other_view = views[2];
+    other_view.owner = other_client->ownerIdentity();
+    CHECK(!client->attachEffect(selected, other_view, targets[2]));
     other_server.reset();
     CHECK(other_client->state() == ERuntimeState::STOPPED);
 
     // Published reply storage and Client survive independently of Server and Native teardown.
-    auto late = checked(client->graph(views[2]));
-    auto abandoned = checked(client->graph(views[3]));
+    auto late = checked(client->graph(bindings[2]));
+    auto abandoned = checked(client->graph(bindings[3]));
     server.reset();
     CHECK(client->state() == ERuntimeState::STOPPED);
     auto late_result = late.poll();
@@ -341,11 +374,14 @@ void gpu(const std::filesystem::path& shaders, unsigned fif, Validation& validat
     std::printf("RD3 GPU scenes=2 views=4 shared_graph=1 FIF=%u isolation/Scene reuse/late teardown PASS\n", fif);
 }
 
+#include "ResourceDomains.hpp"
+
 int main(int argc, char** argv)
 {
     CHECK(argc == 2);
     identities();
     Validation validation;
+    domains(validation);
     gpu(argv[1], 2, validation);
     gpu(argv[1], 3, validation);
     CHECK(validation.errors == 0);

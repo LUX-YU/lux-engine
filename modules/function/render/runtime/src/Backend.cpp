@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <chrono>
 #include <lux/cxx/container/BasicSparseSet.hpp>
-#include <lux/engine/render/runtime/NativeAssembly.hpp>
+#include <lux/engine/render/runtime/DeviceSession.hpp>
 
 namespace lux::render
 {
@@ -10,32 +10,6 @@ namespace lux::render
     {
         constexpr auto kHostFailure = error::errorId("lux.render.runtime.host_failure");
         using Clock = std::chrono::steady_clock;
-
-        struct CompiledGraphEntry
-        {
-            RenderGraphId id;
-            vulkan::Graph code;
-            std::vector<vulkan::NativePassCommand> commands;
-            std::vector<vulkan::ProgramBindings> program_bindings;
-            std::uint32_t width, height;
-        };
-
-        struct ViewExecution
-        {
-            std::optional<ViewRef> view;
-            GraphInvocationData values;
-            std::uint64_t revision{};
-            std::optional<vulkan::GraphSubmission> latest;
-            std::uint64_t latest_frame{};
-        };
-
-        // Independent View/FIF slots share immutable code. Native owns all queue tickets.
-        struct GraphExecution
-        {
-            vulkan::GraphExecutionContext native;
-            std::vector<ViewExecution> views;
-            std::vector<vulkan::NativeTraceEvent> trace;
-        };
 
         template <typename Key> std::uint64_t scopeIdentity(Key key) noexcept
         {
@@ -54,21 +28,11 @@ namespace lux::render
 
     struct RenderBackend::Impl
     {
-        // Reverse destruction: execution before code, queues and device.
-        vulkan::VulkanInstance instance;
-        vulkan::VulkanDevice device;
-        vulkan::VulkanAllocator allocator;
-        std::array<std::unique_ptr<vulkan::SubmissionQueue>, 3> queue_owners;
-        std::array<vulkan::SubmissionQueue*, 3> queues;
-        vulkan::Sampler sampler;
-        cxx::SlotMap<ResourceDomain, ResourceDomainTag> domains;
-        ResourceDomainId root_domain;
+        std::unique_ptr<vulkan::DeviceSession> session;
         cxx::SlotMap<Scene, RenderSceneTag> scenes;
         cxx::SlotMap<Target, RenderTargetTag> targets;
         cxx::SlotMap<RenderEffect, RenderEffectTag> effects;
-        cxx::SlotMap<CompiledGraphEntry, RenderGraphTag> graphs;
-        cxx::SlotKeySparseSet<RenderGraphId, GraphViewGroup> graph_groups;
-        cxx::SlotKeySparseSet<RenderGraphId, std::unique_ptr<GraphExecution>> contexts;
+        cxx::SlotKeySparseSet<RenderEffectId, std::vector<EffectBinding>> effect_bindings;
         std::vector<ExecutionJob> jobs;
         std::shared_ptr<detail::RuntimeChannel> channel;
         RuntimeCapacity capacity;
@@ -79,28 +43,18 @@ namespace lux::render
         bool started{};
 
         Impl(
-            vulkan::VulkanInstance host,
-            vulkan::VulkanDevice native,
-            vulkan::VulkanAllocator memory,
-            std::array<std::unique_ptr<vulkan::SubmissionQueue>, 3> owners,
-            std::array<vulkan::SubmissionQueue*, 3> queue_refs,
-            vulkan::Sampler sample,
+            std::unique_ptr<vulkan::DeviceSession> native,
             std::shared_ptr<detail::RuntimeChannel> endpoint,
             RuntimeCapacity limits,
             RuntimeOptions settings
         ) noexcept
-            : instance(std::move(host)), device(std::move(native)), allocator(std::move(memory)),
-              queue_owners(std::move(owners)), queues(queue_refs), sampler(std::move(sample)),
-              channel(std::move(endpoint)), capacity(limits), options(settings)
+            : session(std::move(native)), channel(std::move(endpoint)), capacity(limits), options(settings)
         {
-            root_domain = domains.emplace(ResourceDomain{});
-            jobs.reserve(capacity.views);
+            jobs.reserve(capacity.bindings);
             scenes.reserve(capacity.scenes);
             targets.reserve(capacity.targets);
             effects.reserve(capacity.effects);
-            graphs.reserve(capacity.graphs);
-            graph_groups.prepareCapacity(capacity.graphs, capacity.graphs);
-            contexts.prepareCapacity(capacity.graphs, capacity.graphs);
+            effect_bindings.prepareCapacity(capacity.effects, capacity.effects);
         }
 
         View* find(ViewRef ref) noexcept
@@ -109,10 +63,31 @@ namespace lux::render
             return scene ? scene->views.find(ref.view) : nullptr;
         }
 
-        ExecutionJob* job(ViewRef ref) noexcept
+        ExecutionJob* job(RenderEffectId effect, EffectBinding binding) noexcept
         {
-            const auto found = std::find_if(jobs.begin(), jobs.end(), [&](const auto& j) { return j.view == ref; });
+            const auto* relations = effect_bindings.tryGet(effect);
+            if (!relations || std::find(relations->begin(), relations->end(), binding) == relations->end())
+            {
+                return nullptr;
+            }
+            const auto found = std::find_if(
+                jobs.begin(),
+                jobs.end(),
+                [&](const auto& j) { return j.effect == effect && j.binding == binding; }
+            );
             return found == jobs.end() ? nullptr : &*found;
+        }
+
+        template <typename Predicate> bool bindingUsed(Predicate predicate) const noexcept
+        {
+            for (const auto& relations : effect_bindings.values())
+            {
+                if (std::any_of(relations.begin(), relations.end(), predicate))
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         void snapshot() noexcept
@@ -147,11 +122,17 @@ namespace lux::render
             const GraphInvocationData& initial
         ) noexcept
         {
-            auto& graph = *graphs.find(graph_id);
-            const std::array samplers{std::pair{GraphSampler{1}, std::cref(sampler)}};
-            const vulkan::NativeInvocationInputs
-                inputs{device, allocator, {}, initial, samplers, capacity.frames_in_flight};
-            auto* pool = contexts.tryGet(graph_id);
+            auto& graph = *session->graphs.find(graph_id);
+            const std::array samplers{std::pair{GraphSampler{1}, std::cref(session->resources.sampler)}};
+            const vulkan::NativeInvocationInputs inputs{
+                session->device.device,
+                session->device.allocator,
+                {},
+                initial,
+                samplers,
+                capacity.frames_in_flight
+            };
+            auto* pool = session->resources.executions.tryGet(graph_id);
             if (!pool)
             {
                 auto native = vulkan::GraphExecutionContext::create(graph.code, inputs);
@@ -159,17 +140,18 @@ namespace lux::render
                 {
                     return cxx::unexpected(native.error());
                 }
-                auto context = std::make_unique<GraphExecution>(GraphExecution{std::move(*native), {}, {}});
+                auto context =
+                    std::make_unique<vulkan::GraphExecution>(vulkan::GraphExecution{std::move(*native), {}, {}});
                 context->trace.resize(context->native.traceCapacity());
-                context->views.reserve(capacity.views);
-                context->views.push_back({ref, initial});
-                contexts.insert(graph_id, std::move(context));
+                context->bindings.reserve(capacity.bindings);
+                context->bindings.push_back({ref, initial});
+                session->resources.executions.insert(graph_id, std::move(context));
                 return 0;
             }
             auto& context = **pool;
-            for (std::uint32_t i = 0; i < context.views.size(); ++i)
+            for (std::uint32_t i = 0; i < context.bindings.size(); ++i)
             {
-                if (context.views[i].view)
+                if (context.bindings[i].view)
                 {
                     continue;
                 }
@@ -185,11 +167,11 @@ namespace lux::render
                 }
                 if (ready)
                 {
-                    context.views[i] = ViewExecution{ref, initial};
+                    context.bindings[i] = vulkan::BindingExecution{ref, initial};
                     return i;
                 }
             }
-            if (context.views.size() >= capacity.views)
+            if (context.bindings.size() >= capacity.bindings)
             {
                 return cxx::unexpected(RenderError{vulkan::kBusy});
             }
@@ -198,17 +180,17 @@ namespace lux::render
             {
                 return cxx::unexpected(appended.error());
             }
-            const auto index = static_cast<std::uint32_t>(context.views.size());
+            const auto index = static_cast<std::uint32_t>(context.bindings.size());
             if (*appended != index * capacity.frames_in_flight)
             {
                 std::terminate();
             }
-            context.views.push_back({ref, initial});
+            context.bindings.push_back({ref, initial});
             return index;
         }
 
         RenderResult<RuntimeReply> control(const RuntimeControl& request) noexcept;
-        RenderResult<void> publish(const RuntimeViewPublication& request, std::span<const std::byte> bytes) noexcept;
+        RenderResult<void> publish(const RuntimeBindingPublication& request, std::span<const std::byte> bytes) noexcept;
         RenderResult<void> execute(std::uint64_t time) noexcept;
         void run() noexcept;
     };
@@ -227,9 +209,13 @@ namespace lux::render
             {
                 return cxx::unexpected(RenderError{vulkan::kCapacity});
             }
-            const auto domain = domains.emplace(ResourceDomain{root_domain});
+            auto domain = session->createResourceDomain(session->rootDomain());
+            if (!domain)
+            {
+                return cxx::unexpected(domain.error());
+            }
             Scene scene;
-            scene.domain = domain;
+            scene.domain = *domain;
             scene.views.reserve(capacity.views);
             return identityReply(scenes.emplace(std::move(scene)), progress.render_frames);
         }
@@ -248,57 +234,91 @@ namespace lux::render
         if (request.operation == ERuntimeControl::CREATE_VIEW)
         {
             const RenderSceneId scene_id{request.scene_index, request.scene_generation};
-            const RenderTargetId target_id{request.target_index, request.target_generation};
-            const RenderEffectId effect_id{request.effect_index, request.effect_generation};
             auto* scene = scenes.find(scene_id);
-            auto* target = targets.find(target_id);
-            auto* effect = effects.find(effect_id);
-            if (!scene || !target || !effect)
+            if (!scene)
             {
                 return invalid();
             }
-            if (target->view)
+            std::size_t count{};
+            for (const auto& value : scenes)
             {
-                return busy();
+                count += value.views.size();
             }
-            if (jobs.size() >= capacity.views)
+            if (count >= capacity.views)
             {
                 return cxx::unexpected(RenderError{vulkan::kCapacity});
             }
-            const auto* graph = graphs.find(effect->graph);
-            if (!graph || graph->width != target->width || graph->height != target->height)
+            auto domain = session->createResourceDomain(scene->domain);
+            if (!domain)
             {
-                return invalid();
+                return cxx::unexpected(domain.error());
             }
-            const auto domain = domains.emplace(ResourceDomain{scene->domain});
-            const auto view_id = scene->views.emplace(View{effect_id, effect->graph, target_id, domain});
-            const ViewRef ref{scene_id, view_id};
-            auto execution = attach(effect->graph, ref, effect->initial_values);
-            if (!execution)
-            {
-                scene->views.erase(view_id);
-                domains.erase(domain);
-                return cxx::unexpected(execution.error());
-            }
-            auto& values = (*contexts.tryGet(effect->graph))->views[*execution].values;
-            values.scene = scopeIdentity(scene_id);
-            values.view = scopeIdentity(view_id);
-            values.target = scopeIdentity(target_id);
-            auto* group = graph_groups.tryGet(effect->graph);
-            if (!group)
-            {
-                GraphViewGroup new_group;
-                new_group.jobs.reserve(capacity.views);
-                graph_groups.insert(effect->graph, std::move(new_group));
-                group = graph_groups.tryGet(effect->graph);
-            }
-            group->jobs.push_back({ref, effect->graph, *execution});
-            jobs.push_back({ref, effect->graph, *execution});
-            target->view = ref;
+            const auto view_id = scene->views.emplace(View{*domain});
             auto reply = identityReply(view_id, progress.render_frames);
             reply.scene_index = scene_id.index;
             reply.scene_generation = scene_id.gen;
             return reply;
+        }
+        const RenderEffectId effect_id{request.effect_index, request.effect_generation};
+        const RenderTargetId target_id{request.target_index, request.target_generation};
+        const ViewRef ref{{request.scene_index, request.scene_generation}, {request.index, request.generation}};
+        const EffectBinding binding{ref, target_id};
+        if (request.operation == ERuntimeControl::ATTACH_EFFECT)
+        {
+            auto* effect = effects.find(effect_id);
+            auto* target = targets.find(target_id);
+            if (!effect || !target || !find(ref))
+            {
+                return invalid();
+            }
+            if (job(effect_id, binding))
+            {
+                return RuntimeReply{};
+            } // idempotent, no second Native slot/job
+            // P2-A has no Target composition: reject another writer explicitly.
+            if (bindingUsed([&](const auto& entry) { return entry.target == target_id; }))
+            {
+                return busy();
+            }
+            if (jobs.size() >= capacity.bindings)
+            {
+                return cxx::unexpected(RenderError{vulkan::kCapacity});
+            }
+            const auto* graph = session->graphs.find(effect->graph);
+            if (!graph || graph->width != target->width || graph->height != target->height)
+            {
+                return invalid();
+            }
+            auto execution = attach(effect->graph, ref, effect->initial_values);
+            if (!execution)
+            {
+                return cxx::unexpected(execution.error());
+            }
+            auto& values = (*session->resources.executions.tryGet(effect->graph))->bindings[*execution].values;
+            values.scene = scopeIdentity(ref.scene);
+            values.view = scopeIdentity(ref.view);
+            values.target = scopeIdentity(target_id);
+            auto* relations = effect_bindings.tryGet(effect_id);
+            if (!relations)
+            {
+                effect_bindings.insert(effect_id, std::vector<EffectBinding>{});
+                relations = effect_bindings.tryGet(effect_id);
+            }
+            relations->push_back(binding);
+            jobs.push_back({effect_id, binding, effect->graph, *execution});
+            return RuntimeReply{};
+        }
+        if (request.operation == ERuntimeControl::DETACH_EFFECT)
+        {
+            auto* entry = job(effect_id, binding);
+            if (!entry)
+            {
+                return invalid();
+            }
+            (*session->resources.executions.tryGet(entry->graph))->bindings[entry->execution].view.reset();
+            std::erase(*effect_bindings.tryGet(effect_id), binding);
+            std::erase_if(jobs, [&](const auto& j) { return j.effect == effect_id && j.binding == binding; });
+            return RuntimeReply{};
         }
         if (request.operation == ERuntimeControl::REMOVE_SCENE)
         {
@@ -312,7 +332,11 @@ namespace lux::render
             {
                 return busy();
             }
-            domains.erase(scene->domain);
+            auto removed = session->removeResourceDomain(scene->domain);
+            if (!removed)
+            {
+                return cxx::unexpected(removed.error());
+            }
             scenes.erase(key);
             return RuntimeReply{};
         }
@@ -324,7 +348,7 @@ namespace lux::render
             {
                 return invalid();
             }
-            if (target->view)
+            if (bindingUsed([&](const auto& entry) { return entry.target == key; }))
             {
                 return busy();
             }
@@ -339,47 +363,28 @@ namespace lux::render
             {
                 return invalid();
             }
-            for (const auto& j : jobs)
+            const auto* relations = effect_bindings.tryGet(key);
+            if (relations && !relations->empty())
             {
-                if (find(j.view)->effect == key)
-                {
-                    return busy();
-                }
+                return busy();
             }
             const auto graph_id = effect->graph;
+            effect_bindings.erase(key);
             effects.erase(key);
             const bool referenced =
                 std::any_of(effects.begin(), effects.end(), [&](const auto& other) { return other.graph == graph_id; });
             if (!referenced)
             {
                 // Native destruction waits all actual tickets, including partial submissions.
-                contexts.erase(graph_id);
-                graph_groups.erase(graph_id);
-                graphs.erase(graph_id);
+                session->resources.executions.erase(graph_id);
+                session->graphs.erase(graph_id);
             }
             return RuntimeReply{};
         }
-        ViewRef ref{{request.scene_index, request.scene_generation}, {request.index, request.generation}};
-        if (request.operation == ERuntimeControl::READBACK_TARGET)
-        {
-            const auto* target = targets.find({request.index, request.generation});
-            if (!target || !target->view)
-            {
-                return invalid();
-            }
-            ref = *target->view;
-        }
         auto* view = find(ref);
-        auto* execution_job = job(ref);
-        if (!view || !execution_job)
+        if (!view)
         {
             return invalid();
-        }
-        auto& context = **contexts.tryGet(view->graph);
-        auto& execution = context.views[execution_job->execution];
-        if (request.operation == ERuntimeControl::QUERY_GRAPH)
-        {
-            return identityReply(view->graph, progress.render_frames);
         }
         if (request.operation == ERuntimeControl::SET_VIEW_ACTIVE)
         {
@@ -388,13 +393,28 @@ namespace lux::render
         }
         if (request.operation == ERuntimeControl::REMOVE_VIEW)
         {
-            std::erase_if(graph_groups.tryGet(view->graph)->jobs, [&](const auto& j) { return j.view == ref; });
-            execution.view.reset();
-            targets.find(view->target)->view.reset();
-            domains.erase(view->domain);
+            if (bindingUsed([&](const auto& entry) { return entry.view == ref; }))
+            {
+                return busy();
+            }
+            auto removed = session->removeResourceDomain(view->domain);
+            if (!removed)
+            {
+                return cxx::unexpected(removed.error());
+            }
             scenes.find(ref.scene)->views.erase(ref.view);
-            std::erase_if(jobs, [&](const auto& j) { return j.view == ref; });
             return RuntimeReply{};
+        }
+        auto* execution_job = job(effect_id, binding);
+        if (!execution_job)
+        {
+            return invalid();
+        }
+        auto& context = **session->resources.executions.tryGet(execution_job->graph);
+        auto& execution = context.bindings[execution_job->execution];
+        if (request.operation == ERuntimeControl::QUERY_GRAPH)
+        {
+            return identityReply(execution_job->graph, progress.render_frames);
         }
         if (request.operation == ERuntimeControl::READBACK || request.operation == ERuntimeControl::READBACK_TARGET)
         {
@@ -413,7 +433,7 @@ namespace lux::render
             }
             while (!channel->stopping.load(std::memory_order_acquire))
             {
-                auto done = queues[0]->wait(**last, 10'000'000);
+                auto done = session->device.queues[0]->wait(**last, 10'000'000);
                 if (!done)
                 {
                     return cxx::unexpected(done.error());
@@ -429,8 +449,9 @@ namespace lux::render
             }
             RuntimeReply reply{execution.latest_frame, request.bytes};
             const bool final_output = request.operation == ERuntimeControl::READBACK_TARGET;
-            const auto pass = final_output ? graphs.find(view->graph)->code.logical().executionOrder().back()
-                                           : GraphPassId{request.first};
+            const auto pass = final_output
+                                  ? session->graphs.find(execution_job->graph)->code.logical().executionOrder().back()
+                                  : GraphPassId{request.first};
             auto read = context.native.readbackPass(
                 *execution.latest,
                 pass,
@@ -448,7 +469,7 @@ namespace lux::render
     }
 
     RenderResult<void> RenderBackend::Impl::publish(
-        const RuntimeViewPublication& request,
+        const RuntimeBindingPublication& request,
         std::span<const std::byte> bytes
     ) noexcept
     {
@@ -457,13 +478,15 @@ namespace lux::render
             return cxx::unexpected(RenderError{kTransportWrongOwner});
         }
         const ViewRef ref{{request.scene_index, request.scene_generation}, {request.index, request.generation}};
-        auto* j = job(ref);
+        auto* j =
+            job({request.effect_index, request.effect_generation},
+                {ref, {request.target_index, request.target_generation}});
         if (!j)
         {
             return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
         }
-        auto& execution = (*contexts.tryGet(j->graph))->views[j->execution];
-        const auto& passes = graphs.find(j->graph)->code.logical().identity().passes;
+        auto& execution = (*session->resources.executions.tryGet(j->graph))->bindings[j->execution];
+        const auto& passes = session->graphs.find(j->graph)->code.logical().identity().passes;
         const bool invalid_pass = request.pass == 0 || request.pass > passes.size();
         if (invalid_pass)
         {
@@ -489,11 +512,11 @@ namespace lux::render
         std::array<std::uint64_t, 3> budget{};
         for (const auto& j : jobs)
         {
-            if (!find(j.view)->active)
+            if (!find(j.binding.view)->active)
             {
                 continue;
             }
-            auto& context = **contexts.tryGet(j.graph);
+            auto& context = **session->resources.executions.tryGet(j.graph);
             auto ready = context.native.slotReady(j.execution * capacity.frames_in_flight + frame_slot);
             if (!ready)
             {
@@ -509,12 +532,12 @@ namespace lux::render
                 budget[q] += needed[q];
             }
         }
-        for (auto* queue : queues)
+        for (auto* queue : session->device.queues)
         {
             std::uint64_t needed{};
             for (unsigned q = 0; q < 3; ++q)
             {
-                if (queues[q] == queue)
+                if (session->device.queues[q] == queue)
                 {
                     needed += budget[q];
                 }
@@ -531,24 +554,28 @@ namespace lux::render
         const std::array<GraphImportBinding, 0> imports{};
         for (const auto& j : jobs)
         {
-            if (!find(j.view)->active)
+            if (!find(j.binding.view)->active)
             {
                 continue;
             }
-            auto& context = **contexts.tryGet(j.graph);
-            auto& execution = context.views[j.execution];
-            const auto& logical = graphs.find(j.graph)->code.logical();
+            auto& context = **session->resources.executions.tryGet(j.graph);
+            auto& execution = context.bindings[j.execution];
+            const auto& logical = session->graphs.find(j.graph)->code.logical();
             auto bindings = FrameGraphBindings::create(logical, {serial, time, frame_slot}, imports, execution.values);
             if (!bindings)
             {
                 return cxx::unexpected(bindings.error());
             }
             std::optional<vulkan::GraphSubmission> donor;
-            for (const auto& candidate : graph_groups.tryGet(j.graph)->jobs)
+            for (const auto& candidate : jobs)
             {
-                const auto& prior = context.views[candidate.execution];
-                const bool eligible = prior.view && prior.view != execution.view && prior.view->scene == j.view.scene &&
-                                      prior.latest && prior.latest_frame == serial;
+                if (candidate.graph != j.graph || candidate.execution == j.execution)
+                {
+                    continue;
+                }
+                const auto& prior = context.bindings[candidate.execution];
+                const bool eligible = prior.view && prior.view->scene == j.binding.view.scene && prior.latest &&
+                                      prior.latest_frame == serial && !prior.scene_borrowed;
                 if (!eligible)
                 {
                     continue;
@@ -591,6 +618,7 @@ namespace lux::render
             }
             execution.latest = *submitted;
             execution.latest_frame = serial;
+            execution.scene_borrowed = donor.has_value();
             ++progress.native_invocations;
             for (std::uint32_t i = 0; i < submitted->trace_count; ++i)
             {
@@ -723,7 +751,7 @@ namespace lux::render
             }
         }
         // Includes partial-submit tickets, not merely the last successful receipt.
-        contexts.clear();
+        session->resources.executions.clear();
         snapshot();
         channel->state.store(
             channel->failure ? ERuntimeState::FAILED : ERuntimeState::STOPPED,
@@ -752,61 +780,20 @@ namespace lux::render
     ) noexcept
     {
         const auto& c = native.capacity;
-        const bool invalid = !c.scenes || !c.views || !c.targets || !c.effects || !c.graphs || !c.frames_in_flight ||
-                             c.frames_in_flight > 3 || !c.queue_submissions || !options.frame_interval_ns ||
-                             options.frame_interval_ns > 10'000'000'000ull;
+        const bool invalid = !c.scenes || !c.views || !c.bindings || !c.targets || !c.effects || !c.graphs ||
+                             !c.frames_in_flight || c.frames_in_flight > 3 || !c.queue_submissions ||
+                             !options.frame_interval_ns || options.frame_interval_ns > 10'000'000'000ull;
         if (invalid)
         {
             return cxx::unexpected(RenderError{vulkan::kInvalidArgument});
         }
-        auto instance = vulkan::VulkanInstance::create(native.instance);
-        if (!instance)
+        auto session = vulkan::DeviceSession::create(native);
+        if (!session)
         {
-            return cxx::unexpected(instance.error());
-        }
-        auto device = vulkan::VulkanDevice::create(*instance, native.device);
-        if (!device)
-        {
-            return cxx::unexpected(device.error());
-        }
-        auto allocator = vulkan::VulkanAllocator::create(*device);
-        if (!allocator)
-        {
-            return cxx::unexpected(allocator.error());
-        }
-        std::array<std::unique_ptr<vulkan::SubmissionQueue>, 3> owners;
-        std::array<vulkan::SubmissionQueue*, 3> queues{};
-        for (unsigned role = 0; role < 3; ++role)
-        {
-            const auto selected = device->queue(static_cast<vulkan::EQueueRole>(role));
-            for (unsigned earlier = 0; earlier < role; ++earlier)
-            {
-                if (queues[earlier]->nativeQueue().handle == selected.handle)
-                {
-                    queues[role] = queues[earlier];
-                    break;
-                }
-            }
-            if (queues[role])
-            {
-                continue;
-            }
-            auto queue =
-                vulkan::SubmissionQueue::create(*device, c.queue_submissions, static_cast<vulkan::EQueueRole>(role));
-            if (!queue)
-            {
-                return cxx::unexpected(queue.error());
-            }
-            owners[role] = std::move(*queue);
-            queues[role] = owners[role].get();
-        }
-        auto sampler = vulkan::Sampler::create(*device);
-        if (!sampler)
-        {
-            return cxx::unexpected(sampler.error());
+            return cxx::unexpected(session.error());
         }
         RenderRouteTable routes{2};
-        auto publication = routes.registerOperation<RuntimeViewPublication>();
+        auto publication = routes.registerOperation<RuntimeBindingPublication>();
         auto control = routes.registerOperation<RuntimeControl>();
         if (!publication || !control)
         {
@@ -826,17 +813,9 @@ namespace lux::render
         auto channel = std::shared_ptr<detail::RuntimeChannel>{
             new detail::RuntimeChannel{std::move(*transport), *publication, *control, owner, wake}
         };
-        return std::unique_ptr<RenderBackend>{new RenderBackend(std::make_unique<Impl>(
-            std::move(*instance),
-            std::move(*device),
-            std::move(*allocator),
-            std::move(owners),
-            queues,
-            std::move(*sampler),
-            std::move(channel),
-            c,
-            options
-        ))};
+        return std::unique_ptr<RenderBackend>{
+            new RenderBackend(std::make_unique<Impl>(std::move(*session), std::move(channel), c, options))
+        };
     }
 
     RenderResult<std::reference_wrapper<const vulkan::VulkanDevice>> RenderBackend::assemblyDevice() const noexcept
@@ -849,7 +828,7 @@ namespace lux::render
         {
             return cxx::unexpected(RenderError{vulkan::kBusy});
         }
-        return std::cref(impl_->device);
+        return std::cref(impl_->session->device.device);
     }
 
     RenderResult<RuntimeEffect> RenderBackend::addEffect(vulkan::EffectSource source) noexcept
@@ -910,7 +889,7 @@ namespace lux::render
             binding_inputs.push_back(program.bindings);
         }
         RenderGraphId graph_id;
-        for (const auto& graph : impl_->graphs)
+        for (const auto& graph : impl_->session->graphs)
         {
             const bool same_structure = graph.width == source.width && graph.height == source.height &&
                                         graph.code.logical().cacheIdentity() == logical->cacheIdentity() &&
@@ -941,7 +920,7 @@ namespace lux::render
         }
         if (graph_id.isNull())
         {
-            if (impl_->graphs.size() >= impl_->capacity.graphs)
+            if (impl_->session->graphs.size() >= impl_->capacity.graphs)
             {
                 return cxx::unexpected(RenderError{vulkan::kCapacity});
             }
@@ -956,7 +935,7 @@ namespace lux::render
                     assignments.push_back({assignment.field_path, assignment.owner});
                 }
                 auto program = vulkan::NativeShaderProgram::create(
-                    impl_->device,
+                    impl_->session->device.device,
                     *logical,
                     input.pass,
                     input.shader,
@@ -972,14 +951,19 @@ namespace lux::render
                 programs.push_back(std::move(*program));
             }
             auto code = vulkan::compileVulkanGraph(
-                {*logical, impl_->device, impl_->queues, source.commands, true, {source.width, source.height}},
+                {*logical,
+                 impl_->session->device.device,
+                 impl_->session->device.queues,
+                 source.commands,
+                 true,
+                 {source.width, source.height}},
                 std::move(programs)
             );
             if (!code)
             {
                 return cxx::unexpected(code.error());
             }
-            graph_id = impl_->graphs.emplace(CompiledGraphEntry{
+            graph_id = impl_->session->graphs.emplace(vulkan::CompiledGraphEntry{
                 {},
                 std::move(*code),
                 std::move(source.commands),
@@ -987,7 +971,7 @@ namespace lux::render
                 source.width,
                 source.height
             });
-            impl_->graphs.find(graph_id)->id = graph_id;
+            impl_->session->graphs.find(graph_id)->id = graph_id;
             ++impl_->progress.native_compilations;
         }
         auto values = makeGraphInvocationData(source.definition);

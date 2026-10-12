@@ -3,7 +3,7 @@ add_component(
     COMPONENT_NAME render_runtime
     NAMESPACE lux::engine::render
     OUTPUT_NAME lux_engine_render_runtime
-    SOURCE_FILES src/Backend.cpp src/Runtime.cpp src/Presentation.cpp
+    SOURCE_FILES src/DeviceSession.cpp src/Backend.cpp src/Runtime.cpp src/Presentation.cpp
 )
 
 component_include_directories(

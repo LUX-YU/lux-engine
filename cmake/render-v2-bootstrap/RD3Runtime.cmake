@@ -101,7 +101,7 @@ add_test(NAME render.rd3.runtime COMMAND render_rd3_runtime "${f5_shader}")
 set_tests_properties(render.rd3.runtime PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
 
 add_executable(render_rd3_faults
-    "${f5_test}/RD3Faults.cpp" "${f5_test}/../src/Runtime.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
+    "${f5_test}/RD3Faults.cpp" "${f5_test}/../src/Runtime.cpp" "${f5_test}/../src/DeviceSession.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
 )
 
 target_link_libraries(render_rd3_faults PRIVATE render_vulkan_graph_fault render_transport)
@@ -120,7 +120,7 @@ add_test(NAME render.rd3.faults COMMAND render_rd3_faults "${f5_shader}")
 
 set_tests_properties(render.rd3.faults PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
 
-foreach(header Objects Types Runtime Backend NativeAssembly)
+foreach(header Objects Types Runtime Backend ResourceDomain NativeAssembly DeviceSession)
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/rd3_header_${header}.cpp"
         "#include <lux/engine/render/runtime/${header}.hpp>\n"
     )
@@ -129,7 +129,7 @@ foreach(header Objects Types Runtime Backend NativeAssembly)
 
     target_link_libraries(render_rd3_header_${header} PRIVATE render_runtime)
 
-    if(header STREQUAL "NativeAssembly")
+    if(header STREQUAL "NativeAssembly" OR header STREQUAL "DeviceSession")
         target_link_libraries(render_rd3_header_${header} PRIVATE render_vulkan_graph)
     else()
         file(APPEND "${CMAKE_CURRENT_BINARY_DIR}/rd3_header_${header}.cpp"

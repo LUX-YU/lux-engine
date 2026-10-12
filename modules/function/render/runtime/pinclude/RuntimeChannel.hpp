@@ -11,7 +11,7 @@ namespace lux::render::detail
     struct RuntimeChannel
     {
         std::unique_ptr<RenderTransport> transport;
-        BoundRenderRoute<RuntimeViewPublication> publication;
+        BoundRenderRoute<RuntimeBindingPublication> publication;
         BoundRenderRoute<RuntimeControl> control;
         std::uint64_t owner;
         HANDLE wake;

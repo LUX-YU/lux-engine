@@ -7,7 +7,7 @@
 namespace
 {
     std::atomic<unsigned> host_failure{}, pipeline_creations{};
-    std::atomic<unsigned> fail_submit{}, fail_image{};
+    std::atomic<unsigned> fail_submit{}, fail_image{}, fail_buffer{};
     constexpr std::array names{
         "instance",
         "messenger",
@@ -71,7 +71,8 @@ namespace lux::render::vulkan::test
     VkResult before(const char* operation) noexcept
     {
         const std::string_view name{operation};
-        if ((name == "submit" && trip(fail_submit)) || (name == "image" && trip(fail_image)))
+        if ((name == "submit" && trip(fail_submit)) || (name == "image" && trip(fail_image)) ||
+            (name == "buffer" && trip(fail_buffer)))
         {
             return VK_ERROR_OUT_OF_DEVICE_MEMORY;
         }
@@ -129,6 +130,21 @@ int main(int argc, char** argv)
     RuntimeOptions options;
     options.frame_interval_ns = 2'000'000;
 
+    domains(validation);
+    emptyOwners();
+    {
+        auto session = checked(DeviceSession::create(native));
+        auto& domain = session->getResourceDomain(session->rootDomain());
+        auto factory = session->resources.bufferFactory(256, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+        fail_buffer = 1;
+        auto failed = domain.getOrCreate<Buffer>(factory);
+        CHECK(!failed && fail_buffer == 0);
+        CHECK(failed.error().type == kNativeFailure);
+        CHECK(!domain.tryGetLocal<Buffer>());
+        CHECK(domain.getOrCreate<Buffer>(factory));
+    }
+    emptyOwners();
+
     host_failure = 1;
     CHECK(!RenderBackend::create(native, options));
     CHECK(host_failure == 0);
@@ -157,17 +173,23 @@ int main(int argc, char** argv)
         auto t = await(checked(client->createTarget(4, 4)));
         RuntimeScene scene{owner, {s.index, s.generation}};
         RuntimeTarget target{owner, {t.index, t.generation}};
-        CHECK(!receive(checked(client->createView(scene, target, stale_effect))));
-        fail_image = 1;
-        CHECK(!receive(checked(client->createView(scene, target, selected))));
-        CHECK(fail_image == 0);
-        // Native allocation failure leaves the Scene and Target available for retry.
-        auto v = await(checked(client->createView(scene, target, selected)));
+        auto v = await(checked(client->createView(scene)));
         RuntimeView view{owner, {{v.scene_index, v.scene_generation}, {v.index, v.generation}}};
-        const auto graph = await(checked(client->graph(view)));
+        CHECK(!receive(checked(client->attachEffect(stale_effect, view, target))));
+        fail_image = 1;
+        CHECK(!receive(checked(client->attachEffect(selected, view, target))));
+        CHECK(fail_image == 0);
+        // Failed Native candidate leaves the existing View and Target unbound and reusable.
+        await(checked(client->attachEffect(selected, view, target)));
+        fail_image = 1;
+        await(checked(client->attachEffect(selected, view, target)));
+        CHECK(fail_image == 1); // duplicate never constructs another Native backing
+        fail_image = 0;
+        RuntimeBinding binding{selected, view, target};
+        const auto graph = await(checked(client->graph(binding)));
         CHECK(graph.index == 0 && graph.generation == 2);
         frames(*client, 3);
-        CHECK(client->graph(view));
+        CHECK(client->graph(binding));
         fail_submit = 2; // one real queue submission is accepted before the failure
         for (unsigned i = 0; i < 5000 && client->state() != ERuntimeState::FAILED; ++i)
         {

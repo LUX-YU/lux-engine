@@ -1,0 +1,26 @@
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/Protocol.cpp" CONTENT
+    "#include <lux/engine/render/protocol/Protocol.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native header leaked\n#endif\nstatic_assert(__cplusplus >= 202002L);\n")
+
+add_library(render_protocol_header OBJECT "${CMAKE_CURRENT_BINARY_DIR}/Protocol.cpp")
+
+target_link_libraries(render_protocol_header PRIVATE render_protocol)
+
+get_target_property(protocol_links render_protocol INTERFACE_LINK_LIBRARIES)
+
+if(NOT protocol_links STREQUAL "lux::engine::render::render_data")
+    message(FATAL_ERROR "Unexpected Protocol dependency: ${protocol_links}")
+endif()
+
+add_test(
+    NAME render.protocol.installed
+    COMMAND "${CMAKE_COMMAND}"
+        "-DBUILD_DIR=${CMAKE_BINARY_DIR}"
+        "-DCONSUMER_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/installed"
+        "-DDEPENDENCY_DIR=${lux-cxx_DIR}"
+        "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}"
+        "-DMAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+        "-DCONFIG=$<CONFIG>"
+        "-DGENERATOR=${CMAKE_GENERATOR}"
+        "-DCXX_FLAGS=${CMAKE_CXX_FLAGS}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/../../core/test/Installed.cmake"
+)

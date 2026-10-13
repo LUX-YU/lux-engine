@@ -1,155 +1,275 @@
 #pragma once
 
 #include <concepts>
-#include <functional>
 #include <lux/cxx/compile_time/type_info.hpp>
-#include <lux/engine/render/core/Error.hpp>
-#include <lux/engine/render/core/Handles.hpp>
-#include <memory>
-#include <vector>
+#include <lux/engine/render/runtime/Objects.hpp>
+#include <lux/engine/render/vulkan/transfer/Submission.hpp>
+#include <utility>
 
-namespace lux::render
+namespace lux::render::vulkan
 {
-    struct ResourceDomainTag;
-    using ResourceDomainId = cxx::SlotKey<ResourceDomainTag>;
+    // Only Backend's validated attachment resolver constructs these sharing namespaces.
+    // The enclosing Session scopes Global and all local SlotKeys across Runtime owners.
+    struct ResourceScopeKey
+    {
+        EResourceScope scope{EResourceScope::GLOBAL};
+        RenderSceneId scene;
+        RenderViewHandle view;
+        RenderEffectId effect;
+        RenderTargetId target;
+        bool operator==(const ResourceScopeKey&) const noexcept = default;
+    };
 
-    // Configuration-aware factories explicitly validate hits without constructing another resource.
     template <typename F, typename T>
     concept ResourceFactoryFor = requires(F& factory, const T& existing) {
         { factory() } -> std::same_as<RenderResult<std::unique_ptr<T>>>;
         { factory.isCompatible(existing) } -> std::same_as<bool>;
     };
 
-    // One unnamed resource per type; compiler-local type hash AND name are compared. Type information selects a local
-    // entry, never an object ID. Parent is a read-only stable borrow; Session rejects deleting a parent with children.
-    // Mutation and erase require the caller's GPU-safe point, just like Native RAII destruction.
-    class ResourceDomain
+    inline RenderError resourceError(RenderError error) noexcept
+    {
+        const bool is_oom = error.type == kNativeFailure &&
+                            (error.args[0] == static_cast<std::uint32_t>(VK_ERROR_OUT_OF_HOST_MEMORY) ||
+                             error.args[0] == static_cast<std::uint32_t>(VK_ERROR_OUT_OF_DEVICE_MEMORY));
+        if (is_oom)
+        {
+            std::terminate();
+        }
+        return error;
+    }
+
+    struct ScopedResourceTag;
+    using ScopedResourceId = cxx::SlotKey<ScopedResourceTag>;
+
+    namespace detail
+    {
+        struct ScopedResourceEntry
+        {
+            cxx::basic_type_info type;
+            ResourceScopeKey scope;
+            std::string key;
+            ScopedResourceId id;
+            std::size_t leases{};
+            std::optional<SubmissionTicket> ready;
+            std::array<std::optional<SubmissionTicket>, 3> last_use;
+            virtual ~ScopedResourceEntry() noexcept = default;
+        };
+
+        template <typename T> struct TypedResourceEntry final : ScopedResourceEntry
+        {
+            std::unique_ptr<T> value;
+        };
+    } // namespace detail
+
+    // CPU use right only. Physical ownership stays in the Session's ResourceDomain.
+    template <typename T> class ResourceLease
     {
     public:
-        explicit ResourceDomain(ResourceDomainId parent_id = {}, const ResourceDomain* parent = nullptr) noexcept
-            : parent_id_(parent_id), parent_(parent)
+        ResourceLease() noexcept = default;
+
+        ~ResourceLease() noexcept
         {
+            release();
         }
 
-        ResourceDomain(const ResourceDomain&) = delete;
-        ResourceDomain& operator=(const ResourceDomain&) = delete;
+        ResourceLease(const ResourceLease&) = delete;
+        ResourceLease& operator=(const ResourceLease&) = delete;
 
-        [[nodiscard]] ResourceDomainId parentId() const noexcept
-        {
-            return parent_id_;
-        }
+        ResourceLease(ResourceLease&& other) noexcept : entry_(std::exchange(other.entry_, nullptr)) {}
 
-        template <typename T> [[nodiscard]] T* tryGetLocal() noexcept
+        ResourceLease& operator=(ResourceLease&& other) noexcept
         {
-            for (auto& entry : entries_)
+            if (this != &other)
             {
-                if (entry->type.hash() == cxx::type_hash<T>() && entry->type.name() == cxx::type_name<T>())
-                {
-                    return static_cast<Entry<T>*>(entry.get())->value.get();
-                }
+                release();
+                entry_ = std::exchange(other.entry_, nullptr);
             }
-            return nullptr;
+            return *this;
         }
 
-        template <typename T> [[nodiscard]] const T* tryGetLocal() const noexcept
+        [[nodiscard]] std::optional<SubmissionTicket> ready() const noexcept
         {
-            return const_cast<ResourceDomain*>(this)->tryGetLocal<T>();
+            return entry_->ready;
         }
 
-        template <typename T> [[nodiscard]] const T* tryGet() const noexcept
+        [[nodiscard]] std::optional<SubmissionTicket> lastGraphicsUse() const noexcept
         {
-            if (const auto* local = tryGetLocal<T>())
-            {
-                return local;
-            }
-            return parent_ ? parent_->tryGet<T>() : nullptr;
+            return entry_->last_use[0] ? entry_->last_use[0] : entry_->ready;
         }
 
-        template <typename T> [[nodiscard]] T& getLocal() noexcept
+        [[nodiscard]] T& get() const noexcept
         {
-            auto* value = tryGetLocal<T>();
-            if (!value)
-            {
-                std::terminate();
-            }
-            return *value;
+            return *entry_->value;
         }
 
-        template <typename T> [[nodiscard]] const T& getLocal() const noexcept
+        [[nodiscard]] ScopedResourceId id() const noexcept
         {
-            return const_cast<ResourceDomain*>(this)->getLocal<T>();
+            return entry_->id;
         }
 
-        template <typename T, ResourceFactoryFor<T> F>
-        [[nodiscard]] RenderResult<std::reference_wrapper<T>> getOrCreate(F&& factory) noexcept
+        [[nodiscard]] std::size_t useCount() const noexcept
         {
-            if (auto* existing = tryGetLocal<T>())
-            {
-                if (!factory.isCompatible(*existing))
-                {
-                    return cxx::unexpected(RenderError{kDefinitionMismatch});
-                }
-                return std::ref(*existing);
-            }
-            auto candidate = factory();
-            if (!candidate)
-            {
-                return cxx::unexpected(candidate.error());
-            }
-            return getOrCreate<T>(std::move(*candidate));
+            return entry_->leases;
         }
 
-        // An already occupied type is an explicit conflict, not a silent replacement.
-        template <typename T>
-        [[nodiscard]] RenderResult<std::reference_wrapper<T>> getOrCreate(std::unique_ptr<T> candidate) noexcept
+        // Record actual queue admissions even when executeGraph returns a partial-submit error.
+        // The small fixed queue set is the existing DeviceContext set, never another timeline.
+        void retainAccepted(const std::array<SubmissionQueue*, 3>& queues) noexcept
         {
-            if (!candidate)
+            for (std::size_t i = 0; i < queues.size(); ++i)
             {
-                return cxx::unexpected(RenderError{kInvalidIdentity});
+                entry_->last_use[i] = queues[i]->lastSubmitted();
             }
-            if (tryGetLocal<T>())
-            {
-                return cxx::unexpected(RenderError{kDefinitionMismatch});
-            }
-            auto& value = *candidate;
-            entries_.push_back(std::make_unique<Entry<T>>(std::move(candidate)));
-            return std::ref(value);
-        }
-
-        template <typename T> bool erase() noexcept
-        {
-            for (auto i = entries_.begin(); i != entries_.end(); ++i)
-            {
-                if ((*i)->type.hash() == cxx::type_hash<T>() && (*i)->type.name() == cxx::type_name<T>())
-                {
-                    entries_.erase(i);
-                    return true;
-                }
-            }
-            return false;
         }
 
     private:
-        struct EntryBase
-        {
-            explicit EntryBase(cxx::basic_type_info info) noexcept : type(info) {}
+        friend class ResourceDomain;
 
-            virtual ~EntryBase() = default;
-            cxx::basic_type_info type;
-        };
-
-        template <typename T> struct Entry final : EntryBase
+        explicit ResourceLease(detail::TypedResourceEntry<T>& entry) noexcept : entry_(&entry)
         {
-            explicit Entry(std::unique_ptr<T> owned) noexcept
-                : EntryBase(cxx::make_basic_type_info<T>()), value(std::move(owned))
+            ++entry_->leases;
+        }
+
+        void release() noexcept
+        {
+            if (entry_)
             {
+                --entry_->leases;
+                entry_ = nullptr;
             }
+        }
 
-            std::unique_ptr<T> value;
-        };
-
-        ResourceDomainId parent_id_;
-        const ResourceDomain* parent_;
-        std::vector<std::unique_ptr<EntryBase>> entries_;
+        detail::TypedResourceEntry<T>* entry_{};
     };
-} // namespace lux::render
+
+    // P2-A's typed entry store, internalized and keyed by Scope/Type/canonical Key.
+    // There is ONE store per Session; no Domain tree or parallel ScopedResources owner.
+    // Retention is OnLastDetach: collect at cold topology changes, defer pending backing
+    // until a later cold collection or Session shutdown. No frame-loop registry walk.
+    class ResourceDomain
+    {
+    public:
+        ResourceDomain() noexcept = default;
+        ResourceDomain(const ResourceDomain&) = delete;
+        ResourceDomain& operator=(const ResourceDomain&) = delete;
+
+        ~ResourceDomain() noexcept
+        {
+            for (const auto& entry : entries_)
+            {
+                if (entry->leases != 0)
+                {
+                    std::terminate();
+                }
+                for (const auto& ticket : entry->last_use)
+                {
+                    if (!ticket)
+                    {
+                        continue;
+                    }
+                    auto& queue = const_cast<SubmissionQueue&>(ticket->owner());
+                    auto done = queue.wait(*ticket, UINT64_MAX);
+                    if ((!done || !*done) && !queue.deviceLost())
+                    {
+                        std::terminate();
+                    }
+                }
+            }
+        }
+
+        template <typename T, typename F>
+            requires ResourceFactoryFor<F, T>
+        [[nodiscard]] RenderResult<ResourceLease<T>> getOrCreate(
+            ResourceScopeKey scope,
+            std::string_view key,
+            F&& factory
+        ) noexcept
+        {
+            if (key.empty())
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument});
+            }
+            for (const auto& entry : entries_)
+            {
+                const bool same_type =
+                    entry->type.hash() == cxx::type_hash<T>() && entry->type.name() == cxx::type_name<T>();
+                if (same_type && entry->scope == scope && entry->key == key)
+                {
+                    auto& typed = static_cast<detail::TypedResourceEntry<T>&>(*entry);
+                    if (!factory.isCompatible(*typed.value))
+                    {
+                        return cxx::unexpected(RenderError{kDefinitionMismatch});
+                    }
+                    return ResourceLease<T>{typed};
+                }
+            }
+            auto value = factory();
+            if (!value)
+            {
+                return cxx::unexpected(resourceError(value.error()));
+            }
+            if (!*value)
+            {
+                return cxx::unexpected(RenderError{kInvalidArgument});
+            }
+            auto entry = std::make_unique<detail::TypedResourceEntry<T>>();
+            entry->type = cxx::make_basic_type_info<T>();
+            entry->scope = scope;
+            entry->key = key;
+            entry->value = std::move(*value);
+            if constexpr (requires { factory.readyTicket(); })
+            {
+                entry->ready = factory.readyTicket();
+                entry->last_use[0] = entry->ready;
+            }
+            auto* stable = entry.get();
+            stable->id = entries_.emplace(std::move(entry));
+            return ResourceLease<T>{*stable};
+        }
+
+        [[nodiscard]] RenderResult<void> collect() noexcept
+        {
+            // Erase by saved generational ID, restarting after dense compaction (cold only).
+            for (std::size_t i = 0; i < entries_.size();)
+            {
+                auto& entry = *(entries_.begin() + i)->get();
+                bool ready = entry.leases == 0;
+                if (ready)
+                {
+                    for (const auto& ticket : entry.last_use)
+                    {
+                        if (!ticket)
+                        {
+                            continue;
+                        }
+                        auto& queue = const_cast<SubmissionQueue&>(ticket->owner());
+                        auto done = queue.wait(*ticket, 0);
+                        if (!done && !queue.deviceLost())
+                        {
+                            return cxx::unexpected(resourceError(done.error()));
+                        }
+                        ready = ready && (queue.deviceLost() || (done && *done));
+                    }
+                }
+                if (ready)
+                {
+                    const auto id = entry.id;
+                    entries_.erase(id);
+                }
+                else
+                {
+                    ++i;
+                }
+            }
+            return {};
+        }
+
+        [[nodiscard]] std::size_t size() const noexcept
+        {
+            return entries_.size();
+        }
+
+    private:
+        cxx::SlotMap<std::unique_ptr<detail::ScopedResourceEntry>, ScopedResourceTag> entries_;
+    };
+} // namespace lux::render::vulkan

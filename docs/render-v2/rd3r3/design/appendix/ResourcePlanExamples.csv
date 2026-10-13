@@ -1,0 +1,14 @@
+﻿Slot,Type,Scope,SemanticKey,CompilerRequirement,NativeOwner,Stage
+MeshGeometry,MeshGpuResource,Global,mesh.catalog,Root geometry VBO/IBO/LOD,Global MeshStorage,L1
+Instances,InstanceGpuStreams,Scene,instance.main,Transform/Cull/Property Dirty streams,Scene InstanceStorage,L1
+Lights,LightGpuRecord,Scene,light.main,packed per-light SSBO / revisions,Scene LightStorage,L2
+PreviewLights,LightGpuRecord,Scene,light.preview,separate from light.main,Scene LightStorage alt key,L2
+Camera,CameraGpuData,View,camera,View-dependent camera payload,View camera storage,L1
+TsrHistory,TsrHistoryBuffer,Attachment,tsr.history,effect/target/extent history epoch,Attachment-private history,H3
+HzbHistory,Image,Attachment,hzb.prev,target-scale dependent history; fallback,Attachment-private HZB,L2
+GBuffer,Image,Transient,gbuffer.albedo,render graph temporary image,GraphExecutionContext,L1
+ShadowAtlas,ImageAtlas,Scene,shadow.atlas,light/geometry dirty pages and owner,Scene shadow storage,H4
+Radiance,RadianceCache,Scene,gi.radiance,GPU-authored GI cache,Scene GI storage,H2
+TextureCatalog,TextureStore,Global,texture.shared,bindless mip feedback resident,Root TextureStorage,L1
+MaterialCatalog,MaterialStore,Global,material.catalog,GPU BSDF records/texture ids,Root MaterialStorage,L1
+GaussianChunk,GaussianGpuChunk,Global/Scene,gaussian.catalog,GPU chunk/page metadata,GaussianStorage,H6

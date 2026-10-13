@@ -1,0 +1,70 @@
+﻿Id,Scenario,PriorInitialStage,PriorExpectedResult,PriorFinalOwnerStage,RD3R3RequiredStage,RD3R3Expected,RD3R3Status
+B01,createView(A) no Effect/Graph/Target fields,P2A,Backend creates View only; no other owner,P2A,R3-A,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B02,"attachEffect(E1,A,V1,T1) and attachEffect(E1,B,V2,T2)",P2A,"one EffectBindings table, exact triple",P2A,R3-A,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B03,same View in E1/T1 and E2/T2,P2A,no duplicate View owner; distinct jobs,P2A,R3-A,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B04,duplicate E1/A/V/T attach,P2A,"reject or update placement, never duplicate job",P2A,R3-A,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B05,delete View with 2 Effect bindings,P2A,"all triples revoked, in-flight Native slot retained",P2A,R3-A,"Scene/View deletion detaches related attachments, leases release, native tickets preserve backing",HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B06,wrong Scene gen same View local SlotKey,P2A,foreign ViewRef rejected,P2A,R3-A,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B07,getResourceDomain(SceneId) compile-time misuse,P2A,only ResourceDomainId accepted,P2A,R3-A,Scopes derived from validated SceneId/ViewRef; direct getResourceDomain(SceneId) not target API,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B08,getOrCreate<T>() twice with lazy GPU factory,P2A,"factory executes once, same owned T",P2A,R3-A,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B09,OOM in getOrCreate GPU native creation,P2A,no partial Registry entry; retry works,P2A,R3-A,OOM is Fatal in RD3-R3; do NOT require retry; prior retry belongs to P2-A historical evidence,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B10,one Domain T shadows Root T read,P2A,local getOrCreate never mutates parent,P2A,R3-A,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B11,Effect A/B same Native Graph structural key different hot exposure,P2B,"shared code ID, separate invocation values",P2B,R3-B,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B12,Feature::create(session) attempts capture SceneA Light,P2B,invalid relationship; binding resolves per execution,P2B,R3-B,Feature author does not retain Scene resource at creation; native backing acquired only at attach,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B13,pure author Feature does not require Session,P2B,C++20 GraphAuthor and valid compile,P2B,R3-B,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B14,Effect candidate compile fails,P2B,all old jobs stay last-good,P2B,R3-B,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B15,Target T mixed Effect A+B,P3,one full target graph with explicit composite,P3,R3-C,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B16,Target changes during candidate update,P3/P5,"serialized or epoch revalidation, all rollback",P5,R3-C,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B17,same Root MeshStorage two Scene consumers,P4,single GPU owner plus separate instances,P4,R3-D,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B18,sparse Dirty upload 0.1 pct,P4,coalesced bytes within expected bounds,P4,R3-D,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B19,Bindless delete while GPU in flight,P4,Native resource/descriptor slot retained to completion,P4,R3-D,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B20,GPU partial submit then Device Lost,P2A/P3,teardown no double-destroy or false completion,P3,R3-C,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B21,Installed Plugin unload before GPU finishes,P5,CodePin prevents dangling code,P5,R3-E,Preserve original correctness intent; adapt to EffectAttachment/ResourcePlan/ScopedResources target,HISTORICAL_CASE_NOT_RERUN_AS_RD3R3
+B22,Backend unique Effect attachment table does not duplicate mutable jobs,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-A,no redundant ExecutionJob or GraphViewGroup writable owner,NOT_IMPLEMENTED
+B23,Native bootstrap destroys InstanceContext while Session live,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-A,forbidden by ownership/lifetime; InstanceContext outlives DeviceSession,NOT_IMPLEMENTED
+B24,Two Effect attachments consume same Scene LightStorage,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-A,detach one does not release backing; last lease safe retirement,NOT_IMPLEMENTED
+B25,Global Mesh-like Storage used across two Scene attachments,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-A,"Scene A deleted, Scene B still correct and owner single",NOT_IMPLEMENTED
+B26,One View two Effect/Target Attachment-private History,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-A,"history independent, shared View camera only",NOT_IMPLEMENTED
+B27,"No attachment to effect, no Scene/View native resource allocations",N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-B,"ResourcePlan authored, GPU persistent backing demand-driven",NOT_IMPLEMENTED
+B28,Compiler has SSBO read but no ResourceScope,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-B,reject missing declaration; do not infer Scene or Global,NOT_IMPLEMENTED
+B29,Two providers same DataKey/Scope writer,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-B,cold conflict; single authority or explicit merge,NOT_IMPLEMENTED
+B30,Same type main and preview resource Keys,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-B,two distinct native bindings; no accidental dedup,NOT_IMPLEMENTED
+B31,Same Scope+Type+Key compatible requirements from two Features,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-B,"one Storage backing, two leases",NOT_IMPLEMENTED
+B32,prepare Attach fails non-OOM capability mismatch,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-B,"no visible partial relation, previous last-good unchanged",NOT_IMPLEMENTED
+B33,Effect update with multiple targets and one invalid target,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-B,entire affected closure remains old until complete candidate,NOT_IMPLEMENTED
+B34,Hot Grid opacity update,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-B,no Graph/PSO rebuild; native data revision changes,NOT_IMPLEMENTED
+B35,Executor resource lookup instrumentation stable frame,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-B,no per-pass ScopedResources Type/Key lookups/heap alloc,NOT_IMPLEMENTED
+B36,Mixed E1/E2 on one Target,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-C,one explicitly compiled final graph with composite pass,NOT_IMPLEMENTED
+B37,Resize T1 and camera cut for TSR,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-C,"attachment-specific history invalidated, T2 preserved",NOT_IMPLEMENTED
+B38,Native partial queue submit and leaked ResourceLease,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-C,accepted GPU tickets wait before resource destructor; no fake join,NOT_IMPLEMENTED
+B39,WSI Present follows Graph final output,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-C,no hidden second render graph; WSI fence lifetime safe,NOT_IMPLEMENTED
+B40,ECS Grid Component modified 100 times under full PROGRAM backpressure,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-E,commit only accepted revisions and typed data reaches GPU,NOT_IMPLEMENTED
+B41,ECS Entity deleted then same local bits reused,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-E,"cross-scene generation invalidation, no stale GPU slot resurrection",NOT_IMPLEMENTED
+B42,Editor Grid producer with no ECS component,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-E,can publish same GridData via neutral typed provider,NOT_IMPLEMENTED
+B43,Plugin adds Gaussian Data Projection and Feature,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-E,no RenderSystem core switch; installed consumer produces GPU output,NOT_IMPLEMENTED
+B44,Plugin unload while Native resource destructor pending,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-E,CodePin prevents callback/destructor use after unload,NOT_IMPLEMENTED
+B45,Backend selected Vulkan vs hypothetical D3D12 provider,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-E,Engine client headers compile no Vulkan or DirectX; no fake D3D12 implementation,NOT_IMPLEMENTED
+B46,Mesh 0.1% dirty with paged streams,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-D,coalesced incremental bytes vs Legacy and correct GPU oracle,NOT_IMPLEMENTED
+B47,Texture bindless slot removed while in flight,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,R3-D,cannot reuse before real GPU completion; no stale descriptor access,NOT_IMPLEMENTED
+B48,GPU PointCloud clearAll then upload same frame,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,L3,later ordered upload survives; octree meta correct,NOT_IMPLEMENTED
+B49,H1 virtual geometry missing page,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,H1,safe coarse fallback and bounded page budget,NOT_IMPLEMENTED
+B50,H2 software/hardware GI fallback,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,H2,enabled capability checked; tracing implementation reference quality,NOT_IMPLEMENTED
+B51,H3 TSR target change,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,H3,motion/history/ghost/disocclusion reference quality,NOT_IMPLEMENTED
+B52,H4 VSM feedback invalidation,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,H4,real page table dirty/cache correctly updated,NOT_IMPLEMENTED
+B53,H5 volume lighting,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,H5,Texture3D + Shader layout actual native oracle,NOT_IMPLEMENTED
+B54,H6 full Gaussian splat mixed with mesh depth,N/A NEW_RD3R3,N/A NEW_RD3R3,N/A NEW_RD3R3,H6,GPU sort/bin/alpha/transmittance true reference; softsplat not equivalent,NOT_IMPLEMENTED
+GX01,forward ref/external resource read with false dead pass,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-B,graph dependencies from correct resource versions,NEW_UNQUALIFIED_SCENARIO
+GX02,starved then dead pass with conditional output,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-B,keep only valid reachable live passes,NEW_UNQUALIFIED_SCENARIO
+GX03,localRead requires attached producer with no interleaved pass,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-C,valid merged scope or explicit fallback,NEW_UNQUALIFIED_SCENARIO
+GX04,conditional chain atomic skipping and first-writer load,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-C,no undefined attachment read,NEW_UNQUALIFIED_SCENARIO
+GX05,history resize and physical transient pool cache,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-C,"old last good survives, native pool ticket safe",NEW_UNQUALIFIED_SCENARIO
+GX06,native DS layout changes between passes,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-C,no illegal cross pass bind dedup,NEW_UNQUALIFIED_SCENARIO
+GX07,dedicated and aliased transfer Queue variants,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-D,real Ready Ticket and SyncVal0,NEW_UNQUALIFIED_SCENARIO
+GX08,cross-family transfer to sampled texture,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-D,release/acquire ownership valid,NEW_UNQUALIFIED_SCENARIO
+GX09,MaterialGraph two instances only differing params,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-D,one native PSO two valid material records,NEW_UNQUALIFIED_SCENARIO
+GX10,Material render state affects variant key,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-D,AlphaMode DoubleSided produce different PSO,NEW_UNQUALIFIED_SCENARIO
+GX11,plugin material node unloaded during compiled shader use,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-E,code leases valid until last user,NEW_UNQUALIFIED_SCENARIO
+GX12,uploaded Texture mip replace/delete in-flight,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-D,old descriptor and image retired after GPU ticket,NEW_UNQUALIFIED_SCENARIO
+GX13,Mesh+Texture UPLOAD byte backpressure with control fairness,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-D,control latency unaffected no drop,NEW_UNQUALIFIED_SCENARIO
+GX14,native lazy memory capability absent,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,R3-C,ordinary pooled physical memory fallback,NEW_UNQUALIFIED_SCENARIO
+GX15,MaterialGraph Shadow/VisBuffer/RawExpr not implemented,RD3R3_AUDIT_NEW,new legacy source audit,RD3R3,L1,explicit unsupported not false shader substitute,NEW_UNQUALIFIED_SCENARIO

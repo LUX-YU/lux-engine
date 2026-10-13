@@ -2,6 +2,7 @@
 #include "F3Tonemap.pass.hpp"
 #include "F4Fill.pass.hpp"
 #include "F4HostRead.pass.hpp"
+#include "F5CReadBuffer.pass.hpp"
 #include "NativeGraphSupport.hpp"
 #include <cstring>
 #include <lux/cxx/container/BasicSparseSet.hpp>
@@ -119,9 +120,31 @@ ProgramSource programSource(
     return {pass, std::move(*variant), schema, {std::move(field_owners), std::move(owners)}, std::move(description)};
 }
 
-Fixture effect(const std::filesystem::path& shaders, float exposure = 1.0f)
+Fixture effect(const std::filesystem::path& shaders, float exposure = 1.0f, bool scoped = false)
 {
     RenderGraphBuilder graph;
+    std::vector<ScopedBufferRequest> requests;
+    std::vector<NativePassCommand> import_commands;
+    if (scoped)
+    {
+        const std::array scopes{
+            EResourceScope::GLOBAL,
+            EResourceScope::SCENE,
+            EResourceScope::VIEW,
+            EResourceScope::ATTACHMENT,
+            EResourceScope::GLOBAL
+        };
+        for (unsigned i = 0; i < scopes.size(); ++i)
+        {
+            const auto key = "r3a.buffer." + std::to_string(i);
+            const auto id = graph.importBuffer(key, {256, 4}, EPersistentScope::RUNTIME);
+            F5CReadBuffer read;
+            read.source = {id, {0, 16}};
+            const auto pass = checked(graph.readback(key, EExecutionScope::VIEW, read));
+            requests.push_back({GraphResourceId{id.value()}, scopes[i], key});
+            import_commands.push_back({pass, CopyCommand{}, EQueueRole::GRAPHICS});
+        }
+    }
     TextureDesc texture;
     texture.width = texture.height = 4;
     const auto hdr = graph.texture(texture, "rd3.hdr");
@@ -151,7 +174,13 @@ Fixture effect(const std::filesystem::path& shaders, float exposure = 1.0f)
         NativePassCommand{graphics, DrawCommand{}, EQueueRole::GRAPHICS},
         NativePassCommand{host, CopyCommand{}, EQueueRole::TRANSFER}
     };
-    return {{std::move(definition), std::move(programs), std::move(commands), 4, 4}, graphics, host, offset};
+    import_commands.insert(import_commands.end(), commands.begin(), commands.end());
+    return {
+        {std::move(definition), std::move(programs), std::move(import_commands), 4, 4, std::move(requests)},
+        graphics,
+        host,
+        offset
+    };
 }
 
 template <typename Tag> void generations()
@@ -181,19 +210,19 @@ void identities()
     generations<RenderTargetTag>();
     generations<RenderEffectTag>();
     generations<RenderGraphTag>();
-    generations<ResourceDomainTag>();
+    generations<ScopedResourceTag>();
     lux::cxx::SlotMap<int, RenderGraphTag> graphs;
-    lux::cxx::SlotKeySparseSet<RenderGraphId, std::vector<ExecutionJob>> groups;
+    lux::cxx::SlotKeySparseSet<RenderGraphId, std::vector<ViewRef>> groups;
     const auto a = graphs.emplace(1);
     const auto b = graphs.emplace(2);
-    groups.insert(a, std::vector<ExecutionJob>{});
-    groups.insert(b, std::vector<ExecutionJob>{});
+    groups.insert(a, std::vector<ViewRef>{});
+    groups.insert(b, std::vector<ViewRef>{});
     CHECK(groups.contains(a) && groups.contains(b));
     CHECK(groups.erase(a));
     CHECK(graphs.erase(a));
     const auto replacement = graphs.emplace(3);
     CHECK(replacement.index == a.index && replacement.gen != a.gen);
-    groups.insert(replacement, std::vector<ExecutionJob>{});
+    groups.insert(replacement, std::vector<ViewRef>{});
     CHECK(!groups.tryGet(a) && groups.tryGet(b) && groups.tryGet(replacement));
     groups.clear();
     CHECK(!groups.tryGet(replacement));
@@ -374,6 +403,119 @@ void gpu(const std::filesystem::path& shaders, unsigned fif, Validation& validat
     std::printf("RD3 GPU scenes=2 views=4 shared_graph=1 FIF=%u isolation/Scene reuse/late teardown PASS\n", fif);
 }
 
+void scopedGpu(
+    const std::filesystem::path& shaders,
+    Validation& validation,
+    void (*observe)(unsigned) = nullptr,
+    bool patterned = false
+)
+{
+    BackendOptions native;
+    native.instance = {{}, true, diagnostic, &validation};
+    native.device.dynamic_rendering = true;
+    native.device.multiple_queues = true;
+    auto server = checked(RenderBackend::create(native));
+    auto first = effect(shaders, 1.0f, true);
+    const auto readback = first.readback;
+    const auto e1 = checked(server->addEffect(std::move(first.source)));
+    auto second = effect(shaders, 7.0f, true);
+    const auto e2 = checked(server->addEffect(std::move(second.source)));
+    auto client = checked(server->start());
+    const auto owner = client->ownerIdentity();
+    auto makeScene = [&]()
+    {
+        auto r = await(checked(client->createScene()));
+        return RuntimeScene{owner, {r.index, r.generation}};
+    };
+    auto makeView = [&](RuntimeScene scene)
+    {
+        auto r = await(checked(client->createView(scene)));
+        return RuntimeView{owner, {{r.scene_index, r.scene_generation}, {r.index, r.generation}}};
+    };
+    auto makeTarget = [&]()
+    {
+        auto r = await(checked(client->createTarget(4, 4)));
+        return RuntimeTarget{owner, {r.index, r.generation}};
+    };
+    auto sa = makeScene();
+    auto sb = makeScene();
+    auto va = makeView(sa);
+    auto vb = makeView(sb);
+    auto va2 = makeView(sa);
+    std::array bindings{
+        RuntimeBinding{e1, va, makeTarget()},
+        RuntimeBinding{e2, va, makeTarget()},
+        RuntimeBinding{e1, vb, makeTarget()},
+        RuntimeBinding{e1, va2, makeTarget()}
+    };
+    const std::array counts{5u, 6u, 9u, 11u};
+    std::optional<RenderGraphId> shared;
+    for (unsigned i = 0; i < bindings.size(); ++i)
+    {
+        const auto& b = bindings[i];
+        await(checked(client->attachEffect(b.effect, b.view, b.target)));
+        if (observe)
+        {
+            observe(counts[i]);
+        }
+        await(checked(client->attachEffect(b.effect, b.view, b.target)));
+        if (observe)
+        {
+            observe(counts[i]);
+        }
+        auto graph = await(checked(client->graph(b)));
+        RenderGraphId id{graph.index, graph.generation};
+        CHECK(!shared || *shared == id);
+        shared = id;
+    }
+    auto oracle = [&](RuntimeBinding binding, const std::array<unsigned, 5>& expected, float exposure)
+    {
+        frames(*client, client->progress().render_frames + 2);
+        for (unsigned i = 0; i < 5; ++i)
+        {
+            const auto r = await(checked(client->readback(binding, GraphPassId{i + 1}, 0, 0, 16)));
+            std::array<unsigned, 4> words{};
+            std::memcpy(words.data(), r.bytes.data(), sizeof(words));
+            for (auto word : words)
+            {
+                CHECK(word == (patterned ? expected[i] : 0));
+            }
+        }
+        pixel(*client, binding, readback, exposure);
+    };
+    oracle(bindings[0], {1, 2, 3, 4, 5}, 1);
+    oracle(bindings[1], {1, 2, 3, 6, 5}, 7);
+    oracle(bindings[2], {1, 7, 8, 9, 5}, 1);
+    oracle(bindings[3], {1, 2, 10, 11, 5}, 1);
+    allocation_count = allocation_bytes = 0;
+    measuring = true;
+    frames(*client, client->progress().render_frames + 12);
+    measuring = false;
+    CHECK(allocation_count == 0 && allocation_bytes == 0);
+    await(checked(client->detachEffect(e1, va, bindings[0].target)));
+    oracle(bindings[1], {1, 2, 3, 6, 5}, 7);
+    await(checked(client->detachEffect(e2, va, bindings[1].target)));
+    await(checked(client->remove(va)));
+    await(checked(client->detachEffect(e1, va2, bindings[3].target)));
+    await(checked(client->remove(va2)));
+    await(checked(client->remove(sa)));
+    oracle(bindings[2], {1, 7, 8, 9, 5}, 1);
+    auto recreated = makeScene();
+    auto view = makeView(recreated);
+    CHECK(recreated.local.index == sa.local.index && recreated.local.gen != sa.local.gen);
+    CHECK(!receive(checked(client->attachEffect(e1, va, bindings[0].target))));
+    await(checked(client->attachEffect(e1, view, bindings[0].target)));
+    if (observe)
+    {
+        observe(14);
+    }
+    oracle({e1, view, bindings[0].target}, {1, 12, 13, 14, 5}, 1);
+    server.reset();
+    CHECK(client->state() == ERuntimeState::STOPPED && !client->terminalError());
+    std::puts("R3A GPU Global/Scene/View/private sharing, detach, Scene deletion, stale identity, same Graph, "
+              "pixel/buffer isolation PASS");
+}
+
 #include "ResourceDomains.hpp"
 
 int main(int argc, char** argv)
@@ -384,6 +526,7 @@ int main(int argc, char** argv)
     domains(validation);
     gpu(argv[1], 2, validation);
     gpu(argv[1], 3, validation);
+    scopedGpu(argv[1], validation);
     CHECK(validation.errors == 0);
     std::printf("validation_errors=%u\n", validation.errors.load());
     return 0;

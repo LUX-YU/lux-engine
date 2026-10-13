@@ -8,6 +8,7 @@ namespace
 {
     std::atomic<unsigned> host_failure{}, pipeline_creations{};
     std::atomic<unsigned> fail_submit{}, fail_image{}, fail_buffer{};
+    bool oom_mode{};
     constexpr std::array names{
         "instance",
         "messenger",
@@ -74,7 +75,7 @@ namespace lux::render::vulkan::test
         if ((name == "submit" && trip(fail_submit)) || (name == "image" && trip(fail_image)) ||
             (name == "buffer" && trip(fail_buffer)))
         {
-            return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+            return oom_mode ? VK_ERROR_OUT_OF_DEVICE_MEMORY : VK_ERROR_UNKNOWN;
         }
         return VK_SUCCESS;
     }
@@ -101,6 +102,28 @@ namespace lux::render::vulkan::test
     }
 } // namespace lux::render::vulkan::test
 
+namespace
+{
+    std::atomic<unsigned> scoped_creations{};
+    bool patterned_buffers{};
+
+    void countFill(
+        VkCommandBuffer command,
+        VkBuffer buffer,
+        VkDeviceSize offset,
+        VkDeviceSize size,
+        std::uint32_t word
+    ) noexcept
+    {
+        const auto ordinal = ++scoped_creations;
+        vkCmdFillBuffer(command, buffer, offset, size, patterned_buffers ? ordinal : word);
+    }
+} // namespace
+
+#define vkCmdFillBuffer countFill
+#include "../src/DeviceSession.cpp"
+#undef vkCmdFillBuffer
+
 #define CreateEventW faultEvent
 #define CreateThread faultThread
 #include "../src/Backend.cpp"
@@ -121,7 +144,42 @@ void emptyOwners()
 
 int main(int argc, char** argv)
 {
-    CHECK(argc == 2);
+    CHECK(argc == 2 || argc == 3);
+    if (argc == 3)
+    {
+        CHECK(std::string_view{argv[2]} == "--oom");
+        std::set_terminate([] { std::_Exit(77); });
+        oom_mode = true;
+        BackendOptions options;
+        InstanceContext host{checked(VulkanInstance::create(options.instance))};
+        auto session = checked(DeviceSession::create(host, options));
+        fail_buffer = 1;
+        auto factory = session->resources.bufferFactory(256, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
+        auto unexpected = session->resources.scoped.getOrCreate<Buffer>({}, "oom", factory);
+        std::_Exit(78); // returning a retryable error violates the new contract
+    }
+    std::string command = "\"" + std::string{argv[0]} + "\" \"" + argv[1] + "\" --oom";
+    STARTUPINFOA startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    CHECK(CreateProcessA(
+        nullptr,
+        command.data(),
+        nullptr,
+        nullptr,
+        FALSE,
+        CREATE_NO_WINDOW,
+        nullptr,
+        nullptr,
+        &startup,
+        &process
+    ));
+    CHECK(WaitForSingleObject(process.hProcess, 30000) == WAIT_OBJECT_0);
+    DWORD exit_code{};
+    CHECK(GetExitCodeProcess(process.hProcess, &exit_code) && exit_code == 77);
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    std::puts("R3A device OOM invokes fatal policy (child exit 77) PASS");
     Validation validation;
     BackendOptions native;
     native.instance = {{}, true, diagnostic, &validation};
@@ -133,16 +191,23 @@ int main(int argc, char** argv)
     domains(validation);
     emptyOwners();
     {
-        auto session = checked(DeviceSession::create(native));
-        auto& domain = session->getResourceDomain(session->rootDomain());
+        InstanceContext host{checked(VulkanInstance::create(native.instance))};
+        auto session = checked(DeviceSession::create(host, native));
+        auto& domain = session->resources.scoped;
         auto factory = session->resources.bufferFactory(256, VK_BUFFER_USAGE_TRANSFER_DST_BIT);
         fail_buffer = 1;
-        auto failed = domain.getOrCreate<Buffer>(factory);
+        auto failed = domain.getOrCreate<Buffer>({}, "fault", factory);
         CHECK(!failed && fail_buffer == 0);
         CHECK(failed.error().type == kNativeFailure);
-        CHECK(!domain.tryGetLocal<Buffer>());
-        CHECK(domain.getOrCreate<Buffer>(factory));
+        CHECK(domain.size() == 0);
+        CHECK(domain.getOrCreate<Buffer>({}, "fault", factory));
     }
+    emptyOwners();
+
+    scoped_creations = 0;
+    patterned_buffers = true;
+    scopedGpu(argv[1], validation, [](unsigned expected) { CHECK(scoped_creations == expected); }, true);
+    patterned_buffers = false;
     emptyOwners();
 
     host_failure = 1;
@@ -158,12 +223,12 @@ int main(int argc, char** argv)
         auto stale_effect = checked(server->addEffect(std::move(discarded.source)));
         CHECK(server->removeEffect(stale_effect));
         CHECK(!server->removeEffect(stale_effect));
-        auto fixture = effect(argv[1]);
+        auto fixture = effect(argv[1], 1.0f, true);
         auto selected = checked(server->addEffect(std::move(fixture.source)));
         CHECK(selected.local.index == stale_effect.local.index && selected.local.gen != stale_effect.local.gen);
         const auto pipelines = pipeline_creations.load();
         CHECK(pipelines > 0);
-        auto duplicate = effect(argv[1], 7.0f);
+        auto duplicate = effect(argv[1], 7.0f, true);
         auto same_graph_effect = checked(server->addEffect(std::move(duplicate.source)));
         CHECK(pipeline_creations == pipelines);
         CHECK(server->removeEffect(same_graph_effect));
@@ -203,5 +268,5 @@ int main(int argc, char** argv)
     }
     emptyOwners();
     CHECK(validation.errors == 0);
-    std::puts("RD3 event/thread rollback, Native allocation retry, partial-submit drain, owners=0 PASS");
+    std::puts("RD3 event/thread rollback, Native non-OOM rollback, partial-submit drain, owners=0 PASS");
 }

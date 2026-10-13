@@ -1,0 +1,21 @@
+﻿Id,LegacySource,Mechanism,RetainOrAdapt,RequiredStage,NegativeTest,CurrentP2AStatus
+GC01,RenderGraphCompiler.cpp,forward resource references + usage union,Neutral resource-version canonicalization before analysis,R3-B,late reference resolves actual produced resource,NOT_QUALIFIED_IN_P2A
+GC02,RenderGraphCompiler.cpp,tracked resourceDS declare read,data dependencies from required GPU reads,R3-B,missing external declared consume cannot evade cull,NOT_QUALIFIED_IN_P2A
+GC03,DependencyAnalyzer.cpp,resource to pass index and painter/after/before,single order authority & explicit WAW,R3-B,registration order changes do not change correctness,NOT_QUALIFIED_IN_P2A
+GC04,RenderGraphCompiler.cpp,eliminate starved then dead,stable live pass closure,R3-B,starved producer chains removed; side effects retained,NOT_QUALIFIED_IN_P2A
+GC05,RenderGraphCompiler.ExecutionPlan.cpp,LiveAccessIndex once after cull,single data source for attachment ops/conditions,R3-C,no dead pass contributes first writer/store rule,NOT_QUALIFIED_IN_P2A
+GC06,RGBuilder.hpp,conditionChain/elective side effects,atomic chain or valid fallback,R3-C,conditional skip does not leave downstream undefined read,NOT_QUALIFIED_IN_P2A
+GC07,RenderPassPlanner.hpp,local read merged scope,KHR capability & by-region local-read boundary,R3-C,merged graph compatible; fallback split graph,NOT_QUALIFIED_IN_P2A
+GC08,RenderGraphCompiler.ExecutionPlan.cpp,load/store per actual last use,clear/load/stores as real hazards,R3-C,late reader forces STORE and LOAD reads synchronized,NOT_QUALIFIED_IN_P2A
+GC09,RenderGraphCompiler.Barriers.cpp,reader stage/access accumulation,Sync2 exact hazards across roles and passes,R3-C,2 readers then writer & split barrier invalid refused,PARTLY_R4_NATIVE
+GC10,RenderGraphCompiler.Barriers.cpp,descriptor bind mask/layout break,exact Native layout/DS identity & invalidation,R3-C,pipeline layout change forces bind,PARTLY_R4_NATIVE
+GC11,RenderGraphCompiler.ExecutionPlan.cpp,BarrierProgram first/subsequent View,ticket/evidence per invocation not index,R3-C,second View reuse only with legitimate donor,PARTLY_R4_NATIVE
+GC12,RenderGraphCompiler.ExecutionPlan.cpp,multi queue submit program,native SubmissionQueue real waits/ownership,R3-C,compute/graphics/transfer DAG SyncVal 0,PARTLY_R4_NATIVE
+GC13,RenderGraphCompiler.ExecutionPlan.cpp,ExecutionProgram dynamic patch & kernel fallback,R4 typed recipes; avoid new second executor,R3-C,steady record no dynamic parser/heap allocation,PARTLY_R4_NATIVE
+GC14,RGVulkanResourceAllocator.cpp,exact physical keyed VMA transient cache,stable compatible pool + last use,R3-C,Graph recompile reuse without premature alias,NOT_QUALIFIED_IN_P2A
+GC15,RGVulkanResourceAllocator.hpp,lazy image memory pool/capability,tile memory fallback and telemetry,R3-C,no lazy heap still pooled ordinary allocation,NOT_QUALIFIED_IN_P2A
+GC16,RGGraphResize.cpp,allocate candidate and swap retired old,last-good resized Target/History,R3-C,resize candidate fails preserve old & no inflight free,NOT_QUALIFIED_IN_P2A
+GC17,RGCompiledGraph.hpp,dynamic imported resource slot refresh,typed import+ready/swapchain epoch,R3-C,replaced import handles do not dangle,PARTLY_R4_NATIVE
+GC18,RGBuilder.hpp,persistent and pingpong resource history,effect/target/view epoch and semantical history key,R3-C,FIF modulus not used as universal history identity,NOT_QUALIFIED_IN_P2A
+GC19,RenderGraphCompiler.LayoutAllocator.cpp,whole graph layout union + StageUsage limits,full structural OwnerShape/Device caps matching,R3-C,descriptor total/stage bound and ABI mismatch cold error,PARTLY_R4_NATIVE
+GC20,RGVulkanRecorder.cpp,dynamic rendering & local pass replay,single Native execution path used,R3-C,no forbidden mid rendering vkCmdPipelineBarrier2,PARTLY_R4_NATIVE

@@ -22,7 +22,7 @@ namespace lux::render::vulkan
             auto completed = queue->wait(*ticket, UINT64_MAX);
             if (!completed)
             {
-                return cxx::unexpected(completed.error());
+                return cxx::unexpected(resourceError(completed.error()));
             }
             if (!*completed)
             {
@@ -40,7 +40,7 @@ namespace lux::render::vulkan
             auto result = vkEnumeratePhysicalDevices(instance.native(), &count, nullptr);
             if (result != VK_SUCCESS)
             {
-                return cxx::unexpected(nativeError(result));
+                return cxx::unexpected(resourceError(nativeError(result)));
             }
             std::vector<VkPhysicalDevice> devices(count);
             result = vkEnumeratePhysicalDevices(instance.native(), &count, devices.data());
@@ -50,18 +50,17 @@ namespace lux::render::vulkan
             }
             if (result != VK_SUCCESS)
             {
-                return cxx::unexpected(nativeError(result));
+                return cxx::unexpected(resourceError(nativeError(result)));
             }
             devices.resize(count);
             return devices;
         }
     }
 
-    DeviceSession::DeviceSession(InstanceContext host, DeviceContext native, Sampler sampler) noexcept
-        : instance(std::move(host)), device(std::move(native)), resources{std::move(sampler), device.allocator, {}}
+    DeviceSession::DeviceSession(const InstanceContext& host, DeviceContext native, Sampler sampler) noexcept
+        : instance(host), device(std::move(native)),
+          resources{std::move(sampler), device.allocator, *device.queues[0], {}, {}}
     {
-        root_domain_ = domains_.emplace(std::make_unique<ResourceDomain>());
-        domain_order_.push_back(root_domain_);
     }
 
     DeviceSession::~DeviceSession() noexcept
@@ -79,28 +78,22 @@ namespace lux::render::vulkan
                 std::terminate();
             }
         }
-        for (auto i = domain_order_.rbegin(); i != domain_order_.rend(); ++i)
-        {
-            domains_.erase(*i);
-        }
     }
 
-    RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(const BackendOptions& native) noexcept
+    RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(
+        const InstanceContext& host,
+        const BackendOptions& native
+    ) noexcept
     {
-        auto instance = VulkanInstance::create(native.instance);
-        if (!instance)
-        {
-            return cxx::unexpected(instance.error());
-        }
-        auto device = VulkanDevice::create(*instance, native.device);
+        auto device = VulkanDevice::create(host.instance, native.device);
         if (!device)
         {
-            return cxx::unexpected(device.error());
+            return cxx::unexpected(resourceError(device.error()));
         }
         auto allocator = VulkanAllocator::create(*device);
         if (!allocator)
         {
-            return cxx::unexpected(allocator.error());
+            return cxx::unexpected(resourceError(allocator.error()));
         }
         std::array<std::unique_ptr<SubmissionQueue>, 3> owners;
         std::array<SubmissionQueue*, 3> queues{};
@@ -123,7 +116,7 @@ namespace lux::render::vulkan
                 SubmissionQueue::create(*device, native.capacity.queue_submissions, static_cast<EQueueRole>(role));
             if (!queue)
             {
-                return cxx::unexpected(queue.error());
+                return cxx::unexpected(resourceError(queue.error()));
             }
             owners[role] = std::move(*queue);
             queues[role] = owners[role].get();
@@ -131,10 +124,10 @@ namespace lux::render::vulkan
         auto sampler = Sampler::create(*device);
         if (!sampler)
         {
-            return cxx::unexpected(sampler.error());
+            return cxx::unexpected(resourceError(sampler.error()));
         }
         auto result = std::unique_ptr<DeviceSession>{new DeviceSession(
-            {std::move(*instance)},
+            host,
             {std::move(*device), std::move(*allocator), std::move(owners), queues},
             std::move(*sampler)
         )};
@@ -143,88 +136,44 @@ namespace lux::render::vulkan
         return result;
     }
 
-    RenderResult<ResourceDomainId> DeviceSession::createResourceDomain(ResourceDomainId parent) noexcept
-    {
-        const auto* ancestor = tryGetResourceDomain(parent);
-        if (!ancestor)
-        {
-            return cxx::unexpected(RenderError{kInvalidIdentity});
-        }
-        const auto id = domains_.emplace(std::make_unique<ResourceDomain>(parent, ancestor));
-        domain_order_.push_back(id);
-        return id;
-    }
-
-    ResourceDomain* DeviceSession::tryGetResourceDomain(ResourceDomainId id) noexcept
-    {
-        auto* found = domains_.find(id);
-        return found ? found->get() : nullptr;
-    }
-
-    const ResourceDomain* DeviceSession::tryGetResourceDomain(ResourceDomainId id) const noexcept
-    {
-        const auto* found = domains_.find(id);
-        return found ? found->get() : nullptr;
-    }
-
-    ResourceDomain& DeviceSession::getResourceDomain(ResourceDomainId id) noexcept
-    {
-        auto* found = tryGetResourceDomain(id);
-        if (!found)
-        {
-            std::terminate();
-        }
-        return *found;
-    }
-
-    const ResourceDomain& DeviceSession::getResourceDomain(ResourceDomainId id) const noexcept
-    {
-        const auto* found = tryGetResourceDomain(id);
-        if (!found)
-        {
-            std::terminate();
-        }
-        return *found;
-    }
-
-    RenderResult<void> DeviceSession::removeResourceDomain(ResourceDomainId id) noexcept
-    {
-        if (!tryGetResourceDomain(id))
-        {
-            return cxx::unexpected(RenderError{kInvalidIdentity});
-        }
-        if (id == root_domain_)
-        {
-            return cxx::unexpected(RenderError{kBusy});
-        }
-        for (const auto& domain : domains_)
-        {
-            if (domain->parentId() == id)
-            {
-                return cxx::unexpected(RenderError{kBusy});
-            }
-        }
-        auto drained = device.drain();
-        if (!drained)
-        {
-            return cxx::unexpected(drained.error());
-        }
-        domains_.erase(id);
-        std::erase(domain_order_, id);
-        return {};
-    }
-
     BufferFactory ResourceContext::bufferFactory(VkDeviceSize size, VkBufferUsageFlags usage) const noexcept
     {
-        return {allocator, size, usage};
+        return {allocator, size, usage, initialization_queue};
     }
 
     RenderResult<std::unique_ptr<Buffer>> BufferFactory::operator()() const noexcept
     {
+        const bool invalid = size == 0 || size % 4 != 0 || !(usage & VK_BUFFER_USAGE_TRANSFER_DST_BIT) ||
+                             queue.device() != allocator.device();
+        if (invalid)
+        {
+            return cxx::unexpected(RenderError{kInvalidArgument});
+        }
         auto candidate = Buffer::create(allocator, size, usage, EMemoryAccess::DEVICE);
         if (!candidate)
         {
-            return cxx::unexpected(candidate.error());
+            return cxx::unexpected(resourceError(candidate.error()));
+        }
+        auto batch = queue.begin();
+        if (!batch)
+        {
+            return cxx::unexpected(resourceError(batch.error()));
+        }
+        vkCmdFillBuffer(batch->native(), candidate->native(), 0, size, 0);
+        auto ticket = std::move(*batch).submit();
+        if (!ticket)
+        {
+            return cxx::unexpected(resourceError(ticket.error()));
+        }
+        // Minimal cold initialization. Bulk asynchronous staging belongs to R3-D.
+        auto done = queue.wait(*ticket, UINT64_MAX);
+        if (!done || !*done)
+        {
+            if (!queue.deviceLost())
+            {
+                std::terminate();
+            }
+            return cxx::unexpected(resourceError(done ? RenderError{kBusy} : done.error()));
         }
         return std::make_unique<Buffer>(std::move(*candidate));
     }

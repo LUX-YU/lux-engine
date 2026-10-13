@@ -89,11 +89,12 @@ target_link_libraries(render_rd3_runtime PRIVATE render_runtime render_vulkan_sh
 target_include_directories(render_rd3_runtime PRIVATE
     "${f5_native_test}" "${f5_native_test}/shader" "${f5_shader}/generated"
     "${f5_native_test}/../../../../core/type_info/include"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated" "${f5_test}/shader" "${f5_test}/../pinclude"
 )
 
 add_dependencies(render_rd3_runtime
     render_vulkan_spv_F4Fill_comp render_vulkan_spv_F3Tonemap_vert render_vulkan_spv_F3Tonemap_frag
-    render_vulkan_schema_F4HostRead
+    render_vulkan_schema_F4HostRead render_runtime_import_scale_pass_schema
 )
 
 add_test(NAME render.rd3.runtime COMMAND render_rd3_runtime "${f5_shader}")
@@ -101,7 +102,7 @@ add_test(NAME render.rd3.runtime COMMAND render_rd3_runtime "${f5_shader}")
 set_tests_properties(render.rd3.runtime PROPERTIES RUN_SERIAL TRUE TIMEOUT 120)
 
 add_executable(render_rd3_faults
-    "${f5_test}/RD3Faults.cpp" "${f5_test}/../src/Runtime.cpp" "${f5_test}/../src/DeviceSession.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
+    "${f5_test}/RD3Faults.cpp" "${f5_test}/../src/Runtime.cpp" "${f5_native_test}/NativeGraphSupport.cpp"
 )
 
 target_link_libraries(render_rd3_faults PRIVATE render_vulkan_graph_fault render_transport)
@@ -112,6 +113,7 @@ target_include_directories(render_rd3_faults PRIVATE
     "${f5_test}/../include" "${f5_test}/../pinclude" "${CMAKE_BINARY_DIR}/render_runtime/generated"
     "${f5_native_test}" "${f5_native_test}/shader" "${f5_shader}/generated"
     "${f5_native_test}/../../../../core/type_info/include"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated" "${f5_test}/shader" "${f5_test}/../pinclude"
 )
 
 add_dependencies(render_rd3_faults render_rd3_runtime)
@@ -129,7 +131,11 @@ foreach(header Objects Types Runtime Backend ResourceDomain NativeAssembly Devic
 
     target_link_libraries(render_rd3_header_${header} PRIVATE render_runtime)
 
-    if(header STREQUAL "NativeAssembly" OR header STREQUAL "DeviceSession")
+    if(
+        header STREQUAL "NativeAssembly"
+        OR header STREQUAL "DeviceSession"
+        OR header STREQUAL "ResourceDomain"
+    )
         target_link_libraries(render_rd3_header_${header} PRIVATE render_vulkan_graph)
     else()
         file(APPEND "${CMAKE_CURRENT_BINARY_DIR}/rd3_header_${header}.cpp"

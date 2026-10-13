@@ -1,0 +1,9 @@
+﻿Example,Source,NeutralOutput,Scope,ProjectionOwner,RequiredEvidence
+GridFromECS,Engine GridComponent or plugin type,GridData,View/Attachment,GridProjection,Component create/update/remove; change-set + pending retry
+GridFromEditor,Editor viewport settings (no ECS),GridData,Attachment,Editor Grid Producer,UI settings direct producer; shared schema different authority slot
+MeshWorld,Mesh3D+WorldTransform+AssetRef,MeshInstanceData,Scene,Engine MeshProjection,stable render object ID; O(changed) and entity leaves
+Lighting,LightComponent + Transform,LightGpuData,Scene,Engine LightProjection,"four light type packing, independent Scene backing"
+Camera,Camera/Projection from ECS or Viewport,CameraGpuData,View,Engine CameraProjection,frame revision/cut epochs; no graph rebuild
+Material,Material asset updates,MaterialGpuData,Global,AssetMaterialProducer,"global typed table/texture IDs, delayed upload"
+Gaussian,Plugin or external SLAM source,GaussianChunkData,Global/Scene,Installed Plugin Projection,"chunk + GPU-only typed upload, codepin"
+ExternalImage,sensor/robotics provider,CameraImageData,View/Attachment,External Producer,"native import state & readiness explicit, no implicit ownership"

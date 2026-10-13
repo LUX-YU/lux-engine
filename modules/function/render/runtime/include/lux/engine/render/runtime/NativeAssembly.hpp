@@ -45,5 +45,6 @@ namespace lux::render::vulkan
         std::vector<ProgramSource> programs;
         std::vector<NativePassCommand> commands;
         std::uint32_t width{}, height{};
+        std::vector<ScopedBufferRequest> buffers;
     };
 } // namespace lux::render::vulkan

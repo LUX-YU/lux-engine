@@ -1,0 +1,28 @@
+﻿PreviousTypeOrConcept,Disposition,RD3R3Authority,Stage
+View.effect,delete,Backend EffectAttachment relation,R3-A
+View.graph,delete,Native Session compiled graph id resolved from effect/context,R3-A
+View.target,delete,Backend EffectAttachment triple,R3-A
+Target.view,delete,Backend EffectAttachment triple,P2-A
+ResourceDomainId,internal transition only,validated ScopeKey and scoped resources store,R3-A
+ResourceDomain public class,remove as mandatory public owner,Session-internal ScopedResources/local entry store,R3-A
+ExecutionJob permanent table,remove,Backend one authority + cold derived schedule,R3-A
+GraphViewGroup permanent table,remove,non-owning native order/compiled graph reuse,P2-A
+InstanceContext owned by DeviceSession,move owner,Native bootstrap outlives Session,R3-A
+DeviceSession single owner,retain,Native bootstrap/Backend private,R3-A
+EffectSource Vulkan author,replace,RenderEffect owns logical Graph + neutral Feature configs,R3-B
+RenderGraph logical cache independent,remove,effect-owned logical graph; native compiled reuse in Session,R3-B
+Feature::create(DeviceSession&) prealloc Scene resources,replace,Feature describes ResourcePlan; actual resource create attach,R3-B
+RenderFeatureSceneBinding Proxy,replace mechanism,Engine DataProjection registered observations/prepare-commit,R3-E
+RenderSyncStage virtual class,replace with typed ops,"Engine Producer projection state, no per Feature proxy base",R3-E
+RenderBackend::create(VulkanOptions),migrate,"native provider factory bootstrap, neutral Engine interface",R3-E
+ResourceRegistry unordered_map,replace on touched code,Scope/Type/Key compact registry + hot direct Slot binding,R3-A/R3-D
+Legacy RenderContext global hub,do not copy,Instance/Device/ResourceContext and owner-aware Session services,R3-D
+Legacy TGpuBuffer,algorithm reuse,typed Native GpuBuffer within professional storage,R3-D
+Legacy PagedGpuStream,algorithm reuse,Instance/Chunk Storage with reused Dirty scratch,R3-D
+Legacy MeshResources,semantic rewrite,Global MeshStorage; VMA TLSF chained arenas + stable pages,L1
+Legacy InstanceResources,semantic rewrite,Scene InstanceStorage + StableSlot and Dirty streams,L1
+Legacy Texture/Bindless,semantic rewrite,Global TextureStorage + GPU-safe Bindless slots/mip residency,L1
+Legacy PointCloudResources,semantic rewrite,PointCloudStorage with chunk/ordered metadata updates,L3
+Legacy TransferScheduler,algorithm integration,"ResourceContext Native R4 Queue/true tickets, no extra worker",R3-D
+Native GraphExecutionContext,retain algorithm,per actual attachment native slots FIF/transient/tickets,R3-A/R3-C
+Historical OOM retry API,not normative,RD3-R3 OOM fatal; old logs/report stay intact,R3-A

@@ -1,0 +1,15 @@
+﻿Id,CurrentSource,LegacyRuntimeSource,Contract,RequiredStage,Validation,P2AStatus
+MAT01,modules/function/material/graph/MaterialGraph.hpp,,MaterialGraph author graph distinct from RenderGraph,R3-B,no new parallel graph registry,LIBRARY_EXISTS_NOT_BACKEND_INTEGRATED
+MAT02,modules/function/material/MaterialNodeCatalog.hpp,,registered node type/schema/version/payload/CodeLease,R3-E,plugin unload after last callback and compile,LIBRARY_EXISTS_NOT_BACKEND_INTEGRATED
+MAT03,modules/function/material/graph/MaterialSource.hpp,,serializable disconnected incomplete author graph,R3-E,invalid compile but valid save/edit transaction,LIBRARY_EXISTS_NOT_BACKEND_INTEGRATED
+MAT04,modules/function/material/src/MaterialLowering.cpp,,MaterialGraph to indexed MaterialIR/ShaderIR,R3-B,cycle/multiple output/type mismatch cold diagnostics,LIBRARY_EXISTS_NOT_BACKEND_INTEGRATED
+MAT05,engine/toolchain/material/src/MaterialCompiler.cpp,,ShaderIR to GBuffer+Forward compiled Shader variants,R3-D,actual GPU pixel oracle two passes,LIBRARY_EXISTS_NOT_BACKEND_INTEGRATED
+MAT06,engine/toolchain/material/src/ShaderCompiler.cpp,,real SPIR-V reflection and include canonical sources,R3-D,ShaderABI matches Native Pipeline layout,LIBRARY_EXISTS_NOT_BACKEND_INTEGRATED
+MAT07,engine/toolchain/material/src/MaterialCooker.cpp,,cook Author Source to immutable MaterialAsset,R3-E,last good on bad cook/hot source revision,LIBRARY_EXISTS_NOT_BACKEND_INTEGRATED
+MAT08,engine/toolchain/material/src/MaterialToGraph.cpp,,imported PBR graph and shared parameter slot order,R3-E,same structure different params share PSO,LIBRARY_EXISTS_NOT_BACKEND_INTEGRATED
+MAT09,,render_legacy/modules/function/render/features/include/lux/engine/function/render/features/resources/material/GraphMaterialData.hpp,flat GraphFamilyGPU params and texture indices,R3-D,nonidentical material records share compiled shader,NOT_MIGRATED
+MAT10,,render_legacy/modules/function/render/vulkan/src/resources/material/MaterialResources.cpp,typed GPU material SSBO families and texture lookup,R3-D,two materials different params different output,NOT_MIGRATED
+MAT11,,render_legacy/modules/function/render/vulkan/src/resources/material/VariantBucketManager.cpp,full identity material graph bucket exact-key + reference counts,R3-D,shader+alpha/doublesided identity and retire,NOT_MIGRATED
+MAT12,engine/toolchain/material/src/ShaderEmitter.cpp,,shader pass support is currently limited: Shadow/VisBuffer/RawExpr unavailable,L1,explicit unsupported/valid fallback no claim PASS,PARTIAL_TOOLCHAIN_SUPPORT
+MAT13,modules/function/material/src/MaterialNodePayload.cpp,,owned typed node payload and CodeLease,R3-E,plugin callback/code lifetime,LIBRARY_EXISTS_NOT_BACKEND_INTEGRATED
+MAT14,,editor_legacy/authoring/material/src/edits/MaterialGraphEdit.cpp,existing author UI editing/graph transaction semantics,Product,editor material edit roundtrip and undo no duplicate graph,LEGACY_EDITOR_ONLY

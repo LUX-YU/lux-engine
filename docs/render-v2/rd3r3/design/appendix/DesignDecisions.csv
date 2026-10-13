@@ -1,0 +1,34 @@
+﻿DecisionId,Normative,Rejected,DesignStatus,SourceChapter
+R3-D01,`RenderBackend` 唯一 Scene/View/Effect/Target 关系与单 FrameLoop,第二 renderer、第二事件总线、Scene 默认 Renderer,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D02,Scene 持局部 View；View/Effect/Target 不相互持可编辑反向身份,View.effect/graph/target、Effect.scene/view、Target.view,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D03,Backend 唯一 EffectId → SceneId/ViewId/TargetId Attachment 使用关系，attach RAII,EffectBindings + ExecutionJob + GraphViewGroup 多表同时权威,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D04,Effect 拥有逻辑 Graph 与 Feature Author，Shader 实施 GPU 算法,Effect=Shader/独立逻辑 GraphCache、Feature 默认 GPU Owner,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D05,Feature/DataSchema 显式声明 Scope/Key/Provider/ABI；Compiler 派生 ResourcePlan,Shader 读取 SSBO 即推断是 Global/Scene,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D06,attach 校验 + lazily acquire scoped resource leases + Native PreparedBindings 才发布,Scene 创建时强制全部 Resource Storage 分配,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D07,Scope 选 Global/Scene/View/Attachment，Graph transient 由 GraphContext 管,必须有四个 manager、ViewId 独断 temporal history,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D08,Session ScopedResources 为唯一持久 GPU backing owner；Attachment 持使用权,ResourceDomain 与 ScopeStore 两份 Native 资源权威,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D09,ResourceDomainId/ResourceDomain 作为 P2-A 过渡实现允许，非冻结公共中心,为了维持旧名额外再设 ScopeManager/Adapter 链,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D10,`getOrCreate<T>()` 只 cold 本地创建/命中、Config compatibility；父 scope 只读,`get_or_create`、热态 per-pass Registry 查找、隐式覆盖父资源,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D11,资源唯一 Native RAII，CPU Lease release 后须真实 ticket/WSI/pin 再销毁,CPU Scene 析构立刻 vkDestroy，FrameSerial 代替 GPU completion,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D12,一个 DeviceSession 初始化选择 GPU，不做多 GPU 同帧；没有 DeviceSessionId,预制 sessions registry/multi GPU dispatch,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D13,Native bootstrap 拥有 InstanceContext，且 outlives Session,DeviceSession 默认 own InstanceContext / global singleton VkDevice,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D14,DeviceSession 拥 DeviceContext、ResourceContext、Native Graph/contexts/storage；仅一层 Native Port,巨型 VulkanBackend、第二个 Graph executor、Native 头泄漏 Engine,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D15,Graph C0–C8/C9–C13 固定已有算法、Shader ABI/Sync2/Queue 真证据,第二 parser/hazard/pass scheduler、任意 compiler pass manager,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D16,Native compiled Graph 不可变可共享，View/Scene 数据在 PreparedBindings 分离,每 View duplicate Shader/PSO、hash/EffectId 冒充 GraphId,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D17,执行时使用 indexed bindings；热态稳定零无谓 allocation/lookup/recompile,每 pass getResourceDomain/type hash lookup,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D18,Multi-effect Target 派生单次完整 final Graph，不创建第二可编辑图,Hidden postprocess/compositor Native graph outside declaration,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D19,Effect/Target 结构更新闭包候选整体发布，普通错误 last-good,部分消费者提前切换；Effect revision 当 GPU Ticket,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D20,Engine/Editor/ECS 经中立 Client/R2 Protocol；数据生产源以 DataProjection 注册,Engine include Vulkan、核心 RenderSystem 业务 switch/每 Feature Proxy 虚基类,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D21,DataSchema、PassSchema、Projection 同源/版本/类型权威，Wire、GPU ABI 各自验证,任意 ECS struct memcpy GPU/wire、插件跨 DLL STL/RTTI,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D22,插件 CodePin 覆盖 callbacks/Native code/resource destructor 最后使用,GPU 在途时卸载 dll/unowned callback,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D23,lux-cxx SlotMap/StableSlotMap/SlotKeySparseSet for runtime identity,unordered_map 对象 ID 权威、独立 Handle allocator,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D24,Legacy 成熟 GPU 存储算法价值保留，新接口/作用域/生命周期重设计,无依据 GenericGpuStorage 取代 Paged/Arena/Bindless/Dirty,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D25,当前 OOM=致命终止；非 OOM 可恢复结构/支持性错误使用 RenderResult,继续将旧 Native OOM retry 当成新公共 API 保证,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D26,保留 UE-like H1–H6 能力扩展接缝，实际算法各独立证明,以 API 能表达就标记算法/产品 PASS,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D27,一个 I + independent V + STOP；保留历史 docs/perf/legacy 719,QA 机械数量成为阻断、修改历史证据,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D28,目录遵循明确中立/Native DAG，迁移当前 Runtime/Vulkan C++ 而非空目录,为每个 header 建单独 lib、长期 old+new 双权威,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D29,Legacy compiler forward-ref/conditional/local-read/compiled recipes preserve proven semantics,toposort-only compiler,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D30,Native transient physical memory pool and lazy attachment optimization distinct from ScopedResources,new Vk allocations on every compile / transient mistaken as MeshStorage,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D31,Existing MaterialGraph + MaterialNodeCatalog + ShaderIR + Toolchain Cooker reused as one authoring pipeline,second MaterialGraph / one PSO per hot parameter,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D32,"R2 UPLOAD, CPU bulk queue and Native Transfer Queue three distinct boundaries with real Ticket",large mesh via PROGRAM / fake readiness / second timeline authority,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md
+R3-D33,Dedicated/aliased queue fallbacks and ownership transfer preserve Legacy optimization contracts,generic Transfer worker / concurrent aliased submissions,DRAFT_REQUIRES_USER_APPROVAL,19_RD3R3统一架构裁决.md

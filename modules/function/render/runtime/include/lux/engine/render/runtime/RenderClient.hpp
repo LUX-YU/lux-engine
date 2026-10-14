@@ -142,9 +142,9 @@ namespace lux::render
         [[nodiscard]] RenderResult<RequestId> submitEncoded(const OperationBinding& operation, std::size_t size,
             const void* value, RenderResult<void> (*encode)(const void*, cxx::BinarySpanWriter&) noexcept,
             std::span<const RenderPayload> attachments, std::size_t reply_capacity) noexcept;
-        struct State;
-        explicit RenderClient(std::unique_ptr<State> state) noexcept;
-        std::unique_ptr<State> state_;
+        struct Impl;
+        explicit RenderClient(std::unique_ptr<Impl> state) noexcept;
+        std::unique_ptr<Impl> impl_;
     };
 
     inline constexpr auto kRuntimeState = error::errorId("lux.render.runtime.state");

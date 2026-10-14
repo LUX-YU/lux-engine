@@ -25,7 +25,7 @@ int main()
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    (*server)->requestStop();
+    (*server)->stop();
     thread.join();
     return ready && run_ok && (*server)->stats().validation_errors == 0 ? 0 : 2;
 }

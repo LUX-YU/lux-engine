@@ -16,6 +16,13 @@ namespace lux::render
         std::size_t max_wire_bytes = 1024 * 1024;
         std::size_t max_reply_bytes = 16 * 1024 * 1024;
         std::size_t retirement_capacity = 64;
+        // Host-owned bounded cold executor. Accepted callbacks run exactly once; rejection retains the task.
+        // join_compile waits for every callback accepted through this server's borrowed execution resource.
+        // Both callbacks are null for a control-only host; CreateEffect then rejects before retaining its input.
+        void* compile_user = nullptr;
+        bool (*enqueue_compile)(void*, void (*)(void*) noexcept, void*) noexcept = nullptr;
+        void (*join_compile)(void*) noexcept = nullptr;
+        std::size_t compile_capacity = 2;
     };
 
     // One source-qualified request. Move only for real deferred work; settle before Responder teardown.
@@ -100,7 +107,7 @@ namespace lux::render
     };
 
     // The host owns the rendering thread. Create/register are cold; run owns all
-    // object and Native mutation. Only requestStop()/stats() may race with run().
+    // object and Native mutation. Only stop()/stats() may race with run().
     class RenderServer final
     {
     public:
@@ -110,11 +117,11 @@ namespace lux::render
         RenderServer& operator=(const RenderServer&) = delete;
         [[nodiscard]] RenderResult<void> registerFeature(FeatureRegistration feature) noexcept;
         [[nodiscard]] RenderResult<void> run() noexcept;
-        void requestStop() noexcept;
+        void stop() noexcept;
         [[nodiscard]] RenderServerStats stats() const noexcept;
     private:
-        struct State;
-        explicit RenderServer(std::unique_ptr<State> state) noexcept;
-        std::unique_ptr<State> state_;
+        struct Impl;
+        explicit RenderServer(std::unique_ptr<Impl> state) noexcept;
+        std::unique_ptr<Impl> impl_;
     };
 }

@@ -6,10 +6,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <thread>
+#include <latch>
 
 using namespace lux::render;
 using namespace std::chrono_literals;
 static std::atomic<unsigned> mode{0};
+static std::latch entered(1), resume(1);
 static void check(bool value) { if (!value) std::abort(); }
 template <class T> static T take(RenderResult<T> value) { check(bool(value)); return std::move(*value); }
 
@@ -28,6 +30,7 @@ static TestCompletion call(TestClient& client, const TestCommand& command)
 
 static RenderResult<std::vector<PassProgram>> ownPrograms(const WireView* wire, std::string_view name) noexcept
 {
+    if (mode == 4) { entered.count_down(); resume.wait(); }
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
     auto values = native_fixture::programs(*config, name);
@@ -51,7 +54,7 @@ static RenderResult<void> emptyDescribe(const WireView*, std::string_view, std::
 int main()
 {
     const FeatureDefinition foreign{FeatureTypeIdView("test.aaa.foreign"), {1, 0}, nullptr, emptyDescribe};
-    auto server = take(RenderServer::create({"runtime.program.ownership", true}));
+    auto server = take(createTestServer({"runtime.program.ownership", true}));
     check(bool(server->registerFeature({&native_fixture::definition, ownPrograms})));
     check(bool(server->registerFeature({&foreign, foreignPrograms})));
     auto client = take(TestClient::create("runtime.program.ownership"));
@@ -78,8 +81,24 @@ int main()
     mode = 0;
     check(call(*client, command).header.outcome == EOperationOutcome::SUCCESS);
     check(server->stats().compiled_graphs == 2);
-    server->requestStop();
+    mode = 4;
+    take(client->submit(command));
+    entered.wait();
+    client.reset(); // candidate still owns its input while the caller disappears
+    resume.count_down();
+    const auto ticks = server->stats().ticks;
+    const auto deadline = std::chrono::steady_clock::now() + 10s;
+    while (server->stats().ticks < ticks + 100 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(1ms);
+    check(server->stats().ticks >= ticks + 100 && server->stats().compiled_graphs == 2);
+    server->stop();
+    server->stop();
     worker.join();
     check(run_ok && server->stats().validation_errors == 0);
+    auto stopped = take(createTestServer({"runtime.stopped.before.run", true}));
+    stopped->stop();
+    stopped->stop();
+    check(bool(stopped->run()) && !stopped->run());
+    check(stopped->stats().ticks == 0 && stopped->stats().submissions == 0);
     std::puts("Program contribution: foreign/duplicate/missing rejected; canonical provenance and last-good preserved");
 }

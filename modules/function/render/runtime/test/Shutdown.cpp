@@ -69,7 +69,7 @@ static void exercise(bool close_requester)
 {
     hold.store(true);
     waited.store(false);
-    auto server = take(RenderServer::create({close_requester ? "runtime.close.gpu" : "runtime.stop.gpu", true}));
+    auto server = take(createTestServer({close_requester ? "runtime.close.gpu" : "runtime.stop.gpu", true}));
     check(bool(server->registerFeature({&native_fixture::definition, programs})));
     auto client = take(TestClient::create(close_requester ? "runtime.close.gpu" : "runtime.stop.gpu"));
     bool run_ok = false;
@@ -103,7 +103,7 @@ static void exercise(bool close_requester)
     {
         client.reset();
         check(backing == 3); // closing IPC cannot retire the GPU image, view or readback buffer
-        server->requestStop();
+        server->stop();
     }
     else
     {
@@ -121,7 +121,7 @@ static void retirementAtomicity()
     waited.store(false);
     RenderServerConfig options{"runtime.retirement.atomic", true};
     options.retirement_capacity = 1;
-    auto server = take(RenderServer::create(options));
+    auto server = take(createTestServer(options));
     check(bool(server->registerFeature({&native_fixture::definition, programs})));
     auto client = take(TestClient::create(options.channel_name));
     bool run_ok = false;
@@ -177,7 +177,7 @@ static void retirementAtomicity()
     command.operation = ETestCommand::RESIZE_TARGET;
     const auto resized = call(*client, command);
     check(resized.target_epoch == 2); // rejected resize never published an epoch
-    server->requestStop();
+    server->stop();
     thread.join();
     check(run_ok && backing == 0 && server->stats().validation_errors == 0);
     std::puts("Retirement full: Detach/Resize/Remove preserve pending readback, group, target epoch and pixels");

@@ -46,8 +46,24 @@ namespace lux::render
         };
     }
 
-    struct RenderServer::State final
+    struct RenderServer::Impl final
     {
+        [[nodiscard]] RenderResult<void> registerFeature(FeatureRegistration feature) noexcept;
+        [[nodiscard]] RenderResult<void> run() noexcept;
+        void stop() noexcept { stop_requested.store(true); }
+        [[nodiscard]] RenderServerStats stats() const noexcept;
+
+        struct CompileJob final
+        {
+            Impl* owner;
+            std::shared_ptr<RenderRequest> request;
+            RenderResult<std::shared_ptr<const vulkan::CompiledGraph>> candidate =
+                cxx::unexpected(RenderError{kRuntimeState});
+            std::atomic<bool> done{false};
+            CompileJob(Impl& server, RenderRequest input)
+                : owner(&server), request(std::make_shared<RenderRequest>(std::move(input))) {}
+        };
+        std::vector<std::unique_ptr<CompileJob>> compiling;
         RenderServerConfig config;
         ipc::IpcResponder responder;
         SessionIdentity identity;
@@ -64,51 +80,52 @@ namespace lux::render
         std::vector<PendingReadback> readbacks;
         unsigned clients = 0;
         std::size_t next_effect = 0;
-        std::atomic<bool> stop{false}, started{false}, running{false};
+        std::atomic<bool> stop_requested{false}, started{false}, running{false};
         std::atomic<std::uint64_t> ticks{0}, commands{0}, compiled_graphs{0}, submissions{0};
         std::atomic<std::uint64_t> validation_errors{0}, validation_warnings{0};
         std::atomic<std::uint64_t> scoped_buffers_created{0};
 
-        State(RenderServerConfig value, ipc::IpcResponder input, SessionIdentity session)
+        Impl(RenderServerConfig value, ipc::IpcResponder input, SessionIdentity session)
             : config(std::move(value)), responder(std::move(input)), identity(session)
         {
             undelivered.reserve(128);
             readbacks.reserve(128);
+            compiling.resize(config.compile_capacity);
             addOperation({&operations::createScene(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<State*>(user)->createScene(request);
+                return static_cast<Impl*>(user)->createScene(request);
             }, this});
             addOperation({&operations::removeScene(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<State*>(user)->removeScene(request);
+                return static_cast<Impl*>(user)->removeScene(request);
             }, this});
             addOperation({&operations::createView(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<State*>(user)->createView(request);
+                return static_cast<Impl*>(user)->createView(request);
             }, this});
             addOperation({&operations::removeView(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<State*>(user)->removeView(request);
+                return static_cast<Impl*>(user)->removeView(request);
             }, this});
             addOperation({&operations::createTarget(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<State*>(user)->createTarget(request);
+                return static_cast<Impl*>(user)->createTarget(request);
             }, this});
             addOperation({&operations::resizeTarget(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<State*>(user)->resizeTarget(request);
+                return static_cast<Impl*>(user)->resizeTarget(request);
             }, this});
             addOperation({&operations::createEffect(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<State*>(user)->createEffect(request);
+                return static_cast<Impl*>(user)->createEffect(request);
             }, this});
             addOperation({&operations::removeEffect(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<State*>(user)->removeEffect(request);
+                return static_cast<Impl*>(user)->removeEffect(request);
             }, this});
             addOperation({&operations::attach(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<State*>(user)->attach(request);
+                return static_cast<Impl*>(user)->attach(request);
             }, this});
             addOperation({&operations::detach(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<State*>(user)->detach(request);
+                return static_cast<Impl*>(user)->detach(request);
             }, this});
             addOperation({&operations::readback(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<State*>(user)->readback(request);
+                return static_cast<Impl*>(user)->readback(request);
             }, this});
             addOperation({&operations::stop(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<State*>(user)->stopOperation(request);
+                return static_cast<Impl*>(user)->stopOperation(request);
             }, this});
         }
 
@@ -125,7 +142,7 @@ namespace lux::render
             if (!replied)
             {
                 undelivered.push_back(std::move(request));
-                if (undelivered.size() >= undelivered.capacity()) stop.store(true);
+                if (undelivered.size() >= undelivered.capacity()) stop_requested.store(true);
             }
         }
 
@@ -269,13 +286,13 @@ namespace lux::render
         static VKAPI_ATTR VkBool32 VKAPI_CALL diagnostic(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
             VkDebugUtilsMessageTypeFlagsEXT, const VkDebugUtilsMessengerCallbackDataEXT*, void* user) noexcept
         {
-            auto& state = *static_cast<State*>(user);
+            auto& state = *static_cast<Impl*>(user);
             if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) ++state.validation_errors;
             if (severity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) ++state.validation_warnings;
             return VK_FALSE;
         }
 
-        RenderResult<EffectId> install(const std::shared_ptr<RenderRequest>& request) noexcept
+        RenderResult<std::shared_ptr<const vulkan::CompiledGraph>> compileEffect(const std::shared_ptr<RenderRequest>& request) noexcept
         {
             auto bytes = OwnedWireBytes::fromOwner(request, request->message().bytes().subspan(request_size));
             auto input = decodeWire<CreateEffectRequest>(
@@ -348,10 +365,7 @@ namespace lux::render
             }
             auto compiled = vulkan::compileGraph(*device, *assembly, programs, input->description);
             if (!compiled) return cxx::unexpected(compiled.error());
-            auto code = std::make_shared<vulkan::CompiledGraph>(std::move(*compiled));
-            const auto effect = effects.emplace(RenderEffect{std::move(code)});
-            ++compiled_graphs;
-            return effect;
+            return std::make_shared<const vulkan::CompiledGraph>(std::move(*compiled));
         }
 
         RenderResult<void> createScene(RenderRequest& request) noexcept
@@ -430,14 +444,47 @@ namespace lux::render
             return request.reply(TargetCreated{input->target, target->epoch});
         }
 
+        static void compileTask(void* value) noexcept
+        {
+            auto& job = *static_cast<CompileJob*>(value);
+            if (!job.owner->stop_requested.load()) job.candidate = job.owner->compileEffect(job.request);
+            job.done.store(true, std::memory_order_release);
+        }
+
         RenderResult<void> createEffect(RenderRequest& request) noexcept
         {
-            // Graph callbacks require owned G2 references. Only this heavy path promotes the real input.
-            auto retained = std::make_shared<RenderRequest>(std::move(request));
-            auto effect = install(retained);
-            auto result = effect ? retained->reply(EffectCreated{*effect}) : retained->fail(effect.error());
-            settle(std::move(*retained), result);
+            if (!config.enqueue_compile) return cxx::unexpected(RenderError{kRuntimeUnsupported});
+            const auto slot = std::find_if(compiling.begin(), compiling.end(), [](const auto& job) { return !job; });
+            if (slot == compiling.end()) return cxx::unexpected(RenderError{kRuntimeCapacity});
+            auto job = std::make_unique<CompileJob>(*this, std::move(request));
+            if (!config.enqueue_compile(config.compile_user, compileTask, job.get()))
+            {
+                request = std::move(*job->request);
+                return cxx::unexpected(RenderError{kRuntimeCapacity});
+            }
+            *slot = std::move(job);
             return {};
+        }
+
+        void publishCompiled(bool cancelled = false) noexcept
+        {
+            for (auto& slot : compiling)
+            {
+                if (!slot || !slot->done.load(std::memory_order_acquire)) continue;
+                auto& job = *slot;
+                RenderResult<void> result;
+                if (cancelled) result = job.request->cancel();
+                else if (!job.candidate) result = job.request->fail(job.candidate.error());
+                else
+                {
+                    const auto effect = effects.emplace(RenderEffect{std::move(*job.candidate)});
+                    result = job.request->reply(EffectCreated{effect});
+                    if (result) ++compiled_graphs;
+                    else effects.erase(effect); // never exposed or submitted; rejected publication owns no Effect
+                }
+                settle(std::move(*job.request), result);
+                slot.reset();
+            }
         }
 
         RenderResult<void> removeEffect(RenderRequest& request) noexcept
@@ -478,7 +525,7 @@ namespace lux::render
 
         RenderResult<void> stopOperation(RenderRequest& request) noexcept
         {
-            stop.store(true);
+            stop_requested.store(true);
             return request.reply();
         }
 
@@ -489,7 +536,7 @@ namespace lux::render
             {
                 // Uncorrelatable malformed framing closes this epoch; IPC preserves opaque original input.
                 received.reset();
-                stop.store(true);
+                stop_requested.store(true);
                 return;
             }
             if (frame->reply_capacity < reply_size)
@@ -525,8 +572,10 @@ namespace lux::render
 
         void shutdown() noexcept
         {
-            // There are no background CPU borrowers in this minimal implementation.
-            // Host joins run before destruction. Settle every borrowed request first.
+            // Close admission first, then wait for all accepted callbacks before releasing any request/Device borrow.
+            stop_requested.store(true);
+            if (config.join_compile) config.join_compile(config.compile_user);
+            publishCompiled(true);
             while (!readbacks.empty()) cancelReadbacks(readbacks.back().context);
             undelivered.clear();
             responder.reset();
@@ -537,11 +586,11 @@ namespace lux::render
         }
     };
 
-    RenderServer::RenderServer(std::unique_ptr<State> state) noexcept : state_(std::move(state)) {}
+    RenderServer::RenderServer(std::unique_ptr<Impl> state) noexcept : impl_(std::move(state)) {}
 
     RenderServer::~RenderServer() noexcept
     {
-        if (state_->running.load()) std::terminate(); // host must requestStop + join
+        if (impl_->running.load()) std::terminate(); // host must stop + join
     }
 
     RenderResult<std::unique_ptr<RenderServer>> RenderServer::create(RenderServerConfig config) noexcept
@@ -549,7 +598,8 @@ namespace lux::render
         const bool invalid = config.requests_per_tick == 0 || config.requests_per_tick > 128 ||
             config.max_wire_bytes < reply_size || config.max_wire_bytes > wire_limits.max_wire_bytes ||
             config.max_reply_bytes < reply_size || config.max_reply_bytes > 256 * 1024 * 1024 ||
-            config.retirement_capacity == 0;
+            config.retirement_capacity == 0 || config.compile_capacity == 0 || config.compile_capacity > 8 ||
+            bool(config.enqueue_compile) != bool(config.join_compile);
         if (invalid) return cxx::unexpected(RenderError{kRuntimeCapacity});
         SessionIdentity identity{};
         if (BCryptGenRandom(nullptr, reinterpret_cast<PUCHAR>(identity.data()), sizeof(identity),
@@ -557,12 +607,12 @@ namespace lux::render
         auto responder = ipc::IpcCore::instance().createResponder(config.channel_name);
         if (!responder) return cxx::unexpected(RenderError{kRuntimeState});
         return std::unique_ptr<RenderServer>(new RenderServer(
-            std::make_unique<State>(std::move(config), std::move(*responder), identity)));
+            std::make_unique<Impl>(std::move(config), std::move(*responder), identity)));
     }
 
-    RenderResult<void> RenderServer::registerFeature(FeatureRegistration feature) noexcept
+    RenderResult<void> RenderServer::Impl::registerFeature(FeatureRegistration feature) noexcept
     {
-        auto& s = *state_;
+        auto& s = *this;
         const bool invalid = s.started.load() || !feature.definition || !feature.programs ||
             (feature.definition && (!feature.definition->describe || feature.definition->type.name().empty()));
         if (invalid) return cxx::unexpected(RenderError{kRuntimeState});
@@ -608,10 +658,11 @@ namespace lux::render
         return {};
     }
 
-    RenderResult<void> RenderServer::run() noexcept
+    RenderResult<void> RenderServer::Impl::run() noexcept
     {
-        auto& s = *state_;
+        auto& s = *this;
         if (s.started.exchange(true)) return cxx::unexpected(RenderError{kRuntimeState});
+        if (s.stop_requested.load()) { s.shutdown(); return {}; }
         cxx::BinaryVectorWriter manifest;
         manifest.writeUnsigned<std::uint32_t>(static_cast<std::uint32_t>(s.operations.size()));
         for (const auto& entry : s.operations)
@@ -622,7 +673,7 @@ namespace lux::render
         }
         s.manifest = std::move(manifest).take();
         s.running.store(true);
-        auto instance = vulkan::InstanceContext::create({{}, s.config.validation, State::diagnostic, &s});
+        auto instance = vulkan::InstanceContext::create({{}, s.config.validation, Impl::diagnostic, &s});
         if (!instance) { s.shutdown(); return cxx::unexpected(instance.error()); }
         s.instance.emplace(std::move(*instance));
         vulkan::DeviceOptions options;
@@ -632,14 +683,15 @@ namespace lux::render
         if (!device) { s.shutdown(); return cxx::unexpected(device.error()); }
         s.device = std::move(*device);
         RenderResult<void> result;
-        while (!s.stop.load())
+        while (!s.stop_requested.load())
         {
-            for (std::uint32_t i = 0; i < s.config.requests_per_tick && !s.stop.load(); ++i)
+            for (std::uint32_t i = 0; i < s.config.requests_per_tick && !s.stop_requested.load(); ++i)
             {
                 ipc::ReceivedRequest request;
                 if (s.responder.tryReceive(request) == ipc::EIpcReceive::RECEIVED) s.dispatch(std::move(request));
             }
-            if (s.stop.load()) break;
+            if (s.stop_requested.load()) break;
+            s.publishCompiled();
             if (auto rendered = s.tick(); !rendered) { result = cxx::unexpected(rendered.error()); break; }
             ++s.ticks;
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -648,12 +700,21 @@ namespace lux::render
         return result;
     }
 
-    void RenderServer::requestStop() noexcept { state_->stop.store(true); }
+    void RenderServer::stop() noexcept { impl_->stop(); }
 
-    RenderServerStats RenderServer::stats() const noexcept
+    RenderServerStats RenderServer::Impl::stats() const noexcept
     {
-        const auto& s = *state_;
+        const auto& s = *this;
         return {s.ticks.load(), s.commands.load(), s.compiled_graphs.load(), s.submissions.load(),
             s.validation_errors.load(), s.validation_warnings.load(), s.scoped_buffers_created.load()};
     }
+
+    RenderResult<void> RenderServer::registerFeature(FeatureRegistration feature) noexcept
+    {
+        return impl_->registerFeature(feature);
+    }
+
+    RenderResult<void> RenderServer::run() noexcept { return impl_->run(); }
+
+    RenderServerStats RenderServer::stats() const noexcept { return impl_->stats(); }
 }

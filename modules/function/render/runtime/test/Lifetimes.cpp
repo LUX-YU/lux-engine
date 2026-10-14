@@ -98,7 +98,7 @@ static TestCommand effect(SessionIdentity identity)
 
 int main()
 {
-    auto server = take(RenderServer::create({"runtime.life", true}));
+    auto server = take(createTestServer({"runtime.life", true}));
     check(bool(server->registerFeature({&native_fixture::definition, programs})));
     check(bool(server->registerFeature({&asset_definition, assetPrograms})));
     auto main = take(TestClient::create("runtime.life", {1024 * 1024, 64}));
@@ -149,7 +149,7 @@ int main()
     attachments = {};
     upload.reset();
     check(destroyed == 0 && observed.load() == pointer);
-    server->requestStop();
+    server->stop();
     continue_callback.count_down();
     thread.join();
     check(destroyed == 1);
@@ -157,7 +157,7 @@ int main()
     entered = resume = nullptr;
     server.reset();
 
-    auto replacement = take(RenderServer::create({"runtime.life", true}));
+    auto replacement = take(createTestServer({"runtime.life", true}));
     auto fresh = take(TestClient::create("runtime.life"));
     std::thread restart([&] { check(bool(replacement->run())); });
     auto current = wait(*fresh, take(fresh->submit({})));
@@ -166,7 +166,7 @@ int main()
     old.operation = ETestCommand::CREATE_SCENE;
     old.session = identity;
     check(wait(*fresh, take(fresh->submit(old))).header.outcome == EOperationOutcome::FAILED);
-    replacement->requestStop();
+    replacement->stop();
     restart.join();
     std::printf("M3 lifetime: full backing budget, pointer identity, abandon reclamation, close during callback, epoch OK\n");
 }

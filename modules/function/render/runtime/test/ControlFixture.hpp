@@ -1,5 +1,6 @@
 #pragma once
 #include <lux/engine/render/runtime/Operations.hpp>
+#include "CompileWorker.hpp"
 
 // Only migrates existing behavioral fixtures. Production has no command enum, catch-all packet or reply cache.
 using namespace lux::render;

@@ -37,7 +37,7 @@ static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std
 
 int main()
 {
-    auto server = take(RenderServer::create({"runtime.control", true}));
+    auto server = take(createTestServer({"runtime.control", true}));
     check(bool(server->registerFeature({&native_fixture::definition, programs})));
     auto a = take(TestClient::create("runtime.control"));
     auto b = take(TestClient::create("runtime.control"));
@@ -116,7 +116,7 @@ int main()
     server.reset();
     check(!first.bytes().empty()); // published reply and budget survive server
 
-    auto failure = take(RenderServer::create({"runtime.failure", true, 0xfffffffe}));
+    auto failure = take(createTestServer({"runtime.failure", true, 0xfffffffe}));
     auto client = take(TestClient::create("runtime.failure"));
     auto request = take(client->submit({}));
     check(!failure->run());

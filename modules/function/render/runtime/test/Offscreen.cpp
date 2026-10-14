@@ -80,7 +80,10 @@ static void pixel(const TestCompletion& reply, unsigned width, unsigned x, unsig
 int main()
 {
     const BufferInitializer buffers[]{{StorageTypeIdView("test.zero_buffer"), {1, 0}, zeroBuffer}};
-    auto server = take(RenderServer::create({"runtime.offscreen", true}));
+    CompileWorker worker;
+    RenderServerConfig options{"runtime.offscreen", true};
+    options.compile_capacity = 1;
+    auto server = take(RenderServer::create(worker.configure(options)));
     CHECK(server->registerFeature({&native_fixture::definition, programs, buffers}));
     auto client = take(TestClient::create("runtime.offscreen"));
     bool run_ok = false;
@@ -166,6 +169,39 @@ int main()
     CHECK(upload_progress > 10 && server->stats().submissions > before_progress.submissions + 40);
     for (auto id : paused) CHECK(wait(*client, id).header.outcome == EOperationOutcome::SUCCESS);
 
+    // All four original groups stay attached while an independent candidate is blocked in cold code.
+    auto candidate = command;
+    candidate.operation = ETestCommand::CREATE_EFFECT;
+    candidate.features.push_back({std::string(native_fixture::type.name()), "candidate", {1, 0},
+        &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
+    worker.reject(true);
+    CHECK(call(*upload, candidate, false).header.error.type == kRuntimeCapacity);
+    worker.reject(false);
+    {
+        std::latch entered(1), resume(1);
+        program_entered = &entered;
+        program_resume = &resume;
+        pause_programs.store(true);
+        const auto pending_compile = take(upload->submit(candidate));
+        entered.wait();
+        CHECK(call(*client, candidate, false).header.error.type == kRuntimeCapacity);
+        const auto progress = server->stats();
+        std::this_thread::sleep_for(300ms);
+        CHECK(server->stats().submissions > progress.submissions + 40);
+        for (unsigned i = 0; i < 4; ++i)
+            pixel(call(*client, attached[i]), 32, 16, 16, expected[i]);
+        CHECK(server->stats().compiled_graphs == 1);
+        resume.count_down();
+        const auto completed = wait(*upload, pending_compile);
+        CHECK(completed.header.outcome == EOperationOutcome::SUCCESS);
+        auto remove = candidate;
+        remove.operation = ETestCommand::REMOVE_EFFECT;
+        remove.features.clear();
+        remove.effect = completed.effect;
+        call(*upload, remove);
+        CHECK(server->stats().compiled_graphs == 2);
+    }
+
     command = attached[0];
     command.operation = ETestCommand::DETACH;
     call(*client, command);
@@ -182,7 +218,7 @@ int main()
     command.description.samples = 4;
     CHECK(call(*client, command, false).header.outcome == EOperationOutcome::FAILED);
     CHECK(call(*client, attached[1]).bytes().size() == 64 * 48 * 4);
-    CHECK(server->stats().compiled_graphs == 1);
+    CHECK(server->stats().compiled_graphs == 2);
     command.operation = ETestCommand::REMOVE_SCENE;
     command.scene = scenes[0];
     call(*client, command);
@@ -234,9 +270,8 @@ int main()
     csv << "sample,create_scene_end_to_end_us,engine_new_calls\n";
     for (unsigned i = 0; i < samples.size(); ++i) csv << i << ',' << samples[i] << ',' << allocation_samples[i] << '\n';
     std::sort(samples.begin(), samples.end());
-    // A real cold callback gates dispatch so Readback + Stop are both queued
-    // before the server resumes. A frame between dispatch budgets may complete
-    // Readback first; both known terminals are valid. The fault test forces pending.
+    // A real cold callback is held on the host worker. Existing groups must continue GPU submission.
+    // Stop can now execute while compilation is held; shutdown joins before returning its cancellation.
     std::latch entered(1), resume(1);
     program_entered = &entered;
     program_resume = &resume;
@@ -248,13 +283,14 @@ int main()
     pause_programs.store(true);
     const auto blocked = take(upload->submit(block));
     entered.wait();
+    const auto while_compiling = server->stats();
+    std::this_thread::sleep_for(300ms);
+    CHECK(server->stats().submissions > while_compiling.submissions + 20);
     auto pending_readback = attached[2];
     pending_readback.effect = transfer_effect;
     const auto pending = take(client->submit(pending_readback));
     command.operation = ETestCommand::STOP;
     const auto stopped = take(client->submit(command));
-    resume.count_down();
-    CHECK(wait(*upload, blocked).header.outcome == EOperationOutcome::SUCCESS);
     bool saw_stop = false, saw_readback = false;
     const auto completion_deadline = std::chrono::steady_clock::now() + 15s;
     while ((!saw_stop || !saw_readback) && std::chrono::steady_clock::now() < completion_deadline)
@@ -267,6 +303,7 @@ int main()
         {
             CHECK(!saw_stop && completion.header.outcome == EOperationOutcome::SUCCESS);
             saw_stop = true;
+            resume.count_down();
         }
         else
         {
@@ -277,6 +314,7 @@ int main()
         }
     }
     CHECK(saw_stop && saw_readback);
+    CHECK(wait(*upload, blocked).header.outcome == EOperationOutcome::CANCELLED);
     thread.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
     std::printf("G9 Runtime: 2 Scenes/4 Views/1 code; hot ticks=%llu submissions=%llu engine_new=%zu; "

@@ -15,7 +15,9 @@ server owner thread and must settle synchronously; Runtime-owned Readback/compil
 settled before the Responder. Merely returning success does not publish a successful business terminal.
 
 Create/register occur before run. The host stops and joins run before destroying the server. Native
-InstanceContext outlives DeviceSession. No CPU background workers are created by this implementation.
+InstanceContext outlives DeviceSession. The host lends a bounded compile executor through enqueue/join callbacks; Runtime creates no worker thread.
+CreateEffect without that executor fails explicitly. Accepted tasks execute exactly once; rejected enqueue executes
+nothing and retains no pointer. The host remains alive through shutdown/join. Capacity is fixed before run.
 All received request borrows are settled before Responder reset, on successful shutdown and partial
 initialization failure. Undeliverable input owners are retained in a bounded cold-disposal list until
 shutdown, rather than releasing large assets in the frame loop. Main and Upload are the only two
@@ -52,8 +54,8 @@ from the allocation-free stable rendering window.
 Readback holds its actual source ReceivedRequest and pauses context reuse until the real queue ticket
 completes and CPU-owned bytes have been produced. Cancel/Detach releases that logical reader before
 ticket-driven context retirement. Stop settles all requests before Responder reset, then drains Native
-work before destroying backing, device and instance. There are no borrowed-input worker tasks to join;
-the host must join the run thread. Failed Native initialization follows the same IPC cleanup order.
+work before destroying backing, device and instance. Shutdown stops accepting commands, joins all accepted compile tasks, cancels unpublished candidates and readbacks,
+settles retained requests, then resets Responder and Native owners. The host must also join the run thread. Failed Native initialization follows the same IPC cleanup order.
 
 This is the G9 minimal offscreen path: RGBA8, one layer/mip/sample, graphics push-color and transfer.
 It is not WSI, dynamic History, professional asset storage, arbitrary GPU-ready Feature work or ECS integration.
@@ -71,3 +73,12 @@ CreateScene timing now includes test-side cold binding and is not the new API be
 binds once and measures actual encoding/submission, wait, successful consumption/decoding and handler/reply
 separately. The 1 ms loop idle remains visible in end-to-end results; zero engine new calls does not measure
 driver/internal OS allocations. Failed publication retains any owned output until cold request disposal.
+
+R4: public Client/Server objects forward into their unique Impl, which contains business methods and state.
+Only the server thread mutates Scene/Target/Effect tables and publishes compile candidates. The worker borrows
+frozen Feature metadata, the real owned request and DeviceSession; it builds an independent CompiledGraph.
+It never touches the queue, allocator, execution contexts or live Effect table. Vulkan pipeline creation uses
+no shared VkPipelineCache. Completion uses release/acquire; done is the callback's last access to its job.
+The host join additionally protects callback code and Device lifetime during shutdown. Publication to a closed
+Requester rolls the unobserved Effect back before its private Native candidate is destroyed. stop() is idempotent,
+nonblocking and distinct from the host's run-thread join; stopping before run prevents Native initialization.

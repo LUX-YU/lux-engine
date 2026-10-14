@@ -263,7 +263,7 @@ int main()
     auto held = wait(*a, take(a->submit(bound_a, Exposure{42})));
     check(a->retainedBytes() != 0);
     a.reset();
-    server->requestStop();
+    server->stop();
     worker.join();
     check(run_ok && server->stats().validation_errors == 0);
     server.reset();

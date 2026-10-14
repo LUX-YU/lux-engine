@@ -46,8 +46,16 @@ namespace lux::render
         };
     }
 
-    struct RenderClient::State final
+    struct RenderClient::Impl final
     {
+        [[nodiscard]] RenderResult<RequestId> hello() noexcept;
+        [[nodiscard]] RenderResult<OperationBinding> bind(const OperationDescriptor& descriptor) const noexcept;
+        [[nodiscard]] RenderResult<RequestId> submitEncoded(const OperationBinding&, std::size_t, const void*,
+            RenderResult<void> (*)(const void*, cxx::BinarySpanWriter&) noexcept,
+            std::span<const RenderPayload>, std::size_t) noexcept;
+        [[nodiscard]] RenderResult<ERenderReceive> tryReceive(RenderCompletion&) noexcept;
+        [[nodiscard]] RenderResult<void> abandon(RequestId) noexcept;
+        [[nodiscard]] std::size_t retainedBytes() const noexcept;
         ipc::IpcRequester requester;
         cxx::SlotMap<Pending, RequestTag> requests;
         std::shared_ptr<Budget> budget;
@@ -55,12 +63,12 @@ namespace lux::render
         SessionIdentity session{};
         std::size_t capacity;
         bool bound = false, ready_sent = false, closed = false;
-        State(ipc::IpcRequester input, RenderClientConfig config) : requester(std::move(input)),
+        Impl(ipc::IpcRequester input, RenderClientConfig config) : requester(std::move(input)),
             budget(std::make_shared<Budget>(config.retained_byte_limit)), capacity(config.ring_capacity)
         {
             requests.reserve(capacity);
         }
-        ~State() noexcept
+        ~Impl() noexcept
         {
             requester.reset();
             for (const auto& request : requests) refund(budget.get(), request.small_charge);
@@ -80,7 +88,7 @@ namespace lux::render
     }
 
 
-    RenderClient::RenderClient(std::unique_ptr<State> state) noexcept : state_(std::move(state)) {}
+    RenderClient::RenderClient(std::unique_ptr<Impl> state) noexcept : impl_(std::move(state)) {}
     RenderClient::~RenderClient() noexcept = default;
 
     RenderResult<std::unique_ptr<RenderClient>> RenderClient::create(
@@ -90,34 +98,34 @@ namespace lux::render
         if (!config.retained_byte_limit) return cxx::unexpected(RenderError{kRuntimeCapacity});
         auto requester = ipc::IpcCore::instance().createRequester(name, {config.ring_capacity, config.ring_capacity});
         if (!requester) return cxx::unexpected(RenderError{kRuntimeState});
-        return std::unique_ptr<RenderClient>(new RenderClient(std::make_unique<State>(std::move(*requester), config)));
+        return std::unique_ptr<RenderClient>(new RenderClient(std::make_unique<Impl>(std::move(*requester), config)));
     }
 
-    SessionIdentity RenderClient::session() const noexcept { return state_->session; }
+    SessionIdentity RenderClient::session() const noexcept { return impl_->session; }
 
-    RenderResult<OperationBinding> RenderClient::bind(const OperationDescriptor& descriptor) const noexcept
+    RenderResult<OperationBinding> RenderClient::Impl::bind(const OperationDescriptor& descriptor) const noexcept
     {
-        if (!state_->bound) return cxx::unexpected(RenderError{kRuntimeState});
+        if (!bound) return cxx::unexpected(RenderError{kRuntimeState});
         if (auto valid = validateOperation(descriptor); !valid) return cxx::unexpected(valid.error());
-        auto id = bindCapability(state_->manifest.view(), descriptor);
+        auto id = bindCapability(manifest.view(), descriptor);
         if (!id) return cxx::unexpected(id.error());
-        return OperationBinding{state_->session, *id, descriptor};
+        return OperationBinding{session, *id, descriptor};
     }
 
-    RenderResult<RequestId> RenderClient::hello() noexcept
+    RenderResult<RequestId> RenderClient::Impl::hello() noexcept
     {
-        if (state_->ready_sent) return cxx::unexpected(RenderError{kRuntimeState});
+        if (ready_sent) return cxx::unexpected(RenderError{kRuntimeState});
         auto result = submitEncoded({}, 0, nullptr,
             [](const void*, cxx::BinarySpanWriter&) noexcept -> RenderResult<void> { return {}; }, {}, 64 * 1024);
-        if (result) state_->ready_sent = true;
+        if (result) ready_sent = true;
         return result;
     }
 
-    RenderResult<RequestId> RenderClient::submitEncoded(const OperationBinding& binding, std::size_t size,
+    RenderResult<RequestId> RenderClient::Impl::submitEncoded(const OperationBinding& binding, std::size_t size,
         const void* value, RenderResult<void> (*encode)(const void*, cxx::BinarySpanWriter&) noexcept,
         std::span<const RenderPayload> attachments, std::size_t reply_capacity) noexcept
     {
-        auto& s = *state_;
+        auto& s = *this;
         const bool hello = binding.operation.isNull();
         const bool invalid_state = s.closed || (hello ? s.ready_sent : !s.bound);
         if (invalid_state) return cxx::unexpected(RenderError{kRuntimeState});
@@ -229,10 +237,10 @@ namespace lux::render
         return backing_.message.attachments();
     }
 
-    RenderResult<ERenderReceive> RenderClient::tryReceive(RenderCompletion& output) noexcept
+    RenderResult<ERenderReceive> RenderClient::Impl::tryReceive(RenderCompletion& output) noexcept
     {
         if (output.active()) return cxx::unexpected(RenderError{kRuntimeState});
-        auto& s = *state_;
+        auto& s = *this;
         for (unsigned i = 0; i < 8; ++i)
         {
             const auto status = s.closed ? ipc::EIpcReceive::CLOSED : s.requester.tryReceive(output.backing_);
@@ -295,16 +303,39 @@ namespace lux::render
         return ERenderReceive::EMPTY;
     }
 
-    RenderResult<void> RenderClient::abandon(RequestId request) noexcept
+    RenderResult<void> RenderClient::Impl::abandon(RequestId request) noexcept
     {
-        auto* pending = state_->requests.find(request);
+        auto* pending = requests.find(request);
         if (!pending || pending->abandoned) return cxx::unexpected(RenderError{kRuntimeIdentity});
         pending->abandoned = true;
         return {};
     }
 
-    std::size_t RenderClient::retainedBytes() const noexcept
+    std::size_t RenderClient::Impl::retainedBytes() const noexcept
     {
-        return state_->budget->retained.load(std::memory_order_relaxed);
+        return budget->retained.load(std::memory_order_relaxed);
     }
+
+    RenderResult<RequestId> RenderClient::hello() noexcept { return impl_->hello(); }
+
+    RenderResult<OperationBinding> RenderClient::bind(const OperationDescriptor& descriptor) const noexcept
+    {
+        return impl_->bind(descriptor);
+    }
+
+    RenderResult<RequestId> RenderClient::submitEncoded(const OperationBinding& operation, std::size_t size,
+        const void* value, RenderResult<void> (*encode)(const void*, cxx::BinarySpanWriter&) noexcept,
+        std::span<const RenderPayload> attachments, std::size_t reply_capacity) noexcept
+    {
+        return impl_->submitEncoded(operation, size, value, encode, attachments, reply_capacity);
+    }
+
+    RenderResult<ERenderReceive> RenderClient::tryReceive(RenderCompletion& output) noexcept
+    {
+        return impl_->tryReceive(output);
+    }
+
+    RenderResult<void> RenderClient::abandon(RequestId request) noexcept { return impl_->abandon(request); }
+
+    std::size_t RenderClient::retainedBytes() const noexcept { return impl_->retainedBytes(); }
 }

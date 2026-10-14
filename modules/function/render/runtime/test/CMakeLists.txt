@@ -14,6 +14,24 @@ set_target_properties(render_runtime_lifetime_test PROPERTIES RUNTIME_OUTPUT_DIR
 add_test(NAME render.runtime.lifetime COMMAND render_runtime_lifetime_test)
 set_tests_properties(render.runtime.lifetime PROPERTIES TIMEOUT 90)
 
+add_executable(render_runtime_offscreen_test Offscreen.cpp ../../native/vulkan/test/Allocation.cpp)
+target_include_directories(render_runtime_offscreen_test PRIVATE ../../native/vulkan/test)
+target_link_libraries(render_runtime_offscreen_test PRIVATE render_runtime)
+set_target_properties(render_runtime_offscreen_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+add_test(NAME render.runtime.offscreen COMMAND render_runtime_offscreen_test)
+set_tests_properties(render.runtime.offscreen PROPERTIES TIMEOUT 90)
+
+# Identical server source, linked to the existing compile-time Native fault seam.
+# Only completion observation is held; actual GPU submission and final wait are real.
+add_executable(render_runtime_shutdown_test Shutdown.cpp ../src/RenderServer.cpp)
+target_include_directories(render_runtime_shutdown_test PRIVATE ../pinclude ../../native/vulkan/test)
+target_link_libraries(render_runtime_shutdown_test PRIVATE render_client render_features
+    render_native_instrumented lux::engine::platform::platform_ipc bcrypt
+)
+set_target_properties(render_runtime_shutdown_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+add_test(NAME render.runtime.shutdown COMMAND render_runtime_shutdown_test)
+set_tests_properties(render.runtime.shutdown PROPERTIES TIMEOUT 60)
+
 add_test(
     NAME render.runtime.installed
     COMMAND "${CMAKE_COMMAND}"

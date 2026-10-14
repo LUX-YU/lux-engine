@@ -55,5 +55,30 @@ The single move-only `CompiledGraph` owns Pipeline/Layout, immutable recording r
 It retains no author graph or callback. Resource names and storage compatibility are cold inputs;
 the later executor will use compiled indices. Compiler Buffer/Image factory counters remain zero.
 Image-to-buffer output plans explicitly mark target-sized backing for compatible resize; format,
-sample count and kind changes require a new compiled candidate. Attach/execution/resize qualification
-is still a later gate, not claimed by successful pipeline creation.
+sample count and kind changes require a new compiled candidate.
+
+## G9 preparation and execution
+
+DeviceSession uniquely owns stable ExecutionContexts and scoped buffer backing. A context pins the
+immutable CompiledGraph, owns transient images/readback buffers and image views, and holds counted
+leases to scoped buffers. Scope keys derive from validated Scene/View SlotKeys; attachment-private
+backing additionally uses the stable context identity. Global/Scene/View sharing compares full semantic
+key, storage type/ABI, size and usage during preparation only. A small typed CPU BufferInitializer is
+the actual cold consumer; it does not promise a future universal GPU Storage API.
+
+Preparation resolves all recipes and barrier handles. Execution records the immutable recipes and
+checks only changing queue capacity/completion/submission results. Reusing an overwritten physical
+image discards old contents but still orders its previous accesses; the first-use barrier explicitly
+carries that inter-execution dependency. Unsupported graph semantics remain compiler errors.
+
+Release transfers an in-flight context into the existing RetirementQueue using its real last accepted
+SubmissionTicket. Its code pin, transient backing and scope leases survive there until completion.
+Zero-lease scoped entries are collected by the session; there is no parallel ResourceDomain owner.
+Shutdown drains queues, destroys retired and active contexts, then scoped backing, allocator/device.
+Fault tests hold completion observation after a real submit to prove failed later submits and IPC stop
+cannot destroy accepted work early. No production failure hook or additional queue is introduced.
+
+The graphics/transfer tests execute the production compiler and contexts, verify actual readback pixels,
+scope handle sharing/isolation, detach and compatible resize. Stable CPU record/execute timing includes
+poll/record/submit; explicit fence wait is outside the timer. Engine C++ allocation instrumentation does
+not measure driver internals. GPU timestamp duration is NOT_MEASURED.

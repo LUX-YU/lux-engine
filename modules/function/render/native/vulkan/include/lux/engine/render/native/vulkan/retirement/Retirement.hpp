@@ -47,6 +47,7 @@ namespace lux::render::vulkan
 
         [[nodiscard]] RenderResult<std::size_t> collect() noexcept;
         [[nodiscard]] std::size_t pending() const noexcept;
+        [[nodiscard]] std::size_t capacity() const noexcept { return entries_.size(); }
 
         // A cold composite candidate already owns its allocation. Type erasure
         // happens once at retirement, with no heap state or shared reference count.

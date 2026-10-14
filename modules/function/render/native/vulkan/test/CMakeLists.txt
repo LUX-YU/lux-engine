@@ -14,6 +14,11 @@ add_test(NAME render.native.compiler COMMAND render_compiler_test)
 
 set_tests_properties(render.native.compiler PROPERTIES TIMEOUT 60)
 
+add_executable(render_execution_test Execution.cpp Allocation.cpp)
+target_link_libraries(render_execution_test PRIVATE render_native_vulkan)
+add_test(NAME render.native.execution COMMAND render_execution_test)
+set_tests_properties(render.native.execution PROPERTIES TIMEOUT 60)
+
 # The same source algorithms with compile-time fault hooks, never used by production.
 add_library(render_native_instrumented STATIC)
 
@@ -56,7 +61,7 @@ add_test(NAME render.native.failures COMMAND render_native_fault_test)
 
 set_tests_properties(render.native.failures PROPERTIES TIMEOUT 90)
 
-foreach(header Error DeviceSession CompiledGraph device/Device memory/Memory transfer/Submission retirement/Retirement)
+foreach(header Error DeviceSession CompiledGraph ExecutionContext device/Device memory/Memory transfer/Submission retirement/Retirement)
     string(REPLACE "/" "_" target "${header}")
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp"
         CONTENT "#include <lux/engine/render/native/vulkan/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"

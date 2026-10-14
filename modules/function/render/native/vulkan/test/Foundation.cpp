@@ -4,7 +4,7 @@
 #include <string_view>
 #ifdef LUX_VULKAN_TEST_SEAM
 #include "SceneFixture.hpp"
-#include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
+#include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #endif
 
 using namespace foundation_test;
@@ -13,7 +13,7 @@ using namespace foundation_test;
 namespace
 {
     constexpr std::array names{"instance", "messenger", "device", "allocator", "buffer", "image",
-        "command_pool", "fence", "timeline", "shader", "pipeline_layout", "pipeline"};
+        "command_pool", "fence", "timeline", "shader", "pipeline_layout", "pipeline", "image_view"};
     std::array<int, names.size()> live{};
     std::array<unsigned, names.size()> created{};
     std::string_view fail_operation;
@@ -152,6 +152,31 @@ int main()
                 fails(name, [&] { return compileGraph(*session, assembly, programs, native_fixture::target(config)); });
             fails("shader", [&] { return compileGraph(*session, assembly, programs, native_fixture::target(config)); }, 2);
             std::printf("compile_scope_buffer_allocations=0 compile_scope_image_allocations=0\n");
+            const native_fixture::Config execution_config{32, 32, 1, 0};
+            auto execution_assembly = take(native_fixture::assemble(execution_config));
+            auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, execution_assembly,
+                native_fixture::programs(execution_config), native_fixture::target(execution_config))));
+            for (auto name : {"image", "image_view", "buffer", "mapping"})
+                fails(name, [&] { return session->prepare(code, native_fixture::target(execution_config), {}, {}); });
+            auto* first = take(session->prepare(code, native_fixture::target(execution_config), {}, {}));
+            auto* second = take(session->prepare(code, native_fixture::target(execution_config), {}, {}));
+            const auto creations = created;
+            CHECK(take(first->execute()));
+            const auto accepted = *first->lastUse();
+            hold_fences = true; // force the admitted first submission to remain unobserved
+            fails("submit", [&] { return second->execute(); });
+            CHECK(!second->lastUse() && session->queue().lastSubmitted()->serial() == accepted.serial());
+            CHECK(created == creations); // execution creates no Shader/Pipeline/Layout/Buffer/Image
+            const auto owners = live;
+            CHECK(session->release(first));
+            CHECK(take(session->retirement().collect()) == 0 && live == owners);
+            hold_fences = false;
+            CHECK(take(session->queue().wait(accepted, UINT64_MAX)));
+            CHECK(session->collect());
+            CHECK(live[4] == owners[4] - 1 && live[5] == owners[5] - 1 && live[12] == owners[12] - 1);
+            CHECK(session->release(second));
+            code.reset();
+            std::printf("Graph partial submission: accepted ticket retained, delayed completion retains Context/backing/code\n");
 #endif
         }
         options.multiple_queues = true;

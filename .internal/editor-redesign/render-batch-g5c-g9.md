@@ -82,3 +82,38 @@ Root TOOLCHAIN was reconfigured from current sources and remains BLOCKED at
 install targets. No placeholder targets or Legacy linkage were added. Linux/Android/TSan are NOT_RUN;
 the later complete frame hot-path allocation and GPU timing measurements are not yet applicable to
 this compiler-only checkpoint. Historical IPC R2 performance PARTIAL remains unchanged.
+
+## M4 implementation gate
+
+G9 now prepares and executes the real compiled Graph through Runtime attach/readback. An Effect owns
+the sole vector of four-field ExecutionGroups. DeviceSession owns stable contexts and scoped backing;
+contexts pin immutable code and retain scoped leases through actual ticket retirement. Two Scenes,
+four Views share one code/pipeline, with Global/Scene sharing and View/Attachment isolation. Graphics
+triangle center/edge colors and transfer clear pixels are read from GPU buffers, not synthesized.
+Compatible resize preserves TargetId and advances target_epoch; unsupported sample changes preserve
+last-good. Detach/remove retain accepted work, and a failed later submit cannot erase its earlier ticket.
+
+Readback completion checks actual GPU tickets. Controlled completion-observation tests prove explicit
+Stop produces Cancelled and requester closure keeps backing until the real final fence wait. All
+ReceivedRequests are settled before Responder reset; Native resources drain before Instance destruction.
+Main paused with 64 unconsumed requests for 1.5 seconds does not stop Upload or actual GPU submissions.
+
+Internal final source matrix: Windows RelWithDebInfo, Debug and ASan each 56/56 tests, all-target build
+and second no-work build. Validation + SyncValidation error count 0; loader overlay warnings retained.
+Stable frame window has 0 Engine C++ new/aligned-new calls, no new compiler/Feature/scope work. Native
+record/submit raw samples and full Client encode/send/handler/reply/decode samples are separate; the
+latter allocates and includes the current sleeping host loop. GPU timestamps are NOT_MEASURED.
+
+Three alternating old/current IPC no-attachment benchmark runs retain all raw CSVs under
+`evidence/ipc-comparison`. Old baseline is exact M2 f4ab9433, independently cloned/built. 128 B roundtrip
+p99 ranges 700–1000 ns old and 600–2300 ns new in these runs; this is variable observational evidence,
+not a performance equivalence or tail-resolution claim. Full small Operation same-thread p50 is
+200–300 ns current versus 300 ns old; tested EXE/DLL allocation counts remain 0. ABI growth is recorded
+above; at depth 64 the two rings' element payload increases by 3072 B, excluding queue/control overhead.
+
+No frozen IPC publication/credit/reclamation code changed: the new checker compares both algorithm
+sections of Ipc.cpp byte-for-byte after line-ending normalization. All 719 Legacy blobs, non-whitelisted
+tracked files and both primary checkout user-file hashes pass protection checks. M4 still requires
+the final independent clone qualification; no final batch PASS is claimed by this implementation note.
+The root closure remains blocked at obsolete root render/client wiring and unimplemented Feature Client
+and Standard Content consumers, despite the now-real standalone render_client. G10–G13 NOT_STARTED.

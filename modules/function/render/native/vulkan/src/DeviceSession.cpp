@@ -1,4 +1,6 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include "ExecutionState.hpp"
+#include <algorithm>
 
 #include <exception>
 
@@ -68,6 +70,7 @@ namespace lux::render::vulkan
             if (!retirement) continue;
             if (auto result = retirement->collect(); !result) return cxx::unexpected(result.error());
         }
+        std::erase_if(scoped_, [](const auto& entry) { return entry->leases == 0; });
         return {};
     }
 
@@ -77,6 +80,10 @@ namespace lux::render::vulkan
         const bool is_device_lost = !result && result.error().type == kNativeFailure &&
             result.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
         if (!result && !is_device_lost) std::terminate();
+        // Retired contexts still hold scoped leases, including the device-lost path.
+        for (auto& retirement : retirement_owners_) retirement.reset();
+        contexts_.clear();
+        scoped_.clear();
         // Retirement owners, queue owners, allocator, device: reverse member destruction order.
     }
 }

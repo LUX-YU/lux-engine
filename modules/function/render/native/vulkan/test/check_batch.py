@@ -39,6 +39,7 @@ def allowed(path):
         'modules/function/render/features/test/CMakeLists.txt',
         'modules/function/render/features/test/Feature.cpp',
         'modules/function/render/features/include/lux/engine/render/features/Program.hpp',
+        'modules/function/render/features/include/lux/engine/render/features/Resources.hpp',
         '.internal/editor-redesign/render-batch-g5c-g9.md',
     }
 
@@ -50,6 +51,12 @@ assert all(allowed(f) for f in changed + untracked), changed + untracked
 status = git('status', '--porcelain')
 if args.clean:
     assert not status, status
+ipc_path = 'modules/platform/ipc/src/Ipc.cpp'
+old_ipc = git('show', baseline + ':' + ipc_path)
+new_ipc = (repo / ipc_path).read_text().strip()
+start, end = '    IpcMessage::~IpcMessage()', '    IpcCore& IpcCore::instance()'
+assert old_ipc.split(start)[0] == new_ipc.split(start)[0], 'IPC directory prefix changed'
+assert old_ipc.split(end)[1] == new_ipc.split(end)[1], 'IPC Channel/Link/Ring algorithm changed'
 protected = [f for f in old if not allowed(f)]
 filtered = git('hash-object', '--stdin-paths', data=('\n'.join(protected) + '\n').encode()).splitlines()
 literal_matches = []

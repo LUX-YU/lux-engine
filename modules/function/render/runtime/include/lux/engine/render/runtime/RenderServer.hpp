@@ -20,6 +20,7 @@ namespace lux::render
     {
         const FeatureDefinition* definition;
         RenderResult<std::vector<PassProgram>> (*programs)(const WireView*, std::string_view) noexcept;
+        std::span<const BufferInitializer> buffers;
         // Immutable metadata/code remain loaded through run()/shutdown.
     };
 
@@ -27,6 +28,7 @@ namespace lux::render
     {
         std::uint64_t ticks = 0, commands = 0, compiled_graphs = 0, submissions = 0;
         std::uint64_t validation_errors = 0, validation_warnings = 0;
+        std::uint64_t scoped_buffers_created = 0;
     };
 
     // The host owns the rendering thread. Create/register are cold; run owns all

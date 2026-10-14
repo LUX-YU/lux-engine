@@ -174,6 +174,7 @@ namespace lux::render
             reply.view = key<ViewId>(std::span(record->args).subspan(2));
             reply.target = key<TargetId>(std::span(record->args).subspan(4));
             reply.effect = key<EffectId>(std::span(record->args).subspan(6));
+            reply.target_epoch = std::uint64_t(record->args[14]) | (std::uint64_t(record->args[15]) << 32);
             if (pending->operation == ERenderCommand::READY && reply.header.outcome == EOperationOutcome::SUCCESS)
             {
                 auto bound = bindCapabilities(record->body.view());

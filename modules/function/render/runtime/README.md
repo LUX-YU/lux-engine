@@ -30,3 +30,25 @@ IPC. G2 adaptation pins the actual ReceivedRequest. Config metadata is compared 
 assembly. Attachment Payload bytes are never copied; the reference and all synchronous G5 callbacks
 finish before completion transfers the input owner. Input, pipeline and GPU completion lifetimes are
 separate. G8 StateCommitted does not claim GPU readiness. Unsupported operations fail explicitly.
+
+Each Effect owns its only editable association list. An ExecutionGroup has exactly SceneId, ViewId,
+TargetId and ExecutionContext*. Scene owns View; View contains its color state, not Effect/Target IDs.
+Attach prepares a complete candidate and publishes the group only on success. DeviceSession owns the
+stable contexts, which pin shared immutable code and lease its scoped buffers. The single target writer
+rule is checked on attach. Compatible resize replaces backing/context and advances target_epoch without
+changing TargetId generation or compiling code. Unsupported format/sample changes preserve last-good.
+
+The frame loop round-robins effects/groups with pre-resolved context pointers. No Feature callbacks,
+analysis, compilation, name lookup or identity lookup occurs in stable record/execute. Incoming commands
+have a bounded per-tick budget. The current host loop sleeps 1 ms between ticks; it is not a latency-tuned
+product scheduler. Client codec/command allocations and complete API latency are measured separately
+from the allocation-free stable rendering window.
+
+Readback holds its actual source ReceivedRequest and pauses context reuse until the real queue ticket
+completes and CPU-owned bytes have been produced. Cancel/Detach releases that logical reader before
+ticket-driven context retirement. Stop settles all requests before Responder reset, then drains Native
+work before destroying backing, device and instance. There are no borrowed-input worker tasks to join;
+the host must join the run thread. Failed Native initialization follows the same IPC cleanup order.
+
+This is the G9 minimal offscreen path: RGBA8, one layer/mip/sample, graphics push-color and transfer.
+It is not WSI, dynamic History, arbitrary Feature handlers, professional asset storage or ECS integration.

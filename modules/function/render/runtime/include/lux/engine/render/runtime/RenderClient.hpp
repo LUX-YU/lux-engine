@@ -64,6 +64,7 @@ namespace lux::render
         TargetId target;
         EffectId effect;
         OwnedWireBytes data; // pins reply + returned input + its one budget lease
+        std::uint64_t target_epoch = 0;
     };
 
     struct RenderClientConfig final

@@ -24,6 +24,7 @@ namespace lux::platform::ipc
     {
     public:
         static constexpr std::size_t inline_capacity = 128;
+        static constexpr std::size_t attachment_capacity = 4;
         IpcMessage() noexcept {} // inline tail intentionally uninitialized, including value initialization
         ~IpcMessage() noexcept;
         IpcMessage(IpcMessage&& other) noexcept;
@@ -41,16 +42,34 @@ namespace lux::platform::ipc
         [[nodiscard]] static Result<IpcMessage>
         takeOwner(std::unique_ptr<Owner>& owner, std::span<const std::byte> bytes) noexcept
         {
-            if (!owner) return cxx::unexpected(EIpcError::INVALID_ARGUMENT);
+            return takeOwner(owner, bytes, {});
+        }
+
+        // The descriptor array AND its byte ranges belong to owner and remain stable.
+        // Only descriptors are borrowed; there is still exactly one IPC owner/deleter.
+        template <typename Owner>
+        [[nodiscard]] static Result<IpcMessage> takeOwner(
+            std::unique_ptr<Owner>& owner,
+            std::span<const std::byte> bytes,
+            std::span<const std::span<const std::byte>> attachments
+        ) noexcept
+        {
+            const bool is_invalid_input = !owner || attachments.size() > attachment_capacity;
+            if (is_invalid_input) return cxx::unexpected(EIpcError::INVALID_ARGUMENT);
             IpcMessage result;
             result.data_ = bytes.data();
             result.size_ = bytes.size();
+            result.attachments_ = attachments;
             result.destroy_ = [](void* value) noexcept { delete static_cast<Owner*>(value); };
             result.owner_ = owner.release();
             return result;
         }
 
         [[nodiscard]] std::span<const std::byte> bytes() const noexcept;
+        [[nodiscard]] std::span<const std::span<const std::byte>> attachments() const noexcept
+        {
+            return attachments_;
+        }
         void reset() noexcept;
 
     private:
@@ -59,6 +78,7 @@ namespace lux::platform::ipc
         void* owner_ = nullptr;
         void (*destroy_)(void*) noexcept = nullptr;
         std::size_t size_ = 0;
+        std::span<const std::span<const std::byte>> attachments_;
     };
 
     enum class EIpcDelivery { REPLY, ABORTED };

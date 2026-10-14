@@ -25,7 +25,7 @@ All commands capture native stdout/stderr. Build command is `cmake --build <buil
 second builds report no work. Tests use `ctest --test-dir <build> --output-on-failure -j 1 -R '^render\.'`.
 Final qualification still requires the exact final I in an independent clean clone.
 
-## G8 input-owner API issue awaiting a narrow scope decision
+## G8 bounded input-owner API extension (authorized)
 
 The integrated command §1.1 requires complete reuse of IPC R2 API, while §6.3 requires zero-copy retention
 of an existing Asset owner, whole retained-owner byte accounting and real request correlation.
@@ -51,13 +51,30 @@ installed R2 shared library. Its two distinct 1 MiB assets remain alive while th
 16-byte headers; both owners release once at cold teardown. Raw output is
 `E:/RenderV2Rebuild/G5C-G9/evidence/G8-ipc-boundary-proof.log`.
 
-Proposed bounded change, NOT implemented without authorization: add read-only attachment views to the
-existing IpcMessage, owned by its existing unique holder; preserve SPSC, publication and reclamation
-algorithms. The Render-side typed payload factory must derive retained cost from the complete backing
-owner (e.g. vector capacity), not visible subranges. Extend move/failure/close/deferred-owner tests.
+The integrated command §2 explicitly permits demonstrated minimal Core/Data/Protocol/IPC changes.
+The user additionally authorized exactly this extension: at most four borrowed attachment views in
+the existing IpcMessage, owned by its existing unique holder. SPSC, Channel/Link, publication, reply
+credits and reclamation algorithms remain unchanged. G2 Wire.hpp is unchanged. RenderPayload derives
+retained cost from the complete vector capacity, never visible subranges. A received request pins
+the G2 adapter's SharedBytes; every borrower ends before reply moves input ownership back.
 Do not restore a Connection, add a side-channel registry, or rewrite historical IPC PARTIAL.
 
-M3/G8 and M4/G9 have not passed. G10–G13 are not started. The final integrated V does not exist yet.
+M3 adds real RenderClient/RenderServer, G2 field codecs, complete schema capability binding,
+connection-local RequestId SlotMaps, Server Operation/Scene/Target/Effect SlotMaps and Scene-owned Views.
+One Native session initializes in run() before Ready. Effects own compiled code. No G9 attach is
+claimed at this checkpoint. At most Main + Upload are admitted per epoch; clients are long-lived.
+The tests cover equal A/B RequestIds, a saturated paused A while B/ticks progress for 1.5 seconds,
+stale View generation, changed full schema rejection, failed device initialization, whole-backing
+budget saturation and recovery, retained replies, abandon collection, controlled close during a
+Feature's actual attachment use, exact destruction and new server epoch identity rejection.
+Release/ASan regressions: 52/52 before adding Runtime installed consumers; affected tests and new
+relocated client/server consumers are rerun after the final API changes. Native Validation + SyncValidation
+remain enabled, with zero errors. M4/G9 and final independent V are still pending. G10–G13 not started.
+
+IPC ABI comparison: IpcMessage 160→176 B, IpcReply 328→360 B on Windows x64; inline capacity remains
+128 B. The additional two words borrow the stable owner descriptor array. This requires rebuilding
+DLL consumers; binary ABI compatibility is NOT claimed. Existing no-attachment behavior tests and
+relocated EXE/DLL consumers pass. Raw current cost samples are retained; historical PARTIAL unchanged.
 
 Root TOOLCHAIN was reconfigured from current sources and remains BLOCKED at
 `modules/function/CMakeLists.txt:30–32`: missing `render/client`,

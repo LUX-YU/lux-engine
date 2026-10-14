@@ -11,7 +11,10 @@ int main()
     auto client = IpcCore::instance().createRequester("installed");
     if (!server || !client || !client->ready()) return 1;
     static_assert(IpcMessage::inline_capacity == 128);
-    static_assert(sizeof(IpcMessage) == 160 && sizeof(IpcReply) == 328);
+    // Bounded attachment view adds two pointer-sized words. Rebuild DLL consumers;
+    // the old R2 binary ABI (160/328) is deliberately not claimed compatible.
+    static_assert(sizeof(IpcMessage) == 176 && sizeof(IpcReply) == 360);
+    static_assert(IpcMessage::attachment_capacity == 4);
     IpcMessage input;
     if (!client->trySend(input)) return 2;
     ReceivedRequest work;

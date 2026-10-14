@@ -27,6 +27,11 @@ def tree(rev):
 def allowed(path):
     return path.startswith(('modules/function/render/native/', 'modules/function/render/runtime/')) or path in {
         'modules/function/render/CMakeLists.txt',
+        'modules/platform/ipc/include/lux/engine/platform/ipc/IpcMessage.hpp',
+        'modules/platform/ipc/src/Ipc.cpp',
+        'modules/platform/ipc/test/Attachments.cpp',
+        'modules/platform/ipc/test/CMakeLists.txt',
+        'modules/platform/ipc/test/installed/Main.cpp',
         'modules/function/render/graph/include/lux/engine/render/graph/Graph.hpp',
         'modules/function/render/graph/include/lux/engine/render/graph/Builder.hpp',
         'modules/function/render/graph/src/Builder.cpp',

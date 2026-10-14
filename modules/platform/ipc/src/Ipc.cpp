@@ -210,7 +210,8 @@ namespace lux::platform::ipc
 
     IpcMessage::IpcMessage(IpcMessage&& other) noexcept
         : data_(std::exchange(other.data_, nullptr)), owner_(std::exchange(other.owner_, nullptr)),
-          destroy_(std::exchange(other.destroy_, nullptr)), size_(std::exchange(other.size_, 0))
+          destroy_(std::exchange(other.destroy_, nullptr)), size_(std::exchange(other.size_, 0)),
+          attachments_(std::exchange(other.attachments_, {}))
     {
         if (!owner_ && size_) std::memcpy(inline_.data(), other.inline_.data(), size_);
 #ifdef LUX_IPC_TESTING
@@ -226,6 +227,7 @@ namespace lux::platform::ipc
         owner_ = std::exchange(other.owner_, nullptr);
         destroy_ = std::exchange(other.destroy_, nullptr);
         size_ = std::exchange(other.size_, 0);
+        attachments_ = std::exchange(other.attachments_, {});
         if (!owner_ && size_) std::memcpy(inline_.data(), other.inline_.data(), size_);
 #ifdef LUX_IPC_TESTING
         testing::recordMove(owner_ ? 0 : size_);
@@ -240,6 +242,7 @@ namespace lux::platform::ipc
         data_ = nullptr;
         destroy_ = nullptr;
         size_ = 0;
+        attachments_ = {};
     }
 
     std::span<const std::byte> IpcMessage::bytes() const noexcept

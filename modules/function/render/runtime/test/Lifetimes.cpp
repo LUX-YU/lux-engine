@@ -1,3 +1,4 @@
+#include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "SceneFixture.hpp"
 #include <atomic>
@@ -71,12 +72,12 @@ static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std
     return native_fixture::programs(*config, name);
 }
 
-static RenderReply wait(RenderClient& client, RequestId id)
+static RenderCompletion wait(RenderClient& client, RequestId id)
 {
     const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (std::chrono::steady_clock::now() < deadline)
     {
-        auto result = take(client.poll(id));
+        auto result = take(receiveExpected(client, id));
         if (result) return std::move(*result);
         std::this_thread::sleep_for(1ms);
     }
@@ -132,7 +133,8 @@ int main()
     const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (upload->retainedBytes() && std::chrono::steady_clock::now() < deadline)
     {
-        upload->collectReplies();
+        RenderCompletion discarded;
+        check(take(upload->tryReceive(discarded)) == ERenderReceive::EMPTY);
         std::this_thread::sleep_for(1ms);
     }
     check(upload->retainedBytes() == 0);

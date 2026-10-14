@@ -106,11 +106,11 @@ namespace lux::render
             owner->views[0] = owner->data.view();
             const auto views = owner->data.empty() ? std::span<const std::span<const std::byte>>{} :
                 std::span<const std::span<const std::byte>>(owner->views);
-            auto message = ipc::IpcMessage::takeOwner(owner, owner->header.view(), views);
-            if (!message) std::terminate();
-            if (!responder.tryReply(*request, *message))
+            ipc::IpcMessage message;
+            if (!message.tryAdopt(owner, owner->header.view(), views)) std::terminate();
+            if (!responder.tryReply(*request, message))
             {
-                undelivered.push_back({std::move(request), std::move(*message)});
+                undelivered.push_back({std::move(request), std::move(message)});
                 if (undelivered.size() >= 128) stop.store(true);
             }
         }

@@ -208,67 +208,61 @@ namespace lux::platform::ipc
 
     IpcMessage::~IpcMessage() noexcept { reset(); }
 
-    IpcMessage::IpcMessage(IpcMessage&& other) noexcept
-        : data_(std::exchange(other.data_, nullptr)), owner_(std::exchange(other.owner_, nullptr)),
-          destroy_(std::exchange(other.destroy_, nullptr)), size_(std::exchange(other.size_, 0)),
-          attachments_(std::exchange(other.attachments_, {}))
-    {
-        if (!owner_ && size_) std::memcpy(inline_.data(), other.inline_.data(), size_);
-#ifdef LUX_IPC_TESTING
-        testing::recordMove(owner_ ? 0 : size_);
-#endif
-    }
+    IpcMessage::IpcMessage(IpcMessage&& other) noexcept { *this = std::move(other); }
 
     IpcMessage& IpcMessage::operator=(IpcMessage&& other) noexcept
     {
         if (this == &other) return *this;
         reset();
-        data_ = std::exchange(other.data_, nullptr);
-        owner_ = std::exchange(other.owner_, nullptr);
-        destroy_ = std::exchange(other.destroy_, nullptr);
         size_ = std::exchange(other.size_, 0);
-        attachments_ = std::exchange(other.attachments_, {});
-        if (!owner_ && size_) std::memcpy(inline_.data(), other.inline_.data(), size_);
+        owned_ = std::exchange(other.owned_, false);
+        if (owned_)
+        {
+            std::construct_at(&storage_.large, other.storage_.large);
+            ::new (static_cast<void*>(&other.storage_.small)) std::array<std::byte, inline_capacity>;
+        }
+        else if (size_) std::memcpy(storage_.small.data(), other.storage_.small.data(), size_);
 #ifdef LUX_IPC_TESTING
-        testing::recordMove(owner_ ? 0 : size_);
+        testing::recordMove(owned_ ? 0 : size_);
 #endif
         return *this;
     }
 
     void IpcMessage::reset() noexcept
     {
-        if (owner_) destroy_(owner_);
-        owner_ = nullptr;
-        data_ = nullptr;
-        destroy_ = nullptr;
+        if (owned_)
+        {
+            storage_.large.destroy(storage_.large.owner);
+            ::new (static_cast<void*>(&storage_.small)) std::array<std::byte, inline_capacity>;
+        }
+        owned_ = false;
         size_ = 0;
-        attachments_ = {};
     }
 
     std::span<const std::byte> IpcMessage::bytes() const noexcept
     {
-        return {owner_ ? data_ : inline_.data(), size_};
+        return {owned_ ? storage_.large.data : storage_.small.data(), size_};
     }
 
-    Result<void> IpcMessage::assignInline(std::span<const std::byte> bytes) noexcept
+    bool IpcMessage::tryAssignInline(std::span<const std::byte> bytes) noexcept
     {
-        if (bytes.size() > inline_capacity) return cxx::unexpected(EIpcError::INVALID_ARGUMENT);
-        // Copy first: bytes may refer to this message's inline or owned storage.
-        if (!bytes.empty()) std::memmove(inline_.data(), bytes.data(), bytes.size());
-        reset();
-        size_ = bytes.size();
-        return {};
-    }
-
-    Result<IpcMessage> IpcMessage::takeBytes(std::unique_ptr<std::byte[]>& owner, std::size_t size) noexcept
-    {
-        if (!owner) return cxx::unexpected(EIpcError::INVALID_ARGUMENT);
-        IpcMessage result;
-        result.data_ = owner.get();
-        result.owner_ = owner.release();
-        result.size_ = size;
-        result.destroy_ = [](void* value) noexcept { delete[] static_cast<std::byte*>(value); };
-        return result;
+        if (bytes.size() > inline_capacity) return false;
+        if (owned_)
+        {
+            // Source may alias the current owner. Preserve its bytes before invoking the deleter.
+            std::array<std::byte, inline_capacity> saved;
+            if (!bytes.empty()) std::memcpy(saved.data(), bytes.data(), bytes.size());
+            const auto size = bytes.size();
+            reset();
+            if (size) std::memcpy(storage_.small.data(), saved.data(), size);
+            size_ = size;
+        }
+        else
+        {
+            if (!bytes.empty()) std::memmove(storage_.small.data(), bytes.data(), bytes.size());
+            size_ = bytes.size();
+        }
+        return true;
     }
 
     IpcCore& IpcCore::instance() noexcept

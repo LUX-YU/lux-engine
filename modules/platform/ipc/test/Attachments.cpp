@@ -1,6 +1,7 @@
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/data/Wire.hpp>
 #include <array>
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -33,9 +34,10 @@ static IpcMessage message(int& destroyed, const std::byte*& pointer)
     pointer = source->backing.data();
     auto owner = std::make_unique<Envelope>(OwnedWireBytes::fromOwner(source, source->backing));
     std::array<std::span<const std::byte>, 5> excessive{};
-    check(!IpcMessage::takeOwner(owner, owner->header, excessive));
+    IpcMessage result;
+    check(!result.tryAdopt(owner, owner->header, excessive));
     check(bool(owner));
-    auto result = take(IpcMessage::takeOwner(owner, owner->header, owner->views));
+    check(result.tryAdopt(owner, owner->header, owner->views));
     check(!owner);
     return result;
 }
@@ -48,8 +50,61 @@ static ReceivedRequest receive(IpcResponder& server)
     std::abort();
 }
 
+static void storageModes()
+{
+    std::array<std::byte, 129> bytes;
+    for (std::size_t i = 0; i < bytes.size(); ++i) bytes[i] = std::byte(i);
+    for (std::size_t size : {0u, 1u, 127u, 128u})
+    {
+        IpcMessage value;
+        check(value.tryAssignInline(std::span(bytes).first(size)));
+        auto moved = std::move(value);
+        check(value.bytes().empty() && moved.bytes().size() == size);
+        check(std::ranges::equal(moved.bytes(), std::span(bytes).first(size)));
+        check(!moved.tryAssignInline(bytes)); // 129 B rejection preserves destination
+        check(std::ranges::equal(moved.bytes(), std::span(bytes).first(size)));
+        moved = std::move(moved);
+        if (size) check(moved.tryAssignInline(moved.bytes().subspan(1)));
+        check(moved.bytes().size() == (size ? size - 1 : 0));
+    }
+    struct Owner final
+    {
+        int* destroyed;
+        std::array<std::byte, 256> bytes{};
+        std::array<std::span<const std::byte>, 4> views;
+        explicit Owner(int& count) : destroyed(&count), views{bytes, bytes, bytes, bytes} { bytes[1] = std::byte{23}; }
+        ~Owner() { ++*destroyed; }
+    };
+    int destroyed = 0;
+    auto owner = std::make_unique<Owner>(destroyed);
+    const auto* pointer = owner->bytes.data();
+    IpcMessage value;
+    check(value.tryAdopt(owner, owner->bytes, owner->views));
+    check(value.bytes().data() == pointer && value.attachments().size() == 4);
+    std::unique_ptr<Owner> empty;
+    check(!value.tryAdopt(empty, {}) && value.bytes().data() == pointer);
+    auto replacement = std::make_unique<Owner>(destroyed);
+    std::array<std::span<const std::byte>, 5> excessive{};
+    check(!value.tryAdopt(replacement, replacement->bytes, excessive));
+    check(bool(replacement) && value.bytes().data() == pointer && destroyed == 0);
+    IpcMessage destination;
+    check(destination.tryAdopt(replacement, replacement->bytes));
+    destination = std::move(value);
+    check(destroyed == 1 && value.bytes().empty() && value.attachments().empty());
+    check(destination.attachments()[3].data() == pointer);
+    check(destination.tryAssignInline(destination.bytes().subspan(1, 1)));
+    check(destroyed == 2 && destination.bytes()[0] == std::byte{23} && destination.attachments().empty());
+    auto array = std::make_unique<std::byte[]>(129);
+    check(destination.tryAdopt(array, {array.get(), 129}) && !array);
+    destination.reset();
+    check(destination.bytes().empty());
+    std::printf("SBO/Owned boundaries, overlap, four attachments, failed update, array deleter; Message=%zu Reply=%zu\n",
+        sizeof(IpcMessage), sizeof(IpcReply));
+}
+
 int main()
 {
+    storageModes();
     auto& core = IpcCore::instance();
     auto requester = take(core.createRequester("attachments", {1, 1}));
     auto responder = take(core.createResponder("attachments"));
@@ -78,7 +133,7 @@ int main()
         check(resolved->view()[0] == std::byte{42});
     }
     IpcMessage reply;
-    check(bool(reply.assignInline({})));
+    check(bool(reply.tryAssignInline({})));
     check(bool(responder.tryReply(*work, reply)));
     IpcReply received;
     check(requester.tryReceive(received) == EIpcReceive::RECEIVED);

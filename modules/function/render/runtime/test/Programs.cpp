@@ -1,3 +1,4 @@
+#include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "SceneFixture.hpp"
 #include <atomic>
@@ -12,13 +13,13 @@ static std::atomic<unsigned> mode{0};
 static void check(bool value) { if (!value) std::abort(); }
 template <class T> static T take(RenderResult<T> value) { check(bool(value)); return std::move(*value); }
 
-static RenderReply call(RenderClient& client, const RenderCommand& command)
+static RenderCompletion call(RenderClient& client, const RenderCommand& command)
 {
     const auto request = take(client.submit(command));
     const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (std::chrono::steady_clock::now() < deadline)
     {
-        auto result = take(client.poll(request));
+        auto result = take(receiveExpected(client, request));
         if (result) return std::move(*result);
         std::this_thread::sleep_for(1ms);
     }

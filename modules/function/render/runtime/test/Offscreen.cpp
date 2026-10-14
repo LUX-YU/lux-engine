@@ -1,3 +1,4 @@
+#include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "SceneFixture.hpp"
 #include "Allocation.hpp"
@@ -43,19 +44,19 @@ static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std
     return native_fixture::programs(*config, name);
 }
 
-static RenderReply wait(RenderClient& client, RequestId id)
+static RenderCompletion wait(RenderClient& client, RequestId id)
 {
     const auto deadline = std::chrono::steady_clock::now() + 15s;
     while (std::chrono::steady_clock::now() < deadline)
     {
-        auto reply = take(client.poll(id));
+        auto reply = take(receiveExpected(client, id));
         if (reply) return std::move(*reply);
         std::this_thread::sleep_for(100us);
     }
     std::abort();
 }
 
-static RenderReply call(RenderClient& client, const RenderCommand& command, bool success = true)
+static RenderCompletion call(RenderClient& client, const RenderCommand& command, bool success = true)
 {
     auto reply = wait(client, take(client.submit(command)));
     if (success)
@@ -68,9 +69,9 @@ static RenderReply call(RenderClient& client, const RenderCommand& command, bool
     return reply;
 }
 
-static void pixel(const RenderReply& reply, unsigned width, unsigned x, unsigned y, std::array<unsigned, 4> expected)
+static void pixel(const RenderCompletion& reply, unsigned width, unsigned x, unsigned y, std::array<unsigned, 4> expected)
 {
-    const auto bytes = reply.data.view();
+    const auto bytes = reply.bytes();
     CHECK(bytes.size() >= (y * width + x + 1) * 4);
     for (unsigned c = 0; c < 4; ++c)
         CHECK(std::abs(std::to_integer<int>(bytes[(y * width + x) * 4 + c]) - int(expected[c])) <= 1);
@@ -176,11 +177,11 @@ int main()
     auto resized = call(*client, command);
     CHECK(resized.target == command.target && resized.target_epoch == 2);
     auto larger = call(*client, attached[1]);
-    CHECK(larger.data.size() == 64 * 48 * 4);
+    CHECK(larger.bytes().size() == 64 * 48 * 4);
     pixel(larger, 64, 32, 24, expected[1]);
     command.description.samples = 4;
     CHECK(call(*client, command, false).header.outcome == EOperationOutcome::FAILED);
-    CHECK(call(*client, attached[1]).data.size() == 64 * 48 * 4);
+    CHECK(call(*client, attached[1]).bytes().size() == 64 * 48 * 4);
     CHECK(server->stats().compiled_graphs == 1);
     command.operation = ERenderCommand::REMOVE_SCENE;
     command.scene = scenes[0];
@@ -254,9 +255,28 @@ int main()
     const auto stopped = take(client->submit(command));
     resume.count_down();
     CHECK(wait(*upload, blocked).header.outcome == EOperationOutcome::SUCCESS);
-    CHECK(wait(*client, stopped).header.outcome == EOperationOutcome::SUCCESS);
-    const auto terminal = wait(*client, pending).header.outcome;
-    CHECK(terminal == EOperationOutcome::CANCELLED || terminal == EOperationOutcome::SUCCESS);
+    bool saw_stop = false, saw_readback = false;
+    const auto completion_deadline = std::chrono::steady_clock::now() + 15s;
+    while ((!saw_stop || !saw_readback) && std::chrono::steady_clock::now() < completion_deadline)
+    {
+        RenderCompletion completion;
+        const auto status = take(client->tryReceive(completion));
+        if (status == ERenderReceive::EMPTY) { std::this_thread::sleep_for(100us); continue; }
+        CHECK(status == ERenderReceive::RECEIVED);
+        if (completion.header.request == stopped)
+        {
+            CHECK(!saw_stop && completion.header.outcome == EOperationOutcome::SUCCESS);
+            saw_stop = true;
+        }
+        else
+        {
+            CHECK(completion.header.request == pending && !saw_readback);
+            const auto terminal = completion.header.outcome;
+            CHECK(terminal == EOperationOutcome::CANCELLED || terminal == EOperationOutcome::SUCCESS);
+            saw_readback = true;
+        }
+    }
+    CHECK(saw_stop && saw_readback);
     thread.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
     std::printf("G9 Runtime: 2 Scenes/4 Views/1 code; hot ticks=%llu submissions=%llu engine_new=%zu; "

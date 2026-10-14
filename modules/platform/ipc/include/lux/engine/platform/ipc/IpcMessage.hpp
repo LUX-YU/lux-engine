@@ -4,6 +4,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <new>
+#include <type_traits>
 #include <span>
 #include <utility>
 #include <lux/cxx/compile_time/expected.hpp>
@@ -25,60 +27,62 @@ namespace lux::platform::ipc
     public:
         static constexpr std::size_t inline_capacity = 128;
         static constexpr std::size_t attachment_capacity = 4;
-        IpcMessage() noexcept {} // inline tail intentionally uninitialized, including value initialization
+        IpcMessage() noexcept {} // inline tail remains uninitialized
         ~IpcMessage() noexcept;
         IpcMessage(IpcMessage&& other) noexcept;
         IpcMessage& operator=(IpcMessage&& other) noexcept;
         IpcMessage(const IpcMessage&) = delete;
         IpcMessage& operator=(const IpcMessage&) = delete;
 
-        [[nodiscard]] Result<void> assignInline(std::span<const std::byte> bytes) noexcept;
-        [[nodiscard]] static Result<IpcMessage>
-        takeBytes(std::unique_ptr<std::byte[]>& owner, std::size_t size) noexcept; // caller proves extent
+        // false iff size exceeds 128; on failure this message is unchanged.
+        [[nodiscard]] bool tryAssignInline(std::span<const std::byte> bytes) noexcept;
 
-        // bytes must belong to owner and remain stable until its destruction.
-        // Failure leaves owner intact. No byte copy or shared control block is created.
+        // One owner keeps primary, descriptors and attachment backing stable. No Payload copy.
+        // false iff owner is null or count exceeds four; neither source nor destination changes.
         template <typename Owner>
-        [[nodiscard]] static Result<IpcMessage>
-        takeOwner(std::unique_ptr<Owner>& owner, std::span<const std::byte> bytes) noexcept
-        {
-            return takeOwner(owner, bytes, {});
-        }
-
-        // The descriptor array AND its byte ranges belong to owner and remain stable.
-        // Only descriptors are borrowed; there is still exactly one IPC owner/deleter.
-        template <typename Owner>
-        [[nodiscard]] static Result<IpcMessage> takeOwner(
+        [[nodiscard]] bool tryAdopt(
             std::unique_ptr<Owner>& owner,
             std::span<const std::byte> bytes,
-            std::span<const std::span<const std::byte>> attachments
+            std::span<const std::span<const std::byte>> attachments = {}
         ) noexcept
         {
             const bool is_invalid_input = !owner || attachments.size() > attachment_capacity;
-            if (is_invalid_input) return cxx::unexpected(EIpcError::INVALID_ARGUMENT);
-            IpcMessage result;
-            result.data_ = bytes.data();
-            result.size_ = bytes.size();
-            result.attachments_ = attachments;
-            result.destroy_ = [](void* value) noexcept { delete static_cast<Owner*>(value); };
-            result.owner_ = owner.release();
-            return result;
+            if (is_invalid_input) return false;
+            reset();
+            std::construct_at(&storage_.large, Owned{
+                bytes.data(), owner.release(), [](void* value) noexcept {
+                    if constexpr (std::is_array_v<Owner>) delete[] static_cast<std::remove_extent_t<Owner>*>(value);
+                    else delete static_cast<Owner*>(value);
+                }, attachments
+            });
+            owned_ = true;
+            size_ = bytes.size();
+            return true;
         }
 
         [[nodiscard]] std::span<const std::byte> bytes() const noexcept;
         [[nodiscard]] std::span<const std::span<const std::byte>> attachments() const noexcept
         {
-            return attachments_;
+            return owned_ ? storage_.large.attachments : std::span<const std::span<const std::byte>>{};
         }
         void reset() noexcept;
 
     private:
-        std::array<std::byte, inline_capacity> inline_; // only [0, size_) is initialized when inline
-        const std::byte* data_ = nullptr;
-        void* owner_ = nullptr;
-        void (*destroy_)(void*) noexcept = nullptr;
+        struct Owned final
+        {
+            const std::byte* data;
+            void* owner;
+            void (*destroy)(void*) noexcept;
+            std::span<const std::span<const std::byte>> attachments;
+        };
+        union Storage
+        {
+            std::array<std::byte, inline_capacity> small;
+            Owned large;
+            Storage() noexcept { ::new (static_cast<void*>(&small)) std::array<std::byte, inline_capacity>; }
+        } storage_;
         std::size_t size_ = 0;
-        std::span<const std::span<const std::byte>> attachments_;
+        bool owned_ = false;
     };
 
     enum class EIpcDelivery { REPLY, ABORTED };

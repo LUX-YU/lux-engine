@@ -16,7 +16,7 @@ component_add_internal_dependencies(render_client
     lux::engine::render::render_core lux::engine::render::render_data lux::engine::render::render_protocol
 )
 
-target_link_libraries(render_client PRIVATE lux::engine::platform::platform_ipc)
+target_link_libraries(render_client PUBLIC lux::engine::platform::platform_ipc)
 
 component_add_transitive_commands(render_client
     [=[find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_ipc

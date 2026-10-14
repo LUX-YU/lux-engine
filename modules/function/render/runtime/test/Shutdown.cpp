@@ -1,3 +1,4 @@
+#include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/native/vulkan/Error.hpp>
 #include "SceneFixture.hpp"
@@ -45,19 +46,19 @@ static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std
     return native_fixture::programs(*config, name);
 }
 
-static RenderReply wait(RenderClient& client, RequestId id)
+static RenderCompletion wait(RenderClient& client, RequestId id)
 {
     const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (std::chrono::steady_clock::now() < deadline)
     {
-        auto result = take(client.poll(id));
+        auto result = take(receiveExpected(client, id));
         if (result) return std::move(*result);
         std::this_thread::sleep_for(1ms);
     }
     std::abort();
 }
 
-static RenderReply call(RenderClient& client, const RenderCommand& command)
+static RenderCompletion call(RenderClient& client, const RenderCommand& command)
 {
     auto result = wait(client, take(client.submit(command)));
     check(result.header.outcome == EOperationOutcome::SUCCESS);
@@ -97,7 +98,7 @@ static void exercise(bool close_requester)
     while (server->stats().commands == before && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(1ms);
     check(server->stats().commands > before && server->stats().submissions > 0);
-    check(!take(client->poll(request)) && backing == 3 && !waited);
+    check(!take(receiveExpected(*client, request)) && backing == 3 && !waited);
     if (close_requester)
     {
         client.reset();
@@ -165,14 +166,14 @@ static void retirementAtomicity()
         auto rejected = wait(*client, take(client->submit(command)));
         check(rejected.header.outcome == EOperationOutcome::FAILED);
         check(rejected.header.error.type == kRuntimeCapacity);
-        check(!take(client->poll(request)) && backing == 6 && !waited);
+        check(!take(receiveExpected(*client, request)) && backing == 6 && !waited);
     }
     hold.store(false); // observe real fence completion; the untouched readback must still succeed
     const auto pixels = wait(*client, request);
     check(pixels.header.outcome == EOperationOutcome::SUCCESS);
-    check(pixels.data.size() == 32 * 32 * 4);
+    check(pixels.bytes().size() == 32 * 32 * 4);
     const auto center = (16 * 32 + 16) * 4;
-    check(pixels.data.view()[center] == std::byte{255} && pixels.data.view()[center + 1] == std::byte{0});
+    check(pixels.bytes()[center] == std::byte{255} && pixels.bytes()[center + 1] == std::byte{0});
     command.operation = ERenderCommand::RESIZE_TARGET;
     const auto resized = call(*client, command);
     check(resized.target_epoch == 2); // rejected resize never published an epoch

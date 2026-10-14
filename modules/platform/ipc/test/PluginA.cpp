@@ -20,9 +20,7 @@ extern "C" bool ipcClaimA() noexcept
 extern "C" bool ipcMakeOwnedA(lux::platform::ipc::IpcMessage* output) noexcept
 {
     auto owner = std::make_unique<PluginOwner>();
-    auto message = lux::platform::ipc::IpcMessage::takeOwner(owner, owner->bytes);
-    if (!message) return false;
-    *output = std::move(*message);
+    if (!output->tryAdopt(owner, owner->bytes)) return false;
     return true;
 }
 

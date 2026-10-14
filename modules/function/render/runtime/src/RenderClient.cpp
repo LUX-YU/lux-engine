@@ -34,7 +34,8 @@ namespace lux::render
         struct Pending final
         {
             ERenderCommand operation;
-            std::optional<RenderReply> reply;
+            RequestId id;
+            bool abandoned = false;
         };
     }
 
@@ -124,6 +125,7 @@ namespace lux::render
         input->budget = s.budget;
         input->charged = charged;
         record.request = s.requests.emplace(Pending{command.operation});
+        s.requests.find(record.request)->id = record.request;
         auto encoded = encodeWire(record, {}, wire_limits);
         if (!encoded) { s.requests.erase(record.request); return cxx::unexpected(encoded.error()); }
         input->header = std::move(*encoded);
@@ -132,10 +134,10 @@ namespace lux::render
             input->payloads[i] = command.attachments[i];
             input->views[i] = input->payloads[i].bytes().view();
         }
-        auto message = ipc::IpcMessage::takeOwner(input, input->header.view(),
-            std::span(input->views).first(command.attachments.size()));
-        if (!message) std::terminate(); // established fixed bound + non-null unique owner
-        if (auto result = s.requester.trySend(*message); !result)
+        ipc::IpcMessage message;
+        if (!message.tryAdopt(input, input->header.view(),
+            std::span(input->views).first(command.attachments.size()))) std::terminate(); // established fixed bound + non-null unique owner
+        if (auto result = s.requester.trySend(message); !result)
         {
             s.requests.erase(record.request);
             return cxx::unexpected(RenderError{result.error() == ipc::EIpcError::WOULD_BLOCK ?
@@ -145,67 +147,91 @@ namespace lux::render
         return record.request;
     }
 
-    std::size_t RenderClient::collectReplies() noexcept
+    RenderCompletion::RenderCompletion(RenderCompletion&& other) noexcept { *this = std::move(other); }
+
+    RenderCompletion& RenderCompletion::operator=(RenderCompletion&& other) noexcept
     {
-        auto& s = *state_;
-        std::size_t count = 0;
-        for (unsigned i = 0; i < 8 && !s.closed; ++i)
-        {
-            ipc::IpcReply output;
-            const auto status = s.requester.tryReceive(output);
-            if (status == ipc::EIpcReceive::EMPTY) break;
-            if (status == ipc::EIpcReceive::CLOSED) { s.closed = true; break; }
-            ++count;
-            auto received = std::make_shared<ipc::IpcReply>(std::move(output));
-            const bool aborted = received->delivery == ipc::EIpcDelivery::ABORTED;
-            const auto& message = aborted ? received->original_request : received->message;
-            auto bytes = OwnedWireBytes::fromOwner(received, message.bytes());
-            auto record = decodeWire<Record>({DataSchema<Record>::describe(), bytes, {}}, wire_limits);
-            if (!record) { s.closed = true; break; }
-            auto* pending = s.requests.find(record->request);
-            if (!pending) continue; // intentionally abandoned; input owner returns on this client thread
-            RenderReply reply;
-            reply.header = {record->request, aborted ? EOperationOutcome::OUTCOME_UNKNOWN :
-                static_cast<EOperationOutcome>(record->args[13]), record->error};
-            if (record->args[13] > static_cast<unsigned>(EOperationOutcome::OUTCOME_UNKNOWN))
-                reply.header = {record->request, EOperationOutcome::FAILED, {kProtocolContract}};
-            reply.session = record->session;
-            reply.scene = key<SceneId>(std::span(record->args).subspan(0));
-            reply.view = key<ViewId>(std::span(record->args).subspan(2));
-            reply.target = key<TargetId>(std::span(record->args).subspan(4));
-            reply.effect = key<EffectId>(std::span(record->args).subspan(6));
-            reply.target_epoch = std::uint64_t(record->args[14]) | (std::uint64_t(record->args[15]) << 32);
-            if (pending->operation == ERenderCommand::READY && reply.header.outcome == EOperationOutcome::SUCCESS)
-            {
-                auto bound = bindCapabilities(record->body.view());
-                if (!bound) reply.header = {record->request, EOperationOutcome::FAILED, bound.error()};
-                else { s.operations = *bound; s.bound = true; }
-            }
-            // Even an empty reply retains original input and its budget until the result is released.
-            const auto views = received->message.attachments();
-            reply.data = OwnedWireBytes::fromOwner(received, views.empty() ? message.bytes() : views[0]);
-            pending->reply = std::move(reply);
-        }
-        return count;
+        if (this == &other) return *this;
+        header = std::exchange(other.header, {});
+        session = other.session;
+        scene = other.scene;
+        view = other.view;
+        target = other.target;
+        effect = other.effect;
+        target_epoch = other.target_epoch;
+        backing_ = std::move(other.backing_);
+        return *this;
     }
 
-    RenderResult<std::optional<RenderReply>> RenderClient::poll(RequestId id) noexcept
+    std::span<const std::byte> RenderCompletion::bytes() const noexcept
     {
+        const auto attachments = backing_.message.attachments();
+        return attachments.empty() ? backing_.message.bytes() : attachments[0];
+    }
+
+    RenderResult<ERenderReceive> RenderClient::tryReceive(RenderCompletion& output) noexcept
+    {
+        if (output.active()) return cxx::unexpected(RenderError{kRuntimeState});
         auto& s = *state_;
-        if (!s.requests.find(id)) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        collectReplies();
-        auto* pending = s.requests.find(id);
-        if (!pending->reply && s.closed)
-            pending->reply = RenderReply{{id, EOperationOutcome::OUTCOME_UNKNOWN, {kRuntimeState}}};
-        if (!pending->reply) return std::optional<RenderReply>{};
-        std::optional<RenderReply> result(std::move(*pending->reply));
-        s.requests.erase(id);
-        return result;
+        for (unsigned i = 0; i < 8; ++i)
+        {
+            const auto status = s.closed ? ipc::EIpcReceive::CLOSED : s.requester.tryReceive(output.backing_);
+            if (status == ipc::EIpcReceive::EMPTY) return ERenderReceive::EMPTY;
+            if (status == ipc::EIpcReceive::CLOSED)
+            {
+                s.closed = true;
+                if (s.requests.empty()) return ERenderReceive::CLOSED;
+                const auto pending = *s.requests.begin();
+                s.requests.erase(pending.id);
+                if (pending.abandoned) continue;
+                output.header = {pending.id, EOperationOutcome::OUTCOME_UNKNOWN, {kRuntimeState}};
+                return ERenderReceive::RECEIVED;
+            }
+            const bool aborted = output.backing_.delivery == ipc::EIpcDelivery::ABORTED;
+            const auto& message = aborted ? output.backing_.original_request : output.backing_.message;
+            std::span<const std::byte> body;
+            auto record = decodeRecord(message.bytes(), body);
+            if (!record)
+            {
+                output = {};
+                s.closed = true;
+                return cxx::unexpected(record.error());
+            }
+            auto* pending = s.requests.find(record->request);
+            if (!pending)
+            {
+                output = {};
+                return cxx::unexpected(RenderError{kRuntimeIdentity});
+            }
+            const auto metadata = *pending;
+            s.requests.erase(record->request);
+            if (metadata.abandoned) { output = {}; continue; }
+            output.header = {record->request, aborted ? EOperationOutcome::OUTCOME_UNKNOWN :
+                static_cast<EOperationOutcome>(record->args[13]), record->error};
+            if (record->args[13] > static_cast<unsigned>(EOperationOutcome::OUTCOME_UNKNOWN))
+                output.header = {record->request, EOperationOutcome::FAILED, {kProtocolContract}};
+            output.session = record->session;
+            output.scene = key<SceneId>(std::span(record->args).subspan(0));
+            output.view = key<ViewId>(std::span(record->args).subspan(2));
+            output.target = key<TargetId>(std::span(record->args).subspan(4));
+            output.effect = key<EffectId>(std::span(record->args).subspan(6));
+            output.target_epoch = std::uint64_t(record->args[14]) | (std::uint64_t(record->args[15]) << 32);
+            if (metadata.operation == ERenderCommand::READY && output.header.outcome == EOperationOutcome::SUCCESS)
+            {
+                auto bound = bindCapabilities(body);
+                if (!bound) output.header = {record->request, EOperationOutcome::FAILED, bound.error()};
+                else { s.operations = *bound; s.bound = true; }
+            }
+            return ERenderReceive::RECEIVED;
+        }
+        return ERenderReceive::EMPTY;
     }
 
     RenderResult<void> RenderClient::abandon(RequestId request) noexcept
     {
-        if (!state_->requests.erase(request)) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        auto* pending = state_->requests.find(request);
+        if (!pending || pending->abandoned) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        pending->abandoned = true;
         return {};
     }
 

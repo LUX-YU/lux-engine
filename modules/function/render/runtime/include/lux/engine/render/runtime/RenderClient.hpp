@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/platform/ipc/IpcMessage.hpp>
+
 #include <array>
 #include <memory>
 #include <string>
@@ -55,7 +57,9 @@ namespace lux::render
         std::size_t reply_capacity = 64 * 1024;
     };
 
-    struct RenderReply final
+    enum class ERenderReceive { RECEIVED, EMPTY, CLOSED };
+
+    struct RenderCompletion final
     {
         ReplyHeader header;
         SessionIdentity session{};
@@ -63,8 +67,19 @@ namespace lux::render
         ViewId view;
         TargetId target;
         EffectId effect;
-        OwnedWireBytes data; // pins reply + returned input + its one budget lease
         std::uint64_t target_epoch = 0;
+        RenderCompletion() noexcept = default;
+        RenderCompletion(RenderCompletion&& other) noexcept;
+        RenderCompletion& operator=(RenderCompletion&& other) noexcept;
+        RenderCompletion(const RenderCompletion&) = delete;
+        RenderCompletion& operator=(const RenderCompletion&) = delete;
+        [[nodiscard]] bool active() const noexcept { return !header.request.isNull(); }
+        // Borrow only while this Completion remains alive. The value owns both reply and returned input.
+        [[nodiscard]] std::span<const std::byte> bytes() const noexcept;
+    private:
+        friend class RenderClient;
+        platform::ipc::IpcReply backing_;
+
     };
 
     struct RenderClientConfig final
@@ -84,9 +99,8 @@ namespace lux::render
         RenderClient(const RenderClient&) = delete;
         RenderClient& operator=(const RenderClient&) = delete;
         [[nodiscard]] RenderResult<RequestId> submit(const RenderCommand& command) noexcept;
-        [[nodiscard]] RenderResult<std::optional<RenderReply>> poll(RequestId request) noexcept;
-        // Also reclaims returned owners for abandoned requests when no request is pending.
-        std::size_t collectReplies() noexcept;
+        // output must be inactive. Processes at most eight abandoned records per call.
+        [[nodiscard]] RenderResult<ERenderReceive> tryReceive(RenderCompletion& output) noexcept;
         [[nodiscard]] RenderResult<void> abandon(RequestId request) noexcept;
         [[nodiscard]] std::size_t retainedBytes() const noexcept;
     private:

@@ -1,3 +1,4 @@
+#include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "SceneFixture.hpp"
 #include <thread>
@@ -10,19 +11,19 @@ using namespace std::chrono_literals;
 static void check(bool x) { if (!x) std::abort(); }
 template <class T> static T take(RenderResult<T> value) { check(bool(value)); return std::move(*value); }
 
-static RenderReply wait(RenderClient& client, RequestId id)
+static RenderCompletion wait(RenderClient& client, RequestId id)
 {
     const auto end = std::chrono::steady_clock::now() + 10s;
     while (std::chrono::steady_clock::now() < end)
     {
-        auto result = take(client.poll(id));
+        auto result = take(receiveExpected(client, id));
         if (result) return std::move(*result);
         std::this_thread::sleep_for(1ms);
     }
     std::abort();
 }
 
-static RenderReply call(RenderClient& client, RenderCommand command)
+static RenderCompletion call(RenderClient& client, RenderCommand command)
 {
     return wait(client, take(client.submit(command)));
 }
@@ -48,6 +49,11 @@ int main()
     auto first = wait(*a, ready_a);
     auto second = wait(*b, ready_b);
     check(first.header.outcome == EOperationOutcome::SUCCESS && first.session == second.session);
+    RenderCompletion moved = std::move(second);
+    check(!second.active() && moved.active());
+    const auto data_before = moved.bytes().data();
+    check(!b->tryReceive(moved) && moved.bytes().data() == data_before); // active output cannot be overwritten
+    moved = {};
     RenderCommand command;
     command.session = first.session;
     command.operation = ERenderCommand::CREATE_SCENE;
@@ -108,7 +114,7 @@ int main()
     std::printf("M3 control: progress=%llu ticks=%llu graphs=1 validation_errors=%llu warnings=%llu\n",
         progress, server->stats().ticks, server->stats().validation_errors, server->stats().validation_warnings);
     server.reset();
-    check(!first.data.empty()); // published reply and budget survive server
+    check(!first.bytes().empty()); // published reply and budget survive server
 
     auto failure = take(RenderServer::create({"runtime.failure", true, 0xfffffffe}));
     auto client = take(RenderClient::create("runtime.failure"));

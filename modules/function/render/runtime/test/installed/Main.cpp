@@ -15,9 +15,14 @@ int main()
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (id && std::chrono::steady_clock::now() < deadline)
     {
-        auto reply = (*client)->poll(*id);
-        if (!reply) break;
-        if (*reply) { ready = (**reply).header.outcome == EOperationOutcome::SUCCESS; break; }
+        RenderCompletion reply;
+        auto status = (*client)->tryReceive(reply);
+        if (!status) break;
+        if (*status == ERenderReceive::RECEIVED)
+        {
+            ready = reply.header.request == *id && reply.header.outcome == EOperationOutcome::SUCCESS;
+            break;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
     (*server)->requestStop();

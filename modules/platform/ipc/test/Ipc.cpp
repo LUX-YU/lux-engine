@@ -68,6 +68,8 @@ namespace
         return std::move(*result);
     }
 
+    void must(bool result) { check(result, "expected success"); }
+
     void must(Result<void> result) { check(static_cast<bool>(result), "expected success"); }
 
     IpcMessage encode(std::uint64_t value, std::size_t length = 8)
@@ -78,7 +80,7 @@ namespace
         static constexpr std::array<std::byte, 120> zeros{};
         check(writer.writeBytes(std::span(zeros).first(length - 8)), "encode fixed array");
         IpcMessage message;
-        must(message.assignInline(std::span(bytes).first(length)));
+        must(message.tryAssignInline(std::span(bytes).first(length)));
         return message;
     }
 
@@ -219,7 +221,8 @@ namespace
             int destroyed = 0;
             auto owner = std::make_unique<Owner>(1024 * 1024, &destroyed);
             auto* address = owner->bytes.data();
-            auto input = must(IpcMessage::takeOwner(owner, owner->bytes));
+            IpcMessage input;
+            must(input.tryAdopt(owner, owner->bytes));
             testing::startMoves();
             IpcMessage moved(std::move(input));
             IpcMessage assigned;
@@ -239,7 +242,8 @@ namespace
             for (int i = 0; i < 2; ++i)
             {
                 auto owner = std::make_unique<Owner>(1024 * 1024, &destroyed);
-                auto input = must(IpcMessage::takeOwner(owner, owner->bytes));
+                IpcMessage input;
+            must(input.tryAdopt(owner, owner->bytes));
                 must(client.trySend(input));
                 if (i == 0)
                 {
@@ -251,7 +255,8 @@ namespace
             int failed_destroyed = 0;
             auto failed_owner = std::make_unique<Owner>(1024 * 1024, &failed_destroyed);
             auto* failed_address = failed_owner->bytes.data();
-            auto failed = must(IpcMessage::takeOwner(failed_owner, failed_owner->bytes));
+            IpcMessage failed;
+            must(failed.tryAdopt(failed_owner, failed_owner->bytes));
             check(client.trySend(failed).error() == EIpcError::WOULD_BLOCK &&
                 failed.bytes().data() == failed_address && failed_destroyed == 0, "full owned send unchanged");
             failed.reset();
@@ -375,7 +380,8 @@ namespace
         int destroyed = 0;
         auto owner = std::make_unique<Owner>(1024 * 1024, &destroyed);
         auto* address = owner->bytes.data();
-        auto payload = must(IpcMessage::takeOwner(owner, owner->bytes));
+        IpcMessage payload;
+            must(payload.tryAdopt(owner, owner->bytes));
         must(a.trySend(payload));
         auto work = receive(server);
         check(work.message().bytes().data() == address && destroyed == 0, "unique input address survives");
@@ -569,8 +575,10 @@ namespace
                 auto result_owner = std::make_unique<Owner>(8192, &result_destroyed);
                 const auto* input_address = input_owner->bytes.data();
                 const auto* result_address = result_owner->bytes.data();
-                auto input = must(IpcMessage::takeOwner(input_owner, input_owner->bytes));
-                auto result = must(IpcMessage::takeOwner(result_owner, result_owner->bytes));
+                IpcMessage input;
+            must(input.tryAdopt(input_owner, input_owner->bytes));
+                IpcMessage result;
+            must(result.tryAdopt(result_owner, result_owner->bytes));
                 must(client.trySend(input));
                 auto work = receive(server);
                 arm(point);
@@ -598,8 +606,10 @@ namespace
             int input_destroyed = 0, result_destroyed = 0;
             auto input_owner = std::make_unique<Owner>(4096, &input_destroyed);
             auto result_owner = std::make_unique<Owner>(8192, &result_destroyed);
-            auto input = must(IpcMessage::takeOwner(input_owner, input_owner->bytes));
-            auto result = must(IpcMessage::takeOwner(result_owner, result_owner->bytes));
+            IpcMessage input;
+            must(input.tryAdopt(input_owner, input_owner->bytes));
+            IpcMessage result;
+            must(result.tryAdopt(result_owner, result_owner->bytes));
             const auto* input_address = input.bytes().data();
             const auto* result_address = result.bytes().data();
             must(client.trySend(input));
@@ -625,7 +635,8 @@ namespace
             auto client = must(core.createRequester("closeout.host"));
             int destroyed = 0;
             auto owner = std::make_unique<Owner>(4096, &destroyed);
-            auto input = must(IpcMessage::takeOwner(owner, owner->bytes));
+            IpcMessage input;
+            must(input.tryAdopt(owner, owner->bytes));
             must(client.trySend(input));
             auto work = receive(server);
             if (path != 1)
@@ -816,7 +827,8 @@ namespace
             int destroyed = 0;
             auto owner = std::make_unique<Owner>(size, &destroyed);
             auto* pointer = owner->bytes.data();
-            auto input = must(IpcMessage::takeOwner(owner, owner->bytes));
+            IpcMessage input;
+            must(input.tryAdopt(owner, owner->bytes));
             const auto start = Clock::now();
             must(client.trySend(input));
             auto work = receive(server);
@@ -939,7 +951,7 @@ namespace
             writer.writeUnsigned(static_cast<std::uint8_t>(EOperationOutcome::SUCCESS));
             writer.writeUnsigned(value + 1);
             IpcMessage reply;
-            must(reply.assignInline(bytes));
+            must(reply.tryAssignInline(bytes));
             must(server.tryReply(work, reply));
         };
         std::ofstream samples("ipc-operation.csv");
@@ -984,7 +996,7 @@ namespace
                 check(static_cast<bool>(DataSchema<Scalar>::encode(Scalar{static_cast<std::uint64_t>(i)}, writer)),
                     "actual G2 field encoder");
                 IpcMessage input;
-                must(input.assignInline(bytes));
+                must(input.tryAssignInline(bytes));
                 must(client.trySend(input));
                 if (!paired) { auto work = receive(server); execute(work); }
                 IpcReply reply;
@@ -1051,7 +1063,8 @@ namespace
         auto source_bytes = OwnedWireBytes::fromOwner(shared_source, std::span(shared_source->bytes).first(8));
         auto owner = std::make_unique<Holder>(Holder{std::move(source_bytes)});
         const auto* pointer = owner->bytes.data();
-        auto input = must(IpcMessage::takeOwner(owner, owner->bytes.view()));
+        IpcMessage input;
+            must(input.tryAdopt(owner, owner->bytes.view()));
         shared_source.reset();
         check(shared_destroyed == 0, "exclusive holder pins original shared asset");
         must(a.trySend(input));

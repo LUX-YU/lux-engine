@@ -1,6 +1,6 @@
 # Minimal Render runtime
 
-`render_client` has only Core/Data/Protocol and private Platform IPC dependencies. It does not include
+`render_client` has only Core/Data/Protocol and Platform IPC dependencies (the completion value owns its IPC reply). It does not include
 or link Native. `render_runtime` supplies the actual Vulkan-backed server, assembled on a host-owned
 thread. Its public header is neutral. There is no additional Endpoint, dispatcher or object registry.
 
@@ -20,7 +20,7 @@ long-lived clients admitted per epoch; per-request requester churn is outside th
 The one retained-byte lease travels inside the IPC input owner. It reserves the encoded wire bytes,
 all complete backing capacities (duplicates charged conservatively), fixed envelope and maximum reply
 bytes. A reply keeps the returned input and lease until its result owner is released. Abandon removes
-interest, not executor ownership or budget; collectReplies reclaims returned abandoned input. Failed
+interest, not executor ownership or budget; tryReceive consumes returned abandoned input in bounded batches. Failed
 submission leaves the caller's const command and payload pins intact. Caller-owned references outside
 the IPC use are not part of this retained-use budget. Ordinary metadata/codec allocations are not
 represented as zero-allocation communication.
@@ -52,3 +52,5 @@ the host must join the run thread. Failed Native initialization follows the same
 
 This is the G9 minimal offscreen path: RGBA8, one layer/mip/sample, graphics push-color and transfer.
 It is not WSI, dynamic History, arbitrary Feature handlers, professional asset storage or ECS integration.
+
+Completions are move-only values owning IpcReply directly. tryReceive requires inactive output and moves one terminal event to the caller; no per-request result cache or shared Reply wrapper exists.

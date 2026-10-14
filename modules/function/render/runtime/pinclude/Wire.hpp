@@ -29,6 +29,9 @@ namespace lux::render::runtime_detail
 
     template <typename Key> Key key(std::span<const std::uint32_t> in) noexcept { return {in[0], in[1]}; }
 
+    // Synchronous fixed-record decode; body borrows the supplied message. No synthetic/shared owner.
+    [[nodiscard]] RenderResult<Record>
+    decodeRecord(std::span<const std::byte> bytes, std::span<const std::byte>& body) noexcept;
     [[nodiscard]] std::vector<std::byte> schemaBytes(const DataSchemaDescriptor& schema) noexcept;
     [[nodiscard]] OwnedWireBytes own(std::vector<std::byte> bytes) noexcept;
     [[nodiscard]] std::vector<std::byte>

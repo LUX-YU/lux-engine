@@ -45,24 +45,13 @@ namespace lux::render
 
     RenderResult<Record> DataSchema<Record>::decode(cxx::BinaryReader& in, WireView wire) noexcept
     {
-        Record value;
-        for (auto& x : value.session) in.readUnsigned(x);
-        for (auto* x : {&value.request.index, &value.request.gen, &value.operation.index, &value.operation.gen})
-            in.readUnsigned(*x);
-        for (auto& x : value.args) in.readUnsigned(x);
-        for (auto& x : value.color) in.readFloat(x);
-        in.readUnsigned(value.reply_capacity);
-        in.readUnsigned(value.error.type);
-        for (auto& x : value.error.args) in.readUnsigned(x);
-        BlobRef body;
-        in.readUnsigned(body.offset);
-        in.readUnsigned(body.size);
-        if (body.offset != runtime_detail::record_size || body.size != wire.bytes.size() - body.offset)
-            return cxx::unexpected(RenderError{kInvalidWire});
-        auto bytes = resolveBlob(wire.bytes, body, runtime_detail::wire_limits.max_wire_bytes);
-        if (!bytes) return cxx::unexpected(bytes.error());
-        value.body = std::move(*bytes);
-        if (value.request.isNull()) return cxx::unexpected(RenderError{kInvalidWire});
+        std::span<const std::byte> body;
+        auto value = runtime_detail::decodeRecord(wire.bytes.view(), body);
+        if (!value) return cxx::unexpected(value.error());
+        // Keep the typed G2 entry point's owned-blob semantics unchanged.
+        value->body = wire.bytes.subspan(runtime_detail::record_size, body.size());
+        std::span<const std::byte> consumed;
+        in.readBytes(runtime_detail::record_size, consumed);
         return value;
     }
 
@@ -80,6 +69,32 @@ namespace lux::render
 
 namespace lux::render::runtime_detail
 {
+    RenderResult<Record> decodeRecord(std::span<const std::byte> bytes,
+        std::span<const std::byte>& body) noexcept
+    {
+        const bool is_invalid_size = bytes.size() < record_size || bytes.size() > wire_limits.max_wire_bytes;
+        if (is_invalid_size) return cxx::unexpected(RenderError{kInvalidWire});
+        cxx::BinaryReader in(bytes.first(record_size), wire_limits.max_wire_bytes);
+        Record value;
+        for (auto& x : value.session) in.readUnsigned(x);
+        for (auto* x : {&value.request.index, &value.request.gen, &value.operation.index, &value.operation.gen})
+            in.readUnsigned(*x);
+        for (auto& x : value.args) in.readUnsigned(x);
+        for (auto& x : value.color) in.readFloat(x);
+        in.readUnsigned(value.reply_capacity);
+        in.readUnsigned(value.error.type);
+        for (auto& x : value.error.args) in.readUnsigned(x);
+        BlobRef range;
+        in.readUnsigned(range.offset);
+        in.readUnsigned(range.size);
+        if (range.offset != record_size || range.size != bytes.size() - record_size)
+            return cxx::unexpected(RenderError{kInvalidWire});
+        if (!in.requireFullyConsumed() || value.request.isNull())
+            return cxx::unexpected(RenderError{kInvalidWire});
+        body = bytes.subspan(record_size);
+        return value;
+    }
+
     OwnedWireBytes own(std::vector<std::byte> bytes) noexcept
     {
         auto owner = std::make_shared<std::vector<std::byte>>(std::move(bytes));

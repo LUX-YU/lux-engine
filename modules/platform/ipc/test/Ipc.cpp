@@ -84,10 +84,11 @@ namespace
 
     std::uint64_t decode(const IpcMessage& message)
     {
-        lux::cxx::BinaryReader reader(message.bytes(), 128);
+        const auto bytes = message.bytes();
+        lux::cxx::BinaryReader reader(bytes, 128);
         std::uint64_t value = 0;
         check(reader.readUnsigned(value), "decode value");
-        for (std::size_t i = 8; i < message.bytes().size(); ++i)
+        for (std::size_t i = 8; i < bytes.size(); ++i)
         {
             std::uint8_t byte = 1;
             check(reader.readUnsigned(byte) && byte == 0, "decode fixed array");

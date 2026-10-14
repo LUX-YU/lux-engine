@@ -70,6 +70,9 @@ namespace lux::render
     enum class EGraphOrigin : std::uint8_t { TRANSIENT, IMPORTED, HISTORY_PREVIOUS, HISTORY_CURRENT };
     enum class EGraphPassKind : std::uint8_t { GRAPHICS, COMPUTE, TRANSFER };
     enum class EGraphAccess : std::uint8_t { READ, WRITE, READ_WRITE, ATTACHMENT_LOAD };
+    // Orthogonal to logical version access. UNSPECIFIED remains legal for neutral analysis;
+    // a Native compiler rejects it when it needs an execution recipe.
+    enum class EGraphUse : std::uint8_t { UNSPECIFIED, COLOR_ATTACHMENT, TRANSFER_SOURCE, TRANSFER_DESTINATION };
 
     struct GraphResource final
     {
@@ -95,6 +98,7 @@ namespace lux::render
         // Conditional write: preserve an earlier version of the SAME resource.
         // READ of unavailable previous history: select a compatible other source.
         std::optional<GraphVersion> fallback;
+        EGraphUse usage = EGraphUse::UNSPECIFIED;
     };
 
     struct GraphPass final

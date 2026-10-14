@@ -2,6 +2,10 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <cstring>
 #include <string_view>
+#ifdef LUX_VULKAN_TEST_SEAM
+#include "SceneFixture.hpp"
+#include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
+#endif
 
 using namespace foundation_test;
 
@@ -9,8 +13,9 @@ using namespace foundation_test;
 namespace
 {
     constexpr std::array names{"instance", "messenger", "device", "allocator", "buffer", "image",
-        "command_pool", "fence", "timeline"};
+        "command_pool", "fence", "timeline", "shader", "pipeline_layout", "pipeline"};
     std::array<int, names.size()> live{};
+    std::array<unsigned, names.size()> created{};
     std::string_view fail_operation;
     int fail_countdown = 0;
     bool hold_fences = false;
@@ -43,7 +48,7 @@ namespace lux::render::vulkan::test
     {
         if (result == VK_SUCCESS)
             for (std::size_t i = 0; i < names.size(); ++i)
-                if (std::string_view(operation) == names[i]) ++live[i];
+                if (std::string_view(operation) == names[i]) { ++live[i]; ++created[i]; }
         return result;
     }
 
@@ -134,6 +139,19 @@ int main()
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK); });
             fails("image", [&] { return Image::create(session->allocator, {16, 16}, VK_FORMAT_R8G8B8A8_UNORM,
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT); });
+            const native_fixture::Config config{32, 32, 1, 1};
+            auto assembly = take(native_fixture::assemble(config));
+            auto programs = native_fixture::programs(config);
+            const auto before = created;
+            {
+                auto compiled = take(compileGraph(*session, assembly, programs, native_fixture::target(config)));
+                CHECK(created[4] == before[4] && created[5] == before[5]);
+                CHECK(created[11] == before[11] + 1);
+            }
+            for (auto name : {"pipeline_layout", "shader", "pipeline"})
+                fails(name, [&] { return compileGraph(*session, assembly, programs, native_fixture::target(config)); });
+            fails("shader", [&] { return compileGraph(*session, assembly, programs, native_fixture::target(config)); }, 2);
+            std::printf("compile_scope_buffer_allocations=0 compile_scope_image_allocations=0\n");
 #endif
         }
         options.multiple_queues = true;

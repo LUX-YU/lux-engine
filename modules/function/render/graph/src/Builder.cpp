@@ -97,6 +97,18 @@ namespace lux::render
                 (pass.kind != EGraphPassKind::GRAPHICS || !is_attachment_format);
             if (is_invalid_access || is_invalid_predecessor || is_invalid_load)
                 return cxx::unexpected(graphError(kGraphInvalidDescriptor, id, resource_id));
+            // BOUNDARY: validate the orthogonal execution role here, once at authoring.
+            const bool is_invalid_color = use.usage == EGraphUse::COLOR_ATTACHMENT &&
+                (!image || pass.kind != EGraphPassKind::GRAPHICS ||
+                 !rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::COLOR_ATTACHMENT) ||
+                 (use.access != EGraphAccess::WRITE && use.access != EGraphAccess::ATTACHMENT_LOAD));
+            const bool is_invalid_source = use.usage == EGraphUse::TRANSFER_SOURCE &&
+                (pass.kind != EGraphPassKind::TRANSFER || use.access != EGraphAccess::READ);
+            const bool is_invalid_destination = use.usage == EGraphUse::TRANSFER_DESTINATION &&
+                (pass.kind != EGraphPassKind::TRANSFER || use.access != EGraphAccess::WRITE);
+            const bool is_invalid_usage = use.usage > EGraphUse::TRANSFER_DESTINATION ||
+                is_invalid_color || is_invalid_source || is_invalid_destination;
+            if (is_invalid_usage) return cxx::unexpected(graphError(kGraphInvalidDescriptor, id, resource_id));
             auto range = detail::normalize(resource, use.range);
             if (!range) return cxx::unexpected(graphError(kGraphInvalidRange, id, resource_id));
             use.range = *range;

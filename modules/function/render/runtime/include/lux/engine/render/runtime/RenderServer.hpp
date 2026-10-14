@@ -3,7 +3,7 @@
 #include <lux/engine/render/runtime/Operations.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/features/Feature.hpp>
-#include <lux/engine/render/features/Program.hpp>
+#include <lux/engine/render/native/vulkan/Program.hpp>
 
 namespace lux::render
 {
@@ -16,7 +16,8 @@ namespace lux::render
         std::size_t max_wire_bytes = 1024 * 1024;
         std::size_t max_reply_bytes = 16 * 1024 * 1024;
         std::size_t retirement_capacity = 64;
-        // Host-owned bounded cold executor. Accepted callbacks run exactly once; rejection retains the task.
+        // Host-owned bounded cold executor. enqueue never executes inline; accepted callbacks run exactly once.
+        // Rejection executes nothing and retains no pointer.
         // join_compile waits for every callback accepted through this server's borrowed execution resource.
         // Both callbacks are null for a control-only host; CreateEffect then rejects before retaining its input.
         void* compile_user = nullptr;
@@ -93,7 +94,7 @@ namespace lux::render
     struct FeatureRegistration final
     {
         const FeatureDefinition* definition;
-        RenderResult<std::vector<PassProgram>> (*programs)(const WireView*, std::string_view) noexcept;
+        RenderResult<std::vector<vulkan::PassProgram>> (*programs)(const WireView*, std::string_view) noexcept;
         std::span<const BufferInitializer> buffers;
         std::span<const OperationHandler> handlers;
         // Immutable metadata/code remain loaded through run()/shutdown.

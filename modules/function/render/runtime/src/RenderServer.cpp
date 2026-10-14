@@ -307,7 +307,7 @@ namespace lux::render
             std::vector<SelectedFeature> selected;
             std::vector<const FeatureRegistration*> registrations;
             std::vector<OwnedWireBytes> config_owners, attachments;
-            std::vector<PassProgram> programs;
+            std::vector<vulkan::PassProgram> programs;
             configs.reserve(count);
             selected.reserve(count);
             config_owners.reserve(count);

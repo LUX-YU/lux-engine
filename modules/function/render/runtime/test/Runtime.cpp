@@ -28,7 +28,7 @@ static TestCompletion call(TestClient& client, TestCommand command)
     return wait(client, take(client.submit(command)));
 }
 
-static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<std::vector<vulkan::PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
 {
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());

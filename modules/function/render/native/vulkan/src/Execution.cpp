@@ -201,34 +201,39 @@ namespace lux::render::vulkan
             dependency.pImageMemoryBarriers = pass.images.data();
             dependency.bufferMemoryBarrierCount = static_cast<std::uint32_t>(pass.buffers.size());
             dependency.pBufferMemoryBarriers = pass.buffers.data();
-            vkCmdPipelineBarrier2(command, &dependency);
+            if (!pass.images.empty() || !pass.buffers.empty())
+                LUX_RECORD("cmd_barrier", vkCmdPipelineBarrier2(command, &dependency));
             const auto& recipe = *pass.recipe;
             const auto& destination = bindings_[recipe.destination];
             switch (recipe.recipe)
             {
             case ERecipe::DRAW:
             {
-                VkRenderingAttachmentInfo attachment{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
-                attachment.imageView = destination.view;
-                attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                attachment.loadOp = recipe.load;
-                attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-                std::copy(recipe.clear_color.begin(), recipe.clear_color.end(), attachment.clearValue.color.float32);
-                const auto extent = destination.image->extent();
-                VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
-                rendering.renderArea = {{0, 0}, extent};
-                rendering.layerCount = 1;
-                rendering.colorAttachmentCount = 1;
-                rendering.pColorAttachments = &attachment;
-                vkCmdBeginRendering(command, &rendering);
-                const VkViewport viewport{0, 0, float(extent.width), float(extent.height), 0, 1};
-                const VkRect2D scissor{{0, 0}, extent};
-                vkCmdSetViewport(command, 0, 1, &viewport);
-                vkCmdSetScissor(command, 0, 1, &scissor);
-                vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, recipe.pipeline);
+                if (recipe.begin_rendering)
+                {
+                    VkRenderingAttachmentInfo attachment{VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+                    attachment.imageView = destination.view;
+                    attachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                    attachment.loadOp = recipe.load;
+                    attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+                    std::copy(recipe.clear_color.begin(), recipe.clear_color.end(), attachment.clearValue.color.float32);
+                    const auto extent = destination.image->extent();
+                    VkRenderingInfo rendering{VK_STRUCTURE_TYPE_RENDERING_INFO};
+                    rendering.renderArea = {{0, 0}, extent};
+                    rendering.layerCount = 1;
+                    rendering.colorAttachmentCount = 1;
+                    rendering.pColorAttachments = &attachment;
+                    LUX_RECORD("cmd_begin", vkCmdBeginRendering(command, &rendering));
+                    const VkViewport viewport{0, 0, float(extent.width), float(extent.height), 0, 1};
+                    const VkRect2D scissor{{0, 0}, extent};
+                    vkCmdSetViewport(command, 0, 1, &viewport);
+                    vkCmdSetScissor(command, 0, 1, &scissor);
+                }
+                if (recipe.bind_pipeline)
+                    LUX_RECORD("cmd_bind", vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, recipe.pipeline));
                 vkCmdPushConstants(command, code_->layout(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, color_.data());
-                vkCmdDraw(command, recipe.vertex_count, 1, 0, 0);
-                vkCmdEndRendering(command);
+                LUX_RECORD("cmd_draw", vkCmdDraw(command, recipe.vertex_count, 1, 0, 0));
+                if (recipe.end_rendering) LUX_RECORD("cmd_end", vkCmdEndRendering(command));
                 break;
             }
             case ERecipe::CLEAR_IMAGE:
@@ -265,7 +270,7 @@ namespace lux::render::vulkan
         VkDependencyInfo host{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
         host.bufferMemoryBarrierCount = static_cast<std::uint32_t>(host_barriers_.size());
         host.pBufferMemoryBarriers = host_barriers_.data();
-        vkCmdPipelineBarrier2(command, &host);
+        if (!host_barriers_.empty()) LUX_RECORD("cmd_barrier", vkCmdPipelineBarrier2(command, &host));
         auto submitted = std::move(*batch).submit();
         if (!submitted) return cxx::unexpected(submitted.error());
         last_use_ = *submitted;

@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/features/Feature.hpp>
-#include <lux/engine/render/features/Program.hpp>
+#include <lux/engine/render/native/vulkan/Program.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 
 namespace lux::render::vulkan
@@ -44,6 +44,9 @@ namespace lux::render::vulkan
         VkAttachmentLoadOp load = VK_ATTACHMENT_LOAD_OP_CLEAR;
         std::array<float, 4> clear_color{};
         std::uint32_t vertex_count = 0;
+        bool begin_rendering = true;
+        bool end_rendering = true;
+        bool bind_pipeline = true;
     };
 
     // The Effect owns this move-only immutable result; execution contexts borrow/pin that one result.
@@ -77,6 +80,7 @@ namespace lux::render::vulkan
         std::vector<CompiledPass> passes_;
         std::vector<BufferBarrier> host_barriers_;
         std::vector<ShaderArtifact> shader_identities_;
+        std::vector<VkPipeline> pipelines_; // unique physical owners; Pass recipes only borrow handles
         std::uint32_t output_ = kGraphInvalidIndex;
     };
 

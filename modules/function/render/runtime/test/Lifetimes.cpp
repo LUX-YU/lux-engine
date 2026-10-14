@@ -63,9 +63,9 @@ static const FeatureDefinition asset_definition{
     FeatureTypeIdView("test.asset"), {1, 0}, &DataSchema<AssetConfig>::describe(), describeAsset, nullptr
 };
 
-static RenderResult<std::vector<PassProgram>> assetPrograms(const WireView*, std::string_view) noexcept { return {}; }
+static RenderResult<std::vector<vulkan::PassProgram>> assetPrograms(const WireView*, std::string_view) noexcept { return {}; }
 
-static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<std::vector<vulkan::PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
 {
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());

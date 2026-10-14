@@ -51,7 +51,8 @@ foreach(header RenderClient RenderServer Operations)
         "#include <lux/engine/render/runtime/${header}.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\nstatic_assert(__cplusplus >= 202002L);\n"
     )
     add_library(render_runtime_header_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")
-    # Both neutral headers must compile without Native's include paths.
+    # Cooked Program bytes have no Vulkan/OS dependency; do not link Native for this header probe.
+    target_include_directories(render_runtime_header_${header} PRIVATE ../../native/vulkan/include)
     target_link_libraries(render_runtime_header_${header} PRIVATE render_client render_features)
 endforeach()
 

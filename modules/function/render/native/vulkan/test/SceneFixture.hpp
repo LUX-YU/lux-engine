@@ -2,7 +2,7 @@
 
 #include "shaders/Triangle.hpp"
 #include <lux/engine/render/features/Feature.hpp>
-#include <lux/engine/render/features/Program.hpp>
+#include <lux/engine/render/native/vulkan/Program.hpp>
 #include <atomic>
 
 namespace native_fixture
@@ -111,10 +111,10 @@ namespace native_fixture
 
     inline const FeatureDefinition definition{type, {1, 0}, &DataSchema<Config>::describe(), describe, build};
 
-    inline std::vector<PassProgram> programs(Config config, std::string_view instance = "main")
+    inline std::vector<vulkan::PassProgram> programs(Config config, std::string_view instance = "main")
     {
-        std::vector<PassProgram> result;
-        PassProgram color{featureKey(type, instance, "color")};
+        std::vector<vulkan::PassProgram> result;
+        vulkan::PassProgram color{featureKey(type, instance, "color")};
         if (config.graphics) color.shader = {{vert.begin(), vert.end()}, {frag.begin(), frag.end()}, 1};
         color.clear_color = {0.125f, 0.25f, 0.5f, 1};
         result.push_back(std::move(color));

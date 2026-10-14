@@ -11,8 +11,8 @@ namespace lux::render::vulkan
     CompiledGraph::~CompiledGraph() noexcept
     {
         if (!device_) return;
-        for (const auto& pass : passes_)
-            if (pass.pipeline) LUX_DESTROY("pipeline", vkDestroyPipeline(device_, pass.pipeline, nullptr));
+        for (auto pipeline : pipelines_)
+            LUX_DESTROY("pipeline", vkDestroyPipeline(device_, pipeline, nullptr));
         if (layout_) LUX_DESTROY("pipeline_layout", vkDestroyPipelineLayout(device_, layout_, nullptr));
     }
 
@@ -20,7 +20,7 @@ namespace lux::render::vulkan
         : device_(std::exchange(other.device_, VK_NULL_HANDLE)), target_(other.target_), layout_(other.layout_),
           resources_(std::move(other.resources_)), passes_(std::move(other.passes_)),
           host_barriers_(std::move(other.host_barriers_)), shader_identities_(std::move(other.shader_identities_)),
-          output_(other.output_)
+          pipelines_(std::move(other.pipelines_)), output_(other.output_)
     {
     }
 
@@ -209,10 +209,20 @@ namespace lux::render::vulkan
                         nullptr, &result.layout_));
                     if (created != VK_SUCCESS) return cxx::unexpected(nativeError(created));
                 }
-                auto pipeline = compileGraphics(device, result.layout_, binding->shader);
-                if (!pipeline) return cxx::unexpected(pipeline.error());
-                compiled.pipeline = *pipeline;
-                result.shader_identities_.push_back(binding->shader);
+                // This graph has one fixed RGBA8/push-color layout and raster state. Compare complete
+                // stage bytes + ABI; draw count and clear color are not Pipeline identity.
+                const auto same = std::find(result.shader_identities_.begin(), result.shader_identities_.end(),
+                    binding->shader);
+                if (same != result.shader_identities_.end())
+                    compiled.pipeline = result.pipelines_[same - result.shader_identities_.begin()];
+                else
+                {
+                    auto pipeline = compileGraphics(device, result.layout_, binding->shader);
+                    if (!pipeline) return cxx::unexpected(pipeline.error());
+                    compiled.pipeline = *pipeline;
+                    result.pipelines_.push_back(*pipeline);
+                    result.shader_identities_.push_back(binding->shader);
+                }
             }
             else if (compiled.source == kGraphInvalidIndex)
             {
@@ -242,6 +252,29 @@ namespace lux::render::vulkan
                 }
             }
             result.passes_.push_back(std::move(compiled));
+        }
+        // Lower the fixed legal execution order to static record decisions. No Pass reordering.
+        VkPipeline bound = VK_NULL_HANDLE;
+        for (std::size_t i = 0; i < result.passes_.size(); ++i)
+        {
+            auto& current = result.passes_[i];
+            if (current.recipe != ERecipe::DRAW) continue;
+            current.bind_pipeline = bound != current.pipeline;
+            bound = current.pipeline; // transfer commands and Begin/EndRendering do not invalidate this state
+            if (i == 0) continue;
+            auto& previous = result.passes_[i - 1];
+            const bool same_attachment = previous.recipe == ERecipe::DRAW &&
+                previous.destination == current.destination;
+            const bool preserves_content = current.load == VK_ATTACHMENT_LOAD_OP_LOAD;
+            const bool attachment_only = current.images.size() == 1 && current.buffers.empty() &&
+                current.images[0].native.oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            // Supported draws have exactly one full color attachment, no conditions, feedback, descriptors,
+            // depth or sampling. Rasterization-order color attachment access preserves LOAD within one scope.
+            const bool can_merge = same_attachment && preserves_content && attachment_only;
+            if (!can_merge) continue;
+            previous.end_rendering = false;
+            current.begin_rendering = false;
+            current.images.clear();
         }
         for (std::uint32_t i = 0; i < result.resources_.size(); ++i)
         {

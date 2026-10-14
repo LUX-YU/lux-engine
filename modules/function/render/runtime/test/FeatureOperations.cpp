@@ -82,7 +82,7 @@ static const FeatureDefinition feature{
     [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
     nullptr, descriptors
 };
-static RenderResult<std::vector<PassProgram>> programs(const WireView*, std::string_view) noexcept { return {}; }
+static RenderResult<std::vector<vulkan::PassProgram>> programs(const WireView*, std::string_view) noexcept { return {}; }
 
 static RenderResult<void> setExposure(void* user, RenderRequest& request) noexcept
 {

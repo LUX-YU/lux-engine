@@ -22,6 +22,7 @@ namespace lux::render::vulkan::test
     }
 } // namespace lux::render::vulkan::test
 
+#define LUX_RECORD(name, expression) do { (expression); (void)::lux::render::vulkan::test::after(name, VK_SUCCESS); } while (false)
 #define LUX_NATIVE(name, expression) ::lux::render::vulkan::test::invoke(name, [&] { return (expression); })
 #define LUX_DESTROY(name, expression)                                                                                  \
     do                                                                                                                 \
@@ -30,6 +31,7 @@ namespace lux::render::vulkan::test
         ::lux::render::vulkan::test::destroyed(name);                                                                  \
     } while (false)
 #else
+#define LUX_RECORD(name, expression) (expression)
 #define LUX_NATIVE(name, expression) (expression)
 #define LUX_DESTROY(name, expression) (expression)
 #endif

@@ -28,7 +28,7 @@ static TestCompletion call(TestClient& client, const TestCommand& command)
     std::abort();
 }
 
-static RenderResult<std::vector<PassProgram>> ownPrograms(const WireView* wire, std::string_view name) noexcept
+static RenderResult<std::vector<vulkan::PassProgram>> ownPrograms(const WireView* wire, std::string_view name) noexcept
 {
     if (mode == 4) { entered.count_down(); resume.wait(); }
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
@@ -40,10 +40,10 @@ static RenderResult<std::vector<PassProgram>> ownPrograms(const WireView* wire, 
     return values;
 }
 
-static RenderResult<std::vector<PassProgram>> foreignPrograms(const WireView*, std::string_view) noexcept
+static RenderResult<std::vector<vulkan::PassProgram>> foreignPrograms(const WireView*, std::string_view) noexcept
 {
     if (mode == 1) return native_fixture::programs({}, "main");
-    return std::vector<PassProgram>{};
+    return std::vector<vulkan::PassProgram>{};
 }
 
 static RenderResult<void> emptyDescribe(const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept

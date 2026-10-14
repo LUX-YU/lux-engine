@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-namespace lux::render
+namespace lux::render::vulkan
 {
     // Cooked SPIR-V and exact entry-point ABI for the current real graphics path.
     // Owned bytes are the identity; no hash-only equality, compiler or parser in this header.

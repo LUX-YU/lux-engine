@@ -44,7 +44,8 @@ role destruction must run outside a latency-critical Tick.
 ## API and memory contracts
 
 `tryReceive(out)` returns RECEIVED/EMPTY/CLOSED; only RECEIVED changes output.
-Output must be empty/settled before a successful receive. Reusing a still-owning
+An active Responder requires empty/settled output on entry, even when no Link is ready.
+This precondition is checked once before scanning. Reusing a still-owning
 reply output can release a large owner and violates the caller's hot-path contract.
 Send/reply failure preserves input/result. Reply credits return only on consumption
 of a normal reply or an ABORTED receipt while the service is operating. Closing
@@ -60,6 +61,67 @@ unread payloads until its last role exits. Repeated short-lived Requester churn
 therefore grows that epoch's retained storage. Stable Name anchors remain until
 Core destruction and lookup is linear. The intended consumers are a small number
 of long-lived Main/Upload roles; cold Link compaction is deliberately not built.
+
+## Frozen Render host lifecycle contract (R2 closeout)
+
+The future Render integration uses at most **two cumulatively created Requesters
+per Server epoch**: one Main and one optional Upload. They live for the epoch,
+not for a task, asset, frame or temporary worker. Moving a role under external
+synchronization does not create a Link. Startup failure ends the entire epoch;
+retry must not allocate replacement Requesters against the still-live old epoch.
+High-frequency creation/reconnection is outside this integration contract. IPC's
+generic factory does not enforce this Render-specific limit. A future consumer
+requiring churn must first implement and qualify cold Link reclamation; it cannot
+claim bounded retention from a bound on simultaneously live Requesters alone.
+
+At default depths, two Links allow at most 128 accepted requests whose replies
+have not been consumed. Queued inputs, borrowed requests, and queued replies share
+these credits; they are not three independent pools of 128. On this Windows x64
+ABI, the Ring element arrays total `2 * 64 * (160 + 328) = 62,464` bytes, excluding
+Channel/Link/queue metadata and external allocations. Closed Links and their
+unread owners remain included until the final role leaves that epoch.
+
+**There is no finite payload-byte bound in IPC.** An arbitrarily small span can
+retain an arbitrarily large backing allocation through its holder. G8 must supply
+finite Main/Upload retained-owner budgets, B_main and B_upload, before admitting
+asset work. Count full retained backing, not just the visible span; retain the
+budget lease until the final owner release, including a reply held after its
+credit was returned. With that host contract, retained payload is bounded by
+B_main + B_upload. Without it, the byte upper bound is unbounded; 128 credits
+alone are not a memory budget. No numeric budget, budget implementation or G8
+qualification is asserted here. IPC remains independent of asset/GPU policy.
+
+The future host must use this teardown order on normal exit, initialization
+failure and cancellation:
+
+1. Stop new submissions and asynchronous work admission; request task cancellation.
+2. Join workers or otherwise prove they have stopped borrowing input. Workers may
+   borrow bytes while the owner retains ReceivedRequest; they must not concurrently
+   dispose it or publish replies through the responder.
+3. On the responder's logical owner, complete or reset every ReceivedRequest and
+   clear deferred work. Transport ABORTED is not business cancellation. Cancellation
+   request alone does not establish completion or permit destroying its input.
+4. Reset Responder only after the outstanding borrow count reaches zero. No callback
+   may subsequently use it. Initialization unwinding follows the same order even
+   if only part of the work collection was constructed.
+5. Release remaining Requesters outside the latency-critical Tick. Final-role cold
+   reclamation releases orphaned queued owners. Already-consumed replies own their
+   bytes independently and can outlive all roles. GPU retirement is a separate
+   future Native requirement, not proved by this CPU sequence.
+
+Explicit stop/join/settle is required; member declaration order alone is not a
+cancellation protocol. If using reverse member destruction as a fallback, declare
+Responder before deferred work and worker owners, so the latter are destroyed first.
+The `closeout` test covers these host recipes; there is no production RenderServer
+in this stage, so G8 must validate its actual shutdown paths when implemented.
+
+Requester close overlapping reply publication has two valid outcomes. If the
+publisher observes closed, it returns CLOSED with input and result unchanged. If
+it already observed open, publication may succeed after requester close. The
+Responder's participation retains both Rings and the unread owners until cold
+final teardown. Successful publication does not promise that a closed peer will
+consume it. Controlled tests pause immediately before and after Ring publication,
+then close the Requester and verify exact input/result destruction counts.
 
 ## Test migration
 

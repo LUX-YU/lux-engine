@@ -552,6 +552,119 @@ namespace
         empty();
     }
 
+    void closeout()
+    {
+        auto& core = IpcCore::instance();
+        // The responder is handed to the publisher with thread-start/join synchronization.
+        // Only the requester is reset concurrently; no concurrent operations on one role.
+        for (auto point : {testing::EPoint::REPLY_PUBLISH, testing::EPoint::REPLY_PUBLISHED})
+        {
+            for (int repeat = 0; repeat < 32; ++repeat)
+            {
+                auto server = must(core.createResponder("closeout.overlap"));
+                auto client = must(core.createRequester("closeout.overlap"));
+                int input_destroyed = 0, result_destroyed = 0;
+                auto input_owner = std::make_unique<Owner>(4096, &input_destroyed);
+                auto result_owner = std::make_unique<Owner>(8192, &result_destroyed);
+                const auto* input_address = input_owner->bytes.data();
+                const auto* result_address = result_owner->bytes.data();
+                auto input = must(IpcMessage::takeOwner(input_owner, input_owner->bytes));
+                auto result = must(IpcMessage::takeOwner(result_owner, result_owner->bytes));
+                must(client.trySend(input));
+                auto work = receive(server);
+                arm(point);
+                std::jthread publisher([&] { must(server.tryReply(work, result)); });
+                while (!hook_entered.load()) std::this_thread::yield();
+                client.reset();
+                check(input_destroyed == 0 && result_destroyed == 0, "close preserves both in-flight owners");
+                check(testing::counts().links == 1, "responder retains publishing Link");
+                // At either cut the source or the queued reply owns these exact allocations.
+                check(input_address[0] == std::byte{} && result_address[0] == std::byte{}, "owners still readable");
+                hook_release = true;
+                publisher.join();
+                testing::setHook(nullptr);
+                check(!work.active() && result.bytes().empty(), "accepted publication consumes once");
+                check(input_destroyed == 0 && result_destroyed == 0, "unread reply survives until cold teardown");
+                server.reset();
+                check(input_destroyed == 1 && result_destroyed == 1, "orphaned reply releases both owners once");
+                empty();
+            }
+        }
+
+        {
+            auto server = must(core.createResponder("closeout.rejected"));
+            auto client = must(core.createRequester("closeout.rejected"));
+            int input_destroyed = 0, result_destroyed = 0;
+            auto input_owner = std::make_unique<Owner>(4096, &input_destroyed);
+            auto result_owner = std::make_unique<Owner>(8192, &result_destroyed);
+            auto input = must(IpcMessage::takeOwner(input_owner, input_owner->bytes));
+            auto result = must(IpcMessage::takeOwner(result_owner, result_owner->bytes));
+            const auto* input_address = input.bytes().data();
+            const auto* result_address = result.bytes().data();
+            must(client.trySend(input));
+            auto work = receive(server);
+            client.reset();
+            const auto rejected = server.tryReply(work, result);
+            check(!rejected && rejected.error() == EIpcError::CLOSED, "close observed before reply rejects");
+            check(work.active() && work.message().bytes().data() == input_address, "rejection retains input");
+            check(result.bytes().data() == result_address, "rejection retains result");
+            check(input_destroyed == 0 && result_destroyed == 0, "rejection destroys neither owner");
+            work.reset();
+            result.reset();
+            server.reset();
+            check(input_destroyed == 1 && result_destroyed == 1, "rejected owners released once");
+            empty();
+        }
+
+        // Test-only future-host teardown recipes, not a RenderServer implementation.
+        // 0: normal completion; 1: partial initialization failure; 2: background cancellation.
+        for (int path = 0; path < 3; ++path)
+        {
+            auto server = must(core.createResponder("closeout.host"));
+            auto client = must(core.createRequester("closeout.host"));
+            int destroyed = 0;
+            auto owner = std::make_unique<Owner>(4096, &destroyed);
+            auto input = must(IpcMessage::takeOwner(owner, owner->bytes));
+            must(client.trySend(input));
+            auto work = receive(server);
+            if (path != 1)
+            {
+                std::latch entered(1);
+                const auto bytes = work.message().bytes();
+                std::jthread worker([&](std::stop_token stop) {
+                    check(bytes.size() == 4096 && bytes.front() == std::byte{}, "worker borrows live input");
+                    entered.count_down();
+                    while (!stop.stop_requested()) std::this_thread::yield();
+                    check(bytes.back() == std::byte{}, "cancellation is not premature release");
+                });
+                entered.wait();
+                if (path == 2) client.reset();
+                worker.request_stop();
+                worker.join(); // cancellation request alone is insufficient
+            }
+            check(destroyed == 0, "join precedes request disposal");
+            if (path == 0)
+            {
+                auto result = encode(1);
+                must(server.tryReply(work, result));
+            }
+            else work.reset(); // same logical owner as responder; ABORTED if requester is live
+            check(!work.active(), "all source borrows settled before responder reset");
+            server.reset();
+            if (path != 2)
+            {
+                IpcReply reply;
+                check(client.tryReceive(reply) == EIpcReceive::RECEIVED, "published reply precedes closed");
+                const auto delivery = path == 0 ? EIpcDelivery::REPLY : EIpcDelivery::ABORTED;
+                check(reply.delivery == delivery, "explicit transport outcome");
+                client.reset();
+                check(destroyed == 0 && reply.original_request.bytes().size() == 4096, "reply outlives roles");
+            }
+            check(destroyed == 1, "host exit releases input exactly once");
+            empty();
+        }
+    }
+
     void fifo()
     {
         auto& core = IpcCore::instance();
@@ -981,6 +1094,7 @@ int main(int argc, char** argv)
     else if (test == "messages") { messages(); r2Contracts(); }
     else if (test == "directory") directory();
     else if (test == "grace") grace();
+    else if (test == "closeout") closeout();
     else if (test == "fifo") fifo();
     else if (test == "progress") progress();
     else if (test == "cost") { cost(); operationCost(); }

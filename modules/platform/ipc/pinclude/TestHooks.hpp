@@ -9,7 +9,10 @@ namespace lux::platform::ipc::testing
     void recordMove(std::size_t bytes) noexcept;
     LUX_PLATFORM_IPC_PUBLIC void startMoves() noexcept;
     LUX_PLATFORM_IPC_PUBLIC MoveCounts stopMoves() noexcept;
-    enum class EPoint { CHANNEL_READ, RING_READ, RETIRE_PUBLISHED, RETIRE_REQUEUE, REPLY_EMPTY };
+    enum class EPoint
+    {
+        CHANNEL_READ, RING_READ, RETIRE_PUBLISHED, RETIRE_REQUEUE, REPLY_EMPTY, REPLY_PUBLISH, REPLY_PUBLISHED
+    };
     using Hook = void (*)(EPoint) noexcept;
     LUX_PLATFORM_IPC_PUBLIC Counts counts() noexcept;
     LUX_PLATFORM_IPC_PUBLIC void setHook(Hook hook) noexcept;

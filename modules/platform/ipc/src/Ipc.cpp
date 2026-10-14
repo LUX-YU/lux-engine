@@ -449,6 +449,7 @@ namespace lux::platform::ipc
     EIpcReceive IpcResponder::tryReceive(ReceivedRequest& output) noexcept
     {
         if (!channel_) return EIpcReceive::CLOSED;
+        require(!output.active());
         if (!pending_ && channel_->pending.load() != nullptr) pending_ = channel_->pending.exchange(nullptr);
         if (pending_)
         {
@@ -479,7 +480,6 @@ namespace lux::platform::ipc
 #ifdef LUX_IPC_TESTING
             point(testing::EPoint::RING_READ);
 #endif
-            require(!output.active());
             if (link->requests.tryPop(output.message_) == cxx::EQueuePopResult::VALUE)
             {
                 ++channel_->borrowed_requests;
@@ -498,10 +498,16 @@ namespace lux::platform::ipc
         if (request.channel_ != channel_) return cxx::unexpected(EIpcError::INVALID_SOURCE);
         auto* link = request.link_;
         if (!link->open.load()) return cxx::unexpected(EIpcError::CLOSED);
+#ifdef LUX_IPC_TESTING
+        point(testing::EPoint::REPLY_PUBLISH);
+#endif
         const auto result = link->replies.tryEmplace(
             EIpcDelivery::REPLY, std::move(reply), std::move(request.message_)
         );
         require(result == cxx::EQueuePushResult::ACCEPTED);
+#ifdef LUX_IPC_TESTING
+        point(testing::EPoint::REPLY_PUBLISHED);
+#endif
         --channel_->borrowed_requests;
         request.link_ = nullptr;
         request.channel_ = nullptr;

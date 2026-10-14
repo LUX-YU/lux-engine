@@ -14,7 +14,7 @@ foreach(target platform_ipc platform_ipc_test ipc_plugin_A ipc_plugin_B)
     set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 endforeach()
 
-foreach(test lifecycle messages directory grace fifo progress protocol cost)
+foreach(test lifecycle messages directory grace closeout fifo progress protocol cost)
     add_test(NAME platform.ipc.${test} COMMAND platform_ipc_test ${test})
     set_tests_properties(platform.ipc.${test} PROPERTIES TIMEOUT 90)
 endforeach()

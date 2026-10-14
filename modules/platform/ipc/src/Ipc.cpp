@@ -1,7 +1,7 @@
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 
-#include <algorithm>
 #include <exception>
+#include <cstring>
 #include <limits>
 #include <string>
 #include <lux/cxx/concurrent/LockFreeQueue.hpp>
@@ -16,7 +16,7 @@ namespace lux::platform::ipc
     {
         static_assert(std::atomic<void*>::is_always_lock_free);
         static_assert(std::atomic<std::size_t>::is_always_lock_free);
-        constexpr auto closed_bit = std::size_t{1} << (sizeof(std::size_t) * 8 - 1);
+        constexpr auto max_role_uses = std::size_t{1} << (sizeof(std::size_t) * 8 - 1);
         enum class EState { WAITING, OPEN, CLOSED };
         static_assert(std::atomic<EState>::is_always_lock_free);
         std::atomic<std::size_t> channel_count{0};
@@ -38,37 +38,32 @@ namespace lux::platform::ipc
 
     namespace detail
     {
-        struct Rings final
-        {
-            explicit Rings(IpcQueueConfig config) noexcept
-                : requests(config.request_capacity), replies(config.reply_capacity) {}
-            cxx::SpscLockFreeRingQueue<IpcMessage> requests;
-            cxx::SpscLockFreeRingQueue<IpcReply> replies;
-        };
-
         struct Link final
         {
             explicit Link(IpcQueueConfig config) noexcept
-                : rings(new Rings(config)), reply_capacity(config.reply_capacity)
+                : requests(config.request_capacity), replies(config.reply_capacity),
+                  reply_capacity(config.reply_capacity)
             {
 #ifdef LUX_IPC_TESTING
                 ++link_count;
                 ++ring_count;
-                allocations.fetch_add(4); // Link, Rings, two queue storage allocations.
+                allocations.fetch_add(3); // Link and two queue storage allocations.
 #endif
             }
+
             ~Link() noexcept
             {
-                require(rings == nullptr);
 #ifdef LUX_IPC_TESTING
                 --link_count;
+                --ring_count;
 #endif
             }
-            std::atomic<std::size_t> refs{2}; // requester and pending/view
-            std::atomic<std::size_t> access{0};
-            Rings* rings;
-            std::size_t reply_capacity;
-            Link* next = nullptr; // pending, then responder's intrusive circular view
+            cxx::SpscLockFreeRingQueue<IpcMessage> requests;
+            cxx::SpscLockFreeRingQueue<IpcReply> replies;
+            const std::size_t reply_capacity;
+            std::atomic<bool> open{true};
+            Link* owned_next = nullptr; // immutable after publication, Channel's unique ownership list
+            Link* next = nullptr; // pending then responder-only circular view, never owns storage
         };
 
         Link* sentinel() noexcept { return reinterpret_cast<Link*>(std::uintptr_t{1}); }
@@ -93,9 +88,11 @@ namespace lux::platform::ipc
 #endif
             }
             Name* name;
-            std::atomic<std::size_t> refs{1};
+            std::atomic<std::size_t> role_uses{1};
             std::atomic<EState> state{EState::WAITING};
+            std::atomic<Link*> owned{nullptr};
             std::atomic<Link*> pending{nullptr};
+            std::size_t borrowed_requests = 0; // responder-only precondition counter; not lifetime ownership
             Channel* retired_next = nullptr;
         };
     }
@@ -104,24 +101,15 @@ namespace lux::platform::ipc
     {
         using namespace detail;
 
-        void releaseLink(Link* link) noexcept
-        {
-            if (link->refs.fetch_sub(1) == 1) delete link;
-        }
-
-        void releaseList(Link* link) noexcept
-        {
-            while (link && link != sentinel())
-            {
-                auto* next = link->next;
-                releaseLink(link);
-                link = next;
-            }
-        }
-
         void destroyChannel(Channel* channel) noexcept
         {
-            releaseList(channel->pending.load());
+            auto* link = channel->owned.load();
+            while (link)
+            {
+                auto* next = link->owned_next;
+                delete link;
+                link = next;
+            }
             --channel_count;
             delete channel;
         }
@@ -162,7 +150,7 @@ namespace lux::platform::ipc
 
         void releaseChannel(Channel* channel) noexcept
         {
-            if (channel->refs.fetch_sub(1) != 1) return;
+            if (channel->role_uses.fetch_sub(1) != 1) return;
             auto* name = channel->name;
             auto* expected = channel;
             name->current.compare_exchange_strong(expected, nullptr);
@@ -193,11 +181,11 @@ namespace lux::platform::ipc
                     }
                     destroyChannel(candidate);
                 }
-                auto count = channel->refs.load();
+                auto count = channel->role_uses.load();
                 while (count != 0)
                 {
-                    require(count < closed_bit);
-                    if (channel->refs.compare_exchange_weak(count, count + 1)) break;
+                    require(count < max_role_uses);
+                    if (channel->role_uses.compare_exchange_weak(count, count + 1)) break;
                 }
                 if (count != 0 && channel->state.load() != EState::CLOSED)
                 {
@@ -211,29 +199,6 @@ namespace lux::platform::ipc
             }
         }
 
-        bool enter(Link* link) noexcept
-        {
-            auto access = link->access.load();
-            while (!(access & closed_bit))
-            {
-                require(access < closed_bit - 1);
-                if (link->access.compare_exchange_weak(access, access + 1))
-                {
-#ifdef LUX_IPC_TESTING
-                    point(testing::EPoint::RING_ENTER);
-#endif
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        void leave(Link* link) noexcept
-        {
-            const auto before = link->access.fetch_sub(1);
-            if (before == closed_bit + 1) link->access.notify_all();
-        }
-
         bool validCapacity(std::size_t value) noexcept
         {
             return value != 0 && value <= (std::numeric_limits<std::uint32_t>::max)() / 2 &&
@@ -244,19 +209,27 @@ namespace lux::platform::ipc
     IpcMessage::~IpcMessage() noexcept { reset(); }
 
     IpcMessage::IpcMessage(IpcMessage&& other) noexcept
-        : inline_(other.inline_), data_(std::exchange(other.data_, nullptr)),
-          owner_(std::exchange(other.owner_, nullptr)), destroy_(std::exchange(other.destroy_, nullptr)),
-          size_(std::exchange(other.size_, 0)) {}
+        : data_(std::exchange(other.data_, nullptr)), owner_(std::exchange(other.owner_, nullptr)),
+          destroy_(std::exchange(other.destroy_, nullptr)), size_(std::exchange(other.size_, 0))
+    {
+        if (!owner_ && size_) std::memcpy(inline_.data(), other.inline_.data(), size_);
+#ifdef LUX_IPC_TESTING
+        testing::recordMove(owner_ ? 0 : size_);
+#endif
+    }
 
     IpcMessage& IpcMessage::operator=(IpcMessage&& other) noexcept
     {
         if (this == &other) return *this;
         reset();
-        inline_ = other.inline_;
         data_ = std::exchange(other.data_, nullptr);
         owner_ = std::exchange(other.owner_, nullptr);
         destroy_ = std::exchange(other.destroy_, nullptr);
         size_ = std::exchange(other.size_, 0);
+        if (!owner_ && size_) std::memcpy(inline_.data(), other.inline_.data(), size_);
+#ifdef LUX_IPC_TESTING
+        testing::recordMove(owner_ ? 0 : size_);
+#endif
         return *this;
     }
 
@@ -274,15 +247,14 @@ namespace lux::platform::ipc
         return {owner_ ? data_ : inline_.data(), size_};
     }
 
-    Result<IpcMessage> IpcMessage::copyInline(std::span<const std::byte> bytes) noexcept
+    Result<void> IpcMessage::assignInline(std::span<const std::byte> bytes) noexcept
     {
-        const bool is_oversized = bytes.size() > inline_capacity;
-        const bool is_missing_bytes = !bytes.empty() && !bytes.data();
-        if (is_oversized || is_missing_bytes) return cxx::unexpected(EIpcError::INVALID_ARGUMENT);
-        IpcMessage result;
-        std::copy(bytes.begin(), bytes.end(), result.inline_.begin());
-        result.size_ = bytes.size();
-        return result;
+        if (bytes.size() > inline_capacity) return cxx::unexpected(EIpcError::INVALID_ARGUMENT);
+        // Copy first: bytes may refer to this message's inline or owned storage.
+        if (!bytes.empty()) std::memmove(inline_.data(), bytes.data(), bytes.size());
+        reset();
+        size_ = bytes.size();
+        return {};
     }
 
     Result<IpcMessage> IpcMessage::takeBytes(std::unique_ptr<std::byte[]>& owner, std::size_t size) noexcept
@@ -344,12 +316,14 @@ namespace lux::platform::ipc
         IpcRequester result;
         result.channel_ = acquire(findName(name));
         result.link_ = new detail::Link(config);
+        auto* owned = result.channel_->owned.load();
+        do { result.link_->owned_next = owned; }
+        while (!result.channel_->owned.compare_exchange_weak(owned, result.link_));
         auto* head = result.channel_->pending.load();
         for (;;)
         {
             if (head == detail::sentinel())
             {
-                releaseLink(result.link_); // no pending ownership transfer occurred
                 result.reset();
                 return cxx::unexpected(EIpcError::CLOSED);
             }
@@ -398,18 +372,7 @@ namespace lux::platform::ipc
     void IpcRequester::reset() noexcept
     {
         if (!link_) return;
-        auto* link = std::exchange(link_, nullptr);
-        auto access = link->access.fetch_or(closed_bit) | closed_bit;
-        while (access != closed_bit)
-        {
-            link->access.wait(access);
-            access = link->access.load();
-        }
-        delete std::exchange(link->rings, nullptr);
-#ifdef LUX_IPC_TESTING
-        --ring_count;
-#endif
-        releaseLink(link);
+        std::exchange(link_, nullptr)->open.store(false);
         releaseChannel(std::exchange(channel_, nullptr));
         outstanding_ = 0;
     }
@@ -427,31 +390,29 @@ namespace lux::platform::ipc
         if (state == EState::CLOSED) return cxx::unexpected(EIpcError::CLOSED);
         if (outstanding_ == link_->reply_capacity) return cxx::unexpected(EIpcError::WOULD_BLOCK);
         ++outstanding_;
-        const auto result = link_->rings->requests.tryPush(std::move(message));
+        const auto result = link_->requests.tryPush(std::move(message));
         if (result == cxx::EQueuePushResult::ACCEPTED) return {};
         --outstanding_;
         return cxx::unexpected(EIpcError::WOULD_BLOCK);
     }
 
-    Result<std::optional<IpcReply>> IpcRequester::tryReceive() noexcept
+    EIpcReceive IpcRequester::tryReceive(IpcReply& output) noexcept
     {
-        if (!channel_) return cxx::unexpected(EIpcError::CLOSED);
-        auto result = link_->rings->replies.tryPopValue();
+        if (!channel_) return EIpcReceive::CLOSED;
+        auto result = link_->replies.tryPop(output);
 #ifdef LUX_IPC_TESTING
-        if (!result.value) point(testing::EPoint::REPLY_EMPTY);
+        if (result != cxx::EQueuePopResult::VALUE) point(testing::EPoint::REPLY_EMPTY);
 #endif
         const bool is_closed = channel_->state.load() == EState::CLOSED;
-        // A producer may publish between the initial empty observation and its
-        // CLOSED store. Re-read after acquiring CLOSED before reporting loss.
-        if (!result.value && is_closed) result = link_->rings->replies.tryPopValue();
-        if (result.value)
+        // Recheck after CLOSED: a final publication may follow the first empty observation.
+        if (result != cxx::EQueuePopResult::VALUE && is_closed) result = link_->replies.tryPop(output);
+        if (result == cxx::EQueuePopResult::VALUE)
         {
             require(outstanding_ != 0);
             --outstanding_;
-            return std::move(result.value);
+            return EIpcReceive::RECEIVED;
         }
-        if (is_closed) return cxx::unexpected(EIpcError::CLOSED);
-        return std::optional<IpcReply>{};
+        return is_closed ? EIpcReceive::CLOSED : EIpcReceive::EMPTY;
     }
 
     IpcResponder::~IpcResponder() noexcept { reset(); }
@@ -475,25 +436,20 @@ namespace lux::platform::ipc
     void IpcResponder::reset() noexcept
     {
         if (!channel_) return;
+        require(channel_->borrowed_requests == 0);
         channel_->state.store(EState::CLOSED);
         auto* expected = channel_;
         channel_->name->current.compare_exchange_strong(expected, nullptr);
-        releaseList(channel_->pending.exchange(detail::sentinel()));
-        releaseList(std::exchange(pending_, nullptr));
-        if (cursor_)
-        {
-            auto* head = cursor_->next;
-            cursor_->next = nullptr;
-            cursor_ = nullptr;
-            releaseList(head);
-        }
+        channel_->pending.exchange(detail::sentinel());
+        pending_ = nullptr;
+        cursor_ = nullptr;
         releaseChannel(std::exchange(channel_, nullptr));
     }
 
-    Result<std::optional<ReceivedRequest>> IpcResponder::tryReceive() noexcept
+    EIpcReceive IpcResponder::tryReceive(ReceivedRequest& output) noexcept
     {
-        if (!channel_) return cxx::unexpected(EIpcError::CLOSED);
-        if (!pending_) pending_ = channel_->pending.exchange(nullptr);
+        if (!channel_) return EIpcReceive::CLOSED;
+        if (!pending_ && channel_->pending.load() != nullptr) pending_ = channel_->pending.exchange(nullptr);
         if (pending_)
         {
             auto* link = pending_;
@@ -513,28 +469,26 @@ namespace lux::platform::ipc
         for (std::size_t visited = 0; cursor_ && visited < 8; ++visited)
         {
             auto* link = cursor_->next;
-            if (!enter(link))
+            if (!link->open.load())
             {
                 if (link == cursor_) cursor_ = nullptr;
                 else cursor_->next = link->next;
-                releaseLink(link);
                 continue;
             }
             cursor_ = link;
-            auto result = link->rings->requests.tryPopValue();
-            leave(link);
-            if (result.value)
+#ifdef LUX_IPC_TESTING
+            point(testing::EPoint::RING_READ);
+#endif
+            require(!output.active());
+            if (link->requests.tryPop(output.message_) == cxx::EQueuePopResult::VALUE)
             {
-                ReceivedRequest received;
-                link->refs.fetch_add(1); // view pin remains held by this responder
-                channel_->refs.fetch_add(1);
-                received.channel_ = channel_;
-                received.link_ = link;
-                received.message_ = std::move(*result.value);
-                return std::optional<ReceivedRequest>{std::move(received)};
+                ++channel_->borrowed_requests;
+                output.channel_ = channel_;
+                output.link_ = link;
+                return EIpcReceive::RECEIVED;
             }
         }
-        return std::optional<ReceivedRequest>{};
+        return EIpcReceive::EMPTY;
     }
 
     Result<void> IpcResponder::tryReply(ReceivedRequest& request, IpcMessage& reply) noexcept
@@ -543,14 +497,14 @@ namespace lux::platform::ipc
         if (!channel_) return cxx::unexpected(EIpcError::CLOSED);
         if (request.channel_ != channel_) return cxx::unexpected(EIpcError::INVALID_SOURCE);
         auto* link = request.link_;
-        if (!enter(link)) return cxx::unexpected(EIpcError::CLOSED);
-        const auto result = link->rings->replies.tryEmplace(
+        if (!link->open.load()) return cxx::unexpected(EIpcError::CLOSED);
+        const auto result = link->replies.tryEmplace(
             EIpcDelivery::REPLY, std::move(reply), std::move(request.message_)
         );
         require(result == cxx::EQueuePushResult::ACCEPTED);
-        leave(link);
-        releaseLink(std::exchange(request.link_, nullptr));
-        releaseChannel(std::exchange(request.channel_, nullptr));
+        --channel_->borrowed_requests;
+        request.link_ = nullptr;
+        request.channel_ = nullptr;
         return {};
     }
 
@@ -575,20 +529,35 @@ namespace lux::platform::ipc
     void ReceivedRequest::reset() noexcept
     {
         if (!link_) return;
-        if (channel_->state.load() == EState::OPEN && enter(link_))
+        if (link_->open.load())
         {
-            const auto result = link_->rings->replies.tryEmplace(
+            const auto result = link_->replies.tryEmplace(
                 EIpcDelivery::ABORTED, IpcMessage{}, std::move(message_)
             );
             require(result == cxx::EQueuePushResult::ACCEPTED);
-            leave(link_);
         }
         message_.reset(); // disconnected disposal is a documented cold operation
-        releaseLink(std::exchange(link_, nullptr));
-        releaseChannel(std::exchange(channel_, nullptr));
+        --channel_->borrowed_requests;
+        link_ = nullptr;
+        channel_ = nullptr;
     }
 
 #ifdef LUX_IPC_TESTING
+    namespace testing
+    {
+        thread_local bool moves_enabled = false;
+        thread_local MoveCounts move_counts{};
+
+        void recordMove(std::size_t bytes) noexcept
+        {
+            if (moves_enabled) { ++move_counts.moves; move_counts.inline_bytes += bytes; }
+        }
+
+        void startMoves() noexcept { move_counts = {}; moves_enabled = true; }
+
+        MoveCounts stopMoves() noexcept { moves_enabled = false; return move_counts; }
+    }
+
     testing::Counts testing::counts() noexcept
     {
         return {channel_count.load(), link_count.load(), ring_count.load(), allocations.load()};

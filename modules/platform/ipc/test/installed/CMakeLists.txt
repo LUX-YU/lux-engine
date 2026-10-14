@@ -29,3 +29,8 @@ get_target_property(links lux::engine::platform::platform_ipc INTERFACE_LINK_LIB
 if(NOT links STREQUAL "lux::cxx::compile_time")
     message(FATAL_ERROR "Unexpected IPC public links: ${links}")
 endif()
+
+get_target_property(definitions lux::engine::platform::platform_ipc INTERFACE_COMPILE_DEFINITIONS)
+if(definitions MATCHES "LUX_IPC_INLINE_CAPACITY")
+    message(FATAL_ERROR "Public inline ABI must not be consumer-configurable")
+endif()

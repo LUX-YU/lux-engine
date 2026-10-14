@@ -6,8 +6,6 @@ generate_visibility_header(
     GENERATE_FILE_PATH lux/engine/platform/ipc/visibility.h
 )
 
-set(LUX_IPC_INLINE_CAPACITY 128 CACHE STRING "IPC inline bytes (rebuild all consumers when changed)")
-
 add_component(
     COMPONENT_NAME platform_ipc
     NAMESPACE lux::engine::platform
@@ -23,7 +21,6 @@ component_include_directories(
 )
 
 target_compile_definitions(platform_ipc PRIVATE LUX_PLATFORM_IPC_LIBRARY)
-target_compile_definitions(platform_ipc PUBLIC LUX_IPC_INLINE_CAPACITY=${LUX_IPC_INLINE_CAPACITY})
 target_link_libraries(platform_ipc PUBLIC lux::cxx::compile_time PRIVATE lux::cxx::concurrent)
 target_compile_features(platform_ipc PUBLIC cxx_std_20)
 

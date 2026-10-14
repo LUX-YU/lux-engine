@@ -2,18 +2,17 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <span>
 #include <utility>
 #include <lux/cxx/compile_time/expected.hpp>
 #include <lux/engine/platform/ipc/visibility.h>
 
-#ifndef LUX_IPC_INLINE_CAPACITY
-#define LUX_IPC_INLINE_CAPACITY 128
-#endif
-
 namespace lux::platform::ipc
 {
+    enum class EIpcReceive : std::uint8_t { RECEIVED, EMPTY, CLOSED };
+
     enum class EIpcError { INVALID_ARGUMENT, ALREADY_HAS_RESPONDER, NOT_READY, CLOSED, WOULD_BLOCK, INVALID_SOURCE };
 
     template <typename T>
@@ -24,17 +23,17 @@ namespace lux::platform::ipc
     class LUX_PLATFORM_IPC_PUBLIC IpcMessage final
     {
     public:
-        static constexpr std::size_t inline_capacity = LUX_IPC_INLINE_CAPACITY;
-        IpcMessage() noexcept = default;
+        static constexpr std::size_t inline_capacity = 128;
+        IpcMessage() noexcept {} // inline tail intentionally uninitialized, including value initialization
         ~IpcMessage() noexcept;
         IpcMessage(IpcMessage&& other) noexcept;
         IpcMessage& operator=(IpcMessage&& other) noexcept;
         IpcMessage(const IpcMessage&) = delete;
         IpcMessage& operator=(const IpcMessage&) = delete;
 
-        [[nodiscard]] static Result<IpcMessage> copyInline(std::span<const std::byte> bytes) noexcept;
+        [[nodiscard]] Result<void> assignInline(std::span<const std::byte> bytes) noexcept;
         [[nodiscard]] static Result<IpcMessage>
-        takeBytes(std::unique_ptr<std::byte[]>& owner, std::size_t size) noexcept;
+        takeBytes(std::unique_ptr<std::byte[]>& owner, std::size_t size) noexcept; // caller proves extent
 
         // bytes must belong to owner and remain stable until its destruction.
         // Failure leaves owner intact. No byte copy or shared control block is created.
@@ -42,9 +41,7 @@ namespace lux::platform::ipc
         [[nodiscard]] static Result<IpcMessage>
         takeOwner(std::unique_ptr<Owner>& owner, std::span<const std::byte> bytes) noexcept
         {
-            const bool is_missing_owner = !owner;
-            const bool is_invalid_bytes = !bytes.empty() && !bytes.data();
-            if (is_missing_owner || is_invalid_bytes) return cxx::unexpected(EIpcError::INVALID_ARGUMENT);
+            if (!owner) return cxx::unexpected(EIpcError::INVALID_ARGUMENT);
             IpcMessage result;
             result.data_ = bytes.data();
             result.size_ = bytes.size();
@@ -57,7 +54,7 @@ namespace lux::platform::ipc
         void reset() noexcept;
 
     private:
-        std::array<std::byte, inline_capacity> inline_{};
+        std::array<std::byte, inline_capacity> inline_; // only [0, size_) is initialized when inline
         const std::byte* data_ = nullptr;
         void* owner_ = nullptr;
         void (*destroy_)(void*) noexcept = nullptr;

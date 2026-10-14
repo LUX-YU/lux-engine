@@ -531,6 +531,62 @@ static int concurrency()
     return 0;
 }
 
+namespace dependency_test
+{
+    thread_local unsigned mode = 0;
+
+    RenderResult<void> first(const WireView*, std::string_view instance, std::span<const ResolvedResource>,
+        RenderGraphBuilder& b) noexcept
+    {
+        for (unsigned i = 0; i < 2; ++i)
+        {
+            auto p = b.addPass({featureKey(FeatureTypeIdView("test.edge.a"), instance, std::to_string(i)),
+                EGraphPassKind::COMPUTE, {}, true});
+            if (!p) return cxx::unexpected(p.error());
+        }
+        if (mode == 3) return b.dependsOn({0}, {1});
+        return {};
+    }
+
+    RenderResult<void> second(const WireView*, std::string_view instance, std::span<const ResolvedResource>,
+        RenderGraphBuilder& b) noexcept
+    {
+        for (unsigned i = 0; i < 2; ++i)
+        {
+            auto p = b.addPass({featureKey(FeatureTypeIdView("test.edge.b"), instance, std::to_string(i)),
+                EGraphPassKind::COMPUTE, {}, true});
+            if (!p) return cxx::unexpected(p.error());
+        }
+        if (mode == 0 || mode == 3) return b.dependsOn({0}, {1});
+        if (mode == 1) return b.dependsOn({1}, {2});
+        return b.dependsOn({2}, {3});
+    }
+}
+
+static int dependencies()
+{
+    const FeatureDefinition a{FeatureTypeIdView("test.edge.a"), {1, 0}, nullptr, emptyDescribe,
+        dependency_test::first};
+    const FeatureDefinition b{FeatureTypeIdView("test.edge.b"), {1, 0}, nullptr, emptyDescribe,
+        dependency_test::second};
+    const SelectedFeature selected[]{{&b, nullptr, "main"}, {&a, nullptr, "main"}};
+    for (unsigned mode = 0; mode < 4; ++mode)
+    {
+        dependency_test::mode = mode;
+        auto result = assembleFeatures(selected, fixture::limits);
+        if (mode < 2)
+        {
+            CHECK(!result && result.error().type == kFeatureOwnership);
+        }
+        else
+        {
+            CHECK(result && result->definition.dependencies().size() == 1);
+            CHECK(result->analysis.execution_order.size() == 4);
+        }
+    }
+    return 0;
+}
+
 static int counters()
 {
     RenderGraphBuilder b;
@@ -543,8 +599,15 @@ static int counters()
     CHECK(fixture::pass(b, "good", {}, {*r, 1}) && b.passCount() == 1);
     CHECK(!b.exportOutput({{{99}, 1}}) && b.outputCount() == 0);
     CHECK(b.exportOutput({{*r, 1}}) && b.outputCount() == 1);
+    CHECK(b.dependencyCount() == 0);
+    CHECK(!b.dependsOn({0}, {99}) && b.dependencyCount() == 0);
+    CHECK(!b.dependsOn({0}, {0}) && b.dependencyCount() == 0);
+    CHECK(b.addPass({"second", EGraphPassKind::COMPUTE, {}, true}));
+    CHECK(b.dependsOn({0}, {1}) && b.dependencyCount() == 1);
+    CHECK(b.dependsOn({0}, {1}) && b.dependencyCount() == 1);
     CHECK(std::move(b).finish());
     CHECK(b.resourceCount() == 0 && b.passCount() == 0 && b.outputCount() == 0);
+    CHECK(b.dependencyCount() == 0);
     return 0;
 }
 
@@ -562,5 +625,6 @@ int main(int argc, char** argv)
     if (group == "lifetime") return lifetime();
     if (group == "concurrency") return concurrency();
     if (group == "counters") return counters();
+    if (group == "dependencies") return dependencies();
     return 3;
 }

@@ -29,6 +29,7 @@ namespace lux::render
             std::size_t first_resource = 0, last_resource = 0;
             std::size_t first_pass = 0, last_pass = 0;
             std::size_t first_output = 0, last_output = 0;
+            std::size_t first_dependency = 0, last_dependency = 0;
         };
 
         struct ClaimLocation final
@@ -275,6 +276,15 @@ namespace lux::render
                     // Exporting observes a version; require PROVIDE authority, even for v0.
                     if (auto r = check(graph.outputs()[o].version, true); !r) return r;
                 }
+                // BOUNDARY: audit only newly appended edges. Builder deduplicates no-op requests.
+                for (auto d = w.first_dependency; d < w.last_dependency; ++d)
+                {
+                    const auto& edge = graph.dependencies()[d];
+                    const bool owns_before = edge.before.index >= w.first_pass && edge.before.index < w.last_pass;
+                    const bool owns_after = edge.after.index >= w.first_pass && edge.after.index < w.last_pass;
+                    if (!owns_before || !owns_after)
+                        return cxx::unexpected(failure(kFeatureOwnership, i, edge.before.index, edge.after.index));
+                }
             }
             return {};
         }
@@ -310,6 +320,7 @@ namespace lux::render
             w.first_resource = builder.resourceCount();
             w.first_pass = builder.passCount();
             w.first_output = builder.outputCount();
+            w.first_dependency = builder.dependencyCount();
             const auto& s = w.selected;
             if (s.definition->build)
             {
@@ -319,8 +330,9 @@ namespace lux::render
             w.last_resource = builder.resourceCount();
             w.last_pass = builder.passCount();
             w.last_output = builder.outputCount();
+            w.last_dependency = builder.dependencyCount();
             const bool is_replaced_builder = w.last_resource < w.first_resource || w.last_pass < w.first_pass ||
-                w.last_output < w.first_output;
+                w.last_output < w.first_output || w.last_dependency < w.first_dependency;
             if (is_replaced_builder) return cxx::unexpected(failure(kFeatureContract));
         }
         auto graph = std::move(builder).finish();

@@ -2,7 +2,7 @@ add_executable(render_features_test Feature.cpp)
 
 target_link_libraries(render_features_test PRIVATE render_features)
 
-foreach(group composition identity config operations claims ownership fallback lifetime concurrency counters)
+foreach(group composition identity config operations claims ownership fallback lifetime concurrency counters dependencies)
     add_test(NAME render.features.${group} COMMAND render_features_test ${group})
     set_tests_properties(render.features.${group} PROPERTIES TIMEOUT 60)
 endforeach()

@@ -71,7 +71,7 @@ namespace lux::render::vulkan
     ) noexcept
     {
         if (auto result = target.validate(); !result) return cxx::unexpected(result.error());
-        const auto& device = session.device;
+        const auto& device = session.device();
         const bool is_unsupported_target = target.kind != ETargetKind::OFFSCREEN || target.samples != 1 ||
             target.format != rdesc::ETextureFormat::RGBA8_UNORM ||
             target.width > device.properties().limits.maxImageDimension2D ||

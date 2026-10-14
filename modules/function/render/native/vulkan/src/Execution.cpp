@@ -4,25 +4,30 @@
 
 namespace lux::render::vulkan
 {
-    ExecutionContext::ExecutionContext(SubmissionQueue& queue,
+    ExecutionContext::ExecutionContext(DeviceSession& owner, SubmissionQueue& queue,
         std::shared_ptr<const CompiledGraph> code, TargetDesc target) noexcept
-        : queue_(&queue), code_(std::move(code)), target_(target), bindings_(code_->resources().size()) {}
+        : owner_(&owner), queue_(&queue), code_(std::move(code)), target_(target), bindings_(code_->resources().size()) {}
 
     ExecutionContext::~ExecutionContext() noexcept
     {
         for (auto& binding : bindings_)
+        {
             if (binding.view) LUX_DESTROY("image_view", vkDestroyImageView(device(), binding.view, nullptr));
+            if (binding.image) owner_->destroyFinished(binding.image);
+            if (binding.owned_buffer) owner_->destroyFinished(binding.owned_buffer);
+        }
         for (auto* lease : leases_) --lease->leases;
+        owner_->collectScoped();
     }
 
     RenderResult<ExecutionContext*> DeviceSession::prepare(std::shared_ptr<const CompiledGraph> code,
         const TargetDesc& target, const ScopeIdentity& scope, std::span<const BufferInitializer> initializers) noexcept
     {
-        const auto max_extent = device.properties().limits.maxImageDimension2D;
-        const bool invalid = !code || code->device() != device.native() || !code->compatible(target) ||
+        const auto max_extent = device_.properties().limits.maxImageDimension2D;
+        const bool invalid = !code || code->device() != device_.native() || !code->compatible(target) ||
             target.width == 0 || target.height == 0 || target.width > max_extent || target.height > max_extent;
         if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
-        auto context = std::unique_ptr<ExecutionContext>(new ExecutionContext(queue(), std::move(code), target));
+        auto context = std::unique_ptr<ExecutionContext>(new ExecutionContext(*this, queue(), std::move(code), target));
         for (std::uint32_t i = 0; i < context->bindings_.size(); ++i)
         {
             auto& binding = context->bindings_[i];
@@ -32,9 +37,9 @@ namespace lux::render::vulkan
             {
                 const VkExtent2D extent{plan.target_sized ? target.width : image->width,
                     plan.target_sized ? target.height : image->height};
-                auto backing = Image::create(allocator, extent, VK_FORMAT_R8G8B8A8_UNORM, plan.image_usage);
+                auto backing = createImage( extent, VK_FORMAT_R8G8B8A8_UNORM, plan.image_usage);
                 if (!backing) return cxx::unexpected(backing.error());
-                binding.image.emplace(std::move(*backing));
+                binding.image = *backing;
                 VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
                 view.image = binding.image->native();
                 view.viewType = VK_IMAGE_VIEW_TYPE_2D;
@@ -42,7 +47,7 @@ namespace lux::render::vulkan
                 view.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
                 if (plan.image_usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
                 {
-                    const auto status = LUX_NATIVE("image_view", vkCreateImageView(device.native(), &view,
+                    const auto status = LUX_NATIVE("image_view", vkCreateImageView(device_.native(), &view,
                         nullptr, &binding.view));
                     if (status != VK_SUCCESS) return cxx::unexpected(nativeError(status));
                 }
@@ -65,13 +70,13 @@ namespace lux::render::vulkan
                     ScopedBuffer* found = nullptr;
                     for (const auto& entry : scoped_)
                     {
-                        if (!entry->leases) continue;
+                        if (!entry->leases && !entry->live_scope) continue;
                         const bool same_scope = entry->requirement.scope == plan.storage->scope &&
                             entry->scope.scene == identity.scene && entry->scope.view == identity.view &&
                             entry->attachment == attachment;
                         if (!same_scope || entry->key != plan.key) continue;
-                        const bool mismatch = entry->requirement != *plan.storage || entry->backing.size() != size ||
-                            entry->backing.usage() != plan.buffer_usage;
+                        const bool mismatch = entry->requirement != *plan.storage || entry->backing->size() != size ||
+                            entry->backing->usage() != plan.buffer_usage;
                         if (mismatch) return cxx::unexpected(RenderError{kInvalidArgument});
                         found = entry.get();
                         break;
@@ -85,26 +90,30 @@ namespace lux::render::vulkan
                         auto bytes = factory->initialize(size);
                         if (!bytes) return cxx::unexpected(bytes.error());
                         if (bytes->size() != size) return cxx::unexpected(RenderError{kInvalidArgument});
-                        auto buffer = Buffer::create(allocator, size, plan.buffer_usage, EMemoryAccess::UPLOAD);
+                        auto buffer = createBuffer( size, plan.buffer_usage, EMemoryAccess::UPLOAD);
                         if (!buffer) return cxx::unexpected(buffer.error());
-                        if (auto written = buffer->write(0, *bytes); !written) return cxx::unexpected(written.error());
+                        if (auto written = write(**buffer, 0, *bytes); !written)
+                        {
+                            destroyFinished(*buffer);
+                            return cxx::unexpected(written.error());
+                        }
                         auto entry = std::make_unique<ScopedBuffer>(ScopedBuffer{
-                            plan.key, *plan.storage, identity, attachment, std::move(*buffer)});
+                            plan.key, *plan.storage, identity, attachment, *buffer});
                         found = entry.get();
                         scoped_.push_back(std::move(entry));
                         ++scoped_creations_;
                     }
                     ++found->leases;
                     context->leases_.push_back(found);
-                    binding.buffer = &found->backing;
+                    binding.buffer = found->backing;
                 }
                 else
                 {
-                    auto buffer = Buffer::create(allocator, size, plan.buffer_usage,
+                    auto buffer = createBuffer( size, plan.buffer_usage,
                         plan.readback ? EMemoryAccess::READBACK : EMemoryAccess::DEVICE);
                     if (!buffer) return cxx::unexpected(buffer.error());
-                    binding.owned_buffer.emplace(std::move(*buffer));
-                    binding.buffer = &*binding.owned_buffer;
+                    binding.owned_buffer = *buffer;
+                    binding.buffer = binding.owned_buffer;
                 }
                 if (plan.readback && plan.target_sized) context->readback_ = i;
             }
@@ -140,6 +149,8 @@ namespace lux::render::vulkan
             native.buffer = context->bindings_[barrier.resource].buffer->native();
             context->host_barriers_.push_back(native);
         }
+        for (auto* lease : context->leases_)
+            if (lease->requirement.scope != EResourceScope::ATTACHMENT) lease->live_scope = true;
         auto* result = context.get();
         contexts_.push_back(std::move(context));
         return result;
@@ -272,7 +283,7 @@ namespace lux::render::vulkan
         if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
         const auto* buffer = bindings_[resource].buffer;
         std::vector<std::byte> result(static_cast<std::size_t>(buffer->size()));
-        if (auto read = buffer->read(0, result); !read) return cxx::unexpected(read.error());
+        if (auto read = owner_->read(*buffer, 0, result); !read) return cxx::unexpected(read.error());
         return result;
     }
 }

@@ -2,6 +2,8 @@
 
 #include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
 #include <lux/engine/render/features/Resources.hpp>
+#include <lux/engine/render/core/Ids.hpp>
+#include <lux/cxx/container/StableSlotMap.hpp>
 
 namespace lux::render::vulkan
 {
@@ -42,11 +44,36 @@ namespace lux::render::vulkan
             return *retirements_[static_cast<std::size_t>(role)];
         }
 
-        VulkanDevice device;
-        VulkanAllocator allocator;
+        [[nodiscard]] const VulkanDevice& device() const noexcept { return device_; }
+        [[nodiscard]] RenderResult<BufferAllocation*> createBuffer(
+            VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access
+        ) noexcept;
+        [[nodiscard]] RenderResult<ImageAllocation*> createImage(const ImageDescription& description) noexcept;
+        [[nodiscard]] RenderResult<ImageAllocation*> createImage(VkExtent2D extent, VkFormat format,
+            VkImageUsageFlags usage, VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT) noexcept;
+        [[nodiscard]] RenderResult<ImageAllocation*> aliasImage(ImageAllocation& source) noexcept;
+        [[nodiscard]] RenderResult<void> write(BufferAllocation& buffer, VkDeviceSize offset,
+            std::span<const std::byte> bytes) noexcept;
+        [[nodiscard]] RenderResult<void> read(const BufferAllocation& buffer, VkDeviceSize offset,
+            std::span<std::byte> bytes) const noexcept;
+        [[nodiscard]] BufferMemoryBinding memoryBinding(const BufferAllocation& buffer) const noexcept;
+        [[nodiscard]] ImageMemoryBinding memoryBinding(const ImageAllocation& image) const noexcept;
+        [[nodiscard]] bool owns(const BufferAllocation* value) const noexcept;
+        [[nodiscard]] bool owns(const ImageAllocation* value) const noexcept;
+        // Caller must have ended all borrows and established completion of the last GPU use.
+        void destroyFinished(BufferAllocation* value) noexcept;
+        void destroyFinished(ImageAllocation* value) noexcept;
+        void releaseScope(SceneId scene, ViewId view = {}) noexcept;
 
     private:
+        friend struct NativeMemoryAudit;
+        friend class ExecutionContext;
+        void collectScoped() noexcept;
         DeviceSession(VulkanDevice device, VulkanAllocator allocator) noexcept;
+        VulkanDevice device_;
+        VulkanAllocator allocator_;
+        cxx::StableSlotMap<BufferAllocation, BufferAllocationTag> buffers_;
+        cxx::StableSlotMap<ImageAllocation, ImageAllocationTag> images_;
         std::array<std::unique_ptr<SubmissionQueue>, 3> queue_owners_;
         std::array<SubmissionQueue*, 3> queues_{};
         std::array<std::optional<RetirementQueue>, 3> retirement_owners_;

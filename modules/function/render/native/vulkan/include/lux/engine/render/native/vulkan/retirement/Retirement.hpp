@@ -9,41 +9,23 @@
 
 namespace lux::render::vulkan
 {
-    // Native backing ownership only. The publisher must first stop all new
+    class DeviceSession;
+    // Deferred record destruction; backing remains owned by DeviceSession. The publisher must first stop all new
     // references and supply the LAST submission using the transferred object.
     // Host/allocator/queue borrows remain alive until every backing is collected.
     class RetirementQueue
     {
     public:
-        [[nodiscard]] static RenderResult<RetirementQueue> create(
-            SubmissionQueue &queue, std::size_t capacity
-        ) noexcept;
+        // Capacity is validated once by DeviceSession before construction.
+        RetirementQueue(DeviceSession& owner, SubmissionQueue& queue, std::size_t capacity) noexcept;
         ~RetirementQueue() noexcept;
         RetirementQueue(RetirementQueue &&other) noexcept;
         RetirementQueue &operator=(RetirementQueue &&) = delete;
         RetirementQueue(const RetirementQueue &) = delete;
         RetirementQueue &operator=(const RetirementQueue &) = delete;
 
-        template <class T>
-            requires(std::same_as<T, Buffer> || std::same_as<T, Image>)
-        [[nodiscard]] RenderResult<void> retire(SubmissionTicket last_use, T &&backing) noexcept
-        {
-            const bool is_wrong_owner = !queue_->owns(last_use) || backing.device() != queue_->device();
-            if (is_wrong_owner)
-                return cxx::unexpected(RenderError{kWrongOwner});
-            if (!backing.native())
-                return cxx::unexpected(RenderError{kInvalidArgument});
-            for (auto &entry : entries_)
-            {
-                if (!entry)
-                {
-                    entry.emplace(last_use.serial(), VBacking{std::in_place_type<T>, std::move(backing)});
-                    return {};
-                }
-            }
-            // Admission failure leaves the caller's owner intact.
-            return cxx::unexpected(RenderError{kCapacity});
-        }
+        [[nodiscard]] RenderResult<void> retire(SubmissionTicket last_use, BufferAllocation*&& backing) noexcept;
+        [[nodiscard]] RenderResult<void> retire(SubmissionTicket last_use, ImageAllocation*&& backing) noexcept;
 
         [[nodiscard]] RenderResult<std::size_t> collect() noexcept;
         [[nodiscard]] std::size_t pending() const noexcept;
@@ -80,10 +62,11 @@ namespace lux::render::vulkan
         }
 
     private:
+        friend struct NativeMemoryAudit;
         using CompositeBacking = std::unique_ptr<void, void (*)(void*)>;
         using VBacking = std::variant<
-            Buffer,
-            Image,
+            BufferAllocation*,
+            ImageAllocation*,
             CompositeBacking>;
 
         struct Entry
@@ -94,7 +77,8 @@ namespace lux::render::vulkan
             Entry(std::uint64_t serial, VBacking backing) noexcept : serial(serial), backing(std::move(backing)) {}
         };
 
-        RetirementQueue(SubmissionQueue &queue, std::size_t capacity) noexcept;
+        void destroy(Entry& entry) noexcept;
+        DeviceSession* owner_;
         SubmissionQueue *queue_;
         std::vector<std::optional<Entry>> entries_;
     };

@@ -10,7 +10,8 @@ namespace lux::render::vulkan
         StorageRequirement requirement;
         ScopeIdentity scope;
         const ExecutionContext* attachment = nullptr;
-        Buffer backing;
+        BufferAllocation* backing;
         std::size_t leases = 0;
+        bool live_scope = false;
     };
 }

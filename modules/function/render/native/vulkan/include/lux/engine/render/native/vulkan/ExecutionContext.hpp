@@ -38,13 +38,14 @@ namespace lux::render::vulkan
         void releaseReadback() noexcept { --readers_; }
 
     private:
+        friend struct NativeMemoryAudit;
         friend class DeviceSession;
         struct Binding final
         {
-            std::optional<Buffer> owned_buffer;
-            std::optional<Image> image;
+            BufferAllocation* owned_buffer = nullptr;
+            ImageAllocation* image = nullptr;
             VkImageView view{};
-            Buffer* buffer = nullptr;
+            BufferAllocation* buffer = nullptr;
         };
         struct Pass final
         {
@@ -52,7 +53,8 @@ namespace lux::render::vulkan
             std::vector<VkImageMemoryBarrier2> images;
             std::vector<VkBufferMemoryBarrier2> buffers;
         };
-        ExecutionContext(SubmissionQueue& queue, std::shared_ptr<const CompiledGraph> code, TargetDesc target) noexcept;
+        ExecutionContext(DeviceSession& owner, SubmissionQueue& queue, std::shared_ptr<const CompiledGraph> code, TargetDesc target) noexcept;
+        DeviceSession* owner_;
         SubmissionQueue* queue_;
         std::shared_ptr<const CompiledGraph> code_;
         TargetDesc target_;

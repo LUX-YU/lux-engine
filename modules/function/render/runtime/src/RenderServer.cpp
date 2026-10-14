@@ -366,6 +366,7 @@ namespace lux::render
                     for (std::size_t i = effect.groups.size(); i-- > 0;)
                         if (effect.groups[i].scene == scene_id)
                             if (auto result = withdraw(effect, i); !result) return result;
+                device->releaseScope(scene_id);
                 if (!scenes.erase(scene_id)) return cxx::unexpected(RenderError{kRuntimeIdentity});
                 return {};
             case ERenderCommand::CREATE_VIEW:
@@ -383,6 +384,7 @@ namespace lux::render
                         for (std::size_t i = effect.groups.size(); i-- > 0;)
                             if (effect.groups[i].scene == scene_id && effect.groups[i].view == view_id)
                                 if (auto result = withdraw(effect, i); !result) return result;
+                    device->releaseScope(scene_id, view_id);
                     if (!scene->views.erase(view_id)) return cxx::unexpected(RenderError{kRuntimeIdentity});
                 }
                 else

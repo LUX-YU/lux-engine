@@ -13,7 +13,7 @@ using namespace foundation_test;
 namespace
 {
     constexpr std::array names{"instance", "messenger", "device", "allocator", "buffer", "image",
-        "command_pool", "fence", "timeline", "shader", "pipeline_layout", "pipeline", "image_view"};
+        "command_pool", "fence", "timeline", "shader", "pipeline_layout", "pipeline", "image_view", "image_alias"};
     std::array<int, names.size()> live{};
     std::array<unsigned, names.size()> created{};
     std::string_view fail_operation;
@@ -60,15 +60,60 @@ namespace lux::render::vulkan::test
 }
 #endif
 
+static void allocationRecords(DeviceSession& session)
+{
+    auto* upload = take(session.createBuffer(64, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, EMemoryAccess::UPLOAD));
+    std::array<std::byte, 64> bytes{};
+    CHECK(session.write(*upload, 0, bytes));
+    CHECK(!session.write(*upload, 1, bytes));
+    CHECK(!session.read(*upload, 0, bytes));
+#ifdef LUX_VULKAN_TEST_SEAM
+    fails("flush", [&] { return session.write(*upload, 0, bytes); });
+#endif
+    session.destroyFinished(upload);
+    ImageDescription description{{16, 16}, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_USAGE_TRANSFER_DST_BIT};
+    description.aliasable = true;
+    auto* original = take(session.createImage(description));
+#ifdef LUX_VULKAN_TEST_SEAM
+    fails("image_alias", [&] { return session.aliasImage(*original); });
+    fails("image_alias_bind", [&] { return session.aliasImage(*original); });
+#endif
+    auto* alias = take(session.aliasImage(*original));
+    const auto a = session.memoryBinding(*original), b = session.memoryBinding(*alias);
+    CHECK(a.memory == b.memory && a.offset == b.offset && a.owns_allocation && !b.owns_allocation);
+    CHECK(original->native() != alias->native());
+    session.destroyFinished(original); // an alias keeps the actual allocation alive
+    auto batch = take(session.queue().begin());
+    VkImageMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+    barrier.dstStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT;
+    barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = alias->native();
+    barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
+    dependency.imageMemoryBarrierCount = 1;
+    dependency.pImageMemoryBarriers = &barrier;
+    vkCmdPipelineBarrier2(batch.native(), &dependency);
+    const VkClearColorValue color{{1, 0, 0, 1}};
+    vkCmdClearColorImage(batch.native(), alias->native(), VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        &color, 1, &barrier.subresourceRange);
+    const auto ticket = take(std::move(batch).submit());
+    CHECK(session.retirement().retire(ticket, std::move(alias)));
+    CHECK(!alias);
+    CHECK(session.drain()); // retires alias and then its pinned allocation exactly once
+}
+
 static void exercise(DeviceSession& session)
 {
     auto& queue = session.queue();
-    auto buffer = take(Buffer::create(session.allocator, 256, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+    auto buffer = take(session.createBuffer( 256, VK_BUFFER_USAGE_TRANSFER_DST_BIT,
         EMemoryAccess::READBACK));
-    auto image = take(Image::create(session.allocator, {32, 32}, VK_FORMAT_R8G8B8A8_UNORM,
+    auto image = take(session.createImage( {32, 32}, VK_FORMAT_R8G8B8A8_UNORM,
         VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT));
     auto batch = take(queue.begin());
-    vkCmdFillBuffer(batch.native(), buffer.native(), 0, buffer.size(), 0x12345678);
+    vkCmdFillBuffer(batch.native(), buffer->native(), 0, buffer->size(), 0x12345678);
     VkBufferMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
     barrier.srcStageMask = VK_PIPELINE_STAGE_2_CLEAR_BIT;
     barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
@@ -76,7 +121,7 @@ static void exercise(DeviceSession& session)
     barrier.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.buffer = buffer.native();
+    barrier.buffer = buffer->native();
     barrier.size = VK_WHOLE_SIZE;
     VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
     dependency.bufferMemoryBarrierCount = 1;
@@ -86,7 +131,7 @@ static void exercise(DeviceSession& session)
     CHECK(queue.owns(ticket) && queue.lastSubmitted()->serial() == ticket.serial());
     CHECK(take(queue.wait(ticket, UINT64_MAX)));
     std::array<std::uint32_t, 64> output{};
-    CHECK(buffer.read(0, std::as_writable_bytes(std::span(output))));
+    CHECK(session.read(*buffer, 0, std::as_writable_bytes(std::span(output))));
     for (auto value : output) CHECK(value == 0x12345678);
 
     // Earlier admitted work retains its ticket when a later submission fails.
@@ -101,7 +146,7 @@ static void exercise(DeviceSession& session)
     const auto owners = live;
     hold_fences = true;
     CHECK(session.retirement().retire(pending, std::move(buffer)));
-    CHECK(!buffer.native() && session.retirement().pending() == 1);
+    CHECK(!buffer && session.retirement().pending() == 1);
     CHECK(take(session.retirement().collect()) == 0 && live == owners);
     hold_fences = false;
     CHECK(take(queue.wait(pending, UINT64_MAX)));
@@ -128,16 +173,17 @@ int main()
         {
             auto session = take(DeviceSession::create(bootstrap, options));
             std::printf("GPU=%s API=%u driver=%u Validation=enabled SyncValidation=enabled\n",
-                session->device.properties().deviceName, session->device.properties().apiVersion,
-                session->device.properties().driverVersion);
+                session->device().properties().deviceName, session->device().properties().apiVersion,
+                session->device().properties().driverVersion);
             CHECK(&session->queue() == &session->queue(EQueueRole::TRANSFER));
             exercise(*session);
+            allocationRecords(*session);
 #ifdef LUX_VULKAN_TEST_SEAM
-            fails("buffer", [&] { return Buffer::create(session->allocator, 256,
+            fails("buffer", [&] { return session->createBuffer( 256,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK); });
-            fails("mapping", [&] { return Buffer::create(session->allocator, 256,
+            fails("mapping", [&] { return session->createBuffer( 256,
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK); });
-            fails("image", [&] { return Image::create(session->allocator, {16, 16}, VK_FORMAT_R8G8B8A8_UNORM,
+            fails("image", [&] { return session->createImage( {16, 16}, VK_FORMAT_R8G8B8A8_UNORM,
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT); });
             const native_fixture::Config config{32, 32, 1, 1};
             auto assembly = take(native_fixture::assemble(config));

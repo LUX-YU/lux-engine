@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/render/native/vulkan/device/Device.hpp>
 
 struct VmaAllocation_T;
@@ -20,29 +21,14 @@ namespace lux::render::vulkan
         VkDeviceSize offset, size;
     };
 
-    class Buffer
+    struct BufferAllocationTag;
+    struct ImageAllocationTag;
+    class BufferAllocation
     {
     public:
-        [[nodiscard]] static RenderResult<Buffer> create(
-            const VulkanAllocator& allocator,
-            VkDeviceSize size,
-            VkBufferUsageFlags usage,
-            EMemoryAccess access
-        ) noexcept;
-        ~Buffer() noexcept;
-        Buffer(Buffer&& other) noexcept;
-        Buffer& operator=(Buffer&& other) noexcept;
-        Buffer(const Buffer&) = delete;
-        Buffer& operator=(const Buffer&) = delete;
-
         [[nodiscard]] VkBuffer native() const noexcept
         {
             return buffer_;
-        }
-
-        [[nodiscard]] VkDevice device() const noexcept
-        {
-            return device_;
         }
 
         [[nodiscard]] VkDeviceSize size() const noexcept
@@ -60,29 +46,17 @@ namespace lux::render::vulkan
             return usage_;
         }
 
-        // CPU/GPU access must not overlap. write flushes; read invalidates after
-        // the caller has obtained GPU completion and a HOST_READ memory barrier.
-        [[nodiscard]] RenderResult<void> write(VkDeviceSize offset, std::span<const std::byte> bytes) noexcept;
-        [[nodiscard]] RenderResult<void> read(VkDeviceSize offset, std::span<std::byte> bytes) const noexcept;
-        [[nodiscard]] VkDeviceSize allocationBytes() const noexcept;
-        // Allocation facts only; this value does not retain native backing.
-        [[nodiscard]] BufferMemoryBinding memoryBinding() const noexcept;
+        // Stable metadata, borrowed from DeviceSession. VkBuffer is the lightweight carrier.
+        BufferAllocation(VkBuffer buffer, VmaAllocation_T* allocation, void* mapped,
+            VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access) noexcept
+            : buffer_(buffer), allocation_(allocation), mapped_(mapped), size_(size), usage_(usage), access_(access) {}
+
+        BufferAllocation(const BufferAllocation&) = delete;
+        BufferAllocation& operator=(const BufferAllocation&) = delete;
 
     private:
-        Buffer(
-            VmaAllocator_T* allocator,
-            VkDevice device,
-            VkBuffer buffer,
-            VmaAllocation_T* allocation,
-            void* mapped,
-            VkDeviceSize size,
-            VkBufferUsageFlags usage,
-            EMemoryAccess access
-        ) noexcept;
-        void release() noexcept;
-
-        VmaAllocator_T* allocator_;
-        VkDevice device_;
+        friend class DeviceSession;
+        cxx::SlotKey<BufferAllocationTag> key_;
         VkBuffer buffer_;
         VmaAllocation_T* allocation_;
         void* mapped_;
@@ -112,40 +86,12 @@ namespace lux::render::vulkan
 
     // Optimal tiled 2D backing. Views borrow it; array layers and mip levels
     // belong to this allocation, not to independent per-mip resource owners.
-    class Image
+    class ImageAllocation
     {
     public:
-        [[nodiscard]] static RenderResult<Image> create(
-            const VulkanAllocator& allocator,
-            const ImageDescription& description
-        ) noexcept;
-        // Same native image shape, distinct VkImage, borrowed existing allocation.
-        // The source allocation must outlive this alias. GPU non-overlap is the
-        // caller's explicit synchronization obligation, not implied by this factory.
-        [[nodiscard]] static RenderResult<Image> alias(const Image& source) noexcept;
-        static RenderResult<Image> alias(const Image&&) = delete;
-        [[nodiscard]] ImageMemoryBinding memoryBinding() const noexcept;
-        [[nodiscard]] static RenderResult<Image> create(
-            const VulkanAllocator& allocator,
-            VkExtent2D extent,
-            VkFormat format,
-            VkImageUsageFlags usage,
-            VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT
-        ) noexcept;
-        ~Image() noexcept;
-        Image(Image&& other) noexcept;
-        Image& operator=(Image&& other) noexcept;
-        Image(const Image&) = delete;
-        Image& operator=(const Image&) = delete;
-
         [[nodiscard]] VkImage native() const noexcept
         {
             return image_;
-        }
-
-        [[nodiscard]] VkDevice device() const noexcept
-        {
-            return device_;
         }
 
         [[nodiscard]] VkExtent2D extent() const noexcept
@@ -173,21 +119,21 @@ namespace lux::render::vulkan
             return description_;
         }
 
-    private:
-        Image(
-            VmaAllocator_T* allocator,
-            VkDevice device,
-            VkImage image,
-            VmaAllocation_T* allocation,
-            const ImageDescription& description
-        ) noexcept;
-        void release() noexcept;
+        ImageAllocation(VkImage image, VmaAllocation_T* allocation, ImageDescription description,
+            ImageAllocation* source = nullptr) noexcept
+            : image_(image), allocation_(allocation), description_(description), source_(source) {}
 
-        VmaAllocator_T* allocator_;
-        VkDevice device_;
+        ImageAllocation(const ImageAllocation&) = delete;
+        ImageAllocation& operator=(const ImageAllocation&) = delete;
+
+    private:
+        friend class DeviceSession;
+        cxx::SlotKey<ImageAllocationTag> key_;
         VkImage image_;
         VmaAllocation_T* allocation_;
         ImageDescription description_;
-        bool owns_allocation_{true};
+        ImageAllocation* source_;
+        std::uint32_t aliases_ = 0;
+        bool released_ = false;
     };
-} // namespace lux::render::vulkan
+}

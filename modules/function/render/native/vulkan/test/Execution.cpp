@@ -52,6 +52,9 @@ int main()
             resource.storage->scope == EResourceScope::SCENE;
         CHECK((a->nativeBuffer(i) == b->nativeBuffer(i)) == shared);
     }
+    std::vector<VkBuffer> original_scopes(code->resources().size());
+    for (std::uint32_t i = 0; i < original_scopes.size(); ++i)
+        if (code->resources()[i].storage) original_scopes[i] = a->nativeBuffer(i);
     a->setColor({1, 0, 0, 1});
     b->setColor({0, 1, 0, 1});
     CHECK(take(a->execute()));
@@ -114,7 +117,23 @@ int main()
     CHECK(session->release(b));
     CHECK(session->release(larger));
     CHECK(session->drain());
-    CHECK(session->scopedBufferCount() == 0);
+    // The former leases==0 deletion contract is intentionally replaced by business-scope lifetime.
+    CHECK(session->scopedBufferCount() == 4); // Global + Scene + two Views, no Attachment-private backing
+    const auto creations = session->scopedBufferCreations();
+    auto* reattached = take(session->prepare(code, native_fixture::target(config), {scene, view_a}, initializers));
+    CHECK(session->scopedBufferCreations() == creations + 1); // only Attachment-private storage is new
+    for (std::uint32_t i = 0; i < original_scopes.size(); ++i)
+        if (const auto& storage = code->resources()[i].storage;
+            storage && storage->scope != EResourceScope::ATTACHMENT)
+            CHECK(reattached->nativeBuffer(i) == original_scopes[i]);
+    CHECK(take(reattached->execute()));
+    CHECK(take(session->queue().wait(*reattached->lastUse(), UINT64_MAX)));
+    pixel(take(reattached->readback()), 32, 16, 16, {255, 0, 0, 255});
+    CHECK(session->release(reattached));
+    session->releaseScope(scene, view_a);
+    CHECK(session->scopedBufferCount() == 3);
+    session->releaseScope(scene);
+    CHECK(session->scopedBufferCount() == 1); // Global survives until session/explicit asset lifetime ends
     code.reset();
 
     config = {32, 32, 0, 0};

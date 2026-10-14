@@ -7,7 +7,7 @@
 namespace lux::render::vulkan
 {
     DeviceSession::DeviceSession(VulkanDevice native, VulkanAllocator memory) noexcept
-        : device(std::move(native)), allocator(std::move(memory))
+        : device_(std::move(native)), allocator_(std::move(memory))
     {
     }
 
@@ -29,7 +29,7 @@ namespace lux::render::vulkan
             const auto role = static_cast<EQueueRole>(i);
             for (std::size_t j = 0; j < i; ++j)
             {
-                if (result->device.queue(role).handle == result->queues_[j]->nativeQueue().handle)
+                if (result->device_.queue(role).handle == result->queues_[j]->nativeQueue().handle)
                 {
                     result->queues_[i] = result->queues_[j];
                     result->retirements_[i] = result->retirements_[j];
@@ -37,13 +37,11 @@ namespace lux::render::vulkan
                 }
             }
             if (result->queues_[i]) continue;
-            auto queue = SubmissionQueue::create(result->device, slots, role);
+            auto queue = SubmissionQueue::create(result->device_, slots, role);
             if (!queue) return cxx::unexpected(queue.error());
             result->queue_owners_[i] = std::move(*queue);
             result->queues_[i] = result->queue_owners_[i].get();
-            auto retirement = RetirementQueue::create(*result->queues_[i], retirement_capacity);
-            if (!retirement) return cxx::unexpected(retirement.error());
-            result->retirement_owners_[i].emplace(std::move(*retirement));
+            result->retirement_owners_[i].emplace(*result, *result->queues_[i], retirement_capacity);
             result->retirements_[i] = &*result->retirement_owners_[i];
         }
         return result;
@@ -70,8 +68,28 @@ namespace lux::render::vulkan
             if (!retirement) continue;
             if (auto result = retirement->collect(); !result) return cxx::unexpected(result.error());
         }
-        std::erase_if(scoped_, [](const auto& entry) { return entry->leases == 0; });
+        collectScoped();
         return {};
+    }
+
+    void DeviceSession::collectScoped() noexcept
+    {
+        std::erase_if(scoped_, [&](const auto& entry) {
+            if (entry->leases || entry->live_scope) return false;
+            destroyFinished(entry->backing);
+            return true;
+        });
+    }
+
+    void DeviceSession::releaseScope(SceneId scene, ViewId view) noexcept
+    {
+        for (auto& entry : scoped_)
+        {
+            const bool scene_matches = entry->requirement.scope != EResourceScope::GLOBAL && entry->scope.scene == scene;
+            const bool view_matches = view.isNull() || entry->scope.view == view;
+            if (scene_matches && view_matches) entry->live_scope = false;
+        }
+        collectScoped();
     }
 
     DeviceSession::~DeviceSession() noexcept
@@ -83,7 +101,17 @@ namespace lux::render::vulkan
         // Retired contexts still hold scoped leases, including the device-lost path.
         for (auto& retirement : retirement_owners_) retirement.reset();
         contexts_.clear();
+        for (auto& entry : scoped_) destroyFinished(entry->backing);
         scoped_.clear();
+        while (!buffers_.empty()) destroyFinished(&*buffers_.begin());
+        // Destroy aliases before allocations, including aliases not explicitly released by the caller.
+        for (;;)
+        {
+            auto alias = std::find_if(images_.begin(), images_.end(), [](const auto& value) { return value.source_; });
+            if (alias == images_.end()) break;
+            destroyFinished(&*alias);
+        }
+        while (!images_.empty()) destroyFinished(&*images_.begin());
         // Retirement owners, queue owners, allocator, device: reverse member destruction order.
     }
 }

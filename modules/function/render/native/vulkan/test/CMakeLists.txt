@@ -69,3 +69,9 @@ foreach(header Error DeviceSession CompiledGraph ExecutionContext device/Device 
     add_library(render_native_header_${target} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp")
     target_link_libraries(render_native_header_${target} PRIVATE render_native_vulkan)
 endforeach()
+
+add_executable(render_memory_cost MemoryCost.cpp Allocation.cpp)
+
+target_link_libraries(render_memory_cost PRIVATE render_native_vulkan)
+add_test(NAME render.native.memory_cost COMMAND render_memory_cost)
+set_tests_properties(render.native.memory_cost PROPERTIES TIMEOUT 60)

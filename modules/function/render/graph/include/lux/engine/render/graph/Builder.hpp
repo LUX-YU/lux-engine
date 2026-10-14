@@ -7,6 +7,10 @@ namespace lux::render
     class RenderGraphBuilder final
     {
     public:
+        [[nodiscard]] std::size_t resourceCount() const noexcept { return candidate_.resources().size(); }
+        [[nodiscard]] std::size_t passCount() const noexcept { return candidate_.passes().size(); }
+        [[nodiscard]] std::size_t outputCount() const noexcept { return candidate_.outputs().size(); }
+
         [[nodiscard]] RenderResult<GraphResourceId> declareResource(GraphResource resource) noexcept;
         [[nodiscard]] RenderResult<GraphPassId> addPass(GraphPass pass) noexcept;
         // Duplicate identical edges are canonicalized. Self edges are errors.

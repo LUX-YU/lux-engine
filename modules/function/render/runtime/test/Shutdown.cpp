@@ -114,8 +114,77 @@ static void exercise(bool close_requester)
     check(run_ok && backing == 0 && waited && server->stats().validation_errors == 0);
 }
 
+static void retirementAtomicity()
+{
+    hold.store(true);
+    waited.store(false);
+    RenderServerConfig options{"runtime.retirement.atomic", true};
+    options.retirement_capacity = 1;
+    auto server = take(RenderServer::create(options));
+    check(bool(server->registerFeature({&native_fixture::definition, programs})));
+    auto client = take(RenderClient::create(options.channel_name));
+    bool run_ok = false;
+    std::thread thread([&] { run_ok = bool(server->run()); });
+    RenderCommand command;
+    command.session = call(*client, command).session;
+    command.operation = ERenderCommand::CREATE_SCENE;
+    command.scene = call(*client, command).scene;
+    command.operation = ERenderCommand::CREATE_VIEW;
+    command.view = call(*client, command).view;
+    native_fixture::Config config;
+    command.description = native_fixture::target(config);
+    command.operation = ERenderCommand::CREATE_TARGET;
+    const auto first_target = call(*client, command).target;
+    command.target = call(*client, command).target;
+    const auto second_target = command.target;
+    command.operation = ERenderCommand::CREATE_EFFECT;
+    command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
+        &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
+    command.effect = call(*client, command).effect;
+    command.features.clear();
+    command.operation = ERenderCommand::ATTACH;
+    command.target = first_target;
+    call(*client, command);
+    command.target = second_target;
+    call(*client, command);
+    const auto deadline = std::chrono::steady_clock::now() + 10s;
+    while (server->stats().submissions < 2 && std::chrono::steady_clock::now() < deadline)
+        std::this_thread::sleep_for(1ms);
+    check(server->stats().submissions == 2);
+    command.operation = ERenderCommand::DETACH;
+    command.target = first_target;
+    call(*client, command); // fills the only retirement slot with an actual in-flight context
+    command.target = second_target;
+    command.operation = ERenderCommand::READBACK;
+    const auto request = take(client->submit(command));
+    for (auto operation : {ERenderCommand::DETACH, ERenderCommand::RESIZE_TARGET,
+        ERenderCommand::REMOVE_VIEW, ERenderCommand::REMOVE_SCENE, ERenderCommand::REMOVE_EFFECT})
+    {
+        command.operation = operation;
+        command.description.width = 16;
+        auto rejected = wait(*client, take(client->submit(command)));
+        check(rejected.header.outcome == EOperationOutcome::FAILED);
+        check(rejected.header.error.type == kRuntimeCapacity);
+        check(!take(client->poll(request)) && backing == 6 && !waited);
+    }
+    hold.store(false); // observe real fence completion; the untouched readback must still succeed
+    const auto pixels = wait(*client, request);
+    check(pixels.header.outcome == EOperationOutcome::SUCCESS);
+    check(pixels.data.size() == 32 * 32 * 4);
+    const auto center = (16 * 32 + 16) * 4;
+    check(pixels.data.view()[center] == std::byte{255} && pixels.data.view()[center + 1] == std::byte{0});
+    command.operation = ERenderCommand::RESIZE_TARGET;
+    const auto resized = call(*client, command);
+    check(resized.target_epoch == 2); // rejected resize never published an epoch
+    server->requestStop();
+    thread.join();
+    check(run_ok && backing == 0 && server->stats().validation_errors == 0);
+    std::puts("Retirement full: Detach/Resize/Remove preserve pending readback, group, target epoch and pixels");
+}
+
 int main()
 {
+    retirementAtomicity();
     exercise(false);
     exercise(true);
     std::printf("Pending GPU readback: explicit Stop -> Cancelled; requester close -> retained until cold shutdown; "

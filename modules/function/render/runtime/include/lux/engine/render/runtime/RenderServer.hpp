@@ -14,6 +14,7 @@ namespace lux::render
         std::uint32_t requests_per_tick = 8;
         std::size_t max_wire_bytes = 1024 * 1024;
         std::size_t max_reply_bytes = 16 * 1024 * 1024;
+        std::size_t retirement_capacity = 64;
     };
 
     struct FeatureRegistration final

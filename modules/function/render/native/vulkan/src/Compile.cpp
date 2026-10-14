@@ -127,8 +127,9 @@ namespace lux::render::vulkan
             const auto binding = std::find_if(programs.begin(), programs.end(), [&](const auto& p) {
                 return p.pass_key == pass.key;
             });
+            if (binding == programs.end()) return cxx::unexpected(RenderError{kFeatureContract, {id.index}});
             const bool is_unsupported_pass = pass.conditional || pass.kind == EGraphPassKind::COMPUTE ||
-                pass.uses.empty() || pass.uses.size() > 2 || binding == programs.end();
+                pass.uses.empty() || pass.uses.size() > 2;
             if (is_unsupported_pass) return cxx::unexpected(RenderError{kUnsupported, {id.index}});
             if (!std::ranges::all_of(binding->clear_color, [](float x) { return std::isfinite(x); }))
                 return cxx::unexpected(RenderError{kInvalidArgument});

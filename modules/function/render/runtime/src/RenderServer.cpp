@@ -183,6 +183,9 @@ namespace lux::render
                     if (candidate.target == id) { group = &candidate; code = effect.code; }
             if (group)
             {
+                if (auto admitted = admitWithdraw([&](const auto&, const auto& current) {
+                    return current.target == id;
+                }); !admitted) return admitted;
                 // One Target writer, proven on attach. Resize builds one candidate without recompilation.
                 auto candidate = device->prepare(std::move(code), description,
                     {group->scene, group->view}, initializers);
@@ -268,6 +271,7 @@ namespace lux::render
                 return cxx::unexpected(RenderError{kInvalidWire});
             std::vector<WireView> configs;
             std::vector<SelectedFeature> selected;
+            std::vector<const FeatureRegistration*> registrations;
             std::vector<OwnedWireBytes> config_owners, attachments;
             std::vector<PassProgram> programs;
             configs.reserve(count);
@@ -301,17 +305,28 @@ namespace lux::render
                 }
                 else if (!schema.empty() || !config_bytes.empty()) return cxx::unexpected(RenderError{kInvalidWire});
                 selected.push_back({&definition, wire, name});
+                registrations.push_back(&*registration);
             }
             if (!reader.requireFullyConsumed()) return cxx::unexpected(RenderError{kInvalidWire});
             auto assembly = assembleFeatures(selected, {config.max_wire_bytes, SIZE_MAX});
             if (!assembly) return cxx::unexpected(assembly.error());
-            for (const auto& selection : selected)
+            for (const auto& contribution : assembly->contributions)
             {
-                const auto registration = std::find_if(features.begin(), features.end(), [&](const auto& f) {
-                    return f.definition == selection.definition;
-                });
-                auto values = registration->programs(selection.config, selection.instance_key);
+                const auto index = contribution.selection_index;
+                const auto& selection = selected[index];
+                auto values = registrations[index]->programs(selection.config, selection.instance_key);
                 if (!values) return cxx::unexpected(values.error());
+                const auto passes = assembly->definition.passes().subspan(contribution.first_pass,
+                    contribution.pass_count);
+                for (std::size_t p = 0; p < values->size(); ++p)
+                {
+                    const auto& value = (*values)[p];
+                    if (std::ranges::none_of(passes, [&](const auto& pass) { return pass.key == value.pass_key; }))
+                        return cxx::unexpected(RenderError{kFeatureOwnership, {index, p}});
+                    for (std::size_t previous = 0; previous < p; ++previous)
+                        if ((*values)[previous].pass_key == value.pass_key)
+                            return cxx::unexpected(RenderError{kFeatureDuplicate, {index, p, previous}});
+                }
                 for (auto& value : *values) programs.push_back(std::move(value));
             }
             auto compiled = vulkan::compileGraph(*device, *assembly, programs, targetDescription(*input));
@@ -423,7 +438,12 @@ namespace lux::render
                 {
                     const auto& group = effect->groups[i];
                     if (group.scene == scene_id && group.view == view_id && group.target == target_id)
+                    {
+                        if (auto admitted = admitWithdraw([&](const auto&, const auto& current) {
+                            return current.context == group.context;
+                        }); !admitted) return admitted;
                         return withdraw(*effect, i);
+                    }
                 }
                 return cxx::unexpected(RenderError{kRuntimeIdentity});
             }
@@ -505,7 +525,8 @@ namespace lux::render
     {
         const bool invalid = config.requests_per_tick == 0 || config.requests_per_tick > 128 ||
             config.max_wire_bytes < record_size || config.max_wire_bytes > wire_limits.max_wire_bytes ||
-            config.max_reply_bytes < record_size || config.max_reply_bytes > 256 * 1024 * 1024;
+            config.max_reply_bytes < record_size || config.max_reply_bytes > 256 * 1024 * 1024 ||
+            config.retirement_capacity == 0;
         if (invalid) return cxx::unexpected(RenderError{kRuntimeCapacity});
         SessionIdentity identity{};
         if (BCryptGenRandom(nullptr, reinterpret_cast<PUCHAR>(identity.data()), sizeof(identity),
@@ -559,7 +580,7 @@ namespace lux::render
         vulkan::DeviceOptions options;
         options.dynamic_rendering = true;
         options.physical_device_index = s.config.physical_device_index;
-        auto device = vulkan::DeviceSession::create(*s.instance, options);
+        auto device = vulkan::DeviceSession::create(*s.instance, options, 3, s.config.retirement_capacity);
         if (!device) { s.shutdown(); return cxx::unexpected(device.error()); }
         s.device = std::move(*device);
         RenderResult<void> result;

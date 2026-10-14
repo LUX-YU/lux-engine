@@ -54,3 +54,11 @@ foreach(header RenderClient RenderServer)
     # Both neutral headers must compile without Native's include paths.
     target_link_libraries(render_runtime_header_${header} PRIVATE render_client render_features)
 endforeach()
+
+add_executable(render_runtime_programs_test Programs.cpp)
+
+target_include_directories(render_runtime_programs_test PRIVATE ../../native/vulkan/test)
+target_link_libraries(render_runtime_programs_test PRIVATE render_runtime)
+set_target_properties(render_runtime_programs_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+add_test(NAME render.runtime.programs COMMAND render_runtime_programs_test)
+set_tests_properties(render.runtime.programs PROPERTIES TIMEOUT 60)

@@ -33,11 +33,21 @@ namespace lux::render
         std::string_view instance_key;
     };
 
+    // Authorship established by Builder append intervals. selection_index refers to the
+    // caller's selection order; no Definition/configuration/name storage is borrowed.
+    struct FeatureContribution final
+    {
+        std::size_t selection_index;
+        std::size_t first_pass;
+        std::size_t pass_count;
+    };
+
     struct FeatureAssembly final
     {
         RenderGraphDefinition definition;
         GraphAnalysis analysis;
         std::vector<ResolvedStorageBinding> external_bindings;
+        std::vector<FeatureContribution> contributions;
     };
 
     // Collision-free private Pass/Resource key. local must be nonempty.

@@ -24,6 +24,7 @@ namespace lux::render
         struct Contribution final
         {
             SelectedFeature selected;
+            std::size_t selection_index;
             std::vector<ResourceClaim> claims;
             std::vector<ResolvedResource> bindings;
             std::size_t first_resource = 0, last_resource = 0;
@@ -308,7 +309,7 @@ namespace lux::render
     {
         std::vector<Contribution> work;
         work.reserve(selected.size());
-        for (const auto& s : selected) work.push_back({s});
+        for (std::size_t i = 0; i < selected.size(); ++i) work.push_back({selected[i], i});
         if (auto r = validateSelections(work, config_limits); !r) return cxx::unexpected(r.error());
         if (auto r = collectClaims(work); !r) return cxx::unexpected(r.error());
         RenderGraphBuilder builder;
@@ -340,7 +341,11 @@ namespace lux::render
         if (auto r = audit(*graph, work, ports); !r) return cxx::unexpected(r.error());
         auto analysis = analyze(*graph);
         if (!analysis) return cxx::unexpected(analysis.error());
-        return FeatureAssembly{std::move(*graph), std::move(*analysis), std::move(external)};
+        std::vector<FeatureContribution> contributions;
+        contributions.reserve(work.size());
+        for (const auto& w : work)
+            contributions.push_back({w.selection_index, w.first_pass, w.last_pass - w.first_pass});
+        return FeatureAssembly{std::move(*graph), std::move(*analysis), std::move(external), std::move(contributions)};
     }
 
     std::span<const error::ErrorDescriptor> renderFeatureErrorDescriptors() noexcept

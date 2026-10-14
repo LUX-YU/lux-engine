@@ -1,60 +1,8 @@
 #include "Wire.hpp"
 #include <algorithm>
-#include <limits>
 
 namespace lux::render
 {
-    using runtime_detail::Record;
-
-    const DataSchemaDescriptor& DataSchema<Record>::describe() noexcept
-    {
-        static constexpr DataField fields[]{
-            {"session", cxx::EScalarKind::U64, 2}, {"request", cxx::EScalarKind::U32, 2},
-            {"operation", cxx::EScalarKind::U32, 2}, {"arguments", cxx::EScalarKind::U32, 16},
-            {"color", cxx::EScalarKind::F32, 4}, {"reply_capacity", cxx::EScalarKind::U64},
-            {"error", cxx::EScalarKind::U64, 4}, {"body", cxx::EScalarKind::U8, 1, EDataFieldKind::BLOB}
-        };
-        static const DataSchemaDescriptor schema{
-            DataTypeIdView("lux.render.runtime.control.v1"), {1, 0}, {1, 0}, fields, runtime_detail::record_size, 8
-        };
-        return schema;
-    }
-
-    RenderResult<std::size_t> DataSchema<Record>::wireSize(const Record& value) noexcept
-    {
-        if (value.body.size() > runtime_detail::wire_limits.max_wire_bytes - runtime_detail::record_size)
-            return cxx::unexpected(RenderError{kWireLimit});
-        return runtime_detail::record_size + value.body.size();
-    }
-
-    RenderResult<void> DataSchema<Record>::encode(const Record& value, cxx::BinarySpanWriter& out) noexcept
-    {
-        for (auto x : value.session) out.writeUnsigned(x);
-        for (auto x : {value.request.index, value.request.gen, value.operation.index, value.operation.gen})
-            out.writeUnsigned(x);
-        for (auto x : value.args) out.writeUnsigned(x);
-        for (auto x : value.color) out.writeFloat(x);
-        out.writeUnsigned(value.reply_capacity);
-        out.writeUnsigned(value.error.type);
-        for (auto x : value.error.args) out.writeUnsigned(x);
-        out.writeUnsigned<std::uint64_t>(runtime_detail::record_size);
-        out.writeUnsigned<std::uint64_t>(value.body.size());
-        out.writeBytes(value.body.view());
-        return {};
-    }
-
-    RenderResult<Record> DataSchema<Record>::decode(cxx::BinaryReader& in, WireView wire) noexcept
-    {
-        std::span<const std::byte> body;
-        auto value = runtime_detail::decodeRecord(wire.bytes.view(), body);
-        if (!value) return cxx::unexpected(value.error());
-        // Keep the typed G2 entry point's owned-blob semantics unchanged.
-        value->body = wire.bytes.subspan(runtime_detail::record_size, body.size());
-        std::span<const std::byte> consumed;
-        in.readBytes(runtime_detail::record_size, consumed);
-        return value;
-    }
-
     std::span<const error::ErrorDescriptor> renderRuntimeErrorDescriptors() noexcept
     {
         static constexpr error::ErrorDescriptor descriptors[]{
@@ -69,32 +17,6 @@ namespace lux::render
 
 namespace lux::render::runtime_detail
 {
-    RenderResult<Record> decodeRecord(std::span<const std::byte> bytes,
-        std::span<const std::byte>& body) noexcept
-    {
-        const bool is_invalid_size = bytes.size() < record_size || bytes.size() > wire_limits.max_wire_bytes;
-        if (is_invalid_size) return cxx::unexpected(RenderError{kInvalidWire});
-        cxx::BinaryReader in(bytes.first(record_size), wire_limits.max_wire_bytes);
-        Record value;
-        for (auto& x : value.session) in.readUnsigned(x);
-        for (auto* x : {&value.request.index, &value.request.gen, &value.operation.index, &value.operation.gen})
-            in.readUnsigned(*x);
-        for (auto& x : value.args) in.readUnsigned(x);
-        for (auto& x : value.color) in.readFloat(x);
-        in.readUnsigned(value.reply_capacity);
-        in.readUnsigned(value.error.type);
-        for (auto& x : value.error.args) in.readUnsigned(x);
-        BlobRef range;
-        in.readUnsigned(range.offset);
-        in.readUnsigned(range.size);
-        if (range.offset != record_size || range.size != bytes.size() - record_size)
-            return cxx::unexpected(RenderError{kInvalidWire});
-        if (!in.requireFullyConsumed() || value.request.isNull())
-            return cxx::unexpected(RenderError{kInvalidWire});
-        body = bytes.subspan(record_size);
-        return value;
-    }
-
     OwnedWireBytes own(std::vector<std::byte> bytes) noexcept
     {
         auto owner = std::make_shared<std::vector<std::byte>>(std::move(bytes));
@@ -148,45 +70,111 @@ namespace lux::render::runtime_detail
         return std::move(out).take();
     }
 
-    OperationDescriptor descriptor(ERenderCommand operation) noexcept
-    {
-        static constexpr std::array names{
-            "render.ready", "render.scene.create", "render.scene.remove", "render.view.create", "render.view.remove",
-            "render.target.create", "render.target.resize", "render.effect.create", "render.effect.remove",
-            "render.attach", "render.detach", "render.readback", "render.stop"
-        };
-        const auto completion = operation == ERenderCommand::READBACK ? ECompletionContract::RESULT_AVAILABLE :
-            ECompletionContract::STATE_COMMITTED;
-        return operationDescriptor<Record, Record>(names[static_cast<std::size_t>(operation)], {1, 0}, completion);
-    }
 
-    std::vector<std::byte> capabilities(std::span<const OperationId> operations) noexcept
+    std::vector<std::byte> operationBytes(const OperationDescriptor& value) noexcept
     {
         cxx::BinaryVectorWriter out;
-        for (auto id : operations) { out.writeUnsigned(id.index); out.writeUnsigned(id.gen); }
-        for (std::size_t i = 0; i < operation_count; ++i)
-        {
-            const auto op = descriptor(static_cast<ERenderCommand>(i));
-            writeText(out, op.type.name());
-            out.writeUnsigned(op.version.major);
-            out.writeUnsigned(op.version.minor);
-            out.writeUnsigned(static_cast<std::uint32_t>(op.completion));
-            writeBlock(out, schemaBytes(op.payload));
-            writeBlock(out, schemaBytes(*op.reply));
-        }
+        writeText(out, value.type.name());
+        out.writeUnsigned(value.version.major);
+        out.writeUnsigned(value.version.minor);
+        out.writeUnsigned(static_cast<std::uint32_t>(value.completion));
+        writeBlock(out, schemaBytes(value.payload));
+        writeBlock(out, value.reply ? schemaBytes(*value.reply) : std::vector<std::byte>{});
         return std::move(out).take();
     }
 
-    RenderResult<std::array<OperationId, operation_count>> bindCapabilities(std::span<const std::byte> bytes) noexcept
+    RenderResult<OperationId> bindCapability(std::span<const std::byte> bytes,
+        const OperationDescriptor& expected) noexcept
     {
         cxx::BinaryReader in(bytes, wire_limits.max_wire_bytes);
-        std::array<OperationId, operation_count> ids{};
-        for (auto& id : ids)
-            if (!in.readUnsigned(id.index) || !in.readUnsigned(id.gen))
+        const auto contract = operationBytes(expected);
+        OperationId found;
+        std::uint32_t count = 0;
+        if (!in.readUnsigned(count) || count > 1024) return cxx::unexpected(RenderError{kProtocolContract});
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            OperationId id;
+            std::span<const std::byte> description;
+            if (!in.readUnsigned(id.index) || !in.readUnsigned(id.gen) || id.isNull() || !readBlock(in, description))
                 return cxx::unexpected(RenderError{kProtocolContract});
-        const auto expected = capabilities(ids);
-        if (!std::ranges::equal(bytes, expected)) return cxx::unexpected(RenderError{kProtocolContract});
-        return ids;
+            if (std::ranges::equal(description, contract))
+            {
+                if (!found.isNull()) return cxx::unexpected(RenderError{kProtocolContract});
+                found = id;
+            }
+        }
+        if (!in.requireFullyConsumed() || found.isNull()) return cxx::unexpected(RenderError{kProtocolContract});
+        return found;
+    }
+
+    void writeRequest(cxx::BinarySpanWriter& out, const RequestFrame& frame, std::uint32_t size) noexcept
+    {
+        out.writeUnsigned<std::uint32_t>(0x33514c52);
+        out.writeUnsigned(frame.request.index);
+        out.writeUnsigned(frame.request.gen);
+        out.writeUnsigned(frame.operation.index);
+        out.writeUnsigned(frame.operation.gen);
+        for (auto value : frame.session) out.writeUnsigned(value);
+        out.writeUnsigned(frame.reply_capacity);
+        out.writeUnsigned(size);
+    }
+
+    RenderResult<RequestFrame> readRequest(std::span<const std::byte> bytes) noexcept
+    {
+        if (bytes.size() < request_size || bytes.size() > wire_limits.max_wire_bytes)
+            return cxx::unexpected(RenderError{kInvalidWire});
+        cxx::BinaryReader in(bytes.first(request_size), request_size);
+        RequestFrame frame;
+        std::uint32_t magic = 0, size = 0;
+        in.readUnsigned(magic);
+        in.readUnsigned(frame.request.index);
+        in.readUnsigned(frame.request.gen);
+        in.readUnsigned(frame.operation.index);
+        in.readUnsigned(frame.operation.gen);
+        for (auto& value : frame.session) in.readUnsigned(value);
+        in.readUnsigned(frame.reply_capacity);
+        in.readUnsigned(size);
+        const bool invalid = magic != 0x33514c52 || frame.request.isNull() ||
+            size != bytes.size() - request_size || !in.requireFullyConsumed();
+        if (invalid) return cxx::unexpected(RenderError{kInvalidWire});
+        frame.payload = bytes.subspan(request_size);
+        return frame;
+    }
+
+    void writeReply(cxx::BinarySpanWriter& out, const ReplyFrame& frame, std::uint32_t size) noexcept
+    {
+        out.writeUnsigned<std::uint32_t>(0x33504c52);
+        out.writeUnsigned(frame.header.request.index);
+        out.writeUnsigned(frame.header.request.gen);
+        for (auto value : frame.session) out.writeUnsigned(value);
+        out.writeUnsigned(static_cast<std::uint32_t>(frame.header.outcome));
+        out.writeUnsigned(frame.header.error.type);
+        for (auto value : frame.header.error.args) out.writeUnsigned(value);
+        out.writeUnsigned(size);
+    }
+
+    RenderResult<ReplyFrame> readReply(const platform::ipc::IpcMessage& message) noexcept
+    {
+        auto bytes = message.bytes();
+        if (bytes.size() < reply_size) return cxx::unexpected(RenderError{kInvalidWire});
+        cxx::BinaryReader in(bytes.first(reply_size), reply_size);
+        ReplyFrame frame;
+        std::uint32_t magic = 0, outcome = 0, size = 0;
+        in.readUnsigned(magic);
+        in.readUnsigned(frame.header.request.index);
+        in.readUnsigned(frame.header.request.gen);
+        for (auto& value : frame.session) in.readUnsigned(value);
+        in.readUnsigned(outcome);
+        in.readUnsigned(frame.header.error.type);
+        for (auto& value : frame.header.error.args) in.readUnsigned(value);
+        in.readUnsigned(size);
+        const bool invalid = magic != 0x33504c52 || frame.header.request.isNull() ||
+            outcome > static_cast<unsigned>(EOperationOutcome::OUTCOME_UNKNOWN) ||
+            size != bytes.size() - reply_size || !in.requireFullyConsumed();
+        if (invalid) return cxx::unexpected(RenderError{kInvalidWire});
+        frame.header.outcome = static_cast<EOperationOutcome>(outcome);
+        frame.payload = bytes.subspan(reply_size);
+        return frame;
     }
 
     RenderResult<std::vector<std::byte>> selections(std::span<const FeatureSelection> features) noexcept

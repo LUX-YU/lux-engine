@@ -34,25 +34,16 @@ namespace lux::render
             std::vector<ExecutionGroup> groups;
             std::size_t next_group = 0;
         };
-        struct Undelivered final { std::shared_ptr<ipc::ReceivedRequest> request; ipc::IpcMessage output; };
         struct PendingReadback final
         {
-            std::shared_ptr<ipc::ReceivedRequest> request;
-            Record reply;
+            RenderRequest request;
             vulkan::ExecutionContext* context;
         };
-        struct Output final
+        struct OperationEntry final
         {
-            OwnedWireBytes header;
-            OwnedWireBytes data;
-            std::array<std::span<const std::byte>, 1> views;
+            OperationId id;
+            OperationHandler binding;
         };
-
-        TargetDesc targetDescription(const Record& input) noexcept
-        {
-            return {input.args[8], input.args[9], static_cast<rdesc::ETextureFormat>(input.args[10]),
-                input.args[11], static_cast<ETargetKind>(input.args[12])};
-        }
     }
 
     struct RenderServer::State final
@@ -62,14 +53,14 @@ namespace lux::render
         SessionIdentity identity;
         std::vector<FeatureRegistration> features;
         std::vector<BufferInitializer> initializers;
-        cxx::SlotMap<ERenderCommand, OperationTag> operations;
-        std::array<OperationId, operation_count> operation_ids;
+        cxx::SlotMap<OperationEntry, OperationTag> operations;
+        std::vector<std::byte> manifest;
         cxx::SlotMap<Scene, SceneTag> scenes;
         cxx::SlotMap<Target, TargetTag> targets;
         cxx::SlotMap<RenderEffect, EffectTag> effects;
         std::optional<vulkan::InstanceContext> instance;
         std::unique_ptr<vulkan::DeviceSession> device;
-        std::vector<Undelivered> undelivered;
+        std::vector<RenderRequest> undelivered;
         std::vector<PendingReadback> readbacks;
         unsigned clients = 0;
         std::size_t next_effect = 0;
@@ -83,35 +74,58 @@ namespace lux::render
         {
             undelivered.reserve(128);
             readbacks.reserve(128);
-            for (std::size_t i = 0; i < operation_count; ++i)
-                operation_ids[i] = operations.emplace(static_cast<ERenderCommand>(i));
+            addOperation({&operations::createScene(), [](void* user, RenderRequest& request) noexcept {
+                return static_cast<State*>(user)->createScene(request);
+            }, this});
+            addOperation({&operations::removeScene(), [](void* user, RenderRequest& request) noexcept {
+                return static_cast<State*>(user)->removeScene(request);
+            }, this});
+            addOperation({&operations::createView(), [](void* user, RenderRequest& request) noexcept {
+                return static_cast<State*>(user)->createView(request);
+            }, this});
+            addOperation({&operations::removeView(), [](void* user, RenderRequest& request) noexcept {
+                return static_cast<State*>(user)->removeView(request);
+            }, this});
+            addOperation({&operations::createTarget(), [](void* user, RenderRequest& request) noexcept {
+                return static_cast<State*>(user)->createTarget(request);
+            }, this});
+            addOperation({&operations::resizeTarget(), [](void* user, RenderRequest& request) noexcept {
+                return static_cast<State*>(user)->resizeTarget(request);
+            }, this});
+            addOperation({&operations::createEffect(), [](void* user, RenderRequest& request) noexcept {
+                return static_cast<State*>(user)->createEffect(request);
+            }, this});
+            addOperation({&operations::removeEffect(), [](void* user, RenderRequest& request) noexcept {
+                return static_cast<State*>(user)->removeEffect(request);
+            }, this});
+            addOperation({&operations::attach(), [](void* user, RenderRequest& request) noexcept {
+                return static_cast<State*>(user)->attach(request);
+            }, this});
+            addOperation({&operations::detach(), [](void* user, RenderRequest& request) noexcept {
+                return static_cast<State*>(user)->detach(request);
+            }, this});
+            addOperation({&operations::readback(), [](void* user, RenderRequest& request) noexcept {
+                return static_cast<State*>(user)->readback(request);
+            }, this});
+            addOperation({&operations::stop(), [](void* user, RenderRequest& request) noexcept {
+                return static_cast<State*>(user)->stopOperation(request);
+            }, this});
         }
 
-        void finish(std::shared_ptr<ipc::ReceivedRequest> request, Record reply, OwnedWireBytes data = {}) noexcept
+        void addOperation(OperationHandler binding) noexcept
         {
-            auto encoded = encodeWire(reply, {}, wire_limits);
-            if (!encoded) std::terminate();
-            const bool exceeds_budget = encoded->size() > reply.reply_capacity ||
-                data.size() > reply.reply_capacity - std::min<std::uint64_t>(encoded->size(), reply.reply_capacity);
-            if (exceeds_budget)
+            auto id = operations.emplace(OperationEntry{{}, binding});
+            operations.find(id)->id = id;
+        }
+
+        void settle(RenderRequest request, RenderResult<void> result) noexcept
+        {
+            if (!request.active()) return;
+            auto replied = request.fail(result ? RenderError{kRuntimeState} : result.error());
+            if (!replied)
             {
-                reply.body = {};
-                data = {};
-                reply.args[13] = static_cast<unsigned>(EOperationOutcome::FAILED);
-                reply.error = {kRuntimeCapacity};
-                encoded = encodeWire(reply, {}, wire_limits);
-                if (!encoded) std::terminate();
-            }
-            auto owner = std::make_unique<Output>(Output{std::move(*encoded), std::move(data)});
-            owner->views[0] = owner->data.view();
-            const auto views = owner->data.empty() ? std::span<const std::span<const std::byte>>{} :
-                std::span<const std::span<const std::byte>>(owner->views);
-            ipc::IpcMessage message;
-            if (!message.tryAdopt(owner, owner->header.view(), views)) std::terminate();
-            if (!responder.tryReply(*request, message))
-            {
-                undelivered.push_back({std::move(request), std::move(message)});
-                if (undelivered.size() >= 128) stop.store(true);
+                undelivered.push_back(std::move(request));
+                if (undelivered.size() >= undelivered.capacity()) stop.store(true);
             }
         }
 
@@ -121,8 +135,8 @@ namespace lux::render
             {
                 if (it->context != context) { ++it; continue; }
                 it->context->releaseReadback();
-                it->reply.args[13] = static_cast<unsigned>(EOperationOutcome::CANCELLED);
-                finish(std::move(it->request), std::move(it->reply));
+                auto result = it->request.cancel();
+                settle(std::move(it->request), result);
                 it = readbacks.erase(it);
             }
         }
@@ -151,12 +165,11 @@ namespace lux::render
             return {};
         }
 
-        RenderResult<void> attach(const Record& input) noexcept
+        RenderResult<void> attach(RenderRequest& request) noexcept
         {
-            const auto scene_id = key<SceneId>(std::span(input.args).subspan(0));
-            const auto view_id = key<ViewId>(std::span(input.args).subspan(2));
-            const auto target_id = key<TargetId>(std::span(input.args).subspan(4));
-            const auto effect_id = key<EffectId>(std::span(input.args).subspan(6));
+            auto decoded = request.decode<AttachmentRequest>();
+            if (!decoded) return cxx::unexpected(decoded.error());
+            const auto [scene_id, view_id, target_id, effect_id] = *decoded;
             const auto* scene = scenes.find(scene_id);
             const auto* view = scene ? scene->views.find(view_id) : nullptr;
             const auto* target = targets.find(target_id);
@@ -171,7 +184,7 @@ namespace lux::render
             (*prepared)->setColor(view->color);
             effect->groups.push_back({scene_id, view_id, target_id, *prepared});
             scoped_buffers_created.store(device->scopedBufferCreations());
-            return {};
+            return request.reply();
         }
 
         RenderResult<void> resize(TargetId id, Target& target, const TargetDesc& description) noexcept
@@ -205,23 +218,21 @@ namespace lux::render
             return {};
         }
 
-        RenderResult<void> queueReadback(const Record& input,
-            const std::shared_ptr<ipc::ReceivedRequest>& request, Record reply) noexcept
+        RenderResult<void> readback(RenderRequest& request) noexcept
         {
-            auto* effect = effects.find(key<EffectId>(std::span(input.args).subspan(6)));
+            auto input = request.decode<AttachmentRequest>();
+            if (!input) return cxx::unexpected(input.error());
+            auto* effect = effects.find(input->effect);
             if (!effect) return cxx::unexpected(RenderError{kRuntimeIdentity});
-            const auto scene = key<SceneId>(std::span(input.args).subspan(0));
-            const auto view = key<ViewId>(std::span(input.args).subspan(2));
-            const auto target = key<TargetId>(std::span(input.args).subspan(4));
             auto found = std::find_if(effect->groups.begin(), effect->groups.end(), [&](const auto& group) {
-                return group.scene == scene && group.view == view && group.target == target;
+                return group.scene == input->scene && group.view == input->view && group.target == input->target;
             });
             if (found == effect->groups.end()) return cxx::unexpected(RenderError{kRuntimeIdentity});
-            const bool full = readbacks.size() == readbacks.capacity() ||
-                found->context->readbackBytes() > input.reply_capacity - record_size;
+            const bool full = readbacks.size() == readbacks.capacity() || request.replyCapacity() < reply_size + 20 ||
+                found->context->readbackBytes() > request.replyCapacity() - reply_size - 20;
             if (full) return cxx::unexpected(RenderError{kRuntimeCapacity});
             found->context->retainReadback();
-            readbacks.push_back({request, std::move(reply), found->context});
+            readbacks.push_back({std::move(request), found->context});
             return {};
         }
 
@@ -245,9 +256,11 @@ namespace lux::render
                 auto result = it->context->readback();
                 if (!result && result.error().type == vulkan::kBusy) { ++it; continue; }
                 it->context->releaseReadback();
-                it->reply.args[13] = static_cast<unsigned>(result ? EOperationOutcome::SUCCESS : EOperationOutcome::FAILED);
-                if (!result) it->reply.error = result.error();
-                finish(std::move(it->request), std::move(it->reply), result ? own(std::move(*result)) : OwnedWireBytes{});
+                auto data = result ? own(std::move(*result)) : OwnedWireBytes{};
+                const auto size = data.size();
+                auto reply = result ? it->request.reply(ReadbackResult{{0, 0, size}}, std::move(data)) :
+                    it->request.fail(result.error());
+                settle(std::move(it->request), reply);
                 it = readbacks.erase(it);
             }
             return device->collect();
@@ -262,10 +275,14 @@ namespace lux::render
             return VK_FALSE;
         }
 
-        RenderResult<void> install(const std::shared_ptr<Record>& input,
-            const std::shared_ptr<ipc::ReceivedRequest>& request, Record& reply) noexcept
+        RenderResult<EffectId> install(const std::shared_ptr<RenderRequest>& request) noexcept
         {
-            cxx::BinaryReader reader(input->body.view(), config.max_wire_bytes);
+            auto bytes = OwnedWireBytes::fromOwner(request, request->message().bytes().subspan(request_size));
+            auto input = decodeWire<CreateEffectRequest>(
+                {DataSchema<CreateEffectRequest>::describe(), bytes, {}}, wire_limits
+            );
+            if (!input) return cxx::unexpected(input.error());
+            cxx::BinaryReader reader(input->selections.view(), config.max_wire_bytes);
             std::uint32_t count = 0;
             if (!reader.readUnsigned(count) || count == 0 || count > max_features)
                 return cxx::unexpected(RenderError{kInvalidWire});
@@ -299,7 +316,7 @@ namespace lux::render
                 {
                     if (!std::ranges::equal(schemaBytes(*definition.config_schema), schema))
                         return cxx::unexpected(RenderError{kDataSchemaMismatch});
-                    config_owners.push_back(OwnedWireBytes::fromOwner(input, config_bytes));
+                    config_owners.push_back(OwnedWireBytes::fromOwner(request, config_bytes));
                     configs.push_back({*definition.config_schema, config_owners.back(), attachments});
                     wire = &configs.back();
                 }
@@ -329,176 +346,180 @@ namespace lux::render
                 }
                 for (auto& value : *values) programs.push_back(std::move(value));
             }
-            auto compiled = vulkan::compileGraph(*device, *assembly, programs, targetDescription(*input));
+            auto compiled = vulkan::compileGraph(*device, *assembly, programs, input->description);
             if (!compiled) return cxx::unexpected(compiled.error());
             auto code = std::make_shared<vulkan::CompiledGraph>(std::move(*compiled));
             const auto effect = effects.emplace(RenderEffect{std::move(code)});
-            putKey(std::span(reply.args).subspan(6), effect);
             ++compiled_graphs;
+            return effect;
+        }
+
+        RenderResult<void> createScene(RenderRequest& request) noexcept
+        {
+            return request.reply(SceneCreated{scenes.emplace()});
+        }
+
+        RenderResult<void> removeScene(RenderRequest& request) noexcept
+        {
+            auto input = request.decode<SceneRequest>();
+            if (!input) return cxx::unexpected(input.error());
+            const auto scene_id = input->scene;
+            if (!scenes.find(scene_id)) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            if (auto admitted = admitWithdraw([&](const auto&, const auto& group) {
+                return group.scene == scene_id;
+            }); !admitted) return admitted;
+            for (auto& effect : effects)
+                for (std::size_t i = effect.groups.size(); i-- > 0;)
+                    if (effect.groups[i].scene == scene_id)
+                        if (auto result = withdraw(effect, i); !result) return result;
+            device->releaseScope(scene_id);
+            scenes.erase(scene_id);
+            return request.reply();
+        }
+
+        RenderResult<void> createView(RenderRequest& request) noexcept
+        {
+            auto input = request.decode<CreateViewRequest>();
+            if (!input) return cxx::unexpected(input.error());
+            auto* scene = scenes.find(input->scene);
+            if (!scene) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            if (!std::ranges::all_of(input->color, [](float x) { return std::isfinite(x); }))
+                return cxx::unexpected(RenderError{kInvalidWire});
+            return request.reply(ViewCreated{scene->views.emplace(View{input->color})});
+        }
+
+        RenderResult<void> removeView(RenderRequest& request) noexcept
+        {
+            auto input = request.decode<ViewRequest>();
+            if (!input) return cxx::unexpected(input.error());
+            auto* scene = scenes.find(input->scene);
+            if (!scene || !scene->views.find(input->view)) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            if (auto admitted = admitWithdraw([&](const auto&, const auto& group) {
+                return group.scene == input->scene && group.view == input->view;
+            }); !admitted) return admitted;
+            for (auto& effect : effects)
+                for (std::size_t i = effect.groups.size(); i-- > 0;)
+                    if (effect.groups[i].scene == input->scene && effect.groups[i].view == input->view)
+                        if (auto result = withdraw(effect, i); !result) return result;
+            device->releaseScope(input->scene, input->view);
+            scene->views.erase(input->view);
+            return request.reply();
+        }
+
+        RenderResult<void> createTarget(RenderRequest& request) noexcept
+        {
+            auto input = request.decode<CreateTargetRequest>();
+            if (!input) return cxx::unexpected(input.error());
+            if (auto valid = input->description.validate(); !valid) return valid;
+            if (input->description.kind != ETargetKind::OFFSCREEN)
+                return cxx::unexpected(RenderError{kRuntimeUnsupported});
+            return request.reply(TargetCreated{targets.emplace(Target{input->description}), 1});
+        }
+
+        RenderResult<void> resizeTarget(RenderRequest& request) noexcept
+        {
+            auto input = request.decode<ResizeTargetRequest>();
+            if (!input) return cxx::unexpected(input.error());
+            if (auto valid = input->description.validate(); !valid) return valid;
+            if (input->description.kind != ETargetKind::OFFSCREEN)
+                return cxx::unexpected(RenderError{kRuntimeUnsupported});
+            auto* target = targets.find(input->target);
+            if (!target) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            if (target->epoch == UINT64_MAX) return cxx::unexpected(RenderError{kRuntimeCapacity});
+            if (auto changed = resize(input->target, *target, input->description); !changed) return changed;
+            return request.reply(TargetCreated{input->target, target->epoch});
+        }
+
+        RenderResult<void> createEffect(RenderRequest& request) noexcept
+        {
+            // Graph callbacks require owned G2 references. Only this heavy path promotes the real input.
+            auto retained = std::make_shared<RenderRequest>(std::move(request));
+            auto effect = install(retained);
+            auto result = effect ? retained->reply(EffectCreated{*effect}) : retained->fail(effect.error());
+            settle(std::move(*retained), result);
             return {};
         }
 
-        RenderResult<void> execute(ERenderCommand operation, const std::shared_ptr<Record>& input,
-            const std::shared_ptr<ipc::ReceivedRequest>& request, Record& reply) noexcept
+        RenderResult<void> removeEffect(RenderRequest& request) noexcept
         {
-            const auto scene_id = key<SceneId>(std::span(input->args).subspan(0));
-            const auto view_id = key<ViewId>(std::span(input->args).subspan(2));
-            const auto target_id = key<TargetId>(std::span(input->args).subspan(4));
-            const auto effect_id = key<EffectId>(std::span(input->args).subspan(6));
-            switch (operation)
+            auto input = request.decode<EffectRequest>();
+            if (!input) return cxx::unexpected(input.error());
+            auto* effect = effects.find(input->effect);
+            if (!effect) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            if (auto admitted = admitWithdraw([&](const auto& owner, const auto&) {
+                return &owner == effect;
+            }); !admitted) return admitted;
+            while (!effect->groups.empty())
+                if (auto result = withdraw(*effect, effect->groups.size() - 1); !result) return result;
+            effects.erase(input->effect);
+            return request.reply();
+        }
+
+        RenderResult<void> detach(RenderRequest& request) noexcept
+        {
+            auto input = request.decode<AttachmentRequest>();
+            if (!input) return cxx::unexpected(input.error());
+            auto* effect = effects.find(input->effect);
+            if (!effect) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            for (std::size_t i = 0; i < effect->groups.size(); ++i)
             {
-            case ERenderCommand::READY:
-                if (clients == 2) return cxx::unexpected(RenderError{kRuntimeCapacity});
-                reply.body = own(capabilities(operation_ids));
-                if (reply.body.size() + record_size > input->reply_capacity)
-                    return cxx::unexpected(RenderError{kRuntimeCapacity});
-                ++clients;
-                return {};
-            case ERenderCommand::CREATE_SCENE:
-                putKey(std::span(reply.args).subspan(0), scenes.emplace());
-                return {};
-            case ERenderCommand::REMOVE_SCENE:
-                if (!scenes.find(scene_id)) return cxx::unexpected(RenderError{kRuntimeIdentity});
-                if (auto admitted = admitWithdraw([&](const auto&, const auto& group) {
-                    return group.scene == scene_id;
-                }); !admitted) return admitted;
-                for (auto& effect : effects)
-                    for (std::size_t i = effect.groups.size(); i-- > 0;)
-                        if (effect.groups[i].scene == scene_id)
-                            if (auto result = withdraw(effect, i); !result) return result;
-                device->releaseScope(scene_id);
-                if (!scenes.erase(scene_id)) return cxx::unexpected(RenderError{kRuntimeIdentity});
-                return {};
-            case ERenderCommand::CREATE_VIEW:
-            case ERenderCommand::REMOVE_VIEW:
-            {
-                auto* scene = scenes.find(scene_id);
-                if (!scene) return cxx::unexpected(RenderError{kRuntimeIdentity});
-                if (operation == ERenderCommand::REMOVE_VIEW)
+                const auto& group = effect->groups[i];
+                if (group.scene == input->scene && group.view == input->view && group.target == input->target)
                 {
-                    if (!scene->views.find(view_id)) return cxx::unexpected(RenderError{kRuntimeIdentity});
-                    if (auto admitted = admitWithdraw([&](const auto&, const auto& group) {
-                        return group.scene == scene_id && group.view == view_id;
+                    if (auto admitted = admitWithdraw([&](const auto&, const auto& current) {
+                        return current.context == group.context;
                     }); !admitted) return admitted;
-                    for (auto& effect : effects)
-                        for (std::size_t i = effect.groups.size(); i-- > 0;)
-                            if (effect.groups[i].scene == scene_id && effect.groups[i].view == view_id)
-                                if (auto result = withdraw(effect, i); !result) return result;
-                    device->releaseScope(scene_id, view_id);
-                    if (!scene->views.erase(view_id)) return cxx::unexpected(RenderError{kRuntimeIdentity});
+                    if (auto result = withdraw(*effect, i); !result) return result;
+                    return request.reply();
                 }
-                else
-                {
-                    if (!std::ranges::all_of(input->color, [](float x) { return std::isfinite(x); }))
-                        return cxx::unexpected(RenderError{kInvalidWire});
-                    putKey(std::span(reply.args).subspan(2), scene->views.emplace(View{input->color}));
-                }
-                return {};
             }
-            case ERenderCommand::CREATE_TARGET:
-            case ERenderCommand::RESIZE_TARGET:
-            {
-                const auto desc = targetDescription(*input);
-                if (auto valid = desc.validate(); !valid) return valid;
-                if (desc.kind != ETargetKind::OFFSCREEN) return cxx::unexpected(RenderError{kRuntimeUnsupported});
-                if (operation == ERenderCommand::CREATE_TARGET)
-                {
-                    putKey(std::span(reply.args).subspan(4), targets.emplace(Target{desc}));
-                    reply.args[14] = 1;
-                    reply.args[15] = 0;
-                }
-                else
-                {
-                    auto* target = targets.find(target_id);
-                    if (!target) return cxx::unexpected(RenderError{kRuntimeIdentity});
-                    if (target->epoch == UINT64_MAX) return cxx::unexpected(RenderError{kRuntimeCapacity});
-                    if (auto changed = resize(target_id, *target, desc); !changed) return changed;
-                    reply.args[14] = static_cast<std::uint32_t>(target->epoch);
-                    reply.args[15] = static_cast<std::uint32_t>(target->epoch >> 32);
-                }
-                return {};
-            }
-            case ERenderCommand::CREATE_EFFECT: return install(input, request, reply);
-            case ERenderCommand::REMOVE_EFFECT:
-            {
-                auto* effect = effects.find(effect_id);
-                if (!effect) return cxx::unexpected(RenderError{kRuntimeIdentity});
-                if (auto admitted = admitWithdraw([&](const auto& owner, const auto&) {
-                    return &owner == effect;
-                }); !admitted) return admitted;
-                while (!effect->groups.empty())
-                    if (auto result = withdraw(*effect, effect->groups.size() - 1); !result) return result;
-                if (!effects.erase(effect_id)) return cxx::unexpected(RenderError{kRuntimeIdentity});
-                return {};
-            }
-            case ERenderCommand::ATTACH: return attach(*input);
-            case ERenderCommand::DETACH:
-            {
-                auto* effect = effects.find(effect_id);
-                if (!effect) return cxx::unexpected(RenderError{kRuntimeIdentity});
-                for (std::size_t i = 0; i < effect->groups.size(); ++i)
-                {
-                    const auto& group = effect->groups[i];
-                    if (group.scene == scene_id && group.view == view_id && group.target == target_id)
-                    {
-                        if (auto admitted = admitWithdraw([&](const auto&, const auto& current) {
-                            return current.context == group.context;
-                        }); !admitted) return admitted;
-                        return withdraw(*effect, i);
-                    }
-                }
-                return cxx::unexpected(RenderError{kRuntimeIdentity});
-            }
-            case ERenderCommand::STOP: stop.store(true); return {};
-            default: return cxx::unexpected(RenderError{kRuntimeUnsupported});
-            }
+            return cxx::unexpected(RenderError{kRuntimeIdentity});
+        }
+
+        RenderResult<void> stopOperation(RenderRequest& request) noexcept
+        {
+            stop.store(true);
+            return request.reply();
         }
 
         void dispatch(ipc::ReceivedRequest received) noexcept
         {
-            auto request = std::make_shared<ipc::ReceivedRequest>(std::move(received));
-            auto bytes = OwnedWireBytes::fromOwner(request, request->message().bytes());
-            auto decoded = decodeWire<Record>({DataSchema<Record>::describe(), bytes, {}},
-                {config.max_wire_bytes, config.max_wire_bytes});
-            if (!decoded)
+            auto frame = readRequest(received.message().bytes());
+            if (!frame)
             {
-                // Invalid framing cannot safely identify a business request. End this
-                // epoch and release the original opaque input only at cold shutdown.
-                undelivered.push_back({std::move(request), {}});
+                // Uncorrelatable malformed framing closes this epoch; IPC preserves opaque original input.
+                received.reset();
                 stop.store(true);
                 return;
             }
-            auto input = std::make_shared<Record>(std::move(*decoded));
-            Record reply;
-            reply.request = input->request;
-            reply.session = identity;
-            reply.args = input->args;
-            reply.reply_capacity = input->reply_capacity;
-            ERenderCommand operation = ERenderCommand::READY;
+            if (frame->reply_capacity < reply_size)
+            {
+                received.reset(); // malformed admission cannot fund a wire terminal; IPC returns original ABORTED
+                ++commands;
+                return;
+            }
+            const auto* entry = frame->operation.isNull() ? nullptr : operations.find(frame->operation);
+            RenderRequest request(std::move(received), responder, identity, frame->request,
+                frame->reply_capacity, entry ? entry->binding.descriptor : nullptr);
+            const bool invalid_capacity = frame->reply_capacity < reply_size ||
+                frame->reply_capacity > config.max_reply_bytes;
             RenderResult<void> result;
-            if (!input->operation.isNull())
+            if (invalid_capacity) result = cxx::unexpected(RenderError{kRuntimeCapacity});
+            else if (frame->operation.isNull())
             {
-                const auto* found = operations.find(input->operation);
-                if (!found || *found == ERenderCommand::READY || input->session != identity)
-                    result = cxx::unexpected(RenderError{kRuntimeIdentity});
-                else operation = *found;
+                if (!frame->payload.empty() || clients == 2) result = cxx::unexpected(RenderError{kRuntimeCapacity});
+                else { result = request.reply(std::span<const std::byte>(manifest)); if (result) ++clients; }
             }
-            const bool invalid_reply_capacity = input->reply_capacity > config.max_reply_bytes ||
-                input->reply_capacity < record_size;
-            if (invalid_reply_capacity) result = cxx::unexpected(RenderError{kRuntimeCapacity});
-            if (result && operation == ERenderCommand::READBACK)
-            {
-                result = queueReadback(*input, request, reply);
-                if (result) { ++commands; return; }
-            }
+            else if (!entry || frame->session != identity) result = cxx::unexpected(RenderError{kRuntimeIdentity});
+            else if (entry->binding.descriptor->reply &&
+                entry->binding.descriptor->reply->fixed_size > frame->reply_capacity - reply_size)
+                result = cxx::unexpected(RenderError{kRuntimeCapacity});
             else
-            if (result) result = execute(operation, input, request, reply);
-            reply.args[13] = static_cast<unsigned>(result ? EOperationOutcome::SUCCESS : EOperationOutcome::FAILED);
-            if (!result) reply.error = result.error();
-            // All WireView/Feature borrows ended before transferring input back.
-            input.reset();
-            bytes = {};
-            finish(std::move(request), std::move(reply));
+            {
+                result = validateBoundWire(request.payload(), {config.max_wire_bytes, SIZE_MAX});
+                if (result) result = entry->binding.invoke(entry->binding.user, request);
+            }
+            settle(std::move(request), result);
             ++commands;
         }
 
@@ -526,8 +547,8 @@ namespace lux::render
     RenderResult<std::unique_ptr<RenderServer>> RenderServer::create(RenderServerConfig config) noexcept
     {
         const bool invalid = config.requests_per_tick == 0 || config.requests_per_tick > 128 ||
-            config.max_wire_bytes < record_size || config.max_wire_bytes > wire_limits.max_wire_bytes ||
-            config.max_reply_bytes < record_size || config.max_reply_bytes > 256 * 1024 * 1024 ||
+            config.max_wire_bytes < reply_size || config.max_wire_bytes > wire_limits.max_wire_bytes ||
+            config.max_reply_bytes < reply_size || config.max_reply_bytes > 256 * 1024 * 1024 ||
             config.retirement_capacity == 0;
         if (invalid) return cxx::unexpected(RenderError{kRuntimeCapacity});
         SessionIdentity identity{};
@@ -563,6 +584,22 @@ namespace lux::render
                 if (current.type.name() == buffer.type.name() && current.abi == buffer.abi &&
                     current.initialize != buffer.initialize) return cxx::unexpected(RenderError{kFeatureDuplicate});
         }
+        if (feature.handlers.size() != feature.definition->operations.size())
+            return cxx::unexpected(RenderError{kFeatureContract});
+        for (std::size_t i = 0; i < feature.handlers.size(); ++i)
+        {
+            const auto& handler = feature.handlers[i];
+            if (!handler.descriptor || !handler.invoke) return cxx::unexpected(RenderError{kFeatureContract});
+            if (auto valid = compatibleOperations(feature.definition->operations[i], *handler.descriptor); !valid)
+                return valid;
+            for (const auto& old : s.operations)
+                if (old.binding.descriptor->type.name() == handler.descriptor->type.name())
+                    return cxx::unexpected(RenderError{kFeatureDuplicate});
+            for (std::size_t previous = 0; previous < i; ++previous)
+                if (feature.handlers[previous].descriptor->type.name() == handler.descriptor->type.name())
+                    return cxx::unexpected(RenderError{kFeatureDuplicate});
+        }
+        for (const auto& handler : feature.handlers) s.addOperation(handler);
         for (const auto& buffer : feature.buffers)
             if (std::ranges::none_of(s.initializers, [&](const auto& current) {
                 return current.type.name() == buffer.type.name() && current.abi == buffer.abi;
@@ -575,6 +612,15 @@ namespace lux::render
     {
         auto& s = *state_;
         if (s.started.exchange(true)) return cxx::unexpected(RenderError{kRuntimeState});
+        cxx::BinaryVectorWriter manifest;
+        manifest.writeUnsigned<std::uint32_t>(static_cast<std::uint32_t>(s.operations.size()));
+        for (const auto& entry : s.operations)
+        {
+            manifest.writeUnsigned(entry.id.index);
+            manifest.writeUnsigned(entry.id.gen);
+            writeBlock(manifest, operationBytes(*entry.binding.descriptor));
+        }
+        s.manifest = std::move(manifest).take();
         s.running.store(true);
         auto instance = vulkan::InstanceContext::create({{}, s.config.validation, State::diagnostic, &s});
         if (!instance) { s.shutdown(); return cxx::unexpected(instance.error()); }

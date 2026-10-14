@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/runtime/RenderClient.hpp>
+#include <lux/engine/render/runtime/Operations.hpp>
+#include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/features/Feature.hpp>
 #include <lux/engine/render/features/Program.hpp>
 
@@ -17,11 +18,77 @@ namespace lux::render
         std::size_t retirement_capacity = 64;
     };
 
+    // One source-qualified request. Move only for real deferred work; settle before Responder teardown.
+    class RenderRequest final
+    {
+    public:
+        RenderRequest(RenderRequest&&) noexcept = default;
+        RenderRequest& operator=(RenderRequest&&) noexcept = default;
+        RenderRequest(const RenderRequest&) = delete;
+        RenderRequest& operator=(const RenderRequest&) = delete;
+        [[nodiscard]] bool active() const noexcept { return input_.active(); }
+        [[nodiscard]] RequestId id() const noexcept { return request_; }
+        [[nodiscard]] BorrowedWireView payload() const noexcept;
+        [[nodiscard]] const platform::ipc::IpcMessage& message() const noexcept { return input_.message(); }
+        [[nodiscard]] std::size_t replyCapacity() const noexcept { return reply_capacity_; }
+        [[nodiscard]] RenderResult<void>
+        reply(std::span<const std::byte> payload = {}, OwnedWireBytes attachment = {}) noexcept;
+        [[nodiscard]] RenderResult<void> fail(RenderError error) noexcept;
+        [[nodiscard]] RenderResult<void> cancel() noexcept;
+
+        template <BorrowedWireData T>
+        [[nodiscard]] RenderResult<T> decode() const noexcept
+        {
+            // Handler contract: T is its registered static payload type. Cold registration proves metadata;
+            // dispatch validates untrusted values/ranges once before entering the handler.
+            const auto wire = payload();
+            cxx::BinaryReader reader(wire.bytes.first(static_cast<std::size_t>(wire.schema.fixed_size)), wire.bytes.size());
+            auto value = DataSchema<T>::decode(reader, wire);
+            if (!value) return cxx::unexpected(value.error());
+            if (!reader.requireFullyConsumed()) return cxx::unexpected(RenderError{kInvalidWire});
+            return value;
+        }
+
+        template <WireData T>
+        [[nodiscard]] RenderResult<void> reply(const T& value, OwnedWireBytes attachment = {}) noexcept
+        {
+            std::array<std::byte, 128> bytes;
+            auto size = DataSchema<T>::wireSize(value);
+            if (!size) return cxx::unexpected(size.error());
+            if (*size > bytes.size()) return cxx::unexpected(RenderError{kWireLimit});
+            cxx::BinarySpanWriter writer(std::span(bytes).first(*size));
+            if (auto encoded = DataSchema<T>::encode(value, writer); !encoded) return encoded;
+            if (!writer.good() || writer.size() != *size) return cxx::unexpected(RenderError{kInvalidWire});
+            return reply(std::span<const std::byte>(bytes).first(*size), std::move(attachment));
+        }
+    private:
+        friend class RenderServer;
+        RenderRequest(platform::ipc::ReceivedRequest input, platform::ipc::IpcResponder& responder,
+            SessionIdentity session, RequestId request, std::size_t capacity, const OperationDescriptor* descriptor) noexcept;
+        [[nodiscard]] RenderResult<void> publish(EOperationOutcome outcome, RenderError error,
+            std::span<const std::byte> payload, OwnedWireBytes attachment) noexcept;
+        platform::ipc::ReceivedRequest input_;
+        std::unique_ptr<platform::ipc::IpcMessage> unreplied_; // allocated only on failed publication, cold disposal
+        platform::ipc::IpcResponder* responder_;
+        SessionIdentity session_;
+        RequestId request_;
+        std::size_t reply_capacity_;
+        const OperationDescriptor* descriptor_;
+    };
+
+    struct OperationHandler final
+    {
+        const OperationDescriptor* descriptor;
+        RenderResult<void> (*invoke)(void*, RenderRequest&) noexcept;
+        void* user = nullptr; // static/cold owner must outlive run and every deferred request
+    };
+
     struct FeatureRegistration final
     {
         const FeatureDefinition* definition;
         RenderResult<std::vector<PassProgram>> (*programs)(const WireView*, std::string_view) noexcept;
         std::span<const BufferInitializer> buffers;
+        std::span<const OperationHandler> handlers;
         // Immutable metadata/code remain loaded through run()/shutdown.
     };
 

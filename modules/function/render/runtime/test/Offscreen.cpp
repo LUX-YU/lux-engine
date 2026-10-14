@@ -44,7 +44,7 @@ static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std
     return native_fixture::programs(*config, name);
 }
 
-static RenderCompletion wait(RenderClient& client, RequestId id)
+static TestCompletion wait(TestClient& client, RequestId id)
 {
     const auto deadline = std::chrono::steady_clock::now() + 15s;
     while (std::chrono::steady_clock::now() < deadline)
@@ -56,7 +56,7 @@ static RenderCompletion wait(RenderClient& client, RequestId id)
     std::abort();
 }
 
-static RenderCompletion call(RenderClient& client, const RenderCommand& command, bool success = true)
+static TestCompletion call(TestClient& client, const TestCommand& command, bool success = true)
 {
     auto reply = wait(client, take(client.submit(command)));
     if (success)
@@ -69,7 +69,7 @@ static RenderCompletion call(RenderClient& client, const RenderCommand& command,
     return reply;
 }
 
-static void pixel(const RenderCompletion& reply, unsigned width, unsigned x, unsigned y, std::array<unsigned, 4> expected)
+static void pixel(const TestCompletion& reply, unsigned width, unsigned x, unsigned y, std::array<unsigned, 4> expected)
 {
     const auto bytes = reply.bytes();
     CHECK(bytes.size() >= (y * width + x + 1) * 4);
@@ -82,46 +82,46 @@ int main()
     const BufferInitializer buffers[]{{StorageTypeIdView("test.zero_buffer"), {1, 0}, zeroBuffer}};
     auto server = take(RenderServer::create({"runtime.offscreen", true}));
     CHECK(server->registerFeature({&native_fixture::definition, programs, buffers}));
-    auto client = take(RenderClient::create("runtime.offscreen"));
+    auto client = take(TestClient::create("runtime.offscreen"));
     bool run_ok = false;
     std::thread thread([&] {
         render_allocation::participate = true;
         run_ok = bool(server->run());
     });
-    RenderCommand command;
+    TestCommand command;
     auto ready = call(*client, command);
     command.session = ready.session;
     const auto session = ready.session;
     native_fixture::Config config{32, 32, 1, 1};
-    command.operation = ERenderCommand::CREATE_EFFECT;
+    command.operation = ETestCommand::CREATE_EFFECT;
     command.description = native_fixture::target(config);
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
         &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
     const auto effect = call(*client, command).effect;
     command.features.clear();
     std::array<SceneId, 2> scenes;
-    command.operation = ERenderCommand::CREATE_SCENE;
+    command.operation = ETestCommand::CREATE_SCENE;
     for (auto& scene : scenes) scene = call(*client, command).scene;
     const std::array<std::array<float, 4>, 4> colors{{{1, 0, 0, 1}, {0, 1, 0, 1}, {0, 0, 1, 1}, {1, 1, 0, 1}}};
     const std::array<std::array<unsigned, 4>, 4> expected{{{255, 0, 0, 255}, {0, 255, 0, 255},
         {0, 0, 255, 255}, {255, 255, 0, 255}}};
-    std::array<RenderCommand, 4> attached;
+    std::array<TestCommand, 4> attached;
     for (unsigned i = 0; i < 4; ++i)
     {
         command.scene = scenes[i / 2];
-        command.operation = ERenderCommand::CREATE_VIEW;
+        command.operation = ETestCommand::CREATE_VIEW;
         command.color = colors[i];
         const auto view = call(*client, command).view;
-        command.operation = ERenderCommand::CREATE_TARGET;
+        command.operation = ETestCommand::CREATE_TARGET;
         auto target = call(*client, command);
         CHECK(target.target_epoch == 1);
-        command.operation = ERenderCommand::ATTACH;
+        command.operation = ETestCommand::ATTACH;
         command.view = view;
         command.target = target.target;
         command.effect = effect;
         call(*client, command);
         attached[i] = command;
-        attached[i].operation = ERenderCommand::READBACK;
+        attached[i].operation = ETestCommand::READBACK;
     }
     CHECK(server->stats().compiled_graphs == 1 && server->stats().scoped_buffers_created == 11);
     CHECK(call(*client, command, false).header.outcome == EOperationOutcome::FAILED); // duplicate Target writer
@@ -143,10 +143,10 @@ int main()
     CHECK(native_fixture::descriptions == descriptions && native_fixture::builds == builds);
     CHECK(after.compiled_graphs == 1 && after.scoped_buffers_created == 11);
 
-    auto upload = take(RenderClient::create("runtime.offscreen"));
+    auto upload = take(TestClient::create("runtime.offscreen"));
     CHECK(call(*upload, {}).session == session);
-    RenderCommand create;
-    create.operation = ERenderCommand::CREATE_SCENE;
+    TestCommand create;
+    create.operation = ETestCommand::CREATE_SCENE;
     create.session = session;
     std::array<RequestId, 64> paused;
     for (auto& id : paused) id = take(client->submit(create));
@@ -158,7 +158,7 @@ int main()
     {
         const auto scene = call(*upload, create).scene;
         auto remove = create;
-        remove.operation = ERenderCommand::REMOVE_SCENE;
+        remove.operation = ETestCommand::REMOVE_SCENE;
         remove.scene = scene;
         call(*upload, remove);
         ++upload_progress;
@@ -167,12 +167,12 @@ int main()
     for (auto id : paused) CHECK(wait(*client, id).header.outcome == EOperationOutcome::SUCCESS);
 
     command = attached[0];
-    command.operation = ERenderCommand::DETACH;
+    command.operation = ETestCommand::DETACH;
     call(*client, command);
     CHECK(call(*client, attached[0], false).header.outcome == EOperationOutcome::FAILED);
     pixel(call(*client, attached[1]), 32, 16, 16, expected[1]);
     command = attached[1];
-    command.operation = ERenderCommand::RESIZE_TARGET;
+    command.operation = ETestCommand::RESIZE_TARGET;
     command.description = native_fixture::target({64, 48});
     auto resized = call(*client, command);
     CHECK(resized.target == command.target && resized.target_epoch == 2);
@@ -183,7 +183,7 @@ int main()
     CHECK(call(*client, command, false).header.outcome == EOperationOutcome::FAILED);
     CHECK(call(*client, attached[1]).bytes().size() == 64 * 48 * 4);
     CHECK(server->stats().compiled_graphs == 1);
-    command.operation = ERenderCommand::REMOVE_SCENE;
+    command.operation = ETestCommand::REMOVE_SCENE;
     command.scene = scenes[0];
     call(*client, command);
     CHECK(call(*client, attached[1], false).header.outcome == EOperationOutcome::FAILED);
@@ -191,7 +191,7 @@ int main()
 
     command = {};
     command.session = session;
-    command.operation = ERenderCommand::CREATE_EFFECT;
+    command.operation = ETestCommand::CREATE_EFFECT;
     config = {32, 32, 0, 0};
     command.description = native_fixture::target(config);
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
@@ -199,12 +199,12 @@ int main()
     const auto transfer_effect = call(*client, command).effect;
     command.features.clear();
     command = attached[2];
-    command.operation = ERenderCommand::DETACH;
+    command.operation = ETestCommand::DETACH;
     call(*client, command);
     command.effect = transfer_effect;
-    command.operation = ERenderCommand::ATTACH;
+    command.operation = ETestCommand::ATTACH;
     call(*client, command);
-    command.operation = ERenderCommand::READBACK;
+    command.operation = ETestCommand::READBACK;
     auto held = call(*client, command);
     pixel(held, 32, 16, 16, {32, 64, 128, 255});
     pixel(held, 32, 0, 0, {32, 64, 128, 255});
@@ -217,7 +217,7 @@ int main()
     render_allocation::participate = true;
     for (unsigned i = 0; i < samples.size(); ++i)
     {
-        command.operation = ERenderCommand::CREATE_SCENE;
+        command.operation = ETestCommand::CREATE_SCENE;
         render_allocation::calls.store(0);
         render_allocation::window.store(true);
         const auto start = std::chrono::steady_clock::now();
@@ -226,7 +226,7 @@ int main()
         render_allocation::window.store(false);
         samples[i] = std::chrono::duration<double, std::micro>(end - start).count();
         allocation_samples[i] = render_allocation::calls.load();
-        command.operation = ERenderCommand::REMOVE_SCENE;
+        command.operation = ETestCommand::REMOVE_SCENE;
         command.scene = scene.scene;
         call(*client, command);
     }
@@ -241,7 +241,7 @@ int main()
     program_entered = &entered;
     program_resume = &resume;
     auto block = command;
-    block.operation = ERenderCommand::CREATE_EFFECT;
+    block.operation = ETestCommand::CREATE_EFFECT;
     block.description = native_fixture::target(config);
     block.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
         &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
@@ -251,7 +251,7 @@ int main()
     auto pending_readback = attached[2];
     pending_readback.effect = transfer_effect;
     const auto pending = take(client->submit(pending_readback));
-    command.operation = ERenderCommand::STOP;
+    command.operation = ETestCommand::STOP;
     const auto stopped = take(client->submit(command));
     resume.count_down();
     CHECK(wait(*upload, blocked).header.outcome == EOperationOutcome::SUCCESS);
@@ -259,7 +259,7 @@ int main()
     const auto completion_deadline = std::chrono::steady_clock::now() + 15s;
     while ((!saw_stop || !saw_readback) && std::chrono::steady_clock::now() < completion_deadline)
     {
-        RenderCompletion completion;
+        TestCompletion completion;
         const auto status = take(client->tryReceive(completion));
         if (status == ERenderReceive::EMPTY) { std::this_thread::sleep_for(100us); continue; }
         CHECK(status == ERenderReceive::RECEIVED);

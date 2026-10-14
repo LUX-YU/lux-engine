@@ -6,6 +6,6 @@ int main()
 {
     auto client = lux::render::RenderClient::create("installed.absent");
     if (!client) return 1;
-    if ((*client)->submit({})) return 2;
+    if ((*client)->hello()) return 2;
     return (*client)->retainedBytes() == 0 ? 0 : 3;
 }

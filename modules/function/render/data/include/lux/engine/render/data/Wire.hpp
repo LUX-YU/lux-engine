@@ -41,6 +41,19 @@ namespace lux::render
         std::span<const OwnedWireBytes> attachments;
     };
 
+    // A synchronous message borrow. It never invents an owner or extends input lifetime.
+    // Use owned WireView/resolveExternal when data must escape the owning message.
+    struct BorrowedWireView final
+    {
+        const DataSchemaDescriptor& schema;
+        std::span<const std::byte> bytes;
+        std::span<const std::span<const std::byte>> attachments;
+    };
+
+    [[nodiscard]] RenderResult<void> validateWire(BorrowedWireView wire, WireLimits limits) noexcept;
+    // Cold binding must have successfully validated this immutable schema. Only bytes/ranges are checked here.
+    [[nodiscard]] RenderResult<void> validateBoundWire(BorrowedWireView wire, WireLimits limits) noexcept;
+
     [[nodiscard]] RenderResult<OwnedWireBytes>
     resolveBlob(const OwnedWireBytes& owner, BlobRef ref, std::size_t limit, std::uint32_t alignment = 1) noexcept;
 
@@ -63,6 +76,44 @@ namespace lux::render
         { DataSchema<T>::encode(value, writer) } noexcept -> std::same_as<RenderResult<void>>;
         { DataSchema<T>::decode(reader, wire) } noexcept -> std::same_as<RenderResult<T>>;
     };
+
+    template <typename T>
+    concept BorrowedWireData = WireData<T> && requires(cxx::BinaryReader& reader, BorrowedWireView wire)
+    {
+        { DataSchema<T>::decode(reader, wire) } noexcept -> std::same_as<RenderResult<T>>;
+    };
+
+    template <WireData T>
+    [[nodiscard]] RenderResult<std::size_t> encodeWireInto(
+        const T& value, std::span<std::byte> storage,
+        std::span<const std::span<const std::byte>> attachments, WireLimits limits
+    ) noexcept
+    {
+        auto size = DataSchema<T>::wireSize(value);
+        if (!size) return cxx::unexpected(size.error());
+        const bool exceeds_limit = *size > storage.size() || *size > limits.max_wire_bytes;
+        if (exceeds_limit) return cxx::unexpected(RenderError{kWireLimit, {*size}});
+        cxx::BinarySpanWriter writer(storage.first(*size));
+        if (auto encoded = DataSchema<T>::encode(value, writer); !encoded) return cxx::unexpected(encoded.error());
+        if (!writer.good() || writer.size() != *size) return cxx::unexpected(RenderError{kInvalidWire});
+        if (auto valid = validateWire(BorrowedWireView{DataSchema<T>::describe(), storage.first(*size), attachments},
+            limits); !valid) return cxx::unexpected(valid.error());
+        return *size;
+    }
+
+    template <BorrowedWireData T>
+    [[nodiscard]] RenderResult<T> decodeWireBytes(BorrowedWireView wire, WireLimits limits) noexcept
+    {
+        if (auto same = compatibleDataSchemas(DataSchema<T>::describe(), wire.schema); !same)
+            return cxx::unexpected(same.error());
+        if (auto valid = validateWire(wire, limits); !valid) return cxx::unexpected(valid.error());
+        cxx::BinaryReader reader(wire.bytes.first(static_cast<std::size_t>(wire.schema.fixed_size)),
+            limits.max_wire_bytes);
+        auto value = DataSchema<T>::decode(reader, wire);
+        if (!value) return cxx::unexpected(value.error());
+        if (!reader.requireFullyConsumed()) return cxx::unexpected(RenderError{kInvalidWire});
+        return value;
+    }
 
     template <WireData T>
     [[nodiscard]] RenderResult<OwnedWireBytes>

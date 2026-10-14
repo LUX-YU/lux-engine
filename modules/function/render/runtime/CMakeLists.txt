@@ -3,7 +3,7 @@ add_component(
     COMPONENT_NAME render_client
     NAMESPACE lux::engine::render
     OUTPUT_NAME lux_engine_render_client
-    SOURCE_FILES src/RenderClient.cpp src/Wire.cpp
+    SOURCE_FILES src/RenderClient.cpp src/Wire.cpp src/Operations.cpp
 )
 
 component_include_directories(render_client
@@ -28,7 +28,7 @@ add_component(
     COMPONENT_NAME render_runtime
     NAMESPACE lux::engine::render
     OUTPUT_NAME lux_engine_render_runtime
-    SOURCE_FILES src/RenderServer.cpp
+    SOURCE_FILES src/RenderServer.cpp src/Request.cpp
 )
 
 component_include_directories(render_runtime

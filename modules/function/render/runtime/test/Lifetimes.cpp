@@ -72,7 +72,7 @@ static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std
     return native_fixture::programs(*config, name);
 }
 
-static RenderCompletion wait(RenderClient& client, RequestId id)
+static TestCompletion wait(TestClient& client, RequestId id)
 {
     const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (std::chrono::steady_clock::now() < deadline)
@@ -84,10 +84,10 @@ static RenderCompletion wait(RenderClient& client, RequestId id)
     std::abort();
 }
 
-static RenderCommand effect(SessionIdentity identity)
+static TestCommand effect(SessionIdentity identity)
 {
-    RenderCommand result;
-    result.operation = ERenderCommand::CREATE_EFFECT;
+    TestCommand result;
+    result.operation = ETestCommand::CREATE_EFFECT;
     result.session = identity;
     native_fixture::Config config;
     result.description = native_fixture::target(config);
@@ -101,8 +101,8 @@ int main()
     auto server = take(RenderServer::create({"runtime.life", true}));
     check(bool(server->registerFeature({&native_fixture::definition, programs})));
     check(bool(server->registerFeature({&asset_definition, assetPrograms})));
-    auto main = take(RenderClient::create("runtime.life", {1024 * 1024, 64}));
-    auto upload = take(RenderClient::create("runtime.life", {2 * 1024 * 1024, 64}));
+    auto main = take(TestClient::create("runtime.life", {1024 * 1024, 64}));
+    auto upload = take(TestClient::create("runtime.life", {2 * 1024 * 1024, 64}));
     std::thread thread([&] { check(bool(server->run())); });
     auto ready = wait(*main, take(main->submit({})));
     const auto identity = ready.session;
@@ -133,7 +133,7 @@ int main()
     const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (upload->retainedBytes() && std::chrono::steady_clock::now() < deadline)
     {
-        RenderCompletion discarded;
+        TestCompletion discarded;
         check(take(upload->tryReceive(discarded)) == ERenderReceive::EMPTY);
         std::this_thread::sleep_for(1ms);
     }
@@ -158,12 +158,12 @@ int main()
     server.reset();
 
     auto replacement = take(RenderServer::create({"runtime.life", true}));
-    auto fresh = take(RenderClient::create("runtime.life"));
+    auto fresh = take(TestClient::create("runtime.life"));
     std::thread restart([&] { check(bool(replacement->run())); });
     auto current = wait(*fresh, take(fresh->submit({})));
     check(current.session != identity);
-    RenderCommand old;
-    old.operation = ERenderCommand::CREATE_SCENE;
+    TestCommand old;
+    old.operation = ETestCommand::CREATE_SCENE;
     old.session = identity;
     check(wait(*fresh, take(fresh->submit(old))).header.outcome == EOperationOutcome::FAILED);
     replacement->requestStop();

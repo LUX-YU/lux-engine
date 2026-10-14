@@ -46,7 +46,7 @@ static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std
     return native_fixture::programs(*config, name);
 }
 
-static RenderCompletion wait(RenderClient& client, RequestId id)
+static TestCompletion wait(TestClient& client, RequestId id)
 {
     const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (std::chrono::steady_clock::now() < deadline)
@@ -58,7 +58,7 @@ static RenderCompletion wait(RenderClient& client, RequestId id)
     std::abort();
 }
 
-static RenderCompletion call(RenderClient& client, const RenderCommand& command)
+static TestCompletion call(TestClient& client, const TestCommand& command)
 {
     auto result = wait(client, take(client.submit(command)));
     check(result.header.outcome == EOperationOutcome::SUCCESS);
@@ -71,28 +71,28 @@ static void exercise(bool close_requester)
     waited.store(false);
     auto server = take(RenderServer::create({close_requester ? "runtime.close.gpu" : "runtime.stop.gpu", true}));
     check(bool(server->registerFeature({&native_fixture::definition, programs})));
-    auto client = take(RenderClient::create(close_requester ? "runtime.close.gpu" : "runtime.stop.gpu"));
+    auto client = take(TestClient::create(close_requester ? "runtime.close.gpu" : "runtime.stop.gpu"));
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool(server->run()); });
-    RenderCommand command;
+    TestCommand command;
     command.session = call(*client, command).session;
-    command.operation = ERenderCommand::CREATE_SCENE;
+    command.operation = ETestCommand::CREATE_SCENE;
     command.scene = call(*client, command).scene;
-    command.operation = ERenderCommand::CREATE_VIEW;
+    command.operation = ETestCommand::CREATE_VIEW;
     command.view = call(*client, command).view;
     native_fixture::Config config;
     command.description = native_fixture::target(config);
-    command.operation = ERenderCommand::CREATE_TARGET;
+    command.operation = ETestCommand::CREATE_TARGET;
     command.target = call(*client, command).target;
-    command.operation = ERenderCommand::CREATE_EFFECT;
+    command.operation = ETestCommand::CREATE_EFFECT;
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
         &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
     command.effect = call(*client, command).effect;
     command.features.clear();
-    command.operation = ERenderCommand::ATTACH;
+    command.operation = ETestCommand::ATTACH;
     call(*client, command);
     const auto before = server->stats().commands;
-    command.operation = ERenderCommand::READBACK;
+    command.operation = ETestCommand::READBACK;
     auto request = take(client->submit(command));
     const auto deadline = std::chrono::steady_clock::now() + 10s;
     while (server->stats().commands == before && std::chrono::steady_clock::now() < deadline)
@@ -107,7 +107,7 @@ static void exercise(bool close_requester)
     }
     else
     {
-        command.operation = ERenderCommand::STOP;
+        command.operation = ETestCommand::STOP;
         call(*client, command);
         check(wait(*client, request).header.outcome == EOperationOutcome::CANCELLED);
     }
@@ -123,27 +123,27 @@ static void retirementAtomicity()
     options.retirement_capacity = 1;
     auto server = take(RenderServer::create(options));
     check(bool(server->registerFeature({&native_fixture::definition, programs})));
-    auto client = take(RenderClient::create(options.channel_name));
+    auto client = take(TestClient::create(options.channel_name));
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool(server->run()); });
-    RenderCommand command;
+    TestCommand command;
     command.session = call(*client, command).session;
-    command.operation = ERenderCommand::CREATE_SCENE;
+    command.operation = ETestCommand::CREATE_SCENE;
     command.scene = call(*client, command).scene;
-    command.operation = ERenderCommand::CREATE_VIEW;
+    command.operation = ETestCommand::CREATE_VIEW;
     command.view = call(*client, command).view;
     native_fixture::Config config;
     command.description = native_fixture::target(config);
-    command.operation = ERenderCommand::CREATE_TARGET;
+    command.operation = ETestCommand::CREATE_TARGET;
     const auto first_target = call(*client, command).target;
     command.target = call(*client, command).target;
     const auto second_target = command.target;
-    command.operation = ERenderCommand::CREATE_EFFECT;
+    command.operation = ETestCommand::CREATE_EFFECT;
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
         &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
     command.effect = call(*client, command).effect;
     command.features.clear();
-    command.operation = ERenderCommand::ATTACH;
+    command.operation = ETestCommand::ATTACH;
     command.target = first_target;
     call(*client, command);
     command.target = second_target;
@@ -152,14 +152,14 @@ static void retirementAtomicity()
     while (server->stats().submissions < 2 && std::chrono::steady_clock::now() < deadline)
         std::this_thread::sleep_for(1ms);
     check(server->stats().submissions == 2);
-    command.operation = ERenderCommand::DETACH;
+    command.operation = ETestCommand::DETACH;
     command.target = first_target;
     call(*client, command); // fills the only retirement slot with an actual in-flight context
     command.target = second_target;
-    command.operation = ERenderCommand::READBACK;
+    command.operation = ETestCommand::READBACK;
     const auto request = take(client->submit(command));
-    for (auto operation : {ERenderCommand::DETACH, ERenderCommand::RESIZE_TARGET,
-        ERenderCommand::REMOVE_VIEW, ERenderCommand::REMOVE_SCENE, ERenderCommand::REMOVE_EFFECT})
+    for (auto operation : {ETestCommand::DETACH, ETestCommand::RESIZE_TARGET,
+        ETestCommand::REMOVE_VIEW, ETestCommand::REMOVE_SCENE, ETestCommand::REMOVE_EFFECT})
     {
         command.operation = operation;
         command.description.width = 16;
@@ -174,7 +174,7 @@ static void retirementAtomicity()
     check(pixels.bytes().size() == 32 * 32 * 4);
     const auto center = (16 * 32 + 16) * 4;
     check(pixels.bytes()[center] == std::byte{255} && pixels.bytes()[center + 1] == std::byte{0});
-    command.operation = ERenderCommand::RESIZE_TARGET;
+    command.operation = ETestCommand::RESIZE_TARGET;
     const auto resized = call(*client, command);
     check(resized.target_epoch == 2); // rejected resize never published an epoch
     server->requestStop();

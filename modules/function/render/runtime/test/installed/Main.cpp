@@ -10,7 +10,7 @@ int main()
     if (!server || !client) return 1;
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool((*server)->run()); });
-    auto id = (*client)->submit({});
+    auto id = (*client)->hello();
     bool ready = false;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (id && std::chrono::steady_clock::now() < deadline)

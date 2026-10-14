@@ -63,20 +63,20 @@ namespace lux::render
         return resolveBlob(owners[ref.attachment_index], {ref.offset, ref.size}, limit, alignment);
     }
 
-    RenderResult<void> validateWire(WireView wire, WireLimits limits) noexcept
+    template <typename Attachment>
+    RenderResult<void> validateBytes(const DataSchemaDescriptor& schema, std::span<const std::byte> bytes,
+        std::size_t attachment_count, Attachment attachment, WireLimits limits) noexcept
     {
-        if (auto result = validateDataSchema(wire.schema); !result) return result;
-        const bool is_missing_backing = wire.bytes.size() != 0 && wire.bytes.data() == nullptr;
+        const bool is_missing_backing = bytes.size() != 0 && bytes.data() == nullptr;
         if (is_missing_backing) return cxx::unexpected(RenderError{kInvalidWire});
-        if (wire.bytes.size() > limits.max_wire_bytes)
+        if (bytes.size() > limits.max_wire_bytes)
         {
-            return cxx::unexpected(RenderError{kWireLimit, {wire.bytes.size(), limits.max_wire_bytes}});
+            return cxx::unexpected(RenderError{kWireLimit, {bytes.size(), limits.max_wire_bytes}});
         }
-        if (wire.schema.fixed_size > wire.bytes.size()) return cxx::unexpected(RenderError{kInvalidWire});
-        const auto bytes = wire.bytes.view();
-        cxx::BinaryReader reader(bytes.first(static_cast<std::size_t>(wire.schema.fixed_size)), limits.max_wire_bytes);
-        std::uint64_t tail = wire.schema.fixed_size;
-        for (const auto& field : wire.schema.fields)
+        if (schema.fixed_size > bytes.size()) return cxx::unexpected(RenderError{kInvalidWire});
+        cxx::BinaryReader reader(bytes.first(static_cast<std::size_t>(schema.fixed_size)), limits.max_wire_bytes);
+        std::uint64_t tail = schema.fixed_size;
+        for (const auto& field : schema.fields)
         {
             for (std::uint32_t element = 0; element < field.count; ++element)
             {
@@ -98,10 +98,14 @@ namespace lux::render
                 if (!has_range) return cxx::unexpected(RenderError{kInvalidWire, {reader.offset()}});
                 if (field.kind == EDataFieldKind::EXTERNAL)
                 {
-                    auto result = resolveExternal(
-                        wire.attachments, ref, limits.max_reference_bytes, field.reference_alignment
-                    );
-                    if (!result) return cxx::unexpected(result.error());
+                    if (ref.attachment_index >= attachment_count)
+                        return cxx::unexpected(RenderError{kInvalidDataReference});
+                    const auto source = attachment(ref.attachment_index);
+                    const bool invalid_range = (source.size() != 0 && source.data() == nullptr) ||
+                        ref.offset > source.size() || ref.offset % field.reference_alignment != 0;
+                    if (invalid_range || ref.size > source.size() - ref.offset)
+                        return cxx::unexpected(RenderError{kInvalidDataReference});
+                    if (ref.size > limits.max_reference_bytes) return cxx::unexpected(RenderError{kWireLimit});
                     continue;
                 }
 
@@ -113,10 +117,9 @@ namespace lux::render
                 {
                     return cxx::unexpected(RenderError{kInvalidDataReference, {ref.offset, *aligned}});
                 }
-                auto result = resolveBlob(
-                    wire.bytes, {ref.offset, ref.size}, limits.max_reference_bytes, field.reference_alignment
-                );
-                if (!result) return cxx::unexpected(result.error());
+                if (ref.offset > bytes.size() || ref.size > bytes.size() - ref.offset)
+                    return cxx::unexpected(RenderError{kInvalidDataReference});
+                if (ref.size > limits.max_reference_bytes) return cxx::unexpected(RenderError{kWireLimit});
                 for (auto padding = tail; padding < ref.offset; ++padding)
                 {
                     if (bytes[static_cast<std::size_t>(padding)] != std::byte{0})
@@ -124,11 +127,30 @@ namespace lux::render
                         return cxx::unexpected(RenderError{kInvalidWire, {padding}});
                     }
                 }
-                tail = ref.offset + ref.size; // resolveBlob proved this sum is within the owner.
+                tail = ref.offset + ref.size; // Range validation proved the sum is within the message.
             }
         }
         const bool is_incomplete = !reader.requireFullyConsumed() || tail != bytes.size();
         if (is_incomplete) return cxx::unexpected(RenderError{kInvalidWire, {tail, bytes.size()}});
         return {};
+    }
+
+    RenderResult<void> validateWire(WireView wire, WireLimits limits) noexcept
+    {
+        if (auto result = validateDataSchema(wire.schema); !result) return result;
+        return validateBytes(wire.schema, wire.bytes.view(), wire.attachments.size(),
+            [&](std::size_t index) { return wire.attachments[index].view(); }, limits);
+    }
+
+    RenderResult<void> validateWire(BorrowedWireView wire, WireLimits limits) noexcept
+    {
+        if (auto result = validateDataSchema(wire.schema); !result) return result;
+        return validateBoundWire(wire, limits);
+    }
+
+    RenderResult<void> validateBoundWire(BorrowedWireView wire, WireLimits limits) noexcept
+    {
+        return validateBytes(wire.schema, wire.bytes, wire.attachments.size(),
+            [&](std::size_t index) { return wire.attachments[index]; }, limits);
     }
 }

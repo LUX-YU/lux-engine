@@ -13,7 +13,7 @@ static std::atomic<unsigned> mode{0};
 static void check(bool value) { if (!value) std::abort(); }
 template <class T> static T take(RenderResult<T> value) { check(bool(value)); return std::move(*value); }
 
-static RenderCompletion call(RenderClient& client, const RenderCommand& command)
+static TestCompletion call(TestClient& client, const TestCommand& command)
 {
     const auto request = take(client.submit(command));
     const auto deadline = std::chrono::steady_clock::now() + 10s;
@@ -54,12 +54,12 @@ int main()
     auto server = take(RenderServer::create({"runtime.program.ownership", true}));
     check(bool(server->registerFeature({&native_fixture::definition, ownPrograms})));
     check(bool(server->registerFeature({&foreign, foreignPrograms})));
-    auto client = take(RenderClient::create("runtime.program.ownership"));
+    auto client = take(TestClient::create("runtime.program.ownership"));
     bool run_ok = false;
     std::thread worker([&] { run_ok = bool(server->run()); });
-    RenderCommand command;
+    TestCommand command;
     command.session = call(*client, command).session;
-    command.operation = ERenderCommand::CREATE_EFFECT;
+    command.operation = ETestCommand::CREATE_EFFECT;
     command.description = native_fixture::target({});
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
         &DataSchema<native_fixture::Config>::describe(), take(encodeWire(native_fixture::Config{}, {},

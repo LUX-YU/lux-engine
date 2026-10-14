@@ -11,7 +11,7 @@ using namespace std::chrono_literals;
 static void check(bool x) { if (!x) std::abort(); }
 template <class T> static T take(RenderResult<T> value) { check(bool(value)); return std::move(*value); }
 
-static RenderCompletion wait(RenderClient& client, RequestId id)
+static TestCompletion wait(TestClient& client, RequestId id)
 {
     const auto end = std::chrono::steady_clock::now() + 10s;
     while (std::chrono::steady_clock::now() < end)
@@ -23,7 +23,7 @@ static RenderCompletion wait(RenderClient& client, RequestId id)
     std::abort();
 }
 
-static RenderCompletion call(RenderClient& client, RenderCommand command)
+static TestCompletion call(TestClient& client, TestCommand command)
 {
     return wait(client, take(client.submit(command)));
 }
@@ -39,8 +39,8 @@ int main()
 {
     auto server = take(RenderServer::create({"runtime.control", true}));
     check(bool(server->registerFeature({&native_fixture::definition, programs})));
-    auto a = take(RenderClient::create("runtime.control"));
-    auto b = take(RenderClient::create("runtime.control"));
+    auto a = take(TestClient::create("runtime.control"));
+    auto b = take(TestClient::create("runtime.control"));
     auto ready_a = take(a->submit({}));
     auto ready_b = take(b->submit({}));
     check(ready_a == ready_b);
@@ -49,30 +49,30 @@ int main()
     auto first = wait(*a, ready_a);
     auto second = wait(*b, ready_b);
     check(first.header.outcome == EOperationOutcome::SUCCESS && first.session == second.session);
-    RenderCompletion moved = std::move(second);
+    TestCompletion moved = std::move(second);
     check(!second.active() && moved.active());
     const auto data_before = moved.bytes().data();
     check(!b->tryReceive(moved) && moved.bytes().data() == data_before); // active output cannot be overwritten
     moved = {};
-    RenderCommand command;
+    TestCommand command;
     command.session = first.session;
-    command.operation = ERenderCommand::CREATE_SCENE;
+    command.operation = ETestCommand::CREATE_SCENE;
     auto scene = call(*a, command);
     check(scene.header.outcome == EOperationOutcome::SUCCESS);
     command.scene = scene.scene;
-    command.operation = ERenderCommand::CREATE_VIEW;
+    command.operation = ETestCommand::CREATE_VIEW;
     auto view = call(*a, command);
     check(view.header.outcome == EOperationOutcome::SUCCESS);
-    command.operation = ERenderCommand::REMOVE_VIEW;
+    command.operation = ETestCommand::REMOVE_VIEW;
     command.view = view.view;
     check(call(*a, command).header.outcome == EOperationOutcome::SUCCESS);
     check(call(*a, command).header.outcome == EOperationOutcome::FAILED);
-    command.operation = ERenderCommand::CREATE_VIEW;
+    command.operation = ETestCommand::CREATE_VIEW;
     auto recreated = call(*a, command);
     check(recreated.view.index == view.view.index && recreated.view.gen != view.view.gen);
-    command.operation = ERenderCommand::REMOVE_VIEW;
+    command.operation = ETestCommand::REMOVE_VIEW;
     check(call(*a, command).header.outcome == EOperationOutcome::FAILED);
-    command.operation = ERenderCommand::CREATE_EFFECT;
+    command.operation = ETestCommand::CREATE_EFFECT;
     native_fixture::Config config;
     command.description = native_fixture::target(config);
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
@@ -85,7 +85,7 @@ int main()
     check(call(*b, command).header.outcome == EOperationOutcome::FAILED);
     check(server->stats().compiled_graphs == 1);
     command.features.clear();
-    command.operation = ERenderCommand::CREATE_SCENE;
+    command.operation = ETestCommand::CREATE_SCENE;
     std::array<RequestId, 64> paused;
     for (auto& id : paused) id = take(a->submit(command));
     check(!a->submit(command));
@@ -97,7 +97,7 @@ int main()
         auto created = call(*b, command);
         check(created.header.outcome == EOperationOutcome::SUCCESS);
         auto remove = command;
-        remove.operation = ERenderCommand::REMOVE_SCENE;
+        remove.operation = ETestCommand::REMOVE_SCENE;
         remove.scene = created.scene;
         check(call(*b, remove).header.outcome == EOperationOutcome::SUCCESS);
         ++progress;
@@ -107,7 +107,7 @@ int main()
     auto stale = command;
     ++stale.session[0];
     check(call(*b, stale).header.outcome == EOperationOutcome::FAILED);
-    command.operation = ERenderCommand::STOP;
+    command.operation = ETestCommand::STOP;
     check(call(*b, command).header.outcome == EOperationOutcome::SUCCESS);
     thread.join();
     check(run_ok && server->stats().validation_errors == 0);
@@ -117,7 +117,7 @@ int main()
     check(!first.bytes().empty()); // published reply and budget survive server
 
     auto failure = take(RenderServer::create({"runtime.failure", true, 0xfffffffe}));
-    auto client = take(RenderClient::create("runtime.failure"));
+    auto client = take(TestClient::create("runtime.failure"));
     auto request = take(client->submit({}));
     check(!failure->run());
     check(wait(*client, request).header.outcome == EOperationOutcome::OUTCOME_UNKNOWN);

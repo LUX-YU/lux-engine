@@ -43,3 +43,8 @@ add_test(
         "-DCXX_FLAGS=${CMAKE_CXX_FLAGS}"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/../../core/test/Installed.cmake"
 )
+
+add_executable(render_data_borrowed_test Borrowed.cpp)
+
+target_link_libraries(render_data_borrowed_test PRIVATE render_data)
+add_test(NAME render.data.borrowed COMMAND render_data_borrowed_test)

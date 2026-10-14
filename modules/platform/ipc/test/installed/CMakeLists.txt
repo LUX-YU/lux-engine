@@ -1,0 +1,31 @@
+cmake_minimum_required(VERSION 3.22)
+project(ipc-installed LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+if(MSVC)
+    add_compile_options(/utf-8 /permissive- /Zc:__cplusplus /GR-)
+endif()
+enable_testing()
+find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_ipc)
+add_executable(ipc_consumer Main.cpp)
+target_link_libraries(ipc_consumer PRIVATE lux::engine::platform::platform_ipc)
+add_test(NAME installed.ipc COMMAND ipc_consumer)
+
+find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_protocol)
+add_executable(ipc_protocol_consumer Main.cpp)
+target_compile_definitions(ipc_protocol_consumer PRIVATE IPC_PROTOCOL_CONSUMER)
+target_link_libraries(ipc_protocol_consumer PRIVATE
+    lux::engine::platform::platform_ipc lux::engine::render::render_protocol)
+add_test(NAME installed.ipc_protocol COMMAND ipc_protocol_consumer)
+
+foreach(header IpcCore IpcMessage)
+    file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" CONTENT
+        "#include <lux/engine/platform/ipc/${header}.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\nstatic_assert(__cplusplus >= 202002L);\n")
+    add_library(installed_ipc_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")
+    target_link_libraries(installed_ipc_${header} PRIVATE lux::engine::platform::platform_ipc)
+endforeach()
+
+get_target_property(links lux::engine::platform::platform_ipc INTERFACE_LINK_LIBRARIES)
+if(NOT links STREQUAL "lux::cxx::compile_time")
+    message(FATAL_ERROR "Unexpected IPC public links: ${links}")
+endif()

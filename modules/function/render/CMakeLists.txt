@@ -4,8 +4,6 @@ add_subdirectory(data)
 
 add_subdirectory(protocol)
 
-add_subdirectory(runtime/connection)
-
 lux_engine_install_components(
     PROJECT_NAME lux-engine-render
     VERSION 0.0.1

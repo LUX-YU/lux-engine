@@ -1,3 +1,4 @@
+#include <lux/engine/render/runtime/vulkan/GpuCompletion.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include "CompileWorker.hpp"
@@ -156,7 +157,7 @@ static RenderResult<void> upload(void*, RenderRequest& request, OperationContext
     std::array<std::byte, 20> reply;
     lux::cxx::BinarySpanWriter writer(reply);
     if (auto encoded = DataSchema<ReadbackResult>::encode({{0, 0, source.size()}}, writer); !encoded) return encoded;
-    auto& session = context.native();
+    auto& session = GpuCompletionReservation::device(context);
     auto& queue = session.queue(transfer_mode ? vulkan::EQueueRole::TRANSFER : vulkan::EQueueRole::GRAPHICS);
     if (input->mode == 4)
     {
@@ -169,7 +170,7 @@ static RenderResult<void> upload(void*, RenderRequest& request, OperationContext
             CHECK(std::move(*empty).submit());
         }
     }
-    auto reservation = context.reserveGpuCompletion(queue, reply, output_pin);
+    auto reservation = GpuCompletionReservation::reserve(context, queue, reply, output_pin);
     if (!reservation) return lux::cxx::unexpected(reservation.error());
     CHECK(request.active());
     CHECK(!context.reserveGpuCompletion(reply, output_pin)); // cannot issue two rights for one invocation

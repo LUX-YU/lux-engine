@@ -1,7 +1,8 @@
 #include "TextureFixture.hpp"
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 
-static_assert(!std::is_copy_constructible_v<TextureVersion> && !std::is_move_constructible_v<TextureVersion>);
+using SampledBacking = std::remove_pointer_t<std::remove_cvref_t<decltype(std::declval<lux::render::vulkan::TextureStorage>().acquire({}).value())>>;
+static_assert(!std::is_copy_constructible_v<SampledBacking> && !std::is_move_constructible_v<SampledBacking>);
 
 static std::string_view fail_call;
 static bool hold_completion = false;
@@ -36,7 +37,7 @@ static void complete(TextureUpload& upload)
     CHECK(!upload.publish());
 }
 
-static std::vector<std::byte> read(DeviceSession& session, const TextureVersion& version)
+static std::vector<std::byte> read(DeviceSession& session, const auto& version)
 {
     const auto& info = version.info();
     const auto last = info.mip_ranges[info.mip_count - 1];
@@ -108,15 +109,15 @@ int main()
         for (auto name : {"texture_layout", "texture_pool", "texture_set"})
         {
             fail_call = name;
-            CHECK(!session->configureTextures(16, 32 * 1024 * 1024));
-            CHECK(fail_call.empty() && !session->textures());
+            CHECK(!configureTextures(*session, 16, 32 * 1024 * 1024));
+            CHECK(fail_call.empty() && !textures(*session));
         }
-        CHECK(session->configureTextures(16, 32 * 1024 * 1024));
-        auto& storage = *session->textures();
+        CHECK(configureTextures(*session, 16, 32 * 1024 * 1024));
+        auto& storage = *textures(*session);
         auto info = information(16, 4, false);
         const auto last = info.mip_ranges[3];
         std::vector<std::byte> bytes(last.offset + last.size, std::byte{27});
-        auto upload = take(session->uploadTexture(info, bytes));
+        auto upload = take(TextureUpload::create(*session, info, bytes));
         for (auto name : {"image_view", "texture_sampler"})
         {
             const auto previous = live;
@@ -132,7 +133,7 @@ int main()
         auto* old = take(storage.acquire(published.texture));
         CHECK(old->revision() == 1 && storage.residentVersions() == 1);
         const auto old_slot = old->descriptorIndex();
-        upload = take(session->uploadTexture(info, bytes));
+        upload = take(TextureUpload::create(*session, info, bytes));
         CHECK(!storage.reserve(*upload, published.texture, 0));
         const auto replacement = take(storage.reserve(*upload, published.texture, 1));
         CHECK(replacement.texture == published.texture && replacement.revision == 2);
@@ -140,7 +141,7 @@ int main()
         CHECK(!storage.release(published.texture, 1)); // writer reservation remains unique
         upload.reset(); // unsubmitted candidate rolls back without changing last-good
         CHECK(storage.find(published.texture) == old && storage.residentVersions() == 1);
-        upload = take(session->uploadTexture(info, bytes));
+        upload = take(TextureUpload::create(*session, info, bytes));
         published = take(storage.reserve(*upload, published.texture, 1));
         complete(*upload); upload.reset();
         CHECK(storage.find(published.texture) != old && old->revision() == 1);
@@ -152,7 +153,7 @@ int main()
         storage.releaseLease(*old); storage.releaseLease(*current);
         CHECK(session->collect());
         CHECK(storage.residentVersions() == 0 && storage.residentBytes() == 0);
-        upload = take(session->uploadTexture(info, bytes));
+        upload = take(TextureUpload::create(*session, info, bytes));
         const auto next = take(storage.reserve(*upload));
         CHECK(next.texture.index == published.texture.index && next.texture.gen != published.texture.gen);
         complete(*upload); upload.reset();
@@ -162,11 +163,11 @@ int main()
         {
             auto large_info = information(1024, 1, false);
             std::vector<std::byte> large(4 * 1024 * 1024, std::byte{13});
-            upload = take(session->uploadTexture(large_info, large));
+            upload = take(TextureUpload::create(*session, large_info, large));
             const auto id = take(storage.reserve(*upload)).texture;
             complete(*upload); upload.reset();
             const auto* last_good = storage.find(id);
-            upload = take(session->uploadTexture(large_info, large));
+            upload = take(TextureUpload::create(*session, large_info, large));
             CHECK(storage.reserve(*upload, id, 1));
             const auto end = Clock::now() + std::chrono::seconds(10);
             while (!upload->lastUse()) { CHECK(!take(upload->advance())); CHECK(Clock::now() < end); }
@@ -191,7 +192,7 @@ int main()
             const auto mip_info = information(16, 4, bc);
             const auto end = mip_info.mip_ranges[3];
             std::vector<std::byte> original(end.offset + end.size, std::byte{27});
-            upload = take(session->uploadTexture(mip_info, original));
+            upload = take(TextureUpload::create(*session, mip_info, original));
             const auto id = take(storage.reserve(*upload)).texture;
             complete(*upload); upload.reset();
             auto* previous = take(storage.acquire(id));
@@ -230,18 +231,18 @@ int main()
         std::vector<TexturePublished> full;
         for (unsigned i = 0; i < 16; ++i)
         {
-            upload = take(session->uploadTexture(info, bytes));
+            upload = take(TextureUpload::create(*session, info, bytes));
             full.push_back(take(storage.reserve(*upload)));
             complete(*upload); upload.reset();
         }
-        upload = take(session->uploadTexture(info, bytes));
+        upload = take(TextureUpload::create(*session, info, bytes));
         CHECK(!storage.reserve(*upload));
         upload.reset();
         CHECK(storage.residentVersions() == 16);
         for (auto value : full) CHECK(storage.release(value.texture, value.revision));
         CHECK(storage.residentVersions() == 0);
-        std::printf("texture storage descriptors=16 resident_peak=%llu bytes; TextureVersion=%zu TextureUpload=%zu; "
-            "exact last-good/generation/leases\n", storage.residentPeak(), sizeof(TextureVersion), sizeof(TextureUpload));
+        std::printf("texture storage descriptors=16 resident_peak=%llu bytes; PrivateBacking=%zu TextureUpload=%zu; "
+            "exact last-good/generation/leases\n", storage.residentPeak(), sizeof(std::remove_reference_t<decltype(*storage.find({}))>), sizeof(TextureUpload));
     }
     {
         auto bootstrap = instance(validation);
@@ -250,12 +251,12 @@ int main()
         auto session = take(DeviceSession::create(bootstrap, options));
         CHECK(session->configureUploads({1024 * 1024, 1, 1024 * 1024,
             &host, PrepareWorker::enqueue, PrepareWorker::join}));
-        CHECK(session->configureTextures(16, 1));
+        CHECK(configureTextures(*session, 16, 1));
         std::vector<std::byte> source(1024);
-        auto candidate = take(session->uploadTexture(information(16, 1, false), source));
-        auto failed = session->textures()->reserve(*candidate);
+        auto candidate = take(TextureUpload::create(*session, information(16, 1, false), source));
+        auto failed = textures(*session)->reserve(*candidate);
         CHECK(!failed && failed.error().type == kCapacity);
-        CHECK(!candidate->lastUse() && session->textures()->residentBytes() == 0);
+        CHECK(!candidate->lastUse() && textures(*session)->residentBytes() == 0);
     }
     {
         auto bootstrap = instance(validation);
@@ -264,10 +265,10 @@ int main()
         auto session = take(DeviceSession::create(bootstrap, options));
         CHECK(session->configureUploads({1024 * 1024, 1, 1024 * 1024,
             &host, PrepareWorker::enqueue, PrepareWorker::join}));
-        CHECK(session->configureTextures(16, 1024 * 1024));
+        CHECK(configureTextures(*session, 16, 1024 * 1024));
         std::vector<std::byte> source(1024, std::byte{71});
-        auto upload = take(session->uploadTexture(information(16, 1, false), source));
-        CHECK(session->textures()->reserve(*upload));
+        auto upload = take(TextureUpload::create(*session, information(16, 1, false), source));
+        CHECK(textures(*session)->reserve(*upload));
         hold_completion = true;
         const auto deadline = Clock::now() + std::chrono::seconds(10);
         while (!upload->lastUse()) { CHECK(!take(upload->advance())); CHECK(Clock::now() < deadline); }

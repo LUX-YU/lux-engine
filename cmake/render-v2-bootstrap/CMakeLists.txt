@@ -25,9 +25,11 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/function/render" rende
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/ipc" ipc)
 
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/gapi" gapi)
+
 lux_engine_install_components(
     PROJECT_NAME lux-engine-platform
     VERSION 0.0.1
     NAMESPACE lux::engine::platform
-    COMPONENTS platform_ipc
+    COMPONENTS platform_ipc gapi
 )

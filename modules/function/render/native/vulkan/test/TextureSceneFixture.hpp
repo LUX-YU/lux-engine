@@ -3,6 +3,7 @@
 #include "shaders/Texture.hpp"
 #include <lux/engine/render/features/Feature.hpp>
 #include <lux/engine/render/features/Program.hpp>
+#include <lux/engine/render/features/Texture.hpp>
 
 namespace texture_fixture
 {
@@ -76,7 +77,7 @@ namespace texture_fixture
         out.push_back({"texture", EResourceClaim::PROVIDE,
             GraphImageDesc{c->width, c->height, c->mips, 1, c->format}, EGraphOrigin::IMPORTED,
             {GraphImageRange{1, 0, c->mips, 0, 1}},
-            StorageRequirement{StorageTypeId(kTextureStorageType.name()), {1, 0}, EResourceScope::GLOBAL}});
+            StorageRequirement{StorageTypeId(kTextureStorageType.name()), {1, 0}, EResourceScope::GLOBAL, "default"}});
         const auto t = target(*c);
         out.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{t.width, t.height}});
         return {};
@@ -110,14 +111,15 @@ namespace texture_fixture
     inline std::vector<PassProgram> programs(Config c, std::string_view instance = "main")
     {
         PassProgram draw{featureKey(type, instance, "draw")};
-        draw.shader = {{vert.begin(), vert.end()}, {frag.begin(), frag.end()}, 2};
-        draw.texture = c.texture;
-        draw.texture_lod = float(c.lod);
+        draw.shader = {{vert.begin(), vert.end()}, {frag.begin(), frag.end()}, {{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}}, 16}};
+        draw.arguments.push_back({"shared:texture", *encodeWire(TextureBinding{c.texture, c.lod}, {}, {12, 0})});
         std::vector<PassProgram> result;
         result.push_back(std::move(draw));
         result.push_back({featureKey(type, instance, "readback")});
         return result;
     }
+
+    inline std::vector<StorageArgument> arguments(Config c) { return *programArguments(programs(c)); }
 
     inline RenderResult<FeatureAssembly> assemble(Config c)
     {

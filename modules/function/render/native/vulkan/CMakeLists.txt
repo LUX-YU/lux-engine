@@ -35,10 +35,12 @@ component_add_internal_dependencies(render_native_vulkan lux::engine::render::re
 )
 
 target_link_libraries(render_native_vulkan PUBLIC Vulkan::Vulkan
-    PRIVATE lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared
+    PRIVATE lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared lux::engine::platform::gapi
 )
 
 component_add_transitive_commands(render_native_vulkan
+    [=[find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS gapi
+        HINTS "${CMAKE_CURRENT_LIST_DIR}/../../lux-engine-platform")]=]
     [=[include("${CMAKE_CURRENT_LIST_DIR}/ShaderTools.cmake")]=]
 )
 

@@ -1,5 +1,6 @@
 #pragma once
 #include "Object.hpp"
+#include <vector>
 
 namespace lux::gapi::vk
 {
@@ -11,6 +12,16 @@ namespace lux::gapi::vk
         DescriptorSetLayout() : descriptor_set_layout(VK_NULL_HANDLE) {}
 
         DescriptorSetLayout(VkDescriptorSetLayout layout) : descriptor_set_layout(layout) {}
+
+        // Empty handle carrier; its consumer remains the lifetime owner. Recoverable paths use the
+        // returned VkResult and do not invoke the legacy diagnostic/assert macro.
+        [[nodiscard]] VkResult tryCreate(
+            VkDevice device, const VkDescriptorSetLayoutCreateInfo& info,
+            const VkAllocationCallbacks* allocator = nullptr
+        ) noexcept
+        {
+            return vkCreateDescriptorSetLayout(device, &info, allocator, &descriptor_set_layout);
+        }
 
         DescriptorSetLayout(
             VkDevice device,

@@ -6,12 +6,14 @@
 #include <lux/engine/render/features/Program.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 
 namespace lux::render
 {
     namespace vulkan { class DeviceSession; class SubmissionTicket; class SubmissionQueue; class GpuWork; }
     namespace runtime_detail { struct DeferredCompletion; }
     class OperationContext;
+    class GpuCompletionReservation;
 
     struct RenderServerConfig final
     {
@@ -100,66 +102,23 @@ namespace lux::render
         const OperationDescriptor* descriptor_;
     };
 
-    // A synchronous Handler-only right to one already reserved Server slot. No request is moved until commit.
-    class GpuCompletionReservation final
-    {
-    public:
-        ~GpuCompletionReservation() noexcept;
-        GpuCompletionReservation(GpuCompletionReservation&& other) noexcept;
-        GpuCompletionReservation& operator=(GpuCompletionReservation&&) = delete;
-        GpuCompletionReservation(const GpuCompletionReservation&) = delete;
-        GpuCompletionReservation& operator=(const GpuCompletionReservation&) = delete;
-        // Same reserved byte extent, new values prepared before submit; no growth after admission.
-        [[nodiscard]] RenderResult<void> setReply(std::span<const std::byte>) noexcept;
-        [[nodiscard]] RenderResult<void> commitWork(vulkan::GpuWork&) noexcept;
-
-        // Ready runs ONCE after the real Ticket completes, before SUCCESS: certify output and commit business state.
-        // Owner pins staging/backing/code. It is destroyed only after completion or cold GPU drain on shutdown.
-        // Invalid Ticket/qualification preserves owner and request; a valid commit cannot fail capacity admission.
-        template <auto Ready, class Owner>
-        [[nodiscard]] RenderResult<void>
-        commit(const vulkan::SubmissionTicket& ticket, std::unique_ptr<Owner>& owner) noexcept
-        {
-            static_assert(std::is_nothrow_destructible_v<Owner>);
-            if (!owner) return cxx::unexpected(RenderError{kRuntimeState});
-            auto result = commitOwned(ticket, owner.get(), [](void* p) noexcept { delete static_cast<Owner*>(p); },
-                [](void* p, vulkan::DeviceSession& session) noexcept -> RenderResult<void> {
-                    return Ready(*static_cast<Owner*>(p), session);
-                });
-            if (result) (void)owner.release();
-            return result;
-        }
-
-    private:
-        friend class OperationContext;
-        GpuCompletionReservation(vulkan::DeviceSession& native, runtime_detail::DeferredCompletion& slot,
-            RenderRequest& request) noexcept : native_(&native), slot_(&slot), request_(&request) {}
-        [[nodiscard]] RenderResult<void> commitOwned(
-            const vulkan::SubmissionTicket&,
-            void*,
-            void (*destroy)(void*) noexcept,
-            RenderResult<void> (*ready)(void*, vulkan::DeviceSession&) noexcept
-        ) noexcept;
-        vulkan::DeviceSession* native_;
-        runtime_detail::DeferredCompletion* slot_;
-        RenderRequest* request_;
-    };
-
     // Borrow valid only during this Server Handler invocation; it cannot escape to a worker.
     class OperationContext final
     {
     public:
         OperationContext(const OperationContext&) = delete;
         OperationContext& operator=(const OperationContext&) = delete;
-        [[nodiscard]] vulkan::DeviceSession& native() const noexcept { return *native_; }
+        [[nodiscard]] ResourceRegistry& resources() const noexcept;
         // Bounded reply bytes and retained attachment are funded before submit.
         [[nodiscard]] RenderResult<GpuCompletionReservation> reserveGpuCompletion(
             std::span<const std::byte> reply = {}, OwnedWireBytes attachment = {}) noexcept;
+    private:
+        friend class RenderServer;
+        friend class GpuCompletionReservation;
         [[nodiscard]] RenderResult<GpuCompletionReservation> reserveGpuCompletion(
             vulkan::SubmissionQueue& queue, std::span<const std::byte> reply = {},
             OwnedWireBytes attachment = {}) noexcept;
-    private:
-        friend class RenderServer;
+
         OperationContext(vulkan::DeviceSession& native, std::span<runtime_detail::DeferredCompletion> slots,
             RenderRequest& request) noexcept : native_(&native), slots_(slots), request_(&request) {}
         vulkan::DeviceSession* native_;

@@ -1,3 +1,4 @@
+#include "BufferStorageFixture.hpp"
 #include "Support.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <cstring>
@@ -285,6 +286,7 @@ int main()
                 VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK); });
             fails("image", [&] { return session->createImage( {16, 16}, VK_FORMAT_R8G8B8A8_UNORM,
                 VK_IMAGE_USAGE_TRANSFER_DST_BIT); });
+            CHECK(buffer_fixture::install(*session));
             const native_fixture::Config config{32, 32, 1, 1};
             auto assembly = take(native_fixture::assemble(config));
             auto programs = native_fixture::programs(config);

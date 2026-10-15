@@ -4,8 +4,6 @@
 #include <lux/engine/render/features/Resources.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
-#include <lux/engine/description/TextureInfo.hpp>
-#include <lux/engine/render/features/Texture.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 
@@ -16,8 +14,6 @@ namespace lux::render::vulkan
     class TextureUpload;
     class Transfer;
     struct ImageTransferRegion;
-    class TextureStorage;
-    class TextureVersion;
     struct TransferStats;
     // Stable Native lifetime root. Bootstrap owns InstanceContext and outlives this object.
     // Queue roles that alias the same VkQueue borrow the same SubmissionQueue owner.
@@ -38,7 +34,7 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> collect() noexcept;
         [[nodiscard]] RenderResult<ExecutionContext*> prepare(
             std::shared_ptr<const CompiledGraph> code, const TargetDesc& target,
-            const ResourceDomain& view
+            const ResourceDomain& view, std::span<const StorageArgument> arguments = {}
         ) noexcept;
         [[nodiscard]] RenderResult<void> release(ExecutionContext* context) noexcept;
         [[nodiscard]] SubmissionQueue& queue(EQueueRole role = EQueueRole::GRAPHICS) noexcept
@@ -55,8 +51,6 @@ namespace lux::render::vulkan
         [[nodiscard]] SubmissionQueue* queueFor(SubmissionTicket ticket) noexcept;
         [[nodiscard]] bool deviceLost() const noexcept;
         [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&) noexcept;
-        [[nodiscard]] RenderResult<std::unique_ptr<TextureUpload>> uploadTexture(
-            const rdesc::TextureInfo&, std::span<const std::byte>) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadImage(
             const ImageDescription&, std::span<const std::byte>, std::span<const ImageTransferRegion>,
             const ImageAllocation* clone = nullptr, bool graphics_queue = false) noexcept;
@@ -64,9 +58,8 @@ namespace lux::render::vulkan
             std::span<const std::byte>, VkBufferUsageFlags usage) noexcept;
         [[nodiscard]] TransferStats uploadStats() const noexcept;
         void joinUploads() noexcept;
-        [[nodiscard]] RenderResult<void> configureTextures(std::size_t capacity, std::uint64_t byte_limit) noexcept;
-        [[nodiscard]] TextureStorage* textures() const noexcept;
         [[nodiscard]] ResourceRegistry& resources() noexcept { return *resources_; }
+        [[nodiscard]] const ResourceRegistry& resources() const noexcept { return *resources_; }
         [[nodiscard]] RenderResult<BufferPermit> createBuffer(
             VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access
         ) noexcept;
@@ -95,10 +88,7 @@ namespace lux::render::vulkan
         friend class RetirementQueue;
         friend class TextureUpload;
         friend class Transfer;
-        friend class TextureStorage;
         struct UploadState;
-        [[nodiscard]] RenderResult<std::unique_ptr<TextureUpload>> prepareTextureUpload(
-            const rdesc::TextureInfo&, std::span<const std::byte>, std::optional<TextureRegion>) noexcept;
         [[nodiscard]] RenderResult<BufferAllocation*> createBufferRecord(
             VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access,
             std::span<const std::uint32_t> families = {}) noexcept;
@@ -109,7 +99,6 @@ namespace lux::render::vulkan
         void destroyFinished(BufferAllocation* value) noexcept;
         void destroyFinished(ImageAllocation* value) noexcept;
         friend class ExecutionContext;
-        void refreshTexture(TextureId, TextureVersion&) noexcept;
         DeviceSession(VulkanDevice device, VulkanAllocator allocator) noexcept;
         VulkanDevice device_;
         VulkanAllocator allocator_;

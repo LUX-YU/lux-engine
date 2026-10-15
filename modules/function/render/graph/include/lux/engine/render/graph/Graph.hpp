@@ -72,7 +72,7 @@ namespace lux::render
     enum class EGraphAccess : std::uint8_t { READ, WRITE, READ_WRITE, ATTACHMENT_LOAD };
     // Orthogonal to logical version access. UNSPECIFIED remains legal for neutral analysis;
     // a Native compiler rejects it when it needs an execution recipe.
-    enum class EGraphUse : std::uint8_t { UNSPECIFIED, COLOR_ATTACHMENT, TRANSFER_SOURCE, TRANSFER_DESTINATION, SAMPLED };
+    enum class EGraphUse : std::uint8_t { UNSPECIFIED, COLOR_ATTACHMENT, TRANSFER_SOURCE, TRANSFER_DESTINATION, SAMPLED, STORAGE_READ };
 
     struct GraphResource final
     {

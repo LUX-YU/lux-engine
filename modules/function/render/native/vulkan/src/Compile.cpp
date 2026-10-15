@@ -1,7 +1,7 @@
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include "Shader.hpp"
 #include "Native.hpp"
-#include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
+#include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -15,13 +15,16 @@ namespace lux::render::vulkan
         for (auto pipeline : pipelines_)
             LUX_DESTROY("pipeline", vkDestroyPipeline(device_, pipeline, nullptr));
         if (layout_) LUX_DESTROY("pipeline_layout", vkDestroyPipelineLayout(device_, layout_, nullptr));
+        for (const auto layout : descriptor_layouts_)
+            LUX_DESTROY("shader_layout", vkDestroyDescriptorSetLayout(device_, layout, nullptr));
     }
 
     CompiledGraph::CompiledGraph(CompiledGraph&& other) noexcept
         : device_(std::exchange(other.device_, VK_NULL_HANDLE)), target_(other.target_), layout_(other.layout_),
           resources_(std::move(other.resources_)), passes_(std::move(other.passes_)),
           host_barriers_(std::move(other.host_barriers_)), shader_identities_(std::move(other.shader_identities_)),
-          pipelines_(std::move(other.pipelines_)), output_(other.output_)
+          pipelines_(std::move(other.pipelines_)), descriptor_layouts_(std::move(other.descriptor_layouts_)),
+          output_(other.output_)
     {
     }
 
@@ -50,6 +53,8 @@ namespace lux::render::vulkan
                     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
             case EGraphUse::TRANSFER_SOURCE:
                 return {VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL};
+            case EGraphUse::STORAGE_READ:
+                return {VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_STORAGE_READ_BIT};
             case EGraphUse::SAMPLED:
                 return {VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
                     VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
@@ -104,12 +109,12 @@ namespace lux::render::vulkan
         for (const auto& binding : assembly.external_bindings)
         {
             auto& resource = result.resources_[binding.resource.index];
-            const bool is_image = std::holds_alternative<GraphImageDesc>(resource.description);
-            const bool invalid_texture = is_image &&
-                (binding.storage.type.name() != kTextureStorageType.name() ||
-                 binding.storage.scope != EResourceScope::GLOBAL || resource.origin != EGraphOrigin::IMPORTED);
-            const bool is_unsupported_storage = invalid_texture || binding.storage.abi != cxx::SchemaVersion{1, 0};
-            if (is_unsupported_storage) return cxx::unexpected(RenderError{kUnsupported});
+            const auto* factory = session.resources().factory(binding.storage.type.view());
+            if (!factory || !factory->binding_ops ||
+                !static_cast<const StorageBindingOps*>(factory->binding_ops)->prepare)
+                return cxx::unexpected(RenderError{kStorageFactory});
+            if (factory->description->abi != binding.storage.abi)
+                return cxx::unexpected(RenderError{kStorageMismatch});
             resource.storage = binding.storage;
         }
         for (const auto& output : graph.outputs())
@@ -124,8 +129,50 @@ namespace lux::render::vulkan
             plan.target_sized = true;
         }
         if (result.output_ == kGraphInvalidIndex) return cxx::unexpected(RenderError{kInvalidArgument});
-        const bool sampled_program = std::ranges::any_of(programs, [](const auto& p) { return p.shader.abi == 2; });
-        if (sampled_program && !session.textures()) return cxx::unexpected(RenderError{kUnsupported});
+        // Layouts depend only on installed static contracts/configuration, never on a live asset or Storage instance.
+        std::vector<ShaderBinding> contracts;
+        for (const auto& program : programs)
+            for (const auto& binding : program.shader.interface.bindings)
+            {
+                auto found = std::ranges::find_if(contracts, [&](const auto& value) {
+                    return value.set == binding.set && value.binding == binding.binding;
+                });
+                if (found != contracts.end())
+                {
+                    if (*found != binding) return cxx::unexpected(RenderError{kStorageMismatch});
+                    continue;
+                }
+                if (binding.set >= device.properties().limits.maxBoundDescriptorSets)
+                    return cxx::unexpected(RenderError{kUnsupported});
+                contracts.push_back(binding);
+            }
+        std::ranges::sort(contracts, [](const auto& a, const auto& b) {
+            return std::pair(a.set, a.binding) < std::pair(b.set, b.binding);
+        });
+        for (const auto& contract : contracts)
+        {
+            // Current consumers each supply one descriptor binding per set; unsupported collisions fail cold.
+            if (contract.set != result.descriptor_layouts_.size()) return cxx::unexpected(RenderError{kStorageContract});
+            const StorageFactory* provider = nullptr;
+            for (const auto& resource : result.resources_)
+                if (resource.storage)
+                {
+                    const auto* factory = session.resources().factory(resource.storage->type.view());
+                    if (std::ranges::find(factory->description->bindings, contract) != factory->description->bindings.end())
+                    {
+                        if (provider && provider != factory) return cxx::unexpected(RenderError{kStorageMismatch});
+                        provider = factory;
+                    }
+                }
+            if (!provider) return cxx::unexpected(RenderError{kStorageContract});
+            const auto& ops = *static_cast<const StorageBindingOps*>(provider->binding_ops);
+            if (!contract.count && !ops.descriptor_count) return cxx::unexpected(RenderError{kStorageFactory});
+            const auto count = contract.count ? contract.count : ops.descriptor_count(
+                session.resources().configuration(provider->description->type));
+            auto layout = createDescriptorLayout(device, std::span(&contract, 1), count, "shader_layout");
+            if (!layout) return cxx::unexpected(layout.error());
+            result.descriptor_layouts_.push_back(*layout);
+        }
         for (std::size_t i = 0; i < programs.size(); ++i)
         {
             for (std::size_t j = 0; j < i; ++j)
@@ -143,14 +190,13 @@ namespace lux::render::vulkan
             });
             if (binding == programs.end()) return cxx::unexpected(RenderError{kFeatureContract, {id.index}});
             const bool is_unsupported_pass = pass.conditional || pass.kind == EGraphPassKind::COMPUTE ||
-                pass.uses.empty() || pass.uses.size() > 2;
+                pass.uses.empty() || pass.uses.size() > 3;
             if (is_unsupported_pass) return cxx::unexpected(RenderError{kUnsupported, {id.index}});
             if (!std::ranges::all_of(binding->clear_color, [](float x) { return std::isfinite(x); }))
                 return cxx::unexpected(RenderError{kInvalidArgument});
             CompiledPass compiled{};
             compiled.clear_color = binding->clear_color;
             compiled.vertex_count = binding->vertex_count;
-            compiled.texture_lod = binding->texture_lod;
             unsigned reads = 0, writes = 0;
             for (const auto& use : pass.uses)
             {
@@ -163,23 +209,25 @@ namespace lux::render::vulkan
                 else { compiled.destination = index; ++writes; }
                 if (resource.origin == EGraphOrigin::IMPORTED && use.access != EGraphAccess::READ)
                     return cxx::unexpected(RenderError{kUnsupported});
-                if (use.usage == EGraphUse::SAMPLED)
+                if (use.usage == EGraphUse::SAMPLED || use.usage == EGraphUse::STORAGE_READ)
                 {
-                    const auto* image = std::get_if<GraphImageDesc>(&resource.description);
-                    const bool invalid_texture = !image || resource.origin != EGraphOrigin::IMPORTED || !resource.storage ||
-                        binding->shader.abi != 2 || binding->texture.isNull() ||
-                        (!resource.texture.isNull() && resource.texture != binding->texture) ||
-                        !std::isfinite(binding->texture_lod) || binding->texture_lod < 0 ||
-                        std::floor(binding->texture_lod) != binding->texture_lod ||
-                        (image && binding->texture_lod > image->mips - 1);
-                    if (invalid_texture) return cxx::unexpected(RenderError{kInvalidArgument});
-                    resource.texture = binding->texture;
-                    resource.image_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
-                    // Native publication already established Graphics ownership and SHADER_READ layout.
-                    // Immutable read/read sampling needs no recurring image transition or binding lookup.
-                    used[index] = true;
-                    previous[index] = accessFor(use);
-                    continue;
+                    const bool is_image = std::holds_alternative<GraphImageDesc>(resource.description);
+                    const bool is_invalid_binding = resource.origin != EGraphOrigin::IMPORTED || !resource.storage ||
+                        is_image != (use.usage == EGraphUse::SAMPLED);
+                    if (is_invalid_binding) return cxx::unexpected(RenderError{kStorageContract});
+                    const auto* factory = session.resources().factory(resource.storage->type.view());
+                    const auto contracts = factory->description->bindings;
+                    if (contracts.size() != 1 || std::ranges::find(binding->shader.interface.bindings, contracts[0]) ==
+                        binding->shader.interface.bindings.end()) return cxx::unexpected(RenderError{kStorageMismatch});
+                    compiled.descriptor_resources.push_back(index);
+                    if (is_image)
+                    {
+                        resource.image_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+                        // Published storage images already have Graphics ownership and SHADER_READ layout.
+                        used[index] = true;
+                        previous[index] = accessFor(use);
+                        continue;
+                    }
                 }
                 if (resource.origin == EGraphOrigin::IMPORTED && std::holds_alternative<GraphImageDesc>(resource.description))
                     return cxx::unexpected(RenderError{kUnsupported});
@@ -209,21 +257,22 @@ namespace lux::render::vulkan
                     barrier.srcAccessMask = source.access;
                     if (!used[index] && resource.origin == EGraphOrigin::IMPORTED)
                     {
-                        barrier.srcStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
-                        barrier.srcAccessMask = VK_ACCESS_2_HOST_WRITE_BIT;
+                        barrier.srcStageMask = VK_PIPELINE_STAGE_2_HOST_BIT | VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+                        barrier.srcAccessMask = VK_ACCESS_2_HOST_WRITE_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
                     }
                     barrier.dstStageMask = current.stage;
                     barrier.dstAccessMask = current.access;
                     barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
                     barrier.size = VK_WHOLE_SIZE;
                     compiled.buffers.push_back({index, barrier});
-                    resource.buffer_usage |= use.usage == EGraphUse::TRANSFER_SOURCE ?
+                    resource.buffer_usage |= use.usage == EGraphUse::STORAGE_READ ? VK_BUFFER_USAGE_STORAGE_BUFFER_BIT :
+                        use.usage == EGraphUse::TRANSFER_SOURCE ?
                         VK_BUFFER_USAGE_TRANSFER_SRC_BIT : VK_BUFFER_USAGE_TRANSFER_DST_BIT;
                 }
                 used[index] = true;
                 previous[index] = current;
             }
-            const bool is_unsupported_recipe = writes != 1 || reads > 1 ||
+            const bool is_unsupported_recipe = writes != 1 || (pass.kind == EGraphPassKind::TRANSFER && reads > 1) ||
                 (pass.kind == EGraphPassKind::TRANSFER &&
                  (!binding->shader.vertex.empty() || !binding->shader.fragment.empty()));
             if (is_unsupported_recipe) return cxx::unexpected(RenderError{kUnsupported});
@@ -231,11 +280,16 @@ namespace lux::render::vulkan
                 result.resources_[compiled.destination].description);
             if (pass.kind == EGraphPassKind::GRAPHICS)
             {
-                const bool valid_sample = binding->shader.abi == 2 && reads == 1 &&
-                    !result.resources_[compiled.source].texture.isNull();
-                const bool valid_color = binding->shader.abi == 1 && reads == 0 && binding->texture.isNull();
-                if ((!valid_sample && !valid_color) || !writes_image || binding->vertex_count == 0)
-                    return cxx::unexpected(RenderError{kUnsupported});
+                if (reads != compiled.descriptor_resources.size() ||
+                    reads != binding->shader.interface.bindings.size() || !writes_image || binding->vertex_count == 0)
+                    return cxx::unexpected(RenderError{kStorageContract});
+                std::ranges::sort(compiled.descriptor_resources, [&](auto a, auto b) {
+                    return session.resources().factory(result.resources_[a].storage->type.view())->description->bindings[0].set <
+                        session.resources().factory(result.resources_[b].storage->type.view())->description->bindings[0].set;
+                });
+                for (std::size_t set = 0; set < compiled.descriptor_resources.size(); ++set)
+                    if (session.resources().factory(result.resources_[compiled.descriptor_resources[set]].storage->type.view())->
+                        description->bindings[0].set != set) return cxx::unexpected(RenderError{kStorageContract});
                 compiled.recipe = ERecipe::DRAW;
                 if (!result.layout_)
                 {
@@ -243,9 +297,8 @@ namespace lux::render::vulkan
                     VkPipelineLayoutCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
                     info.pushConstantRangeCount = 1;
                     info.pPushConstantRanges = &range;
-                    const auto descriptors = sampled_program ? session.textures()->layout() : VK_NULL_HANDLE;
-                    info.setLayoutCount = sampled_program ? 1 : 0;
-                    info.pSetLayouts = sampled_program ? &descriptors : nullptr;
+                    info.setLayoutCount = std::uint32_t(result.descriptor_layouts_.size());
+                    info.pSetLayouts = result.descriptor_layouts_.data();
                     const auto created = LUX_NATIVE("pipeline_layout", vkCreatePipelineLayout(device.native(), &info,
                         nullptr, &result.layout_));
                     if (created != VK_SUCCESS) return cxx::unexpected(nativeError(created));

@@ -4,6 +4,8 @@
 #include <spirv-tools/libspirv.h>
 #include <spirv_cross/spirv_cross_c.h>
 #include <cstring>
+#include <algorithm>
+#include <lux/engine/gapi/vk/Descriptor.hpp>
 #include <exception>
 #include <memory>
 
@@ -24,7 +26,7 @@ namespace lux::render::vulkan
                 spvc_type_get_num_array_dimensions(type) == 0;
         }
 
-        bool validateStage(std::span<const std::uint32_t> words, SpvExecutionModel stage, std::uint32_t abi) noexcept
+        bool validateStage(std::span<const std::uint32_t> words, SpvExecutionModel stage, const ShaderInterface& interface) noexcept
         {
             // Use the existing SPIR-V tools, not another shader parser or handwritten instruction decoder.
             const auto validation = spvContextCreate(SPV_ENV_VULKAN_1_3);
@@ -48,7 +50,10 @@ namespace lux::render::vulkan
             for (std::size_t i = 0; i < capability_count; ++i)
             {
                 const auto capability = capabilities[i];
-                const bool sampled = abi == 2 && stage == SpvExecutionModelFragment &&
+                const bool sampled = stage == SpvExecutionModelFragment &&
+                    std::ranges::any_of(interface.bindings, [](const auto& value) {
+                        return value.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY && value.count == 0;
+                    }) &&
                     (capability == SpvCapabilityRuntimeDescriptorArray || capability == SpvCapabilityShaderNonUniform ||
                      capability == SpvCapabilitySampledImageArrayNonUniformIndexing ||
                      capability == SpvCapabilitySampledImageArrayDynamicIndexing || capability == SpvCapabilityImageQuery);
@@ -83,20 +88,52 @@ namespace lux::render::vulkan
                         spvc_compiler_get_member_decoration(compiler, list[0].base_type_id, 0, SpvDecorationOffset) != 0;
                     if (is_abi_mismatch) return false;
                 }
-                else if (abi == 2 && stage == SpvExecutionModelFragment && kind == SPVC_RESOURCE_TYPE_SAMPLED_IMAGE)
+                else if (stage == SpvExecutionModelFragment &&
+                    (kind == SPVC_RESOURCE_TYPE_SAMPLED_IMAGE || kind == SPVC_RESOURCE_TYPE_STORAGE_BUFFER))
                 {
-                    if (count != 1) return false;
-                    const auto type = spvc_compiler_get_type_handle(compiler, list[0].type_id);
-                    const bool invalid_array = spvc_type_get_num_array_dimensions(type) != 1 ||
-                        spvc_type_get_array_dimension(type, 0) != 0;
-                    const bool invalid_image = spvc_type_get_image_dimension(type) != SpvDim2D ||
-                        spvc_type_get_image_arrayed(type) || spvc_type_get_image_is_depth(type) ||
-                        spvc_type_get_image_multisampled(type) || spvc_type_get_image_is_storage(type);
-                    const auto sampled_type = spvc_compiler_get_type_handle(compiler, spvc_type_get_image_sampled_type(type));
-                    const bool invalid_binding = spvc_compiler_get_decoration(compiler, list[0].id, SpvDecorationDescriptorSet) != 0 ||
-                        spvc_compiler_get_decoration(compiler, list[0].id, SpvDecorationBinding) != 0;
-                    if (invalid_array || invalid_image || invalid_binding ||
-                        spvc_type_get_basetype(sampled_type) != SPVC_BASETYPE_FP32) return false;
+                    const auto expected_kind = kind == SPVC_RESOURCE_TYPE_SAMPLED_IMAGE ?
+                        EDescriptorKind::SAMPLED_IMAGE_ARRAY : EDescriptorKind::STORAGE_BUFFER;
+                    const auto expected_count = std::ranges::count_if(interface.bindings,
+                        [&](const auto& value) { return value.kind == expected_kind; });
+                    if (count != expected_count) return false;
+                    for (std::size_t i = 0; i < count; ++i)
+                    {
+                        const auto set = spvc_compiler_get_decoration(compiler, list[i].id, SpvDecorationDescriptorSet);
+                        const auto binding = spvc_compiler_get_decoration(compiler, list[i].id, SpvDecorationBinding);
+                        const auto expected = std::ranges::find_if(interface.bindings, [&](const auto& value) {
+                            return value.set == set && value.binding == binding && value.kind == expected_kind;
+                        });
+                        if (expected == interface.bindings.end()) return false;
+                        const auto type = spvc_compiler_get_type_handle(compiler, list[i].type_id);
+                        if (expected_kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY)
+                        {
+                            const bool invalid_array = spvc_type_get_num_array_dimensions(type) != 1 ||
+                                spvc_type_get_array_dimension(type, 0) != expected->count;
+                            const bool invalid_image = spvc_type_get_image_dimension(type) != SpvDim2D ||
+                                spvc_type_get_image_arrayed(type) || spvc_type_get_image_is_depth(type) ||
+                                spvc_type_get_image_multisampled(type) || spvc_type_get_image_is_storage(type);
+                            const auto sampled = spvc_compiler_get_type_handle(compiler,
+                                spvc_type_get_image_sampled_type(type));
+                            if (invalid_array || invalid_image ||
+                                spvc_type_get_basetype(sampled) != SPVC_BASETYPE_FP32) return false;
+                        }
+                        else
+                        {
+                            const auto structure = spvc_compiler_get_type_handle(compiler, list[i].base_type_id);
+                            std::size_t bytes = 0;
+                            if (!check(spvc_compiler_get_declared_struct_size(compiler, structure, &bytes))) return false;
+                            const bool invalid_block = spvc_type_get_num_array_dimensions(type) != 0 ||
+                                expected->count != 1 || bytes != expected->layout_bytes || bytes != 16 ||
+                                spvc_type_get_num_member_types(structure) != 1;
+                            if (invalid_block) return false;
+                            const auto member = spvc_compiler_get_type_handle(compiler,
+                                spvc_type_get_member_type(structure, 0));
+                            // The first real StorageBuffer primitive is a single float4 block at offset zero.
+                            // Reject equally sized integer/matrix/array layouts; extend for a real later consumer.
+                            if (!float4(member) || spvc_compiler_get_member_decoration(compiler,
+                                list[i].base_type_id, 0, SpvDecorationOffset) != 0) return false;
+                        }
+                    }
                 }
                 else if (stage == SpvExecutionModelFragment && kind == SPVC_RESOURCE_TYPE_STAGE_OUTPUT)
                 {
@@ -111,15 +148,53 @@ namespace lux::render::vulkan
         }
     }
 
+    RenderResult<VkDescriptorSetLayout> createDescriptorLayout(
+        const VulkanDevice& device, std::span<const ShaderBinding> contract, std::uint32_t runtime_count,
+        const char* fault_label
+    ) noexcept
+    {
+        std::vector<VkDescriptorSetLayoutBinding> bindings;
+        std::vector<VkDescriptorBindingFlags> flags;
+        bool update_after_bind = false;
+        for (const auto& binding : contract)
+        {
+            const bool runtime_array = binding.count == 0;
+            const auto count = runtime_array ? runtime_count : binding.count;
+            if (!count) return cxx::unexpected(RenderError{kStorageContract});
+            const auto type = binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY ?
+                VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+            bindings.push_back({binding.binding, type, count, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr});
+            flags.push_back(runtime_array ? VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+                VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT : 0);
+            update_after_bind |= runtime_array;
+        }
+        VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags{
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO, nullptr,
+            std::uint32_t(flags.size()), flags.data()};
+        VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+        layout.pNext = &binding_flags;
+        layout.flags = update_after_bind ? VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT : 0;
+        layout.bindingCount = std::uint32_t(bindings.size());
+        layout.pBindings = bindings.data();
+        gapi::vk::DescriptorSetLayout handle;
+        static_assert(sizeof(handle) == sizeof(VkDescriptorSetLayout));
+        const auto result = LUX_NATIVE(fault_label, handle.tryCreate(device.native(), layout));
+        if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
+        return handle.handle(); // Transfer the handle to the caller's existing aggregate owner.
+    }
+
     RenderResult<VkPipeline> compileGraphics(
         const VulkanDevice& device, VkPipelineLayout layout, const ShaderArtifact& shader
     ) noexcept
     {
-        const bool is_unsupported = (shader.abi != 1 && shader.abi != 2) || !device.dynamicRendering() ||
-            (shader.abi == 2 && !device.textureDescriptors());
+        const bool needs_arrays = std::ranges::any_of(shader.interface.bindings, [](const auto& value) {
+            return value.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY && value.count == 0;
+        });
+        const bool is_unsupported = shader.interface.push_bytes != 16 || !device.dynamicRendering() ||
+            (needs_arrays && !device.textureDescriptors());
         if (is_unsupported) return cxx::unexpected(RenderError{kUnsupported});
-        if (!validateStage(shader.vertex, SpvExecutionModelVertex, shader.abi) ||
-            !validateStage(shader.fragment, SpvExecutionModelFragment, shader.abi))
+        if (!validateStage(shader.vertex, SpvExecutionModelVertex, shader.interface) ||
+            !validateStage(shader.fragment, SpvExecutionModelFragment, shader.interface))
             return cxx::unexpected(RenderError{kInvalidArgument});
         struct Modules final
         {

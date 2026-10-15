@@ -45,6 +45,7 @@ namespace lux::render
         void freeze() noexcept { frozen_ = true; }
         [[nodiscard]] bool frozen() const noexcept { return frozen_; }
         [[nodiscard]] const StorageFactory* factory(StorageTypeIdView type) const noexcept;
+        [[nodiscard]] const void* configuration(StorageTypeIdView type) const noexcept;
 
         [[nodiscard]] ResourceDomain root() const noexcept { return {root_, identity_}; }
         [[nodiscard]] RenderResult<ResourceDomain> createDomain(const ResourceDomain& parent, EResourceScope scope) noexcept;

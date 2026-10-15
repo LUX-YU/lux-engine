@@ -65,6 +65,14 @@ foreach(header RenderClient RenderServer Operations)
     target_link_libraries(render_runtime_header_${header} PRIVATE render_client render_features)
 endforeach()
 
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/GpuCompletion.cpp" CONTENT
+    "#include <lux/engine/render/runtime/vulkan/GpuCompletion.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
+)
+
+add_library(render_runtime_header_GpuCompletion OBJECT "${CMAKE_CURRENT_BINARY_DIR}/GpuCompletion.cpp")
+
+target_link_libraries(render_runtime_header_GpuCompletion PRIVATE render_runtime)
+
 add_executable(render_runtime_programs_test Programs.cpp)
 
 target_include_directories(render_runtime_programs_test PRIVATE ../../native/vulkan/test)

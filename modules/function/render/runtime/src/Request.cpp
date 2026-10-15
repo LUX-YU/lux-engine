@@ -1,3 +1,4 @@
+#include <lux/engine/render/runtime/vulkan/GpuCompletion.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "Wire.hpp"
 #include "Deferred.hpp"
@@ -92,6 +93,11 @@ namespace lux::render
             return cxx::unexpected(RenderError{kRuntimeState});
         }
         return {};
+    }
+
+    ResourceRegistry& OperationContext::resources() const noexcept
+    {
+        return native_->resources();
     }
 
     RenderResult<GpuCompletionReservation> OperationContext::reserveGpuCompletion(

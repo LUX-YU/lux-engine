@@ -2,6 +2,7 @@
 
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/StorageBinding.hpp>
+#include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 
 namespace buffer_fixture
 {
@@ -29,17 +30,16 @@ namespace buffer_fixture
     {
         static const auto size = [](const void* value) noexcept { return static_cast<const Native*>(value)->config.size; };
         static const native::StorageBindingOps bindings{
-            [](void* object, VkDeviceSize size, VkBufferUsageFlags usage) noexcept
-                -> RenderResult<native::StorageBufferBinding> {
+            [](void* object, const native::ResourcePlan& plan, std::span<const std::byte>,
+                native::PreparedStorageBinding& binding) noexcept -> RenderResult<void> {
                 auto& value = *static_cast<Native*>(object);
                 auto* buffer = value.device.borrow(value.permit);
-                const bool mismatch = buffer->size() != size || (buffer->usage() & usage) != usage;
+                const auto size = std::get<GraphBufferDesc>(plan.description).size;
+                const bool mismatch = buffer->size() != size || (buffer->usage() & plan.buffer_usage) != plan.buffer_usage;
                 if (mismatch) return lux::cxx::unexpected(RenderError{kStorageMismatch});
-                return native::StorageBufferBinding{buffer, object,
-                    [](void* instance, native::SubmissionTicket ticket) noexcept {
-                        static_cast<Native*>(instance)->last_use = ticket;
-                    }
-                };
+                binding.buffer = buffer;
+                binding.last_use = &value.last_use;
+                return {};
             }
         };
         return {

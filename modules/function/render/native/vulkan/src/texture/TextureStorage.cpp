@@ -2,10 +2,64 @@
 #include <lux/engine/render/native/vulkan/transfer/TextureUpload.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include "Native.hpp"
+#include "Shader.hpp"
+#include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
+#include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 #include <algorithm>
 
 namespace lux::render::vulkan
 {
+    struct TextureStorage::Use final
+    {
+        TextureStorage* storage;
+        TextureId id;
+        TextureStorage::Backing* backing;
+        PreparedStorageBinding* binding;
+        std::uint32_t lod;
+
+        void update(TextureStorage::Backing& value) noexcept
+        {
+            if (backing) --backing->leases_;
+            backing = &value;
+            ++backing->leases_;
+            binding->parameters = {float(value.descriptorIndex()), float(value.info().color_space), float(lod), 0};
+            binding->last_use = &value.last_use_;
+        }
+
+        ~Use() noexcept
+        {
+            --backing->leases_;
+            std::erase(storage->uses_, this);
+        }
+    };
+
+    RenderResult<void> TextureStorage::prepare(const ResourcePlan& plan, std::span<const std::byte> bytes,
+        PreparedStorageBinding& binding) noexcept
+    {
+        cxx::BinaryReader reader(bytes, bytes.size()); // schema/length already checked at Attach boundary
+        auto argument = DataSchema<TextureBinding>::decode(reader,
+            BorrowedWireView{DataSchema<TextureBinding>::schema, bytes, {}});
+        auto* record = textures_.find(argument->texture);
+        if (!record || !record->current) return cxx::unexpected(RenderError{kWrongOwner});
+        auto& backing = *record->current;
+        const auto* expected = std::get_if<GraphImageDesc>(&plan.description);
+        const auto& actual = backing.info();
+        if (!expected) return cxx::unexpected(RenderError{kStorageMismatch});
+        const auto format = expected->format == rdesc::ETextureFormat::RGBA8_UNORM ? VK_FORMAT_R8G8B8A8_UNORM :
+            expected->format == rdesc::ETextureFormat::RGBA8_SRGB ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
+        const bool mismatch = expected->width != actual.width || expected->height != actual.height ||
+            expected->mips != actual.mip_count || expected->layers != actual.layers || format != backing.image().format() ||
+            argument->lod >= actual.mip_count;
+        if (mismatch) return cxx::unexpected(RenderError{kStorageMismatch});
+        auto use = std::make_unique<Use>(this, argument->texture, nullptr, &binding, argument->lod);
+        use->update(backing);
+        binding.descriptors = descriptors_;
+        binding.provides_parameters = true;
+        uses_.push_back(use.get());
+        binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};
+        return {};
+    }
+
     TextureStorage::TextureStorage(DeviceSession& session, std::size_t capacity, std::uint64_t bytes) noexcept
         : session_(session), capacity_(capacity), byte_limit_(bytes)
     {
@@ -25,6 +79,13 @@ namespace lux::render::vulkan
                 return static_cast<vulkan::TextureStorage*>(value)->release(id, revision);
             }
         };
+        static const StorageBindingOps binding_ops{
+            [](void* storage, const ResourcePlan& plan, std::span<const std::byte> argument,
+                PreparedStorageBinding& binding) noexcept {
+                return static_cast<TextureStorage*>(storage)->prepare(plan, argument, binding);
+            }, [](const void* configuration) noexcept {
+            return configuration ? static_cast<const TextureStorageConfig*>(configuration)->capacity : 0;
+        }};
         static const StorageFactory factory{
             &lux::render::TextureStorage::description, EGraphicsApi::VULKAN, &ops,
             [](void* device, const void* config) noexcept -> RenderResult<NativeStorage> {
@@ -38,24 +99,9 @@ namespace lux::render::vulkan
             [](const void* value, const void* config) noexcept {
                 return static_cast<const vulkan::TextureStorage*>(value)->compatibleConfig(
                     *static_cast<const TextureStorageConfig*>(config));
-            }, {}, nullptr, [](void* value) noexcept { static_cast<TextureStorage*>(value)->collect(); }
+            }, {}, &binding_ops, [](void* value) noexcept { static_cast<TextureStorage*>(value)->collect(); }
         };
         return factory;
-    }
-
-    TextureStorage* DeviceSession::textures() const noexcept
-    {
-        auto id = resources_->find(resources_->root(), "default", lux::render::TextureStorage::description);
-        return id ? static_cast<TextureStorage*>(resources_->native(*id)) : nullptr;
-    }
-
-    RenderResult<void> DeviceSession::configureTextures(std::size_t capacity, std::uint64_t bytes) noexcept
-    {
-        if (capacity > UINT32_MAX) return cxx::unexpected(RenderError{kInvalidArgument});
-        const TextureStorageConfig config{static_cast<std::uint32_t>(capacity), bytes};
-        auto value = resources_->getOrCreate(resources_->root(), "default", lux::render::TextureStorage::description, &config);
-        if (!value) return cxx::unexpected(value.error());
-        return {};
     }
 
     RenderResult<std::unique_ptr<TextureStorage>> TextureStorage::create(
@@ -81,26 +127,17 @@ namespace lux::render::vulkan
             limits.maxPerStageDescriptorUpdateAfterBindSampledImages, limits.maxUpdateAfterBindDescriptorsInAllPools});
         if (capacity_ > maximum) return cxx::unexpected(RenderError{kUnsupported});
         const auto device = session_.device().native();
-        const VkDescriptorBindingFlags flags = VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-            VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT;
-        VkDescriptorSetLayoutBindingFlagsCreateInfo binding_flags{
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO, nullptr, 1, &flags};
-        VkDescriptorSetLayoutBinding binding{0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-            std::uint32_t(capacity_), VK_SHADER_STAGE_FRAGMENT_BIT, nullptr};
-        VkDescriptorSetLayoutCreateInfo layout{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-        layout.pNext = &binding_flags;
-        layout.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-        layout.bindingCount = 1;
-        layout.pBindings = &binding;
-        auto result = LUX_NATIVE("texture_layout", vkCreateDescriptorSetLayout(device, &layout, nullptr, &layout_));
-        if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
+        auto layout = createDescriptorLayout(session_.device(), lux::render::TextureStorage::description.bindings,
+            std::uint32_t(capacity_), "texture_layout");
+        if (!layout) return cxx::unexpected(layout.error());
+        layout_ = *layout;
         VkDescriptorPoolSize size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, std::uint32_t(capacity_)};
         VkDescriptorPoolCreateInfo pool{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
         pool.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
         pool.maxSets = 1;
         pool.poolSizeCount = 1;
         pool.pPoolSizes = &size;
-        result = LUX_NATIVE("texture_pool", vkCreateDescriptorPool(device, &pool, nullptr, &pool_));
+        auto result = LUX_NATIVE("texture_pool", vkCreateDescriptorPool(device, &pool, nullptr, &pool_));
         if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
         VkDescriptorSetAllocateInfo allocate{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO};
         allocate.descriptorPool = pool_;
@@ -121,13 +158,13 @@ namespace lux::render::vulkan
         if (layout_) LUX_DESTROY("texture_layout", vkDestroyDescriptorSetLayout(device, layout_, nullptr));
     }
 
-    const TextureVersion* TextureStorage::find(TextureId id) const noexcept
+    const TextureStorage::Backing* TextureStorage::find(TextureId id) const noexcept
     {
         const auto* record = textures_.find(id);
         return record ? record->current : nullptr;
     }
 
-    RenderResult<TextureVersion*> TextureStorage::acquire(TextureId id) noexcept
+    RenderResult<TextureStorage::Backing*> TextureStorage::acquire(TextureId id) noexcept
     {
         auto* record = textures_.find(id);
         if (!record || !record->current) return cxx::unexpected(RenderError{kWrongOwner});
@@ -235,7 +272,7 @@ namespace lux::render::vulkan
         if (record->updating || record->current->revision_ != expected) return cxx::unexpected(RenderError{kBusy});
         const auto last = record->current->info_.mip_ranges[record->current->info_.mip_count - 1];
         if (auto result = admit(last.offset + last.size, false); !result) return cxx::unexpected(result.error());
-        auto upload = session_.prepareTextureUpload(record->current->info_, source, region);
+        auto upload = TextureUpload::create(session_, record->current->info_, source, region);
         if (!upload) return cxx::unexpected(upload.error());
         auto publication = reserve(**upload, id, expected);
         if (!publication) return cxx::unexpected(publication.error());
@@ -256,7 +293,7 @@ namespace lux::render::vulkan
         if (record.current) record.current->live_ = false;
         record.current = &version;
         record.updating = false;
-        session_.refreshTexture(upload.texture_, version);
+        for (auto* use : uses_) if (use->id == upload.texture_) use->update(version);
         upload.storage_ = nullptr;
         upload.version_ = nullptr;
     }
@@ -287,7 +324,7 @@ namespace lux::render::vulkan
         }
     }
 
-    void TextureStorage::destroy(TextureVersion& version) noexcept
+    void TextureStorage::destroy(TextureStorage::Backing& version) noexcept
     {
         const auto device = session_.device().native();
         if (version.view_) LUX_DESTROY("image_view", vkDestroyImageView(device, version.view_, nullptr));

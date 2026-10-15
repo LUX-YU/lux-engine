@@ -86,14 +86,14 @@ int main()
                 for (std::size_t i = 0; i < source.size(); ++i) source[i] = std::byte(i % 251);
                 auto malformed = info;
                 malformed.mip_ranges[0].size = UINT64_MAX;
-                CHECK(!session->uploadTexture(malformed, source));
+                CHECK(!TextureUpload::create(*session, malformed, source));
                 malformed = info;
                 malformed.color_space = rdesc::ETextureColorSpace::UNKNOWN;
-                CHECK(!session->uploadTexture(malformed, source));
+                CHECK(!TextureUpload::create(*session, malformed, source));
                 const auto before = session->uploadStats();
                 const auto start = Clock::now();
-                auto candidate = take(session->uploadTexture(info, source));
-                CHECK(!session->uploadTexture(info, source)); // page capacity; no dedicated fallback
+                auto candidate = take(TextureUpload::create(*session, info, source));
+                CHECK(!TextureUpload::create(*session, info, source)); // page capacity; no dedicated fallback
                 CHECK(!candidate->takeImage()); // no early publication
                 roundtrip(*session, *candidate, source);
                 candidate.reset();

@@ -145,3 +145,48 @@ Failures and measurement limits retained:
 
 This is an intermediate production checkpoint, not final G11A-R I/V or architectural PASS. R4 must still
 remove Texture-specific compiler/binding/public API dependencies, followed by the R5 installed OCP test.
+
+## R4 checkpoint — contract-driven compilation and prepared binding
+
+ShaderArtifact now owns neutral ShaderInterface metadata instead of an ABI number. The existing
+SPIRV-Tools/SPIRV-Cross path verifies set/binding/kind/array extent and the current explicit float4 block
+layout. Equal-sized integer blocks are rejected. The supported StorageBuffer primitive is deliberately
+one float4 at offset zero, not a claim of general Material/Shader authoring. CompiledGraph owns layouts,
+Pipeline code and resource requirements, with no TextureId or asset value. Concrete field-encoded
+StorageArguments live in Effect and enter Attach; generic PreparedStorageBinding is resolved once via
+Factory ops. Executor uses direct prepared descriptors, parameter pointers and last-ticket pointers.
+No Type/Name lookup, Feature call or per-frame Storage dispatch was introduced.
+
+StorageRequirement can explicitly name its domain-local instance key independently of its graph port.
+Texture's prepared future-use subscriptions belong to TextureStorage and refresh only on publication;
+old physical backing remains protected by accepted tickets. The formerly public TextureVersion is a
+private TextureStorage::Backing. DeviceSession no longer exposes textures/configureTextures/uploadTexture
+or refreshTexture; the professional TextureUpload factory owns Texture validation and delegates transfers.
+Ordinary OperationContext exposes the neutral ResourceRegistry; Native Device/queue/reservation entry
+points reside in the explicit runtime/vulkan/GpuCompletion.hpp boundary. Device queue/family duplicates
+were removed. Descriptor layout creation uses gapi::vk::DescriptorSetLayout::tryCreate, preserving VkResult
+and fault hooks, with no second Native RAII owner. GAPI is linked privately and exported through actual SDK metadata.
+
+The new external fixture under native/vulkan/test/extension uses only public APIs. A real Shader samples
+Texture and reads the uploaded StorageBuffer together. Reusing the SAME CompiledGraph with old and new
+prepared Buffer bindings produces exact 64/32 pixels; business removal prevents new binding while both
+existing references remain valid. Old Buffer consumers intentionally keep their prior backing until detach.
+32 stable iterations have Engine new=0. Descriptor kind/set/count/size and same-size wrong scalar layout
+are negative tests. G4 gains only STORAGE_READ's real usage validation; its Analysis/hazard algorithm is unchanged.
+
+Implementation Release: full CTest **78/78**, 152.13 seconds, log
+`evidence/test-RelWithDebInfo-20261015-172643-841.log`; subsequent stricter same-size block reflection check:
+all build, second no-work, affected compiler/installed/binding-plan/sampling/storage-bindings **5/5**,
+`evidence/test-RelWithDebInfo-20261015-173045-887.log`. Final independent three-configuration V remains due.
+Protection checker passed: 719 blobs, dependencies, original user hashes/status, 95 changed files versus base.
+
+Retained failures: a fixture argument used `texture` instead of G5's canonical `shared:texture`; corrected
+at the fixture source and negative Attach identity/LOD assertions preserved. Installed Texture consumer
+also needed explicit Attach arguments. The new fixture initially destroyed Device before its retained
+CompiledGraph; corrected fixture shutdown, Validation again zero errors. LLDB inadvertently generated an
+empty CSV in the primary worktree because its command omitted an explicit cwd. Its timestamp/zero length
+were verified and it was moved to external evidence (`r4-debug-empty-texture-sampling.csv`); no protected
+file changed and full original status/hash checks passed afterwards. This procedural failure is not omitted.
+
+R5 still must prove typed Server registration, CRUD/Readback Operations, installed external consumer and
+final independent I/V. This checkpoint is not final G11A-R PASS.

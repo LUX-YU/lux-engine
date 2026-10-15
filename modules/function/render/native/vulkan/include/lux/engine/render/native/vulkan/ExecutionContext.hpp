@@ -6,7 +6,6 @@
 
 namespace lux::render::vulkan
 {
-    class TextureVersion;
     class ExecutionContext final
     {
     public:
@@ -47,6 +46,8 @@ namespace lux::render::vulkan
             const CompiledPass* recipe;
             std::vector<VkImageMemoryBarrier2> images;
             std::vector<VkBufferMemoryBarrier2> buffers;
+            std::vector<VkDescriptorSet> descriptors;
+            const std::array<float, 4>* parameters = nullptr;
         };
         ExecutionContext(DeviceSession& owner, SubmissionQueue& queue, std::shared_ptr<const CompiledGraph> code, TargetDesc target) noexcept;
         DeviceSession* owner_;
@@ -57,15 +58,13 @@ namespace lux::render::vulkan
         struct StorageUse final
         {
             StorageInstanceId id;
-            StorageBufferBinding binding;
+            PreparedStorageBinding binding;
             bool created;
         };
         std::vector<StorageUse> leases_;
         ResourceDomain domain_;
         bool published_ = false;
-        std::vector<TextureVersion*> textures_; // prepared resource slots, empty for ABI1-only graphs
-        TextureStorage* texture_storage_ = nullptr;
-        StorageInstanceId texture_storage_id_;
+
         std::vector<Pass> passes_;
         std::vector<VkBufferMemoryBarrier2> host_barriers_;
         std::optional<SubmissionTicket> last_use_;

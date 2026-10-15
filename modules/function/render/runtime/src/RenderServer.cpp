@@ -1,3 +1,4 @@
+#include <lux/engine/render/runtime/vulkan/GpuCompletion.hpp>
 #include "Wire.hpp"
 #include "Deferred.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -32,6 +33,7 @@ namespace lux::render
         struct RenderEffect final
         {
             std::shared_ptr<const vulkan::CompiledGraph> code;
+            std::vector<StorageArgument> arguments;
             std::vector<ExecutionGroup> groups;
             std::size_t next_group = 0;
         };
@@ -56,7 +58,7 @@ namespace lux::render
         {
             Impl* owner;
             std::shared_ptr<RenderRequest> request;
-            RenderResult<std::shared_ptr<const vulkan::CompiledGraph>> candidate =
+            RenderResult<RenderEffect> candidate =
                 cxx::unexpected(RenderError{kRuntimeState});
             std::atomic<bool> done{false};
             CompileJob(Impl& server, RenderRequest input)
@@ -263,7 +265,7 @@ namespace lux::render
             for (const auto& existing : effects)
                 for (const auto& group : existing.groups)
                     if (group.target == target_id) return cxx::unexpected(RenderError{kRuntimeState});
-            auto prepared = device->prepare(effect->code, target->description, view->domain);
+            auto prepared = device->prepare(effect->code, target->description, view->domain, effect->arguments);
             if (!prepared) return cxx::unexpected(prepared.error());
             (*prepared)->setColor(view->color);
             effect->groups.push_back({scene_id, view_id, target_id, *prepared});
@@ -275,9 +277,10 @@ namespace lux::render
         {
             ExecutionGroup* group = nullptr;
             std::shared_ptr<const vulkan::CompiledGraph> code;
+            std::span<const StorageArgument> arguments;
             for (auto& effect : effects)
                 for (auto& candidate : effect.groups)
-                    if (candidate.target == id) { group = &candidate; code = effect.code; }
+                    if (candidate.target == id) { group = &candidate; code = effect.code; arguments = effect.arguments; }
             if (group)
             {
                 if (auto admitted = admitWithdraw([&](const auto&, const auto& current) {
@@ -285,7 +288,7 @@ namespace lux::render
                 }); !admitted) return admitted;
                 // One Target writer, proven on attach. Resize builds one candidate without recompilation.
                 auto candidate = device->prepare(std::move(code), description,
-                    scenes.find(group->scene)->views.find(group->view)->domain);
+                    scenes.find(group->scene)->views.find(group->view)->domain, arguments);
                 if (!candidate) return cxx::unexpected(candidate.error());
                 (*candidate)->setColor(group->context->color());
                 cancelReadbacks(group->context);
@@ -387,7 +390,7 @@ namespace lux::render
             return VK_FALSE;
         }
 
-        RenderResult<std::shared_ptr<const vulkan::CompiledGraph>> compileEffect(const std::shared_ptr<RenderRequest>& request) noexcept
+        RenderResult<RenderEffect> compileEffect(const std::shared_ptr<RenderRequest>& request) noexcept
         {
             auto bytes = OwnedWireBytes::fromOwner(request, request->message().bytes().subspan(request_size));
             auto input = decodeWire<CreateEffectRequest>(
@@ -462,7 +465,9 @@ namespace lux::render
             }
             auto compiled = vulkan::compileGraph(*device, *assembly, programs, input->description);
             if (!compiled) return cxx::unexpected(compiled.error());
-            return std::make_shared<const vulkan::CompiledGraph>(std::move(*compiled));
+            auto arguments = programArguments(programs);
+            if (!arguments) return cxx::unexpected(arguments.error());
+            return RenderEffect{std::make_shared<const vulkan::CompiledGraph>(std::move(*compiled)), std::move(*arguments)};
         }
 
         RenderResult<void> createScene(RenderRequest& request) noexcept
@@ -578,7 +583,7 @@ namespace lux::render
                 else if (!job.candidate) result = job.request->fail(job.candidate.error());
                 else
                 {
-                    const auto effect = effects.emplace(RenderEffect{std::move(*job.candidate)});
+                    const auto effect = effects.emplace(std::move(*job.candidate));
                     result = job.request->reply(EffectCreated{effect});
                     if (result) ++compiled_graphs;
                     else effects.erase(effect); // never exposed or submitted; rejected publication owns no Effect

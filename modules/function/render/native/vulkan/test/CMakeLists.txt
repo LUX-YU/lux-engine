@@ -48,7 +48,7 @@ target_include_directories(render_native_instrumented
 )
 
 target_link_libraries(render_native_instrumented PUBLIC render_features Vulkan::Vulkan
-    PRIVATE lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared
+    PRIVATE lux_render_spirv_cross_c_shared lux_render_SPIRV_Tools_shared lux::engine::platform::gapi
 )
 
 add_executable(render_native_fault_test Foundation.cpp)
@@ -125,3 +125,11 @@ target_link_libraries(render_texture_sampling_test PRIVATE render_native_instrum
 add_test(NAME render.native.texture_sampling COMMAND render_texture_sampling_test)
 
 set_tests_properties(render.native.texture_sampling PROPERTIES TIMEOUT 90)
+
+add_executable(render_storage_bindings_test StorageBindings.cpp Allocation.cpp)
+
+target_link_libraries(render_storage_bindings_test PRIVATE render_native_vulkan)
+
+add_test(NAME render.native.storage_bindings COMMAND render_storage_bindings_test)
+
+set_tests_properties(render.native.storage_bindings PROPERTIES TIMEOUT 60)

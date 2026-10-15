@@ -88,8 +88,8 @@ int main()
     auto session = take(DeviceSession::create(bootstrap, options, 8));
     CHECK(session->configureUploads({1024 * 1024, 2, 32 * 1024 * 1024,
         &host, PrepareWorker::enqueue, PrepareWorker::join}));
-    CHECK(session->configureTextures(32, 32 * 1024 * 1024));
-    auto& storage = *session->textures();
+    CHECK(configureTextures(*session, 32, 32 * 1024 * 1024));
+    auto& storage = *textures(*session);
     std::ofstream raw("texture-sampling.csv");
     raw << "space,mip,views,pipeline_creations,sampled_pixels,tolerance\n";
     for (auto space : {rdesc::ETextureColorSpace::DATA, rdesc::ETextureColorSpace::SRGB,
@@ -113,9 +113,9 @@ int main()
         {
             auto ambiguous = info;
             ambiguous.flags = rdesc::toUnderlying(rdesc::ETextureAssetFlags::PREMULTIPLIED_ALPHA);
-            CHECK(!session->uploadTexture(ambiguous, input));
+            CHECK(!TextureUpload::create(*session, ambiguous, input));
         }
-        auto upload = take(session->uploadTexture(info, input));
+        auto upload = take(TextureUpload::create(*session, info, input));
         const auto published = take(storage.reserve(*upload));
         complete(*upload); upload.reset();
         for (unsigned mip = 0; mip < 4; ++mip)
@@ -125,13 +125,7 @@ int main()
                     rdesc::ETextureFormat::RGBA8_UNORM, mip};
             auto assembly = take(texture_fixture::assemble(config));
             auto bad_programs = texture_fixture::programs(config);
-            bad_programs[0].texture = {};
-            CHECK(!compileGraph(*session, assembly, bad_programs, texture_fixture::target(config)));
-            bad_programs = texture_fixture::programs(config);
-            bad_programs[0].shader.abi = 1;
-            CHECK(!compileGraph(*session, assembly, bad_programs, texture_fixture::target(config)));
-            bad_programs = texture_fixture::programs(config);
-            bad_programs[0].texture_lod = 4;
+            bad_programs[0].shader.interface.bindings.clear();
             CHECK(!compileGraph(*session, assembly, bad_programs, texture_fixture::target(config)));
             // A structurally valid SPIR-V module with the wrong Descriptor binding fails reflection before Vulkan.
             bad_programs = texture_fixture::programs(config);
@@ -145,6 +139,13 @@ int main()
             auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
                 texture_fixture::programs(config), texture_fixture::target(config))));
             CHECK(pipelines == old_pipelines + 1);
+            // Asset identity/LOD are Attach arguments, never immutable code identity.
+            auto invalid = config;
+            invalid.texture = {};
+            CHECK(!session->prepare(code, texture_fixture::target(config), {}, texture_fixture::arguments(invalid)));
+            invalid = config;
+            invalid.lod = 4;
+            CHECK(!session->prepare(code, texture_fixture::target(config), {}, texture_fixture::arguments(invalid)));
             std::array<ExecutionContext*, 4> views{};
             for (unsigned s = 0; s < 2; ++s)
             {
@@ -152,7 +153,7 @@ int main()
                 for (unsigned v = 0; v < 2; ++v)
                 {
                     const auto view = take(session->resources().createDomain(scene, EResourceScope::VIEW));
-                    views[2 * s + v] = take(session->prepare(code, texture_fixture::target(config), view));
+                    views[2 * s + v] = take(session->prepare(code, texture_fixture::target(config), view, texture_fixture::arguments(config)));
                     CHECK(&views[2 * s + v]->code() == code.get());
                 }
             }
@@ -177,7 +178,7 @@ int main()
                 for (auto* view : views) CHECK(take(view->execute()));
                 auto* old = take(storage.acquire(published.texture));
                 std::vector<std::byte> replacement(input.size(), std::byte{64});
-                upload = take(session->uploadTexture(info, replacement));
+                upload = take(TextureUpload::create(*session, info, replacement));
                 CHECK(storage.reserve(*upload, published.texture, 1));
                 complete(*upload); upload.reset();
                 CHECK(old->descriptorIndex() != storage.find(published.texture)->descriptorIndex());
@@ -188,6 +189,7 @@ int main()
                 CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
                 for (auto* view : views) pixels(take(view->readback()), oracle({64, 64, 64, 64}, space), tolerance);
                 CHECK(pipelines == old_pipelines + 1);
+
                 std::array<std::byte, 20> patch;
                 patch.fill(std::byte{96});
                 upload = take(storage.uploadRegion(published.texture, 2, {3, 0, 0, 2, 2, 12}, patch));
@@ -196,9 +198,10 @@ int main()
                 CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
                 for (auto* view : views) pixels(take(view->readback()), oracle({96, 96, 96, 96}, space), tolerance);
                 CHECK(pipelines == old_pipelines + 1);
+
                 CHECK(storage.release(published.texture, 3));
                 // Released business ID cannot be rebound; existing consumers keep valid backing.
-                CHECK(!session->prepare(code, texture_fixture::target(config), {}));
+                CHECK(!session->prepare(code, texture_fixture::target(config), {}, texture_fixture::arguments(config)));
                 for (auto* view : views) CHECK(take(view->execute()));
                 CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
             }
@@ -214,14 +217,14 @@ int main()
         std::vector<std::byte> blocks(end.offset + end.size);
         for (std::size_t i = 0; i < blocks.size(); i += 8)
         { blocks[i] = std::byte{0}; blocks[i + 1] = std::byte{0xf8}; } // RGB565 red, index zero
-        auto upload = take(session->uploadTexture(info, blocks));
+        auto upload = take(TextureUpload::create(*session, info, blocks));
         const auto id = take(storage.reserve(*upload)).texture;
         complete(*upload); upload.reset();
         texture_fixture::Config config{id, 16, 16, 4, rdesc::ETextureFormat::BC1_RGBA_SRGB, 1};
         auto assembly = take(texture_fixture::assemble(config));
         auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
             texture_fixture::programs(config), texture_fixture::target(config))));
-        auto* context = take(session->prepare(code, texture_fixture::target(config), {}));
+        auto* context = take(session->prepare(code, texture_fixture::target(config), {}, texture_fixture::arguments(config)));
         CHECK(take(context->execute()));
         CHECK(take(session->queue().wait(*context->lastUse(), UINT64_MAX)));
         pixels(take(context->readback()), oracle({255, 0, 0, 255}, rdesc::ETextureColorSpace::SRGB), 2);

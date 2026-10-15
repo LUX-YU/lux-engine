@@ -115,7 +115,7 @@ namespace native_fixture
     {
         std::vector<PassProgram> result;
         PassProgram color{featureKey(type, instance, "color")};
-        if (config.graphics) color.shader = {{vert.begin(), vert.end()}, {frag.begin(), frag.end()}, 1};
+        if (config.graphics) color.shader = {{vert.begin(), vert.end()}, {frag.begin(), frag.end()}, {}};
         color.clear_color = {0.125f, 0.25f, 0.5f, 1};
         result.push_back(std::move(color));
         result.push_back({featureKey(type, instance, "readback")});

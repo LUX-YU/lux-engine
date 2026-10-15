@@ -1,20 +1,29 @@
 #pragma once
 
+#include <array>
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 
 namespace lux::render::vulkan
 {
-    // Prepared once at attach. ResourceRegistry retains the instance until the Context's final ticket retires.
-    struct StorageBufferBinding final
+    struct ResourcePlan;
+
+    // Stable Context-owned binding. The professional reference protects future uses; its last-use
+    // field is written directly after submit. No Storage lookup or dynamic dispatch occurs per draw.
+    struct PreparedStorageBinding final
     {
-        BufferAllocation* buffer;
-        void* use;
-        void (*submitted)(void*, SubmissionTicket) noexcept;
+        BufferAllocation* buffer = nullptr;
+        VkDescriptorSet descriptors = VK_NULL_HANDLE;
+        std::array<float, 4> parameters{};
+        bool provides_parameters = false;
+        std::optional<SubmissionTicket>* last_use = nullptr;
+        std::unique_ptr<void, void (*)(void*) noexcept> reference{nullptr, [](void*) noexcept {}};
     };
 
     struct StorageBindingOps final
     {
-        RenderResult<StorageBufferBinding> (*buffer)(void*, VkDeviceSize, VkBufferUsageFlags) noexcept;
+        RenderResult<void> (*prepare)(void*, const ResourcePlan&, std::span<const std::byte>,
+            PreparedStorageBinding&) noexcept;
+        std::uint32_t (*descriptor_count)(const void* configuration) noexcept = nullptr;
     };
 }

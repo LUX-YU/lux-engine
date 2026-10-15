@@ -2,6 +2,7 @@
 #include <lux/engine/render/resource/Factory.hpp>
 
 #include <array>
+#include <algorithm>
 
 namespace lux::render
 {
@@ -25,7 +26,19 @@ namespace lux::render
             (descriptor.required_capabilities & descriptor.optional_capabilities) != 0;
         if (invalid_identity || invalid_scopes || invalid_capabilities)
             return cxx::unexpected(RenderError{kStorageContract});
-        if (descriptor.config) return validateDataSchema(*descriptor.config);
+        for (std::size_t i = 0; i < descriptor.bindings.size(); ++i)
+        {
+            const auto& binding = descriptor.bindings[i];
+            const bool invalid_binding = binding.kind > EDescriptorKind::STORAGE_BUFFER ||
+                (binding.kind == EDescriptorKind::STORAGE_BUFFER && binding.count != 1);
+            if (invalid_binding) return cxx::unexpected(RenderError{kStorageContract});
+            for (std::size_t j = 0; j < i; ++j)
+                if (descriptor.bindings[j].set == binding.set && descriptor.bindings[j].binding == binding.binding)
+                    return cxx::unexpected(RenderError{kStorageContract});
+        }
+        if (descriptor.config)
+            if (auto valid = validateDataSchema(*descriptor.config); !valid) return valid;
+        if (descriptor.binding_schema) return validateDataSchema(*descriptor.binding_schema);
         return {};
     }
 
@@ -36,9 +49,13 @@ namespace lux::render
             expected.required_capabilities != actual.required_capabilities ||
             expected.optional_capabilities != actual.optional_capabilities;
         const bool config_presence_mismatch = bool(expected.config) != bool(actual.config);
-        if (identity_mismatch || policy_mismatch || config_presence_mismatch)
+        const bool binding_mismatch = !std::ranges::equal(expected.bindings, actual.bindings) ||
+            bool(expected.binding_schema) != bool(actual.binding_schema);
+        if (identity_mismatch || policy_mismatch || config_presence_mismatch || binding_mismatch)
             return cxx::unexpected(RenderError{kStorageMismatch});
-        if (expected.config) return compatibleDataSchemas(*expected.config, *actual.config);
+        if (expected.config)
+            if (auto valid = compatibleDataSchemas(*expected.config, *actual.config); !valid) return valid;
+        if (expected.binding_schema) return compatibleDataSchemas(*expected.binding_schema, *actual.binding_schema);
         return {};
     }
 

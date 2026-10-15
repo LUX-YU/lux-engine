@@ -19,6 +19,43 @@ namespace lux::render
         std::uint64_t revision = 0;
     };
 
+    struct TextureBinding final
+    {
+        TextureId texture;
+        std::uint32_t lod = 0;
+    };
+
+    template <> struct DataSchema<TextureBinding>
+    {
+        static inline constexpr DataField fields[]{
+            {"index", cxx::EScalarKind::U32}, {"generation", cxx::EScalarKind::U32}, {"lod", cxx::EScalarKind::U32}
+        };
+        static inline constexpr DataSchemaDescriptor schema{
+            DataTypeIdView("lux.render.TextureBinding"), {1, 0}, {1, 0}, fields, 12, 4
+        };
+        static const DataSchemaDescriptor& describe() noexcept { return schema; }
+        static RenderResult<std::size_t> wireSize(const TextureBinding&) noexcept { return 12; }
+        static RenderResult<void> encode(const TextureBinding& value, cxx::BinarySpanWriter& out) noexcept
+        {
+            out.writeUnsigned(value.texture.index);
+            out.writeUnsigned(value.texture.gen);
+            out.writeUnsigned(value.lod);
+            return {};
+        }
+        static RenderResult<TextureBinding> decode(cxx::BinaryReader& in, BorrowedWireView) noexcept
+        {
+            TextureBinding value;
+            in.readUnsigned(value.texture.index);
+            in.readUnsigned(value.texture.gen);
+            in.readUnsigned(value.lod);
+            return value;
+        }
+        static RenderResult<TextureBinding> decode(cxx::BinaryReader& in, WireView wire) noexcept
+        {
+            return decode(in, BorrowedWireView{wire.schema, wire.bytes.view(), {}});
+        }
+    };
+
     struct TextureRegion final
     {
         std::uint32_t mip = 0, x = 0, y = 0, width = 0, height = 0;
@@ -85,10 +122,11 @@ namespace lux::render
         static inline constexpr DataSchemaDescriptor config_schema{
             DataTypeIdView("lux.render.TextureStorage.Config"), {1, 0}, {1, 0}, config_fields, 12, 4
         };
+        static inline constexpr ShaderBinding bindings[]{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}};
         static inline constexpr StorageDescriptor description{
             kTextureStorageType, {1, 0}, scopeMask(EResourceScope::GLOBAL), &config_schema,
             static_cast<std::uint32_t>(EStorageCapability::SAMPLED_IMAGE_ARRAY),
-            static_cast<std::uint32_t>(EStorageCapability::BLOCK_COMPRESSION_BC)
+            static_cast<std::uint32_t>(EStorageCapability::BLOCK_COMPRESSION_BC), bindings, &DataSchema<TextureBinding>::schema
         };
         struct Ops final
         {

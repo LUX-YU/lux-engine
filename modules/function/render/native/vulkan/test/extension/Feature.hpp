@@ -1,0 +1,99 @@
+#pragma once
+
+#include "Buffer.hpp"
+#include "Shader.hpp"
+#include "../shaders/Texture.hpp"
+#include <lux/engine/render/features/Feature.hpp>
+#include <lux/engine/render/features/Texture.hpp>
+
+namespace extension_test
+{
+    struct ViewConfig final { TextureId texture; BufferId buffer; };
+}
+
+namespace lux::render
+{
+    template <> struct DataSchema<extension_test::ViewConfig>
+    {
+        static inline constexpr DataField fields[]{
+            {"texture_index", cxx::EScalarKind::U32}, {"texture_generation", cxx::EScalarKind::U32},
+            {"buffer_index", cxx::EScalarKind::U32}, {"buffer_generation", cxx::EScalarKind::U32}
+        };
+        static inline constexpr DataSchemaDescriptor schema{
+            DataTypeIdView("test.extension.ViewConfig"), {1, 0}, {1, 0}, fields, 16, 4
+        };
+        static const DataSchemaDescriptor& describe() noexcept { return schema; }
+        static RenderResult<std::size_t> wireSize(const extension_test::ViewConfig&) noexcept { return 16; }
+        static RenderResult<void> encode(const extension_test::ViewConfig& value, cxx::BinarySpanWriter& out) noexcept
+        {
+            for (auto field : {value.texture.index, value.texture.gen, value.buffer.index, value.buffer.gen})
+                out.writeUnsigned(field);
+            return {};
+        }
+        static RenderResult<extension_test::ViewConfig> decode(cxx::BinaryReader& in, WireView) noexcept
+        {
+            extension_test::ViewConfig value;
+            for (auto* field : {&value.texture.index, &value.texture.gen, &value.buffer.index, &value.buffer.gen})
+                in.readUnsigned(*field);
+            return value;
+        }
+    };
+}
+
+namespace extension_test
+{
+    inline constexpr FeatureTypeIdView feature_type("test.extension.BufferFeature");
+    inline constexpr WireLimits limits{16, 0};
+    inline const TargetDesc target{16, 16, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
+
+    inline RenderResult<void> describe(const WireView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    {
+        out.push_back({"texture", EResourceClaim::PROVIDE, GraphImageDesc{16, 16}, EGraphOrigin::IMPORTED,
+            {GraphImageRange{1, 0, 1, 0, 1}},
+            StorageRequirement{StorageTypeId(kTextureStorageType.name()), {1, 0}, EResourceScope::GLOBAL, "default"}});
+        out.push_back({"values", EResourceClaim::PROVIDE, GraphBufferDesc{16}, EGraphOrigin::IMPORTED,
+            {GraphBufferRange{0, 16}},
+            StorageRequirement{StorageTypeId(TestBufferStorage::description.type.name()), {1, 0},
+                EResourceScope::GLOBAL, "values"}});
+        out.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{16, 16}});
+        return {};
+    }
+
+    inline RenderResult<void> build(const WireView*, std::string_view name,
+        std::span<const ResolvedResource> resources, RenderGraphBuilder& graph) noexcept
+    {
+        const auto texture = findResource(resources, "texture")->version;
+        const auto buffer = findResource(resources, "values")->version;
+        const auto color = findResource(resources, "color")->version;
+        auto pixels = graph.declareResource({featureKey(feature_type, name, "pixels"), GraphBufferDesc{1024}});
+        if (!pixels) return lux::cxx::unexpected(pixels.error());
+        auto draw = graph.addPass({featureKey(feature_type, name, "draw"), EGraphPassKind::GRAPHICS,
+            {{texture, {}, EGraphAccess::READ, 0, {}, EGraphUse::SAMPLED},
+             {buffer, {}, EGraphAccess::READ, 0, {}, EGraphUse::STORAGE_READ},
+             {color, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::COLOR_ATTACHMENT}}});
+        if (!draw) return lux::cxx::unexpected(draw.error());
+        auto read = graph.addPass({featureKey(feature_type, name, "readback"), EGraphPassKind::TRANSFER,
+            {{color, {}, EGraphAccess::READ, 0, {}, EGraphUse::TRANSFER_SOURCE},
+             {{*pixels, 1}, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::TRANSFER_DESTINATION}}});
+        if (!read) return lux::cxx::unexpected(read.error());
+        if (auto exported = graph.exportOutput({color, {}, target}); !exported) return exported;
+        return graph.exportOutput({{*pixels, 1}});
+    }
+
+    inline const FeatureDefinition definition{feature_type, {1, 0}, &DataSchema<ViewConfig>::schema, describe, build};
+
+    inline RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
+    {
+        auto config = decodeWire<ViewConfig>(*wire, limits);
+        if (!config) return lux::cxx::unexpected(config.error());
+        PassProgram draw{featureKey(feature_type, name, "draw")};
+        draw.shader = {{texture_fixture::vert.begin(), texture_fixture::vert.end()}, {fragment.begin(), fragment.end()},
+            {{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}, {1, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16}}, 16}};
+        draw.arguments.push_back({"shared:texture", *encodeWire(TextureBinding{config->texture}, {}, {12, 0})});
+        draw.arguments.push_back({"shared:values", *encodeWire(BufferBinding{config->buffer}, {}, {8, 0})});
+        std::vector<PassProgram> result;
+        result.push_back(std::move(draw));
+        result.push_back({featureKey(feature_type, name, "readback")});
+        return result;
+    }
+}

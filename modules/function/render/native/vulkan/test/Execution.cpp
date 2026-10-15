@@ -29,11 +29,11 @@ int main()
     DeviceOptions options;
     options.dynamic_rendering = true;
     auto session = take(DeviceSession::create(instance, options));
+    CHECK(buffer_fixture::install(*session));
     native_fixture::Config config{32, 32, 1, 1};
     auto assembly = take(native_fixture::assemble(config));
     auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
         native_fixture::programs(config), native_fixture::target(config))));
-    CHECK(buffer_fixture::install(*session));
     auto scene = take(session->resources().createDomain(session->resources().root(), EResourceScope::SCENE));
     auto view_a = take(session->resources().createDomain(scene, EResourceScope::VIEW));
     auto view_b = take(session->resources().createDomain(scene, EResourceScope::VIEW));

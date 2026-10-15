@@ -125,12 +125,12 @@ namespace lux::render::vulkan
 
         [[nodiscard]] VkQueue queue() const noexcept
         {
-            return queue_;
+            return queues_[0].handle;
         }
 
         [[nodiscard]] std::uint32_t queueFamily() const noexcept
         {
-            return queue_family_;
+            return queues_[0].family;
         }
 
         [[nodiscard]] const VkPhysicalDeviceProperties& properties() const noexcept
@@ -193,8 +193,6 @@ namespace lux::render::vulkan
         VkInstance instance_;
         VkPhysicalDevice physical_;
         VkDevice device_;
-        VkQueue queue_;
-        std::uint32_t queue_family_;
         VkPhysicalDeviceProperties properties_;
         bool dynamic_rendering_;
         std::array<NativeQueue, 3> queues_;

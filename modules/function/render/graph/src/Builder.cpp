@@ -109,7 +109,8 @@ namespace lux::render
             const bool is_invalid_sample = use.usage == EGraphUse::SAMPLED &&
                 (!image || pass.kind == EGraphPassKind::TRANSFER || use.access != EGraphAccess::READ ||
                  !rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::SAMPLED));
-            const bool is_invalid_usage = use.usage > EGraphUse::SAMPLED ||
+            const bool is_invalid_usage = use.usage > EGraphUse::STORAGE_READ ||
+                (use.usage == EGraphUse::STORAGE_READ && (image || use.access != EGraphAccess::READ)) ||
                 is_invalid_color || is_invalid_source || is_invalid_destination || is_invalid_sample;
             if (is_invalid_usage) return cxx::unexpected(graphError(kGraphInvalidDescriptor, id, resource_id));
             auto range = detail::normalize(resource, use.range);

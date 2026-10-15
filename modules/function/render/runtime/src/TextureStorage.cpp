@@ -1,3 +1,4 @@
+#include <lux/engine/render/runtime/vulkan/GpuCompletion.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
@@ -23,7 +24,7 @@ namespace lux::render
             if (auto prepared = reservation.setReply(bytes); !prepared) return prepared;
             auto work = vulkan::GpuWork::pending<
                 [](vulkan::TextureUpload& value, vulkan::DeviceSession&) noexcept { return value.publish(); }
-            >(context.native(), upload);
+            >(GpuCompletionReservation::device(context), upload);
             if (!work) return cxx::unexpected(work.error());
             return reservation.commitWork(*work);
         }
@@ -32,7 +33,7 @@ namespace lux::render
         {
             auto input = request.decode<UploadTexture>();
             if (!input) return cxx::unexpected(input.error());
-            auto& resources = context.native().resources();
+            auto& resources = context.resources();
             auto instance = resources.getOrCreate(resources.root(), "default", TextureStorage::description, nullptr);
             if (!instance) return cxx::unexpected(instance.error());
             auto* storage = static_cast<vulkan::TextureStorage*>(resources.native(*instance));
@@ -41,7 +42,7 @@ namespace lux::render
             auto reservation = context.reserveGpuCompletion(extent);
             if (!reservation) return cxx::unexpected(reservation.error());
             if (auto admitted = storage->admit(input->source.size, input->texture.isNull()); !admitted) return admitted;
-            auto candidate = context.native().uploadTexture(input->info, source(request, input->source));
+            auto candidate = vulkan::TextureUpload::create(GpuCompletionReservation::device(context), input->info, source(request, input->source));
             if (!candidate) return cxx::unexpected(candidate.error());
             auto publication = storage->reserve(**candidate, input->texture, input->expected_revision);
             if (!publication) return cxx::unexpected(publication.error());
@@ -52,7 +53,9 @@ namespace lux::render
         {
             auto input = request.decode<UploadTextureRegion>();
             if (!input) return cxx::unexpected(input.error());
-            auto* storage = context.native().textures();
+            auto& registry = context.resources();
+            auto id = registry.find(registry.root(), "default", TextureStorage::description);
+            auto* storage = id ? static_cast<vulkan::TextureStorage*>(registry.native(*id)) : nullptr;
             if (!storage) return cxx::unexpected(RenderError{vulkan::kUnsupported});
             const std::array<std::byte, 16> extent{};
             auto reservation = context.reserveGpuCompletion(extent);
@@ -67,7 +70,9 @@ namespace lux::render
         {
             auto input = request.decode<TexturePublished>();
             if (!input) return cxx::unexpected(input.error());
-            auto* storage = context.native().textures();
+            auto& registry = context.resources();
+            auto id = registry.find(registry.root(), "default", TextureStorage::description);
+            auto* storage = id ? static_cast<vulkan::TextureStorage*>(registry.native(*id)) : nullptr;
             if (!storage) return cxx::unexpected(RenderError{vulkan::kUnsupported});
             if (auto result = storage->release(input->texture, input->revision); !result) return result;
             return request.reply();

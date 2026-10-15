@@ -26,17 +26,12 @@ namespace lux::render::vulkan
         }
     }
 
-    RenderResult<std::unique_ptr<TextureUpload>> DeviceSession::uploadTexture(
-        const rdesc::TextureInfo& info, std::span<const std::byte> source) noexcept
-    {
-        return prepareTextureUpload(info, source, {});
-    }
-
-    RenderResult<std::unique_ptr<TextureUpload>> DeviceSession::prepareTextureUpload(
-        const rdesc::TextureInfo& info, std::span<const std::byte> source, std::optional<TextureRegion> region) noexcept
+    RenderResult<std::unique_ptr<TextureUpload>> TextureUpload::create(
+        DeviceSession& session, const rdesc::TextureInfo& info, std::span<const std::byte> source,
+        std::optional<TextureRegion> region) noexcept
     {
         const auto layout = format(info.pixel_format);
-        const auto max_dimension = device_.properties().limits.maxImageDimension2D;
+        const auto max_dimension = session.device().properties().limits.maxImageDimension2D;
         const bool bad_extent = info.width <= 0 || info.height <= 0 ||
             std::uint32_t(info.width) > max_dimension || std::uint32_t(info.height) > max_dimension;
         const bool bad_count = info.layers != 1 || info.mip_count == 0 || info.mip_count > rdesc::kTextureMaxMipCount;
@@ -48,10 +43,10 @@ namespace lux::render::vulkan
         const bool bad_flags = (info.flags & ~7u) != 0 ||
             (rdesc::hasTextureFlag(info.flags, rdesc::ETextureAssetFlags::COMPRESSED) != (layout.extent == 4)) ||
             (rdesc::hasTextureFlag(info.flags, rdesc::ETextureAssetFlags::NO_MIPS) && info.mip_count != 1);
-        if (!uploads_ || layout.native == VK_FORMAT_UNDEFINED) return cxx::unexpected(RenderError{kUnsupported});
+        if (!session.uploads_ || layout.native == VK_FORMAT_UNDEFINED) return cxx::unexpected(RenderError{kUnsupported});
         if (bad_extent || bad_count || bad_color || bad_flags || info.channel != 4)
             return cxx::unexpected(RenderError{kInvalidArgument});
-        if (layout.extent == 4 && !device_.textureCompressionBc()) return cxx::unexpected(RenderError{kUnsupported});
+        if (layout.extent == 4 && !session.device().textureCompressionBc()) return cxx::unexpected(RenderError{kUnsupported});
         if (premultiplied_srgb) return cxx::unexpected(RenderError{kUnsupported});
         const auto max_mips = std::bit_width(std::max(std::uint32_t(info.width), std::uint32_t(info.height)));
         if (info.mip_count > max_mips) return cxx::unexpected(RenderError{kInvalidArgument});
@@ -66,7 +61,7 @@ namespace lux::render::vulkan
             if (!size) return cxx::unexpected(RenderError{kInvalidArgument});
             const auto& input = info.mip_ranges[mip];
             const bool mismatch = input.width != width || input.height != height || input.size != *size ||
-                input.offset != expected_offset || row > uploads_->options.chunk_bytes;
+                input.offset != expected_offset || row > session.uploads_->options.chunk_bytes;
             if (mismatch) return cxx::unexpected(RenderError{kInvalidArgument});
             auto total = cxx::checkedAdd(expected_offset, *size);
             if (!total) return cxx::unexpected(RenderError{kInvalidArgument});
@@ -87,7 +82,7 @@ namespace lux::render::vulkan
             const auto rows = (region->height + layout.extent - 1) / layout.extent;
             const std::uint64_t row = ((region->width + layout.extent - 1) / layout.extent) * layout.bytes;
             const bool invalid_pitch = region->row_pitch < row || region->row_pitch % layout.bytes ||
-                row > uploads_->options.chunk_bytes;
+                row > session.uploads_->options.chunk_bytes;
             if (invalid_pitch) return cxx::unexpected(RenderError{kInvalidArgument});
             auto stride = cxx::checkedMul<std::uint64_t>(rows - 1, region->row_pitch);
             if (!stride) return cxx::unexpected(RenderError{kInvalidArgument});
@@ -97,7 +92,7 @@ namespace lux::render::vulkan
         }
         if (expected_offset != source.size() || source.empty()) return cxx::unexpected(RenderError{kInvalidArgument});
         VkFormatProperties properties{};
-        vkGetPhysicalDeviceFormatProperties(device_.physical(), layout.native, &properties);
+        vkGetPhysicalDeviceFormatProperties(session.device().physical(), layout.native, &properties);
         constexpr auto required = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT |
             VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
         if ((properties.optimalTilingFeatures & required) != required)
@@ -118,9 +113,9 @@ namespace lux::render::vulkan
                 regions.push_back({input.offset, pitch, layout.extent, layout.bytes,
                     {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, 1}, {}, {input.width, input.height, 1}});
             }
-        auto transfer = uploadImage(description, source, regions, nullptr, region.has_value());
+        auto transfer = session.uploadImage(description, source, regions, nullptr, region.has_value());
         if (!transfer) return cxx::unexpected(transfer.error());
-        return std::unique_ptr<TextureUpload>(new TextureUpload(*this, info, std::move(*transfer)));
+        return std::unique_ptr<TextureUpload>(new TextureUpload(session, info, std::move(*transfer)));
     }
 
     TextureUpload::TextureUpload(DeviceSession& session, rdesc::TextureInfo info, std::unique_ptr<Transfer> work) noexcept

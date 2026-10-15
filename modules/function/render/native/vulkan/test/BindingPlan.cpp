@@ -62,7 +62,7 @@ namespace
     std::vector<PassProgram> programs(bool different)
     {
         const ShaderArtifact shader{{native_fixture::vert.begin(), native_fixture::vert.end()},
-            {native_fixture::frag.begin(), native_fixture::frag.end()}, 1};
+            {native_fixture::frag.begin(), native_fixture::frag.end()}, {}};
         std::vector<PassProgram> result;
         result.push_back({featureKey(type, "main", "a"), shader, {0.125f, 0.25f, 0.5f, 1}});
         result.push_back({featureKey(type, "main", "b"), shader, {0, 1, 0, 1}});

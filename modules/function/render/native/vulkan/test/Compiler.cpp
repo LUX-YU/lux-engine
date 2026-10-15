@@ -1,3 +1,4 @@
+#include "BufferStorageFixture.hpp"
 #include "Support.hpp"
 #include "SceneFixture.hpp"
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
@@ -12,6 +13,7 @@ int main()
         DeviceOptions options;
         options.dynamic_rendering = true;
         auto session = take(DeviceSession::create(bootstrap, options));
+        CHECK(buffer_fixture::install(*session));
         for (unsigned graphics = 0; graphics < 2; ++graphics)
         {
             const native_fixture::Config config{32, 32, graphics, 1};
@@ -41,7 +43,7 @@ int main()
             if (graphics)
             {
                 auto bad = programs;
-                bad[0].shader.abi = 2;
+                bad[0].shader.interface.bindings = {{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}};
                 CHECK(!compileGraph(*session, assembly, bad, native_fixture::target(config)));
                 bad = programs;
                 bad[0].shader.fragment = bad[0].shader.vertex;

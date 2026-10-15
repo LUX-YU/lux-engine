@@ -5,6 +5,9 @@
 
 namespace lux::render::vulkan
 {
+    [[nodiscard]] RenderResult<VkDescriptorSetLayout> createDescriptorLayout(
+        const VulkanDevice&, std::span<const ShaderBinding>, std::uint32_t runtime_count, const char* fault_label
+    ) noexcept;
     [[nodiscard]] RenderResult<VkPipeline> compileGraphics(
         const VulkanDevice& device, VkPipelineLayout layout, const ShaderArtifact& shader
     ) noexcept;

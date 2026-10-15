@@ -307,8 +307,7 @@ namespace lux::render::vulkan
         std::array<NativeQueue, 3> queues,
         const DeviceOptions& options
     ) noexcept
-        : instance_(instance), physical_(physical), device_(device), queue_(queues[0].handle),
-          queue_family_(queues[0].family), dynamic_rendering_(options.dynamic_rendering), queues_(queues),
+        : instance_(instance), physical_(physical), device_(device), dynamic_rendering_(options.dynamic_rendering), queues_(queues),
           multiview_(options.multiview), local_read_(options.local_read), timeline_(options.multiple_queues),
           separate_depth_stencil_(options.separate_depth_stencil), swapchain_maintenance_(options.swapchain_maintenance)
     {
@@ -550,7 +549,7 @@ namespace lux::render::vulkan
         : texture_compression_bc_(other.texture_compression_bc_), texture_descriptors_(other.texture_descriptors_),
           host_query_reset_(other.host_query_reset_),
           instance_(other.instance_), physical_(other.physical_), device_(std::exchange(other.device_, VK_NULL_HANDLE)),
-          queue_(other.queue_), queue_family_(other.queue_family_), properties_(other.properties_),
+          properties_(other.properties_),
           dynamic_rendering_(other.dynamic_rendering_), queues_(other.queues_), multiview_(other.multiview_),
           local_read_(other.local_read_), timeline_(other.timeline_),
           separate_depth_stencil_(other.separate_depth_stencil_), swapchain_maintenance_(other.swapchain_maintenance_)
@@ -568,8 +567,6 @@ namespace lux::render::vulkan
             instance_ = other.instance_;
             physical_ = other.physical_;
             device_ = std::exchange(other.device_, VK_NULL_HANDLE);
-            queue_ = other.queue_;
-            queue_family_ = other.queue_family_;
             properties_ = other.properties_;
             dynamic_rendering_ = other.dynamic_rendering_;
             queues_ = other.queues_;

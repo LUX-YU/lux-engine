@@ -2,6 +2,7 @@
 #include "Support.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/transfer/TextureUpload.hpp>
+#include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include <algorithm>
 #include <condition_variable>
 #include <mutex>
@@ -78,4 +79,23 @@ static rdesc::TextureInfo information(unsigned dimension, unsigned mips, bool bc
         offset += bytes;
     }
     return info;
+}
+
+static lux::render::vulkan::TextureStorage* textures(DeviceSession& session) noexcept
+{
+    auto& registry = session.resources();
+    auto id = registry.find(registry.root(), "default", lux::render::TextureStorage::description);
+    return id ? static_cast<lux::render::vulkan::TextureStorage*>(registry.native(*id)) : nullptr;
+}
+
+static RenderResult<void> configureTextures(DeviceSession& session, std::uint32_t capacity, std::uint64_t bytes) noexcept
+{
+    auto& registry = session.resources();
+    const TextureStorageConfig config{capacity, bytes};
+    if (!registry.configuration(lux::render::TextureStorage::description.type))
+        if (auto configured = registry.configureType(lux::render::TextureStorage::description,
+            std::make_shared<const TextureStorageConfig>(config)); !configured) return configured;
+    auto id = registry.getOrCreate(registry.root(), "default", lux::render::TextureStorage::description, &config);
+    if (!id) return lux::cxx::unexpected(id.error());
+    return {};
 }

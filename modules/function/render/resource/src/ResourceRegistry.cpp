@@ -32,6 +32,12 @@ namespace lux::render
         return index == types_.size() ? nullptr : &types_[index].factory;
     }
 
+    const void* ResourceRegistry::configuration(StorageTypeIdView type) const noexcept
+    {
+        const auto index = typeIndex(type);
+        return index == types_.size() ? nullptr : types_[index].configuration.get();
+    }
+
     RenderResult<void> ResourceRegistry::installFactory(StorageFactory factory) noexcept
     {
         if (frozen_ || !factory.description) return cxx::unexpected(RenderError{kStorageFactory});

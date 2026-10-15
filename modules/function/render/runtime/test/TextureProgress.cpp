@@ -1,3 +1,4 @@
+#include <lux/engine/render/runtime/vulkan/GpuCompletion.hpp>
 #include "CompileWorker.hpp"
 #include "Support.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
@@ -108,13 +109,13 @@ static RenderResult<void> invoke(void*, RenderRequest& request, OperationContext
     info.pixel_format = lux::rdesc::ETexturePixelFormat::RGBA8_UNORM;
     info.color_space = lux::rdesc::ETextureColorSpace::DATA;
     info.mip_ranges[0] = {0, source.size(), value.dimension, value.dimension};
-    auto candidate = context.native().uploadTexture(info, source);
+    auto candidate = vulkan::TextureUpload::create(GpuCompletionReservation::device(context), info, source);
     if (!candidate) return lux::cxx::unexpected(candidate.error());
     auto probe = std::make_unique<ProbeWork>();
     probe->upload = std::move(*candidate);
     auto work = GpuWork::pending<[](ProbeWork& value, DeviceSession& session) noexcept {
         return ready(value.pin, *value.upload, session);
-    }>(context.native(), probe);
+    }>(GpuCompletionReservation::device(context), probe);
     if (!work) return lux::cxx::unexpected(work.error());
     return reservation->commitWork(*work);
 }

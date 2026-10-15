@@ -53,7 +53,13 @@ static RenderResult<void> emptyDescribe(const WireView*, std::string_view, std::
 
 int main()
 {
-    const FeatureDefinition foreign{FeatureTypeIdView("test.aaa.foreign"), {1, 0}, nullptr, emptyDescribe};
+    const FeatureDefinition foreign{FeatureTypeIdView("test.aaa.foreign"), {1, 0}, nullptr, emptyDescribe,
+        [](const WireView*, std::string_view name, std::span<const ResolvedResource>, RenderGraphBuilder& builder) noexcept
+            -> RenderResult<void> {
+            auto pass = builder.addPass({featureKey(FeatureTypeIdView("test.aaa.foreign"), name, "unused"),
+                EGraphPassKind::TRANSFER, {}});
+            return pass ? RenderResult<void>{} : lux::cxx::unexpected(pass.error());
+        }};
     auto server = take(createTestServer({"runtime.program.ownership", true}));
     check(bool(server->registerFeature({&native_fixture::definition, ownPrograms})));
     check(bool(server->registerFeature({&foreign, foreignPrograms})));
@@ -95,6 +101,22 @@ int main()
     server->stop();
     worker.join();
     check(run_ok && server->stats().validation_errors == 0);
+    auto missing = take(createTestServer({"runtime.no.program", true}));
+    check(bool(missing->registerFeature({&native_fixture::definition, nullptr})));
+    auto no_program = take(TestClient::create("runtime.no.program"));
+    bool missing_run_ok = false;
+    std::thread missing_worker([&] { missing_run_ok = bool(missing->run()); });
+    TestCommand missing_command;
+    missing_command.session = call(*no_program, missing_command).session;
+    missing_command.operation = ETestCommand::CREATE_EFFECT;
+    missing_command.description = native_fixture::target({});
+    missing_command.features.push_back(command.features.front());
+    auto missing_reply = call(*no_program, missing_command);
+    check(missing_reply.header.outcome == EOperationOutcome::FAILED &&
+        missing_reply.header.error.type == kFeatureContract && missing->stats().compiled_graphs == 0);
+    missing->stop();
+    missing_worker.join();
+    check(missing_run_ok && missing->stats().validation_errors == 0);
     auto stopped = take(createTestServer({"runtime.stopped.before.run", true}));
     stopped->stop();
     stopped->stop();

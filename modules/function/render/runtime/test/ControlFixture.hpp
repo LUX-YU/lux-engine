@@ -1,6 +1,7 @@
 #pragma once
 #include <lux/engine/render/runtime/Operations.hpp>
 #include "CompileWorker.hpp"
+#include "../pinclude/Wire.hpp"
 
 // Only migrates existing behavioral fixtures. Production has no command enum, catch-all packet or reply cache.
 using namespace lux::render;
@@ -48,7 +49,7 @@ public:
     {
         auto client = RenderClient::create(name, config);
         if (!client) return lux::cxx::unexpected(client.error());
-        return std::unique_ptr<TestClient>(new TestClient(std::move(*client)));
+        return std::unique_ptr<TestClient>(new TestClient(std::move(*client), std::string(name)));
     }
     RenderResult<RequestId> submit(const TestCommand& command)
     {
@@ -78,6 +79,19 @@ public:
     }
     RenderResult<ERenderReceive> tryReceive(TestCompletion& output)
     {
+        if (raw_pending_)
+        {
+            const auto status = raw_->tryReceive(raw_reply_);
+            if (status == lux::platform::ipc::EIpcReceive::EMPTY) return ERenderReceive::EMPTY;
+            if (status != lux::platform::ipc::EIpcReceive::RECEIVED) std::abort();
+            auto frame = runtime_detail::readReply(raw_reply_.message);
+            if (!frame) return lux::cxx::unexpected(frame.error());
+            output.header = frame->header;
+            output.session = frame->session;
+            raw_pending_ = false;
+            raw_reply_ = {};
+            return ERenderReceive::RECEIVED;
+        }
         auto result = client_->tryReceive(output.value);
         output.header = output.value.header;
         output.session = output.value.session;
@@ -114,14 +128,40 @@ public:
     RenderResult<void> abandon(RequestId id) { return client_->abandon(id); }
     std::size_t retainedBytes() const { return client_->retainedBytes(); }
 private:
-    explicit TestClient(std::unique_ptr<RenderClient> client) : client_(std::move(client)) {}
+    explicit TestClient(std::unique_ptr<RenderClient> client, std::string name)
+        : client_(std::move(client)), name_(std::move(name)) {}
     template <WireData T, typename Reply>
     RenderResult<RequestId> send(const OperationDescriptor& descriptor, const T& payload, const TestCommand& command)
     {
         auto binding = client_->bind<T, Reply>(descriptor);
         if (!binding) return lux::cxx::unexpected(binding.error());
-        binding->binding.session = command.session; // explicit hostile/stale-session fixture
+        if (command.session != client_->session())
+        {
+            // Hostile peer bypasses the immutable Client qualification, preserving the old epoch negative test.
+            if (!raw_)
+            {
+                auto peer = lux::platform::ipc::IpcCore::instance().createRequester(name_);
+                if (!peer) std::abort();
+                raw_.emplace(std::move(*peer));
+            }
+            const RequestId id{UINT32_MAX - 1, 1};
+            auto bytes = encodeWire(payload, {}, {1024 * 1024, 0});
+            if (!bytes) return lux::cxx::unexpected(bytes.error());
+            std::vector<std::byte> frame(runtime_detail::request_size + bytes->size());
+            lux::cxx::BinarySpanWriter writer(frame);
+            runtime_detail::writeRequest(writer, {command.session, id, binding->binding().operation(),
+                command.reply_capacity}, static_cast<std::uint32_t>(bytes->size()));
+            writer.writeBytes(bytes->view());
+            lux::platform::ipc::IpcMessage message;
+            if (!message.tryAssignInline(frame) || !raw_->trySend(message)) std::abort();
+            raw_pending_ = true;
+            return id;
+        }
         return client_->submit(*binding, payload, command.attachments, command.reply_capacity);
     }
     std::unique_ptr<RenderClient> client_;
+    std::string name_;
+    std::optional<lux::platform::ipc::IpcRequester> raw_;
+    lux::platform::ipc::IpcReply raw_reply_;
+    bool raw_pending_ = false;
 };

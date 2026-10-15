@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstddef>
+#include <exception>
+#include <utility>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/render/native/vulkan/device/Device.hpp>
 
@@ -23,6 +25,44 @@ namespace lux::render::vulkan
 
     struct BufferAllocationTag;
     struct ImageAllocationTag;
+    class DeviceSession;
+    // A cold, exclusive release qualification. The Session must outlive it and all record borrows.
+    // Dropping a permit leaves reclamation to Session shutdown; it never destroys GPU backing implicitly.
+    template <class Tag>
+    class AllocationPermit final
+    {
+    public:
+        AllocationPermit() noexcept = default;
+        AllocationPermit(AllocationPermit&& other) noexcept
+            : owner_(std::exchange(other.owner_, nullptr)), key_(std::exchange(other.key_, {})) {}
+
+        AllocationPermit& operator=(AllocationPermit&& other) noexcept
+        {
+            if (this != &other)
+            {
+                // An outstanding release qualification must not silently disappear on assignment.
+                if (owner_) std::terminate();
+                owner_ = std::exchange(other.owner_, nullptr);
+                key_ = std::exchange(other.key_, {});
+            }
+            return *this;
+        }
+
+        AllocationPermit(const AllocationPermit&) = delete;
+        AllocationPermit& operator=(const AllocationPermit&) = delete;
+        [[nodiscard]] explicit operator bool() const noexcept { return owner_ != nullptr; }
+
+    private:
+        friend class DeviceSession;
+        friend class RetirementQueue;
+        friend struct NativeMemoryAudit;
+        AllocationPermit(DeviceSession& owner, cxx::SlotKey<Tag> key) noexcept : owner_(&owner), key_(key) {}
+        DeviceSession* owner_ = nullptr;
+        cxx::SlotKey<Tag> key_{};
+    };
+    using BufferPermit = AllocationPermit<BufferAllocationTag>;
+    using ImagePermit = AllocationPermit<ImageAllocationTag>;
+
     class BufferAllocation
     {
     public:
@@ -56,6 +96,7 @@ namespace lux::render::vulkan
 
     private:
         friend class DeviceSession;
+        friend class RetirementQueue;
         cxx::SlotKey<BufferAllocationTag> key_;
         VkBuffer buffer_;
         VmaAllocation_T* allocation_;
@@ -63,6 +104,7 @@ namespace lux::render::vulkan
         VkDeviceSize size_;
         VkBufferUsageFlags usage_;
         EMemoryAccess access_;
+        bool retired_ = false;
     };
 
     struct ImageDescription
@@ -128,6 +170,7 @@ namespace lux::render::vulkan
 
     private:
         friend class DeviceSession;
+        friend class RetirementQueue;
         cxx::SlotKey<ImageAllocationTag> key_;
         VkImage image_;
         VmaAllocation_T* allocation_;
@@ -135,5 +178,6 @@ namespace lux::render::vulkan
         ImageAllocation* source_;
         std::uint32_t aliases_ = 0;
         bool released_ = false;
+        bool retired_ = false;
     };
 }

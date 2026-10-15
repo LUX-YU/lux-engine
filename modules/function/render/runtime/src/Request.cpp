@@ -20,6 +20,8 @@ namespace lux::render
     {
         if (descriptor_)
         {
+            if (descriptor_->completion == ECompletionContract::RESOURCE_GPU_READY)
+                return cxx::unexpected(RenderError{kProtocolContract});
             if (descriptor_->reply)
             {
                 const std::array views{attachment.view()};

@@ -24,8 +24,8 @@ namespace lux::render::vulkan
         RetirementQueue(const RetirementQueue &) = delete;
         RetirementQueue &operator=(const RetirementQueue &) = delete;
 
-        [[nodiscard]] RenderResult<void> retire(SubmissionTicket last_use, BufferAllocation*&& backing) noexcept;
-        [[nodiscard]] RenderResult<void> retire(SubmissionTicket last_use, ImageAllocation*&& backing) noexcept;
+        [[nodiscard]] RenderResult<void> retire(SubmissionTicket last_use, BufferPermit& backing) noexcept;
+        [[nodiscard]] RenderResult<void> retire(SubmissionTicket last_use, ImagePermit& backing) noexcept;
 
         [[nodiscard]] RenderResult<std::size_t> collect() noexcept;
         [[nodiscard]] std::size_t pending() const noexcept;

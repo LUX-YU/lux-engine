@@ -37,7 +37,7 @@ namespace lux::render::vulkan
             {
                 const VkExtent2D extent{plan.target_sized ? target.width : image->width,
                     plan.target_sized ? target.height : image->height};
-                auto backing = createImage( extent, VK_FORMAT_R8G8B8A8_UNORM, plan.image_usage);
+                auto backing = createImageRecord({extent, VK_FORMAT_R8G8B8A8_UNORM, plan.image_usage});
                 if (!backing) return cxx::unexpected(backing.error());
                 binding.image = *backing;
                 VkImageViewCreateInfo view{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
@@ -90,7 +90,7 @@ namespace lux::render::vulkan
                         auto bytes = factory->initialize(size);
                         if (!bytes) return cxx::unexpected(bytes.error());
                         if (bytes->size() != size) return cxx::unexpected(RenderError{kInvalidArgument});
-                        auto buffer = createBuffer( size, plan.buffer_usage, EMemoryAccess::UPLOAD);
+                        auto buffer = createBufferRecord(size, plan.buffer_usage, EMemoryAccess::UPLOAD);
                         if (!buffer) return cxx::unexpected(buffer.error());
                         if (auto written = write(**buffer, 0, *bytes); !written)
                         {
@@ -109,7 +109,7 @@ namespace lux::render::vulkan
                 }
                 else
                 {
-                    auto buffer = createBuffer( size, plan.buffer_usage,
+                    auto buffer = createBufferRecord(size, plan.buffer_usage,
                         plan.readback ? EMemoryAccess::READBACK : EMemoryAccess::DEVICE);
                     if (!buffer) return cxx::unexpected(buffer.error());
                     binding.owned_buffer = *buffer;

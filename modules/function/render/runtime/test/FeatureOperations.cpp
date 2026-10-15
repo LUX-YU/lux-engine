@@ -82,7 +82,9 @@ static const FeatureDefinition feature{
     [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
     nullptr, descriptors
 };
-static RenderResult<std::vector<vulkan::PassProgram>> programs(const WireView*, std::string_view) noexcept { return {}; }
+static_assert(!std::is_default_constructible_v<OperationBinding>);
+static_assert(!std::is_default_constructible_v<BoundOperation<Exposure, Exposure>>);
+static_assert(std::is_const_v<std::remove_reference_t<decltype(std::declval<BoundOperation<Exposure, Exposure>>().binding())>>);
 
 static RenderResult<void> setExposure(void* user, RenderRequest& request) noexcept
 {
@@ -133,8 +135,15 @@ int main()
         }}
     };
     auto server = take(RenderServer::create({"runtime.open", true}));
-    check(bool(server->registerFeature({&feature, programs, {}, handlers})));
-    check(!server->registerFeature({&feature, programs, {}, handlers}));
+    check(bool(server->registerFeature({&feature, nullptr, {}, handlers})));
+    check(!server->registerFeature({&feature, nullptr, {}, handlers}));
+    const auto gpu = operationDescriptor<Exposure>("test.unqualifiedGpu", {1, 0}, ECompletionContract::RESOURCE_GPU_READY);
+    const std::array gpu_ops{gpu};
+    const FeatureDefinition gpu_feature{FeatureTypeIdView("test.unqualified.gpu"), {1, 0}, nullptr,
+        feature.describe, nullptr, gpu_ops};
+    const std::array gpu_handlers{OperationHandler{&gpu, setExposure, &state}};
+    auto rejected = server->registerFeature({&gpu_feature, nullptr, {}, gpu_handlers});
+    check(!rejected && rejected.error().type == kProtocolContract);
     auto a = take(RenderClient::create("runtime.open"));
     auto b = take(RenderClient::create("runtime.open"));
     const auto hello_a = take(a->hello()), hello_b = take(b->hello());
@@ -143,7 +152,8 @@ int main()
     std::thread worker([&] { render_allocation::participate = true; run_ok = bool(server->run()); });
     check(wait(*a, hello_a).header.outcome == EOperationOutcome::SUCCESS);
     check(wait(*b, hello_b).header.outcome == EOperationOutcome::SUCCESS);
-    check(!server->registerFeature({&feature, programs, {}, handlers}));
+    check(!server->registerFeature({&feature, nullptr, {}, handlers}));
+    check(!a->bind(gpu));
     auto bound_a = take(a->bind<Exposure, Exposure>(exposure));
     auto bound_b = take(b->bind<Exposure, Exposure>(exposure));
     auto invalid = exposure;
@@ -162,12 +172,6 @@ int main()
     reply_a = {};
     reply_b = {};
 
-    auto unknown = bound_a;
-    ++unknown.binding.operation.gen;
-    check(wait(*a, take(a->submit(unknown, Exposure{}))).header.error.type == kRuntimeIdentity);
-    unknown = bound_a;
-    ++unknown.binding.session[0];
-    check(wait(*a, take(a->submit(unknown, Exposure{}))).header.error.type == kRuntimeIdentity);
     auto bad = take(a->bind<Exposure, Exposure>(wrong_reply));
     check(wait(*a, take(a->submit(bad, Exposure{}))).header.outcome == EOperationOutcome::FAILED);
 
@@ -238,24 +242,29 @@ int main()
     auto raw_result = ipc::IpcCore::instance().createRequester("runtime.open");
     check(bool(raw_result));
     auto raw = std::move(*raw_result);
-    for (unsigned invalid_case = 0; invalid_case < 2; ++invalid_case)
+    for (unsigned invalid_case = 0; invalid_case < 4; ++invalid_case)
     {
         std::array<std::byte, 52> storage{};
         const RequestId id{77, 1};
         lux::cxx::BinarySpanWriter writer(storage);
         const auto payload_size = invalid_case == 0 ? 3u : 4u;
-        runtime_detail::writeRequest(writer, {a->session(), id, bound_a.binding.operation,
-            invalid_case == 0 ? 128u : 1u}, payload_size);
+        auto identity = a->session();
+        auto operation = bound_a.binding().operation();
+        if (invalid_case == 2) ++operation.gen;
+        if (invalid_case == 3) ++identity[0];
+        runtime_detail::writeRequest(writer, {identity, id, operation,
+            invalid_case == 1 ? 1u : 128u}, payload_size);
         ipc::IpcMessage message;
         check(message.tryAssignInline(std::span(storage).first(runtime_detail::request_size + payload_size)));
         check(bool(raw.trySend(message)));
         ipc::IpcReply reply;
         const auto deadline = Clock::now() + 10s;
         while (raw.tryReceive(reply) == ipc::EIpcReceive::EMPTY) check(Clock::now() < deadline);
-        if (invalid_case == 0)
+        if (invalid_case != 1)
         {
             auto result = take(runtime_detail::readReply(reply.message));
             check(result.header.request == id && result.header.outcome == EOperationOutcome::FAILED);
+            if (invalid_case >= 2) check(result.header.error.type == kRuntimeIdentity);
         }
         else check(reply.delivery == ipc::EIpcDelivery::ABORTED);
     }

@@ -45,28 +45,38 @@ namespace lux::render::vulkan
         }
 
         [[nodiscard]] const VulkanDevice& device() const noexcept { return device_; }
-        [[nodiscard]] RenderResult<BufferAllocation*> createBuffer(
+        [[nodiscard]] RenderResult<BufferPermit> createBuffer(
             VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access
         ) noexcept;
-        [[nodiscard]] RenderResult<ImageAllocation*> createImage(const ImageDescription& description) noexcept;
-        [[nodiscard]] RenderResult<ImageAllocation*> createImage(VkExtent2D extent, VkFormat format,
+        [[nodiscard]] RenderResult<ImagePermit> createImage(const ImageDescription& description) noexcept;
+        [[nodiscard]] RenderResult<ImagePermit> createImage(VkExtent2D extent, VkFormat format,
             VkImageUsageFlags usage, VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT) noexcept;
-        [[nodiscard]] RenderResult<ImageAllocation*> aliasImage(ImageAllocation& source) noexcept;
+        [[nodiscard]] RenderResult<ImagePermit> aliasImage(const ImagePermit& source) noexcept;
         [[nodiscard]] RenderResult<void> write(BufferAllocation& buffer, VkDeviceSize offset,
             std::span<const std::byte> bytes) noexcept;
         [[nodiscard]] RenderResult<void> read(const BufferAllocation& buffer, VkDeviceSize offset,
             std::span<std::byte> bytes) const noexcept;
         [[nodiscard]] BufferMemoryBinding memoryBinding(const BufferAllocation& buffer) const noexcept;
         [[nodiscard]] ImageMemoryBinding memoryBinding(const ImageAllocation& image) const noexcept;
-        [[nodiscard]] bool owns(const BufferAllocation* value) const noexcept;
-        [[nodiscard]] bool owns(const ImageAllocation* value) const noexcept;
-        // Caller must have ended all borrows and established completion of the last GPU use.
-        void destroyFinished(BufferAllocation* value) noexcept;
-        void destroyFinished(ImageAllocation* value) noexcept;
+        // Synchronous cold borrow. No stale pointer is read during identity validation.
+        [[nodiscard]] BufferAllocation* borrow(const BufferPermit& permit) const noexcept;
+        [[nodiscard]] ImageAllocation* borrow(const ImagePermit& permit) const noexcept;
+        // Caller proves no accepted GPU work uses this candidate. Failure preserves the permit.
+        [[nodiscard]] RenderResult<void> destroyUnsubmitted(BufferPermit& permit) noexcept;
+        [[nodiscard]] RenderResult<void> destroyUnsubmitted(ImagePermit& permit) noexcept;
         void releaseScope(SceneId scene, ViewId view = {}) noexcept;
 
     private:
         friend struct NativeMemoryAudit;
+        friend class RetirementQueue;
+        [[nodiscard]] RenderResult<BufferAllocation*> createBufferRecord(
+            VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access) noexcept;
+        [[nodiscard]] RenderResult<ImageAllocation*> createImageRecord(const ImageDescription& description) noexcept;
+        [[nodiscard]] bool owns(const BufferAllocation* value) const noexcept;
+        [[nodiscard]] bool owns(const ImageAllocation* value) const noexcept;
+        // Trusted internal borrows only: Context completion, retirement, or fully drained Session shutdown.
+        void destroyFinished(BufferAllocation* value) noexcept;
+        void destroyFinished(ImageAllocation* value) noexcept;
         friend class ExecutionContext;
         void collectScoped() noexcept;
         DeviceSession(VulkanDevice device, VulkanAllocator allocator) noexcept;

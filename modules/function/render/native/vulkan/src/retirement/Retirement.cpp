@@ -52,31 +52,39 @@ namespace lux::render::vulkan
         return count;
     }
 
-    RenderResult<void> RetirementQueue::retire(SubmissionTicket ticket, BufferAllocation*&& backing) noexcept
+    RenderResult<void> RetirementQueue::retire(SubmissionTicket ticket, BufferPermit& backing) noexcept
     {
-        const bool is_wrong_owner = !queue_->owns(ticket) || !owner_->owns(backing);
+        auto* record = owner_->borrow(backing);
+        const bool is_wrong_owner = !queue_->owns(ticket) || !record;
         if (is_wrong_owner) return cxx::unexpected(RenderError{kWrongOwner});
         for (auto& entry : entries_)
             if (!entry)
             {
                 entry.emplace(ticket.serial(), VBacking{
-                    std::in_place_type<BufferAllocation*>, std::exchange(backing, nullptr)
+                    std::in_place_type<BufferAllocation*>, record
                 });
+                record->retired_ = true;
+                backing.owner_ = nullptr;
+                backing.key_ = {};
                 return {};
             }
         return cxx::unexpected(RenderError{kCapacity});
     }
 
-    RenderResult<void> RetirementQueue::retire(SubmissionTicket ticket, ImageAllocation*&& backing) noexcept
+    RenderResult<void> RetirementQueue::retire(SubmissionTicket ticket, ImagePermit& backing) noexcept
     {
-        const bool is_wrong_owner = !queue_->owns(ticket) || !owner_->owns(backing);
+        auto* record = owner_->borrow(backing);
+        const bool is_wrong_owner = !queue_->owns(ticket) || !record;
         if (is_wrong_owner) return cxx::unexpected(RenderError{kWrongOwner});
         for (auto& entry : entries_)
             if (!entry)
             {
                 entry.emplace(ticket.serial(), VBacking{
-                    std::in_place_type<ImageAllocation*>, std::exchange(backing, nullptr)
+                    std::in_place_type<ImageAllocation*>, record
                 });
+                record->retired_ = true;
+                backing.owner_ = nullptr;
+                backing.key_ = {};
                 return {};
             }
         return cxx::unexpected(RenderError{kCapacity});

@@ -126,7 +126,7 @@ namespace lux::render
         std::span<const RenderPayload> attachments, std::size_t reply_capacity) noexcept
     {
         auto& s = *this;
-        const bool hello = binding.operation.isNull();
+        const bool hello = binding.operation_.isNull();
         const bool invalid_state = s.closed || (hello ? s.ready_sent : !s.bound);
         if (invalid_state) return cxx::unexpected(RenderError{kRuntimeState});
         const bool invalid_capacity = s.requests.size() == s.capacity ||
@@ -169,7 +169,7 @@ namespace lux::render
                 input->views[i] = views[i];
             }
         }
-        const auto request = s.requests.emplace(Pending{{}, binding.session, binding.descriptor_.reply,
+        const auto request = s.requests.emplace(Pending{{}, binding.session_, binding.descriptor_.reply,
             small ? charged : 0, hello});
         s.requests.find(request)->id = request;
         const auto rollback = [&] {
@@ -177,7 +177,7 @@ namespace lux::render
             if (small) refund(s.budget.get(), charged);
         };
         cxx::BinarySpanWriter writer(storage);
-        writeRequest(writer, {binding.session, request, binding.operation, reply_capacity}, static_cast<std::uint32_t>(size));
+        writeRequest(writer, {binding.session_, request, binding.operation_, reply_capacity}, static_cast<std::uint32_t>(size));
         auto encoded = encode(value, writer);
         if (!encoded || !writer.good() || writer.size() != total)
         {

@@ -40,14 +40,16 @@ namespace lux::render
     class OperationBinding final
     {
     public:
-        SessionIdentity session{};
-        OperationId operation;
+        [[nodiscard]] SessionIdentity session() const noexcept { return session_; }
+        [[nodiscard]] OperationId operation() const noexcept { return operation_; }
         [[nodiscard]] const OperationDescriptor& descriptor() const noexcept { return descriptor_; }
     private:
         friend class RenderClient;
         OperationBinding() noexcept = default;
         OperationBinding(SessionIdentity owner, OperationId id, OperationDescriptor descriptor) noexcept
-            : session(owner), operation(id), descriptor_(descriptor) {}
+            : session_(owner), operation_(id), descriptor_(descriptor) {}
+        SessionIdentity session_{};
+        OperationId operation_;
         OperationDescriptor descriptor_;
     };
 
@@ -55,10 +57,11 @@ namespace lux::render
     class BoundOperation final
     {
     public:
-        OperationBinding binding;
+        [[nodiscard]] const OperationBinding& binding() const noexcept { return binding_; }
     private:
         friend class RenderClient;
-        explicit BoundOperation(OperationBinding value) noexcept : binding(value) {}
+        explicit BoundOperation(OperationBinding value) noexcept : binding_(value) {}
+        OperationBinding binding_;
     };
 
     enum class ERenderReceive { RECEIVED, EMPTY, CLOSED };
@@ -128,7 +131,7 @@ namespace lux::render
         {
             auto size = DataSchema<Request>::wireSize(payload);
             if (!size) return cxx::unexpected(size.error());
-            return submitEncoded(operation.binding, *size, &payload,
+            return submitEncoded(operation.binding_,  *size, &payload,
                 [](const void* value, cxx::BinarySpanWriter& writer) noexcept {
                     return DataSchema<Request>::encode(*static_cast<const Request*>(value), writer);
                 }, attachments, reply_capacity);

@@ -346,7 +346,9 @@ namespace lux::render
             if (!assembly) return cxx::unexpected(assembly.error());
             for (const auto& contribution : assembly->contributions)
             {
+                if (contribution.pass_count == 0) continue;
                 const auto index = contribution.selection_index;
+                if (!registrations[index]->programs) return cxx::unexpected(RenderError{kFeatureContract});
                 const auto& selection = selected[index];
                 auto values = registrations[index]->programs(selection.config, selection.instance_key);
                 if (!values) return cxx::unexpected(values.error());
@@ -613,7 +615,7 @@ namespace lux::render
     RenderResult<void> RenderServer::Impl::registerFeature(FeatureRegistration feature) noexcept
     {
         auto& s = *this;
-        const bool invalid = s.started.load() || !feature.definition || !feature.programs ||
+        const bool invalid = s.started.load() || !feature.definition ||
             (feature.definition && (!feature.definition->describe || feature.definition->type.name().empty()));
         if (invalid) return cxx::unexpected(RenderError{kRuntimeState});
         for (const auto& current : s.features)
@@ -640,6 +642,8 @@ namespace lux::render
         {
             const auto& handler = feature.handlers[i];
             if (!handler.descriptor || !handler.invoke) return cxx::unexpected(RenderError{kFeatureContract});
+            if (handler.descriptor->completion == ECompletionContract::RESOURCE_GPU_READY)
+                return cxx::unexpected(RenderError{kProtocolContract});
             if (auto valid = compatibleOperations(feature.definition->operations[i], *handler.descriptor); !valid)
                 return valid;
             for (const auto& old : s.operations)

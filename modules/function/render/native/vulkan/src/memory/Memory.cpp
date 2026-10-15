@@ -8,7 +8,7 @@
 
 namespace lux::render::vulkan
 {
-    RenderResult<BufferAllocation*> DeviceSession::createBuffer(
+    RenderResult<BufferAllocation*> DeviceSession::createBufferRecord(
         VkDeviceSize size,
         VkBufferUsageFlags usage,
         EMemoryAccess access
@@ -113,7 +113,7 @@ namespace lux::render::vulkan
         return {};
     }
 
-    RenderResult<ImageAllocation*> DeviceSession::createImage(
+    RenderResult<ImagePermit> DeviceSession::createImage(
         VkExtent2D extent,
         VkFormat format,
         VkImageUsageFlags usage,
@@ -123,7 +123,7 @@ namespace lux::render::vulkan
         return createImage(ImageDescription{extent, format, usage, samples});
     }
 
-    RenderResult<ImageAllocation*> DeviceSession::createImage(const ImageDescription& description) noexcept
+    RenderResult<ImageAllocation*> DeviceSession::createImageRecord(const ImageDescription& description) noexcept
     {
         const auto extent = description.extent;
         const auto format = description.format;
@@ -198,10 +198,12 @@ namespace lux::render::vulkan
         return record;
     }
 
-    RenderResult<ImageAllocation*> DeviceSession::aliasImage(ImageAllocation& source) noexcept
+    RenderResult<ImagePermit> DeviceSession::aliasImage(const ImagePermit& permit) noexcept
     {
-        const bool is_invalid_source = !owns(&source) || !source.description_.aliasable ||
-            source.source_ || source.released_;
+        auto* record = borrow(permit);
+        if (!record) return cxx::unexpected(RenderError{kWrongOwner});
+        auto& source = *record;
+        const bool is_invalid_source = !source.description_.aliasable || source.source_ || source.released_;
         if (is_invalid_source)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
@@ -248,11 +250,58 @@ namespace lux::render::vulkan
             return cxx::unexpected(nativeError(created));
         }
         const auto key = images_.emplace(image, source.allocation_, description, &source);
-        auto* record = images_.find(key);
-        record->key_ = key;
+        images_.find(key)->key_ = key;
         ++source.aliases_;
-        return record;
+        return ImagePermit{*this, key};
     }
+    RenderResult<BufferPermit> DeviceSession::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access) noexcept
+    {
+        auto record = createBufferRecord(size, usage, access);
+        if (!record) return cxx::unexpected(record.error());
+        return BufferPermit{*this, (*record)->key_};
+    }
+
+    BufferAllocation* DeviceSession::borrow(const BufferPermit& permit) const noexcept
+    {
+        if (permit.owner_ != this) return nullptr;
+        auto* value = const_cast<DeviceSession*>(this)->buffers_.find(permit.key_);
+        return value && !value->retired_ ? value : nullptr;
+    }
+
+    RenderResult<void> DeviceSession::destroyUnsubmitted(BufferPermit& permit) noexcept
+    {
+        auto* value = borrow(permit);
+        if (!value) return cxx::unexpected(RenderError{kWrongOwner});
+        permit.owner_ = nullptr;
+        permit.key_ = {};
+        destroyFinished(value);
+        return {};
+    }
+
+    RenderResult<ImagePermit> DeviceSession::createImage(const ImageDescription& description) noexcept
+    {
+        auto record = createImageRecord(description);
+        if (!record) return cxx::unexpected(record.error());
+        return ImagePermit{*this, (*record)->key_};
+    }
+
+    ImageAllocation* DeviceSession::borrow(const ImagePermit& permit) const noexcept
+    {
+        if (permit.owner_ != this) return nullptr;
+        auto* value = const_cast<DeviceSession*>(this)->images_.find(permit.key_);
+        return value && !value->retired_ && !value->released_ ? value : nullptr;
+    }
+
+    RenderResult<void> DeviceSession::destroyUnsubmitted(ImagePermit& permit) noexcept
+    {
+        auto* value = borrow(permit);
+        if (!value) return cxx::unexpected(RenderError{kWrongOwner});
+        permit.owner_ = nullptr;
+        permit.key_ = {};
+        destroyFinished(value);
+        return {};
+    }
+
     bool DeviceSession::owns(const BufferAllocation* value) const noexcept
     {
         return value && buffers_.find(value->key_) == value;

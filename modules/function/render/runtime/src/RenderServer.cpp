@@ -19,8 +19,8 @@ namespace lux::render
 
     namespace
     {
-        struct View final { std::array<float, 4> color; };
-        struct Scene final { cxx::SlotMap<View, ViewTag> views; };
+        struct View final { std::array<float, 4> color; ResourceDomain domain; };
+        struct Scene final { ResourceDomain domain; cxx::SlotMap<View, ViewTag> views; };
         struct Target final { TargetDesc description; std::uint64_t epoch = 1; };
         struct ExecutionGroup final
         {
@@ -68,7 +68,6 @@ namespace lux::render
         SessionIdentity identity;
         std::vector<FeatureRegistration> features;
         std::vector<StorageRegistration> storage_types;
-        std::vector<BufferInitializer> initializers;
         cxx::SlotMap<OperationEntry, OperationTag> operations;
         std::vector<std::byte> manifest;
         cxx::SlotMap<Scene, SceneTag> scenes;
@@ -264,11 +263,11 @@ namespace lux::render
             for (const auto& existing : effects)
                 for (const auto& group : existing.groups)
                     if (group.target == target_id) return cxx::unexpected(RenderError{kRuntimeState});
-            auto prepared = device->prepare(effect->code, target->description, {scene_id, view_id}, initializers);
+            auto prepared = device->prepare(effect->code, target->description, view->domain);
             if (!prepared) return cxx::unexpected(prepared.error());
             (*prepared)->setColor(view->color);
             effect->groups.push_back({scene_id, view_id, target_id, *prepared});
-            scoped_buffers_created.store(device->scopedBufferCreations());
+            scoped_buffers_created.store(device->resources().creations());
             return request.reply();
         }
 
@@ -286,7 +285,7 @@ namespace lux::render
                 }); !admitted) return admitted;
                 // One Target writer, proven on attach. Resize builds one candidate without recompilation.
                 auto candidate = device->prepare(std::move(code), description,
-                    {group->scene, group->view}, initializers);
+                    scenes.find(group->scene)->views.find(group->view)->domain);
                 if (!candidate) return cxx::unexpected(candidate.error());
                 (*candidate)->setColor(group->context->color());
                 cancelReadbacks(group->context);
@@ -299,7 +298,7 @@ namespace lux::render
             }
             target.description = description;
             ++target.epoch;
-            scoped_buffers_created.store(device->scopedBufferCreations());
+            scoped_buffers_created.store(device->resources().creations());
             return {};
         }
 
@@ -486,7 +485,9 @@ namespace lux::render
 
         RenderResult<void> createScene(RenderRequest& request) noexcept
         {
-            return request.reply(SceneCreated{scenes.emplace()});
+            auto domain = device->resources().createDomain(device->resources().root(), EResourceScope::SCENE);
+            if (!domain) return cxx::unexpected(domain.error());
+            return request.reply(SceneCreated{scenes.emplace(Scene{std::move(*domain), {}})});
         }
 
         RenderResult<void> removeScene(RenderRequest& request) noexcept
@@ -502,7 +503,7 @@ namespace lux::render
                 for (std::size_t i = effect.groups.size(); i-- > 0;)
                     if (effect.groups[i].scene == scene_id)
                         if (auto result = withdraw(effect, i); !result) return result;
-            device->releaseScope(scene_id);
+            (void)device->resources().closeDomain(scenes.find(scene_id)->domain);
             scenes.erase(scene_id);
             return request.reply();
         }
@@ -515,7 +516,9 @@ namespace lux::render
             if (!scene) return cxx::unexpected(RenderError{kRuntimeIdentity});
             if (!std::ranges::all_of(input->color, [](float x) { return std::isfinite(x); }))
                 return cxx::unexpected(RenderError{kInvalidWire});
-            return request.reply(ViewCreated{scene->views.emplace(View{input->color})});
+            auto domain = device->resources().createDomain(scene->domain, EResourceScope::VIEW);
+            if (!domain) return cxx::unexpected(domain.error());
+            return request.reply(ViewCreated{scene->views.emplace(View{input->color, std::move(*domain)})});
         }
 
         RenderResult<void> removeView(RenderRequest& request) noexcept
@@ -531,7 +534,7 @@ namespace lux::render
                 for (std::size_t i = effect.groups.size(); i-- > 0;)
                     if (effect.groups[i].scene == input->scene && effect.groups[i].view == input->view)
                         if (auto result = withdraw(effect, i); !result) return result;
-            device->releaseScope(input->scene, input->view);
+            (void)device->resources().closeDomain(scene->views.find(input->view)->domain);
             scene->views.erase(input->view);
             return request.reply();
         }
@@ -769,21 +772,6 @@ namespace lux::render
         for (const auto& current : s.features)
             if (current.definition->type.name() == feature.definition->type.name())
                 return cxx::unexpected(RenderError{kFeatureDuplicate});
-        for (std::size_t i = 0; i < feature.buffers.size(); ++i)
-        {
-            const auto& buffer = feature.buffers[i];
-            if (buffer.type.name().empty() || !buffer.initialize) return cxx::unexpected(RenderError{kFeatureContract});
-            for (std::size_t j = 0; j < i; ++j)
-            {
-                const auto& earlier = feature.buffers[j];
-                const bool conflict = earlier.type.name() == buffer.type.name() && earlier.abi == buffer.abi &&
-                    earlier.initialize != buffer.initialize;
-                if (conflict) return cxx::unexpected(RenderError{kFeatureDuplicate});
-            }
-            for (const auto& current : s.initializers)
-                if (current.type.name() == buffer.type.name() && current.abi == buffer.abi &&
-                    current.initialize != buffer.initialize) return cxx::unexpected(RenderError{kFeatureDuplicate});
-        }
         if (feature.handlers.size() != feature.definition->operations.size())
             return cxx::unexpected(RenderError{kFeatureContract});
         if (auto valid = s.validateHandlers(feature.handlers); !valid) return valid;
@@ -794,10 +782,6 @@ namespace lux::render
                 return valid;
         }
         for (const auto& handler : feature.handlers) s.addOperation(handler);
-        for (const auto& buffer : feature.buffers)
-            if (std::ranges::none_of(s.initializers, [&](const auto& current) {
-                return current.type.name() == buffer.type.name() && current.abi == buffer.abi;
-            })) s.initializers.push_back(buffer);
         s.features.push_back(feature);
         return {};
     }
@@ -836,12 +820,21 @@ namespace lux::render
         {
             auto uploads = s.device->configureUploads(s.config.uploads);
             if (!uploads) { s.shutdown(); return cxx::unexpected(uploads.error()); }
-            if (s.device->device().textureDescriptors())
-            {
-                auto textures = s.device->configureTextures(s.config.texture_capacity, s.config.texture_bytes);
-                if (!textures) { s.shutdown(); return cxx::unexpected(textures.error()); }
-            }
         }
+        auto& resources = s.device->resources();
+        for (const auto& type : s.storage_types)
+        {
+            if (const auto* factory = resources.factory(type.description->type))
+            {
+                if (auto valid = validateStorageFactory(*type.description, *factory, EGraphicsApi::VULKAN); !valid)
+                { s.shutdown(); return cxx::unexpected(valid.error()); }
+            }
+            else if (auto installed = resources.installFactory(type.factory); !installed)
+            { s.shutdown(); return cxx::unexpected(installed.error()); }
+            if (auto configured = resources.configureType(*type.description, type.configuration); !configured)
+            { s.shutdown(); return cxx::unexpected(configured.error()); }
+        }
+        resources.freeze();
         const std::uint32_t capabilities = (s.device->device().textureDescriptors() ? 1u : 0u) |
             (s.device->device().textureCompressionBc() ? 2u : 0u);
         std::uint32_t available = 0;

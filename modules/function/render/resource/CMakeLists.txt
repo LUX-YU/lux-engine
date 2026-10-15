@@ -3,7 +3,7 @@ add_component(
     COMPONENT_NAME render_resource
     NAMESPACE lux::engine::render
     OUTPUT_NAME lux_engine_render_resource
-    SOURCE_FILES src/Storage.cpp
+    SOURCE_FILES src/Storage.cpp src/ResourceRegistry.cpp
 )
 
 component_include_directories(

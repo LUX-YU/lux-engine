@@ -1,5 +1,5 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
-#include "ExecutionState.hpp"
+#include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include "UploadState.hpp"
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include <algorithm>
@@ -11,6 +11,10 @@ namespace lux::render::vulkan
     DeviceSession::DeviceSession(VulkanDevice native, VulkanAllocator memory) noexcept
         : device_(std::move(native)), allocator_(std::move(memory))
     {
+        const std::uint32_t capabilities = (device_.textureDescriptors() ? 1u : 0u) |
+            (device_.textureCompressionBc() ? 2u : 0u);
+        resources_ = std::make_unique<ResourceRegistry>(this, EGraphicsApi::VULKAN, capabilities);
+        if (!resources_->installFactory(textureStorageFactory())) std::terminate();
     }
 
     RenderResult<std::unique_ptr<DeviceSession>> DeviceSession::create(
@@ -86,29 +90,8 @@ namespace lux::render::vulkan
             if (!retirement) continue;
             if (auto result = retirement->collect(); !result) return cxx::unexpected(result.error());
         }
-        collectScoped();
-        if (textures_) textures_->collect();
+        resources_->collect();
         return {};
-    }
-
-    void DeviceSession::collectScoped() noexcept
-    {
-        std::erase_if(scoped_, [&](const auto& entry) {
-            if (entry->leases || entry->live_scope) return false;
-            destroyFinished(entry->backing);
-            return true;
-        });
-    }
-
-    void DeviceSession::releaseScope(SceneId scene, ViewId view) noexcept
-    {
-        for (auto& entry : scoped_)
-        {
-            const bool scene_matches = entry->requirement.scope != EResourceScope::GLOBAL && entry->scope.scene == scene;
-            const bool view_matches = view.isNull() || entry->scope.view == view;
-            if (scene_matches && view_matches) entry->live_scope = false;
-        }
-        collectScoped();
     }
 
     DeviceSession::~DeviceSession() noexcept
@@ -121,10 +104,9 @@ namespace lux::render::vulkan
         // Retired contexts still hold scoped leases, including the device-lost path.
         for (auto& retirement : retirement_owners_) retirement.reset();
         contexts_.clear();
-        for (auto& entry : scoped_) destroyFinished(entry->backing);
-        scoped_.clear();
         uploads_.reset();
-        textures_.reset();
+        if (resources_->valid(resources_->root())) (void)resources_->closeDomain(resources_->root());
+        resources_.reset();
         while (!buffers_.empty()) destroyFinished(&*buffers_.begin());
         // Destroy aliases before allocations, including aliases not explicitly released by the caller.
         for (;;)

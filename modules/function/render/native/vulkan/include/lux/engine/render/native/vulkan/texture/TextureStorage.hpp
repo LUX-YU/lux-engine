@@ -4,9 +4,11 @@
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
+#include <lux/engine/render/resource/Factory.hpp>
 
 namespace lux::render::vulkan
 {
+    [[nodiscard]] StorageFactory textureStorageFactory() noexcept;
     class TextureUpload;
     class TextureStorage;
     class ExecutionContext;
@@ -57,6 +59,8 @@ namespace lux::render::vulkan
         // Reserve exact descriptor/version and business identity BEFORE any GPU submit. Upload owns rollback.
         [[nodiscard]] RenderResult<TexturePublished> reserve(
             TextureUpload& upload, TextureId replace = {}, std::uint64_t expected_revision = 0) noexcept;
+        // Exact slot budget and a conservative physical-byte lower bound, before creating a candidate image.
+        [[nodiscard]] RenderResult<void> admit(std::uint64_t minimum_bytes, bool creates_identity) noexcept;
         [[nodiscard]] RenderResult<void> release(TextureId, std::uint64_t expected_revision) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<TextureUpload>> uploadRegion(
             TextureId, std::uint64_t expected_revision, TextureRegion, std::span<const std::byte>) noexcept;
@@ -71,6 +75,7 @@ namespace lux::render::vulkan
     private:
         friend class DeviceSession;
         friend class TextureUpload;
+        friend StorageFactory textureStorageFactory() noexcept;
         struct Record final { TextureVersion* current = nullptr; bool updating = false; };
         TextureStorage(DeviceSession& session, std::size_t capacity, std::uint64_t bytes) noexcept;
         [[nodiscard]] RenderResult<void> initialize() noexcept;

@@ -8,6 +8,7 @@
 namespace lux::render
 {
     struct StorageRegistration;
+    class ResourceRegistry;
     struct TextureTag;
     using TextureId = cxx::SlotKey<TextureTag>; // Server session-local; not an asset hash or descriptor index.
     inline constexpr StorageTypeIdView kTextureStorageType("lux.render.TextureStorage");
@@ -97,8 +98,6 @@ namespace lux::render
         class Access final
         {
         public:
-            // Constructed only at the checked registry/factory boundary.
-            Access(void* native, const Ops& ops) noexcept : native_(native), ops_(&ops) {}
             [[nodiscard]] RenderResult<TexturePublished> query(TextureId id) const noexcept
             {
                 return ops_->query(native_, id);
@@ -106,12 +105,17 @@ namespace lux::render
 
             [[nodiscard]] RenderResult<void> release(TextureId id, std::uint64_t revision) const noexcept
             {
+                if (!writable_) return cxx::unexpected(RenderError{kStorageDomain});
                 return ops_->release(native_, id, revision);
             }
 
         private:
+            friend class ResourceRegistry;
+            Access(void* native, const Ops& ops, bool writable) noexcept
+                : native_(native), ops_(&ops), writable_(writable) {}
             void* native_;
             const Ops* ops_;
+            bool writable_;
         };
 
         [[nodiscard]] static StorageRegistration registration() noexcept;

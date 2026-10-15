@@ -7,15 +7,6 @@ namespace lux::render
 {
     enum class EResourceClaim : std::uint8_t { PROVIDE, REQUIRE, OPTIONAL };
 
-    // Cold initializer for the currently implemented read-only scoped Buffer.
-    // This is CPU source data, not a GPU owner or a universal Storage interface.
-    struct BufferInitializer final
-    {
-        StorageTypeIdView type;
-        cxx::SchemaVersion abi;
-        RenderResult<std::vector<std::byte>> (*initialize)(std::uint64_t size) noexcept;
-    };
-
     struct ResourceClaim final
     {
         std::string key;

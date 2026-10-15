@@ -169,7 +169,7 @@ static void shutdownAndLoss()
         config.uploads = {1024 * 1024, 1, 32 * 1024 * 1024, &host, Host::enqueue, Host::join};
         auto server = take(RenderServer::create(config));
         const std::array handlers{OperationHandler{&operation, invoke, nullptr, true}};
-        CHECK(server->registerFeature({&definition, nullptr, {}, handlers}));
+        CHECK(server->registerFeature({&definition, nullptr, handlers}));
         std::atomic<bool> run_finished{false};
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); run_finished = true; });
@@ -213,7 +213,7 @@ int main()
             callbacks.compile_user, callbacks.enqueue_compile, callbacks.join_compile};
         auto server = take(RenderServer::create(config));
         const std::array handlers{OperationHandler{&operation, invoke, nullptr, true}};
-        CHECK(server->registerFeature({&definition, nullptr, {}, handlers}));
+        CHECK(server->registerFeature({&definition, nullptr, handlers}));
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); });
         auto client = take(RenderClient::create(config.channel_name, {128 * 1024 * 1024}));

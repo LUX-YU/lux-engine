@@ -1,5 +1,6 @@
 #include "Support.hpp"
 #include "SceneFixture.hpp"
+#include "BufferStorageFixture.hpp"
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include <algorithm>
 #include "Allocation.hpp"
@@ -10,11 +11,6 @@ using namespace lux::render;
 using namespace lux::render::vulkan;
 using namespace foundation_test;
 namespace cxx = lux::cxx;
-
-static RenderResult<std::vector<std::byte>> zeroBuffer(std::uint64_t size) noexcept
-{
-    return std::vector<std::byte>(static_cast<std::size_t>(size));
-}
 
 static void pixel(std::span<const std::byte> bytes, unsigned width, unsigned x, unsigned y,
     std::array<unsigned, 4> expected)
@@ -37,13 +33,13 @@ int main()
     auto assembly = take(native_fixture::assemble(config));
     auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
         native_fixture::programs(config), native_fixture::target(config))));
-    const BufferInitializer initializers[]{{StorageTypeIdView("test.zero_buffer"), {1, 0}, zeroBuffer}};
-    cxx::SlotMap<cxx::SlotMap<int, ViewTag>, SceneTag> scenes;
-    auto scene = scenes.emplace();
-    auto view_a = scenes.find(scene)->emplace(1), view_b = scenes.find(scene)->emplace(2);
-    auto* a = take(session->prepare(code, native_fixture::target(config), {scene, view_a}, initializers));
-    auto* b = take(session->prepare(code, native_fixture::target(config), {scene, view_b}, initializers));
-    CHECK(&a->code() == &b->code() && session->scopedBufferCount() == 6);
+    CHECK(buffer_fixture::install(*session));
+    auto scene = take(session->resources().createDomain(session->resources().root(), EResourceScope::SCENE));
+    auto view_a = take(session->resources().createDomain(scene, EResourceScope::VIEW));
+    auto view_b = take(session->resources().createDomain(scene, EResourceScope::VIEW));
+    auto* a = take(session->prepare(code, native_fixture::target(config), view_a));
+    auto* b = take(session->prepare(code, native_fixture::target(config), view_b));
+    CHECK(&a->code() == &b->code() && session->resources().size() == 6);
     for (std::uint32_t i = 0; i < code->resources().size(); ++i)
     {
         const auto& resource = code->resources()[i];
@@ -82,7 +78,7 @@ int main()
         CHECK(take(session->queue().wait(*a->lastUse(), UINT64_MAX)));
     }
     render_allocation::window.store(false);
-    CHECK(render_allocation::calls == 0 && session->scopedBufferCount() == 6);
+    CHECK(render_allocation::calls == 0 && session->resources().size() == 6);
     std::ofstream raw("native-record-execute.csv");
     raw << "sample,record_execute_us\n";
     for (unsigned i = 0; i < samples.size(); ++i) raw << i << ',' << samples[i] << '\n';
@@ -104,7 +100,7 @@ int main()
     auto resized = native_fixture::target(config);
     resized.width = 64;
     resized.height = 48;
-    auto* larger = take(session->prepare(code, resized, {scene, view_b}, initializers));
+    auto* larger = take(session->prepare(code, resized, view_b));
     for (std::uint32_t i = 0; i < code->resources().size(); ++i)
         if (const auto& storage = code->resources()[i].storage; storage)
             CHECK((b->nativeBuffer(i) == larger->nativeBuffer(i)) == (storage->scope != EResourceScope::ATTACHMENT));
@@ -118,10 +114,10 @@ int main()
     CHECK(session->release(larger));
     CHECK(session->drain());
     // The former leases==0 deletion contract is intentionally replaced by business-scope lifetime.
-    CHECK(session->scopedBufferCount() == 4); // Global + Scene + two Views, no Attachment-private backing
-    const auto creations = session->scopedBufferCreations();
-    auto* reattached = take(session->prepare(code, native_fixture::target(config), {scene, view_a}, initializers));
-    CHECK(session->scopedBufferCreations() == creations + 1); // only Attachment-private storage is new
+    CHECK(session->resources().size() == 4); // Global + Scene + two Views, no Attachment-private backing
+    const auto creations = session->resources().creations();
+    auto* reattached = take(session->prepare(code, native_fixture::target(config), view_a));
+    CHECK(session->resources().creations() == creations + 1); // only Attachment-private storage is new
     for (std::uint32_t i = 0; i < original_scopes.size(); ++i)
         if (const auto& storage = code->resources()[i].storage;
             storage && storage->scope != EResourceScope::ATTACHMENT)
@@ -130,17 +126,17 @@ int main()
     CHECK(take(session->queue().wait(*reattached->lastUse(), UINT64_MAX)));
     pixel(take(reattached->readback()), 32, 16, 16, {255, 0, 0, 255});
     CHECK(session->release(reattached));
-    session->releaseScope(scene, view_a);
-    CHECK(session->scopedBufferCount() == 3);
-    session->releaseScope(scene);
-    CHECK(session->scopedBufferCount() == 1); // Global survives until session/explicit asset lifetime ends
+    CHECK(session->resources().closeDomain(view_a));
+    CHECK(session->resources().size() == 3);
+    CHECK(session->resources().closeDomain(scene));
+    CHECK(session->resources().size() == 1); // Global survives until session/explicit asset lifetime ends
     code.reset();
 
     config = {32, 32, 0, 0};
     auto transfer = take(native_fixture::assemble(config));
     auto transfer_code = std::make_shared<CompiledGraph>(take(compileGraph(*session, transfer,
         native_fixture::programs(config), native_fixture::target(config))));
-    auto* clear = take(session->prepare(transfer_code, native_fixture::target(config), {scene, view_a}, {}));
+    auto* clear = take(session->prepare(transfer_code, native_fixture::target(config), {}));
     for (unsigned frame = 0; frame < 4; ++frame)
     {
         CHECK(take(clear->execute()));

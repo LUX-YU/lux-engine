@@ -35,8 +35,6 @@ namespace lux::render
         bool transfer_queues = false;
         bool prefer_dedicated_transfer = true;
         TransferOptions uploads{}; // null host callbacks disable texture upload admission
-        std::size_t texture_capacity = 128;
-        std::uint64_t texture_bytes = 256 * 1024 * 1024;
         bool texture_compression_bc = false; // explicitly request BC capability; RGBA-only hosts do not require it
     };
 
@@ -204,7 +202,6 @@ namespace lux::render
     {
         const FeatureDefinition* definition;
         RenderResult<std::vector<PassProgram>> (*programs)(const WireView*, std::string_view) noexcept;
-        std::span<const BufferInitializer> buffers;
         std::span<const OperationHandler> handlers;
         // Immutable metadata/code remain loaded through run()/shutdown.
     };
@@ -215,6 +212,7 @@ namespace lux::render
         std::span<const OperationHandler> handlers;
         StorageFactory factory;
         bool optional = false;
+        std::shared_ptr<const void> configuration;
     };
 
     struct RenderServerStats final
@@ -237,9 +235,13 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> registerStorage(StorageRegistration storage) noexcept;
 
         template <class T>
-        [[nodiscard]] RenderResult<void> registerStorage() noexcept
+        [[nodiscard]] RenderResult<void> registerStorage(const typename T::Config& config = {}) noexcept
         {
-            return registerStorage(T::registration());
+            auto registration = T::registration();
+            if (!registration.description) return cxx::unexpected(RenderError{kStorageContract});
+            if (auto valid = compatibleStorage(T::description, *registration.description); !valid) return valid;
+            registration.configuration = std::make_shared<const typename T::Config>(config);
+            return registerStorage(std::move(registration));
         }
 
         template <class T>

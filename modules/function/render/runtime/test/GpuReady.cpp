@@ -281,7 +281,7 @@ int main(int argc, char** argv)
     config.transfer_queues = transfer_mode;
     config.prefer_dedicated_transfer = dedicated;
     auto server = take(RenderServer::create(workers.configure(config)));
-    CHECK(server->registerFeature({&feature, nullptr, {}, handlers}));
+    CHECK(server->registerFeature({&feature, nullptr, handlers}));
     CHECK(server->registerFeature({&native_fixture::definition, programs}));
     auto a = take(RenderClient::create(config.channel_name));
     auto b = take(RenderClient::create(config.channel_name));
@@ -576,7 +576,7 @@ int main(int argc, char** argv)
     closing_config.transfer_queues = transfer_mode;
     closing_config.prefer_dedicated_transfer = dedicated;
     auto closing_server = take(RenderServer::create(workers.configure(closing_config)));
-    CHECK(closing_server->registerFeature({&feature, nullptr, {}, handlers}));
+    CHECK(closing_server->registerFeature({&feature, nullptr, handlers}));
     auto closing_client = take(RenderClient::create(closing_config.channel_name));
     bool closing_ok = false;
     std::thread closing_thread([&] { closing_ok = bool(closing_server->run()); });

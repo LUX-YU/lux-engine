@@ -210,6 +210,7 @@ namespace lux::render::vulkan
         }
         session_->uploads_->pages[page_].leased = false;
         session_->uploads_->stats.pending_bytes -= source_.size();
+        if (!storage_id_.isNull()) session_->resources().release(storage_id_);
     }
 
     VkDevice TextureUpload::device() const noexcept { return session_->device().native(); }

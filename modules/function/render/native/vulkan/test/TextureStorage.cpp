@@ -4,12 +4,14 @@
 static_assert(!std::is_copy_constructible_v<TextureVersion> && !std::is_move_constructible_v<TextureVersion>);
 
 static std::string_view fail_call;
+static bool hold_completion = false;
 static std::array<int, 4> live{};
 static constexpr std::array names{"image", "image_view", "texture_sampler", "buffer"};
 namespace lux::render::vulkan::test
 {
     VkResult before(const char* call) noexcept
     {
+        if (std::string_view(call) == "fence_status" && hold_completion) return VK_NOT_READY;
         if (call == fail_call) { fail_call = {}; return VK_ERROR_OUT_OF_HOST_MEMORY; }
         return VK_SUCCESS;
     }
@@ -254,6 +256,29 @@ int main()
         auto failed = session->textures()->reserve(*candidate);
         CHECK(!failed && failed.error().type == kCapacity);
         CHECK(!candidate->lastUse() && session->textures()->residentBytes() == 0);
+    }
+    {
+        auto bootstrap = instance(validation);
+        DeviceOptions options;
+        options.texture_descriptors = true;
+        auto session = take(DeviceSession::create(bootstrap, options));
+        CHECK(session->configureUploads({1024 * 1024, 1, 1024 * 1024,
+            &host, PrepareWorker::enqueue, PrepareWorker::join}));
+        CHECK(session->configureTextures(16, 1024 * 1024));
+        std::vector<std::byte> source(1024, std::byte{71});
+        auto upload = take(session->uploadTexture(information(16, 1, false), source));
+        CHECK(session->textures()->reserve(*upload));
+        hold_completion = true;
+        const auto deadline = Clock::now() + std::chrono::seconds(10);
+        while (!upload->lastUse()) { CHECK(!take(upload->advance())); CHECK(Clock::now() < deadline); }
+        const auto held = live;
+        CHECK(session->resources().closeDomain(session->resources().root()));
+        CHECK(session->resources().size() == 1 && live == held);
+        CHECK(!take(upload->advance()) && live == held);
+        hold_completion = false;
+        complete(*upload);
+        upload.reset();
+        CHECK(session->resources().size() == 0 && live[0] == 0 && live[1] == 0 && live[2] == 0);
     }
     CHECK(std::ranges::all_of(live, [](int count) { return count == 0; }));
     CHECK(validation.errors == 0);

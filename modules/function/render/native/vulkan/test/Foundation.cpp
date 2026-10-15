@@ -303,9 +303,9 @@ int main()
             auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, execution_assembly,
                 native_fixture::programs(execution_config), native_fixture::target(execution_config))));
             for (auto name : {"image", "image_view", "buffer", "mapping"})
-                fails(name, [&] { return session->prepare(code, native_fixture::target(execution_config), {}, {}); });
-            auto* first = take(session->prepare(code, native_fixture::target(execution_config), {}, {}));
-            auto* second = take(session->prepare(code, native_fixture::target(execution_config), {}, {}));
+                fails(name, [&] { return session->prepare(code, native_fixture::target(execution_config), {}); });
+            auto* first = take(session->prepare(code, native_fixture::target(execution_config), {}));
+            auto* second = take(session->prepare(code, native_fixture::target(execution_config), {}));
             const auto creations = created;
             CHECK(take(first->execute()));
             const auto accepted = *first->lastUse();

@@ -1,4 +1,4 @@
-#include "ExecutionState.hpp"
+#include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include "Native.hpp"
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include <algorithm>
@@ -10,7 +10,16 @@ namespace lux::render::vulkan
         : owner_(&owner), queue_(&queue), code_(std::move(code)), target_(target), bindings_(code_->resources().size())
     {
         if (std::ranges::any_of(code_->resources(), [](const auto& r) { return !r.texture.isNull(); }))
+        {
             textures_.resize(bindings_.size());
+            auto id = owner.resources().find(owner.resources().root(), "default", lux::render::TextureStorage::description);
+            if (id)
+            {
+                texture_storage_id_ = *id;
+                owner.resources().retain(*id);
+                texture_storage_ = static_cast<TextureStorage*>(owner.resources().native(*id));
+            }
+        }
     }
 
     ExecutionContext::~ExecutionContext() noexcept
@@ -21,9 +30,13 @@ namespace lux::render::vulkan
             if (binding.image) owner_->destroyFinished(binding.image);
             if (binding.owned_buffer) owner_->destroyFinished(binding.owned_buffer);
         }
-        for (auto* lease : leases_) --lease->leases;
-        for (auto* texture : textures_) if (texture) owner_->textures()->releaseLease(*texture);
-        owner_->collectScoped();
+        for (const auto& lease : leases_) owner_->resources().release(lease.id);
+        if (owner_->resources().valid(domain_)) (void)owner_->resources().closeDomain(domain_);
+        if (!published_)
+            for (const auto& lease : leases_)
+                if (lease.created && owner_->resources().native(lease.id)) owner_->resources().rollback(lease.id);
+        for (auto* texture : textures_) if (texture) texture_storage_->releaseLease(*texture);
+        if (texture_storage_) owner_->resources().release(texture_storage_id_);
     }
 
     void DeviceSession::refreshTexture(TextureId id, TextureVersion& version) noexcept
@@ -40,13 +53,20 @@ namespace lux::render::vulkan
     }
 
     RenderResult<ExecutionContext*> DeviceSession::prepare(std::shared_ptr<const CompiledGraph> code,
-        const TargetDesc& target, const ScopeIdentity& scope, std::span<const BufferInitializer> initializers) noexcept
+        const TargetDesc& target, const ResourceDomain& view) noexcept
     {
         const auto max_extent = device_.properties().limits.maxImageDimension2D;
         const bool invalid = !code || code->device() != device_.native() || !code->compatible(target) ||
             target.width == 0 || target.height == 0 || target.width > max_extent || target.height > max_extent;
         if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
+        if (!view.id().isNull() && !resources_->valid(view)) return cxx::unexpected(RenderError{kStorageDomain});
         auto context = std::unique_ptr<ExecutionContext>(new ExecutionContext(*this, queue(), std::move(code), target));
+        if (resources_->valid(view))
+        {
+            auto domain = resources_->createDomain(view, EResourceScope::ATTACHMENT);
+            if (!domain) return cxx::unexpected(domain.error());
+            context->domain_ = std::move(*domain);
+        }
         for (std::uint32_t i = 0; i < context->bindings_.size(); ++i)
         {
             auto& binding = context->bindings_[i];
@@ -54,7 +74,8 @@ namespace lux::render::vulkan
             if (!plan.image_usage && !plan.buffer_usage) continue; // G4-pruned resources allocate nothing
             if (!plan.texture.isNull())
             {
-                auto lease = textures_->acquire(plan.texture);
+                if (!context->texture_storage_) return cxx::unexpected(RenderError{kWrongOwner});
+                auto lease = context->texture_storage_->acquire(plan.texture);
                 if (!lease) return cxx::unexpected(lease.error());
                 context->textures_[i] = *lease;
                 const auto& expected = std::get<GraphImageDesc>(plan.description);
@@ -92,54 +113,27 @@ namespace lux::render::vulkan
                     std::get<GraphBufferDesc>(plan.description).size;
                 if (plan.storage)
                 {
-                    auto identity = scope;
-                    const ExecutionContext* attachment = nullptr;
-                    switch (plan.storage->scope)
+                    const auto* factory = resources_->factory(plan.storage->type.view());
+                    if (!factory || !factory->binding_ops) return cxx::unexpected(RenderError{kStorageFactory});
+                    if (factory->description->abi != plan.storage->abi)
+                        return cxx::unexpected(RenderError{kStorageMismatch});
+                    auto domain = plan.storage->scope == EResourceScope::GLOBAL ?
+                        RenderResult<ResourceDomain>{resources_->root()} :
+                        resources_->ancestor(context->domain_, plan.storage->scope);
+                    if (!domain) return cxx::unexpected(domain.error());
+                    const auto previous = resources_->find(*domain, plan.key, *factory->description);
+                    auto instance = resources_->getOrCreate(*domain, plan.key, *factory->description, nullptr);
+                    if (!instance) return cxx::unexpected(instance.error());
+                    const auto& ops = *static_cast<const StorageBindingOps*>(factory->binding_ops);
+                    auto prepared = ops.buffer(resources_->native(*instance), size, plan.buffer_usage);
+                    if (!prepared)
                     {
-                    case EResourceScope::GLOBAL: identity = {}; break;
-                    case EResourceScope::SCENE: identity.view = {}; break;
-                    case EResourceScope::VIEW: break;
-                    case EResourceScope::ATTACHMENT: attachment = context.get(); break;
+                        if (!previous) resources_->rollback(*instance);
+                        return cxx::unexpected(prepared.error());
                     }
-                    ScopedBuffer* found = nullptr;
-                    for (const auto& entry : scoped_)
-                    {
-                        if (!entry->leases && !entry->live_scope) continue;
-                        const bool same_scope = entry->requirement.scope == plan.storage->scope &&
-                            entry->scope.scene == identity.scene && entry->scope.view == identity.view &&
-                            entry->attachment == attachment;
-                        if (!same_scope || entry->key != plan.key) continue;
-                        const bool mismatch = entry->requirement != *plan.storage || entry->backing->size() != size ||
-                            entry->backing->usage() != plan.buffer_usage;
-                        if (mismatch) return cxx::unexpected(RenderError{kInvalidArgument});
-                        found = entry.get();
-                        break;
-                    }
-                    if (!found)
-                    {
-                        auto factory = std::find_if(initializers.begin(), initializers.end(), [&](const auto& value) {
-                            return value.type.name() == plan.storage->type.name() && value.abi == plan.storage->abi;
-                        });
-                        if (factory == initializers.end()) return cxx::unexpected(RenderError{kUnsupported});
-                        auto bytes = factory->initialize(size);
-                        if (!bytes) return cxx::unexpected(bytes.error());
-                        if (bytes->size() != size) return cxx::unexpected(RenderError{kInvalidArgument});
-                        auto buffer = createBufferRecord(size, plan.buffer_usage, EMemoryAccess::UPLOAD);
-                        if (!buffer) return cxx::unexpected(buffer.error());
-                        if (auto written = write(**buffer, 0, *bytes); !written)
-                        {
-                            destroyFinished(*buffer);
-                            return cxx::unexpected(written.error());
-                        }
-                        auto entry = std::make_unique<ScopedBuffer>(ScopedBuffer{
-                            plan.key, *plan.storage, identity, attachment, *buffer});
-                        found = entry.get();
-                        scoped_.push_back(std::move(entry));
-                        ++scoped_creations_;
-                    }
-                    ++found->leases;
-                    context->leases_.push_back(found);
-                    binding.buffer = found->backing;
+                    resources_->retain(*instance);
+                    context->leases_.push_back({*instance, *prepared, !previous});
+                    binding.buffer = prepared->buffer;
                 }
                 else
                 {
@@ -183,8 +177,7 @@ namespace lux::render::vulkan
             native.buffer = context->bindings_[barrier.resource].buffer->native();
             context->host_barriers_.push_back(native);
         }
-        for (auto* lease : context->leases_)
-            if (lease->requirement.scope != EResourceScope::ATTACHMENT) lease->live_scope = true;
+        context->published_ = true;
         auto* result = context.get();
         contexts_.push_back(std::move(context));
         return result;
@@ -230,7 +223,7 @@ namespace lux::render::vulkan
         const auto command = batch->native();
         if (!textures_.empty())
         {
-            const auto descriptors = owner_->textures()->descriptors();
+            const auto descriptors = texture_storage_->descriptors();
             LUX_RECORD("cmd_descriptor", vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
                 code_->layout(), 0, 1, &descriptors, 0, nullptr));
         }
@@ -320,6 +313,7 @@ namespace lux::render::vulkan
         auto submitted = std::move(*batch).submit();
         if (!submitted) return cxx::unexpected(submitted.error());
         last_use_ = *submitted;
+        for (const auto& lease : leases_) lease.binding.submitted(lease.binding.use, *submitted);
         for (auto* texture : textures_) if (texture) texture->last_use_ = *submitted;
         return true;
     }

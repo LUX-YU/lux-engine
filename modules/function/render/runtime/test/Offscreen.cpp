@@ -1,6 +1,7 @@
 #include "CompletionTest.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "SceneFixture.hpp"
+#include "BufferStorageFixture.hpp"
 #include "Allocation.hpp"
 #include <algorithm>
 #include <chrono>
@@ -21,11 +22,6 @@ template <class T> static T take(RenderResult<T> result)
 {
     if (!result) { std::fprintf(stderr, "Runtime error %llu\n", result.error().type); std::abort(); }
     return std::move(*result);
-}
-
-static RenderResult<std::vector<std::byte>> zeroBuffer(std::uint64_t size) noexcept
-{
-    return std::vector<std::byte>(static_cast<std::size_t>(size));
 }
 
 static std::atomic<bool> pause_programs{false};
@@ -79,12 +75,13 @@ static void pixel(const TestCompletion& reply, unsigned width, unsigned x, unsig
 
 int main()
 {
-    const BufferInitializer buffers[]{{StorageTypeIdView("test.zero_buffer"), {1, 0}, zeroBuffer}};
     CompileWorker worker;
     RenderServerConfig options{"runtime.offscreen", true};
     options.compile_capacity = 1;
     auto server = take(RenderServer::create(worker.configure(options)));
-    CHECK(server->registerFeature({&native_fixture::definition, programs, buffers}));
+    CHECK(server->registerStorage({&buffer_fixture::description, {}, buffer_fixture::factory(), false,
+        std::make_shared<const buffer_fixture::Config>()}));
+    CHECK(server->registerFeature({&native_fixture::definition, programs}));
     auto client = take(TestClient::create("runtime.offscreen"));
     bool run_ok = false;
     std::thread thread([&] {

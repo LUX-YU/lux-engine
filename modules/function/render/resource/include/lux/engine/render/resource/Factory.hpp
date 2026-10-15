@@ -18,6 +18,8 @@ namespace lux::render
         RenderResult<NativeStorage> (*create)(void* device, const void* config) noexcept;
         bool (*compatible_config)(const void* instance, const void* config) noexcept;
         std::shared_ptr<const void> code_pin;
+        const void* binding_ops = nullptr; // API-specific immutable preparation functions; never a second owner
+        void (*collect)(void*) noexcept = nullptr;
     };
 
     [[nodiscard]] RenderResult<void>

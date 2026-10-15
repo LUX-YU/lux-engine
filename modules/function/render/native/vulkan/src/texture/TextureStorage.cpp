@@ -13,13 +13,48 @@ namespace lux::render::vulkan
         versions_.reserve(capacity);
     }
 
+    StorageFactory textureStorageFactory() noexcept
+    {
+        static const lux::render::TextureStorage::Ops ops{
+            [](const void* value, TextureId id) noexcept -> RenderResult<TexturePublished> {
+                auto* record = static_cast<const vulkan::TextureStorage*>(value)->find(id);
+                if (!record) return cxx::unexpected(RenderError{kStorageDomain});
+                return TexturePublished{id, record->revision()};
+            },
+            [](void* value, TextureId id, std::uint64_t revision) noexcept {
+                return static_cast<vulkan::TextureStorage*>(value)->release(id, revision);
+            }
+        };
+        static const StorageFactory factory{
+            &lux::render::TextureStorage::description, EGraphicsApi::VULKAN, &ops,
+            [](void* device, const void* config) noexcept -> RenderResult<NativeStorage> {
+                auto value = vulkan::TextureStorage::create(*static_cast<vulkan::DeviceSession*>(device),
+                    *static_cast<const TextureStorageConfig*>(config));
+                if (!value) return cxx::unexpected(value.error());
+                return NativeStorage{value->release(), [](void* object) noexcept {
+                    delete static_cast<vulkan::TextureStorage*>(object);
+                }};
+            },
+            [](const void* value, const void* config) noexcept {
+                return static_cast<const vulkan::TextureStorage*>(value)->compatibleConfig(
+                    *static_cast<const TextureStorageConfig*>(config));
+            }, {}, nullptr, [](void* value) noexcept { static_cast<TextureStorage*>(value)->collect(); }
+        };
+        return factory;
+    }
+
+    TextureStorage* DeviceSession::textures() const noexcept
+    {
+        auto id = resources_->find(resources_->root(), "default", lux::render::TextureStorage::description);
+        return id ? static_cast<TextureStorage*>(resources_->native(*id)) : nullptr;
+    }
+
     RenderResult<void> DeviceSession::configureTextures(std::size_t capacity, std::uint64_t bytes) noexcept
     {
-        const bool invalid = textures_ || capacity > UINT32_MAX;
-        if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
-        auto storage = TextureStorage::create(*this, {static_cast<std::uint32_t>(capacity), bytes});
-        if (!storage) return cxx::unexpected(storage.error());
-        textures_ = std::move(*storage);
+        if (capacity > UINT32_MAX) return cxx::unexpected(RenderError{kInvalidArgument});
+        const TextureStorageConfig config{static_cast<std::uint32_t>(capacity), bytes};
+        auto value = resources_->getOrCreate(resources_->root(), "default", lux::render::TextureStorage::description, &config);
+        if (!value) return cxx::unexpected(value.error());
         return {};
     }
 
@@ -100,6 +135,15 @@ namespace lux::render::vulkan
         return record->current;
     }
 
+    RenderResult<void> TextureStorage::admit(std::uint64_t minimum_bytes, bool creates_identity) noexcept
+    {
+        collect();
+        const bool full = versions_.size() == capacity_ || (creates_identity && textures_.size() == capacity_) ||
+            minimum_bytes > byte_limit_ - resident_bytes_;
+        if (full) return cxx::unexpected(RenderError{kCapacity});
+        return {};
+    }
+
     RenderResult<TexturePublished> TextureStorage::reserve(
         TextureUpload& upload, TextureId id, std::uint64_t expected) noexcept
     {
@@ -166,6 +210,8 @@ namespace lux::render::vulkan
         record = textures_.find(id);
         record->updating = true;
         upload.storage_ = this;
+        upload.storage_id_ = session_.resources().identityOf(this);
+        session_.resources().retain(upload.storage_id_);
         upload.version_ = &version;
         upload.texture_ = id;
         return TexturePublished{id, version.revision_};
@@ -187,6 +233,8 @@ namespace lux::render::vulkan
         auto* record = textures_.find(id);
         if (!record || !record->current) return cxx::unexpected(RenderError{kWrongOwner});
         if (record->updating || record->current->revision_ != expected) return cxx::unexpected(RenderError{kBusy});
+        const auto last = record->current->info_.mip_ranges[record->current->info_.mip_count - 1];
+        if (auto result = admit(last.offset + last.size, false); !result) return cxx::unexpected(result.error());
         auto upload = session_.prepareTextureUpload(record->current->info_, source, region);
         if (!upload) return cxx::unexpected(upload.error());
         auto publication = reserve(**upload, id, expected);

@@ -66,3 +66,39 @@ Protection checker passed: 719 frozen blobs, both actual user hashes/status/HEAD
 permitted change boundaries. Historical reports/checkers and IPC source remain unchanged.
 Raw logs and snapshots are under `E:/RenderV2Rebuild/G11AR/evidence/`; final immutable archive/index is due
 after final I. No final I/V, architecture PASS or push is claimed here. G11B–G13 remain NOT_STARTED.
+
+## R2 checkpoint — actual unique instance ownership
+
+DeviceSession now owns one ResourceRegistry. Its former `textures_`, `scoped_`, ScopedBuffer and
+ScopeIdentity owners are removed. BufferInitializer and the FeatureRegistration buffer list are removed:
+the former zero-buffer consumer installs a real Native factory through the same Storage registration.
+Storage instance identity is Domain SlotKey + complete Type identity + semantic key. Domains use SlotMap
+generation and a shared epoch token (not a second generation or a GPU owner); old/cross-session domains
+are rejected before lookup. Root/Scene/View/Attachment parent chains are bounded to the four legal scopes.
+
+Typed access returns the matching immutable Ops and instance borrow, with ancestor results read-only.
+Config reuse is checked by the selected factory; new instances publish only after successful creation.
+Domain close removes admission and generation first, while prepared Context/Upload references retain
+instances until their actual GPU use finishes. Instance deleters run outside SlotMap mutation, allowing
+professional indirect references to release another instance without re-entering container erase.
+Factory code pins outlive their instance deleters. Scene and View store Domain values; the four-field
+ExecutionGroup is unchanged. Context owns its Attachment domain and resolved bindings. Failed attach
+rolls back only newly created instances and preserves earlier shared instances and last-good bindings.
+
+Texture registration no longer creates GPU Storage in run(): first Root upload creates it lazily. Config
+is supplied by `registerStorage<T>(T::Config)`, not Texture-specific Server capacity fields. The built-in
+Native factory is selected at DeviceSession construction. Per-frame Context use caches its native binding;
+Registry maintenance traverses prepared callbacks without Type/name lookup. Transient allocations remain
+Context-owned and outside persistent Storage. Cold Texture helper APIs and the specialized upload work
+remain explicit R3/R4 migration items, not claimed final APIs.
+
+Verification in implementation Release: all build, second `ninja: no work to do`, full CTest **76/76**
+(72.85 seconds). Log `evidence/test-RelWithDebInfo-20261015-162600-399.log`. Original 72 names remain.
+New tests `render.resource.registry` and `render.native.resource_domains` prove scope/config/epoch
+rejection, read-only inherited access, indirect-reference exact destruction, six actual Native allocation
+failure points with empty rollback, last-good reuse, and domain closure while completion observation is
+held after real GPU Submit. The existing texture-storage test additionally closes Root after accepted
+upload work and verifies physical backing survives until completion and is destroyed on last work release.
+The existing two-Scene/four-View, texture shader/color, queue, owner, installed and hot-allocation tests pass.
+Public Registry/Native StorageBinding headers compile independently. GPU validation in affected tests is
+zero error; Debug/ASan and independent final I/V are still due. This checkpoint is not final G11A-R PASS.

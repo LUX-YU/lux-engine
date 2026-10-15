@@ -25,7 +25,7 @@ int main()
     auto assembly = take(texture_fixture::assemble(config));
     auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
         texture_fixture::programs(config), texture_fixture::target(config))));
-    auto* context = take(session->prepare(code, texture_fixture::target(config), {}, {}));
+    auto* context = take(session->prepare(code, texture_fixture::target(config), {}));
     CHECK(take(context->execute()));
     CHECK(take(session->queue().wait(*context->lastUse(), UINT64_MAX)));
     CHECK(take(context->readback()) == input);

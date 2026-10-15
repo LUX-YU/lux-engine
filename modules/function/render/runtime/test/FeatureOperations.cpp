@@ -135,14 +135,14 @@ int main()
         }}
     };
     auto server = take(RenderServer::create({"runtime.open", true}));
-    check(bool(server->registerFeature({&feature, nullptr, {}, handlers})));
-    check(!server->registerFeature({&feature, nullptr, {}, handlers}));
+    check(bool(server->registerFeature({&feature, nullptr, handlers})));
+    check(!server->registerFeature({&feature, nullptr, handlers}));
     const auto gpu = operationDescriptor<Exposure>("test.unqualifiedGpu", {1, 0}, ECompletionContract::RESOURCE_GPU_READY);
     const std::array gpu_ops{gpu};
     const FeatureDefinition gpu_feature{FeatureTypeIdView("test.unqualified.gpu"), {1, 0}, nullptr,
         feature.describe, nullptr, gpu_ops};
     const std::array gpu_handlers{OperationHandler{&gpu, setExposure, &state}};
-    auto rejected = server->registerFeature({&gpu_feature, nullptr, {}, gpu_handlers});
+    auto rejected = server->registerFeature({&gpu_feature, nullptr, gpu_handlers});
     check(!rejected && rejected.error().type == kProtocolContract);
     auto a = take(RenderClient::create("runtime.open"));
     auto b = take(RenderClient::create("runtime.open"));
@@ -152,7 +152,7 @@ int main()
     std::thread worker([&] { render_allocation::participate = true; run_ok = bool(server->run()); });
     check(wait(*a, hello_a).header.outcome == EOperationOutcome::SUCCESS);
     check(wait(*b, hello_b).header.outcome == EOperationOutcome::SUCCESS);
-    check(!server->registerFeature({&feature, nullptr, {}, handlers}));
+    check(!server->registerFeature({&feature, nullptr, handlers}));
     check(!a->bind(gpu));
     auto bound_a = take(a->bind<Exposure, Exposure>(exposure));
     auto bound_b = take(b->bind<Exposure, Exposure>(exposure));

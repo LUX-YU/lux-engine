@@ -145,15 +145,14 @@ int main()
             auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
                 texture_fixture::programs(config), texture_fixture::target(config))));
             CHECK(pipelines == old_pipelines + 1);
-            cxx::SlotMap<cxx::SlotMap<int, ViewTag>, SceneTag> scenes;
             std::array<ExecutionContext*, 4> views{};
             for (unsigned s = 0; s < 2; ++s)
             {
-                const auto scene = scenes.emplace();
+                const auto scene = take(session->resources().createDomain(session->resources().root(), EResourceScope::SCENE));
                 for (unsigned v = 0; v < 2; ++v)
                 {
-                    auto view = scenes.find(scene)->emplace(0);
-                    views[2 * s + v] = take(session->prepare(code, texture_fixture::target(config), {scene, view}, {}));
+                    const auto view = take(session->resources().createDomain(scene, EResourceScope::VIEW));
+                    views[2 * s + v] = take(session->prepare(code, texture_fixture::target(config), view));
                     CHECK(&views[2 * s + v]->code() == code.get());
                 }
             }
@@ -199,7 +198,7 @@ int main()
                 CHECK(pipelines == old_pipelines + 1);
                 CHECK(storage.release(published.texture, 3));
                 // Released business ID cannot be rebound; existing consumers keep valid backing.
-                CHECK(!session->prepare(code, texture_fixture::target(config), {}, {}));
+                CHECK(!session->prepare(code, texture_fixture::target(config), {}));
                 for (auto* view : views) CHECK(take(view->execute()));
                 CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
             }
@@ -222,7 +221,7 @@ int main()
         auto assembly = take(texture_fixture::assemble(config));
         auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
             texture_fixture::programs(config), texture_fixture::target(config))));
-        auto* context = take(session->prepare(code, texture_fixture::target(config), {}, {}));
+        auto* context = take(session->prepare(code, texture_fixture::target(config), {}));
         CHECK(take(context->execute()));
         CHECK(take(session->queue().wait(*context->lastUse(), UINT64_MAX)));
         pixels(take(context->readback()), oracle({255, 0, 0, 255}, rdesc::ETextureColorSpace::SRGB), 2);

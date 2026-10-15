@@ -31,11 +31,10 @@ int main()
     const auto callbacks = host.configure({});
     RenderServerConfig config{"runtime.texture.operations", true};
     config.transfer_queues = true;
-    config.texture_capacity = 16;
     config.uploads = {1024 * 1024, 2, 128 * 1024 * 1024,
         callbacks.compile_user, callbacks.enqueue_compile, callbacks.join_compile};
     auto server = take(RenderServer::create(config));
-    CHECK(server->registerStorage<lux::render::TextureStorage>());
+    CHECK(server->registerStorage<lux::render::TextureStorage>({16, 256 * 1024 * 1024}));
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool(server->run()); });
     auto a = take(RenderClient::create(config.channel_name));

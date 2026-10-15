@@ -2,17 +2,11 @@
 
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
+#include <lux/engine/render/native/vulkan/StorageBinding.hpp>
 
 namespace lux::render::vulkan
 {
     class TextureVersion;
-    // Borrowed validated identities, not another identity allocator or owner.
-    struct ScopeIdentity final
-    {
-        SceneId scene;
-        ViewId view;
-    };
-
     class ExecutionContext final
     {
     public:
@@ -60,8 +54,18 @@ namespace lux::render::vulkan
         std::shared_ptr<const CompiledGraph> code_;
         TargetDesc target_;
         std::vector<Binding> bindings_;
-        std::vector<ScopedBuffer*> leases_;
+        struct StorageUse final
+        {
+            StorageInstanceId id;
+            StorageBufferBinding binding;
+            bool created;
+        };
+        std::vector<StorageUse> leases_;
+        ResourceDomain domain_;
+        bool published_ = false;
         std::vector<TextureVersion*> textures_; // prepared resource slots, empty for ABI1-only graphs
+        TextureStorage* texture_storage_ = nullptr;
+        StorageInstanceId texture_storage_id_;
         std::vector<Pass> passes_;
         std::vector<VkBufferMemoryBarrier2> host_barriers_;
         std::optional<SubmissionTicket> last_use_;

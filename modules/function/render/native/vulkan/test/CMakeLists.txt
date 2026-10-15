@@ -61,7 +61,15 @@ add_test(NAME render.native.failures COMMAND render_native_fault_test)
 
 set_tests_properties(render.native.failures PROPERTIES TIMEOUT 90)
 
-foreach(header Error DeviceSession CompiledGraph ExecutionContext device/Device memory/Memory
+add_executable(render_resource_domains_test ResourceDomains.cpp)
+
+target_link_libraries(render_resource_domains_test PRIVATE render_native_instrumented)
+
+add_test(NAME render.native.resource_domains COMMAND render_resource_domains_test)
+
+set_tests_properties(render.native.resource_domains PROPERTIES TIMEOUT 60)
+
+foreach(header Error DeviceSession CompiledGraph ExecutionContext StorageBinding device/Device memory/Memory
     transfer/Submission transfer/TextureUpload texture/TextureStorage retirement/Retirement
 )
     string(REPLACE "/" "_" target "${header}")

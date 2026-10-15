@@ -27,12 +27,15 @@ namespace lux::render
         {
             auto input = request.decode<UploadTexture>();
             if (!input) return cxx::unexpected(input.error());
-            auto* storage = context.native().textures();
-            if (!storage) return cxx::unexpected(RenderError{vulkan::kUnsupported});
+            auto& resources = context.native().resources();
+            auto instance = resources.getOrCreate(resources.root(), "default", TextureStorage::description, nullptr);
+            if (!instance) return cxx::unexpected(instance.error());
+            auto* storage = static_cast<vulkan::TextureStorage*>(resources.native(*instance));
             // Extent and reply space funded before any Native allocation/prepare/submit. Values follow reservation.
             const std::array<std::byte, 16> extent{};
             auto reservation = context.reserveGpuCompletion(extent);
             if (!reservation) return cxx::unexpected(reservation.error());
+            if (auto admitted = storage->admit(input->source.size, input->texture.isNull()); !admitted) return admitted;
             auto candidate = context.native().uploadTexture(input->info, source(request, input->source));
             if (!candidate) return cxx::unexpected(candidate.error());
             auto publication = storage->reserve(**candidate, input->texture, input->expected_revision);
@@ -73,31 +76,6 @@ namespace lux::render
             OperationHandler{&uploadTextureRegionOperation(), region, nullptr, true},
             OperationHandler{&releaseTextureOperation(), release}
         };
-        static const Ops ops{
-            [](const void* value, TextureId id) noexcept -> RenderResult<TexturePublished> {
-                auto* record = static_cast<const vulkan::TextureStorage*>(value)->find(id);
-                if (!record) return cxx::unexpected(RenderError{kStorageDomain});
-                return TexturePublished{id, record->revision()};
-            },
-            [](void* value, TextureId id, std::uint64_t revision) noexcept {
-                return static_cast<vulkan::TextureStorage*>(value)->release(id, revision);
-            }
-        };
-        static const StorageFactory factory{
-            &description, EGraphicsApi::VULKAN, &ops,
-            [](void* device, const void* config) noexcept -> RenderResult<NativeStorage> {
-                auto value = vulkan::TextureStorage::create(*static_cast<vulkan::DeviceSession*>(device),
-                    *static_cast<const Config*>(config));
-                if (!value) return cxx::unexpected(value.error());
-                return NativeStorage{value->release(), [](void* object) noexcept {
-                    delete static_cast<vulkan::TextureStorage*>(object);
-                }};
-            },
-            [](const void* value, const void* config) noexcept {
-                return static_cast<const vulkan::TextureStorage*>(value)->compatibleConfig(
-                    *static_cast<const Config*>(config));
-            }, {}
-        };
-        return {&description, handlers, factory};
+        return {&description, handlers, vulkan::textureStorageFactory()};
     }
 }

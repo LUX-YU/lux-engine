@@ -119,7 +119,7 @@ int main()
                 auto input = assembly(mode);
                 auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, input, programs(different),
                     native_fixture::target({}))));
-                auto* context = take(session->prepare(code, native_fixture::target({}), {}, {}));
+                auto* context = take(session->prepare(code, native_fixture::target({}), {}));
                 context->setColor({1, 0, 0, 1});
                 CHECK(take(context->execute()));
                 CHECK(take(session->queue().wait(*context->lastUse(), UINT64_MAX)));

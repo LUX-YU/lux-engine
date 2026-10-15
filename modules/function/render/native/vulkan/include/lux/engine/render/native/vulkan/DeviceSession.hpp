@@ -7,13 +7,12 @@
 #include <lux/engine/description/TextureInfo.hpp>
 #include <lux/engine/render/features/Texture.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 
 namespace lux::render::vulkan
 {
     class CompiledGraph;
     class ExecutionContext;
-    struct ScopeIdentity;
-    struct ScopedBuffer;
     class TextureUpload;
     class TextureStorage;
     class TextureVersion;
@@ -37,11 +36,9 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> collect() noexcept;
         [[nodiscard]] RenderResult<ExecutionContext*> prepare(
             std::shared_ptr<const CompiledGraph> code, const TargetDesc& target,
-            const ScopeIdentity& scope, std::span<const BufferInitializer> initializers
+            const ResourceDomain& view
         ) noexcept;
         [[nodiscard]] RenderResult<void> release(ExecutionContext* context) noexcept;
-        [[nodiscard]] std::size_t scopedBufferCount() const noexcept { return scoped_.size(); }
-        [[nodiscard]] std::uint64_t scopedBufferCreations() const noexcept { return scoped_creations_; }
         [[nodiscard]] SubmissionQueue& queue(EQueueRole role = EQueueRole::GRAPHICS) noexcept
         {
             return *queues_[static_cast<std::size_t>(role)];
@@ -61,7 +58,8 @@ namespace lux::render::vulkan
         [[nodiscard]] TextureUploadStats uploadStats() const noexcept;
         void joinUploads() noexcept;
         [[nodiscard]] RenderResult<void> configureTextures(std::size_t capacity, std::uint64_t byte_limit) noexcept;
-        [[nodiscard]] TextureStorage* textures() const noexcept { return textures_.get(); }
+        [[nodiscard]] TextureStorage* textures() const noexcept;
+        [[nodiscard]] ResourceRegistry& resources() noexcept { return *resources_; }
         [[nodiscard]] RenderResult<BufferPermit> createBuffer(
             VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access
         ) noexcept;
@@ -84,7 +82,6 @@ namespace lux::render::vulkan
         // Cold completed-use release; accepted GPU work never goes through destroyUnsubmitted.
         [[nodiscard]] RenderResult<void> releaseCompleted(BufferPermit& permit, SubmissionTicket last_use) noexcept;
         [[nodiscard]] RenderResult<void> releaseCompleted(ImagePermit& permit, SubmissionTicket last_use) noexcept;
-        void releaseScope(SceneId scene, ViewId view = {}) noexcept;
 
     private:
         friend struct NativeMemoryAudit;
@@ -104,7 +101,6 @@ namespace lux::render::vulkan
         void destroyFinished(BufferAllocation* value) noexcept;
         void destroyFinished(ImageAllocation* value) noexcept;
         friend class ExecutionContext;
-        void collectScoped() noexcept;
         void refreshTexture(TextureId, TextureVersion&) noexcept;
         DeviceSession(VulkanDevice device, VulkanAllocator allocator) noexcept;
         VulkanDevice device_;
@@ -117,10 +113,8 @@ namespace lux::render::vulkan
         std::array<RetirementQueue*, 3> retirements_{};
         // Unique physical owners. Context leases borrow entries until their real
         // GPU ticket retires. Member destruction is explicitly ordered in the destructor.
-        std::vector<std::unique_ptr<ScopedBuffer>> scoped_;
         std::vector<std::unique_ptr<ExecutionContext>> contexts_;
-        std::uint64_t scoped_creations_ = 0;
         std::unique_ptr<UploadState> uploads_;
-        std::unique_ptr<TextureStorage> textures_;
+        std::unique_ptr<ResourceRegistry> resources_;
     };
 }

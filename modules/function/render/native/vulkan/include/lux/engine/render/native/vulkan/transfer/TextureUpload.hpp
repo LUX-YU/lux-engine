@@ -5,6 +5,7 @@
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 #include <atomic>
 #include <lux/engine/render/resource/TransferOptions.hpp>
+#include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/features/Texture.hpp>
 
 namespace lux::render::vulkan
@@ -62,6 +63,7 @@ namespace lux::render::vulkan
         EPhase phase_ = EPhase::PREPARE;
         bool cancelled_ = false, initialized_ = false;
         TextureStorage* storage_ = nullptr;
+        StorageInstanceId storage_id_;
         TextureVersion* version_ = nullptr;
         TextureId texture_;
         TextureVersion* base_ = nullptr;

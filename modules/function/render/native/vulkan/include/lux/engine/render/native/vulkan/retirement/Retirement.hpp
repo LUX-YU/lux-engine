@@ -26,10 +26,16 @@ namespace lux::render::vulkan
 
         [[nodiscard]] RenderResult<void> retire(SubmissionTicket last_use, BufferPermit& backing) noexcept;
         [[nodiscard]] RenderResult<void> retire(SubmissionTicket last_use, ImagePermit& backing) noexcept;
+        [[nodiscard]] RenderResult<void> retire(std::span<const SubmissionTicket> last_uses, BufferPermit& backing) noexcept;
+        [[nodiscard]] RenderResult<void> retire(std::span<const SubmissionTicket> last_uses, ImagePermit& backing) noexcept;
 
         [[nodiscard]] RenderResult<std::size_t> collect() noexcept;
         [[nodiscard]] std::size_t pending() const noexcept;
         [[nodiscard]] std::size_t capacity() const noexcept { return entries_.size(); }
+        [[nodiscard]] static bool completed(SubmissionTicket ticket) noexcept
+        {
+            return ticket.owner().completed() >= ticket.serial() || ticket.owner().deviceLost();
+        }
 
         // A cold composite candidate already owns its allocation. Type erasure
         // happens once at retirement, with no heap state or shared reference count.
@@ -40,12 +46,22 @@ namespace lux::render::vulkan
             }
         [[nodiscard]] RenderResult<void> retire(SubmissionTicket last_use, std::unique_ptr<T>&& backing) noexcept
         {
+            return retire(std::span(&last_use, 1), std::move(backing));
+        }
+
+        template <class T>
+            requires requires(const T& value) {
+                { value.device() } noexcept -> std::same_as<VkDevice>;
+            }
+        [[nodiscard]] RenderResult<void> retire(std::span<const SubmissionTicket> last_uses,
+            std::unique_ptr<T>&& backing) noexcept
+        {
             static_assert(std::is_nothrow_destructible_v<T>);
             if (!backing)
             {
                 return cxx::unexpected(RenderError{kInvalidArgument});
             }
-            if (!queue_->owns(last_use) || backing->device() != queue_->device())
+            if (!accepts(last_uses) || backing->device() != queue_->device())
             {
                 return cxx::unexpected(RenderError{kWrongOwner});
             }
@@ -54,7 +70,7 @@ namespace lux::render::vulkan
                 if (!entry)
                 {
                     CompositeBacking owned{backing.release(), [](void* value) { delete static_cast<T*>(value); }};
-                    entry.emplace(last_use.serial(), VBacking{std::in_place_type<CompositeBacking>, std::move(owned)});
+                    entry.emplace(last_uses, VBacking{std::in_place_type<CompositeBacking>, std::move(owned)});
                     return {};
                 }
             }
@@ -62,6 +78,7 @@ namespace lux::render::vulkan
         }
 
     private:
+        friend class DeviceSession;
         friend struct NativeMemoryAudit;
         using CompositeBacking = std::unique_ptr<void, void (*)(void*)>;
         using VBacking = std::variant<
@@ -71,12 +88,18 @@ namespace lux::render::vulkan
 
         struct Entry
         {
-            std::uint64_t serial;
+            struct Wait final { const SubmissionQueue* queue = nullptr; std::uint64_t serial = 0; };
+            std::array<Wait, 3> waits{};
             VBacking backing;
 
-            Entry(std::uint64_t serial, VBacking backing) noexcept : serial(serial), backing(std::move(backing)) {}
+            Entry(std::span<const SubmissionTicket> tickets, VBacking value) noexcept : backing(std::move(value))
+            {
+                for (std::size_t i = 0; i < tickets.size(); ++i) waits[i] = {&tickets[i].owner(), tickets[i].serial()};
+            }
         };
 
+        [[nodiscard]] bool accepts(std::span<const SubmissionTicket> tickets) const noexcept;
+        [[nodiscard]] std::size_t collectReady() noexcept;
         void destroy(Entry& entry) noexcept;
         DeviceSession* owner_;
         SubmissionQueue *queue_;

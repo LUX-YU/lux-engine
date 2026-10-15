@@ -85,10 +85,13 @@ namespace lux::render::vulkan
 
     RenderResult<void> DeviceSession::collect() noexcept
     {
+        for (auto& queue : queue_owners_)
+            if (queue)
+                if (auto result = queue->poll(); !result) return cxx::unexpected(result.error());
         for (auto& retirement : retirement_owners_)
         {
             if (!retirement) continue;
-            if (auto result = retirement->collect(); !result) return cxx::unexpected(result.error());
+            (void)retirement->collectReady();
         }
         resources_->collect();
         return {};

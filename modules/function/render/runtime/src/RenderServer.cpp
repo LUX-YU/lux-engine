@@ -359,29 +359,11 @@ namespace lux::render
 #ifdef LUX_RUNTIME_TEST_SEAM
                     if (!runtime_detail::test::observeGpuCompletion()) continue;
 #endif
-                    RenderResult<void> ready;
-                    if (gpu.upload)
-                    {
-                        auto progress = gpu.upload->advance();
-                        if (!progress)
-                        {
-                            if (!gpu.failure) gpu.failure = progress.error();
-                            gpu.upload->cancel(); // retain previous tickets, source, and CPU slice until safe
-                            continue;
-                        }
-                        if (!*progress) continue;
-                        ready = gpu.failure ? RenderResult<void>(cxx::unexpected(*gpu.failure)) :
-                            gpu.texture_ready(gpu.owner.get(), *gpu.upload, *device);
-                        gpu.upload.reset();
-                    }
-                    else
-                    {
-                        auto completed = gpu.queue->poll();
-                        if (!completed) return cxx::unexpected(completed.error()); // shutdown drains before releasing pins
-                        if (*completed < gpu.ticket->serial()) continue;
-                        ready = gpu.ready(gpu.owner.get(), *device);
-                    }
-                    gpu.owner.reset(); // release Native pins while the source request still owns its input
+                    auto progress = gpu.work.advance();
+                    if (!progress) return cxx::unexpected(progress.error());
+                    if (!*progress) continue;
+                    auto ready = gpu.work.publish();
+                    gpu.work.reset(); // release Native pins while the original request still owns its source
 #ifdef LUX_RUNTIME_TEST_SEAM
                     if (ready) runtime_detail::test::gpuReplyPublicationStarted();
 #endif
@@ -719,8 +701,7 @@ namespace lux::render
                 if (was_submitted)
                 {
                     auto& gpu = std::get<GpuCompletion>(slot.condition);
-                    gpu.upload.reset();
-                    gpu.owner.reset();
+                    gpu.work.reset();
                 }
                 // Accepted GPU work may already have side effects; cancellation is not provable.
                 auto result = was_submitted ?

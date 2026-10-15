@@ -2,6 +2,7 @@
 #include "Support.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/transfer/TextureUpload.hpp>
+#include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
 #include <fstream>
 #include <latch>
 
@@ -81,6 +82,16 @@ static const FeatureDefinition definition{FeatureTypeIdView("test.texture.progre
     [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
     nullptr, texture_operations};
 
+struct ProbeWork final
+{
+    std::unique_ptr<TextureUpload> upload;
+    Pin pin;
+    bool unstartedIn(const DeviceSession& session) const noexcept { return upload->unstartedIn(session); }
+    RenderResult<bool> advance() noexcept { return upload->advance(); }
+    void cancel() noexcept { upload->cancel(); }
+    std::optional<SubmissionTicket> lastUse() const noexcept { return upload->lastUse(); }
+};
+
 static RenderResult<void> invoke(void*, RenderRequest& request, OperationContext& context) noexcept
 {
     CHECK(!request.reply()); // ordinary reply cannot manufacture GPU readiness
@@ -99,8 +110,13 @@ static RenderResult<void> invoke(void*, RenderRequest& request, OperationContext
     info.mip_ranges[0] = {0, source.size(), value.dimension, value.dimension};
     auto candidate = context.native().uploadTexture(info, source);
     if (!candidate) return lux::cxx::unexpected(candidate.error());
-    auto pin = std::make_unique<Pin>();
-    return reservation->commitUpload<ready>(*candidate, pin);
+    auto probe = std::make_unique<ProbeWork>();
+    probe->upload = std::move(*candidate);
+    auto work = GpuWork::pending<[](ProbeWork& value, DeviceSession& session) noexcept {
+        return ready(value.pin, *value.upload, session);
+    }>(context.native(), probe);
+    if (!work) return lux::cxx::unexpected(work.error());
+    return reservation->commitWork(*work);
 }
 
 template <class Predicate> static void until(Predicate predicate)

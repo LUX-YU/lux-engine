@@ -146,25 +146,11 @@ namespace lux::render
         return {};
     }
 
-    RenderResult<void> GpuCompletionReservation::commitUpload(std::unique_ptr<vulkan::TextureUpload>& upload) noexcept
-    {
-        return commitUploadOwned(upload, nullptr, [](void*) noexcept {},
-            [](void*, vulkan::TextureUpload& candidate, vulkan::DeviceSession&) noexcept {
-                return candidate.publish();
-            });
-    }
-
-    RenderResult<void> GpuCompletionReservation::commitUploadOwned(std::unique_ptr<vulkan::TextureUpload>& upload,
-        void* owner, void (*destroy)(void*) noexcept,
-        RenderResult<void> (*ready)(void*, vulkan::TextureUpload&, vulkan::DeviceSession&) noexcept) noexcept
+    RenderResult<void> GpuCompletionReservation::commitWork(vulkan::GpuWork& work) noexcept
     {
         if (!slot_ || !request_->active()) return cxx::unexpected(RenderError{kRuntimeState});
-        // Admission is before the first CPU prepare and before ANY queue submission.
-        if (!upload || !upload->unstartedIn(*native_)) return cxx::unexpected(RenderError{kProtocolContract});
-        auto& gpu = std::get<GpuCompletion>(slot_->condition);
-        gpu.upload = std::move(upload);
-        gpu.owner = {owner, destroy};
-        gpu.texture_ready = ready;
+        if (!work.unstartedIn(*native_)) return cxx::unexpected(RenderError{kProtocolContract});
+        std::get<GpuCompletion>(slot_->condition).work = std::move(work);
         slot_->request.emplace(std::move(*request_));
         slot_ = nullptr;
         return {};
@@ -178,9 +164,7 @@ namespace lux::render
         const bool is_invalid_ticket = !gpu.queue->owns(ticket) ||
             ticket.serial() <= gpu.submitted_before_reserve;
         if (is_invalid_ticket) return cxx::unexpected(RenderError{kProtocolContract});
-        gpu.ticket = ticket;
-        gpu.owner = {owner, destroy};
-        gpu.ready = ready;
+        gpu.work = vulkan::GpuWork::accepted(*native_, ticket, owner, destroy, ready);
         slot_->request.emplace(std::move(*request_));
         slot_ = nullptr;
         return {};

@@ -102,3 +102,46 @@ upload work and verifies physical backing survives until completion and is destr
 The existing two-Scene/four-View, texture shader/color, queue, owner, installed and hot-allocation tests pass.
 Public Registry/Native StorageBinding headers compile independently. GPU validation in affected tests is
 zero error; Debug/ASan and independent final I/V are still due. This checkpoint is not final G11A-R PASS.
+
+## R3 checkpoint — one Native transfer and Deferred work path
+
+TextureUpload now owns only Texture metadata, reservation/publication and a Transfer candidate. Transfer
+owns the bounded staging-page, host-prepare, chunk, queue submission, barrier/QFOT and accepted-ticket
+state for both Buffer and Image. No TextureId appears in this common state machine. Native GpuWork
+provides one erased advance/cancel/publication owner in the existing Deferred slot; Runtime has no
+TextureUpload/texture_ready/commitUpload branch. The original RenderRequest remains the unique source
+Owner. Single-ticket G10 work uses the same GpuWork completion branch. Missing or pre-existing tickets
+cannot authorize a pending work's success. Buffer upload is a real new consumer, not a simulated copy.
+
+Retirement entries now admit up to three physical-queue conditions and require every matching queue's
+frontier; unrelated equal serial numbers do not prove completion. Session polls each physical queue once
+before collecting retirement and professional backing records. Texture backing collection no longer
+restarts a dense scan after each erase. Binding remains 32 bytes; RetirementEntry is now 72 bytes for
+three queue conditions (an explicit bounded memory cost). 10,000 allocation/binding metadata records:
+1,343,640 bytes and 61 new calls; ExecutionContext is 272 bytes at this checkpoint.
+
+Full Release all build and second no-work succeeded; serial CTest **77/77**, 127.54 seconds, log
+`evidence/test-RelWithDebInfo-20261015-165148-016.log`. The new `render.native.buffer_transfer` uploads and
+reads back all 1 MiB bytes in 16 chunks on actual 0:0 alias, 0:2 same-family and 1:0 dedicated queues,
+preserves the first ticket when the second submit fails, and rejects missing/old completion proofs.
+A separate two-queue copy proves the same source stays alive until BOTH independent equal-valued ticket
+serials are observed complete. Existing Texture 1/16/64 MiB, sampling/color, partial failure, shutdown,
+GPU-ready, installed and IPC tests remain present and pass. Source protection: 719 blobs and both user
+files unchanged. Debug/ASan, final external Storage/Graph consumer and independent V remain due.
+
+Failures and measurement limits retained:
+- An earlier build and test overlapped; that run is explicitly excluded from qualification. Subsequent
+  build/test invocations were serial. All its original logs remain in the evidence directory.
+- The first serial full run failed texture_progress in RetirementQueue destruction during injected
+  Transfer DeviceLost. LLDB proved the destructor treated a different queue's poll error as failure of
+  an otherwise empty/non-lost Graphics retirement queue. It now drains actual recorded queue uses and
+  collects their individual completed/lost frontiers. The original loss/shutdown assertion is unchanged.
+  Stack: `evidence/r3-texture-progress-lldb-stack.log`; corrected targeted and full runs both pass.
+- GPU-ready wall times vary (about 6 seconds in one serial run, 21–31 seconds in another). This is NOT
+  claimed as a performance improvement, nor attributed solely to the excluded overlap. Per-sample CSVs
+  are retained in `evidence/r3-checkpoint`; the final equal-workload performance analysis is still due.
+- The professional wrapper plus common Transfer introduces cold allocations. No end-to-end zero-
+  allocation upload claim is made. The existing stable rendering allocation tests still pass.
+
+This is an intermediate production checkpoint, not final G11A-R I/V or architectural PASS. R4 must still
+remove Texture-specific compiler/binding/public API dependencies, followed by the R5 installed OCP test.

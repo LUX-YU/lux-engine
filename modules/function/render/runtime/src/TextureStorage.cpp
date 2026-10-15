@@ -2,6 +2,7 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include <lux/engine/render/native/vulkan/transfer/TextureUpload.hpp>
+#include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
 
 namespace lux::render
 {
@@ -13,14 +14,18 @@ namespace lux::render
             return request.payload().attachments[reference.attachment_index].subspan(reference.offset, reference.size);
         }
 
-        RenderResult<void> commit(GpuCompletionReservation& reservation, TexturePublished result,
+        RenderResult<void> commit(OperationContext& context, GpuCompletionReservation& reservation, TexturePublished result,
             std::unique_ptr<vulkan::TextureUpload>& upload) noexcept
         {
             std::array<std::byte, 16> bytes;
             cxx::BinarySpanWriter writer(bytes);
             (void)DataSchema<TexturePublished>::encode(result, writer);
             if (auto prepared = reservation.setReply(bytes); !prepared) return prepared;
-            return reservation.commitUpload(upload);
+            auto work = vulkan::GpuWork::pending<
+                [](vulkan::TextureUpload& value, vulkan::DeviceSession&) noexcept { return value.publish(); }
+            >(context.native(), upload);
+            if (!work) return cxx::unexpected(work.error());
+            return reservation.commitWork(*work);
         }
 
         RenderResult<void> upload(void*, RenderRequest& request, OperationContext& context) noexcept
@@ -40,7 +45,7 @@ namespace lux::render
             if (!candidate) return cxx::unexpected(candidate.error());
             auto publication = storage->reserve(**candidate, input->texture, input->expected_revision);
             if (!publication) return cxx::unexpected(publication.error());
-            return commit(*reservation, *publication, *candidate);
+            return commit(context, *reservation, *publication, *candidate);
         }
 
         RenderResult<void> region(void*, RenderRequest& request, OperationContext& context) noexcept
@@ -55,7 +60,7 @@ namespace lux::render
             auto candidate = storage->uploadRegion(input->texture, input->expected_revision,
                 input->region, source(request, input->source));
             if (!candidate) return cxx::unexpected(candidate.error());
-            return commit(*reservation, {input->texture, input->expected_revision + 1}, *candidate);
+            return commit(context, *reservation, {input->texture, input->expected_revision + 1}, *candidate);
         }
 
         RenderResult<void> release(void*, RenderRequest& request, OperationContext& context) noexcept

@@ -176,7 +176,7 @@ namespace lux::render::vulkan
         auto& version = *versions_.find(*slot);
         version.key_ = *slot;
         version.info_ = upload.info_;
-        version.image_ = session_.borrow(upload.image_);
+        version.image_ = session_.borrow(upload.transfer_->image_);
         version.bytes_ = bytes;
         version.revision_ = expected + 1;
         resident_bytes_ += bytes;
@@ -240,6 +240,7 @@ namespace lux::render::vulkan
         auto publication = reserve(**upload, id, expected);
         if (!publication) return cxx::unexpected(publication.error());
         (*upload)->base_ = record->current;
+        (*upload)->transfer_->clone_ = record->current->image_;
         ++record->current->leases_;
         return upload;
     }
@@ -248,8 +249,8 @@ namespace lux::render::vulkan
     {
         auto& record = *textures_.find(upload.texture_);
         auto& version = *upload.version_;
-        version.permit_ = std::move(upload.image_);
-        version.last_use_ = upload.ticket_;
+        version.permit_ = std::move(*upload.transfer_->takeImage());
+        version.last_use_ = upload.transfer_->lastUse();
         version.reserved_ = false;
         version.live_ = true;
         if (record.current) record.current->live_ = false;
@@ -276,12 +277,11 @@ namespace lux::render::vulkan
         for (auto it = versions_.begin(); it != versions_.end();)
         {
             auto& version = *it;
-            const bool completed = !version.last_use_ ||
-                session_.queue().completed() >= version.last_use_->serial() || session_.queue().deviceLost();
+            const bool completed = !version.last_use_ || RetirementQueue::completed(*version.last_use_);
             if (!version.live_ && !version.reserved_ && !version.leases_ && completed)
             {
                 destroy(version);
-                it = versions_.begin();
+                // StableSlotMap's dense-index iterator now denotes the swapped-in element (or end).
             }
             else ++it;
         }

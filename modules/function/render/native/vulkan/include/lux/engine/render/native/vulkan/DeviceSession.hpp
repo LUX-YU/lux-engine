@@ -14,9 +14,11 @@ namespace lux::render::vulkan
     class CompiledGraph;
     class ExecutionContext;
     class TextureUpload;
+    class Transfer;
+    struct ImageTransferRegion;
     class TextureStorage;
     class TextureVersion;
-    struct TextureUploadStats;
+    struct TransferStats;
     // Stable Native lifetime root. Bootstrap owns InstanceContext and outlives this object.
     // Queue roles that alias the same VkQueue borrow the same SubmissionQueue owner.
     class DeviceSession final
@@ -55,7 +57,12 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<TextureUpload>> uploadTexture(
             const rdesc::TextureInfo&, std::span<const std::byte>) noexcept;
-        [[nodiscard]] TextureUploadStats uploadStats() const noexcept;
+        [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadImage(
+            const ImageDescription&, std::span<const std::byte>, std::span<const ImageTransferRegion>,
+            const ImageAllocation* clone = nullptr, bool graphics_queue = false) noexcept;
+        [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadBuffer(
+            std::span<const std::byte>, VkBufferUsageFlags usage) noexcept;
+        [[nodiscard]] TransferStats uploadStats() const noexcept;
         void joinUploads() noexcept;
         [[nodiscard]] RenderResult<void> configureTextures(std::size_t capacity, std::uint64_t byte_limit) noexcept;
         [[nodiscard]] TextureStorage* textures() const noexcept;
@@ -87,6 +94,7 @@ namespace lux::render::vulkan
         friend struct NativeMemoryAudit;
         friend class RetirementQueue;
         friend class TextureUpload;
+        friend class Transfer;
         friend class TextureStorage;
         struct UploadState;
         [[nodiscard]] RenderResult<std::unique_ptr<TextureUpload>> prepareTextureUpload(

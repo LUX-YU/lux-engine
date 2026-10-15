@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
-#include <lux/engine/render/native/vulkan/transfer/TextureUpload.hpp>
+#include <lux/engine/render/native/vulkan/transfer/Transfer.hpp>
 
 namespace lux::render::vulkan
 {
@@ -17,7 +17,7 @@ namespace lux::render::vulkan
         SubmissionQueue* copy_queue = nullptr;
         TransferOptions options;
         std::vector<Page> pages;
-        TextureUploadStats stats;
+        TransferStats stats;
         VkQueryPool timestamps = VK_NULL_HANDLE;
         std::uint32_t copy_timestamp_bits = 0, graphics_timestamp_bits = 0;
         UploadState(DeviceSession& session, TransferOptions options) noexcept

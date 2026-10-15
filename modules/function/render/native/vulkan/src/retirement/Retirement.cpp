@@ -20,21 +20,39 @@ namespace lux::render::vulkan
         if (!queue_)
             return; // Moved-from owner.
         queue_->completePending();
-        auto result = collect();
-        const bool violates_lifetime = !queue_->deviceLost() && (!result || pending() != 0);
-        if (violates_lifetime) std::terminate();
-        for (auto& entry : entries_) if (entry) destroy(*entry);
+        for (auto& other : owner_->queue_owners_)
+        {
+            if (!other || other.get() == queue_) continue;
+            bool used = false;
+            for (const auto& entry : entries_)
+                if (entry)
+                    for (const auto& wait : entry->waits) used |= wait.queue == other.get();
+            if (used) other->completePending();
+        }
+        // A lost unrelated queue is not a failure to retire this queue's records. Every recorded
+        // use has its own completed/lost frontier, including multi-queue composites.
+        (void)collectReady();
+        if (pending() != 0) std::terminate();
     }
 
     RenderResult<std::size_t> RetirementQueue::collect() noexcept
     {
-        auto completion = queue_->poll();
-        if (!completion)
-            return cxx::unexpected(completion.error());
+        for (auto& queue : owner_->queue_owners_)
+            if (queue)
+                if (auto result = queue->poll(); !result) return cxx::unexpected(result.error());
+        return collectReady();
+    }
+
+    std::size_t RetirementQueue::collectReady() noexcept
+    {
         std::size_t count = 0;
         for (auto &entry : entries_)
         {
-            if (entry && entry->serial <= *completion)
+            if (!entry) continue;
+            bool ready = true;
+            for (const auto& wait : entry->waits)
+                if (wait.queue && wait.queue->completed() < wait.serial && !wait.queue->deviceLost()) ready = false;
+            if (ready)
             {
                 destroy(*entry);
                 entry.reset();
@@ -54,13 +72,25 @@ namespace lux::render::vulkan
 
     RenderResult<void> RetirementQueue::retire(SubmissionTicket ticket, BufferPermit& backing) noexcept
     {
+        return retire(std::span(&ticket, 1), backing);
+    }
+
+    bool RetirementQueue::accepts(std::span<const SubmissionTicket> tickets) const noexcept
+    {
+        if (tickets.empty() || tickets.size() > 3 || !queue_->owns(tickets.front())) return false;
+        for (const auto ticket : tickets) if (!owner_->queueFor(ticket)) return false;
+        return true;
+    }
+
+    RenderResult<void> RetirementQueue::retire(std::span<const SubmissionTicket> tickets, BufferPermit& backing) noexcept
+    {
         auto* record = owner_->borrow(backing);
-        const bool is_wrong_owner = !queue_->owns(ticket) || !record;
+        const bool is_wrong_owner = !accepts(tickets) || !record;
         if (is_wrong_owner) return cxx::unexpected(RenderError{kWrongOwner});
         for (auto& entry : entries_)
             if (!entry)
             {
-                entry.emplace(ticket.serial(), VBacking{
+                entry.emplace(tickets, VBacking{
                     std::in_place_type<BufferAllocation*>, record
                 });
                 record->retired_ = true;
@@ -73,13 +103,18 @@ namespace lux::render::vulkan
 
     RenderResult<void> RetirementQueue::retire(SubmissionTicket ticket, ImagePermit& backing) noexcept
     {
+        return retire(std::span(&ticket, 1), backing);
+    }
+
+    RenderResult<void> RetirementQueue::retire(std::span<const SubmissionTicket> tickets, ImagePermit& backing) noexcept
+    {
         auto* record = owner_->borrow(backing);
-        const bool is_wrong_owner = !queue_->owns(ticket) || !record;
+        const bool is_wrong_owner = !accepts(tickets) || !record;
         if (is_wrong_owner) return cxx::unexpected(RenderError{kWrongOwner});
         for (auto& entry : entries_)
             if (!entry)
             {
-                entry.emplace(ticket.serial(), VBacking{
+                entry.emplace(tickets, VBacking{
                     std::in_place_type<ImageAllocation*>, record
                 });
                 record->retired_ = true;

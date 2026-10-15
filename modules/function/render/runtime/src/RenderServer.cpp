@@ -337,7 +337,7 @@ namespace lux::render
 #ifdef LUX_RUNTIME_TEST_SEAM
                     if (!runtime_detail::test::observeGpuCompletion()) continue;
 #endif
-                    auto completed = device->queue().poll();
+                    auto completed = gpu.queue->poll();
                     if (!completed) return cxx::unexpected(completed.error()); // shutdown drains before releasing pins
                     if (*completed < gpu.ticket->serial()) continue;
                     auto ready = gpu.ready(gpu.owner.get(), *device);
@@ -662,7 +662,7 @@ namespace lux::render
             if (has_gpu && device)
             {
                 auto drained = device->drain();
-                if (!drained && !device->queue().deviceLost()) std::terminate();
+                if (!drained && !device->deviceLost()) std::terminate();
             }
             for (auto& slot : deferred)
             {
@@ -781,6 +781,8 @@ namespace lux::render
         s.instance.emplace(std::move(*instance));
         vulkan::DeviceOptions options;
         options.dynamic_rendering = true;
+        options.multiple_queues = s.config.transfer_queues;
+        options.prefer_dedicated_queues = s.config.prefer_dedicated_transfer;
         options.physical_device_index = s.config.physical_device_index;
         auto device = vulkan::DeviceSession::create(*s.instance, options, 3, s.config.retirement_capacity);
         if (!device) { s.shutdown(); return cxx::unexpected(device.error()); }

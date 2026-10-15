@@ -45,6 +45,9 @@ namespace lux::render::vulkan
         }
 
         [[nodiscard]] const VulkanDevice& device() const noexcept { return device_; }
+        // Boundary lookup compares stable owner identity before inspecting the ticket's queue.
+        [[nodiscard]] SubmissionQueue* queueFor(SubmissionTicket ticket) noexcept;
+        [[nodiscard]] bool deviceLost() const noexcept;
         [[nodiscard]] RenderResult<BufferPermit> createBuffer(
             VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access
         ) noexcept;
@@ -66,6 +69,7 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> destroyUnsubmitted(ImagePermit& permit) noexcept;
         // Cold completed-use release; accepted GPU work never goes through destroyUnsubmitted.
         [[nodiscard]] RenderResult<void> releaseCompleted(BufferPermit& permit, SubmissionTicket last_use) noexcept;
+        [[nodiscard]] RenderResult<void> releaseCompleted(ImagePermit& permit, SubmissionTicket last_use) noexcept;
         void releaseScope(SceneId scene, ViewId view = {}) noexcept;
 
     private:

@@ -77,6 +77,8 @@ static std::atomic<unsigned> accepted{0}, finished{0}, owners_destroyed{0}, sour
 static std::atomic<int> native_buffers{0};
 static std::atomic<unsigned> native_created{0}, native_destroyed{0}, owners_created{0};
 static std::atomic<const std::byte*> observed_source{};
+static bool transfer_mode = false;
+static std::string sample_prefix;
 static std::atomic<bool> block_compile{false};
 static std::latch* compile_entered = nullptr;
 static std::latch* compile_resume = nullptr;
@@ -142,7 +144,7 @@ static RenderResult<void> upload(void*, RenderRequest& request, OperationContext
 {
     auto input = request.decode<UploadProbe>();
     if (!input) return lux::cxx::unexpected(input.error());
-    if (input->sample >= samples.size() || input->mode > 3) return lux::cxx::unexpected(RenderError{kInvalidWire});
+    if (input->sample >= samples.size() || input->mode > 4) return lux::cxx::unexpected(RenderError{kInvalidWire});
     samples[input->sample].inbound = now();
     if (input->mode == 1) return request.reply(); // mandatory premature SUCCESS negative
     const auto source = request.payload().attachments[input->source.attachment_index].subspan(
@@ -154,11 +156,23 @@ static RenderResult<void> upload(void*, RenderRequest& request, OperationContext
     std::array<std::byte, 20> reply;
     lux::cxx::BinarySpanWriter writer(reply);
     if (auto encoded = DataSchema<ReadbackResult>::encode({{0, 0, source.size()}}, writer); !encoded) return encoded;
-    auto reservation = context.reserveGpuCompletion(reply, output_pin);
+    auto& session = context.native();
+    auto& queue = session.queue(transfer_mode ? vulkan::EQueueRole::TRANSFER : vulkan::EQueueRole::GRAPHICS);
+    if (input->mode == 4)
+    {
+        // Views fill Graphics only. Explicit real submissions fill the distinct Transfer owner.
+        CHECK(hold_fences.load());
+        for (unsigned i = 0; i < queue.capacity(); ++i)
+        {
+            auto empty = queue.begin();
+            if (!empty) { CHECK(empty.error().type == vulkan::kCapacity); break; }
+            CHECK(std::move(*empty).submit());
+        }
+    }
+    auto reservation = context.reserveGpuCompletion(queue, reply, output_pin);
     if (!reservation) return lux::cxx::unexpected(reservation.error());
     CHECK(request.active());
     CHECK(!context.reserveGpuCompletion(reply, output_pin)); // cannot issue two rights for one invocation
-    auto& session = context.native();
     auto owner = std::make_unique<ProbeOwner>(session, output, source, input->sample);
     auto staging = session.createBuffer(source.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, vulkan::EMemoryAccess::UPLOAD);
     if (!staging) return lux::cxx::unexpected(staging.error());
@@ -169,12 +183,12 @@ static RenderResult<void> upload(void*, RenderRequest& request, OperationContext
     if (auto written = session.write(*session.borrow(owner->staging), 0, source); !written) return written;
     if (input->mode == 3)
     {
-        CHECK(session.queue().lastSubmitted());
-        auto rejected = reservation->commit<ready>(*session.queue().lastSubmitted(), owner);
+        CHECK(queue.lastSubmitted());
+        auto rejected = reservation->commit<ready>(*queue.lastSubmitted(), owner);
         CHECK(!rejected && rejected.error().type == kProtocolContract && owner && request.active());
         return rejected; // a previous successful Ticket cannot certify this reservation
     }
-    auto batch = session.queue().begin();
+    auto batch = queue.begin();
     if (!batch) return lux::cxx::unexpected(batch.error());
     const VkBufferCopy copy{0, 0, source.size()};
     vkCmdCopyBuffer(batch->native(), session.borrow(owner->staging)->native(),
@@ -190,12 +204,12 @@ static RenderResult<void> upload(void*, RenderRequest& request, OperationContext
     VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
     dependency.bufferMemoryBarrierCount = 1; dependency.pBufferMemoryBarriers = &host;
     vkCmdPipelineBarrier2(batch->native(), &dependency);
-    const auto previous = session.queue().lastSubmitted();
+    const auto previous = queue.lastSubmitted();
     if (input->mode == 2) fail_submit.store(true);
     auto submitted = std::move(*batch).submit();
     if (!submitted)
     {
-        CHECK(!previous || session.queue().lastSubmitted()->serial() == previous->serial());
+        CHECK(!previous || queue.lastSubmitted()->serial() == previous->serial());
         return lux::cxx::unexpected(submitted.error());
     }
     owner->ticket = *submitted;
@@ -256,11 +270,16 @@ static auto asset(unsigned byte)
         [](auto* p) { delete p; ++source_destroyed; });
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    transfer_mode = argc > 1;
+    const bool dedicated = !transfer_mode || std::string_view(argv[1]) != "same-family";
+    if (transfer_mode) sample_prefix = dedicated ? "dedicated-" : "same-family-";
     CompileWorker workers(2);
     RenderServerConfig config{"runtime.g10", true};
     config.completion_capacity = 2;
+    config.transfer_queues = transfer_mode;
+    config.prefer_dedicated_transfer = dedicated;
     auto server = take(RenderServer::create(workers.configure(config)));
     CHECK(server->registerFeature({&feature, nullptr, {}, handlers}));
     CHECK(server->registerFeature({&native_fixture::definition, programs}));
@@ -386,7 +405,7 @@ int main()
     const auto ticks_before_full = server->stats().ticks;
     until([&] { return server->stats().ticks > ticks_before_full + 8; });
     const auto accepted_before_full = accepted.load();
-    auto queue_full = wait(*b, send(*b, bound_b, payload_b, 13));
+    auto queue_full = wait(*b, send(*b, bound_b, payload_b, 13, transfer_mode ? 4 : 0));
     CHECK(queue_full.header.outcome == EOperationOutcome::FAILED && queue_full.header.error.type == vulkan::kCapacity);
     CHECK(accepted == accepted_before_full && samples[13].submit == 0);
     queue_full = {};
@@ -509,7 +528,7 @@ int main()
     render.join();
     CHECK(run_ok && server->stats().validation_errors == 0 && source_destroyed == 1 && native_buffers == 0);
     CHECK(waits > 0);
-    std::ofstream csv("runtime-gpu-ready.csv");
+    std::ofstream csv(sample_prefix + "runtime-gpu-ready.csv");
     csv << "sample,inbound_ns,submitted_ns,fence_observed_ns,reply_publication_start_ns,consumed_ns,engine_new_calls\n";
     for (unsigned i = 20; i < 1020; ++i)
     {
@@ -517,7 +536,7 @@ int main()
         CHECK(x.inbound <= x.submit && x.submit <= x.fence && x.fence <= x.published && x.published <= x.consumed);
         csv << i << ',' << x.inbound << ',' << x.submit << ',' << x.fence << ',' << x.published << ',' << x.consumed << ',' << engine_new[i - 20] << '\n';
     }
-    std::ofstream refused_csv("runtime-gpu-backpressure.csv");
+    std::ofstream refused_csv(sample_prefix + "runtime-gpu-backpressure.csv");
     refused_csv << "sample,inbound_ns,consumed_ns,error\n";
     for (std::size_t i = 0; i < backpressure_count; ++i)
         refused_csv << backpressure[i].sample << ',' << backpressure[i].inbound << ',' << backpressure[i].consumed
@@ -536,6 +555,8 @@ int main()
     hold_fences.store(false);
     hold_observation.store(true);
     RenderServerConfig closing_config{"runtime.g10.closing", true};
+    closing_config.transfer_queues = transfer_mode;
+    closing_config.prefer_dedicated_transfer = dedicated;
     auto closing_server = take(RenderServer::create(workers.configure(closing_config)));
     CHECK(closing_server->registerFeature({&feature, nullptr, {}, handlers}));
     auto closing_client = take(RenderClient::create(closing_config.channel_name));

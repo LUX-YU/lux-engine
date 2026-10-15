@@ -90,3 +90,7 @@ set_target_properties(render_runtime_gpu_ready_test PROPERTIES RUNTIME_OUTPUT_DI
 add_test(NAME render.runtime.gpu_ready COMMAND render_runtime_gpu_ready_test)
 
 set_tests_properties(render.runtime.gpu_ready PROPERTIES TIMEOUT 120)
+
+add_test(NAME render.runtime.gpu_ready_transfer COMMAND render_runtime_gpu_ready_test dedicated)
+add_test(NAME render.runtime.gpu_ready_same_family COMMAND render_runtime_gpu_ready_test same-family)
+set_tests_properties(render.runtime.gpu_ready_transfer render.runtime.gpu_ready_same_family PROPERTIES TIMEOUT 120)

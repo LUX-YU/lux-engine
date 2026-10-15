@@ -7,7 +7,7 @@
 
 namespace lux::render
 {
-    namespace vulkan { class DeviceSession; class SubmissionTicket; }
+    namespace vulkan { class DeviceSession; class SubmissionTicket; class SubmissionQueue; }
     namespace runtime_detail { struct DeferredCompletion; }
     class OperationContext;
 
@@ -29,6 +29,9 @@ namespace lux::render
         void (*join_compile)(void*) noexcept = nullptr;
         std::size_t compile_capacity = 2;
         std::size_t completion_capacity = 128;
+        // Cold explicit Native capability request. Aliased roles still share one physical queue owner.
+        bool transfer_queues = false;
+        bool prefer_dedicated_transfer = true;
     };
 
     // One source-qualified request. Move only for real deferred work; settle before Responder teardown.
@@ -144,6 +147,9 @@ namespace lux::render
         // Bounded reply bytes and retained attachment are funded before submit.
         [[nodiscard]] RenderResult<GpuCompletionReservation> reserveGpuCompletion(
             std::span<const std::byte> reply = {}, OwnedWireBytes attachment = {}) noexcept;
+        [[nodiscard]] RenderResult<GpuCompletionReservation> reserveGpuCompletion(
+            vulkan::SubmissionQueue& queue, std::span<const std::byte> reply = {},
+            OwnedWireBytes attachment = {}) noexcept;
     private:
         friend class RenderServer;
         OperationContext(vulkan::DeviceSession& native, std::span<runtime_detail::DeferredCompletion> slots,

@@ -61,6 +61,20 @@ namespace lux::render::vulkan
         return collect();
     }
 
+    SubmissionQueue* DeviceSession::queueFor(SubmissionTicket ticket) noexcept
+    {
+        for (auto* owner : queues_)
+            if (owner == &ticket.owner() && owner->owns(ticket)) return owner;
+        return nullptr;
+    }
+
+    bool DeviceSession::deviceLost() const noexcept
+    {
+        for (const auto& owner : queue_owners_)
+            if (owner && owner->deviceLost()) return true;
+        return false;
+    }
+
     RenderResult<void> DeviceSession::collect() noexcept
     {
         for (auto& retirement : retirement_owners_)

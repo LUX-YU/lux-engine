@@ -7,6 +7,7 @@ namespace lux::render::runtime_detail
 {
     struct GpuCompletion final
     {
+        vulkan::SubmissionQueue* queue = nullptr;
         std::uint64_t submitted_before_reserve = 0;
         std::optional<vulkan::SubmissionTicket> ticket;
         std::unique_ptr<void, void (*)(void*) noexcept> owner{nullptr, [](void*) noexcept {}};

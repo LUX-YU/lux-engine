@@ -97,6 +97,16 @@ namespace lux::render
     RenderResult<GpuCompletionReservation> OperationContext::reserveGpuCompletion(
         std::span<const std::byte> reply, OwnedWireBytes attachment) noexcept
     {
+        return reserveGpuCompletion(native_->queue(), reply, std::move(attachment));
+    }
+
+    RenderResult<GpuCompletionReservation> OperationContext::reserveGpuCompletion(
+        vulkan::SubmissionQueue& queue, std::span<const std::byte> reply, OwnedWireBytes attachment) noexcept
+    {
+        const bool is_session_queue = &queue == &native_->queue(vulkan::EQueueRole::GRAPHICS) ||
+            &queue == &native_->queue(vulkan::EQueueRole::COMPUTE) ||
+            &queue == &native_->queue(vulkan::EQueueRole::TRANSFER);
+        if (!is_session_queue) return cxx::unexpected(RenderError{kProtocolContract});
         auto& request = *request_;
         const bool is_invalid_contract = reserved_ || !request.active() || !request.descriptor_ ||
             request.descriptor_->completion != ECompletionContract::RESOURCE_GPU_READY;
@@ -107,7 +117,8 @@ namespace lux::render
         {
             if (!std::holds_alternative<std::monostate>(slot.condition)) continue;
             auto& gpu = slot.condition.emplace<GpuCompletion>();
-            gpu.submitted_before_reserve = native_->queue().submitted();
+            gpu.queue = &queue;
+            gpu.submitted_before_reserve = queue.submitted();
             std::copy(reply.begin(), reply.end(), gpu.reply.begin());
             gpu.size = reply.size();
             gpu.attachment = std::move(attachment);
@@ -130,7 +141,7 @@ namespace lux::render
     {
         if (!slot_ || !request_->active()) return cxx::unexpected(RenderError{kRuntimeState});
         auto& gpu = std::get<GpuCompletion>(slot_->condition);
-        const bool is_invalid_ticket = !native_->queue().owns(ticket) ||
+        const bool is_invalid_ticket = !gpu.queue->owns(ticket) ||
             ticket.serial() <= gpu.submitted_before_reserve;
         if (is_invalid_ticket) return cxx::unexpected(RenderError{kProtocolContract});
         gpu.ticket = ticket;

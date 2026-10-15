@@ -39,6 +39,7 @@ install(
 
 install(
     FILES "${LUX_RENDER_DESCRIPTION_INCLUDE}/lux/engine/description/Image.hpp"
+        "${LUX_RENDER_DESCRIPTION_INCLUDE}/lux/engine/description/TextureInfo.hpp"
     DESTINATION include/lux/engine/description
 )
 

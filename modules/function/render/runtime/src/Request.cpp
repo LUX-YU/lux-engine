@@ -136,6 +136,22 @@ namespace lux::render
     GpuCompletionReservation::GpuCompletionReservation(GpuCompletionReservation&& other) noexcept
         : native_(other.native_), slot_(std::exchange(other.slot_, nullptr)), request_(other.request_) {}
 
+    RenderResult<void> GpuCompletionReservation::commitUploadOwned(std::unique_ptr<vulkan::TextureUpload>& upload,
+        void* owner, void (*destroy)(void*) noexcept,
+        RenderResult<void> (*ready)(void*, vulkan::TextureUpload&, vulkan::DeviceSession&) noexcept) noexcept
+    {
+        if (!slot_ || !request_->active()) return cxx::unexpected(RenderError{kRuntimeState});
+        // Admission is before the first CPU prepare and before ANY queue submission.
+        if (!upload || !upload->unstartedIn(*native_)) return cxx::unexpected(RenderError{kProtocolContract});
+        auto& gpu = std::get<GpuCompletion>(slot_->condition);
+        gpu.upload = std::move(upload);
+        gpu.owner = {owner, destroy};
+        gpu.texture_ready = ready;
+        slot_->request.emplace(std::move(*request_));
+        slot_ = nullptr;
+        return {};
+    }
+
     RenderResult<void> GpuCompletionReservation::commitOwned(const vulkan::SubmissionTicket& ticket, void* owner,
         void (*destroy)(void*) noexcept, RenderResult<void> (*ready)(void*, vulkan::DeviceSession&) noexcept) noexcept
     {

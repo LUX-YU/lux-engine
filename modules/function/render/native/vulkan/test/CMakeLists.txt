@@ -61,7 +61,9 @@ add_test(NAME render.native.failures COMMAND render_native_fault_test)
 
 set_tests_properties(render.native.failures PROPERTIES TIMEOUT 90)
 
-foreach(header Program Error DeviceSession CompiledGraph ExecutionContext device/Device memory/Memory transfer/Submission retirement/Retirement)
+foreach(header Program Error DeviceSession CompiledGraph ExecutionContext device/Device memory/Memory
+    transfer/Submission transfer/TextureUpload transfer/UploadOptions retirement/Retirement
+)
     string(REPLACE "/" "_" target "${header}")
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp"
         CONTENT "#include <lux/engine/render/native/vulkan/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
@@ -86,3 +88,8 @@ add_executable(render_transfer_test Transfer.cpp)
 target_link_libraries(render_transfer_test PRIVATE render_native_vulkan)
 add_test(NAME render.native.transfer COMMAND render_transfer_test)
 set_tests_properties(render.native.transfer PROPERTIES TIMEOUT 60)
+
+add_executable(render_texture_upload_test TextureUpload.cpp)
+target_link_libraries(render_texture_upload_test PRIVATE render_native_vulkan)
+add_test(NAME render.native.texture_upload COMMAND render_texture_upload_test)
+set_tests_properties(render.native.texture_upload PROPERTIES TIMEOUT 90)

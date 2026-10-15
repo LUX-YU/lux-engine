@@ -4,10 +4,11 @@
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/features/Feature.hpp>
 #include <lux/engine/render/native/vulkan/Program.hpp>
+#include <lux/engine/render/native/vulkan/transfer/UploadOptions.hpp>
 
 namespace lux::render
 {
-    namespace vulkan { class DeviceSession; class SubmissionTicket; class SubmissionQueue; }
+    namespace vulkan { class DeviceSession; class SubmissionTicket; class SubmissionQueue; class TextureUpload; }
     namespace runtime_detail { struct DeferredCompletion; }
     class OperationContext;
 
@@ -32,6 +33,7 @@ namespace lux::render
         // Cold explicit Native capability request. Aliased roles still share one physical queue owner.
         bool transfer_queues = false;
         bool prefer_dedicated_transfer = true;
+        vulkan::TextureUploadOptions uploads{}; // null host callbacks disable texture upload admission
     };
 
     // One source-qualified request. Move only for real deferred work; settle before Responder teardown.
@@ -122,6 +124,22 @@ namespace lux::render
             return result;
         }
 
+        // A multi-chunk Native candidate enters the SAME reserved slot before its first prepare/submit.
+        // Only TextureUpload's completed, queue-proven state can reach Ready and publish SUCCESS.
+        template <auto Ready, class Owner>
+        [[nodiscard]] RenderResult<void>
+        commitUpload(std::unique_ptr<vulkan::TextureUpload>& upload, std::unique_ptr<Owner>& owner) noexcept
+        {
+            static_assert(std::is_nothrow_destructible_v<Owner>);
+            if (!owner) return cxx::unexpected(RenderError{kRuntimeState});
+            auto result = commitUploadOwned(upload, owner.get(), [](void* p) noexcept { delete static_cast<Owner*>(p); },
+                [](void* p, vulkan::TextureUpload& value, vulkan::DeviceSession& session) noexcept -> RenderResult<void> {
+                    return Ready(*static_cast<Owner*>(p), value, session);
+                });
+            if (result) (void)owner.release();
+            return result;
+        }
+
     private:
         friend class OperationContext;
         GpuCompletionReservation(vulkan::DeviceSession& native, runtime_detail::DeferredCompletion& slot,
@@ -131,6 +149,12 @@ namespace lux::render
             void*,
             void (*destroy)(void*) noexcept,
             RenderResult<void> (*ready)(void*, vulkan::DeviceSession&) noexcept
+        ) noexcept;
+        [[nodiscard]] RenderResult<void> commitUploadOwned(
+            std::unique_ptr<vulkan::TextureUpload>&,
+            void*,
+            void (*destroy)(void*) noexcept,
+            RenderResult<void> (*ready)(void*, vulkan::TextureUpload&, vulkan::DeviceSession&) noexcept
         ) noexcept;
         vulkan::DeviceSession* native_;
         runtime_detail::DeferredCompletion* slot_;

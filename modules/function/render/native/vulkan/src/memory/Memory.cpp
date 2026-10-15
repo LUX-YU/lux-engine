@@ -11,7 +11,8 @@ namespace lux::render::vulkan
     RenderResult<BufferAllocation*> DeviceSession::createBufferRecord(
         VkDeviceSize size,
         VkBufferUsageFlags usage,
-        EMemoryAccess access
+        EMemoryAccess access,
+        std::span<const std::uint32_t> families
     ) noexcept
     {
         const bool is_invalid_access =
@@ -24,7 +25,9 @@ namespace lux::render::vulkan
         VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
         info.size = size;
         info.usage = usage;
-        info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        info.sharingMode = families.empty() ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
+        info.queueFamilyIndexCount = static_cast<std::uint32_t>(families.size());
+        info.pQueueFamilyIndices = families.data();
         VmaAllocationCreateInfo memory{};
         memory.usage = VMA_MEMORY_USAGE_AUTO;
         if (access == EMemoryAccess::DEVICE)

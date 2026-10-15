@@ -312,6 +312,7 @@ namespace lux::render::vulkan
           multiview_(options.multiview), local_read_(options.local_read), timeline_(options.multiple_queues),
           separate_depth_stencil_(options.separate_depth_stencil), swapchain_maintenance_(options.swapchain_maintenance)
     {
+        texture_compression_bc_ = options.texture_compression_bc;
         vkGetPhysicalDeviceProperties(physical, &properties_);
     }
 
@@ -391,6 +392,7 @@ namespace lux::render::vulkan
             const bool is_unsupported = properties.apiVersion < VK_API_VERSION_1_3 || !supported.synchronization2 ||
                                         (options.dynamic_rendering && !supported.dynamicRendering) ||
                                         (options.multiple_queues && !supported12.timelineSemaphore) ||
+                                        (options.texture_compression_bc && !features.features.textureCompressionBC) ||
                                         (options.multiview && !supported11.multiview) ||
                                         (options.separate_depth_stencil && !supported12.separateDepthStencilLayouts) ||
                                         (options.local_read && !supported_local.dynamicRenderingLocalRead) ||
@@ -485,7 +487,10 @@ namespace lux::render::vulkan
         {
             enabled11.pNext = &enabled_local;
         }
+        VkPhysicalDeviceFeatures base_features{};
+        base_features.textureCompressionBC = options.texture_compression_bc;
         VkDeviceCreateInfo info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
+        info.pEnabledFeatures = &base_features;
         info.pNext = &enabled;
         info.queueCreateInfoCount = queue_count;
         info.pQueueCreateInfos = queue_infos.data();
@@ -520,7 +525,7 @@ namespace lux::render::vulkan
     }
 
     VulkanDevice::VulkanDevice(VulkanDevice&& other) noexcept
-        : instance_(other.instance_), physical_(other.physical_), device_(std::exchange(other.device_, VK_NULL_HANDLE)),
+        : texture_compression_bc_(other.texture_compression_bc_), instance_(other.instance_), physical_(other.physical_), device_(std::exchange(other.device_, VK_NULL_HANDLE)),
           queue_(other.queue_), queue_family_(other.queue_family_), properties_(other.properties_),
           dynamic_rendering_(other.dynamic_rendering_), queues_(other.queues_), multiview_(other.multiview_),
           local_read_(other.local_read_), timeline_(other.timeline_),
@@ -533,6 +538,7 @@ namespace lux::render::vulkan
         if (this != &other)
         {
             release();
+            texture_compression_bc_ = other.texture_compression_bc_;
             instance_ = other.instance_;
             physical_ = other.physical_;
             device_ = std::exchange(other.device_, VK_NULL_HANDLE);

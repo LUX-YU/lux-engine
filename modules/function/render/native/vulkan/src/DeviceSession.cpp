@@ -1,5 +1,6 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include "ExecutionState.hpp"
+#include "UploadState.hpp"
 #include <algorithm>
 
 #include <exception>
@@ -108,6 +109,7 @@ namespace lux::render::vulkan
 
     DeviceSession::~DeviceSession() noexcept
     {
+        joinUploads();
         auto result = drain();
         const bool is_device_lost = !result && result.error().type == kNativeFailure &&
             result.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
@@ -117,6 +119,7 @@ namespace lux::render::vulkan
         contexts_.clear();
         for (auto& entry : scoped_) destroyFinished(entry->backing);
         scoped_.clear();
+        uploads_.reset();
         while (!buffers_.empty()) destroyFinished(&*buffers_.begin());
         // Destroy aliases before allocations, including aliases not explicitly released by the caller.
         for (;;)

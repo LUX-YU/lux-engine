@@ -52,6 +52,7 @@ namespace lux::render::vulkan
         bool separate_depth_stencil{false};
         bool prefer_dedicated_queues{true};
         bool swapchain_maintenance{false};
+        bool texture_compression_bc{false};
     };
 
     enum class EQueueRole
@@ -163,12 +164,15 @@ namespace lux::render::vulkan
             return timeline_;
         }
 
+        [[nodiscard]] bool textureCompressionBc() const noexcept { return texture_compression_bc_; }
+
         [[nodiscard]] bool swapchainMaintenance() const noexcept
         {
             return swapchain_maintenance_;
         }
 
     private:
+        bool texture_compression_bc_ = false;
         VulkanDevice(
             VkInstance instance,
             VkPhysicalDevice physical,

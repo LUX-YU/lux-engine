@@ -31,5 +31,40 @@ while Main pauses 1.5s; Native buffers 3022 creates/3022 destroys; no GPU valida
 DeferredCompletion 448→456 bytes (one borrowed queue pointer); Request216/Reservation24/Context40,
 Permit16/IpcMessage144/IpcReply296 unchanged. This is not Texture performance qualification.
 
-G11A-2..5 and independent V have not yet run. G11A overall is NOT_COMPLETE; no PASS or push authorized
+G11A-3..5 and independent V have not yet run. G11A overall is NOT_COMPLETE; no PASS or push authorized
 by these internal results alone. G11B–G13 remain NOT_STARTED.
+
+## G11A-2
+
+One Session-owned fixed staging page array, bounded bytes and one TextureUpload candidate per admitted
+upload. Host callbacks copy at most one configured page; only the render owner flushes/submits. Each slice
+is reused only after its actual ticket completes. Restrictive transfer-family copy granularity selects the
+existing graphics queue rather than emitting unsupported row transfers. There is no dedicated allocation
+fallback, production upload thread or second pending request collection.
+
+The existing GpuCompletionReservation admits TextureUpload before first prepare/submit, retaining the
+original RenderRequest in the same DeferredCompletion vector. Native advance proves actual final Graphics
+completion (including Transfer release/acquire); callback publishes business state once. A failed later
+chunk keeps the preceding ticket and source; cancellation advances only toward safe disposal. Shutdown joins
+host prepare before GPU drain and before disposal of source-qualified requests. Ordinary GPU-ready reply
+remains forbidden. UploadOptions is a dependency-light host contract; RenderServer header still does not
+include Vulkan. An initial include leak was caught by the unchanged standalone header gate and corrected.
+
+TextureInfo's existing POD declarations moved verbatim into its own lightweight header, included by the
+original Texture.hpp. No enum, field, size or asset codec was changed. RGBA8 UNORM/SRGB and BC1 SRGB
+validation accounts for complete mip block rows, exact lengths, overflow, color/format flags and device
+format support; BC feature is explicitly requested, not assumed.
+
+Release full all + second no-work and all 67/67 CTests passed, including all original 62 names. Additional
+stop-during-CPU-prepare and second-submit DeviceLost fault cases then passed in texture_progress. DeviceLost
+is the existing test-only Native call fault hook, not an induced physical GPU reset. Original actual accepted
+GPU chunk precedes the failed submit. CPU prepare shutdown uses a latch; source/pin destruction is counted.
+
+Raw samples: build/release/render/native/vulkan/test/texture-chunks.csv and
+build/release/render/runtime/test/texture-progress.csv (copied into evidence/a2 before later runs).
+1/16/64 MiB use 1/16/64 copy chunks with exactly 1 MiB allocated staging. Two independent queues add one
+Graphics acquire submission. Four-mip uncompressed and BC1 readback compares every byte. Dedicated 64 MiB:
+4.2214 ms host memcpy, 13.5027 ms cumulative owner work including polling; native test wall 61.6987 ms
+INCLUDES image/readback allocation and full readback. Runtime wall 259.5463 ms includes IPC and unchanged
+1 ms server sleep across 130 ticks. These are single internal samples, NOT a performance qualification or
+GPU timestamp/bandwidth claim. Texture sampling/region/version publication belong to the following gates.

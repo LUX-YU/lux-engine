@@ -39,6 +39,19 @@ allowed = {
     'modules/function/render/runtime/src/Request.cpp',
     'modules/function/render/runtime/test/CMakeLists.txt',
     'modules/function/render/runtime/test/GpuReady.cpp',
+    'modules/function/render/core/CMakeLists.txt',
+    'modules/function/render/native/vulkan/CMakeLists.txt',
+    'modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/device/Device.hpp',
+    'modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/memory/Memory.hpp',
+    'modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/transfer/TextureUpload.hpp',
+    'modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/transfer/UploadOptions.hpp',
+    'modules/function/render/native/vulkan/pinclude/UploadState.hpp',
+    'modules/function/render/native/vulkan/src/device/Device.cpp',
+    'modules/function/render/native/vulkan/src/transfer/TextureUpload.cpp',
+    'modules/function/render/native/vulkan/test/TextureUpload.cpp',
+    'modules/function/render/runtime/test/TextureProgress.cpp',
+    'modules/resource/description/include/lux/engine/description/Texture.hpp',
+    'modules/resource/description/include/lux/engine/description/TextureInfo.hpp',
 }
 old = tree(baseline)
 assert old == snapshot['baseline_tree']

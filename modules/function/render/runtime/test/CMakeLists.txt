@@ -94,3 +94,17 @@ set_tests_properties(render.runtime.gpu_ready PROPERTIES TIMEOUT 120)
 add_test(NAME render.runtime.gpu_ready_transfer COMMAND render_runtime_gpu_ready_test dedicated)
 add_test(NAME render.runtime.gpu_ready_same_family COMMAND render_runtime_gpu_ready_test same-family)
 set_tests_properties(render.runtime.gpu_ready_transfer render.runtime.gpu_ready_same_family PROPERTIES TIMEOUT 120)
+
+add_executable(render_texture_progress_test TextureProgress.cpp ../src/RenderServer.cpp ../src/Request.cpp)
+
+target_include_directories(render_texture_progress_test PRIVATE ../pinclude ../../native/vulkan/test)
+
+target_link_libraries(render_texture_progress_test PRIVATE render_client render_features
+    render_native_instrumented lux::engine::platform::platform_ipc bcrypt
+)
+
+set_target_properties(render_texture_progress_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.texture_progress COMMAND render_texture_progress_test)
+
+set_tests_properties(render.runtime.texture_progress PROPERTIES TIMEOUT 90)

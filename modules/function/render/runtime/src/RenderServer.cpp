@@ -337,10 +337,28 @@ namespace lux::render
 #ifdef LUX_RUNTIME_TEST_SEAM
                     if (!runtime_detail::test::observeGpuCompletion()) continue;
 #endif
-                    auto completed = gpu.queue->poll();
-                    if (!completed) return cxx::unexpected(completed.error()); // shutdown drains before releasing pins
-                    if (*completed < gpu.ticket->serial()) continue;
-                    auto ready = gpu.ready(gpu.owner.get(), *device);
+                    RenderResult<void> ready;
+                    if (gpu.upload)
+                    {
+                        auto progress = gpu.upload->advance();
+                        if (!progress)
+                        {
+                            if (!gpu.failure) gpu.failure = progress.error();
+                            gpu.upload->cancel(); // retain previous tickets, source, and CPU slice until safe
+                            continue;
+                        }
+                        if (!*progress) continue;
+                        ready = gpu.failure ? RenderResult<void>(cxx::unexpected(*gpu.failure)) :
+                            gpu.texture_ready(gpu.owner.get(), *gpu.upload, *device);
+                        gpu.upload.reset();
+                    }
+                    else
+                    {
+                        auto completed = gpu.queue->poll();
+                        if (!completed) return cxx::unexpected(completed.error()); // shutdown drains before releasing pins
+                        if (*completed < gpu.ticket->serial()) continue;
+                        ready = gpu.ready(gpu.owner.get(), *device);
+                    }
                     gpu.owner.reset(); // release Native pins while the source request still owns its input
 #ifdef LUX_RUNTIME_TEST_SEAM
                     if (ready) runtime_detail::test::gpuReplyPublicationStarted();
@@ -654,6 +672,7 @@ namespace lux::render
             // Close admission first, then wait for all accepted callbacks before releasing any request/Device borrow.
             stop_requested.store(true);
             if (config.join_compile) config.join_compile(config.compile_user);
+            if (device) device->joinUploads();
             publishCompiled(true);
             // GPU-ready owners may contain real in-flight staging. Drain only here, never in tick().
             const bool has_gpu = std::ranges::any_of(deferred, [](const auto& slot) {
@@ -670,7 +689,12 @@ namespace lux::render
                 if (auto* context = std::get_if<vulkan::ExecutionContext*>(&slot.condition))
                     (*context)->releaseReadback();
                 const bool was_submitted = std::holds_alternative<GpuCompletion>(slot.condition);
-                if (was_submitted) std::get<GpuCompletion>(slot.condition).owner.reset();
+                if (was_submitted)
+                {
+                    auto& gpu = std::get<GpuCompletion>(slot.condition);
+                    gpu.upload.reset();
+                    gpu.owner.reset();
+                }
                 // Accepted GPU work may already have side effects; cancellation is not provable.
                 auto result = was_submitted ?
                     slot.request->publish(EOperationOutcome::OUTCOME_UNKNOWN, {}, {}, {}) : slot.request->cancel();
@@ -700,7 +724,8 @@ namespace lux::render
             config.max_reply_bytes < reply_size || config.max_reply_bytes > 256 * 1024 * 1024 ||
             config.completion_capacity == 0 || config.completion_capacity > 128 ||
             config.retirement_capacity == 0 || config.compile_capacity == 0 || config.compile_capacity > 8 ||
-            bool(config.enqueue_compile) != bool(config.join_compile);
+            bool(config.enqueue_compile) != bool(config.join_compile) ||
+            bool(config.uploads.enqueue) != bool(config.uploads.join);
         if (invalid) return cxx::unexpected(RenderError{kRuntimeCapacity});
         SessionIdentity identity{};
         if (BCryptGenRandom(nullptr, reinterpret_cast<PUCHAR>(identity.data()), sizeof(identity),
@@ -783,10 +808,16 @@ namespace lux::render
         options.dynamic_rendering = true;
         options.multiple_queues = s.config.transfer_queues;
         options.prefer_dedicated_queues = s.config.prefer_dedicated_transfer;
+        options.texture_compression_bc = s.config.uploads.enqueue != nullptr;
         options.physical_device_index = s.config.physical_device_index;
         auto device = vulkan::DeviceSession::create(*s.instance, options, 3, s.config.retirement_capacity);
         if (!device) { s.shutdown(); return cxx::unexpected(device.error()); }
         s.device = std::move(*device);
+        if (s.config.uploads.enqueue)
+        {
+            auto uploads = s.device->configureUploads(s.config.uploads);
+            if (!uploads) { s.shutdown(); return cxx::unexpected(uploads.error()); }
+        }
         RenderResult<void> result;
         while (!s.stop_requested.load())
         {

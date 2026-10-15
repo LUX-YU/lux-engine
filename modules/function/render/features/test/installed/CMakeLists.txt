@@ -46,7 +46,7 @@ endforeach()
 
 get_target_property(links lux::engine::render::render_features INTERFACE_LINK_LIBRARIES)
 set(expected lux::engine::render::render_graph lux::engine::render::render_data
-    lux::engine::render::render_protocol
+    lux::engine::render::render_protocol lux::engine::render::render_resource
 )
 if(NOT links STREQUAL expected)
     message(FATAL_ERROR "Unexpected installed Feature dependencies: ${links}")

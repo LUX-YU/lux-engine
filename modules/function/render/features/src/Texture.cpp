@@ -163,12 +163,4 @@ namespace lux::render
         return value;
     }
 
-    const FeatureDefinition& textureFeatureDefinition() noexcept
-    {
-        static const std::array operations{uploadTextureOperation(), uploadTextureRegionOperation(), releaseTextureOperation()};
-        static const FeatureDefinition definition{FeatureTypeIdView("lux.render.Texture"), {1, 0}, nullptr,
-            [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
-            nullptr, operations};
-        return definition;
-    }
 }

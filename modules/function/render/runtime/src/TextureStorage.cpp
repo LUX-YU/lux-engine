@@ -1,4 +1,4 @@
-#include <lux/engine/render/runtime/TextureFeature.hpp>
+#include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include <lux/engine/render/native/vulkan/transfer/TextureUpload.hpp>
@@ -66,13 +66,38 @@ namespace lux::render
         }
     }
 
-    FeatureRegistration textureFeatureRegistration() noexcept
+    StorageRegistration TextureStorage::registration() noexcept
     {
         static const std::array handlers{
             OperationHandler{&uploadTextureOperation(), upload, nullptr, true},
             OperationHandler{&uploadTextureRegionOperation(), region, nullptr, true},
             OperationHandler{&releaseTextureOperation(), release}
         };
-        return {&textureFeatureDefinition(), nullptr, {}, handlers};
+        static const Ops ops{
+            [](const void* value, TextureId id) noexcept -> RenderResult<TexturePublished> {
+                auto* record = static_cast<const vulkan::TextureStorage*>(value)->find(id);
+                if (!record) return cxx::unexpected(RenderError{kStorageDomain});
+                return TexturePublished{id, record->revision()};
+            },
+            [](void* value, TextureId id, std::uint64_t revision) noexcept {
+                return static_cast<vulkan::TextureStorage*>(value)->release(id, revision);
+            }
+        };
+        static const StorageFactory factory{
+            &description, EGraphicsApi::VULKAN, &ops,
+            [](void* device, const void* config) noexcept -> RenderResult<NativeStorage> {
+                auto value = vulkan::TextureStorage::create(*static_cast<vulkan::DeviceSession*>(device),
+                    *static_cast<const Config*>(config));
+                if (!value) return cxx::unexpected(value.error());
+                return NativeStorage{value->release(), [](void* object) noexcept {
+                    delete static_cast<vulkan::TextureStorage*>(object);
+                }};
+            },
+            [](const void* value, const void* config) noexcept {
+                return static_cast<const vulkan::TextureStorage*>(value)->compatibleConfig(
+                    *static_cast<const Config*>(config));
+            }, {}
+        };
+        return {&description, handlers, factory};
     }
 }

@@ -1,6 +1,7 @@
 #include "CompileWorker.hpp"
 #include "TextureFixture.hpp"
-#include <lux/engine/render/runtime/TextureFeature.hpp>
+#include <lux/engine/render/runtime/RenderServer.hpp>
+#include <lux/engine/render/features/Texture.hpp>
 
 using namespace std::chrono_literals;
 
@@ -34,7 +35,7 @@ int main()
     config.uploads = {1024 * 1024, 2, 128 * 1024 * 1024,
         callbacks.compile_user, callbacks.enqueue_compile, callbacks.join_compile};
     auto server = take(RenderServer::create(config));
-    CHECK(server->registerFeature(textureFeatureRegistration()));
+    CHECK(server->registerStorage<lux::render::TextureStorage>());
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool(server->run()); });
     auto a = take(RenderClient::create(config.channel_name));

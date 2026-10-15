@@ -17,6 +17,7 @@ component_add_internal_dependencies(
     lux::engine::render::render_graph
     lux::engine::render::render_data
     lux::engine::render::render_protocol
+    lux::engine::render::render_resource
 )
 
 target_compile_features(render_features PUBLIC cxx_std_20)

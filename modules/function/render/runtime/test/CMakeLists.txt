@@ -1,5 +1,15 @@
 add_executable(render_runtime_test Runtime.cpp)
 
+add_executable(render_storage_registration_test StorageRegistration.cpp)
+
+target_link_libraries(render_storage_registration_test PRIVATE render_runtime)
+
+set_target_properties(render_storage_registration_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.storage_registration COMMAND render_storage_registration_test)
+
+set_tests_properties(render.runtime.storage_registration PROPERTIES TIMEOUT 30)
+
 target_include_directories(render_runtime_test PRIVATE ../../native/vulkan/test)
 target_link_libraries(render_runtime_test PRIVATE render_runtime)
 set_target_properties(render_runtime_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
@@ -46,13 +56,12 @@ add_test(
         -P "${CMAKE_CURRENT_SOURCE_DIR}/../../core/test/Installed.cmake"
 )
 
-foreach(header RenderClient RenderServer Operations TextureFeature)
+foreach(header RenderClient RenderServer Operations)
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" CONTENT
         "#include <lux/engine/render/runtime/${header}.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\nstatic_assert(__cplusplus >= 202002L);\n"
     )
     add_library(render_runtime_header_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")
     # Cooked Program bytes have no Vulkan/OS dependency; do not link Native for this header probe.
-    target_include_directories(render_runtime_header_${header} PRIVATE ../../native/vulkan/include)
     target_link_libraries(render_runtime_header_${header} PRIVATE render_client render_features)
 endforeach()
 
@@ -122,7 +131,7 @@ add_test(NAME render.runtime.texture_operations COMMAND render_texture_operation
 set_tests_properties(render.runtime.texture_operations PROPERTIES TIMEOUT 60)
 
 add_executable(render_texture_rendering_test TextureRendering.cpp ../../native/vulkan/test/Allocation.cpp
-    ../src/RenderServer.cpp ../src/Request.cpp ../src/TextureFeature.cpp
+    ../src/RenderServer.cpp ../src/Request.cpp ../src/TextureStorage.cpp
 )
 
 target_include_directories(render_texture_rendering_test PRIVATE ../../native/vulkan/test ../pinclude)

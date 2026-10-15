@@ -44,6 +44,13 @@ namespace lux::render::vulkan
     class TextureStorage final
     {
     public:
+        [[nodiscard]] static RenderResult<std::unique_ptr<TextureStorage>>
+        create(DeviceSession& session, const TextureStorageConfig& config) noexcept;
+        [[nodiscard]] bool compatibleConfig(const TextureStorageConfig& config) const noexcept
+        {
+            return capacity_ == config.capacity && byte_limit_ == config.byte_limit;
+        }
+
         ~TextureStorage() noexcept;
         TextureStorage(const TextureStorage&) = delete;
         TextureStorage& operator=(const TextureStorage&) = delete;

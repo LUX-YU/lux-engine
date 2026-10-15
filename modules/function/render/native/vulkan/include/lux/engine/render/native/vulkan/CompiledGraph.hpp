@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/features/Feature.hpp>
-#include <lux/engine/render/native/vulkan/Program.hpp>
+#include <lux/engine/render/features/Program.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 
 namespace lux::render::vulkan

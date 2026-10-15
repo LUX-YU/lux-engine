@@ -11,7 +11,7 @@ add_executable(render_features_cost Cost.cpp)
 
 target_link_libraries(render_features_cost PRIVATE render_features)
 
-foreach(header Feature Resources Texture)
+foreach(header Feature Resources Texture Program)
     string(CONCAT probe
         "#include <lux/engine/render/features/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
         "#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native header leaked into Feature\n#endif\n"
@@ -34,7 +34,7 @@ target_link_libraries(render_features_header_TextureInfo PRIVATE render_features
 
 get_target_property(feature_links render_features INTERFACE_LINK_LIBRARIES)
 set(expected_links lux::engine::render::render_graph lux::engine::render::render_data
-    lux::engine::render::render_protocol
+    lux::engine::render::render_protocol lux::engine::render::render_resource
 )
 if(NOT feature_links STREQUAL expected_links)
     message(FATAL_ERROR "Unexpected Feature dependencies: ${feature_links}")

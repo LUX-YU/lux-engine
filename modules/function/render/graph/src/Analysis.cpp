@@ -1,7 +1,7 @@
 #include <lux/engine/render/graph/Analysis.hpp>
 
 #include <queue>
-#include "Range.hpp"
+#include <lux/engine/render/graph/detail/Range.hpp>
 
 namespace lux::render
 {

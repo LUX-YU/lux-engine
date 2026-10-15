@@ -6,7 +6,7 @@
 #include <vector>
 #include <lux/engine/render/features/Texture.hpp>
 
-namespace lux::render::vulkan
+namespace lux::render
 {
     // Cooked SPIR-V and exact entry-point ABI for the current real graphics path.
     // Owned bytes are the identity; no hash-only equality, compiler or parser in this header.

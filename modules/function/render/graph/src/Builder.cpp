@@ -2,7 +2,7 @@
 
 #include <bit>
 #include <numeric>
-#include "Range.hpp"
+#include <lux/engine/render/graph/detail/Range.hpp>
 
 namespace lux::render
 {

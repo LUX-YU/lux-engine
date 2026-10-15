@@ -3,8 +3,9 @@
 #include <lux/engine/render/runtime/Operations.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/features/Feature.hpp>
-#include <lux/engine/render/native/vulkan/Program.hpp>
-#include <lux/engine/render/native/vulkan/transfer/UploadOptions.hpp>
+#include <lux/engine/render/features/Program.hpp>
+#include <lux/engine/render/resource/TransferOptions.hpp>
+#include <lux/engine/render/resource/Factory.hpp>
 
 namespace lux::render
 {
@@ -33,7 +34,7 @@ namespace lux::render
         // Cold explicit Native capability request. Aliased roles still share one physical queue owner.
         bool transfer_queues = false;
         bool prefer_dedicated_transfer = true;
-        vulkan::TextureUploadOptions uploads{}; // null host callbacks disable texture upload admission
+        TransferOptions uploads{}; // null host callbacks disable texture upload admission
         std::size_t texture_capacity = 128;
         std::uint64_t texture_bytes = 256 * 1024 * 1024;
         bool texture_compression_bc = false; // explicitly request BC capability; RGBA-only hosts do not require it
@@ -202,10 +203,18 @@ namespace lux::render
     struct FeatureRegistration final
     {
         const FeatureDefinition* definition;
-        RenderResult<std::vector<vulkan::PassProgram>> (*programs)(const WireView*, std::string_view) noexcept;
+        RenderResult<std::vector<PassProgram>> (*programs)(const WireView*, std::string_view) noexcept;
         std::span<const BufferInitializer> buffers;
         std::span<const OperationHandler> handlers;
         // Immutable metadata/code remain loaded through run()/shutdown.
+    };
+
+    struct StorageRegistration final
+    {
+        const StorageDescriptor* description;
+        std::span<const OperationHandler> handlers;
+        StorageFactory factory;
+        bool optional = false;
     };
 
     struct RenderServerStats final
@@ -225,6 +234,20 @@ namespace lux::render
         RenderServer(const RenderServer&) = delete;
         RenderServer& operator=(const RenderServer&) = delete;
         [[nodiscard]] RenderResult<void> registerFeature(FeatureRegistration feature) noexcept;
+        [[nodiscard]] RenderResult<void> registerStorage(StorageRegistration storage) noexcept;
+
+        template <class T>
+        [[nodiscard]] RenderResult<void> registerStorage() noexcept
+        {
+            return registerStorage(T::registration());
+        }
+
+        template <class T>
+        [[nodiscard]] RenderResult<void> registerFeature() noexcept
+        {
+            return registerFeature(T::registration());
+        }
+
         [[nodiscard]] RenderResult<void> run() noexcept;
         void stop() noexcept;
         [[nodiscard]] RenderServerStats stats() const noexcept;

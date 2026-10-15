@@ -39,12 +39,15 @@ namespace lux::render
         {
             OperationId id;
             OperationHandler binding;
+            const StorageDescriptor* storage = nullptr;
+            bool available = true;
         };
     }
 
     struct RenderServer::Impl final
     {
         [[nodiscard]] RenderResult<void> registerFeature(FeatureRegistration feature) noexcept;
+        [[nodiscard]] RenderResult<void> registerStorage(StorageRegistration storage) noexcept;
         [[nodiscard]] RenderResult<void> run() noexcept;
         void stop() noexcept { stop_requested.store(true); }
         [[nodiscard]] RenderServerStats stats() const noexcept;
@@ -64,6 +67,7 @@ namespace lux::render
         ipc::IpcResponder responder;
         SessionIdentity identity;
         std::vector<FeatureRegistration> features;
+        std::vector<StorageRegistration> storage_types;
         std::vector<BufferInitializer> initializers;
         cxx::SlotMap<OperationEntry, OperationTag> operations;
         std::vector<std::byte> manifest;
@@ -173,10 +177,29 @@ namespace lux::render
             });
         }
 
-        void addOperation(OperationHandler binding) noexcept
+        void addOperation(OperationHandler binding, const StorageDescriptor* storage = nullptr) noexcept
         {
-            auto id = operations.emplace(OperationEntry{{}, binding});
+            auto id = operations.emplace(OperationEntry{{}, binding, storage});
             operations.find(id)->id = id;
+        }
+
+        RenderResult<void> validateHandlers(std::span<const OperationHandler> handlers) const noexcept
+        {
+            for (std::size_t i = 0; i < handlers.size(); ++i)
+            {
+                const auto& handler = handlers[i];
+                if (!handler.descriptor || !handler.invoke) return cxx::unexpected(RenderError{kFeatureContract});
+                if (auto valid = validateOperation(*handler.descriptor); !valid) return valid;
+                if ((handler.descriptor->completion == ECompletionContract::RESOURCE_GPU_READY) != handler.gpu_completion)
+                    return cxx::unexpected(RenderError{kProtocolContract});
+                for (const auto& old : operations)
+                    if (old.binding.descriptor->type.name() == handler.descriptor->type.name())
+                        return cxx::unexpected(RenderError{kFeatureDuplicate});
+                for (std::size_t previous = 0; previous < i; ++previous)
+                    if (handlers[previous].descriptor->type.name() == handler.descriptor->type.name())
+                        return cxx::unexpected(RenderError{kFeatureDuplicate});
+            }
+            return {};
         }
 
         void settle(RenderRequest request, RenderResult<void> result) noexcept
@@ -398,7 +421,7 @@ namespace lux::render
             std::vector<SelectedFeature> selected;
             std::vector<const FeatureRegistration*> registrations;
             std::vector<OwnedWireBytes> config_owners, attachments;
-            std::vector<vulkan::PassProgram> programs;
+            std::vector<PassProgram> programs;
             configs.reserve(count);
             selected.reserve(count);
             config_owners.reserve(count);
@@ -650,7 +673,8 @@ namespace lux::render
                 if (!frame->payload.empty() || clients == 2) result = cxx::unexpected(RenderError{kRuntimeCapacity});
                 else { result = request.reply(std::span<const std::byte>(manifest)); if (result) ++clients; }
             }
-            else if (!entry || frame->session != identity) result = cxx::unexpected(RenderError{kRuntimeIdentity});
+            else if (!entry || !entry->available || frame->session != identity)
+                result = cxx::unexpected(RenderError{kRuntimeIdentity});
             else if (entry->binding.descriptor->reply &&
                 entry->binding.descriptor->reply->fixed_size > frame->reply_capacity - reply_size)
                 result = cxx::unexpected(RenderError{kRuntimeCapacity});
@@ -762,20 +786,12 @@ namespace lux::render
         }
         if (feature.handlers.size() != feature.definition->operations.size())
             return cxx::unexpected(RenderError{kFeatureContract});
+        if (auto valid = s.validateHandlers(feature.handlers); !valid) return valid;
         for (std::size_t i = 0; i < feature.handlers.size(); ++i)
         {
             const auto& handler = feature.handlers[i];
-            if (!handler.descriptor || !handler.invoke) return cxx::unexpected(RenderError{kFeatureContract});
-            if ((handler.descriptor->completion == ECompletionContract::RESOURCE_GPU_READY) != handler.gpu_completion)
-                return cxx::unexpected(RenderError{kProtocolContract});
             if (auto valid = compatibleOperations(feature.definition->operations[i], *handler.descriptor); !valid)
                 return valid;
-            for (const auto& old : s.operations)
-                if (old.binding.descriptor->type.name() == handler.descriptor->type.name())
-                    return cxx::unexpected(RenderError{kFeatureDuplicate});
-            for (std::size_t previous = 0; previous < i; ++previous)
-                if (feature.handlers[previous].descriptor->type.name() == handler.descriptor->type.name())
-                    return cxx::unexpected(RenderError{kFeatureDuplicate});
         }
         for (const auto& handler : feature.handlers) s.addOperation(handler);
         for (const auto& buffer : feature.buffers)
@@ -791,15 +807,6 @@ namespace lux::render
         auto& s = *this;
         if (s.started.exchange(true)) return cxx::unexpected(RenderError{kRuntimeState});
         if (s.stop_requested.load()) { s.shutdown(); return {}; }
-        cxx::BinaryVectorWriter manifest;
-        manifest.writeUnsigned<std::uint32_t>(static_cast<std::uint32_t>(s.operations.size()));
-        for (const auto& entry : s.operations)
-        {
-            manifest.writeUnsigned(entry.id.index);
-            manifest.writeUnsigned(entry.id.gen);
-            writeBlock(manifest, operationBytes(*entry.binding.descriptor));
-        }
-        s.manifest = std::move(manifest).take();
         s.running.store(true);
         auto instance = vulkan::InstanceContext::create({{}, s.config.validation, Impl::diagnostic, &s});
         if (!instance) { s.shutdown(); return cxx::unexpected(instance.error()); }
@@ -809,7 +816,17 @@ namespace lux::render
         options.multiple_queues = s.config.transfer_queues;
         options.prefer_dedicated_queues = s.config.prefer_dedicated_transfer;
         options.texture_compression_bc = s.config.texture_compression_bc;
-        options.texture_descriptors = s.config.uploads.enqueue != nullptr;
+        std::uint32_t required = 0, optional = 0;
+        for (const auto& type : s.storage_types)
+        {
+            if (type.optional) optional |= type.description->required_capabilities;
+            else required |= type.description->required_capabilities;
+            optional |= type.description->optional_capabilities;
+        }
+        options.texture_descriptors = (required & 1) != 0;
+        options.texture_compression_bc |= (required & 2) != 0;
+        options.optional_texture_descriptors = (optional & 1) != 0;
+        options.optional_texture_compression_bc = (optional & 2) != 0;
         options.host_query_reset = s.config.uploads.measure_gpu;
         options.physical_device_index = s.config.physical_device_index;
         auto device = vulkan::DeviceSession::create(*s.instance, options, 3, s.config.retirement_capacity);
@@ -819,9 +836,30 @@ namespace lux::render
         {
             auto uploads = s.device->configureUploads(s.config.uploads);
             if (!uploads) { s.shutdown(); return cxx::unexpected(uploads.error()); }
-            auto textures = s.device->configureTextures(s.config.texture_capacity, s.config.texture_bytes);
-            if (!textures) { s.shutdown(); return cxx::unexpected(textures.error()); }
+            if (s.device->device().textureDescriptors())
+            {
+                auto textures = s.device->configureTextures(s.config.texture_capacity, s.config.texture_bytes);
+                if (!textures) { s.shutdown(); return cxx::unexpected(textures.error()); }
+            }
         }
+        const std::uint32_t capabilities = (s.device->device().textureDescriptors() ? 1u : 0u) |
+            (s.device->device().textureCompressionBc() ? 2u : 0u);
+        std::uint32_t available = 0;
+        for (auto& entry : s.operations)
+        {
+            entry.available = !entry.storage || (entry.storage->required_capabilities & ~capabilities) == 0;
+            available += entry.available;
+        }
+        cxx::BinaryVectorWriter manifest;
+        manifest.writeUnsigned(available);
+        for (const auto& entry : s.operations)
+        {
+            if (!entry.available) continue;
+            manifest.writeUnsigned(entry.id.index);
+            manifest.writeUnsigned(entry.id.gen);
+            writeBlock(manifest, operationBytes(*entry.binding.descriptor));
+        }
+        s.manifest = std::move(manifest).take();
         RenderResult<void> result;
         while (!s.stop_requested.load())
         {
@@ -852,6 +890,29 @@ namespace lux::render
     RenderResult<void> RenderServer::registerFeature(FeatureRegistration feature) noexcept
     {
         return impl_->registerFeature(feature);
+    }
+
+    RenderResult<void> RenderServer::Impl::registerStorage(StorageRegistration storage) noexcept
+    {
+        if (started.load() || !storage.description) return cxx::unexpected(RenderError{kRuntimeState});
+        if (auto valid = validateStorage(*storage.description); !valid) return valid;
+        if (auto valid = validateStorageFactory(*storage.description, storage.factory, EGraphicsApi::VULKAN); !valid)
+            return valid;
+        for (const auto& existing : storage_types)
+        {
+            if (existing.description->type != storage.description->type) continue;
+            if (auto match = compatibleStorage(*existing.description, *storage.description); !match) return match;
+            return cxx::unexpected(RenderError{kFeatureDuplicate});
+        }
+        if (auto valid = validateHandlers(storage.handlers); !valid) return valid;
+        for (const auto& handler : storage.handlers) addOperation(handler, storage.description);
+        storage_types.push_back(std::move(storage));
+        return {};
+    }
+
+    RenderResult<void> RenderServer::registerStorage(StorageRegistration storage) noexcept
+    {
+        return impl_->registerStorage(std::move(storage));
     }
 
     RenderResult<void> RenderServer::run() noexcept { return impl_->run(); }

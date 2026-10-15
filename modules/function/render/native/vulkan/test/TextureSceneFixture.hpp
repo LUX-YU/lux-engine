@@ -2,7 +2,7 @@
 
 #include "shaders/Texture.hpp"
 #include <lux/engine/render/features/Feature.hpp>
-#include <lux/engine/render/native/vulkan/Program.hpp>
+#include <lux/engine/render/features/Program.hpp>
 
 namespace texture_fixture
 {
@@ -107,13 +107,13 @@ namespace texture_fixture
 
     inline const FeatureDefinition definition{type, {1, 0}, &DataSchema<Config>::describe(), describe, build};
 
-    inline std::vector<vulkan::PassProgram> programs(Config c, std::string_view instance = "main")
+    inline std::vector<PassProgram> programs(Config c, std::string_view instance = "main")
     {
-        vulkan::PassProgram draw{featureKey(type, instance, "draw")};
+        PassProgram draw{featureKey(type, instance, "draw")};
         draw.shader = {{vert.begin(), vert.end()}, {frag.begin(), frag.end()}, 2};
         draw.texture = c.texture;
         draw.texture_lod = float(c.lod);
-        std::vector<vulkan::PassProgram> result;
+        std::vector<PassProgram> result;
         result.push_back(std::move(draw));
         result.push_back({featureKey(type, instance, "readback")});
         return result;

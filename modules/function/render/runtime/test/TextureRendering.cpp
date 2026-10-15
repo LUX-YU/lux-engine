@@ -3,7 +3,8 @@
 #include "TextureSceneFixture.hpp"
 #include "Allocation.hpp"
 #include <lux/engine/render/runtime/Operations.hpp>
-#include <lux/engine/render/runtime/TextureFeature.hpp>
+#include <lux/engine/render/runtime/RenderServer.hpp>
+#include <lux/engine/render/features/Texture.hpp>
 #include <fstream>
 #include <latch>
 
@@ -105,7 +106,7 @@ int main(int argc, char** argv)
     config.uploads = {1024 * 1024, 2, 128 * 1024 * 1024,
         &upload_host, PrepareWorker::enqueue, PrepareWorker::join, true};
     auto server = take(RenderServer::create(compiler.configure(config)));
-    CHECK(server->registerFeature(textureFeatureRegistration()));
+    CHECK(server->registerStorage<lux::render::TextureStorage>());
     CHECK(server->registerFeature({&texture_fixture::definition, programs}));
     bool run_ok = false;
     std::thread thread([&] { render_allocation::participate = true; run_ok = bool(server->run()); });

@@ -42,7 +42,7 @@ namespace lux::render::vulkan
         if (timestamps) vkDestroyQueryPool(session.device().native(), timestamps, nullptr);
     }
 
-    RenderResult<void> DeviceSession::configureUploads(const TextureUploadOptions& options) noexcept
+    RenderResult<void> DeviceSession::configureUploads(const TransferOptions& options) noexcept
     {
         const bool invalid = uploads_ || !options.enqueue || !options.join || options.chunk_bytes < 256 ||
             options.chunk_bytes > 16 * 1024 * 1024 || options.staging_pages == 0 || options.staging_pages > 16 ||

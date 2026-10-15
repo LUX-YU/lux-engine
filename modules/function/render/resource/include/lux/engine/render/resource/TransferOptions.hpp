@@ -2,9 +2,9 @@
 
 #include <cstddef>
 
-namespace lux::render::vulkan
+namespace lux::render
 {
-    struct TextureUploadOptions final
+    struct TransferOptions final
     {
         std::size_t chunk_bytes = 1024 * 1024;
         std::size_t staging_pages = 4;

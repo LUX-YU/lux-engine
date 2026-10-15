@@ -61,8 +61,8 @@ add_test(NAME render.native.failures COMMAND render_native_fault_test)
 
 set_tests_properties(render.native.failures PROPERTIES TIMEOUT 90)
 
-foreach(header Program Error DeviceSession CompiledGraph ExecutionContext device/Device memory/Memory
-    transfer/Submission transfer/TextureUpload transfer/UploadOptions texture/TextureStorage retirement/Retirement
+foreach(header Error DeviceSession CompiledGraph ExecutionContext device/Device memory/Memory
+    transfer/Submission transfer/TextureUpload texture/TextureStorage retirement/Retirement
 )
     string(REPLACE "/" "_" target "${header}")
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp"

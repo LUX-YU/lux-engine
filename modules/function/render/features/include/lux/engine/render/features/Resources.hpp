@@ -1,24 +1,11 @@
 #pragma once
 
-#include <lux/cxx/core/Schema.hpp>
+#include <lux/engine/render/resource/Storage.hpp>
 #include <lux/engine/render/graph/Graph.hpp>
 
 namespace lux::render
 {
-    struct StorageTypeTag;
-    using StorageTypeId = cxx::SchemaId<StorageTypeTag>;
-    using StorageTypeIdView = cxx::SchemaIdView<StorageTypeTag>;
-
     enum class EResourceClaim : std::uint8_t { PROVIDE, REQUIRE, OPTIONAL };
-    enum class EResourceScope : std::uint8_t { GLOBAL, SCENE, VIEW, ATTACHMENT };
-
-    struct StorageRequirement final
-    {
-        StorageTypeId type;
-        cxx::SchemaVersion abi;
-        EResourceScope scope = EResourceScope::GLOBAL;
-        bool operator==(const StorageRequirement&) const noexcept = default;
-    };
 
     // Cold initializer for the currently implemented read-only scoped Buffer.
     // This is CPU source data, not a GPU owner or a universal Storage interface.

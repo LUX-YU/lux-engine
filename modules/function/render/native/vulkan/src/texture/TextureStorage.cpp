@@ -15,13 +15,25 @@ namespace lux::render::vulkan
 
     RenderResult<void> DeviceSession::configureTextures(std::size_t capacity, std::uint64_t bytes) noexcept
     {
-        const bool invalid = textures_ || capacity < 16 || capacity > 4096 || capacity % 16 != 0 || bytes == 0;
+        const bool invalid = textures_ || capacity > UINT32_MAX;
         if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
-        if (!device_.textureDescriptors()) return cxx::unexpected(RenderError{kUnsupported});
-        auto storage = std::unique_ptr<TextureStorage>(new TextureStorage(*this, capacity, bytes));
-        if (auto result = storage->initialize(); !result) return result;
-        textures_ = std::move(storage);
+        auto storage = TextureStorage::create(*this, {static_cast<std::uint32_t>(capacity), bytes});
+        if (!storage) return cxx::unexpected(storage.error());
+        textures_ = std::move(*storage);
         return {};
+    }
+
+    RenderResult<std::unique_ptr<TextureStorage>> TextureStorage::create(
+        DeviceSession& session, const TextureStorageConfig& config
+    ) noexcept
+    {
+        const bool invalid = config.capacity < 16 || config.capacity > 4096 || config.capacity % 16 != 0 ||
+            config.byte_limit == 0;
+        if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
+        if (!session.device().textureDescriptors()) return cxx::unexpected(RenderError{kUnsupported});
+        auto storage = std::unique_ptr<TextureStorage>(new TextureStorage(session, config.capacity, config.byte_limit));
+        if (auto result = storage->initialize(); !result) return cxx::unexpected(result.error());
+        return storage;
     }
 
     RenderResult<void> TextureStorage::initialize() noexcept

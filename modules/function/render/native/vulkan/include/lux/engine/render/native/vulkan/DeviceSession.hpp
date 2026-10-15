@@ -6,6 +6,7 @@
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/description/TextureInfo.hpp>
 #include <lux/engine/render/features/Texture.hpp>
+#include <lux/engine/render/resource/TransferOptions.hpp>
 
 namespace lux::render::vulkan
 {
@@ -16,7 +17,6 @@ namespace lux::render::vulkan
     class TextureUpload;
     class TextureStorage;
     class TextureVersion;
-    struct TextureUploadOptions;
     struct TextureUploadStats;
     // Stable Native lifetime root. Bootstrap owns InstanceContext and outlives this object.
     // Queue roles that alias the same VkQueue borrow the same SubmissionQueue owner.
@@ -55,7 +55,7 @@ namespace lux::render::vulkan
         // Boundary lookup compares stable owner identity before inspecting the ticket's queue.
         [[nodiscard]] SubmissionQueue* queueFor(SubmissionTicket ticket) noexcept;
         [[nodiscard]] bool deviceLost() const noexcept;
-        [[nodiscard]] RenderResult<void> configureUploads(const TextureUploadOptions&) noexcept;
+        [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<TextureUpload>> uploadTexture(
             const rdesc::TextureInfo&, std::span<const std::byte>) noexcept;
         [[nodiscard]] TextureUploadStats uploadStats() const noexcept;

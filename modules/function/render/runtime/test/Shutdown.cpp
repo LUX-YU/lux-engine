@@ -39,7 +39,7 @@ namespace lux::render::vulkan::test
     }
 }
 
-static RenderResult<std::vector<vulkan::PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
 {
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());

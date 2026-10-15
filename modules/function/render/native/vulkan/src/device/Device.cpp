@@ -358,6 +358,7 @@ namespace lux::render::vulkan
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
         VkPhysicalDevice selected{};
+        auto enabled_options = options;
         std::array<NativeQueue, 3> queues{};
         int best_score = -1;
         for (std::uint32_t index = 0; index < devices->size(); ++index)
@@ -391,14 +392,14 @@ namespace lux::render::vulkan
             VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
             features.pNext = &supported;
             vkGetPhysicalDeviceFeatures2(physical, &features);
-            const bool missing_texture_features = options.texture_descriptors &&
-                (!supported12.runtimeDescriptorArray || !supported12.descriptorBindingPartiallyBound ||
+            const bool supports_texture_features =
+                !(!supported12.runtimeDescriptorArray || !supported12.descriptorBindingPartiallyBound ||
                  !supported12.descriptorBindingSampledImageUpdateAfterBind ||
                  !supported12.descriptorBindingUpdateUnusedWhilePending ||
                  !supported12.shaderSampledImageArrayNonUniformIndexing ||
                  !features.features.shaderSampledImageArrayDynamicIndexing);
             const bool is_unsupported = properties.apiVersion < VK_API_VERSION_1_3 || !supported.synchronization2 ||
-                                        missing_texture_features ||
+                                        (options.texture_descriptors && !supports_texture_features) ||
                                         (options.dynamic_rendering && !supported.dynamicRendering) ||
                                         (options.multiple_queues && !supported12.timelineSemaphore) ||
                                         (options.host_query_reset && !supported12.hostQueryReset) ||
@@ -442,6 +443,10 @@ namespace lux::render::vulkan
             if (score > best_score)
             {
                 selected = physical;
+                enabled_options.texture_descriptors = options.texture_descriptors ||
+                    (options.optional_texture_descriptors && supports_texture_features);
+                enabled_options.texture_compression_bc = options.texture_compression_bc ||
+                    (options.optional_texture_compression_bc && features.features.textureCompressionBC);
                 for (std::size_t q = 0; q < queues.size(); ++q)
                 {
                     const auto location = (*eligible)[q];
@@ -480,11 +485,11 @@ namespace lux::render::vulkan
         enabled12.timelineSemaphore = options.multiple_queues;
         enabled12.hostQueryReset = options.host_query_reset;
         enabled12.separateDepthStencilLayouts = options.separate_depth_stencil;
-        enabled12.runtimeDescriptorArray = options.texture_descriptors;
-        enabled12.descriptorBindingPartiallyBound = options.texture_descriptors;
-        enabled12.descriptorBindingSampledImageUpdateAfterBind = options.texture_descriptors;
-        enabled12.descriptorBindingUpdateUnusedWhilePending = options.texture_descriptors;
-        enabled12.shaderSampledImageArrayNonUniformIndexing = options.texture_descriptors;
+        enabled12.runtimeDescriptorArray = enabled_options.texture_descriptors;
+        enabled12.descriptorBindingPartiallyBound = enabled_options.texture_descriptors;
+        enabled12.descriptorBindingSampledImageUpdateAfterBind = enabled_options.texture_descriptors;
+        enabled12.descriptorBindingUpdateUnusedWhilePending = enabled_options.texture_descriptors;
+        enabled12.shaderSampledImageArrayNonUniformIndexing = enabled_options.texture_descriptors;
         VkPhysicalDeviceVulkan11Features enabled11{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
         enabled11.multiview = options.multiview;
         VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR enabled_local{
@@ -504,8 +509,8 @@ namespace lux::render::vulkan
             enabled11.pNext = &enabled_local;
         }
         VkPhysicalDeviceFeatures base_features{};
-        base_features.textureCompressionBC = options.texture_compression_bc;
-        base_features.shaderSampledImageArrayDynamicIndexing = options.texture_descriptors;
+        base_features.textureCompressionBC = enabled_options.texture_compression_bc;
+        base_features.shaderSampledImageArrayDynamicIndexing = enabled_options.texture_descriptors;
         VkDeviceCreateInfo info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
         info.pEnabledFeatures = &base_features;
         info.pNext = &enabled;
@@ -523,7 +528,7 @@ namespace lux::render::vulkan
         {
             vkGetDeviceQueue(device, queue.family, queue.index, &queue.handle);
         }
-        return VulkanDevice{instance.native(), selected, device, queues, options};
+        return VulkanDevice{instance.native(), selected, device, queues, enabled_options};
     }
 
     void VulkanDevice::release() noexcept

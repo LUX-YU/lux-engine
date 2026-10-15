@@ -4,7 +4,7 @@
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 #include <atomic>
-#include <lux/engine/render/native/vulkan/transfer/UploadOptions.hpp>
+#include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/features/Texture.hpp>
 
 namespace lux::render::vulkan

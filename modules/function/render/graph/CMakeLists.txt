@@ -9,6 +9,7 @@ add_component(
 component_include_directories(
     render_graph
     BUILD_TIME_EXPORT "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pinclude"
     INSTALL_TIME include
 )
 

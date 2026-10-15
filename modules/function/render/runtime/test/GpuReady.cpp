@@ -234,7 +234,7 @@ static const std::array handlers{
     OperationHandler{&probe, upload, nullptr, true},
     OperationHandler{&cpu, [](void*, RenderRequest& request, OperationContext&) noexcept { return request.reply(EmptyRequest{}); }}
 };
-static RenderResult<std::vector<vulkan::PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
 {
     if (block_compile.load()) { compile_entered->count_down(); compile_resume->wait(); }
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
@@ -493,11 +493,29 @@ int main(int argc, char** argv)
     }
     auto late_reply = wait(*a, send(*a, bound_a, payload_a, 1020));
     CHECK(late_reply.header.outcome == EOperationOutcome::SUCCESS);
+    // A shared Graphics queue may legitimately reject before submit while the four Views progress.
+    // These two scenarios require accepted work: consume explicit capacity refusals and retry under
+    // the existing deadline, without releasing the held completion observation or increasing capacity.
+    unsigned late_admission_backpressure = 0;
+    auto accepted_request = [&](std::uint32_t sample) {
+        auto id = send(*b, bound_b, payload_b, sample);
+        until([&] {
+            if (samples[sample].submit != 0) return true;
+            RenderCompletion result;
+            if (take(b->tryReceive(result)) != ERenderReceive::RECEIVED) return false;
+            CHECK(result.header.request == id && result.header.outcome == EOperationOutcome::FAILED);
+            CHECK(result.header.error.type == vulkan::kCapacity && samples[sample].submit == 0);
+            ++late_admission_backpressure;
+            result = {};
+            id = send(*b, bound_b, payload_b, sample);
+            return false;
+        });
+        return id;
+    };
     std::fprintf(stderr, "stage abandon\n");
     // Abandon does not refund source backing while execution owns it.
     hold_observation.store(true);
-    const auto abandoned = send(*b, bound_b, payload_b, 1021);
-    until([] { return samples[1021].submit != 0; });
+    const auto abandoned = accepted_request(1021);
     const auto charged = b->retainedBytes();
     CHECK(charged >= 1024 * 1024 && b->abandon(abandoned) && b->retainedBytes() == charged);
     hold_observation.store(false);
@@ -510,9 +528,9 @@ int main(int argc, char** argv)
     take(a->submit(create, effect_request)); take(a->submit(create, effect_request));
     stopping_entered.wait();
     hold_observation.store(true);
-    const auto last = send(*b, bound_b, payload_b, 1022);
+    const auto last = accepted_request(1022);
     (void)last;
-    until([] { return samples[1022].submit != 0; });
+    std::printf("lifecycle admission capacity refusals before accepted submit: %u\n", late_admission_backpressure);
     hold_fences.store(true);
     auto read = take(a->bind<AttachmentRequest, ReadbackResult>(operations::readback()));
     const auto command_before = server->stats().commands;

@@ -32,7 +32,7 @@ static std::atomic<bool> pause_programs{false};
 static std::latch* program_entered = nullptr;
 static std::latch* program_resume = nullptr;
 
-static RenderResult<std::vector<vulkan::PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
 {
     if (pause_programs.exchange(false))
     {

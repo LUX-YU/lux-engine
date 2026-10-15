@@ -31,7 +31,7 @@ while Main pauses 1.5s; Native buffers 3022 creates/3022 destroys; no GPU valida
 DeferredCompletion 448→456 bytes (one borrowed queue pointer); Request216/Reservation24/Context40,
 Permit16/IpcMessage144/IpcReply296 unchanged. This is not Texture performance qualification.
 
-G11A-3..5 and independent V have not yet run. G11A overall is NOT_COMPLETE; no PASS or push authorized
+G11A-4..5 and independent V have not yet run. G11A overall is NOT_COMPLETE; no PASS or push authorized
 by these internal results alone. G11B–G13 remain NOT_STARTED.
 
 ## G11A-2
@@ -68,3 +68,38 @@ Graphics acquire submission. Four-mip uncompressed and BC1 readback compares eve
 INCLUDES image/readback allocation and full readback. Runtime wall 259.5463 ms includes IPC and unchanged
 1 ms server sleep across 130 ticks. These are single internal samples, NOT a performance qualification or
 GPU timestamp/bandwidth claim. Texture sampling/region/version publication belong to the following gates.
+
+## G11A-3 storage and open Operation checkpoint
+
+DeviceSession owns exactly one TextureStorage. Its SlotMap allocates session-local business TextureId;
+its bounded StableSlotMap owns independent physical descriptor versions. These are different lifetimes:
+one business identity can temporarily retain old sampled versions. Physical VMA ownership remains in
+DeviceSession; TextureVersion holds a move-only ImagePermit plus View/Sampler, completed/last-use ticket,
+and Context lease count. Descriptor index is never a business ID. Explicit feature checks enable sampled
+image update-after-bind, update-unused-while-pending, partially-bound and array indexing. Descriptor count
+is checked against queried Vulkan indexing limits. Reserved unused slots cannot be sampled before publish.
+
+TextureUpload itself holds the publication reservation; no second transaction owner or Request table.
+Rollback destroys View/Sampler before its image; successful final Graphics completion atomically moves the
+permit and swaps the current version. Failed/duplicate/stale revision writes leave last-good intact.
+Release invalidates TextureId immediately but live physical leases/tickets prevent slot reuse.
+Region updates clone all old mips into a different image on Graphics, restore the source layout, insert
+clone/patch WAW ordering, and pack only the affected padded rows in the host worker. RGBA and BC block
+regions have exact overflow/range/pitch checks. Full replacements incompatible with leased graph dimensions,
+format/layers/mips are rejected instead of invalidating prepared consumers.
+
+Production neutral UploadTexture/UploadTextureRegion/TexturePublished schemas and the optional
+textureFeatureRegistration use the existing open registration path, no Server business switch. Global
+creation works without Scene/View/Effect. Completion and fixed reply extent are reserved before allocation;
+new identity values replace that same validated reply extent before any submit. Publication consumes the
+original DeferredCompletion and TextureUpload, without allocating another callback Owner. A creator Client
+can close; another Client can replace/release the Global texture. Same numeric RequestId tests use distinct
+physical links. The test initially failed because only A had made a locally rejected submission (which also
+advances its request generation). Mirroring that rejected boundary call on B preserves the identity assertion;
+the targeted test passes after correction. No production Client/IPC identity algorithm was changed.
+
+Real Native tests cover descriptor layout/pool/set/view/sampler failures, fixed slot exhaustion, exact
+destruction counts, stale IDs/revisions, pinned physical generations and padded RGBA/BC mip Region readback.
+Validation error count is zero. Full 69-test Release run passed 68, with only the above new fixture failure;
+its corrected targeted rerun passed. All prior 62 tests passed. Cross-Scene sampled consumers and GPU color
+qualification still require G11A-4; these internal results are not the final G11A PASS.

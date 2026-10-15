@@ -136,6 +136,24 @@ namespace lux::render
     GpuCompletionReservation::GpuCompletionReservation(GpuCompletionReservation&& other) noexcept
         : native_(other.native_), slot_(std::exchange(other.slot_, nullptr)), request_(other.request_) {}
 
+    RenderResult<void> GpuCompletionReservation::setReply(std::span<const std::byte> reply) noexcept
+    {
+        if (!slot_ || !request_->active()) return cxx::unexpected(RenderError{kRuntimeState});
+        auto& gpu = std::get<GpuCompletion>(slot_->condition);
+        if (reply.size() != gpu.size) return cxx::unexpected(RenderError{kRuntimeCapacity});
+        if (auto valid = request_->validateReply(reply, gpu.attachment); !valid) return valid;
+        std::copy(reply.begin(), reply.end(), gpu.reply.begin());
+        return {};
+    }
+
+    RenderResult<void> GpuCompletionReservation::commitUpload(std::unique_ptr<vulkan::TextureUpload>& upload) noexcept
+    {
+        return commitUploadOwned(upload, nullptr, [](void*) noexcept {},
+            [](void*, vulkan::TextureUpload& candidate, vulkan::DeviceSession&) noexcept {
+                return candidate.publish();
+            });
+    }
+
     RenderResult<void> GpuCompletionReservation::commitUploadOwned(std::unique_ptr<vulkan::TextureUpload>& upload,
         void* owner, void (*destroy)(void*) noexcept,
         RenderResult<void> (*ready)(void*, vulkan::TextureUpload&, vulkan::DeviceSession&) noexcept) noexcept

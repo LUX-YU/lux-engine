@@ -62,7 +62,7 @@ add_test(NAME render.native.failures COMMAND render_native_fault_test)
 set_tests_properties(render.native.failures PROPERTIES TIMEOUT 90)
 
 foreach(header Program Error DeviceSession CompiledGraph ExecutionContext device/Device memory/Memory
-    transfer/Submission transfer/TextureUpload transfer/UploadOptions retirement/Retirement
+    transfer/Submission transfer/TextureUpload transfer/UploadOptions texture/TextureStorage retirement/Retirement
 )
     string(REPLACE "/" "_" target "${header}")
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp"
@@ -93,3 +93,11 @@ add_executable(render_texture_upload_test TextureUpload.cpp)
 target_link_libraries(render_texture_upload_test PRIVATE render_native_vulkan)
 add_test(NAME render.native.texture_upload COMMAND render_texture_upload_test)
 set_tests_properties(render.native.texture_upload PROPERTIES TIMEOUT 90)
+
+add_executable(render_texture_storage_test TextureStorage.cpp)
+
+target_link_libraries(render_texture_storage_test PRIVATE render_native_instrumented)
+
+add_test(NAME render.native.texture_storage COMMAND render_texture_storage_test)
+
+set_tests_properties(render.native.texture_storage PROPERTIES TIMEOUT 60)

@@ -1,6 +1,7 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include "ExecutionState.hpp"
 #include "UploadState.hpp"
+#include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include <algorithm>
 
 #include <exception>
@@ -50,15 +51,17 @@ namespace lux::render::vulkan
 
     RenderResult<void> DeviceSession::drain() noexcept
     {
+        std::optional<RenderError> failure;
         for (const auto& queue : queue_owners_)
         {
             if (!queue) continue; // Cold construction/teardown, including partially initialized owners.
             if (auto ticket = queue->lastSubmitted())
             {
                 auto result = queue->wait(*ticket, UINT64_MAX);
-                if (!result) return cxx::unexpected(result.error());
+                if (!result && !failure) failure = result.error();
             }
         }
+        if (failure) return cxx::unexpected(*failure);
         return collect();
     }
 
@@ -84,6 +87,7 @@ namespace lux::render::vulkan
             if (auto result = retirement->collect(); !result) return cxx::unexpected(result.error());
         }
         collectScoped();
+        if (textures_) textures_->collect();
         return {};
     }
 
@@ -120,6 +124,7 @@ namespace lux::render::vulkan
         for (auto& entry : scoped_) destroyFinished(entry->backing);
         scoped_.clear();
         uploads_.reset();
+        textures_.reset();
         while (!buffers_.empty()) destroyFinished(&*buffers_.begin());
         // Destroy aliases before allocations, including aliases not explicitly released by the caller.
         for (;;)

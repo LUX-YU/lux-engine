@@ -52,6 +52,18 @@ allowed = {
     'modules/function/render/runtime/test/TextureProgress.cpp',
     'modules/resource/description/include/lux/engine/description/Texture.hpp',
     'modules/resource/description/include/lux/engine/description/TextureInfo.hpp',
+    'modules/function/render/features/CMakeLists.txt',
+    'modules/function/render/features/include/lux/engine/render/features/Texture.hpp',
+    'modules/function/render/features/src/Texture.cpp',
+    'modules/function/render/features/test/CMakeLists.txt',
+    'modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/texture/TextureStorage.hpp',
+    'modules/function/render/native/vulkan/src/texture/TextureStorage.cpp',
+    'modules/function/render/native/vulkan/test/TextureStorage.cpp',
+    'modules/function/render/native/vulkan/test/TextureFixture.hpp',
+    'modules/function/render/runtime/CMakeLists.txt',
+    'modules/function/render/runtime/include/lux/engine/render/runtime/TextureFeature.hpp',
+    'modules/function/render/runtime/src/TextureFeature.cpp',
+    'modules/function/render/runtime/test/TextureOperations.cpp',
 }
 old = tree(baseline)
 assert old == snapshot['baseline_tree']

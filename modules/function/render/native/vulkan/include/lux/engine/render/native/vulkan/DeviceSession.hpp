@@ -5,6 +5,7 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/description/TextureInfo.hpp>
+#include <lux/engine/render/features/Texture.hpp>
 
 namespace lux::render::vulkan
 {
@@ -13,6 +14,7 @@ namespace lux::render::vulkan
     struct ScopeIdentity;
     struct ScopedBuffer;
     class TextureUpload;
+    class TextureStorage;
     struct TextureUploadOptions;
     struct TextureUploadStats;
     // Stable Native lifetime root. Bootstrap owns InstanceContext and outlives this object.
@@ -57,6 +59,8 @@ namespace lux::render::vulkan
             const rdesc::TextureInfo&, std::span<const std::byte>) noexcept;
         [[nodiscard]] TextureUploadStats uploadStats() const noexcept;
         void joinUploads() noexcept;
+        [[nodiscard]] RenderResult<void> configureTextures(std::size_t capacity, std::uint64_t byte_limit) noexcept;
+        [[nodiscard]] TextureStorage* textures() const noexcept { return textures_.get(); }
         [[nodiscard]] RenderResult<BufferPermit> createBuffer(
             VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access
         ) noexcept;
@@ -85,7 +89,10 @@ namespace lux::render::vulkan
         friend struct NativeMemoryAudit;
         friend class RetirementQueue;
         friend class TextureUpload;
+        friend class TextureStorage;
         struct UploadState;
+        [[nodiscard]] RenderResult<std::unique_ptr<TextureUpload>> prepareTextureUpload(
+            const rdesc::TextureInfo&, std::span<const std::byte>, std::optional<TextureRegion>) noexcept;
         [[nodiscard]] RenderResult<BufferAllocation*> createBufferRecord(
             VkDeviceSize size, VkBufferUsageFlags usage, EMemoryAccess access,
             std::span<const std::uint32_t> families = {}) noexcept;
@@ -112,5 +119,6 @@ namespace lux::render::vulkan
         std::vector<std::unique_ptr<ExecutionContext>> contexts_;
         std::uint64_t scoped_creations_ = 0;
         std::unique_ptr<UploadState> uploads_;
+        std::unique_ptr<TextureStorage> textures_;
     };
 }

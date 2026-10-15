@@ -313,6 +313,7 @@ namespace lux::render::vulkan
           separate_depth_stencil_(options.separate_depth_stencil), swapchain_maintenance_(options.swapchain_maintenance)
     {
         texture_compression_bc_ = options.texture_compression_bc;
+        texture_descriptors_ = options.texture_descriptors;
         vkGetPhysicalDeviceProperties(physical, &properties_);
     }
 
@@ -389,7 +390,14 @@ namespace lux::render::vulkan
             VkPhysicalDeviceFeatures2 features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
             features.pNext = &supported;
             vkGetPhysicalDeviceFeatures2(physical, &features);
+            const bool missing_texture_features = options.texture_descriptors &&
+                (!supported12.runtimeDescriptorArray || !supported12.descriptorBindingPartiallyBound ||
+                 !supported12.descriptorBindingSampledImageUpdateAfterBind ||
+                 !supported12.descriptorBindingUpdateUnusedWhilePending ||
+                 !supported12.shaderSampledImageArrayNonUniformIndexing ||
+                 !features.features.shaderSampledImageArrayDynamicIndexing);
             const bool is_unsupported = properties.apiVersion < VK_API_VERSION_1_3 || !supported.synchronization2 ||
+                                        missing_texture_features ||
                                         (options.dynamic_rendering && !supported.dynamicRendering) ||
                                         (options.multiple_queues && !supported12.timelineSemaphore) ||
                                         (options.texture_compression_bc && !features.features.textureCompressionBC) ||
@@ -469,6 +477,11 @@ namespace lux::render::vulkan
         VkPhysicalDeviceVulkan12Features enabled12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
         enabled12.timelineSemaphore = options.multiple_queues;
         enabled12.separateDepthStencilLayouts = options.separate_depth_stencil;
+        enabled12.runtimeDescriptorArray = options.texture_descriptors;
+        enabled12.descriptorBindingPartiallyBound = options.texture_descriptors;
+        enabled12.descriptorBindingSampledImageUpdateAfterBind = options.texture_descriptors;
+        enabled12.descriptorBindingUpdateUnusedWhilePending = options.texture_descriptors;
+        enabled12.shaderSampledImageArrayNonUniformIndexing = options.texture_descriptors;
         VkPhysicalDeviceVulkan11Features enabled11{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
         enabled11.multiview = options.multiview;
         VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR enabled_local{
@@ -489,6 +502,7 @@ namespace lux::render::vulkan
         }
         VkPhysicalDeviceFeatures base_features{};
         base_features.textureCompressionBC = options.texture_compression_bc;
+        base_features.shaderSampledImageArrayDynamicIndexing = options.texture_descriptors;
         VkDeviceCreateInfo info{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
         info.pEnabledFeatures = &base_features;
         info.pNext = &enabled;
@@ -525,7 +539,8 @@ namespace lux::render::vulkan
     }
 
     VulkanDevice::VulkanDevice(VulkanDevice&& other) noexcept
-        : texture_compression_bc_(other.texture_compression_bc_), instance_(other.instance_), physical_(other.physical_), device_(std::exchange(other.device_, VK_NULL_HANDLE)),
+        : texture_compression_bc_(other.texture_compression_bc_), texture_descriptors_(other.texture_descriptors_),
+          instance_(other.instance_), physical_(other.physical_), device_(std::exchange(other.device_, VK_NULL_HANDLE)),
           queue_(other.queue_), queue_family_(other.queue_family_), properties_(other.properties_),
           dynamic_rendering_(other.dynamic_rendering_), queues_(other.queues_), multiview_(other.multiview_),
           local_read_(other.local_read_), timeline_(other.timeline_),
@@ -539,6 +554,7 @@ namespace lux::render::vulkan
         {
             release();
             texture_compression_bc_ = other.texture_compression_bc_;
+            texture_descriptors_ = other.texture_descriptors_;
             instance_ = other.instance_;
             physical_ = other.physical_;
             device_ = std::exchange(other.device_, VK_NULL_HANDLE);

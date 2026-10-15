@@ -12,6 +12,7 @@ set(LUX_NATIVE_SOURCES
     src/memory/Memory.cpp src/transfer/Submission.cpp src/retirement/Retirement.cpp
     src/Compile.cpp src/Shader.cpp src/Execution.cpp
     src/transfer/TextureUpload.cpp
+    src/texture/TextureStorage.cpp
 )
 
 add_component(

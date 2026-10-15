@@ -1,5 +1,6 @@
 #include "UploadState.hpp"
 #include "Native.hpp"
+#include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <algorithm>
 #include <bit>
@@ -87,6 +88,12 @@ namespace lux::render::vulkan
     RenderResult<std::unique_ptr<TextureUpload>> DeviceSession::uploadTexture(
         const rdesc::TextureInfo& info, std::span<const std::byte> source) noexcept
     {
+        return prepareTextureUpload(info, source, {});
+    }
+
+    RenderResult<std::unique_ptr<TextureUpload>> DeviceSession::prepareTextureUpload(
+        const rdesc::TextureInfo& info, std::span<const std::byte> source, std::optional<TextureRegion> region) noexcept
+    {
         const auto layout = format(info.pixel_format);
         const auto max_dimension = device_.properties().limits.maxImageDimension2D;
         const bool bad_extent = info.width <= 0 || info.height <= 0 ||
@@ -124,6 +131,29 @@ namespace lux::render::vulkan
             if (!total) return cxx::unexpected(RenderError{kInvalidArgument});
             expected_offset = *total;
         }
+        if (region)
+        {
+            if (region->mip >= info.mip_count) return cxx::unexpected(RenderError{kInvalidArgument});
+            const auto& mip = info.mip_ranges[region->mip];
+            const bool invalid_offset = region->x >= mip.width || region->y >= mip.height;
+            if (invalid_offset) return cxx::unexpected(RenderError{kInvalidArgument});
+            const bool invalid_range = !region->width || !region->height || region->width > mip.width - region->x ||
+                region->height > mip.height - region->y;
+            const bool invalid_blocks = region->x % layout.extent || region->y % layout.extent ||
+                (region->width % layout.extent && region->width != mip.width - region->x) ||
+                (region->height % layout.extent && region->height != mip.height - region->y);
+            if (invalid_range || invalid_blocks) return cxx::unexpected(RenderError{kInvalidArgument});
+            const auto rows = (region->height + layout.extent - 1) / layout.extent;
+            const std::uint64_t row = ((region->width + layout.extent - 1) / layout.extent) * layout.bytes;
+            const bool invalid_pitch = region->row_pitch < row || region->row_pitch % layout.bytes ||
+                row > uploads_->options.chunk_bytes;
+            if (invalid_pitch) return cxx::unexpected(RenderError{kInvalidArgument});
+            auto stride = cxx::checkedMul<std::uint64_t>(rows - 1, region->row_pitch);
+            if (!stride) return cxx::unexpected(RenderError{kInvalidArgument});
+            auto total = cxx::checkedAdd(*stride, row);
+            if (!total) return cxx::unexpected(RenderError{kInvalidArgument});
+            expected_offset = *total;
+        }
         if (expected_offset != source.size() || source.empty()) return cxx::unexpected(RenderError{kInvalidArgument});
         VkFormatProperties properties{};
         vkGetPhysicalDeviceFormatProperties(device_.physical(), layout.native, &properties);
@@ -141,6 +171,9 @@ namespace lux::render::vulkan
         if (!image) return cxx::unexpected(image.error());
         auto candidate = std::unique_ptr<TextureUpload>(new TextureUpload(*this, info, source, std::move(*image),
             std::size_t(page - state.pages.begin()), layout.extent, layout.bytes));
+        candidate->copy_queue_ = region ? &queue() : state.copy_queue;
+        candidate->region_ = region;
+        if (region) candidate->mip_ = region->mip;
         page->leased = true;
         state.stats.pending_bytes += source.size();
         state.stats.pending_peak = std::max(state.stats.pending_peak, state.stats.pending_bytes);
@@ -156,6 +189,8 @@ namespace lux::render::vulkan
     {
         const bool cpu_active = phase_ == EPhase::CPU_PENDING && !cpu_ready_.load(std::memory_order_acquire);
         if (cpu_active) std::terminate();
+        if (storage_) storage_->rollback(*this);
+        if (base_) --base_->leases_;
         if (image_)
         {
             auto result = ticket_ ? session_->releaseCompleted(image_, *ticket_) : session_->destroyUnsubmitted(image_);
@@ -171,16 +206,33 @@ namespace lux::render::vulkan
 
     RenderResult<ImagePermit> TextureUpload::takeImage() noexcept
     {
-        if (phase_ != EPhase::COMPLETE || cancelled_ || !image_) return cxx::unexpected(RenderError{kBusy});
+        if (phase_ != EPhase::COMPLETE || cancelled_ || !image_ || storage_) return cxx::unexpected(RenderError{kBusy});
         return std::move(image_);
+    }
+
+    RenderResult<void> TextureUpload::publish() noexcept
+    {
+        if (phase_ != EPhase::COMPLETE || cancelled_ || !storage_ || !ticket_)
+            return cxx::unexpected(RenderError{kBusy});
+        storage_->publish(*this);
+        return {};
     }
 
     void TextureUpload::prepare(void* pointer) noexcept
     {
         auto& upload = *static_cast<TextureUpload*>(pointer);
         const auto start = Clock::now();
-        const auto offset = upload.info_.mip_ranges[upload.mip_].offset + upload.row_ * upload.row_bytes_;
-        std::memcpy(upload.mapped_, upload.source_.data() + offset, upload.chunk_size_);
+        if (upload.region_)
+        {
+            for (std::uint32_t row = 0; row < upload.rows_; ++row)
+                std::memcpy(upload.mapped_ + row * upload.row_bytes_,
+                    upload.source_.data() + (upload.row_ + row) * upload.region_->row_pitch, upload.row_bytes_);
+        }
+        else
+        {
+            const auto offset = upload.info_.mip_ranges[upload.mip_].offset + upload.row_ * upload.row_bytes_;
+            std::memcpy(upload.mapped_, upload.source_.data() + offset, upload.chunk_size_);
+        }
         upload.prepare_ns_ = nanoseconds(start);
         upload.cpu_ready_.store(true, std::memory_order_release);
     }
@@ -196,7 +248,7 @@ namespace lux::render::vulkan
             ~Cost() { stats.owner_ns += nanoseconds(start); }
         } cost{state.stats, start};
         if (phase_ == EPhase::COMPLETE) return true;
-        auto& transfer = *state.copy_queue;
+        auto& transfer = *copy_queue_;
         auto& graphics = session_->queue();
         const bool distinct = &transfer != &graphics;
         const bool cross_family = transfer.nativeQueue().family != graphics.nativeQueue().family;
@@ -223,15 +275,17 @@ namespace lux::render::vulkan
         if (phase_ == EPhase::COPY_PENDING)
         {
             row_ += rows_;
-            const auto height = info_.mip_ranges[mip_].height;
+            const auto height = region_ ? region_->height : info_.mip_ranges[mip_].height;
             if (row_ == (height + block_extent_ - 1) / block_extent_) { ++mip_; row_ = 0; }
             phase_ = mip_ == info_.mip_count ? EPhase::ACQUIRE : EPhase::PREPARE;
         }
         if (phase_ == EPhase::PREPARE)
         {
             const auto& mip = info_.mip_ranges[mip_];
-            row_bytes_ = ((mip.width + block_extent_ - 1) / block_extent_) * block_bytes_;
-            rows_ = std::min<std::size_t>((mip.height + block_extent_ - 1) / block_extent_ - row_,
+            const auto width = region_ ? region_->width : mip.width;
+            const auto height = region_ ? region_->height : mip.height;
+            row_bytes_ = ((width + block_extent_ - 1) / block_extent_) * block_bytes_;
+            rows_ = std::min<std::size_t>((height + block_extent_ - 1) / block_extent_ - row_,
                 state.options.chunk_bytes / row_bytes_);
             chunk_size_ = rows_ * row_bytes_;
             cpu_ready_.store(false, std::memory_order_relaxed);
@@ -268,15 +322,52 @@ namespace lux::render::vulkan
                 barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
                 barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
                 vkCmdPipelineBarrier2(batch->native(), &dependency);
+                if (base_)
+                {
+                    auto original = barrier;
+                    original.image = base_->image_->native();
+                    original.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                    original.srcAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+                    original.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+                    original.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+                    original.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    original.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                    dependency.pImageMemoryBarriers = &original;
+                    vkCmdPipelineBarrier2(batch->native(), &dependency);
+                    for (std::uint32_t mip = 0; mip < info_.mip_count; ++mip)
+                    {
+                        VkImageCopy copy{};
+                        copy.srcSubresource = copy.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, 1};
+                        copy.extent = {info_.mip_ranges[mip].width, info_.mip_ranges[mip].height, 1};
+                        vkCmdCopyImage(batch->native(), original.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                            barrier.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+                    }
+                    original.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+                    original.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+                    original.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+                    original.dstAccessMask = VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+                    original.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                    original.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+                    vkCmdPipelineBarrier2(batch->native(), &dependency);
+                    dependency.pImageMemoryBarriers = &barrier;
+                    barrier.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
+                    barrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+                    barrier.oldLayout = barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                    vkCmdPipelineBarrier2(batch->native(), &dependency); // clone -> overlapping patch WAW
+                }
             }
             const auto& mip = info_.mip_ranges[mip_];
+            const auto width = region_ ? region_->width : mip.width;
+            const auto height = region_ ? region_->height : mip.height;
             VkBufferImageCopy region{};
             region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, mip_, 0, 1};
-            region.imageOffset.y = row_ * block_extent_;
-            region.imageExtent = {mip.width, std::min(rows_ * block_extent_, mip.height - row_ * block_extent_), 1};
+            region.imageOffset = {region_ ? std::int32_t(region_->x) : 0,
+                std::int32_t((region_ ? region_->y : 0) + row_ * block_extent_), 0};
+            region.imageExtent = {width, std::min(rows_ * block_extent_, height - row_ * block_extent_), 1};
             vkCmdCopyBufferToImage(batch->native(), page.buffer->native(), barrier.image,
                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-            final = mip_ + 1 == info_.mip_count && row_ + rows_ == (mip.height + block_extent_ - 1) / block_extent_;
+            final = (region_ || mip_ + 1 == info_.mip_count) &&
+                row_ + rows_ == (height + block_extent_ - 1) / block_extent_;
         }
         if (final)
         {
@@ -298,6 +389,7 @@ namespace lux::render::vulkan
         auto accepted = std::move(*batch).submit(wait ? std::span(&*wait, 1) : std::span<const SubmissionWait>{});
         if (!accepted) return cxx::unexpected(accepted.error());
         ticket_ = *accepted;
+        if (base_) base_->last_use_ = *accepted; // Graphics clone and any later patch dominate earlier readers
         initialized_ = true;
         if (!acquiring) ++state.stats.chunks;
         phase_ = final && (!distinct || acquiring) ? EPhase::FINAL_PENDING : EPhase::COPY_PENDING;

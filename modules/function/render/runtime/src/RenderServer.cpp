@@ -809,6 +809,7 @@ namespace lux::render
         options.multiple_queues = s.config.transfer_queues;
         options.prefer_dedicated_queues = s.config.prefer_dedicated_transfer;
         options.texture_compression_bc = s.config.uploads.enqueue != nullptr;
+        options.texture_descriptors = s.config.uploads.enqueue != nullptr;
         options.physical_device_index = s.config.physical_device_index;
         auto device = vulkan::DeviceSession::create(*s.instance, options, 3, s.config.retirement_capacity);
         if (!device) { s.shutdown(); return cxx::unexpected(device.error()); }
@@ -817,6 +818,8 @@ namespace lux::render
         {
             auto uploads = s.device->configureUploads(s.config.uploads);
             if (!uploads) { s.shutdown(); return cxx::unexpected(uploads.error()); }
+            auto textures = s.device->configureTextures(s.config.texture_capacity, s.config.texture_bytes);
+            if (!textures) { s.shutdown(); return cxx::unexpected(textures.error()); }
         }
         RenderResult<void> result;
         while (!s.stop_requested.load())

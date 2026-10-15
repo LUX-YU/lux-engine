@@ -34,6 +34,8 @@ namespace lux::render
         bool transfer_queues = false;
         bool prefer_dedicated_transfer = true;
         vulkan::TextureUploadOptions uploads{}; // null host callbacks disable texture upload admission
+        std::size_t texture_capacity = 128;
+        std::uint64_t texture_bytes = 256 * 1024 * 1024;
     };
 
     // One source-qualified request. Move only for real deferred work; settle before Responder teardown.
@@ -82,6 +84,7 @@ namespace lux::render
     private:
         friend class RenderServer;
         friend class OperationContext;
+        friend class GpuCompletionReservation;
         [[nodiscard]] RenderResult<void>
         validateReply(std::span<const std::byte> payload, const OwnedWireBytes& attachment) const noexcept;
         RenderRequest(platform::ipc::ReceivedRequest input, platform::ipc::IpcResponder& responder,
@@ -106,6 +109,9 @@ namespace lux::render
         GpuCompletionReservation& operator=(GpuCompletionReservation&&) = delete;
         GpuCompletionReservation(const GpuCompletionReservation&) = delete;
         GpuCompletionReservation& operator=(const GpuCompletionReservation&) = delete;
+        // Same reserved byte extent, new values prepared before submit; no growth after admission.
+        [[nodiscard]] RenderResult<void> setReply(std::span<const std::byte>) noexcept;
+        [[nodiscard]] RenderResult<void> commitUpload(std::unique_ptr<vulkan::TextureUpload>&) noexcept;
 
         // Ready runs ONCE after the real Ticket completes, before SUCCESS: certify output and commit business state.
         // Owner pins staging/backing/code. It is destroyed only after completion or cold GPU drain on shutdown.

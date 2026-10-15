@@ -46,7 +46,7 @@ add_test(
         -P "${CMAKE_CURRENT_SOURCE_DIR}/../../core/test/Installed.cmake"
 )
 
-foreach(header RenderClient RenderServer Operations)
+foreach(header RenderClient RenderServer Operations TextureFeature)
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" CONTENT
         "#include <lux/engine/render/runtime/${header}.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\nstatic_assert(__cplusplus >= 202002L);\n"
     )
@@ -108,3 +108,15 @@ set_target_properties(render_texture_progress_test PROPERTIES RUNTIME_OUTPUT_DIR
 add_test(NAME render.runtime.texture_progress COMMAND render_texture_progress_test)
 
 set_tests_properties(render.runtime.texture_progress PROPERTIES TIMEOUT 90)
+
+add_executable(render_texture_operations_test TextureOperations.cpp)
+
+target_include_directories(render_texture_operations_test PRIVATE ../../native/vulkan/test)
+
+target_link_libraries(render_texture_operations_test PRIVATE render_runtime)
+
+set_target_properties(render_texture_operations_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.texture_operations COMMAND render_texture_operations_test)
+
+set_tests_properties(render.runtime.texture_operations PROPERTIES TIMEOUT 60)

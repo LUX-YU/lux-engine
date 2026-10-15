@@ -3,7 +3,7 @@ add_component(
     COMPONENT_NAME render_features
     NAMESPACE lux::engine::render
     OUTPUT_NAME lux_engine_render_features
-    SOURCE_FILES src/Assemble.cpp
+    SOURCE_FILES src/Assemble.cpp src/Texture.cpp
 )
 
 component_include_directories(

@@ -28,7 +28,7 @@ add_component(
     COMPONENT_NAME render_runtime
     NAMESPACE lux::engine::render
     OUTPUT_NAME lux_engine_render_runtime
-    SOURCE_FILES src/RenderServer.cpp src/Request.cpp
+    SOURCE_FILES src/RenderServer.cpp src/Request.cpp src/TextureFeature.cpp
 )
 
 component_include_directories(render_runtime

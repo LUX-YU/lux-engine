@@ -5,9 +5,12 @@
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 #include <atomic>
 #include <lux/engine/render/native/vulkan/transfer/UploadOptions.hpp>
+#include <lux/engine/render/features/Texture.hpp>
 
 namespace lux::render::vulkan
 {
+    class TextureStorage;
+    class TextureVersion;
     struct TextureUploadStats final
     {
         std::uint64_t copied_bytes = 0, chunks = 0, prepare_ns = 0, owner_ns = 0;
@@ -30,6 +33,7 @@ namespace lux::render::vulkan
         [[nodiscard]] std::optional<SubmissionTicket> lastUse() const noexcept { return ticket_; }
         [[nodiscard]] const ImageAllocation& image() const noexcept;
         [[nodiscard]] RenderResult<ImagePermit> takeImage() noexcept;
+        [[nodiscard]] RenderResult<void> publish() noexcept;
         [[nodiscard]] std::uint64_t prepareNs() const noexcept { return prepare_ns_; }
         [[nodiscard]] bool unstartedIn(const DeviceSession& session) const noexcept
         {
@@ -38,6 +42,7 @@ namespace lux::render::vulkan
 
     private:
         friend class DeviceSession;
+        friend class TextureStorage;
         enum class EPhase { PREPARE, CPU_PENDING, COPY, COPY_PENDING, ACQUIRE, FINAL_PENDING, COMPLETE };
         TextureUpload(DeviceSession&, rdesc::TextureInfo, std::span<const std::byte>,
             ImagePermit, std::size_t, std::uint32_t, std::uint32_t) noexcept;
@@ -55,5 +60,11 @@ namespace lux::render::vulkan
         std::optional<SubmissionTicket> ticket_;
         EPhase phase_ = EPhase::PREPARE;
         bool cancelled_ = false, initialized_ = false;
+        TextureStorage* storage_ = nullptr;
+        TextureVersion* version_ = nullptr;
+        TextureId texture_;
+        TextureVersion* base_ = nullptr;
+        std::optional<TextureRegion> region_;
+        SubmissionQueue* copy_queue_ = nullptr;
     };
 }

@@ -26,6 +26,10 @@ def tree(rev):
 
 def allowed(path):
     return path in {
+        'modules/function/render/runtime/pinclude/Deferred.hpp',
+        'modules/function/render/runtime/test/CompileWorker.hpp',
+        'modules/function/render/runtime/test/CMakeLists.txt',
+        'modules/function/render/runtime/test/GpuReady.cpp',
         '.internal/editor-redesign/check_render_s0_g10.py',
         '.internal/editor-redesign/render-g10-implementation.md',
         '.internal/editor-redesign/render-s0-g10-ownership.md',

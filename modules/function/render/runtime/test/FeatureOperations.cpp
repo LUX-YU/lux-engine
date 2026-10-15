@@ -86,7 +86,7 @@ static_assert(!std::is_default_constructible_v<OperationBinding>);
 static_assert(!std::is_default_constructible_v<BoundOperation<Exposure, Exposure>>);
 static_assert(std::is_const_v<std::remove_reference_t<decltype(std::declval<BoundOperation<Exposure, Exposure>>().binding())>>);
 
-static RenderResult<void> setExposure(void* user, RenderRequest& request) noexcept
+static RenderResult<void> setExposure(void* user, RenderRequest& request, OperationContext&) noexcept
 {
     auto& state = *static_cast<FeatureState*>(user);
     const auto start = Clock::now();
@@ -99,7 +99,7 @@ static RenderResult<void> setExposure(void* user, RenderRequest& request) noexce
     return result;
 }
 
-static RenderResult<void> uploadData(void* user, RenderRequest& request) noexcept
+static RenderResult<void> uploadData(void* user, RenderRequest& request, OperationContext&) noexcept
 {
     auto value = request.decode<UploadCustomData>();
     if (!value) return lux::cxx::unexpected(value.error());
@@ -129,7 +129,7 @@ int main()
     FeatureState state;
     const std::array handlers{
         OperationHandler{&exposure, setExposure, &state}, OperationHandler{&upload, uploadData, &state},
-        OperationHandler{&wrong_reply, [](void*, RenderRequest& request) noexcept {
+        OperationHandler{&wrong_reply, [](void*, RenderRequest& request, OperationContext&) noexcept {
             const std::array<std::byte, 3> invalid{};
             return request.reply(std::span<const std::byte>(invalid));
         }}

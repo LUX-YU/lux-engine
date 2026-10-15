@@ -71,3 +71,22 @@ target_link_libraries(render_runtime_operations_test PRIVATE render_runtime)
 set_target_properties(render_runtime_operations_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 add_test(NAME render.runtime.operations COMMAND render_runtime_operations_test)
 set_tests_properties(render.runtime.operations PROPERTIES TIMEOUT 60)
+
+# Real open GPU-ready Feature using the same Runtime and Native algorithms with observation/fault hooks.
+add_executable(render_runtime_gpu_ready_test GpuReady.cpp ../src/RenderServer.cpp ../src/Request.cpp
+    ../../native/vulkan/test/Allocation.cpp
+)
+
+target_compile_definitions(render_runtime_gpu_ready_test PRIVATE LUX_RUNTIME_TEST_SEAM)
+
+target_include_directories(render_runtime_gpu_ready_test PRIVATE ../pinclude ../../native/vulkan/test)
+
+target_link_libraries(render_runtime_gpu_ready_test PRIVATE render_client render_features
+    render_native_instrumented lux::engine::platform::platform_ipc bcrypt
+)
+
+set_target_properties(render_runtime_gpu_ready_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.gpu_ready COMMAND render_runtime_gpu_ready_test)
+
+set_tests_properties(render.runtime.gpu_ready PROPERTIES TIMEOUT 120)

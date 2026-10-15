@@ -7,18 +7,23 @@
 #include <mutex>
 #include <thread>
 
-// Host fixture only: one fixed cold worker, bounded task storage, no IPC or Runtime worker creation.
+// Host fixture only: fixed cold workers, bounded task storage, no IPC or Runtime worker creation.
 class CompileWorker final
 {
 public:
-    CompileWorker() : worker_([this] { work(); }) {}
+    explicit CompileWorker(std::size_t count = 1)
+    {
+        for (std::size_t i = 0; i < count; ++i) workers_.emplace_back([this] { work(); });
+    }
+
     ~CompileWorker()
     {
         join();
         { std::lock_guard lock(mutex_); stopping_ = true; }
-        available_.notify_one();
-        worker_.join();
+        available_.notify_all();
+        for (auto& worker : workers_) worker.join();
     }
+
     lux::render::RenderServerConfig configure(lux::render::RenderServerConfig config)
     {
         config.compile_user = this;
@@ -28,6 +33,7 @@ public:
         config.join_compile = [](void* user) noexcept { static_cast<CompileWorker*>(user)->join(); };
         return config;
     }
+
     void reject(bool value) noexcept { reject_.store(value); }
 private:
     struct Task { void (*run)(void*) noexcept; void* value; };
@@ -41,14 +47,17 @@ private:
             ++count_;
             ++outstanding_;
         }
+
         available_.notify_one();
         return true;
     }
+
     void join() noexcept
     {
         std::unique_lock lock(mutex_);
         settled_.wait(lock, [this] { return outstanding_ == 0; });
     }
+
     void work() noexcept
     {
         for (;;)
@@ -62,13 +71,16 @@ private:
                 first_ = (first_ + 1) % tasks_.size();
                 --count_;
             }
+
             task.run(task.value);
             {
                 std::lock_guard lock(mutex_);
                 --outstanding_;
             }
+
             settled_.notify_all();
         }
+
     }
     std::mutex mutex_;
     std::condition_variable available_, settled_;
@@ -76,7 +88,7 @@ private:
     std::size_t first_ = 0, count_ = 0, outstanding_ = 0;
     bool stopping_ = false;
     std::atomic<bool> reject_{false};
-    std::thread worker_;
+    std::vector<std::thread> workers_;
 };
 
 inline lux::render::RenderResult<std::unique_ptr<lux::render::RenderServer>>

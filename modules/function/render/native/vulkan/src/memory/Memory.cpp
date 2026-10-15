@@ -302,6 +302,20 @@ namespace lux::render::vulkan
         return {};
     }
 
+    RenderResult<void> DeviceSession::releaseCompleted(BufferPermit& permit, SubmissionTicket ticket) noexcept
+    {
+        auto* value = borrow(permit);
+        const bool is_wrong_owner = !value || !queue().owns(ticket);
+        if (is_wrong_owner) return cxx::unexpected(RenderError{kWrongOwner});
+        if (!queue().deviceLost() && queue().completed() < ticket.serial())
+            return cxx::unexpected(RenderError{kBusy});
+        value->retired_ = true;
+        permit.owner_ = nullptr;
+        permit.key_ = {};
+        destroyFinished(value);
+        return {};
+    }
+
     bool DeviceSession::owns(const BufferAllocation* value) const noexcept
     {
         return value && buffers_.find(value->key_) == value;

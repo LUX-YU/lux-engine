@@ -1,4 +1,5 @@
 #include "Wire.hpp"
+#include "Deferred.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
@@ -33,11 +34,6 @@ namespace lux::render
             std::shared_ptr<const vulkan::CompiledGraph> code;
             std::vector<ExecutionGroup> groups;
             std::size_t next_group = 0;
-        };
-        struct PendingReadback final
-        {
-            RenderRequest request;
-            vulkan::ExecutionContext* context;
         };
         struct OperationEntry final
         {
@@ -77,7 +73,7 @@ namespace lux::render
         std::optional<vulkan::InstanceContext> instance;
         std::unique_ptr<vulkan::DeviceSession> device;
         std::vector<RenderRequest> undelivered;
-        std::vector<PendingReadback> readbacks;
+        std::vector<DeferredCompletion> deferred;
         unsigned clients = 0;
         std::size_t next_effect = 0;
         std::atomic<bool> stop_requested{false}, started{false}, running{false};
@@ -89,44 +85,92 @@ namespace lux::render
             : config(std::move(value)), responder(std::move(input)), identity(session)
         {
             undelivered.reserve(128);
-            readbacks.reserve(128);
+            deferred.resize(config.completion_capacity);
             compiling.resize(config.compile_capacity);
-            addOperation({&operations::createScene(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<Impl*>(user)->createScene(request);
-            }, this});
-            addOperation({&operations::removeScene(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<Impl*>(user)->removeScene(request);
-            }, this});
-            addOperation({&operations::createView(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<Impl*>(user)->createView(request);
-            }, this});
-            addOperation({&operations::removeView(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<Impl*>(user)->removeView(request);
-            }, this});
-            addOperation({&operations::createTarget(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<Impl*>(user)->createTarget(request);
-            }, this});
-            addOperation({&operations::resizeTarget(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<Impl*>(user)->resizeTarget(request);
-            }, this});
-            addOperation({&operations::createEffect(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<Impl*>(user)->createEffect(request);
-            }, this});
-            addOperation({&operations::removeEffect(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<Impl*>(user)->removeEffect(request);
-            }, this});
-            addOperation({&operations::attach(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<Impl*>(user)->attach(request);
-            }, this});
-            addOperation({&operations::detach(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<Impl*>(user)->detach(request);
-            }, this});
-            addOperation({&operations::readback(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<Impl*>(user)->readback(request);
-            }, this});
-            addOperation({&operations::stop(), [](void* user, RenderRequest& request) noexcept {
-                return static_cast<Impl*>(user)->stopOperation(request);
-            }, this});
+            addOperation({
+                &operations::createScene(),
+                [](void* user, RenderRequest& request, OperationContext&) noexcept {
+                    return static_cast<Impl*>(user)->createScene(request);
+                },
+                this
+            });
+            addOperation({
+                &operations::removeScene(),
+                [](void* user, RenderRequest& request, OperationContext&) noexcept {
+                    return static_cast<Impl*>(user)->removeScene(request);
+                },
+                this
+            });
+            addOperation({
+                &operations::createView(),
+                [](void* user, RenderRequest& request, OperationContext&) noexcept {
+                    return static_cast<Impl*>(user)->createView(request);
+                },
+                this
+            });
+            addOperation({
+                &operations::removeView(),
+                [](void* user, RenderRequest& request, OperationContext&) noexcept {
+                    return static_cast<Impl*>(user)->removeView(request);
+                },
+                this
+            });
+            addOperation({
+                &operations::createTarget(),
+                [](void* user, RenderRequest& request, OperationContext&) noexcept {
+                    return static_cast<Impl*>(user)->createTarget(request);
+                },
+                this
+            });
+            addOperation({
+                &operations::resizeTarget(),
+                [](void* user, RenderRequest& request, OperationContext&) noexcept {
+                    return static_cast<Impl*>(user)->resizeTarget(request);
+                },
+                this
+            });
+            addOperation({
+                &operations::createEffect(),
+                [](void* user, RenderRequest& request, OperationContext&) noexcept {
+                    return static_cast<Impl*>(user)->createEffect(request);
+                },
+                this
+            });
+            addOperation({
+                &operations::removeEffect(),
+                [](void* user, RenderRequest& request, OperationContext&) noexcept {
+                    return static_cast<Impl*>(user)->removeEffect(request);
+                },
+                this
+            });
+            addOperation({
+                &operations::attach(),
+                [](void* user, RenderRequest& request, OperationContext&) noexcept {
+                    return static_cast<Impl*>(user)->attach(request);
+                },
+                this
+            });
+            addOperation({
+                &operations::detach(),
+                [](void* user, RenderRequest& request, OperationContext&) noexcept {
+                    return static_cast<Impl*>(user)->detach(request);
+                },
+                this
+            });
+            addOperation({
+                &operations::readback(),
+                [](void* user, RenderRequest& request, OperationContext&) noexcept {
+                    return static_cast<Impl*>(user)->readback(request);
+                },
+                this
+            });
+            addOperation({
+                &operations::stop(),
+                [](void* user, RenderRequest& request, OperationContext&) noexcept {
+                    return static_cast<Impl*>(user)->stopOperation(request);
+                },
+                this
+            });
         }
 
         void addOperation(OperationHandler binding) noexcept
@@ -148,13 +192,14 @@ namespace lux::render
 
         void cancelReadbacks(vulkan::ExecutionContext* context) noexcept
         {
-            for (auto it = readbacks.begin(); it != readbacks.end();)
+            for (auto& slot : deferred)
             {
-                if (it->context != context) { ++it; continue; }
-                it->context->releaseReadback();
-                auto result = it->request.cancel();
-                settle(std::move(it->request), result);
-                it = readbacks.erase(it);
+                const auto* current = std::get_if<vulkan::ExecutionContext*>(&slot.condition);
+                if (!current || *current != context) continue;
+                context->releaseReadback();
+                auto result = slot.request->cancel();
+                settle(std::move(*slot.request), result);
+                slot = {};
             }
         }
 
@@ -245,11 +290,15 @@ namespace lux::render
                 return group.scene == input->scene && group.view == input->view && group.target == input->target;
             });
             if (found == effect->groups.end()) return cxx::unexpected(RenderError{kRuntimeIdentity});
-            const bool full = readbacks.size() == readbacks.capacity() || request.replyCapacity() < reply_size + 20 ||
+            auto slot = std::find_if(deferred.begin(), deferred.end(), [](const auto& value) {
+                return std::holds_alternative<std::monostate>(value.condition);
+            });
+            const bool full = slot == deferred.end() || request.replyCapacity() < reply_size + 20 ||
                 found->context->readbackBytes() > request.replyCapacity() - reply_size - 20;
             if (full) return cxx::unexpected(RenderError{kRuntimeCapacity});
             found->context->retainReadback();
-            readbacks.push_back({std::move(request), found->context});
+            slot->request.emplace(std::move(request));
+            slot->condition = found->context;
             return {};
         }
 
@@ -268,17 +317,41 @@ namespace lux::render
                 effect.next_group = effect.groups.empty() ? 0 : (effect.next_group + 1) % effect.groups.size();
             }
             next_effect = effects.empty() ? 0 : (next_effect + 1) % effects.size();
-            for (auto it = readbacks.begin(); it != readbacks.end();)
+            for (auto& slot : deferred)
             {
-                auto result = it->context->readback();
-                if (!result && result.error().type == vulkan::kBusy) { ++it; continue; }
-                it->context->releaseReadback();
-                auto data = result ? own(std::move(*result)) : OwnedWireBytes{};
-                const auto size = data.size();
-                auto reply = result ? it->request.reply(ReadbackResult{{0, 0, size}}, std::move(data)) :
-                    it->request.fail(result.error());
-                settle(std::move(it->request), reply);
-                it = readbacks.erase(it);
+                if (!slot.request) continue;
+                RenderResult<void> reply;
+                if (auto* context = std::get_if<vulkan::ExecutionContext*>(&slot.condition))
+                {
+                    auto result = (*context)->readback();
+                    if (!result && result.error().type == vulkan::kBusy) continue;
+                    (*context)->releaseReadback();
+                    auto data = result ? own(std::move(*result)) : OwnedWireBytes{};
+                    const auto size = data.size();
+                    reply = result ? slot.request->reply(ReadbackResult{{0, 0, size}}, std::move(data)) :
+                        slot.request->fail(result.error());
+                }
+                else
+                {
+                    auto& gpu = std::get<GpuCompletion>(slot.condition);
+#ifdef LUX_RUNTIME_TEST_SEAM
+                    if (!runtime_detail::test::observeGpuCompletion()) continue;
+#endif
+                    auto completed = device->queue().poll();
+                    if (!completed) return cxx::unexpected(completed.error()); // shutdown drains before releasing pins
+                    if (*completed < gpu.ticket->serial()) continue;
+                    auto ready = gpu.ready(gpu.owner.get(), *device);
+                    gpu.owner.reset(); // release Native pins while the source request still owns its input
+#ifdef LUX_RUNTIME_TEST_SEAM
+                    if (ready) runtime_detail::test::gpuReplyPublicationStarted();
+#endif
+                    reply = ready ? slot.request->publish(EOperationOutcome::SUCCESS, {},
+                        std::span<const std::byte>(gpu.reply).first(gpu.size), std::move(gpu.attachment)) :
+                        slot.request->fail(ready.error());
+
+                }
+                settle(std::move(*slot.request), reply);
+                slot = {};
             }
             return device->collect();
         }
@@ -566,7 +639,11 @@ namespace lux::render
             else
             {
                 result = validateBoundWire(request.payload(), {config.max_wire_bytes, SIZE_MAX});
-                if (result) result = entry->binding.invoke(entry->binding.user, request);
+                if (result)
+                {
+                    OperationContext context(*device, deferred, request);
+                    result = entry->binding.invoke(entry->binding.user, request, context);
+                }
             }
             settle(std::move(request), result);
             ++commands;
@@ -578,7 +655,28 @@ namespace lux::render
             stop_requested.store(true);
             if (config.join_compile) config.join_compile(config.compile_user);
             publishCompiled(true);
-            while (!readbacks.empty()) cancelReadbacks(readbacks.back().context);
+            // GPU-ready owners may contain real in-flight staging. Drain only here, never in tick().
+            const bool has_gpu = std::ranges::any_of(deferred, [](const auto& slot) {
+                return slot.request && std::holds_alternative<GpuCompletion>(slot.condition);
+            });
+            if (has_gpu && device)
+            {
+                auto drained = device->drain();
+                if (!drained && !device->queue().deviceLost()) std::terminate();
+            }
+            for (auto& slot : deferred)
+            {
+                if (!slot.request) continue;
+                if (auto* context = std::get_if<vulkan::ExecutionContext*>(&slot.condition))
+                    (*context)->releaseReadback();
+                const bool was_submitted = std::holds_alternative<GpuCompletion>(slot.condition);
+                if (was_submitted) std::get<GpuCompletion>(slot.condition).owner.reset();
+                // Accepted GPU work may already have side effects; cancellation is not provable.
+                auto result = was_submitted ?
+                    slot.request->publish(EOperationOutcome::OUTCOME_UNKNOWN, {}, {}, {}) : slot.request->cancel();
+                settle(std::move(*slot.request), result);
+                slot = {};
+            }
             undelivered.clear();
             responder.reset();
             effects.clear();
@@ -600,6 +698,7 @@ namespace lux::render
         const bool invalid = config.requests_per_tick == 0 || config.requests_per_tick > 128 ||
             config.max_wire_bytes < reply_size || config.max_wire_bytes > wire_limits.max_wire_bytes ||
             config.max_reply_bytes < reply_size || config.max_reply_bytes > 256 * 1024 * 1024 ||
+            config.completion_capacity == 0 || config.completion_capacity > 128 ||
             config.retirement_capacity == 0 || config.compile_capacity == 0 || config.compile_capacity > 8 ||
             bool(config.enqueue_compile) != bool(config.join_compile);
         if (invalid) return cxx::unexpected(RenderError{kRuntimeCapacity});
@@ -642,7 +741,7 @@ namespace lux::render
         {
             const auto& handler = feature.handlers[i];
             if (!handler.descriptor || !handler.invoke) return cxx::unexpected(RenderError{kFeatureContract});
-            if (handler.descriptor->completion == ECompletionContract::RESOURCE_GPU_READY)
+            if ((handler.descriptor->completion == ECompletionContract::RESOURCE_GPU_READY) != handler.gpu_completion)
                 return cxx::unexpected(RenderError{kProtocolContract});
             if (auto valid = compatibleOperations(feature.definition->operations[i], *handler.descriptor); !valid)
                 return valid;

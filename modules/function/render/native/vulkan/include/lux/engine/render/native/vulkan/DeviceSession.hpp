@@ -64,6 +64,8 @@ namespace lux::render::vulkan
         // Caller proves no accepted GPU work uses this candidate. Failure preserves the permit.
         [[nodiscard]] RenderResult<void> destroyUnsubmitted(BufferPermit& permit) noexcept;
         [[nodiscard]] RenderResult<void> destroyUnsubmitted(ImagePermit& permit) noexcept;
+        // Cold completed-use release; accepted GPU work never goes through destroyUnsubmitted.
+        [[nodiscard]] RenderResult<void> releaseCompleted(BufferPermit& permit, SubmissionTicket last_use) noexcept;
         void releaseScope(SceneId scene, ViewId view = {}) noexcept;
 
     private:

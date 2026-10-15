@@ -36,6 +36,7 @@ def main():
     parser.add_argument("--snapshot", type=Path, required=True)
     parser.add_argument("--user-source", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--extension", action="store_true")
     args = parser.parse_args()
     root = args.source.resolve()
     snapshot = json.loads(args.snapshot.read_text(encoding="utf-8-sig"))
@@ -69,6 +70,12 @@ def main():
         assert git(dependency, "rev-parse", "HEAD") == state["sha"], name
         assert git(dependency, "status", "--porcelain") == state["status"], name
     subprocess.run(["git", "-C", str(root), "diff", "--check"], check=True)
+    if args.extension:
+        extension_base = "6ad87a920bc1194caca5d7626e6d59c3e5a36766"
+        extension_changes = set(git(root, "diff", "--name-only", extension_base).splitlines())
+        extension_changes.update(git(root, "ls-files", "--others", "--exclude-standard").splitlines())
+        for path in extension_changes:
+            assert "/test/" in path or path.startswith(".internal/editor-redesign/"), f"Extension changed core: {path}"
     result = {"baseline": BASELINE, "head": git(root, "rev-parse", "HEAD"), "legacy": 719,
               "user_sha256": snapshot["user_sha256"], "dependencies": snapshot["dependencies"],
               "changed": sorted(changed), "status": "PASS (protection only)"}

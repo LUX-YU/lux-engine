@@ -190,3 +190,110 @@ file changed and full original status/hash checks passed afterwards. This proced
 
 R5 still must prove typed Server registration, CRUD/Readback Operations, installed external consumer and
 final independent I/V. This checkpoint is not final G11A-R PASS.
+
+## R5 final implementation — external extension and qualification boundary
+
+Repository LUX-YU/lux-engine; delivery branch codex/render-v2-rebuild. Original and freshly fetched remote
+HEAD remain d5b4ff0ad792dd8e2d9ada7c26bda3c86fc33959. Construction source is the isolated
+E:/RenderV2Rebuild/G11AR/source worktree. Dependency and original dirty-tree hashes remain those in R0.
+The final I is the commit containing this section; its exact SHA is recorded by the subsequent independent
+V, avoiding a self-referential commit hash. R0–R4 checkpoint commits retain their intermediate limits.
+
+The external extension is implemented under native/vulkan/test/extension and runtime/test/BufferExtension.*.
+It uses real public SDK APIs, registerStorage<TestBufferStorage>(), registerFeature<TestBufferFeature>(),
+the original Operation SlotMap, generational BufferId, original Deferred completion and common Native
+Transfer. Create/update/remove/readback operate on real VkBuffers; Shader sampling multiplies Root Texture
+by Buffer values through the normal Feature→Graph→Compiler→Attach→execute path. Expected pixels are 64,
+32 and 128. Removal rejects old IDs while existing prepared consumers pin their old valid backing; reuse
+changes generation. A returned CPU Readback owner survives Server/Client destruction. Two distinct Features
+share the Root Texture across two Scenes/four Views. Stable rendering Engine new=0 is asserted.
+
+The installed runtime consumer compiles this external extension against a fresh, relocated SDK. Its only
+source-tree includes are TEST fixture sources, not private or public production include directories.
+The independent neutral Buffer description header compiles without Vulkan. R5 changes only tests and
+current construction evidence. check_render_g11ar.py --extension mechanically rejects any production
+change after R4 (6ad87a920bc1194caca5d7626e6d59c3e5a36766), including new untracked files.
+
+A material-like indirect consumer acquires an actual Texture backing plus Registry use, removes its
+business ID and closes the Root domain, then performs real GPU readback. The instance survives exactly
+until the indirect reference is released. This is a lifetime proof, not an implementation of MaterialStorage.
+
+### Final responsibility / state accounting
+
+* DeviceSession: one Device/VMA allocation ledger, physical queue owners, Retirement and ResourceRegistry.
+  Deleted two specialized owners (textures_ and scoped_) and duplicate Graphics queue/family fields.
+* Registry: domain generations/parent scopes and native instance ownership. One descriptor/factory record
+  per type; one instance per domain/type/key/config. Factory/compatibility/name checks occur in cold calls.
+* Context: Attachment domain and prepared StorageUse records retain actual physical consumers. Per-frame
+  code directly reads prepared descriptors, parameters and last-ticket destinations. Graph transient
+  allocations stay in Context; no second Registry/Graph/Storage owner.
+* Transfer: one Buffer/Image staging/chunk/queue/ticket machine. TextureUpload is professional candidate
+  publication around it. GpuWork erases this work into the existing Deferred slot; the original request
+  is the sole retained input owner. No new worker, IPC queue, Operation table or pending-request collection.
+* Effect: immutable code plus separate concrete StorageArguments. Shader identity/layout remains static,
+  asset values do not multiply compiled graphs. TextureUse and external Buffer Use pin physical backing;
+  only professional code decides whether future bindings migrate on update.
+
+G11A_R_CHANGE_INVENTORY.json lists all 54 production/build files and per-file named class/struct definition
+changes (33 additions, 10 removals; moves count on both sides; enums and forwards excluded). These are
+definition locations, not 23 new runtime owners. Program/PassProgram/StorageRequirement/Range and
+GpuCompletionReservation move; new descriptor/value records carry actual consumers. The substantial new
+owners are the single Registry (replacing two specialized tables) and common Transfer (extracted from
+TextureUpload). Every public contract has a compiled consumer. No production change is made in IPC,
+Data, Protocol, Core, Legacy or historical reports/checkers.
+
+Changes by purpose: Resource adds neutral description/factory/domain contracts; Feature owns neutral
+Program and Texture binding data; Graph moves its private Range include and validates STORAGE_READ;
+Native resolves generic bindings/transfer/retirement/reflection; Runtime installs typed registrations,
+domains and generic Deferred work; gapi adds only recoverable descriptor-layout creation. No per-frame
+Schema/type/name checks or fallible wrappers for ordinary computations were added.
+
+### Measured costs and explicit limitations
+
+Implementation Release measurements: Binding=32 bytes (unchanged); Context=232 (G11A 224); RetirementEntry=72
+(G11A 32, now three independent physical-queue conditions); PreparedStorageBinding=64, StorageUse=80,
+ResourceRegistry=240, ResourceDomain=24, StorageFactory=72. Existing 10k allocation/binding ledger test remains
+1,343,640 bytes/61 new calls. 1000 Registry Scene domains + instances, one-byte dummy native owners included:
+1111 cold new calls, 424,673 cumulative requested bytes. This is CPU metadata cost, not GPU residency or
+peak live memory. The allocation fixture now additionally counts bytes; no end-to-end allocation-free upload
+claim is made. Four-View steady rendering remains checked for zero Engine new; driver allocations are separate.
+
+All original capacities/backing charges remain: no increase to Reply, Queue, staging or resident budgets to
+obtain a PASS. Existing 1/16/64 MiB, Mip/BC/Region, source backing budget, partial-submit, DeviceLost injection,
+two compile workers, Main 64 Reply/1.5s backpressure and client stop/abandon tests remain in the full suite.
+Physical queue evidence on RTX 4070 Laptop: alias 0:0, same-family 0:2, dedicated transfer 1:0. Common Buffer
+upload exercises all three; Texture exercises alias/dedicated and prior G10 covers same-family real submits.
+
+Controlled external SleepProbe (same MSVC /O2, 1000 samples each, no timer-resolution changes) measured actual
+sleep_for(100us): p50/p95/p99/max 15.5442/16.0940/16.2559/16.7001 ms; sleep_for(1ms):
+15.5319/16.0970/16.2836/16.7268 ms. Slow GPU-ready observation/consumption segments have the same ~15ms scale.
+This demonstrates a scheduling contribution, not proof that every tail has the same cause. No production
+timing/queue optimization was made. Full per-sample raw CSV, GPU timestamp scope and equal-workload baseline
+comparison are retained in the final V archive; no claim of speedup from code structure is made.
+
+### Retained R5 failures and fixes
+
+The first external ReadBuffer registration used RESULT_AVAILABLE with gpu_completion=true; registration
+correctly rejected that inconsistent descriptor. The fixture uses RESOURCE_GPU_READY for its actual GPU copy.
+No production registration guard was weakened.
+
+An implementation all-test run passed 79/79 (96.07s). While recapturing a log overwritten by CTest --show-only,
+gpu_ready's late-reply sample 1020 failed. Diagnostic reproduction on the third repeated run proved
+outcome=FAILED, error=7356206049137219893 (vulkan::kCapacity), submit=0, fence=0. This is the same legitimate
+pre-submit backpressure already handled by the 1000 measurement samples and 1021/1022 scenarios. The late
+reply fixture now consumes ONLY this explicit refusal and retries within the unchanged 10-second admission
+bound. Unknown errors still fail; all successful GPU byte/owner/late destruction assertions remain. No Native
+capacity, GPU observation hold, production lifetime or timeout was relaxed. Original failures are retained
+as r5-late-reply-failure.log, r5-late-reply-reproduction.log and r5-late-reply-diagnostic.log.
+
+Root TOOLCHAIN was actually reconfigured in build/root-r5 and remains BLOCKED by missing render/client,
+feature_client.cmake and render/standard_content, with their dependent export errors. No placeholders.
+Existing warnings are preserved (including duplicate EOS Overlay layer warnings); Validation errors must
+be zero. IPC R2 historical PARTIAL is unchanged. Linux/Android builds and TSan are NOT_RUN. General shader
+block layouts, Material/Instance/Mesh products, G11B–G13 are OUT_OF_SCOPE/NOT_STARTED.
+
+The corrected final implementation gate passed: full all -j4 -- -k0, second no-work, all 79 tests (97.88s)
+and protection check. Full successful LastTest output and 23 raw CSVs are in evidence/r5-implementation;
+the original 72 names are all present and the seven added names are explicitly listed in test-names.json.
+Final three-configuration clean-clone V and immutable evidence archive are separate mandatory gates; this
+implementation record alone does not declare final architectural PASS.

@@ -1,4 +1,5 @@
 #include "TextureFixture.hpp"
+#include "TextureReadback.hpp"
 #include "extension/NativeBuffer.hpp"
 #include "extension/Feature.hpp"
 #include "extension/WrongBlock.hpp"
@@ -98,7 +99,21 @@ int main()
     CHECK(session->release(replacement));
     CHECK(session->collect());
     CHECK(buffer.backingCount() == 0);
-    CHECK(textures(*session)->release(texture, 1));
+    // Minimal indirect Material-like owner: a stored Texture reference survives both its creator
+    // and the Root domain. It is the sole future user, and keeps the backing through a REAL copy ticket.
+    auto& registry = session->resources();
+    auto texture_instance = take(registry.find(registry.root(), "default", lux::render::TextureStorage::description));
+    auto* storage = textures(*session);
+    auto* indirect = take(storage->acquire(texture));
+    registry.retain(texture_instance);
+    CHECK(storage->release(texture, 1));
+    CHECK(registry.closeDomain(registry.root()));
+    CHECK(registry.native(texture_instance) == storage);
+    const auto copied = read(*session, *indirect);
+    CHECK(std::ranges::equal(copied, white));
+    storage->releaseLease(*indirect); // read() waited the actual accepted copy ticket
+    registry.release(texture_instance);
+    CHECK(!registry.native(texture_instance));
     CHECK(session->drain());
     code.reset();
     session.reset();

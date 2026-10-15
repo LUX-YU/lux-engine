@@ -492,7 +492,22 @@ int main(int argc, char** argv)
         render_allocation::window.store(false);
         engine_new[i - 20] = render_allocation::calls.load();
     }
+    const auto late_deadline = Clock::now() + 10s;
     auto late_reply = wait(*a, send(*a, bound_a, payload_a, 1020));
+    while (late_reply.header.outcome == EOperationOutcome::FAILED && late_reply.header.error.type == vulkan::kCapacity)
+    {
+        // This scenario tests a published reply outliving its Server. A legitimate pre-submit refusal
+        // is not that scenario: consume it and obtain accepted work without weakening the final oracle.
+        CHECK(samples[1020].submit == 0 && samples[1020].fence == 0 && Clock::now() < late_deadline);
+        std::fprintf(stderr, "late reply pre-submit capacity refusal; source retained, bounded retry\n");
+        late_reply = {};
+        std::this_thread::sleep_for(1ms);
+        late_reply = wait(*a, send(*a, bound_a, payload_a, 1020));
+    }
+    if (late_reply.header.outcome != EOperationOutcome::SUCCESS)
+        std::fprintf(stderr, "late reply outcome=%u error=%llu capacity=%llu submit=%lld fence=%lld\n",
+            unsigned(late_reply.header.outcome), late_reply.header.error.type, vulkan::kCapacity,
+            samples[1020].submit.load(), samples[1020].fence.load());
     CHECK(late_reply.header.outcome == EOperationOutcome::SUCCESS);
     // A shared Graphics queue may legitimately reject before submit while the four Views progress.
     // These two scenarios require accepted work: consume explicit capacity refusals and retry under

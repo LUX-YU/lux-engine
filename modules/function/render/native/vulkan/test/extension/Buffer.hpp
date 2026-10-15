@@ -4,6 +4,8 @@
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
 
+namespace lux::render { struct StorageRegistration; }
+
 namespace extension_test
 {
     using namespace lux::render;
@@ -19,6 +21,7 @@ namespace extension_test
         };
         static inline constexpr ShaderBinding bindings[]{{1, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16}};
         static const StorageDescriptor description;
+        static StorageRegistration registration() noexcept;
         struct Ops final { bool (*exists)(const void*, BufferId) noexcept; };
         class Access final
         {

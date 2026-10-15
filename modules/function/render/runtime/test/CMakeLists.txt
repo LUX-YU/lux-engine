@@ -154,3 +154,23 @@ add_test(NAME render.runtime.texture_rendering COMMAND render_texture_rendering_
 add_test(NAME render.runtime.texture_rendering_alias COMMAND render_texture_rendering_test alias)
 
 set_tests_properties(render.runtime.texture_rendering render.runtime.texture_rendering_alias PROPERTIES TIMEOUT 90)
+
+add_executable(render_buffer_extension_test BufferExtension.cpp ../../native/vulkan/test/Allocation.cpp)
+
+target_include_directories(render_buffer_extension_test PRIVATE ../../native/vulkan/test)
+
+target_link_libraries(render_buffer_extension_test PRIVATE render_runtime)
+
+set_target_properties(render_buffer_extension_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.buffer_extension COMMAND render_buffer_extension_test)
+
+set_tests_properties(render.runtime.buffer_extension PROPERTIES TIMEOUT 60)
+
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/ExtensionHeader.cpp" CONTENT
+    "#include \"${CMAKE_CURRENT_SOURCE_DIR}/../../native/vulkan/test/extension/Buffer.hpp\"\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\nstatic_assert(__cplusplus >= 202002L);\n"
+)
+
+add_library(render_extension_header OBJECT "${CMAKE_CURRENT_BINARY_DIR}/ExtensionHeader.cpp")
+
+target_link_libraries(render_extension_header PRIVATE render_features)

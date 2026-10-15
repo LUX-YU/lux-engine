@@ -1,0 +1,220 @@
+{
+  "definition_count_method": "Named class/struct definitions by file; moves appear as removal+addition; enums/forward declarations/templates aliases excluded. Exact per-file names attached.",
+  "production_files": [
+    "cmake/render-v2-bootstrap/CMakeLists.txt",
+    "modules/function/render/CMakeLists.txt",
+    "modules/function/render/features/CMakeLists.txt",
+    "modules/function/render/features/include/lux/engine/render/features/Program.hpp",
+    "modules/function/render/features/include/lux/engine/render/features/Resources.hpp",
+    "modules/function/render/features/include/lux/engine/render/features/Texture.hpp",
+    "modules/function/render/features/src/Texture.cpp",
+    "modules/function/render/graph/CMakeLists.txt",
+    "modules/function/render/graph/include/lux/engine/render/graph/Graph.hpp",
+    "modules/function/render/graph/pinclude/lux/engine/render/graph/detail/Range.hpp",
+    "modules/function/render/graph/src/Analysis.cpp",
+    "modules/function/render/graph/src/Builder.cpp",
+    "modules/function/render/native/vulkan/CMakeLists.txt",
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/CompiledGraph.hpp",
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/DeviceSession.hpp",
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/ExecutionContext.hpp",
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/Program.hpp",
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/StorageBinding.hpp",
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/device/Device.hpp",
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/memory/Memory.hpp",
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/retirement/Retirement.hpp",
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/texture/TextureStorage.hpp",
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/transfer/GpuWork.hpp",
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/transfer/TextureUpload.hpp",
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/transfer/Transfer.hpp",
+    "modules/function/render/native/vulkan/pinclude/ExecutionState.hpp",
+    "modules/function/render/native/vulkan/pinclude/Shader.hpp",
+    "modules/function/render/native/vulkan/pinclude/UploadState.hpp",
+    "modules/function/render/native/vulkan/src/Compile.cpp",
+    "modules/function/render/native/vulkan/src/DeviceSession.cpp",
+    "modules/function/render/native/vulkan/src/Execution.cpp",
+    "modules/function/render/native/vulkan/src/Shader.cpp",
+    "modules/function/render/native/vulkan/src/device/Device.cpp",
+    "modules/function/render/native/vulkan/src/retirement/Retirement.cpp",
+    "modules/function/render/native/vulkan/src/texture/TextureStorage.cpp",
+    "modules/function/render/native/vulkan/src/transfer/GpuWork.cpp",
+    "modules/function/render/native/vulkan/src/transfer/TextureUpload.cpp",
+    "modules/function/render/native/vulkan/src/transfer/Transfer.cpp",
+    "modules/function/render/resource/CMakeLists.txt",
+    "modules/function/render/resource/include/lux/engine/render/resource/Factory.hpp",
+    "modules/function/render/resource/include/lux/engine/render/resource/ResourceRegistry.hpp",
+    "modules/function/render/resource/include/lux/engine/render/resource/Storage.hpp",
+    "modules/function/render/resource/include/lux/engine/render/resource/TransferOptions.hpp",
+    "modules/function/render/resource/src/ResourceRegistry.cpp",
+    "modules/function/render/resource/src/Storage.cpp",
+    "modules/function/render/runtime/CMakeLists.txt",
+    "modules/function/render/runtime/include/lux/engine/render/runtime/RenderServer.hpp",
+    "modules/function/render/runtime/include/lux/engine/render/runtime/TextureFeature.hpp",
+    "modules/function/render/runtime/include/lux/engine/render/runtime/vulkan/GpuCompletion.hpp",
+    "modules/function/render/runtime/pinclude/Deferred.hpp",
+    "modules/function/render/runtime/src/RenderServer.cpp",
+    "modules/function/render/runtime/src/Request.cpp",
+    "modules/function/render/runtime/src/TextureStorage.cpp",
+    "modules/platform/gapi/include/lux/engine/gapi/vk/Descriptor.hpp"
+  ],
+  "numstat": "3\t1\tcmake/render-v2-bootstrap/CMakeLists.txt\n3\t1\tmodules/function/render/CMakeLists.txt\n1\t0\tmodules/function/render/features/CMakeLists.txt\n53\t0\tmodules/function/render/features/include/lux/engine/render/features/Program.hpp\n1\t23\tmodules/function/render/features/include/lux/engine/render/features/Resources.hpp\n93\t1\tmodules/function/render/features/include/lux/engine/render/features/Texture.hpp\n0\t8\tmodules/function/render/features/src/Texture.cpp\n2\t2\tmodules/function/render/features/test/CMakeLists.txt\n1\t1\tmodules/function/render/features/test/installed/CMakeLists.txt\n1\t0\tmodules/function/render/graph/CMakeLists.txt\n1\t1\tmodules/function/render/graph/include/lux/engine/render/graph/Graph.hpp\n0\t0\tmodules/function/render/graph/{src => pinclude/lux/engine/render/graph/detail}/Range.hpp\n1\t1\tmodules/function/render/graph/src/Analysis.cpp\n3\t2\tmodules/function/render/graph/src/Builder.cpp\n4\t2\tmodules/function/render/native/vulkan/CMakeLists.txt\n4\t3\tmodules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/CompiledGraph.hpp\n17\t26\tmodules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/DeviceSession.hpp\n13\t10\tmodules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/ExecutionContext.hpp\n0\t33\tmodules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/Program.hpp\n29\t0\tmodules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/StorageBinding.hpp\n4\t4\tmodules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/device/Device.hpp\n1\t0\tmodules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/memory/Memory.hpp\n27\t4\tmodules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/retirement/Retirement.hpp\n51\t35\tmodules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/texture/TextureStorage.hpp\n60\t0\tmodules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/transfer/GpuWork.hpp\n16\t35\tmodules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/transfer/TextureUpload.hpp\n74\t0\tmodules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/transfer/Transfer.hpp\n0\t17\tmodules/function/render/native/vulkan/pinclude/ExecutionState.hpp\n4\t1\tmodules/function/render/native/vulkan/pinclude/Shader.hpp\n4\t4\tmodules/function/render/native/vulkan/pinclude/UploadState.hpp\n93\t40\tmodules/function/render/native/vulkan/src/Compile.cpp\n12\t27\tmodules/function/render/native/vulkan/src/DeviceSession.cpp\n65\t108\tmodules/function/render/native/vulkan/src/Execution.cpp\n94\t19\tmodules/function/render/native/vulkan/src/Shader.cpp\n18\t16\tmodules/function/render/native/vulkan/src/device/Device.cpp\n47\t12\tmodules/function/render/native/vulkan/src/retirement/Retirement.cpp\n129\t32\tmodules/function/render/native/vulkan/src/texture/TextureStorage.cpp\n64\t0\tmodules/function/render/native/vulkan/src/transfer/GpuWork.cpp\n40\t320\tmodules/function/render/native/vulkan/src/transfer/TextureUpload.cpp\n461\t0\tmodules/function/render/native/vulkan/src/transfer/Transfer.cpp\n6\t3\tmodules/function/render/native/vulkan/test/Allocation.cpp\n1\t0\tmodules/function/render/native/vulkan/test/Allocation.hpp\n2\t2\tmodules/function/render/native/vulkan/test/BindingPlan.cpp\n71\t0\tmodules/function/render/native/vulkan/test/BufferStorageFixture.hpp\n196\t0\tmodules/function/render/native/vulkan/test/BufferTransfer.cpp\n27\t3\tmodules/function/render/native/vulkan/test/CMakeLists.txt\n3\t1\tmodules/function/render/native/vulkan/test/Compiler.cpp\n19\t23\tmodules/function/render/native/vulkan/test/Execution.cpp\n5\t3\tmodules/function/render/native/vulkan/test/Foundation.cpp\n26\t0\tmodules/function/render/native/vulkan/test/MemoryCost.cpp\n82\t0\tmodules/function/render/native/vulkan/test/ResourceDomains.cpp\n5\t5\tmodules/function/render/native/vulkan/test/SceneFixture.hpp\n122\t0\tmodules/function/render/native/vulkan/test/StorageBindings.cpp\n20\t0\tmodules/function/render/native/vulkan/test/TextureFixture.hpp\n58\t0\tmodules/function/render/native/vulkan/test/TextureReadback.hpp\n21\t19\tmodules/function/render/native/vulkan/test/TextureSampling.cpp\n10\t8\tmodules/function/render/native/vulkan/test/TextureSceneFixture.hpp\n47\t75\tmodules/function/render/native/vulkan/test/TextureStorage.cpp\n4\t4\tmodules/function/render/native/vulkan/test/TextureUpload.cpp\n11\t0\tmodules/function/render/native/vulkan/test/extension/Buffer.frag\n75\t0\tmodules/function/render/native/vulkan/test/extension/Buffer.hpp\n102\t0\tmodules/function/render/native/vulkan/test/extension/Feature.hpp\n232\t0\tmodules/function/render/native/vulkan/test/extension/NativeBuffer.hpp\n54\t0\tmodules/function/render/native/vulkan/test/extension/Shader.hpp\n11\t0\tmodules/function/render/native/vulkan/test/extension/WrongBlock.frag\n55\t0\tmodules/function/render/native/vulkan/test/extension/WrongBlock.hpp\n5\t5\tmodules/function/render/native/vulkan/test/installed/Texture.cpp\n21\t0\tmodules/function/render/resource/CMakeLists.txt\n27\t0\tmodules/function/render/resource/include/lux/engine/render/resource/Factory.hpp\n145\t0\tmodules/function/render/resource/include/lux/engine/render/resource/ResourceRegistry.hpp\n80\t0\tmodules/function/render/resource/include/lux/engine/render/resource/Storage.hpp\n2\t2\tmodules/function/render/{native/vulkan/include/lux/engine/render/native/vulkan/transfer/UploadOptions.hpp => resource/include/lux/engine/render/resource/TransferOptions.hpp}\n245\t0\tmodules/function/render/resource/src/ResourceRegistry.cpp\n74\t0\tmodules/function/render/resource/src/Storage.cpp\n21\t0\tmodules/function/render/resource/test/CMakeLists.txt\n161\t0\tmodules/function/render/resource/test/Registry.cpp\n67\t0\tmodules/function/render/resource/test/Storage.cpp\n1\t1\tmodules/function/render/runtime/CMakeLists.txt\n40\t78\tmodules/function/render/runtime/include/lux/engine/render/runtime/RenderServer.hpp\n0\t10\tmodules/function/render/runtime/include/lux/engine/render/runtime/TextureFeature.hpp\n66\t0\tmodules/function/render/runtime/include/lux/engine/render/runtime/vulkan/GpuCompletion.hpp\n2\t7\tmodules/function/render/runtime/pinclude/Deferred.hpp\n125\t85\tmodules/function/render/runtime/src/RenderServer.cpp\n10\t20\tmodules/function/render/runtime/src/Request.cpp\n25\t12\tmodules/function/render/runtime/src/{TextureFeature.cpp => TextureStorage.cpp}\n169\t0\tmodules/function/render/runtime/test/BufferExtension.cpp\n178\t0\tmodules/function/render/runtime/test/BufferExtension.hpp\n40\t3\tmodules/function/render/runtime/test/CMakeLists.txt\n4\t4\tmodules/function/render/runtime/test/FeatureOperations.cpp\n43\t9\tmodules/function/render/runtime/test/GpuReady.cpp\n2\t2\tmodules/function/render/runtime/test/Lifetimes.cpp\n5\t8\tmodules/function/render/runtime/test/Offscreen.cpp\n3\t3\tmodules/function/render/runtime/test/Programs.cpp\n1\t1\tmodules/function/render/runtime/test/Runtime.cpp\n1\t1\tmodules/function/render/runtime/test/Shutdown.cpp\n38\t0\tmodules/function/render/runtime/test/StorageRegistration.cpp\n3\t3\tmodules/function/render/runtime/test/TextureOperations.cpp\n22\t5\tmodules/function/render/runtime/test/TextureProgress.cpp\n3\t2\tmodules/function/render/runtime/test/TextureRendering.cpp\n15\t0\tmodules/function/render/runtime/test/installed/CMakeLists.txt\n11\t0\tmodules/platform/gapi/include/lux/engine/gapi/vk/Descriptor.hpp\n",
+  "type_definitions": {
+    "modules/function/render/features/include/lux/engine/render/features/Program.hpp": {
+      "added_definitions": [
+        "PassProgram",
+        "ShaderArtifact",
+        "ShaderInterface"
+      ],
+      "removed_definitions": []
+    },
+    "modules/function/render/features/include/lux/engine/render/features/Resources.hpp": {
+      "added_definitions": [],
+      "removed_definitions": [
+        "BufferInitializer",
+        "StorageRequirement"
+      ]
+    },
+    "modules/function/render/features/include/lux/engine/render/features/Texture.hpp": {
+      "added_definitions": [
+        "Access",
+        "Ops",
+        "TextureBinding",
+        "TextureStorage",
+        "TextureStorageConfig"
+      ],
+      "removed_definitions": []
+    },
+    "modules/function/render/graph/pinclude/lux/engine/render/graph/detail/Range.hpp": {
+      "added_definitions": [
+        "Box"
+      ],
+      "removed_definitions": []
+    },
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/ExecutionContext.hpp": {
+      "added_definitions": [
+        "StorageUse"
+      ],
+      "removed_definitions": [
+        "ScopeIdentity"
+      ]
+    },
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/Program.hpp": {
+      "added_definitions": [],
+      "removed_definitions": [
+        "PassProgram",
+        "ShaderArtifact"
+      ]
+    },
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/StorageBinding.hpp": {
+      "added_definitions": [
+        "PreparedStorageBinding",
+        "StorageBindingOps"
+      ],
+      "removed_definitions": []
+    },
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/retirement/Retirement.hpp": {
+      "added_definitions": [
+        "Wait"
+      ],
+      "removed_definitions": []
+    },
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/texture/TextureStorage.hpp": {
+      "added_definitions": [
+        "Backing"
+      ],
+      "removed_definitions": [
+        "TextureVersion"
+      ]
+    },
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/transfer/GpuWork.hpp": {
+      "added_definitions": [
+        "GpuWork"
+      ],
+      "removed_definitions": []
+    },
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/transfer/TextureUpload.hpp": {
+      "added_definitions": [],
+      "removed_definitions": [
+        "TextureUploadStats"
+      ]
+    },
+    "modules/function/render/native/vulkan/include/lux/engine/render/native/vulkan/transfer/Transfer.hpp": {
+      "added_definitions": [
+        "ImageTransferRegion",
+        "Transfer",
+        "TransferStats"
+      ],
+      "removed_definitions": []
+    },
+    "modules/function/render/native/vulkan/pinclude/ExecutionState.hpp": {
+      "added_definitions": [],
+      "removed_definitions": [
+        "ScopedBuffer"
+      ]
+    },
+    "modules/function/render/native/vulkan/src/texture/TextureStorage.cpp": {
+      "added_definitions": [
+        "TextureStorage::Use"
+      ],
+      "removed_definitions": []
+    },
+    "modules/function/render/native/vulkan/src/transfer/TextureUpload.cpp": {
+      "added_definitions": [],
+      "removed_definitions": [
+        "Cost"
+      ]
+    },
+    "modules/function/render/native/vulkan/src/transfer/Transfer.cpp": {
+      "added_definitions": [
+        "Cost"
+      ],
+      "removed_definitions": []
+    },
+    "modules/function/render/resource/include/lux/engine/render/resource/Factory.hpp": {
+      "added_definitions": [
+        "StorageFactory"
+      ],
+      "removed_definitions": []
+    },
+    "modules/function/render/resource/include/lux/engine/render/resource/ResourceRegistry.hpp": {
+      "added_definitions": [
+        "Domain",
+        "Entry",
+        "ResourceDomain",
+        "ResourceRegistry",
+        "Type"
+      ],
+      "removed_definitions": []
+    },
+    "modules/function/render/resource/include/lux/engine/render/resource/Storage.hpp": {
+      "added_definitions": [
+        "ShaderBinding",
+        "StorageArgument",
+        "StorageDescriptor",
+        "StorageRequirement"
+      ],
+      "removed_definitions": []
+    },
+    "modules/function/render/resource/include/lux/engine/render/resource/TransferOptions.hpp": {
+      "added_definitions": [
+        "TransferOptions"
+      ],
+      "removed_definitions": []
+    },
+    "modules/function/render/runtime/include/lux/engine/render/runtime/RenderServer.hpp": {
+      "added_definitions": [
+        "StorageRegistration"
+      ],
+      "removed_definitions": [
+        "GpuCompletionReservation"
+      ]
+    },
+    "modules/function/render/runtime/include/lux/engine/render/runtime/vulkan/GpuCompletion.hpp": {
+      "added_definitions": [
+        "GpuCompletionReservation"
+      ],
+      "removed_definitions": []
+    }
+  },
+  "added_definition_count": 33,
+  "removed_definition_count": 10
+}

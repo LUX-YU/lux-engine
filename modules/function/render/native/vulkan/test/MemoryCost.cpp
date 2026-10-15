@@ -36,6 +36,32 @@ namespace lux::render::vulkan
                 sizeof(VkBuffer), sizeof(VkImage), sizeof(BufferAllocation), sizeof(ImageAllocation),
                 sizeof(ExecutionContext::Binding), sizeof(ExecutionContext), sizeof(RetirementQueue::Entry),
                 count, bytes, render_allocation::calls.load());
+            std::printf("PreparedBinding=%zu StorageUse=%zu Registry=%zu ResourceDomain=%zu Factory=%zu\n",
+                sizeof(PreparedStorageBinding), sizeof(ExecutionContext::StorageUse), sizeof(ResourceRegistry),
+                sizeof(ResourceDomain), sizeof(StorageFactory));
+            render_allocation::calls = 0;
+            render_allocation::bytes = 0;
+            render_allocation::window = true;
+            {
+                // CPU Registry metadata and one-byte dummy native owners only, explicitly NOT GPU allocations.
+                ResourceRegistry registry(nullptr, EGraphicsApi::CONTRACT_TEST, 0);
+                static const StorageDescriptor description{StorageTypeIdView("test.cost"), {1, 0}, 15};
+                static const unsigned ops = 0;
+                const StorageFactory factory{&description, EGraphicsApi::CONTRACT_TEST, &ops,
+                    [](void*, const void*) noexcept -> RenderResult<NativeStorage> {
+                        return NativeStorage{new std::byte{}, [](void* p) noexcept { delete static_cast<std::byte*>(p); }};
+                    }, [](const void*, const void*) noexcept { return true; }};
+                if (!registry.installFactory(factory) || !registry.configureType(description, std::make_shared<const unsigned>(0)))
+                    std::abort();
+                for (unsigned i = 0; i < 1000; ++i)
+                {
+                    auto scene = registry.createDomain(registry.root(), EResourceScope::SCENE);
+                    if (!scene || !registry.getOrCreate(*scene, "item", description, nullptr)) std::abort();
+                }
+                std::printf("Registry metadata 1000 domains + instances: cold_new=%zu cumulative_bytes=%zu\n",
+                    render_allocation::calls.load(), render_allocation::bytes.load());
+            }
+            render_allocation::window = false;
         }
     };
 }

@@ -3,15 +3,18 @@
 #include <new>
 #include <malloc.h>
 
-static void account() noexcept
+static void account(std::size_t size) noexcept
 {
     if (render_allocation::participate && render_allocation::window.load(std::memory_order_relaxed))
+    {
         render_allocation::calls.fetch_add(1, std::memory_order_relaxed);
+        render_allocation::bytes.fetch_add(size, std::memory_order_relaxed);
+    }
 }
 
 void* operator new(std::size_t size)
 {
-    account();
+    account(size);
     if (auto* result = std::malloc(size ? size : 1)) return result;
     std::abort();
 }
@@ -24,7 +27,7 @@ void operator delete[](void* value, std::size_t) noexcept { std::free(value); }
 
 void* operator new(std::size_t size, std::align_val_t alignment)
 {
-    account();
+    account(size);
     if (auto* result = _aligned_malloc(size ? size : 1, static_cast<std::size_t>(alignment))) return result;
     std::abort();
 }

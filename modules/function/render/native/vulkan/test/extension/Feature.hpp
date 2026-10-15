@@ -6,8 +6,11 @@
 #include <lux/engine/render/features/Feature.hpp>
 #include <lux/engine/render/features/Texture.hpp>
 
+namespace lux::render { struct FeatureRegistration; }
+
 namespace extension_test
 {
+    struct TestBufferFeature final { static FeatureRegistration registration() noexcept; };
     struct ViewConfig final { TextureId texture; BufferId buffer; };
 }
 

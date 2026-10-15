@@ -39,6 +39,7 @@ namespace lux::render::vulkan
             if (page.leased) std::terminate();
             if (page.buffer) session.destroyFinished(page.buffer);
         }
+        if (timestamps) vkDestroyQueryPool(session.device().native(), timestamps, nullptr);
     }
 
     RenderResult<void> DeviceSession::configureUploads(const TextureUploadOptions& options) noexcept
@@ -47,6 +48,7 @@ namespace lux::render::vulkan
             options.chunk_bytes > 16 * 1024 * 1024 || options.staging_pages == 0 || options.staging_pages > 16 ||
             options.pending_bytes < options.chunk_bytes;
         if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
+        if (options.measure_gpu && !device_.hostQueryReset()) return cxx::unexpected(RenderError{kUnsupported});
         auto state = std::make_unique<UploadState>(*this, options);
         std::uint32_t family_count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(device_.physical(), &family_count, nullptr);
@@ -58,6 +60,16 @@ namespace lux::render::vulkan
         // uses the existing Graphics queue; do not emit invalid sub-image transfers on restrictive families.
         const bool row_chunks = granularity.width == 1 && granularity.height == 1 && granularity.depth == 1;
         state->copy_queue = row_chunks ? &transfer : &queue();
+        state->copy_timestamp_bits = families_info[state->copy_queue->nativeQueue().family].timestampValidBits;
+        state->graphics_timestamp_bits = families_info[queue().nativeQueue().family].timestampValidBits;
+        if (options.measure_gpu && (state->copy_timestamp_bits || state->graphics_timestamp_bits))
+        {
+            VkQueryPoolCreateInfo query{VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
+            query.queryType = VK_QUERY_TYPE_TIMESTAMP;
+            query.queryCount = std::uint32_t(options.staging_pages * 2);
+            const auto result = vkCreateQueryPool(device_.native(), &query, nullptr, &state->timestamps);
+            if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
+        }
         state->pages.resize(options.staging_pages);
         const std::array families{queue().nativeQueue().family, state->copy_queue->nativeQueue().family};
         const auto sharing = families[0] == families[1] ? std::span<const std::uint32_t>{} : std::span(families);
@@ -270,6 +282,19 @@ namespace lux::render::vulkan
             }
             if (*completed < ticket_->serial()) return false;
         }
+        if (query_pending_)
+        {
+            std::array<std::uint64_t, 2> stamps{};
+            const auto result = vkGetQueryPoolResults(device(), state.timestamps, std::uint32_t(page_ * 2), 2,
+                sizeof(stamps), stamps.data(), sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT);
+            if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
+            const auto bits = region_ ? state.graphics_timestamp_bits : state.copy_timestamp_bits;
+            const auto mask = bits == 64 ? UINT64_MAX : (std::uint64_t{1} << bits) - 1;
+            state.stats.gpu_ns += std::uint64_t(double((stamps[1] - stamps[0]) & mask) *
+                session_->device().properties().limits.timestampPeriod);
+            ++state.stats.gpu_samples;
+            query_pending_ = false;
+        }
         if (cancelled_) { phase_ = EPhase::COMPLETE; return true; }
         if (phase_ == EPhase::FINAL_PENDING) { phase_ = EPhase::COMPLETE; return true; }
         if (phase_ == EPhase::COPY_PENDING)
@@ -308,6 +333,15 @@ namespace lux::render::vulkan
         dependency.imageMemoryBarrierCount = 1;
         dependency.pImageMemoryBarriers = &barrier;
         const bool acquiring = phase_ == EPhase::ACQUIRE;
+        const auto timestamp_bits = region_ ? state.graphics_timestamp_bits : state.copy_timestamp_bits;
+        const bool timestamp = !acquiring && state.timestamps && timestamp_bits;
+        if (timestamp)
+        {
+            // This page's preceding ticket has completed above. Host reset is valid on transfer-only families.
+            vkResetQueryPool(device(), state.timestamps, std::uint32_t(page_ * 2), 2);
+            vkCmdWriteTimestamp2(batch->native(), VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, state.timestamps,
+                std::uint32_t(page_ * 2));
+        }
         bool final = acquiring;
         if (!acquiring)
         {
@@ -386,9 +420,12 @@ namespace lux::render::vulkan
         }
         const std::optional<SubmissionWait> wait = acquiring ?
             std::optional{SubmissionWait{*ticket_, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT}} : std::nullopt;
+        if (timestamp) vkCmdWriteTimestamp2(batch->native(), VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+            state.timestamps, std::uint32_t(page_ * 2 + 1));
         auto accepted = std::move(*batch).submit(wait ? std::span(&*wait, 1) : std::span<const SubmissionWait>{});
         if (!accepted) return cxx::unexpected(accepted.error());
         ticket_ = *accepted;
+        query_pending_ = timestamp;
         if (base_) base_->last_use_ = *accepted; // Graphics clone and any later patch dominate earlier readers
         initialized_ = true;
         if (!acquiring) ++state.stats.chunks;

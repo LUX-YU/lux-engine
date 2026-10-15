@@ -63,7 +63,7 @@ int main()
     Validation validation;
     PrepareWorker worker;
     std::ofstream csv("texture-chunks.csv");
-    csv << "multiple,dedicated,bytes,mips,bc,chunks,prepare_ns,owner_ns,wall_ns,staging_bytes,pending_peak\n";
+    csv << "multiple,dedicated,bytes,mips,bc,chunks,prepare_ns,owner_ns,wall_ns,staging_bytes,pending_peak,gpu_ns,gpu_samples\n";
     {
         auto bootstrap = instance(validation);
         for (unsigned mode = 0; mode < 3; ++mode)
@@ -72,9 +72,10 @@ int main()
             options.multiple_queues = mode != 0;
             options.prefer_dedicated_queues = mode == 2;
             options.texture_compression_bc = true;
+            options.host_query_reset = true;
             auto session = take(DeviceSession::create(bootstrap, options));
             CHECK(session->configureUploads({1024 * 1024, 1, 128 * 1024 * 1024, &worker,
-                PrepareWorker::enqueue, PrepareWorker::join}));
+                PrepareWorker::enqueue, PrepareWorker::join, true}));
             for (unsigned sample = 0; sample < 5; ++sample)
             {
                 const bool bc = sample == 4;
@@ -102,7 +103,8 @@ int main()
                 csv << options.multiple_queues << ',' << options.prefer_dedicated_queues << ',' << source.size() << ','
                     << info.mip_count << ',' << bc << ',' << after.chunks - before.chunks << ','
                     << after.prepare_ns - before.prepare_ns << ',' << after.owner_ns - before.owner_ns << ','
-                    << wall << ',' << after.staging_bytes << ',' << after.pending_peak << '\n';
+                    << wall << ',' << after.staging_bytes << ',' << after.pending_peak << ','
+                    << after.gpu_ns - before.gpu_ns << ',' << after.gpu_samples - before.gpu_samples << '\n';
             }
         }
     }

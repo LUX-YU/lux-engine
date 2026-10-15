@@ -314,6 +314,7 @@ namespace lux::render::vulkan
     {
         texture_compression_bc_ = options.texture_compression_bc;
         texture_descriptors_ = options.texture_descriptors;
+        host_query_reset_ = options.host_query_reset;
         vkGetPhysicalDeviceProperties(physical, &properties_);
     }
 
@@ -400,6 +401,7 @@ namespace lux::render::vulkan
                                         missing_texture_features ||
                                         (options.dynamic_rendering && !supported.dynamicRendering) ||
                                         (options.multiple_queues && !supported12.timelineSemaphore) ||
+                                        (options.host_query_reset && !supported12.hostQueryReset) ||
                                         (options.texture_compression_bc && !features.features.textureCompressionBC) ||
                                         (options.multiview && !supported11.multiview) ||
                                         (options.separate_depth_stencil && !supported12.separateDepthStencilLayouts) ||
@@ -476,6 +478,7 @@ namespace lux::render::vulkan
         enabled.dynamicRendering = options.dynamic_rendering;
         VkPhysicalDeviceVulkan12Features enabled12{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
         enabled12.timelineSemaphore = options.multiple_queues;
+        enabled12.hostQueryReset = options.host_query_reset;
         enabled12.separateDepthStencilLayouts = options.separate_depth_stencil;
         enabled12.runtimeDescriptorArray = options.texture_descriptors;
         enabled12.descriptorBindingPartiallyBound = options.texture_descriptors;
@@ -540,6 +543,7 @@ namespace lux::render::vulkan
 
     VulkanDevice::VulkanDevice(VulkanDevice&& other) noexcept
         : texture_compression_bc_(other.texture_compression_bc_), texture_descriptors_(other.texture_descriptors_),
+          host_query_reset_(other.host_query_reset_),
           instance_(other.instance_), physical_(other.physical_), device_(std::exchange(other.device_, VK_NULL_HANDLE)),
           queue_(other.queue_), queue_family_(other.queue_family_), properties_(other.properties_),
           dynamic_rendering_(other.dynamic_rendering_), queues_(other.queues_), multiview_(other.multiview_),
@@ -555,6 +559,7 @@ namespace lux::render::vulkan
             release();
             texture_compression_bc_ = other.texture_compression_bc_;
             texture_descriptors_ = other.texture_descriptors_;
+            host_query_reset_ = other.host_query_reset_;
             instance_ = other.instance_;
             physical_ = other.physical_;
             device_ = std::exchange(other.device_, VK_NULL_HANDLE);

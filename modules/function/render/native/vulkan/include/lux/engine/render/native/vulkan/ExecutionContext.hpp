@@ -5,6 +5,7 @@
 
 namespace lux::render::vulkan
 {
+    class TextureVersion;
     // Borrowed validated identities, not another identity allocator or owner.
     struct ScopeIdentity final
     {
@@ -60,6 +61,7 @@ namespace lux::render::vulkan
         TargetDesc target_;
         std::vector<Binding> bindings_;
         std::vector<ScopedBuffer*> leases_;
+        std::vector<TextureVersion*> textures_; // prepared resource slots, empty for ABI1-only graphs
         std::vector<Pass> passes_;
         std::vector<VkBufferMemoryBarrier2> host_barriers_;
         std::optional<SubmissionTicket> last_use_;

@@ -79,4 +79,3 @@ static rdesc::TextureInfo information(unsigned dimension, unsigned mips, bool bc
     }
     return info;
 }
-

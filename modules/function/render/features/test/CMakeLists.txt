@@ -24,6 +24,14 @@ foreach(header Feature Resources Texture)
     target_link_libraries(render_features_header_${header} PRIVATE render_features)
 endforeach()
 
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/TextureInfo.cpp" CONTENT
+    "#include <lux/engine/description/TextureInfo.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
+)
+
+add_library(render_features_header_TextureInfo OBJECT "${CMAKE_CURRENT_BINARY_DIR}/headers/TextureInfo.cpp")
+
+target_link_libraries(render_features_header_TextureInfo PRIVATE render_features)
+
 get_target_property(feature_links render_features INTERFACE_LINK_LIBRARIES)
 set(expected_links lux::engine::render::render_graph lux::engine::render::render_data
     lux::engine::render::render_protocol

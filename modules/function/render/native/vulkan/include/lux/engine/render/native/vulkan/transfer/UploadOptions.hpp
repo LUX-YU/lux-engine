@@ -14,6 +14,7 @@ namespace lux::render::vulkan
         void* user = nullptr;
         bool (*enqueue)(void*, void (*)(void*) noexcept, void*) noexcept = nullptr;
         void (*join)(void*) noexcept = nullptr;
+        bool measure_gpu = false; // optional bounded timestamp pairs, never a wait in advance()
     };
 
 }

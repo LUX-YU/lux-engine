@@ -120,3 +120,20 @@ set_target_properties(render_texture_operations_test PROPERTIES RUNTIME_OUTPUT_D
 add_test(NAME render.runtime.texture_operations COMMAND render_texture_operations_test)
 
 set_tests_properties(render.runtime.texture_operations PROPERTIES TIMEOUT 60)
+
+add_executable(render_texture_rendering_test TextureRendering.cpp ../../native/vulkan/test/Allocation.cpp
+    ../src/RenderServer.cpp ../src/Request.cpp ../src/TextureFeature.cpp
+)
+
+target_include_directories(render_texture_rendering_test PRIVATE ../../native/vulkan/test ../pinclude)
+
+target_link_libraries(render_texture_rendering_test PRIVATE render_client render_features
+    render_native_instrumented lux::engine::platform::platform_ipc bcrypt
+)
+
+set_target_properties(render_texture_rendering_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.texture_rendering COMMAND render_texture_rendering_test)
+add_test(NAME render.runtime.texture_rendering_alias COMMAND render_texture_rendering_test alias)
+
+set_tests_properties(render.runtime.texture_rendering render.runtime.texture_rendering_alias PROPERTIES TIMEOUT 90)

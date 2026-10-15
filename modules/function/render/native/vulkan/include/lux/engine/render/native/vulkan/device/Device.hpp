@@ -54,6 +54,7 @@ namespace lux::render::vulkan
         bool swapchain_maintenance{false};
         bool texture_compression_bc{false};
         bool texture_descriptors{false};
+        bool host_query_reset{false};
     };
 
     enum class EQueueRole
@@ -167,6 +168,7 @@ namespace lux::render::vulkan
 
         [[nodiscard]] bool textureCompressionBc() const noexcept { return texture_compression_bc_; }
         [[nodiscard]] bool textureDescriptors() const noexcept { return texture_descriptors_; }
+        [[nodiscard]] bool hostQueryReset() const noexcept { return host_query_reset_; }
 
         [[nodiscard]] bool swapchainMaintenance() const noexcept
         {
@@ -176,6 +178,7 @@ namespace lux::render::vulkan
     private:
         bool texture_compression_bc_ = false;
         bool texture_descriptors_ = false;
+        bool host_query_reset_ = false;
         VulkanDevice(
             VkInstance instance,
             VkPhysicalDevice physical,

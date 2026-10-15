@@ -106,8 +106,11 @@ namespace lux::render
                 (pass.kind != EGraphPassKind::TRANSFER || use.access != EGraphAccess::READ);
             const bool is_invalid_destination = use.usage == EGraphUse::TRANSFER_DESTINATION &&
                 (pass.kind != EGraphPassKind::TRANSFER || use.access != EGraphAccess::WRITE);
-            const bool is_invalid_usage = use.usage > EGraphUse::TRANSFER_DESTINATION ||
-                is_invalid_color || is_invalid_source || is_invalid_destination;
+            const bool is_invalid_sample = use.usage == EGraphUse::SAMPLED &&
+                (!image || pass.kind == EGraphPassKind::TRANSFER || use.access != EGraphAccess::READ ||
+                 !rdesc::supportsTextureUsage(image->format, rdesc::ETextureUsage::SAMPLED));
+            const bool is_invalid_usage = use.usage > EGraphUse::SAMPLED ||
+                is_invalid_color || is_invalid_source || is_invalid_destination || is_invalid_sample;
             if (is_invalid_usage) return cxx::unexpected(graphError(kGraphInvalidDescriptor, id, resource_id));
             auto range = detail::normalize(resource, use.range);
             if (!range) return cxx::unexpected(graphError(kGraphInvalidRange, id, resource_id));

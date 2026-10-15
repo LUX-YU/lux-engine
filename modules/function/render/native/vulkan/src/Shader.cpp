@@ -24,7 +24,7 @@ namespace lux::render::vulkan
                 spvc_type_get_num_array_dimensions(type) == 0;
         }
 
-        bool validateStage(std::span<const std::uint32_t> words, SpvExecutionModel stage) noexcept
+        bool validateStage(std::span<const std::uint32_t> words, SpvExecutionModel stage, std::uint32_t abi) noexcept
         {
             // Use the existing SPIR-V tools, not another shader parser or handwritten instruction decoder.
             const auto validation = spvContextCreate(SPV_ENV_VULKAN_1_3);
@@ -46,7 +46,14 @@ namespace lux::render::vulkan
             std::size_t capability_count = 0;
             if (!check(spvc_compiler_get_declared_capabilities(compiler, &capabilities, &capability_count))) return false;
             for (std::size_t i = 0; i < capability_count; ++i)
-                if (capabilities[i] != SpvCapabilityShader) return false;
+            {
+                const auto capability = capabilities[i];
+                const bool sampled = abi == 2 && stage == SpvExecutionModelFragment &&
+                    (capability == SpvCapabilityRuntimeDescriptorArray || capability == SpvCapabilityShaderNonUniform ||
+                     capability == SpvCapabilitySampledImageArrayNonUniformIndexing ||
+                     capability == SpvCapabilitySampledImageArrayDynamicIndexing || capability == SpvCapabilityImageQuery);
+                if (capability != SpvCapabilityShader && !sampled) return false;
+            }
             const spvc_entry_point* entries{};
             std::size_t count = 0;
             if (!check(spvc_compiler_get_entry_points(compiler, &entries, &count))) return false;
@@ -76,6 +83,21 @@ namespace lux::render::vulkan
                         spvc_compiler_get_member_decoration(compiler, list[0].base_type_id, 0, SpvDecorationOffset) != 0;
                     if (is_abi_mismatch) return false;
                 }
+                else if (abi == 2 && stage == SpvExecutionModelFragment && kind == SPVC_RESOURCE_TYPE_SAMPLED_IMAGE)
+                {
+                    if (count != 1) return false;
+                    const auto type = spvc_compiler_get_type_handle(compiler, list[0].type_id);
+                    const bool invalid_array = spvc_type_get_num_array_dimensions(type) != 1 ||
+                        spvc_type_get_array_dimension(type, 0) != 0;
+                    const bool invalid_image = spvc_type_get_image_dimension(type) != SpvDim2D ||
+                        spvc_type_get_image_arrayed(type) || spvc_type_get_image_is_depth(type) ||
+                        spvc_type_get_image_multisampled(type) || spvc_type_get_image_is_storage(type);
+                    const auto sampled_type = spvc_compiler_get_type_handle(compiler, spvc_type_get_image_sampled_type(type));
+                    const bool invalid_binding = spvc_compiler_get_decoration(compiler, list[0].id, SpvDecorationDescriptorSet) != 0 ||
+                        spvc_compiler_get_decoration(compiler, list[0].id, SpvDecorationBinding) != 0;
+                    if (invalid_array || invalid_image || invalid_binding ||
+                        spvc_type_get_basetype(sampled_type) != SPVC_BASETYPE_FP32) return false;
+                }
                 else if (stage == SpvExecutionModelFragment && kind == SPVC_RESOURCE_TYPE_STAGE_OUTPUT)
                 {
                     if (count != 1) return false;
@@ -93,10 +115,11 @@ namespace lux::render::vulkan
         const VulkanDevice& device, VkPipelineLayout layout, const ShaderArtifact& shader
     ) noexcept
     {
-        const bool is_unsupported = shader.abi != 1 || !device.dynamicRendering();
+        const bool is_unsupported = (shader.abi != 1 && shader.abi != 2) || !device.dynamicRendering() ||
+            (shader.abi == 2 && !device.textureDescriptors());
         if (is_unsupported) return cxx::unexpected(RenderError{kUnsupported});
-        if (!validateStage(shader.vertex, SpvExecutionModelVertex) ||
-            !validateStage(shader.fragment, SpvExecutionModelFragment))
+        if (!validateStage(shader.vertex, SpvExecutionModelVertex, shader.abi) ||
+            !validateStage(shader.fragment, SpvExecutionModelFragment, shader.abi))
             return cxx::unexpected(RenderError{kInvalidArgument});
         struct Modules final
         {

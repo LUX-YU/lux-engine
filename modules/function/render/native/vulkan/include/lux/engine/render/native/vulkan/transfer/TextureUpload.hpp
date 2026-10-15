@@ -15,6 +15,7 @@ namespace lux::render::vulkan
     {
         std::uint64_t copied_bytes = 0, chunks = 0, prepare_ns = 0, owner_ns = 0;
         std::uint64_t staging_bytes = 0, pending_bytes = 0, pending_peak = 0;
+        std::uint64_t gpu_ns = 0, gpu_samples = 0;
     };
 
     // One cold Native candidate, never a Request owner or an independent completion registry.
@@ -66,5 +67,6 @@ namespace lux::render::vulkan
         TextureVersion* base_ = nullptr;
         std::optional<TextureRegion> region_;
         SubmissionQueue* copy_queue_ = nullptr;
+        bool query_pending_ = false;
     };
 }

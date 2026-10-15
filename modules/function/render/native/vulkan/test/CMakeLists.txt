@@ -101,3 +101,11 @@ target_link_libraries(render_texture_storage_test PRIVATE render_native_instrume
 add_test(NAME render.native.texture_storage COMMAND render_texture_storage_test)
 
 set_tests_properties(render.native.texture_storage PROPERTIES TIMEOUT 60)
+
+add_executable(render_texture_sampling_test TextureSampling.cpp Allocation.cpp)
+
+target_link_libraries(render_texture_sampling_test PRIVATE render_native_instrumented)
+
+add_test(NAME render.native.texture_sampling COMMAND render_texture_sampling_test)
+
+set_tests_properties(render.native.texture_sampling PROPERTIES TIMEOUT 90)

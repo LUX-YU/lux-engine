@@ -1,12 +1,17 @@
 #include "ExecutionState.hpp"
 #include "Native.hpp"
+#include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include <algorithm>
 
 namespace lux::render::vulkan
 {
     ExecutionContext::ExecutionContext(DeviceSession& owner, SubmissionQueue& queue,
         std::shared_ptr<const CompiledGraph> code, TargetDesc target) noexcept
-        : owner_(&owner), queue_(&queue), code_(std::move(code)), target_(target), bindings_(code_->resources().size()) {}
+        : owner_(&owner), queue_(&queue), code_(std::move(code)), target_(target), bindings_(code_->resources().size())
+    {
+        if (std::ranges::any_of(code_->resources(), [](const auto& r) { return !r.texture.isNull(); }))
+            textures_.resize(bindings_.size());
+    }
 
     ExecutionContext::~ExecutionContext() noexcept
     {
@@ -17,7 +22,21 @@ namespace lux::render::vulkan
             if (binding.owned_buffer) owner_->destroyFinished(binding.owned_buffer);
         }
         for (auto* lease : leases_) --lease->leases;
+        for (auto* texture : textures_) if (texture) owner_->textures()->releaseLease(*texture);
         owner_->collectScoped();
+    }
+
+    void DeviceSession::refreshTexture(TextureId id, TextureVersion& version) noexcept
+    {
+        // Publication-time update only. Old accepted command buffers retain their descriptor slot and last-use.
+        for (const auto& context : contexts_)
+            for (std::size_t i = 0; i < context->textures_.size(); ++i)
+                if (auto*& old = context->textures_[i]; old && context->code_->resources()[i].texture == id)
+                {
+                    --old->leases_;
+                    ++version.leases_;
+                    old = &version;
+                }
     }
 
     RenderResult<ExecutionContext*> DeviceSession::prepare(std::shared_ptr<const CompiledGraph> code,
@@ -33,6 +52,21 @@ namespace lux::render::vulkan
             auto& binding = context->bindings_[i];
             const auto& plan = context->code_->resources()[i];
             if (!plan.image_usage && !plan.buffer_usage) continue; // G4-pruned resources allocate nothing
+            if (!plan.texture.isNull())
+            {
+                auto lease = textures_->acquire(plan.texture);
+                if (!lease) return cxx::unexpected(lease.error());
+                context->textures_[i] = *lease;
+                const auto& expected = std::get<GraphImageDesc>(plan.description);
+                const auto& actual = (*lease)->info();
+                const auto format = expected.format == rdesc::ETextureFormat::RGBA8_UNORM ? VK_FORMAT_R8G8B8A8_UNORM :
+                    expected.format == rdesc::ETextureFormat::RGBA8_SRGB ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_BC1_RGBA_SRGB_BLOCK;
+                const bool mismatch = expected.width != actual.width || expected.height != actual.height ||
+                    expected.mips != actual.mip_count || expected.layers != actual.layers ||
+                    format != (*lease)->image().format();
+                if (mismatch) return cxx::unexpected(RenderError{kInvalidArgument});
+                continue;
+            }
             if (const auto* image = std::get_if<GraphImageDesc>(&plan.description))
             {
                 const VkExtent2D extent{plan.target_sized ? target.width : image->width,
@@ -194,6 +228,12 @@ namespace lux::render::vulkan
             return cxx::unexpected(batch.error());
         }
         const auto command = batch->native();
+        if (!textures_.empty())
+        {
+            const auto descriptors = owner_->textures()->descriptors();
+            LUX_RECORD("cmd_descriptor", vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                code_->layout(), 0, 1, &descriptors, 0, nullptr));
+        }
         for (const auto& pass : passes_)
         {
             VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
@@ -231,7 +271,13 @@ namespace lux::render::vulkan
                 }
                 if (recipe.bind_pipeline)
                     LUX_RECORD("cmd_bind", vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, recipe.pipeline));
-                vkCmdPushConstants(command, code_->layout(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, color_.data());
+                auto parameters = color_;
+                if (recipe.source != kGraphInvalidIndex)
+                {
+                    const auto& texture = *textures_[recipe.source];
+                    parameters = {float(texture.descriptorIndex()), float(texture.info().color_space), recipe.texture_lod, 0};
+                }
+                vkCmdPushConstants(command, code_->layout(), VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, parameters.data());
                 LUX_RECORD("cmd_draw", vkCmdDraw(command, recipe.vertex_count, 1, 0, 0));
                 if (recipe.end_rendering) LUX_RECORD("cmd_end", vkCmdEndRendering(command));
                 break;
@@ -274,6 +320,7 @@ namespace lux::render::vulkan
         auto submitted = std::move(*batch).submit();
         if (!submitted) return cxx::unexpected(submitted.error());
         last_use_ = *submitted;
+        for (auto* texture : textures_) if (texture) texture->last_use_ = *submitted;
         return true;
     }
 

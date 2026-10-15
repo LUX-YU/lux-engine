@@ -1,6 +1,8 @@
 #include "TextureFixture.hpp"
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 
+static_assert(!std::is_copy_constructible_v<TextureVersion> && !std::is_move_constructible_v<TextureVersion>);
+
 static std::string_view fail_call;
 static std::array<int, 4> live{};
 static constexpr std::array names{"image", "image_view", "texture_sampler", "buffer"};
@@ -154,6 +156,34 @@ int main()
         complete(*upload); upload.reset();
         CHECK(!storage.acquire(published.texture));
         CHECK(storage.release(next.texture, 1));
+        // A real accepted first chunk followed by a failed submit cannot publish over last-good.
+        {
+            auto large_info = information(1024, 1, false);
+            std::vector<std::byte> large(4 * 1024 * 1024, std::byte{13});
+            upload = take(session->uploadTexture(large_info, large));
+            const auto id = take(storage.reserve(*upload)).texture;
+            complete(*upload); upload.reset();
+            const auto* last_good = storage.find(id);
+            upload = take(session->uploadTexture(large_info, large));
+            CHECK(storage.reserve(*upload, id, 1));
+            const auto end = Clock::now() + std::chrono::seconds(10);
+            while (!upload->lastUse()) { CHECK(!take(upload->advance())); CHECK(Clock::now() < end); }
+            const auto first = *upload->lastUse();
+            fail_call = "submit";
+            for (;;)
+            {
+                auto result = upload->advance();
+                if (!result) break;
+                CHECK(!*result && Clock::now() < end);
+            }
+            CHECK(fail_call.empty() && upload->lastUse()->serial() == first.serial());
+            CHECK(storage.find(id) == last_good && last_good->revision() == 1);
+            upload->cancel();
+            while (!take(upload->advance())) CHECK(Clock::now() < end);
+            CHECK(!upload->publish()); upload.reset();
+            CHECK(storage.find(id) == last_good && storage.residentVersions() == 1);
+            CHECK(storage.release(id, 1));
+        }
         for (bool bc : {false, true})
         {
             const auto mip_info = information(16, 4, bc);
@@ -168,6 +198,15 @@ int main()
             auto invalid = region;
             invalid.row_pitch = UINT64_MAX;
             CHECK(!storage.uploadRegion(id, 1, invalid, patch));
+            invalid = region;
+            invalid.x = mip_info.mip_ranges[1].width;
+            CHECK(!storage.uploadRegion(id, 1, invalid, patch));
+            if (bc)
+            {
+                invalid = region;
+                invalid.x = 1;
+                CHECK(!storage.uploadRegion(id, 1, invalid, patch));
+            }
             CHECK(storage.find(id)->revision() == 1);
             upload = take(storage.uploadRegion(id, 1, region, patch));
             CHECK(!storage.uploadRegion(id, 1, region, patch));
@@ -199,8 +238,22 @@ int main()
         CHECK(storage.residentVersions() == 16);
         for (auto value : full) CHECK(storage.release(value.texture, value.revision));
         CHECK(storage.residentVersions() == 0);
-        std::printf("texture storage descriptors=16 resident_peak=%llu bytes; exact last-good/generation/leases\n",
-            storage.residentPeak());
+        std::printf("texture storage descriptors=16 resident_peak=%llu bytes; TextureVersion=%zu TextureUpload=%zu; "
+            "exact last-good/generation/leases\n", storage.residentPeak(), sizeof(TextureVersion), sizeof(TextureUpload));
+    }
+    {
+        auto bootstrap = instance(validation);
+        DeviceOptions options;
+        options.texture_descriptors = true;
+        auto session = take(DeviceSession::create(bootstrap, options));
+        CHECK(session->configureUploads({1024 * 1024, 1, 1024 * 1024,
+            &host, PrepareWorker::enqueue, PrepareWorker::join}));
+        CHECK(session->configureTextures(16, 1));
+        std::vector<std::byte> source(1024);
+        auto candidate = take(session->uploadTexture(information(16, 1, false), source));
+        auto failed = session->textures()->reserve(*candidate);
+        CHECK(!failed && failed.error().type == kCapacity);
+        CHECK(!candidate->lastUse() && session->textures()->residentBytes() == 0);
     }
     CHECK(std::ranges::all_of(live, [](int count) { return count == 0; }));
     CHECK(validation.errors == 0);

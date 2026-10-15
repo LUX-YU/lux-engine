@@ -195,6 +195,7 @@ namespace lux::render::vulkan
         if (record.current) record.current->live_ = false;
         record.current = &version;
         record.updating = false;
+        session_.refreshTexture(upload.texture_, version);
         upload.storage_ = nullptr;
         upload.version_ = nullptr;
     }

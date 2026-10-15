@@ -808,8 +808,9 @@ namespace lux::render
         options.dynamic_rendering = true;
         options.multiple_queues = s.config.transfer_queues;
         options.prefer_dedicated_queues = s.config.prefer_dedicated_transfer;
-        options.texture_compression_bc = s.config.uploads.enqueue != nullptr;
+        options.texture_compression_bc = s.config.texture_compression_bc;
         options.texture_descriptors = s.config.uploads.enqueue != nullptr;
+        options.host_query_reset = s.config.uploads.measure_gpu;
         options.physical_device_index = s.config.physical_device_index;
         auto device = vulkan::DeviceSession::create(*s.instance, options, 3, s.config.retirement_capacity);
         if (!device) { s.shutdown(); return cxx::unexpected(device.error()); }

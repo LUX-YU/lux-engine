@@ -9,6 +9,7 @@ namespace lux::render
 {
     struct TextureTag;
     using TextureId = cxx::SlotKey<TextureTag>; // Server session-local; not an asset hash or descriptor index.
+    inline constexpr StorageTypeIdView kTextureStorageType("lux.render.TextureStorage");
 
     struct TexturePublished final
     {

@@ -18,3 +18,9 @@ add_executable(native_consumer Main.cpp)
 target_link_libraries(native_consumer PRIVATE lux::engine::render::render_native_vulkan)
 
 add_test(NAME installed.native.compiler COMMAND native_consumer)
+
+add_executable(texture_consumer Texture.cpp)
+
+target_link_libraries(texture_consumer PRIVATE lux::engine::render::render_native_vulkan)
+
+add_test(NAME installed.native.texture COMMAND texture_consumer)

@@ -16,6 +16,7 @@ namespace lux::render::vulkan
         VkBufferUsageFlags buffer_usage = 0;
         bool readback = false;
         bool target_sized = false;
+        TextureId texture{};
     };
 
     enum class ERecipe : std::uint8_t { DRAW, CLEAR_IMAGE, FILL_BUFFER, COPY_IMAGE_BUFFER, COPY_BUFFER };
@@ -47,6 +48,7 @@ namespace lux::render::vulkan
         bool begin_rendering = true;
         bool end_rendering = true;
         bool bind_pipeline = true;
+        float texture_lod = 0;
     };
 
     // The Effect owns this move-only immutable result; execution contexts borrow/pin that one result.

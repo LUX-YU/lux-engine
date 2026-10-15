@@ -36,6 +36,7 @@ namespace lux::render
         vulkan::TextureUploadOptions uploads{}; // null host callbacks disable texture upload admission
         std::size_t texture_capacity = 128;
         std::uint64_t texture_bytes = 256 * 1024 * 1024;
+        bool texture_compression_bc = false; // explicitly request BC capability; RGBA-only hosts do not require it
     };
 
     // One source-qualified request. Move only for real deferred work; settle before Responder teardown.

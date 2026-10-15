@@ -15,6 +15,7 @@ namespace lux::render::vulkan
     struct ScopedBuffer;
     class TextureUpload;
     class TextureStorage;
+    class TextureVersion;
     struct TextureUploadOptions;
     struct TextureUploadStats;
     // Stable Native lifetime root. Bootstrap owns InstanceContext and outlives this object.
@@ -104,6 +105,7 @@ namespace lux::render::vulkan
         void destroyFinished(ImageAllocation* value) noexcept;
         friend class ExecutionContext;
         void collectScoped() noexcept;
+        void refreshTexture(TextureId, TextureVersion&) noexcept;
         DeviceSession(VulkanDevice device, VulkanAllocator allocator) noexcept;
         VulkanDevice device_;
         VulkanAllocator allocator_;

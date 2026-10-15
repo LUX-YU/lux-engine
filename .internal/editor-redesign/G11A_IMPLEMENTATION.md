@@ -103,3 +103,80 @@ destruction counts, stale IDs/revisions, pinned physical generations and padded 
 Validation error count is zero. Full 69-test Release run passed 68, with only the above new fixture failure;
 its corrected targeted rerun passed. All prior 62 tests passed. Cross-Scene sampled consumers and GPU color
 qualification still require G11A-4; these internal results are not the final G11A PASS.
+
+## G11A-4 sampled consumer
+
+G4 adds only SAMPLED use validation (Image + READ + non-Transfer pass + format usage capability).
+Analysis/version/hazard algorithms remain unchanged. Native ABI2 reflects one runtime combined-sampler array
+at set 0/binding 0 and the existing 16-byte push block; ABI1 remains byte-for-byte compatible. Cold compilation
+requires Imported Global TextureStorage ABI1 metadata and a TextureId. Context preparation resolves it once,
+validating dimensions/format/mips. The prepared pointer array is empty for ABI1 graphs. Binding stays 32 B;
+Context adds one 24-byte vector. Each accepted Graphics submission stamps the physical versions' true ticket.
+Texture publication refreshes active Context borrows at the topology change, never by per-frame ID lookup.
+Old versions retain their prior GPU last-use, and retired Context leases remain untouched until retirement.
+
+The real Feature→Assembly→Graph→Compiler→Executor path samples RGBA DATA/SRGB/LINEAR and BC1 SRGB;
+no hand-made test Vulkan pipeline. Two Scene/four View contexts share one compiled graph and global image.
+Four mips, full replacement, padded Region update and release with attached consumers are read back.
+The independent double BT.2020 oracle observed max error 0/255 on this NVIDIA run (contract remains 2/255;
+DATA remains exact). Premultiplied LINEAR input uses valid premultiplied RGB and preserves alpha.
+Wrong Descriptor binding, ABI, missing identity and invalid LOD are rejected before pipeline publication.
+Shader source, deterministic cooker and cooked SPIR-V with hashes are retained under test/shaders.
+
+## G11A-5 integration and measurement
+
+Real Texture Operations and a sampled Feature run through the same open Runtime path. Two cold compiler
+workers overlap upload preparation and four Views. Main retains 64 replies for 1.5 seconds; Upload continues
+16 MiB transfers while Graphics progresses. Creator disconnect does not release Global assets. Existing
+G10 tests retain 1000 complete operation samples, callback ownership, abandon/stop and wrong-session proofs.
+The new texture fixture records complete upload latency and four-draw CPU cadence, both idle and uploading;
+cadence includes scheduling and the unchanged 1 ms server sleep, and is NOT GPU frame time.
+
+Optional measurement uses one fixed pair of timestamps per staging page, with real queue timestamp bits,
+period and wrap mask. Results are read only after that page's real ticket completes, without WAIT_BIT.
+An initial measurement attempted vkCmdResetQueryPool on a transfer-only family; Validation correctly rejected
+it. The corrected path explicitly negotiates hostQueryReset and resets only after the preceding page ticket.
+Failure log is retained; no upload/SPSC/lifetime algorithm was changed to hide it. Query intervals include
+copy and in-command barriers (and clone for Region), exclude CPU prepare, readback, queue scheduling and
+the separate final Graphics acquire. BC support is an explicit host option; RGBA-only hosts don't require BC.
+
+Release complete regression reached 72/72, preserving all previous 62 names. Additional Native tests prove
+partial replacement failure keeps last-good and its accepted first ticket, and resident-byte rejection occurs
+before any submit. Debug, ASan and independent final-I verification are still required for final qualification.
+
+### Host/SDK usage and bounds
+
+Set RenderServerConfig.uploads host user/enqueue/join callbacks (bounded, never inline, joined on shutdown).
+Select transfer_queues and optional texture_compression_bc / uploads.measure_gpu explicitly. Register
+textureFeatureRegistration() before run. A Client Hello/binds UploadTexture to TexturePublished, then submits
+the neutral TextureInfo + ExternalDataRef with existing RenderPayload ownership. Set retained_byte_limit to
+cover the complete original vector backing and headers. Completion is GPU-ready only after final ticket
+completion and publication. Use returned TextureId/revision for replacement, region or explicit release.
+No Scene or View is needed to upload; creation Client does not own the resource.
+
+Defaults: four 1 MiB staging pages, 256 MiB pending source budget, 128 physical descriptor-version slots,
+256 MiB resident VMA image bytes. Descriptor capacity is 16..4096, multiple of 16 (prepared StableSlotMap
+blocks); versions under old GPU/Context leases consume the same fixed budget. Each upload leases one page;
+there is no overflow allocation. A row must fit one configured chunk. Region writes clone the whole image
+to preserve in-flight readers, so the resident budget must accommodate both versions. This is an explicit
+correctness/performance limitation, not sparse residency. Full replacement with incompatible dimensions,
+format, layers or mip count while consumers are leased is rejected. G11A supports only 2D single-layer
+RGBA8 UNORM/SRGB and BC1 SRGB, explicit mip bytes, nearest sampling and integer explicit LOD.
+No automatic mip generation, Mesh/Material storage, WSI/HDR, G11B–D/G12/G13 work is included.
+
+## Implementation handoff for independent V
+
+Internal full matrices: RelWithDebInfo 72/72 (135.16 s), Debug 72/72 (138.24 s), MSVC ASan 72/72
+(179.08 s), all builds successful and second builds no-work. Name-set comparison against the previous
+62-test exact-I logs has no removal/rename and exactly ten additional top-level cases. Final bounded
+review made TextureVersion explicitly immovable, added compressed-region/premultiplied-input negatives,
+and recorded fixed-buffer four-view cadence via the existing test-only Native seam. After those final
+changes, all three complete builds/second builds and nine affected Texture/SDK tests passed again.
+GPU Validation/SyncValidation and ASan report zero errors in these successful runs; overlay warnings remain.
+Independent final-I V must still reconfigure/build/run ALL 72 on the exact clean commit, never rely on this
+implementation workspace or the targeted reruns alone. Old failures remain in the external evidence directory.
+
+Measured Native host metadata: Binding32, ExecutionContext224, RetirementEntry32, 10k allocation/binding
+records1,343,640 bytes/61 new calls (cold ledger benchmark). IpcMessage144/IpcReply296/RenderRequest216 and
+Permit16 are unchanged. DeferredCompletion512 (previous448) remains a fixed configured vector, default128
+slots; increase8KiB per default Server. No unbounded preallocation or hidden request table was introduced.

@@ -18,6 +18,8 @@ namespace lux::render::vulkan
         TextureUploadOptions options;
         std::vector<Page> pages;
         TextureUploadStats stats;
+        VkQueryPool timestamps = VK_NULL_HANDLE;
+        std::uint32_t copy_timestamp_bits = 0, graphics_timestamp_bits = 0;
         UploadState(DeviceSession& session, TextureUploadOptions options) noexcept
             : session(session), options(options) {}
         ~UploadState() noexcept;

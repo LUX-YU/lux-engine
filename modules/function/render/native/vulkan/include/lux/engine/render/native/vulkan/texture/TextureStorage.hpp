@@ -17,12 +17,16 @@ namespace lux::render::vulkan
     class TextureVersion final
     {
     public:
+        TextureVersion() noexcept = default;
+        TextureVersion(const TextureVersion&) = delete;
+        TextureVersion& operator=(const TextureVersion&) = delete;
         [[nodiscard]] const rdesc::TextureInfo& info() const noexcept { return info_; }
         [[nodiscard]] std::uint32_t descriptorIndex() const noexcept { return key_.index; }
         [[nodiscard]] const ImageAllocation& image() const noexcept { return *image_; }
         [[nodiscard]] std::uint64_t revision() const noexcept { return revision_; }
     private:
         friend class TextureStorage;
+        friend class DeviceSession;
         friend class TextureUpload;
         friend class ExecutionContext;
         cxx::SlotKey<TextureDescriptorTag> key_;

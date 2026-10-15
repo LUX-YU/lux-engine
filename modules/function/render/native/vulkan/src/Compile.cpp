@@ -1,6 +1,7 @@
 #include <lux/engine/render/native/vulkan/CompiledGraph.hpp>
 #include "Shader.hpp"
 #include "Native.hpp"
+#include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -49,6 +50,9 @@ namespace lux::render::vulkan
                     VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
             case EGraphUse::TRANSFER_SOURCE:
                 return {VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL};
+            case EGraphUse::SAMPLED:
+                return {VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_SHADER_SAMPLED_READ_BIT,
+                    VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
             default:
                 return {VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                     VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL};
@@ -59,7 +63,8 @@ namespace lux::render::vulkan
         {
             if (auto* b = std::get_if<GraphBufferDesc>(&resource.description))
                 return std::get<GraphBufferRange>(use.range) == GraphBufferRange{0, b->size};
-            return std::get<GraphImageRange>(use.range) == GraphImageRange{1, 0, 1, 0, 1};
+            const auto& image = std::get<GraphImageDesc>(resource.description);
+            return std::get<GraphImageRange>(use.range) == GraphImageRange{1, 0, image.mips, 0, image.layers};
         }
     }
 
@@ -86,9 +91,12 @@ namespace lux::render::vulkan
             if (is_history) return cxx::unexpected(RenderError{kUnsupported});
             if (const auto* image = std::get_if<GraphImageDesc>(&resource.description))
             {
-                const bool is_unsupported_image = image->mips != 1 || image->layers != 1 || image->samples != 1 ||
-                    image->format != rdesc::ETextureFormat::RGBA8_UNORM ||
-                    resource.origin != EGraphOrigin::TRANSIENT;
+                const bool is_imported = resource.origin == EGraphOrigin::IMPORTED;
+                const bool sampled_format = image->format == rdesc::ETextureFormat::RGBA8_UNORM ||
+                    image->format == rdesc::ETextureFormat::RGBA8_SRGB || image->format == rdesc::ETextureFormat::BC1_RGBA_SRGB;
+                const bool is_unsupported_image = image->layers != 1 || image->samples != 1 ||
+                    (is_imported ? !sampled_format : image->mips != 1 ||
+                        image->format != rdesc::ETextureFormat::RGBA8_UNORM || resource.origin != EGraphOrigin::TRANSIENT);
                 if (is_unsupported_image) return cxx::unexpected(RenderError{kUnsupported});
             }
             result.resources_.push_back({resource.key, resource.description, resource.origin});
@@ -96,8 +104,11 @@ namespace lux::render::vulkan
         for (const auto& binding : assembly.external_bindings)
         {
             auto& resource = result.resources_[binding.resource.index];
-            const bool is_unsupported_storage = !std::holds_alternative<GraphBufferDesc>(resource.description) ||
-                binding.storage.abi != cxx::SchemaVersion{1, 0};
+            const bool is_image = std::holds_alternative<GraphImageDesc>(resource.description);
+            const bool invalid_texture = is_image &&
+                (binding.storage.type.name() != kTextureStorageType.name() ||
+                 binding.storage.scope != EResourceScope::GLOBAL || resource.origin != EGraphOrigin::IMPORTED);
+            const bool is_unsupported_storage = invalid_texture || binding.storage.abi != cxx::SchemaVersion{1, 0};
             if (is_unsupported_storage) return cxx::unexpected(RenderError{kUnsupported});
             resource.storage = binding.storage;
         }
@@ -106,12 +117,15 @@ namespace lux::render::vulkan
             auto& plan = result.resources_[output.version.resource.index];
             if (std::holds_alternative<GraphBufferDesc>(plan.description)) plan.readback = true;
             if (!output.target) continue;
+            if (plan.origin != EGraphOrigin::TRANSIENT) return cxx::unexpected(RenderError{kUnsupported});
             if (*output.target != target || result.output_ != kGraphInvalidIndex)
                 return cxx::unexpected(RenderError{kInvalidArgument});
             result.output_ = output.version.resource.index;
             plan.target_sized = true;
         }
         if (result.output_ == kGraphInvalidIndex) return cxx::unexpected(RenderError{kInvalidArgument});
+        const bool sampled_program = std::ranges::any_of(programs, [](const auto& p) { return p.shader.abi == 2; });
+        if (sampled_program && !session.textures()) return cxx::unexpected(RenderError{kUnsupported});
         for (std::size_t i = 0; i < programs.size(); ++i)
         {
             for (std::size_t j = 0; j < i; ++j)
@@ -136,6 +150,7 @@ namespace lux::render::vulkan
             CompiledPass compiled{};
             compiled.clear_color = binding->clear_color;
             compiled.vertex_count = binding->vertex_count;
+            compiled.texture_lod = binding->texture_lod;
             unsigned reads = 0, writes = 0;
             for (const auto& use : pass.uses)
             {
@@ -147,6 +162,26 @@ namespace lux::render::vulkan
                 if (use.access == EGraphAccess::READ) { compiled.source = index; ++reads; }
                 else { compiled.destination = index; ++writes; }
                 if (resource.origin == EGraphOrigin::IMPORTED && use.access != EGraphAccess::READ)
+                    return cxx::unexpected(RenderError{kUnsupported});
+                if (use.usage == EGraphUse::SAMPLED)
+                {
+                    const auto* image = std::get_if<GraphImageDesc>(&resource.description);
+                    const bool invalid_texture = !image || resource.origin != EGraphOrigin::IMPORTED || !resource.storage ||
+                        binding->shader.abi != 2 || binding->texture.isNull() ||
+                        (!resource.texture.isNull() && resource.texture != binding->texture) ||
+                        !std::isfinite(binding->texture_lod) || binding->texture_lod < 0 ||
+                        std::floor(binding->texture_lod) != binding->texture_lod ||
+                        (image && binding->texture_lod > image->mips - 1);
+                    if (invalid_texture) return cxx::unexpected(RenderError{kInvalidArgument});
+                    resource.texture = binding->texture;
+                    resource.image_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+                    // Native publication already established Graphics ownership and SHADER_READ layout.
+                    // Immutable read/read sampling needs no recurring image transition or binding lookup.
+                    used[index] = true;
+                    previous[index] = accessFor(use);
+                    continue;
+                }
+                if (resource.origin == EGraphOrigin::IMPORTED && std::holds_alternative<GraphImageDesc>(resource.description))
                     return cxx::unexpected(RenderError{kUnsupported});
                 const auto current = accessFor(use);
                 const auto source = previous[index];
@@ -196,7 +231,10 @@ namespace lux::render::vulkan
                 result.resources_[compiled.destination].description);
             if (pass.kind == EGraphPassKind::GRAPHICS)
             {
-                if (pass.uses.size() != 1 || binding->vertex_count == 0)
+                const bool valid_sample = binding->shader.abi == 2 && reads == 1 &&
+                    !result.resources_[compiled.source].texture.isNull();
+                const bool valid_color = binding->shader.abi == 1 && reads == 0 && binding->texture.isNull();
+                if ((!valid_sample && !valid_color) || !writes_image || binding->vertex_count == 0)
                     return cxx::unexpected(RenderError{kUnsupported});
                 compiled.recipe = ERecipe::DRAW;
                 if (!result.layout_)
@@ -205,6 +243,9 @@ namespace lux::render::vulkan
                     VkPipelineLayoutCreateInfo info{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};
                     info.pushConstantRangeCount = 1;
                     info.pPushConstantRanges = &range;
+                    const auto descriptors = sampled_program ? session.textures()->layout() : VK_NULL_HANDLE;
+                    info.setLayoutCount = sampled_program ? 1 : 0;
+                    info.pSetLayouts = sampled_program ? &descriptors : nullptr;
                     const auto created = LUX_NATIVE("pipeline_layout", vkCreatePipelineLayout(device.native(), &info,
                         nullptr, &result.layout_));
                     if (created != VK_SUCCESS) return cxx::unexpected(nativeError(created));
@@ -268,8 +309,8 @@ namespace lux::render::vulkan
             const bool preserves_content = current.load == VK_ATTACHMENT_LOAD_OP_LOAD;
             const bool attachment_only = current.images.size() == 1 && current.buffers.empty() &&
                 current.images[0].native.oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            // Supported draws have exactly one full color attachment, no conditions, feedback, descriptors,
-            // depth or sampling. Rasterization-order color attachment access preserves LOAD within one scope.
+            // Sampled inputs are immutable, disjoint Global images, with no read/read barriers.
+            // Rasterization-order color attachment access preserves LOAD within one scope.
             const bool can_merge = same_attachment && preserves_content && attachment_only;
             if (!can_merge) continue;
             previous.end_rendering = false;

@@ -567,6 +567,24 @@ void oracle()
 
 int main(int argc, char** argv)
 {
+    // G11A extends use, not Graph ownership or dependency analysis. Invalid uses never append a Pass.
+    {
+        RenderGraphBuilder builder;
+        const auto image = take(builder.declareResource({"sample", GraphImageDesc{}, EGraphOrigin::IMPORTED,
+            {GraphImageRange{}}}));
+        const auto bytes = take(builder.declareResource({"bytes", GraphBufferDesc{16}, EGraphOrigin::IMPORTED,
+            {GraphBufferRange{0, 16}}}));
+        CHECK(!builder.addPass({"bad_buffer", EGraphPassKind::GRAPHICS,
+            {{{bytes, 0}, {}, EGraphAccess::READ, 0, {}, EGraphUse::SAMPLED}}}));
+        CHECK(!builder.addPass({"bad_transfer", EGraphPassKind::TRANSFER,
+            {{{image, 0}, {}, EGraphAccess::READ, 0, {}, EGraphUse::SAMPLED}}}));
+        CHECK(!builder.addPass({"bad_write", EGraphPassKind::GRAPHICS,
+            {{{image, 1}, {}, EGraphAccess::WRITE, 0, {}, EGraphUse::SAMPLED}}}));
+        CHECK(builder.passCount() == 0);
+        CHECK(builder.addPass({"sample", EGraphPassKind::GRAPHICS,
+            {{{image, 0}, {}, EGraphAccess::READ, 0, {}, EGraphUse::SAMPLED}}, true}));
+        CHECK(take(analyze(take(std::move(builder).finish()))).execution_order.size() == 1);
+    }
     if (argc != 2) return 2;
     const std::string_view group = argv[1];
     if (group == "authoring") authoring();

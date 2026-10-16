@@ -1,8 +1,18 @@
-add_component(COMPONENT_NAME platform_process NAMESPACE lux::engine::platform STATIC SOURCE_FILES src/Process.cpp)
-component_include_directories(platform_process BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+add_component(
+    STATIC
+    COMPONENT_NAME platform_process
+    NAMESPACE lux::engine::platform
+    SOURCE_FILES src/Process.cpp src/Random.cpp
+)
+
+component_include_directories(platform_process
+    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
+    INSTALL_TIME include
+)
+
 target_link_libraries(platform_process PUBLIC lux::cxx::compile_time)
 if(WIN32)
-    target_link_libraries(platform_process PRIVATE shell32 ole32)
+    target_link_libraries(platform_process PRIVATE shell32 ole32 bcrypt)
 endif()
 component_add_transitive_commands(platform_process "find_package(lux-cxx REQUIRED COMPONENTS compile_time)")
 lux_classify_target(TARGET platform_process LAYER MODULES PRODUCT SHARED ROLE LIBRARY)

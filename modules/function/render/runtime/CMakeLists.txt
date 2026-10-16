@@ -32,12 +32,22 @@ component_add_transitive_commands(render_client
         HINTS "${CMAKE_CURRENT_LIST_DIR}/../../lux-engine-platform")]=]
 )
 
+set(LUX_RUNTIME_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderServer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ServerRegistration.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ServerScene.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ServerEffect.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ServerCompletion.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ServerLoop.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/Request.cpp
+)
+
 add_component(
     STATIC
     COMPONENT_NAME render_runtime
     NAMESPACE lux::engine::render
     OUTPUT_NAME lux_engine_render_runtime
-    SOURCE_FILES src/RenderServer.cpp src/Request.cpp
+    SOURCE_FILES ${LUX_RUNTIME_SOURCES}
 )
 
 component_include_directories(render_runtime
@@ -51,10 +61,14 @@ component_add_internal_dependencies(render_runtime
     lux::engine::render::render_native_vulkan_extensions lux::engine::render::render_protocol_async
 )
 
-target_link_libraries(render_runtime PRIVATE lux::engine::platform::platform_ipc lux::cxx::concurrent bcrypt)
+target_link_libraries(render_runtime PRIVATE
+    lux::engine::platform::platform_ipc lux::cxx::concurrent lux::engine::platform::platform_process
+)
 
 component_add_transitive_commands(render_runtime
     "find_package(lux-cxx CONFIG REQUIRED COMPONENTS concurrent)"
+    [=[find_package(lux-engine-platform CONFIG REQUIRED COMPONENTS platform_process
+        HINTS "${CMAKE_CURRENT_LIST_DIR}/../../lux-engine-platform")]=]
 )
 
 target_include_directories(render_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../native/vulkan/sinclude")

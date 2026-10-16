@@ -1,3 +1,5 @@
+#include <lux/engine/render/runtime/RenderClient.hpp>
+#include <lux/engine/render/runtime/Commands.hpp>
 #include "ErasedRegistrationFixture.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "ServerFixture.hpp"
@@ -134,7 +136,7 @@ namespace batch_fixture
 
     static const std::array commands{commandDescriptor<SetValues>(), commandDescriptor<ReadValue>()};
     static const FeatureDescriptor definition{FeatureTypeIdView("test.batch.values"), {1, 0}, nullptr};
-    static const FeatureGraphOps definition_graph{[](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+    static const FeatureGraphOps definition_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 }
 
 namespace lux::render
@@ -217,9 +219,9 @@ static TypedRenderCompletion<C> call(RenderClient& client, const BoundCommand<C>
     return take(std::move(wait(client, take(client.submit(binding, request, reply_capacity)))).take(binding));
 }
 
-static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view instance) noexcept
+static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view instance) noexcept
 {
-    auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
+    auto config = decodeData<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return cxx::unexpected(config.error());
     return ProgramContribution{native_fixture::programs(*config, instance), {}};
 }
@@ -359,7 +361,7 @@ int main()
     CreateEffect::Request effect_request{target_description};
     effect_request.features.emplace_back(std::string(native_fixture::type.name()), "main", cxx::SchemaVersion{1, 0},
         DataSchema<native_fixture::Config>::describe(),
-        RenderPayload::copyOf(take(encodeWire(gpu_config, {}, native_fixture::limits)).view()));
+        RenderPayload::copyOf(take(encodeData(gpu_config, {}, native_fixture::limits)).view()));
     const auto effect = call(*a, create_effect, std::move(effect_request)).response().effect;
     auto create_view = take(a->bind<CreateView>());
     auto create_target = take(a->bind<CreateTarget>());

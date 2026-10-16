@@ -18,6 +18,12 @@ run_checked("${CMAKE_COMMAND}" --install "${BUILD_DIR}" --config "${CONFIG}" --p
 
 file(RENAME "${prefix}" "${relocated}")
 
+foreach(obsolete features/Texture.hpp features/Program.hpp data/Wire.hpp)
+    if(EXISTS "${relocated}/include/lux/engine/render/${obsolete}")
+        message(FATAL_ERROR "Obsolete public header installed: ${obsolete}")
+    endif()
+endforeach()
+
 # Resolve the same actual header-only dependency as the parent build. Package registries remain disabled.
 file(STRINGS "${BUILD_DIR}/CMakeCache.txt" stdexec_cache REGEX "^stdexec_DIR:[^=]+=")
 string(REGEX REPLACE "^stdexec_DIR:[^=]+=" "" stdexec_directory "${stdexec_cache}")
@@ -34,4 +40,4 @@ run_checked(
 
 run_checked("${CMAKE_COMMAND}" --build "${root}/build" --config "${CONFIG}" --target all -j 4 -- -k 0)
 
-run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${root}/build" -C "${CONFIG}" --output-on-failure)
+run_checked("${CMAKE_CTEST_COMMAND}" --test-dir "${root}/build" -C "${CONFIG}" -V --output-on-failure)

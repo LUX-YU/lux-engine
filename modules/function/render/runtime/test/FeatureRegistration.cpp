@@ -16,7 +16,7 @@ struct Second final
     using Request = std::uint32_t;
     using Response = Ack;
 };
-static RenderResult<void> describe(const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept
+static RenderResult<void> describe(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept
 {
     return {};
 }

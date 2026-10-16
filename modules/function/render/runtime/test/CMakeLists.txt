@@ -99,10 +99,10 @@ set_tests_properties(render.runtime.offscreen PROPERTIES TIMEOUT 90)
 
 # Identical server source, linked to the existing compile-time Native fault seam.
 # Only completion observation is held; actual GPU submission and final wait are real.
-add_executable(render_runtime_shutdown_test Shutdown.cpp ../src/RenderServer.cpp ../src/Request.cpp)
+add_executable(render_runtime_shutdown_test Shutdown.cpp ${LUX_RUNTIME_SOURCES})
 target_include_directories(render_runtime_shutdown_test PRIVATE ../pinclude ../../native/vulkan/test ../../native/vulkan/sinclude)
 target_link_libraries(render_runtime_shutdown_test PRIVATE render_client render_features
-    render_native_instrumented lux::engine::platform::platform_ipc bcrypt
+    render_native_instrumented lux::engine::platform::platform_ipc lux::engine::platform::platform_process
 )
 set_target_properties(render_runtime_shutdown_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 add_test(NAME render.runtime.shutdown COMMAND render_runtime_shutdown_test)
@@ -148,7 +148,7 @@ add_test(NAME render.runtime.operations COMMAND render_runtime_operations_test)
 set_tests_properties(render.runtime.operations PROPERTIES TIMEOUT 60)
 
 # Real open GPU-ready Feature using the same Runtime and Native algorithms with observation/fault hooks.
-add_executable(render_runtime_gpu_ready_test GpuReady.cpp ../src/RenderServer.cpp ../src/Request.cpp
+add_executable(render_runtime_gpu_ready_test GpuReady.cpp ${LUX_RUNTIME_SOURCES}
     ../../native/vulkan/test/Allocation.cpp
 )
 
@@ -157,7 +157,7 @@ target_compile_definitions(render_runtime_gpu_ready_test PRIVATE LUX_RUNTIME_TES
 target_include_directories(render_runtime_gpu_ready_test PRIVATE ../pinclude ../../native/vulkan/test ../../native/vulkan/sinclude)
 
 target_link_libraries(render_runtime_gpu_ready_test PRIVATE render_client render_features
-    render_native_instrumented lux::engine::platform::platform_ipc bcrypt
+    render_native_instrumented lux::engine::platform::platform_ipc lux::engine::platform::platform_process
 )
 
 set_target_properties(render_runtime_gpu_ready_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
@@ -170,12 +170,12 @@ add_test(NAME render.runtime.gpu_ready_transfer COMMAND render_runtime_gpu_ready
 add_test(NAME render.runtime.gpu_ready_same_family COMMAND render_runtime_gpu_ready_test same-family)
 set_tests_properties(render.runtime.gpu_ready_transfer render.runtime.gpu_ready_same_family PROPERTIES TIMEOUT 120)
 
-add_executable(render_texture_progress_test TextureProgress.cpp ../src/RenderServer.cpp ../src/Request.cpp)
+add_executable(render_texture_progress_test TextureProgress.cpp ${LUX_RUNTIME_SOURCES})
 
 target_include_directories(render_texture_progress_test PRIVATE ../pinclude ../../native/vulkan/test ../../native/vulkan/sinclude)
 
 target_link_libraries(render_texture_progress_test PRIVATE render_client render_features
-    render_native_instrumented lux::engine::platform::platform_ipc bcrypt
+    render_native_instrumented lux::engine::platform::platform_ipc lux::engine::platform::platform_process
 )
 
 set_target_properties(render_texture_progress_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
@@ -197,13 +197,13 @@ add_test(NAME render.runtime.texture_operations COMMAND render_texture_operation
 set_tests_properties(render.runtime.texture_operations PROPERTIES TIMEOUT 60)
 
 add_executable(render_texture_rendering_test TextureRendering.cpp ../../native/vulkan/test/Allocation.cpp
-    ../src/RenderServer.cpp ../src/Request.cpp
+    ${LUX_RUNTIME_SOURCES}
 )
 
 target_include_directories(render_texture_rendering_test PRIVATE ../../native/vulkan/test ../pinclude ../../native/vulkan/sinclude)
 
 target_link_libraries(render_texture_rendering_test PRIVATE render_client render_features
-    render_native_instrumented lux::engine::platform::platform_ipc bcrypt
+    render_native_instrumented lux::engine::platform::platform_ipc lux::engine::platform::platform_process
 )
 
 set_target_properties(render_texture_rendering_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
@@ -233,14 +233,14 @@ add_library(render_extension_header OBJECT "${CMAKE_CURRENT_BINARY_DIR}/Extensio
 
 target_link_libraries(render_extension_header PRIVATE render_features)
 
-add_executable(render_runtime_async_test Async.cpp ../src/RenderServer.cpp ../src/Request.cpp)
+add_executable(render_runtime_async_test Async.cpp ${LUX_RUNTIME_SOURCES})
 
 target_include_directories(render_runtime_async_test PRIVATE ../pinclude ../../native/vulkan/sinclude)
 
 target_compile_definitions(render_runtime_async_test PRIVATE LUX_RUNTIME_ASYNC_TEST_SEAM)
 
 target_link_libraries(render_runtime_async_test PRIVATE render_client render_features render_native_vulkan
-    lux::engine::platform::platform_ipc lux::cxx::concurrent bcrypt
+    lux::engine::platform::platform_ipc lux::cxx::concurrent lux::engine::platform::platform_process
 )
 
 set_target_properties(render_runtime_async_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
@@ -266,7 +266,7 @@ endforeach()
 
 add_subdirectory(async_tail)
 
-add_executable(render_runtime_async_cost_test AsyncCost.cpp ../src/RenderServer.cpp ../src/Request.cpp)
+add_executable(render_runtime_async_cost_test AsyncCost.cpp ${LUX_RUNTIME_SOURCES})
 
 target_include_directories(render_runtime_async_cost_test PRIVATE ../pinclude ../../native/vulkan/sinclude)
 
@@ -274,7 +274,7 @@ target_compile_definitions(render_runtime_async_cost_test PRIVATE LUX_RUNTIME_AS
 
 target_link_libraries(render_runtime_async_cost_test PRIVATE
     render_client render_features render_native_vulkan lux::engine::platform::platform_ipc
-    lux::cxx::concurrent lux::engine::process::process_execution bcrypt
+    lux::cxx::concurrent lux::engine::process::process_execution lux::engine::platform::platform_process
 )
 
 set_target_properties(render_runtime_async_cost_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")

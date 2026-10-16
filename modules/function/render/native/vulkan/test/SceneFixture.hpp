@@ -11,7 +11,7 @@ namespace native_fixture
     namespace cxx = lux::cxx;
     inline std::atomic<unsigned> descriptions{0}, builds{0};
     inline constexpr FeatureTypeIdView type("test.offscreen");
-    inline constexpr WireLimits limits{4096, 4096};
+    inline constexpr EncodedDataLimits limits{4096, 4096};
 
     struct Config final { std::uint32_t width = 32, height = 32, graphics = 1, scopes = 0; };
 }
@@ -31,7 +31,7 @@ namespace lux::render
             };
             return schema;
         }
-        static RenderResult<std::size_t> wireSize(const native_fixture::Config&) noexcept { return 16; }
+        static RenderResult<std::size_t> encodedSize(const native_fixture::Config&) noexcept { return 16; }
 
         static RenderResult<void> encode(const native_fixture::Config& value, cxx::BinarySpanWriter& out) noexcept
         {
@@ -39,14 +39,14 @@ namespace lux::render
                 out.writeUnsigned(x);
             return {};
         }
-        static RenderResult<native_fixture::Config> decode(cxx::BinaryReader& in, WireView) noexcept
+        static RenderResult<native_fixture::Config> decode(cxx::BinaryReader& in, RetainableEncodedDataView) noexcept
         {
             native_fixture::Config value;
             for (auto* x : {&value.width, &value.height, &value.graphics, &value.scopes})
             {
                 in.readUnsigned(*x);
             }
-            if (value.graphics > 1 || value.scopes > 1) return cxx::unexpected(RenderError{kInvalidWire});
+            if (value.graphics > 1 || value.scopes > 1) return cxx::unexpected(RenderError{kInvalidEncoding});
             return value;
         }
     };
@@ -59,10 +59,10 @@ namespace native_fixture
         return {c.width, c.height, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     }
 
-    inline RenderResult<void> describe(const WireView* wire, std::string_view, std::vector<ResourceClaim>& claims) noexcept
+    inline RenderResult<void> describe(const RetainableEncodedDataView* wire, std::string_view, std::vector<ResourceClaim>& claims) noexcept
     {
         ++descriptions;
-        auto c = decodeWire<Config>(*wire, limits);
+        auto c = decodeData<Config>(*wire, limits);
         if (!c) return cxx::unexpected(c.error());
         claims.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{c->width, c->height}});
         if (c->scopes)
@@ -73,11 +73,11 @@ namespace native_fixture
         return {};
     }
 
-    inline RenderResult<void> build(const WireView* wire, std::string_view instance,
+    inline RenderResult<void> build(const RetainableEncodedDataView* wire, std::string_view instance,
         std::span<const ResolvedResource> resources, RenderGraphBuilder& builder) noexcept
     {
         ++builds;
-        auto c = decodeWire<Config>(*wire, limits);
+        auto c = decodeData<Config>(*wire, limits);
         if (!c) return cxx::unexpected(c.error());
         const auto color = findResource(resources, "color")->version;
         auto pixels = builder.declareResource({featureKey(type, instance, "pixels"),
@@ -128,9 +128,9 @@ namespace native_fixture
 
     inline RenderResult<FeatureAssembly> assemble(Config config)
     {
-        auto bytes = encodeWire(config, {}, limits);
+        auto bytes = encodeData(config, {}, limits);
         if (!bytes) return cxx::unexpected(bytes.error());
-        const WireView wire{DataSchema<Config>::describe(), *bytes};
+        const RetainableEncodedDataView wire{DataSchema<Config>::describe(), *bytes};
         const FeatureInstanceView selected{&definition, &definition_graph, &wire, "main"};
         return assembleFeatures({&selected, 1}, limits);
     }

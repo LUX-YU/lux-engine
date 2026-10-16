@@ -47,8 +47,8 @@ int main()
     const auto texture = image.first.texture;
     complete(image.second, worker, *session);
     image.second.reset();
-    auto config = take(encodeWire(extension_test::ViewConfig{texture, id}, {}, extension_test::limits));
-    const WireView wire{DataSchema<extension_test::ViewConfig>::schema, config};
+    auto config = take(encodeData(extension_test::ViewConfig{texture, id}, {}, extension_test::limits));
+    const RetainableEncodedDataView wire{DataSchema<extension_test::ViewConfig>::schema, config};
     const FeatureInstanceView selected{&extension_test::definition, &extension_test::definition_graph, &wire, "combined"};
     auto assembly = take(assembleFeatures({&selected, 1}, extension_test::limits));
     auto contribution = take(extension_test::programs(&wire, "combined"));

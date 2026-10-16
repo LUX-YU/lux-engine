@@ -44,9 +44,9 @@ static TestCompletion call(TestClient& client, TestCommand command)
     return wait(client, take(client.submit(command)));
 }
 
-static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view name) noexcept
 {
-    auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
+    auto config = decodeData<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
     return ProgramContribution{native_fixture::programs(*config, name), {}};
 }
@@ -94,11 +94,11 @@ int main()
     native_fixture::Config config;
     command.description = native_fixture::target(config);
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(config, {}, native_fixture::limits)).view())});
     auto effect = call(*b, command);
     check(effect.header.outcome == ECommandOutcome::SUCCESS && server->stats().compiled_graphs == 1);
     auto wrong_schema = DataSchema<native_fixture::Config>::describe();
-    ++wrong_schema.wire_version.minor;
+    ++wrong_schema.encoding_version.minor;
     command.features[0].config_schema = wrong_schema;
     check(call(*b, command).header.outcome == ECommandOutcome::FAILED);
     check(server->stats().compiled_graphs == 1);

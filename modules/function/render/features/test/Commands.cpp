@@ -11,8 +11,8 @@ using namespace lux::render;
 
 static_assert(RenderCommand<SetTexture> && RenderCommand<SetTextureRegion> &&
     RenderCommand<ReleaseTexture> && RenderCommand<QueryTexture>);
-static_assert(!WireData<SetTexture::Request> && !WireData<SetTextureRegion::Request>);
-static_assert(WireData<TextureBinding>);
+static_assert(!EncodableData<SetTexture::Request> && !EncodableData<SetTextureRegion::Request>);
+static_assert(EncodableData<TextureBinding>);
 static_assert(std::tuple_size_v<TextureStorage::Commands> == 4);
 static_assert(std::same_as<std::tuple_element_t<0, TextureStorage::Commands>, SetTexture>);
 static_assert(std::same_as<std::tuple_element_t<1, TextureStorage::Commands>, SetTextureRegion>);
@@ -55,9 +55,9 @@ int main()
     CHECK(destroyed == 1);
 
     TextureBinding binding{{3, 2}, 1};
-    auto encoded = encodeWire(binding, {}, {12, 0});
+    auto encoded = encodeData(binding, {}, {12, 0});
     CHECK(encoded);
-    auto decoded = decodeWire<TextureBinding>({DataSchema<TextureBinding>::describe(), *encoded, {}}, {12, 0});
+    auto decoded = decodeData<TextureBinding>({DataSchema<TextureBinding>::describe(), *encoded, {}}, {12, 0});
     CHECK(decoded && decoded->texture == binding.texture && decoded->lod == binding.lod);
     CHECK(validateDataSchema(TextureStorage::config_schema));
     return 0;

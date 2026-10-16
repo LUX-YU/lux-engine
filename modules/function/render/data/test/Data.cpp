@@ -12,18 +12,18 @@ namespace cxx = lux::cxx;
 #define CHECK(...) do { if (!(__VA_ARGS__)) { \
     std::fprintf(stderr, "line %d: %s\n", __LINE__, #__VA_ARGS__); return 1; } } while (false)
 
-static constexpr WireLimits kLimits{4096, 4096};
-static_assert(WireData<fixture::Record> && WireData<fixture::Payload>);
-static_assert(!WireData<int*> && !WireData<std::span<int>> && !WireData<std::string_view>);
-static_assert(!WireData<std::vector<std::byte>> && !WireData<std::array<int*, 2>>);
-static_assert(noexcept(decodeWire<fixture::Record>(std::declval<WireView>(), kLimits)));
+static constexpr EncodedDataLimits kLimits{4096, 4096};
+static_assert(EncodableData<fixture::Record> && EncodableData<fixture::Payload>);
+static_assert(!EncodableData<int*> && !EncodableData<std::span<int>> && !EncodableData<std::string_view>);
+static_assert(!EncodableData<std::vector<std::byte>> && !EncodableData<std::array<int*, 2>>);
+static_assert(noexcept(decodeData<fixture::Record>(std::declval<RetainableEncodedDataView>(), kLimits)));
 
-static OwnedWireBytes owned(std::span<const std::byte> bytes)
+static lux::cxx::SharedBytes<> owned(std::span<const std::byte> bytes)
 {
-    return OwnedWireBytes::copyOf(bytes);
+    return lux::cxx::SharedBytes<>::copyOf(bytes);
 }
 
-static std::vector<std::byte> mutableCopy(const OwnedWireBytes& bytes)
+static std::vector<std::byte> mutableCopy(const lux::cxx::SharedBytes<>& bytes)
 {
     return {bytes.view().begin(), bytes.view().end()};
 }
@@ -43,7 +43,7 @@ static int schemaTests()
     ++changed.schema_version.minor;
     CHECK(!compatibleDataSchemas(original, changed));
     changed = original;
-    ++changed.wire_version.minor;
+    ++changed.encoding_version.minor;
     CHECK(!compatibleDataSchemas(original, changed));
     changed = original;
     changed.alignment = 2;
@@ -98,7 +98,7 @@ static int schemaTests()
 static int roundtripTests()
 {
     fixture::Record input{0x12345678, {-32768, 0, 32767}, 0.25f, true, 3};
-    auto bytes = encodeWire(input, {}, kLimits);
+    auto bytes = encodeData(input, {}, kLimits);
     CHECK(bytes && bytes->size() == 16);
     const std::byte golden[]{
         std::byte{0x78}, std::byte{0x56}, std::byte{0x34}, std::byte{0x12},
@@ -106,29 +106,29 @@ static int roundtripTests()
         std::byte{0}, std::byte{0}, std::byte{0x80}, std::byte{0x3e}, std::byte{1}, std::byte{3}
     };
     CHECK(std::ranges::equal(bytes->view(), golden));
-    auto result = decodeWire<fixture::Record>({DataSchema<fixture::Record>::describe(), *bytes, {}}, kLimits);
+    auto result = decodeData<fixture::Record>({DataSchema<fixture::Record>::describe(), *bytes, {}}, kLimits);
     CHECK(result && *result == input);
     auto unaligned_storage = std::make_shared<std::vector<std::byte>>(17);
     std::copy(bytes->view().begin(), bytes->view().end(), unaligned_storage->begin() + 1);
-    auto unaligned = OwnedWireBytes::fromOwner(unaligned_storage, std::span(*unaligned_storage).subspan(1));
-    CHECK(decodeWire<fixture::Record>({DataSchema<fixture::Record>::describe(), unaligned, {}}, kLimits));
+    auto unaligned = lux::cxx::SharedBytes<>::fromOwner(unaligned_storage, std::span(*unaligned_storage).subspan(1));
+    CHECK(decodeData<fixture::Record>({DataSchema<fixture::Record>::describe(), unaligned, {}}, kLimits));
     input.weight = -0.0f;
-    bytes = encodeWire(input, {}, kLimits);
+    bytes = encodeData(input, {}, kLimits);
     CHECK(bytes);
-    result = decodeWire<fixture::Record>({DataSchema<fixture::Record>::describe(), *bytes, {}}, kLimits);
+    result = decodeData<fixture::Record>({DataSchema<fixture::Record>::describe(), *bytes, {}}, kLimits);
     CHECK(result && std::bit_cast<std::uint32_t>(result->weight) == 0);
     input.weight = std::numeric_limits<float>::quiet_NaN();
-    bytes = encodeWire(input, {}, kLimits);
+    bytes = encodeData(input, {}, kLimits);
     CHECK(bytes);
-    result = decodeWire<fixture::Record>({DataSchema<fixture::Record>::describe(), *bytes, {}}, kLimits);
+    result = decodeData<fixture::Record>({DataSchema<fixture::Record>::describe(), *bytes, {}}, kLimits);
     CHECK(result && std::bit_cast<std::uint32_t>(result->weight) == 0x7fc00000);
 
     const std::byte source[]{std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4}, std::byte{5}};
     std::array attachments{owned(source)};
     fixture::Payload payload{owned(source), {0, 4, 1}, {}};
-    auto packet = encodeWire(payload, attachments, kLimits);
+    auto packet = encodeData(payload, attachments, kLimits);
     CHECK(packet);
-    auto decoded = decodeWire<fixture::Payload>(
+    auto decoded = decodeData<fixture::Payload>(
         {DataSchema<fixture::Payload>::describe(), *packet, attachments}, kLimits
     );
     CHECK(decoded && std::ranges::equal(decoded->blob.view(), source));
@@ -138,19 +138,19 @@ static int roundtripTests()
 
 static int malformedTests()
 {
-    auto bytes = encodeWire(fixture::Record{}, {}, kLimits);
+    auto bytes = encodeData(fixture::Record{}, {}, kLimits);
     CHECK(bytes);
     const auto& schema = DataSchema<fixture::Record>::describe();
     for (std::size_t size = 0; size < bytes->size(); ++size)
     {
         auto truncated = owned(bytes->view().first(size));
-        CHECK(!decodeWire<fixture::Record>({schema, truncated, {}}, kLimits));
+        CHECK(!decodeData<fixture::Record>({schema, truncated, {}}, kLimits));
     }
     auto check_bad = [&](std::vector<std::byte> data)
     {
         auto packet = owned(data);
         auto before = fixture::record_decode_calls;
-        auto result = decodeWire<fixture::Record>({schema, packet, {}}, kLimits);
+        auto result = decodeData<fixture::Record>({schema, packet, {}}, kLimits);
         return !result && fixture::record_decode_calls == before;
     };
     auto data = mutableCopy(*bytes);
@@ -165,19 +165,19 @@ static int malformedTests()
     data = mutableCopy(*bytes);
     data[13] = std::byte{0x80}; // noncanonical negative zero
     CHECK(check_bad(data));
-    CHECK(!decodeWire<fixture::Record>({schema, *bytes, {}}, {15, 100}));
-    CHECK(!encodeWire(fixture::Record{}, {}, {15, 100}));
+    CHECK(!decodeData<fixture::Record>({schema, *bytes, {}}, {15, 100}));
+    CHECK(!encodeData(fixture::Record{}, {}, {15, 100}));
     fixture::Record bad;
     bad.mode = 2;
-    CHECK(!encodeWire(bad, {}, kLimits));
+    CHECK(!encodeData(bad, {}, kLimits));
     auto mismatch = schema;
-    ++mismatch.wire_version.major;
+    ++mismatch.encoding_version.major;
     auto before = fixture::record_decode_calls;
-    CHECK(!decodeWire<fixture::Record>({mismatch, *bytes, {}}, kLimits));
+    CHECK(!decodeData<fixture::Record>({mismatch, *bytes, {}}, kLimits));
     CHECK(before == fixture::record_decode_calls);
     auto moved = std::move(*bytes);
-    CHECK(!validateWire({schema, *bytes, {}}, kLimits)); // moved-from SharedBytes can retain size
-    CHECK(validateWire({schema, moved, {}}, kLimits));
+    CHECK(!validateEncodedData({schema, *bytes, {}}, kLimits)); // moved-from SharedBytes can retain size
+    CHECK(validateEncodedData({schema, moved, {}}, kLimits));
     return 0;
 }
 
@@ -197,22 +197,22 @@ static int referenceTests()
     CHECK(!resolveExternal(attachments, {1, 0, 0}, 100));
     CHECK(!resolveExternal(attachments, {0, 4, 5}, 100));
     fixture::Payload payload{bytes, {0, 0, 8}, {}};
-    auto packet = encodeWire(payload, attachments, kLimits);
+    auto packet = encodeData(payload, attachments, kLimits);
     CHECK(packet);
-    CHECK(!decodeWire<fixture::Payload>({DataSchema<fixture::Payload>::describe(), *packet, {}}, kLimits));
-    CHECK(!decodeWire<fixture::Payload>({DataSchema<fixture::Payload>::describe(), *packet, attachments}, {100, 7}));
+    CHECK(!decodeData<fixture::Payload>({DataSchema<fixture::Payload>::describe(), *packet, {}}, kLimits));
+    CHECK(!decodeData<fixture::Payload>({DataSchema<fixture::Payload>::describe(), *packet, attachments}, {100, 7}));
     for (auto offset : {std::uint64_t{0}, std::uint64_t{35}, UINT64_MAX})
     {
         auto data = mutableCopy(*packet);
         cxx::BinarySpanWriter writer(data);
         writer.writeUnsigned(offset);
         auto invalid = owned(data);
-        CHECK(!validateWire({DataSchema<fixture::Payload>::describe(), invalid, attachments}, kLimits));
+        CHECK(!validateEncodedData({DataSchema<fixture::Payload>::describe(), invalid, attachments}, kLimits));
     }
     auto data = mutableCopy(*packet);
     data.push_back(std::byte{0});
     auto trailing = owned(data);
-    CHECK(!validateWire({DataSchema<fixture::Payload>::describe(), trailing, attachments}, kLimits));
+    CHECK(!validateEncodedData({DataSchema<fixture::Payload>::describe(), trailing, attachments}, kLimits));
     CHECK(!cxx::checkedAdd<std::uint64_t>(UINT64_MAX, 1));
     CHECK(!cxx::checkedMul<std::uint64_t>(UINT64_MAX, 2));
     return 0;
@@ -233,12 +233,12 @@ static int ownershipTests()
     {
         auto source = std::make_shared<Counted>(destroyed);
         weak = source;
-        auto owner = OwnedWireBytes::fromOwner(source, source->data);
+        auto owner = lux::cxx::SharedBytes<>::fromOwner(source, source->data);
         std::array attachments{owner};
         fixture::Payload input{owner, {0, 0, 8}, {}};
-        auto packet = encodeWire(input, attachments, kLimits);
+        auto packet = encodeData(input, attachments, kLimits);
         CHECK(packet);
-        auto result = decodeWire<fixture::Payload>(
+        auto result = decodeData<fixture::Payload>(
             {DataSchema<fixture::Payload>::describe(), *packet, attachments}, kLimits
         );
         CHECK(result);
@@ -267,15 +267,15 @@ static int contractTests()
     for (auto fault : {SIZE, SHORT_WRITE, LONG_WRITE, ENCODE_ERROR})
     {
         fixture::codec_fault = fault;
-        CHECK(!encodeWire(fixture::Record{}, {}, kLimits));
+        CHECK(!encodeData(fixture::Record{}, {}, kLimits));
     }
     fixture::codec_fault = NONE;
-    auto bytes = encodeWire(fixture::Record{}, {}, kLimits);
+    auto bytes = encodeData(fixture::Record{}, {}, kLimits);
     CHECK(bytes);
     for (auto fault : {SHORT_READ, DECODE_ERROR})
     {
         fixture::codec_fault = fault;
-        CHECK(!decodeWire<fixture::Record>({DataSchema<fixture::Record>::describe(), *bytes, {}}, kLimits));
+        CHECK(!decodeData<fixture::Record>({DataSchema<fixture::Record>::describe(), *bytes, {}}, kLimits));
     }
     fixture::codec_fault = NONE;
 
@@ -305,11 +305,11 @@ static int contractTests()
     writer.writeFloat(0.5);
     writer.writeBool(true);
     auto packet = owned(data);
-    CHECK(writer.good() && writer.size() == 43 && validateWire({scalar_schema, packet, {}}, kLimits));
+    CHECK(writer.good() && writer.size() == 43 && validateEncodedData({scalar_schema, packet, {}}, kLimits));
     cxx::BinarySpanWriter bad_float(std::span(data).subspan(34, 8));
     bad_float.writeUnsigned<std::uint64_t>(0x7ff0000000000001ULL);
     packet = owned(data);
-    CHECK(!validateWire({scalar_schema, packet, {}}, kLimits));
+    CHECK(!validateEncodedData({scalar_schema, packet, {}}, kLimits));
 
     static constexpr DataField blob_fields[]{
         {"flag", cxx::EScalarKind::U8},
@@ -326,10 +326,10 @@ static int contractTests()
     blobs.writeUnsigned<std::uint64_t>(40);
     blobs.writeUnsigned<std::uint64_t>(1);
     packet = owned(blob_data);
-    CHECK(validateWire({blob_schema, packet, {}}, kLimits));
+    CHECK(validateEncodedData({blob_schema, packet, {}}, kLimits));
     blob_data[34] = std::byte{1};
     packet = owned(blob_data);
-    CHECK(!validateWire({blob_schema, packet, {}}, kLimits));
+    CHECK(!validateEncodedData({blob_schema, packet, {}}, kLimits));
     return 0;
 }
 

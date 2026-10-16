@@ -26,7 +26,7 @@ namespace lux::render
     RenderResult<void> validateDataSchema(const DataSchemaDescriptor& schema) noexcept
     {
         const bool is_invalid_identity = !schema.type.isValid() || schema.schema_version.major == 0 ||
-            schema.wire_version.major == 0;
+            schema.encoding_version.major == 0;
         const bool is_invalid_layout = schema.fields.empty() || schema.fixed_size == 0 ||
             !std::has_single_bit(schema.alignment);
         if (is_invalid_identity || is_invalid_layout) return cxx::unexpected(RenderError{kInvalidDataSchema});
@@ -103,7 +103,7 @@ namespace lux::render
         if (auto result = validateDataSchema(expected); !result) return result;
         if (auto result = validateDataSchema(actual); !result) return result;
         const bool is_identity_mismatch = expected.type != actual.type ||
-            expected.schema_version != actual.schema_version || expected.wire_version != actual.wire_version;
+            expected.schema_version != actual.schema_version || expected.encoding_version != actual.encoding_version;
         const bool is_layout_mismatch = expected.fixed_size != actual.fixed_size ||
             expected.alignment != actual.alignment || expected.fields.size() != actual.fields.size();
         if (is_identity_mismatch || is_layout_mismatch) return cxx::unexpected(RenderError{kDataSchemaMismatch});

@@ -1,3 +1,5 @@
+#include <lux/engine/render/runtime/RenderClient.hpp>
+#include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "../../native/vulkan/test/SceneFixture.hpp"
 #include <chrono>
@@ -7,9 +9,9 @@ using lux::render::RenderServer;
 using namespace lux::render;
 using namespace std::chrono_literals;
 
-static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view instance) noexcept
+static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view instance) noexcept
 {
-    auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
+    auto config = decodeData<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
     return ProgramContribution{native_fixture::programs(*config, instance), {}};
 }
@@ -68,7 +70,7 @@ extern "C" __declspec(dllexport) bool serverDllReadback(const char* name, Render
     auto view = call<CreateView>(**client, {scene->response().scene, {1, 0, 0, 1}});
     const native_fixture::Config config{32, 32, 0, 0};
     auto target = call<CreateTarget>(**client, {native_fixture::target(config)});
-    auto bytes = encodeWire(config, {}, native_fixture::limits);
+    auto bytes = encodeData(config, {}, native_fixture::limits);
     if (!view || !target || !bytes) return false;
     CreateEffectRequest effect_request{native_fixture::target(config)};
     effect_request.features.emplace_back(std::string(native_fixture::type.name()), "main", lux::cxx::SchemaVersion{1, 0},

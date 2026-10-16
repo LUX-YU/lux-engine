@@ -7,6 +7,7 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/data/Payload.hpp>
+#include <lux/engine/render/data/Schema.hpp>
 #include <lux/engine/render/protocol/Protocol.hpp>
 #include <lux/engine/render/runtime/visibility.h>
 

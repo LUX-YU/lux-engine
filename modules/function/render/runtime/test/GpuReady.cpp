@@ -72,7 +72,7 @@ namespace lux::render
         static RenderResult<std::size_t> retainedBytes(const UploadProbe::Request& value) noexcept
         {
             const auto bytes = cxx::checkedAdd(sizeof(value), value.source.retainedBytes());
-            if (!bytes) return cxx::unexpected(RenderError{kWireLimit});
+            if (!bytes) return cxx::unexpected(RenderError{kEncodingLimit});
             return *bytes;
         }
     };
@@ -151,18 +151,18 @@ static RenderResult<void> ready(ProbeOwner& owner, vulkan::DeviceSession& sessio
     publishing_sample = owner.sample;
     auto read = session.read(*session.borrow(owner.destination), 0, *owner.output);
     if (!read) return read;
-    if (!std::ranges::equal(*owner.output, owner.source)) return lux::cxx::unexpected(RenderError{kInvalidWire});
+    if (!std::ranges::equal(*owner.output, owner.source)) return lux::cxx::unexpected(RenderError{kInvalidEncoding});
     if (owner.fail_publication) return lux::cxx::unexpected(RenderError{kStorageContract});
     ++finished; // The test business commit: real copied bytes have been certified, not just a CPU-ready flag.
     return {};
 }
 static RenderResult<void> upload(vulkan::DeviceSession& session, const UploadProbe::Request& input, CommandContext<UploadProbe>& context) noexcept
 {
-    if (input.sample >= samples.size() || input.mode > 5) return lux::cxx::unexpected(RenderError{kInvalidWire});
+    if (input.sample >= samples.size() || input.mode > 5) return lux::cxx::unexpected(RenderError{kInvalidEncoding});
     samples[input.sample].inbound = now();
     if (input.mode == 1) return context.complete(ReadbackResult{}); // mandatory premature SUCCESS negative
     const auto source = input.source.bytes().view();
-    if (source.empty()) return lux::cxx::unexpected(RenderError{kInvalidWire});
+    if (source.empty()) return lux::cxx::unexpected(RenderError{kInvalidEncoding});
     observed_source.store(source.data());
     auto output = input.mode == 5 ? std::shared_ptr<std::vector<std::byte>>(
         new std::vector<std::byte>(source.size()), [](auto* value) noexcept {
@@ -242,17 +242,17 @@ static const CommandDescriptor probe = commandDescriptor<UploadProbe>();
 static const CommandDescriptor cpu = commandDescriptor<CpuResult>();
 static const std::array operations_list{probe, cpu};
 static const FeatureDescriptor feature{FeatureTypeIdView("test.g10.feature"), {1, 0}, nullptr};
-static const FeatureGraphOps feature_graph{[](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+static const FeatureGraphOps feature_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 static const std::array handlers{
     vulkan::nativeCommand<UploadProbe, upload>(),
     test_registration::erased(&cpu, [](void*, CommandInvocation& invocation) noexcept {
         return CommandContext<CpuResult>(invocation).complete(CpuResult::Response{});
     })
 };
-static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view name) noexcept
 {
     if (block_compile.load()) { compile_entered->count_down(); compile_resume->wait(); }
-    auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
+    auto config = decodeData<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
     return ProgramContribution{native_fixture::programs(*config, name), {}};
 }
@@ -397,7 +397,7 @@ int main(int argc, char** argv)
     // One Effect, two Scenes and four real execution groups.
     native_fixture::Config graph_config{32, 32, 1, 0};
     const FeatureSelection selection{std::string(native_fixture::type.name()), "main", {1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(graph_config, {}, native_fixture::limits)).view())};
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(graph_config, {}, native_fixture::limits)).view())};
     const CreateEffectRequest effect_request{native_fixture::target(graph_config), {selection}};
     const auto effect = decoded<EffectCreated>(call<CreateEffect>(*a, effect_request)).effect;
     std::array<AttachmentRequest, 4> groups;
@@ -513,7 +513,7 @@ int main(int argc, char** argv)
         if (result.header.outcome != ECommandOutcome::SUCCESS)
             std::fprintf(stderr, "sample=%u outcome=%u error=%llu capacity=%llu native_busy=%llu native_failure=%llu wire=%llu inbound=%lld submit=%lld fence=%lld\n",
                 i, unsigned(result.header.outcome), result.header.error.type, kRuntimeCapacity,
-                vulkan::kBusy, vulkan::kNativeFailure, kInvalidWire, samples[i].inbound.load(),
+                vulkan::kBusy, vulkan::kNativeFailure, kInvalidEncoding, samples[i].inbound.load(),
                 samples[i].submit.load(), samples[i].fence.load());
         CHECK(result.header.outcome == ECommandOutcome::SUCCESS && take(std::move(result).take(bound_b)).response().pixels.bytes().view()[63] == std::byte{73});
         result = {};

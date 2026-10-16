@@ -39,7 +39,7 @@ namespace lux::render
     {
         DataTypeIdView type;
         cxx::SchemaVersion schema_version;
-        cxx::SchemaVersion wire_version;
+        cxx::SchemaVersion encoding_version;
         std::span<const DataField> fields;
         std::uint64_t fixed_size = 0;
         std::uint32_t alignment = 1;
@@ -49,8 +49,8 @@ namespace lux::render
 
     inline constexpr auto kInvalidDataSchema = error::errorId("lux.render.data.invalid_schema");
     inline constexpr auto kDataSchemaMismatch = error::errorId("lux.render.data.schema_mismatch");
-    inline constexpr auto kInvalidWire = error::errorId("lux.render.data.invalid_wire");
-    inline constexpr auto kWireLimit = error::errorId("lux.render.data.wire_limit");
+    inline constexpr auto kInvalidEncoding = error::errorId("lux.render.data.invalid_wire");
+    inline constexpr auto kEncodingLimit = error::errorId("lux.render.data.wire_limit");
     inline constexpr auto kInvalidDataReference = error::errorId("lux.render.data.invalid_reference");
 
     [[nodiscard]] RenderResult<void> validateDataSchema(const DataSchemaDescriptor& schema) noexcept;

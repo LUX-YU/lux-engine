@@ -1,3 +1,6 @@
+#include <lux/engine/platform/ipc/IpcCore.hpp>
+#include <lux/engine/render/runtime/RenderClient.hpp>
+#include <lux/engine/render/runtime/Commands.hpp>
 #pragma once
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>

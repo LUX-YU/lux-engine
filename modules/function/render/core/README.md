@@ -1,13 +1,16 @@
-# Render Core — Draft4 G1
+# Render Core
 
 This is the new Core after the user-cleared V2 baseline, not an RD3 compatibility layer.
 
 The only object identities are `SceneId`, `ViewId`, `TargetId`, and `EffectId`, direct
-`lux::cxx::SlotKey<Tag>` aliases. Their future owners allocate and validate them with
+`lux::cxx::SlotKey<Tag>` aliases. Their Runtime owners allocate and validate them with
 lux-cxx containers. Core owns no objects. `isValid()` checks the null sentinel, not
 membership. A View key is interpreted with its Scene key; keys from different
 containers can have identical bits. Recreating a Scene invalidates the enclosing key.
-Endpoint admission and reconnect invalidation belong to later stages, not this module.
+Session admission and reconnect invalidation belong to Runtime, not this module.
+
+GraphPassId and GraphResourceId are also declared here as the original 32-bit local indices,
+not SlotKeys. Their owning Definition supplies provenance and bounds; they never identify runtime objects.
 
 `TargetDesc` is a final color-output specification with width, height, existing
 `lux::rdesc::ETextureFormat`, sample count and `ETargetKind`. Validation rejects zero

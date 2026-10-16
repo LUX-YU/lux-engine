@@ -14,9 +14,9 @@ namespace
     unsigned live_pipelines = 0;
     constexpr FeatureTypeIdView type("test.native.plan");
 
-    RenderResult<void> describe(const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept { return {}; }
+    RenderResult<void> describe(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept { return {}; }
 
-    RenderResult<void> build(const WireView*, std::string_view name,
+    RenderResult<void> build(const RetainableEncodedDataView*, std::string_view name,
         std::span<const ResolvedResource>, RenderGraphBuilder& builder) noexcept
     {
         const auto key = [&](std::string_view local) { return featureKey(type, name, local); };

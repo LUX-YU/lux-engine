@@ -1,3 +1,6 @@
+#include <lux/engine/platform/ipc/IpcCore.hpp>
+#include <lux/engine/render/runtime/RenderClient.hpp>
+#include <lux/engine/render/runtime/Commands.hpp>
 #include "ErasedRegistrationFixture.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "Allocation.hpp"
@@ -123,7 +126,7 @@ static const std::array descriptors{
     commandDescriptor<SetExposure>(), commandDescriptor<AcceptCustomData>(), commandDescriptor<InvalidReply>()
 };
 static const FeatureDescriptor feature{FeatureTypeIdView("test.open.operation"), {1, 0}, nullptr};
-static const FeatureGraphOps feature_graph{[](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+static const FeatureGraphOps feature_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 static_assert(!std::is_default_constructible_v<BoundCommand<SetExposure>>);
 static_assert(std::same_as<decltype(std::declval<const BoundCommand<SetExposure>&>().command()), CommandId>);
 template <class T>

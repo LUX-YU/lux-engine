@@ -42,14 +42,14 @@ namespace lux::render::vulkan::test
     void destroyed(const char*) noexcept {}
 }
 
-static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view name) noexcept
 {
     if (block_compile.load())
     {
         compile_entered->count_down();
         compile_resume->wait();
     }
-    auto config = decodeWire<texture_fixture::Config>(*wire, texture_fixture::limits);
+    auto config = decodeData<texture_fixture::Config>(*wire, texture_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
     return ProgramContribution{texture_fixture::programs(*config, name), texture_fixture::arguments(*config)};
 }
@@ -116,7 +116,7 @@ int main(int argc, char** argv)
     auto texture = decoded<TexturePublished>(call(*b, upload, input));
     texture_fixture::Config sample{texture.texture};
     FeatureSelection selected{std::string(texture_fixture::type.name()), "main", {1, 0},
-        DataSchema<texture_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(sample, {}, texture_fixture::limits)).view())};
+        DataSchema<texture_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(sample, {}, texture_fixture::limits)).view())};
     const CreateEffectRequest effect_input{texture_fixture::target(sample), {selected}};
     auto create_effect_a = take(a->bind<CreateEffect>());
     auto create_effect_b = take(b->bind<CreateEffect>());

@@ -53,8 +53,8 @@ int main()
     CHECK(!server->registerStorage<TestBufferStorage>());
     CHECK(server->registerFeature<TestBufferFeature>());
     CHECK(server->registerFeature({&texture_fixture::definition, &texture_fixture::definition_graph,
-        [](const WireView* wire, std::string_view name) noexcept -> RenderResult<ProgramContribution> {
-            auto config = decodeWire<texture_fixture::Config>(*wire, texture_fixture::limits);
+        [](const RetainableEncodedDataView* wire, std::string_view name) noexcept -> RenderResult<ProgramContribution> {
+            auto config = decodeData<texture_fixture::Config>(*wire, texture_fixture::limits);
             if (!config) return lux::cxx::unexpected(config.error());
             return ProgramContribution{texture_fixture::programs(*config, name), texture_fixture::arguments(*config)};
         }}));
@@ -91,7 +91,7 @@ int main()
         CHECK(value == 0.5f);
     }
     FeatureSelection selected{std::string(feature_type.name()), "combined", {1, 0}, DataSchema<ViewConfig>::schema,
-        RenderPayload::copyOf(take(encodeWire(ViewConfig{texture.texture, buffer.id}, {}, limits)).view())};
+        RenderPayload::copyOf(take(encodeData(ViewConfig{texture.texture, buffer.id}, {}, limits)).view())};
     auto create_effect = take(main->bind<CreateEffect>());
     const auto effect = decoded<EffectCreated>(call(*main, create_effect,
         CreateEffectRequest{target, {selected}})).effect;
@@ -137,7 +137,7 @@ int main()
     // A second real Feature consumes the SAME Root Texture independently of the Buffer Feature.
     texture_fixture::Config sample{texture.texture};
     FeatureSelection image_selected{std::string(texture_fixture::type.name()), "image", {1, 0},
-        DataSchema<texture_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(sample, {}, texture_fixture::limits)).view())};
+        DataSchema<texture_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(sample, {}, texture_fixture::limits)).view())};
     const auto image_effect = decoded<EffectCreated>(call(*main, create_effect,
         CreateEffectRequest{target, {image_selected}})).effect;
     call(*main, detach, groups[3]);

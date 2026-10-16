@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/data/Wire.hpp>
+#include <lux/engine/render/data/Schema.hpp>
 #include <lux/engine/render/data/ShaderInterface.hpp>
 
 namespace lux::render
@@ -33,7 +33,7 @@ namespace lux::render
     };
 
     // Static metadata. A descriptor is not an instance, a resource budget or a GPU owner.
-    // Configuration uses the existing DataSchema wire contract, never a C++ object representation.
+    // Configuration uses the existing DataSchema encoded-format contract, never a C++ object representation.
     struct StorageDescriptor final
     {
         StorageTypeIdView type;

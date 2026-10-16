@@ -29,7 +29,7 @@ namespace lux::render
         static RenderResult<std::size_t> retainedBytes(const TextureProbe::Request& value) noexcept
         {
             const auto bytes = cxx::checkedAdd(sizeof(value), value.source.retainedBytes());
-            if (!bytes) return cxx::unexpected(RenderError{kWireLimit});
+            if (!bytes) return cxx::unexpected(RenderError{kEncodingLimit});
             return *bytes;
         }
     };
@@ -69,7 +69,7 @@ static RenderResult<void> ready(Pin&, Transfer& upload, DeviceSession& session) 
 static const auto operation = commandDescriptor<TextureProbe>();
 static const std::array texture_operations{operation};
 static const FeatureDescriptor definition{FeatureTypeIdView("test.texture.progress"), {1, 0}, nullptr};
-static const FeatureGraphOps definition_graph{[](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+static const FeatureGraphOps definition_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 
 static RenderResult<void> invoke(DeviceSession& session, const TextureProbe::Request& value, CommandContext<TextureProbe>& context) noexcept
 {

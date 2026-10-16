@@ -9,9 +9,9 @@ int main()
 {
     using namespace lux::render;
     const fixture::Record input{7, {1, 2, 3}, 0.5f, true, 1};
-    auto bytes = encodeWire(input, {}, {16, 0});
+    auto bytes = encodeData(input, {}, {16, 0});
     if (!bytes) return 1;
-    auto decoded = decodeWire<fixture::Record>({DataSchema<fixture::Record>::describe(), *bytes, {}}, {16, 0});
+    auto decoded = decodeData<fixture::Record>({DataSchema<fixture::Record>::describe(), *bytes, {}}, {16, 0});
     if (!decoded || *decoded != input) return 2;
     if (renderDataErrorDescriptors().size() != 5) return 3;
     auto payload = RenderPayload::copyOf(bytes->view());

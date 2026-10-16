@@ -24,7 +24,7 @@ namespace lux::render
             static const DataSchemaDescriptor schema{DataTypeIdView("test.asset.config"), {1, 0}, {1, 0}, fields, 20, 4};
             return schema;
         }
-        static RenderResult<std::size_t> wireSize(const AssetConfig&) noexcept { return 20; }
+        static RenderResult<std::size_t> encodedSize(const AssetConfig&) noexcept { return 20; }
         static RenderResult<void> encode(const AssetConfig& value, cxx::BinarySpanWriter& out) noexcept
         {
             out.writeUnsigned(value.ref.attachment_index);
@@ -32,7 +32,7 @@ namespace lux::render
             out.writeUnsigned(value.ref.size);
             return {};
         }
-        static RenderResult<AssetConfig> decode(cxx::BinaryReader& in, WireView) noexcept
+        static RenderResult<AssetConfig> decode(cxx::BinaryReader& in, RetainableEncodedDataView) noexcept
         {
             AssetConfig result;
             in.readUnsigned(result.ref.attachment_index);
@@ -47,9 +47,9 @@ static std::latch* entered = nullptr;
 static std::latch* resume = nullptr;
 static std::atomic<const std::byte*> observed{};
 
-static RenderResult<void> describeAsset(const WireView* wire, std::string_view, std::vector<ResourceClaim>&) noexcept
+static RenderResult<void> describeAsset(const RetainableEncodedDataView* wire, std::string_view, std::vector<ResourceClaim>&) noexcept
 {
-    auto config = decodeWire<AssetConfig>(*wire, {1024, 1024});
+    auto config = decodeData<AssetConfig>(*wire, {1024, 1024});
     if (!config) return lux::cxx::unexpected(config.error());
     auto asset = resolveExternal(wire->attachments, config->ref, 1024);
     if (!asset) return lux::cxx::unexpected(asset.error());
@@ -62,11 +62,11 @@ static RenderResult<void> describeAsset(const WireView* wire, std::string_view, 
 static const FeatureDescriptor asset_definition{FeatureTypeIdView("test.asset"), {1, 0}, &DataSchema<AssetConfig>::describe()};
 static const FeatureGraphOps asset_definition_graph{describeAsset, nullptr};
 
-static RenderResult<ProgramContribution> assetPrograms(const WireView*, std::string_view) noexcept { return {}; }
+static RenderResult<ProgramContribution> assetPrograms(const RetainableEncodedDataView*, std::string_view) noexcept { return {}; }
 
-static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view name) noexcept
 {
-    auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
+    auto config = decodeData<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
     return ProgramContribution{native_fixture::programs(*config, name), {}};
 }
@@ -91,7 +91,7 @@ static TestCommand effect(SessionIdentity identity)
     native_fixture::Config config;
     result.description = native_fixture::target(config);
     result.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(config, {}, native_fixture::limits)).view())});
     return result;
 }
 
@@ -116,7 +116,7 @@ int main()
     auto command = effect(identity);
     command.attachments.push_back(take(RenderPayload::fromVector(source, 257, 64)));
     std::array attachments{command.attachments[0].bytes()};
-    auto config = take(encodeWire(AssetConfig{{0, 0, 64}}, attachments, {1024, 1024}));
+    auto config = take(encodeData(AssetConfig{{0, 0, 64}}, attachments, {1024, 1024}));
     command.features.push_back({"test.asset", "pin", {1, 0}, DataSchema<AssetConfig>::describe(),
         RenderPayload::copyOf(config.view())});
     check(!main->submit(command)); // 64 visible bytes must charge the entire 1 MiB backing

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/data/Encoding.hpp>
+
 #include <lux/engine/description/TextureInfo.hpp>
 #include <lux/engine/render/data/Payload.hpp>
 #include <tuple>
@@ -37,7 +39,7 @@ namespace lux::render
             DataTypeIdView("lux.render.TextureBinding"), {1, 0}, {1, 0}, fields, 12, 4
         };
         static const DataSchemaDescriptor& describe() noexcept { return schema; }
-        static RenderResult<std::size_t> wireSize(const TextureBinding&) noexcept { return 12; }
+        static RenderResult<std::size_t> encodedSize(const TextureBinding&) noexcept { return 12; }
         static RenderResult<void> encode(const TextureBinding& value, cxx::BinarySpanWriter& out) noexcept
         {
             out.writeUnsigned(value.texture.index);
@@ -45,7 +47,7 @@ namespace lux::render
             out.writeUnsigned(value.lod);
             return {};
         }
-        static RenderResult<TextureBinding> decode(cxx::BinaryReader& in, BorrowedWireView) noexcept
+        static RenderResult<TextureBinding> decode(cxx::BinaryReader& in, EncodedDataView) noexcept
         {
             TextureBinding value;
             in.readUnsigned(value.texture.index);
@@ -53,9 +55,9 @@ namespace lux::render
             in.readUnsigned(value.lod);
             return value;
         }
-        static RenderResult<TextureBinding> decode(cxx::BinaryReader& in, WireView wire) noexcept
+        static RenderResult<TextureBinding> decode(cxx::BinaryReader& in, RetainableEncodedDataView wire) noexcept
         {
-            return decode(in, BorrowedWireView{wire.schema, wire.bytes.view(), {}});
+            return decode(in, EncodedDataView{wire.schema, wire.bytes.view(), {}});
         }
     };
 

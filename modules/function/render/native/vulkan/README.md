@@ -37,7 +37,7 @@ these foundation tests do not imply a compiled Graph or product PASS.
 
 ## G7 cold compiler
 
-`compileGraph` consumes the exact successful G5 `FeatureAssembly`. Its existing analysis supplies execution
+`compileGraph` consumes Definition, its successful Analysis, GraphStorageBindings, PassPrograms and Target. The analysis supplies execution
 order; G7 does not call `analyze` or reconstruct dependency/version logic. The single G4 use gains an
 orthogonal `EGraphUse`; Builder checks role/access legality. Unspecified usage remains valid for purely
 logical G4 graphs and is rejected by Native execution, preserving historical authoring behavior.
@@ -51,7 +51,7 @@ It requires the actual reflected entry point, stage, capabilities, output and pu
 not introduce another shader parser, asset catalog or MaterialGraph. Shader bytes are copied as exact
 identity once; no hash-only reuse is allowed.
 
-The single move-only `CompiledGraph` owns Pipeline/Layout, immutable recording recipes and ResourcePlan.
+The single move-only `CompiledGraph` owns Pipeline/Layout, immutable recording recipes and NativeResourcePlan.
 It retains no author graph or callback. Resource names and storage compatibility are cold inputs;
 the later executor will use compiled indices. Compiler Buffer/Image factory counters remain zero.
 Image-to-buffer output plans explicitly mark target-sized backing for compatible resize; format,
@@ -86,14 +86,15 @@ not measure driver internals. GPU timestamp duration is NOT_MEASURED.
 
 ## Convergence R5 static recording plan
 
-Cooked SpirvArtifact/PassProgram now belong to native/vulkan/Program.hpp and lux::render::vulkan;
-FeatureDefinition has no SPIR-V dependency and no forwarding alias remains. The header itself needs no Vulkan SDK.
+Cooked SpirvArtifact belongs to data/Shader.hpp and PassProgram to graph/Program.hpp, both in lux::render.
+FeatureDescriptor has no SPIR-V dependency; neither neutral header needs the Vulkan SDK.
 Each compiled graph compares complete stage bytes and ABI under its single fixed layout/render state, retaining
 one Pipeline owner per distinct identity. Pass recipes borrow those handles. The final G4 execution order is
 unchanged. A cold plan marks necessary Pipeline binds and scope starts/ends; recorder consumes these bits directly.
 
 Merging is intentionally limited to adjacent full-range single-color draws on the same image, with LOAD on the
-second draw. Supported programs have no depth, blend, descriptors, sampling or conditional execution. Their color
+second draw. This merged-scope subset has no depth, blend or conditional execution; separate Texture/Buffer tests cover
+descriptors and sampling without extending these merge rules. Their color
 attachment writes obey framebuffer rasterization order inside one rendering scope. CLEAR, another attachment,
 intervening transfer/resource dependencies and unsupported conditions cannot be merged. No barrier is crossed or
 Pass reordered. The initial physical image reuse barrier and final readback/host dependencies are preserved.
@@ -101,4 +102,11 @@ Pass reordered. The initial physical image reuse barrier and final readback/host
 The instrumented build counts actual vkCmdBindPipeline, Begin/EndRendering, PipelineBarrier2 and Draw calls after
 executing them; production expands directly to the Vulkan call. Eight GPU cases cover same/different Pipeline and
 LOAD/CLEAR/other attachment/intervening transfer, plus conditional rejection and exact unique Pipeline destruction.
-Draw count is unchanged. Descriptor Binding, Mesh batching, Compute/Indirect/RT remain NOT_IMPLEMENTED.
+Draw count is unchanged. Descriptor bindings are implemented for the tested Texture/Buffer subset. Mesh batching and
+Compute/Indirect/RT remain outside this implementation.
+
+## Current component boundary
+
+render_native_vulkan contains Device/Memory/Submission/Transfer/GpuWork/Retirement/Compiler/Execution. It has no Feature include or reverse link to extensions. render_native_vulkan_extensions contains the real Texture Storage/Command implementations and GPU Command completion adapter. DirectGraph tests and the installed base-only consumer construct a G4 graph and execute real GPU readback without FeatureAssembly.
+
+Factory installation is explicit and cold. Session contains no default Texture factory. Transfer receives a source allocation and LastUse borrow for Clone; Texture retains the source lease but never edits Transfer internals. Accepted-submit merging, queue callbacks and retirement are unchanged. SessionUploads is a component-private definition; DeviceSession.cpp owns construction/destruction in the original order.

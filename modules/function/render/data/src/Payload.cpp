@@ -1,4 +1,6 @@
 #include <lux/engine/render/data/Payload.hpp>
+#include <utility>
+#include <lux/engine/render/data/Schema.hpp>
 
 namespace lux::render
 {
@@ -47,14 +49,14 @@ namespace lux::render
         RenderPayload result;
         result.source_code_pin_ = source_code_pin;
         result.retained_bytes_ = owner->capacity();
-        result.bytes_ = OwnedWireBytes::fromOwner(owner, std::span(*owner).subspan(offset, size));
+        result.bytes_ = lux::cxx::SharedBytes<>::fromOwner(owner, std::span(*owner).subspan(offset, size));
         return result;
     }
 
     RenderPayload RenderPayload::copyOf(std::span<const std::byte> bytes) noexcept
     {
         RenderPayload result;
-        result.bytes_ = OwnedWireBytes::copyOf(bytes);
+        result.bytes_ = lux::cxx::SharedBytes<>::copyOf(bytes);
         result.retained_bytes_ = bytes.size();
         return result;
     }

@@ -35,14 +35,14 @@ namespace lux::render
             DataTypeIdView("test.extension.ViewConfig"), {1, 0}, {1, 0}, fields, 16, 4
         };
         static const DataSchemaDescriptor& describe() noexcept { return schema; }
-        static RenderResult<std::size_t> wireSize(const extension_test::ViewConfig&) noexcept { return 16; }
+        static RenderResult<std::size_t> encodedSize(const extension_test::ViewConfig&) noexcept { return 16; }
         static RenderResult<void> encode(const extension_test::ViewConfig& value, cxx::BinarySpanWriter& out) noexcept
         {
             for (auto field : {value.texture.index, value.texture.gen, value.buffer.index, value.buffer.gen})
                 out.writeUnsigned(field);
             return {};
         }
-        static RenderResult<extension_test::ViewConfig> decode(cxx::BinaryReader& in, WireView) noexcept
+        static RenderResult<extension_test::ViewConfig> decode(cxx::BinaryReader& in, RetainableEncodedDataView) noexcept
         {
             extension_test::ViewConfig value;
             for (auto* field : {&value.texture.index, &value.texture.gen, &value.buffer.index, &value.buffer.gen})
@@ -55,10 +55,10 @@ namespace lux::render
 namespace extension_test
 {
     inline constexpr FeatureTypeIdView feature_type("test.extension.BufferFeature");
-    inline constexpr WireLimits limits{16, 0};
+    inline constexpr EncodedDataLimits limits{16, 0};
     inline const TargetDesc target{16, 16, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
 
-    inline RenderResult<void> describe(const WireView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    inline RenderResult<void> describe(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
     {
         out.push_back({"texture", EResourceClaim::PROVIDE, GraphImageDesc{16, 16}, EGraphOrigin::IMPORTED,
             {GraphImageRange{1, 0, 1, 0, 1}},
@@ -71,7 +71,7 @@ namespace extension_test
         return {};
     }
 
-    inline RenderResult<void> build(const WireView*, std::string_view name,
+    inline RenderResult<void> build(const RetainableEncodedDataView*, std::string_view name,
         std::span<const ResolvedResource> resources, RenderGraphBuilder& graph) noexcept
     {
         const auto texture = findResource(resources, "texture")->version;
@@ -95,16 +95,16 @@ namespace extension_test
     inline const FeatureDescriptor definition{feature_type, {1, 0}, &DataSchema<ViewConfig>::schema};
     inline const FeatureGraphOps definition_graph{describe, build};
 
-    inline RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
+    inline RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view name) noexcept
     {
-        auto config = decodeWire<ViewConfig>(*wire, limits);
+        auto config = decodeData<ViewConfig>(*wire, limits);
         if (!config) return lux::cxx::unexpected(config.error());
         ProgramContribution result;
         PassProgram draw{featureKey(feature_type, name, "draw")};
         draw.shader = {{texture_fixture::vert.begin(), texture_fixture::vert.end()}, {fragment.begin(), fragment.end()},
             {{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}, {1, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16}}, 16}};
-        result.arguments.push_back({"shared:texture", *encodeWire(TextureBinding{config->texture}, {}, {12, 0})});
-        result.arguments.push_back({"shared:values", *encodeWire(BufferBinding{config->buffer}, {}, {8, 0})});
+        result.arguments.push_back({"shared:texture", *encodeData(TextureBinding{config->texture}, {}, {12, 0})});
+        result.arguments.push_back({"shared:values", *encodeData(BufferBinding{config->buffer}, {}, {8, 0})});
         result.programs.push_back(std::move(draw));
         result.programs.push_back({featureKey(feature_type, name, "readback")});
         return result;

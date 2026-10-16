@@ -39,9 +39,9 @@ namespace lux::render::vulkan::test
     }
 }
 
-static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view name) noexcept
 {
-    auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
+    auto config = decodeData<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
     return ProgramContribution{native_fixture::programs(*config, name), {}};
 }
@@ -86,7 +86,7 @@ static void exercise(bool close_requester)
     command.target = call(*client, command).target;
     command.operation = ETestCommand::CREATE_EFFECT;
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(config, {}, native_fixture::limits)).view())});
     command.effect = call(*client, command).effect;
     command.features.clear();
     command.operation = ETestCommand::ATTACH;
@@ -140,7 +140,7 @@ static void retirementAtomicity()
     const auto second_target = command.target;
     command.operation = ETestCommand::CREATE_EFFECT;
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(config, {}, native_fixture::limits)).view())});
     command.effect = call(*client, command).effect;
     command.features.clear();
     command.operation = ETestCommand::ATTACH;

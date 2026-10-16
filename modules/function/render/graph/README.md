@@ -1,4 +1,4 @@
-# G4: author graph and logical analysis
+# Author graph and logical analysis
 
 Baseline: `4d0d6378558174622d8a9a7d6aca63fb1d608284`, fetched on 2026-10-14.
 Authority: Draft 7.1, Implementation Plan v5 and G4 command dated 2026-10-14.
@@ -112,3 +112,11 @@ G5's next input is this immutable Definition/Analysis plus real Feature resource
 requirements. Scope identities, Storage ABI, Shader contracts, Native ResourcePlan,
 barriers, history rotation and GPU completion remain NOT_IMPLEMENTED here. Their
 absence is a stage boundary, not a successful GPU/renderer qualification.
+
+## Current public dependency
+
+Graph depends on Core and Data. GraphPassId/GraphResourceId are declared in Core without changing layout.
+Program.hpp supplies the neutral PassProgram compiler input and imports cooked SpirvArtifact from Data;
+it contains no concrete Storage arguments. Existing G4 algorithms are unchanged. Current Native compilation
+consumes the one successful Definition/Analysis directly; Feature selection is a separate upper layer.
+The historical G4 report/checker describes its original commit and is not rewritten for this migration.

@@ -2,7 +2,7 @@
 
 #include <array>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
-#include <lux/engine/render/data/Wire.hpp>
+#include <lux/engine/render/data/Encoding.hpp>
 
 namespace fixture
 {
@@ -19,9 +19,9 @@ namespace fixture
 
     struct Payload final
     {
-        lux::render::OwnedWireBytes blob;
+        lux::cxx::SharedBytes<> blob;
         lux::render::ExternalDataRef external;
-        lux::render::OwnedWireBytes external_bytes;
+        lux::cxx::SharedBytes<> external_bytes;
     };
 
     inline unsigned record_decode_calls = 0;
@@ -49,7 +49,7 @@ namespace lux::render
             return schema;
         }
 
-        static RenderResult<std::size_t> wireSize(const fixture::Record&) noexcept
+        static RenderResult<std::size_t> encodedSize(const fixture::Record&) noexcept
         {
             if (fixture::codec_fault == fixture::ECodecFault::SIZE) return 15;
             return 16;
@@ -59,7 +59,7 @@ namespace lux::render
         {
             if (fixture::codec_fault == fixture::ECodecFault::ENCODE_ERROR)
             {
-                return cxx::unexpected(RenderError{kInvalidWire, {123}});
+                return cxx::unexpected(RenderError{kInvalidEncoding, {123}});
             }
             if (fixture::codec_fault == fixture::ECodecFault::SHORT_WRITE) return {};
             writer.writeUnsigned(value.sequence);
@@ -71,13 +71,13 @@ namespace lux::render
             return {};
         }
 
-        static RenderResult<fixture::Record> decode(cxx::BinaryReader& reader, WireView) noexcept
+        static RenderResult<fixture::Record> decode(cxx::BinaryReader& reader, RetainableEncodedDataView) noexcept
         {
             ++fixture::record_decode_calls;
             fixture::Record value;
             if (fixture::codec_fault == fixture::ECodecFault::DECODE_ERROR)
             {
-                return cxx::unexpected(RenderError{kInvalidWire, {456}});
+                return cxx::unexpected(RenderError{kInvalidEncoding, {456}});
             }
             if (fixture::codec_fault == fixture::ECodecFault::SHORT_READ) return value;
             reader.readUnsigned(value.sequence);
@@ -103,10 +103,10 @@ namespace lux::render
             return schema;
         }
 
-        static RenderResult<std::size_t> wireSize(const fixture::Payload& value) noexcept
+        static RenderResult<std::size_t> encodedSize(const fixture::Payload& value) noexcept
         {
             auto size = cxx::checkedAdd<std::size_t>(36, value.blob.size());
-            if (!size) return cxx::unexpected(RenderError{kWireLimit});
+            if (!size) return cxx::unexpected(RenderError{kEncodingLimit});
             return *size;
         }
 
@@ -121,7 +121,7 @@ namespace lux::render
             return {};
         }
 
-        static RenderResult<fixture::Payload> decode(cxx::BinaryReader& reader, WireView wire) noexcept
+        static RenderResult<fixture::Payload> decode(cxx::BinaryReader& reader, RetainableEncodedDataView wire) noexcept
         {
             BlobRef blob;
             fixture::Payload value;

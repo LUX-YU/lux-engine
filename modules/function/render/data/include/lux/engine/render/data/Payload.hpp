@@ -2,7 +2,8 @@
 
 #include <memory>
 #include <vector>
-#include <lux/engine/render/data/Wire.hpp>
+#include <lux/cxx/memory/SharedBytes.hpp>
+#include <lux/engine/render/core/Error.hpp>
 
 namespace lux::render
 {
@@ -34,13 +35,13 @@ namespace lux::render
 
         // This is a borrow. Retain the complete RenderPayload across calls: a
         // separately copied SharedBytes does not retain the source module pin.
-        [[nodiscard]] const OwnedWireBytes& bytes() const noexcept { return bytes_; }
+        [[nodiscard]] const lux::cxx::SharedBytes<>& bytes() const noexcept { return bytes_; }
         [[nodiscard]] std::size_t retainedBytes() const noexcept { return retained_bytes_; }
 
     private:
         // Destroy the byte Owner completely before releasing its deleter's code.
         std::shared_ptr<const void> source_code_pin_;
-        OwnedWireBytes bytes_;
+        lux::cxx::SharedBytes<> bytes_;
         std::size_t retained_bytes_ = 0;
     };
 }

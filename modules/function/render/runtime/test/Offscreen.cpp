@@ -28,14 +28,14 @@ static std::atomic<bool> pause_programs{false};
 static std::latch* program_entered = nullptr;
 static std::latch* program_resume = nullptr;
 
-static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view name) noexcept
 {
     if (pause_programs.exchange(false))
     {
         program_entered->count_down();
         program_resume->wait();
     }
-    auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
+    auto config = decodeData<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
     return ProgramContribution{native_fixture::programs(*config, name), {}};
 }
@@ -96,7 +96,7 @@ int main()
     command.operation = ETestCommand::CREATE_EFFECT;
     command.description = native_fixture::target(config);
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(config, {}, native_fixture::limits)).view())});
     const auto effect = call(*client, command).effect;
     command.features.clear();
     std::array<SceneId, 2> scenes;
@@ -170,7 +170,7 @@ int main()
     auto candidate = command;
     candidate.operation = ETestCommand::CREATE_EFFECT;
     candidate.features.push_back({std::string(native_fixture::type.name()), "candidate", {1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(config, {}, native_fixture::limits)).view())});
     worker.reject(true);
     const auto rejected_schedule = call(*upload, candidate, false).header.error;
     CHECK(rejected_schedule.type == kCpuScheduleFailure);
@@ -230,7 +230,7 @@ int main()
     config = {32, 32, 0, 0};
     command.description = native_fixture::target(config);
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(config, {}, native_fixture::limits)).view())});
     const auto transfer_effect = call(*client, command).effect;
     command.features.clear();
     command = attached[2];
@@ -278,7 +278,7 @@ int main()
     block.operation = ETestCommand::CREATE_EFFECT;
     block.description = native_fixture::target(config);
     block.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(config, {}, native_fixture::limits)).view())});
     pause_programs.store(true);
     const auto blocked = take(upload->submit(block));
     entered.wait();

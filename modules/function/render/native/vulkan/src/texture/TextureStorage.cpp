@@ -163,7 +163,7 @@ namespace lux::render::vulkan
     {
         cxx::BinaryReader reader(bytes, bytes.size()); // schema/length already checked at Attach boundary
         auto argument = DataSchema<TextureBinding>::decode(reader,
-            BorrowedWireView{DataSchema<TextureBinding>::schema, bytes, {}});
+            EncodedDataView{DataSchema<TextureBinding>::schema, bytes, {}});
         auto* record = textures_.find(argument->texture);
         if (!record || !record->current) return cxx::unexpected(RenderError{kWrongOwner});
         auto& backing = *record->current;

@@ -19,8 +19,12 @@ find_package(lux-cmake-toolset CONFIG REQUIRED)
 find_package(stdexec CONFIG REQUIRED)
 
 include("${CMAKE_CURRENT_LIST_DIR}/../InstallComponents.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../TargetClassification.cmake")
+find_package(lux-cxx CONFIG REQUIRED COMPONENTS compile_time)
 
-set(platform_components platform_ipc gapi)
+set(platform_components platform_ipc gapi platform_process)
+
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/../../modules/platform/process" platform-process)
 
 if(BUILD_TESTING)
     # Real host scheduler consumers. These dependencies never enter Render production targets.

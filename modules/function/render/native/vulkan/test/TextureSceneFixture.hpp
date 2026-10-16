@@ -10,7 +10,7 @@ namespace texture_fixture
     using namespace lux::render;
     namespace cxx = lux::cxx;
     inline constexpr FeatureTypeIdView type("test.sampled_texture");
-    inline constexpr WireLimits limits{4096, 4096};
+    inline constexpr EncodedDataLimits limits{4096, 4096};
     struct Config final
     {
         TextureId texture;
@@ -38,7 +38,7 @@ namespace lux::render
             return schema;
         }
 
-        static RenderResult<std::size_t> wireSize(const texture_fixture::Config&) noexcept { return 28; }
+        static RenderResult<std::size_t> encodedSize(const texture_fixture::Config&) noexcept { return 28; }
 
         static RenderResult<void> encode(const texture_fixture::Config& value, cxx::BinarySpanWriter& out) noexcept
         {
@@ -47,7 +47,7 @@ namespace lux::render
             return {};
         }
 
-        static RenderResult<texture_fixture::Config> decode(cxx::BinaryReader& in, WireView) noexcept
+        static RenderResult<texture_fixture::Config> decode(cxx::BinaryReader& in, RetainableEncodedDataView) noexcept
         {
             texture_fixture::Config value;
             std::uint32_t format = 0;
@@ -56,7 +56,7 @@ namespace lux::render
             value.format = static_cast<rdesc::ETextureFormat>(format);
             const bool is_invalid = !value.width || !value.height || !value.mips || value.mips > 16 ||
                 value.lod >= value.mips;
-            if (is_invalid) return cxx::unexpected(RenderError{kInvalidWire});
+            if (is_invalid) return cxx::unexpected(RenderError{kInvalidEncoding});
             return value;
         }
     };
@@ -70,9 +70,9 @@ namespace texture_fixture
             lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     }
 
-    inline RenderResult<void> describe(const WireView* wire, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    inline RenderResult<void> describe(const RetainableEncodedDataView* wire, std::string_view, std::vector<ResourceClaim>& out) noexcept
     {
-        auto c = decodeWire<Config>(*wire, limits);
+        auto c = decodeData<Config>(*wire, limits);
         if (!c) return cxx::unexpected(c.error());
         out.push_back({"texture", EResourceClaim::PROVIDE,
             GraphImageDesc{c->width, c->height, c->mips, 1, c->format}, EGraphOrigin::IMPORTED,
@@ -83,10 +83,10 @@ namespace texture_fixture
         return {};
     }
 
-    inline RenderResult<void> build(const WireView* wire, std::string_view instance,
+    inline RenderResult<void> build(const RetainableEncodedDataView* wire, std::string_view instance,
         std::span<const ResolvedResource> resources, RenderGraphBuilder& builder) noexcept
     {
-        auto c = decodeWire<Config>(*wire, limits);
+        auto c = decodeData<Config>(*wire, limits);
         if (!c) return cxx::unexpected(c.error());
         const auto t = target(*c);
         const auto color = findResource(resources, "color")->version;
@@ -121,14 +121,14 @@ namespace texture_fixture
 
     inline std::vector<StorageArgument> arguments(Config c)
     {
-        return {{"shared:texture", *encodeWire(TextureBinding{c.texture, c.lod}, {}, {12, 0})}};
+        return {{"shared:texture", *encodeData(TextureBinding{c.texture, c.lod}, {}, {12, 0})}};
     }
 
     inline RenderResult<FeatureAssembly> assemble(Config c)
     {
-        auto bytes = encodeWire(c, {}, limits);
+        auto bytes = encodeData(c, {}, limits);
         if (!bytes) return cxx::unexpected(bytes.error());
-        const WireView wire{DataSchema<Config>::describe(), *bytes};
+        const RetainableEncodedDataView wire{DataSchema<Config>::describe(), *bytes};
         const FeatureInstanceView selected{&definition, &definition_graph, &wire, "main"};
         return assembleFeatures({&selected, 1}, limits);
     }

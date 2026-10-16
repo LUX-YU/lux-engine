@@ -29,7 +29,7 @@ target_link_libraries(graph_consumer PRIVATE lux::engine::render::render_graph)
 
 add_test(NAME installed.graph COMMAND graph_consumer)
 
-foreach(header Graph Builder Analysis)
+foreach(header Graph Builder Analysis Program)
     string(CONCAT probe
         "#include <lux/engine/render/graph/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
         "#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native header leaked into Graph\n#endif\n"

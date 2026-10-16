@@ -263,7 +263,7 @@ int main()
     State state;
     static const std::array descriptors{commandDescriptor<Async>(), commandDescriptor<InvalidGpuAsync>()};
     const FeatureDescriptor definition{FeatureTypeIdView("test.async.feature"), {1, 0}, nullptr};
-    const FeatureGraphOps definition_graph{[](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+    const FeatureGraphOps definition_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
     const std::array handlers{
         CommandRegistration{bindCommand<Async, invoke>(state)},
         test_registration::erased(&commandDescriptor<InvalidGpuAsync>(), [](void* user, CommandInvocation& invocation) noexcept {

@@ -185,7 +185,7 @@ namespace extension_test
             const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
             if (!description || description->size != 16) return lux::cxx::unexpected(RenderError{kStorageMismatch});
             lux::cxx::BinaryReader reader(bytes, bytes.size());
-            auto argument = DataSchema<BufferBinding>::decode(reader, BorrowedWireView{DataSchema<BufferBinding>::schema, bytes, {}});
+            auto argument = DataSchema<BufferBinding>::decode(reader, EncodedDataView{DataSchema<BufferBinding>::schema, bytes, {}});
             auto* entry = entries_.find(argument->id);
             if (!entry || !entry->current) return lux::cxx::unexpected(RenderError{kStorageDomain});
             auto use = std::make_unique<Use>(*this, argument->id, nullptr, binding);

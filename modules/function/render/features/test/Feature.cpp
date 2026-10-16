@@ -10,7 +10,7 @@ namespace cxx = lux::cxx;
 #define CHECK(...) do { if (!(__VA_ARGS__)) { \
     std::fprintf(stderr, "line %d: %s\n", __LINE__, #__VA_ARGS__); return 1; } } while (false)
 
-static RenderResult<void> emptyDescribe(const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept
+static RenderResult<void> emptyDescribe(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept
 {
     return {};
 }
@@ -104,7 +104,7 @@ static int identity()
     CHECK(!assembleFeatures(instances, {}));
     instances[1].instance_key = "two";
     CHECK(assembleFeatures(instances, {}));
-    d_graph.build = +[](const WireView*, std::string_view instance, std::span<const ResolvedResource>,
+    d_graph.build = +[](const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource>,
         RenderGraphBuilder& b) noexcept -> RenderResult<void> {
         const auto key = [&](std::string_view local) {
             return featureKey(FeatureTypeIdView("test.type"), instance, local);
@@ -132,10 +132,10 @@ static int identity()
 
 static int config()
 {
-    auto bytes = encodeWire(fixture::Config{}, {}, fixture::limits);
+    auto bytes = encodeData(fixture::Config{}, {}, fixture::limits);
     CHECK(bytes);
     const auto& schema = DataSchema<fixture::Config>::describe();
-    WireView wire{schema, *bytes, {}};
+    RetainableEncodedDataView wire{schema, *bytes, {}};
     FeatureDescriptor d{FeatureTypeIdView("test.configured"), {1, 0}, &schema};
     FeatureGraphOps d_graph{emptyDescribe, nullptr};
     FeatureInstanceView s{&d, &d_graph, &wire, "one"};
@@ -152,12 +152,12 @@ static int config()
         auto changed = schema;
         std::vector<DataField> fields(schema.fields.begin(), schema.fields.end());
         if (fault == 0) ++changed.schema_version.minor;
-        if (fault == 1) ++changed.wire_version.major;
+        if (fault == 1) ++changed.encoding_version.major;
         if (fault == 2) changed.type = DataTypeIdView("test.other");
         if (fault == 3) changed.alignment = 8;
         if (fault == 4) { fields[0].scalar = cxx::EScalarKind::F32; changed.fields = fields; }
         if (fault == 5) ++changed.fixed_size;
-        WireView bad{changed, *bytes, {}};
+        RetainableEncodedDataView bad{changed, *bytes, {}};
         s.config = &bad;
         CHECK(!assembleFeatures({&s, 1}, fixture::limits));
     }
@@ -167,8 +167,8 @@ static int config()
         if (fault == 0) raw.pop_back();
         if (fault == 1) raw.push_back(std::byte{0});
         if (fault == 2) raw[12] = std::byte{2};
-        auto b = OwnedWireBytes::copyOf(raw);
-        WireView bad{schema, b, {}};
+        auto b = lux::cxx::SharedBytes<>::copyOf(raw);
+        RetainableEncodedDataView bad{schema, b, {}};
         s.config = &bad;
         CHECK(!assembleFeatures({&s, 1}, fixture::limits));
     }
@@ -187,9 +187,9 @@ static int config()
         writer.writeUnsigned<std::uint32_t>(fault == 1 ? 1 : 0);
         writer.writeUnsigned<std::uint64_t>(fault == 2 ? UINT64_MAX - 3 : 0);
         writer.writeUnsigned<std::uint64_t>(fault == 3 ? 32 : 16);
-        auto b = OwnedWireBytes::copyOf(data);
+        auto b = lux::cxx::SharedBytes<>::copyOf(data);
         const std::array owners{*bytes};
-        WireView view{rs, b, owners};
+        RetainableEncodedDataView view{rs, b, owners};
         s.config = &view;
         auto r = assembleFeatures({&s, 1}, {64, fault == 4 ? 15u : 64u});
         CHECK(static_cast<bool>(r) == (fault == 0));
@@ -203,21 +203,21 @@ namespace negative
     thread_local unsigned mode = 0;
     inline constexpr FeatureTypeIdView provider_type("test.provider"), consumer_type("test.consumer");
 
-    RenderResult<void> provide(const WireView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    RenderResult<void> provide(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
     {
         out = provided;
-        if (mode == 10) return cxx::unexpected(RenderError{kInvalidWire, {101}});
+        if (mode == 10) return cxx::unexpected(RenderError{kInvalidEncoding, {101}});
         return {};
     }
 
-    RenderResult<void> require(const WireView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    RenderResult<void> require(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
     {
         out = required;
         return {};
     }
 
     RenderResult<void> produce(
-        const WireView*, std::string_view instance, std::span<const ResolvedResource> bindings, RenderGraphBuilder& b
+        const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource> bindings, RenderGraphBuilder& b
     ) noexcept
     {
         auto* port = findResource(bindings, "r");
@@ -226,13 +226,13 @@ namespace negative
         if (mode == 5) reads.push_back({{1}, 1}); // Consumer-owned scratch.
         auto r = fixture::pass(b, featureKey(provider_type, instance, "write"), reads, port->version);
         if (!r) return r;
-        if (mode == 9) return cxx::unexpected(RenderError{kInvalidWire, {102}});
+        if (mode == 9) return cxx::unexpected(RenderError{kInvalidEncoding, {102}});
         if (mode == 8) return fixture::pass(b, featureKey(provider_type, instance, "write"), {}, port->version);
         return {};
     }
 
     RenderResult<void> consume(
-        const WireView*, std::string_view instance, std::span<const ResolvedResource> bindings, RenderGraphBuilder& b
+        const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource> bindings, RenderGraphBuilder& b
     ) noexcept
     {
         auto* port = findResource(bindings, "r");
@@ -344,19 +344,19 @@ static int claims()
 static int fallback()
 {
     static const FeatureDescriptor provider{FeatureTypeIdView("test.history"), {1, 0}, nullptr};
-    static const FeatureGraphOps provider_graph{+[](const WireView*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
+    static const FeatureGraphOps provider_graph{+[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
             auto claim = fixture::history("previous", EResourceClaim::PROVIDE, true);
             claim.initial_ranges.clear();
             out.push_back(std::move(claim));
             return {};
         }, nullptr};
     static const FeatureDescriptor consumer{FeatureTypeIdView("test.fallback"), {1, 0}, nullptr};
-    static const FeatureGraphOps consumer_graph{+[](const WireView*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
+    static const FeatureGraphOps consumer_graph{+[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
             auto claim = fixture::history("previous", EResourceClaim::REQUIRE, true);
             claim.initial_ranges.clear();
             out.push_back(std::move(claim));
             return {};
-        }, +[](const WireView*, std::string_view instance, std::span<const ResolvedResource> bindings,
+        }, +[](const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource> bindings,
             RenderGraphBuilder& b) noexcept -> RenderResult<void> {
             const auto key = [&](std::string_view local) {
                 return featureKey(FeatureTypeIdView("test.fallback"), instance, local);
@@ -378,7 +378,7 @@ static int fallback()
     CHECK(result && result->analysis.execution_order.size() == 2);
     CHECK(std::ranges::any_of(result->analysis.versions, [](const GraphVersionUse& u) { return u.fallback; }));
     const FeatureDescriptor foreign{FeatureTypeIdView("test.aaa"), {1, 0}, nullptr};
-    const FeatureGraphOps foreign_graph{emptyDescribe, +[](const WireView*, std::string_view instance, std::span<const ResolvedResource>,
+    const FeatureGraphOps foreign_graph{emptyDescribe, +[](const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource>,
             RenderGraphBuilder& b) noexcept -> RenderResult<void> {
             auto name = featureKey(FeatureTypeIdView("test.aaa"), instance, "private");
             auto r = b.declareResource({name, GraphImageDesc{64, 64}});
@@ -409,8 +409,8 @@ static int ownership()
         if (fault == 1 || fault == 5 || fault == 11 || fault == 13) CHECK(r.error().type == kFeatureOwnership);
         if (fault == 2 || fault == 3) CHECK(r.error().type == kFeatureVersion || r.error().type == kFeatureOwnership);
         if (fault == 8) CHECK(r.error().type == kGraphDuplicateKey);
-        if (fault == 9) CHECK(r.error().type == kInvalidWire && r.error().args[0] == 102);
-        if (fault == 10) CHECK(r.error().type == kInvalidWire && r.error().args[0] == 101);
+        if (fault == 9) CHECK(r.error().type == kInvalidEncoding && r.error().args[0] == 102);
+        if (fault == 10) CHECK(r.error().type == kInvalidEncoding && r.error().args[0] == 101);
         if (fault == 12) CHECK(r.error().type == kGraphUndefinedRead);
     }
     return 0;
@@ -456,13 +456,13 @@ static int lifetime()
         };
         auto owner = std::make_shared<Owner>();
         owner->released = &released;
-        auto bytes = OwnedWireBytes::fromOwner(owner, owner->data);
-        WireView view{DataSchema<fixture::Config>::describe(), bytes, {}};
+        auto bytes = lux::cxx::SharedBytes<>::fromOwner(owner, owner->data);
+        RetainableEncodedDataView view{DataSchema<fixture::Config>::describe(), bytes, {}};
         std::string type_name = "test.temporary";
         FeatureDescriptor d{FeatureTypeIdView(type_name), {1, 0}, &view.schema};
-        FeatureGraphOps d_graph{emptyDescribe, +[](const WireView* wire, std::string_view instance, std::span<const ResolvedResource>,
+        FeatureGraphOps d_graph{emptyDescribe, +[](const RetainableEncodedDataView* wire, std::string_view instance, std::span<const ResolvedResource>,
                 RenderGraphBuilder& b) noexcept -> RenderResult<void> {
-                auto c = decodeWire<fixture::Config>(*wire, fixture::limits);
+                auto c = decodeData<fixture::Config>(*wire, fixture::limits);
                 if (!c) return cxx::unexpected(c.error());
                 auto name = featureKey(FeatureTypeIdView("test.temporary"), instance, std::to_string(c->first));
                 auto r = b.declareResource({name, GraphBufferDesc{64}});
@@ -505,7 +505,7 @@ namespace dependency_test
 {
     thread_local unsigned mode = 0;
 
-    RenderResult<void> first(const WireView*, std::string_view instance, std::span<const ResolvedResource>,
+    RenderResult<void> first(const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource>,
         RenderGraphBuilder& b) noexcept
     {
         for (unsigned i = 0; i < 2; ++i)
@@ -518,7 +518,7 @@ namespace dependency_test
         return {};
     }
 
-    RenderResult<void> second(const WireView*, std::string_view instance, std::span<const ResolvedResource>,
+    RenderResult<void> second(const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource>,
         RenderGraphBuilder& b) noexcept
     {
         for (unsigned i = 0; i < 2; ++i)

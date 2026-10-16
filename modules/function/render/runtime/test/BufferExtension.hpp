@@ -69,7 +69,7 @@ namespace extension_test
         auto owner = std::make_unique<Read>(session, *id, vk::PreparedStorageBinding{}, vk::BufferPermit{},
             std::optional<vk::SubmissionTicket>{}, output);
         vk::NativeResourcePlan plan{"values", GraphBufferDesc{16}, EGraphOrigin::IMPORTED};
-        auto argument = encodeWire(input, {}, {8, 0});
+        auto argument = encodeData(input, {}, {8, 0});
         if (!argument) return lux::cxx::unexpected(argument.error());
         auto prepared = static_cast<NativeBuffer*>(registry.native(*id))->prepare(plan, argument->view(), owner->source);
         if (!prepared) return prepared;

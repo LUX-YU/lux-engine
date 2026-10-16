@@ -2,6 +2,8 @@
 
 #include <lux/engine/render/resource/Storage.hpp>
 #include <lux/engine/render/core/Ids.hpp>
+#include <lux/cxx/memory/SharedBytes.hpp>
+#include <string>
 
 namespace lux::render
 {
@@ -15,7 +17,7 @@ namespace lux::render
     struct StorageArgument final
     {
         std::string resource_key;
-        OwnedWireBytes bytes;
+        lux::cxx::SharedBytes<> bytes;
     };
 
 }

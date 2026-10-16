@@ -1,4 +1,5 @@
 #include <lux/engine/render/runtime/RenderServer.hpp>
+#include <lux/engine/render/runtime/RenderClient.hpp>
 #include <chrono>
 #include <thread>
 

@@ -28,27 +28,27 @@ static TestCompletion call(TestClient& client, const TestCommand& command)
     std::abort();
 }
 
-static RenderResult<ProgramContribution> ownPrograms(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> ownPrograms(const RetainableEncodedDataView* wire, std::string_view name) noexcept
 {
     if (mode == 4) { entered.count_down(); resume.wait(); }
-    auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
+    auto config = decodeData<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
     auto values = native_fixture::programs(*config, name);
     if (mode == 1) values.clear(); // foreign Feature tries to supply these instead
     if (mode == 2) values.push_back(values.front());
     if (mode == 3) values.pop_back(); // live Pass lacks a program
-    return ProgramContribution{std::move(values), {{"test.argument", OwnedWireBytes::copyOf(
+    return ProgramContribution{std::move(values), {{"test.argument", lux::cxx::SharedBytes<>::copyOf(
         std::array{std::byte{1}})}}};
 }
 
-static RenderResult<ProgramContribution> foreignPrograms(const WireView*, std::string_view) noexcept
+static RenderResult<ProgramContribution> foreignPrograms(const RetainableEncodedDataView*, std::string_view) noexcept
 {
     if (mode == 1) return ProgramContribution{native_fixture::programs({}, "main"), {}};
-    return ProgramContribution{{}, {{"test.argument", OwnedWireBytes::copyOf(
+    return ProgramContribution{{}, {{"test.argument", lux::cxx::SharedBytes<>::copyOf(
         std::array{mode == 5 ? std::byte{2} : std::byte{1}})}}};
 }
 
-static RenderResult<void> emptyDescribe(const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept
+static RenderResult<void> emptyDescribe(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept
 {
     return {};
 }
@@ -56,7 +56,7 @@ static RenderResult<void> emptyDescribe(const WireView*, std::string_view, std::
 int main()
 {
     const FeatureDescriptor foreign{FeatureTypeIdView("test.aaa.foreign"), {1, 0}, nullptr};
-    const FeatureGraphOps foreign_graph{emptyDescribe, [](const WireView*, std::string_view name, std::span<const ResolvedResource>, RenderGraphBuilder& builder) noexcept
+    const FeatureGraphOps foreign_graph{emptyDescribe, [](const RetainableEncodedDataView*, std::string_view name, std::span<const ResolvedResource>, RenderGraphBuilder& builder) noexcept
             -> RenderResult<void> {
             auto pass = builder.addPass({featureKey(FeatureTypeIdView("test.aaa.foreign"), name, "unused"),
                 EGraphPassKind::TRANSFER, {}});
@@ -73,7 +73,7 @@ int main()
     command.operation = ETestCommand::CREATE_EFFECT;
     command.description = native_fixture::target({});
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(
             native_fixture::Config{}, {}, native_fixture::limits)).view())});
     command.features.push_back({"test.aaa.foreign", "foreign", {1, 0}});
     // Input order differs from canonical assembly order; provenance is the input index, not a name guess.

@@ -80,7 +80,7 @@ namespace lux::render
                 a.initial_ranges == b.initial_ranges && a.storage == b.storage;
         }
 
-        RenderResult<void> validateInstances(std::vector<Contribution>& work, WireLimits limits) noexcept
+        RenderResult<void> validateInstances(std::vector<Contribution>& work, EncodedDataLimits limits) noexcept
         {
             for (std::size_t i = 0; i < work.size(); ++i)
             {
@@ -95,7 +95,7 @@ namespace lux::render
                 if (s.config)
                 {
                     if (auto r = compatibleDataSchemas(*d.config_schema, s.config->schema); !r) return r;
-                    if (auto r = validateWire(*s.config, limits); !r) return r;
+                    if (auto r = validateEncodedData(*s.config, limits); !r) return r;
                 }
             }
             std::sort(work.begin(), work.end(), [](const auto& a, const auto& b) {
@@ -294,7 +294,7 @@ namespace lux::render
     }
 
     RenderResult<FeatureAssembly>
-    assembleFeatures(std::span<const FeatureInstanceView> selected, WireLimits config_limits) noexcept
+    assembleFeatures(std::span<const FeatureInstanceView> selected, EncodedDataLimits config_limits) noexcept
     {
         std::vector<Contribution> work;
         work.reserve(selected.size());

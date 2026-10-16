@@ -1,84 +1,19 @@
-# Minimal Render runtime
+# Typed Render Client and owner-thread Server
 
-`render_client` has only Core/Data/Protocol and Platform IPC dependencies (the completion value owns its IPC reply). It does not include
-or link Native. `render_runtime` supplies the actual Vulkan-backed server, assembled on a host-owned
-thread. Its public header is neutral. There is no additional Endpoint, dispatcher or object registry.
+render_client depends on Core/Data/Protocol and Platform IPC. It does not link Native, Vulkan or stdexec. render_runtime assembles the Vulkan Server on a host-owned thread. Its public templates install the exact Command transport qualification; its header does not include RenderClient, Commands, IpcCore or Native headers. Consumers include the Client and builtin Commands explicitly when used.
 
-The server owns Scene/Target/Effect SlotMaps. Each Scene owns its View SlotMap. An Effect owns its one
-immutable compiled graph. Each client owns its connection-local RequestId SlotMap. The server owns
-the frozen OperationId SlotMap of descriptor/handler/user bindings, shared by builtin and Feature operations.
-Hello returns canonical capabilities; bind<Request, Reply> compares full operation and schema metadata once.
-A BoundOperation holds the server's random 128-bit session and generation key. There is no business enum,
-universal command packet or builtin dispatch switch. Operations.hpp defines only actual builtin data consumers.
-Handlers and descriptor metadata remain immutable and loaded through shutdown. External handlers execute on the
-server owner thread and must settle synchronously; Runtime-owned Readback/compile continuations are bounded and
-settled before the Responder. Merely returning success does not publish a successful business terminal.
+There is one RenderServer::Impl definition in pinclude/ServerImpl.hpp. Registration, Effect compilation, Scene/Target mutation, completion settlement, Loop and bootstrap are separate implementation files, not separate owners. Impl owns the sole CommandId SlotMap, Scene/Target/Effect tables, Responder, DeviceSession and bounded deferred slots. Scene owns View. Effect owns one immutable CompiledGraph, instance binding arguments and ExecutionGroups (exactly SceneId, ViewId, TargetId, ExecutionContext*).
 
-Create/register occur before run. The host stops and joins run before destroying the server. Native
-InstanceContext outlives DeviceSession. The host lends a bounded compile executor through enqueue/join callbacks; Runtime creates no worker thread.
-CreateEffect without that executor fails explicitly. Accepted tasks execute exactly once; rejected enqueue executes
-nothing and retains no pointer. The host remains alive through shutdown/join. Capacity is fixed before run.
-All received request borrows are settled before Responder reset, on successful shutdown and partial
-initialization failure. Undeliverable input owners are retained in a bounded cold-disposal list until
-shutdown, rather than releasing large assets in the frame loop. Main and Upload are the only two
-long-lived clients admitted per epoch; per-request requester churn is outside this integration contract.
+bind<C>() validates full Command identity, version, C++ type/ABI/size/alignment and capability once. BoundCommand cannot be forged through the public API. The inbound Server boundary checks Session/SlotKey generation, Canonical TypeOps and reply capacity once, then indexes the sole Command table. Typed nativeCommand and bindCommand construction establishes the thunk's actual Request/Response/owner types; arbitrary void* owner policy is not public metadata.
 
-Owned requests carry one retained-byte lease in their IPC input owner. It reserves encoded wire bytes,
-all complete backing capacities (duplicates charged conservatively), fixed envelope and maximum reply bytes.
-Short requests with replies bounded to 128 bytes use SBO; their small reservation moves from pending metadata
-to Completion without an allocated envelope. The shared budget outlives any retained completion. A reply keeps the returned input and lease until its result owner is released. Abandon removes
-interest, not executor ownership or budget; tryReceive consumes returned abandoned input in bounded batches. Failed
-submission leaves caller payload values and asset pins intact. Caller-owned references outside
-the IPC use are not part of this retained-use budget. Ordinary metadata/codec allocations are not
-represented as zero-allocation communication.
+IpcMessage constructs and moves real C++ values, with the existing 80-byte SBO and CodePin. Client RequestId is local to each connection. Failed submit preserves input and budgets. Completion owns the returned original request; FAILED/CANCELLED allow typed recovery, whereas OUTCOME_UNKNOWN does not invent a returned request or known side effect. Payload accounting includes vector capacity and complete retained asset backing. Pins outlive the actual destructor/deleter return.
 
-IPC attachments are borrowed from one exclusive Input owner, not independently reference-counted by
-IPC. G2 adaptation pins the actual ReceivedRequest. Config metadata is compared in full before G5
-assembly. Attachment Payload bytes are never copied; the reference and all synchronous G5 callbacks
-finish before completion transfers the input owner. Input, pipeline and GPU completion lifetimes are
-separate. G8 StateCommitted does not claim GPU readiness. Unsupported operations fail explicitly.
+CPU compilation and finite async Commands borrow the host's CpuSchedule. Receivers publish bounded completion events; the owner loop consumes arrived events. GPU Ready uses pre-reserved completion/reply capacity and real queue-scoped Ticket callbacks; ordinary complete() cannot claim GPU readiness. Readback waits for the actual GPU result and pauses reuse of its execution context. No second worker, pending table, polling registry or completion owner exists.
 
-Each Effect owns its only editable association list. An ExecutionGroup has exactly SceneId, ViewId,
-TargetId and ExecutionContext*. Scene owns View; View contains its color state, not Effect/Target IDs.
-Attach prepares a complete candidate and publishes the group only on success. DeviceSession owns the
-stable contexts, which pin shared immutable code and lease its scoped buffers. The single target writer
-rule is checked on attach. Compatible resize replaces backing/context and advances target_epoch without
-changing TargetId generation or compiling code. Unsupported format/sample changes preserve last-good.
+Compile workers borrow immutable registry contracts/config and Device capabilities; they create independent Shader/Pipeline candidates without a shared PipelineCache. They never mutate queues, allocator, live Storage, contexts or Effect tables. Stop closes admission, requests cancellation, drains accepted CPU/GPU work and settles every ReceivedRequest before Responder reset. Native resources retire before Device/Instance destruction. The host stops and joins run before destroying Server; borrowed scheduler and code modules outlive accepted work.
 
-The frame loop round-robins effects/groups with pre-resolved context pointers. No Feature callbacks,
-analysis, compilation, name lookup or identity lookup occurs in stable record/execute. Incoming commands
-have a bounded per-tick budget. The current host loop sleeps 1 ms between ticks; it is not a latency-tuned
-product scheduler. Client codec/command allocations and complete API latency are measured separately
-from the allocation-free stable rendering window.
+Factory installation occurs only in cold explicit registration. DeviceSession does not install Texture by default. Attach validates resource identity/binding once, creates a complete context candidate and publishes its four-field group on success. Stable frames use prepared context/slot pointers: no Feature dispatch, Graph analysis, config decoding or name lookup. Queue capacity 3 and sleep_for(1ms) are unchanged; Alias scheduling and resource collection cost remain separate performance debts.
 
-Readback holds its actual source ReceivedRequest and pauses context reuse until the real queue ticket
-completes and CPU-owned bytes have been produced. Cancel/Detach releases that logical reader before
-ticket-driven context retirement. Stop settles all requests before Responder reset, then drains Native
-work before destroying backing, device and instance. Shutdown stops accepting commands, joins all accepted compile tasks, cancels unpublished candidates and readbacks,
-settles retained requests, then resets Responder and Native owners. The host must also join the run thread. Failed Native initialization follows the same IPC cleanup order.
+EncodedDataView and RetainableEncodedDataView are synchronous configuration borrows. The latter can resolve an existing SharedBytes owner; neither view itself owns anything. Feature configuration remains encoded in this phase; no Command uses the old field-wise wire transport. Tests may use ControlFixture to adapt historical behavioral scripts, but it is never installed.
 
-This is the G9 minimal offscreen path: RGBA8, one layer/mip/sample, graphics push-color and transfer.
-It is not WSI, dynamic History, professional asset storage, arbitrary GPU-ready Feature work or ECS integration.
-
-Completions are move-only values owning IpcReply directly. tryReceive requires inactive output and moves one terminal event to the caller; no per-request result cache or shared Reply wrapper exists.
-
-G2's BorrowedWireView and encodeWireInto are synchronous byte contracts, not additional ownership. The common
-validator serves both owned and borrowed bytes. validateBoundWire is used only after immutable metadata has
-passed cold registration/binding; it still validates values, complete ranges, attachment indices and limits.
-RenderRequest::decode<T> has the handler precondition that T is its registered payload type. No fabricated
-SharedBytes owner is used for SBO decoding. Large Feature assembly alone pins its real moved request for G2 views.
-
-The test-only ControlFixture adapts old behavioral scripts to typed operations and is never installed. Its old
-CreateScene timing now includes test-side cold binding and is not the new API benchmark. FeatureOperations.cpp
-binds once and measures actual encoding/submission, wait, successful consumption/decoding and handler/reply
-separately. The 1 ms loop idle remains visible in end-to-end results; zero engine new calls does not measure
-driver/internal OS allocations. Failed publication retains any owned output until cold request disposal.
-
-R4: public Client/Server objects forward into their unique Impl, which contains business methods and state.
-Only the server thread mutates Scene/Target/Effect tables and publishes compile candidates. The worker borrows
-frozen Feature metadata, the real owned request and DeviceSession; it builds an independent CompiledGraph.
-It never touches the queue, allocator, execution contexts or live Effect table. Vulkan pipeline creation uses
-no shared VkPipelineCache. Completion uses release/acquire; done is the callback's last access to its job.
-The host join additionally protects callback code and Device lifetime during shutdown. Publication to a closed
-Requester rolls the unobserved Effect back before its private Native candidate is destroyed. stop() is idempotent,
-nonblocking and distinct from the host's run-thread join; stopping before run prevents Native initialization.
+The random 128-bit Server epoch comes from the existing Platform Process component's OS entropy function. Failure has no deterministic fallback. Windows implementation uses BCrypt; no Win32 dependency remains in Render source. Linux/Android platform builds are not qualified by this work.

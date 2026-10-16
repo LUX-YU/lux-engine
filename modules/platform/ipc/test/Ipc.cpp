@@ -1,7 +1,7 @@
 #include "TestHooks.hpp"
 #include "Allocation.hpp"
 #include <lux/engine/render/protocol/Protocol.hpp>
-#include <lux/engine/render/data/Wire.hpp>
+#include <lux/cxx/memory/SharedBytes.hpp>
 #include <array>
 #include <barrier>
 #include <chrono>
@@ -39,7 +39,7 @@ struct Increment final
 struct AssetRequest final
 {
     Scalar scalar;
-    lux::render::OwnedWireBytes asset;
+    lux::cxx::SharedBytes<> asset;
 };
 
 struct AssetIncrement final
@@ -1062,7 +1062,7 @@ namespace
         int shared_destroyed = 0;
         auto shared_source = std::make_shared<Owner>(1024 * 1024, &shared_destroyed);
         std::weak_ptr<Owner> weak_source = shared_source;
-        auto source = OwnedWireBytes::fromOwner(shared_source, std::span(shared_source->bytes).first(8));
+        auto source = lux::cxx::SharedBytes<>::fromOwner(shared_source, std::span(shared_source->bytes).first(8));
         const auto* pointer = source.data();
         IpcMessage input;
         input.emplace(request_type, AssetRequest{{5}, std::move(source)});

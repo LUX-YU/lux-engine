@@ -1,3 +1,4 @@
+#include <lux/engine/render/data/Encoding.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include "Native.hpp"
 #include <algorithm>
@@ -65,7 +66,7 @@ namespace lux::render::vulkan
                 if (factory->description->binding_schema)
                 {
                     const auto& schema = *factory->description->binding_schema;
-                    if (auto valid = validateBoundWire({schema, bytes, {}}, {schema.fixed_size, 0}); !valid)
+                    if (auto valid = validateBoundEncodedData({schema, bytes, {}}, {schema.fixed_size, 0}); !valid)
                         return cxx::unexpected(valid.error());
                 }
                 else if (!bytes.empty()) return cxx::unexpected(RenderError{kStorageContract});

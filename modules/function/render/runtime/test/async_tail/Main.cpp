@@ -1,3 +1,5 @@
+#include <lux/engine/render/runtime/RenderClient.hpp>
+#include <lux/engine/render/runtime/Commands.hpp>
 #include "Fixture.hpp"
 #include "../../../resource/test/CpuFixture.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>

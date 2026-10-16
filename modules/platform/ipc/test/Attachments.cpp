@@ -1,5 +1,5 @@
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/data/Wire.hpp>
+#include <lux/engine/render/data/Encoding.hpp>
 #include <array>
 #include <algorithm>
 #include <cstdio>
@@ -7,7 +7,6 @@
 #include <vector>
 
 using namespace lux::platform::ipc;
-using namespace lux::render;
 
 static void check(bool value) { if (!value) { std::fputs("typed asset ownership failed\n", stderr); std::_Exit(1); } }
 template <class T> static T take(Result<T> result) { check(bool(result)); return std::move(*result); }
@@ -24,7 +23,7 @@ struct Asset final
 struct AssetRequest final
 {
     std::uint64_t revision;
-    OwnedWireBytes source;
+    lux::cxx::SharedBytes<> source;
 };
 
 static const AssetRequest& assetRequest(const IpcMessage& input)
@@ -38,7 +37,7 @@ static IpcMessage message(int& destroyed, const std::byte*& pointer)
     auto source = std::make_shared<Asset>(destroyed);
     pointer = source->backing.data();
     IpcMessage result;
-    result.emplace<AssetRequest>(AssetRequest{19, OwnedWireBytes::fromOwner(source, source->backing)});
+    result.emplace<AssetRequest>(AssetRequest{19, lux::cxx::SharedBytes<>::fromOwner(source, source->backing)});
     return result;
 }
 
@@ -131,7 +130,7 @@ int main()
         const auto& request = assetRequest(work->message());
         check(request.revision == 19);
         std::array owners{request.source};
-        auto resolved = resolveExternal(owners, {0, 19, 3}, 1024 * 1024);
+        auto resolved = lux::render::resolveExternal(owners, {0, 19, 3}, 1024 * 1024);
         check(resolved && resolved->data() == pointer + 19);
         check(resolved->view()[0] == std::byte{42});
     }

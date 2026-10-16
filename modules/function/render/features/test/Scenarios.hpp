@@ -8,7 +8,7 @@
 namespace fixture
 {
     using namespace lux::render;
-    inline constexpr WireLimits limits{4096, 4096};
+    inline constexpr EncodedDataLimits limits{4096, 4096};
     inline std::atomic<unsigned> descriptions{0}, builds{0};
     enum class ERole { GEOMETRY, LIGHTING, ALTERNATE, TONEMAP, HISTORY, CULL, MATERIAL, MESH };
 
@@ -45,7 +45,7 @@ namespace fixture
     }
 
     template <ERole R>
-    RenderResult<void> describe(const WireView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    RenderResult<void> describe(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
     {
         ++descriptions;
         using enum EResourceClaim;
@@ -76,7 +76,7 @@ namespace fixture
 
     template <ERole R>
     RenderResult<void> build(
-        const WireView*, std::string_view instance, std::span<const ResolvedResource> resolved,
+        const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource> resolved,
         RenderGraphBuilder& builder
     ) noexcept
     {
@@ -182,7 +182,7 @@ namespace lux::render
             return value;
         }
 
-        static RenderResult<std::size_t> wireSize(const fixture::Config&) noexcept { return 16; }
+        static RenderResult<std::size_t> encodedSize(const fixture::Config&) noexcept { return 16; }
 
         static RenderResult<void> encode(const fixture::Config& c, cxx::BinarySpanWriter& w) noexcept
         {
@@ -193,7 +193,7 @@ namespace lux::render
             return {};
         }
 
-        static RenderResult<fixture::Config> decode(cxx::BinaryReader& r, WireView) noexcept
+        static RenderResult<fixture::Config> decode(cxx::BinaryReader& r, RetainableEncodedDataView) noexcept
         {
             fixture::Config c;
             r.readUnsigned(c.first);

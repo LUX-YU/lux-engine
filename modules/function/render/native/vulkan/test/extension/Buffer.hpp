@@ -1,5 +1,7 @@
-#include <lux/engine/render/resource/Registration.hpp>
 #pragma once
+
+#include <lux/engine/render/resource/Registration.hpp>
+#include <lux/engine/render/data/Encoding.hpp>
 
 #include <lux/engine/render/protocol/Protocol.hpp>
 
@@ -76,7 +78,7 @@ namespace lux::render
         static RenderResult<std::size_t> retainedBytes(const extension_test::SetBuffer::Request& value) noexcept
         {
             const auto bytes = cxx::checkedAdd(sizeof(value), value.source.retainedBytes());
-            if (!bytes) return cxx::unexpected(RenderError{kWireLimit});
+            if (!bytes) return cxx::unexpected(RenderError{kEncodingLimit});
             return *bytes;
         }
     };
@@ -86,7 +88,7 @@ namespace lux::render
         static RenderResult<std::size_t> retainedBytes(const extension_test::ReadBuffer::Response& value) noexcept
         {
             const auto bytes = cxx::checkedAdd(sizeof(value), value.pixels.retainedBytes());
-            if (!bytes) return cxx::unexpected(RenderError{kWireLimit});
+            if (!bytes) return cxx::unexpected(RenderError{kEncodingLimit});
             return *bytes;
         }
     };
@@ -98,23 +100,23 @@ namespace lux::render
             DataTypeIdView("test.extension.BufferBinding"), {1, 0}, {1, 0}, fields, 8, 4
         };
         static const DataSchemaDescriptor& describe() noexcept { return schema; }
-        static RenderResult<std::size_t> wireSize(const extension_test::BufferBinding&) noexcept { return 8; }
+        static RenderResult<std::size_t> encodedSize(const extension_test::BufferBinding&) noexcept { return 8; }
         static RenderResult<void> encode(const extension_test::BufferBinding& value, cxx::BinarySpanWriter& out) noexcept
         {
             out.writeUnsigned(value.id.index);
             out.writeUnsigned(value.id.gen);
             return {};
         }
-        static RenderResult<extension_test::BufferBinding> decode(cxx::BinaryReader& in, BorrowedWireView) noexcept
+        static RenderResult<extension_test::BufferBinding> decode(cxx::BinaryReader& in, EncodedDataView) noexcept
         {
             extension_test::BufferBinding value;
             in.readUnsigned(value.id.index);
             in.readUnsigned(value.id.gen);
             return value;
         }
-        static RenderResult<extension_test::BufferBinding> decode(cxx::BinaryReader& in, WireView wire) noexcept
+        static RenderResult<extension_test::BufferBinding> decode(cxx::BinaryReader& in, RetainableEncodedDataView wire) noexcept
         {
-            return decode(in, BorrowedWireView{wire.schema, wire.bytes.view(), {}});
+            return decode(in, EncodedDataView{wire.schema, wire.bytes.view(), {}});
         }
     };
 }

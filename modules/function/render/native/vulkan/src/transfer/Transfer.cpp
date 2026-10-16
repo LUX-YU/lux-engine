@@ -2,6 +2,7 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include "Native.hpp"
+#include "SessionUploads.hpp"
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <algorithm>
 #include <bit>
@@ -11,60 +12,6 @@
 
 namespace lux::render::vulkan
 {
-    struct DeviceSession::UploadState final
-    {
-        struct Page final
-        {
-            BufferPermit permit;
-            BufferAllocation* buffer = nullptr;
-            std::byte* mapped = nullptr;
-            bool leased = false;
-        };
-        DeviceSession& session;
-        SubmissionQueue* copy_queue = nullptr;
-        TransferOptions options;
-        CpuSchedule cpu;
-        std::vector<Page> pages;
-        TransferStats stats;
-        VkQueryPool timestamps = VK_NULL_HANDLE;
-        std::uint32_t copy_timestamp_bits = 0, graphics_timestamp_bits = 0;
-        UploadState(DeviceSession& session, TransferOptions options, CpuSchedule cpu) noexcept
-            : session(session), options(options), cpu(cpu) {}
-        ~UploadState() noexcept;
-    };
-
-    DeviceSession::DeviceSession(VulkanDevice native, VulkanAllocator memory) noexcept
-        : device_(std::move(native)), allocator_(std::move(memory))
-    {
-        const std::uint32_t capabilities = (device_.textureDescriptors() ? 1u : 0u) |
-            (device_.textureCompressionBc() ? 2u : 0u);
-        resources_ = std::make_unique<ResourceRegistry>(this, EGraphicsApi::VULKAN, capabilities);
-    }
-
-    DeviceSession::~DeviceSession() noexcept
-    {
-        auto result = drain();
-        const bool is_device_lost = !result && result.error().type == kNativeFailure &&
-            result.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
-        if (!result && !is_device_lost) std::terminate();
-        // Retired contexts still hold scoped leases, including the device-lost path.
-        for (auto& retirement : retirement_owners_) retirement.reset();
-        contexts_.clear();
-        uploads_.reset();
-        if (resources_->valid(resources_->root())) (void)resources_->closeDomain(resources_->root());
-        resources_.reset();
-        while (!buffers_.empty()) destroyFinished(&*buffers_.begin());
-        // Destroy aliases before allocations, including aliases not explicitly released by the caller.
-        for (;;)
-        {
-            auto alias = std::find_if(images_.begin(), images_.end(), [](const auto& value) { return value.source_; });
-            if (alias == images_.end()) break;
-            destroyFinished(&*alias);
-        }
-        while (!images_.empty()) destroyFinished(&*images_.begin());
-        // Retirement owners, queue owners, allocator, device: reverse member destruction order.
-    }
-
     namespace
     {
         using Clock = std::chrono::steady_clock;

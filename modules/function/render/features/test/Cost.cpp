@@ -76,9 +76,9 @@ using namespace lux::render;
 static constexpr FeatureTypeIdView kType("test.cost");
 
 static RenderResult<void>
-describe(const WireView* wire, std::string_view, std::vector<ResourceClaim>& out) noexcept
+describe(const RetainableEncodedDataView* wire, std::string_view, std::vector<ResourceClaim>& out) noexcept
 {
-    auto config = decodeWire<fixture::Config>(*wire, fixture::limits);
+    auto config = decodeData<fixture::Config>(*wire, fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
     const auto& c = *config;
     if (c.first > c.total || c.count > c.total - c.first) return lux::cxx::unexpected(RenderError{kFeatureContract});
@@ -90,10 +90,10 @@ describe(const WireView* wire, std::string_view, std::vector<ResourceClaim>& out
 }
 
 static RenderResult<void> build(
-    const WireView* wire, std::string_view instance, std::span<const ResolvedResource> resolved, RenderGraphBuilder& b
+    const RetainableEncodedDataView* wire, std::string_view instance, std::span<const ResolvedResource> resolved, RenderGraphBuilder& b
 ) noexcept
 {
-    auto config = decodeWire<fixture::Config>(*wire, fixture::limits);
+    auto config = decodeData<fixture::Config>(*wire, fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
     const auto& c = *config;
     for (std::uint32_t i = c.first; i < c.first + c.count; ++i)
@@ -121,8 +121,8 @@ int main()
         {
             for (std::uint32_t passes : {32u, 128u, 512u})
             {
-                std::vector<OwnedWireBytes> bytes;
-                std::vector<WireView> views;
+                std::vector<lux::cxx::SharedBytes<>> bytes;
+                std::vector<RetainableEncodedDataView> views;
                 std::vector<std::string> names;
                 std::vector<FeatureInstanceView> selected;
                 bytes.reserve(count);
@@ -133,7 +133,7 @@ int main()
                 {
                     const auto first = passes * i / count;
                     fixture::Config c{first, passes * (i + 1) / count - first, passes, chain ? 1u : 0u};
-                    auto encoded = encodeWire(c, {}, fixture::limits);
+                    auto encoded = encodeData(c, {}, fixture::limits);
                     if (!encoded) return 1;
                     bytes.push_back(std::move(*encoded));
                     views.push_back({DataSchema<fixture::Config>::describe(), bytes.back(), {}});

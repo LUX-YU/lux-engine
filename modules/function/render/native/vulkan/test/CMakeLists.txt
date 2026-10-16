@@ -134,3 +134,10 @@ target_link_libraries(render_storage_bindings_test PRIVATE render_native_vulkan)
 add_test(NAME render.native.storage_bindings COMMAND render_storage_bindings_test)
 
 set_tests_properties(render.native.storage_bindings PROPERTIES TIMEOUT 60)
+
+foreach(target render_buffer_transfer_test render_texture_upload_test render_texture_storage_test
+    render_texture_sampling_test render_storage_bindings_test
+)
+    target_link_libraries(${target} PRIVATE lux::engine::process::process_execution)
+    set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+endforeach()

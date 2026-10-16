@@ -94,6 +94,11 @@ namespace extension_test
                 storage.session_.resources().release(storage_id);
             }
             RenderResult<bool> advance() noexcept { return transfer->advance(); }
+            void setCompletionPost(CompletionPost post, std::shared_ptr<const void> implementation = {},
+                std::shared_ptr<const void> registration = {}) noexcept
+            {
+                transfer->setCompletionPost(post, std::move(implementation), std::move(registration));
+            }
             void cancel() noexcept { transfer->cancel(); }
             bool unstartedIn(const vk::DeviceSession& session) const noexcept { return transfer->unstartedIn(session); }
             std::optional<vk::SubmissionTicket> lastUse() const noexcept { return transfer->lastUse(); }

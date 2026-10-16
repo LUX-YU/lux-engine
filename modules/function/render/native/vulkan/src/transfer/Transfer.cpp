@@ -18,6 +18,39 @@ namespace lux::render::vulkan
         }
     }
 
+    struct Transfer::CpuPreparation final
+    {
+        struct Receiver final
+        {
+            using receiver_concept = stdexec::receiver_t;
+            Transfer* transfer;
+
+            [[nodiscard]] stdexec::empty_env get_env() const noexcept { return {}; }
+
+            void set_value() && noexcept
+            {
+                transfer->completion_post_(transfer, Transfer::resumeCpu, {});
+            }
+
+            void set_error(RenderError error) && noexcept
+            {
+                transfer->completion_post_(transfer, Transfer::resumeCpu, cxx::unexpected(error));
+            }
+
+            void set_stopped() && noexcept
+            {
+                transfer->completion_post_(transfer, Transfer::resumeCpu, cxx::unexpected(RenderError{kCpuStopped}));
+            }
+        };
+
+        using Operation = stdexec::connect_result_t<CpuSender, Receiver>;
+        Operation operation;
+
+        explicit CpuPreparation(Transfer& transfer)
+            : operation(stdexec::connect(transfer.session_->uploads_->cpu.schedule(Transfer::prepare, &transfer,
+                  transfer.implementation_pin_, transfer.registration_pin_), Receiver{&transfer})) {}
+    };
+
     DeviceSession::UploadState::~UploadState() noexcept
     {
         // Construction failure or Session's joined + drained teardown; no caller may retain a candidate here.
@@ -29,14 +62,14 @@ namespace lux::render::vulkan
         if (timestamps) vkDestroyQueryPool(session.device().native(), timestamps, nullptr);
     }
 
-    RenderResult<void> DeviceSession::configureUploads(const TransferOptions& options) noexcept
+    RenderResult<void> DeviceSession::configureUploads(const TransferOptions& options, CpuSchedule cpu) noexcept
     {
-        const bool invalid = uploads_ || !options.enqueue || !options.join || options.chunk_bytes < 256 ||
+        const bool invalid = uploads_ || !cpu || options.chunk_bytes < 256 ||
             options.chunk_bytes > 16 * 1024 * 1024 || options.staging_pages == 0 || options.staging_pages > 16 ||
             options.pending_bytes < options.chunk_bytes;
         if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
         if (options.measure_gpu && !device_.hostQueryReset()) return cxx::unexpected(RenderError{kUnsupported});
-        auto state = std::make_unique<UploadState>(*this, options);
+        auto state = std::make_unique<UploadState>(*this, options, cpu);
         std::uint32_t family_count = 0;
         vkGetPhysicalDeviceQueueFamilyProperties(device_.physical(), &family_count, nullptr);
         std::vector<VkQueueFamilyProperties> families_info(family_count);
@@ -72,11 +105,6 @@ namespace lux::render::vulkan
         state->stats.staging_bytes = options.chunk_bytes * options.staging_pages;
         uploads_ = std::move(state);
         return {};
-    }
-
-    void DeviceSession::joinUploads() noexcept
-    {
-        if (uploads_) uploads_->options.join(uploads_->options.user);
     }
 
     TransferStats DeviceSession::uploadStats() const noexcept
@@ -169,8 +197,7 @@ namespace lux::render::vulkan
 
     Transfer::~Transfer() noexcept
     {
-        const bool cpu_active = phase_ == EPhase::CPU_PENDING && !cpu_ready_.load(std::memory_order_acquire);
-        if (cpu_active) std::terminate();
+        if (cpu_preparation_) std::terminate();
         if (image_)
         {
             auto result = ticket_ ? session_->releaseCompleted(image_, *ticket_) : session_->destroyUnsubmitted(image_);
@@ -203,6 +230,28 @@ namespace lux::render::vulkan
         return std::move(buffer_);
     }
 
+    void Transfer::setCompletionPost(CompletionPost post, std::shared_ptr<const void> implementation,
+        std::shared_ptr<const void> registration) noexcept
+    {
+        completion_post_ = post;
+        implementation_pin_ = std::move(implementation);
+        registration_pin_ = std::move(registration);
+    }
+
+    void Transfer::resumeCpu(void* pointer, RenderResult<void> result) noexcept
+    {
+        auto& transfer = *static_cast<Transfer*>(pointer);
+        transfer.cpu_preparation_.reset();
+        if (result)
+        {
+            auto& stats = transfer.session_->uploads_->stats;
+            stats.prepare_ns += transfer.prepare_ns_;
+            stats.copied_bytes += transfer.chunk_size_;
+        }
+        else transfer.cpu_failure_ = result.error();
+        transfer.phase_ = EPhase::COPY;
+    }
+
     void Transfer::prepare(void* pointer) noexcept
     {
         auto& transfer = *static_cast<Transfer*>(pointer);
@@ -221,7 +270,6 @@ namespace lux::render::vulkan
                         source + row * region.source_row_pitch, transfer.row_bytes_);
         }
         transfer.prepare_ns_ = nanoseconds(start);
-        transfer.cpu_ready_.store(true, std::memory_order_release);
     }
 
     RenderResult<bool> Transfer::advance() noexcept
@@ -235,14 +283,17 @@ namespace lux::render::vulkan
             ~Cost() { stats.owner_ns += nanoseconds(start); }
         } cost{state.stats, start};
         if (phase_ == EPhase::COMPLETE) return true;
+        if (cpu_failure_)
+        {
+            const auto error = *cpu_failure_;
+            cpu_failure_.reset();
+            return cxx::unexpected(error);
+        }
         auto& graphics = session_->queue();
         const bool distinct = copy_queue_ != &graphics;
         if (phase_ == EPhase::CPU_PENDING)
         {
-            if (!cpu_ready_.load(std::memory_order_acquire)) return false;
-            state.stats.prepare_ns += prepare_ns_;
-            state.stats.copied_bytes += chunk_size_;
-            phase_ = EPhase::COPY;
+            return false;
         }
         if (ticket_)
         {
@@ -294,9 +345,10 @@ namespace lux::render::vulkan
                     state.options.chunk_bytes / row_bytes_);
                 chunk_size_ = rows_ * row_bytes_;
             }
-            cpu_ready_.store(false, std::memory_order_relaxed);
-            if (!state.options.enqueue(state.options.user, prepare, this)) return cxx::unexpected(RenderError{kCapacity});
+            if (!completion_post_) return cxx::unexpected(RenderError{kInvalidArgument});
+            cpu_preparation_ = std::make_unique<CpuPreparation>(*this);
             phase_ = EPhase::CPU_PENDING;
+            stdexec::start(cpu_preparation_->operation);
             return false;
         }
         const bool acquiring = phase_ == EPhase::ACQUIRE;

@@ -1,7 +1,10 @@
 #include <lux/engine/render/resource/Storage.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cstdlib>
+#include <string_view>
 
 using namespace lux::render;
 
@@ -38,7 +41,24 @@ int main()
     changed = original;
     changed.optional_capabilities = 8;
     require(!validateStorage(changed));
-    require(renderResourceErrorDescriptors().size() == 6);
+    constexpr std::array expected_errors{
+        std::string_view{"lux.render.resource.contract"},
+        std::string_view{"lux.render.resource.mismatch"},
+        std::string_view{"lux.render.resource.factory"},
+        std::string_view{"lux.render.resource.capability"},
+        std::string_view{"lux.render.resource.domain"},
+        std::string_view{"lux.render.resource.capacity"},
+        std::string_view{"lux.render.resource.cpu_stopped"},
+        std::string_view{"lux.render.resource.cpu_schedule_failure"}
+    };
+    const auto errors = renderResourceErrorDescriptors();
+    require(errors.size() == expected_errors.size());
+    for (const auto name : expected_errors)
+    {
+        require(std::ranges::count_if(errors, [name](const auto& descriptor) noexcept {
+            return descriptor.name == name && !descriptor.message.empty();
+        }) == 1);
+    }
 
     struct Value final { unsigned value; };
     struct Ops final { unsigned (*read)(const void*) noexcept; };

@@ -1,3 +1,5 @@
+find_package(stdexec CONFIG REQUIRED)
+
 add_component(
     STATIC
     COMPONENT_NAME render_resource
@@ -13,6 +15,10 @@ component_include_directories(
 )
 
 component_add_internal_dependencies(render_resource lux::engine::render::render_data)
+
+target_link_libraries(render_resource PUBLIC STDEXEC::stdexec)
+
+component_add_transitive_commands(render_resource "find_package(stdexec CONFIG REQUIRED)")
 
 target_compile_features(render_resource PUBLIC cxx_std_20)
 

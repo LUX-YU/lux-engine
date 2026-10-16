@@ -82,11 +82,11 @@ namespace lux::render
         return {};
     }
 
-    CommandInvocation RenderRequest::invocation(void* extension) noexcept
+    CommandInvocation RenderRequest::invocation(GpuAdmission& admission, void* extension) noexcept
     {
         static constexpr CommandCompletionFns completion{
             [](void* owner, ECommandOutcome outcome, RenderError error, void* response) noexcept {
-                auto& request = *static_cast<RenderRequest*>(owner);
+                auto& request = static_cast<GpuAdmission*>(owner)->request;
                 switch (outcome)
                 {
                 case ECommandOutcome::SUCCESS: return request.complete(response);
@@ -95,9 +95,13 @@ namespace lux::render
                 default: return request.unknown();
                 }
             },
-            [](const void* owner) noexcept { return static_cast<const RenderRequest*>(owner)->active(); }
+            [](const void* owner) noexcept { return static_cast<const GpuAdmission*>(owner)->request.active(); },
+            [](void* owner, void* sender, const CommandAsyncOps& operations) noexcept -> RenderResult<void> {
+                auto& admission = *static_cast<GpuAdmission*>(owner);
+                return admission.defer(admission.server, admission.request, sender, operations);
+            }
         };
-        return {transport_->request_value(input_.message()), this, &completion, extension};
+        return {transport_->request_value(input_.message()), &admission, &completion, extension};
     }
 }
 
@@ -112,23 +116,29 @@ namespace lux::render::runtime_detail
                 &queue == &native.queue(vulkan::EQueueRole::TRANSFER);
             const bool invalid = !is_session_queue || admission.reserved || !admission.request.gpuReady();
             if (invalid) return cxx::unexpected(RenderError{kProtocolContract});
-            for (auto& slot : admission.slots)
-            {
-                if (!std::holds_alternative<std::monostate>(slot.condition)) continue;
-                platform::ipc::IpcMessage output;
-                auto charge = admission.request.prepareResponse(response, output);
-                if (!charge) return cxx::unexpected(charge.error());
-                auto& gpu = slot.condition.emplace<GpuCompletion>();
-                gpu.queue = &queue;
-                gpu.submitted_before_reserve = queue.submitted();
-                gpu.reply = std::move(output);
-                gpu.reply_charge = *charge;
-                gpu.reserved_request = &admission.request;
-                gpu.native = &native;
-                admission.reserved = true;
-                return &slot;
-            }
-            return cxx::unexpected(RenderError{kRuntimeCapacity});
+            if (admission.slots.size() >= admission.slot_limit)
+                return cxx::unexpected(RenderError{kRuntimeCapacity});
+            platform::ipc::IpcMessage output;
+            auto charge = admission.request.prepareResponse(response, output);
+            if (!charge) return cxx::unexpected(charge.error());
+            const auto id = admission.slots.tryEmplacePrepared();
+            if (!id) return cxx::unexpected(RenderError{kRuntimeCapacity});
+            auto& slot = *admission.slots.find(*id);
+            slot.id = *id;
+            slot.session = admission.session;
+            slot.events = &admission.events;
+            slot.publishers = &admission.publishers;
+            slot.owner = &admission.slots;
+            auto& gpu = slot.condition.emplace<GpuCompletion>();
+            gpu.queue = &queue;
+            gpu.submitted_before_reserve = queue.submitted();
+            gpu.reply = std::move(output);
+            gpu.reply_charge = *charge;
+            gpu.reserved_request = &admission.request;
+            gpu.native = &native;
+            gpu.implementation_pin = &admission.implementation_pin;
+            admission.reserved = true;
+            return &slot;
         },
         [](void* value, void* response) noexcept -> RenderResult<void> {
             auto& gpu = std::get<GpuCompletion>(static_cast<DeferredCompletion*>(value)->condition);
@@ -143,6 +153,7 @@ namespace lux::render::runtime_detail
             auto& slot = *static_cast<DeferredCompletion*>(value);
             auto& gpu = std::get<GpuCompletion>(slot.condition);
             if (!work.unstartedIn(*gpu.native)) return cxx::unexpected(RenderError{kProtocolContract});
+            work.setCompletionPost(slot.post(), *gpu.implementation_pin, gpu.reserved_request->codePin());
             gpu.work = std::move(work);
             slot.request.emplace(std::move(*gpu.reserved_request));
             gpu.reserved_request = nullptr;
@@ -159,6 +170,11 @@ namespace lux::render::runtime_detail
             gpu.reserved_request = nullptr;
             return {};
         },
-        [](void* value) noexcept { static_cast<DeferredCompletion*>(value)->condition.emplace<std::monostate>(); }
+        [](void* value) noexcept {
+            auto& slot = *static_cast<DeferredCompletion*>(value);
+            auto* owner = slot.owner;
+            const auto id = slot.id;
+            if (!owner->erase(id)) std::terminate();
+        }
     };
 }

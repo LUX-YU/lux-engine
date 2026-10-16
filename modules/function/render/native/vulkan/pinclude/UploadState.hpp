@@ -16,12 +16,13 @@ namespace lux::render::vulkan
         DeviceSession& session;
         SubmissionQueue* copy_queue = nullptr;
         TransferOptions options;
+        CpuSchedule cpu;
         std::vector<Page> pages;
         TransferStats stats;
         VkQueryPool timestamps = VK_NULL_HANDLE;
         std::uint32_t copy_timestamp_bits = 0, graphics_timestamp_bits = 0;
-        UploadState(DeviceSession& session, TransferOptions options) noexcept
-            : session(session), options(options) {}
+        UploadState(DeviceSession& session, TransferOptions options, CpuSchedule cpu) noexcept
+            : session(session), options(options), cpu(cpu) {}
         ~UploadState() noexcept;
     };
 }

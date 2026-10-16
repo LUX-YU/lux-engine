@@ -1,4 +1,4 @@
-#include "CompileWorker.hpp"
+#include "ServerFixture.hpp"
 #include "TypedTest.hpp"
 #include "TextureFixture.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -28,13 +28,11 @@ template <class C> static TexturePublished published(RenderCompletion result, co
 
 int main()
 {
-    CompileWorker host;
-    const auto callbacks = host.configure({});
+    CpuFixture host;
     RenderServerConfig config{"runtime.texture.operations", true};
     config.transfer_queues = true;
-    config.uploads = {1024 * 1024, 2, 128 * 1024 * 1024,
-        callbacks.compile_user, callbacks.enqueue_compile, callbacks.join_compile};
-    auto server = take(RenderServer::create(config));
+    config.uploads = TransferOptions{1024 * 1024, 2, 128 * 1024 * 1024};
+    auto server = take(RenderServer::create(withCpu(host, config)));
     CHECK(server->registerStorage<lux::render::TextureStorage>({16, 256 * 1024 * 1024}));
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool(server->run()); });

@@ -13,9 +13,13 @@ set(root "${BUILD_DIR}/ipc-installed-${nonce}")
 run_checked("${CMAKE_COMMAND}" --install "${BUILD_DIR}" --prefix "${root}/original" --config "${CONFIG}")
 file(RENAME "${root}/original" "${root}/relocated")
 
+file(STRINGS "${BUILD_DIR}/CMakeCache.txt" stdexec_cache REGEX "^stdexec_DIR:[^=]+=")
+string(REGEX REPLACE "^stdexec_DIR:[^=]+=" "" stdexec_directory "${stdexec_cache}")
+
 run_checked(
     "${CMAKE_COMMAND}" -S "${CONSUMER_SOURCE}" -B "${root}/build" -G "${GENERATOR}"
     "-DCMAKE_PREFIX_PATH=${root}/relocated"
+    "-Dstdexec_DIR=${stdexec_directory}"
     "-Dlux-cxx_DIR=${DEPENDENCY_DIR}" "-DCMAKE_BUILD_TYPE=${CONFIG}"
     "-DCMAKE_CXX_COMPILER=${CXX_COMPILER}" "-DCMAKE_MAKE_PROGRAM=${MAKE_PROGRAM}"
     "-DCMAKE_CXX_FLAGS=${CXX_FLAGS}"

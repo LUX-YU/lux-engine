@@ -1,7 +1,7 @@
 #include <lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
-#include "CompileWorker.hpp"
+#include "ServerFixture.hpp"
 #include "SceneFixture.hpp"
 #include "TypedProtocol.hpp"
 #include "TypedTest.hpp"
@@ -80,6 +80,7 @@ struct Sample final { std::atomic<long long> inbound{0}, submit{0}, fence{0}, pu
 static std::array<Sample, 1200> samples;
 static thread_local std::size_t publishing_sample = 0;
 static std::atomic<bool> hold_observation{false}, hold_fences{false}, fail_submit{false};
+static std::atomic<bool> hold_next_accepted_fence{false};
 static std::atomic<unsigned> accepted{0}, finished{0}, owners_destroyed{0}, source_destroyed{0}, waits{0};
 static std::atomic<int> native_buffers{0};
 static std::atomic<unsigned> native_created{0}, native_destroyed{0}, owners_created{0};
@@ -227,6 +228,7 @@ static RenderResult<void> upload(void* native, CommandInvocation& invocation) no
         CHECK(!previous || queue.lastSubmitted()->serial() == previous->serial());
         return lux::cxx::unexpected(submitted.error());
     }
+    if (hold_next_accepted_fence.exchange(false)) hold_fences.store(true);
     owner->ticket = *submitted;
     auto early_release = session.releaseCompleted(owner->destination, *submitted);
     CHECK(!early_release && early_release.error().type == vulkan::kBusy && owner->destination);
@@ -286,12 +288,12 @@ int main(int argc, char** argv)
     transfer_mode = argc > 1;
     const bool dedicated = !transfer_mode || std::string_view(argv[1]) != "same-family";
     if (transfer_mode) sample_prefix = dedicated ? "dedicated-" : "same-family-";
-    CompileWorker workers(2);
+    CpuFixture workers(2);
     RenderServerConfig config{"runtime.g10", true};
     config.completion_capacity = 2;
     config.transfer_queues = transfer_mode;
     config.prefer_dedicated_transfer = dedicated;
-    auto server = take(RenderServer::create(workers.configure(config)));
+    auto server = take(RenderServer::create(withCpu(workers, config)));
     CHECK((server->registerFeature<UploadProbe, CpuResult>({&feature, nullptr, handlers})));
     CHECK(server->registerFeature({&native_fixture::definition, programs}));
     auto a = take(RenderClient::create(config.channel_name));
@@ -572,10 +574,13 @@ int main(int argc, char** argv)
     take(submitValue(*a, create, effect_request)); take(submitValue(*a, create, effect_request));
     stopping_entered.wait();
     hold_observation.store(true);
+    // Establish the hold on the submitting owner thread before it can poll this real Ticket.
+    // Pre-submit capacity refusals leave the hold unarmed, so the accepted-work retry still progresses.
+    hold_next_accepted_fence.store(true);
     const auto last = accepted_request(1022);
     (void)last;
     std::printf("lifecycle admission capacity refusals before accepted submit: %u\n", late_admission_backpressure);
-    hold_fences.store(true);
+    CHECK(hold_fences.load());
     auto read = take(a->bind<Readback>());
     const auto command_before = server->stats().commands;
     const auto read_id = take(submitValue(*a, read, groups[1], 65536));
@@ -585,11 +590,12 @@ int main(int argc, char** argv)
     CHECK(source_destroyed == 0);
     b.reset();
     CHECK(source_destroyed == 0); // accepted source request still owns the full 1 MiB backing
+    const auto waits_before_stop = waits.load();
     server->stop();
     block_compile.store(false); stopping_resume.count_down();
     render.join();
     CHECK(run_ok && server->stats().validation_errors == 0 && source_destroyed == 1 && native_buffers == 0);
-    CHECK(waits > 0);
+    CHECK(waits > waits_before_stop);
     std::ofstream csv(sample_prefix + "runtime-gpu-ready.csv");
     csv << "sample,inbound_ns,submitted_ns,fence_observed_ns,reply_publication_start_ns,consumed_ns,engine_new_calls\n";
     for (unsigned i = 20; i < 1020; ++i)
@@ -619,7 +625,7 @@ int main(int argc, char** argv)
     RenderServerConfig closing_config{"runtime.g10.closing", true};
     closing_config.transfer_queues = transfer_mode;
     closing_config.prefer_dedicated_transfer = dedicated;
-    auto closing_server = take(RenderServer::create(workers.configure(closing_config)));
+    auto closing_server = take(RenderServer::create(withCpu(workers, closing_config)));
     CHECK((closing_server->registerFeature<UploadProbe, CpuResult>({&feature, nullptr, handlers})));
     auto closing_client = take(RenderClient::create(closing_config.channel_name));
     bool closing_ok = false;

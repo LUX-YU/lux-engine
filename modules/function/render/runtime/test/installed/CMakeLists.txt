@@ -10,6 +10,7 @@ if(MSVC)
 endif()
 
 find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_client render_runtime)
+find_package(lux-engine-process-execution CONFIG REQUIRED COMPONENTS process_execution)
 
 add_executable(client_consumer Client.cpp)
 target_link_libraries(client_consumer PRIVATE lux::engine::render::render_client)
@@ -30,13 +31,19 @@ add_executable(extension_consumer ../BufferExtension.cpp ../../../native/vulkan/
 
 target_include_directories(extension_consumer PRIVATE ../../../native/vulkan/test)
 
-target_link_libraries(extension_consumer PRIVATE lux::engine::render::render_runtime)
+target_link_libraries(extension_consumer PRIVATE
+    lux::engine::render::render_runtime lux::engine::process::process_execution
+)
 
 add_custom_command(TARGET extension_consumer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:lux::engine::platform::platform_ipc>" "$<TARGET_FILE_DIR:extension_consumer>"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:lux::engine::render::render_client>" "$<TARGET_FILE_DIR:extension_consumer>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:lux::engine::process::process_execution>" "$<TARGET_FILE_DIR:extension_consumer>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:lux::engine::core::error>" "$<TARGET_FILE_DIR:extension_consumer>"
 )
 
 add_test(NAME installed.runtime.external_storage COMMAND extension_consumer)

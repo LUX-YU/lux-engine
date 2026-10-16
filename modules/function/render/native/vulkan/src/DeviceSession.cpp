@@ -99,7 +99,6 @@ namespace lux::render::vulkan
 
     DeviceSession::~DeviceSession() noexcept
     {
-        joinUploads();
         auto result = drain();
         const bool is_device_lost = !result && result.error().type == kNativeFailure &&
             result.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);

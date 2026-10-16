@@ -1,4 +1,4 @@
-#include "CompileWorker.hpp"
+#include "ServerFixture.hpp"
 #include "TypedTest.hpp"
 #include "TextureFixture.hpp"
 #include "TextureSceneFixture.hpp"
@@ -90,14 +90,13 @@ static void pixels(const TypedRenderCompletion<Readback>& value, unsigned expect
 
 int main(int argc, char** argv)
 {
-    CompileWorker compiler(2);
-    PrepareWorker upload_host;
+    // Preserve the former two compiler workers plus one upload worker on the shared host scheduler.
+    CpuFixture compiler(3);
     RenderServerConfig config{"runtime.texture.rendering", true};
     config.transfer_queues = argc == 1;
     config.compile_capacity = 2;
-    config.uploads = {1024 * 1024, 2, 128 * 1024 * 1024,
-        &upload_host, PrepareWorker::enqueue, PrepareWorker::join, true};
-    auto server = take(RenderServer::create(compiler.configure(config)));
+    config.uploads = TransferOptions{1024 * 1024, 2, 128 * 1024 * 1024, true};
+    auto server = take(RenderServer::create(withCpu(compiler, config)));
     CHECK(server->registerStorage<lux::render::TextureStorage>());
     CHECK(server->registerFeature({&texture_fixture::definition, programs}));
     bool run_ok = false;

@@ -1,4 +1,5 @@
 find_package(lux-cxx CONFIG REQUIRED COMPONENTS core)
+find_package(stdexec CONFIG REQUIRED)
 
 add_component(
     STATIC
@@ -16,11 +17,12 @@ component_include_directories(
 
 component_add_internal_dependencies(render_protocol lux::engine::render::render_core)
 
-target_link_libraries(render_protocol PUBLIC lux::cxx::core)
+target_link_libraries(render_protocol PUBLIC lux::cxx::core STDEXEC::stdexec)
 
 component_add_transitive_commands(
     render_protocol
     "find_package(lux-cxx CONFIG REQUIRED COMPONENTS core)"
+    "find_package(stdexec CONFIG REQUIRED)"
 )
 
 target_compile_features(render_protocol PUBLIC cxx_std_20)

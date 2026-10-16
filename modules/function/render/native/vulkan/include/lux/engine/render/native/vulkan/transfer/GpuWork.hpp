@@ -26,6 +26,15 @@ namespace lux::render::vulkan
             result.advance_ = [](void* p) noexcept { return static_cast<T*>(p)->advance(); };
             result.cancel_ = [](void* p) noexcept { static_cast<T*>(p)->cancel(); };
             result.ticket_ = [](const void* p) noexcept { return static_cast<const T*>(p)->lastUse(); };
+            if constexpr (requires(T& owner, CompletionPost post, std::shared_ptr<const void> pin) {
+                owner.setCompletionPost(post, pin, pin);
+            })
+            {
+                result.set_cpu_ = [](void* p, CompletionPost post, std::shared_ptr<const void> implementation,
+                    std::shared_ptr<const void> registration) noexcept {
+                    static_cast<T*>(p)->setCompletionPost(post, std::move(implementation), std::move(registration));
+                };
+            }
             result.ready_ = [](void* p, DeviceSession& device) noexcept { return Ready(*static_cast<T*>(p), device); };
             return result;
         }
@@ -39,6 +48,16 @@ namespace lux::render::vulkan
         }
         [[nodiscard]] RenderResult<bool> advance() noexcept;
         [[nodiscard]] RenderResult<void> publish() noexcept;
+        void setCompletionPost(CompletionPost post, std::shared_ptr<const void> implementation,
+            std::shared_ptr<const void> registration) noexcept
+        {
+            if (set_cpu_) set_cpu_(owner_.get(), post, std::move(implementation), std::move(registration));
+        }
+        void cancel() noexcept
+        {
+            if (!failure_) failure_ = RenderError{kWorkStopped};
+            if (cancel_) cancel_(owner_.get());
+        }
         void reset() noexcept { owner_.reset(); }
         [[nodiscard]] std::optional<SubmissionTicket> lastUse() const noexcept
         {
@@ -46,10 +65,12 @@ namespace lux::render::vulkan
         }
 
     private:
+        using SetCpu = void (*)(void*, CompletionPost, std::shared_ptr<const void>, std::shared_ptr<const void>) noexcept;
         DeviceSession* session_ = nullptr;
         std::unique_ptr<void, void (*)(void*) noexcept> owner_{nullptr, [](void*) noexcept {}};
         RenderResult<bool> (*advance_)(void*) noexcept = nullptr;
         void (*cancel_)(void*) noexcept = nullptr;
+        SetCpu set_cpu_ = nullptr;
         std::optional<SubmissionTicket> (*ticket_)(const void*) noexcept = nullptr;
         RenderResult<void> (*ready_)(void*, DeviceSession&) noexcept = nullptr;
         std::optional<SubmissionTicket> accepted_;

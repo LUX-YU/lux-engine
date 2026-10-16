@@ -101,10 +101,13 @@ namespace lux::render
         RenderError error{};
     };
 
+    struct CommandAsyncOps;
+
     struct CommandCompletionFns final
     {
         RenderResult<void> (*finish)(void*, ECommandOutcome, RenderError, void*) noexcept;
         bool (*active)(const void*) noexcept;
+        RenderResult<void> (*defer)(void*, void*, const CommandAsyncOps&) noexcept = nullptr;
     };
 
     // A handler-call borrow, never retained by asynchronous work. The extension
@@ -163,6 +166,10 @@ namespace lux::render
                 invocation_->completion_owner, ECommandOutcome::CANCELLED, {}, nullptr
             );
         }
+
+        // Defined by AsyncCommand.hpp for callers that actually create finite stdexec work.
+        template <typename Sender>
+        [[nodiscard]] RenderResult<void> completeWhen(Sender&& sender) noexcept;
 
     private:
         CommandInvocation* invocation_;

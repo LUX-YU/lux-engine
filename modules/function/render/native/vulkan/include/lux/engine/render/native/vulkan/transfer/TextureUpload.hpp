@@ -24,6 +24,11 @@ namespace lux::render::vulkan
         TextureUpload(const TextureUpload&) = delete;
         TextureUpload& operator=(const TextureUpload&) = delete;
         [[nodiscard]] RenderResult<bool> advance() noexcept;
+        void setCompletionPost(CompletionPost post, std::shared_ptr<const void> implementation = {},
+            std::shared_ptr<const void> registration = {}) noexcept
+        {
+            transfer_->setCompletionPost(post, std::move(implementation), std::move(registration));
+        }
         void cancel() noexcept { transfer_->cancel(); }
         [[nodiscard]] VkDevice device() const noexcept;
         [[nodiscard]] const rdesc::TextureInfo& info() const noexcept { return info_; }

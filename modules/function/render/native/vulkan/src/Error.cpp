@@ -36,6 +36,12 @@ namespace lux::render::vulkan
             },
             error::ErrorDescriptor{
                 "lux.render.vulkan.busy", "Native work or recording still active", error::ERecovery::PERMANENT, {}
+            },
+            error::ErrorDescriptor{
+                "lux.render.vulkan.work_stopped",
+                "Native work publication stopped; accepted submissions still drain",
+                error::ERecovery::PERMANENT,
+                {}
             }
         };
         return descriptors;

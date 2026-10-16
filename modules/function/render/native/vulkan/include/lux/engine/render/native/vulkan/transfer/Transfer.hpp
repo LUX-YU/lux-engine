@@ -2,7 +2,7 @@
 
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
-#include <atomic>
+#include <lux/engine/render/resource/CpuSchedule.hpp>
 
 namespace lux::render::vulkan
 {
@@ -32,6 +32,8 @@ namespace lux::render::vulkan
         Transfer(const Transfer&) = delete;
         Transfer& operator=(const Transfer&) = delete;
         [[nodiscard]] RenderResult<bool> advance() noexcept;
+        void setCompletionPost(CompletionPost post, std::shared_ptr<const void> implementation = {},
+            std::shared_ptr<const void> registration = {}) noexcept;
         void cancel() noexcept { cancelled_ = true; }
         [[nodiscard]] VkDevice device() const noexcept;
         [[nodiscard]] std::optional<SubmissionTicket> lastUse() const noexcept { return ticket_; }
@@ -51,7 +53,9 @@ namespace lux::render::vulkan
         friend class TextureStorage;
         enum class EPhase { PREPARE, CPU_PENDING, COPY, COPY_PENDING, ACQUIRE, FINAL_PENDING, COMPLETE };
         Transfer(DeviceSession&, std::span<const std::byte>, std::size_t) noexcept;
+        struct CpuPreparation;
         static void prepare(void*) noexcept;
+        static void resumeCpu(void*, RenderResult<void>) noexcept;
         void recordImage(VkCommandBuffer command, bool acquiring, bool final) noexcept;
         void recordBuffer(VkCommandBuffer command, bool acquiring, bool final) noexcept;
         DeviceSession* session_;
@@ -64,7 +68,10 @@ namespace lux::render::vulkan
         std::size_t page_, region_ = 0, offset_ = 0;
         std::uint32_t row_ = 0, rows_ = 0;
         std::size_t row_bytes_ = 0, chunk_size_ = 0;
-        std::atomic<bool> cpu_ready_{false};
+        CompletionPost completion_post_;
+        std::shared_ptr<const void> implementation_pin_, registration_pin_;
+        std::unique_ptr<CpuPreparation> cpu_preparation_;
+        std::optional<RenderError> cpu_failure_;
         std::uint64_t prepare_ns_ = 0;
         std::optional<SubmissionTicket> ticket_;
         EPhase phase_ = EPhase::PREPARE;

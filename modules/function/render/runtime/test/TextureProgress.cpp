@@ -1,5 +1,5 @@
 #include <lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp>
-#include "CompileWorker.hpp"
+#include "ServerFixture.hpp"
 #include "TypedTest.hpp"
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include "Support.hpp"
@@ -76,6 +76,11 @@ struct ProbeWork final
     Pin pin;
     bool unstartedIn(const DeviceSession& session) const noexcept { return upload->unstartedIn(session); }
     RenderResult<bool> advance() noexcept { return upload->advance(); }
+    void setCompletionPost(CompletionPost post, std::shared_ptr<const void> implementation,
+        std::shared_ptr<const void> registration) noexcept
+    {
+        upload->setCompletionPost(post, std::move(implementation), std::move(registration));
+    }
     void cancel() noexcept { upload->cancel(); }
     std::optional<SubmissionTicket> lastUse() const noexcept { return upload->lastUse(); }
 };
@@ -137,43 +142,29 @@ static auto asset(unsigned dimension)
 
 static void shutdownAndLoss()
 {
-    struct Host final
+    struct Pause final
     {
-        RenderServerConfig callbacks;
         std::latch entered{1}, resume{1};
-        void (*function)(void*) noexcept = nullptr;
-        void* argument = nullptr;
-        bool first = true;
-        static bool enqueue(void* pointer, void (*function)(void*) noexcept, void* argument) noexcept
+        std::atomic<bool> first{true};
+        static void before(void* pointer) noexcept
         {
-            auto& self = *static_cast<Host*>(pointer);
-            self.function = function;
-            self.argument = argument;
-            return self.callbacks.enqueue_compile(self.callbacks.compile_user, [](void* p) noexcept {
-                auto& host = *static_cast<Host*>(p);
-                if (host.first)
-                {
-                    host.first = false;
-                    host.entered.count_down();
-                    host.resume.wait();
-                }
-                host.function(host.argument);
-            }, pointer);
-        }
-        static void join(void* pointer) noexcept
-        {
-            auto& self = *static_cast<Host*>(pointer);
-            self.callbacks.join_compile(self.callbacks.compile_user);
+            auto& self = *static_cast<Pause*>(pointer);
+            if (self.first.exchange(false))
+            {
+                self.entered.count_down();
+                self.resume.wait();
+            }
         }
     };
     for (bool lost : {false, true})
     {
-        CompileWorker worker;
-        Host host{worker.configure({})};
+        CpuFixture worker;
+        Pause host;
+        worker.setBeforeWork(&host, Pause::before);
         RenderServerConfig config{"runtime.texture.stop", true};
         config.transfer_queues = true;
-        config.uploads = {1024 * 1024, 1, 32 * 1024 * 1024, &host, Host::enqueue, Host::join};
-        auto server = take(RenderServer::create(config));
+        config.uploads = TransferOptions{1024 * 1024, 1, 32 * 1024 * 1024};
+        auto server = take(RenderServer::create(withCpu(worker, config)));
         const std::array handlers{CommandHandler{&operation, invoke, nullptr, ECommandOwner::DEVICE_SESSION, true}};
         CHECK(server->registerFeature<TextureProbe>({&definition, nullptr, handlers}));
         std::atomic<bool> run_finished{false};
@@ -209,15 +200,13 @@ int main()
     csv << "queue_mode,bytes,wall_ns,ticks,submissions\n";
     for (unsigned mode = 0; mode < 3; ++mode)
     {
-        CompileWorker host;
-        auto callbacks = host.configure({});
+        CpuFixture host;
         RenderServerConfig config{"runtime.texture.progress", true};
         config.transfer_queues = mode != 0;
         config.prefer_dedicated_transfer = mode == 2;
         config.completion_capacity = 1;
-        config.uploads = {1024 * 1024, 1, 128 * 1024 * 1024,
-            callbacks.compile_user, callbacks.enqueue_compile, callbacks.join_compile};
-        auto server = take(RenderServer::create(config));
+        config.uploads = TransferOptions{1024 * 1024, 1, 128 * 1024 * 1024};
+        auto server = take(RenderServer::create(withCpu(host, config)));
         const std::array handlers{CommandHandler{&operation, invoke, nullptr, ECommandOwner::DEVICE_SESSION, true}};
         CHECK(server->registerFeature<TextureProbe>({&definition, nullptr, handlers}));
         bool run_ok = false;

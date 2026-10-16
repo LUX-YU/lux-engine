@@ -75,10 +75,10 @@ static void pixel(const TestCompletion& reply, unsigned width, unsigned x, unsig
 
 int main()
 {
-    CompileWorker worker;
+    CpuFixture worker;
     RenderServerConfig options{"runtime.offscreen", true};
     options.compile_capacity = 1;
-    auto server = take(RenderServer::create(worker.configure(options)));
+    auto server = take(RenderServer::create(withCpu(worker, options)));
     CHECK(server->registerStorage({&buffer_fixture::description, {}, buffer_fixture::factory(), false,
         std::make_shared<const buffer_fixture::Config>()}));
     CHECK(server->registerFeature({&native_fixture::definition, programs}));
@@ -172,7 +172,9 @@ int main()
     candidate.features.push_back({std::string(native_fixture::type.name()), "candidate", {1, 0},
         DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
     worker.reject(true);
-    CHECK(call(*upload, candidate, false).header.error.type == kRuntimeCapacity);
+    const auto rejected_schedule = call(*upload, candidate, false).header.error;
+    CHECK(rejected_schedule.type == kCpuScheduleFailure);
+    CHECK(rejected_schedule.args[0] == static_cast<std::uint64_t>(lux::process::EExecutionError::CAPACITY_EXCEEDED));
     worker.reject(false);
     {
         std::latch entered(1), resume(1);

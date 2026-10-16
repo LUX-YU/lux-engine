@@ -1,6 +1,6 @@
 #include "BufferExtension.hpp"
 #include "TypedTest.hpp"
-#include "CompileWorker.hpp"
+#include "ServerFixture.hpp"
 #include "TextureFixture.hpp"
 #include "TextureSceneFixture.hpp"
 #include "Allocation.hpp"
@@ -43,12 +43,11 @@ static void pixels(const TypedRenderCompletion<Readback>& completion, unsigned e
 int main()
 {
     using namespace extension_test;
-    CompileWorker compiler(2);
-    PrepareWorker worker;
+    CpuFixture compiler(2);
     RenderServerConfig config{"runtime.external.buffer", true};
     config.transfer_queues = true;
-    config.uploads = {65536, 2, 131072, &worker, PrepareWorker::enqueue, PrepareWorker::join};
-    auto server = take(RenderServer::create(compiler.configure(config)));
+    config.uploads = TransferOptions{65536, 2, 131072};
+    auto server = take(RenderServer::create(withCpu(compiler, config)));
     CHECK(server->registerStorage<lux::render::TextureStorage>());
     CHECK(server->registerStorage<TestBufferStorage>());
     CHECK(!server->registerStorage<TestBufferStorage>());

@@ -5,6 +5,7 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
+#include <lux/engine/render/resource/CpuSchedule.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 
 namespace lux::render::vulkan
@@ -50,14 +51,13 @@ namespace lux::render::vulkan
         // Boundary lookup compares stable owner identity before inspecting the ticket's queue.
         [[nodiscard]] SubmissionQueue* queueFor(SubmissionTicket ticket) noexcept;
         [[nodiscard]] bool deviceLost() const noexcept;
-        [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&) noexcept;
+        [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&, CpuSchedule) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadImage(
             const ImageDescription&, std::span<const std::byte>, std::span<const ImageTransferRegion>,
             const ImageAllocation* clone = nullptr, bool graphics_queue = false) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadBuffer(
             std::span<const std::byte>, VkBufferUsageFlags usage) noexcept;
         [[nodiscard]] TransferStats uploadStats() const noexcept;
-        void joinUploads() noexcept;
         [[nodiscard]] ResourceRegistry& resources() noexcept { return *resources_; }
         [[nodiscard]] const ResourceRegistry& resources() const noexcept { return *resources_; }
         [[nodiscard]] RenderResult<BufferPermit> createBuffer(

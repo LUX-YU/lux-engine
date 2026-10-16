@@ -7,7 +7,9 @@
 #include <lux/engine/render/features/Feature.hpp>
 #include <lux/engine/render/features/Program.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
+#include <lux/engine/render/resource/CpuSchedule.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
+#include <optional>
 
 namespace lux::render
 {
@@ -20,19 +22,16 @@ namespace lux::render
         std::size_t max_config_bytes = 1024 * 1024;
         std::size_t max_reply_bytes = 16 * 1024 * 1024;
         std::size_t retirement_capacity = 64;
-        // Host-owned bounded cold executor. enqueue never executes inline; accepted callbacks run exactly once.
-        // Rejection executes nothing and retains no pointer.
-        // join_compile waits for every callback accepted through this server's borrowed execution resource.
-        // Both callbacks are null for a control-only host; CreateEffect then rejects before retaining its input.
-        void* compile_user = nullptr;
-        bool (*enqueue_compile)(void*, void (*)(void*) noexcept, void*) noexcept = nullptr;
-        void (*join_compile)(void*) noexcept = nullptr;
+        // One borrowed host scheduler for cold compilation and transfer preparation.
+        CpuSchedule cpu;
+        // Independent logical budgets backed by one slot map and event queue of their combined capacity.
         std::size_t compile_capacity = 2;
         std::size_t completion_capacity = 128;
         // Cold explicit Native capability request. Aliased roles still share one physical queue owner.
         bool transfer_queues = false;
         bool prefer_dedicated_transfer = true;
-        TransferOptions uploads{}; // null host callbacks disable texture upload admission
+        // Scheduler availability does not imply a persistent staging allocation.
+        std::optional<TransferOptions> uploads;
         bool texture_compression_bc = false; // explicitly request BC capability; RGBA-only hosts do not require it
         // Pins the module containing this Server implementation and its builtin reply/destruction code.
         // Empty explicitly declares process-lifetime code. The host retains its own pin through factory,

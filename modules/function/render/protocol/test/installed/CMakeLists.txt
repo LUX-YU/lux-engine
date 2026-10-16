@@ -14,7 +14,7 @@ enable_testing()
 find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_protocol)
 
 get_target_property(links lux::engine::render::render_protocol INTERFACE_LINK_LIBRARIES)
-set(expected_links lux::engine::render::render_core lux::cxx::core)
+set(expected_links lux::engine::render::render_core lux::cxx::core STDEXEC::stdexec)
 
 if(NOT links STREQUAL expected_links)
     message(FATAL_ERROR "Protocol dependency leak: ${links}")

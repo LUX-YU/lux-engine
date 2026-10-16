@@ -1,12 +1,38 @@
 #pragma once
 
 #include "Request.hpp"
+#include <lux/engine/render/protocol/AsyncCommand.hpp>
+#include <lux/engine/render/resource/CpuSchedule.hpp>
 #include <lux/engine/render/native/vulkan/CommandCompletion.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
+#include <lux/cxx/container/StableSlotMap.hpp>
+#include <lux/cxx/concurrent/BlockingQueue.hpp>
+#include <atomic>
+
+#ifdef LUX_RUNTIME_ASYNC_TEST_SEAM
+namespace lux::render::runtime_detail::test
+{
+    void completionPublished() noexcept;
+}
+#endif
 
 namespace lux::render::runtime_detail
 {
+    struct CompletionTag;
+    using CompletionId = cxx::SlotKey<CompletionTag>;
+
+    struct CompletionEvent final
+    {
+        SessionIdentity session;
+        CompletionId id;
+    };
+
+    using CompletionQueue = cxx::BlockingRingQueue<CompletionEvent>;
+
+    struct DeferredCompletion;
+    using DeferredSlots = cxx::StableSlotMap<DeferredCompletion, CompletionTag>;
+
     struct GpuCompletion final
     {
         vulkan::SubmissionQueue* queue = nullptr;
@@ -16,22 +42,81 @@ namespace lux::render::runtime_detail
         std::size_t reply_charge = 0;
         RenderRequest* reserved_request = nullptr;
         vulkan::DeviceSession* native = nullptr;
+        const std::shared_ptr<const void>* implementation_pin = nullptr;
     };
 
-    // The vector belongs only to RenderServer::Impl. monostate = free, GPU without request = reserved.
-    using VCompletionCondition = std::variant<std::monostate, vulkan::ExecutionContext*, GpuCompletion>;
+    struct CpuCompletion final
+    {
+        const CommandAsyncOps* functions = nullptr;
+        void* operation = nullptr;
+        platform::ipc::IpcMessage reply;
+        std::size_t reply_charge = 0;
+        ECommandOutcome outcome = ECommandOutcome::OUTCOME_UNKNOWN;
+        RenderError error{};
+        bool compiling = false;
+        RenderResult<void> (*adopt)(void*, RenderRequest&) noexcept = nullptr;
+
+        CpuCompletion() noexcept = default;
+        CpuCompletion(const CpuCompletion&) = delete;
+        CpuCompletion& operator=(const CpuCompletion&) = delete;
+        ~CpuCompletion() noexcept { if (operation) functions->destroy(operation); }
+    };
+
+    using VCompletionCondition = std::variant<std::monostate, vulkan::ExecutionContext*, GpuCompletion, CpuCompletion>;
+
+    // The only pending request owner. Its fixed-address slot reserves one CPU event landing place.
     struct DeferredCompletion final
     {
         std::optional<RenderRequest> request;
+        stdexec::inplace_stop_source stop;
+        // Sender operations may retain a stop_callback until destruction; its source outlives them.
         VCompletionCondition condition;
+        CompletionQueue* events = nullptr;
+        std::atomic<std::size_t>* publishers = nullptr;
+        DeferredSlots* owner = nullptr;
+        SessionIdentity session{};
+        CompletionId id;
+        void* continuation = nullptr;
+        CpuResume resume = nullptr;
+        RenderResult<void> cpu_result;
+
+        DeferredCompletion() noexcept = default;
+        [[nodiscard]] CompletionPost post() noexcept
+        {
+            return {this, [](void* owner, void* next, CpuResume callback, RenderResult<void> result) noexcept {
+                auto& slot = *static_cast<DeferredCompletion*>(owner);
+                const CompletionEvent event{slot.session, slot.id};
+                auto* events = slot.events;
+                auto* publishers = slot.publishers;
+                publishers->fetch_add(1, std::memory_order_acq_rel);
+                slot.continuation = next;
+                slot.resume = callback;
+                slot.cpu_result = std::move(result);
+                // One event per live slot; admission reserved matching queue capacity.
+                if (events->tryPush(event) != cxx::EQueuePushResult::ACCEPTED) std::terminate();
+                // No access to slot after publication: the consumer may immediately destroy it.
+#ifdef LUX_RUNTIME_ASYNC_TEST_SEAM
+                test::completionPublished();
+#endif
+                // The queue notifies after releasing its mutex. Keep Impl/queue alive until that tail returns.
+                publishers->fetch_sub(1, std::memory_order_acq_rel);
+            }};
+        }
     };
 
-    // Valid only while the handler borrows the existing Server and its bounded slots.
+    // Handler-call borrow of the existing Server and its single pending collection.
     struct GpuAdmission final
     {
         vulkan::DeviceSession& native;
-        std::span<DeferredCompletion> slots;
+        DeferredSlots& slots;
+        std::size_t slot_limit;
+        CompletionQueue& events;
+        std::atomic<std::size_t>& publishers;
+        SessionIdentity session;
+        const std::shared_ptr<const void>& implementation_pin;
         RenderRequest& request;
+        void* server = nullptr;
+        RenderResult<void> (*defer)(void*, RenderRequest&, void*, const CommandAsyncOps&) noexcept = nullptr;
         bool reserved = false;
     };
 

@@ -32,10 +32,10 @@ namespace lux::render::vulkan::test
     void destroyed(const char*) noexcept {}
 }
 
-static void complete(TextureUpload& upload)
+static void complete(TextureUpload& upload, CpuFixture& host)
 {
     const auto end = Clock::now() + std::chrono::seconds(10);
-    while (!take(upload.advance())) { CHECK(Clock::now() < end); std::this_thread::yield(); }
+    while (!take(advanceAfterCpu(host, upload))) { CHECK(Clock::now() < end); std::this_thread::yield(); }
     CHECK(upload.publish());
 }
 
@@ -78,7 +78,7 @@ static void pixels(std::span<const std::byte> actual, std::array<unsigned, 4> ex
 int main()
 {
     Validation validation;
-    PrepareWorker host;
+    CpuFixture host;
     auto bootstrap = instance(validation);
     DeviceOptions options;
     options.dynamic_rendering = true;
@@ -86,8 +86,7 @@ int main()
     options.texture_descriptors = true;
     options.texture_compression_bc = true;
     auto session = take(DeviceSession::create(bootstrap, options, 8));
-    CHECK(session->configureUploads({1024 * 1024, 2, 32 * 1024 * 1024,
-        &host, PrepareWorker::enqueue, PrepareWorker::join}));
+    CHECK(session->configureUploads({1024 * 1024, 2, 32 * 1024 * 1024}, host.cpu()));
     CHECK(configureTextures(*session, 32, 32 * 1024 * 1024));
     auto& storage = *textures(*session);
     std::ofstream raw("texture-sampling.csv");
@@ -116,8 +115,9 @@ int main()
             CHECK(!TextureUpload::create(*session, ambiguous, input));
         }
         auto upload = take(TextureUpload::create(*session, info, input));
+        upload->setCompletionPost(host.post());
         const auto published = take(storage.reserve(*upload));
-        complete(*upload); upload.reset();
+        complete(*upload, host); upload.reset();
         for (unsigned mip = 0; mip < 4; ++mip)
         {
             texture_fixture::Config config{published.texture, 16, 16, 4,
@@ -179,8 +179,9 @@ int main()
                 auto* old = take(storage.acquire(published.texture));
                 std::vector<std::byte> replacement(input.size(), std::byte{64});
                 upload = take(TextureUpload::create(*session, info, replacement));
+                upload->setCompletionPost(host.post());
                 CHECK(storage.reserve(*upload, published.texture, 1));
-                complete(*upload); upload.reset();
+                complete(*upload, host); upload.reset();
                 CHECK(old->descriptorIndex() != storage.find(published.texture)->descriptorIndex());
                 CHECK(storage.residentVersions() == 2);
                 storage.releaseLease(*old);
@@ -193,7 +194,8 @@ int main()
                 std::array<std::byte, 20> patch;
                 patch.fill(std::byte{96});
                 upload = take(storage.uploadRegion(published.texture, 2, {3, 0, 0, 2, 2, 12}, patch));
-                complete(*upload); upload.reset();
+                upload->setCompletionPost(host.post());
+                complete(*upload, host); upload.reset();
                 for (auto* view : views) CHECK(take(view->execute()));
                 CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
                 for (auto* view : views) pixels(take(view->readback()), oracle({96, 96, 96, 96}, space), tolerance);
@@ -218,8 +220,9 @@ int main()
         for (std::size_t i = 0; i < blocks.size(); i += 8)
         { blocks[i] = std::byte{0}; blocks[i + 1] = std::byte{0xf8}; } // RGB565 red, index zero
         auto upload = take(TextureUpload::create(*session, info, blocks));
+        upload->setCompletionPost(host.post());
         const auto id = take(storage.reserve(*upload)).texture;
-        complete(*upload); upload.reset();
+        complete(*upload, host); upload.reset();
         texture_fixture::Config config{id, 16, 16, 4, rdesc::ETextureFormat::BC1_RGBA_SRGB, 1};
         auto assembly = take(texture_fixture::assemble(config));
         auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,

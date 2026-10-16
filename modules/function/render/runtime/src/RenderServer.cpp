@@ -3,6 +3,7 @@
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
+#include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -55,17 +56,6 @@ namespace lux::render
         void stop() noexcept { stop_requested.store(true); }
         [[nodiscard]] RenderServerStats stats() const noexcept;
 
-        struct CompileJob final
-        {
-            Impl* owner;
-            std::shared_ptr<RenderRequest> request;
-            RenderResult<RenderEffect> candidate =
-                cxx::unexpected(RenderError{kRuntimeState});
-            std::atomic<bool> done{false};
-            CompileJob(Impl& server, RenderRequest input)
-                : owner(&server), request(std::make_shared<RenderRequest>(std::move(input))) {}
-        };
-        std::vector<std::unique_ptr<CompileJob>> compiling;
         RenderServerConfig config;
         ipc::IpcBoundType<ValueEnvelope<RenderError>> failure_type;
         ipc::IpcResponder responder;
@@ -80,7 +70,10 @@ namespace lux::render
         std::optional<vulkan::InstanceContext> instance;
         std::unique_ptr<vulkan::DeviceSession> device;
         std::vector<RenderRequest> undelivered;
-        std::vector<DeferredCompletion> deferred;
+        DeferredSlots deferred;
+        CompletionQueue completion_events;
+        std::atomic<std::size_t> completion_publishers{0};
+        std::size_t compiling = 0;
         unsigned clients = 0;
         std::size_t next_effect = 0;
         std::atomic<bool> stop_requested{false}, started{false}, running{false};
@@ -88,17 +81,17 @@ namespace lux::render
         std::atomic<std::uint64_t> validation_errors{0}, validation_warnings{0};
         std::atomic<std::uint64_t> scoped_buffers_created{0};
 
-        Impl(RenderServerConfig value, ipc::IpcResponder input, SessionIdentity session)
+        Impl(RenderServerConfig value, ipc::IpcResponder input, SessionIdentity session, std::size_t pending_capacity)
             : config(std::move(value)),
               failure_type(*ipc::IpcMessage::bindType<ValueEnvelope<RenderError>>(
                   ipc::IpcMessage::type<ValueEnvelope<RenderError>>(), config.implementation_code_pin)),
-              responder(std::move(input)), identity(session)
+              responder(std::move(input)), identity(session), completion_events(pending_capacity)
         {
             manifest.failure_code_pin = config.implementation_code_pin;
             manifest.failure_ops = &failure_type.operations();
             undelivered.reserve(128);
-            deferred.resize(config.completion_capacity);
-            compiling.resize(config.compile_capacity);
+            // Separate admission budgets share one bounded owner and one event queue.
+            deferred.reserve(pending_capacity);
             addBuiltin<CreateScene, &Impl::createScene>();
             addBuiltin<RemoveScene, &Impl::removeScene>();
             addBuiltin<CreateView, &Impl::createView>();
@@ -118,7 +111,8 @@ namespace lux::render
         void addBuiltin() noexcept
         {
             addCommand({&commandDescriptor<C>(), [](void* owner, CommandInvocation& invocation) noexcept {
-                return (static_cast<Impl*>(owner)->*Method)(*static_cast<RenderRequest*>(invocation.completion_owner));
+                return (static_cast<Impl*>(owner)->*Method)(
+                    static_cast<GpuAdmission*>(invocation.completion_owner)->request);
             }, this}, commandTransport<C>(), nullptr, config.implementation_code_pin);
         }
 
@@ -165,14 +159,15 @@ namespace lux::render
 
         void cancelReadbacks(vulkan::ExecutionContext* context) noexcept
         {
-            for (auto& slot : deferred)
+            for (auto it = deferred.begin(); it != deferred.end();)
             {
+                auto& slot = *it;
                 const auto* current = std::get_if<vulkan::ExecutionContext*>(&slot.condition);
-                if (!current || *current != context) continue;
+                if (!current || *current != context) { ++it; continue; }
                 context->releaseReadback();
                 auto result = slot.request->cancel();
                 settle(std::move(*slot.request), result);
-                slot = {};
+                deferred.erase(slot.id);
             }
         }
 
@@ -262,15 +257,14 @@ namespace lux::render
                 return group.scene == input->scene && group.view == input->view && group.target == input->target;
             });
             if (found == effect->groups.end()) return cxx::unexpected(RenderError{kRuntimeIdentity});
-            auto slot = std::find_if(deferred.begin(), deferred.end(), [](const auto& value) {
-                return std::holds_alternative<std::monostate>(value.condition);
-            });
-            const bool full = slot == deferred.end() || request.replyCapacity() < sizeof(ReadbackResult) ||
+            const bool full = request.replyCapacity() < sizeof(ReadbackResult) ||
                 found->context->readbackBytes() > request.replyCapacity() - sizeof(ReadbackResult);
             if (full) return cxx::unexpected(RenderError{kRuntimeCapacity});
+            auto* slot = reserveCompletion();
+            if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
             found->context->retainReadback();
             slot->request.emplace(std::move(request));
-            slot->condition = found->context;
+            slot->condition.emplace<vulkan::ExecutionContext*>(found->context);
             return {};
         }
 
@@ -289,14 +283,15 @@ namespace lux::render
                 effect.next_group = effect.groups.empty() ? 0 : (effect.next_group + 1) % effect.groups.size();
             }
             next_effect = effects.empty() ? 0 : (next_effect + 1) % effects.size();
-            for (auto& slot : deferred)
+            for (auto it = deferred.begin(); it != deferred.end();)
             {
-                if (!slot.request) continue;
+                auto& slot = *it;
+                if (!slot.request || std::holds_alternative<CpuCompletion>(slot.condition)) { ++it; continue; }
                 RenderResult<void> reply;
                 if (auto* context = std::get_if<vulkan::ExecutionContext*>(&slot.condition))
                 {
                     auto result = (*context)->readback();
-                    if (!result && result.error().type == vulkan::kBusy) continue;
+                    if (!result && result.error().type == vulkan::kBusy) { ++it; continue; }
                     (*context)->releaseReadback();
                     if (result)
                     {
@@ -311,11 +306,11 @@ namespace lux::render
                 {
                     auto& gpu = std::get<GpuCompletion>(slot.condition);
 #ifdef LUX_RUNTIME_TEST_SEAM
-                    if (!runtime_detail::test::observeGpuCompletion()) continue;
+                    if (!runtime_detail::test::observeGpuCompletion()) { ++it; continue; }
 #endif
                     auto progress = gpu.work.advance();
                     if (!progress) return cxx::unexpected(progress.error());
-                    if (!*progress) continue;
+                    if (!*progress) { ++it; continue; }
                     auto ready = gpu.work.publish();
                     gpu.work.reset(); // release Native pins while the original request still owns its source
 #ifdef LUX_RUNTIME_TEST_SEAM
@@ -331,7 +326,7 @@ namespace lux::render
 
                 }
                 settle(std::move(*slot.request), reply);
-                slot = {};
+                deferred.erase(slot.id);
             }
             return device->collect();
         }
@@ -345,9 +340,9 @@ namespace lux::render
             return VK_FALSE;
         }
 
-        RenderResult<RenderEffect> compileEffect(const std::shared_ptr<RenderRequest>& request) noexcept
+        RenderResult<RenderEffect> compileEffect(const RenderRequest& request) noexcept
         {
-            const auto* input = &request->get<CreateEffectRequest>();
+            const auto* input = &request.get<CreateEffectRequest>();
             const auto count = input->features.size();
             if (count == 0 || count > max_features) return cxx::unexpected(RenderError{kFeatureContract});
             std::vector<WireView> configs;
@@ -483,46 +478,149 @@ namespace lux::render
             return request.reply(TargetCreated{input->target, target->epoch});
         }
 
-        static void compileTask(void* value) noexcept
+        DeferredCompletion* reserveCompletion(bool for_compile = false) noexcept
         {
-            auto& job = *static_cast<CompileJob*>(value);
-            if (!job.owner->stop_requested.load()) job.candidate = job.owner->compileEffect(job.request);
-            job.done.store(true, std::memory_order_release);
+            const bool full = for_compile ? compiling >= config.compile_capacity :
+                deferred.size() - compiling >= config.completion_capacity;
+            if (full) return nullptr;
+            auto id = deferred.tryEmplacePrepared();
+            if (!id) return nullptr;
+            auto& slot = *deferred.find(*id);
+            slot.id = *id;
+            slot.session = identity;
+            slot.events = &completion_events;
+            slot.publishers = &completion_publishers;
+            slot.owner = &deferred;
+            return &slot;
         }
 
-        RenderResult<void> createEffect(RenderRequest& request) noexcept
+        static void completeCpu(void* value, ECommandOutcome outcome, RenderError error, void* response) noexcept
         {
-            if (!config.enqueue_compile) return cxx::unexpected(RenderError{kRuntimeUnsupported});
-            const auto slot = std::find_if(compiling.begin(), compiling.end(), [](const auto& job) { return !job; });
-            if (slot == compiling.end()) return cxx::unexpected(RenderError{kRuntimeCapacity});
-            auto job = std::make_unique<CompileJob>(*this, std::move(request));
-            if (!config.enqueue_compile(config.compile_user, compileTask, job.get()))
+            auto& slot = *static_cast<DeferredCompletion*>(value);
+            auto& cpu = std::get<CpuCompletion>(slot.condition);
+            cpu.outcome = outcome;
+            cpu.error = error;
+            if (outcome == ECommandOutcome::SUCCESS)
             {
-                request = std::move(*job->request);
-                return cxx::unexpected(RenderError{kRuntimeCapacity});
+                auto charge = slot.request->prepareResponse(response, cpu.reply);
+                if (charge) cpu.reply_charge = *charge;
+                else { cpu.outcome = ECommandOutcome::FAILED; cpu.error = charge.error(); }
             }
-            *slot = std::move(job);
+            slot.post()(nullptr, nullptr, {});
+        }
+
+        RenderResult<void> deferCommand(RenderRequest& request, void* sender, const CommandAsyncOps& operations) noexcept
+        {
+            // A plain finite CPU sender is not evidence of a Native GPU completion.
+            if (!request.active()) return cxx::unexpected(RenderError{kRuntimeState});
+            if (request.gpuReady()) return cxx::unexpected(RenderError{kProtocolContract});
+            auto* slot = reserveCompletion();
+            if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
+            slot->request.emplace(std::move(request));
+            auto& cpu = slot->condition.emplace<CpuCompletion>();
+            cpu.functions = &operations;
+            cpu.operation = operations.connect(sender, {slot, completeCpu, slot->stop.get_token()});
+            // start runs on the RenderThread. Event draining cannot reenter this stack; even immediate
+            // completion is only published, then adopted at the next owner-loop safety point.
+            operations.start(cpu.operation);
             return {};
         }
 
-        void publishCompiled(bool cancelled = false) noexcept
+        struct CompileState final
         {
-            for (auto& slot : compiling)
+            struct Receiver final
             {
-                if (!slot || !slot->done.load(std::memory_order_acquire)) continue;
-                auto& job = *slot;
-                RenderResult<void> result;
-                if (cancelled) result = job.request->cancel();
-                else if (!job.candidate) result = job.request->fail(job.candidate.error());
-                else
+                using receiver_concept = stdexec::receiver_t;
+                DeferredCompletion* slot;
+                struct Env final
                 {
-                    const auto effect = effects.emplace(std::move(*job.candidate));
-                    result = job.request->reply(EffectCreated{effect});
-                    if (result) ++compiled_graphs;
-                    else effects.erase(effect); // never exposed or submitted; rejected publication owns no Effect
+                    stdexec::inplace_stop_token token;
+                    stdexec::inplace_stop_token query(stdexec::get_stop_token_t) const noexcept { return token; }
+                };
+                Env get_env() const noexcept { return {slot->stop.get_token()}; }
+                void set_value() && noexcept { slot->post()(nullptr, nullptr, {}); }
+                void set_error(RenderError error) && noexcept
+                {
+                    slot->post()(nullptr, nullptr, cxx::unexpected(error));
                 }
-                settle(std::move(*job.request), result);
-                slot.reset();
+                void set_stopped() && noexcept
+                {
+                    slot->post()(nullptr, nullptr, cxx::unexpected(RenderError{kRuntimeState}));
+                }
+            };
+
+            Impl* owner;
+            DeferredCompletion* slot;
+            RenderResult<RenderEffect> candidate = cxx::unexpected(RenderError{kRuntimeState});
+            stdexec::connect_result_t<CpuSender, Receiver> operation;
+
+            CompileState(Impl& server, DeferredCompletion& pending)
+                : owner(&server), slot(&pending), operation(stdexec::connect(
+                    server.config.cpu.schedule([](void* value) noexcept {
+                        auto& state = *static_cast<CompileState*>(value);
+                        state.candidate = state.owner->compileEffect(*state.slot->request);
+                    }, this, server.config.implementation_code_pin, pending.request->codePin()), Receiver{&pending})) {}
+
+            static RenderResult<void> adopt(void* value, RenderRequest& request) noexcept
+            {
+                auto& state = *static_cast<CompileState*>(value);
+                if (state.owner->stop_requested.load()) return request.cancel();
+                if (!state.slot->cpu_result) return request.fail(state.slot->cpu_result.error());
+                if (!state.candidate) return request.fail(state.candidate.error());
+                const auto effect = state.owner->effects.emplace(std::move(*state.candidate));
+                auto result = request.reply(EffectCreated{effect});
+                if (result) ++state.owner->compiled_graphs;
+                else state.owner->effects.erase(effect);
+                return result;
+            }
+        };
+
+        RenderResult<void> createEffect(RenderRequest& request) noexcept
+        {
+            if (!config.cpu) return cxx::unexpected(RenderError{kRuntimeUnsupported});
+            auto* slot = reserveCompletion(true);
+            if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
+            slot->request.emplace(std::move(request));
+            auto& cpu = slot->condition.emplace<CpuCompletion>();
+            static constexpr CommandAsyncOps operations{
+                nullptr,
+                [](void* state) noexcept { stdexec::start(static_cast<CompileState*>(state)->operation); },
+                [](void* state) noexcept { delete static_cast<CompileState*>(state); }
+            };
+            cpu.functions = &operations;
+            cpu.compiling = true;
+            cpu.adopt = CompileState::adopt;
+            cpu.operation = new CompileState(*this, *slot);
+            ++compiling;
+            operations.start(cpu.operation);
+            return {};
+        }
+
+        void drainCompletions(std::size_t budget = 128) noexcept
+        {
+            CompletionEvent event;
+            for (std::size_t i = 0; i < budget &&
+                completion_events.tryPop(event) == cxx::EQueuePopResult::VALUE; ++i)
+            {
+                // A copied event identity is checked once at its actual cross-thread boundary.
+                if (event.session != identity) continue;
+                auto* slot = deferred.find(event.id);
+                if (!slot) continue;
+                const auto resume = std::exchange(slot->resume, nullptr);
+                if (resume) resume(slot->continuation, std::move(slot->cpu_result));
+                auto* cpu = std::get_if<CpuCompletion>(&slot->condition);
+                if (!cpu) continue; // Native continuation resumes the same GPU request, not a second owner.
+                RenderResult<void> result;
+                if (cpu->adopt) result = cpu->adopt(cpu->operation, *slot->request);
+                else if (stop_requested.load()) { cpu->reply.reset(); result = slot->request->cancel(); }
+                else if (cpu->outcome == ECommandOutcome::SUCCESS)
+                    result = slot->request->publishPrepared(cpu->reply, cpu->reply_charge);
+                else if (cpu->outcome == ECommandOutcome::CANCELLED)
+                { cpu->reply.reset(); result = slot->request->cancel(); }
+                else { cpu->reply.reset(); result = slot->request->fail(cpu->error); }
+                if (cpu->compiling) --compiling;
+                settle(std::move(*slot->request), result);
+                deferred.erase(event.id);
             }
         }
 
@@ -618,9 +716,15 @@ namespace lux::render
                 result = cxx::unexpected(RenderError{kRuntimeCapacity});
             else
             {
-                GpuAdmission admission{*device, deferred, request};
+                // Compiling cannot change during this serialized handler call; this is the ordinary
+                // completion budget expressed as an absolute limit in the single shared slot map.
+                GpuAdmission admission{*device, deferred, config.completion_capacity + compiling, completion_events,
+                    completion_publishers, identity, config.implementation_code_pin, request, this,
+                    [](void* owner, RenderRequest& input, void* sender, const CommandAsyncOps& operations) noexcept {
+                        return static_cast<Impl*>(owner)->deferCommand(input, sender, operations);
+                    }};
                 vulkan::GpuCompletionAccess access{&gpu_completion_functions, &admission};
-                auto invocation = request.invocation(entry->binding.gpu_completion ? &access : nullptr);
+                auto invocation = request.invocation(admission, entry->binding.gpu_completion ? &access : nullptr);
                 result = entry->binding.invoke(entry->binding.user, invocation);
             }
             settle(std::move(request), result);
@@ -629,38 +733,48 @@ namespace lux::render
 
         void shutdown() noexcept
         {
-            // Close admission first, then wait for all accepted callbacks before releasing any request/Device borrow.
             stop_requested.store(true);
-            if (config.join_compile) config.join_compile(config.compile_user);
-            if (device) device->joinUploads();
-            publishCompiled(true);
-            // GPU-ready owners may contain real in-flight staging. Drain only here, never in tick().
-            const bool has_gpu = std::ranges::any_of(deferred, [](const auto& slot) {
-                return slot.request && std::holds_alternative<GpuCompletion>(slot.condition);
-            });
-            if (has_gpu && device)
+            for (auto& slot : deferred)
+            {
+                slot.stop.request_stop();
+                if (auto* gpu = std::get_if<GpuCompletion>(&slot.condition)) gpu->work.cancel();
+            }
+            // Only shutdown waits for accepted GPU work. Cancellation prevents another Transfer submit;
+            // pending CPU preparation and its source request stay owned until their actual event arrives.
+            // Drain before polling work to its terminal state, which may itself require this real wait.
+            if (device)
             {
                 auto drained = device->drain();
                 if (!drained && !device->deviceLost()) std::terminate();
             }
-            for (auto& slot : deferred)
+            // Shutdown consumes actual CPU notifications. The same pending owners retain all source and
+            // Native state while already accepted work runs to its safe terminal point.
+            while (!deferred.empty())
             {
-                if (!slot.request) continue;
-                if (auto* context = std::get_if<vulkan::ExecutionContext*>(&slot.condition))
-                    (*context)->releaseReadback();
-                const bool was_submitted = std::holds_alternative<GpuCompletion>(slot.condition);
-                if (was_submitted)
+                drainCompletions();
+                for (auto it = deferred.begin(); it != deferred.end();)
                 {
-                    auto& gpu = std::get<GpuCompletion>(slot.condition);
-                    gpu.work.reset();
-                    gpu.reply.reset(); // still funded by the original request until this destruction finishes
+                    auto& slot = *it;
+                    if (std::holds_alternative<CpuCompletion>(slot.condition)) { ++it; continue; }
+                    const bool was_submitted = std::holds_alternative<GpuCompletion>(slot.condition);
+                    if (was_submitted)
+                    {
+                        auto& gpu = std::get<GpuCompletion>(slot.condition);
+                        auto progress = gpu.work.advance();
+                        if (!progress && !device->deviceLost()) std::terminate();
+                        if (progress && !*progress) { ++it; continue; }
+                        gpu.work.reset();
+                        gpu.reply.reset();
+                    }
+                    else if (auto* context = std::get_if<vulkan::ExecutionContext*>(&slot.condition))
+                        (*context)->releaseReadback();
+                    auto result = was_submitted ? slot.request->unknown() : slot.request->cancel();
+                    settle(std::move(*slot.request), result);
+                    deferred.erase(slot.id);
                 }
-                // Accepted GPU work may already have side effects; cancellation is not provable.
-                auto result = was_submitted ?
-                    slot.request->unknown() : slot.request->cancel();
-                settle(std::move(*slot.request), result);
-                slot = {};
+                if (!deferred.empty()) std::this_thread::yield();
             }
+            while (completion_publishers.load(std::memory_order_acquire) != 0) std::this_thread::yield();
             undelivered.clear();
             responder.reset();
             effects.clear();
@@ -679,13 +793,14 @@ namespace lux::render
 
     RenderResult<std::unique_ptr<RenderServer>> RenderServer::create(RenderServerConfig config) noexcept
     {
+        const auto pending_capacity = cxx::checkedAdd(config.completion_capacity, config.compile_capacity);
+        const bool invalid_pending_capacity = !pending_capacity || *pending_capacity > 136;
         const bool invalid = config.requests_per_tick == 0 || config.requests_per_tick > 128 ||
             config.max_config_bytes == 0 || config.max_config_bytes > config_limits.max_wire_bytes ||
             config.max_reply_bytes < sizeof(RenderError) || config.max_reply_bytes > 256 * 1024 * 1024 ||
             config.completion_capacity == 0 || config.completion_capacity > 128 ||
             config.retirement_capacity == 0 || config.compile_capacity == 0 || config.compile_capacity > 8 ||
-            bool(config.enqueue_compile) != bool(config.join_compile) ||
-            bool(config.uploads.enqueue) != bool(config.uploads.join);
+            invalid_pending_capacity;
         if (invalid) return cxx::unexpected(RenderError{kRuntimeCapacity});
         SessionIdentity identity{};
         if (BCryptGenRandom(nullptr, reinterpret_cast<PUCHAR>(identity.data()), sizeof(identity),
@@ -693,7 +808,7 @@ namespace lux::render
         auto responder = ipc::IpcCore::instance().createResponder(config.channel_name);
         if (!responder) return cxx::unexpected(RenderError{kRuntimeState});
         return std::unique_ptr<RenderServer>(new RenderServer(
-            std::make_unique<Impl>(std::move(config), std::move(*responder), identity)));
+            std::make_unique<Impl>(std::move(config), std::move(*responder), identity, *pending_capacity)));
     }
 
     RenderResult<void> RenderServer::Impl::registerFeature(FeatureRegistration feature, std::span<const CommandTransport> transports) noexcept
@@ -745,14 +860,14 @@ namespace lux::render
         options.texture_compression_bc |= (required & 2) != 0;
         options.optional_texture_descriptors = (optional & 1) != 0;
         options.optional_texture_compression_bc = (optional & 2) != 0;
-        options.host_query_reset = s.config.uploads.measure_gpu;
+        options.host_query_reset = s.config.uploads && s.config.uploads->measure_gpu;
         options.physical_device_index = s.config.physical_device_index;
         auto device = vulkan::DeviceSession::create(*s.instance, options, 3, s.config.retirement_capacity);
         if (!device) { s.shutdown(); return cxx::unexpected(device.error()); }
         s.device = std::move(*device);
-        if (s.config.uploads.enqueue)
+        if (s.config.uploads)
         {
-            auto uploads = s.device->configureUploads(s.config.uploads);
+            auto uploads = s.device->configureUploads(*s.config.uploads, s.config.cpu);
             if (!uploads) { s.shutdown(); return cxx::unexpected(uploads.error()); }
         }
         auto& resources = s.device->resources();
@@ -790,7 +905,7 @@ namespace lux::render
                 if (s.responder.tryReceive(request) == ipc::EIpcReceive::RECEIVED) s.dispatch(std::move(request));
             }
             if (s.stop_requested.load()) break;
-            s.publishCompiled();
+            s.drainCompletions();
             if (auto rendered = s.tick(); !rendered) { result = cxx::unexpected(rendered.error()); break; }
             ++s.ticks;
             std::this_thread::sleep_for(std::chrono::milliseconds(1));

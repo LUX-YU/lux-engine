@@ -1,3 +1,5 @@
+find_package(lux-cxx CONFIG REQUIRED COMPONENTS concurrent)
+
 generate_visibility_header(
     ENABLE_MACRO_NAME LUX_RENDER_CLIENT_LIBRARY
     PUBLIC_MACRO_NAME LUX_RENDER_CLIENT_PUBLIC
@@ -49,7 +51,11 @@ component_add_internal_dependencies(render_runtime
     lux::engine::render::render_native_vulkan
 )
 
-target_link_libraries(render_runtime PRIVATE lux::engine::platform::platform_ipc bcrypt)
+target_link_libraries(render_runtime PRIVATE lux::engine::platform::platform_ipc lux::cxx::concurrent bcrypt)
+
+component_add_transitive_commands(render_runtime
+    "find_package(lux-cxx CONFIG REQUIRED COMPONENTS concurrent)"
+)
 
 target_include_directories(render_runtime PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../native/vulkan/sinclude")
 

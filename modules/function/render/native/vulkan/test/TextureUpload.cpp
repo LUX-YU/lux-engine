@@ -1,10 +1,11 @@
 #include "TextureFixture.hpp"
 #include <fstream>
 
-static void roundtrip(DeviceSession& session, TextureUpload& candidate, std::span<const std::byte> source)
+static void roundtrip(DeviceSession& session, TextureUpload& candidate, std::span<const std::byte> source,
+    CpuFixture& worker)
 {
     const auto deadline = Clock::now() + std::chrono::seconds(20);
-    while (!take(candidate.advance()))
+    while (!take(advanceAfterCpu(worker, candidate)))
     {
         CHECK(Clock::now() < deadline);
         std::this_thread::yield();
@@ -61,7 +62,7 @@ static void roundtrip(DeviceSession& session, TextureUpload& candidate, std::spa
 int main()
 {
     Validation validation;
-    PrepareWorker worker;
+    CpuFixture worker;
     std::ofstream csv("texture-chunks.csv");
     csv << "multiple,dedicated,bytes,mips,bc,chunks,prepare_ns,owner_ns,wall_ns,staging_bytes,pending_peak,gpu_ns,gpu_samples\n";
     {
@@ -74,8 +75,7 @@ int main()
             options.texture_compression_bc = true;
             options.host_query_reset = true;
             auto session = take(DeviceSession::create(bootstrap, options));
-            CHECK(session->configureUploads({1024 * 1024, 1, 128 * 1024 * 1024, &worker,
-                PrepareWorker::enqueue, PrepareWorker::join, true}));
+            CHECK(session->configureUploads({1024 * 1024, 1, 128 * 1024 * 1024, true}, worker.cpu()));
             for (unsigned sample = 0; sample < 5; ++sample)
             {
                 const bool bc = sample == 4;
@@ -93,9 +93,10 @@ int main()
                 const auto before = session->uploadStats();
                 const auto start = Clock::now();
                 auto candidate = take(TextureUpload::create(*session, info, source));
+                candidate->setCompletionPost(worker.post());
                 CHECK(!TextureUpload::create(*session, info, source)); // page capacity; no dedicated fallback
                 CHECK(!candidate->takeImage()); // no early publication
-                roundtrip(*session, *candidate, source);
+                roundtrip(*session, *candidate, source, worker);
                 candidate.reset();
                 const auto wall = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count();
                 const auto after = session->uploadStats();

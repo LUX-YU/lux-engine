@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cstdint>
 #include <exception>
+#include <optional>
 #include <type_traits>
 #include <utility>
 
@@ -87,16 +88,16 @@ namespace lux::process
                 if (submitted)
                 {
                     auto expected = EPhase::SUBMITTING;
-                    if (!phase_.compare_exchange_strong(
+                    if (phase_.compare_exchange_strong(
                             expected,
                             EPhase::ACCEPTED,
                             std::memory_order_acq_rel,
                             std::memory_order_acquire
-                        ) &&
-                        expected != EPhase::COMPLETED)
-                    {
+                        ))
+                        return;
+                    if (expected != EPhase::COMPLETED)
                         std::terminate();
-                    }
+                    deliver();
                     return;
                 }
 
@@ -114,6 +115,10 @@ namespace lux::process
                 {
                     std::terminate();
                 }
+                else
+                {
+                    deliver();
+                }
             }
 
         private:
@@ -127,25 +132,35 @@ namespace lux::process
             static void complete(void* opaque, Outcome&& outcome) noexcept
             {
                 auto& self = *static_cast<TState*>(opaque);
+                self.outcome_.emplace(std::move(outcome));
                 const auto previous = self.phase_.exchange(EPhase::COMPLETED, std::memory_order_acq_rel);
                 if (previous == EPhase::COMPLETED)
                     std::terminate();
+                // submit may complete synchronously. Its caller must return before the receiver can
+                // destroy this operation; an accepted asynchronous completion may deliver immediately.
+                if (previous == EPhase::ACCEPTED)
+                    self.deliver();
+            }
 
+            void deliver() noexcept
+            {
+                auto outcome = std::move(*outcome_);
                 if (!outcome)
                 {
-                    stdexec::set_error(std::move(self.receiver_), std::move(outcome.error()));
+                    stdexec::set_error(std::move(receiver_), std::move(outcome.error()));
                     return;
                 }
                 if constexpr (std::is_void_v<Value>)
-                    stdexec::set_value(std::move(self.receiver_));
+                    stdexec::set_value(std::move(receiver_));
                 else
-                    stdexec::set_value(std::move(self.receiver_), std::move(*outcome));
+                    stdexec::set_value(std::move(receiver_), std::move(*outcome));
             }
 
             lux::async::TOperationPort<Operation> port_;
             Operation operation_;
             lux::async::SubmitOptions options_{};
             Receiver receiver_;
+            std::optional<Outcome> outcome_;
             std::atomic<EPhase> phase_{EPhase::SUBMITTING};
         };
 

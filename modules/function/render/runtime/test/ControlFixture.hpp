@@ -1,7 +1,7 @@
 #pragma once
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
-#include "CompileWorker.hpp"
+#include "ServerFixture.hpp"
 #include "../pinclude/TypedProtocol.hpp"
 #include <variant>
 

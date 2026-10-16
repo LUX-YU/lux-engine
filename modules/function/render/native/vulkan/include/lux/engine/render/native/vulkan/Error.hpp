@@ -11,6 +11,7 @@ namespace lux::render::vulkan
     inline constexpr auto kCapacity = error::errorId("lux.render.vulkan.capacity");
     inline constexpr auto kWrongOwner = error::errorId("lux.render.vulkan.wrong_owner");
     inline constexpr auto kBusy = error::errorId("lux.render.vulkan.busy");
+    inline constexpr auto kWorkStopped = error::errorId("lux.render.vulkan.work_stopped");
 
     // Native result is encoded as its exact signed 32-bit bit pattern in args[0].
     [[nodiscard]] constexpr RenderError nativeError(VkResult result, std::uint64_t operation = 0) noexcept

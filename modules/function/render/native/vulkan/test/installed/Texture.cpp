@@ -6,20 +6,20 @@
 int main()
 {
     Validation validation;
-    PrepareWorker host;
+    CpuFixture host;
     auto bootstrap = instance(validation);
     DeviceOptions options;
     options.dynamic_rendering = true;
     options.texture_descriptors = true;
     auto session = take(DeviceSession::create(bootstrap, options));
-    CHECK(session->configureUploads({1024 * 1024, 1, 1024 * 1024,
-        &host, PrepareWorker::enqueue, PrepareWorker::join}));
+    CHECK(session->configureUploads({1024 * 1024, 1, 1024 * 1024}, host.cpu()));
     CHECK(configureTextures(*session, 16, 1024 * 1024));
     std::vector<std::byte> input(1024, std::byte{73});
     auto upload = take(TextureUpload::create(*session, information(16, 1, false), input));
+    upload->setCompletionPost(host.post());
     const auto texture = take(textures(*session)->reserve(*upload));
     const auto end = Clock::now() + std::chrono::seconds(10);
-    while (!take(upload->advance())) { CHECK(Clock::now() < end); std::this_thread::yield(); }
+    while (!take(advanceAfterCpu(host, *upload))) { CHECK(Clock::now() < end); std::this_thread::yield(); }
     CHECK(upload->publish()); upload.reset();
     texture_fixture::Config config{texture.texture};
     auto assembly = take(texture_fixture::assemble(config));

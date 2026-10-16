@@ -24,6 +24,24 @@ struct SetExposure final
     using Request = Exposure;
     using Response = Exposure;
 };
+// Primary vectors: pstibrany/fnv-1a-64bit-collisions@4dac53c19e5d53fbfb8d1050af37524b3313acf8.
+// Identical value contracts ensure this exercise distinguishes Command names, not Request type tables.
+struct CollidingA final
+{
+    static constexpr std::string_view name = "gMPflVXtwGDXbIhP73TX";
+    using Request = Exposure;
+    using Response = Exposure;
+};
+struct CollidingB final
+{
+    static constexpr std::string_view name = "LtHf1prlU1bCeYZEdqWf";
+    using Request = Exposure;
+    using Response = Exposure;
+};
+static_assert(CommandName(CollidingA::name).hash() == 0x8FCF3BE2DE898214ULL);
+static_assert(CommandName(CollidingA::name).hash() == CommandName(CollidingB::name).hash());
+static_assert(CommandName(CollidingA::name) != CommandName(CollidingB::name));
+
 struct AcceptCustomData final
 {
     static constexpr std::string_view name = "test.acceptCustomData";
@@ -178,6 +196,20 @@ int main()
     check(!server->registerFeature<WrongResponse, AcceptCustomData, InvalidReply>({&feature, nullptr, handlers}));
     check(bool(server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, nullptr, handlers})));
     check(!server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, nullptr, handlers}));
+    const std::array collision_commands{commandDescriptor<CollidingA>(), commandDescriptor<CollidingB>()};
+    const FeatureDefinition collision_feature{FeatureTypeIdView("test.real.hash.collision"), {1, 0}, nullptr,
+        feature.describe, nullptr, collision_commands};
+    const std::array collision_handlers{
+        CommandHandler{&commandDescriptor<CollidingA>(), [](void*, CommandInvocation& invocation) noexcept {
+            CommandContext<CollidingA> context(invocation);
+            return context.complete(Exposure{context.request().value + 1000});
+        }},
+        CommandHandler{&commandDescriptor<CollidingB>(), [](void*, CommandInvocation& invocation) noexcept {
+            CommandContext<CollidingB> context(invocation);
+            return context.complete(Exposure{context.request().value + 2000});
+        }}
+    };
+    check(bool(server->registerFeature<CollidingA, CollidingB>({&collision_feature, nullptr, collision_handlers})));
     const std::array gpu_commands{commandDescriptor<UnqualifiedGpu>()};
     const FeatureDefinition gpu_feature{FeatureTypeIdView("test.unqualified.gpu"), {1, 0}, nullptr,
         feature.describe, nullptr, gpu_commands};
@@ -218,6 +250,24 @@ int main()
         auto reply_a = take(std::move(wait(*a, id_a)).take(bound_a));
         check(reply_a.response().value == 3 && reply_b.response().value == 7);
     }
+
+    // The real Server publishes both capabilities and routes the same C++ input type to distinct handlers.
+    auto collision_a = take(a->bind<CollidingA>());
+    auto collision_b = take(b->bind<CollidingB>());
+    check(collision_a.command() != collision_b.command());
+    const auto collision_id_a = submit(*a, collision_a, Exposure{5});
+    const auto collision_id_b = submit(*b, collision_b, Exposure{5});
+    check(collision_id_a == collision_id_b);
+    {
+        auto completion_a = wait(*a, collision_id_a);
+        auto wrong = std::move(completion_a).take(collision_b);
+        check(!wrong && wrong.error().type == kRuntimeIdentity);
+        auto reply_a = take(std::move(completion_a).take(collision_a));
+        auto reply_b = take(std::move(wait(*b, collision_id_b)).take(collision_b));
+        check(reply_a.response().value == 1005 && reply_b.response().value == 2005);
+        check(reply_a.request().value == 5 && reply_b.request().value == 5);
+    }
+    std::puts("Real Command hash collision: two capabilities, distinct local IDs and handlers, original Client replies");
 
     auto bad = take(a->bind<InvalidReply>());
     auto failed = wait(*a, submit(*a, bad, Exposure{}));

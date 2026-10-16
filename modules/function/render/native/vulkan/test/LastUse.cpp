@@ -11,7 +11,25 @@ namespace
     std::uint64_t observed_limit = UINT64_MAX;
     constexpr std::array names{"image", "image_view", "texture_sampler", "buffer"};
     std::array<unsigned, 4> created{}, destroyed{};
+    std::array<long long, 4> last_destroyed_ns{};
     unsigned pipelines = 0;
+
+    long long monotonicNs() noexcept
+    {
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count();
+    }
+
+    struct Timeline final
+    {
+        struct Submit final { long long begin = 0, end = 0; VkResult result = VK_NOT_READY; };
+        std::array<Submit, 8> submissions{};
+        std::size_t count = 0;
+        long long terminal_observed = 0, publish_returned = 0, staging_lease_released_observed = 0;
+        long long source_destroyed = 0;
+        unsigned source_destroys = 0;
+    };
+
+    Timeline* active_timeline = nullptr;
 
     void verify(bool condition, int line) noexcept
     {
@@ -29,6 +47,11 @@ namespace lux::render::vulkan::test
 {
     VkResult before(const char* call) noexcept
     {
+        if (std::string_view(call) == "submit" && active_timeline)
+        {
+            CHECK(active_timeline->count < active_timeline->submissions.size());
+            active_timeline->submissions[active_timeline->count].begin = monotonicNs();
+        }
         // During the controlled interval only Graphics has pending submissions. All other physical
         // queues are drained before arming this limit. The real Fence query still decides readiness.
         if (std::string_view(call) == "fence_status" && observed_graphics &&
@@ -38,6 +61,12 @@ namespace lux::render::vulkan::test
 
     VkResult after(const char* call, VkResult result) noexcept
     {
+        if (std::string_view(call) == "submit" && active_timeline)
+        {
+            auto& submission = active_timeline->submissions[active_timeline->count++];
+            submission.end = monotonicNs();
+            submission.result = result;
+        }
         if (result == VK_SUCCESS)
         {
             for (std::size_t i = 0; i < names.size(); ++i)
@@ -50,7 +79,11 @@ namespace lux::render::vulkan::test
     void destroyed(const char* call) noexcept
     {
         for (std::size_t i = 0; i < names.size(); ++i)
-            if (std::string_view(call) == names[i]) ++::destroyed[i];
+            if (std::string_view(call) == names[i])
+            {
+                ++::destroyed[i];
+                last_destroyed_ns[i] = monotonicNs(); // The real Native destruction call already returned.
+            }
     }
 }
 
@@ -115,15 +148,20 @@ namespace
 
     void report(std::ofstream& csv, unsigned topology, bool multiple_chunks, std::string_view stage,
         SubmissionQueue& graphics, const NativeTexture& storage, SubmissionTicket first, SubmissionTicket draw,
-        const ImageMemoryBinding& memory, std::uint32_t descriptor)
+        const ImageMemoryBinding& memory, std::uint32_t descriptor, const Timeline& timeline, TransferStats stats)
     {
-        const auto now = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now().time_since_epoch()).count();
-        csv << topology << ',' << multiple_chunks << ',' << stage << ',' << now << ','
+        csv << topology << ',' << multiple_chunks << ',' << stage << ',' << monotonicNs() << ','
             << graphics.nativeQueue().family << ',' << graphics.nativeQueue().index << ','
             << first.serial() << ',' << draw.serial() << ',' << graphics.completed() << ','
             << storage.residentVersions() << ',' << storage.residentBytes() << ',' << descriptor << ','
             << memory.memory << ',' << memory.offset << ',' << memory.size << ','
-            << destroyed[0] << ',' << destroyed[1] << ',' << destroyed[2] << '\n';
+            << destroyed[0] << ',' << destroyed[1] << ',' << destroyed[2] << ','
+            << timeline.submissions[0].begin << ',' << timeline.submissions[0].end << ','
+            << timeline.submissions[1].begin << ',' << timeline.submissions[1].end << ','
+            << timeline.terminal_observed << ',' << timeline.publish_returned << ','
+            << timeline.staging_lease_released_observed << ',' << timeline.source_destroyed << ','
+            << timeline.source_destroys << ',' << stats.pending_bytes << ',' << stats.staging_bytes << ','
+            << last_destroyed_ns[0] << ',' << last_destroyed_ns[1] << ',' << last_destroyed_ns[2] << '\n';
         csv.flush();
     }
 
@@ -187,9 +225,16 @@ namespace
         for (const auto role : {EQueueRole::GRAPHICS, EQueueRole::COMPUTE, EQueueRole::TRANSFER})
             CHECK(session->queue(role).completed() == session->queue(role).submitted());
 
-        const auto patch_bytes = std::make_shared<const std::vector<std::byte>>(1024, std::byte{96});
-        const SetTextureRegion::Request patch{published.texture, published.revision,
+        Timeline timeline;
+        auto patch_bytes = std::shared_ptr<const std::vector<std::byte>>(
+            new std::vector<std::byte>(1024, std::byte{96}), [&timeline](auto* bytes) noexcept {
+                delete bytes;
+                ++timeline.source_destroys;
+                timeline.source_destroyed = monotonicNs();
+            });
+        SetTextureRegion::Request patch{published.texture, published.revision,
             {0, 0, 0, 16, 16, 64}, payload(patch_bytes)};
+        patch_bytes.reset(); // The real request alone retains the source through all CPU/GPU use.
         auto replacement = take(lux::render::upload(storage, patch));
         CHECK(replacement.first.texture == published.texture && replacement.first.revision == 2);
         const auto destroyed_before = destroyed;
@@ -197,6 +242,7 @@ namespace
         const auto submissions_before = graphics.submitted();
         observed_graphics = &graphics;
         observed_limit = graphics.completed();
+        active_timeline = &timeline;
         SecondPreparation cpu_gate;
         if (multiple_chunks) host.setBeforeWork(&cpu_gate, SecondPreparation::before);
         WorkCompletion completion;
@@ -215,14 +261,20 @@ namespace
         CHECK(take(context->execute()));
         const auto draw = *context->lastUse();
         CHECK(&draw.owner() == &first.owner() && draw.serial() == first.serial() + 1);
+        CHECK(timeline.count == 2 && timeline.submissions[0].result == VK_SUCCESS &&
+            timeline.submissions[1].result == VK_SUCCESS);
+        CHECK(timeline.submissions[0].begin <= timeline.submissions[0].end &&
+            timeline.submissions[0].end <= timeline.submissions[1].begin &&
+            timeline.submissions[1].begin <= timeline.submissions[1].end);
         contains(NativeMemoryAudit::textureRequirements(*context, storage.descriptors()), draw);
         report(csv, topology, multiple_chunks, "T1-clone-T2-draw-unobserved", graphics, storage,
-            first, draw, old_memory, old_descriptor);
+            first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
 
         observe(*session, first);
         CHECK(graphics.completed() == first.serial() && graphics.completed() < draw.serial());
         CHECK(!completion.done); // poll alone cannot run the source completion callback.
         session->dispatchCompletions();
+        if (completion.done) timeline.terminal_observed = monotonicNs();
         contains(NativeMemoryAudit::textureRequirements(*context, storage.descriptors()), draw);
 
         if (multiple_chunks)
@@ -232,15 +284,23 @@ namespace
             CHECK(graphics.submitted() == draw.serial());
             contains(NativeMemoryAudit::textureRequirements(*context, storage.descriptors()), draw);
             report(csv, topology, true, "T1-observed-CPU2-held-T2-preserved", graphics, storage,
-                first, draw, old_memory, old_descriptor);
+                first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
             replacement.second.cancel();
             CHECK(!completion.done && graphics.submitted() == draw.serial());
             cpu_gate.released.release();
             finish(completion, host, *session);
+            timeline.terminal_observed = monotonicNs();
             host.setBeforeWork(nullptr, nullptr);
             CHECK(!completion.result && completion.result.error().type == kWorkStopped);
             CHECK(!replacement.second.publish());
+            CHECK(timeline.source_destroys == 0 && session->uploadStats().pending_bytes == 1024);
+            report(csv, topology, true, "cancel-terminal-source-and-staging-still-retained", graphics, storage,
+                first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
             replacement.second.reset();
+            timeline.staging_lease_released_observed = monotonicNs();
+            CHECK(session->uploadStats().pending_bytes == 0 && timeline.source_destroys == 0);
+            patch.source = {};
+            CHECK(timeline.source_destroys == 1);
             CHECK(graphics.submitted() == draw.serial()); // There must be no T3 hiding the stale T1 overwrite.
             CHECK(session->uploadStats().chunks - chunks_before == 1);
             CHECK(storage.find(published.texture)->revision() == 1);
@@ -257,17 +317,27 @@ namespace
             CHECK(storage.residentVersions() == 1 && graphics.completed() < draw.serial());
             CHECK(destroyed[2] == destroyed_before[2] + 1);
             report(csv, topology, true, "cancel-no-T3-last-good-delete-held", graphics, storage,
-                first, draw, old_memory, old_descriptor);
+                first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
             observe(*session, draw);
             CHECK(session->collect());
             CHECK(storage.residentVersions() == 0 && destroyed[2] == destroyed_before[2] + 2);
+            report(csv, topology, true, "T2-observed-collect-returned-old-physically-destroyed", graphics, storage,
+                first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
         }
         else
         {
             CHECK(completion.done && completion.result);
             CHECK(replacement.second.publish());
+            timeline.publish_returned = monotonicNs();
             CHECK(!replacement.second.publish());
+            CHECK(timeline.source_destroys == 0 && session->uploadStats().pending_bytes == 1024);
+            report(csv, topology, false, "T1-terminal-published-source-and-staging-still-retained", graphics, storage,
+                first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
             replacement.second.reset();
+            timeline.staging_lease_released_observed = monotonicNs();
+            CHECK(session->uploadStats().pending_bytes == 0 && timeline.source_destroys == 0);
+            patch.source = {};
+            CHECK(timeline.source_destroys == 1);
             CHECK(storage.find(published.texture)->revision() == 2);
             CHECK(storage.find(published.texture)->descriptorIndex() != old_descriptor);
             CHECK(storage.residentVersions() == 16 && session->collect());
@@ -280,7 +350,7 @@ namespace
             CHECK(storage.residentVersions() == 16 && graphics.completed() < draw.serial());
             CHECK(destroyed == destroyed_before);
             report(csv, topology, false, "replace-delete-T2-held-no-old-lease", graphics, storage,
-                first, draw, old_memory, old_descriptor);
+                first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
 
             observe(*session, draw);
             pixels(*context, 128); // This was the real T2 Draw against the old binding.
@@ -288,6 +358,8 @@ namespace
             CHECK(storage.residentVersions() == 15);
             CHECK(destroyed[0] == destroyed_before[0] + 1 && destroyed[1] == destroyed_before[1] + 1);
             CHECK(destroyed[2] == destroyed_before[2] + 1);
+            report(csv, topology, false, "T2-observed-collect-returned-old-physically-destroyed", graphics, storage,
+                first, draw, old_memory, old_descriptor, timeline, session->uploadStats());
             auto capacity_recovered = take(lux::render::upload(storage, create));
             CHECK(graphics.submitted() == draw.serial()); // Cold reservation did not submit work.
             capacity_recovered.second.reset();
@@ -301,6 +373,10 @@ namespace
             CHECK(session->collect() && storage.residentVersions() == 0);
         }
         observed_graphics = nullptr;
+        active_timeline = nullptr;
+        CHECK(timeline.source_destroys == 1 && timeline.terminal_observed >= timeline.submissions[0].end);
+        CHECK(timeline.source_destroyed >= timeline.staging_lease_released_observed &&
+            timeline.staging_lease_released_observed >= timeline.terminal_observed);
         CHECK(pipelines == pipelines_before + 1);
         CHECK(session->uploadStats().pending_bytes == 0);
         CHECK(session->drain());
@@ -323,7 +399,11 @@ int main()
     std::ofstream csv("last-use-interleavings.csv");
     CHECK(csv.good());
     csv << "topology,multichunk,stage,steady_ns,graphics_family,graphics_index,T1,T2,frontier,versions,"
-        "resident_bytes,old_descriptor,memory,offset,allocation_size,image_destroys,view_destroys,sampler_destroys\n";
+        "resident_bytes,old_descriptor,memory,offset,allocation_size,image_destroys,view_destroys,sampler_destroys,"
+        "T1_submit_cpu_begin_ns,T1_submit_cpu_end_ns,T2_submit_cpu_begin_ns,T2_submit_cpu_end_ns,"
+        "terminal_observed_ns,publish_returned_ns,staging_lease_release_observed_ns,source_destroyed_ns,"
+        "source_destroys,pending_source_bytes,allocated_staging_bytes,last_image_destroy_returned_ns,"
+        "last_view_destroy_returned_ns,last_sampler_destroy_returned_ns\n";
     {
         auto bootstrap = instance(validation);
         for (unsigned topology = 0; topology < 3; ++topology)
@@ -335,5 +415,7 @@ int main()
     CHECK(created == destroyed);
     CHECK(validation.errors == 0);
     std::printf("LastUse real clone/draw: 3 topologies x normal replacement + multichunk cancellation; "
-        "Validation=0 warnings=%u; VMA ranges measured, no separate Arena implementation\n", validation.warnings.load());
+        "Validation=0 warnings=%u; VMA ranges measured, no separate Arena implementation; GPU timestamp NOT_MEASURED; "
+        "staging lease observation is after Work reset, allocated page remains resident; zero time means not yet observed\n",
+        validation.warnings.load());
 }

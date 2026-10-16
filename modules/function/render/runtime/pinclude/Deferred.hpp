@@ -30,6 +30,21 @@ namespace lux::render::runtime_detail
 
     using CompletionQueue = cxx::BlockingRingQueue<CompletionEvent>;
 
+#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
+    namespace test
+    {
+        void beforeDispatch() noexcept;
+        void completionRegistered(CompletionId, RequestId) noexcept;
+        void* completionPostBegin(CompletionId) noexcept;
+        void completionPostEnd(void*, bool accepted) noexcept;
+        void* completionDrainBegin(const CompletionQueue&) noexcept;
+        void* completionPopped(CompletionId) noexcept;
+        void completionAdoptBegin(void*) noexcept;
+        void completionAdoptEnd(void*) noexcept;
+        void completionDrainEnd(void*, std::size_t consumed) noexcept;
+    }
+#endif
+
     struct DeferredCompletion;
     using DeferredSlots = cxx::StableSlotMap<DeferredCompletion, CompletionTag>;
 
@@ -98,8 +113,15 @@ namespace lux::render::runtime_detail
                 slot.continuation = next;
                 slot.resume = callback;
                 slot.cpu_result = std::move(result);
+#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
+                auto* cost_record = test::completionPostBegin(event.id);
+                const auto published = events->tryPush(event);
+                test::completionPostEnd(cost_record, published == cxx::EQueuePushResult::ACCEPTED);
+                if (published != cxx::EQueuePushResult::ACCEPTED) std::terminate();
+#else
                 // One event per live slot; admission reserved matching queue capacity.
                 if (events->tryPush(event) != cxx::EQueuePushResult::ACCEPTED) std::terminate();
+#endif
                 // No access to slot after publication: the consumer may immediately destroy it.
 #ifdef LUX_RUNTIME_ASYNC_TEST_SEAM
                 test::completionPublished();

@@ -14,7 +14,7 @@ add_executable(render_typed_batch_test TypedBatch.cpp ../../native/vulkan/test/A
 
 target_include_directories(render_typed_batch_test PRIVATE ../../native/vulkan/test)
 
-target_link_libraries(render_typed_batch_test PRIVATE render_runtime)
+target_link_libraries(render_typed_batch_test PRIVATE render_runtime lux::engine::process::process_execution)
 
 set_target_properties(render_typed_batch_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 
@@ -265,3 +265,36 @@ foreach(target render_runtime_shutdown_test render_runtime_gpu_ready_test
 endforeach()
 
 add_subdirectory(async_tail)
+
+add_executable(render_runtime_async_cost_test AsyncCost.cpp ../src/RenderServer.cpp ../src/Request.cpp)
+
+target_include_directories(render_runtime_async_cost_test PRIVATE ../pinclude ../../native/vulkan/sinclude)
+
+target_compile_definitions(render_runtime_async_cost_test PRIVATE LUX_RUNTIME_ASYNC_COST_SEAM)
+
+target_link_libraries(render_runtime_async_cost_test PRIVATE
+    render_client render_features render_native_vulkan lux::engine::platform::platform_ipc
+    lux::cxx::concurrent lux::engine::process::process_execution bcrypt
+)
+
+set_target_properties(render_runtime_async_cost_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.async_cost COMMAND render_runtime_async_cost_test)
+
+set_tests_properties(render.runtime.async_cost PROPERTIES TIMEOUT 120)
+
+add_test(
+    NAME render.runtime.client_installed
+    COMMAND "${CMAKE_COMMAND}"
+        "-DBUILD_DIR=${CMAKE_BINARY_DIR}"
+        "-DCONSUMER_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/client_installed"
+        "-DDEPENDENCY_DIR=${lux-cxx_DIR}"
+        "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}"
+        "-DMAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+        "-DCONFIG=$<CONFIG>"
+        "-DGENERATOR=${CMAKE_GENERATOR}"
+        "-DCXX_FLAGS=${CMAKE_CXX_FLAGS}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/../../core/test/Installed.cmake"
+)
+
+set_tests_properties(render.runtime.client_installed PROPERTIES TIMEOUT 120)

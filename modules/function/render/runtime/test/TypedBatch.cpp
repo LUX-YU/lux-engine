@@ -1,4 +1,6 @@
 #include <lux/engine/render/runtime/RenderServer.hpp>
+#include "ServerFixture.hpp"
+#include "SceneFixture.hpp"
 #include "Allocation.hpp"
 #include "ClientAllocation.hpp"
 
@@ -217,19 +219,28 @@ static std::size_t directMoveAllocations(
 }
 
 template <RenderCommand C>
-static TypedRenderCompletion<C> call(RenderClient& client, const BoundCommand<C>& binding, typename C::Request request)
+static TypedRenderCompletion<C> call(RenderClient& client, const BoundCommand<C>& binding,
+    typename C::Request request, std::size_t reply_capacity = 128)
 {
-    return take(std::move(wait(client, take(client.submit(binding, request)))).take(binding));
+    return take(std::move(wait(client, take(client.submit(binding, request, reply_capacity)))).take(binding));
 }
 
-static std::unique_ptr<RenderServer> create(batch_fixture::State& state)
+static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view instance) noexcept
+{
+    auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
+    if (!config) return cxx::unexpected(config.error());
+    return native_fixture::programs(*config, instance);
+}
+
+static std::unique_ptr<RenderServer> create(batch_fixture::State& state, CpuFixture& host)
 {
     static std::array<CommandHandler, 2> handlers;
     handlers = {CommandHandler{&commandDescriptor<batch_fixture::SetValues>(), batch_fixture::set, &state},
         CommandHandler{&commandDescriptor<batch_fixture::ReadValue>(), batch_fixture::read, &state}};
-    auto server = take(RenderServer::create({"runtime.typed.batch", true}));
+    auto server = take(RenderServer::create(withCpu(host, {"runtime.typed.batch", true})));
     CHECK(server->registerFeature<batch_fixture::SetValues, batch_fixture::ReadValue>(
         {&batch_fixture::definition, nullptr, handlers}));
+    CHECK(server->registerFeature({&native_fixture::definition, programs}));
     return server;
 }
 
@@ -243,8 +254,9 @@ static void bindScene(batch_fixture::State& state, SceneId scene)
 int main()
 {
     using namespace batch_fixture;
+    CpuFixture host;
     auto state = std::make_unique<State>();
-    auto server = create(*state);
+    auto server = create(*state, host);
     auto a = take(RenderClient::create("runtime.typed.batch"));
     auto b = take(RenderClient::create("runtime.typed.batch"));
     const auto hello_a = take(a->hello()), hello_b = take(b->hello());
@@ -318,6 +330,46 @@ int main()
     }
     CHECK(!authority.dirty && call(*a, read_a, {scene_a, 1}).response().value == 21);
 
+    // Keep the existing CPU batch semantics separate from the concurrent GPU load:
+    // SetValues does not claim to upload transforms or drive these View colors.
+    // The same Server renders four actual Views throughout every measured batch.
+    const native_fixture::Config gpu_config{32, 32, 1, 0};
+    const auto target_description = native_fixture::target(gpu_config);
+    auto create_effect = take(a->bind<CreateEffect>());
+    CreateEffect::Request effect_request{target_description};
+    effect_request.features.emplace_back(std::string(native_fixture::type.name()), "main", cxx::SchemaVersion{1, 0},
+        DataSchema<native_fixture::Config>::describe(),
+        RenderPayload::copyOf(take(encodeWire(gpu_config, {}, native_fixture::limits)).view()));
+    const auto effect = call(*a, create_effect, std::move(effect_request)).response().effect;
+    auto create_view = take(a->bind<CreateView>());
+    auto create_target = take(a->bind<CreateTarget>());
+    auto attach = take(a->bind<Attach>());
+    const std::array scenes{scene_a, scene_b};
+    const std::array<std::array<float, 4>, 4> colors{{{1, 0, 0, 1}, {0, 1, 0, 1},
+        {0, 0, 1, 1}, {1, 1, 0, 1}}};
+    const std::array<std::array<unsigned, 4>, 4> expected{{{255, 0, 0, 255}, {0, 255, 0, 255},
+        {0, 0, 255, 255}, {255, 255, 0, 255}}};
+    std::array<AttachmentRequest, 4> attached;
+    for (unsigned i = 0; i < attached.size(); ++i)
+    {
+        const auto scene = scenes[i / 2];
+        const auto view = call(*a, create_view, {scene, colors[i]}).response().view;
+        const auto target = call(*a, create_target, {target_description}).response();
+        CHECK(target.epoch == 1);
+        attached[i] = {scene, view, target.target, effect};
+        (void)call(*a, attach, attached[i]);
+    }
+    const auto warm_begin = server->stats();
+    const auto warm_deadline = Clock::now() + 10s;
+    while (server->stats().submissions < warm_begin.submissions + 40)
+    {
+        CHECK(Clock::now() < warm_deadline);
+        std::this_thread::sleep_for(100us);
+    }
+    CHECK(server->stats().compiled_graphs == 1);
+    const auto descriptions = native_fixture::descriptions.load();
+    const auto builds = native_fixture::builds.load();
+
     enum class EAccessPattern : std::uint8_t { LOCAL, RANDOM };
     constexpr std::uint32_t random_seed = 0x61a7b3c9;
     struct Sample final
@@ -329,6 +381,7 @@ int main()
         std::size_t exe_allocations, client_allocations, exe_bytes, client_bytes;
         std::size_t move_constructions, move_assignments, direct_allocations;
         long long transport_extra;
+        std::uint64_t submissions_before, submissions_after, ticks_before, ticks_after;
     };
     std::array<Sample, 320> samples{};
     std::size_t sample_index = 0;
@@ -382,9 +435,11 @@ int main()
                 const auto last_entry = input.changes.back();
                 CHECK(*CommandValueTraits<SetValues::Request>::retainedBytes(input) ==
                     sizeof(input) + original_capacity * sizeof(Entry));
+                const auto group_begin = server->stats();
                 for (unsigned iteration = 0; iteration < 25; ++iteration)
                 {
                     const bool measured = iteration >= 5;
+                    const auto progress_begin = server->stats();
                     if (measured)
                     {
                         SetValues::Request::move_constructions = 0;
@@ -404,6 +459,7 @@ int main()
                         input = std::move(result.request()); // recover the original vector for the next batch
                     }
                     const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
+                    const auto progress_end = server->stats();
                     if (measured)
                     {
                         render_allocation::window = false;
@@ -412,44 +468,45 @@ int main()
                         const auto allocation_bytes = render_allocation::bytes.load();
                         const auto constructions = SetValues::Request::move_constructions.load();
                         const auto assignments = SetValues::Request::move_assignments.load();
-                        const auto direct = directMoveAllocations(scene, count, constructions, assignments);
-                        const auto total_allocations = allocations + client_allocations.calls;
-                        const auto extra = static_cast<long long>(total_allocations) - static_cast<long long>(direct);
-                        CHECK(extra == 0);
                         samples[sample_index++] = {
                             pattern, pattern == EAccessPattern::RANDOM ? random_seed : 0,
                             count, scene_number, iteration - 5, ns, allocations, client_allocations.calls,
-                            allocation_bytes, client_allocations.bytes, constructions, assignments, direct, extra
+                            allocation_bytes, client_allocations.bytes, constructions, assignments, 0, 0,
+                            progress_begin.submissions, progress_end.submissions, progress_begin.ticks, progress_end.ticks
                         };
                     }
                     CHECK(input.changes.data() == original && input.changes.capacity() == original_capacity);
                 }
                 CHECK(call(client, scene_number ? read_b : read_a, {scene, last_entry.slot}).response().value ==
                     last_entry.value);
+                const auto group_end = server->stats();
+                CHECK(group_end.submissions > group_begin.submissions && group_end.ticks > group_begin.ticks);
+                CHECK(group_end.compiled_graphs == 1);
+                CHECK(native_fixture::descriptions == descriptions && native_fixture::builds == builds);
             }
         }
     }
     CHECK(sample_index == samples.size());
-    std::ofstream csv("runtime-typed-batch.csv");
-    csv << "pattern,seed,entries,scene,sample,full_roundtrip_reclaim_ns,engine_exe_new_calls,client_dll_new_calls,"
-        "engine_exe_plus_client_new_calls,engine_exe_new_bytes,client_dll_new_bytes,request_move_constructions,"
-        "request_move_assignments,direct_same_moves_exe_new_calls,transport_extra_new_calls\n";
-    for (const auto& sample : samples)
-        csv << (sample.pattern == EAccessPattern::LOCAL ? "LOCAL" : "RANDOM") << ',' << sample.seed << ','
-            << sample.entries << ',' << sample.scene << ',' << sample.iteration << ',' << sample.ns << ','
-            << sample.exe_allocations << ',' << sample.client_allocations << ','
-            << sample.exe_allocations + sample.client_allocations << ',' << sample.exe_bytes << ','
-            << sample.client_bytes << ',' << sample.move_constructions << ',' << sample.move_assignments << ','
-            << sample.direct_allocations << ',' << sample.transport_extra << '\n';
-    csv.close();
-    std::printf("SetValues Request=%zu envelope=%zu inline=%u entry=%zu boundary=%zu checked=%zu applied=%zu\n",
-        sizeof(SetValues::Request), sizeof(runtime_detail::ValueEnvelope<SetValues::Request>),
-        unsigned(lux::platform::ipc::IpcMessage::stores_inline<runtime_detail::ValueEnvelope<SetValues::Request>>),
-        sizeof(Entry), state->boundaries.load(), state->checked_entries.load(), state->applied_entries.load());
-    std::printf("Typed batch control EXE new=%zu Client DLL new=%zu; same-move baseline is EXE-only; "
-        "EXE+Client transport extra new=0\n", control_allocations, control_client_allocations.calls);
-    std::printf("Typed batch samples: LOCAL=160 RANDOM=160 seed=%u; input/permutation preparation excluded\n",
-        random_seed);
+
+    CHECK(a->retainedBytes() == 0 && b->retainedBytes() == 0);
+    auto readback = take(a->bind<Readback>());
+    for (unsigned i = 0; i < attached.size(); ++i)
+    {
+        auto pixels = call(*a, readback, attached[i], 8192);
+        const auto bytes = pixels.response().pixels.bytes().view();
+        CHECK(bytes.size() == 32 * 32 * 4);
+        for (unsigned channel = 0; channel < 4; ++channel)
+        {
+            CHECK(std::abs(std::to_integer<int>(bytes[(16 * 32 + 16) * 4 + channel]) -
+                int(expected[i][channel])) <= 1);
+            constexpr std::array<unsigned, 4> background{32, 64, 128, 255};
+            CHECK(std::abs(std::to_integer<int>(bytes[channel]) - int(background[channel])) <= 1);
+        }
+    }
+    CHECK(a->retainedBytes() == 0 && server->stats().compiled_graphs == 1);
+    CHECK(native_fixture::descriptions == descriptions && native_fixture::builds == builds);
+    std::puts("Batch samples coupled to the same Server's two Scenes/four Offscreen Views, one shared Graph; "
+        "four final pixel oracles PASS. Test CPU values do not represent GPU transforms.");
 
     const auto previous_session = a->session();
     a.reset();
@@ -458,8 +515,43 @@ int main()
     worker.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
     server.reset();
+
+    // The allocation window is process-wide. Measure direct moves only after the
+    // original Clients and RenderThread are gone, so concurrent GPU-path allocations
+    // can never enter the baseline and be subtracted from the measured full path.
+    for (auto& sample : samples)
+    {
+        sample.direct_allocations = directMoveAllocations(scenes[sample.scene], sample.entries,
+            sample.move_constructions, sample.move_assignments);
+        const auto total = sample.exe_allocations + sample.client_allocations;
+        sample.transport_extra = static_cast<long long>(total) - static_cast<long long>(sample.direct_allocations);
+        CHECK(sample.transport_extra == 0);
+    }
+    std::ofstream csv("runtime-typed-batch.csv");
+    csv << "pattern,seed,entries,scene,sample,full_roundtrip_reclaim_ns,engine_exe_new_calls,client_dll_new_calls,"
+        "engine_exe_plus_client_new_calls,engine_exe_new_bytes,client_dll_new_bytes,request_move_constructions,"
+        "request_move_assignments,direct_same_moves_exe_new_calls,transport_extra_new_calls,"
+        "server_submissions_before,server_submissions_after,server_ticks_before,server_ticks_after\n";
+    for (const auto& sample : samples)
+        csv << (sample.pattern == EAccessPattern::LOCAL ? "LOCAL" : "RANDOM") << ',' << sample.seed << ','
+            << sample.entries << ',' << sample.scene << ',' << sample.iteration << ',' << sample.ns << ','
+            << sample.exe_allocations << ',' << sample.client_allocations << ','
+            << sample.exe_allocations + sample.client_allocations << ',' << sample.exe_bytes << ','
+            << sample.client_bytes << ',' << sample.move_constructions << ',' << sample.move_assignments << ','
+            << sample.direct_allocations << ',' << sample.transport_extra << ',' << sample.submissions_before << ','
+            << sample.submissions_after << ',' << sample.ticks_before << ',' << sample.ticks_after << '\n';
+    csv.close();
+    std::printf("SetValues Request=%zu envelope=%zu inline=%u entry=%zu boundary=%zu checked=%zu applied=%zu\n",
+        sizeof(SetValues::Request), sizeof(runtime_detail::ValueEnvelope<SetValues::Request>),
+        unsigned(lux::platform::ipc::IpcMessage::stores_inline<runtime_detail::ValueEnvelope<SetValues::Request>>),
+        sizeof(Entry), state->boundaries.load(), state->checked_entries.load(), state->applied_entries.load());
+    std::printf("Typed batch control EXE new=%zu Client DLL new=%zu; same-move EXE baseline measured after Server join; "
+        "EXE+Client transport extra new=0\n", control_allocations, control_client_allocations.calls);
+    std::printf("Typed batch samples: LOCAL=160 RANDOM=160 seed=%u; input/permutation preparation excluded\n",
+        random_seed);
+
     state = std::make_unique<State>();
-    server = create(*state);
+    server = create(*state, host);
     auto replacement = take(RenderClient::create("runtime.typed.batch"));
     const auto hello = take(replacement->hello());
     run_ok = false;

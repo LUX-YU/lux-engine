@@ -588,6 +588,9 @@ namespace lux::render
             if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
             slot->request.emplace(std::move(request));
             auto& cpu = slot->condition.emplace<CpuCompletion>();
+#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
+            test::completionRegistered(slot->id, slot->request->id());
+#endif
             cpu.destroy = operations.destroy;
             cpu.operation = operations.connect(sender, {slot, completeCpu, slot->stop.get_token()});
             // start runs on the RenderThread. Event draining cannot reenter this stack; even immediate
@@ -663,10 +666,18 @@ namespace lux::render
 
         void drainCompletions(std::size_t budget = 128) noexcept
         {
+#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
+            auto* cost_drain = test::completionDrainBegin(completion_events);
+            std::size_t cost_consumed = 0;
+#endif
             CompletionEvent event;
             for (std::size_t i = 0; i < budget &&
                 completion_events.tryPop(event) == cxx::EQueuePopResult::VALUE; ++i)
             {
+#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
+                ++cost_consumed;
+                auto* cost_record = test::completionPopped(event.id);
+#endif
                 // A copied event identity is checked once at its actual cross-thread boundary.
                 if (event.session != identity) continue;
                 auto* slot = deferred.find(event.id);
@@ -680,6 +691,9 @@ namespace lux::render
                 }
                 auto* cpu = std::get_if<CpuCompletion>(&slot->condition);
                 if (!cpu) continue; // Native continuation resumes the same GPU request, not a second owner.
+#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
+                test::completionAdoptBegin(cost_record);
+#endif
                 RenderResult<void> result;
                 if (cpu->adopt) result = cpu->adopt(cpu->operation, *slot->request);
                 else if (stop_requested.load()) { cpu->reply.reset(); result = slot->request->cancel(); }
@@ -691,7 +705,13 @@ namespace lux::render
                 if (cpu->compiling) --compiling;
                 settle(std::move(*slot->request), result);
                 deferred.erase(event.id);
+#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
+                test::completionAdoptEnd(cost_record);
+#endif
             }
+#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
+            test::completionDrainEnd(cost_drain, cost_consumed);
+#endif
         }
 
         RenderResult<void> removeEffect(RenderRequest& request) noexcept
@@ -1059,6 +1079,9 @@ namespace lux::render
         RenderResult<void> result;
         while (!s.stop_requested.load())
         {
+#ifdef LUX_RUNTIME_ASYNC_COST_SEAM
+            test::beforeDispatch();
+#endif
             for (std::uint32_t i = 0; i < s.config.requests_per_tick && !s.stop_requested.load(); ++i)
             {
                 ipc::ReceivedRequest request;

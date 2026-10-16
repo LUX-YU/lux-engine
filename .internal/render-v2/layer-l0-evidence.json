@@ -1,0 +1,32 @@
+[
+  {
+    "file": "E:\\RenderV2Rebuild\\Layer\\evidence\\L0\\cmake-inputs.json",
+    "sha256": "dbaeae70d0487b6dc230b3a8e1258df12601637cd0c7c38064ffd79ac46af427",
+    "bytes": 67922
+  },
+  {
+    "file": "E:\\RenderV2Rebuild\\Layer\\evidence\\L0\\consumers.json",
+    "sha256": "a67d92bcdef387e3d34016ae913459bcf85c2b02ed42e36e9640123708bcd11c",
+    "bytes": 112382
+  },
+  {
+    "file": "E:\\RenderV2Rebuild\\Layer\\evidence\\L0\\include-edges.json",
+    "sha256": "4537f8d5bf44bf6635116d98a5c5fa42eabe3dbed1efa7307c25f8353a26b888",
+    "bytes": 103497
+  },
+  {
+    "file": "E:\\RenderV2Rebuild\\Layer\\evidence\\L0\\LuxEngine_RenderV2_Layering_Audit_and_Refactoring_Contract_v1_2026-10-16.zh-CN.md",
+    "sha256": "5d7db67994b2cd940ed04f824c18007ed61f6f815deb36756a9f41b0fb0d7f70",
+    "bytes": 112762
+  },
+  {
+    "file": "E:\\RenderV2Rebuild\\Layer\\evidence\\L0\\snapshot.json",
+    "sha256": "3c3c023313e8023439346597fd31b8f3b9032676c5ec1d0847ecd5cd2fcf8f80",
+    "bytes": 2616
+  },
+  {
+    "file": "E:\\RenderV2Rebuild\\Layer\\evidence\\L0\\test-names.json",
+    "sha256": "1536ecd0540913be7f98733c22f2f32705b90b09c228a75eda7266af8a8fbc00",
+    "bytes": 3033
+  }
+]

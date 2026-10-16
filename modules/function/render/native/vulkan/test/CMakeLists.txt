@@ -78,7 +78,7 @@ add_test(NAME render.native.buffer_transfer COMMAND render_buffer_transfer_test)
 set_tests_properties(render.native.buffer_transfer PROPERTIES TIMEOUT 60)
 
 foreach(header Error DeviceSession CompiledGraph ExecutionContext StorageBinding device/Device memory/Memory
-    transfer/Submission transfer/TextureUpload transfer/Transfer transfer/GpuWork transfer/GpuCompletion
+    transfer/Submission transfer/Transfer transfer/GpuWork transfer/GpuCompletion
     texture/TextureStorage retirement/Retirement
 )
     string(REPLACE "/" "_" target "${header}")
@@ -88,6 +88,24 @@ foreach(header Error DeviceSession CompiledGraph ExecutionContext StorageBinding
     add_library(render_native_header_${target} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp")
     target_link_libraries(render_native_header_${target} PRIVATE render_native_vulkan)
 endforeach()
+
+add_executable(render_queue_callbacks_test QueueCallbacks.cpp)
+
+target_link_libraries(render_queue_callbacks_test PRIVATE render_native_instrumented)
+
+add_test(NAME render.native.queue_callbacks COMMAND render_queue_callbacks_test)
+
+set_tests_properties(render.native.queue_callbacks PROPERTIES TIMEOUT 90)
+
+add_executable(render_last_use_test LastUse.cpp)
+
+target_link_libraries(render_last_use_test PRIVATE render_native_instrumented lux::engine::process::process_execution)
+
+set_target_properties(render_last_use_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.native.last_use COMMAND render_last_use_test)
+
+set_tests_properties(render.native.last_use PROPERTIES TIMEOUT 90)
 
 add_executable(render_memory_cost MemoryCost.cpp Allocation.cpp)
 

@@ -36,6 +36,8 @@ namespace lux::render::vulkan
             return setReply(static_cast<void*>(&response));
         }
 
+        // Transfer callback admission is prepared before moving either work or the original request.
+        // Failure retains both; success starts the one Native Transfer with no further quota admission.
         [[nodiscard]] RenderResult<void> commitWork(GpuWork& work) noexcept;
 
         // The accepted Ticket proves new work on the reserved physical Queue. Failure

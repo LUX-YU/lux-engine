@@ -1,7 +1,7 @@
 #pragma once
 #include "Support.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
-#include <lux/engine/render/native/vulkan/transfer/TextureUpload.hpp>
+#include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include <algorithm>
 #include "../../../resource/test/CpuFixture.hpp"
@@ -12,10 +12,56 @@ using Clock = std::chrono::steady_clock;
 
 using lux::render::test::CpuFixture;
 
-template<class Work> static RenderResult<bool> advanceAfterCpu(CpuFixture& host, Work& work) noexcept
+// Test observation only. Native CPU events and queue callbacks drive the work; no per-work polling driver.
+struct WorkCompletion final
+{
+    bool done = false;
+    RenderResult<void> result;
+
+    void start(GpuWork& work, CpuFixture& host) noexcept
+    {
+        CHECK(work.prepareCompletion());
+        work.start(host.post(), this, [](void* user, RenderResult<void> value) noexcept {
+            auto& completion = *static_cast<WorkCompletion*>(user);
+            CHECK(!completion.done);
+            completion.result = std::move(value);
+            completion.done = true;
+        }, {}, {});
+    }
+};
+
+static void pump(CpuFixture& host, DeviceSession& session)
 {
     (void)host.drain();
-    return work.advance();
+    CHECK(session.collect());
+    session.dispatchCompletions();
+}
+
+static void finish(WorkCompletion& completion, CpuFixture& host, DeviceSession& session)
+{
+    const auto deadline = Clock::now() + std::chrono::seconds(20);
+    while (!completion.done)
+    {
+        pump(host, session);
+        CHECK(Clock::now() < deadline);
+        std::this_thread::yield();
+    }
+}
+
+static void complete(GpuWork& work, CpuFixture& host, DeviceSession& session)
+{
+    CHECK(!work.publish());
+    WorkCompletion completion;
+    completion.start(work, host);
+    finish(completion, host, session);
+    CHECK(completion.result);
+    CHECK(work.publish());
+    CHECK(!work.publish());
+}
+
+static RenderPayload payload(const std::shared_ptr<const std::vector<std::byte>>& owner)
+{
+    return take(RenderPayload::fromVector(owner, 0, owner->size()));
 }
 
 static rdesc::TextureInfo information(unsigned dimension, unsigned mips, bool bc)

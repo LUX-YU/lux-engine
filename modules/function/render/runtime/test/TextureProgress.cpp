@@ -4,7 +4,7 @@
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include "Support.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
-#include <lux/engine/render/native/vulkan/transfer/TextureUpload.hpp>
+#include <lux/engine/render/native/vulkan/transfer/Transfer.hpp>
 #include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
 #include <fstream>
 #include <latch>
@@ -56,10 +56,10 @@ struct Pin final
     ~Pin() noexcept { --pins; }
 };
 
-static RenderResult<void> ready(Pin&, TextureUpload& upload, DeviceSession& session) noexcept
+static RenderResult<void> ready(Pin&, Transfer& upload, DeviceSession& session) noexcept
 {
-    CHECK(upload.lastUse() && session.queue().owns(*upload.lastUse()));
-    CHECK(session.queue().completed() >= upload.lastUse()->serial());
+    CHECK(upload.lastSubmission() && session.queue().owns(*upload.lastSubmission()));
+    CHECK(upload.requirements().completed() && upload.result());
     ++completed;
     return {};
 }
@@ -69,21 +69,6 @@ static const std::array texture_operations{operation};
 static const FeatureDefinition definition{FeatureTypeIdView("test.texture.progress"), {1, 0}, nullptr,
     [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
     nullptr, texture_operations};
-
-struct ProbeWork final
-{
-    std::unique_ptr<TextureUpload> upload;
-    Pin pin;
-    bool unstartedIn(const DeviceSession& session) const noexcept { return upload->unstartedIn(session); }
-    RenderResult<bool> advance() noexcept { return upload->advance(); }
-    void setCompletionPost(CompletionPost post, std::shared_ptr<const void> implementation,
-        std::shared_ptr<const void> registration) noexcept
-    {
-        upload->setCompletionPost(post, std::move(implementation), std::move(registration));
-    }
-    void cancel() noexcept { upload->cancel(); }
-    std::optional<SubmissionTicket> lastUse() const noexcept { return upload->lastUse(); }
-};
 
 static RenderResult<void> invoke(void* native, CommandInvocation& invocation) noexcept
 {
@@ -96,20 +81,14 @@ static RenderResult<void> invoke(void* native, CommandInvocation& invocation) no
     const auto& value = context.request();
     const auto source = value.source.bytes().view();
     observed.store(source.data());
-    lux::rdesc::TextureInfo info{};
-    info.width = info.height = value.dimension;
-    info.channel = 4;
-    info.mip_count = 1;
-    info.pixel_format = lux::rdesc::ETexturePixelFormat::RGBA8_UNORM;
-    info.color_space = lux::rdesc::ETextureColorSpace::DATA;
-    info.mip_ranges[0] = {0, source.size(), value.dimension, value.dimension};
-    auto candidate = vulkan::TextureUpload::create(session, info, source);
-    if (!candidate) return lux::cxx::unexpected(candidate.error());
-    auto probe = std::make_unique<ProbeWork>();
-    probe->upload = std::move(*candidate);
-    auto work = GpuWork::pending<[](ProbeWork& value, DeviceSession& session) noexcept {
-        return ready(value.pin, *value.upload, session);
-    }>(session, probe);
+    const ImageDescription description{{value.dimension, value.dimension}, VK_FORMAT_R8G8B8A8_UNORM,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT};
+    const ImageTransferRegion region{0, std::uint64_t(value.dimension) * 4, 1, 4,
+        {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, {}, {value.dimension, value.dimension, 1}};
+    auto transfer = session.uploadImage(description, source, std::span(&region, 1));
+    if (!transfer) return lux::cxx::unexpected(transfer.error());
+    auto pin = std::make_unique<Pin>();
+    auto work = GpuWork::pending<ready>(session, *transfer, pin);
     if (!work) return lux::cxx::unexpected(work.error());
     return reservation->commitWork(*work);
 }

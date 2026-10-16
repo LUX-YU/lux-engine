@@ -26,11 +26,36 @@ namespace lux::render::vulkan::test
     void destroyed(const char* call) noexcept { if (std::string_view(call) == "buffer") --live_buffers; }
 }
 
-template<class Work> static void complete(Work& transfer, CpuFixture& host)
+static void start(Transfer& transfer, WorkCompletion& completion, CpuFixture& host)
 {
-    const auto deadline = Clock::now() + std::chrono::seconds(10);
-    while (!take(advanceAfterCpu(host, transfer))) { CHECK(Clock::now() < deadline); std::this_thread::yield(); }
+    CHECK(transfer.prepareCompletion());
+    transfer.start(host.post(), &completion, [](void* owner, RenderResult<void> result) noexcept {
+        auto& completion = *static_cast<WorkCompletion*>(owner);
+        CHECK(!completion.done);
+        completion.result = std::move(result);
+        completion.done = true;
+    });
 }
+
+static GpuWork prepareWork(DeviceSession& session, std::unique_ptr<Transfer>& transfer)
+{
+    auto candidate = std::make_unique<unsigned>(0);
+    return take(GpuWork::pending<[](unsigned&, Transfer&, DeviceSession&) noexcept -> RenderResult<void> {
+        ++stopped_publications;
+        return {};
+    }>(session, transfer, candidate));
+}
+
+template<class T>
+concept NativePendingTransfer = requires(DeviceSession& session, std::unique_ptr<T>& transfer,
+    std::unique_ptr<unsigned>& candidate)
+{
+    GpuWork::pending<[](unsigned&, Transfer&, DeviceSession&) noexcept -> RenderResult<void> { return {}; }>(
+        session, transfer, candidate);
+};
+
+struct InvalidProof final { std::optional<SubmissionTicket> old; };
+static_assert(NativePendingTransfer<Transfer> && !NativePendingTransfer<InvalidProof>);
 
 static std::vector<std::byte> read(DeviceSession& session, BufferPermit& buffer)
 {
@@ -88,10 +113,12 @@ int main()
         CHECK(!session->uploadImage(invalid_image, source, std::span(&region, 1)));
         CHECK(session->uploadStats().pending_bytes == 0 && live_buffers == 1);
         auto transfer = take(session->uploadBuffer(source, VK_BUFFER_USAGE_TRANSFER_SRC_BIT));
-        transfer->setCompletionPost(host.post());
         CHECK(!session->uploadBuffer(source, VK_BUFFER_USAGE_TRANSFER_SRC_BIT));
         CHECK(!transfer->takeBuffer());
-        complete(*transfer, host);
+        WorkCompletion completion;
+        start(*transfer, completion, host);
+        finish(completion, host, *session);
+        CHECK(completion.result && transfer->result());
         auto buffer = take(transfer->takeBuffer());
         CHECK(!transfer->takeBuffer());
         transfer.reset();
@@ -103,47 +130,47 @@ int main()
         {
             std::binary_semaphore entered{0}, release{0};
         } held_cpu;
-        host.setBeforeWork(&held_cpu, [](void* value) noexcept {
+        const auto blockCpu = [](void* value) noexcept {
             auto& held = *static_cast<HoldCpu*>(value);
             held.entered.release();
             held.release.acquire();
-        });
+        };
+        host.setBeforeWork(&held_cpu, blockCpu);
         transfer = take(session->uploadBuffer(source, VK_BUFFER_USAGE_TRANSFER_SRC_BIT));
-        transfer->setCompletionPost(host.post());
-        CHECK(!take(advanceAfterCpu(host, *transfer)));
+        completion = {};
+        start(*transfer, completion, host);
         CHECK(held_cpu.entered.try_acquire_for(std::chrono::seconds(10)));
         transfer->cancel();
-        CHECK(!take(advanceAfterCpu(host, *transfer)) && !transfer->lastUse());
+        pump(host, *session);
+        CHECK(!completion.done && !transfer->lastSubmission());
         CHECK(live_buffers == 2 && session->uploadStats().pending_bytes == source.size());
         held_cpu.release.release();
-        complete(*transfer, host);
-        CHECK(!transfer->lastUse());
+        finish(completion, host, *session);
+        CHECK(!completion.result && completion.result.error().type == kWorkStopped);
+        CHECK(!transfer->lastSubmission() && !transfer->takeBuffer());
         transfer.reset();
         CHECK(live_buffers == 1 && session->uploadStats().pending_bytes == 0);
         host.setBeforeWork(nullptr, nullptr);
 
-        // The erased Native owner must distinguish stopped preparation from a missing GPU proof.
-        host.setBeforeWork(&held_cpu, [](void* value) noexcept {
-            auto& held = *static_cast<HoldCpu*>(value);
-            held.entered.release();
-            held.release.acquire();
-        });
+        // The unique Native work owner distinguishes stopped preparation from a missing GPU proof.
+        host.setBeforeWork(&held_cpu, blockCpu);
         transfer = take(session->uploadBuffer(source, VK_BUFFER_USAGE_TRANSFER_SRC_BIT));
-        auto stopped = take(GpuWork::pending<[](Transfer&, DeviceSession&) noexcept -> RenderResult<void> {
-            ++stopped_publications;
-            return {};
-        }>(*session, transfer));
-        stopped.setCompletionPost(host.post(), {}, {});
+        auto* observed_transfer = transfer.get();
+        auto stopped = prepareWork(*session, transfer);
+        CHECK(!transfer && !stopped.publish());
         const auto before_stop_submit = submits;
-        CHECK(!take(advanceAfterCpu(host, stopped)));
+        completion = {};
+        completion.start(stopped, host);
         CHECK(held_cpu.entered.try_acquire_for(std::chrono::seconds(10)));
         stopped.cancel();
-        CHECK(!take(advanceAfterCpu(host, stopped)) && !stopped.lastUse());
+        pump(host, *session);
+        CHECK(!completion.done && !observed_transfer->lastSubmission());
         CHECK(live_buffers == 2 && session->uploadStats().pending_bytes == source.size());
         CHECK(!stopped.publish());
         held_cpu.release.release();
-        complete(stopped, host);
-        CHECK(!stopped.lastUse() && submits == before_stop_submit);
+        finish(completion, host, *session);
+        CHECK(!completion.result && completion.result.error().type == kWorkStopped);
+        CHECK(!observed_transfer->lastSubmission() && submits == before_stop_submit);
         const auto stopped_result = stopped.publish();
         CHECK(!stopped_result && stopped_result.error().type == kWorkStopped && stopped_publications == 0);
         CHECK(!stopped.publish());
@@ -153,26 +180,28 @@ int main()
 
         // Stopping publication after Submit preserves the real Ticket and its in-flight backing.
         transfer = take(session->uploadBuffer(source, VK_BUFFER_USAGE_TRANSFER_SRC_BIT));
-        stopped = take(GpuWork::pending<[](Transfer&, DeviceSession&) noexcept -> RenderResult<void> {
-            ++stopped_publications;
-            return {};
-        }>(*session, transfer));
-        stopped.setCompletionPost(host.post(), {}, {});
+        observed_transfer = transfer.get();
+        stopped = prepareWork(*session, transfer);
+        completion = {};
         hold_completion = true;
+        completion.start(stopped, host);
         const auto stop_deadline = Clock::now() + std::chrono::seconds(10);
-        while (!stopped.lastUse())
+        while (!observed_transfer->lastSubmission())
         {
-            CHECK(!take(advanceAfterCpu(host, stopped)) && Clock::now() < stop_deadline);
+            pump(host, *session);
+            CHECK(!completion.done && Clock::now() < stop_deadline);
             std::this_thread::yield();
         }
-        const auto stop_ticket = *stopped.lastUse();
+        const auto stop_ticket = *observed_transfer->lastSubmission();
         stopped.cancel();
-        CHECK(!take(advanceAfterCpu(host, stopped)) && !stopped.publish());
-        CHECK(stopped.lastUse()->serial() == stop_ticket.serial());
-        CHECK(&stopped.lastUse()->owner() == &stop_ticket.owner());
+        pump(host, *session);
+        CHECK(!completion.done && !stopped.publish());
+        CHECK(observed_transfer->lastSubmission()->serial() == stop_ticket.serial());
+        CHECK(&observed_transfer->lastSubmission()->owner() == &stop_ticket.owner());
         CHECK(live_buffers == 2 && session->uploadStats().pending_bytes == source.size());
         hold_completion = false;
-        complete(stopped, host);
+        finish(completion, host, *session);
+        CHECK(!completion.result && completion.result.error().type == kWorkStopped);
         CHECK(stop_ticket.owner().completed() >= stop_ticket.serial());
         const auto submitted_stop_result = stopped.publish();
         CHECK(!submitted_stop_result && submitted_stop_result.error().type == kWorkStopped);
@@ -181,49 +210,42 @@ int main()
         CHECK(live_buffers == 1 && session->uploadStats().pending_bytes == 0);
 
         transfer = take(session->uploadBuffer(source, VK_BUFFER_USAGE_TRANSFER_SRC_BIT));
-        transfer->setCompletionPost(host.post());
+        completion = {};
         fail_submit = 2;
-        bool observed_hold = false;
+        hold_completion = true;
+        start(*transfer, completion, host);
         const auto deadline = Clock::now() + std::chrono::seconds(10);
-        for (;;)
+        while (!transfer->lastSubmission())
         {
-            const auto progress = advanceAfterCpu(host, *transfer);
-            if (!progress) { CHECK(fail_submit == 0 && transfer->lastUse()); break; }
-            if (transfer->lastUse() && !observed_hold)
-            {
-                hold_completion = true;
-                CHECK(!take(advanceAfterCpu(host, *transfer)) && live_buffers == 2);
-                hold_completion = false;
-                observed_hold = true;
-            }
-            CHECK(!*progress && Clock::now() < deadline);
+            pump(host, *session);
+            CHECK(!completion.done && Clock::now() < deadline);
             std::this_thread::yield();
         }
-        const auto accepted = *transfer->lastUse();
+        const auto accepted = *transfer->lastSubmission();
+        pump(host, *session);
+        CHECK(!completion.done && live_buffers == 2);
+        hold_completion = false;
+        finish(completion, host, *session);
+        CHECK(!completion.result && fail_submit == 0 && transfer->lastSubmission());
+        CHECK(completion.result.error().type == kNativeFailure);
+        CHECK(completion.result.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_OUT_OF_DEVICE_MEMORY));
         transfer->cancel();
-        CHECK(observed_hold && transfer->lastUse()->serial() == accepted.serial());
+        CHECK(transfer->lastSubmission()->serial() == accepted.serial());
         CHECK(live_buffers == 2); // one fixed staging page + the partially submitted candidate
-        complete(*transfer, host);
+        CHECK(!transfer->result() && transfer->result().error().type == kNativeFailure);
         transfer.reset();
         CHECK(live_buffers == 1 && session->uploadStats().pending_bytes == 0);
 
         // A later shutdown request must not replace the actual failure after partial GPU admission.
         transfer = take(session->uploadBuffer(source, VK_BUFFER_USAGE_TRANSFER_SRC_BIT));
-        stopped = take(GpuWork::pending<[](Transfer&, DeviceSession&) noexcept -> RenderResult<void> {
-            ++stopped_publications;
-            return {};
-        }>(*session, transfer));
-        stopped.setCompletionPost(host.post(), {}, {});
+        observed_transfer = transfer.get();
+        stopped = prepareWork(*session, transfer);
+        completion = {};
         fail_submit = 2;
-        const auto failure_deadline = Clock::now() + std::chrono::seconds(10);
-        while (fail_submit)
-        {
-            CHECK(!take(advanceAfterCpu(host, stopped)) && Clock::now() < failure_deadline);
-            std::this_thread::yield();
-        }
-        CHECK(stopped.lastUse());
+        completion.start(stopped, host);
+        finish(completion, host, *session);
+        CHECK(!completion.result && fail_submit == 0 && observed_transfer->lastSubmission());
         stopped.cancel();
-        complete(stopped, host);
         const auto failed_result = stopped.publish();
         CHECK(!failed_result && failed_result.error().type == kNativeFailure);
         CHECK(failed_result.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_OUT_OF_DEVICE_MEMORY));
@@ -231,23 +253,6 @@ int main()
         stopped.reset();
         CHECK(live_buffers == 1 && session->uploadStats().pending_bytes == 0);
 
-        struct InvalidProof final
-        {
-            DeviceSession* session;
-            std::optional<SubmissionTicket> old;
-            bool unstartedIn(const DeviceSession& value) const noexcept { return session == &value; }
-            RenderResult<bool> advance() noexcept { return true; }
-            void cancel() noexcept {}
-            std::optional<SubmissionTicket> lastUse() const noexcept { return old; }
-        };
-        for (const auto old : {std::optional<SubmissionTicket>{}, std::optional{accepted}})
-        {
-            auto invalid = std::make_unique<InvalidProof>(session.get(), old);
-            auto work = take(GpuWork::pending<[](InvalidProof&, DeviceSession&) noexcept -> RenderResult<void> {
-                std::abort(); // a missing/old queue proof must never invoke publication
-            }>(*session, invalid));
-            CHECK(!work.advance() && !work.publish());
-        }
         std::printf("buffer transfer topology=%u graphics=%u:%u transfer=%u:%u bytes=%zu chunks=16 partial-failure retained ticket=%llu\n",
             topology, session->queue().nativeQueue().family, session->queue().nativeQueue().index,
             session->queue(EQueueRole::TRANSFER).nativeQueue().family, session->queue(EQueueRole::TRANSFER).nativeQueue().index,

@@ -37,17 +37,23 @@ namespace lux::render::runtime_detail
     {
         vulkan::SubmissionQueue* queue = nullptr;
         std::uint64_t submitted_before_reserve = 0;
+        vulkan::SubmissionCallback callback;
         vulkan::GpuWork work;
         platform::ipc::IpcMessage reply;
         std::size_t reply_charge = 0;
         RenderRequest* reserved_request = nullptr;
-        vulkan::DeviceSession* native = nullptr;
-        const std::shared_ptr<const void>* implementation_pin = nullptr;
+    };
+
+    struct ReadbackCompletion final
+    {
+        // Null after topology cancellation: the old Context may retire before this callback dispatches.
+        vulkan::ExecutionContext* context = nullptr;
+        vulkan::SubmissionCallback callback;
     };
 
     struct CpuCompletion final
     {
-        const CommandAsyncOps* functions = nullptr;
+        void (*destroy)(void*) noexcept = nullptr;
         void* operation = nullptr;
         platform::ipc::IpcMessage reply;
         std::size_t reply_charge = 0;
@@ -59,10 +65,10 @@ namespace lux::render::runtime_detail
         CpuCompletion() noexcept = default;
         CpuCompletion(const CpuCompletion&) = delete;
         CpuCompletion& operator=(const CpuCompletion&) = delete;
-        ~CpuCompletion() noexcept { if (operation) functions->destroy(operation); }
+        ~CpuCompletion() noexcept { if (operation) destroy(operation); }
     };
 
-    using VCompletionCondition = std::variant<std::monostate, vulkan::ExecutionContext*, GpuCompletion, CpuCompletion>;
+    using VCompletionCondition = std::variant<std::monostate, ReadbackCompletion, GpuCompletion, CpuCompletion>;
 
     // The only pending request owner. Its fixed-address slot reserves one CPU event landing place.
     struct DeferredCompletion final
@@ -73,7 +79,7 @@ namespace lux::render::runtime_detail
         VCompletionCondition condition;
         CompletionQueue* events = nullptr;
         std::atomic<std::size_t>* publishers = nullptr;
-        DeferredSlots* owner = nullptr;
+        void* server = nullptr;
         SessionIdentity session{};
         CompletionId id;
         void* continuation = nullptr;
@@ -104,23 +110,6 @@ namespace lux::render::runtime_detail
         }
     };
 
-    // Handler-call borrow of the existing Server and its single pending collection.
-    struct GpuAdmission final
-    {
-        vulkan::DeviceSession& native;
-        DeferredSlots& slots;
-        std::size_t slot_limit;
-        CompletionQueue& events;
-        std::atomic<std::size_t>& publishers;
-        SessionIdentity session;
-        const std::shared_ptr<const void>& implementation_pin;
-        RenderRequest& request;
-        void* server = nullptr;
-        RenderResult<void> (*defer)(void*, RenderRequest&, void*, const CommandAsyncOps&) noexcept = nullptr;
-        bool reserved = false;
-    };
-
-    extern const vulkan::GpuCompletionFns gpu_completion_functions;
 }
 
 #ifdef LUX_RUNTIME_TEST_SEAM

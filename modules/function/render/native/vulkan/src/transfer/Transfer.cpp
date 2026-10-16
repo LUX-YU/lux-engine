@@ -1,4 +1,7 @@
-#include "UploadState.hpp"
+#include <lux/engine/render/native/vulkan/transfer/Transfer.hpp>
+#include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
+#include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include "Native.hpp"
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <algorithm>
@@ -9,6 +12,61 @@
 
 namespace lux::render::vulkan
 {
+    struct DeviceSession::UploadState final
+    {
+        struct Page final
+        {
+            BufferPermit permit;
+            BufferAllocation* buffer = nullptr;
+            std::byte* mapped = nullptr;
+            bool leased = false;
+        };
+        DeviceSession& session;
+        SubmissionQueue* copy_queue = nullptr;
+        TransferOptions options;
+        CpuSchedule cpu;
+        std::vector<Page> pages;
+        TransferStats stats;
+        VkQueryPool timestamps = VK_NULL_HANDLE;
+        std::uint32_t copy_timestamp_bits = 0, graphics_timestamp_bits = 0;
+        UploadState(DeviceSession& session, TransferOptions options, CpuSchedule cpu) noexcept
+            : session(session), options(options), cpu(cpu) {}
+        ~UploadState() noexcept;
+    };
+
+    DeviceSession::DeviceSession(VulkanDevice native, VulkanAllocator memory) noexcept
+        : device_(std::move(native)), allocator_(std::move(memory))
+    {
+        const std::uint32_t capabilities = (device_.textureDescriptors() ? 1u : 0u) |
+            (device_.textureCompressionBc() ? 2u : 0u);
+        resources_ = std::make_unique<ResourceRegistry>(this, EGraphicsApi::VULKAN, capabilities);
+        if (!resources_->installFactory(textureStorageFactory())) std::terminate();
+    }
+
+    DeviceSession::~DeviceSession() noexcept
+    {
+        auto result = drain();
+        const bool is_device_lost = !result && result.error().type == kNativeFailure &&
+            result.error().args[0] == static_cast<std::uint32_t>(VK_ERROR_DEVICE_LOST);
+        if (!result && !is_device_lost) std::terminate();
+        // Retired contexts still hold scoped leases, including the device-lost path.
+        for (auto& retirement : retirement_owners_) retirement.reset();
+        contexts_.clear();
+        uploads_.reset();
+        if (resources_->valid(resources_->root())) (void)resources_->closeDomain(resources_->root());
+        resources_.reset();
+        while (!buffers_.empty()) destroyFinished(&*buffers_.begin());
+        // Destroy aliases before allocations, including aliases not explicitly released by the caller.
+        for (;;)
+        {
+            auto alias = std::find_if(images_.begin(), images_.end(), [](const auto& value) { return value.source_; });
+            if (alias == images_.end()) break;
+            destroyFinished(&*alias);
+        }
+        while (!images_.empty()) destroyFinished(&*images_.begin());
+        // Retirement owners, queue owners, allocator, device: reverse member destruction order.
+    }
+
     namespace
     {
         using Clock = std::chrono::steady_clock;
@@ -197,15 +255,15 @@ namespace lux::render::vulkan
 
     Transfer::~Transfer() noexcept
     {
-        if (cpu_preparation_) std::terminate();
+        if (cpu_preparation_ || copy_callback_.armed() || graphics_callback_.armed()) std::terminate();
         if (image_)
         {
-            auto result = ticket_ ? session_->releaseCompleted(image_, *ticket_) : session_->destroyUnsubmitted(image_);
+            auto result = !requirements_.empty() ? session_->releaseCompleted(image_, requirements_) : session_->destroyUnsubmitted(image_);
             if (!result) std::terminate();
         }
         if (buffer_)
         {
-            auto result = ticket_ ? session_->releaseCompleted(buffer_, *ticket_) : session_->destroyUnsubmitted(buffer_);
+            auto result = !requirements_.empty() ? session_->releaseCompleted(buffer_, requirements_) : session_->destroyUnsubmitted(buffer_);
             if (!result) std::terminate();
         }
         session_->uploads_->pages[page_].leased = false;
@@ -220,36 +278,89 @@ namespace lux::render::vulkan
 
     RenderResult<ImagePermit> Transfer::takeImage() noexcept
     {
-        if (!completed() || !image_) return cxx::unexpected(RenderError{kBusy});
+        if (!result() || !image_) return cxx::unexpected(RenderError{kBusy});
         return std::move(image_);
     }
 
     RenderResult<BufferPermit> Transfer::takeBuffer() noexcept
     {
-        if (!completed() || !buffer_) return cxx::unexpected(RenderError{kBusy});
+        if (!result() || !buffer_) return cxx::unexpected(RenderError{kBusy});
         return std::move(buffer_);
     }
 
-    void Transfer::setCompletionPost(CompletionPost post, std::shared_ptr<const void> implementation,
-        std::shared_ptr<const void> registration) noexcept
+    RenderResult<void> Transfer::prepareCompletion() noexcept
     {
-        completion_post_ = post;
-        implementation_pin_ = std::move(implementation);
-        registration_pin_ = std::move(registration);
+        if (started_ || copy_callback_.reserved()) return cxx::unexpected(RenderError{kBusy});
+        if (auto reserved = copy_queue_->reserve(copy_callback_); !reserved) return reserved;
+        if (copy_queue_ != &session_->queue())
+        {
+            if (auto reserved = session_->queue().reserve(graphics_callback_); !reserved)
+            {
+                copy_callback_.reset();
+                return reserved;
+            }
+        }
+        return {};
     }
 
-    void Transfer::resumeCpu(void* pointer, RenderResult<void> result) noexcept
+    void Transfer::start(CompletionPost post, void* owner, TerminalFn terminal,
+        std::shared_ptr<const void> implementation, std::shared_ptr<const void> registration) noexcept
+    {
+        if (started_ || !copy_callback_.reserved() || !post || !terminal) std::terminate();
+        completion_post_ = post;
+        terminal_owner_ = owner;
+        terminal_ = terminal;
+        implementation_pin_ = std::move(implementation);
+        registration_pin_ = std::move(registration);
+        started_ = true;
+        continueTransfer();
+    }
+
+    RenderResult<void> Transfer::result() const noexcept
+    {
+        if (!completed()) return cxx::unexpected(RenderError{kBusy});
+        if (failure_) return cxx::unexpected(*failure_);
+        return {};
+    }
+
+    void Transfer::cancel() noexcept
+    {
+        if (completed()) return;
+        if (!failure_) failure_ = RenderError{kWorkStopped};
+        if (started_ && !cpu_preparation_ && !copy_callback_.armed() && !graphics_callback_.armed()) continueTransfer();
+    }
+
+    void Transfer::finish() noexcept
+    {
+        copy_callback_.reset();
+        graphics_callback_.reset();
+        phase_ = EPhase::COMPLETE;
+        const auto terminal = terminal_;
+        auto* owner = terminal_owner_;
+        auto outcome = result();
+        terminal(owner, std::move(outcome)); // final access: the receiver may destroy this Transfer
+    }
+
+    void Transfer::resumeCpu(void* pointer, RenderResult<void> outcome) noexcept
     {
         auto& transfer = *static_cast<Transfer*>(pointer);
         transfer.cpu_preparation_.reset();
-        if (result)
+        if (outcome)
         {
             auto& stats = transfer.session_->uploads_->stats;
             stats.prepare_ns += transfer.prepare_ns_;
             stats.copied_bytes += transfer.chunk_size_;
         }
-        else transfer.cpu_failure_ = result.error();
+        else if (!transfer.failure_) transfer.failure_ = outcome.error();
         transfer.phase_ = EPhase::COPY;
+        transfer.continueTransfer();
+    }
+
+    void Transfer::resumeGpu(void* pointer, RenderResult<void> outcome) noexcept
+    {
+        auto& transfer = *static_cast<Transfer*>(pointer);
+        if (!outcome && !transfer.failure_) transfer.failure_ = outcome.error();
+        transfer.continueTransfer();
     }
 
     void Transfer::prepare(void* pointer) noexcept
@@ -272,7 +383,7 @@ namespace lux::render::vulkan
         transfer.prepare_ns_ = nanoseconds(start);
     }
 
-    RenderResult<bool> Transfer::advance() noexcept
+    void Transfer::continueTransfer() noexcept
     {
         const auto start = Clock::now();
         auto& state = *session_->uploads_;
@@ -282,45 +393,23 @@ namespace lux::render::vulkan
             Clock::time_point start;
             ~Cost() { stats.owner_ns += nanoseconds(start); }
         } cost{state.stats, start};
-        if (phase_ == EPhase::COMPLETE) return true;
-        if (cpu_failure_)
-        {
-            const auto error = *cpu_failure_;
-            cpu_failure_.reset();
-            return cxx::unexpected(error);
-        }
         auto& graphics = session_->queue();
         const bool distinct = copy_queue_ != &graphics;
-        if (phase_ == EPhase::CPU_PENDING)
-        {
-            return false;
-        }
-        if (ticket_)
-        {
-            auto* owner = session_->queueFor(*ticket_);
-            auto completed = owner->poll();
-            if (!completed)
-            {
-                if (cancelled_ && owner->deviceLost()) { phase_ = EPhase::COMPLETE; return true; }
-                return cxx::unexpected(completed.error());
-            }
-            if (*completed < ticket_->serial()) return false;
-        }
+        if (failure_) { finish(); return; }
         const auto timestamp_bits = copy_queue_ == &graphics ? state.graphics_timestamp_bits : state.copy_timestamp_bits;
         if (query_pending_)
         {
             std::array<std::uint64_t, 2> stamps{};
             const auto result = vkGetQueryPoolResults(device(), state.timestamps, std::uint32_t(page_ * 2), 2,
                 sizeof(stamps), stamps.data(), sizeof(std::uint64_t), VK_QUERY_RESULT_64_BIT);
-            if (result != VK_SUCCESS) return cxx::unexpected(nativeError(result));
+            if (result != VK_SUCCESS) { failure_ = nativeError(result); finish(); return; }
             const auto mask = timestamp_bits == 64 ? UINT64_MAX : (std::uint64_t{1} << timestamp_bits) - 1;
             state.stats.gpu_ns += std::uint64_t(double((stamps[1] - stamps[0]) & mask) *
                 session_->device().properties().limits.timestampPeriod);
             ++state.stats.gpu_samples;
             query_pending_ = false;
         }
-        if (cancelled_) { phase_ = EPhase::COMPLETE; return true; }
-        if (phase_ == EPhase::FINAL_PENDING) { phase_ = EPhase::COMPLETE; return true; }
+        if (phase_ == EPhase::FINAL_PENDING) { finish(); return; }
         if (phase_ == EPhase::COPY_PENDING)
         {
             offset_ += chunk_size_;
@@ -345,19 +434,28 @@ namespace lux::render::vulkan
                     state.options.chunk_bytes / row_bytes_);
                 chunk_size_ = rows_ * row_bytes_;
             }
-            if (!completion_post_) return cxx::unexpected(RenderError{kInvalidArgument});
             cpu_preparation_ = std::make_unique<CpuPreparation>(*this);
             phase_ = EPhase::CPU_PENDING;
             stdexec::start(cpu_preparation_->operation);
-            return false;
+            return;
         }
         const bool acquiring = phase_ == EPhase::ACQUIRE;
         auto& queue = acquiring ? graphics : *copy_queue_;
         auto batch = queue.begin();
         if (!batch)
         {
-            if (batch.error().type == kCapacity || batch.error().type == kBusy) return false;
-            return cxx::unexpected(batch.error());
+            if (batch.error().type == kCapacity)
+            {
+                if (const auto pending = queue.oldestPending())
+                {
+                    auto& callback = &queue == copy_queue_ ? copy_callback_ : graphics_callback_;
+                    if (!queue.onComplete(*pending, callback, resumeGpu, this)) std::terminate();
+                    return;
+                }
+            }
+            failure_ = batch.error();
+            finish();
+            return;
         }
         const bool timestamp = !acquiring && state.timestamps && timestamp_bits;
         if (timestamp)
@@ -371,7 +469,7 @@ namespace lux::render::vulkan
             const auto& page = state.pages[page_];
             const auto flushed = LUX_NATIVE("flush", vmaFlushAllocation(session_->allocator_.native(),
                 page.buffer->allocation_, 0, chunk_size_));
-            if (flushed != VK_SUCCESS) return cxx::unexpected(nativeError(flushed));
+            if (flushed != VK_SUCCESS) { failure_ = nativeError(flushed); finish(); return; }
         }
         bool final = acquiring;
         if (!acquiring)
@@ -391,13 +489,16 @@ namespace lux::render::vulkan
         if (timestamp) vkCmdWriteTimestamp2(batch->native(), VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
             state.timestamps, std::uint32_t(page_ * 2 + 1));
         auto accepted = std::move(*batch).submit(wait ? std::span(&*wait, 1) : std::span<const SubmissionWait>{});
-        if (!accepted) return cxx::unexpected(accepted.error());
+        if (!accepted) { failure_ = accepted.error(); finish(); return; }
         ticket_ = *accepted;
+        requirements_.merge(*accepted);
+        if (!initialized_ && clone_last_use_) clone_last_use_->merge(*accepted);
         query_pending_ = timestamp;
         initialized_ = true;
         if (!acquiring) ++state.stats.chunks;
         phase_ = final && (!distinct || acquiring) ? EPhase::FINAL_PENDING : EPhase::COPY_PENDING;
-        return false;
+        auto& callback = &queue == copy_queue_ ? copy_callback_ : graphics_callback_;
+        if (!queue.onComplete(*accepted, callback, resumeGpu, this)) std::terminate();
     }
 
     void Transfer::recordBuffer(VkCommandBuffer command, bool acquiring, bool final) noexcept

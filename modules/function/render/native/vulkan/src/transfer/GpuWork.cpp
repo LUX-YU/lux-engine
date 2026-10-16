@@ -9,56 +9,34 @@ namespace lux::render::vulkan
         result.session_ = &session;
         result.accepted_ = ticket;
         result.owner_ = {owner, destroy};
-        result.ready_ = ready;
+        result.accepted_ready_ = ready;
         return result;
     }
 
-    RenderResult<bool> GpuWork::advance() noexcept
+    RenderResult<void> GpuWork::prepareCompletion() noexcept
     {
-        if (!ready_) return cxx::unexpected(RenderError{kWrongOwner});
-        started_ = true;
-        if (advance_)
-        {
-            auto progress = advance_(owner_.get());
-            if (!progress)
-            {
-                if (!failure_) failure_ = progress.error();
-                cancel_(owner_.get()); // accepted chunks and pending CPU source access remain owned
-                return false;
-            }
-            if (!*progress) return false;
-        }
-        const auto ticket = lastUse();
-        if (!ticket)
-        {
-            if (!failure_) return cxx::unexpected(RenderError{kWrongOwner});
-            completed_ = true;
-            return true;
-        }
-        auto* queue = session_->queueFor(*ticket);
-        if (!queue) return cxx::unexpected(RenderError{kWrongOwner});
-        if (advance_)
-            for (std::size_t role = 0; role < before_.size(); ++role)
-                if (&session_->queue(static_cast<EQueueRole>(role)) == queue && ticket->serial() <= before_[role])
-                    return cxx::unexpected(RenderError{kWrongOwner});
-        auto completed = queue->poll();
-        if (!completed)
-        {
-            if (!failure_ || !queue->deviceLost()) return cxx::unexpected(completed.error());
-            completed_ = true;
-            return true;
-        }
-        if (*completed < ticket->serial()) return false;
-        completed_ = true;
-        return true;
+        return transfer_->prepareCompletion();
+    }
+
+    void GpuWork::start(CompletionPost post, void* owner, Transfer::TerminalFn terminal,
+        std::shared_ptr<const void> implementation, std::shared_ptr<const void> registration) noexcept
+    {
+        transfer_->start(post, owner, terminal, std::move(implementation), std::move(registration));
     }
 
     RenderResult<void> GpuWork::publish() noexcept
     {
-        if (!completed_ || !ready_) return cxx::unexpected(RenderError{kBusy});
-        completed_ = false; // a work owner can publish its business state at most once
-        const auto ready = std::exchange(ready_, nullptr);
-        if (failure_) return cxx::unexpected(*failure_);
-        return ready(owner_.get(), *session_);
+        if (!owner_) return cxx::unexpected(RenderError{kWrongOwner});
+        if (transfer_)
+        {
+            if (!ready_ || !transfer_->completed()) return cxx::unexpected(RenderError{kBusy});
+            const auto ready = std::exchange(ready_, nullptr);
+            if (auto result = transfer_->result(); !result) return result;
+            return ready(owner_.get(), *transfer_, *session_);
+        }
+        if (!accepted_ready_ || !accepted_ || accepted_->owner().completed() < accepted_->serial())
+            return cxx::unexpected(RenderError{kBusy});
+        if (accepted_->owner().deviceLost()) return cxx::unexpected(nativeError(VK_ERROR_DEVICE_LOST));
+        return std::exchange(accepted_ready_, nullptr)(owner_.get(), *session_);
     }
 }

@@ -88,13 +88,12 @@ namespace lux::render::vulkan
 
         struct Entry
         {
-            struct Wait final { const SubmissionQueue* queue = nullptr; std::uint64_t serial = 0; };
-            std::array<Wait, 3> waits{};
+            SubmissionRequirements requirements;
             VBacking backing;
 
             Entry(std::span<const SubmissionTicket> tickets, VBacking value) noexcept : backing(std::move(value))
             {
-                for (std::size_t i = 0; i < tickets.size(); ++i) waits[i] = {&tickets[i].owner(), tickets[i].serial()};
+                for (auto ticket : tickets) requirements.merge(ticket);
             }
         };
 

@@ -50,6 +50,12 @@ namespace lux::render
 
     struct RenderServer::Impl final
     {
+        // One handler-call borrow; every table and deferred request remains owned by this Impl.
+        struct GpuAdmission final { Impl& server; RenderRequest& request; bool reserved = false; };
+
+        static const CommandCompletionFns command_completion_functions;
+        static const vulkan::GpuCompletionFns gpu_completion_functions;
+
         [[nodiscard]] RenderResult<void> registerFeature(FeatureRegistration feature, std::span<const CommandTransport> transports) noexcept;
         [[nodiscard]] RenderResult<void> registerStorage(StorageRegistration storage, std::span<const CommandTransport> transports) noexcept;
         [[nodiscard]] RenderResult<void> run() noexcept;
@@ -162,12 +168,13 @@ namespace lux::render
             for (auto it = deferred.begin(); it != deferred.end();)
             {
                 auto& slot = *it;
-                const auto* current = std::get_if<vulkan::ExecutionContext*>(&slot.condition);
-                if (!current || *current != context) { ++it; continue; }
+                auto* current = std::get_if<ReadbackCompletion>(&slot.condition);
+                if (!current || current->context != context) { ++it; continue; }
+                current->context = nullptr;
                 context->releaseReadback();
-                auto result = slot.request->cancel();
-                settle(std::move(*slot.request), result);
-                deferred.erase(slot.id);
+                // The context may now retire. Its original Ticket node stays alive and its eventual
+                // callback settles the request without touching the retired context.
+                ++it;
             }
         }
 
@@ -262,10 +269,112 @@ namespace lux::render
             if (full) return cxx::unexpected(RenderError{kRuntimeCapacity});
             auto* slot = reserveCompletion();
             if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
+            auto& pending = slot->condition.emplace<ReadbackCompletion>();
+            if (auto reserved = device->queue().reserve(pending.callback); !reserved)
+            {
+                deferred.erase(slot->id);
+                return reserved;
+            }
             found->context->retainReadback();
             slot->request.emplace(std::move(request));
-            slot->condition.emplace<vulkan::ExecutionContext*>(found->context);
+            pending.context = found->context;
+            armReadback(*slot);
             return {};
+        }
+
+        void armReadback(DeferredCompletion& slot) noexcept
+        {
+            auto& pending = std::get<ReadbackCompletion>(slot.condition);
+            if (!pending.context->lastUse())
+            {
+                // A newly attached View is a valid Readback consumer before its first frame Submit.
+                auto executed = pending.context->execute();
+                if (!executed) { finishReadback(&slot, cxx::unexpected(executed.error())); return; }
+                if (*executed) ++submissions;
+            }
+            auto ticket = pending.context->lastUse();
+            if (!ticket) ticket = device->queue().oldestPending();
+            if (!ticket)
+            {
+                // begin can only be capacity-blocked here; overlapping recording violates its owner contract.
+                finishReadback(&slot, cxx::unexpected(RenderError{kRuntimeState}));
+                return;
+            }
+            if (!device->queue().onComplete(*ticket, pending.callback, finishReadback, &slot)) std::terminate();
+        }
+
+        static void finishReadback(void* value, RenderResult<void> completed) noexcept
+        {
+            auto& slot = *static_cast<DeferredCompletion*>(value);
+            auto& server = *static_cast<Impl*>(slot.server);
+            auto& pending = std::get<ReadbackCompletion>(slot.condition);
+            RenderResult<void> reply;
+            if (!pending.context || server.stop_requested.load())
+            {
+                if (pending.context) std::exchange(pending.context, nullptr)->releaseReadback();
+                reply = slot.request->cancel();
+            }
+            else if (!completed)
+            {
+                std::exchange(pending.context, nullptr)->releaseReadback();
+                reply = slot.request->fail(completed.error());
+            }
+            else
+            {
+                const auto ticket = pending.context->lastUse();
+                if (!ticket || ticket->serial() > ticket->owner().completed())
+                {
+                    // A capacity notification is not proof that this View's output is complete.
+                    server.armReadback(slot);
+                    return;
+                }
+                auto result = pending.context->readback();
+                std::exchange(pending.context, nullptr)->releaseReadback();
+                if (result)
+                {
+                    auto owner = std::make_shared<const std::vector<std::byte>>(std::move(*result));
+                    auto payload = RenderPayload::fromVector(owner, 0, owner->size(),
+                        server.config.implementation_code_pin);
+                    if (!payload) std::terminate(); // exact vector range
+                    reply = slot.request->reply(ReadbackResult{std::move(*payload)});
+                }
+                else reply = slot.request->fail(result.error());
+            }
+            server.settle(std::move(*slot.request), reply);
+            server.deferred.erase(slot.id);
+        }
+
+        static void finishGpu(void* value, RenderResult<void> completed) noexcept
+        {
+            auto& slot = *static_cast<DeferredCompletion*>(value);
+            auto& server = *static_cast<Impl*>(slot.server);
+            auto& gpu = std::get<GpuCompletion>(slot.condition);
+            // Device loss can reach a Transfer terminal before collect reports it to run().
+            // Accepted work cannot promise cancellation even when its reply is still unpublished.
+            const bool stopping = server.stop_requested.load() || server.device->deviceLost();
+            auto ready = completed;
+            if (ready && !stopping) ready = gpu.work.publish();
+            gpu.work.reset(); // Native/candidate destruction precedes release of the original source request.
+            RenderResult<void> reply;
+            if (stopping)
+            {
+                gpu.reply.reset();
+                reply = slot.request->unknown();
+            }
+            else if (ready)
+            {
+#ifdef LUX_RUNTIME_TEST_SEAM
+                runtime_detail::test::gpuReplyPublicationStarted();
+#endif
+                reply = slot.request->publishPrepared(gpu.reply, gpu.reply_charge);
+            }
+            else
+            {
+                gpu.reply.reset();
+                reply = slot.request->fail(ready.error());
+            }
+            server.settle(std::move(*slot.request), reply);
+            server.deferred.erase(slot.id);
         }
 
         RenderResult<void> tick() noexcept
@@ -283,52 +392,13 @@ namespace lux::render
                 effect.next_group = effect.groups.empty() ? 0 : (effect.next_group + 1) % effect.groups.size();
             }
             next_effect = effects.empty() ? 0 : (next_effect + 1) % effects.size();
-            for (auto it = deferred.begin(); it != deferred.end();)
-            {
-                auto& slot = *it;
-                if (!slot.request || std::holds_alternative<CpuCompletion>(slot.condition)) { ++it; continue; }
-                RenderResult<void> reply;
-                if (auto* context = std::get_if<vulkan::ExecutionContext*>(&slot.condition))
-                {
-                    auto result = (*context)->readback();
-                    if (!result && result.error().type == vulkan::kBusy) { ++it; continue; }
-                    (*context)->releaseReadback();
-                    if (result)
-                    {
-                        auto owner = std::make_shared<const std::vector<std::byte>>(std::move(*result));
-                        auto payload = RenderPayload::fromVector(owner, 0, owner->size());
-                        if (!payload) std::terminate(); // exact vector range
-                        reply = slot.request->reply(ReadbackResult{std::move(*payload)});
-                    }
-                    else reply = slot.request->fail(result.error());
-                }
-                else
-                {
-                    auto& gpu = std::get<GpuCompletion>(slot.condition);
+            auto collected = device->collect();
 #ifdef LUX_RUNTIME_TEST_SEAM
-                    if (!runtime_detail::test::observeGpuCompletion()) { ++it; continue; }
+            if (runtime_detail::test::observeGpuCompletion()) device->dispatchCompletions();
+#else
+            device->dispatchCompletions();
 #endif
-                    auto progress = gpu.work.advance();
-                    if (!progress) return cxx::unexpected(progress.error());
-                    if (!*progress) { ++it; continue; }
-                    auto ready = gpu.work.publish();
-                    gpu.work.reset(); // release Native pins while the original request still owns its source
-#ifdef LUX_RUNTIME_TEST_SEAM
-                    if (ready) runtime_detail::test::gpuReplyPublicationStarted();
-#endif
-                    if (ready) reply = slot.request->publishPrepared(gpu.reply, gpu.reply_charge);
-                    else
-                    {
-                        // Drop the unsent result before returning its funding request to a concurrent Client.
-                        gpu.reply.reset();
-                        reply = slot.request->fail(ready.error());
-                    }
-
-                }
-                settle(std::move(*slot.request), reply);
-                deferred.erase(slot.id);
-            }
-            return device->collect();
+            return collected;
         }
 
         static VKAPI_ATTR VkBool32 VKAPI_CALL diagnostic(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
@@ -490,7 +560,7 @@ namespace lux::render
             slot.session = identity;
             slot.events = &completion_events;
             slot.publishers = &completion_publishers;
-            slot.owner = &deferred;
+            slot.server = this;
             return &slot;
         }
 
@@ -518,7 +588,7 @@ namespace lux::render
             if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
             slot->request.emplace(std::move(request));
             auto& cpu = slot->condition.emplace<CpuCompletion>();
-            cpu.functions = &operations;
+            cpu.destroy = operations.destroy;
             cpu.operation = operations.connect(sender, {slot, completeCpu, slot->stop.get_token()});
             // start runs on the RenderThread. Event draining cannot reenter this stack; even immediate
             // completion is only published, then adopted at the next owner-loop safety point.
@@ -582,17 +652,12 @@ namespace lux::render
             if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
             slot->request.emplace(std::move(request));
             auto& cpu = slot->condition.emplace<CpuCompletion>();
-            static constexpr CommandAsyncOps operations{
-                nullptr,
-                [](void* state) noexcept { stdexec::start(static_cast<CompileState*>(state)->operation); },
-                [](void* state) noexcept { delete static_cast<CompileState*>(state); }
-            };
-            cpu.functions = &operations;
+            cpu.destroy = [](void* state) noexcept { delete static_cast<CompileState*>(state); };
             cpu.compiling = true;
             cpu.adopt = CompileState::adopt;
             cpu.operation = new CompileState(*this, *slot);
             ++compiling;
-            operations.start(cpu.operation);
+            stdexec::start(static_cast<CompileState*>(cpu.operation)->operation);
             return {};
         }
 
@@ -607,7 +672,12 @@ namespace lux::render
                 auto* slot = deferred.find(event.id);
                 if (!slot) continue;
                 const auto resume = std::exchange(slot->resume, nullptr);
-                if (resume) resume(slot->continuation, std::move(slot->cpu_result));
+                if (resume)
+                {
+                    resume(slot->continuation, std::move(slot->cpu_result));
+                    // A Native continuation may finish and erase this exact slot synchronously.
+                    continue;
+                }
                 auto* cpu = std::get_if<CpuCompletion>(&slot->condition);
                 if (!cpu) continue; // Native continuation resumes the same GPU request, not a second owner.
                 RenderResult<void> result;
@@ -716,15 +786,10 @@ namespace lux::render
                 result = cxx::unexpected(RenderError{kRuntimeCapacity});
             else
             {
-                // Compiling cannot change during this serialized handler call; this is the ordinary
-                // completion budget expressed as an absolute limit in the single shared slot map.
-                GpuAdmission admission{*device, deferred, config.completion_capacity + compiling, completion_events,
-                    completion_publishers, identity, config.implementation_code_pin, request, this,
-                    [](void* owner, RenderRequest& input, void* sender, const CommandAsyncOps& operations) noexcept {
-                        return static_cast<Impl*>(owner)->deferCommand(input, sender, operations);
-                    }};
+                GpuAdmission admission{*this, request};
                 vulkan::GpuCompletionAccess access{&gpu_completion_functions, &admission};
-                auto invocation = request.invocation(admission, entry->binding.gpu_completion ? &access : nullptr);
+                auto invocation = request.invocation(&admission, command_completion_functions,
+                    entry->binding.gpu_completion ? &access : nullptr);
                 result = entry->binding.invoke(entry->binding.user, invocation);
             }
             settle(std::move(request), result);
@@ -734,43 +799,38 @@ namespace lux::render
         void shutdown() noexcept
         {
             stop_requested.store(true);
-            for (auto& slot : deferred)
+            // cancel may synchronously finish a Native operation. Snapshot only bounded generational
+            // identities, not iterators or owners, before any terminal callback can erase a slot.
+            std::array<CompletionId, 136> pending;
+            std::size_t pending_count = 0;
+            for (const auto& slot : deferred) pending[pending_count++] = slot.id;
+            for (std::size_t i = 0; i < pending_count; ++i)
             {
-                slot.stop.request_stop();
-                if (auto* gpu = std::get_if<GpuCompletion>(&slot.condition)) gpu->work.cancel();
+                auto* slot = deferred.find(pending[i]);
+                if (!slot) continue;
+                slot->stop.request_stop();
+                if (auto* readback = std::get_if<ReadbackCompletion>(&slot->condition))
+                {
+                    if (readback->context) std::exchange(readback->context, nullptr)->releaseReadback();
+                }
+                else if (auto* gpu = std::get_if<GpuCompletion>(&slot->condition)) gpu->work.cancel();
+                // No slot access after cancel: its terminal callback may have destroyed it.
             }
-            // Only shutdown waits for accepted GPU work. Cancellation prevents another Transfer submit;
-            // pending CPU preparation and its source request stay owned until their actual event arrives.
-            // Drain before polling work to its terminal state, which may itself require this real wait.
+            // Only shutdown waits. CPU/source owners remain in the same slots; cancellation prevents
+            // their eventual CPU event from submitting another GPU chunk.
             if (device)
             {
                 auto drained = device->drain();
                 if (!drained && !device->deviceLost()) std::terminate();
             }
-            // Shutdown consumes actual CPU notifications. The same pending owners retain all source and
-            // Native state while already accepted work runs to its safe terminal point.
             while (!deferred.empty())
             {
                 drainCompletions();
-                for (auto it = deferred.begin(); it != deferred.end();)
+                if (device)
                 {
-                    auto& slot = *it;
-                    if (std::holds_alternative<CpuCompletion>(slot.condition)) { ++it; continue; }
-                    const bool was_submitted = std::holds_alternative<GpuCompletion>(slot.condition);
-                    if (was_submitted)
-                    {
-                        auto& gpu = std::get<GpuCompletion>(slot.condition);
-                        auto progress = gpu.work.advance();
-                        if (!progress && !device->deviceLost()) std::terminate();
-                        if (progress && !*progress) { ++it; continue; }
-                        gpu.work.reset();
-                        gpu.reply.reset();
-                    }
-                    else if (auto* context = std::get_if<vulkan::ExecutionContext*>(&slot.condition))
-                        (*context)->releaseReadback();
-                    auto result = was_submitted ? slot.request->unknown() : slot.request->cancel();
-                    settle(std::move(*slot.request), result);
-                    deferred.erase(slot.id);
+                    auto collected = device->collect();
+                    device->dispatchCompletions();
+                    if (!collected && !device->deviceLost()) std::terminate();
                 }
                 if (!deferred.empty()) std::this_thread::yield();
             }
@@ -781,6 +841,106 @@ namespace lux::render
             device.reset();
             instance.reset();
             running.store(false);
+        }
+    };
+
+    const CommandCompletionFns RenderServer::Impl::command_completion_functions{
+        [](void* owner, ECommandOutcome outcome, RenderError error, void* response) noexcept {
+            auto& request = static_cast<GpuAdmission*>(owner)->request;
+            switch (outcome)
+            {
+            case ECommandOutcome::SUCCESS: return request.complete(response);
+            case ECommandOutcome::FAILED: return request.fail(error);
+            case ECommandOutcome::CANCELLED: return request.cancel();
+            default: return request.unknown();
+            }
+        },
+        [](const void* owner) noexcept { return static_cast<const GpuAdmission*>(owner)->request.active(); },
+        [](void* owner, void* sender, const CommandAsyncOps& operations) noexcept -> RenderResult<void> {
+            auto& admission = *static_cast<GpuAdmission*>(owner);
+            return admission.server.deferCommand(admission.request, sender, operations);
+        }
+    };
+
+    const vulkan::GpuCompletionFns RenderServer::Impl::gpu_completion_functions{
+        [](void* owner, vulkan::SubmissionQueue& queue, void* response) noexcept -> RenderResult<void*> {
+            auto& admission = *static_cast<GpuAdmission*>(owner);
+            auto& server = admission.server;
+            auto& native = *server.device;
+            const bool is_session_queue = &queue == &native.queue(vulkan::EQueueRole::GRAPHICS) ||
+                &queue == &native.queue(vulkan::EQueueRole::COMPUTE) ||
+                &queue == &native.queue(vulkan::EQueueRole::TRANSFER);
+            const bool invalid = !is_session_queue || admission.reserved || !admission.request.gpuReady();
+            if (invalid) return cxx::unexpected(RenderError{kProtocolContract});
+            auto* slot = server.reserveCompletion();
+            if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
+            auto& gpu = slot->condition.emplace<GpuCompletion>();
+            auto reserved = queue.reserve(gpu.callback);
+            if (!reserved)
+            {
+                server.deferred.erase(slot->id);
+                return cxx::unexpected(reserved.error());
+            }
+            auto charge = admission.request.prepareResponse(response, gpu.reply);
+            if (!charge)
+            {
+                server.deferred.erase(slot->id);
+                return cxx::unexpected(charge.error());
+            }
+            gpu.queue = &queue;
+            gpu.submitted_before_reserve = queue.submitted();
+            gpu.reply_charge = *charge;
+            gpu.reserved_request = &admission.request;
+            admission.reserved = true;
+            return slot;
+        },
+        [](void* value, void* response) noexcept -> RenderResult<void> {
+            auto& gpu = std::get<GpuCompletion>(static_cast<DeferredCompletion*>(value)->condition);
+            platform::ipc::IpcMessage output;
+            auto charge = gpu.reserved_request->prepareResponse(response, output);
+            if (!charge) return cxx::unexpected(charge.error());
+            gpu.reply = std::move(output);
+            gpu.reply_charge = *charge;
+            return {};
+        },
+        [](void* value, vulkan::GpuWork& work) noexcept -> RenderResult<void> {
+            auto& slot = *static_cast<DeferredCompletion*>(value);
+            auto& server = *static_cast<Impl*>(slot.server);
+            auto& gpu = std::get<GpuCompletion>(slot.condition);
+            if (!work.unstartedIn(*server.device)) return cxx::unexpected(RenderError{kProtocolContract});
+            gpu.callback.reset(); // Transfer reserves its actual copy/acquire queues before starting.
+            if (auto prepared = work.prepareCompletion(); !prepared)
+            {
+                // prepareCompletion rolls back all partial reservations; no other owner can consume
+                // this just-released quota during the serialized call. Restore the caller's right.
+                if (!gpu.queue->reserve(gpu.callback)) std::terminate();
+                return prepared;
+            }
+            gpu.work = std::move(work);
+            slot.request.emplace(std::move(*gpu.reserved_request));
+            gpu.reserved_request = nullptr;
+            gpu.work.start(slot.post(), &slot, finishGpu,
+                server.config.implementation_code_pin, slot.request->codePin());
+            // start may reach a synchronous terminal. No access to slot after this point.
+            return {};
+        },
+        [](void* value, const vulkan::SubmissionTicket& ticket, void* owner, void (*destroy)(void*) noexcept,
+            RenderResult<void> (*ready)(void*, vulkan::DeviceSession&) noexcept) noexcept -> RenderResult<void> {
+            auto& slot = *static_cast<DeferredCompletion*>(value);
+            auto& server = *static_cast<Impl*>(slot.server);
+            auto& gpu = std::get<GpuCompletion>(slot.condition);
+            const bool invalid = !gpu.queue->owns(ticket) || ticket.serial() <= gpu.submitted_before_reserve;
+            if (invalid) return cxx::unexpected(RenderError{kProtocolContract});
+            gpu.work = vulkan::GpuWork::accepted(*server.device, ticket, owner, destroy, ready);
+            slot.request.emplace(std::move(*gpu.reserved_request));
+            gpu.reserved_request = nullptr;
+            if (!gpu.queue->onComplete(ticket, gpu.callback, finishGpu, &slot)) std::terminate();
+            return {};
+        },
+        [](void* value) noexcept {
+            auto& slot = *static_cast<DeferredCompletion*>(value);
+            auto& server = *static_cast<Impl*>(slot.server);
+            if (!server.deferred.erase(slot.id)) std::terminate();
         }
     };
 

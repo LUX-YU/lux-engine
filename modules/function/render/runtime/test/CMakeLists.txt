@@ -52,7 +52,11 @@ set_target_properties(render_server_dll_plugin PROPERTIES RUNTIME_OUTPUT_DIRECTO
 add_executable(render_server_dll_test ServerDll.cpp)
 
 # Only the plugin links Server/Native. All Server calls cross its explicit exported API.
-target_link_libraries(render_server_dll_test PRIVATE render_client)
+target_link_libraries(render_server_dll_test PRIVATE
+    render_client
+    render_resource
+    lux::engine::process::process_execution
+)
 
 add_dependencies(render_server_dll_test render_server_dll_plugin)
 

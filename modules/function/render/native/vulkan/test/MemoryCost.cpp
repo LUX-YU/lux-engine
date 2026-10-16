@@ -39,6 +39,8 @@ namespace lux::render::vulkan
             std::printf("PreparedBinding=%zu StorageUse=%zu Registry=%zu ResourceDomain=%zu Factory=%zu\n",
                 sizeof(PreparedStorageBinding), sizeof(ExecutionContext::StorageUse), sizeof(ResourceRegistry),
                 sizeof(ResourceDomain), sizeof(StorageFactory));
+            std::printf("SubmissionRequirements=%zu SubmissionCallback=%zu\n",
+                sizeof(SubmissionRequirements), sizeof(SubmissionCallback));
             render_allocation::calls = 0;
             render_allocation::bytes = 0;
             render_allocation::window = true;

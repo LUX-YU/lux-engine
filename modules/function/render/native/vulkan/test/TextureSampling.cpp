@@ -32,13 +32,6 @@ namespace lux::render::vulkan::test
     void destroyed(const char*) noexcept {}
 }
 
-static void complete(TextureUpload& upload, CpuFixture& host)
-{
-    const auto end = Clock::now() + std::chrono::seconds(10);
-    while (!take(advanceAfterCpu(host, upload))) { CHECK(Clock::now() < end); std::this_thread::yield(); }
-    CHECK(upload.publish());
-}
-
 static std::array<unsigned, 4> oracle(std::array<unsigned, 4> rgba, rdesc::ETextureColorSpace space)
 {
     if (space == rdesc::ETextureColorSpace::DATA) return rgba;
@@ -100,7 +93,8 @@ int main()
         if (space == rdesc::ETextureColorSpace::LINEAR)
             info.flags = rdesc::toUnderlying(rdesc::ETextureAssetFlags::PREMULTIPLIED_ALPHA);
         const auto last = info.mip_ranges[3];
-        std::vector<std::byte> input(last.offset + last.size);
+        auto input_owner = std::make_shared<std::vector<std::byte>>(last.offset + last.size);
+        auto& input = *input_owner;
         std::array<std::array<unsigned, 4>, 4> values{{{128, 64, 32, 192}, {255, 0, 0, 255},
             {0, 255, 0, 128}, {0, 0, 255, 64}}};
         if (space == rdesc::ETextureColorSpace::LINEAR)
@@ -112,12 +106,11 @@ int main()
         {
             auto ambiguous = info;
             ambiguous.flags = rdesc::toUnderlying(rdesc::ETextureAssetFlags::PREMULTIPLIED_ALPHA);
-            CHECK(!TextureUpload::create(*session, ambiguous, input));
+            CHECK(!lux::render::upload(storage, SetTexture::Request{{}, 0, ambiguous, payload(input_owner)}));
         }
-        auto upload = take(TextureUpload::create(*session, info, input));
-        upload->setCompletionPost(host.post());
-        const auto published = take(storage.reserve(*upload));
-        complete(*upload, host); upload.reset();
+        auto upload = take(lux::render::upload(storage, SetTexture::Request{{}, 0, info, payload(input_owner)}));
+        const auto published = upload.first;
+        complete(upload.second, host, *session); upload.second.reset();
         for (unsigned mip = 0; mip < 4; ++mip)
         {
             texture_fixture::Config config{published.texture, 16, 16, 4,
@@ -178,10 +171,10 @@ int main()
                 for (auto* view : views) CHECK(take(view->execute()));
                 auto* old = take(storage.acquire(published.texture));
                 std::vector<std::byte> replacement(input.size(), std::byte{64});
-                upload = take(TextureUpload::create(*session, info, replacement));
-                upload->setCompletionPost(host.post());
-                CHECK(storage.reserve(*upload, published.texture, 1));
-                complete(*upload, host); upload.reset();
+                auto replacement_owner = std::make_shared<const std::vector<std::byte>>(std::move(replacement));
+                upload = take(lux::render::upload(storage,
+                    SetTexture::Request{published.texture, 1, info, payload(replacement_owner)}));
+                complete(upload.second, host, *session); upload.second.reset();
                 CHECK(old->descriptorIndex() != storage.find(published.texture)->descriptorIndex());
                 CHECK(storage.residentVersions() == 2);
                 storage.releaseLease(*old);
@@ -191,11 +184,10 @@ int main()
                 for (auto* view : views) pixels(take(view->readback()), oracle({64, 64, 64, 64}, space), tolerance);
                 CHECK(pipelines == old_pipelines + 1);
 
-                std::array<std::byte, 20> patch;
-                patch.fill(std::byte{96});
-                upload = take(storage.uploadRegion(published.texture, 2, {3, 0, 0, 2, 2, 12}, patch));
-                upload->setCompletionPost(host.post());
-                complete(*upload, host); upload.reset();
+                auto patch_owner = std::make_shared<const std::vector<std::byte>>(20, std::byte{96});
+                upload = take(lux::render::upload(storage,
+                    SetTextureRegion::Request{published.texture, 2, {3, 0, 0, 2, 2, 12}, payload(patch_owner)}));
+                complete(upload.second, host, *session); upload.second.reset();
                 for (auto* view : views) CHECK(take(view->execute()));
                 CHECK(take(session->queue().wait(*views.back()->lastUse(), UINT64_MAX)));
                 for (auto* view : views) pixels(take(view->readback()), oracle({96, 96, 96, 96}, space), tolerance);
@@ -219,10 +211,10 @@ int main()
         std::vector<std::byte> blocks(end.offset + end.size);
         for (std::size_t i = 0; i < blocks.size(); i += 8)
         { blocks[i] = std::byte{0}; blocks[i + 1] = std::byte{0xf8}; } // RGB565 red, index zero
-        auto upload = take(TextureUpload::create(*session, info, blocks));
-        upload->setCompletionPost(host.post());
-        const auto id = take(storage.reserve(*upload)).texture;
-        complete(*upload, host); upload.reset();
+        auto blocks_owner = std::make_shared<const std::vector<std::byte>>(std::move(blocks));
+        auto upload = take(lux::render::upload(storage, SetTexture::Request{{}, 0, info, payload(blocks_owner)}));
+        const auto id = upload.first.texture;
+        complete(upload.second, host, *session); upload.second.reset();
         texture_fixture::Config config{id, 16, 16, 4, rdesc::ETextureFormat::BC1_RGBA_SRGB, 1};
         auto assembly = take(texture_fixture::assemble(config));
         auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,

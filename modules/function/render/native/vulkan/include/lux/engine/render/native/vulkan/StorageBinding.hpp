@@ -16,7 +16,7 @@ namespace lux::render::vulkan
         VkDescriptorSet descriptors = VK_NULL_HANDLE;
         std::array<float, 4> parameters{};
         bool provides_parameters = false;
-        std::optional<SubmissionTicket>* last_use = nullptr;
+        SubmissionRequirements* last_use = nullptr;
         std::unique_ptr<void, void (*)(void*) noexcept> reference{nullptr, [](void*) noexcept {}};
     };
 

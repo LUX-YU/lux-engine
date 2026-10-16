@@ -12,7 +12,6 @@ namespace lux::render::vulkan
 {
     class CompiledGraph;
     class ExecutionContext;
-    class TextureUpload;
     class Transfer;
     struct ImageTransferRegion;
     struct TransferStats;
@@ -33,6 +32,8 @@ namespace lux::render::vulkan
 
         [[nodiscard]] RenderResult<void> drain() noexcept;
         [[nodiscard]] RenderResult<void> collect() noexcept;
+        // Explicit RenderThread safe point, separate from polling and resource admission/collection.
+        void dispatchCompletions() noexcept;
         [[nodiscard]] RenderResult<ExecutionContext*> prepare(
             std::shared_ptr<const CompiledGraph> code, const TargetDesc& target,
             const ResourceDomain& view, std::span<const StorageArgument> arguments = {}
@@ -82,11 +83,12 @@ namespace lux::render::vulkan
         // Cold completed-use release; accepted GPU work never goes through destroyUnsubmitted.
         [[nodiscard]] RenderResult<void> releaseCompleted(BufferPermit& permit, SubmissionTicket last_use) noexcept;
         [[nodiscard]] RenderResult<void> releaseCompleted(ImagePermit& permit, SubmissionTicket last_use) noexcept;
+        [[nodiscard]] RenderResult<void> releaseCompleted(BufferPermit& permit, const SubmissionRequirements&) noexcept;
+        [[nodiscard]] RenderResult<void> releaseCompleted(ImagePermit& permit, const SubmissionRequirements&) noexcept;
 
     private:
         friend struct NativeMemoryAudit;
         friend class RetirementQueue;
-        friend class TextureUpload;
         friend class Transfer;
         struct UploadState;
         [[nodiscard]] RenderResult<BufferAllocation*> createBufferRecord(
@@ -95,6 +97,7 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<ImageAllocation*> createImageRecord(const ImageDescription& description) noexcept;
         [[nodiscard]] bool owns(const BufferAllocation* value) const noexcept;
         [[nodiscard]] bool owns(const ImageAllocation* value) const noexcept;
+        [[nodiscard]] bool owns(const SubmissionRequirements&) const noexcept;
         // Trusted internal borrows only: Context completion, retirement, or fully drained Session shutdown.
         void destroyFinished(BufferAllocation* value) noexcept;
         void destroyFinished(ImageAllocation* value) noexcept;

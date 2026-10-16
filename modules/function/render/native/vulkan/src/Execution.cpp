@@ -277,7 +277,7 @@ namespace lux::render::vulkan
         auto submitted = std::move(*batch).submit();
         if (!submitted) return cxx::unexpected(submitted.error());
         last_use_ = *submitted;
-        for (const auto& lease : leases_) if (lease.binding.last_use) *lease.binding.last_use = *submitted;
+        for (const auto& lease : leases_) if (lease.binding.last_use) lease.binding.last_use->merge(*submitted);
         return true;
     }
 

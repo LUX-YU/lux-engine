@@ -16,12 +16,12 @@ namespace buffer_fixture
         native::DeviceSession& device;
         Config config;
         native::BufferPermit permit;
-        std::optional<native::SubmissionTicket> last_use;
+        native::SubmissionRequirements last_use;
 
         ~Native() noexcept
         {
             if (!device.borrow(permit)) return;
-            const auto result = last_use ? device.releaseCompleted(permit, *last_use) : device.destroyUnsubmitted(permit);
+            const auto result = last_use.empty() ? device.destroyUnsubmitted(permit) : device.releaseCompleted(permit, last_use);
             if (!result) std::terminate();
         }
     };

@@ -26,7 +26,7 @@ namespace lux::render::vulkan
             bool used = false;
             for (const auto& entry : entries_)
                 if (entry)
-                    for (const auto& wait : entry->waits) used |= wait.queue == other.get();
+                    for (const auto& wait : entry->requirements.uses()) used |= wait.queue == other.get();
             if (used) other->completePending();
         }
         // A lost unrelated queue is not a failure to retire this queue's records. Every recorded
@@ -37,10 +37,13 @@ namespace lux::render::vulkan
 
     RenderResult<std::size_t> RetirementQueue::collect() noexcept
     {
+        std::optional<RenderError> failure;
         for (auto& queue : owner_->queue_owners_)
             if (queue)
-                if (auto result = queue->poll(); !result) return cxx::unexpected(result.error());
-        return collectReady();
+                if (auto result = queue->poll(); !result && !failure) failure = result.error();
+        const auto count = collectReady();
+        if (failure) return cxx::unexpected(*failure);
+        return count;
     }
 
     std::size_t RetirementQueue::collectReady() noexcept
@@ -49,10 +52,7 @@ namespace lux::render::vulkan
         for (auto &entry : entries_)
         {
             if (!entry) continue;
-            bool ready = true;
-            for (const auto& wait : entry->waits)
-                if (wait.queue && wait.queue->completed() < wait.serial && !wait.queue->deviceLost()) ready = false;
-            if (ready)
+            if (entry->requirements.completed())
             {
                 destroy(*entry);
                 entry.reset();

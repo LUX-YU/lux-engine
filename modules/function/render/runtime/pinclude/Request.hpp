@@ -6,8 +6,6 @@
 
 namespace lux::render
 {
-    namespace runtime_detail { struct GpuAdmission; }
-
     // The sole source-qualified terminal owner. Public handlers only borrow CommandContext<C>.
     class RenderRequest final
     {
@@ -54,7 +52,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<std::size_t> prepareResponse(void*, platform::ipc::IpcMessage&) noexcept;
         [[nodiscard]] RenderResult<void> publishPrepared(platform::ipc::IpcMessage&, std::size_t charge) noexcept;
         [[nodiscard]] CommandInvocation
-        invocation(runtime_detail::GpuAdmission& admission, void* extension = nullptr) noexcept;
+        invocation(void* call_state, const CommandCompletionFns& functions, void* extension = nullptr) noexcept;
 
     private:
         [[nodiscard]] RenderResult<void> publishError(ECommandOutcome, RenderError) noexcept;

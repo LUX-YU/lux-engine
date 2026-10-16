@@ -1,64 +1,8 @@
 #include "TextureFixture.hpp"
+#include "TextureReadback.hpp"
 #include <fstream>
 
-static void roundtrip(DeviceSession& session, TextureUpload& candidate, std::span<const std::byte> source,
-    CpuFixture& worker)
-{
-    const auto deadline = Clock::now() + std::chrono::seconds(20);
-    while (!take(advanceAfterCpu(worker, candidate)))
-    {
-        CHECK(Clock::now() < deadline);
-        std::this_thread::yield();
-    }
-    CHECK(&candidate.lastUse()->owner() == &session.queue());
-    auto image = take(candidate.takeImage());
-    auto output = take(session.createBuffer(source.size(), VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::READBACK));
-    auto batch = take(session.queue().begin());
-    VkImageMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
-    barrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-    barrier.srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT;
-    barrier.dstStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
-    barrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
-    barrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    barrier.srcQueueFamilyIndex = barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = session.borrow(image)->native();
-    barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, candidate.info().mip_count, 0, 1};
-    VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};
-    dependency.imageMemoryBarrierCount = 1;
-    dependency.pImageMemoryBarriers = &barrier;
-    vkCmdPipelineBarrier2(batch.native(), &dependency);
-    for (unsigned mip = 0; mip < candidate.info().mip_count; ++mip)
-    {
-        const auto& range = candidate.info().mip_ranges[mip];
-        VkBufferImageCopy copy{};
-        copy.bufferOffset = range.offset;
-        copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, 1};
-        copy.imageExtent = {range.width, range.height, 1};
-        vkCmdCopyImageToBuffer(batch.native(), barrier.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-            session.borrow(output)->native(), 1, &copy);
-    }
-    VkBufferMemoryBarrier2 host{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2};
-    host.srcStageMask = VK_PIPELINE_STAGE_2_COPY_BIT;
-    host.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
-    host.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
-    host.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
-    host.srcQueueFamilyIndex = host.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    host.buffer = session.borrow(output)->native();
-    host.size = VK_WHOLE_SIZE;
-    dependency.imageMemoryBarrierCount = 0;
-    dependency.bufferMemoryBarrierCount = 1;
-    dependency.pBufferMemoryBarriers = &host;
-    vkCmdPipelineBarrier2(batch.native(), &dependency);
-    const auto ticket = take(std::move(batch).submit());
-    CHECK(take(session.queue().wait(ticket, UINT64_MAX)));
-    std::vector<std::byte> bytes(source.size());
-    CHECK(session.read(*session.borrow(output), 0, bytes));
-    CHECK(std::ranges::equal(bytes, source));
-    CHECK(session.releaseCompleted(image, ticket));
-    CHECK(session.releaseCompleted(output, ticket));
-}
-
+// Historical CTest name is retained. The real consumer is now StorageTraits through render::upload.
 int main()
 {
     Validation validation;
@@ -72,36 +16,42 @@ int main()
             DeviceOptions options;
             options.multiple_queues = mode != 0;
             options.prefer_dedicated_queues = mode == 2;
+            options.texture_descriptors = true;
             options.texture_compression_bc = true;
             options.host_query_reset = true;
             auto session = take(DeviceSession::create(bootstrap, options));
             CHECK(session->configureUploads({1024 * 1024, 1, 128 * 1024 * 1024, true}, worker.cpu()));
+            CHECK(configureTextures(*session, 16, 256 * 1024 * 1024));
+            auto& storage = *textures(*session);
             for (unsigned sample = 0; sample < 5; ++sample)
             {
                 const bool bc = sample == 4;
                 auto info = information(sample == 0 ? 512 : sample == 1 ? 2048 : sample == 2 ? 4096 : 64,
                     sample >= 3 ? 4 : 1, bc);
                 const auto& last = info.mip_ranges[info.mip_count - 1];
-                std::vector<std::byte> source(last.offset + last.size);
-                for (std::size_t i = 0; i < source.size(); ++i) source[i] = std::byte(i % 251);
-                auto malformed = info;
-                malformed.mip_ranges[0].size = UINT64_MAX;
-                CHECK(!TextureUpload::create(*session, malformed, source));
-                malformed = info;
-                malformed.color_space = rdesc::ETextureColorSpace::UNKNOWN;
-                CHECK(!TextureUpload::create(*session, malformed, source));
+                auto source = std::make_shared<std::vector<std::byte>>(last.offset + last.size);
+                for (std::size_t i = 0; i < source->size(); ++i) (*source)[i] = std::byte(i % 251);
+                SetTexture::Request request{{}, 0, info, payload(source)};
+                auto malformed = request;
+                malformed.info.mip_ranges[0].size = UINT64_MAX;
+                CHECK(!lux::render::upload(storage, malformed));
+                malformed = request;
+                malformed.info.color_space = rdesc::ETextureColorSpace::UNKNOWN;
+                CHECK(!lux::render::upload(storage, malformed));
                 const auto before = session->uploadStats();
                 const auto start = Clock::now();
-                auto candidate = take(TextureUpload::create(*session, info, source));
-                candidate->setCompletionPost(worker.post());
-                CHECK(!TextureUpload::create(*session, info, source)); // page capacity; no dedicated fallback
-                CHECK(!candidate->takeImage()); // no early publication
-                roundtrip(*session, *candidate, source, worker);
-                candidate.reset();
+                auto candidate = take(lux::render::upload(storage, request));
+                CHECK(!lux::render::upload(storage, request)); // page capacity; no dedicated fallback
+                CHECK(!storage.find(candidate.first.texture));
+                complete(candidate.second, worker, *session);
+                candidate.second.reset();
+                const auto* backing = storage.find(candidate.first.texture);
+                CHECK(backing && std::ranges::equal(read(*session, *backing), *source));
+                CHECK(storage.release(candidate.first.texture, candidate.first.revision));
                 const auto wall = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count();
                 const auto after = session->uploadStats();
                 CHECK(after.pending_bytes == 0 && after.staging_bytes == 1024 * 1024);
-                csv << options.multiple_queues << ',' << options.prefer_dedicated_queues << ',' << source.size() << ','
+                csv << options.multiple_queues << ',' << options.prefer_dedicated_queues << ',' << source->size() << ','
                     << info.mip_count << ',' << bc << ',' << after.chunks - before.chunks << ','
                     << after.prepare_ns - before.prepare_ns << ',' << after.owner_ns - before.owner_ns << ','
                     << wall << ',' << after.staging_bytes << ',' << after.pending_peak << ','

@@ -14,13 +14,11 @@ int main()
     auto session = take(DeviceSession::create(bootstrap, options));
     CHECK(session->configureUploads({1024 * 1024, 1, 1024 * 1024}, host.cpu()));
     CHECK(configureTextures(*session, 16, 1024 * 1024));
-    std::vector<std::byte> input(1024, std::byte{73});
-    auto upload = take(TextureUpload::create(*session, information(16, 1, false), input));
-    upload->setCompletionPost(host.post());
-    const auto texture = take(textures(*session)->reserve(*upload));
-    const auto end = Clock::now() + std::chrono::seconds(10);
-    while (!take(advanceAfterCpu(host, *upload))) { CHECK(Clock::now() < end); std::this_thread::yield(); }
-    CHECK(upload->publish()); upload.reset();
+    auto input = std::make_shared<const std::vector<std::byte>>(1024, std::byte{73});
+    const SetTexture::Request request{{}, 0, information(16, 1, false), payload(input)};
+    auto upload = take(lux::render::upload(*textures(*session), request));
+    const auto texture = upload.first;
+    complete(upload.second, host, *session); upload.second.reset();
     texture_fixture::Config config{texture.texture};
     auto assembly = take(texture_fixture::assemble(config));
     auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
@@ -28,7 +26,7 @@ int main()
     auto* context = take(session->prepare(code, texture_fixture::target(config), {}, texture_fixture::arguments(config)));
     CHECK(take(context->execute()));
     CHECK(take(session->queue().wait(*context->lastUse(), UINT64_MAX)));
-    CHECK(take(context->readback()) == input);
+    CHECK(take(context->readback()) == *input);
     CHECK(session->release(context));
     CHECK(textures(*session)->release(texture.texture, 1));
     code.reset(); session.reset();

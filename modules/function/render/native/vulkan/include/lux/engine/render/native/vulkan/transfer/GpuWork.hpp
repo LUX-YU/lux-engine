@@ -1,41 +1,48 @@
 #pragma once
 
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
+#include <lux/engine/render/native/vulkan/transfer/Transfer.hpp>
+#include <utility>
 
 namespace lux::render::vulkan
 {
-    // A single Native work owner, erased once at admission. It never owns a RenderRequest or a second queue.
+    // One Native Transfer and its professional publication candidate. There is no erased GPU driver:
+    // all pending work uses the same concrete Transfer state machine and its real Queue callbacks.
     class GpuWork final
     {
     public:
         GpuWork() noexcept = default;
+        ~GpuWork() noexcept { reset(); }
         GpuWork(GpuWork&&) noexcept = default;
-        GpuWork& operator=(GpuWork&&) noexcept = default;
+        GpuWork& operator=(GpuWork&& other) noexcept
+        {
+            if (this == &other) return *this;
+            reset();
+            session_ = other.session_;
+            transfer_ = std::move(other.transfer_);
+            owner_ = std::move(other.owner_);
+            ready_ = std::exchange(other.ready_, nullptr);
+            accepted_ready_ = std::exchange(other.accepted_ready_, nullptr);
+            accepted_ = std::exchange(other.accepted_, std::nullopt);
+            return *this;
+        }
         GpuWork(const GpuWork&) = delete;
         GpuWork& operator=(const GpuWork&) = delete;
 
         template <auto Ready, class T>
-        [[nodiscard]] static RenderResult<GpuWork> pending(DeviceSession& session, std::unique_ptr<T>& value) noexcept
+        [[nodiscard]] static RenderResult<GpuWork> pending(
+            DeviceSession& session, std::unique_ptr<Transfer>& transfer, std::unique_ptr<T>& candidate
+        ) noexcept
         {
-            if (!value || !value->unstartedIn(session)) return cxx::unexpected(RenderError{kWrongOwner});
+            if (!transfer || !candidate || !transfer->unstartedIn(session))
+                return cxx::unexpected(RenderError{kWrongOwner});
             GpuWork result;
             result.session_ = &session;
-            for (std::size_t role = 0; role < result.before_.size(); ++role)
-                result.before_[role] = session.queue(static_cast<EQueueRole>(role)).submitted();
-            result.owner_ = {value.release(), [](void* p) noexcept { delete static_cast<T*>(p); }};
-            result.advance_ = [](void* p) noexcept { return static_cast<T*>(p)->advance(); };
-            result.cancel_ = [](void* p) noexcept { static_cast<T*>(p)->cancel(); };
-            result.ticket_ = [](const void* p) noexcept { return static_cast<const T*>(p)->lastUse(); };
-            if constexpr (requires(T& owner, CompletionPost post, std::shared_ptr<const void> pin) {
-                owner.setCompletionPost(post, pin, pin);
-            })
-            {
-                result.set_cpu_ = [](void* p, CompletionPost post, std::shared_ptr<const void> implementation,
-                    std::shared_ptr<const void> registration) noexcept {
-                    static_cast<T*>(p)->setCompletionPost(post, std::move(implementation), std::move(registration));
-                };
-            }
-            result.ready_ = [](void* p, DeviceSession& device) noexcept { return Ready(*static_cast<T*>(p), device); };
+            result.transfer_ = std::move(transfer);
+            result.owner_ = {candidate.release(), [](void* value) noexcept { delete static_cast<T*>(value); }};
+            result.ready_ = [](void* value, Transfer& work, DeviceSession& device) noexcept {
+                return Ready(*static_cast<T*>(value), work, device);
+            };
             return result;
         }
 
@@ -44,38 +51,30 @@ namespace lux::render::vulkan
             RenderResult<void> (*ready)(void*, DeviceSession&) noexcept) noexcept;
         [[nodiscard]] bool unstartedIn(const DeviceSession& session) const noexcept
         {
-            return session_ == &session && owner_ && advance_ && !started_;
+            return owner_ && transfer_ && session_ == &session && transfer_->unstartedIn(session);
         }
-        [[nodiscard]] RenderResult<bool> advance() noexcept;
+        [[nodiscard]] RenderResult<void> prepareCompletion() noexcept;
+        void start(CompletionPost post, void* owner, Transfer::TerminalFn terminal,
+            std::shared_ptr<const void> implementation, std::shared_ptr<const void> registration) noexcept;
         [[nodiscard]] RenderResult<void> publish() noexcept;
-        void setCompletionPost(CompletionPost post, std::shared_ptr<const void> implementation,
-            std::shared_ptr<const void> registration) noexcept
+        void cancel() noexcept { if (transfer_) transfer_->cancel(); }
+        void reset() noexcept
         {
-            if (set_cpu_) set_cpu_(owner_.get(), post, std::move(implementation), std::move(registration));
-        }
-        void cancel() noexcept
-        {
-            if (!failure_) failure_ = RenderError{kWorkStopped};
-            if (cancel_) cancel_(owner_.get());
-        }
-        void reset() noexcept { owner_.reset(); }
-        [[nodiscard]] std::optional<SubmissionTicket> lastUse() const noexcept
-        {
-            return ticket_ ? ticket_(owner_.get()) : accepted_;
+            // Candidate rollback destroys dependent views/samplers before Transfer releases its image.
+            // Transfer teardown borrows only DeviceSession/pages/Permits, never the candidate Storage.
+            owner_.reset();
+            transfer_.reset();
+            ready_ = nullptr;
+            accepted_ready_ = nullptr;
+            accepted_.reset();
         }
 
     private:
-        using SetCpu = void (*)(void*, CompletionPost, std::shared_ptr<const void>, std::shared_ptr<const void>) noexcept;
         DeviceSession* session_ = nullptr;
+        std::unique_ptr<Transfer> transfer_;
         std::unique_ptr<void, void (*)(void*) noexcept> owner_{nullptr, [](void*) noexcept {}};
-        RenderResult<bool> (*advance_)(void*) noexcept = nullptr;
-        void (*cancel_)(void*) noexcept = nullptr;
-        SetCpu set_cpu_ = nullptr;
-        std::optional<SubmissionTicket> (*ticket_)(const void*) noexcept = nullptr;
-        RenderResult<void> (*ready_)(void*, DeviceSession&) noexcept = nullptr;
+        RenderResult<void> (*ready_)(void*, Transfer&, DeviceSession&) noexcept = nullptr;
+        RenderResult<void> (*accepted_ready_)(void*, DeviceSession&) noexcept = nullptr;
         std::optional<SubmissionTicket> accepted_;
-        std::optional<RenderError> failure_;
-        std::array<std::uint64_t, 3> before_{};
-        bool started_ = false, completed_ = false;
     };
 }

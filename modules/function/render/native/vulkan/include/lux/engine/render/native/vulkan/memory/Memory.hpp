@@ -98,7 +98,6 @@ namespace lux::render::vulkan
         friend class DeviceSession;
         friend class RetirementQueue;
         cxx::SlotKey<BufferAllocationTag> key_;
-        friend class TextureUpload;
         friend class Transfer;
         VkBuffer buffer_;
         VmaAllocation_T* allocation_;

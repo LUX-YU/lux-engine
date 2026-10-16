@@ -6,6 +6,8 @@
 
 namespace lux::render::vulkan
 {
+    class TextureStorage;
+
     struct TransferStats final
     {
         std::uint64_t copied_bytes = 0, chunks = 0, prepare_ns = 0, owner_ns = 0;
@@ -31,16 +33,19 @@ namespace lux::render::vulkan
         ~Transfer() noexcept;
         Transfer(const Transfer&) = delete;
         Transfer& operator=(const Transfer&) = delete;
-        [[nodiscard]] RenderResult<bool> advance() noexcept;
-        void setCompletionPost(CompletionPost post, std::shared_ptr<const void> implementation = {},
-            std::shared_ptr<const void> registration = {}) noexcept;
-        void cancel() noexcept { cancelled_ = true; }
+        using TerminalFn = void (*)(void*, RenderResult<void>) noexcept;
+        [[nodiscard]] RenderResult<void> prepareCompletion() noexcept;
+        void start(CompletionPost post, void* owner, TerminalFn terminal,
+            std::shared_ptr<const void> implementation = {}, std::shared_ptr<const void> registration = {}) noexcept;
+        void cancel() noexcept;
         [[nodiscard]] VkDevice device() const noexcept;
-        [[nodiscard]] std::optional<SubmissionTicket> lastUse() const noexcept { return ticket_; }
-        [[nodiscard]] bool completed() const noexcept { return phase_ == EPhase::COMPLETE && !cancelled_; }
+        [[nodiscard]] std::optional<SubmissionTicket> lastSubmission() const noexcept { return ticket_; }
+        [[nodiscard]] const SubmissionRequirements& requirements() const noexcept { return requirements_; }
+        [[nodiscard]] bool completed() const noexcept { return phase_ == EPhase::COMPLETE; }
+        [[nodiscard]] RenderResult<void> result() const noexcept;
         [[nodiscard]] bool unstartedIn(const DeviceSession& session) const noexcept
         {
-            return session_ == &session && phase_ == EPhase::PREPARE && !ticket_ && !cancelled_;
+            return session_ == &session && !started_ && !failure_;
         }
         [[nodiscard]] const ImageAllocation& image() const noexcept;
         [[nodiscard]] const BufferAllocation& buffer() const noexcept;
@@ -56,6 +61,9 @@ namespace lux::render::vulkan
         struct CpuPreparation;
         static void prepare(void*) noexcept;
         static void resumeCpu(void*, RenderResult<void>) noexcept;
+        static void resumeGpu(void*, RenderResult<void>) noexcept;
+        void continueTransfer() noexcept;
+        void finish() noexcept;
         void recordImage(VkCommandBuffer command, bool acquiring, bool final) noexcept;
         void recordBuffer(VkCommandBuffer command, bool acquiring, bool final) noexcept;
         DeviceSession* session_;
@@ -64,6 +72,7 @@ namespace lux::render::vulkan
         ImagePermit image_;
         BufferPermit buffer_;
         const ImageAllocation* clone_ = nullptr;
+        SubmissionRequirements* clone_last_use_ = nullptr;
         std::vector<ImageTransferRegion> regions_;
         std::size_t page_, region_ = 0, offset_ = 0;
         std::uint32_t row_ = 0, rows_ = 0;
@@ -71,11 +80,15 @@ namespace lux::render::vulkan
         CompletionPost completion_post_;
         std::shared_ptr<const void> implementation_pin_, registration_pin_;
         std::unique_ptr<CpuPreparation> cpu_preparation_;
-        std::optional<RenderError> cpu_failure_;
+        std::optional<RenderError> failure_;
         std::uint64_t prepare_ns_ = 0;
         std::optional<SubmissionTicket> ticket_;
+        SubmissionRequirements requirements_;
+        SubmissionCallback copy_callback_, graphics_callback_;
+        void* terminal_owner_ = nullptr;
+        TerminalFn terminal_ = nullptr;
         EPhase phase_ = EPhase::PREPARE;
-        bool cancelled_ = false, initialized_ = false, query_pending_ = false;
+        bool started_ = false, initialized_ = false, query_pending_ = false;
         SubmissionQueue* copy_queue_ = nullptr;
     };
 }

@@ -1,6 +1,7 @@
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
 
 #include "Native.hpp"
+#include <algorithm>
 #include <exception>
 #include <limits>
 #include <optional>
@@ -22,9 +23,12 @@ namespace lux::render::vulkan
         std::uint64_t recording_id{};
         bool recording{};
         std::optional<RenderError> terminal;
+        SubmissionCallback* callbacks = nullptr;
+        std::size_t callback_reservations = 0;
+        std::size_t callback_capacity;
 
-        Backing(VkDevice device, NativeQueue queue, std::uint32_t capacity)
-            : device(device), queue(queue), commands(capacity), fences(capacity)
+        Backing(VkDevice device, NativeQueue queue, std::uint32_t capacity, std::uint32_t callbacks)
+            : device(device), queue(queue), commands(capacity), fences(capacity), callback_capacity(callbacks)
         {
         }
 
@@ -53,10 +57,11 @@ namespace lux::render::vulkan
     RenderResult<std::unique_ptr<SubmissionQueue>> SubmissionQueue::create(
         const VulkanDevice& device,
         std::uint32_t capacity,
-        EQueueRole role
+        EQueueRole role,
+        std::uint32_t callback_capacity
     ) noexcept
     {
-        if (capacity == 0)
+        if (capacity == 0 || callback_capacity == 0)
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
@@ -64,7 +69,7 @@ namespace lux::render::vulkan
         {
             return cxx::unexpected(RenderError{kInvalidArgument});
         }
-        auto backing = std::make_unique<Backing>(device.native(), device.queue(role), capacity);
+        auto backing = std::make_unique<Backing>(device.native(), device.queue(role), capacity, callback_capacity);
         VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
         pool.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
         pool.queueFamilyIndex = backing->queue.family;
@@ -109,8 +114,105 @@ namespace lux::render::vulkan
 
     SubmissionQueue::~SubmissionQueue() noexcept
     {
+        // Subscribers borrow this queue. Their owners must settle and release reservations before teardown.
+        if (backing_->callback_reservations != 0) std::terminate();
         completePending();
     }
+
+    void SubmissionRequirements::merge(SubmissionTicket ticket) noexcept
+    {
+        for (auto& use : uses_)
+        {
+            if (use.queue == &ticket.owner())
+            {
+                use.serial = std::max(use.serial, ticket.serial());
+                return;
+            }
+            if (!use.queue)
+            {
+                use = {&ticket.owner(), ticket.serial()};
+                return;
+            }
+        }
+        // DeviceSession has at most three physical queue owners. No unbounded spill storage.
+        std::terminate();
+    }
+
+    bool SubmissionRequirements::completed() const noexcept
+    {
+        for (const auto& use : uses_)
+            if (use.queue && use.queue->completed() < use.serial && !use.queue->deviceLost()) return false;
+        return true;
+    }
+
+    SubmissionCallback::~SubmissionCallback() noexcept { reset(); }
+
+    void SubmissionCallback::reset() noexcept
+    {
+        if (armed_) std::terminate();
+        if (queue_) queue_->releaseCallback(*this);
+    }
+
+    RenderResult<void> SubmissionQueue::reserve(SubmissionCallback& callback) noexcept
+    {
+        if (callback.queue_) return cxx::unexpected(RenderError{kBusy});
+        if (backing_->terminal) return cxx::unexpected(*backing_->terminal);
+        if (backing_->callback_reservations == backing_->callback_capacity)
+            return cxx::unexpected(RenderError{kCapacity});
+        ++backing_->callback_reservations;
+        callback.queue_ = this;
+        return {};
+    }
+
+    void SubmissionQueue::releaseCallback(SubmissionCallback& callback) noexcept
+    {
+        --backing_->callback_reservations;
+        callback.queue_ = nullptr;
+    }
+
+    RenderResult<void> SubmissionQueue::onComplete(SubmissionTicket ticket, SubmissionCallback& callback,
+        SubmissionCallbackFn function, void* user) noexcept
+    {
+        const bool is_invalid_subscription = callback.queue_ != this || callback.armed_ || !function || !owns(ticket);
+        if (is_invalid_subscription) return cxx::unexpected(RenderError{kWrongOwner});
+        callback.callback_ = function;
+        callback.user_ = user;
+        callback.serial_ = ticket.serial();
+        callback.armed_ = true;
+        auto** link = &backing_->callbacks;
+        while (*link && (*link)->serial_ <= ticket.serial()) link = &(*link)->next_;
+        callback.next_ = *link;
+        *link = &callback;
+        return {};
+    }
+
+    void SubmissionQueue::dispatchCompleted() noexcept
+    {
+        auto* ready = backing_->callbacks;
+        auto** end = &backing_->callbacks;
+        while (*end && (backing_->terminal || (*end)->serial_ <= backing_->completed)) end = &(*end)->next_;
+        if (end == &backing_->callbacks) return;
+        auto* pending = *end;
+        *end = nullptr;
+        backing_->callbacks = pending;
+        const auto terminal = backing_->terminal;
+        // Detached ready-prefix snapshot: callback re-registration cannot extend this dispatch indefinitely.
+        while (ready)
+        {
+            auto* current = ready;
+            ready = current->next_;
+            const auto function = current->callback_;
+            auto* user = current->user_;
+            current->next_ = nullptr;
+            current->armed_ = false;
+            function(user, terminal ? RenderResult<void>{cxx::unexpected(*terminal)} : RenderResult<void>{});
+            // The callback may destroy its node and enclosing operation. Never access current again.
+        }
+    }
+
+    std::size_t SubmissionQueue::callbackReservations() const noexcept { return backing_->callback_reservations; }
+
+    std::size_t SubmissionQueue::callbackCapacity() const noexcept { return backing_->callback_capacity; }
 
     void SubmissionQueue::completePending() noexcept
     {

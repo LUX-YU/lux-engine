@@ -307,12 +307,38 @@ namespace lux::render::vulkan
 
     RenderResult<void> DeviceSession::releaseCompleted(BufferPermit& permit, SubmissionTicket ticket) noexcept
     {
+        SubmissionRequirements uses;
+        uses.merge(ticket);
+        return releaseCompleted(permit, uses);
+    }
+
+    RenderResult<void> DeviceSession::releaseCompleted(ImagePermit& permit, SubmissionTicket ticket) noexcept
+    {
+        SubmissionRequirements uses;
+        uses.merge(ticket);
+        return releaseCompleted(permit, uses);
+    }
+
+    bool DeviceSession::owns(const SubmissionRequirements& uses) const noexcept
+    {
+        if (uses.empty()) return false;
+        for (const auto& use : uses.uses())
+        {
+            if (!use.queue) continue;
+            const auto owner = std::find_if(queue_owners_.begin(), queue_owners_.end(), [&](const auto& queue) {
+                return queue.get() == use.queue;
+            });
+            if (owner == queue_owners_.end() || use.serial == 0 || use.serial > (*owner)->submitted()) return false;
+        }
+        return true;
+    }
+
+    RenderResult<void> DeviceSession::releaseCompleted(BufferPermit& permit, const SubmissionRequirements& uses) noexcept
+    {
         auto* value = borrow(permit);
-        auto* queue = queueFor(ticket);
-        const bool is_wrong_owner = !value || !queue;
+        const bool is_wrong_owner = !value || !owns(uses);
         if (is_wrong_owner) return cxx::unexpected(RenderError{kWrongOwner});
-        if (!queue->deviceLost() && queue->completed() < ticket.serial())
-            return cxx::unexpected(RenderError{kBusy});
+        if (!uses.completed()) return cxx::unexpected(RenderError{kBusy});
         value->retired_ = true;
         permit.owner_ = nullptr;
         permit.key_ = {};
@@ -320,14 +346,12 @@ namespace lux::render::vulkan
         return {};
     }
 
-    RenderResult<void> DeviceSession::releaseCompleted(ImagePermit& permit, SubmissionTicket ticket) noexcept
+    RenderResult<void> DeviceSession::releaseCompleted(ImagePermit& permit, const SubmissionRequirements& uses) noexcept
     {
         auto* value = borrow(permit);
-        auto* queue = queueFor(ticket);
-        const bool is_wrong_owner = !value || !queue;
+        const bool is_wrong_owner = !value || !owns(uses);
         if (is_wrong_owner) return cxx::unexpected(RenderError{kWrongOwner});
-        if (!queue->deviceLost() && queue->completed() < ticket.serial())
-            return cxx::unexpected(RenderError{kBusy});
+        if (!uses.completed()) return cxx::unexpected(RenderError{kBusy});
         value->retired_ = true;
         permit.owner_ = nullptr;
         permit.key_ = {};

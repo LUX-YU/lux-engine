@@ -2,7 +2,10 @@
 #include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include "../pinclude/TypedProtocol.hpp"
+#include "../../resource/test/CpuFixture.hpp"
 #include <Windows.h>
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -50,7 +53,7 @@ static RenderCompletion wait(RenderClient& client, RequestId id)
     return {};
 }
 
-enum class EReplyCase { SUCCESS, HELLO, FAILURE_REPLY };
+enum class EReplyCase { SUCCESS, HELLO, FAILURE_REPLY, EXTRACTED_READBACK };
 
 static void lateReply(EReplyCase mode)
 {
@@ -61,7 +64,8 @@ static void lateReply(EReplyCase mode)
         check(FreeLibrary(static_cast<HMODULE>(const_cast<void*>(value))) != 0, "plugin unload failed");
         ++unloaded;
     });
-    using Create = RenderServer* (*)(const char*, const std::shared_ptr<const void>*) noexcept;
+    using Create = RenderServer* (*)(const char*, const std::shared_ptr<const void>*, const CpuSchedule*) noexcept;
+    using Readback = bool (*)(const char*, RenderPayload*) noexcept;
     using Run = bool (*)(RenderServer*) noexcept;
     using Stop = void (*)(RenderServer*) noexcept;
     using Destroy = void (*)(RenderServer*) noexcept;
@@ -69,16 +73,37 @@ static void lateReply(EReplyCase mode)
     const auto run = reinterpret_cast<Run>(GetProcAddress(module, "serverDllRun"));
     const auto stop = reinterpret_cast<Stop>(GetProcAddress(module, "serverDllStop"));
     const auto destroy = reinterpret_cast<Destroy>(GetProcAddress(module, "serverDllDestroy"));
-    check(create && run && stop && destroy, "plugin exports missing");
+    const auto readback = reinterpret_cast<Readback>(GetProcAddress(module, "serverDllReadback"));
+    check(create && run && stop && destroy && readback, "plugin exports missing");
 
-    auto* server = create("runtime.server.dll", &pin);
+    std::optional<test::CpuFixture> cpu;
+    if (mode == EReplyCase::EXTRACTED_READBACK) cpu.emplace();
+    const auto scheduler = cpu ? cpu->cpu() : CpuSchedule{};
+    auto* server = create("runtime.server.dll", &pin, &scheduler);
     check(server != nullptr, "plugin server create failed");
     bool run_ok = false;
     std::thread worker([&] { run_ok = run(server); });
     std::optional<TypedRenderCompletion<CreateScene>> success;
     RenderCompletion hello;
     ipc::IpcReply error;
-    if (mode == EReplyCase::FAILURE_REPLY)
+    RenderPayload extracted;
+    std::vector<std::byte> extracted_snapshot;
+    if (mode == EReplyCase::EXTRACTED_READBACK)
+    {
+        check(readback("runtime.server.dll", &extracted), "real GPU Readback helper failed");
+        const auto bytes = extracted.bytes().view();
+        check(bytes.size() == 32 * 32 * 4, "initial Readback has incorrect dimensions");
+        extracted_snapshot.assign(bytes.begin(), bytes.end());
+        std::printf("Server DLL: Readback before destruction first pixel = %u,%u,%u,%u\n",
+            std::to_integer<unsigned>(bytes[0]), std::to_integer<unsigned>(bytes[1]),
+            std::to_integer<unsigned>(bytes[2]), std::to_integer<unsigned>(bytes[3]));
+        std::fflush(stdout);
+        constexpr std::array expected{32, 64, 128, 255};
+        for (std::size_t i = 0; i < bytes.size(); ++i)
+            check(std::abs(std::to_integer<int>(bytes[i]) - expected[i % 4]) <= 1,
+                "initial real GPU Readback failed the existing UNORM pixel oracle");
+    }
+    else if (mode == EReplyCase::FAILURE_REPLY)
     {
         // The original request is EXE-owned and carries no Server pin. This isolates the error
         // message's own implementation pin, without a builtin request masking a missing one.
@@ -126,6 +151,7 @@ static void lateReply(EReplyCase mode)
     worker.join();
     check(run_ok, "plugin server failed while running");
     destroy(server);
+    cpu.reset(); // The real scheduler's accepted callback tails finish while the host still pins the module.
     pin.reset();
     check(unloaded == 0 && GetModuleHandleW(L"render_server_dll_plugin.dll") != nullptr,
         "the last Reply did not retain Server implementation code");
@@ -134,9 +160,21 @@ static void lateReply(EReplyCase mode)
     if (mode == EReplyCase::FAILURE_REPLY)
         check(error.message.get<detail::ValueEnvelope<RenderError>>().value.type == kRuntimeIdentity,
             "late error became inaccessible");
+    if (mode == EReplyCase::EXTRACTED_READBACK)
+    {
+        const auto bytes = extracted.bytes().view();
+        check(bytes.size() == 32 * 32 * 4, "extracted Readback lost its owned bytes");
+        std::printf("Server DLL: Readback after destruction first pixel = %u,%u,%u,%u\n",
+            std::to_integer<unsigned>(bytes[0]), std::to_integer<unsigned>(bytes[1]),
+            std::to_integer<unsigned>(bytes[2]), std::to_integer<unsigned>(bytes[3]));
+        std::fflush(stdout);
+        check(std::equal(bytes.begin(), bytes.end(), extracted_snapshot.begin(), extracted_snapshot.end()),
+            "extracted Readback changed bytes after Server/Reply destruction");
+    }
     success.reset();
     hello = {};
     error = {};
+    extracted = {};
     check(unloaded == 1 && GetModuleHandleW(L"render_server_dll_plugin.dll") == nullptr,
         "final Reply destruction did not release the module exactly once after its thunk returned");
     std::printf("Server DLL: real late Reply case %u retained code and unloaded exactly once PASS\n", unsigned(mode));
@@ -148,4 +186,5 @@ int main()
     lateReply(EReplyCase::SUCCESS);
     lateReply(EReplyCase::HELLO);
     lateReply(EReplyCase::FAILURE_REPLY);
+    lateReply(EReplyCase::EXTRACTED_READBACK);
 }

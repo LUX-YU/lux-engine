@@ -3,21 +3,17 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include <lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp>
-#include <lux/engine/render/native/vulkan/transfer/TextureUpload.hpp>
+#include <lux/engine/render/resource/Upload.hpp>
 
 namespace lux::render
 {
     namespace
     {
-        RenderResult<void> commit(vulkan::DeviceSession& device, vulkan::GpuCompletionReservation& reservation,
-            TexturePublished result, std::unique_ptr<vulkan::TextureUpload>& upload) noexcept
+        RenderResult<void> commit(vulkan::GpuCompletionReservation& reservation,
+            std::pair<TexturePublished, vulkan::GpuWork>& candidate) noexcept
         {
-            if (auto prepared = reservation.setReply(&result); !prepared) return prepared;
-            auto work = vulkan::GpuWork::pending<
-                [](vulkan::TextureUpload& value, vulkan::DeviceSession&) noexcept { return value.publish(); }
-            >(device, upload);
-            if (!work) return cxx::unexpected(work.error());
-            return reservation.commitWork(*work);
+            if (auto prepared = reservation.setReply(&candidate.first); !prepared) return prepared;
+            return reservation.commitWork(candidate.second);
         }
 
         RenderResult<void> setTexture(void* native, CommandInvocation& invocation) noexcept
@@ -33,13 +29,9 @@ namespace lux::render
             TexturePublished response;
             auto reservation = vulkan::GpuCompletionReservation::reserve(invocation, device.queue(), &response);
             if (!reservation) return cxx::unexpected(reservation.error());
-            const auto source = input.source.bytes().view();
-            if (auto admitted = storage->admit(source.size(), input.texture.isNull()); !admitted) return admitted;
-            auto candidate = vulkan::TextureUpload::create(device, input.info, source);
+            auto candidate = render::upload(*storage, input);
             if (!candidate) return cxx::unexpected(candidate.error());
-            auto publication = storage->reserve(**candidate, input.texture, input.expected_revision);
-            if (!publication) return cxx::unexpected(publication.error());
-            return commit(device, *reservation, *publication, *candidate);
+            return commit(*reservation, *candidate);
         }
 
         RenderResult<void> setRegion(void* native, CommandInvocation& invocation) noexcept
@@ -54,10 +46,9 @@ namespace lux::render
             TexturePublished response;
             auto reservation = vulkan::GpuCompletionReservation::reserve(invocation, device.queue(), &response);
             if (!reservation) return cxx::unexpected(reservation.error());
-            auto candidate = storage->uploadRegion(input.texture, input.expected_revision,
-                input.region, input.source.bytes().view());
+            auto candidate = render::upload(*storage, input);
             if (!candidate) return cxx::unexpected(candidate.error());
-            return commit(device, *reservation, {input.texture, input.expected_revision + 1}, *candidate);
+            return commit(*reservation, *candidate);
         }
 
         RenderResult<void> release(void* native, CommandInvocation& invocation) noexcept

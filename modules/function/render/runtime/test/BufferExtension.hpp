@@ -20,15 +20,10 @@ namespace extension_test
         auto instance = registry.getOrCreate(registry.root(), "values", TestBufferStorage::description, nullptr);
         if (!instance) return lux::cxx::unexpected(instance.error());
         auto& storage = *static_cast<NativeBuffer*>(registry.native(*instance));
-        auto upload = storage.upload(input.source.bytes().view(), input.id);
+        auto upload = lux::render::upload(storage, input);
         if (!upload) return lux::cxx::unexpected(upload.error());
-        response.id = (*upload)->id;
-        if (auto ready = reservation->setReply(&response); !ready) return ready;
-        auto work = vk::GpuWork::pending<[](NativeBuffer::Upload& value, vk::DeviceSession&) noexcept {
-            return value.publish();
-        }>(session, *upload);
-        if (!work) return lux::cxx::unexpected(work.error());
-        return reservation->commitWork(*work);
+        if (auto ready = reservation->setReply(&upload->first); !ready) return ready;
+        return reservation->commitWork(upload->second);
     }
 
     inline RenderResult<void> removeBuffer(void* native, CommandInvocation& invocation) noexcept
@@ -111,7 +106,7 @@ namespace extension_test
         auto ticket = std::move(*commands).submit();
         if (!ticket) return lux::cxx::unexpected(ticket.error());
         owner->ticket = *ticket;
-        *owner->source.last_use = *ticket;
+        owner->source.last_use->merge(*ticket);
         return reservation->commit<[](Read& value, vk::DeviceSession& session) noexcept {
             return session.read(*session.borrow(value.buffer), 0, *value.output);
         }>(*ticket, owner);

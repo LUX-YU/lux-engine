@@ -9,6 +9,24 @@ set_target_properties(platform_ipc_attachments_test PROPERTIES RUNTIME_OUTPUT_DI
 add_test(NAME platform.ipc.attachments COMMAND platform_ipc_attachments_test)
 set_tests_properties(platform.ipc.attachments PROPERTIES TIMEOUT 30)
 
+# Cross-DLL owned values use the same allocation instrumentation as their EXE producer.
+add_library(ipc_typed_plugin SHARED TypedPlugin.cpp Allocation.cpp)
+
+target_link_libraries(ipc_typed_plugin PRIVATE platform_ipc)
+set_target_properties(ipc_typed_plugin PROPERTIES
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin"
+)
+
+add_executable(platform_ipc_typed_test TypedMessage.cpp Allocation.cpp)
+
+target_link_libraries(platform_ipc_typed_test PRIVATE platform_ipc)
+target_include_directories(platform_ipc_typed_test PRIVATE ../pinclude)
+add_dependencies(platform_ipc_typed_test ipc_typed_plugin)
+set_target_properties(platform_ipc_typed_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+add_test(NAME platform.ipc.typed COMMAND platform_ipc_typed_test)
+set_tests_properties(platform.ipc.typed PROPERTIES TIMEOUT 30)
+
 foreach(plugin A B)
     add_library(ipc_plugin_${plugin} SHARED Plugin${plugin}.cpp)
     target_link_libraries(ipc_plugin_${plugin} PRIVATE platform_ipc)

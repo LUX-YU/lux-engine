@@ -71,6 +71,39 @@ namespace lux::render
         std::vector<RenderPayload> attachments;
     };
 
+    struct FeatureInfo final
+    {
+        FeatureId id;
+        std::string name;
+    };
+
+    struct FeatureList final { std::vector<FeatureInfo> features; };
+
+    struct ListFeatures final
+    {
+        static constexpr std::string_view name{"render.features.list"};
+        using Request = EmptyRequest;
+        using Response = FeatureList;
+    };
+
+    template <> struct CommandValueTraits<FeatureList>
+    {
+        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const FeatureList& value) noexcept
+        {
+            std::size_t bytes = sizeof(value);
+            if (value.features.capacity() > (SIZE_MAX - bytes) / sizeof(FeatureInfo))
+                return cxx::unexpected(RenderError{kProtocolContract});
+            bytes += value.features.capacity() * sizeof(FeatureInfo);
+            for (const auto& feature : value.features)
+            {
+                if (feature.name.capacity() >= SIZE_MAX - bytes)
+                    return cxx::unexpected(RenderError{kProtocolContract});
+                bytes += feature.name.capacity() + 1;
+            }
+            return bytes;
+        }
+    };
+
     struct CreateScene final
     {
         static constexpr std::string_view name{"render.scene.create"};

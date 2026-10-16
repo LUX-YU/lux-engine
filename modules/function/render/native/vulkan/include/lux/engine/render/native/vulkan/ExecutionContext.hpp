@@ -57,7 +57,7 @@ namespace lux::render::vulkan
         std::vector<Binding> bindings_;
         struct StorageUse final
         {
-            StorageInstanceId id;
+            StorageId id;
             PreparedStorageBinding binding;
             bool created;
         };

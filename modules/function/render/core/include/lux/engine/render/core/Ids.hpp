@@ -24,11 +24,13 @@ namespace lux::render
     struct ViewTag;
     struct TargetTag;
     struct EffectTag;
+    struct FeatureTag;
 
     using SceneId   = cxx::SlotKey<SceneTag>;
     using ViewId    = cxx::SlotKey<ViewTag>;
     using TargetId  = cxx::SlotKey<TargetTag>;
     using EffectId  = cxx::SlotKey<EffectTag>;
+    using FeatureId = cxx::SlotKey<FeatureTag>;
 
     // Keys are owner-local. isValid() only checks the null sentinel; lookup must
     // validate generation in the owning SlotMap. View lookup also needs SceneId.

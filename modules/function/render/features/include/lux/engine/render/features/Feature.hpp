@@ -1,16 +1,17 @@
 #pragma once
 
 #include <lux/engine/render/data/Schema.hpp>
+#include <lux/engine/render/core/Ids.hpp>
 
 namespace lux::render
 {
-    struct FeatureTypeTag;
-    using FeatureTypeIdView = cxx::SchemaIdView<FeatureTypeTag>;
+    struct FeatureNameTag;
+    using FeatureName = cxx::SchemaIdView<FeatureNameTag>;
 
     // Immutable author metadata; no execution, command registration or selection policy.
     struct FeatureDescriptor final
     {
-        FeatureTypeIdView type;
+        FeatureName type;
         cxx::SchemaVersion version;
         const DataSchemaDescriptor* config_schema = nullptr;
     };

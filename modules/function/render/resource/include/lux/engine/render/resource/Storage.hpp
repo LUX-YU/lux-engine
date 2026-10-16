@@ -1,13 +1,19 @@
 #pragma once
 
 #include <lux/engine/render/data/Schema.hpp>
+#include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/render/data/ShaderInterface.hpp>
 
 namespace lux::render
 {
     struct StorageTypeTag;
-    using StorageTypeId = cxx::SchemaId<StorageTypeTag>;
-    using StorageTypeIdView = cxx::SchemaIdView<StorageTypeTag>;
+    struct StorageTag;
+    using StorageTypeId = cxx::SlotKey<StorageTypeTag>;
+    using StorageId = cxx::SlotKey<StorageTag>;
+
+    struct StorageNameTag;
+    using StorageName = cxx::SchemaId<StorageNameTag>;
+    using StorageNameView = cxx::SchemaIdView<StorageNameTag>;
 
     enum class EResourceScope : std::uint8_t { GLOBAL, SCENE, VIEW, ATTACHMENT };
 
@@ -25,7 +31,7 @@ namespace lux::render
 
     struct StorageRequirement final
     {
-        StorageTypeId type;
+        StorageName type;
         cxx::SchemaVersion abi;
         EResourceScope scope = EResourceScope::GLOBAL;
         std::string key; // empty uses the Graph semantic key; otherwise names the scoped Storage instance
@@ -36,7 +42,7 @@ namespace lux::render
     // Configuration uses the existing DataSchema encoded-format contract, never a C++ object representation.
     struct StorageDescriptor final
     {
-        StorageTypeIdView type;
+        StorageNameView type;
         cxx::SchemaVersion abi;
         std::uint8_t scopes = scopeMask(EResourceScope::GLOBAL);
         const DataSchemaDescriptor* config = nullptr;

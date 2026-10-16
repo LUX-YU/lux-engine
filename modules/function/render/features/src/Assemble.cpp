@@ -14,7 +14,7 @@ namespace lux::render
             return {type, {feature, resource, related}};
         }
 
-        std::string prefix(FeatureTypeIdView type, std::string_view instance) noexcept
+        std::string prefix(FeatureName type, std::string_view instance) noexcept
         {
             return "feature:" + std::to_string(type.name().size()) + ":" + std::string(type.name()) +
                 ":" + std::to_string(instance.size()) + ":" + std::string(instance) + ":";
@@ -280,7 +280,7 @@ namespace lux::render
         }
     }
 
-    std::string featureKey(FeatureTypeIdView type, std::string_view instance, std::string_view local) noexcept
+    std::string featureKey(FeatureName type, std::string_view instance, std::string_view local) noexcept
     {
         return prefix(type, instance) + std::string(local);
     }

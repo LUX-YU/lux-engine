@@ -124,7 +124,7 @@ namespace lux::render::vulkan
         Backing* version;
         TextureId texture;
         Backing* base = nullptr;
-        StorageInstanceId storage_id;
+        StorageId storage_id;
 
         ~Candidate() noexcept
         {

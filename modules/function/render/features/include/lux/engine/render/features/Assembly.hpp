@@ -40,7 +40,7 @@ namespace lux::render
     };
 
     [[nodiscard]] std::string
-    featureKey(FeatureTypeIdView type, std::string_view instance, std::string_view local) noexcept;
+    featureKey(FeatureName type, std::string_view instance, std::string_view local) noexcept;
 
     [[nodiscard]] RenderResult<FeatureAssembly>
     assembleFeatures(std::span<const FeatureInstanceView> instances, EncodedDataLimits config_limits) noexcept;

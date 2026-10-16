@@ -75,7 +75,7 @@ namespace lux::render::runtime_detail
         ECommandOutcome outcome = ECommandOutcome::OUTCOME_UNKNOWN;
         RenderError error{};
         bool compiling = false;
-        RenderResult<void> (*adopt)(void*, RenderRequest&) noexcept = nullptr;
+        RenderResult<void> (*adopt)(void*, void*, RenderRequest&) noexcept = nullptr;
 
         CpuCompletion() noexcept = default;
         CpuCompletion(const CpuCompletion&) = delete;

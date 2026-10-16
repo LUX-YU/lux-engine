@@ -77,7 +77,7 @@ static int identity()
 {
     auto empty = assembleFeatures({}, {});
     CHECK(empty && empty->analysis.execution_order.empty());
-    FeatureDescriptor d{FeatureTypeIdView("test.type"), {1, 0}, nullptr};
+    FeatureDescriptor d{FeatureName("test.type"), {1, 0}, nullptr};
     FeatureGraphOps d_graph{emptyDescribe, nullptr};
     FeatureInstanceView s{&d, &d_graph, nullptr, "one"};
     CHECK(assembleFeatures({&s, 1}, {}));
@@ -107,7 +107,7 @@ static int identity()
     d_graph.build = +[](const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource>,
         RenderGraphBuilder& b) noexcept -> RenderResult<void> {
         const auto key = [&](std::string_view local) {
-            return featureKey(FeatureTypeIdView("test.type"), instance, local);
+            return featureKey(FeatureName("test.type"), instance, local);
         };
         auto r = b.declareResource({key("private"), GraphBufferDesc{64}});
         if (!r) return cxx::unexpected(r.error());
@@ -124,8 +124,8 @@ static int identity()
         private_instances->definition.outputs()[1].version.resource);
     instances[1].descriptor = &saved;
     CHECK(!assembleFeatures(instances, {}));
-    CHECK(featureKey(FeatureTypeIdView("a:b"), "c", "d") !=
-        featureKey(FeatureTypeIdView("a"), "b:c", "d"));
+    CHECK(featureKey(FeatureName("a:b"), "c", "d") !=
+        featureKey(FeatureName("a"), "b:c", "d"));
     CHECK(renderFeatureErrorDescriptors().size() == 6);
     return 0;
 }
@@ -136,7 +136,7 @@ static int config()
     CHECK(bytes);
     const auto& schema = DataSchema<fixture::Config>::describe();
     RetainableEncodedDataView wire{schema, *bytes, {}};
-    FeatureDescriptor d{FeatureTypeIdView("test.configured"), {1, 0}, &schema};
+    FeatureDescriptor d{FeatureName("test.configured"), {1, 0}, &schema};
     FeatureGraphOps d_graph{emptyDescribe, nullptr};
     FeatureInstanceView s{&d, &d_graph, &wire, "one"};
     CHECK(assembleFeatures({&s, 1}, fixture::limits));
@@ -201,7 +201,7 @@ namespace negative
 {
     thread_local std::vector<ResourceClaim> provided, required;
     thread_local unsigned mode = 0;
-    inline constexpr FeatureTypeIdView provider_type("test.provider"), consumer_type("test.consumer");
+    inline constexpr FeatureName provider_type("test.provider"), consumer_type("test.consumer");
 
     RenderResult<void> provide(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
     {
@@ -306,7 +306,7 @@ static int claims()
             required[0].participation = EResourceClaim::REQUIRE;
             if (fault == 4) required[0].storage->scope = EResourceScope::SCENE;
             if (fault == 5) ++required[0].storage->abi.minor;
-            if (fault == 6) required[0].storage->type = StorageTypeId("test.OtherStorage");
+            if (fault == 6) required[0].storage->type = StorageName("test.OtherStorage");
             if (fault == 7) required[0].storage.reset();
             if (fault == 8) required[0].initial_ranges = {GraphBufferRange{0, 128}};
         }
@@ -325,7 +325,7 @@ static int claims()
     required[0].description = provided[0].description;
     CHECK(!run());
     reset();
-    provided[0].storage = StorageRequirement{StorageTypeId("bad"), {1, 0}, EResourceScope::GLOBAL};
+    provided[0].storage = StorageRequirement{StorageName("bad"), {1, 0}, EResourceScope::GLOBAL};
     CHECK(!run()); // Persistent storage cannot be transient.
     for (unsigned fault = 0; fault < 3; ++fault)
     {
@@ -343,14 +343,14 @@ static int claims()
 
 static int fallback()
 {
-    static const FeatureDescriptor provider{FeatureTypeIdView("test.history"), {1, 0}, nullptr};
+    static const FeatureDescriptor provider{FeatureName("test.history"), {1, 0}, nullptr};
     static const FeatureGraphOps provider_graph{+[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
             auto claim = fixture::history("previous", EResourceClaim::PROVIDE, true);
             claim.initial_ranges.clear();
             out.push_back(std::move(claim));
             return {};
         }, nullptr};
-    static const FeatureDescriptor consumer{FeatureTypeIdView("test.fallback"), {1, 0}, nullptr};
+    static const FeatureDescriptor consumer{FeatureName("test.fallback"), {1, 0}, nullptr};
     static const FeatureGraphOps consumer_graph{+[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
             auto claim = fixture::history("previous", EResourceClaim::REQUIRE, true);
             claim.initial_ranges.clear();
@@ -359,7 +359,7 @@ static int fallback()
         }, +[](const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource> bindings,
             RenderGraphBuilder& b) noexcept -> RenderResult<void> {
             const auto key = [&](std::string_view local) {
-                return featureKey(FeatureTypeIdView("test.fallback"), instance, local);
+                return featureKey(FeatureName("test.fallback"), instance, local);
             };
             auto source = b.declareResource({key("source"), GraphImageDesc{64, 64}});
             auto output = b.declareResource({key("output"), GraphImageDesc{64, 64}});
@@ -377,10 +377,10 @@ static int fallback()
     auto result = assembleFeatures(selected, {});
     CHECK(result && result->analysis.execution_order.size() == 2);
     CHECK(std::ranges::any_of(result->analysis.versions, [](const GraphVersionUse& u) { return u.fallback; }));
-    const FeatureDescriptor foreign{FeatureTypeIdView("test.aaa"), {1, 0}, nullptr};
+    const FeatureDescriptor foreign{FeatureName("test.aaa"), {1, 0}, nullptr};
     const FeatureGraphOps foreign_graph{emptyDescribe, +[](const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource>,
             RenderGraphBuilder& b) noexcept -> RenderResult<void> {
-            auto name = featureKey(FeatureTypeIdView("test.aaa"), instance, "private");
+            auto name = featureKey(FeatureName("test.aaa"), instance, "private");
             auto r = b.declareResource({name, GraphImageDesc{64, 64}});
             if (!r) return cxx::unexpected(r.error());
             return fixture::pass(b, name, {}, {*r, 1});
@@ -424,7 +424,7 @@ static int lifetime()
         negative::reset();
         negative::provided[0] = fixture::material(EResourceClaim::PROVIDE);
         negative::provided[0].key = "r";
-        negative::provided[0].storage->type = StorageTypeId(name);
+        negative::provided[0].storage->type = StorageName(name);
         negative::required[0] = negative::provided[0];
         negative::required[0].participation = EResourceClaim::REQUIRE;
         auto result = negative::run();
@@ -459,12 +459,12 @@ static int lifetime()
         auto bytes = lux::cxx::SharedBytes<>::fromOwner(owner, owner->data);
         RetainableEncodedDataView view{DataSchema<fixture::Config>::describe(), bytes, {}};
         std::string type_name = "test.temporary";
-        FeatureDescriptor d{FeatureTypeIdView(type_name), {1, 0}, &view.schema};
+        FeatureDescriptor d{FeatureName(type_name), {1, 0}, &view.schema};
         FeatureGraphOps d_graph{emptyDescribe, +[](const RetainableEncodedDataView* wire, std::string_view instance, std::span<const ResolvedResource>,
                 RenderGraphBuilder& b) noexcept -> RenderResult<void> {
                 auto c = decodeData<fixture::Config>(*wire, fixture::limits);
                 if (!c) return cxx::unexpected(c.error());
-                auto name = featureKey(FeatureTypeIdView("test.temporary"), instance, std::to_string(c->first));
+                auto name = featureKey(FeatureName("test.temporary"), instance, std::to_string(c->first));
                 auto r = b.declareResource({name, GraphBufferDesc{64}});
                 if (!r) return cxx::unexpected(r.error());
                 if (auto p = fixture::pass(b, name, {}, {*r, 1}); !p) return p;
@@ -510,7 +510,7 @@ namespace dependency_test
     {
         for (unsigned i = 0; i < 2; ++i)
         {
-            auto p = b.addPass({featureKey(FeatureTypeIdView("test.edge.a"), instance, std::to_string(i)),
+            auto p = b.addPass({featureKey(FeatureName("test.edge.a"), instance, std::to_string(i)),
                 EGraphPassKind::COMPUTE, {}, true});
             if (!p) return cxx::unexpected(p.error());
         }
@@ -523,7 +523,7 @@ namespace dependency_test
     {
         for (unsigned i = 0; i < 2; ++i)
         {
-            auto p = b.addPass({featureKey(FeatureTypeIdView("test.edge.b"), instance, std::to_string(i)),
+            auto p = b.addPass({featureKey(FeatureName("test.edge.b"), instance, std::to_string(i)),
                 EGraphPassKind::COMPUTE, {}, true});
             if (!p) return cxx::unexpected(p.error());
         }
@@ -535,9 +535,9 @@ namespace dependency_test
 
 static int dependencies()
 {
-    const FeatureDescriptor a{FeatureTypeIdView("test.edge.a"), {1, 0}, nullptr};
+    const FeatureDescriptor a{FeatureName("test.edge.a"), {1, 0}, nullptr};
     const FeatureGraphOps a_graph{emptyDescribe, dependency_test::first};
-    const FeatureDescriptor b{FeatureTypeIdView("test.edge.b"), {1, 0}, nullptr};
+    const FeatureDescriptor b{FeatureName("test.edge.b"), {1, 0}, nullptr};
     const FeatureGraphOps b_graph{emptyDescribe, dependency_test::second};
     const FeatureInstanceView selected[]{{&b, &b_graph, nullptr, "main"}, {&a, &a_graph, nullptr, "main"}};
     for (unsigned mode = 0; mode < 4; ++mode)

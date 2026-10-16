@@ -83,7 +83,7 @@ namespace extension_test
             NativeBuffer& storage;
             BufferId id;
             Backing* backing;
-            StorageInstanceId storage_id;
+            StorageId storage_id;
             bool published = false;
 
             ~Candidate() noexcept

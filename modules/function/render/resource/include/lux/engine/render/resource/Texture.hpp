@@ -16,7 +16,7 @@ namespace lux::render
     template <typename T> [[nodiscard]] StorageRegistration nativeStorageBinding() noexcept;
     struct TextureTag;
     using TextureId = cxx::SlotKey<TextureTag>; // Server session-local; not an asset hash or descriptor index.
-    inline constexpr StorageTypeIdView kTextureStorageType("lux.render.TextureStorage");
+    inline constexpr StorageNameView kTextureStorageType("lux.render.TextureStorage");
 
     struct TexturePublished final
     {

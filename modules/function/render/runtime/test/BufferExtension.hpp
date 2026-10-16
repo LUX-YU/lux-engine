@@ -43,7 +43,7 @@ namespace extension_test
         struct Read final
         {
             vk::DeviceSession& session;
-            StorageInstanceId storage;
+            StorageId storage;
             vk::PreparedStorageBinding source;
             vk::BufferPermit buffer;
             std::optional<vk::SubmissionTicket> ticket;

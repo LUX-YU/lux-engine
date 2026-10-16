@@ -135,7 +135,7 @@ namespace batch_fixture
     }
 
     static const std::array commands{commandDescriptor<SetValues>(), commandDescriptor<ReadValue>()};
-    static const FeatureDescriptor definition{FeatureTypeIdView("test.batch.values"), {1, 0}, nullptr};
+    static const FeatureDescriptor definition{FeatureName("test.batch.values"), {1, 0}, nullptr};
     static const FeatureGraphOps definition_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 }
 

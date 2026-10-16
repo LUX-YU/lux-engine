@@ -253,7 +253,7 @@ namespace lux::render
 #endif
             RenderResult<void> result;
             if (cpu->adopt)
-                result = cpu->adopt(cpu->operation, *slot->request);
+                result = cpu->adopt(cpu->operation, this, *slot->request);
             else if (stop_requested.load())
             {
                 cpu->reply.reset();

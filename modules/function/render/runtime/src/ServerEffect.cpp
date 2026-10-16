@@ -2,73 +2,15 @@
 
 namespace lux::render
 {
-    struct RenderServer::Impl::CompileState final
+    static RenderResult<RenderEffect> compileEffect(
+        vulkan::DeviceSession& device, const CreateEffectRequest& request,
+        std::span<const FeatureRegistration* const> registrations, std::size_t max_config_bytes
+    ) noexcept
     {
-        struct Receiver final
-        {
-            using receiver_concept = stdexec::receiver_t;
-            DeferredCompletion* slot;
-            struct Env final
-            {
-                stdexec::inplace_stop_token token;
-                stdexec::inplace_stop_token query(stdexec::get_stop_token_t) const noexcept { return token; }
-            };
-            Env get_env() const noexcept { return {slot->stop.get_token()}; }
-            void set_value() && noexcept { slot->post()(nullptr, nullptr, {}); }
-            void set_error(RenderError error) && noexcept { slot->post()(nullptr, nullptr, cxx::unexpected(error)); }
-            void set_stopped() && noexcept
-            {
-                slot->post()(nullptr, nullptr, cxx::unexpected(RenderError{kRuntimeState}));
-            }
-        };
-
-        Impl* owner;
-        DeferredCompletion* slot;
-        RenderResult<RenderEffect> candidate = cxx::unexpected(RenderError{kRuntimeState});
-        stdexec::connect_result_t<CpuSender, Receiver> operation;
-
-        CompileState(Impl& server, DeferredCompletion& pending)
-            : owner(&server), slot(&pending),
-              operation(stdexec::connect(
-                  server.config.cpu.schedule(
-                      [](void* value) noexcept
-                      {
-                          auto& state = *static_cast<CompileState*>(value);
-                          state.candidate = state.owner->compileEffect(*state.slot->request);
-                      },
-                      this,
-                      server.config.implementation_code_pin,
-                      pending.request->codePin()
-                  ),
-                  Receiver{&pending}
-              ))
-        {
-        }
-
-        static RenderResult<void> adopt(void* value, RenderRequest& request) noexcept
-        {
-            auto& state = *static_cast<CompileState*>(value);
-            if (state.owner->stop_requested.load()) return request.cancel();
-            if (!state.slot->cpu_result) return request.fail(state.slot->cpu_result.error());
-            if (!state.candidate) return request.fail(state.candidate.error());
-            const auto effect = state.owner->effects.emplace(std::move(*state.candidate));
-            auto result = request.reply(EffectCreated{effect});
-            if (result)
-                ++state.owner->compiled_graphs;
-            else
-                state.owner->effects.erase(effect);
-            return result;
-        }
-    };
-
-    RenderResult<RenderEffect> RenderServer::Impl::compileEffect(const RenderRequest& request) noexcept
-    {
-        const auto* input = &request.get<CreateEffectRequest>();
+        const auto* input = &request;
         const auto count = input->features.size();
-        if (count == 0 || count > max_features) return cxx::unexpected(RenderError{kFeatureContract});
         std::vector<RetainableEncodedDataView> configs;
         std::vector<FeatureInstanceView> selected;
-        std::vector<const FeatureRegistration*> registrations;
         std::vector<lux::cxx::SharedBytes<>> attachments;
         std::vector<PassProgram> programs;
         std::vector<StorageArgument> arguments;
@@ -76,15 +18,10 @@ namespace lux::render
         selected.reserve(count);
         for (const auto& attachment : input->attachments)
             attachments.push_back(attachment.bytes());
-        for (const auto& selection : input->features)
+        for (std::size_t i = 0; i < input->features.size(); ++i)
         {
-            const auto registration = std::find_if(
-                features.begin(),
-                features.end(),
-                [&](const auto& f) { return f.descriptor->type.name() == selection.type; }
-            );
-            if (registration == features.end() || registration->descriptor->version != selection.version)
-                return cxx::unexpected(RenderError{kFeatureContract});
+            const auto& selection = input->features[i];
+            const auto* registration = registrations[i];
             const auto& definition = *registration->descriptor;
             const RetainableEncodedDataView* wire = nullptr;
             if (definition.config_schema)
@@ -96,9 +33,8 @@ namespace lux::render
             else if (selection.config_schema || !selection.config.bytes().empty())
                 return cxx::unexpected(RenderError{kFeatureContract});
             selected.push_back({&definition, registration->graph, wire, selection.instance});
-            registrations.push_back(&*registration);
         }
-        auto assembly = assembleFeatures(selected, {config.max_config_bytes, SIZE_MAX});
+        auto assembly = assembleFeatures(selected, {max_config_bytes, SIZE_MAX});
         if (!assembly) return cxx::unexpected(assembly.error());
         for (const auto& contribution : assembly->contributions)
         {
@@ -135,7 +71,7 @@ namespace lux::render
                 programs.end())
                 return cxx::unexpected(RenderError{kFeatureContract, {pass.index}});
         auto compiled = vulkan::compileGraph(
-            *device,
+            device,
             (*assembly).definition,
             (*assembly).analysis,
             (*assembly).external_bindings,
@@ -146,9 +82,93 @@ namespace lux::render
         return RenderEffect{std::make_shared<const vulkan::CompiledGraph>(std::move(*compiled)), std::move(arguments)};
     }
 
+    struct RenderServer::Impl::CompileState final
+    {
+        struct Receiver final
+        {
+            using receiver_concept = stdexec::receiver_t;
+            DeferredCompletion* slot;
+            struct Env final
+            {
+                stdexec::inplace_stop_token token;
+                stdexec::inplace_stop_token query(stdexec::get_stop_token_t) const noexcept { return token; }
+            };
+            Env get_env() const noexcept { return {slot->stop.get_token()}; }
+            void set_value() && noexcept { slot->post()(nullptr, nullptr, {}); }
+            void set_error(RenderError error) && noexcept { slot->post()(nullptr, nullptr, cxx::unexpected(error)); }
+            void set_stopped() && noexcept
+            {
+                slot->post()(nullptr, nullptr, cxx::unexpected(RenderError{kRuntimeState}));
+            }
+        };
+
+        vulkan::DeviceSession& device;
+        const CreateEffectRequest& request;
+        std::vector<const FeatureRegistration*> features;
+        std::size_t max_config_bytes;
+        DeferredCompletion* slot;
+        RenderResult<RenderEffect> candidate = cxx::unexpected(RenderError{kRuntimeState});
+        stdexec::connect_result_t<CpuSender, Receiver> operation;
+
+        CompileState(vulkan::DeviceSession& native, CpuSchedule& cpu, DeferredCompletion& pending,
+            std::vector<const FeatureRegistration*> selected, std::size_t config_bytes,
+            const std::shared_ptr<const void>& implementation_pin)
+            : device(native), request(pending.request->get<CreateEffectRequest>()), features(std::move(selected)),
+              max_config_bytes(config_bytes), slot(&pending),
+              operation(stdexec::connect(
+                  cpu.schedule(
+                      [](void* value) noexcept
+                      {
+                          auto& state = *static_cast<CompileState*>(value);
+                          state.candidate = compileEffect(
+                              state.device, state.request, state.features, state.max_config_bytes
+                          );
+                      },
+                      this,
+                      implementation_pin,
+                      pending.request->codePin()
+                  ),
+                  Receiver{&pending}
+              ))
+        {
+        }
+
+        static RenderResult<void> adopt(void* value, void* owner, RenderRequest& request) noexcept
+        {
+            auto& state = *static_cast<CompileState*>(value);
+            auto& server = *static_cast<Impl*>(owner);
+            if (server.stop_requested.load()) return request.cancel();
+            if (!state.slot->cpu_result) return request.fail(state.slot->cpu_result.error());
+            if (!state.candidate) return request.fail(state.candidate.error());
+            const auto effect = server.effects.emplace(std::move(*state.candidate));
+            auto result = request.reply(EffectCreated{effect});
+            if (result)
+                ++server.compiled_graphs;
+            else
+                server.effects.erase(effect);
+            return result;
+        }
+    };
+
     RenderResult<void> RenderServer::Impl::createEffect(RenderRequest& request) noexcept
     {
         if (!config.cpu) return cxx::unexpected(RenderError{kRuntimeUnsupported});
+        const auto& input = request.get<CreateEffectRequest>();
+        if (input.features.empty() || input.features.size() > max_features)
+            return cxx::unexpected(RenderError{kFeatureContract});
+        std::vector<const FeatureRegistration*> selected;
+        selected.reserve(input.features.size());
+        for (const auto& selection : input.features)
+        {
+            const auto found = std::find_if(features.begin(), features.end(), [&](const auto& entry) {
+                return entry.definition.descriptor->type.name() == selection.type;
+            });
+            if (found == features.end() || found->definition.descriptor->version != selection.version)
+                return cxx::unexpected(RenderError{kFeatureContract});
+            selected.push_back(&found->definition);
+        }
+        // Resolve the directory once on its owner thread. Stable entries outlive the accepted compile;
+        // neither the worker nor its operation state borrows the mutable Impl or its directory.
         auto* slot = reserveCompletion(true);
         if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
         slot->request.emplace(std::move(request));
@@ -156,7 +176,9 @@ namespace lux::render
         cpu.destroy = [](void* state) noexcept { delete static_cast<CompileState*>(state); };
         cpu.compiling = true;
         cpu.adopt = CompileState::adopt;
-        cpu.operation = new CompileState(*this, *slot);
+        cpu.operation = new CompileState(
+            *device, config.cpu, *slot, std::move(selected), config.max_config_bytes, config.implementation_code_pin
+        );
         ++compiling;
         stdexec::start(static_cast<CompileState*>(cpu.operation)->operation);
         return {};

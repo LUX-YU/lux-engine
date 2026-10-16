@@ -241,7 +241,7 @@ static RenderResult<void> upload(vulkan::DeviceSession& session, const UploadPro
 static const CommandDescriptor probe = commandDescriptor<UploadProbe>();
 static const CommandDescriptor cpu = commandDescriptor<CpuResult>();
 static const std::array operations_list{probe, cpu};
-static const FeatureDescriptor feature{FeatureTypeIdView("test.g10.feature"), {1, 0}, nullptr};
+static const FeatureDescriptor feature{FeatureName("test.g10.feature"), {1, 0}, nullptr};
 static const FeatureGraphOps feature_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 static const std::array handlers{
     vulkan::nativeCommand<UploadProbe, upload>(),

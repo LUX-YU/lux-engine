@@ -2,6 +2,15 @@
 
 namespace lux::render
 {
+    RenderResult<void> RenderServer::Impl::listFeatures(RenderRequest& request) noexcept
+    {
+        FeatureList result;
+        result.features.reserve(features.size());
+        for (const auto& entry : features)
+            result.features.push_back({entry.id, std::string(entry.definition.descriptor->type.name())});
+        return request.reply(std::move(result));
+    }
+
     void RenderServer::Impl::addCommand(
         CommandRegistration binding,
         CommandTransport transport,
@@ -39,7 +48,7 @@ namespace lux::render
         return {};
     }
 
-    RenderResult<void> RenderServer::Impl::registerFeature(
+    RenderResult<FeatureId> RenderServer::Impl::registerFeature(
         FeatureRegistration feature, std::span<const CommandTransport> transports
     ) noexcept
     {
@@ -49,16 +58,18 @@ namespace lux::render
                              (feature.descriptor && feature.descriptor->type.name().empty());
         if (invalid) return cxx::unexpected(RenderError{kRuntimeState});
         for (const auto& current : s.features)
-            if (current.descriptor->type.name() == feature.descriptor->type.name())
+            if (current.definition.descriptor->type.name() == feature.descriptor->type.name())
                 return cxx::unexpected(RenderError{kFeatureDuplicate});
-        if (auto valid = s.validateHandlers(feature.handlers, transports); !valid) return valid;
+        if (auto valid = s.validateHandlers(feature.handlers, transports); !valid)
+            return cxx::unexpected(valid.error());
         for (std::size_t i = 0; i < feature.handlers.size(); ++i)
             s.addCommand(feature.handlers[i], transports[i], nullptr, feature.code_pin);
-        s.features.push_back(feature);
-        return {};
+        const auto id = s.features.emplace(FeatureEntry{{}, std::move(feature)});
+        s.features.find(id)->id = id;
+        return id;
     }
 
-    RenderResult<void> RenderServer::registerFeatureImpl(
+    RenderResult<FeatureId> RenderServer::registerFeatureImpl(
         FeatureRegistration feature, std::span<const CommandTransport> transports
     ) noexcept
     {

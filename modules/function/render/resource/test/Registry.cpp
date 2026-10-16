@@ -12,7 +12,7 @@ namespace
     {
         unsigned created = 0, destroyed = 0;
         ResourceRegistry* registry = nullptr;
-        StorageInstanceId referenced;
+        StorageId referenced;
     };
     struct Value final
     {
@@ -20,14 +20,14 @@ namespace
         unsigned initial;
         unsigned value;
         ResourceRegistry* registry = nullptr;
-        StorageInstanceId referenced;
+        StorageId referenced;
     };
 
     struct TestStorage final
     {
         using Config = unsigned;
         static inline constexpr StorageDescriptor description{
-            StorageTypeIdView("test.ScopedStorage"), {1, 0}, 15
+            StorageNameView("test.ScopedStorage"), {1, 0}, 15
         };
         struct Ops final
         {
@@ -102,6 +102,36 @@ namespace
 
 int main()
 {
+    static_assert(!std::is_same_v<StorageId, StorageTypeId>);
+    static_assert(!std::is_constructible_v<StorageTypeId, StorageNameView>);
+    {
+        constexpr std::size_t count = 600;
+        std::vector<std::string> names;
+        std::vector<StorageDescriptor> descriptions;
+        names.reserve(count);
+        descriptions.reserve(count);
+        Counts unused;
+        ResourceRegistry directory(&unused, 0);
+        const StorageFactory* first = nullptr;
+        StorageTypeId first_id;
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            names.push_back("test.storage." + std::to_string(i));
+            descriptions.push_back(TestStorage::description);
+            descriptions.back().type = StorageNameView(names.back());
+            auto candidate = factory();
+            candidate.description = &descriptions.back();
+            require(bool(directory.installFactory(std::move(candidate))));
+            const auto id = directory.typeId(descriptions.back().type);
+            require(!id.isNull() && directory.factory(id) == directory.factory(descriptions.back().type));
+            require(directory.factory(StorageTypeId{id.index, id.gen + 1}) == nullptr);
+            if (i == 0) { first = directory.factory(id); first_id = id; }
+            require(directory.factory(first_id) == first);
+        }
+        require(first->description->type.name() == "test.storage.0");
+        require(unused.created == 0 && directory.size() == 0);
+        require(directory.typeId(StorageNameView("test.missing")).isNull());
+    }
     Counts counts;
     ResourceDomain old_root;
     {

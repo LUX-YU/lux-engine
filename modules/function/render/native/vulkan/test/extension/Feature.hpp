@@ -54,7 +54,7 @@ namespace lux::render
 
 namespace extension_test
 {
-    inline constexpr FeatureTypeIdView feature_type("test.extension.BufferFeature");
+    inline constexpr FeatureName feature_type("test.extension.BufferFeature");
     inline constexpr EncodedDataLimits limits{16, 0};
     inline const TargetDesc target{16, 16, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
 
@@ -62,10 +62,10 @@ namespace extension_test
     {
         out.push_back({"texture", EResourceClaim::PROVIDE, GraphImageDesc{16, 16}, EGraphOrigin::IMPORTED,
             {GraphImageRange{1, 0, 1, 0, 1}},
-            StorageRequirement{StorageTypeId(kTextureStorageType.name()), {1, 0}, EResourceScope::GLOBAL, "default"}});
+            StorageRequirement{StorageName(kTextureStorageType.name()), {1, 0}, EResourceScope::GLOBAL, "default"}});
         out.push_back({"values", EResourceClaim::PROVIDE, GraphBufferDesc{16}, EGraphOrigin::IMPORTED,
             {GraphBufferRange{0, 16}},
-            StorageRequirement{StorageTypeId(TestBufferStorage::description.type.name()), {1, 0},
+            StorageRequirement{StorageName(TestBufferStorage::description.type.name()), {1, 0},
                 EResourceScope::GLOBAL, "values"}});
         out.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{16, 16}});
         return {};

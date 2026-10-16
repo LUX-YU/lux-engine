@@ -404,7 +404,7 @@ int main()
     lux::render::test::CpuFixture host(2, 128);
     state->cpu = host.cpu();
     static const std::array descriptors{commandDescriptor<CpuOperation>()};
-    const FeatureDescriptor feature{FeatureTypeIdView("test.async.cost.feature"), {1, 0}, nullptr};
+    const FeatureDescriptor feature{FeatureName("test.async.cost.feature"), {1, 0}, nullptr};
     const FeatureGraphOps feature_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
     const std::array handlers{CommandRegistration{bindCommand<CpuOperation, invoke>(*state)}};
     RenderServerConfig config{"runtime.async.cost", true};

@@ -19,11 +19,11 @@ namespace
 
 int main()
 {
-    constexpr StorageDescriptor original{StorageTypeIdView("test.Storage"), {1, 0}};
+    constexpr StorageDescriptor original{StorageNameView("test.Storage"), {1, 0}};
     require(bool(validateStorage(original)));
     require(bool(compatibleStorage(original, original)));
     auto changed = original;
-    changed.type = StorageTypeIdView("test.Other");
+    changed.type = StorageNameView("test.Other");
     require(!compatibleStorage(original, changed));
     changed = original;
     changed.abi.minor = 1;

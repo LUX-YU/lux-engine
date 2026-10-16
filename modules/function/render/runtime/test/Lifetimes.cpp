@@ -59,7 +59,7 @@ static RenderResult<void> describeAsset(const RetainableEncodedDataView* wire, s
     return {};
 }
 
-static const FeatureDescriptor asset_definition{FeatureTypeIdView("test.asset"), {1, 0}, &DataSchema<AssetConfig>::describe()};
+static const FeatureDescriptor asset_definition{FeatureName("test.asset"), {1, 0}, &DataSchema<AssetConfig>::describe()};
 static const FeatureGraphOps asset_definition_graph{describeAsset, nullptr};
 
 static RenderResult<ProgramContribution> assetPrograms(const RetainableEncodedDataView*, std::string_view) noexcept { return {}; }

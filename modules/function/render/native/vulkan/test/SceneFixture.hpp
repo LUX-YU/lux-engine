@@ -10,7 +10,7 @@ namespace native_fixture
     using namespace lux::render;
     namespace cxx = lux::cxx;
     inline std::atomic<unsigned> descriptions{0}, builds{0};
-    inline constexpr FeatureTypeIdView type("test.offscreen");
+    inline constexpr FeatureName type("test.offscreen");
     inline constexpr EncodedDataLimits limits{4096, 4096};
 
     struct Config final { std::uint32_t width = 32, height = 32, graphics = 1, scopes = 0; };
@@ -69,7 +69,7 @@ namespace native_fixture
             for (unsigned i = 0; i < 4; ++i)
                 claims.push_back({"scope" + std::to_string(i), EResourceClaim::PROVIDE, GraphBufferDesc{16},
                     EGraphOrigin::IMPORTED, {GraphBufferRange{0, 16}},
-                    StorageRequirement{StorageTypeId("test.zero_buffer"), {1, 0}, static_cast<EResourceScope>(i)}});
+                    StorageRequirement{StorageName("test.zero_buffer"), {1, 0}, static_cast<EResourceScope>(i)}});
         return {};
     }
 

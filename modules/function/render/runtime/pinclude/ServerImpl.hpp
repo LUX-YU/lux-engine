@@ -50,6 +50,12 @@ namespace lux::render
             std::vector<ExecutionGroup> groups;
             std::size_t next_group = 0;
         };
+        struct FeatureEntry final
+        {
+            FeatureId id;
+            FeatureRegistration definition;
+        };
+
         struct CommandEntry final
         {
             CommandId id;
@@ -74,7 +80,7 @@ namespace lux::render
         static const CommandCompletionFns command_completion_functions;
         static const vulkan::GpuCompletionFns gpu_completion_functions;
 
-        [[nodiscard]] RenderResult<void> registerFeature(
+        [[nodiscard]] RenderResult<FeatureId> registerFeature(
             FeatureRegistration feature, std::span<const CommandTransport> transports
         ) noexcept;
         [[nodiscard]] RenderResult<void> registerStorage(
@@ -89,7 +95,7 @@ namespace lux::render
         ipc::IpcBoundType<ValueEnvelope<RenderError>> failure_type;
         ipc::IpcResponder responder;
         SessionIdentity identity;
-        std::vector<FeatureRegistration> features;
+        cxx::StableSlotMap<FeatureEntry, FeatureTag> features;
         std::vector<StorageRegistration> storage_types;
         cxx::SlotMap<CommandEntry, CommandTag> command_table;
         HelloResponse manifest;
@@ -176,8 +182,6 @@ namespace lux::render
             void* user
         ) noexcept;
 
-        RenderResult<RenderEffect> compileEffect(const RenderRequest& request) noexcept;
-
         RenderResult<void> createScene(RenderRequest& request) noexcept;
 
         RenderResult<void> removeScene(RenderRequest& request) noexcept;
@@ -209,6 +213,8 @@ namespace lux::render
         RenderResult<void> detach(RenderRequest& request) noexcept;
 
         RenderResult<void> queryRenderStats(RenderRequest& request) noexcept;
+
+        RenderResult<void> listFeatures(RenderRequest& request) noexcept;
 
         RenderResult<void> stopCommand(RenderRequest& request) noexcept;
 

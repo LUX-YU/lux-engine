@@ -73,7 +73,7 @@ void operator delete(void* p, std::size_t, std::align_val_t a) noexcept { ::oper
 void operator delete[](void* p, std::size_t, std::align_val_t a) noexcept { ::operator delete(p, a); }
 
 using namespace lux::render;
-static constexpr FeatureTypeIdView kType("test.cost");
+static constexpr FeatureName kType("test.cost");
 
 static RenderResult<void>
 describe(const RetainableEncodedDataView* wire, std::string_view, std::vector<ResourceClaim>& out) noexcept

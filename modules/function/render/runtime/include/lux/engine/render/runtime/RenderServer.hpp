@@ -49,7 +49,7 @@ namespace lux::render
         RenderServer(const RenderServer&) = delete;
         RenderServer& operator=(const RenderServer&) = delete;
         template <RenderCommand... C>
-        [[nodiscard]] RenderResult<void> registerFeature(FeatureRegistration feature) noexcept
+        [[nodiscard]] RenderResult<FeatureId> registerFeature(FeatureRegistration feature) noexcept
         {
             const std::array<runtime_detail::CommandTransport, sizeof...(C)> transports{runtime_detail::commandTransport<C>()...};
             return registerFeatureImpl(std::move(feature), transports);
@@ -77,7 +77,7 @@ namespace lux::render
         }
 
         template <class T>
-        [[nodiscard]] RenderResult<void> registerFeature() noexcept
+        [[nodiscard]] RenderResult<FeatureId> registerFeature() noexcept
         {
             return [&]<typename... C>(std::tuple<C...>*) noexcept {
                 return registerFeature<C...>(nativeFeatureBinding<T>());
@@ -88,7 +88,7 @@ namespace lux::render
         void stop() noexcept;
         [[nodiscard]] RenderServerStats stats() const noexcept;
     private:
-        [[nodiscard]] RenderResult<void> registerFeatureImpl(FeatureRegistration,
+        [[nodiscard]] RenderResult<FeatureId> registerFeatureImpl(FeatureRegistration,
             std::span<const runtime_detail::CommandTransport>) noexcept;
         [[nodiscard]] RenderResult<void> registerStorageImpl(StorageRegistration,
             std::span<const runtime_detail::CommandTransport>) noexcept;

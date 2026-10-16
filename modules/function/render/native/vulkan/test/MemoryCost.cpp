@@ -48,7 +48,7 @@ namespace lux::render::vulkan
             {
                 // CPU Registry metadata and one-byte dummy native owners only, explicitly NOT GPU allocations.
                 ResourceRegistry registry(nullptr, 0);
-                static const StorageDescriptor description{StorageTypeIdView("test.cost"), {1, 0}, 15};
+                static const StorageDescriptor description{StorageNameView("test.cost"), {1, 0}, 15};
                 static const unsigned ops = 0;
                 const auto factory = resource_detail::StorageFactoryAudit::make(&description, &ops,
                     [](void*, const void*) noexcept -> RenderResult<NativeStorage> {

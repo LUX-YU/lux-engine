@@ -12,7 +12,7 @@ namespace
     ECase selected_case = ECase::LOAD; // only synchronous test-owned assembly, no production state
     struct Counts { unsigned pipeline = 0, bind = 0, begin = 0, end = 0, barrier = 0, draw = 0; } counts;
     unsigned live_pipelines = 0;
-    constexpr FeatureTypeIdView type("test.native.plan");
+    constexpr FeatureName type("test.native.plan");
 
     RenderResult<void> describe(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept { return {}; }
 

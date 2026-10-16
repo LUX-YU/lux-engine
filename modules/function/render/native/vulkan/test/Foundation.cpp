@@ -78,7 +78,7 @@ static void exclusiveRetirement(const InstanceContext& bootstrap)
 {
     auto a = take(DeviceSession::create(bootstrap, {}, 3, 1));
     auto b = take(DeviceSession::create(bootstrap, {}, 3, 1));
-    CHECK(a->resources().factory(StorageTypeIdView("lux.render.TextureStorage")) == nullptr);
+    CHECK(a->resources().factory(StorageNameView("lux.render.TextureStorage")) == nullptr);
     CHECK(a->resources().size() == 0);
     auto first = take(a->createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));
     auto second = take(a->createBuffer(64, VK_BUFFER_USAGE_TRANSFER_DST_BIT, EMemoryAccess::DEVICE));

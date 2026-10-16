@@ -10,7 +10,7 @@ namespace buffer_fixture
     using namespace lux::render;
     namespace native = lux::render::vulkan;
     struct Config final { std::uint32_t size = 16; bool operator==(const Config&) const noexcept = default; };
-    inline constexpr StorageDescriptor description{StorageTypeIdView("test.zero_buffer"), {1, 0}, 15};
+    inline constexpr StorageDescriptor description{StorageNameView("test.zero_buffer"), {1, 0}, 15};
 
     struct Native final
     {

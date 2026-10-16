@@ -12,16 +12,16 @@ namespace fixture
     inline std::atomic<unsigned> descriptions{0}, builds{0};
     enum class ERole { GEOMETRY, LIGHTING, ALTERNATE, TONEMAP, HISTORY, CULL, MATERIAL, MESH };
 
-    template <ERole R> constexpr FeatureTypeIdView type() noexcept
+    template <ERole R> constexpr FeatureName type() noexcept
     {
-        if constexpr (R == ERole::GEOMETRY) return FeatureTypeIdView("test.geometry");
-        if constexpr (R == ERole::LIGHTING) return FeatureTypeIdView("test.lighting");
-        if constexpr (R == ERole::ALTERNATE) return FeatureTypeIdView("test.alternate");
-        if constexpr (R == ERole::TONEMAP) return FeatureTypeIdView("test.tonemap");
-        if constexpr (R == ERole::HISTORY) return FeatureTypeIdView("test.history");
-        if constexpr (R == ERole::CULL) return FeatureTypeIdView("test.cull");
-        if constexpr (R == ERole::MATERIAL) return FeatureTypeIdView("test.material");
-        return FeatureTypeIdView("test.mesh");
+        if constexpr (R == ERole::GEOMETRY) return FeatureName("test.geometry");
+        if constexpr (R == ERole::LIGHTING) return FeatureName("test.lighting");
+        if constexpr (R == ERole::ALTERNATE) return FeatureName("test.alternate");
+        if constexpr (R == ERole::TONEMAP) return FeatureName("test.tonemap");
+        if constexpr (R == ERole::HISTORY) return FeatureName("test.history");
+        if constexpr (R == ERole::CULL) return FeatureName("test.cull");
+        if constexpr (R == ERole::MATERIAL) return FeatureName("test.material");
+        return FeatureName("test.mesh");
     }
 
     inline ResourceClaim image(std::string key, EResourceClaim participation)
@@ -32,7 +32,7 @@ namespace fixture
     inline ResourceClaim material(EResourceClaim participation)
     {
         return {"material", participation, GraphBufferDesc{256}, EGraphOrigin::IMPORTED, {{}},
-            StorageRequirement{StorageTypeId("test.MaterialStorage"), {1, 0}, EResourceScope::GLOBAL}};
+            StorageRequirement{StorageName("test.MaterialStorage"), {1, 0}, EResourceScope::GLOBAL}};
     }
 
     inline ResourceClaim history(std::string key, EResourceClaim participation, bool previous)
@@ -40,7 +40,7 @@ namespace fixture
         auto c = image(std::move(key), participation);
         c.origin = previous ? EGraphOrigin::HISTORY_PREVIOUS : EGraphOrigin::HISTORY_CURRENT;
         if (previous) c.initial_ranges.push_back({});
-        c.storage = StorageRequirement{StorageTypeId("test.HzbStorage"), {1, 0}, EResourceScope::VIEW};
+        c.storage = StorageRequirement{StorageName("test.HzbStorage"), {1, 0}, EResourceScope::VIEW};
         return c;
     }
 

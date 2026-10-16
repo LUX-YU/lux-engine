@@ -19,32 +19,39 @@ namespace lux::render
         if (!entries_.empty()) std::terminate(); // external users must end before the DeviceSession
     }
 
-    std::size_t ResourceRegistry::typeIndex(StorageTypeIdView type) const noexcept
+    StorageTypeId ResourceRegistry::typeId(StorageNameView type) const noexcept
     {
-        for (std::size_t i = 0; i < types_.size(); ++i)
-            if (types_[i].factory.description->type == type) return i;
-        return types_.size();
+        for (const auto& entry : types_)
+            if (entry.factory.description->type == type) return entry.id;
+        return {};
     }
 
-    const StorageFactory* ResourceRegistry::factory(StorageTypeIdView type) const noexcept
+    const StorageFactory* ResourceRegistry::factory(StorageTypeId type) const noexcept
     {
-        const auto index = typeIndex(type);
-        return index == types_.size() ? nullptr : &types_[index].factory;
+        const auto* entry = types_.find(type);
+        return entry ? &entry->factory : nullptr;
     }
 
-    const void* ResourceRegistry::configuration(StorageTypeIdView type) const noexcept
+    const StorageFactory* ResourceRegistry::factory(StorageNameView type) const noexcept
     {
-        const auto index = typeIndex(type);
-        return index == types_.size() ? nullptr : types_[index].configuration.data();
+        const auto index = typeId(type);
+        return index.isNull() ? nullptr : &types_.find(index)->factory;
+    }
+
+    const void* ResourceRegistry::configuration(StorageNameView type) const noexcept
+    {
+        const auto index = typeId(type);
+        return index.isNull() ? nullptr : types_.find(index)->configuration.data();
     }
 
     RenderResult<void> ResourceRegistry::installFactory(StorageFactory factory) noexcept
     {
         if (frozen_ || !factory.description) return cxx::unexpected(RenderError{kStorageFactory});
         if (auto valid = validateStorageFactory(*factory.description, factory); !valid) return valid;
-        if (typeIndex(factory.description->type) != types_.size())
+        if (!typeId(factory.description->type).isNull())
             return cxx::unexpected(RenderError{kStorageFactory});
-        types_.push_back({std::move(factory), {}});
+        const auto id = types_.emplace(Type{{}, std::move(factory), {}});
+        types_.find(id)->id = id;
         return {};
     }
 
@@ -52,9 +59,9 @@ namespace lux::render
         const StorageDescriptor& type, ConfigValue configuration
     ) noexcept
     {
-        const auto index = typeIndex(type.type);
-        if (frozen_ || index == types_.size()) return cxx::unexpected(RenderError{kStorageFactory});
-        auto& installed = types_[index];
+        const auto index = typeId(type.type);
+        if (frozen_ || index.isNull()) return cxx::unexpected(RenderError{kStorageFactory});
+        auto& installed = *types_.find(index);
         if (auto compatible = compatibleStorage(*installed.factory.description, type); !compatible) return compatible;
         const StorageCppType actual{configuration.type(), configuration.objectSize(), configuration.objectAlignment()};
         if (installed.factory.config_type != actual) return cxx::unexpected(RenderError{kStorageMismatch});
@@ -101,21 +108,21 @@ namespace lux::render
         return cxx::unexpected(RenderError{kStorageDomain});
     }
 
-    StorageInstanceId ResourceRegistry::local(DomainId domain, std::size_t type, std::string_view key) const noexcept
+    StorageId ResourceRegistry::local(DomainId domain, StorageTypeId type, std::string_view key) const noexcept
     {
         for (const auto& entry : entries_)
             if (!entry.closing && entry.domain == domain && entry.type == type && entry.key == key) return entry.id;
         return {};
     }
 
-    RenderResult<StorageInstanceId> ResourceRegistry::find(
+    RenderResult<StorageId> ResourceRegistry::find(
         const ResourceDomain& domain, std::string_view key, const StorageDescriptor& type, bool ancestors
     ) const noexcept
     {
         if (!valid(domain)) return cxx::unexpected(RenderError{kStorageDomain});
-        const auto index = typeIndex(type.type);
-        if (index == types_.size()) return cxx::unexpected(RenderError{kStorageFactory});
-        if (auto compatible = compatibleStorage(*types_[index].factory.description, type); !compatible)
+        const auto index = typeId(type.type);
+        if (index.isNull()) return cxx::unexpected(RenderError{kStorageFactory});
+        if (auto compatible = compatibleStorage(*types_.find(index)->factory.description, type); !compatible)
             return cxx::unexpected(compatible.error());
         auto current = domain.id_;
         while (!current.isNull())
@@ -128,15 +135,15 @@ namespace lux::render
         return cxx::unexpected(RenderError{kStorageDomain});
     }
 
-    RenderResult<StorageInstanceId> ResourceRegistry::getOrCreateImpl(
+    RenderResult<StorageId> ResourceRegistry::getOrCreateImpl(
         const ResourceDomain& domain, std::string_view key, const StorageDescriptor& type, const void* config, StorageCppType actual
     ) noexcept
     {
         if (!valid(domain)) return cxx::unexpected(RenderError{kStorageDomain});
         if (key.empty()) return cxx::unexpected(RenderError{kStorageContract});
-        const auto index = typeIndex(type.type);
-        if (index == types_.size()) return cxx::unexpected(RenderError{kStorageFactory});
-        const auto& installed = types_[index];
+        const auto index = typeId(type.type);
+        if (index.isNull()) return cxx::unexpected(RenderError{kStorageFactory});
+        const auto& installed = *types_.find(index);
         if (auto compatible = compatibleStorage(*installed.factory.description, type); !compatible)
             return cxx::unexpected(compatible.error());
         const auto scope = domains_.find(domain.id_)->scope;
@@ -162,40 +169,40 @@ namespace lux::render
         return id;
     }
 
-    void* ResourceRegistry::native(StorageInstanceId id) const noexcept
+    void* ResourceRegistry::native(StorageId id) const noexcept
     {
         const auto* entry = entries_.find(id);
         return entry ? entry->native.get() : nullptr;
     }
 
-    StorageInstanceId ResourceRegistry::identityOf(const void* instance) const noexcept
+    StorageId ResourceRegistry::identityOf(const void* instance) const noexcept
     {
         for (const auto& entry : entries_) if (entry.native.get() == instance) return entry.id;
         std::terminate(); // invoked by a live factory-created instance, never an untrusted pointer
     }
 
-    void ResourceRegistry::retain(StorageInstanceId id) noexcept
+    void ResourceRegistry::retain(StorageId id) noexcept
     {
         auto* entry = entries_.find(id);
         if (!entry || entry->closing) std::terminate(); // prepared-owner invariant, not an external identity API
         ++entry->references;
     }
 
-    void ResourceRegistry::release(StorageInstanceId id) noexcept
+    void ResourceRegistry::release(StorageId id) noexcept
     {
         auto* entry = entries_.find(id);
         if (!entry || !entry->references) std::terminate();
         if (--entry->references == 0 && entry->closing) destroy(id);
     }
 
-    void ResourceRegistry::rollback(StorageInstanceId id) noexcept
+    void ResourceRegistry::rollback(StorageId id) noexcept
     {
         auto* entry = entries_.find(id);
         if (!entry || entry->references) std::terminate();
         destroy(id);
     }
 
-    void ResourceRegistry::destroy(StorageInstanceId id) noexcept
+    void ResourceRegistry::destroy(StorageId id) noexcept
     {
         // A professional Storage may release another instance (e.g. a material's texture reference).
         // Run its deleter only after SlotMap mutation is complete, while the factory code pin is live.
@@ -218,7 +225,7 @@ namespace lux::render
     void ResourceRegistry::collect() noexcept
     {
         for (auto& entry : entries_)
-            if (const auto collect = types_[entry.type].factory.collect) collect(entry.native.get());
+            if (const auto collect = types_.find(entry.type)->factory.collect) collect(entry.native.get());
     }
 
     RenderResult<void> ResourceRegistry::closeDomain(const ResourceDomain& domain) noexcept

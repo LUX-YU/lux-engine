@@ -9,7 +9,7 @@ namespace texture_fixture
 {
     using namespace lux::render;
     namespace cxx = lux::cxx;
-    inline constexpr FeatureTypeIdView type("test.sampled_texture");
+    inline constexpr FeatureName type("test.sampled_texture");
     inline constexpr EncodedDataLimits limits{4096, 4096};
     struct Config final
     {
@@ -77,7 +77,7 @@ namespace texture_fixture
         out.push_back({"texture", EResourceClaim::PROVIDE,
             GraphImageDesc{c->width, c->height, c->mips, 1, c->format}, EGraphOrigin::IMPORTED,
             {GraphImageRange{1, 0, c->mips, 0, 1}},
-            StorageRequirement{StorageTypeId(kTextureStorageType.name()), {1, 0}, EResourceScope::GLOBAL, "default"}});
+            StorageRequirement{StorageName(kTextureStorageType.name()), {1, 0}, EResourceScope::GLOBAL, "default"}});
         const auto t = target(*c);
         out.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{t.width, t.height}});
         return {};

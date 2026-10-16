@@ -125,7 +125,7 @@ struct FeatureState final
 static const std::array descriptors{
     commandDescriptor<SetExposure>(), commandDescriptor<AcceptCustomData>(), commandDescriptor<InvalidReply>()
 };
-static const FeatureDescriptor feature{FeatureTypeIdView("test.open.operation"), {1, 0}, nullptr};
+static const FeatureDescriptor feature{FeatureName("test.open.operation"), {1, 0}, nullptr};
 static const FeatureGraphOps feature_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 static_assert(!std::is_default_constructible_v<BoundCommand<SetExposure>>);
 static_assert(std::same_as<decltype(std::declval<const BoundCommand<SetExposure>&>().command()), CommandId>);
@@ -195,7 +195,7 @@ int main()
     check(bool(server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, &feature_graph, nullptr, handlers})));
     check(!server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, &feature_graph, nullptr, handlers}));
     const std::array collision_commands{commandDescriptor<CollidingA>(), commandDescriptor<CollidingB>()};
-    const FeatureDescriptor collision_feature{FeatureTypeIdView("test.real.hash.collision"), {1, 0}, nullptr};
+    const FeatureDescriptor collision_feature{FeatureName("test.real.hash.collision"), {1, 0}, nullptr};
     const FeatureGraphOps collision_feature_graph{feature_graph.describe, nullptr};
     const std::array collision_handlers{
         test_registration::erased(&commandDescriptor<CollidingA>(), [](void*, CommandInvocation& invocation) noexcept {
@@ -209,14 +209,14 @@ int main()
     };
     check(bool(server->registerFeature<CollidingA, CollidingB>({&collision_feature, &collision_feature_graph, nullptr, collision_handlers})));
     const std::array gpu_commands{commandDescriptor<UnqualifiedGpu>()};
-    const FeatureDescriptor gpu_feature{FeatureTypeIdView("test.unqualified.gpu"), {1, 0}, nullptr};
+    const FeatureDescriptor gpu_feature{FeatureName("test.unqualified.gpu"), {1, 0}, nullptr};
     const FeatureGraphOps gpu_feature_graph{feature_graph.describe, nullptr};
     const std::array gpu_handlers{CommandRegistration{bindCommand<UnqualifiedGpu, +[](FeatureState&, const UnqualifiedGpu::Request&,
         CommandContext<UnqualifiedGpu>&) noexcept -> RenderResult<void> { return {}; }>(state)}};
     auto rejected = server->registerFeature<UnqualifiedGpu>({&gpu_feature, &gpu_feature_graph, nullptr, gpu_handlers});
     check(!rejected && rejected.error().type == kProtocolContract);
     const std::array premature_commands{commandDescriptor<PrematureGpu>()};
-    const FeatureDescriptor premature_feature{FeatureTypeIdView("test.premature.gpu"), {1, 0}, nullptr};
+    const FeatureDescriptor premature_feature{FeatureName("test.premature.gpu"), {1, 0}, nullptr};
     const FeatureGraphOps premature_feature_graph{feature_graph.describe, nullptr};
     const std::array premature_handlers{
         test_registration::erased(&commandDescriptor<PrematureGpu>(), [](void* owner, CommandInvocation& invocation) noexcept {

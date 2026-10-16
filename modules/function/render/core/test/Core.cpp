@@ -16,6 +16,8 @@ static_assert(std::is_same_v<SceneId, cxx::SlotKey<SceneTag>>);
 static_assert(std::is_same_v<ViewId, cxx::SlotKey<ViewTag>>);
 static_assert(std::is_same_v<TargetId, cxx::SlotKey<TargetTag>>);
 static_assert(std::is_same_v<EffectId, cxx::SlotKey<EffectTag>>);
+static_assert(std::is_same_v<FeatureId, cxx::SlotKey<FeatureTag>>);
+static_assert(!std::is_convertible_v<FeatureId, EffectId>);
 static_assert(!std::is_convertible_v<SceneId, ViewId>);
 static_assert(!std::is_convertible_v<ViewId, TargetId>);
 static_assert(!std::is_convertible_v<TargetId, EffectId>);
@@ -54,6 +56,7 @@ int identities()
     CHECK(lifecycle<ViewTag>() == 0);
     CHECK(lifecycle<TargetTag>() == 0);
     CHECK(lifecycle<EffectTag>() == 0);
+    CHECK(lifecycle<FeatureTag>() == 0);
     return 0;
 }
 

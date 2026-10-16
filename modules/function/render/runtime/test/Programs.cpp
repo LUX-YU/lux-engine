@@ -55,10 +55,10 @@ static RenderResult<void> emptyDescribe(const RetainableEncodedDataView*, std::s
 
 int main()
 {
-    const FeatureDescriptor foreign{FeatureTypeIdView("test.aaa.foreign"), {1, 0}, nullptr};
+    const FeatureDescriptor foreign{FeatureName("test.aaa.foreign"), {1, 0}, nullptr};
     const FeatureGraphOps foreign_graph{emptyDescribe, [](const RetainableEncodedDataView*, std::string_view name, std::span<const ResolvedResource>, RenderGraphBuilder& builder) noexcept
             -> RenderResult<void> {
-            auto pass = builder.addPass({featureKey(FeatureTypeIdView("test.aaa.foreign"), name, "unused"),
+            auto pass = builder.addPass({featureKey(FeatureName("test.aaa.foreign"), name, "unused"),
                 EGraphPassKind::TRANSFER, {}});
             return pass ? RenderResult<void>{} : lux::cxx::unexpected(pass.error());
         }};

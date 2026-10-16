@@ -30,6 +30,7 @@ namespace lux::render
         addBuiltin<Readback, &Impl::readback>();
         addBuiltin<Stop, &Impl::stopCommand>();
         addBuiltin<QueryRenderStats, &Impl::queryRenderStats>();
+        addBuiltin<ListFeatures, &Impl::listFeatures>();
     }
 
     VKAPI_ATTR VkBool32 VKAPI_CALL RenderServer::Impl::diagnostic(

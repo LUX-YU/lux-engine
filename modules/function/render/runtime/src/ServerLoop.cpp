@@ -50,15 +50,16 @@ namespace lux::render
         }
         static const auto hello_transport = commandTransport<Hello>();
         const auto* entry = frame.command.isNull() ? nullptr : command_table.find(frame.command);
-        const auto* transport = frame.command.isNull() ? &hello_transport : (entry ? &entry->transport : nullptr);
+        const auto* cold = entry ? entry->cold.get() : nullptr;
+        const auto* transport = frame.command.isNull() ? &hello_transport : (entry ? &cold->transport : nullptr);
         const auto* actual_type = received.message().operations();
         const bool valid_type =
             frame.command.isNull()
                 ? actual_type && bool(ipc::IpcMessage::bindType<ValueEnvelope<HelloRequest>>(*actual_type))
                 : transport && received.message().holds(*transport->request);
         const auto* descriptor =
-            frame.command.isNull() ? &commandDescriptor<Hello>() : (entry ? entry->binding.descriptor() : nullptr);
-        const bool valid_identity = frame.command.isNull() || (entry && entry->available && frame.session == identity);
+            frame.command.isNull() ? &commandDescriptor<Hello>() : (entry ? cold->binding.descriptor() : nullptr);
+        const bool valid_identity = frame.command.isNull() || (entry && cold->available && frame.session == identity);
         const bool valid_capacity = frame.reply_capacity <= config.max_reply_bytes;
         bool funded = false;
         if (valid_identity && valid_type && valid_capacity)
@@ -80,7 +81,7 @@ namespace lux::render
             descriptor,
             funded ? transport : nullptr,
             failure_type,
-            entry ? entry->code_pin : config.implementation_code_pin
+            entry ? cold->code_pin : config.implementation_code_pin
         );
         RenderResult<void> result;
         if (!valid_identity)
@@ -106,9 +107,10 @@ namespace lux::render
             GpuAdmission admission{*this, request};
             vulkan::GpuCompletionAccess access{&gpu_completion_functions, &admission};
             auto invocation = request.invocation(
-                &admission, command_completion_functions, entry->binding.gpuCompletion() ? &access : nullptr
+                &admission, command_completion_functions, cold->binding.gpuCompletion() ? &access : nullptr
             );
-            result = entry->binding.invoke(invocation);
+            const auto active = entry->active;
+            result = active.invoke(active.object, invocation);
         }
         settle(std::move(request), result);
         ++commands;
@@ -193,8 +195,9 @@ namespace lux::render
         resources.freeze();
         const std::uint32_t capabilities =
             (s.device->device().textureDescriptors() ? 1u : 0u) | (s.device->device().textureCompressionBc() ? 2u : 0u);
-        for (auto& entry : s.command_table)
+        for (auto& route : s.command_table)
         {
+            auto& entry = *route.cold;
             entry.available = !entry.storage || (entry.storage->required_capabilities & ~capabilities) == 0;
             if (!entry.available) continue;
             const auto& descriptor = *entry.binding.descriptor();

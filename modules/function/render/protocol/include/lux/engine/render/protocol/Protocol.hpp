@@ -7,6 +7,7 @@
 #include <span>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/cxx/core/Schema.hpp>
@@ -101,14 +102,19 @@ namespace lux::render
         RenderError error{};
     };
 
+    inline constexpr auto kProtocolContract = error::errorId("lux.render.protocol.contract");
+
     struct CommandAsyncOps;
-    namespace protocol_detail { struct CommandContextAccess; }
+    struct CommandInvocation;
+    namespace protocol_detail { struct ReplyAccess; }
 
     struct CommandCompletionFns final
     {
         RenderResult<void> (*finish)(void*, ECommandOutcome, RenderError, void*) noexcept;
         bool (*active)(const void*) noexcept;
         RenderResult<void> (*defer)(void*, void*, const CommandAsyncOps&) noexcept = nullptr;
+        RenderResult<CommandInvocation*> (*promote)(void*, std::size_t) noexcept = nullptr;
+        void (*abandon)(void*) noexcept = nullptr;
     };
 
     // A handler-call borrow, never retained by asynchronous work. The extension
@@ -122,12 +128,20 @@ namespace lux::render
     };
 
     template <RenderCommand C>
-    class CommandContext final
+    class Reply final
     {
     public:
-        explicit CommandContext(CommandInvocation& invocation) noexcept : invocation_(&invocation) {}
-        CommandContext(const CommandContext&) = delete;
-        CommandContext& operator=(const CommandContext&) = delete;
+        explicit Reply(CommandInvocation& invocation) noexcept : invocation_(&invocation) {}
+        Reply(const Reply&) = delete;
+        Reply& operator=(const Reply&) = delete;
+        Reply(Reply&& other) noexcept : invocation_(std::exchange(other.invocation_, nullptr)) {}
+        Reply& operator=(Reply&&) = delete;
+        ~Reply() noexcept
+        {
+            const auto* invocation = std::exchange(invocation_, nullptr);
+            if (invocation && invocation->completion->abandon)
+                invocation->completion->abandon(invocation->completion_owner);
+        }
 
         [[nodiscard]] const typename C::Request& request() const noexcept
         {
@@ -136,7 +150,7 @@ namespace lux::render
 
         [[nodiscard]] bool active() const noexcept
         {
-            return invocation_->completion->active(invocation_->completion_owner);
+            return invocation_ && invocation_->completion->active(invocation_->completion_owner);
         }
 
         // Capacity rejection preserves the response. After transfer, the original
@@ -144,9 +158,7 @@ namespace lux::render
         // GPU_READY cannot succeed through this ordinary completion.
         [[nodiscard]] RenderResult<void> complete(typename C::Response& response) noexcept
         {
-            return invocation_->completion->finish(
-                invocation_->completion_owner, ECommandOutcome::SUCCESS, {}, &response
-            );
+            return finish(ECommandOutcome::SUCCESS, {}, &response);
         }
 
         [[nodiscard]] RenderResult<void> complete(typename C::Response&& response) noexcept
@@ -156,16 +168,24 @@ namespace lux::render
 
         [[nodiscard]] RenderResult<void> fail(RenderError error) noexcept
         {
-            return invocation_->completion->finish(
-                invocation_->completion_owner, ECommandOutcome::FAILED, error, nullptr
-            );
+            return finish(ECommandOutcome::FAILED, error, nullptr);
         }
 
         [[nodiscard]] RenderResult<void> cancel() noexcept
         {
-            return invocation_->completion->finish(
-                invocation_->completion_owner, ECommandOutcome::CANCELLED, {}, nullptr
-            );
+            return finish(ECommandOutcome::CANCELLED, {}, nullptr);
+        }
+
+        // Owner-thread promotion. On success the old SBO request borrow is invalid: reborrow
+        // through the returned Reply before constructing any asynchronous operation.
+        [[nodiscard]] RenderResult<Reply> defer(std::size_t reply_bytes = sizeof(typename C::Response)) & noexcept
+        {
+            if (!invocation_ || !invocation_->completion->promote)
+                return cxx::unexpected(RenderError{kProtocolContract});
+            auto promoted = invocation_->completion->promote(invocation_->completion_owner, reply_bytes);
+            if (!promoted) return cxx::unexpected(promoted.error());
+            invocation_ = nullptr;
+            return Reply{**promoted};
         }
 
         // Defined by AsyncCommand.hpp for callers that actually create finite stdexec work.
@@ -173,30 +193,49 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> completeWhen(Sender&& sender) noexcept;
 
     private:
-        friend struct protocol_detail::CommandContextAccess;
+        friend struct protocol_detail::ReplyAccess;
+        [[nodiscard]] RenderResult<void> finish(ECommandOutcome outcome, RenderError error, void* response) noexcept
+        {
+            auto* invocation = std::exchange(invocation_, nullptr);
+            if (!invocation) return cxx::unexpected(RenderError{kProtocolContract});
+            auto result = invocation->completion->finish(invocation->completion_owner, outcome, error, response);
+            // Success may publish to another thread and destroy the operation containing this Reply.
+            // A rejected completion publishes nothing; only that path may restore the capability.
+            if (!result) invocation_ = invocation;
+            return result;
+        }
+
         CommandInvocation* invocation_;
     };
 
     namespace protocol_detail { struct CommandHandlerAudit; }
+
+    // Non-owning active call. Installation owns the actual object separately.
+    struct HandlerCall final
+    {
+        RenderResult<void> (*invoke)(void*, CommandInvocation&) noexcept = nullptr;
+        void* object = nullptr;
+    };
 
     class CommandHandler
     {
     public:
         CommandHandler() noexcept = default;
         [[nodiscard]] const CommandDescriptor* descriptor() const noexcept { return descriptor_; }
-        [[nodiscard]] bool valid() const noexcept { return descriptor_ && invoke_; }
+        [[nodiscard]] bool valid() const noexcept { return descriptor_ && call_.invoke; }
+        [[nodiscard]] HandlerCall call() const noexcept { return call_; }
         [[nodiscard]] RenderResult<void> invoke(CommandInvocation& invocation) const noexcept
         {
-            return invoke_(user_, invocation);
+            return call_.invoke(call_.object, invocation);
         }
 
         template <RenderCommand C, auto Function, class State>
             requires std::same_as<decltype(Function),
-                RenderResult<void> (*)(State&, const typename C::Request&, CommandContext<C>&) noexcept>
+                RenderResult<void> (*)(State&, const typename C::Request&, Reply<C>&) noexcept>
         [[nodiscard]] static CommandHandler bind(State* state) noexcept
         {
             return {&commandDescriptor<C>(), [](void* owner, CommandInvocation& invocation) noexcept {
-                CommandContext<C> context(invocation);
+                Reply<C> context(invocation);
                 return Function(*static_cast<State*>(owner), context.request(), context);
             }, state};
         }
@@ -205,15 +244,14 @@ namespace lux::render
         friend struct protocol_detail::CommandHandlerAudit;
         using Invoke = RenderResult<void> (*)(void*, CommandInvocation&) noexcept;
         CommandHandler(const CommandDescriptor* descriptor, Invoke invoke, void* user) noexcept
-            : descriptor_(descriptor), invoke_(invoke), user_(user) {}
+            : descriptor_(descriptor), call_{invoke, user} {}
         const CommandDescriptor* descriptor_ = nullptr;
-        Invoke invoke_ = nullptr;
-        void* user_ = nullptr;
+        HandlerCall call_;
     };
 
     template <RenderCommand C, auto Function, class State>
         requires std::same_as<decltype(Function),
-            RenderResult<void> (*)(State&, const typename C::Request&, CommandContext<C>&) noexcept>
+            RenderResult<void> (*)(State&, const typename C::Request&, Reply<C>&) noexcept>
     [[nodiscard]] CommandHandler bindCommand(State& state) noexcept
     {
         return CommandHandler::bind<C, Function>(&state);
@@ -223,6 +261,5 @@ namespace lux::render
     [[nodiscard]] RenderResult<void>
     compatibleCommands(const CommandDescriptor& left, const CommandDescriptor& right) noexcept;
 
-    inline constexpr auto kProtocolContract = error::errorId("lux.render.protocol.contract");
     [[nodiscard]] std::span<const error::ErrorDescriptor> renderProtocolErrorDescriptors() noexcept;
 }

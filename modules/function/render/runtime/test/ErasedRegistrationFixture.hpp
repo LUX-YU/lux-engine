@@ -13,7 +13,7 @@ namespace lux::render::protocol_detail
         }
         static CommandHandler owner(CommandHandler handler, void* user) noexcept
         {
-            handler.user_ = user;
+            handler.call_.object = user;
             return handler;
         }
     };

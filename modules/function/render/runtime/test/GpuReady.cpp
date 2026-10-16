@@ -156,7 +156,7 @@ static RenderResult<void> ready(ProbeOwner& owner, vulkan::DeviceSession& sessio
     ++finished; // The test business commit: real copied bytes have been certified, not just a CPU-ready flag.
     return {};
 }
-static RenderResult<void> upload(vulkan::DeviceSession& session, const UploadProbe::Request& input, CommandContext<UploadProbe>& context) noexcept
+static RenderResult<void> upload(vulkan::DeviceSession& session, const UploadProbe::Request& input, Reply<UploadProbe>& context) noexcept
 {
     if (input.sample >= samples.size() || input.mode > 5) return lux::cxx::unexpected(RenderError{kInvalidEncoding});
     samples[input.sample].inbound = now();
@@ -246,7 +246,7 @@ static const FeatureGraphOps feature_graph{[](const RetainableEncodedDataView*, 
 static const std::array handlers{
     vulkan::nativeCommand<UploadProbe, upload>(),
     test_registration::erased(&cpu, [](void*, CommandInvocation& invocation) noexcept {
-        return CommandContext<CpuResult>(invocation).complete(CpuResult::Response{});
+        return Reply<CpuResult>(invocation).complete(CpuResult::Response{});
     })
 };
 static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view name) noexcept

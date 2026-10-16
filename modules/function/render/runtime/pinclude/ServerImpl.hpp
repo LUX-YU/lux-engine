@@ -56,7 +56,7 @@ namespace lux::render
             FeatureRegistration definition;
         };
 
-        struct CommandEntry final
+        struct CommandMetadata final
         {
             CommandId id;
             CommandRegistration binding;
@@ -64,6 +64,12 @@ namespace lux::render
             std::shared_ptr<const void> code_pin;
             const StorageDescriptor* storage = nullptr;
             bool available = true;
+        };
+
+        struct CommandEntry final
+        {
+            HandlerCall active;
+            std::unique_ptr<CommandMetadata> cold;
         };
     } // namespace runtime_detail
 
@@ -78,6 +84,7 @@ namespace lux::render
         };
 
         static const CommandCompletionFns command_completion_functions;
+        static const CommandCompletionFns deferred_completion_functions;
         static const vulkan::GpuCompletionFns gpu_completion_functions;
 
         [[nodiscard]] RenderResult<FeatureId> registerFeature(
@@ -122,9 +129,9 @@ namespace lux::render
         void addBuiltin() noexcept
         {
             static constexpr auto handler =
-                +[](Impl& owner, const typename C::Request&, CommandContext<C>& context) noexcept
+                +[](Impl& owner, const typename C::Request&, Reply<C>& context) noexcept
             {
-                auto& invocation = protocol_detail::CommandContextAccess::invocation(context);
+                auto& invocation = protocol_detail::ReplyAccess::invocation(context);
                 return (owner.*Method)(static_cast<GpuAdmission*>(invocation.completion_owner)->request);
             };
             addCommand(bindCommand<C, handler>(*this), commandTransport<C>(), nullptr, config.implementation_code_pin);
@@ -198,9 +205,7 @@ namespace lux::render
 
         static void completeCpu(void* value, ECommandOutcome outcome, RenderError error, void* response) noexcept;
 
-        RenderResult<void> deferCommand(
-            RenderRequest& request, void* sender, const CommandAsyncOps& operations
-        ) noexcept;
+        RenderResult<CommandInvocation*> deferCommand(RenderRequest& request, std::size_t reply_bytes) noexcept;
 
         struct CompileState;
 

@@ -2,6 +2,7 @@
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/protocol/AsyncCommand.hpp>
 #include "Deferred.hpp"
+#include "ServerImpl.hpp"
 #include "../../resource/test/CpuFixture.hpp"
 
 #define NOMINMAX
@@ -174,7 +175,7 @@ namespace
         struct Response final { unsigned index; std::uint64_t result; };
     };
 
-    RenderResult<void> invoke(State&, const CpuOperation::Request& input, CommandContext<CpuOperation>& context) noexcept
+    RenderResult<void> invoke(State&, const CpuOperation::Request& input, Reply<CpuOperation>& context) noexcept
     {
         auto* batch = state->active.load(std::memory_order_acquire);
         check(batch && input.index < batch->count);
@@ -399,6 +400,9 @@ namespace lux::render::runtime_detail::test
 
 int main()
 {
+    std::printf("Route layout: call=%zu/%zu entry=%zu/%zu metadata=%zu request=%zu\n",
+        sizeof(HandlerCall), alignof(HandlerCall), sizeof(runtime_detail::CommandEntry),
+        alignof(runtime_detail::CommandEntry), sizeof(runtime_detail::CommandMetadata), sizeof(RenderRequest));
     auto control = std::make_unique<State>();
     state = control.get();
     lux::render::test::CpuFixture host(2, 128);

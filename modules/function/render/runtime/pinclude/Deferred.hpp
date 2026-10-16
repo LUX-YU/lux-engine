@@ -89,6 +89,7 @@ namespace lux::render::runtime_detail
     struct DeferredCompletion final
     {
         std::optional<RenderRequest> request;
+        CommandInvocation invocation{};
         stdexec::inplace_stop_source stop;
         // Sender operations may retain a stop_callback until destruction; its source outlives them.
         VCompletionCondition condition;

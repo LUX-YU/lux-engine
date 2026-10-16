@@ -81,7 +81,7 @@ namespace lux::render
 
     template <RenderCommand C>
     template <typename Sender>
-    RenderResult<void> CommandContext<C>::completeWhen(Sender&& sender) noexcept
+    RenderResult<void> Reply<C>::completeWhen(Sender&& sender) noexcept
     {
         using Value = std::remove_cvref_t<Sender>;
         using State = detail::CommandSenderOperation<C, Value>;
@@ -94,7 +94,16 @@ namespace lux::render
             [](void* state) noexcept { stdexec::start(static_cast<State*>(state)->operation); },
             [](void* state) noexcept { delete static_cast<State*>(state); }
         };
-        if (!invocation_->completion->defer) return cxx::unexpected(RenderError{kProtocolContract});
-        return invocation_->completion->defer(invocation_->completion_owner, &sender, operations);
+        if (!invocation_) return cxx::unexpected(RenderError{kProtocolContract});
+        if (invocation_->completion->promote)
+        {
+            auto pending = defer();
+            if (!pending) return cxx::unexpected(pending.error());
+            return pending->completeWhen(std::forward<Sender>(sender));
+        }
+        auto* invocation = std::exchange(invocation_, nullptr);
+        auto result = invocation->completion->defer(invocation->completion_owner, &sender, operations);
+        if (!result) invocation_ = invocation;
+        return result;
     }
 }

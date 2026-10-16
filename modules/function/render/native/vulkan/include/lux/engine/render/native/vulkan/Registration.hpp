@@ -25,7 +25,7 @@ namespace lux::render::vulkan
 {
     template <RenderCommand C, auto Function>
         requires std::same_as<decltype(Function),
-            RenderResult<void> (*)(DeviceSession&, const typename C::Request&, CommandContext<C>&) noexcept>
+            RenderResult<void> (*)(DeviceSession&, const typename C::Request&, Reply<C>&) noexcept>
     [[nodiscard]] CommandRegistration nativeCommand() noexcept
     {
         return registration_detail::NativeBinding::bind<C, Function>();

@@ -9,7 +9,7 @@
 namespace extension_test
 {
     inline RenderResult<void> setBuffer(vk::DeviceSession& session, const SetBuffer::Request& input,
-        CommandContext<SetBuffer>& context) noexcept
+        Reply<SetBuffer>& context) noexcept
     {
         BufferBinding response;
         auto reservation = vk::GpuCompletionReservation::reserve(context, session.queue(), response);
@@ -25,7 +25,7 @@ namespace extension_test
     }
 
     inline RenderResult<void> removeBuffer(vk::DeviceSession& session, const RemoveBuffer::Request& input,
-        CommandContext<RemoveBuffer>& context) noexcept
+        Reply<RemoveBuffer>& context) noexcept
     {
         auto& registry = session.resources();
         auto id = registry.find(registry.root(), "values", TestBufferStorage::description);
@@ -35,7 +35,7 @@ namespace extension_test
     }
 
     inline RenderResult<void> readBuffer(vk::DeviceSession& session, const ReadBuffer::Request& input,
-        CommandContext<ReadBuffer>& context) noexcept
+        Reply<ReadBuffer>& context) noexcept
     {
         auto& registry = session.resources();
         auto id = registry.find(registry.root(), "values", TestBufferStorage::description);

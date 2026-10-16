@@ -200,7 +200,7 @@
   },
   "N2.3": {
     "title": "Command and Handler ownership",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -229,7 +229,9 @@
       "T-FEATURE-06",
       "T-FEATURE-07"
     ],
-    "evidence": []
+    "evidence": [
+      "N3-REPLY-CHECKPOINT.md"
+    ]
   },
   "N2.4": {
     "title": "Atomic typed module installation",
@@ -299,7 +301,7 @@
   },
   "N3.1": {
     "title": "Typed Reply and unique Pending",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -324,7 +326,9 @@
       "T-GPU-05",
       "T-GPU-06"
     ],
-    "evidence": []
+    "evidence": [
+      "N3-REPLY-CHECKPOINT.md"
+    ]
   },
   "N3.2": {
     "title": "Native upload and readback operations",

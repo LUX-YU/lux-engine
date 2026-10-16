@@ -6,10 +6,10 @@
 namespace lux::render::protocol_detail
 {
     // Installed because the Native extension template below has external consumers.
-    struct CommandContextAccess final
+    struct ReplyAccess final
     {
         template <RenderCommand C>
-        static CommandInvocation& invocation(CommandContext<C>& context) noexcept { return *context.invocation_; }
+        static CommandInvocation& invocation(Reply<C>& context) noexcept { return *context.invocation_; }
     };
 }
 
@@ -34,9 +34,9 @@ namespace lux::render::vulkan
 
         template <RenderCommand C>
         [[nodiscard]] static RenderResult<GpuCompletionReservation>
-        reserve(CommandContext<C>& context, SubmissionQueue& queue, typename C::Response& response) noexcept
+        reserve(Reply<C>& context, SubmissionQueue& queue, typename C::Response& response) noexcept
         {
-            return reserve(protocol_detail::CommandContextAccess::invocation(context), queue, &response);
+            return reserve(protocol_detail::ReplyAccess::invocation(context), queue, &response);
         }
 
         ~GpuCompletionReservation() noexcept;

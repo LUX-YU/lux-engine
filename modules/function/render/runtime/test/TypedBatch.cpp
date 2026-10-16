@@ -97,7 +97,7 @@ namespace batch_fixture
         std::atomic<std::size_t> applied_entries{0};
     };
 
-    static RenderResult<void> set(State& state, const SetValues::Request& request, CommandContext<SetValues>& context) noexcept
+    static RenderResult<void> set(State& state, const SetValues::Request& request, Reply<SetValues>& context) noexcept
     {
         ++state.boundaries;
         const bool invalid_scene = request.scene.index >= state.scenes.size() ||
@@ -124,7 +124,7 @@ namespace batch_fixture
         return context.complete(SetValues::Response{request.revision, static_cast<std::uint32_t>(request.changes.size())});
     }
 
-    static RenderResult<void> read(State& state, const ReadValue::Request& request, CommandContext<ReadValue>& context) noexcept
+    static RenderResult<void> read(State& state, const ReadValue::Request& request, Reply<ReadValue>& context) noexcept
     {
         const bool invalid_scene = request.scene.index >= state.scenes.size() ||
             state.scenes[request.scene.index].scene != request.scene;

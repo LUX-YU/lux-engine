@@ -52,8 +52,8 @@ static_assert(RenderCommand<Query> && RenderCommand<Signal>);
 static_assert(!RenderCommand<MissingResponse> && !RenderCommand<InvalidCommand>);
 static_assert(HasBudget<Query::Request> && !HasBudget<Query::Response>);
 static_assert(sizeof(CommandInvocation) == 4 * sizeof(void*));
-static_assert(sizeof(CommandContext<Query>) == sizeof(void*));
-static_assert(!std::is_copy_constructible_v<CommandContext<Query>>);
+static_assert(sizeof(Reply<Query>) == sizeof(void*));
+static_assert(!std::is_copy_constructible_v<Reply<Query>>);
 
 static int descriptor()
 {
@@ -162,7 +162,7 @@ static int context()
     Query::Request input{91};
     Completion completion;
     CommandInvocation invocation{&input, &completion, &functions};
-    CommandContext<Query> context(invocation);
+    Reply<Query> context(invocation);
     CHECK(&context.request() == &input && context.request().key == 91 && context.active());
     Query::Response response{1, 2, 3};
     const auto* allocation = response.data();
@@ -175,14 +175,19 @@ static int context()
 
     completion = {};
     completion.gpu_ready = true;
-    CHECK(!context.complete(duplicate) && context.active() && duplicate.data() == retained);
-    CHECK(context.fail(RenderError{kProtocolContract, {17}}));
+    Reply<Query> rejected(invocation);
+    CHECK(!rejected.complete(duplicate) && rejected.active() && duplicate.data() == retained);
+    CHECK(rejected.fail(RenderError{kProtocolContract, {17}}));
     CHECK(completion.outcome == ECommandOutcome::FAILED && completion.error.args[0] == 17);
     completion = {};
-    CHECK(context.cancel());
+    Reply<Query> cancelled(invocation);
+    CHECK(cancelled.cancel());
     CHECK(completion.outcome == ECommandOutcome::CANCELLED && completion.calls == 1);
     completion = {};
-    CHECK(context.complete(Query::Response{6, 7}));
+    Reply<Query> fresh(invocation);
+    Reply<Query> moved(std::move(fresh));
+    CHECK(!fresh.active() && moved.active());
+    CHECK(moved.complete(Query::Response{6, 7}));
     CHECK(completion.response == Query::Response({6, 7}));
     return 0;
 }

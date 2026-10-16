@@ -112,7 +112,7 @@ namespace async_tail_test
         std::uint32_t value_;
     };
 
-    static RenderResult<void> invoke(Host& host, const Command::Request& value, CommandContext<Command>& context) noexcept
+    static RenderResult<void> invoke(Host& host, const Command::Request& value, Reply<Command>& context) noexcept
     {
         auto pin = host.module.lock();
         if (!pin) return lux::cxx::unexpected(RenderError{kProtocolContract});

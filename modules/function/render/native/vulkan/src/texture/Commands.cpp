@@ -17,7 +17,7 @@ namespace lux::render
         }
 
         RenderResult<void> setTexture(vulkan::DeviceSession& device, const SetTexture::Request& input,
-            CommandContext<SetTexture>& context) noexcept
+            Reply<SetTexture>& context) noexcept
         {
             auto& resources = device.resources();
             auto instance = resources.getOrCreate(resources.root(), "default", TextureStorage::description, nullptr);
@@ -33,7 +33,7 @@ namespace lux::render
         }
 
         RenderResult<void> setRegion(vulkan::DeviceSession& device, const SetTextureRegion::Request& input,
-            CommandContext<SetTextureRegion>& context) noexcept
+            Reply<SetTextureRegion>& context) noexcept
         {
             auto& registry = device.resources();
             auto id = registry.find(registry.root(), "default", TextureStorage::description);
@@ -48,7 +48,7 @@ namespace lux::render
         }
 
         RenderResult<void> release(vulkan::DeviceSession& device, const ReleaseTexture::Request& input,
-            CommandContext<ReleaseTexture>& context) noexcept
+            Reply<ReleaseTexture>& context) noexcept
         {
             auto& registry = device.resources();
             auto id = registry.find(registry.root(), "default", TextureStorage::description);
@@ -59,7 +59,7 @@ namespace lux::render
         }
 
         RenderResult<void> query(vulkan::DeviceSession& device, const QueryTexture::Request& input,
-            CommandContext<QueryTexture>& context) noexcept
+            Reply<QueryTexture>& context) noexcept
         {
             auto& registry = device.resources();
             auto storage = registry.tryGet<TextureStorage>(registry.root(), "default");

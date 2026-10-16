@@ -9,8 +9,8 @@ namespace lux::render
     RenderRequest::RenderRequest(ipc::ReceivedRequest input, ipc::IpcResponder& responder,
         SessionIdentity session, RequestId request, std::size_t capacity, const CommandDescriptor* descriptor,
         const CommandTransport* transport, const ipc::IpcBoundType<ValueEnvelope<RenderError>>& failure_type,
-        std::shared_ptr<const void> code_pin) noexcept
-        : code_pin_(std::move(code_pin)), input_(std::move(input)), responder_(&responder), session_(session),
+        const std::shared_ptr<const void>& code_pin) noexcept
+        : code_pin_(&code_pin), input_(std::move(input)), responder_(&responder), session_(session),
           request_(request), reply_capacity_(capacity), descriptor_(descriptor), transport_(transport),
           failure_type_(&failure_type) {}
 
@@ -29,7 +29,7 @@ namespace lux::render
         if (!bytes) return cxx::unexpected(bytes.error());
         if (*bytes > reply_capacity_) return cxx::unexpected(RenderError{kRuntimeCapacity});
         const auto overhead = transport_->response->size() - descriptor_->response.size;
-        transport_->package_response(output, response, {}, code_pin_);
+        transport_->package_response(output, response, {}, *code_pin_);
         return *bytes + overhead; // Client checked this bounded sum before moving the input.
     }
 

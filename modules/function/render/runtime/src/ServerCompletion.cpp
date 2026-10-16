@@ -200,27 +200,58 @@ namespace lux::render
         slot.post()(nullptr, nullptr, {});
     }
 
-    RenderResult<void> RenderServer::Impl::deferCommand(
-        RenderRequest& request, void* sender, const CommandAsyncOps& operations
+    RenderResult<CommandInvocation*> RenderServer::Impl::deferCommand(
+        RenderRequest& request, std::size_t reply_bytes
     ) noexcept
     {
-        // A plain finite CPU sender is not evidence of a Native GPU completion.
         if (!request.active()) return cxx::unexpected(RenderError{kRuntimeState});
         if (request.gpuReady()) return cxx::unexpected(RenderError{kProtocolContract});
+        if (reply_bytes > request.replyCapacity()) return cxx::unexpected(RenderError{kRuntimeCapacity});
         auto* slot = reserveCompletion();
         if (!slot) return cxx::unexpected(RenderError{kRuntimeCapacity});
         slot->request.emplace(std::move(request));
-        auto& cpu = slot->condition.emplace<CpuCompletion>();
+        slot->condition.emplace<CpuCompletion>();
+        slot->invocation = slot->request->invocation(slot, deferred_completion_functions);
 #ifdef LUX_RUNTIME_ASYNC_COST_SEAM
         test::completionRegistered(slot->id, slot->request->id());
 #endif
-        cpu.destroy = operations.destroy;
-        cpu.operation = operations.connect(sender, {slot, completeCpu, slot->stop.get_token()});
-        // start runs on the RenderThread. Event draining cannot reenter this stack; even immediate
-        // completion is only published, then adopted at the next owner-loop safety point.
-        operations.start(cpu.operation);
-        return {};
+        return &slot->invocation;
     }
+
+    const CommandCompletionFns RenderServer::Impl::deferred_completion_functions{
+        [](void* value, ECommandOutcome outcome, RenderError error, void* response) noexcept -> RenderResult<void>
+        {
+            auto& slot = *static_cast<DeferredCompletion*>(value);
+            auto& completion = std::get<CpuCompletion>(slot.condition);
+            if (outcome == ECommandOutcome::SUCCESS)
+            {
+                auto charge = slot.request->prepareResponse(response, completion.reply);
+                if (!charge) return cxx::unexpected(charge.error());
+                completion.reply_charge = *charge;
+            }
+            completion.outcome = outcome;
+            completion.error = error;
+            slot.post()(nullptr, nullptr, {});
+            return {};
+        },
+        [](const void* value) noexcept
+        {
+            const auto& slot = *static_cast<const DeferredCompletion*>(value);
+            return std::get<CpuCompletion>(slot.condition).outcome == ECommandOutcome::OUTCOME_UNKNOWN;
+        },
+        [](void* value, void* sender, const CommandAsyncOps& operations) noexcept -> RenderResult<void>
+        {
+            auto& slot = *static_cast<DeferredCompletion*>(value);
+            auto& completion = std::get<CpuCompletion>(slot.condition);
+            completion.destroy = operations.destroy;
+            completion.operation = operations.connect(sender, {&slot, completeCpu, slot.stop.get_token()});
+            // Owner-thread start cannot reenter event draining. The Receiver only publishes.
+            operations.start(completion.operation);
+            return {};
+        },
+        nullptr,
+        [](void* value) noexcept { completeCpu(value, ECommandOutcome::CANCELLED, {}, nullptr); }
+    };
 
     void RenderServer::Impl::drainCompletions(std::size_t budget) noexcept
     {
@@ -300,10 +331,11 @@ namespace lux::render
             }
         },
         [](const void* owner) noexcept { return static_cast<const GpuAdmission*>(owner)->request.active(); },
-        [](void* owner, void* sender, const CommandAsyncOps& operations) noexcept -> RenderResult<void>
+        nullptr,
+        [](void* owner, std::size_t reply_bytes) noexcept -> RenderResult<CommandInvocation*>
         {
             auto& admission = *static_cast<GpuAdmission*>(owner);
-            return admission.server.deferCommand(admission.request, sender, operations);
+            return admission.server.deferCommand(admission.request, reply_bytes);
         }
     };
 

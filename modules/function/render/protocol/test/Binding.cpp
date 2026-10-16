@@ -12,14 +12,14 @@ struct Command final
 struct OtherRequest { unsigned value; };
 struct State { unsigned value = 0; };
 
-static RenderResult<void> apply(State& state, const Command::Request& input, CommandContext<Command>& context) noexcept
+static RenderResult<void> apply(State& state, const Command::Request& input, Reply<Command>& context) noexcept
 {
     state.value = input.value;
     return context.complete(unsigned(input.value));
 }
 
-static RenderResult<void> wrong(State&, const OtherRequest&, CommandContext<Command>&) noexcept { return {}; }
-static RenderResult<void> throwing(State&, const Command::Request&, CommandContext<Command>&) { return {}; }
+static RenderResult<void> wrong(State&, const OtherRequest&, Reply<Command>&) noexcept { return {}; }
+static RenderResult<void> throwing(State&, const Command::Request&, Reply<Command>&) { return {}; }
 
 template <auto Function>
 concept CanBind = requires(State& state) { bindCommand<Command, Function>(state); };

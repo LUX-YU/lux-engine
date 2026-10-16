@@ -71,7 +71,7 @@ static const std::array texture_operations{operation};
 static const FeatureDescriptor definition{FeatureName("test.texture.progress"), {1, 0}, nullptr};
 static const FeatureGraphOps definition_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 
-static RenderResult<void> invoke(DeviceSession& session, const TextureProbe::Request& value, CommandContext<TextureProbe>& context) noexcept
+static RenderResult<void> invoke(DeviceSession& session, const TextureProbe::Request& value, Reply<TextureProbe>& context) noexcept
 {
     CHECK(!context.complete(Ack{})); // ordinary reply cannot manufacture GPU readiness
     Ack response;

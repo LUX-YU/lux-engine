@@ -130,10 +130,10 @@ static const FeatureGraphOps feature_graph{[](const RetainableEncodedDataView*, 
 static_assert(!std::is_default_constructible_v<BoundCommand<SetExposure>>);
 static_assert(std::same_as<decltype(std::declval<const BoundCommand<SetExposure>&>().command()), CommandId>);
 template <class T>
-concept CanReplyExposure = requires(CommandContext<SetExposure>& context, T& value) { context.complete(value); };
+concept CanReplyExposure = requires(Reply<SetExposure>& context, T& value) { context.complete(value); };
 static_assert(CanReplyExposure<Exposure> && !CanReplyExposure<std::array<std::byte, 3>>);
 
-static RenderResult<void> setExposure(FeatureState& state, const SetExposure::Request& input, CommandContext<SetExposure>& context) noexcept
+static RenderResult<void> setExposure(FeatureState& state, const SetExposure::Request& input, Reply<SetExposure>& context) noexcept
 {
     const auto start = Clock::now();
     state.exposure = input.value;
@@ -143,7 +143,7 @@ static RenderResult<void> setExposure(FeatureState& state, const SetExposure::Re
     return result;
 }
 
-static RenderResult<void> acceptData(FeatureState& state, const AcceptCustomData::Request& input, CommandContext<AcceptCustomData>& context) noexcept
+static RenderResult<void> acceptData(FeatureState& state, const AcceptCustomData::Request& input, Reply<AcceptCustomData>& context) noexcept
 {
     const auto source = input.source.bytes().view();
     if (source.empty()) return cxx::unexpected(RenderError{kInvalidDataReference});
@@ -180,7 +180,7 @@ int main()
         CommandRegistration{bindCommand<SetExposure, setExposure>(state)},
         CommandRegistration{bindCommand<AcceptCustomData, acceptData>(state)},
         test_registration::erased(&commandDescriptor<InvalidReply>(), [](void*, CommandInvocation& invocation) noexcept {
-            CommandContext<InvalidReply> context(invocation);
+            Reply<InvalidReply> context(invocation);
             OversizedResult result{std::vector<std::byte>(4096)};
             const auto* owner = result.bytes.data();
             auto status = context.complete(result);
@@ -199,11 +199,11 @@ int main()
     const FeatureGraphOps collision_feature_graph{feature_graph.describe, nullptr};
     const std::array collision_handlers{
         test_registration::erased(&commandDescriptor<CollidingA>(), [](void*, CommandInvocation& invocation) noexcept {
-            CommandContext<CollidingA> context(invocation);
+            Reply<CollidingA> context(invocation);
             return context.complete(Exposure{context.request().value + 1000});
         }),
         test_registration::erased(&commandDescriptor<CollidingB>(), [](void*, CommandInvocation& invocation) noexcept {
-            CommandContext<CollidingB> context(invocation);
+            Reply<CollidingB> context(invocation);
             return context.complete(Exposure{context.request().value + 2000});
         })
     };
@@ -212,7 +212,7 @@ int main()
     const FeatureDescriptor gpu_feature{FeatureName("test.unqualified.gpu"), {1, 0}, nullptr};
     const FeatureGraphOps gpu_feature_graph{feature_graph.describe, nullptr};
     const std::array gpu_handlers{CommandRegistration{bindCommand<UnqualifiedGpu, +[](FeatureState&, const UnqualifiedGpu::Request&,
-        CommandContext<UnqualifiedGpu>&) noexcept -> RenderResult<void> { return {}; }>(state)}};
+        Reply<UnqualifiedGpu>&) noexcept -> RenderResult<void> { return {}; }>(state)}};
     auto rejected = server->registerFeature<UnqualifiedGpu>({&gpu_feature, &gpu_feature_graph, nullptr, gpu_handlers});
     check(!rejected && rejected.error().type == kProtocolContract);
     const std::array premature_commands{commandDescriptor<PrematureGpu>()};
@@ -220,7 +220,7 @@ int main()
     const FeatureGraphOps premature_feature_graph{feature_graph.describe, nullptr};
     const std::array premature_handlers{
         test_registration::erased(&commandDescriptor<PrematureGpu>(), [](void* owner, CommandInvocation& invocation) noexcept {
-            CommandContext<PrematureGpu> context(invocation);
+            Reply<PrematureGpu> context(invocation);
             auto reply = context.complete(Exposure{9});
             check(!reply && reply.error().type == kProtocolContract && context.active());
             ++static_cast<FeatureState*>(owner)->premature_rejected;

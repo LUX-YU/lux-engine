@@ -6,7 +6,7 @@
 
 namespace lux::render
 {
-    // The sole source-qualified terminal owner. Public handlers only borrow CommandContext<C>.
+    // The sole source-qualified terminal owner. Public handlers only borrow Reply<C>.
     class RenderRequest final
     {
     public:
@@ -14,7 +14,7 @@ namespace lux::render
             SessionIdentity session, RequestId request, std::size_t capacity,
             const CommandDescriptor* descriptor, const runtime_detail::CommandTransport* transport,
             const platform::ipc::IpcBoundType<runtime_detail::ValueEnvelope<RenderError>>& failure_type,
-            std::shared_ptr<const void> code_pin = {}) noexcept;
+            const std::shared_ptr<const void>& code_pin) noexcept;
         RenderRequest(RenderRequest&&) noexcept = default;
         RenderRequest& operator=(RenderRequest&& other) noexcept
         {
@@ -29,7 +29,7 @@ namespace lux::render
 
         [[nodiscard]] bool active() const noexcept { return input_.active(); }
         [[nodiscard]] RequestId id() const noexcept { return request_; }
-        [[nodiscard]] const std::shared_ptr<const void>& codePin() const noexcept { return code_pin_; }
+        [[nodiscard]] const std::shared_ptr<const void>& codePin() const noexcept { return *code_pin_; }
         [[nodiscard]] std::size_t replyCapacity() const noexcept { return reply_capacity_; }
         [[nodiscard]] bool gpuReady() const noexcept
         {
@@ -58,8 +58,9 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> publishError(ECommandOutcome, RenderError) noexcept;
         [[nodiscard]] RenderResult<void> publish(platform::ipc::IpcMessage&, ECommandOutcome) noexcept;
         [[nodiscard]] runtime_detail::BudgetLease splitBudget(std::size_t) noexcept;
-        // The code pin outlives all payload destruction performed by this request owner.
-        std::shared_ptr<const void> code_pin_;
+        // Borrowed from stable Command metadata (or the bootstrap Impl). All source requests end
+        // before that owner; each packaged reply takes its own pin for late foreign destruction.
+        const std::shared_ptr<const void>* code_pin_;
         platform::ipc::ReceivedRequest input_;
         std::unique_ptr<platform::ipc::IpcMessage> unreplied_;
         platform::ipc::IpcResponder* responder_;

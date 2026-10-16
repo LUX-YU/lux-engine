@@ -20,8 +20,12 @@ namespace lux::render
     {
         binding.bindNative(device.get());
         // Full registration comparison proved equivalence; retain the template's static contract.
-        auto id = command_table.emplace(CommandEntry{{}, binding, transport, std::move(pin), storage});
-        command_table.find(id)->id = id;
+        auto metadata = std::make_unique<CommandMetadata>(
+            CommandMetadata{{}, binding, transport, std::move(pin), storage}
+        );
+        auto* cold = metadata.get();
+        const auto id = command_table.emplace(CommandEntry{binding.call(), std::move(metadata)});
+        cold->id = id;
     }
 
     RenderResult<void> RenderServer::Impl::validateHandlers(
@@ -39,7 +43,7 @@ namespace lux::render
                 handler.gpuCompletion())
                 return cxx::unexpected(RenderError{kProtocolContract});
             for (const auto& old : command_table)
-                if (old.binding.descriptor()->name.name() == handler.descriptor()->name.name())
+                if (old.cold->binding.descriptor()->name.name() == handler.descriptor()->name.name())
                     return cxx::unexpected(RenderError{kFeatureDuplicate});
             for (std::size_t previous = 0; previous < i; ++previous)
                 if (handlers[previous].descriptor()->name.name() == handler.descriptor()->name.name())

@@ -195,7 +195,7 @@ struct GateSender final
     }
 };
 
-static RenderResult<void> invoke(State& state, const Async::Request& input, CommandContext<Async>& context) noexcept
+static RenderResult<void> invoke(State& state, const Async::Request& input, Reply<Async>& context) noexcept
 {
     const auto mode = input.mode;
     const auto index = input.slot;
@@ -208,15 +208,34 @@ static RenderResult<void> invoke(State& state, const Async::Request& input, Comm
         auto completed = context.complete(result);
         check(bool(completed));
         auto duplicate = context.completeWhen(stdexec::just(Output{}));
-        check(!duplicate && duplicate.error().type == kRuntimeState);
+        check(!duplicate && duplicate.error().type == kProtocolContract);
         return completed;
+    }
+    if (mode == 6 || mode == 7)
+    {
+        const auto old_address = reinterpret_cast<std::uintptr_t>(&input);
+        auto pending = context.defer();
+        if (!pending) return cxx::unexpected(pending.error());
+        check(!context.active());
+        const auto& stable = pending->request();
+        check(reinterpret_cast<std::uintptr_t>(&stable) != old_address);
+        check(stable.value == result.value && stable.owner == result.owner);
+        if (mode == 7) return {}; // Dropping the sole deferred Reply publishes cancellation exactly once.
+        return pending->completeWhen(GateSender{&state, stable.slot, {stable.value, stable.owner}, false});
+    }
+    if (mode == 8)
+    {
+        auto rejected = context.defer(257);
+        check(!rejected && rejected.error().type == kRuntimeCapacity);
+        check(context.active() && &context.request() == &input && input.owner == result.owner);
+        return context.complete(result);
     }
     auto submitted = context.completeWhen(GateSender{&state, index, std::move(result), mode == 4});
     if (submitted)
     {
         check(!context.active());
         auto duplicate = context.completeWhen(stdexec::just(Output{}));
-        check(!duplicate && duplicate.error().type == kRuntimeState);
+        check(!duplicate && duplicate.error().type == kProtocolContract);
     }
     return submitted;
 }
@@ -267,7 +286,7 @@ int main()
     const std::array handlers{
         CommandRegistration{bindCommand<Async, invoke>(state)},
         test_registration::erased(&commandDescriptor<InvalidGpuAsync>(), [](void* user, CommandInvocation& invocation) noexcept {
-            CommandContext<InvalidGpuAsync> context(invocation);
+            Reply<InvalidGpuAsync> context(invocation);
             auto rejected = context.completeWhen(stdexec::just(Output{}));
             check(!rejected && rejected.error().type == kProtocolContract && context.active());
             ++static_cast<State*>(user)->gpu_rejected;
@@ -300,7 +319,7 @@ int main()
     check(take(wait(*a).take(bound_a)).response().value == 31);
 
     // 0 pending, synchronous value/error/stopped, including a sender whose start has a visible tail.
-    for (std::uint32_t mode : {0u, 1u, 2u, 4u, 5u})
+    for (std::uint32_t mode : {0u, 1u, 2u, 4u, 5u, 8u})
     {
         const auto id = submit(*a, bound_a, {mode, 0, 73, {}});
         auto result = wait(*a);
@@ -311,6 +330,27 @@ int main()
         else check(take(std::move(result).take(bound_a)).response().value == 73);
     }
     check(state.premature_destroy.load() == 0);
+
+    // Explicit promotion moves an inline Request once, then only the stable borrow is used.
+    // Cancellation also returns that exact owned input and refunds its transport budget.
+    for (const auto mode : {6u, 7u})
+    {
+        std::atomic<unsigned> destroyed{0};
+        const auto budget_before = a->retainedBytes();
+        auto owner = std::make_shared<Probe>(&destroyed);
+        const auto* backing = owner.get();
+        (void)submit(*a, bound_a, {mode, 0, 913, std::move(owner)});
+        if (mode == 6) state.finish(0);
+        {
+            auto result = take(wait(*a).take(bound_a));
+            check(result.request().owner.get() == backing && result.request().value == 913);
+            check(destroyed.load() == 0 && a->retainedBytes() > budget_before);
+            if (mode == 6) check(result.response().value == 913 && result.response().owner.get() == backing);
+            else check(result.header().outcome == ECommandOutcome::CANCELLED && !result.tryResponse());
+        }
+        until([&] { return destroyed.load() == 1; });
+        check(a->retainedBytes() == budget_before);
+    }
     auto gpu = take(a->bind<InvalidGpuAsync>());
     Input invalid;
     (void)take(a->submit(gpu, invalid, 256));

@@ -174,49 +174,6 @@ namespace lux::render
             return {};
         }
         s.running.store(true);
-        auto instance = vulkan::InstanceContext::create({{}, s.config.validation, Impl::diagnostic, &s});
-        if (!instance)
-        {
-            s.shutdown();
-            return cxx::unexpected(instance.error());
-        }
-        s.instance.emplace(std::move(*instance));
-        vulkan::DeviceOptions options;
-        options.dynamic_rendering = true;
-        options.multiple_queues = s.config.transfer_queues;
-        options.prefer_dedicated_queues = s.config.prefer_dedicated_transfer;
-        options.texture_compression_bc = s.config.texture_compression_bc;
-        std::uint32_t required = 0, optional = 0;
-        for (const auto& type : s.storage_types)
-        {
-            if (type.optional)
-                optional |= type.description->required_capabilities;
-            else
-                required |= type.description->required_capabilities;
-            optional |= type.description->optional_capabilities;
-        }
-        options.texture_descriptors = (required & 1) != 0;
-        options.texture_compression_bc |= (required & 2) != 0;
-        options.optional_texture_descriptors = (optional & 1) != 0;
-        options.optional_texture_compression_bc = (optional & 2) != 0;
-        options.host_query_reset = s.config.uploads && s.config.uploads->measure_gpu;
-        options.physical_device_index = s.config.physical_device_index;
-        auto device = vulkan::DeviceSession::create(*s.instance, options, 3, s.config.retirement_capacity);
-        if (!device)
-        {
-            s.shutdown();
-            return cxx::unexpected(device.error());
-        }
-        s.device = std::move(*device);
-        if (s.config.uploads)
-        {
-            auto uploads = s.device->configureUploads(*s.config.uploads, s.config.cpu);
-            if (!uploads)
-            {
-                s.shutdown();
-                return cxx::unexpected(uploads.error());
-            }
-        }
         auto& resources = s.device->resources();
         for (const auto& type : s.storage_types)
         {
@@ -239,7 +196,6 @@ namespace lux::render
         for (auto& entry : s.command_table)
         {
             entry.available = !entry.storage || (entry.storage->required_capabilities & ~capabilities) == 0;
-            entry.binding.bindNative(s.device.get());
             if (!entry.available) continue;
             const auto& descriptor = *entry.binding.descriptor();
             s.manifest.capabilities.push_back(

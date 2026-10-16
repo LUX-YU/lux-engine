@@ -215,7 +215,7 @@ namespace lux::render::vulkan
             return value.compatibleConfig(config);
         };
         static const auto factory = makeStorageFactory<lux::render::TextureStorage, vulkan::TextureStorage,
-            DeviceSession, &vulkan::TextureStorage::create, compatible>(EGraphicsApi::VULKAN, ops, &binding_ops,
+            DeviceSession, &vulkan::TextureStorage::create, compatible>(ops, &binding_ops,
                 [](void* value) noexcept { static_cast<TextureStorage*>(value)->collect(); });
         return factory;
     }

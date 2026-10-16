@@ -22,6 +22,13 @@ add_subdirectory(graph)
 
 add_subdirectory(features)
 
+set(LUX_RENDER_BACKEND "VULKAN" CACHE STRING "Selected Render Native implementation")
+set_property(CACHE LUX_RENDER_BACKEND PROPERTY STRINGS VULKAN)
+
+if(NOT LUX_RENDER_BACKEND STREQUAL "VULKAN")
+    message(FATAL_ERROR "Unsupported LUX_RENDER_BACKEND: ${LUX_RENDER_BACKEND}")
+endif()
+
 add_subdirectory(native/vulkan)
 
 add_subdirectory(runtime)

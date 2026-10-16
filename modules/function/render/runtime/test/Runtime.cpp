@@ -139,9 +139,12 @@ int main()
     first = {};
     check(a->retainedBytes() == 0); // published typed Hello and its budget survive server
 
-    auto failure = take(createTestServer({"runtime.failure", true, 0xfffffffe}));
-    auto client = take(TestClient::create("runtime.failure"));
-    auto request = take(client->submit({}));
-    check(!failure->run());
-    check(wait(*client, request).header.outcome == ECommandOutcome::OUTCOME_UNKNOWN);
+    RenderServerConfig invalid{"runtime.failure", true};
+    invalid.device.physical_device_index = 0xfffffffe;
+    check(!createTestServer(invalid)); // Device failure belongs to create, before a usable Server is returned.
+    // Failed initialization relinquishes the name and every partial Native owner.
+    auto replacement = take(createTestServer({"runtime.failure", true}));
+    replacement->stop();
+    check(bool(replacement->run()));
+    check(replacement->stats().validation_errors == 0);
 }

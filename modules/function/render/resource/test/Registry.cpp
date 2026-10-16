@@ -74,7 +74,7 @@ namespace
             [](void* instance, unsigned value) noexcept { static_cast<Value*>(instance)->value = value; }
         };
         return resource_detail::StorageFactoryAudit::make(
-            &TestStorage::description, EGraphicsApi::CONTRACT_TEST, &ops,
+            &TestStorage::description, &ops,
             [](void* native, const void* config) noexcept -> RenderResult<NativeStorage> {
                 auto* counts = static_cast<Counts*>(native);
                 if (*static_cast<const unsigned*>(config) == 99)
@@ -105,8 +105,8 @@ int main()
     Counts counts;
     ResourceDomain old_root;
     {
-        ResourceRegistry registry(&counts, EGraphicsApi::CONTRACT_TEST, 0);
-        ResourceRegistry other(&counts, EGraphicsApi::CONTRACT_TEST, 0);
+        ResourceRegistry registry(&counts, 0);
+        ResourceRegistry other(&counts, 0);
         const auto root = registry.root();
         old_root = root;
         require(!registry.valid(other.root()));
@@ -168,7 +168,7 @@ int main()
     require(counts.created == counts.destroyed);
     {
         // A professional indirect reference must be released outside the Registry's SlotMap mutation.
-        ResourceRegistry registry(&counts, EGraphicsApi::CONTRACT_TEST, 0);
+        ResourceRegistry registry(&counts, 0);
         require(bool(registry.installFactory(factory())));
         require(bool(registry.getOrCreate<TestStorage>(registry.root(), "texture-like", 1)));
         counts.registry = &registry;
@@ -177,6 +177,6 @@ int main()
         require(bool(registry.closeDomain(registry.root())));
         require(registry.size() == 0 && counts.created == counts.destroyed);
     }
-    ResourceRegistry replacement(&counts, EGraphicsApi::CONTRACT_TEST, 0);
+    ResourceRegistry replacement(&counts, 0);
     require(!replacement.valid(old_root));
 }

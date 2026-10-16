@@ -9,6 +9,7 @@ namespace lux::render
         std::shared_ptr<const void> pin
     ) noexcept
     {
+        binding.bindNative(device.get());
         // Full registration comparison proved equivalence; retain the template's static contract.
         auto id = command_table.emplace(CommandEntry{{}, binding, transport, std::move(pin), storage});
         command_table.find(id)->id = id;
@@ -70,7 +71,11 @@ namespace lux::render
     {
         if (started.load() || !storage.description) return cxx::unexpected(RenderError{kRuntimeState});
         if (auto valid = validateStorage(*storage.description); !valid) return valid;
-        if (auto valid = validateStorageFactory(*storage.description, storage.factory, EGraphicsApi::VULKAN); !valid)
+        const std::uint32_t capabilities =
+            (device->device().textureDescriptors() ? 1u : 0u) | (device->device().textureCompressionBc() ? 2u : 0u);
+        if ((storage.description->required_capabilities & ~capabilities) != 0)
+            return cxx::unexpected(RenderError{kStorageCapability});
+        if (auto valid = validateStorageFactory(*storage.description, storage.factory); !valid)
             return valid;
         if (storage.configuration && storage.configuration_type != storage.factory.config_type)
             return cxx::unexpected(RenderError{kStorageMismatch});

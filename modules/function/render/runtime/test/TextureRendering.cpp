@@ -93,9 +93,10 @@ int main(int argc, char** argv)
     // Preserve the former two compiler workers plus one upload worker on the shared host scheduler.
     CpuFixture compiler(3);
     RenderServerConfig config{"runtime.texture.rendering", true};
-    config.transfer_queues = argc == 1;
+    config.device.multiple_queues = argc == 1;
     config.compile_capacity = 2;
     config.uploads = TransferOptions{1024 * 1024, 2, 128 * 1024 * 1024, true};
+    config.device.texture_descriptors = true;
     auto server = take(RenderServer::create(withCpu(compiler, config)));
     CHECK(server->registerStorage<lux::render::TextureStorage>());
     CHECK(server->registerFeature({&texture_fixture::definition, &texture_fixture::definition_graph, programs}));
@@ -176,7 +177,7 @@ int main(int argc, char** argv)
     const SetTexture::Request large_input{{}, 0, information(2048, 1, false), large_owner[0]};
     const auto stalled = server->stats();
     const auto until = Clock::now() + 1500ms;
-    std::ofstream csv(config.transfer_queues ? "texture-rendering-dedicated.csv" : "texture-rendering-alias.csv");
+    std::ofstream csv(config.device.multiple_queues ? "texture-rendering-dedicated.csv" : "texture-rendering-alias.csv");
     csv << "sample,bytes,submit_move_ns,completion_consume_type_access_ns,total_ns,graphics_submissions\n";
     unsigned progress = 0;
     measure_phase = 2;
@@ -206,7 +207,7 @@ int main(int argc, char** argv)
     for (const auto& attachment : attachments) pixels(call(*a, read, attachment, 2048), 64);
     const auto stats = server->stats();
     server->stop(); thread.join();
-    std::ofstream frames(config.transfer_queues ? "texture-cadence-dedicated.csv" : "texture-cadence-alias.csv");
+    std::ofstream frames(config.device.multiple_queues ? "texture-cadence-dedicated.csv" : "texture-cadence-alias.csv");
     frames << "sample,phase,recorded_four_view_interval_ns\n";
     for (std::size_t i = 1; i < cadence_count; ++i)
         if (cadence[i].phase == cadence[i - 1].phase)
@@ -214,6 +215,6 @@ int main(int argc, char** argv)
     CHECK(run_ok && server->stats().validation_errors == 0);
     std::printf("texture rendering queue=%s 2scene/4view new=0 two_compile_workers=2 "
         "main64_full_ms=1500 upload_progress=%u graphics_progress=%llu compiled_graphs=%llu warnings=%llu\n",
-        config.transfer_queues ? "dedicated" : "alias", progress, stats.submissions - stalled.submissions,
+        config.device.multiple_queues ? "dedicated" : "alias", progress, stats.submissions - stalled.submissions,
         stats.compiled_graphs, server->stats().validation_warnings);
 }

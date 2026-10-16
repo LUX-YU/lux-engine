@@ -34,7 +34,7 @@ namespace lux::render
     class ResourceRegistry final
     {
     public:
-        ResourceRegistry(void* native, EGraphicsApi api, std::uint32_t capabilities) noexcept;
+        ResourceRegistry(void* native, std::uint32_t capabilities) noexcept;
         ~ResourceRegistry() noexcept;
         ResourceRegistry(const ResourceRegistry&) = delete;
         ResourceRegistry& operator=(const ResourceRegistry&) = delete;
@@ -164,7 +164,6 @@ namespace lux::render
         void collectClosed() noexcept;
         void destroy(StorageInstanceId id) noexcept;
         void* native_;
-        EGraphicsApi api_;
         std::uint32_t capabilities_;
         std::shared_ptr<const std::byte> identity_;
         cxx::SlotMap<Domain, ResourceDomainTag> domains_;

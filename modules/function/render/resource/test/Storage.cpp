@@ -65,7 +65,7 @@ int main()
     struct Ops final { unsigned (*read)(const void*) noexcept; };
     const Ops ops{[](const void* value) noexcept { return static_cast<const Value*>(value)->value; }};
     auto factory = resource_detail::StorageFactoryAudit::make(
-        &original, EGraphicsApi::CONTRACT_TEST, &ops,
+        &original, &ops,
         [](void*, const void* config) noexcept -> RenderResult<NativeStorage> {
             return NativeStorage{new Value{*static_cast<const unsigned*>(config)}, [](void* value) noexcept {
                 delete static_cast<Value*>(value);
@@ -75,8 +75,10 @@ int main()
             return static_cast<const Value*>(instance)->value == *static_cast<const unsigned*>(config);
         }, {}, nullptr, nullptr, storageCppType<unsigned>(), storageCppType<Ops>()
     );
-    require(bool(validateStorageFactory(original, factory, EGraphicsApi::CONTRACT_TEST)));
-    require(!validateStorageFactory(original, factory, EGraphicsApi::VULKAN));
+    require(bool(validateStorageFactory(original, factory)));
+    auto wrong_factory = factory;
+    wrong_factory.description = nullptr;
+    require(!validateStorageFactory(original, wrong_factory));
     const unsigned config = 73, other = 19;
     auto instance = factory.create(nullptr, &config);
     require(bool(instance));
@@ -84,5 +86,5 @@ int main()
     require(factory.compatible_config(instance->get(), &config));
     require(!factory.compatible_config(instance->get(), &other));
     factory.ops = nullptr;
-    require(!validateStorageFactory(original, factory, EGraphicsApi::CONTRACT_TEST));
+    require(!validateStorageFactory(original, factory));
 }

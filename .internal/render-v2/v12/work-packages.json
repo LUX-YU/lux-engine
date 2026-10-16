@@ -40,7 +40,7 @@
   },
   "N1.1": {
     "title": "Execution component migration",
-    "status": "IMPLEMENTING_UNCOMMITTED",
+    "status": "PASS",
     "production_paths": [
       "modules/core/execution/",
       "modules/function/render/resource/",
@@ -56,11 +56,14 @@
       "T-BUILD-03",
       "T-BUILD-04"
     ],
-    "evidence": []
+    "evidence": [
+      "N1-VERIFICATION.md",
+      "N1-evidence-index.json"
+    ]
   },
   "N1.2": {
     "title": "Generic scheduling and owner completion",
-    "status": "IMPLEMENTING_UNCOMMITTED",
+    "status": "PASS",
     "production_paths": [
       "modules/core/execution/",
       "modules/function/render/resource/",
@@ -76,11 +79,14 @@
       "T-BUILD-03",
       "T-BUILD-04"
     ],
-    "evidence": []
+    "evidence": [
+      "N1-VERIFICATION.md",
+      "N1-evidence-index.json"
+    ]
   },
   "N1.3": {
     "title": "Sync closure and limited consumers",
-    "status": "IMPLEMENTING_UNCOMMITTED",
+    "status": "PASS",
     "production_paths": [
       "modules/core/execution/",
       "modules/function/render/resource/",
@@ -96,11 +102,14 @@
       "T-BUILD-03",
       "T-BUILD-04"
     ],
-    "evidence": []
+    "evidence": [
+      "N1-VERIFICATION.md",
+      "N1-evidence-index.json"
+    ]
   },
   "N1.4": {
     "title": "Independent N1 checkpoint",
-    "status": "PLANNED",
+    "status": "PASS",
     "production_paths": [
       "modules/core/execution/",
       "modules/function/render/resource/",
@@ -116,11 +125,14 @@
       "T-BUILD-03",
       "T-BUILD-04"
     ],
-    "evidence": []
+    "evidence": [
+      "N1-VERIFICATION.md",
+      "N1-evidence-index.json"
+    ]
   },
   "N2.1": {
     "title": "Native initialization and build selection",
-    "status": "PLANNED",
+    "status": "IMPLEMENTATION_CHECKPOINT",
     "production_paths": [
       "modules/function/render/runtime/",
       "modules/function/render/protocol/",
@@ -149,7 +161,9 @@
       "T-FEATURE-06",
       "T-FEATURE-07"
     ],
-    "evidence": []
+    "evidence": [
+      "N2.1-IMPLEMENTATION.md"
+    ]
   },
   "N2.2": {
     "title": "Typed identities and ConfigValue",

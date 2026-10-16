@@ -38,7 +38,7 @@ int main()
         [](void*, TextureId, std::uint64_t) noexcept -> RenderResult<void> { return {}; }
     };
     auto factory = makeStorageFactory<Declaration, Replacement, DeviceSession, createReplacement, compatible>(
-        EGraphicsApi::VULKAN, ops);
+        ops);
     CHECK(registry.installFactory(factory));
     CHECK(!registry.installFactory(factory));
     CHECK(registry.configureType(Declaration::description, std::make_shared<const TextureStorageConfig>()));

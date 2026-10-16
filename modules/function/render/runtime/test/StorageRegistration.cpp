@@ -13,16 +13,23 @@ int main()
     static_assert(std::is_copy_constructible_v<StorageRegistration>);
     static_assert(!std::is_copy_assignable_v<StorageRegistration>);
     static_assert(!std::is_move_assignable_v<StorageRegistration>);
-    auto created = RenderServer::create({"test.storage.registration"});
+    {
+        auto limited = RenderServer::create({"test.storage.capabilities", true});
+        CHECK(limited);
+        auto unavailable = (*limited)->registerStorage<TextureStorage>();
+        CHECK(!unavailable && unavailable.error().type == kStorageCapability);
+        CHECK((*limited)->stats().validation_errors == 0);
+        // A type cannot silently rebuild a Session to enable missing device features.
+    }
+    RenderServerConfig config{"test.storage.registration", true};
+    config.device.texture_descriptors = true;
+    auto created = RenderServer::create(config);
     CHECK(created);
     auto& server = **created;
     auto registration = nativeStorageBinding<TextureStorage>();
     auto missing = registration;
     missing.factory.create = nullptr;
     CHECK((!server.registerStorage<SetTexture, SetTextureRegion, ReleaseTexture, QueryTexture>(missing)));
-    auto other_api = registration;
-    other_api.factory.api = EGraphicsApi::CONTRACT_TEST;
-    CHECK((!server.registerStorage<SetTexture, SetTextureRegion, ReleaseTexture, QueryTexture>(other_api)));
     auto mismatch = registration;
     auto wrong_description = TextureStorage::description;
     wrong_description.abi.minor = 1;
@@ -34,7 +41,7 @@ int main()
     CHECK(!server.registerStorage<SetTexture>(bad_handler));
     CHECK(server.registerStorage<TextureStorage>());
     CHECK(!server.registerStorage<TextureStorage>());
-    // No device, staging page, image or descriptor is created by the registration above.
+    // The device exists before installation. Registration creates no storage instance or upload backing.
     // Real upload/region/release and two-client Manifest assertions live in texture_operations.
     CHECK((!server.registerStorage<SetTexture, SetTextureRegion, ReleaseTexture, QueryTexture>(mismatch)));
     return 0;

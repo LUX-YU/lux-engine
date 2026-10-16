@@ -45,8 +45,9 @@ int main()
     using namespace extension_test;
     CpuFixture compiler(2);
     RenderServerConfig config{"runtime.external.buffer", true};
-    config.transfer_queues = true;
+    config.device.multiple_queues = true;
     config.uploads = TransferOptions{65536, 2, 131072};
+    config.device.texture_descriptors = true;
     auto server = take(RenderServer::create(withCpu(compiler, config)));
     CHECK(server->registerStorage<lux::render::TextureStorage>());
     CHECK(server->registerStorage<TestBufferStorage>());

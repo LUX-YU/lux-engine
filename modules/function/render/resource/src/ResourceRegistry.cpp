@@ -5,8 +5,8 @@
 
 namespace lux::render
 {
-    ResourceRegistry::ResourceRegistry(void* native, EGraphicsApi api, std::uint32_t capabilities) noexcept
-        : native_(native), api_(api), capabilities_(capabilities), identity_(std::make_shared<const std::byte>())
+    ResourceRegistry::ResourceRegistry(void* native, std::uint32_t capabilities) noexcept
+        : native_(native), capabilities_(capabilities), identity_(std::make_shared<const std::byte>())
     {
         root_ = domains_.emplace(Domain{{}, {}, EResourceScope::GLOBAL});
         domains_.find(root_)->id = root_;
@@ -41,7 +41,7 @@ namespace lux::render
     RenderResult<void> ResourceRegistry::installFactory(StorageFactory factory) noexcept
     {
         if (frozen_ || !factory.description) return cxx::unexpected(RenderError{kStorageFactory});
-        if (auto valid = validateStorageFactory(*factory.description, factory, api_); !valid) return valid;
+        if (auto valid = validateStorageFactory(*factory.description, factory); !valid) return valid;
         if (typeIndex(factory.description->type) != types_.size())
             return cxx::unexpected(RenderError{kStorageFactory});
         types_.push_back({std::move(factory), {}});

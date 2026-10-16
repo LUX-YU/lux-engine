@@ -77,7 +77,7 @@ add_test(NAME render.native.buffer_transfer COMMAND render_buffer_transfer_test)
 
 set_tests_properties(render.native.buffer_transfer PROPERTIES TIMEOUT 60)
 
-foreach(header Error DeviceSession CompiledGraph ExecutionContext StorageBinding device/Device memory/Memory
+foreach(header Error DeviceSession CompiledGraph ExecutionContext StorageBinding device/Device device/DeviceOptions memory/Memory
     transfer/Submission transfer/Transfer transfer/GpuWork transfer/GpuCompletion
     texture/TextureStorage Registration retirement/Retirement
 )

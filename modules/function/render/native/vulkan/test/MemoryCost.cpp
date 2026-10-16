@@ -47,10 +47,10 @@ namespace lux::render::vulkan
             render_allocation::window = true;
             {
                 // CPU Registry metadata and one-byte dummy native owners only, explicitly NOT GPU allocations.
-                ResourceRegistry registry(nullptr, EGraphicsApi::CONTRACT_TEST, 0);
+                ResourceRegistry registry(nullptr, 0);
                 static const StorageDescriptor description{StorageTypeIdView("test.cost"), {1, 0}, 15};
                 static const unsigned ops = 0;
-                const auto factory = resource_detail::StorageFactoryAudit::make(&description, EGraphicsApi::CONTRACT_TEST, &ops,
+                const auto factory = resource_detail::StorageFactoryAudit::make(&description, &ops,
                     [](void*, const void*) noexcept -> RenderResult<NativeStorage> {
                         return NativeStorage{new std::byte{}, [](void* p) noexcept { delete static_cast<std::byte*>(p); }};
                     }, [](const void*, const void*) noexcept { return true; }, {}, nullptr, nullptr,

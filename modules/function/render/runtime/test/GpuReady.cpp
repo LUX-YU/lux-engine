@@ -289,8 +289,8 @@ int main(int argc, char** argv)
     CpuFixture workers(2);
     RenderServerConfig config{"runtime.g10", true};
     config.completion_capacity = 2;
-    config.transfer_queues = transfer_mode;
-    config.prefer_dedicated_transfer = dedicated;
+    config.device.multiple_queues = transfer_mode;
+    config.device.prefer_dedicated_queues = dedicated;
     auto server = take(RenderServer::create(withCpu(workers, config)));
     CHECK((server->registerFeature<UploadProbe, CpuResult>({&feature, &feature_graph, nullptr, handlers})));
     CHECK(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs}));
@@ -621,8 +621,8 @@ int main(int argc, char** argv)
     hold_fences.store(false);
     hold_observation.store(true);
     RenderServerConfig closing_config{"runtime.g10.closing", true};
-    closing_config.transfer_queues = transfer_mode;
-    closing_config.prefer_dedicated_transfer = dedicated;
+    closing_config.device.multiple_queues = transfer_mode;
+    closing_config.device.prefer_dedicated_queues = dedicated;
     auto closing_server = take(RenderServer::create(withCpu(workers, closing_config)));
     CHECK((closing_server->registerFeature<UploadProbe, CpuResult>({&feature, &feature_graph, nullptr, handlers})));
     auto closing_client = take(RenderClient::create(closing_config.channel_name));

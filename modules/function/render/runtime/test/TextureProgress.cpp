@@ -139,7 +139,7 @@ static void shutdownAndLoss()
         Pause host;
         worker.setBeforeWork(&host, Pause::before);
         RenderServerConfig config{"runtime.texture.stop", true};
-        config.transfer_queues = true;
+        config.device.multiple_queues = true;
         config.uploads = TransferOptions{1024 * 1024, 1, 32 * 1024 * 1024};
         auto server = take(RenderServer::create(withCpu(worker, config)));
         const std::array handlers{nativeCommand<TextureProbe, invoke>()};
@@ -179,8 +179,8 @@ int main()
     {
         CpuFixture host;
         RenderServerConfig config{"runtime.texture.progress", true};
-        config.transfer_queues = mode != 0;
-        config.prefer_dedicated_transfer = mode == 2;
+        config.device.multiple_queues = mode != 0;
+        config.device.prefer_dedicated_queues = mode == 2;
         config.completion_capacity = 1;
         config.uploads = TransferOptions{1024 * 1024, 1, 128 * 1024 * 1024};
         auto server = take(RenderServer::create(withCpu(host, config)));

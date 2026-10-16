@@ -80,6 +80,7 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> registerStorage(
             StorageRegistration storage, std::span<const CommandTransport> transports
         ) noexcept;
+        [[nodiscard]] RenderResult<void> initialize() noexcept;
         [[nodiscard]] RenderResult<void> run() noexcept;
         void stop() noexcept { stop_requested.store(true); }
         [[nodiscard]] RenderServerStats stats() const noexcept;

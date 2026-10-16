@@ -30,8 +30,9 @@ int main()
 {
     CpuFixture host;
     RenderServerConfig config{"runtime.texture.operations", true};
-    config.transfer_queues = true;
+    config.device.multiple_queues = true;
     config.uploads = TransferOptions{1024 * 1024, 2, 128 * 1024 * 1024};
+    config.device.texture_descriptors = true;
     auto server = take(RenderServer::create(withCpu(host, config)));
     CHECK(server->registerStorage<lux::render::TextureStorage>({16, 256 * 1024 * 1024}));
     bool run_ok = false;

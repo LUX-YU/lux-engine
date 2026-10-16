@@ -7,8 +7,6 @@
 
 namespace lux::render
 {
-    enum class EGraphicsApi : std::uint8_t { VULKAN, CONTRACT_TEST };
-
     // One owned native instance. The factory's matching Ops are separate immutable metadata.
     using NativeStorage = std::unique_ptr<void, void (*)(void*) noexcept>;
 
@@ -31,7 +29,6 @@ namespace lux::render
     struct StorageFactory final
     {
         const StorageDescriptor* description;
-        EGraphicsApi api;
         const void* ops;
         RenderResult<NativeStorage> (*create)(void* device, const void* config) noexcept;
         bool (*compatible_config)(const void* instance, const void* config) noexcept;
@@ -48,15 +45,15 @@ namespace lux::render
                 Device&, const typename Declaration::Config&) noexcept> &&
                 std::same_as<decltype(Compatible), bool (*)(const Native&, const typename Declaration::Config&) noexcept>
         friend StorageFactory makeStorageFactory(
-            EGraphicsApi, const typename Declaration::Ops&, const void*, void (*)(void*) noexcept, std::shared_ptr<const void>
+            const typename Declaration::Ops&, const void*, void (*)(void*) noexcept, std::shared_ptr<const void>
         ) noexcept;
 
-        StorageFactory(const StorageDescriptor* description, EGraphicsApi api, const void* ops,
+        StorageFactory(const StorageDescriptor* description, const void* ops,
             RenderResult<NativeStorage> (*create)(void*, const void*) noexcept,
             bool (*compatible_config)(const void*, const void*) noexcept,
             std::shared_ptr<const void> code_pin, const void* binding_ops, void (*collect)(void*) noexcept,
             StorageCppType config_type, StorageCppType ops_type) noexcept
-            : description(description), api(api), ops(ops), create(create), compatible_config(compatible_config),
+            : description(description), ops(ops), create(create), compatible_config(compatible_config),
               code_pin(std::move(code_pin)), binding_ops(binding_ops), collect(collect),
               config_type(config_type), ops_type(ops_type) {}
 
@@ -68,11 +65,11 @@ namespace lux::render
             Device&, const typename Declaration::Config&) noexcept> &&
             std::same_as<decltype(Compatible), bool (*)(const Native&, const typename Declaration::Config&) noexcept>
     [[nodiscard]] StorageFactory makeStorageFactory(
-        EGraphicsApi api, const typename Declaration::Ops& ops, const void* binding_ops = nullptr,
+        const typename Declaration::Ops& ops, const void* binding_ops = nullptr,
         void (*collect)(void*) noexcept = nullptr, std::shared_ptr<const void> code_pin = {}
     ) noexcept
     {
-        return {&Declaration::description, api, &ops,
+        return {&Declaration::description, &ops,
             [](void* device, const void* config) noexcept -> RenderResult<NativeStorage> {
                 auto candidate = Create(*static_cast<Device*>(device), *static_cast<const typename Declaration::Config*>(config));
                 if (!candidate) return cxx::unexpected(candidate.error());
@@ -84,5 +81,5 @@ namespace lux::render
     }
 
     [[nodiscard]] RenderResult<void>
-    validateStorageFactory(const StorageDescriptor& type, const StorageFactory& factory, EGraphicsApi api) noexcept;
+    validateStorageFactory(const StorageDescriptor& type, const StorageFactory& factory) noexcept;
 }

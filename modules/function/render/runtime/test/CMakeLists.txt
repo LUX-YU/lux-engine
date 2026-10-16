@@ -127,8 +127,12 @@ foreach(header RenderClient RenderServer Commands CommandValue)
         "#include <lux/engine/render/runtime/${header}.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\nstatic_assert(__cplusplus >= 202002L);\n"
     )
     add_library(render_runtime_header_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")
-    # Cooked Program bytes have no Vulkan/OS dependency; do not link Native for this header probe.
-    target_link_libraries(render_runtime_header_${header} PRIVATE render_client render_features)
+    if(header STREQUAL "RenderServer")
+        # Server configuration names the selected Backend's narrow options, without Vulkan/OS types.
+        target_link_libraries(render_runtime_header_${header} PRIVATE render_runtime)
+    else()
+        target_link_libraries(render_runtime_header_${header} PRIVATE render_client render_features)
+    endif()
 endforeach()
 
 add_executable(render_runtime_programs_test Programs.cpp)

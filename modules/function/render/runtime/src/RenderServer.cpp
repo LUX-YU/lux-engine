@@ -45,11 +45,40 @@ namespace lux::render
         return VK_FALSE;
     }
 
+    RenderResult<void> RenderServer::Impl::initialize() noexcept
+    {
+        auto& s = *this;
+        auto instance = vulkan::InstanceContext::create({{}, s.config.validation, Impl::diagnostic, &s});
+        if (!instance)
+        {
+            return cxx::unexpected(instance.error());
+        }
+        s.instance.emplace(std::move(*instance));
+        auto options = s.config.device;
+        options.host_query_reset |= s.config.uploads && s.config.uploads->measure_gpu;
+        auto device = vulkan::DeviceSession::create(*s.instance, options, 3, s.config.retirement_capacity);
+        if (!device)
+        {
+            return cxx::unexpected(device.error());
+        }
+        s.device = std::move(*device);
+        if (s.config.uploads)
+        {
+            auto uploads = s.device->configureUploads(*s.config.uploads, s.config.cpu);
+            if (!uploads)
+            {
+                return cxx::unexpected(uploads.error());
+            }
+        }
+        return {};
+    }
+
     RenderServer::RenderServer(std::unique_ptr<Impl> state) noexcept : impl_(std::move(state)) {}
 
     RenderServer::~RenderServer() noexcept
     {
         if (impl_->running.load()) std::terminate(); // host must stop + join
+        if (impl_->device) impl_->shutdown();
     }
 
     RenderResult<std::unique_ptr<RenderServer>> RenderServer::create(RenderServerConfig config) noexcept
@@ -68,8 +97,8 @@ namespace lux::render
             return cxx::unexpected(RenderError{kRuntimeState});
         auto responder = ipc::IpcCore::instance().createResponder(config.channel_name);
         if (!responder) return cxx::unexpected(RenderError{kRuntimeState});
-        return std::unique_ptr<RenderServer>(new RenderServer(
-            std::make_unique<Impl>(std::move(config), std::move(*responder), identity, *pending_capacity)
-        ));
+        auto state = std::make_unique<Impl>(std::move(config), std::move(*responder), identity, *pending_capacity);
+        if (auto initialized = state->initialize(); !initialized) return cxx::unexpected(initialized.error());
+        return std::unique_ptr<RenderServer>(new RenderServer(std::move(state)));
     }
 } // namespace lux::render

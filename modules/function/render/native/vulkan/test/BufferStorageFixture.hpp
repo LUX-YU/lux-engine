@@ -44,7 +44,7 @@ namespace buffer_fixture
             }
         };
         return resource_detail::StorageFactoryAudit::make(
-            &description, EGraphicsApi::VULKAN, &size,
+            &description, &size,
             [](void* device, const void* config) noexcept -> RenderResult<NativeStorage> {
                 auto& session = *static_cast<native::DeviceSession*>(device);
                 const auto value = *static_cast<const Config*>(config);

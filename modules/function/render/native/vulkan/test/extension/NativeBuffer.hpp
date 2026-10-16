@@ -237,7 +237,7 @@ namespace extension_test
             return value.compatible(config);
         };
         return makeStorageFactory<TestBufferStorage, NativeBuffer, vk::DeviceSession, create, compatible>(
-            EGraphicsApi::VULKAN, ops, &binding, [](void* object) noexcept { static_cast<NativeBuffer*>(object)->collect(); });
+            ops, &binding, [](void* object) noexcept { static_cast<NativeBuffer*>(object)->collect(); });
     }
 }
 

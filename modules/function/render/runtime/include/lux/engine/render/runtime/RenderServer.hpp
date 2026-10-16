@@ -6,6 +6,7 @@
 #include <lux/engine/render/resource/AsyncWork.hpp>
 #include <lux/engine/render/resource/Registration.hpp>
 #include <optional>
+#include <lux/engine/render/native/vulkan/device/DeviceOptions.hpp>
 
 namespace lux::render
 {
@@ -13,7 +14,7 @@ namespace lux::render
     {
         std::string channel_name;
         bool validation = false;
-        std::uint32_t physical_device_index = UINT32_MAX;
+        vulkan::DeviceOptions device{.dynamic_rendering = true};
         std::uint32_t requests_per_tick = 8;
         std::size_t max_config_bytes = 1024 * 1024;
         std::size_t max_reply_bytes = 16 * 1024 * 1024;
@@ -23,12 +24,8 @@ namespace lux::render
         // Independent logical budgets backed by one slot map and event queue of their combined capacity.
         std::size_t compile_capacity = 2;
         std::size_t completion_capacity = 128;
-        // Cold explicit Native capability request. Aliased roles still share one physical queue owner.
-        bool transfer_queues = false;
-        bool prefer_dedicated_transfer = true;
         // Scheduler availability does not imply a persistent staging allocation.
         std::optional<TransferOptions> uploads;
-        bool texture_compression_bc = false; // explicitly request BC capability; RGBA-only hosts do not require it
         // Pins the module containing this Server implementation and its builtin reply/destruction code.
         // Empty explicitly declares process-lifetime code. The host retains its own pin through factory,
         // run/join and destruction calls; published replies retain theirs independently of the Server.
@@ -42,8 +39,8 @@ namespace lux::render
         std::uint64_t scoped_buffers_created = 0;
     };
 
-    // The host owns the rendering thread. Create/register are cold; run owns all
-    // object and Native mutation. Only stop()/stats() may race with run().
+    // The host owns the rendering thread. Create initializes Native before cold installation;
+    // run transfers exclusive mutation to its calling thread. Only stop()/stats() may race with run().
     class RenderServer final
     {
     public:

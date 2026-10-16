@@ -1,6 +1,6 @@
 add_executable(platform_ipc_test Ipc.cpp Allocation.cpp)
 
-target_link_libraries(platform_ipc_test PRIVATE platform_ipc render_protocol)
+target_link_libraries(platform_ipc_test PRIVATE platform_ipc render_protocol render_data)
 target_include_directories(platform_ipc_test PRIVATE ../pinclude)
 
 add_executable(platform_ipc_attachments_test Attachments.cpp)
@@ -10,7 +10,7 @@ add_test(NAME platform.ipc.attachments COMMAND platform_ipc_attachments_test)
 set_tests_properties(platform.ipc.attachments PROPERTIES TIMEOUT 30)
 
 # Cross-DLL owned values use the same allocation instrumentation as their EXE producer.
-add_library(ipc_typed_plugin SHARED TypedPlugin.cpp Allocation.cpp)
+add_library(ipc_typed_plugin SHARED TypedPlugin.cpp Allocation.cpp AllocationOrigin.cpp)
 
 target_link_libraries(ipc_typed_plugin PRIVATE platform_ipc)
 set_target_properties(ipc_typed_plugin PROPERTIES
@@ -33,7 +33,7 @@ set_target_properties(ipc_abi_plugin PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin"
 )
 
-add_executable(platform_ipc_typed_test TypedMessage.cpp Allocation.cpp)
+add_executable(platform_ipc_typed_test TypedMessage.cpp Allocation.cpp AllocationOrigin.cpp)
 
 target_link_libraries(platform_ipc_typed_test PRIVATE platform_ipc)
 target_include_directories(platform_ipc_typed_test PRIVATE ../pinclude)

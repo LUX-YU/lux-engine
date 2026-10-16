@@ -85,6 +85,15 @@ namespace
     static_assert(!IpcMessage::stores_inline<Aligned>);
     static_assert(!IpcMessage::stores_inline<Immovable> && !IpcMessage::stores_inline<ThrowingMove>);
 
+    template <typename T>
+    concept HasBoundCounterConstruction = requires(IpcMessage& message, const IpcBoundType<T>& proof, int& counter)
+    {
+        message.emplace(proof, counter);
+    };
+
+    static_assert(!HasBoundCounterConstruction<Immovable> && !HasBoundCounterConstruction<ThrowingMove>);
+    static_assert(!IpcMessage::stores_inline<LargeOriginProbe> && !IpcMessage::stores_inline<AlignedOriginProbe>);
+
     void objects()
     {
         Batch direct_input{7, {3, 5, 9}};
@@ -118,7 +127,6 @@ namespace
         check(message.get<Batch>().values.data() == data, "vector backing copied");
         check(message.get<Batch>().values.capacity() == capacity, "vector capacity lost");
         check(message.get<Batch>().values[2] == 9 && message.get<Batch>().scene == 7, "typed value changed");
-        check(message.bytes().empty() && message.attachments().empty(), "object exposed as raw byte payload");
         message = std::move(message);
         check(message.get<Batch>().values.data() == data, "self move lost vector");
         message.emplace<Aligned>().values[17] = 101;
@@ -156,7 +164,7 @@ namespace
         check(object_moves == 0, "message move invoked throwing object move");
         moved.reset();
         std::printf("typed sizes Message=%zu Reply=%zu TypeOps=%zu Batch=%zu/%zu; "
-            "layout96(no pin)=%zu pinned48=%zu pinned80=%zu transitional=%zu\n",
+            "layout96(no pin)=%zu pinned48=%zu pinned80=%zu current=%zu\n",
             sizeof(IpcMessage), sizeof(IpcReply), sizeof(IpcTypeOps), sizeof(Batch), alignof(Batch),
             sizeof(Layout96), sizeof(PinnedLayout<48>), sizeof(PinnedLayout<80>),
             sizeof(PinnedLayout<IpcMessage::typed_inline_capacity>));
@@ -278,6 +286,68 @@ namespace
         check(GetModuleHandleW(L"ipc_abi_plugin.dll") == nullptr, "rejected ABI retained its module");
     }
 
+    using ClearOrigin = void (*)() noexcept;
+    using ReadOrigin = AllocationOriginCounts (*)() noexcept;
+
+    template <typename T>
+    void allocationOriginCase(const char* name, bool erased, const IpcTypeOps& canonical,
+        const std::shared_ptr<const void>& pin, ClearOrigin clear, ReadOrigin read)
+    {
+        clearAllocationOriginCounts();
+        clear();
+        auto proof = take(IpcMessage::bindType<T>(canonical, pin));
+        check(&canonical != &IpcMessage::type<T>(), "allocation origin test requires a distinct DLL table");
+        IpcMessage message;
+        if (erased)
+        {
+            T input{73};
+            detail::moveFrom(message, canonical, &input, pin);
+        }
+        else message.emplace(proof, std::uint64_t{73});
+        check(message.holds(canonical), "external construction lost canonical qualification");
+        const auto& object = message.get<T>();
+        check(reinterpret_cast<std::uintptr_t>(&object) % alignof(T) == 0, "canonical allocation lost alignment");
+        for (const auto value : object.fields) check(value == 73, "canonical allocation changed the object");
+        const auto* original = &object;
+        IpcMessage moved(std::move(message));
+        check(&moved.get<T>() == original, "external message move reallocated the object");
+        moved.reset();
+        const auto caller = allocationOriginCounts();
+        const auto owner = read();
+        std::printf("typed allocator %s path=%s EXE=%llu/%llu DLL=%llu/%llu wrong_origin=%llu\n",
+            name, erased ? "erased" : "bound", caller.allocations, caller.deletions,
+            owner.allocations, owner.deletions, owner.wrong_origin);
+        check(caller.allocations == 0 && caller.deletions == 0 && caller.wrong_origin == 0,
+            "external canonical object was allocated or deleted in the caller module");
+        check(owner.allocations == 1 && owner.deletions == 1 && owner.wrong_origin == 0,
+            "external canonical object did not pair allocation and deletion in the canonical module");
+    }
+
+    void canonicalAllocation()
+    {
+        setAllocationOrigin(1);
+        const auto module = LoadLibraryW(L"ipc_typed_plugin.dll");
+        check(module != nullptr, "allocation origin plugin failed to load");
+        const auto initialize = reinterpret_cast<void (*)(std::uint64_t) noexcept>(
+            GetProcAddress(module, "ipcTypedSetAllocationOrigin"));
+        const auto clear = reinterpret_cast<ClearOrigin>(GetProcAddress(module, "ipcTypedClearAllocationOrigin"));
+        const auto read = reinterpret_cast<ReadOrigin>(GetProcAddress(module, "ipcTypedAllocationOriginCounts"));
+        using Query = const IpcTypeOps* (*)() noexcept;
+        const auto large = reinterpret_cast<Query>(GetProcAddress(module, "ipcTypedLargeOriginProbe"));
+        const auto aligned = reinterpret_cast<Query>(GetProcAddress(module, "ipcTypedAlignedOriginProbe"));
+        check(initialize && clear && read && large && aligned, "allocation origin exports missing");
+        initialize(2);
+        auto pin = std::shared_ptr<const void>(module, [](const void* handle) noexcept {
+            check(FreeLibrary(static_cast<HMODULE>(const_cast<void*>(handle))) != 0, "origin plugin unload failed");
+        });
+        allocationOriginCase<LargeOriginProbe>("large128", false, *large(), pin, clear, read);
+        allocationOriginCase<AlignedOriginProbe>("aligned64", false, *aligned(), pin, clear, read);
+        allocationOriginCase<LargeOriginProbe>("large128", true, *large(), pin, clear, read);
+        allocationOriginCase<AlignedOriginProbe>("aligned64", true, *aligned(), pin, clear, read);
+        pin.reset();
+        check(GetModuleHandleW(L"ipc_typed_plugin.dll") == nullptr, "origin test retained canonical module");
+    }
+
     void concurrent()
     {
         constexpr std::uint64_t iterations = 1000;
@@ -351,6 +421,7 @@ int main()
     ownership();
     plugins();
     incompatibleAbi();
+    canonicalAllocation();
     concurrent();
     std::puts("typed IPC object, canonical DLL proof, failure ownership, ABORTED, late owner: passed");
 }

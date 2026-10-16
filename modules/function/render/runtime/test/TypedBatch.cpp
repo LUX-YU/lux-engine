@@ -10,6 +10,7 @@
 #include <fstream>
 #include <limits>
 #include <optional>
+#include <random>
 #include <thread>
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 
@@ -317,15 +318,19 @@ int main()
     }
     CHECK(!authority.dirty && call(*a, read_a, {scene_a, 1}).response().value == 21);
 
+    enum class EAccessPattern : std::uint8_t { LOCAL, RANDOM };
+    constexpr std::uint32_t random_seed = 0x61a7b3c9;
     struct Sample final
     {
+        EAccessPattern pattern;
+        std::uint32_t seed;
         unsigned entries, scene, iteration;
         long long ns;
         std::size_t exe_allocations, client_allocations, exe_bytes, client_bytes;
         std::size_t move_constructions, move_assignments, direct_allocations;
         long long transport_extra;
     };
-    std::array<Sample, 160> samples{};
+    std::array<Sample, 320> samples{};
     std::size_t sample_index = 0;
     const std::array counts{1u, 100u, 1000u, 10000u};
     render_allocation::participate = true;
@@ -343,72 +348,95 @@ int main()
     const auto control_client_allocations = client_allocation::stop();
     const auto control_allocations = render_allocation::calls.load();
     CHECK(control_allocations == 0 && control_client_allocations.calls == 0);
-    for (auto count : counts)
+    // Prepare one deterministic Fisher-Yates permutation outside every measured
+    // interval. RANDOM changes only destination locality, not count or values.
+    std::array<std::uint32_t, slots> random_slots{};
+    for (std::size_t i = 0; i < random_slots.size(); ++i) random_slots[i] = static_cast<std::uint32_t>(i);
+    std::mt19937 generator(random_seed);
+    for (std::size_t remaining = random_slots.size(); remaining > 1; --remaining)
+        std::swap(random_slots[remaining - 1], random_slots[generator() % remaining]);
+    std::array<bool, slots> seen{};
+    for (const auto slot : random_slots)
     {
-        for (unsigned scene_number = 0; scene_number < 2; ++scene_number)
+        CHECK(slot < slots && !seen[slot]);
+        seen[slot] = true;
+    }
+    for (const auto pattern : {EAccessPattern::LOCAL, EAccessPattern::RANDOM})
+    {
+        for (auto count : counts)
         {
-            auto& client = scene_number ? *b : *a;
-            const auto& binding = scene_number ? bound_b : bound_a;
-            const auto scene = scene_number ? scene_b : scene_a;
-            SetValues::Request input{scene, 100};
-            input.changes.reserve(count);
-            for (unsigned i = 0; i < count; ++i) input.changes.push_back({i, float(i + scene_number * 10000)});
-            const auto* original = input.changes.data();
-            const auto original_capacity = input.changes.capacity();
-            CHECK(*CommandValueTraits<SetValues::Request>::retainedBytes(input) ==
-                sizeof(input) + original_capacity * sizeof(Entry));
-            for (unsigned iteration = 0; iteration < 25; ++iteration)
+            for (unsigned scene_number = 0; scene_number < 2; ++scene_number)
             {
-                const bool measured = iteration >= 5;
-                if (measured)
+                auto& client = scene_number ? *b : *a;
+                const auto& binding = scene_number ? bound_b : bound_a;
+                const auto scene = scene_number ? scene_b : scene_a;
+                SetValues::Request input{scene, 100};
+                input.changes.reserve(count);
+                for (unsigned i = 0; i < count; ++i)
                 {
-                    SetValues::Request::move_constructions = 0;
-                    SetValues::Request::move_assignments = 0;
-                    render_allocation::calls = 0;
-                    render_allocation::bytes = 0;
-                    client_allocation::start();
-                    render_allocation::window = true;
+                    const auto slot = pattern == EAccessPattern::LOCAL ? i : random_slots[i];
+                    input.changes.push_back({slot, float(i + scene_number * 10000)});
                 }
-                const auto begin = Clock::now();
-                const auto request = take(client.submit(binding, input));
-                CHECK(input.changes.empty());
+                const auto* original = input.changes.data();
+                const auto original_capacity = input.changes.capacity();
+                const auto last_entry = input.changes.back();
+                CHECK(*CommandValueTraits<SetValues::Request>::retainedBytes(input) ==
+                    sizeof(input) + original_capacity * sizeof(Entry));
+                for (unsigned iteration = 0; iteration < 25; ++iteration)
                 {
-                    auto result = take(std::move(wait(client, request)).take(binding));
-                    CHECK(result.response().applied == count && result.response().revision == 100);
-                    CHECK(result.request().changes.data() == original);
-                    input = std::move(result.request()); // recover the original vector for the next batch
+                    const bool measured = iteration >= 5;
+                    if (measured)
+                    {
+                        SetValues::Request::move_constructions = 0;
+                        SetValues::Request::move_assignments = 0;
+                        render_allocation::calls = 0;
+                        render_allocation::bytes = 0;
+                        client_allocation::start();
+                        render_allocation::window = true;
+                    }
+                    const auto begin = Clock::now();
+                    const auto request = take(client.submit(binding, input));
+                    CHECK(input.changes.empty());
+                    {
+                        auto result = take(std::move(wait(client, request)).take(binding));
+                        CHECK(result.response().applied == count && result.response().revision == 100);
+                        CHECK(result.request().changes.data() == original);
+                        input = std::move(result.request()); // recover the original vector for the next batch
+                    }
+                    const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
+                    if (measured)
+                    {
+                        render_allocation::window = false;
+                        const auto client_allocations = client_allocation::stop();
+                        const auto allocations = render_allocation::calls.load();
+                        const auto allocation_bytes = render_allocation::bytes.load();
+                        const auto constructions = SetValues::Request::move_constructions.load();
+                        const auto assignments = SetValues::Request::move_assignments.load();
+                        const auto direct = directMoveAllocations(scene, count, constructions, assignments);
+                        const auto total_allocations = allocations + client_allocations.calls;
+                        const auto extra = static_cast<long long>(total_allocations) - static_cast<long long>(direct);
+                        CHECK(extra == 0);
+                        samples[sample_index++] = {
+                            pattern, pattern == EAccessPattern::RANDOM ? random_seed : 0,
+                            count, scene_number, iteration - 5, ns, allocations, client_allocations.calls,
+                            allocation_bytes, client_allocations.bytes, constructions, assignments, direct, extra
+                        };
+                    }
+                    CHECK(input.changes.data() == original && input.changes.capacity() == original_capacity);
                 }
-                const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
-                if (measured)
-                {
-                    render_allocation::window = false;
-                    const auto client_allocations = client_allocation::stop();
-                    const auto allocations = render_allocation::calls.load();
-                    const auto allocation_bytes = render_allocation::bytes.load();
-                    const auto constructions = SetValues::Request::move_constructions.load();
-                    const auto assignments = SetValues::Request::move_assignments.load();
-                    const auto direct = directMoveAllocations(scene, count, constructions, assignments);
-                    const auto total_allocations = allocations + client_allocations.calls;
-                    const auto extra = static_cast<long long>(total_allocations) - static_cast<long long>(direct);
-                    CHECK(extra == 0);
-                    samples[sample_index++] = {
-                        count, scene_number, iteration - 5, ns, allocations, client_allocations.calls,
-                        allocation_bytes, client_allocations.bytes, constructions, assignments, direct, extra
-                    };
-                }
-                CHECK(input.changes.data() == original && input.changes.capacity() == original_capacity);
+                CHECK(call(client, scene_number ? read_b : read_a, {scene, last_entry.slot}).response().value ==
+                    last_entry.value);
             }
-            CHECK(call(client, scene_number ? read_b : read_a, {scene, count - 1}).response().value ==
-                float(count - 1 + scene_number * 10000));
         }
     }
     CHECK(sample_index == samples.size());
     std::ofstream csv("runtime-typed-batch.csv");
-    csv << "entries,scene,sample,full_roundtrip_reclaim_ns,engine_exe_new_calls,client_dll_new_calls,"
+    csv << "pattern,seed,entries,scene,sample,full_roundtrip_reclaim_ns,engine_exe_new_calls,client_dll_new_calls,"
         "engine_exe_plus_client_new_calls,engine_exe_new_bytes,client_dll_new_bytes,request_move_constructions,"
         "request_move_assignments,direct_same_moves_exe_new_calls,transport_extra_new_calls\n";
     for (const auto& sample : samples)
-        csv << sample.entries << ',' << sample.scene << ',' << sample.iteration << ',' << sample.ns << ','
+        csv << (sample.pattern == EAccessPattern::LOCAL ? "LOCAL" : "RANDOM") << ',' << sample.seed << ','
+            << sample.entries << ',' << sample.scene << ',' << sample.iteration << ',' << sample.ns << ','
             << sample.exe_allocations << ',' << sample.client_allocations << ','
             << sample.exe_allocations + sample.client_allocations << ',' << sample.exe_bytes << ','
             << sample.client_bytes << ',' << sample.move_constructions << ',' << sample.move_assignments << ','
@@ -420,6 +448,8 @@ int main()
         sizeof(Entry), state->boundaries.load(), state->checked_entries.load(), state->applied_entries.load());
     std::printf("Typed batch control EXE new=%zu Client DLL new=%zu; same-move baseline is EXE-only; "
         "EXE+Client transport extra new=0\n", control_allocations, control_client_allocations.calls);
+    std::printf("Typed batch samples: LOCAL=160 RANDOM=160 seed=%u; input/permutation preparation excluded\n",
+        random_seed);
 
     const auto previous_session = a->session();
     a.reset();

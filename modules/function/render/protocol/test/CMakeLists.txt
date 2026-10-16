@@ -12,8 +12,9 @@ target_link_libraries(render_protocol_command_test PRIVATE render_protocol)
 add_test(NAME render.protocol.command COMMAND render_protocol_command_test)
 
 get_target_property(protocol_links render_protocol INTERFACE_LINK_LIBRARIES)
+set(expected_links lux::engine::render::render_core lux::cxx::core)
 
-if(NOT protocol_links STREQUAL "lux::engine::render::render_data")
+if(NOT protocol_links STREQUAL expected_links)
     message(FATAL_ERROR "Unexpected Protocol dependency: ${protocol_links}")
 endif()
 

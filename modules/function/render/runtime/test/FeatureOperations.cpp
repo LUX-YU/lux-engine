@@ -1,5 +1,6 @@
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "Allocation.hpp"
+#include "ClientAllocation.hpp"
 #include "TypedProtocol.hpp"
 #include <atomic>
 #include <chrono>
@@ -252,7 +253,11 @@ int main()
 
     // Actual typed API: construct, submit, dispatch, complete, consume, reclaim.
     // The Server retains its declared 1 ms idle; waiting is not presented as IPC cost.
-    struct Sample { long long submit, wait, consume, handler; std::size_t allocations; };
+    struct Sample
+    {
+        long long submit, wait, consume, handler;
+        std::size_t allocations, client_allocations, client_bytes;
+    };
     std::array<Sample, 1000> samples;
     render_allocation::participate = true;
     for (unsigned i = 0; i < 20; ++i) wait(*a, submit(*a, bound_a, Exposure{float(i)}));
@@ -260,6 +265,7 @@ int main()
     {
         render_allocation::calls.store(0);
         render_allocation::window.store(true);
+        client_allocation::start();
         const auto begin = Clock::now();
         const auto id = submit(*a, bound_a, Exposure{float(i)});
         const auto submitted = Clock::now();
@@ -287,17 +293,21 @@ int main()
         check(consumed);
         while (state.handler_value.load(std::memory_order_acquire) != static_cast<int>(i)) std::this_thread::yield();
         render_allocation::window.store(false);
+        const auto client_counts = client_allocation::stop();
         samples[i] = {std::chrono::duration_cast<std::chrono::nanoseconds>(submitted - begin).count(),
             std::chrono::duration_cast<std::chrono::nanoseconds>(received - submitted).count(), consume,
-            static_cast<long long>(state.handler_ns.load()), render_allocation::calls.load()};
-        check(samples[i].allocations == 0);
+            static_cast<long long>(state.handler_ns.load()), render_allocation::calls.load(),
+            client_counts.calls, client_counts.bytes};
+        check(samples[i].allocations == 0 && samples[i].client_allocations == 0);
     }
     std::ofstream csv("runtime-open-operation.csv");
-    csv << "sample,submit_construct_ns,wait_and_consume_ns,successful_consume_typed_ns,handler_reply_ns,engine_new_calls\n";
+    csv << "sample,submit_construct_ns,wait_and_consume_ns,successful_consume_typed_ns,handler_reply_ns,"
+        "engine_new_calls,client_dll_new_calls,client_dll_allocated_bytes\n";
     for (std::size_t i = 0; i < samples.size(); ++i)
     {
         const auto& s = samples[i];
-        csv << i << ',' << s.submit << ',' << s.wait << ',' << s.consume << ',' << s.handler << ',' << s.allocations << '\n';
+        csv << i << ',' << s.submit << ',' << s.wait << ',' << s.consume << ',' << s.handler << ',' << s.allocations
+            << ',' << s.client_allocations << ',' << s.client_bytes << '\n';
     }
     // A raw peer bypasses binding. The sole Server boundary rejects bad object type,
     // insufficient terminal budget, stale generation and wrong Session independently.

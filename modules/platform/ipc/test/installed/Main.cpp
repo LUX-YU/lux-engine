@@ -11,18 +11,22 @@ int main()
     auto server = IpcCore::instance().createResponder("installed");
     auto client = IpcCore::instance().createRequester("installed");
     if (!server || !client || !client->ready()) return 1;
-    static_assert(IpcMessage::inline_capacity == 128);
-    // G1's typed ABI includes a code pin and temporary byte-compatible SBO. All DLL consumers rebuild together.
-    static_assert(sizeof(IpcMessage) == 208 && sizeof(IpcReply) == 432 && alignof(IpcMessage) == 16);
-    static_assert(IpcMessage::attachment_capacity == 4);
+    // Exact runtime shape follows the installed typed ABI, including its direct code pin.
+    static_assert(alignof(IpcMessage) == 16);
+    static_assert(sizeof(IpcMessage) == 64 + IpcMessage::typed_inline_capacity);
+    static_assert(sizeof(IpcReply) == 2 * sizeof(IpcMessage) + 16);
     IpcMessage input;
+    input.emplace<std::uint64_t>(17);
     if (!client->trySend(input)) return 2;
     ReceivedRequest work;
     if (server->tryReceive(work) != EIpcReceive::RECEIVED) return 3;
+    if (!work.message().holds(IpcMessage::type<std::uint64_t>()) || work.message().get<std::uint64_t>() != 17) return 3;
     IpcMessage reply;
+    reply.emplace<std::uint64_t>(19);
     if (!server->tryReply(work, reply)) return 4;
     IpcReply output;
     if (client->tryReceive(output) != EIpcReceive::RECEIVED) return 5;
+    if (output.message.get<std::uint64_t>() != 19 || output.original_request.get<std::uint64_t>() != 17) return 5;
     output = {};
     std::vector<unsigned> values{3, 7, 11};
     values.reserve(64);

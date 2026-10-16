@@ -2,10 +2,15 @@
 
 #include <array>
 #include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <span>
+#include <string_view>
 #include <type_traits>
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
-#include <lux/engine/render/data/Schema.hpp>
+#include <lux/cxx/core/Schema.hpp>
+#include <lux/engine/render/core/Error.hpp>
 
 namespace lux::render
 {

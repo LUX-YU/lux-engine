@@ -20,8 +20,15 @@ extern "C" bool ipcClaimA() noexcept
 extern "C" bool ipcMakeOwnedA(lux::platform::ipc::IpcMessage* output) noexcept
 {
     auto owner = std::make_unique<PluginOwner>();
-    if (!output->tryAdopt(owner, owner->bytes)) return false;
+    output->emplace<std::unique_ptr<PluginOwner>>(std::move(owner));
     return true;
+}
+
+extern "C" const std::byte* ipcOwnedDataA(const lux::platform::ipc::IpcMessage* input) noexcept
+{
+    using namespace lux::platform::ipc;
+    if (!input->holds(IpcMessage::type<std::unique_ptr<PluginOwner>>())) return nullptr;
+    return input->get<std::unique_ptr<PluginOwner>>()->bytes.data();
 }
 
 extern "C" int ipcDestroyedA() noexcept { return destructions; }

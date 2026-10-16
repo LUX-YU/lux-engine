@@ -7,7 +7,6 @@
 #include <exception>
 #include <memory>
 #include <new>
-#include <span>
 #include <type_traits>
 #include <utility>
 #include <lux/cxx/compile_time/TypeToken.hpp>
@@ -52,17 +51,12 @@ namespace lux::platform::ipc
         friend const void* detail::borrowObject(const IpcMessage&) noexcept;
         using Move = void (*)(void*, void*) noexcept;
         using Destroy = void (*)(void*) noexcept;
-        using Bytes = std::span<const std::byte> (*)(const void*) noexcept;
-        using Attachments = std::span<const std::span<const std::byte>> (*)(const void*) noexcept;
-        using MovedBytes = std::size_t (*)(const void*) noexcept;
 
         constexpr IpcTypeOps(cxx::TypeToken token, std::size_t size, std::size_t alignment,
             std::array<std::uint64_t, 2> abi, bool inline_storage, Move construct_from, Move move,
-            Destroy destroy, Bytes bytes,
-            Attachments attachments, MovedBytes moved_bytes) noexcept
+            Destroy destroy) noexcept
             : token_(token), size_(size), alignment_(alignment), abi_(abi), construct_from_(construct_from),
-              move_(move), destroy_(destroy),
-              bytes_(bytes), attachments_(attachments), moved_bytes_(moved_bytes), inline_storage_(inline_storage) {}
+              move_(move), destroy_(destroy), inline_storage_(inline_storage) {}
 
         cxx::TypeToken token_;
         std::size_t size_;
@@ -71,13 +65,12 @@ namespace lux::platform::ipc
         Move construct_from_;
         Move move_;
         Destroy destroy_;
-        Bytes bytes_;
-        Attachments attachments_;
-        MovedBytes moved_bytes_;
         bool inline_storage_;
     };
 
     // Cold validation creates this qualification. The table is static and code_pin keeps its module loaded.
+    // Nested C++ resources require a compatible allocator ABI. Plugin resources must retain their actual
+    // allocator/deleter and code pin; type/layout/compiler metadata cannot prove an arbitrary object graph.
     template <typename T>
     class IpcBoundType final
     {
@@ -100,10 +93,8 @@ namespace lux::platform::ipc
     {
     public:
         static constexpr std::size_t metadata_capacity = 40;
-        // Transitional capacity preserves 128-byte byte callers until the production Wire migration finishes.
-        static constexpr std::size_t typed_inline_capacity = 144;
-        static constexpr std::size_t inline_capacity = 128;
-        static constexpr std::size_t attachment_capacity = 4;
+        // All producers/consumers use the same concrete ABI; capacity is not consumer-configurable.
+        static constexpr std::size_t typed_inline_capacity = 80;
         IpcMessage() noexcept = default;
         ~IpcMessage() noexcept;
         IpcMessage(IpcMessage&& other) noexcept;
@@ -140,10 +131,19 @@ namespace lux::platform::ipc
         }
 
         template <typename T, typename... Args>
-        requires std::is_nothrow_constructible_v<T, Args...>
+        requires (std::is_nothrow_constructible_v<T, Args...> && std::is_nothrow_move_constructible_v<T>)
         T& emplace(const IpcBoundType<T>& bound, Args&&... args) noexcept
         {
-            return construct<T>(*bound.operations_, bound.code_pin_, std::forward<Args>(args)...);
+            if constexpr (stores_inline<T>)
+                return construct<T>(*bound.operations_, bound.code_pin_, std::forward<Args>(args)...);
+            else
+            {
+                // The canonical module must pair the external object's allocation and destruction.
+                // Unbound emplace remains available for local immovable/throwing-move objects.
+                T input(std::forward<Args>(args)...);
+                detail::moveFrom(*this, *bound.operations_, &input, bound.code_pin_);
+                return get<T>();
+            }
         }
 
         [[nodiscard]] const IpcTypeOps* operations() const noexcept { return operations_; }
@@ -178,24 +178,6 @@ namespace lux::platform::ipc
             return result;
         }
 
-        // Temporary byte adapters share the same object storage and TypeOps; there is no parallel owner.
-        [[nodiscard]] bool tryAssignInline(std::span<const std::byte> bytes) noexcept;
-
-        template <typename Owner>
-        [[nodiscard]] bool tryAdopt(std::unique_ptr<Owner>& owner, std::span<const std::byte> bytes,
-            std::span<const std::span<const std::byte>> attachments = {}) noexcept
-        {
-            const bool is_invalid_input = !owner || attachments.size() > attachment_capacity;
-            if (is_invalid_input) return false;
-            emplace<OwnedBytes>(bytes, owner.release(), [](void* value) noexcept {
-                if constexpr (std::is_array_v<Owner>) delete[] static_cast<std::remove_extent_t<Owner>*>(value);
-                else delete static_cast<Owner*>(value);
-            }, attachments);
-            return true;
-        }
-
-        [[nodiscard]] std::span<const std::byte> bytes() const noexcept;
-        [[nodiscard]] std::span<const std::span<const std::byte>> attachments() const noexcept;
         void reset() noexcept;
 
     private:
@@ -209,38 +191,6 @@ namespace lux::platform::ipc
             if constexpr (stores_inline<T>) return *std::launder(static_cast<const T*>(object));
             else return *static_cast<const T*>(*std::launder(static_cast<void* const*>(object)));
         }
-
-        struct InlineBytes final
-        {
-            std::array<std::byte, inline_capacity> values;
-            std::size_t size = 0;
-            explicit InlineBytes(std::span<const std::byte> source) noexcept : size(source.size())
-            {
-                if (size) std::memcpy(values.data(), source.data(), size);
-            }
-
-            InlineBytes(InlineBytes&& other) noexcept : size(std::exchange(other.size, 0))
-            {
-                if (size) std::memcpy(values.data(), other.values.data(), size);
-            }
-        };
-
-        struct OwnedBytes final
-        {
-            std::span<const std::byte> values;
-            void* owner;
-            void (*destroy)(void*) noexcept;
-            std::span<const std::span<const std::byte>> attachments;
-            OwnedBytes(std::span<const std::byte> source, void* value, void (*deleter)(void*) noexcept,
-                std::span<const std::span<const std::byte>> views) noexcept
-                : values(source), owner(value), destroy(deleter), attachments(views) {}
-
-            OwnedBytes(OwnedBytes&& other) noexcept
-                : values(other.values), owner(std::exchange(other.owner, nullptr)), destroy(other.destroy),
-                  attachments(other.attachments) {}
-
-            ~OwnedBytes() noexcept { if (owner) destroy(owner); }
-        };
 
         [[nodiscard]] static constexpr std::array<std::uint64_t, 2> compiledAbi() noexcept
         {
@@ -328,26 +278,6 @@ namespace lux::platform::ipc
                     delete static_cast<T*>(*pointer);
                     std::destroy_at(pointer);
                 }
-            },
-            [](const void* object) noexcept -> std::span<const std::byte> {
-                if constexpr (std::is_same_v<T, InlineBytes>)
-                {
-                    const auto& bytes = storedObject<T>(object);
-                    return {bytes.values.data(), bytes.size};
-                }
-                else if constexpr (std::is_same_v<T, OwnedBytes>)
-                    return storedObject<T>(object).values;
-                else return {};
-            },
-            [](const void* object) noexcept -> std::span<const std::span<const std::byte>> {
-                if constexpr (std::is_same_v<T, OwnedBytes>)
-                    return storedObject<T>(object).attachments;
-                else return {};
-            },
-            [](const void* object) noexcept -> std::size_t {
-                if constexpr (std::is_same_v<T, InlineBytes>)
-                    return storedObject<T>(object).size;
-                else return 0;
             }
         };
         return value;

@@ -9,7 +9,7 @@
 using namespace lux::platform::ipc;
 using namespace lux::render;
 
-static void check(bool value) { if (!value) std::abort(); }
+static void check(bool value) { if (!value) { std::fputs("typed asset ownership failed\n", stderr); std::_Exit(1); } }
 template <class T> static T take(Result<T> result) { check(bool(result)); return std::move(*result); }
 
 struct Asset final
@@ -20,25 +20,25 @@ struct Asset final
     ~Asset() { ++*destroyed; }
 };
 
-struct Envelope final
+// Only a test Command value. IPC owns/moves this concrete value and has no generic attachment representation.
+struct AssetRequest final
 {
-    OwnedWireBytes asset;
-    std::array<std::byte, 16> header{};
-    std::array<std::span<const std::byte>, 1> views;
-    explicit Envelope(OwnedWireBytes bytes) : asset(std::move(bytes)), views{asset.view()} {}
+    std::uint64_t revision;
+    OwnedWireBytes source;
 };
+
+static const AssetRequest& assetRequest(const IpcMessage& input)
+{
+    check(input.holds(IpcMessage::type<AssetRequest>()));
+    return input.get<AssetRequest>();
+}
 
 static IpcMessage message(int& destroyed, const std::byte*& pointer)
 {
     auto source = std::make_shared<Asset>(destroyed);
     pointer = source->backing.data();
-    auto owner = std::make_unique<Envelope>(OwnedWireBytes::fromOwner(source, source->backing));
-    std::array<std::span<const std::byte>, 5> excessive{};
     IpcMessage result;
-    check(!result.tryAdopt(owner, owner->header, excessive));
-    check(bool(owner));
-    check(result.tryAdopt(owner, owner->header, owner->views));
-    check(!owner);
+    result.emplace<AssetRequest>(AssetRequest{19, OwnedWireBytes::fromOwner(source, source->backing)});
     return result;
 }
 
@@ -47,58 +47,64 @@ static ReceivedRequest receive(IpcResponder& server)
     ReceivedRequest result;
     for (int i = 0; i < 32; ++i)
         if (server.tryReceive(result) == EIpcReceive::RECEIVED) return result;
-    std::abort();
+    std::_Exit(1);
+}
+
+template <std::size_t Size>
+struct Fields final { std::array<std::byte, Size> values{}; };
+
+template <std::size_t Size>
+static void fixedFields()
+{
+    IpcMessage input;
+    auto& value = input.emplace<Fields<Size>>();
+    for (std::size_t i = 0; i < Size; ++i) value.values[i] = std::byte(i);
+    const auto* before = &value;
+    auto moved = std::move(input);
+    check(input.empty() && moved.holds(IpcMessage::type<Fields<Size>>()));
+    if constexpr (!IpcMessage::stores_inline<Fields<Size>>) check(&moved.get<Fields<Size>>() == before);
+    for (std::size_t i = 0; i < Size; ++i) check(moved.get<Fields<Size>>().values[i] == std::byte(i));
+    moved = std::move(moved);
+    check(moved.get<Fields<Size>>().values.size() == Size);
 }
 
 static void storageModes()
 {
-    std::array<std::byte, 129> bytes;
-    for (std::size_t i = 0; i < bytes.size(); ++i) bytes[i] = std::byte(i);
-    for (std::size_t size : {0u, 1u, 127u, 128u})
-    {
-        IpcMessage value;
-        check(value.tryAssignInline(std::span(bytes).first(size)));
-        auto moved = std::move(value);
-        check(value.bytes().empty() && moved.bytes().size() == size);
-        check(std::ranges::equal(moved.bytes(), std::span(bytes).first(size)));
-        check(!moved.tryAssignInline(bytes)); // 129 B rejection preserves destination
-        check(std::ranges::equal(moved.bytes(), std::span(bytes).first(size)));
-        moved = std::move(moved);
-        if (size) check(moved.tryAssignInline(moved.bytes().subspan(1)));
-        check(moved.bytes().size() == (size ? size - 1 : 0));
-    }
+    fixedFields<0>();
+    fixedFields<1>();
+    fixedFields<127>();
+    fixedFields<128>();
+    fixedFields<IpcMessage::typed_inline_capacity>();
+    fixedFields<IpcMessage::typed_inline_capacity + 1>();
     struct Owner final
     {
         int* destroyed;
-        std::array<std::byte, 256> bytes{};
-        std::array<std::span<const std::byte>, 4> views;
-        explicit Owner(int& count) : destroyed(&count), views{bytes, bytes, bytes, bytes} { bytes[1] = std::byte{23}; }
+        std::array<std::byte, 256> values{};
+        explicit Owner(int& count) : destroyed(&count) { values[1] = std::byte{23}; }
         ~Owner() { ++*destroyed; }
     };
     int destroyed = 0;
     auto owner = std::make_unique<Owner>(destroyed);
-    const auto* pointer = owner->bytes.data();
+    const auto* pointer = owner->values.data();
     IpcMessage value;
-    check(value.tryAdopt(owner, owner->bytes, owner->views));
-    check(value.bytes().data() == pointer && value.attachments().size() == 4);
-    std::unique_ptr<Owner> empty;
-    check(!value.tryAdopt(empty, {}) && value.bytes().data() == pointer);
-    auto replacement = std::make_unique<Owner>(destroyed);
-    std::array<std::span<const std::byte>, 5> excessive{};
-    check(!value.tryAdopt(replacement, replacement->bytes, excessive));
-    check(bool(replacement) && value.bytes().data() == pointer && destroyed == 0);
+    value.emplace<std::unique_ptr<Owner>>(std::move(owner));
+    check(!owner && value.get<std::unique_ptr<Owner>>()->values.data() == pointer);
     IpcMessage destination;
-    check(destination.tryAdopt(replacement, replacement->bytes));
+    destination.emplace<std::unique_ptr<Owner>>(std::make_unique<Owner>(destroyed));
     destination = std::move(value);
-    check(destroyed == 1 && value.bytes().empty() && value.attachments().empty());
-    check(destination.attachments()[3].data() == pointer);
-    check(destination.tryAssignInline(destination.bytes().subspan(1, 1)));
-    check(destroyed == 2 && destination.bytes()[0] == std::byte{23} && destination.attachments().empty());
+    check(destroyed == 1 && value.empty());
+    check(destination.get<std::unique_ptr<Owner>>()->values.data() == pointer);
+    // Prepare the new value before replacing the old owner; no byte-overlap adapter exists.
+    const auto selected = destination.get<std::unique_ptr<Owner>>()->values[1];
+    destination.emplace<std::byte>(selected);
+    check(destroyed == 2 && destination.get<std::byte>() == std::byte{23});
     auto array = std::make_unique<std::byte[]>(129);
-    check(destination.tryAdopt(array, {array.get(), 129}) && !array);
+    auto* array_pointer = array.get();
+    destination.emplace<std::unique_ptr<std::byte[]>>(std::move(array));
+    check(!array && destination.get<std::unique_ptr<std::byte[]>>().get() == array_pointer);
     destination.reset();
-    check(destination.bytes().empty());
-    std::printf("SBO/Owned boundaries, overlap, four attachments, failed update, array deleter; Message=%zu Reply=%zu\n",
+    check(destination.empty());
+    std::printf("typed SBO/external boundaries, owner replacement and array deleter; Message=%zu Reply=%zu\n",
         sizeof(IpcMessage), sizeof(IpcReply));
 }
 
@@ -112,32 +118,30 @@ int main()
     const std::byte* pointer = nullptr;
     auto input = message(destroyed, pointer);
     auto moved = std::move(input);
-    check(input.attachments().empty());
-    check(moved.attachments()[0].data() == pointer);
-    check(bool(requester.trySend(moved)));
-    check(moved.attachments().empty());
+    check(input.empty() && assetRequest(moved).source.data() == pointer);
+    check(bool(requester.trySend(moved)) && moved.empty());
     const std::byte* second_pointer = nullptr;
     auto second = message(destroyed, second_pointer);
     check(!requester.trySend(second));
-    check(second.attachments()[0].data() == second_pointer && destroyed == 0);
+    check(assetRequest(second).source.data() == second_pointer && destroyed == 0);
     auto work = std::make_shared<ReceivedRequest>(receive(responder));
-    // Production-usable G2 adapter: the received request itself is the lifetime pin.
-    // No weak side channel, pointer in wire or Payload copy. Async work must release
-    // these pins before reply moves the input owner back to the requester.
+    // Author-format G2 resolution remains a test-only consumer of the same real source owner.
+    // Scoped async work borrows or copies the explicit owner; no byte deep copy or hidden attachment channel.
     {
-        const auto attachments = work->message().attachments();
-        auto bytes = OwnedWireBytes::fromOwner(work, attachments[0]);
-        std::array owners{bytes};
+        const auto& request = assetRequest(work->message());
+        check(request.revision == 19);
+        std::array owners{request.source};
         auto resolved = resolveExternal(owners, {0, 19, 3}, 1024 * 1024);
         check(resolved && resolved->data() == pointer + 19);
         check(resolved->view()[0] == std::byte{42});
     }
     IpcMessage reply;
-    check(bool(reply.tryAssignInline({})));
+    reply.emplace<std::uint64_t>(19);
     check(bool(responder.tryReply(*work, reply)));
     IpcReply received;
     check(requester.tryReceive(received) == EIpcReceive::RECEIVED);
-    check(received.original_request.attachments()[0].data() == pointer);
+    check(received.message.get<std::uint64_t>() == 19);
+    check(assetRequest(received.original_request).source.data() == pointer);
     check(bool(requester.trySend(second)));
     {
         auto abandoned = receive(responder);
@@ -146,7 +150,7 @@ int main()
     IpcReply aborted;
     check(requester.tryReceive(aborted) == EIpcReceive::RECEIVED);
     check(aborted.delivery == EIpcDelivery::ABORTED);
-    check(aborted.original_request.attachments()[0].data() == second_pointer);
+    check(assetRequest(aborted.original_request).source.data() == second_pointer);
     requester.reset();
     responder.reset();
     check(destroyed == 0);
@@ -162,12 +166,12 @@ int main()
     closing.reset();
     auto output = message(destroyed, second_pointer);
     check(!server.tryReply(deferred, output));
-    check(output.attachments()[0].data() == second_pointer && destroyed == 2);
+    check(assetRequest(output).source.data() == second_pointer && destroyed == 2);
     deferred.reset();
     server.reset();
     check(destroyed == 3);
     output.reset();
     check(destroyed == 4);
-    std::printf("attachments: zero Payload copies, exact destruction=4; message bytes=%zu inline=%zu\n",
-        sizeof(IpcMessage), IpcMessage::inline_capacity);
+    std::printf("typed assets: zero Payload copies, exact destruction=4; message bytes=%zu typed_inline=%zu\n",
+        sizeof(IpcMessage), IpcMessage::typed_inline_capacity);
 }

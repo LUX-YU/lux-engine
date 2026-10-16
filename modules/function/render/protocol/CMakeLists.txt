@@ -1,3 +1,5 @@
+find_package(lux-cxx CONFIG REQUIRED COMPONENTS core)
+
 add_component(
     STATIC
     COMPONENT_NAME render_protocol
@@ -12,7 +14,14 @@ component_include_directories(
     INSTALL_TIME include
 )
 
-component_add_internal_dependencies(render_protocol lux::engine::render::render_data)
+component_add_internal_dependencies(render_protocol lux::engine::render::render_core)
+
+target_link_libraries(render_protocol PUBLIC lux::cxx::core)
+
+component_add_transitive_commands(
+    render_protocol
+    "find_package(lux-cxx CONFIG REQUIRED COMPONENTS core)"
+)
 
 target_compile_features(render_protocol PUBLIC cxx_std_20)
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <lux/engine/render/data/Wire.hpp>
 #include <lux/engine/render/features/Resources.hpp>
 #include <lux/engine/render/graph/Builder.hpp>
 #include <lux/engine/render/graph/Analysis.hpp>

@@ -219,7 +219,7 @@ namespace lux::platform::ipc
         code_pin_ = std::move(other.code_pin_);
         operations_ = std::exchange(other.operations_, nullptr);
 #ifdef LUX_IPC_TESTING
-        testing::recordMove(operations_ ? operations_->moved_bytes_(other.object_) : 0);
+        testing::recordMove(operations_ && operations_->inline_storage_ ? operations_->size_ : 0);
 #endif
         if (operations_) operations_->move_(object_, other.object_);
         return *this;
@@ -231,35 +231,6 @@ namespace lux::platform::ipc
         auto pin = std::move(code_pin_);
         const auto* operations = std::exchange(operations_, nullptr);
         if (operations) operations->destroy_(object_);
-    }
-
-    std::span<const std::byte> IpcMessage::bytes() const noexcept
-    {
-        return operations_ ? operations_->bytes_(object_) : std::span<const std::byte>{};
-    }
-
-    std::span<const std::span<const std::byte>> IpcMessage::attachments() const noexcept
-    {
-        return operations_ ? operations_->attachments_(object_) : std::span<const std::span<const std::byte>>{};
-    }
-
-    bool IpcMessage::tryAssignInline(std::span<const std::byte> bytes) noexcept
-    {
-        if (bytes.size() > inline_capacity) return false;
-        if (holds(type<InlineBytes>()))
-        {
-            auto& current = get<InlineBytes>();
-            if (!bytes.empty()) std::memmove(current.values.data(), bytes.data(), bytes.size());
-            current.size = bytes.size();
-        }
-        else if (empty()) emplace<InlineBytes>(bytes);
-        else
-        {
-            // Source may alias the old owner, which emplace destroys only after this value is prepared.
-            InlineBytes saved(bytes);
-            emplace<InlineBytes>(std::move(saved));
-        }
-        return true;
     }
 
     void detail::moveFrom(IpcMessage& message, const IpcTypeOps& canonical, void* object,
@@ -573,7 +544,7 @@ namespace lux::platform::ipc
 
         void recordMove(std::size_t bytes) noexcept
         {
-            if (moves_enabled) { ++move_counts.moves; move_counts.inline_bytes += bytes; }
+            if (moves_enabled) { ++move_counts.moves; move_counts.inline_object_bytes += bytes; }
         }
 
         void startMoves() noexcept { move_counts = {}; moves_enabled = true; }

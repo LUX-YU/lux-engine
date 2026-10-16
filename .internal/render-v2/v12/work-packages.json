@@ -1,0 +1,986 @@
+{
+  "N0.1": {
+    "title": "Baseline and existing changes",
+    "status": "PLANNED",
+    "production_paths": [
+      ".internal/render-v2/v12/"
+    ],
+    "test_requirements": [
+      "T-BUILD-07",
+      "T-BUILD-09",
+      "T-PERF-01"
+    ],
+    "evidence": []
+  },
+  "N0.2": {
+    "title": "Complete sources and consumers",
+    "status": "PLANNED",
+    "production_paths": [
+      ".internal/render-v2/v12/"
+    ],
+    "test_requirements": [
+      "T-BUILD-07",
+      "T-BUILD-09",
+      "T-PERF-01"
+    ],
+    "evidence": []
+  },
+  "N0.3": {
+    "title": "Protection and evidence tools",
+    "status": "PLANNED",
+    "production_paths": [
+      ".internal/render-v2/v12/"
+    ],
+    "test_requirements": [
+      "T-BUILD-07",
+      "T-BUILD-09",
+      "T-PERF-01"
+    ],
+    "evidence": []
+  },
+  "N1.1": {
+    "title": "Execution component migration",
+    "status": "IMPLEMENTING_UNCOMMITTED",
+    "production_paths": [
+      "modules/core/execution/",
+      "modules/function/render/resource/",
+      "cmake/render-v2-bootstrap/"
+    ],
+    "test_requirements": [
+      "T-EXEC-01",
+      "T-EXEC-02",
+      "T-EXEC-03",
+      "T-EXEC-04",
+      "T-BUILD-01",
+      "T-BUILD-02",
+      "T-BUILD-03",
+      "T-BUILD-04"
+    ],
+    "evidence": []
+  },
+  "N1.2": {
+    "title": "Generic scheduling and owner completion",
+    "status": "IMPLEMENTING_UNCOMMITTED",
+    "production_paths": [
+      "modules/core/execution/",
+      "modules/function/render/resource/",
+      "cmake/render-v2-bootstrap/"
+    ],
+    "test_requirements": [
+      "T-EXEC-01",
+      "T-EXEC-02",
+      "T-EXEC-03",
+      "T-EXEC-04",
+      "T-BUILD-01",
+      "T-BUILD-02",
+      "T-BUILD-03",
+      "T-BUILD-04"
+    ],
+    "evidence": []
+  },
+  "N1.3": {
+    "title": "Sync closure and limited consumers",
+    "status": "IMPLEMENTING_UNCOMMITTED",
+    "production_paths": [
+      "modules/core/execution/",
+      "modules/function/render/resource/",
+      "cmake/render-v2-bootstrap/"
+    ],
+    "test_requirements": [
+      "T-EXEC-01",
+      "T-EXEC-02",
+      "T-EXEC-03",
+      "T-EXEC-04",
+      "T-BUILD-01",
+      "T-BUILD-02",
+      "T-BUILD-03",
+      "T-BUILD-04"
+    ],
+    "evidence": []
+  },
+  "N1.4": {
+    "title": "Independent N1 checkpoint",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/core/execution/",
+      "modules/function/render/resource/",
+      "cmake/render-v2-bootstrap/"
+    ],
+    "test_requirements": [
+      "T-EXEC-01",
+      "T-EXEC-02",
+      "T-EXEC-03",
+      "T-EXEC-04",
+      "T-BUILD-01",
+      "T-BUILD-02",
+      "T-BUILD-03",
+      "T-BUILD-04"
+    ],
+    "evidence": []
+  },
+  "N2.1": {
+    "title": "Native initialization and build selection",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/protocol/",
+      "modules/function/render/data/"
+    ],
+    "test_requirements": [
+      "T-CMD-01",
+      "T-CMD-02",
+      "T-CMD-03",
+      "T-CMD-04",
+      "T-CMD-05",
+      "T-CMD-06",
+      "T-CMD-07",
+      "T-CMD-08",
+      "T-CMD-09",
+      "T-CMD-10",
+      "T-CMD-11",
+      "T-CMD-12",
+      "T-CMD-13",
+      "T-CMD-14",
+      "T-FEATURE-01",
+      "T-FEATURE-02",
+      "T-FEATURE-03",
+      "T-FEATURE-04",
+      "T-FEATURE-05",
+      "T-FEATURE-06",
+      "T-FEATURE-07"
+    ],
+    "evidence": []
+  },
+  "N2.2": {
+    "title": "Typed identities and ConfigValue",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/protocol/",
+      "modules/function/render/data/"
+    ],
+    "test_requirements": [
+      "T-CMD-01",
+      "T-CMD-02",
+      "T-CMD-03",
+      "T-CMD-04",
+      "T-CMD-05",
+      "T-CMD-06",
+      "T-CMD-07",
+      "T-CMD-08",
+      "T-CMD-09",
+      "T-CMD-10",
+      "T-CMD-11",
+      "T-CMD-12",
+      "T-CMD-13",
+      "T-CMD-14",
+      "T-FEATURE-01",
+      "T-FEATURE-02",
+      "T-FEATURE-03",
+      "T-FEATURE-04",
+      "T-FEATURE-05",
+      "T-FEATURE-06",
+      "T-FEATURE-07"
+    ],
+    "evidence": []
+  },
+  "N2.3": {
+    "title": "Command and Handler ownership",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/protocol/",
+      "modules/function/render/data/"
+    ],
+    "test_requirements": [
+      "T-CMD-01",
+      "T-CMD-02",
+      "T-CMD-03",
+      "T-CMD-04",
+      "T-CMD-05",
+      "T-CMD-06",
+      "T-CMD-07",
+      "T-CMD-08",
+      "T-CMD-09",
+      "T-CMD-10",
+      "T-CMD-11",
+      "T-CMD-12",
+      "T-CMD-13",
+      "T-CMD-14",
+      "T-FEATURE-01",
+      "T-FEATURE-02",
+      "T-FEATURE-03",
+      "T-FEATURE-04",
+      "T-FEATURE-05",
+      "T-FEATURE-06",
+      "T-FEATURE-07"
+    ],
+    "evidence": []
+  },
+  "N2.4": {
+    "title": "Atomic typed module installation",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/protocol/",
+      "modules/function/render/data/"
+    ],
+    "test_requirements": [
+      "T-CMD-01",
+      "T-CMD-02",
+      "T-CMD-03",
+      "T-CMD-04",
+      "T-CMD-05",
+      "T-CMD-06",
+      "T-CMD-07",
+      "T-CMD-08",
+      "T-CMD-09",
+      "T-CMD-10",
+      "T-CMD-11",
+      "T-CMD-12",
+      "T-CMD-13",
+      "T-CMD-14",
+      "T-FEATURE-01",
+      "T-FEATURE-02",
+      "T-FEATURE-03",
+      "T-FEATURE-04",
+      "T-FEATURE-05",
+      "T-FEATURE-06",
+      "T-FEATURE-07"
+    ],
+    "evidence": []
+  },
+  "N2.5": {
+    "title": "Client control and FeatureId",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/protocol/",
+      "modules/function/render/data/"
+    ],
+    "test_requirements": [
+      "T-CMD-01",
+      "T-CMD-02",
+      "T-CMD-03",
+      "T-CMD-04",
+      "T-CMD-05",
+      "T-CMD-06",
+      "T-CMD-07",
+      "T-CMD-08",
+      "T-CMD-09",
+      "T-CMD-10",
+      "T-CMD-11",
+      "T-CMD-12",
+      "T-CMD-13",
+      "T-CMD-14",
+      "T-FEATURE-01",
+      "T-FEATURE-02",
+      "T-FEATURE-03",
+      "T-FEATURE-04",
+      "T-FEATURE-05",
+      "T-FEATURE-06",
+      "T-FEATURE-07"
+    ],
+    "evidence": []
+  },
+  "N3.1": {
+    "title": "Typed Reply and unique Pending",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/protocol/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-IPC-01",
+      "T-IPC-02",
+      "T-IPC-03",
+      "T-IPC-04",
+      "T-IPC-05",
+      "T-IPC-06",
+      "T-IPC-07",
+      "T-IPC-08",
+      "T-IPC-09",
+      "T-IPC-10",
+      "T-IPC-11",
+      "T-GPU-01",
+      "T-GPU-02",
+      "T-GPU-03",
+      "T-GPU-04",
+      "T-GPU-05",
+      "T-GPU-06"
+    ],
+    "evidence": []
+  },
+  "N3.2": {
+    "title": "Native upload and readback operations",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/protocol/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-IPC-01",
+      "T-IPC-02",
+      "T-IPC-03",
+      "T-IPC-04",
+      "T-IPC-05",
+      "T-IPC-06",
+      "T-IPC-07",
+      "T-IPC-08",
+      "T-IPC-09",
+      "T-IPC-10",
+      "T-IPC-11",
+      "T-GPU-01",
+      "T-GPU-02",
+      "T-GPU-03",
+      "T-GPU-04",
+      "T-GPU-05",
+      "T-GPU-06"
+    ],
+    "evidence": []
+  },
+  "N3.3": {
+    "title": "Narrow compile input",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/protocol/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-IPC-01",
+      "T-IPC-02",
+      "T-IPC-03",
+      "T-IPC-04",
+      "T-IPC-05",
+      "T-IPC-06",
+      "T-IPC-07",
+      "T-IPC-08",
+      "T-IPC-09",
+      "T-IPC-10",
+      "T-IPC-11",
+      "T-GPU-01",
+      "T-GPU-02",
+      "T-GPU-03",
+      "T-GPU-04",
+      "T-GPU-05",
+      "T-GPU-06"
+    ],
+    "evidence": []
+  },
+  "N3.4": {
+    "title": "Completion cancellation and shutdown",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/protocol/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-IPC-01",
+      "T-IPC-02",
+      "T-IPC-03",
+      "T-IPC-04",
+      "T-IPC-05",
+      "T-IPC-06",
+      "T-IPC-07",
+      "T-IPC-08",
+      "T-IPC-09",
+      "T-IPC-10",
+      "T-IPC-11",
+      "T-GPU-01",
+      "T-GPU-02",
+      "T-GPU-03",
+      "T-GPU-04",
+      "T-GPU-05",
+      "T-GPU-06"
+    ],
+    "evidence": []
+  },
+  "N4.1": {
+    "title": "Typed factory qualification",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/resource/",
+      "modules/function/render/runtime/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-OWNER-01",
+      "T-OWNER-02",
+      "T-OWNER-03",
+      "T-OWNER-04",
+      "T-OWNER-05",
+      "T-OWNER-06",
+      "T-OWNER-07",
+      "T-OWNER-08",
+      "T-OWNER-09",
+      "T-OWNER-10",
+      "T-OWNER-11",
+      "T-OWNER-12",
+      "T-OWNER-13",
+      "T-OWNER-14",
+      "T-OWNER-15",
+      "T-OWNER-16",
+      "T-GPU-02",
+      "T-GPU-07",
+      "T-GPU-12"
+    ],
+    "evidence": []
+  },
+  "N4.2": {
+    "title": "StorageSet ownership and borrowed index",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/resource/",
+      "modules/function/render/runtime/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-OWNER-01",
+      "T-OWNER-02",
+      "T-OWNER-03",
+      "T-OWNER-04",
+      "T-OWNER-05",
+      "T-OWNER-06",
+      "T-OWNER-07",
+      "T-OWNER-08",
+      "T-OWNER-09",
+      "T-OWNER-10",
+      "T-OWNER-11",
+      "T-OWNER-12",
+      "T-OWNER-13",
+      "T-OWNER-14",
+      "T-OWNER-15",
+      "T-OWNER-16",
+      "T-GPU-02",
+      "T-GPU-07",
+      "T-GPU-12"
+    ],
+    "evidence": []
+  },
+  "N4.3": {
+    "title": "Storage discovery and qualified handles",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/resource/",
+      "modules/function/render/runtime/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-OWNER-01",
+      "T-OWNER-02",
+      "T-OWNER-03",
+      "T-OWNER-04",
+      "T-OWNER-05",
+      "T-OWNER-06",
+      "T-OWNER-07",
+      "T-OWNER-08",
+      "T-OWNER-09",
+      "T-OWNER-10",
+      "T-OWNER-11",
+      "T-OWNER-12",
+      "T-OWNER-13",
+      "T-OWNER-14",
+      "T-OWNER-15",
+      "T-OWNER-16",
+      "T-GPU-02",
+      "T-GPU-07",
+      "T-GPU-12"
+    ],
+    "evidence": []
+  },
+  "N4.4": {
+    "title": "Attach withdrawal and resource leases",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/resource/",
+      "modules/function/render/runtime/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-OWNER-01",
+      "T-OWNER-02",
+      "T-OWNER-03",
+      "T-OWNER-04",
+      "T-OWNER-05",
+      "T-OWNER-06",
+      "T-OWNER-07",
+      "T-OWNER-08",
+      "T-OWNER-09",
+      "T-OWNER-10",
+      "T-OWNER-11",
+      "T-OWNER-12",
+      "T-OWNER-13",
+      "T-OWNER-14",
+      "T-OWNER-15",
+      "T-OWNER-16",
+      "T-GPU-02",
+      "T-GPU-07",
+      "T-GPU-12"
+    ],
+    "evidence": []
+  },
+  "N4.5": {
+    "title": "Logical growth and descriptor allocation",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/resource/",
+      "modules/function/render/runtime/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-OWNER-01",
+      "T-OWNER-02",
+      "T-OWNER-03",
+      "T-OWNER-04",
+      "T-OWNER-05",
+      "T-OWNER-06",
+      "T-OWNER-07",
+      "T-OWNER-08",
+      "T-OWNER-09",
+      "T-OWNER-10",
+      "T-OWNER-11",
+      "T-OWNER-12",
+      "T-OWNER-13",
+      "T-OWNER-14",
+      "T-OWNER-15",
+      "T-OWNER-16",
+      "T-GPU-02",
+      "T-GPU-07",
+      "T-GPU-12"
+    ],
+    "evidence": []
+  },
+  "N4.6": {
+    "title": "Event-driven physical retirement",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/resource/",
+      "modules/function/render/runtime/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-OWNER-01",
+      "T-OWNER-02",
+      "T-OWNER-03",
+      "T-OWNER-04",
+      "T-OWNER-05",
+      "T-OWNER-06",
+      "T-OWNER-07",
+      "T-OWNER-08",
+      "T-OWNER-09",
+      "T-OWNER-10",
+      "T-OWNER-11",
+      "T-OWNER-12",
+      "T-OWNER-13",
+      "T-OWNER-14",
+      "T-OWNER-15",
+      "T-OWNER-16",
+      "T-GPU-02",
+      "T-GPU-07",
+      "T-GPU-12"
+    ],
+    "evidence": []
+  },
+  "N5.1": {
+    "title": "Typed arguments and actual owner placement",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/features/",
+      "modules/function/render/graph/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-FEATURE-07",
+      "T-FEATURE-08",
+      "T-FEATURE-09",
+      "T-FEATURE-10",
+      "T-FEATURE-11",
+      "T-GPU-07",
+      "T-GPU-08",
+      "T-GPU-09",
+      "T-GPU-10",
+      "T-GPU-11",
+      "T-GPU-12"
+    ],
+    "evidence": []
+  },
+  "N5.2": {
+    "title": "Live graph and parameter plans",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/features/",
+      "modules/function/render/graph/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-FEATURE-07",
+      "T-FEATURE-08",
+      "T-FEATURE-09",
+      "T-FEATURE-10",
+      "T-FEATURE-11",
+      "T-GPU-07",
+      "T-GPU-08",
+      "T-GPU-09",
+      "T-GPU-10",
+      "T-GPU-11",
+      "T-GPU-12"
+    ],
+    "evidence": []
+  },
+  "N5.3": {
+    "title": "Single shader layout and relocation",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/features/",
+      "modules/function/render/graph/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-FEATURE-07",
+      "T-FEATURE-08",
+      "T-FEATURE-09",
+      "T-FEATURE-10",
+      "T-FEATURE-11",
+      "T-GPU-07",
+      "T-GPU-08",
+      "T-GPU-09",
+      "T-GPU-10",
+      "T-GPU-11",
+      "T-GPU-12"
+    ],
+    "evidence": []
+  },
+  "N5.4": {
+    "title": "Real shader ABI",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/features/",
+      "modules/function/render/graph/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-FEATURE-07",
+      "T-FEATURE-08",
+      "T-FEATURE-09",
+      "T-FEATURE-10",
+      "T-FEATURE-11",
+      "T-GPU-07",
+      "T-GPU-08",
+      "T-GPU-09",
+      "T-GPU-10",
+      "T-GPU-11",
+      "T-GPU-12"
+    ],
+    "evidence": []
+  },
+  "N5.5": {
+    "title": "Indexed indirect depth and compute primitives",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/features/",
+      "modules/function/render/graph/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-FEATURE-07",
+      "T-FEATURE-08",
+      "T-FEATURE-09",
+      "T-FEATURE-10",
+      "T-FEATURE-11",
+      "T-GPU-07",
+      "T-GPU-08",
+      "T-GPU-09",
+      "T-GPU-10",
+      "T-GPU-11",
+      "T-GPU-12"
+    ],
+    "evidence": []
+  },
+  "N5.6": {
+    "title": "Complete rebinding and explicit readback",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/features/",
+      "modules/function/render/graph/",
+      "modules/function/render/native/vulkan/"
+    ],
+    "test_requirements": [
+      "T-FEATURE-07",
+      "T-FEATURE-08",
+      "T-FEATURE-09",
+      "T-FEATURE-10",
+      "T-FEATURE-11",
+      "T-GPU-07",
+      "T-GPU-08",
+      "T-GPU-09",
+      "T-GPU-10",
+      "T-GPU-11",
+      "T-GPU-12"
+    ],
+    "evidence": []
+  },
+  "N6.1": {
+    "title": "Mesh storage",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/resource/",
+      "modules/function/render/features/",
+      "modules/function/render/native/vulkan/",
+      "modules/function/render/examples/basic_mesh/"
+    ],
+    "test_requirements": [
+      "T-RENDER-01",
+      "T-RENDER-02",
+      "T-RENDER-03",
+      "T-RENDER-04",
+      "T-RENDER-05",
+      "T-RENDER-06",
+      "T-CMD-08",
+      "T-OWNER-14"
+    ],
+    "evidence": []
+  },
+  "N6.2": {
+    "title": "Cooked material storage",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/resource/",
+      "modules/function/render/features/",
+      "modules/function/render/native/vulkan/",
+      "modules/function/render/examples/basic_mesh/"
+    ],
+    "test_requirements": [
+      "T-RENDER-01",
+      "T-RENDER-02",
+      "T-RENDER-03",
+      "T-RENDER-04",
+      "T-RENDER-05",
+      "T-RENDER-06",
+      "T-CMD-08",
+      "T-OWNER-14"
+    ],
+    "evidence": []
+  },
+  "N6.3": {
+    "title": "Instance batches and camera",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/resource/",
+      "modules/function/render/features/",
+      "modules/function/render/native/vulkan/",
+      "modules/function/render/examples/basic_mesh/"
+    ],
+    "test_requirements": [
+      "T-RENDER-01",
+      "T-RENDER-02",
+      "T-RENDER-03",
+      "T-RENDER-04",
+      "T-RENDER-05",
+      "T-RENDER-06",
+      "T-CMD-08",
+      "T-OWNER-14"
+    ],
+    "evidence": []
+  },
+  "N6.4": {
+    "title": "Basic mesh and depth features",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/resource/",
+      "modules/function/render/features/",
+      "modules/function/render/native/vulkan/",
+      "modules/function/render/examples/basic_mesh/"
+    ],
+    "test_requirements": [
+      "T-RENDER-01",
+      "T-RENDER-02",
+      "T-RENDER-03",
+      "T-RENDER-04",
+      "T-RENDER-05",
+      "T-RENDER-06",
+      "T-CMD-08",
+      "T-OWNER-14"
+    ],
+    "evidence": []
+  },
+  "N6.5": {
+    "title": "Two-client two-view integration",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/resource/",
+      "modules/function/render/features/",
+      "modules/function/render/native/vulkan/",
+      "modules/function/render/examples/basic_mesh/"
+    ],
+    "test_requirements": [
+      "T-RENDER-01",
+      "T-RENDER-02",
+      "T-RENDER-03",
+      "T-RENDER-04",
+      "T-RENDER-05",
+      "T-RENDER-06",
+      "T-CMD-08",
+      "T-OWNER-14"
+    ],
+    "evidence": []
+  },
+  "N7.1": {
+    "title": "Equivalent-work cost attribution",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/native/vulkan/",
+      ".internal/render-v2/v12/"
+    ],
+    "test_requirements": [
+      "T-PERF-01",
+      "T-PERF-02",
+      "T-PERF-03",
+      "T-PERF-04",
+      "T-PERF-05",
+      "T-PERF-06",
+      "T-PERF-07",
+      "T-PERF-08",
+      "T-PERF-09",
+      "T-PERF-10",
+      "T-BUILD-01",
+      "T-BUILD-02",
+      "T-BUILD-03",
+      "T-BUILD-04",
+      "T-BUILD-05",
+      "T-BUILD-06",
+      "T-BUILD-07",
+      "T-BUILD-08",
+      "T-BUILD-09"
+    ],
+    "evidence": []
+  },
+  "N7.2": {
+    "title": "Execution outcomes and queue frontier",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/native/vulkan/",
+      ".internal/render-v2/v12/"
+    ],
+    "test_requirements": [
+      "T-PERF-01",
+      "T-PERF-02",
+      "T-PERF-03",
+      "T-PERF-04",
+      "T-PERF-05",
+      "T-PERF-06",
+      "T-PERF-07",
+      "T-PERF-08",
+      "T-PERF-09",
+      "T-PERF-10",
+      "T-BUILD-01",
+      "T-BUILD-02",
+      "T-BUILD-03",
+      "T-BUILD-04",
+      "T-BUILD-05",
+      "T-BUILD-06",
+      "T-BUILD-07",
+      "T-BUILD-08",
+      "T-BUILD-09"
+    ],
+    "evidence": []
+  },
+  "N7.3": {
+    "title": "Bounded waiting and fairness",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/native/vulkan/",
+      ".internal/render-v2/v12/"
+    ],
+    "test_requirements": [
+      "T-PERF-01",
+      "T-PERF-02",
+      "T-PERF-03",
+      "T-PERF-04",
+      "T-PERF-05",
+      "T-PERF-06",
+      "T-PERF-07",
+      "T-PERF-08",
+      "T-PERF-09",
+      "T-PERF-10",
+      "T-BUILD-01",
+      "T-BUILD-02",
+      "T-BUILD-03",
+      "T-BUILD-04",
+      "T-BUILD-05",
+      "T-BUILD-06",
+      "T-BUILD-07",
+      "T-BUILD-08",
+      "T-BUILD-09"
+    ],
+    "evidence": []
+  },
+  "N7.4": {
+    "title": "API dependency and coverage closure",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/native/vulkan/",
+      ".internal/render-v2/v12/"
+    ],
+    "test_requirements": [
+      "T-PERF-01",
+      "T-PERF-02",
+      "T-PERF-03",
+      "T-PERF-04",
+      "T-PERF-05",
+      "T-PERF-06",
+      "T-PERF-07",
+      "T-PERF-08",
+      "T-PERF-09",
+      "T-PERF-10",
+      "T-BUILD-01",
+      "T-BUILD-02",
+      "T-BUILD-03",
+      "T-BUILD-04",
+      "T-BUILD-05",
+      "T-BUILD-06",
+      "T-BUILD-07",
+      "T-BUILD-08",
+      "T-BUILD-09"
+    ],
+    "evidence": []
+  },
+  "N7.5": {
+    "title": "Independent final verification",
+    "status": "PLANNED",
+    "production_paths": [
+      "modules/function/render/runtime/",
+      "modules/function/render/native/vulkan/",
+      ".internal/render-v2/v12/"
+    ],
+    "test_requirements": [
+      "T-PERF-01",
+      "T-PERF-02",
+      "T-PERF-03",
+      "T-PERF-04",
+      "T-PERF-05",
+      "T-PERF-06",
+      "T-PERF-07",
+      "T-PERF-08",
+      "T-PERF-09",
+      "T-PERF-10",
+      "T-BUILD-01",
+      "T-BUILD-02",
+      "T-BUILD-03",
+      "T-BUILD-04",
+      "T-BUILD-05",
+      "T-BUILD-06",
+      "T-BUILD-07",
+      "T-BUILD-08",
+      "T-BUILD-09"
+    ],
+    "evidence": []
+  }
+}

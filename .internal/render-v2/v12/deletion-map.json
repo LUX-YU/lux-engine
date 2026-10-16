@@ -1,0 +1,274 @@
+[
+  {
+    "id": "delete.01",
+    "old": "`engine/process/execution/**` 通用生产实现",
+    "action": "迁入 Core Execution，活跃消费者全改；历史冻结目录不改",
+    "work_package": "N1.1",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.02",
+    "old": "`render/resource/CpuSchedule.hpp`",
+    "action": "删除原位置；通用适配下沉，Render错误映射回Render",
+    "work_package": "N1.2",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.03",
+    "old": "`protocol/Protocol.hpp` 的 ECompletionContract/GPU分类",
+    "action": "删除；仅保留普通 C 请求/回复/Outcome合同",
+    "work_package": "N3.1",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.04",
+    "old": "CommandDescriptor::version",
+    "action": "删除内建人工版本字段与相等比较",
+    "work_package": "N2.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.05",
+    "old": "`resource/Registration.hpp::CommandRegistration`",
+    "action": "删除整个可变继承/二次bind结构；由typed成员绑定替代",
+    "work_package": "N2.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.06",
+    "old": "CommandRegistration::gpu_completion_/bind_native_/bindNative",
+    "action": "删除，无等价新字段",
+    "work_package": "N3.1",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.07",
+    "old": "`native/vulkan/Registration.hpp` 的空 DeviceSession 绑定",
+    "action": "删除；已存在 DeviceSession 上真实构造 H",
+    "work_package": "N2.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.08",
+    "old": "FeatureRegistration/StorageRegistration 公开安装拼装",
+    "action": "收窄为模板安装内部材料或删除；外部一次注册即可",
+    "work_package": "N2.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.09",
+    "old": "ServerImpl::features vector",
+    "action": "改为 FeatureId 对应稳定表",
+    "work_package": "N2.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.10",
+    "old": "`Commands.hpp::FeatureSelection` 名称/version请求",
+    "action": "改为 FeatureUse/FeatureId+局部实例配置",
+    "work_package": "N2.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.11",
+    "old": "CommandEntry 内的单一 CommandRegistration",
+    "action": "分离 Command 热路由/冷支持列表与 Handler RAII 表",
+    "work_package": "N2.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.12",
+    "old": "Hello 全生命周期固定清单假设",
+    "action": "改为显式动态目录查询刷新；传输Session仍保留",
+    "work_package": "N2.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.13",
+    "old": "`Request.hpp` 的gpuReady等协议判断",
+    "action": "删除；真实GPU完成由专业逻辑/测试保证",
+    "work_package": "N3.1",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.14",
+    "old": "`Deferred.hpp` GPU/Readback/CPU 分类 variant",
+    "action": "替换为通用 PendingRequest+typed操作Owner",
+    "work_package": "N3.1",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.15",
+    "old": "`ServerCompletion.cpp` GPU专业表/finishGpu/readback细节",
+    "action": "移回Native/专业handler；仅留通用结算/实际事件",
+    "work_package": "N3.1",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.16",
+    "old": "`native/vulkan/.../GpuCompletion.hpp` public void* reply",
+    "action": "删除旧Server GPU桥；typed Reply+专业私有adapter",
+    "work_package": "N3.1",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.17",
+    "old": "`StorageDescriptor` abi/scopes/fixed ShaderBinding",
+    "action": "删除；配置类型/专业能力与物理布局解耦",
+    "work_package": "N5.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.18",
+    "old": "`StorageRequirement` abi/scope",
+    "action": "删除；Feature放置需求在实际Owner列表中表达",
+    "work_package": "N4.2",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.19",
+    "old": "ResourceDomain/DomainId/frozen/root/ancestor/findVisible",
+    "action": "删除，不改名复刻",
+    "work_package": "N4.2",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.20",
+    "old": "ResourceRegistry::entries_ owning NativeStorage",
+    "action": "所有权迁至实际 StorageSet；Registry保留唯一ID借用索引",
+    "work_package": "N4.2",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.21",
+    "old": "Registry::identityOf / 全类型/实例反复查找",
+    "action": "创建设定StorageId；高频按id定位",
+    "work_package": "N4.2",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.22",
+    "old": "Registry/Texture/Retirement的全量稳态collect",
+    "action": "改为实际候选事件推进，真实Queue前沿保留",
+    "work_package": "N4.2",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.23",
+    "old": "TextureStorageConfig capacity/byte_limit及16–4096条件",
+    "action": "删除任意业务硬限制；真实物理限额/预算留下",
+    "work_package": "N4.5",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.24",
+    "old": "TextureWrite/RegionWrite 等局部 TextureId 假设",
+    "action": "迁为明确 StorageId/qualified resource handle",
+    "work_package": "N4.3",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.25",
+    "old": "TextureStorage::layout_/pool_/descriptors_ 固定Shader布局职责",
+    "action": "移入实际Native布局/descriptor分配计划；不复制每Scene大型设备表",
+    "work_package": "N5.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.26",
+    "old": "View.color、ExecutionContext::setColor、通用float4捷径",
+    "action": "迁测试Fixture或专业参数；实际View使用Camera数据",
+    "work_package": "N5.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.27",
+    "old": "PassProgram.vertex_count=3、固定push16/单RGBA8合法性",
+    "action": "扩为真实结构化图形原语和Shader布局；测试三角形配方不等于通用规则",
+    "work_package": "N5.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.28",
+    "old": "Context强制Readback_/target-sized buffer条件",
+    "action": "删除普遍前提，读回显式可选",
+    "work_package": "N5.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.29",
+    "old": "Feature Config / StorageArgument 强制 encode/decode",
+    "action": "仅进程内路径改ConfigValue/typed参数；持久编码保留",
+    "work_package": "N5.1",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.30",
+    "old": "Server内Builtin调用绕回GpuAdmission",
+    "action": "改typed Request+Reply；仅Runtime管理函数借真正业务表",
+    "work_package": "N3.1",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.31",
+    "old": "CompilerTask/CompileState 持 Impl*",
+    "action": "改本次编译材料与必要Device借用；发布仍回Owner",
+    "work_package": "N3.3",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.32",
+    "old": "`ServerLoop.cpp::sleep_for(1ms)`",
+    "action": "单独提交，用真实进度/有界饱和等待替代",
+    "work_package": "N7.3",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.33",
+    "old": "旧 README 中假成熟/已删除类型说明",
+    "action": "更新为实际API；历史报告不改",
+    "work_package": "N7.4",
+    "status": "PLANNED",
+    "evidence": []
+  },
+  {
+    "id": "delete.34",
+    "old": "`.internal/render-v2/check_layer_headers.py`",
+    "action": "probe存在断言+真实编译依赖验证，不能只grep即PASS",
+    "work_package": "N0.3",
+    "status": "PLANNED",
+    "evidence": []
+  }
+]

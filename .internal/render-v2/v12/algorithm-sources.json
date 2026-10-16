@@ -1,0 +1,82 @@
+[
+  {
+    "path": "editor_legacy/authoring/layout/include/lux/engine/editor/workspace/LayoutPlan.hpp",
+    "blob": "8e5429ce1c689c41ca63ff53d52f23ce322e0cef",
+    "sha256": "43586780f1923aee93c44e3b33dffa67eea6457dfe1b455b33363267e392184b"
+  },
+  {
+    "path": "editor_legacy/authoring/layout/src/LayoutPlan.cpp",
+    "blob": "287236824b0d2428ad4d92f4b3207c3d71f3aaa8",
+    "sha256": "99defdef32301c2d7ae5eda58ca2e6aff36b2f26c7a27f1af9b58856ab1d16ee"
+  },
+  {
+    "path": "editor_legacy/authoring/material/src/edits/MaterialGraphEdit.cpp",
+    "blob": "3d39cec5151c4e7fd3beefa92de3cbf0bcd9c2b5",
+    "sha256": "329d28ee5a53e1e760ac59b5be06e8e4c179047efdacf28611338b305eba6f6f"
+  },
+  {
+    "path": "engine/toolchain/shader/include/lux/engine/toolchain/shader/lglsl/LglslEmitter.hpp",
+    "blob": "fadb8454d9326892575b89af7dbd27c110e16924",
+    "sha256": "cb4804d4c9112862ace6b7dff33a8a5d8ed7ce16213eb8b52b00cc938190882e"
+  },
+  {
+    "path": "engine/toolchain/shader/src/lglsl/LglslEmitter.cpp",
+    "blob": "019432246f3f427e1516685803d00cc0176a83d6",
+    "sha256": "4320e4555f81c087a5698c101faacc932d9cb1c583d1a46a916b4beee8d7998a"
+  },
+  {
+    "path": "modules/function/material/include/lux/engine/material/graph/MaterialGraph.hpp",
+    "blob": "6397e65d79707f3aab3e59d71886d03c05481722",
+    "sha256": "64a5ba7081cee3d0091c63d4bedc0a09e2a1d1eae3b435e0dfaaf616dddac3f6"
+  },
+  {
+    "path": "modules/function/material/src/MaterialGraph.cpp",
+    "blob": "18ef175ccdff236393ce0f8ad8989f342e1bb496",
+    "sha256": "8b817080062b1c8d326ca5af2c73618fd5b9c94bf561753038cfcf2a80a7a295"
+  },
+  {
+    "path": "modules/resource/description/include/lux/engine/description/LayoutContract.hpp",
+    "blob": "55f3efb29f893f932b548165c3abd6d44f826e56",
+    "sha256": "92fdba3104c5ecd71b105f663ef031cac7386c9c54eeebcf0fdbbbb47f12d07d"
+  },
+  {
+    "path": "modules/resource/description/include/lux/engine/description/PassContract.hpp",
+    "blob": "a64cab095c69ce02411b5aa2417523334ef35dc1",
+    "sha256": "09023fed15e60315f86e889783bb6bf4a02f83268be1eeeefebd2e7461616b27"
+  },
+  {
+    "path": "modules/resource/description/include/lux/engine/description/ShaderInfo.hpp",
+    "blob": "9647794d615f65f11f1d2e263ae15a3482fd948d",
+    "sha256": "1e4cad801f5fd61bb7eca8fb0da5fe872b3791a612a327a568569e88353e2a74"
+  },
+  {
+    "path": "modules/resource/description/src/ShaderInfo.cpp",
+    "blob": "87ca70b29dde4bfc5a2ee606947805c6ac0ae585",
+    "sha256": "f6ed101c4a90b5b5971ee7ae798d50156d33516b81da6145790d3b8bc4a4d9af"
+  },
+  {
+    "path": "render_legacy/modules/function/render/vulkan/include/lux/engine/render/core/DescriptorSetLayoutContract.hpp",
+    "blob": "f40cedc281395e167edc502b6f4be4c6ff76bfb2",
+    "sha256": "a91b4e19bfaebdc15765d98609ef1c97a4aff9bfd738709223d86032091059c7"
+  },
+  {
+    "path": "render_legacy/modules/function/render/vulkan/sinclude/lux/engine/render/gpu/pipeline/SpirvPatcher.hpp",
+    "blob": "bcf25354c2d3c05449ae86533c02d521e0286f82",
+    "sha256": "b6d6c7a0157e718b80af22a0ac09fc54c9eae75a26a942ce020bddee0e7a8458"
+  },
+  {
+    "path": "render_legacy/modules/function/render/vulkan/sinclude/lux/engine/render/graph/LayoutPlan.hpp",
+    "blob": "17ba51b9a03eafd7fc5bcb9daa7ceb48be77ac59",
+    "sha256": "a6a9a1565e173185174b66b20e78ae618af4d431a3b61736c82f4b0447db99ce"
+  },
+  {
+    "path": "render_legacy/modules/function/render/vulkan/src/gpu/pipeline/SpirvPatcher.cpp",
+    "blob": "42eabc58b5e34329076c43b2492b5f6c7c97cc8a",
+    "sha256": "0ee8cb582bc1bacdbdc260088b57cf5d37f4af393569007c9b471877672f731c"
+  },
+  {
+    "path": "render_legacy/modules/function/render/vulkan/src/graph/RenderGraphCompiler.LayoutAllocator.cpp",
+    "blob": "d932a97be7d905e511d22b4a04da5d8ff1fbd4e9",
+    "sha256": "bed3ba2470daec5ea572e685e5128ff581cae7d4f7db53bda080a498d8f19947"
+  }
+]

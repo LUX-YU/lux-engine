@@ -68,9 +68,8 @@ static RenderResult<void> ready(Pin&, Transfer& upload, DeviceSession& session) 
 
 static const auto operation = commandDescriptor<TextureProbe>();
 static const std::array texture_operations{operation};
-static const FeatureDefinition definition{FeatureTypeIdView("test.texture.progress"), {1, 0}, nullptr,
-    [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
-    nullptr, texture_operations};
+static const FeatureDescriptor definition{FeatureTypeIdView("test.texture.progress"), {1, 0}, nullptr};
+static const FeatureGraphOps definition_graph{[](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 
 static RenderResult<void> invoke(DeviceSession& session, const TextureProbe::Request& value, CommandContext<TextureProbe>& context) noexcept
 {
@@ -144,7 +143,7 @@ static void shutdownAndLoss()
         config.uploads = TransferOptions{1024 * 1024, 1, 32 * 1024 * 1024};
         auto server = take(RenderServer::create(withCpu(worker, config)));
         const std::array handlers{nativeCommand<TextureProbe, invoke>()};
-        CHECK(server->registerFeature<TextureProbe>({&definition, nullptr, handlers}));
+        CHECK(server->registerFeature<TextureProbe>({&definition, &definition_graph, nullptr, handlers}));
         std::atomic<bool> run_finished{false};
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); run_finished = true; });
@@ -186,7 +185,7 @@ int main()
         config.uploads = TransferOptions{1024 * 1024, 1, 128 * 1024 * 1024};
         auto server = take(RenderServer::create(withCpu(host, config)));
         const std::array handlers{nativeCommand<TextureProbe, invoke>()};
-        CHECK(server->registerFeature<TextureProbe>({&definition, nullptr, handlers}));
+        CHECK(server->registerFeature<TextureProbe>({&definition, &definition_graph, nullptr, handlers}));
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); });
         auto client = take(RenderClient::create(config.channel_name, {128 * 1024 * 1024}));

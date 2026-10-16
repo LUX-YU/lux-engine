@@ -294,17 +294,17 @@ int main()
             auto programs = native_fixture::programs(config);
             const auto before = created;
             {
-                auto compiled = take(compileGraph(*session, assembly, programs, native_fixture::target(config)));
+                auto compiled = take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, programs, native_fixture::target(config)));
                 CHECK(created[4] == before[4] && created[5] == before[5]);
                 CHECK(created[11] == before[11] + 1);
             }
             for (auto name : {"pipeline_layout", "shader", "pipeline"})
-                fails(name, [&] { return compileGraph(*session, assembly, programs, native_fixture::target(config)); });
-            fails("shader", [&] { return compileGraph(*session, assembly, programs, native_fixture::target(config)); }, 2);
+                fails(name, [&] { return compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, programs, native_fixture::target(config)); });
+            fails("shader", [&] { return compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, programs, native_fixture::target(config)); }, 2);
             std::printf("compile_scope_buffer_allocations=0 compile_scope_image_allocations=0\n");
             const native_fixture::Config execution_config{32, 32, 1, 0};
             auto execution_assembly = take(native_fixture::assemble(execution_config));
-            auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, execution_assembly,
+            auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (execution_assembly).definition, (execution_assembly).analysis, (execution_assembly).external_bindings,
                 native_fixture::programs(execution_config), native_fixture::target(execution_config))));
             for (auto name : {"image", "image_view", "buffer", "mapping"})
                 fails(name, [&] { return session->prepare(code, native_fixture::target(execution_config), {}); });

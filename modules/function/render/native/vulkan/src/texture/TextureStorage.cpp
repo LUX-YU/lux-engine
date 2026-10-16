@@ -27,7 +27,7 @@ namespace lux::render::vulkan
     }
 
     RenderResult<std::unique_ptr<Transfer>> TextureStorage::prepareImage(
-        const rdesc::TextureInfo& info, std::span<const std::byte> source, std::optional<TextureRegion> region
+        const rdesc::TextureInfo& info, std::span<const std::byte> source, std::optional<TextureRegion> region, Backing* base
     ) noexcept
     {
         auto& session = session_;
@@ -113,7 +113,8 @@ namespace lux::render::vulkan
                 regions.push_back({input.offset, pitch, layout.extent, layout.bytes,
                     {VK_IMAGE_ASPECT_COLOR_BIT, mip, 0, 1}, {}, {input.width, input.height, 1}});
             }
-        return session.uploadImage(description, source, regions, nullptr, region.has_value());
+        return session.uploadImage(description, source, regions, base ? base->image_ : nullptr,
+            region.has_value(), base ? &base->last_use_ : nullptr);
     }
 
     // Exclusive reservation of an existing Storage candidate. No transfer, queue or async phase is owned here.
@@ -157,7 +158,7 @@ namespace lux::render::vulkan
         }
     };
 
-    RenderResult<void> TextureStorage::prepare(const ResourcePlan& plan, std::span<const std::byte> bytes,
+    RenderResult<void> TextureStorage::prepare(const NativeResourcePlan& plan, std::span<const std::byte> bytes,
         PreparedStorageBinding& binding) noexcept
     {
         cxx::BinaryReader reader(bytes, bytes.size()); // schema/length already checked at Attach boundary
@@ -204,7 +205,7 @@ namespace lux::render::vulkan
             }
         };
         static const StorageBindingOps binding_ops{
-            [](void* storage, const ResourcePlan& plan, std::span<const std::byte> argument,
+            [](void* storage, const NativeResourcePlan& plan, std::span<const std::byte> argument,
                 PreparedStorageBinding& binding) noexcept {
                 return static_cast<TextureStorage*>(storage)->prepare(plan, argument, binding);
             }, [](const void* configuration) noexcept {
@@ -327,7 +328,7 @@ namespace lux::render::vulkan
         auto& version = *versions_.find(*slot);
         version.key_ = *slot;
         version.info_ = info;
-        version.image_ = session_.borrow(transfer.image_);
+        version.image_ = &transfer.image();
         version.bytes_ = bytes;
         version.revision_ = expected + 1;
         resident_bytes_ += bytes;
@@ -401,14 +402,12 @@ namespace lux::render::vulkan
         const auto& info = record->current->info_;
         const auto last = info.mip_ranges[info.mip_count - 1];
         if (auto admitted = admit(last.offset + last.size, false); !admitted) return cxx::unexpected(admitted.error());
-        auto transfer = prepareImage(info, input.source.bytes().view(), input.region);
+        auto transfer = prepareImage(info, input.source.bytes().view(), input.region, record->current);
         if (!transfer) return cxx::unexpected(transfer.error());
         auto candidate = reserve(**transfer, info, input.texture, input.expected_revision);
         if (!candidate) return cxx::unexpected(candidate.error());
         (*candidate)->base = record->current;
         ++record->current->leases_;
-        (*transfer)->clone_ = record->current->image_;
-        (*transfer)->clone_last_use_ = &record->current->last_use_;
         const TexturePublished result{input.texture, (*candidate)->version->revision_};
         auto work = GpuWork::pending<[](Candidate& value, Transfer& transfer, DeviceSession&) noexcept -> RenderResult<void> {
             value.storage.publish(value, transfer);

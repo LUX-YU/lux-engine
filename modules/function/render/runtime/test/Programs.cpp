@@ -28,7 +28,7 @@ static TestCompletion call(TestClient& client, const TestCommand& command)
     std::abort();
 }
 
-static RenderResult<std::vector<PassProgram>> ownPrograms(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> ownPrograms(const WireView* wire, std::string_view name) noexcept
 {
     if (mode == 4) { entered.count_down(); resume.wait(); }
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
@@ -37,13 +37,15 @@ static RenderResult<std::vector<PassProgram>> ownPrograms(const WireView* wire, 
     if (mode == 1) values.clear(); // foreign Feature tries to supply these instead
     if (mode == 2) values.push_back(values.front());
     if (mode == 3) values.pop_back(); // live Pass lacks a program
-    return values;
+    return ProgramContribution{std::move(values), {{"test.argument", OwnedWireBytes::copyOf(
+        std::array{std::byte{1}})}}};
 }
 
-static RenderResult<std::vector<PassProgram>> foreignPrograms(const WireView*, std::string_view) noexcept
+static RenderResult<ProgramContribution> foreignPrograms(const WireView*, std::string_view) noexcept
 {
-    if (mode == 1) return native_fixture::programs({}, "main");
-    return std::vector<PassProgram>{};
+    if (mode == 1) return ProgramContribution{native_fixture::programs({}, "main"), {}};
+    return ProgramContribution{{}, {{"test.argument", OwnedWireBytes::copyOf(
+        std::array{mode == 5 ? std::byte{2} : std::byte{1}})}}};
 }
 
 static RenderResult<void> emptyDescribe(const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept
@@ -53,16 +55,16 @@ static RenderResult<void> emptyDescribe(const WireView*, std::string_view, std::
 
 int main()
 {
-    const FeatureDefinition foreign{FeatureTypeIdView("test.aaa.foreign"), {1, 0}, nullptr, emptyDescribe,
-        [](const WireView*, std::string_view name, std::span<const ResolvedResource>, RenderGraphBuilder& builder) noexcept
+    const FeatureDescriptor foreign{FeatureTypeIdView("test.aaa.foreign"), {1, 0}, nullptr};
+    const FeatureGraphOps foreign_graph{emptyDescribe, [](const WireView*, std::string_view name, std::span<const ResolvedResource>, RenderGraphBuilder& builder) noexcept
             -> RenderResult<void> {
             auto pass = builder.addPass({featureKey(FeatureTypeIdView("test.aaa.foreign"), name, "unused"),
                 EGraphPassKind::TRANSFER, {}});
             return pass ? RenderResult<void>{} : lux::cxx::unexpected(pass.error());
         }};
     auto server = take(createTestServer({"runtime.program.ownership", true}));
-    check(bool(server->registerFeature({&native_fixture::definition, ownPrograms})));
-    check(bool(server->registerFeature({&foreign, foreignPrograms})));
+    check(bool(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, ownPrograms})));
+    check(bool(server->registerFeature({&foreign, &foreign_graph, foreignPrograms})));
     auto client = take(TestClient::create("runtime.program.ownership"));
     bool run_ok = false;
     std::thread worker([&] { run_ok = bool(server->run()); });
@@ -87,6 +89,10 @@ int main()
     mode = 0;
     check(call(*client, command).header.outcome == ECommandOutcome::SUCCESS);
     check(server->stats().compiled_graphs == 2);
+    mode = 5;
+    auto conflict = call(*client, command);
+    check(conflict.header.outcome == ECommandOutcome::FAILED && conflict.header.error.type == kStorageMismatch);
+    check(server->stats().compiled_graphs == 2);
     mode = 4;
     take(client->submit(command));
     entered.wait();
@@ -102,7 +108,7 @@ int main()
     worker.join();
     check(run_ok && server->stats().validation_errors == 0);
     auto missing = take(createTestServer({"runtime.no.program", true}));
-    check(bool(missing->registerFeature({&native_fixture::definition, nullptr})));
+    check(bool(missing->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, nullptr})));
     auto no_program = take(TestClient::create("runtime.no.program"));
     bool missing_run_ok = false;
     std::thread missing_worker([&] { missing_run_ok = bool(missing->run()); });

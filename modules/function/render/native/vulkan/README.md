@@ -86,7 +86,7 @@ not measure driver internals. GPU timestamp duration is NOT_MEASURED.
 
 ## Convergence R5 static recording plan
 
-Cooked ShaderArtifact/PassProgram now belong to native/vulkan/Program.hpp and lux::render::vulkan;
+Cooked SpirvArtifact/PassProgram now belong to native/vulkan/Program.hpp and lux::render::vulkan;
 FeatureDefinition has no SPIR-V dependency and no forwarding alias remains. The header itself needs no Vulkan SDK.
 Each compiled graph compares complete stage bytes and ABI under its single fixed layout/render state, retaining
 one Pipeline owner per distinct identity. Pass recipes borrow those handles. The final G4 execution order is

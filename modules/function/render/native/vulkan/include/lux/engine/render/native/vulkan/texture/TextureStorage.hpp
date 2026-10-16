@@ -12,7 +12,7 @@ namespace lux::render::vulkan
 {
     [[nodiscard]] StorageFactory textureStorageFactory() noexcept;
     struct PreparedStorageBinding;
-    struct ResourcePlan;
+    struct NativeResourcePlan;
     class TextureStorage;
     class ExecutionContext;
     struct TextureDescriptorTag;
@@ -36,7 +36,7 @@ namespace lux::render::vulkan
             cxx::SlotKey<TextureDescriptorTag> key_;
             rdesc::TextureInfo info_{};
             ImagePermit permit_;
-            ImageAllocation* image_ = nullptr;
+            const ImageAllocation* image_ = nullptr;
             VkImageView view_ = VK_NULL_HANDLE;
             VkSampler sampler_ = VK_NULL_HANDLE;
             SubmissionRequirements last_use_;
@@ -74,12 +74,12 @@ namespace lux::render::vulkan
         [[nodiscard]] UploadResult upload(const TextureWrite&) noexcept;
         [[nodiscard]] UploadResult upload(const TextureRegionWrite&) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> prepareImage(const rdesc::TextureInfo&,
-            std::span<const std::byte>, std::optional<TextureRegion> = {}) noexcept;
+            std::span<const std::byte>, std::optional<TextureRegion> = {}, Backing* base = nullptr) noexcept;
         [[nodiscard]] RenderResult<void> admit(std::uint64_t minimum_bytes, bool creates_identity) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Candidate>> reserve(Transfer&, const rdesc::TextureInfo&,
             TextureId, std::uint64_t expected_revision) noexcept;
         struct Use;
-        RenderResult<void> prepare(const ResourcePlan&, std::span<const std::byte>, PreparedStorageBinding&) noexcept;
+        RenderResult<void> prepare(const NativeResourcePlan&, std::span<const std::byte>, PreparedStorageBinding&) noexcept;
         std::vector<Use*> uses_; // non-owning subscriptions, changed only at Attach/publication/detach
         struct Record final { Backing* current = nullptr; bool updating = false; };
         TextureStorage(DeviceSession& session, std::size_t capacity, std::uint64_t bytes) noexcept;

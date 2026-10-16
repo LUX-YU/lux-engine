@@ -1,6 +1,5 @@
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
-#include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include <algorithm>
 
 #include <exception>

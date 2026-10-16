@@ -8,7 +8,7 @@ target_link_libraries(render_features_commands_test PRIVATE render_features)
 
 add_test(NAME render.features.commands COMMAND render_features_commands_test)
 
-foreach(group composition identity config operations claims ownership fallback lifetime concurrency counters dependencies)
+foreach(group composition identity config claims ownership fallback lifetime concurrency counters dependencies)
     add_test(NAME render.features.${group} COMMAND render_features_test ${group})
     set_tests_properties(render.features.${group} PROPERTIES TIMEOUT 60)
 endforeach()
@@ -17,7 +17,7 @@ add_executable(render_features_cost Cost.cpp)
 
 target_link_libraries(render_features_cost PRIVATE render_features)
 
-foreach(header Feature Resources Program Registration)
+foreach(header Feature Assembly Resources Registration)
     string(CONCAT probe
         "#include <lux/engine/render/features/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
         "#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native header leaked into Feature\n#endif\n"

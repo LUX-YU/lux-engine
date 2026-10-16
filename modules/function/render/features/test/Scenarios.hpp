@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <lux/engine/render/features/Feature.hpp>
+#include <lux/engine/render/features/Assembly.hpp>
 
 namespace fixture
 {
@@ -125,12 +125,16 @@ namespace fixture
         return {};
     }
 
-    template <ERole R> const FeatureDefinition& definition() noexcept
+    template <ERole R> const FeatureDescriptor& definition() noexcept
     {
-        static const FeatureDefinition value{
-            type<R>(), {1, 0}, nullptr, &describe<R>,
-            (R == ERole::HISTORY || R == ERole::MATERIAL) ? nullptr : &build<R>, {}
-        };
+        static const FeatureDescriptor value{type<R>(), {1, 0}, nullptr};
+
+        return value;
+    }
+
+    template <ERole R> const FeatureGraphOps& graph() noexcept
+    {
+        static const FeatureGraphOps value{&describe<R>, (R == ERole::HISTORY || R == ERole::MATERIAL) ? nullptr : &build<R>};
         return value;
     }
 
@@ -138,16 +142,18 @@ namespace fixture
     {
         if (which == 0)
         {
-            const SelectedFeature chosen[]{
-                {&definition<ERole::TONEMAP>(), nullptr, "main"},
-                {&definition<ERole::LIGHTING>(), nullptr, "main"},
-                {&definition<ERole::GEOMETRY>(), nullptr, "main"}
+            const FeatureInstanceView chosen[]{
+                {&definition<ERole::TONEMAP>(), &graph<ERole::TONEMAP>(), nullptr, "main"},
+                {&definition<ERole::LIGHTING>(), &graph<ERole::LIGHTING>(), nullptr, "main"},
+                {&definition<ERole::GEOMETRY>(), &graph<ERole::GEOMETRY>(), nullptr, "main"}
             };
             return assembleFeatures(chosen, limits);
         }
-        const SelectedFeature chosen[]{
-            {which == 1 ? &definition<ERole::HISTORY>() : &definition<ERole::MATERIAL>(), nullptr, "main"},
-            {which == 1 ? &definition<ERole::CULL>() : &definition<ERole::MESH>(), nullptr, "main"}
+        const FeatureInstanceView chosen[]{
+            {which == 1 ? &definition<ERole::HISTORY>() : &definition<ERole::MATERIAL>(),
+                which == 1 ? &graph<ERole::HISTORY>() : &graph<ERole::MATERIAL>(), nullptr, "main"},
+            {which == 1 ? &definition<ERole::CULL>() : &definition<ERole::MESH>(),
+                which == 1 ? &graph<ERole::CULL>() : &graph<ERole::MESH>(), nullptr, "main"}
         };
         return assembleFeatures(chosen, limits);
     }

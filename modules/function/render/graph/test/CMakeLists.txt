@@ -11,7 +11,7 @@ add_executable(render_graph_cost Cost.cpp)
 
 target_link_libraries(render_graph_cost PRIVATE render_graph)
 
-foreach(header Graph Builder Analysis)
+foreach(header Graph Builder Analysis Program)
     string(CONCAT probe
         "#include <lux/engine/render/graph/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
         "#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native header leaked into Graph\n#endif\n"
@@ -25,7 +25,7 @@ foreach(header Graph Builder Analysis)
 endforeach()
 
 get_target_property(graph_links render_graph INTERFACE_LINK_LIBRARIES)
-if(NOT graph_links STREQUAL "lux::engine::render::render_core")
+if(NOT graph_links STREQUAL "lux::engine::render::render_core;lux::engine::render::render_data")
     message(FATAL_ERROR "Unexpected Graph public dependency: ${graph_links}")
 endif()
 

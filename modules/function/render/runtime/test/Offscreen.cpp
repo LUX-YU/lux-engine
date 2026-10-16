@@ -28,7 +28,7 @@ static std::atomic<bool> pause_programs{false};
 static std::latch* program_entered = nullptr;
 static std::latch* program_resume = nullptr;
 
-static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
 {
     if (pause_programs.exchange(false))
     {
@@ -37,7 +37,7 @@ static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std
     }
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
-    return native_fixture::programs(*config, name);
+    return ProgramContribution{native_fixture::programs(*config, name), {}};
 }
 
 static TestCompletion wait(TestClient& client, RequestId id)
@@ -81,7 +81,7 @@ int main()
     auto server = take(RenderServer::create(withCpu(worker, options)));
     CHECK(server->registerStorage({&buffer_fixture::description, {}, buffer_fixture::factory(), false,
         std::make_shared<const buffer_fixture::Config>(), storageCppType<buffer_fixture::Config>()}));
-    CHECK(server->registerFeature({&native_fixture::definition, programs}));
+    CHECK(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs}));
     auto client = take(TestClient::create("runtime.offscreen"));
     bool run_ok = false;
     std::thread thread([&] {

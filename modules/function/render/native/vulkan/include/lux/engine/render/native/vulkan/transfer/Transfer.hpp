@@ -6,8 +6,6 @@
 
 namespace lux::render::vulkan
 {
-    class TextureStorage;
-
     struct TransferStats final
     {
         std::uint64_t copied_bytes = 0, chunks = 0, prepare_ns = 0, owner_ns = 0;
@@ -55,7 +53,6 @@ namespace lux::render::vulkan
 
     private:
         friend class DeviceSession;
-        friend class TextureStorage;
         enum class EPhase { PREPARE, CPU_PENDING, COPY, COPY_PENDING, ACQUIRE, FINAL_PENDING, COMPLETE };
         Transfer(DeviceSession&, std::span<const std::byte>, std::size_t) noexcept;
         struct CpuPreparation;

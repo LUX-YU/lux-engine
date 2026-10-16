@@ -20,6 +20,7 @@ static int composition()
     using enum fixture::ERole;
     const std::array types{&fixture::definition<GEOMETRY>(), &fixture::definition<LIGHTING>(),
         &fixture::definition<TONEMAP>()};
+    const std::array graphs{&fixture::graph<GEOMETRY>(), &fixture::graph<LIGHTING>(), &fixture::graph<TONEMAP>()};
     std::array<unsigned, 3> order{0, 1, 2};
     auto reference = fixture::scenario(0);
     CHECK(reference);
@@ -35,8 +36,8 @@ static int composition()
     }));
     do
     {
-        std::vector<SelectedFeature> selected;
-        for (auto i : order) selected.push_back({types[i], nullptr, "main"});
+        std::vector<FeatureInstanceView> selected;
+        for (auto i : order) selected.push_back({types[i], graphs[i], nullptr, "main"});
         auto result = assembleFeatures(selected, fixture::limits);
         CHECK(result && result->analysis == reference->analysis);
         for (std::size_t i = 0; i < result->definition.resources().size(); ++i)
@@ -44,14 +45,14 @@ static int composition()
         for (std::size_t i = 0; i < result->definition.passes().size(); ++i)
             CHECK(result->definition.passes()[i].key == reference->definition.passes()[i].key);
     } while (std::next_permutation(order.begin(), order.end()));
-    const SelectedFeature alternate[]{
-        {types[0], nullptr, "main"}, {&fixture::definition<ALTERNATE>(), nullptr, "main"},
-        {types[2], nullptr, "main"}
+    const FeatureInstanceView alternate[]{
+        {types[0], graphs[0], nullptr, "main"}, {&fixture::definition<ALTERNATE>(), &fixture::graph<ALTERNATE>(), nullptr, "main"},
+        {types[2], graphs[2], nullptr, "main"}
     };
     auto alt = assembleFeatures(alternate, fixture::limits);
     CHECK(alt && alt->analysis.execution_order.size() == 5);
-    const SelectedFeature conflict[]{
-        alternate[0], alternate[1], alternate[2], {types[1], nullptr, "main"}
+    const FeatureInstanceView conflict[]{
+        alternate[0], alternate[1], alternate[2], {types[1], graphs[1], nullptr, "main"}
     };
     auto duplicate = assembleFeatures(conflict, fixture::limits);
     CHECK(!duplicate && duplicate.error().type == kFeatureDuplicate);
@@ -76,29 +77,34 @@ static int identity()
 {
     auto empty = assembleFeatures({}, {});
     CHECK(empty && empty->analysis.execution_order.empty());
-    FeatureDefinition d{FeatureTypeIdView("test.type"), {1, 0}, nullptr, emptyDescribe};
-    SelectedFeature s{&d, nullptr, "one"};
+    FeatureDescriptor d{FeatureTypeIdView("test.type"), {1, 0}, nullptr};
+    FeatureGraphOps d_graph{emptyDescribe, nullptr};
+    FeatureInstanceView s{&d, &d_graph, nullptr, "one"};
     CHECK(assembleFeatures({&s, 1}, {}));
-    SelectedFeature missing{};
+    FeatureInstanceView missing{};
     CHECK(!assembleFeatures({&missing, 1}, {}));
     s.instance_key = "";
     CHECK(!assembleFeatures({&s, 1}, {}));
     s.instance_key = "one";
     auto saved = d;
+    auto saved_graph = d_graph;
     d.type = {};
     CHECK(!assembleFeatures({&s, 1}, {}));
     d = saved;
+    d_graph = saved_graph;
     d.version = {};
     CHECK(!assembleFeatures({&s, 1}, {}));
     d = saved;
-    d.describe = nullptr;
+    d_graph = saved_graph;
+    d_graph.describe = nullptr;
     CHECK(!assembleFeatures({&s, 1}, {}));
     d = saved;
-    SelectedFeature instances[]{s, s};
+    d_graph = saved_graph;
+    FeatureInstanceView instances[]{s, s};
     CHECK(!assembleFeatures(instances, {}));
     instances[1].instance_key = "two";
     CHECK(assembleFeatures(instances, {}));
-    d.build = +[](const WireView*, std::string_view instance, std::span<const ResolvedResource>,
+    d_graph.build = +[](const WireView*, std::string_view instance, std::span<const ResolvedResource>,
         RenderGraphBuilder& b) noexcept -> RenderResult<void> {
         const auto key = [&](std::string_view local) {
             return featureKey(FeatureTypeIdView("test.type"), instance, local);
@@ -116,9 +122,8 @@ static int identity()
     CHECK(private_instances->analysis.execution_order.size() == 4);
     CHECK(private_instances->definition.outputs()[0].version.resource !=
         private_instances->definition.outputs()[1].version.resource);
-    instances[1].definition = &saved;
+    instances[1].descriptor = &saved;
     CHECK(!assembleFeatures(instances, {}));
-    d.commands = {};
     CHECK(featureKey(FeatureTypeIdView("a:b"), "c", "d") !=
         featureKey(FeatureTypeIdView("a"), "b:c", "d"));
     CHECK(renderFeatureErrorDescriptors().size() == 6);
@@ -131,8 +136,9 @@ static int config()
     CHECK(bytes);
     const auto& schema = DataSchema<fixture::Config>::describe();
     WireView wire{schema, *bytes, {}};
-    FeatureDefinition d{FeatureTypeIdView("test.configured"), {1, 0}, &schema, emptyDescribe};
-    SelectedFeature s{&d, &wire, "one"};
+    FeatureDescriptor d{FeatureTypeIdView("test.configured"), {1, 0}, &schema};
+    FeatureGraphOps d_graph{emptyDescribe, nullptr};
+    FeatureInstanceView s{&d, &d_graph, &wire, "one"};
     CHECK(assembleFeatures({&s, 1}, fixture::limits));
     CHECK(!assembleFeatures({&s, 1}, {15, 4096}));
     s.config = nullptr;
@@ -188,43 +194,6 @@ static int config()
         auto r = assembleFeatures({&s, 1}, {64, fault == 4 ? 15u : 64u});
         CHECK(static_cast<bool>(r) == (fault == 0));
     }
-    return 0;
-}
-
-struct ConfigureFixture final
-{
-    static constexpr std::string_view name = "test.operation";
-    using Request = fixture::Config;
-    using Response = Ack;
-};
-
-static int operations()
-{
-    auto operation = commandDescriptor<ConfigureFixture>();
-    FeatureDefinition a{FeatureTypeIdView("test.a"), {1, 0}, nullptr, emptyDescribe, nullptr, {&operation, 1}};
-    FeatureDefinition b{FeatureTypeIdView("test.b"), {1, 0}, nullptr, emptyDescribe, nullptr, {&operation, 1}};
-    SelectedFeature s[]{{&a, nullptr, "one"}, {&a, nullptr, "two"}};
-    CHECK(assembleFeatures(s, {}));
-    s[1].definition = &b;
-    auto duplicate = assembleFeatures(s, {});
-    CHECK(!duplicate && duplicate.error().type == kFeatureDuplicate);
-    auto other = operation;
-    ++other.version.minor;
-    b.commands = {&other, 1};
-    CHECK(!assembleFeatures(s, {}));
-    other = operation;
-    other.completion = ECompletionContract::RESOURCE_GPU_READY;
-    CHECK(!assembleFeatures(s, {}));
-    other = operation;
-    other.response = other.request;
-    CHECK(!assembleFeatures(s, {}));
-    other.name = CommandName("test.other");
-    CHECK(assembleFeatures(s, {}));
-    other.version = {};
-    CHECK(!assembleFeatures(s, {}));
-    std::array repeated{operation, operation};
-    a.commands = repeated;
-    CHECK(!assembleFeatures({s, 1}, {}));
     return 0;
 }
 
@@ -292,9 +261,11 @@ namespace negative
 
     RenderResult<FeatureAssembly> run()
     {
-        static const FeatureDefinition p{provider_type, {1, 0}, nullptr, provide, produce};
-        static const FeatureDefinition c{consumer_type, {1, 0}, nullptr, require, consume};
-        const SelectedFeature selected[]{{&p, nullptr, "one"}, {&c, nullptr, "one"}};
+        static const FeatureDescriptor p{provider_type, {1, 0}, nullptr};
+        static const FeatureGraphOps p_graph{provide, produce};
+        static const FeatureDescriptor c{consumer_type, {1, 0}, nullptr};
+        static const FeatureGraphOps c_graph{require, consume};
+        const FeatureInstanceView selected[]{{&p, &p_graph, nullptr, "one"}, {&c, &c_graph, nullptr, "one"}};
         return assembleFeatures(selected, fixture::limits);
     }
 
@@ -372,24 +343,20 @@ static int claims()
 
 static int fallback()
 {
-    static const FeatureDefinition provider{
-        FeatureTypeIdView("test.history"), {1, 0}, nullptr,
-        +[](const WireView*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
+    static const FeatureDescriptor provider{FeatureTypeIdView("test.history"), {1, 0}, nullptr};
+    static const FeatureGraphOps provider_graph{+[](const WireView*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
             auto claim = fixture::history("previous", EResourceClaim::PROVIDE, true);
             claim.initial_ranges.clear();
             out.push_back(std::move(claim));
             return {};
-        }
-    };
-    static const FeatureDefinition consumer{
-        FeatureTypeIdView("test.fallback"), {1, 0}, nullptr,
-        +[](const WireView*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
+        }, nullptr};
+    static const FeatureDescriptor consumer{FeatureTypeIdView("test.fallback"), {1, 0}, nullptr};
+    static const FeatureGraphOps consumer_graph{+[](const WireView*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
             auto claim = fixture::history("previous", EResourceClaim::REQUIRE, true);
             claim.initial_ranges.clear();
             out.push_back(std::move(claim));
             return {};
-        },
-        +[](const WireView*, std::string_view instance, std::span<const ResolvedResource> bindings,
+        }, +[](const WireView*, std::string_view instance, std::span<const ResolvedResource> bindings,
             RenderGraphBuilder& b) noexcept -> RenderResult<void> {
             const auto key = [&](std::string_view local) {
                 return featureKey(FeatureTypeIdView("test.fallback"), instance, local);
@@ -405,24 +372,21 @@ static int fallback()
             pass.uses.push_back({{*output, 1}, {}, EGraphAccess::WRITE});
             if (auto r = b.addPass(std::move(pass)); !r) return cxx::unexpected(r.error());
             return b.exportOutput({{*output, 1}});
-        }
-    };
-    const SelectedFeature selected[]{{&provider, nullptr, "one"}, {&consumer, nullptr, "one"}};
+        }};
+    const FeatureInstanceView selected[]{{&provider, &provider_graph, nullptr, "one"}, {&consumer, &consumer_graph, nullptr, "one"}};
     auto result = assembleFeatures(selected, {});
     CHECK(result && result->analysis.execution_order.size() == 2);
     CHECK(std::ranges::any_of(result->analysis.versions, [](const GraphVersionUse& u) { return u.fallback; }));
-    const FeatureDefinition foreign{
-        FeatureTypeIdView("test.aaa"), {1, 0}, nullptr, emptyDescribe,
-        +[](const WireView*, std::string_view instance, std::span<const ResolvedResource>,
+    const FeatureDescriptor foreign{FeatureTypeIdView("test.aaa"), {1, 0}, nullptr};
+    const FeatureGraphOps foreign_graph{emptyDescribe, +[](const WireView*, std::string_view instance, std::span<const ResolvedResource>,
             RenderGraphBuilder& b) noexcept -> RenderResult<void> {
             auto name = featureKey(FeatureTypeIdView("test.aaa"), instance, "private");
             auto r = b.declareResource({name, GraphImageDesc{64, 64}});
             if (!r) return cxx::unexpected(r.error());
             return fixture::pass(b, name, {}, {*r, 1});
-        }
-    };
-    const SelectedFeature bad[]{
-        {&provider, nullptr, "one"}, {&consumer, nullptr, "foreign"}, {&foreign, nullptr, "one"}
+        }};
+    const FeatureInstanceView bad[]{
+        {&provider, &provider_graph, nullptr, "one"}, {&consumer, &consumer_graph, nullptr, "foreign"}, {&foreign, &foreign_graph, nullptr, "one"}
     };
     auto rejected = assembleFeatures(bad, {});
     CHECK(!rejected && rejected.error().type == kFeatureOwnership);
@@ -495,8 +459,8 @@ static int lifetime()
         auto bytes = OwnedWireBytes::fromOwner(owner, owner->data);
         WireView view{DataSchema<fixture::Config>::describe(), bytes, {}};
         std::string type_name = "test.temporary";
-        FeatureDefinition d{FeatureTypeIdView(type_name), {1, 0}, &view.schema, emptyDescribe,
-            +[](const WireView* wire, std::string_view instance, std::span<const ResolvedResource>,
+        FeatureDescriptor d{FeatureTypeIdView(type_name), {1, 0}, &view.schema};
+        FeatureGraphOps d_graph{emptyDescribe, +[](const WireView* wire, std::string_view instance, std::span<const ResolvedResource>,
                 RenderGraphBuilder& b) noexcept -> RenderResult<void> {
                 auto c = decodeWire<fixture::Config>(*wire, fixture::limits);
                 if (!c) return cxx::unexpected(c.error());
@@ -505,10 +469,9 @@ static int lifetime()
                 if (!r) return cxx::unexpected(r.error());
                 if (auto p = fixture::pass(b, name, {}, {*r, 1}); !p) return p;
                 return b.exportOutput({{*r, 1}});
-            }
-        };
+            }};
         std::string instance = "temporary.instance";
-        SelectedFeature s{&d, &view, instance};
+        FeatureInstanceView s{&d, &d_graph, &view, instance};
         auto r = assembleFeatures({&s, 1}, fixture::limits);
         CHECK(r && released == 0);
         configured = std::move(*r);
@@ -572,11 +535,11 @@ namespace dependency_test
 
 static int dependencies()
 {
-    const FeatureDefinition a{FeatureTypeIdView("test.edge.a"), {1, 0}, nullptr, emptyDescribe,
-        dependency_test::first};
-    const FeatureDefinition b{FeatureTypeIdView("test.edge.b"), {1, 0}, nullptr, emptyDescribe,
-        dependency_test::second};
-    const SelectedFeature selected[]{{&b, nullptr, "main"}, {&a, nullptr, "main"}};
+    const FeatureDescriptor a{FeatureTypeIdView("test.edge.a"), {1, 0}, nullptr};
+    const FeatureGraphOps a_graph{emptyDescribe, dependency_test::first};
+    const FeatureDescriptor b{FeatureTypeIdView("test.edge.b"), {1, 0}, nullptr};
+    const FeatureGraphOps b_graph{emptyDescribe, dependency_test::second};
+    const FeatureInstanceView selected[]{{&b, &b_graph, nullptr, "main"}, {&a, &a_graph, nullptr, "main"}};
     for (unsigned mode = 0; mode < 4; ++mode)
     {
         dependency_test::mode = mode;
@@ -625,7 +588,6 @@ int main(int argc, char** argv)
     if (group == "composition") return composition();
     if (group == "identity") return identity();
     if (group == "config") return config();
-    if (group == "operations") return operations();
     if (group == "claims") return claims();
     if (group == "ownership") return ownership();
     if (group == "fallback") return fallback();

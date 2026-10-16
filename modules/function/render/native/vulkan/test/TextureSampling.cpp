@@ -119,7 +119,7 @@ int main()
             auto assembly = take(texture_fixture::assemble(config));
             auto bad_programs = texture_fixture::programs(config);
             bad_programs[0].shader.interface.bindings.clear();
-            CHECK(!compileGraph(*session, assembly, bad_programs, texture_fixture::target(config)));
+            CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, bad_programs, texture_fixture::target(config)));
             // A structurally valid SPIR-V module with the wrong Descriptor binding fails reflection before Vulkan.
             bad_programs = texture_fixture::programs(config);
             auto& words = bad_programs[0].shader.fragment;
@@ -127,9 +127,9 @@ int main()
             for (std::size_t i = 5; i < words.size(); i += words[i] >> 16)
                 if ((words[i] & 65535) == 71 && (words[i] >> 16) == 4 && words[i + 2] == 33)
                 { words[i + 3] = 1; changed = true; }
-            CHECK(changed && !compileGraph(*session, assembly, bad_programs, texture_fixture::target(config)));
+            CHECK(changed && !compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, bad_programs, texture_fixture::target(config)));
             const auto old_pipelines = pipelines;
-            auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
+            auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
                 texture_fixture::programs(config), texture_fixture::target(config))));
             CHECK(pipelines == old_pipelines + 1);
             // Asset identity/LOD are Attach arguments, never immutable code identity.
@@ -217,7 +217,7 @@ int main()
         complete(upload.second, host, *session); upload.second.reset();
         texture_fixture::Config config{id, 16, 16, 4, rdesc::ETextureFormat::BC1_RGBA_SRGB, 1};
         auto assembly = take(texture_fixture::assemble(config));
-        auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
+        auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
             texture_fixture::programs(config), texture_fixture::target(config))));
         auto* context = take(session->prepare(code, texture_fixture::target(config), {}, texture_fixture::arguments(config)));
         CHECK(take(context->execute()));

@@ -241,21 +241,20 @@ static RenderResult<void> upload(vulkan::DeviceSession& session, const UploadPro
 static const CommandDescriptor probe = commandDescriptor<UploadProbe>();
 static const CommandDescriptor cpu = commandDescriptor<CpuResult>();
 static const std::array operations_list{probe, cpu};
-static const FeatureDefinition feature{FeatureTypeIdView("test.g10.feature"), {1, 0}, nullptr,
-    [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
-    nullptr, operations_list};
+static const FeatureDescriptor feature{FeatureTypeIdView("test.g10.feature"), {1, 0}, nullptr};
+static const FeatureGraphOps feature_graph{[](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 static const std::array handlers{
     vulkan::nativeCommand<UploadProbe, upload>(),
     test_registration::erased(&cpu, [](void*, CommandInvocation& invocation) noexcept {
         return CommandContext<CpuResult>(invocation).complete(CpuResult::Response{});
     })
 };
-static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
 {
     if (block_compile.load()) { compile_entered->count_down(); compile_resume->wait(); }
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
-    return native_fixture::programs(*config, name);
+    return ProgramContribution{native_fixture::programs(*config, name), {}};
 }
 static RenderCompletion wait(RenderClient& client, RequestId id)
 {
@@ -293,8 +292,8 @@ int main(int argc, char** argv)
     config.transfer_queues = transfer_mode;
     config.prefer_dedicated_transfer = dedicated;
     auto server = take(RenderServer::create(withCpu(workers, config)));
-    CHECK((server->registerFeature<UploadProbe, CpuResult>({&feature, nullptr, handlers})));
-    CHECK(server->registerFeature({&native_fixture::definition, programs}));
+    CHECK((server->registerFeature<UploadProbe, CpuResult>({&feature, &feature_graph, nullptr, handlers})));
+    CHECK(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs}));
     auto a = take(RenderClient::create(config.channel_name));
     auto b = take(RenderClient::create(config.channel_name));
     bool run_ok = false;
@@ -625,7 +624,7 @@ int main(int argc, char** argv)
     closing_config.transfer_queues = transfer_mode;
     closing_config.prefer_dedicated_transfer = dedicated;
     auto closing_server = take(RenderServer::create(withCpu(workers, closing_config)));
-    CHECK((closing_server->registerFeature<UploadProbe, CpuResult>({&feature, nullptr, handlers})));
+    CHECK((closing_server->registerFeature<UploadProbe, CpuResult>({&feature, &feature_graph, nullptr, handlers})));
     auto closing_client = take(RenderClient::create(closing_config.channel_name));
     bool closing_ok = false;
     std::thread closing_thread([&] { closing_ok = bool(closing_server->run()); });

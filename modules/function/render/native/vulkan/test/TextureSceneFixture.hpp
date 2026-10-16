@@ -1,8 +1,8 @@
 #pragma once
 
 #include "shaders/Texture.hpp"
-#include <lux/engine/render/features/Feature.hpp>
-#include <lux/engine/render/features/Program.hpp>
+#include <lux/engine/render/features/Assembly.hpp>
+#include <lux/engine/render/graph/Program.hpp>
 #include <lux/engine/render/resource/Texture.hpp>
 
 namespace texture_fixture
@@ -106,27 +106,30 @@ namespace texture_fixture
         return builder.exportOutput({{*pixels, 1}});
     }
 
-    inline const FeatureDefinition definition{type, {1, 0}, &DataSchema<Config>::describe(), describe, build};
+    inline const FeatureDescriptor definition{type, {1, 0}, &DataSchema<Config>::describe()};
+    inline const FeatureGraphOps definition_graph{describe, build};
 
     inline std::vector<PassProgram> programs(Config c, std::string_view instance = "main")
     {
         PassProgram draw{featureKey(type, instance, "draw")};
         draw.shader = {{vert.begin(), vert.end()}, {frag.begin(), frag.end()}, {{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}}, 16}};
-        draw.arguments.push_back({"shared:texture", *encodeWire(TextureBinding{c.texture, c.lod}, {}, {12, 0})});
         std::vector<PassProgram> result;
         result.push_back(std::move(draw));
         result.push_back({featureKey(type, instance, "readback")});
         return result;
     }
 
-    inline std::vector<StorageArgument> arguments(Config c) { return *programArguments(programs(c)); }
+    inline std::vector<StorageArgument> arguments(Config c)
+    {
+        return {{"shared:texture", *encodeWire(TextureBinding{c.texture, c.lod}, {}, {12, 0})}};
+    }
 
     inline RenderResult<FeatureAssembly> assemble(Config c)
     {
         auto bytes = encodeWire(c, {}, limits);
         if (!bytes) return cxx::unexpected(bytes.error());
         const WireView wire{DataSchema<Config>::describe(), *bytes};
-        const SelectedFeature selected{&definition, &wire, "main"};
+        const FeatureInstanceView selected{&definition, &definition_graph, &wire, "main"};
         return assembleFeatures({&selected, 1}, limits);
     }
 }

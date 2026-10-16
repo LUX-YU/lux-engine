@@ -42,7 +42,7 @@ namespace lux::render::vulkan::test
     void destroyed(const char*) noexcept {}
 }
 
-static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
 {
     if (block_compile.load())
     {
@@ -51,7 +51,7 @@ static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std
     }
     auto config = decodeWire<texture_fixture::Config>(*wire, texture_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
-    return texture_fixture::programs(*config, name);
+    return ProgramContribution{texture_fixture::programs(*config, name), texture_fixture::arguments(*config)};
 }
 
 static RenderCompletion wait(RenderClient& client, RequestId id)
@@ -98,7 +98,7 @@ int main(int argc, char** argv)
     config.uploads = TransferOptions{1024 * 1024, 2, 128 * 1024 * 1024, true};
     auto server = take(RenderServer::create(withCpu(compiler, config)));
     CHECK(server->registerStorage<lux::render::TextureStorage>());
-    CHECK(server->registerFeature({&texture_fixture::definition, programs}));
+    CHECK(server->registerFeature({&texture_fixture::definition, &texture_fixture::definition_graph, programs}));
     bool run_ok = false;
     std::thread thread([&] { render_allocation::participate = true; run_ok = bool(server->run()); });
     auto a = take(RenderClient::create(config.channel_name));

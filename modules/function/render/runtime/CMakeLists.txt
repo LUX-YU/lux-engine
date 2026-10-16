@@ -48,7 +48,7 @@ component_include_directories(render_runtime
 
 component_add_internal_dependencies(render_runtime
     lux::engine::render::render_client lux::engine::render::render_features
-    lux::engine::render::render_native_vulkan lux::engine::render::render_protocol_async
+    lux::engine::render::render_native_vulkan_extensions lux::engine::render::render_protocol_async
 )
 
 target_link_libraries(render_runtime PRIVATE lux::engine::platform::platform_ipc lux::cxx::concurrent bcrypt)

@@ -1,8 +1,8 @@
 #pragma once
 
 #include "shaders/Triangle.hpp"
-#include <lux/engine/render/features/Feature.hpp>
-#include <lux/engine/render/features/Program.hpp>
+#include <lux/engine/render/features/Assembly.hpp>
+#include <lux/engine/render/graph/Program.hpp>
 #include <atomic>
 
 namespace native_fixture
@@ -109,7 +109,8 @@ namespace native_fixture
         return {};
     }
 
-    inline const FeatureDefinition definition{type, {1, 0}, &DataSchema<Config>::describe(), describe, build};
+    inline const FeatureDescriptor definition{type, {1, 0}, &DataSchema<Config>::describe()};
+    inline const FeatureGraphOps definition_graph{describe, build};
 
     inline std::vector<PassProgram> programs(Config config, std::string_view instance = "main")
     {
@@ -130,7 +131,7 @@ namespace native_fixture
         auto bytes = encodeWire(config, {}, limits);
         if (!bytes) return cxx::unexpected(bytes.error());
         const WireView wire{DataSchema<Config>::describe(), *bytes};
-        const SelectedFeature selected{&definition, &wire, "main"};
+        const FeatureInstanceView selected{&definition, &definition_graph, &wire, "main"};
         return assembleFeatures({&selected, 1}, limits);
     }
 }

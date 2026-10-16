@@ -13,7 +13,7 @@ int main()
         auto session = take(DeviceSession::create(bootstrap, options));
         const native_fixture::Config config;
         auto assembly = take(native_fixture::assemble(config));
-        auto code = take(compileGraph(*session, assembly, native_fixture::programs(config), native_fixture::target(config)));
+        auto code = take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, native_fixture::programs(config), native_fixture::target(config)));
         CHECK(code.passes().size() == 2 && code.passes()[0].pipeline);
     }
     CHECK(validation.errors == 0);

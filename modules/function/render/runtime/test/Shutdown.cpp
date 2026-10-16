@@ -39,11 +39,11 @@ namespace lux::render::vulkan::test
     }
 }
 
-static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
 {
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
-    return native_fixture::programs(*config, name);
+    return ProgramContribution{native_fixture::programs(*config, name), {}};
 }
 
 static TestCompletion wait(TestClient& client, RequestId id)
@@ -70,7 +70,7 @@ static void exercise(bool close_requester)
     hold.store(true);
     waited.store(false);
     auto server = take(createTestServer({close_requester ? "runtime.close.gpu" : "runtime.stop.gpu", true}));
-    check(bool(server->registerFeature({&native_fixture::definition, programs})));
+    check(bool(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs})));
     auto client = take(TestClient::create(close_requester ? "runtime.close.gpu" : "runtime.stop.gpu"));
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool(server->run()); });
@@ -122,7 +122,7 @@ static void retirementAtomicity()
     RenderServerConfig options{"runtime.retirement.atomic", true};
     options.retirement_capacity = 1;
     auto server = take(createTestServer(options));
-    check(bool(server->registerFeature({&native_fixture::definition, programs})));
+    check(bool(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs})));
     auto client = take(TestClient::create(options.channel_name));
     bool run_ok = false;
     std::thread thread([&] { run_ok = bool(server->run()); });

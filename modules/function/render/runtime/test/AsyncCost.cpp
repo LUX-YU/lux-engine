@@ -404,15 +404,14 @@ int main()
     lux::render::test::CpuFixture host(2, 128);
     state->cpu = host.cpu();
     static const std::array descriptors{commandDescriptor<CpuOperation>()};
-    const FeatureDefinition feature{FeatureTypeIdView("test.async.cost.feature"), {1, 0}, nullptr,
-        [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
-        nullptr, descriptors};
+    const FeatureDescriptor feature{FeatureTypeIdView("test.async.cost.feature"), {1, 0}, nullptr};
+    const FeatureGraphOps feature_graph{[](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
     const std::array handlers{CommandRegistration{bindCommand<CpuOperation, invoke>(*state)}};
     RenderServerConfig config{"runtime.async.cost", true};
     config.requests_per_tick = 128;
     config.cpu = state->cpu;
     auto server = take(RenderServer::create(config));
-    check(bool(server->registerFeature<CpuOperation>({&feature, nullptr, handlers})));
+    check(bool(server->registerFeature<CpuOperation>({&feature, &feature_graph, nullptr, handlers})));
     RenderResult<void> run;
     std::thread render([&] { run = server->run(); });
     auto client = take(RenderClient::create(config.channel_name, {1024 * 1024, 256}));

@@ -50,18 +50,19 @@ namespace
         return builder.exportOutput({{pixels, 1}});
     }
 
-    const FeatureDefinition definition{type, {1, 0}, nullptr, describe, build};
+    const FeatureDescriptor definition{type, {1, 0}, nullptr};
+    const FeatureGraphOps definition_graph{describe, build};
 
     FeatureAssembly assembly(ECase value)
     {
         selected_case = value;
-        const SelectedFeature selected{&definition, nullptr, "main"};
+        const FeatureInstanceView selected{&definition, &definition_graph, nullptr, "main"};
         return take(assembleFeatures({&selected, 1}, {4096, 4096}));
     }
 
     std::vector<PassProgram> programs(bool different)
     {
-        const ShaderArtifact shader{{native_fixture::vert.begin(), native_fixture::vert.end()},
+        const SpirvArtifact shader{{native_fixture::vert.begin(), native_fixture::vert.end()},
             {native_fixture::frag.begin(), native_fixture::frag.end()}, {}};
         std::vector<PassProgram> result;
         result.push_back({featureKey(type, "main", "a"), shader, {0.125f, 0.25f, 0.5f, 1}});
@@ -117,7 +118,7 @@ int main()
             {
                 counts = {};
                 auto input = assembly(mode);
-                auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, input, programs(different),
+                auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (input).definition, (input).analysis, (input).external_bindings, programs(different),
                     native_fixture::target({}))));
                 auto* context = take(session->prepare(code, native_fixture::target({}), {}));
                 context->setColor({1, 0, 0, 1});
@@ -142,7 +143,7 @@ int main()
                 CHECK(live_pipelines == 0);
             }
         auto conditional = assembly(ECase::CONDITIONAL);
-        auto rejected = compileGraph(*session, conditional, programs(false), native_fixture::target({}));
+        auto rejected = compileGraph(*session, (conditional).definition, (conditional).analysis, (conditional).external_bindings, programs(false), native_fixture::target({}));
         CHECK(!rejected && rejected.error().type == kUnsupported && live_pipelines == 0);
     }
     CHECK(validation.errors == 0 && live_pipelines == 0);

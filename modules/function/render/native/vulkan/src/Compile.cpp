@@ -64,7 +64,7 @@ namespace lux::render::vulkan
             }
         }
 
-        bool fullRange(const GraphResourceUse& use, const ResourcePlan& resource) noexcept
+        bool fullRange(const GraphResourceUse& use, const NativeResourcePlan& resource) noexcept
         {
             if (auto* b = std::get_if<GraphBufferDesc>(&resource.description))
                 return std::get<GraphBufferRange>(use.range) == GraphBufferRange{0, b->size};
@@ -75,7 +75,9 @@ namespace lux::render::vulkan
 
     RenderResult<CompiledGraph> compileGraph(
         const DeviceSession& session,
-        const FeatureAssembly& assembly,
+        const RenderGraphDefinition& graph,
+        const GraphAnalysis& analysis,
+        std::span<const GraphStorageBinding> external_bindings,
         std::span<const PassProgram> programs,
         const TargetDesc& target
     ) noexcept
@@ -87,7 +89,6 @@ namespace lux::render::vulkan
             target.width > device.properties().limits.maxImageDimension2D ||
             target.height > device.properties().limits.maxImageDimension2D;
         if (is_unsupported_target) return cxx::unexpected(RenderError{kUnsupported});
-        const auto& graph = assembly.definition;
         CompiledGraph result(device.native(), target);
         for (const auto& resource : graph.resources())
         {
@@ -106,9 +107,12 @@ namespace lux::render::vulkan
             }
             result.resources_.push_back({resource.key, resource.description, resource.origin});
         }
-        for (const auto& binding : assembly.external_bindings)
+        for (const auto& binding : external_bindings)
         {
+            if (binding.resource.index >= result.resources_.size())
+                return cxx::unexpected(RenderError{kInvalidArgument});
             auto& resource = result.resources_[binding.resource.index];
+            if (resource.storage) return cxx::unexpected(RenderError{kInvalidArgument});
             const auto* factory = session.resources().factory(binding.storage.type.view());
             if (!factory || !factory->binding_ops ||
                 !static_cast<const StorageBindingOps*>(factory->binding_ops)->prepare)
@@ -173,22 +177,24 @@ namespace lux::render::vulkan
             if (!layout) return cxx::unexpected(layout.error());
             result.descriptor_layouts_.push_back(*layout);
         }
-        for (std::size_t i = 0; i < programs.size(); ++i)
+        // Resolve author keys once at the cold compiler boundary, then index by GraphPassId.
+        std::vector<const PassProgram*> pass_programs(graph.passes().size(), nullptr);
+        for (const auto& program : programs)
         {
-            for (std::size_t j = 0; j < i; ++j)
-                if (programs[i].pass_key == programs[j].pass_key)
-                    return cxx::unexpected(RenderError{kInvalidArgument});
+            const auto found = std::ranges::find(graph.passes(), program.pass_key, &GraphPass::key);
+            if (found == graph.passes().end()) return cxx::unexpected(RenderError{kInvalidArgument});
+            const auto index = static_cast<std::size_t>(found - graph.passes().begin());
+            if (pass_programs[index]) return cxx::unexpected(RenderError{kInvalidArgument});
+            pass_programs[index] = &program;
         }
         std::vector<Access> previous(result.resources_.size());
         std::vector<bool> used(result.resources_.size(), false);
-        // INVARIANT: exact G5 analysis determines order; no graph reconstruction, pruning or re-analysis.
-        for (auto id : assembly.analysis.execution_order)
+        // INVARIANT: exact Graph analysis determines order; no graph reconstruction, pruning or re-analysis.
+        for (auto id : analysis.execution_order)
         {
             const auto& pass = graph.passes()[id.index];
-            const auto binding = std::find_if(programs.begin(), programs.end(), [&](const auto& p) {
-                return p.pass_key == pass.key;
-            });
-            if (binding == programs.end()) return cxx::unexpected(RenderError{kFeatureContract, {id.index}});
+            const auto* binding = pass_programs[id.index];
+            if (!binding) return cxx::unexpected(RenderError{kInvalidArgument, {id.index}});
             const bool is_unsupported_pass = pass.conditional || pass.kind == EGraphPassKind::COMPUTE ||
                 pass.uses.empty() || pass.uses.size() > 3;
             if (is_unsupported_pass) return cxx::unexpected(RenderError{kUnsupported, {id.index}});

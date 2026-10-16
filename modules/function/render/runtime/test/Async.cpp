@@ -262,11 +262,8 @@ int main()
     eventIdentities();
     State state;
     static const std::array descriptors{commandDescriptor<Async>(), commandDescriptor<InvalidGpuAsync>()};
-    const FeatureDefinition definition{
-        FeatureTypeIdView("test.async.feature"), {1, 0}, nullptr,
-        [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
-        nullptr, descriptors
-    };
+    const FeatureDescriptor definition{FeatureTypeIdView("test.async.feature"), {1, 0}, nullptr};
+    const FeatureGraphOps definition_graph{[](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
     const std::array handlers{
         CommandRegistration{bindCommand<Async, invoke>(state)},
         test_registration::erased(&commandDescriptor<InvalidGpuAsync>(), [](void* user, CommandInvocation& invocation) noexcept {
@@ -278,7 +275,7 @@ int main()
         }, &state, test_registration::EOwner::PROVIDED, true)
     };
     auto server = take(RenderServer::create({"runtime.async", true}));
-    check(bool(server->registerFeature<Async, InvalidGpuAsync>({&definition, nullptr, handlers, {}})));
+    check(bool(server->registerFeature<Async, InvalidGpuAsync>({&definition, &definition_graph, nullptr, handlers, {}})));
     RenderResult<void> run;
     std::atomic<bool> run_returned{false};
     std::thread render([&] { run = server->run(); run_returned.store(true, std::memory_order_release); });

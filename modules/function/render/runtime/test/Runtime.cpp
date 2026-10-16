@@ -44,17 +44,17 @@ static TestCompletion call(TestClient& client, TestCommand command)
     return wait(client, take(client.submit(command)));
 }
 
-static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
 {
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
-    return native_fixture::programs(*config, name);
+    return ProgramContribution{native_fixture::programs(*config, name), {}};
 }
 
 int main()
 {
     auto server = take(createTestServer({"runtime.control", true}));
-    check(bool(server->registerFeature({&native_fixture::definition, programs})));
+    check(bool(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs})));
     auto a = take(TestClient::create("runtime.control"));
     auto b = take(TestClient::create("runtime.control"));
     auto ready_a = take(a->submit({}));

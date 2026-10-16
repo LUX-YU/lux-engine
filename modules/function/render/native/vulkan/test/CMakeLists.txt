@@ -8,21 +8,21 @@ set_tests_properties(render.native.foundation PROPERTIES TIMEOUT 60)
 
 add_executable(render_compiler_test Compiler.cpp)
 
-target_link_libraries(render_compiler_test PRIVATE render_native_vulkan)
+target_link_libraries(render_compiler_test PRIVATE render_native_vulkan render_features)
 
 add_test(NAME render.native.compiler COMMAND render_compiler_test)
 
 set_tests_properties(render.native.compiler PROPERTIES TIMEOUT 60)
 
 add_executable(render_execution_test Execution.cpp Allocation.cpp)
-target_link_libraries(render_execution_test PRIVATE render_native_vulkan)
+target_link_libraries(render_execution_test PRIVATE render_native_vulkan render_features)
 add_test(NAME render.native.execution COMMAND render_execution_test)
 set_tests_properties(render.native.execution PROPERTIES TIMEOUT 60)
 
 # The same source algorithms with compile-time fault hooks, never used by production.
 add_library(render_native_instrumented STATIC)
 
-foreach(source IN LISTS LUX_NATIVE_SOURCES)
+foreach(source IN LISTS LUX_NATIVE_SOURCES LUX_NATIVE_EXTENSION_SOURCES)
     target_sources(render_native_instrumented PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../${source}")
 endforeach()
 
@@ -79,14 +79,18 @@ set_tests_properties(render.native.buffer_transfer PROPERTIES TIMEOUT 60)
 
 foreach(header Error DeviceSession CompiledGraph ExecutionContext StorageBinding device/Device memory/Memory
     transfer/Submission transfer/Transfer transfer/GpuWork transfer/GpuCompletion
-    texture/TextureStorage retirement/Retirement
+    texture/TextureStorage Registration retirement/Retirement
 )
     string(REPLACE "/" "_" target "${header}")
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp"
         CONTENT "#include <lux/engine/render/native/vulkan/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
     )
     add_library(render_native_header_${target} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp")
-    target_link_libraries(render_native_header_${target} PRIVATE render_native_vulkan)
+    if(header MATCHES "^(texture/|Registration$|transfer/GpuCompletion$)")
+        target_link_libraries(render_native_header_${target} PRIVATE render_native_vulkan_extensions)
+    else()
+        target_link_libraries(render_native_header_${target} PRIVATE render_native_vulkan)
+    endif()
 endforeach()
 
 add_executable(render_queue_callbacks_test QueueCallbacks.cpp)
@@ -125,7 +129,7 @@ add_test(NAME render.native.transfer COMMAND render_transfer_test)
 set_tests_properties(render.native.transfer PROPERTIES TIMEOUT 60)
 
 add_executable(render_texture_upload_test TextureUpload.cpp)
-target_link_libraries(render_texture_upload_test PRIVATE render_native_vulkan)
+target_link_libraries(render_texture_upload_test PRIVATE render_native_vulkan_extensions)
 add_test(NAME render.native.texture_upload COMMAND render_texture_upload_test)
 set_tests_properties(render.native.texture_upload PROPERTIES TIMEOUT 90)
 
@@ -147,7 +151,7 @@ set_tests_properties(render.native.texture_sampling PROPERTIES TIMEOUT 90)
 
 add_executable(render_storage_bindings_test StorageBindings.cpp Allocation.cpp)
 
-target_link_libraries(render_storage_bindings_test PRIVATE render_native_vulkan)
+target_link_libraries(render_storage_bindings_test PRIVATE render_native_vulkan_extensions)
 
 add_test(NAME render.native.storage_bindings COMMAND render_storage_bindings_test)
 
@@ -167,3 +171,11 @@ target_link_libraries(render_explicit_factory_test PRIVATE render_native_vulkan)
 add_test(NAME render.native.explicit_factory COMMAND render_explicit_factory_test)
 
 set_tests_properties(render.native.explicit_factory PROPERTIES TIMEOUT 60)
+
+add_executable(render_direct_graph_test DirectGraph.cpp)
+
+target_link_libraries(render_direct_graph_test PRIVATE render_native_vulkan)
+
+add_test(NAME render.native.direct_graph COMMAND render_direct_graph_test)
+
+set_tests_properties(render.native.direct_graph PROPERTIES TIMEOUT 60)

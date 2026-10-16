@@ -47,7 +47,7 @@ int main()
         const auto view = take(resources.createDomain(scene, EResourceScope::VIEW));
         const native_fixture::Config config{32, 32, 1, 1};
         auto assembly = take(native_fixture::assemble(config));
-        auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
+        auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
             native_fixture::programs(config), native_fixture::target(config))));
         CHECK(!session->prepare(code, native_fixture::target(config), other->resources().root()));
         CHECK(!session->prepare(code, native_fixture::target(config), resources.root()));

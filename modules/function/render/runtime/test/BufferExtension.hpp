@@ -68,7 +68,7 @@ namespace extension_test
         registry.retain(*id);
         auto owner = std::make_unique<Read>(session, *id, vk::PreparedStorageBinding{}, vk::BufferPermit{},
             std::optional<vk::SubmissionTicket>{}, output);
-        vk::ResourcePlan plan{"values", GraphBufferDesc{16}, EGraphOrigin::IMPORTED};
+        vk::NativeResourcePlan plan{"values", GraphBufferDesc{16}, EGraphOrigin::IMPORTED};
         auto argument = encodeWire(input, {}, {8, 0});
         if (!argument) return lux::cxx::unexpected(argument.error());
         auto prepared = static_cast<NativeBuffer*>(registry.native(*id))->prepare(plan, argument->view(), owner->source);
@@ -124,6 +124,6 @@ namespace lux::render
 
     template <> inline FeatureRegistration nativeFeatureBinding<extension_test::TestBufferFeature>() noexcept
     {
-        return {&extension_test::definition, extension_test::programs, {}};
+        return {&extension_test::definition, &extension_test::definition_graph, extension_test::programs, {}};
     }
 }

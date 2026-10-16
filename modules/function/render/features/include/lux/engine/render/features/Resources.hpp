@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/render/resource/Storage.hpp>
+#include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/graph/Graph.hpp>
 
 namespace lux::render
@@ -22,12 +22,6 @@ namespace lux::render
     {
         std::string_view key;
         GraphVersion version;
-    };
-
-    struct ResolvedStorageBinding final
-    {
-        GraphResourceId resource;
-        StorageRequirement storage;
     };
 
     // resolved is the key-sorted span supplied by assembleFeatures.

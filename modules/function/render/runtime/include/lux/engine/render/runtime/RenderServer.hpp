@@ -4,8 +4,8 @@
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/features/Registration.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
-#include <lux/engine/render/features/Feature.hpp>
-#include <lux/engine/render/features/Program.hpp>
+#include <lux/engine/render/features/Assembly.hpp>
+#include <lux/engine/render/graph/Program.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/resource/CpuSchedule.hpp>
 #include <lux/engine/render/resource/Registration.hpp>

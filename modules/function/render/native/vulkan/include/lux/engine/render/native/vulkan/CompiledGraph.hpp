@@ -1,12 +1,13 @@
 #pragma once
 
-#include <lux/engine/render/features/Feature.hpp>
-#include <lux/engine/render/features/Program.hpp>
+#include <lux/engine/render/graph/Analysis.hpp>
+#include <lux/engine/render/resource/Binding.hpp>
+#include <lux/engine/render/graph/Program.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 
 namespace lux::render::vulkan
 {
-    struct ResourcePlan final
+    struct NativeResourcePlan final
     {
         std::string key;
         VGraphResourceDesc description;
@@ -64,7 +65,7 @@ namespace lux::render::vulkan
         [[nodiscard]] VkDevice device() const noexcept { return device_; }
         [[nodiscard]] VkPipelineLayout layout() const noexcept { return layout_; }
         [[nodiscard]] const TargetDesc& target() const noexcept { return target_; }
-        [[nodiscard]] std::span<const ResourcePlan> resources() const noexcept { return resources_; }
+        [[nodiscard]] std::span<const NativeResourcePlan> resources() const noexcept { return resources_; }
         [[nodiscard]] std::span<const CompiledPass> passes() const noexcept { return passes_; }
         [[nodiscard]] std::span<const BufferBarrier> hostBarriers() const noexcept { return host_barriers_; }
         [[nodiscard]] std::uint32_t output() const noexcept { return output_; }
@@ -72,26 +73,29 @@ namespace lux::render::vulkan
 
     private:
         friend RenderResult<CompiledGraph> compileGraph(
-            const DeviceSession&, const FeatureAssembly&, std::span<const PassProgram>, const TargetDesc&
+            const DeviceSession&, const RenderGraphDefinition&, const GraphAnalysis&,
+            std::span<const GraphStorageBinding>, std::span<const PassProgram>, const TargetDesc&
         ) noexcept;
         CompiledGraph(VkDevice device, TargetDesc target) noexcept : device_(device), target_(target) {}
         VkDevice device_;
         TargetDesc target_;
         VkPipelineLayout layout_{};
-        std::vector<ResourcePlan> resources_;
+        std::vector<NativeResourcePlan> resources_;
         std::vector<CompiledPass> passes_;
         std::vector<BufferBarrier> host_barriers_;
-        std::vector<ShaderArtifact> shader_identities_;
+        std::vector<SpirvArtifact> shader_identities_;
         std::vector<VkPipeline> pipelines_; // unique physical owners; Pass recipes only borrow handles
         std::vector<VkDescriptorSetLayout> descriptor_layouts_;
         std::uint32_t output_ = kGraphInvalidIndex;
     };
 
-    // INVARIANT: assembly is the exact successful G5 result; reuse its Analysis, never analyze again.
+    // INVARIANT: analysis belongs to this immutable definition; never analyze again here.
     // Program/Target/device capabilities are the cold BOUNDARY checked by this compiler.
     [[nodiscard]] RenderResult<CompiledGraph> compileGraph(
         const DeviceSession& session,
-        const FeatureAssembly& assembly,
+        const RenderGraphDefinition& graph,
+        const GraphAnalysis& analysis,
+        std::span<const GraphStorageBinding> external_bindings,
         std::span<const PassProgram> programs,
         const TargetDesc& target
     ) noexcept;

@@ -1,9 +1,11 @@
 #pragma once
 
+#include <lux/engine/render/features/Registration.hpp>
+
 #include "Buffer.hpp"
 #include "Shader.hpp"
 #include "../shaders/Texture.hpp"
-#include <lux/engine/render/features/Feature.hpp>
+#include <lux/engine/render/features/Assembly.hpp>
 #include <lux/engine/render/resource/Texture.hpp>
 
 namespace lux::render
@@ -90,20 +92,21 @@ namespace extension_test
         return graph.exportOutput({{*pixels, 1}});
     }
 
-    inline const FeatureDefinition definition{feature_type, {1, 0}, &DataSchema<ViewConfig>::schema, describe, build};
+    inline const FeatureDescriptor definition{feature_type, {1, 0}, &DataSchema<ViewConfig>::schema};
+    inline const FeatureGraphOps definition_graph{describe, build};
 
-    inline RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
+    inline RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
     {
         auto config = decodeWire<ViewConfig>(*wire, limits);
         if (!config) return lux::cxx::unexpected(config.error());
+        ProgramContribution result;
         PassProgram draw{featureKey(feature_type, name, "draw")};
         draw.shader = {{texture_fixture::vert.begin(), texture_fixture::vert.end()}, {fragment.begin(), fragment.end()},
             {{{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}, {1, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16}}, 16}};
-        draw.arguments.push_back({"shared:texture", *encodeWire(TextureBinding{config->texture}, {}, {12, 0})});
-        draw.arguments.push_back({"shared:values", *encodeWire(BufferBinding{config->buffer}, {}, {8, 0})});
-        std::vector<PassProgram> result;
-        result.push_back(std::move(draw));
-        result.push_back({featureKey(feature_type, name, "readback")});
+        result.arguments.push_back({"shared:texture", *encodeWire(TextureBinding{config->texture}, {}, {12, 0})});
+        result.arguments.push_back({"shared:values", *encodeWire(BufferBinding{config->buffer}, {}, {8, 0})});
+        result.programs.push_back(std::move(draw));
+        result.programs.push_back({featureKey(feature_type, name, "readback")});
         return result;
     }
 }

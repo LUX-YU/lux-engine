@@ -59,17 +59,16 @@ static RenderResult<void> describeAsset(const WireView* wire, std::string_view, 
     return {};
 }
 
-static const FeatureDefinition asset_definition{
-    FeatureTypeIdView("test.asset"), {1, 0}, &DataSchema<AssetConfig>::describe(), describeAsset, nullptr
-};
+static const FeatureDescriptor asset_definition{FeatureTypeIdView("test.asset"), {1, 0}, &DataSchema<AssetConfig>::describe()};
+static const FeatureGraphOps asset_definition_graph{describeAsset, nullptr};
 
-static RenderResult<std::vector<PassProgram>> assetPrograms(const WireView*, std::string_view) noexcept { return {}; }
+static RenderResult<ProgramContribution> assetPrograms(const WireView*, std::string_view) noexcept { return {}; }
 
-static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view name) noexcept
 {
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
-    return native_fixture::programs(*config, name);
+    return ProgramContribution{native_fixture::programs(*config, name), {}};
 }
 
 static TestCompletion wait(TestClient& client, RequestId id)
@@ -99,8 +98,8 @@ static TestCommand effect(SessionIdentity identity)
 int main()
 {
     auto server = take(createTestServer({"runtime.life", true}));
-    check(bool(server->registerFeature({&native_fixture::definition, programs})));
-    check(bool(server->registerFeature({&asset_definition, assetPrograms})));
+    check(bool(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs})));
+    check(bool(server->registerFeature({&asset_definition, &asset_definition_graph, assetPrograms})));
     auto main = take(TestClient::create("runtime.life", {1024 * 1024, 64}));
     auto upload = take(TestClient::create("runtime.life", {2 * 1024 * 1024, 64}));
     std::thread thread([&] { check(bool(server->run())); });

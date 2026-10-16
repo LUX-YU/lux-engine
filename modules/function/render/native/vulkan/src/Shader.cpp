@@ -1,4 +1,5 @@
 #include "Shader.hpp"
+#include <lux/engine/render/resource/Storage.hpp>
 #include "Native.hpp"
 
 #include <spirv-tools/libspirv.h>
@@ -184,7 +185,7 @@ namespace lux::render::vulkan
     }
 
     RenderResult<VkPipeline> compileGraphics(
-        const VulkanDevice& device, VkPipelineLayout layout, const ShaderArtifact& shader
+        const VulkanDevice& device, VkPipelineLayout layout, const SpirvArtifact& shader
     ) noexcept
     {
         const bool needs_arrays = std::ranges::any_of(shader.interface.bindings, [](const auto& value) {

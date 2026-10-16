@@ -12,17 +12,29 @@ endif()
 enable_testing()
 
 find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_native_vulkan)
+foreach(forbidden render_features render_native_vulkan_extensions render_runtime render_client)
+    if(TARGET lux::engine::render::${forbidden})
+        message(FATAL_ERROR "Base Native compiler pulled unrelated component ${forbidden}")
+    endif()
+endforeach()
+
+add_executable(direct_graph_consumer ../DirectGraph.cpp)
+target_link_libraries(direct_graph_consumer PRIVATE lux::engine::render::render_native_vulkan)
+add_test(NAME installed.native.direct_graph COMMAND direct_graph_consumer)
+
+
+find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_native_vulkan render_native_vulkan_extensions)
 find_package(lux-engine-process-execution CONFIG REQUIRED COMPONENTS process_execution)
 
 add_executable(native_consumer Main.cpp)
 
-target_link_libraries(native_consumer PRIVATE lux::engine::render::render_native_vulkan)
+target_link_libraries(native_consumer PRIVATE lux::engine::render::render_native_vulkan lux::engine::render::render_features)
 
 add_test(NAME installed.native.compiler COMMAND native_consumer)
 
 add_executable(texture_consumer Texture.cpp)
 
-target_link_libraries(texture_consumer PRIVATE lux::engine::render::render_native_vulkan
+target_link_libraries(texture_consumer PRIVATE lux::engine::render::render_native_vulkan_extensions
     lux::engine::process::process_execution
 )
 

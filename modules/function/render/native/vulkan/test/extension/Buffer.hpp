@@ -3,7 +3,7 @@
 
 #include <lux/engine/render/protocol/Protocol.hpp>
 
-#include <lux/engine/render/features/Program.hpp>
+#include <lux/engine/render/graph/Program.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <lux/engine/render/data/Payload.hpp>
 #include <lux/cxx/container/SlotMap.hpp>

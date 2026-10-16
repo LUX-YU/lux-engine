@@ -122,11 +122,8 @@ struct FeatureState final
 static const std::array descriptors{
     commandDescriptor<SetExposure>(), commandDescriptor<AcceptCustomData>(), commandDescriptor<InvalidReply>()
 };
-static const FeatureDefinition feature{
-    FeatureTypeIdView("test.open.operation"), {1, 0}, nullptr,
-    [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
-    nullptr, descriptors
-};
+static const FeatureDescriptor feature{FeatureTypeIdView("test.open.operation"), {1, 0}, nullptr};
+static const FeatureGraphOps feature_graph{[](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 static_assert(!std::is_default_constructible_v<BoundCommand<SetExposure>>);
 static_assert(std::same_as<decltype(std::declval<const BoundCommand<SetExposure>&>().command()), CommandId>);
 template <class T>
@@ -190,13 +187,13 @@ int main()
     };
     auto server = take(RenderServer::create({"runtime.open", true}));
     // A type-erased handler cannot be paired with an unrelated typed transport table.
-    check(!server->registerFeature<WrongRequest, AcceptCustomData, InvalidReply>({&feature, nullptr, handlers}));
-    check(!server->registerFeature<WrongResponse, AcceptCustomData, InvalidReply>({&feature, nullptr, handlers}));
-    check(bool(server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, nullptr, handlers})));
-    check(!server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, nullptr, handlers}));
+    check(!server->registerFeature<WrongRequest, AcceptCustomData, InvalidReply>({&feature, &feature_graph, nullptr, handlers}));
+    check(!server->registerFeature<WrongResponse, AcceptCustomData, InvalidReply>({&feature, &feature_graph, nullptr, handlers}));
+    check(bool(server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, &feature_graph, nullptr, handlers})));
+    check(!server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, &feature_graph, nullptr, handlers}));
     const std::array collision_commands{commandDescriptor<CollidingA>(), commandDescriptor<CollidingB>()};
-    const FeatureDefinition collision_feature{FeatureTypeIdView("test.real.hash.collision"), {1, 0}, nullptr,
-        feature.describe, nullptr, collision_commands};
+    const FeatureDescriptor collision_feature{FeatureTypeIdView("test.real.hash.collision"), {1, 0}, nullptr};
+    const FeatureGraphOps collision_feature_graph{feature_graph.describe, nullptr};
     const std::array collision_handlers{
         test_registration::erased(&commandDescriptor<CollidingA>(), [](void*, CommandInvocation& invocation) noexcept {
             CommandContext<CollidingA> context(invocation);
@@ -207,17 +204,17 @@ int main()
             return context.complete(Exposure{context.request().value + 2000});
         })
     };
-    check(bool(server->registerFeature<CollidingA, CollidingB>({&collision_feature, nullptr, collision_handlers})));
+    check(bool(server->registerFeature<CollidingA, CollidingB>({&collision_feature, &collision_feature_graph, nullptr, collision_handlers})));
     const std::array gpu_commands{commandDescriptor<UnqualifiedGpu>()};
-    const FeatureDefinition gpu_feature{FeatureTypeIdView("test.unqualified.gpu"), {1, 0}, nullptr,
-        feature.describe, nullptr, gpu_commands};
+    const FeatureDescriptor gpu_feature{FeatureTypeIdView("test.unqualified.gpu"), {1, 0}, nullptr};
+    const FeatureGraphOps gpu_feature_graph{feature_graph.describe, nullptr};
     const std::array gpu_handlers{CommandRegistration{bindCommand<UnqualifiedGpu, +[](FeatureState&, const UnqualifiedGpu::Request&,
         CommandContext<UnqualifiedGpu>&) noexcept -> RenderResult<void> { return {}; }>(state)}};
-    auto rejected = server->registerFeature<UnqualifiedGpu>({&gpu_feature, nullptr, gpu_handlers});
+    auto rejected = server->registerFeature<UnqualifiedGpu>({&gpu_feature, &gpu_feature_graph, nullptr, gpu_handlers});
     check(!rejected && rejected.error().type == kProtocolContract);
     const std::array premature_commands{commandDescriptor<PrematureGpu>()};
-    const FeatureDefinition premature_feature{FeatureTypeIdView("test.premature.gpu"), {1, 0}, nullptr,
-        feature.describe, nullptr, premature_commands};
+    const FeatureDescriptor premature_feature{FeatureTypeIdView("test.premature.gpu"), {1, 0}, nullptr};
+    const FeatureGraphOps premature_feature_graph{feature_graph.describe, nullptr};
     const std::array premature_handlers{
         test_registration::erased(&commandDescriptor<PrematureGpu>(), [](void* owner, CommandInvocation& invocation) noexcept {
             CommandContext<PrematureGpu> context(invocation);
@@ -227,7 +224,7 @@ int main()
             return reply;
         }, &state, test_registration::EOwner::PROVIDED, true)
     };
-    check(bool(server->registerFeature<PrematureGpu>({&premature_feature, nullptr, premature_handlers})));
+    check(bool(server->registerFeature<PrematureGpu>({&premature_feature, &premature_feature_graph, nullptr, premature_handlers})));
     auto a = take(RenderClient::create("runtime.open"));
     auto b = take(RenderClient::create("runtime.open"));
     const auto hello_a = take(a->hello()), hello_b = take(b->hello());
@@ -236,7 +233,7 @@ int main()
     std::thread worker([&] { render_allocation::participate = true; run_ok = bool(server->run()); });
     check(wait(*a, hello_a).header.outcome == ECommandOutcome::SUCCESS);
     check(wait(*b, hello_b).header.outcome == ECommandOutcome::SUCCESS);
-    check(!server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, nullptr, handlers}));
+    check(!server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, &feature_graph, nullptr, handlers}));
     check(!a->bind<UnqualifiedGpu>());
     auto bound_a = take(a->bind<SetExposure>());
     auto bound_b = take(b->bind<SetExposure>());

@@ -17,7 +17,7 @@ enable_testing()
 
 find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_graph)
 
-foreach(forbidden render_data render_protocol render_client render_server platform_ipc)
+foreach(forbidden render_protocol render_client render_server platform_ipc)
     if(TARGET lux::engine::render::${forbidden} OR TARGET lux::engine::platform::${forbidden})
         message(FATAL_ERROR "Graph consumer imported unrelated target ${forbidden}")
     endif()
@@ -43,6 +43,6 @@ foreach(header Graph Builder Analysis)
 endforeach()
 
 get_target_property(links lux::engine::render::render_graph INTERFACE_LINK_LIBRARIES)
-if(NOT links STREQUAL "lux::engine::render::render_core")
+if(NOT links STREQUAL "lux::engine::render::render_core;lux::engine::render::render_data")
     message(FATAL_ERROR "Unexpected installed Graph dependency: ${links}")
 endif()

@@ -179,7 +179,7 @@ namespace extension_test
                     erase(value);
             }
         }
-        RenderResult<void> prepare(const vk::ResourcePlan& plan, std::span<const std::byte> bytes,
+        RenderResult<void> prepare(const vk::NativeResourcePlan& plan, std::span<const std::byte> bytes,
             vk::PreparedStorageBinding& binding) noexcept
         {
             const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
@@ -222,7 +222,7 @@ namespace extension_test
             return static_cast<const NativeBuffer*>(object)->exists(id);
         }};
         static const vk::StorageBindingOps binding{
-            [](void* object, const vk::ResourcePlan& plan, std::span<const std::byte> argument,
+            [](void* object, const vk::NativeResourcePlan& plan, std::span<const std::byte> argument,
                 vk::PreparedStorageBinding& binding) noexcept {
                 return static_cast<NativeBuffer*>(object)->prepare(plan, argument, binding);
             }

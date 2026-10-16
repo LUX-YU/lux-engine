@@ -52,11 +52,11 @@ int main()
     CHECK(server->registerStorage<TestBufferStorage>());
     CHECK(!server->registerStorage<TestBufferStorage>());
     CHECK(server->registerFeature<TestBufferFeature>());
-    CHECK(server->registerFeature({&texture_fixture::definition,
-        [](const WireView* wire, std::string_view name) noexcept -> RenderResult<std::vector<PassProgram>> {
+    CHECK(server->registerFeature({&texture_fixture::definition, &texture_fixture::definition_graph,
+        [](const WireView* wire, std::string_view name) noexcept -> RenderResult<ProgramContribution> {
             auto config = decodeWire<texture_fixture::Config>(*wire, texture_fixture::limits);
             if (!config) return lux::cxx::unexpected(config.error());
-            return texture_fixture::programs(*config, name);
+            return ProgramContribution{texture_fixture::programs(*config, name), texture_fixture::arguments(*config)};
         }}));
     bool run_ok = false;
     std::thread thread([&] { render_allocation::participate = true; run_ok = bool(server->run()); });

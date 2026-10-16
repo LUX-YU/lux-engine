@@ -8,24 +8,10 @@
 #include <variant>
 #include <vector>
 #include <lux/engine/render/core/Target.hpp>
+#include <lux/engine/render/core/Ids.hpp>
 
 namespace lux::render
 {
-    inline constexpr auto kGraphInvalidIndex = std::numeric_limits<std::uint32_t>::max();
-
-    // Owner-local indices. Equal numbers in different definitions are unrelated.
-    struct GraphPassId final
-    {
-        std::uint32_t index = kGraphInvalidIndex;
-        bool operator==(const GraphPassId&) const noexcept = default;
-    };
-
-    struct GraphResourceId final
-    {
-        std::uint32_t index = kGraphInvalidIndex;
-        bool operator==(const GraphResourceId&) const noexcept = default;
-    };
-
     struct GraphBufferDesc final
     {
         std::uint64_t size = 0;

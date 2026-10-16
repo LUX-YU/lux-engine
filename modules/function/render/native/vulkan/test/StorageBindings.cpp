@@ -49,13 +49,14 @@ int main()
     image.second.reset();
     auto config = take(encodeWire(extension_test::ViewConfig{texture, id}, {}, extension_test::limits));
     const WireView wire{DataSchema<extension_test::ViewConfig>::schema, config};
-    const SelectedFeature selected{&extension_test::definition, &wire, "combined"};
+    const FeatureInstanceView selected{&extension_test::definition, &extension_test::definition_graph, &wire, "combined"};
     auto assembly = take(assembleFeatures({&selected, 1}, extension_test::limits));
-    auto programs = take(extension_test::programs(&wire, "combined"));
+    auto contribution = take(extension_test::programs(&wire, "combined"));
+    auto& programs = contribution.programs;
     const auto count_before = session->resources().size();
-    auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly, programs, extension_test::target)));
+    auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, programs, extension_test::target)));
     CHECK(session->resources().size() == count_before); // compiling cannot create physical scoped instances
-    auto arguments = take(programArguments(programs));
+    auto& arguments = contribution.arguments;
     auto* context = take(session->prepare(code, extension_test::target, {}, arguments));
     execute(*context, *session, 64);
     // Reflection mismatches are rejected, including type, layout, set and array extent.
@@ -67,11 +68,11 @@ int main()
         if (fault == 1) binding.layout_bytes = 32;
         if (fault == 2) binding.set = 2;
         if (fault == 3) binding.count = 2;
-        CHECK(!compileGraph(*session, assembly, bad, extension_test::target));
+        CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, bad, extension_test::target));
     }
     auto wrong_block = programs;
     wrong_block[0].shader.fragment.assign(extension_test::wrong_block.begin(), extension_test::wrong_block.end());
-    CHECK(!compileGraph(*session, assembly, wrong_block, extension_test::target));
+    CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, wrong_block, extension_test::target));
     const std::array<float, 4> quarter{0.25f, 0.25f, 0.25f, 0.25f};
     const auto quarter_bytes = std::as_bytes(std::span(quarter));
     const auto quarter_owner = std::make_shared<const std::vector<std::byte>>(quarter_bytes.begin(), quarter_bytes.end());

@@ -13,7 +13,10 @@ component_include_directories(
     INSTALL_TIME include
 )
 
-component_add_internal_dependencies(render_graph lux::engine::render::render_core)
+component_add_internal_dependencies(render_graph
+    lux::engine::render::render_core
+    lux::engine::render::render_data
+)
 
 target_compile_features(render_graph PUBLIC cxx_std_20)
 

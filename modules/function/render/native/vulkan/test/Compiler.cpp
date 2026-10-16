@@ -21,39 +21,55 @@ int main()
             const auto described = native_fixture::descriptions.load();
             const auto built = native_fixture::builds.load();
             auto programs = native_fixture::programs(config);
-            auto compiled = take(compileGraph(*session, assembly, programs, native_fixture::target(config)));
+            auto compiled = take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, programs, native_fixture::target(config)));
             CHECK(compiled.passes().size() == assembly.analysis.execution_order.size());
             CHECK(compiled.passes()[0].pipeline != VK_NULL_HANDLE || graphics == 0);
             CHECK(compiled.hostBarriers().size() == 5);
             CHECK(compiled.resources().size() == 10);
             CHECK(compiled.passes()[1].images[0].native.srcAccessMask ==
                 (graphics ? VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT : VK_ACCESS_2_TRANSFER_WRITE_BIT));
-            auto second = take(compileGraph(*session, assembly, programs, native_fixture::target(config)));
+            auto second = take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, programs, native_fixture::target(config)));
             CHECK(native_fixture::descriptions == described && native_fixture::builds == built);
             CHECK(second.resources().size() == compiled.resources().size());
             auto wrong_target = native_fixture::target(config);
             wrong_target.samples = 4;
-            CHECK(!compileGraph(*session, assembly, programs, wrong_target));
+            CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, programs, wrong_target));
             wrong_target = native_fixture::target(config);
             ++wrong_target.width;
-            CHECK(!compileGraph(*session, assembly, programs, wrong_target));
+            CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, programs, wrong_target));
+            auto duplicate = programs;
+            duplicate.push_back(programs.front());
+            CHECK(!compileGraph(*session, assembly.definition, assembly.analysis, assembly.external_bindings,
+                duplicate, native_fixture::target(config)));
+            auto unknown = programs;
+            unknown.front().pass_key = "unknown.pass";
+            CHECK(!compileGraph(*session, assembly.definition, assembly.analysis, assembly.external_bindings,
+                unknown, native_fixture::target(config)));
+            auto bindings = assembly.external_bindings;
+            bindings.front().resource.index = UINT32_MAX;
+            CHECK(!compileGraph(*session, assembly.definition, assembly.analysis, bindings,
+                programs, native_fixture::target(config)));
+            bindings = assembly.external_bindings;
+            bindings.push_back(bindings.front());
+            CHECK(!compileGraph(*session, assembly.definition, assembly.analysis, bindings,
+                programs, native_fixture::target(config)));
             auto missing = programs;
             missing.pop_back();
-            CHECK(!compileGraph(*session, assembly, missing, native_fixture::target(config)));
+            CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, missing, native_fixture::target(config)));
             if (graphics)
             {
                 auto bad = programs;
                 bad[0].shader.interface.bindings = {{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0}};
-                CHECK(!compileGraph(*session, assembly, bad, native_fixture::target(config)));
+                CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, bad, native_fixture::target(config)));
                 bad = programs;
                 bad[0].shader.fragment = bad[0].shader.vertex;
-                CHECK(!compileGraph(*session, assembly, bad, native_fixture::target(config)));
+                CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, bad, native_fixture::target(config)));
                 bad = programs;
                 bad[0].shader.vertex[0] = 0;
-                CHECK(!compileGraph(*session, assembly, bad, native_fixture::target(config)));
+                CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, bad, native_fixture::target(config)));
                 options.dynamic_rendering = false;
                 auto unsupported = take(DeviceSession::create(bootstrap, options));
-                CHECK(!compileGraph(*unsupported, assembly, programs, native_fixture::target(config)));
+                CHECK(!compileGraph(*unsupported, (assembly).definition, (assembly).analysis, (assembly).external_bindings, programs, native_fixture::target(config)));
             }
             std::printf("graphics=%u live_passes=%zu resources=%zu G5_callbacks_unchanged=1\n",
                 graphics, compiled.passes().size(), compiled.resources().size());

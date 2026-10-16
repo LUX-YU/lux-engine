@@ -7,11 +7,11 @@ using lux::render::RenderServer;
 using namespace lux::render;
 using namespace std::chrono_literals;
 
-static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view instance) noexcept
+static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view instance) noexcept
 {
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return lux::cxx::unexpected(config.error());
-    return native_fixture::programs(*config, instance);
+    return ProgramContribution{native_fixture::programs(*config, instance), {}};
 }
 
 extern "C" __declspec(dllexport) RenderServer*
@@ -21,7 +21,7 @@ serverDllCreate(const char* name, const std::shared_ptr<const void>* implementat
     config.implementation_code_pin = *implementation_pin;
     config.cpu = *cpu;
     auto server = RenderServer::create(std::move(config));
-    if (server && *cpu && !(*server)->registerFeature({&native_fixture::definition, programs, {}, *implementation_pin}))
+    if (server && *cpu && !(*server)->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs, {}, *implementation_pin}))
         return nullptr;
     return server ? server->release() : nullptr;
 }

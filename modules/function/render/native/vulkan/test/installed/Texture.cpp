@@ -21,7 +21,7 @@ int main()
     complete(upload.second, host, *session); upload.second.reset();
     texture_fixture::Config config{texture.texture};
     auto assembly = take(texture_fixture::assemble(config));
-    auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
+    auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
         texture_fixture::programs(config), texture_fixture::target(config))));
     auto* context = take(session->prepare(code, texture_fixture::target(config), {}, texture_fixture::arguments(config)));
     CHECK(take(context->execute()));

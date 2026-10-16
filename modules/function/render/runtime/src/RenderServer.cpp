@@ -417,21 +417,22 @@ namespace lux::render
             const auto count = input->features.size();
             if (count == 0 || count > max_features) return cxx::unexpected(RenderError{kFeatureContract});
             std::vector<WireView> configs;
-            std::vector<SelectedFeature> selected;
+            std::vector<FeatureInstanceView> selected;
             std::vector<const FeatureRegistration*> registrations;
             std::vector<OwnedWireBytes> attachments;
             std::vector<PassProgram> programs;
+            std::vector<StorageArgument> arguments;
             configs.reserve(count);
             selected.reserve(count);
             for (const auto& attachment : input->attachments) attachments.push_back(attachment.bytes());
             for (const auto& selection : input->features)
             {
                 const auto registration = std::find_if(features.begin(), features.end(), [&](const auto& f) {
-                    return f.definition->type.name() == selection.type;
+                    return f.descriptor->type.name() == selection.type;
                 });
-                if (registration == features.end() || registration->definition->version != selection.version)
+                if (registration == features.end() || registration->descriptor->version != selection.version)
                     return cxx::unexpected(RenderError{kFeatureContract});
-                const auto& definition = *registration->definition;
+                const auto& definition = *registration->descriptor;
                 const WireView* wire = nullptr;
                 if (definition.config_schema)
                 {
@@ -441,7 +442,7 @@ namespace lux::render
                 }
                 else if (selection.config_schema || !selection.config.bytes().empty())
                     return cxx::unexpected(RenderError{kFeatureContract});
-                selected.push_back({&definition, wire, selection.instance});
+                selected.push_back({&definition, registration->graph, wire, selection.instance});
                 registrations.push_back(&*registration);
             }
             auto assembly = assembleFeatures(selected, {config.max_config_bytes, SIZE_MAX});
@@ -449,29 +450,37 @@ namespace lux::render
             for (const auto& contribution : assembly->contributions)
             {
                 if (contribution.pass_count == 0) continue;
-                const auto index = contribution.selection_index;
+                const auto index = contribution.input_index;
                 if (!registrations[index]->programs) return cxx::unexpected(RenderError{kFeatureContract});
                 const auto& selection = selected[index];
                 auto values = registrations[index]->programs(selection.config, selection.instance_key);
                 if (!values) return cxx::unexpected(values.error());
                 const auto passes = assembly->definition.passes().subspan(contribution.first_pass,
                     contribution.pass_count);
-                for (std::size_t p = 0; p < values->size(); ++p)
+                for (std::size_t p = 0; p < values->programs.size(); ++p)
                 {
-                    const auto& value = (*values)[p];
+                    const auto& value = values->programs[p];
                     if (std::ranges::none_of(passes, [&](const auto& pass) { return pass.key == value.pass_key; }))
                         return cxx::unexpected(RenderError{kFeatureOwnership, {index, p}});
                     for (std::size_t previous = 0; previous < p; ++previous)
-                        if ((*values)[previous].pass_key == value.pass_key)
+                        if (values->programs[previous].pass_key == value.pass_key)
                             return cxx::unexpected(RenderError{kFeatureDuplicate, {index, p, previous}});
                 }
-                for (auto& value : *values) programs.push_back(std::move(value));
+                for (auto& value : values->programs) programs.push_back(std::move(value));
+                for (auto& argument : values->arguments)
+                {
+                    const auto existing = std::ranges::find(arguments, argument.resource_key, &StorageArgument::resource_key);
+                    if (existing == arguments.end()) arguments.push_back(std::move(argument));
+                    else if (!std::ranges::equal(existing->bytes.view(), argument.bytes.view()))
+                        return cxx::unexpected(RenderError{kStorageMismatch});
+                }
             }
-            auto compiled = vulkan::compileGraph(*device, *assembly, programs, input->description);
+            for (const auto pass : assembly->analysis.execution_order)
+                if (std::ranges::find(programs, assembly->definition.passes()[pass.index].key, &PassProgram::pass_key) == programs.end())
+                    return cxx::unexpected(RenderError{kFeatureContract, {pass.index}});
+            auto compiled = vulkan::compileGraph(*device, (*assembly).definition, (*assembly).analysis, (*assembly).external_bindings, programs, input->description);
             if (!compiled) return cxx::unexpected(compiled.error());
-            auto arguments = programArguments(programs);
-            if (!arguments) return cxx::unexpected(arguments.error());
-            return RenderEffect{std::make_shared<const vulkan::CompiledGraph>(std::move(*compiled)), std::move(*arguments)};
+            return RenderEffect{std::make_shared<const vulkan::CompiledGraph>(std::move(*compiled)), std::move(arguments)};
         }
 
         RenderResult<void> createScene(RenderRequest& request) noexcept
@@ -995,21 +1004,14 @@ namespace lux::render
     RenderResult<void> RenderServer::Impl::registerFeature(FeatureRegistration feature, std::span<const CommandTransport> transports) noexcept
     {
         auto& s = *this;
-        const bool invalid = s.started.load() || !feature.definition ||
-            (feature.definition && (!feature.definition->describe || feature.definition->type.name().empty()));
+        const bool invalid = s.started.load() || !feature.descriptor ||
+            !feature.graph || (feature.graph && !feature.graph->describe) ||
+            (feature.descriptor && feature.descriptor->type.name().empty());
         if (invalid) return cxx::unexpected(RenderError{kRuntimeState});
         for (const auto& current : s.features)
-            if (current.definition->type.name() == feature.definition->type.name())
+            if (current.descriptor->type.name() == feature.descriptor->type.name())
                 return cxx::unexpected(RenderError{kFeatureDuplicate});
-        if (feature.handlers.size() != feature.definition->commands.size())
-            return cxx::unexpected(RenderError{kFeatureContract});
         if (auto valid = s.validateHandlers(feature.handlers, transports); !valid) return valid;
-        for (std::size_t i = 0; i < feature.handlers.size(); ++i)
-        {
-            const auto& handler = feature.handlers[i];
-            if (auto valid = compatibleCommands(feature.definition->commands[i], *handler.descriptor()); !valid)
-                return valid;
-        }
         for (std::size_t i = 0; i < feature.handlers.size(); ++i)
             s.addCommand(feature.handlers[i], transports[i], nullptr, feature.code_pin);
         s.features.push_back(feature);

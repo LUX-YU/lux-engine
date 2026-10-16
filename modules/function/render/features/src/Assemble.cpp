@@ -1,4 +1,4 @@
-#include <lux/engine/render/features/Feature.hpp>
+#include <lux/engine/render/features/Assembly.hpp>
 
 #include <algorithm>
 #include <numeric>
@@ -23,8 +23,8 @@ namespace lux::render
         // These are call-local authorship intervals, not another graph or owner.
         struct Contribution final
         {
-            SelectedFeature selected;
-            std::size_t selection_index;
+            FeatureInstanceView selected;
+            std::size_t input_index;
             std::vector<ResourceClaim> claims;
             std::vector<ResolvedResource> bindings;
             std::size_t first_resource = 0, last_resource = 0;
@@ -80,14 +80,14 @@ namespace lux::render
                 a.initial_ranges == b.initial_ranges && a.storage == b.storage;
         }
 
-        RenderResult<void> validateSelections(std::vector<Contribution>& work, WireLimits limits) noexcept
+        RenderResult<void> validateInstances(std::vector<Contribution>& work, WireLimits limits) noexcept
         {
             for (std::size_t i = 0; i < work.size(); ++i)
             {
                 const auto& s = work[i].selected;
-                if (!s.definition) return cxx::unexpected(failure(kFeatureContract, i));
-                const auto& d = *s.definition;
-                const bool is_invalid_type = !d.type.isValid() || d.version.major == 0 || !d.describe;
+                if (!s.descriptor || !s.graph) return cxx::unexpected(failure(kFeatureContract, i));
+                const auto& d = *s.descriptor;
+                const bool is_invalid_type = !d.type.isValid() || d.version.major == 0 || !s.graph->describe;
                 const bool is_invalid_instance = s.instance_key.empty();
                 const bool is_config_mismatch = (d.config_schema == nullptr) != (s.config == nullptr);
                 if (is_invalid_type || is_invalid_instance || is_config_mismatch)
@@ -101,34 +101,23 @@ namespace lux::render
             std::sort(work.begin(), work.end(), [](const auto& a, const auto& b) {
                 const auto& x = a.selected;
                 const auto& y = b.selected;
-                return std::tuple{x.definition->type.name(), x.instance_key} <
-                    std::tuple{y.definition->type.name(), y.instance_key};
+                return std::tuple{x.descriptor->type.name(), x.instance_key} <
+                    std::tuple{y.descriptor->type.name(), y.instance_key};
             });
-            std::vector<const CommandDescriptor*> commands;
             for (std::size_t i = 0; i < work.size(); ++i)
             {
                 const auto& s = work[i].selected;
                 const bool is_same_type = i > 0 &&
-                    work[i - 1].selected.definition->type == s.definition->type;
+                    work[i - 1].selected.descriptor->type == s.descriptor->type;
                 if (is_same_type)
                 {
                     const auto& previous = work[i - 1].selected;
-                    const bool is_duplicate = previous.definition != s.definition ||
+                    const bool is_duplicate = previous.descriptor != s.descriptor || previous.graph != s.graph ||
                         previous.instance_key == s.instance_key;
                     if (is_duplicate) return cxx::unexpected(failure(kFeatureDuplicate, i, 0, i - 1));
                     continue;
                 }
-                for (const auto& command : s.definition->commands)
-                {
-                    if (auto r = validateCommand(command); !r) return r;
-                    for (const auto* existing : commands)
-                    {
-                        if (existing->name != command.name) continue;
-                        if (auto r = compatibleCommands(*existing, command); !r) return r;
-                        return cxx::unexpected(failure(kFeatureDuplicate, i));
-                    }
-                    commands.push_back(&command);
-                }
+
             }
             return {};
         }
@@ -139,7 +128,7 @@ namespace lux::render
             {
                 auto& w = work[i];
                 const auto& s = w.selected;
-                if (auto r = s.definition->describe(s.config, s.instance_key, w.claims); !r) return r;
+                if (auto r = s.graph->describe(s.config, s.instance_key, w.claims); !r) return r;
                 std::sort(w.claims.begin(), w.claims.end(), [](const auto& a, const auto& b) {
                     return a.key < b.key;
                 });
@@ -165,7 +154,7 @@ namespace lux::render
             std::vector<Contribution>& work,
             RenderGraphBuilder& builder,
             std::vector<SharedPort>& ports,
-            std::vector<ResolvedStorageBinding>& external
+            std::vector<GraphStorageBinding>& external
         ) noexcept
         {
             std::vector<ClaimLocation> locations;
@@ -225,7 +214,7 @@ namespace lux::render
             for (std::size_t i = 0; i < work.size(); ++i)
             {
                 const auto& w = work[i];
-                const auto key_prefix = prefix(w.selected.definition->type, w.selected.instance_key);
+                const auto key_prefix = prefix(w.selected.descriptor->type, w.selected.instance_key);
                 const auto has_name = [&](std::string_view key) {
                     return key.starts_with(key_prefix) && key.size() > key_prefix.size();
                 };
@@ -305,16 +294,16 @@ namespace lux::render
     }
 
     RenderResult<FeatureAssembly>
-    assembleFeatures(std::span<const SelectedFeature> selected, WireLimits config_limits) noexcept
+    assembleFeatures(std::span<const FeatureInstanceView> selected, WireLimits config_limits) noexcept
     {
         std::vector<Contribution> work;
         work.reserve(selected.size());
         for (std::size_t i = 0; i < selected.size(); ++i) work.push_back({selected[i], i});
-        if (auto r = validateSelections(work, config_limits); !r) return cxx::unexpected(r.error());
+        if (auto r = validateInstances(work, config_limits); !r) return cxx::unexpected(r.error());
         if (auto r = collectClaims(work); !r) return cxx::unexpected(r.error());
         RenderGraphBuilder builder;
         std::vector<SharedPort> ports;
-        std::vector<ResolvedStorageBinding> external;
+        std::vector<GraphStorageBinding> external;
         if (auto r = resolveClaims(work, builder, ports, external); !r) return cxx::unexpected(r.error());
         for (auto& w : work)
         {
@@ -323,9 +312,9 @@ namespace lux::render
             w.first_output = builder.outputCount();
             w.first_dependency = builder.dependencyCount();
             const auto& s = w.selected;
-            if (s.definition->build)
+            if (s.graph->build)
             {
-                auto r = s.definition->build(s.config, s.instance_key, w.bindings, builder);
+                auto r = s.graph->build(s.config, s.instance_key, w.bindings, builder);
                 if (!r) return cxx::unexpected(r.error());
             }
             w.last_resource = builder.resourceCount();
@@ -344,7 +333,7 @@ namespace lux::render
         std::vector<FeatureContribution> contributions;
         contributions.reserve(work.size());
         for (const auto& w : work)
-            contributions.push_back({w.selection_index, w.first_pass, w.last_pass - w.first_pass});
+            contributions.push_back({w.input_index, w.first_pass, w.last_pass - w.first_pass});
         return FeatureAssembly{std::move(*graph), std::move(*analysis), std::move(external), std::move(contributions)};
     }
 

@@ -112,7 +112,8 @@ static RenderResult<void> build(
 
 int main()
 {
-    const FeatureDefinition type{kType, {1, 0}, &DataSchema<fixture::Config>::describe(), describe, build};
+    const FeatureDescriptor type{kType, {1, 0}, &DataSchema<fixture::Config>::describe()};
+    const FeatureGraphOps type_graph{describe, build};
     std::puts("shape,features,passes,sample,assemble_ns,allocations,allocated_bytes,destroy_ns");
     for (bool chain : {false, true})
     {
@@ -123,7 +124,7 @@ int main()
                 std::vector<OwnedWireBytes> bytes;
                 std::vector<WireView> views;
                 std::vector<std::string> names;
-                std::vector<SelectedFeature> selected;
+                std::vector<FeatureInstanceView> selected;
                 bytes.reserve(count);
                 views.reserve(count);
                 names.reserve(count);
@@ -137,7 +138,7 @@ int main()
                     bytes.push_back(std::move(*encoded));
                     views.push_back({DataSchema<fixture::Config>::describe(), bytes.back(), {}});
                     names.push_back(std::to_string(i));
-                    selected.push_back({&type, &views.back(), names.back()});
+                    selected.push_back({&type, &type_graph, &views.back(), names.back()});
                 }
                 for (int sample = -5; sample < 100; ++sample)
                 {

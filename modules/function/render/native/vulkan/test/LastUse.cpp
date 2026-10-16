@@ -216,7 +216,7 @@ namespace
             rdesc::ETextureFormat::RGBA8_UNORM, 0};
         auto assembly = take(texture_fixture::assemble(config));
         const auto pipelines_before = pipelines;
-        auto graph = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
+        auto graph = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
             texture_fixture::programs(config), texture_fixture::target(config))));
         CHECK(pipelines == pipelines_before + 1);
         auto* context = take(session->prepare(graph, texture_fixture::target(config), {},

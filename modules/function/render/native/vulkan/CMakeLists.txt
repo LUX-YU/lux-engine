@@ -11,8 +11,7 @@ set(LUX_NATIVE_SOURCES
     src/Error.cpp src/DeviceSession.cpp src/device/Device.cpp src/device/Vma.cpp
     src/memory/Memory.cpp src/transfer/Submission.cpp src/retirement/Retirement.cpp
     src/Compile.cpp src/Shader.cpp src/Execution.cpp
-    src/transfer/Transfer.cpp src/transfer/GpuWork.cpp src/transfer/GpuCompletion.cpp
-    src/texture/TextureStorage.cpp src/texture/Commands.cpp
+    src/transfer/Transfer.cpp src/transfer/GpuWork.cpp
 )
 
 add_component(
@@ -31,7 +30,7 @@ component_include_directories(
 )
 
 component_add_internal_dependencies(render_native_vulkan lux::engine::render::render_core
-    lux::engine::render::render_features
+    lux::engine::render::render_data lux::engine::render::render_resource lux::engine::render::render_graph
 )
 
 target_link_libraries(render_native_vulkan PUBLIC Vulkan::Vulkan
@@ -47,6 +46,30 @@ component_add_transitive_commands(render_native_vulkan
 install(FILES cmake/ShaderTools.cmake DESTINATION share/lux-engine-render/render_native_vulkan)
 
 target_compile_features(render_native_vulkan PUBLIC cxx_std_20)
+
+set(LUX_NATIVE_EXTENSION_SOURCES
+    src/transfer/GpuCompletion.cpp src/texture/TextureStorage.cpp src/texture/Commands.cpp
+)
+
+add_component(
+    STATIC
+    COMPONENT_NAME render_native_vulkan_extensions
+    NAMESPACE lux::engine::render
+    OUTPUT_NAME lux_engine_render_native_vulkan_extensions
+    SOURCE_FILES ${LUX_NATIVE_EXTENSION_SOURCES}
+)
+
+component_include_directories(render_native_vulkan_extensions
+    BUILD_TIME_EXPORT "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pinclude" "${CMAKE_CURRENT_SOURCE_DIR}/sinclude"
+    INSTALL_TIME include
+)
+
+component_add_internal_dependencies(render_native_vulkan_extensions
+    lux::engine::render::render_native_vulkan lux::engine::render::render_features
+)
+
+target_compile_features(render_native_vulkan_extensions PUBLIC cxx_std_20)
 
 if(BUILD_TESTING)
     add_subdirectory(test)

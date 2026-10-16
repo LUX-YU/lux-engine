@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/native/vulkan/retirement/Retirement.hpp>
-#include <lux/engine/render/features/Resources.hpp>
+#include <lux/engine/render/resource/Binding.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
@@ -55,7 +55,8 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<void> configureUploads(const TransferOptions&, CpuSchedule) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadImage(
             const ImageDescription&, std::span<const std::byte>, std::span<const ImageTransferRegion>,
-            const ImageAllocation* clone = nullptr, bool graphics_queue = false) noexcept;
+            const ImageAllocation* clone = nullptr, bool graphics_queue = false,
+            SubmissionRequirements* clone_last_use = nullptr) noexcept;
         [[nodiscard]] RenderResult<std::unique_ptr<Transfer>> uploadBuffer(
             std::span<const std::byte>, VkBufferUsageFlags usage) noexcept;
         [[nodiscard]] TransferStats uploadStats() const noexcept;

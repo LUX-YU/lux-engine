@@ -129,13 +129,10 @@ extern "C" __declspec(dllexport) void makeAsyncTailFeature(
 {
     using namespace lux::render;
     static const std::array commands{commandDescriptor<async_tail_test::Command>()};
-    static const FeatureDefinition definition{
-        FeatureTypeIdView("test.async.dll_callback_tail.feature"), {1, 0}, nullptr,
-        [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> {
+    static const FeatureDescriptor definition{FeatureTypeIdView("test.async.dll_callback_tail.feature"), {1, 0}, nullptr};
+    static const FeatureGraphOps definition_graph{[](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> {
             return {};
-        },
-        nullptr, commands
-    };
+        }, nullptr};
     host.handlers[0] = bindCommand<async_tail_test::Command, async_tail_test::invoke>(host);
-    output = {&definition, nullptr, host.handlers, pin};
+    output = {&definition, &definition_graph, nullptr, host.handlers, pin};
 }

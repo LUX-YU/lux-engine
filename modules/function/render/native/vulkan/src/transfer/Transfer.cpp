@@ -1,7 +1,6 @@
 #include <lux/engine/render/native/vulkan/transfer/Transfer.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
-#include <lux/engine/render/native/vulkan/texture/TextureStorage.hpp>
 #include "Native.hpp"
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <algorithm>
@@ -171,7 +170,8 @@ namespace lux::render::vulkan
 
     RenderResult<std::unique_ptr<Transfer>> DeviceSession::uploadImage(
         const ImageDescription& description, std::span<const std::byte> source,
-        std::span<const ImageTransferRegion> regions, const ImageAllocation* clone, bool graphics_queue
+        std::span<const ImageTransferRegion> regions, const ImageAllocation* clone, bool graphics_queue,
+        SubmissionRequirements* clone_last_use
     ) noexcept
     {
         if (!uploads_) return cxx::unexpected(RenderError{kUnsupported});
@@ -180,7 +180,8 @@ namespace lux::render::vulkan
             !description.mip_levels || description.mip_levels >
                 std::bit_width(std::max(description.extent.width, description.extent.height));
         const bool invalid = invalid_shape || source.empty() || regions.empty() || regions.size() > 32 ||
-            !(description.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) || (clone && !graphics_queue);
+            !(description.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) || (clone && !graphics_queue) ||
+            ((clone == nullptr) != (clone_last_use == nullptr));
         if (invalid) return cxx::unexpected(RenderError{kInvalidArgument});
         for (const auto& region : regions)
         {
@@ -221,6 +222,7 @@ namespace lux::render::vulkan
         result->image_ = std::move(*image);
         result->regions_.assign(regions.begin(), regions.end());
         result->clone_ = clone;
+        result->clone_last_use_ = clone_last_use;
         result->copy_queue_ = graphics_queue ? &queue() : state.copy_queue;
         return result;
     }

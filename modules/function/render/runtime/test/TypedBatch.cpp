@@ -133,11 +133,8 @@ namespace batch_fixture
     }
 
     static const std::array commands{commandDescriptor<SetValues>(), commandDescriptor<ReadValue>()};
-    static const FeatureDefinition definition{
-        FeatureTypeIdView("test.batch.values"), {1, 0}, nullptr,
-        [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
-        nullptr, commands
-    };
+    static const FeatureDescriptor definition{FeatureTypeIdView("test.batch.values"), {1, 0}, nullptr};
+    static const FeatureGraphOps definition_graph{[](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 }
 
 namespace lux::render
@@ -220,11 +217,11 @@ static TypedRenderCompletion<C> call(RenderClient& client, const BoundCommand<C>
     return take(std::move(wait(client, take(client.submit(binding, request, reply_capacity)))).take(binding));
 }
 
-static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view instance) noexcept
+static RenderResult<ProgramContribution> programs(const WireView* wire, std::string_view instance) noexcept
 {
     auto config = decodeWire<native_fixture::Config>(*wire, native_fixture::limits);
     if (!config) return cxx::unexpected(config.error());
-    return native_fixture::programs(*config, instance);
+    return ProgramContribution{native_fixture::programs(*config, instance), {}};
 }
 
 static std::unique_ptr<RenderServer> create(batch_fixture::State& state, CpuFixture& host)
@@ -234,8 +231,8 @@ static std::unique_ptr<RenderServer> create(batch_fixture::State& state, CpuFixt
         CommandRegistration{bindCommand<batch_fixture::ReadValue, batch_fixture::read>(state)}};
     auto server = take(RenderServer::create(withCpu(host, {"runtime.typed.batch", true})));
     CHECK(server->registerFeature<batch_fixture::SetValues, batch_fixture::ReadValue>(
-        {&batch_fixture::definition, nullptr, handlers}));
-    CHECK(server->registerFeature({&native_fixture::definition, programs}));
+        {&batch_fixture::definition, &batch_fixture::definition_graph, nullptr, handlers}));
+    CHECK(server->registerFeature({&native_fixture::definition, &native_fixture::definition_graph, programs}));
     return server;
 }
 

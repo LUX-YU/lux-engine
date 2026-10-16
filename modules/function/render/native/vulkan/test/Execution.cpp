@@ -32,7 +32,7 @@ int main()
     CHECK(buffer_fixture::install(*session));
     native_fixture::Config config{32, 32, 1, 1};
     auto assembly = take(native_fixture::assemble(config));
-    auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly,
+    auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings,
         native_fixture::programs(config), native_fixture::target(config))));
     auto scene = take(session->resources().createDomain(session->resources().root(), EResourceScope::SCENE));
     auto view_a = take(session->resources().createDomain(scene, EResourceScope::VIEW));
@@ -134,7 +134,7 @@ int main()
 
     config = {32, 32, 0, 0};
     auto transfer = take(native_fixture::assemble(config));
-    auto transfer_code = std::make_shared<CompiledGraph>(take(compileGraph(*session, transfer,
+    auto transfer_code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (transfer).definition, (transfer).analysis, (transfer).external_bindings,
         native_fixture::programs(config), native_fixture::target(config))));
     auto* clear = take(session->prepare(transfer_code, native_fixture::target(config), {}));
     for (unsigned frame = 0; frame < 4; ++frame)

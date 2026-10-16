@@ -92,7 +92,7 @@ static TestCommand effect(SessionIdentity identity)
     native_fixture::Config config;
     result.description = native_fixture::target(config);
     result.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
     return result;
 }
 
@@ -118,12 +118,13 @@ int main()
     command.attachments.push_back(take(RenderPayload::fromVector(source, 257, 64)));
     std::array attachments{command.attachments[0].bytes()};
     auto config = take(encodeWire(AssetConfig{{0, 0, 64}}, attachments, {1024, 1024}));
-    command.features.push_back({"test.asset", "pin", {1, 0}, &DataSchema<AssetConfig>::describe(), config});
+    command.features.push_back({"test.asset", "pin", {1, 0}, DataSchema<AssetConfig>::describe(),
+        RenderPayload::copyOf(config.view())});
     check(!main->submit(command)); // 64 visible bytes must charge the entire 1 MiB backing
     check(command.attachments[0].bytes().data() == pointer);
     auto id = take(upload->submit(command));
     auto reply = wait(*upload, id);
-    check(reply.header.outcome == EOperationOutcome::SUCCESS && observed.load() == pointer);
+    check(reply.header.outcome == ECommandOutcome::SUCCESS && observed.load() == pointer);
     check(upload->retainedBytes() >= 1024 * 1024);
     check(!upload->submit(command)); // held result retains the input lease
     reply = {};
@@ -165,7 +166,7 @@ int main()
     TestCommand old;
     old.operation = ETestCommand::CREATE_SCENE;
     old.session = identity;
-    check(wait(*fresh, take(fresh->submit(old))).header.outcome == EOperationOutcome::FAILED);
+    check(wait(*fresh, take(fresh->submit(old))).header.outcome == ECommandOutcome::FAILED);
     replacement->stop();
     restart.join();
     std::printf("M3 lifetime: full backing budget, pointer identity, abandon reclamation, close during callback, epoch OK\n");

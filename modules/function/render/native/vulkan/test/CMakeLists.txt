@@ -44,7 +44,7 @@ target_compile_definitions(render_native_instrumented PRIVATE LUX_VULKAN_TEST_SE
 
 target_include_directories(render_native_instrumented
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../include"
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../pinclude" "${LUX_VMA_INCLUDE_DIR}"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../pinclude" "${CMAKE_CURRENT_SOURCE_DIR}/../sinclude" "${LUX_VMA_INCLUDE_DIR}"
 )
 
 target_link_libraries(render_native_instrumented PUBLIC render_features Vulkan::Vulkan
@@ -78,7 +78,8 @@ add_test(NAME render.native.buffer_transfer COMMAND render_buffer_transfer_test)
 set_tests_properties(render.native.buffer_transfer PROPERTIES TIMEOUT 60)
 
 foreach(header Error DeviceSession CompiledGraph ExecutionContext StorageBinding device/Device memory/Memory
-    transfer/Submission transfer/TextureUpload transfer/Transfer transfer/GpuWork texture/TextureStorage retirement/Retirement
+    transfer/Submission transfer/TextureUpload transfer/Transfer transfer/GpuWork transfer/GpuCompletion
+    texture/TextureStorage retirement/Retirement
 )
     string(REPLACE "/" "_" target "${header}")
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp"

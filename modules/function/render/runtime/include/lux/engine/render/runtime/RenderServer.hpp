@@ -1,27 +1,23 @@
 #pragma once
 
-#include <lux/engine/render/runtime/Operations.hpp>
+#include <lux/engine/render/runtime/Commands.hpp>
+#include <lux/engine/render/runtime/RenderClient.hpp>
+#include <lux/engine/render/features/Registration.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <lux/engine/render/features/Feature.hpp>
 #include <lux/engine/render/features/Program.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
-#include <lux/engine/render/resource/ResourceRegistry.hpp>
 
 namespace lux::render
 {
-    namespace vulkan { class DeviceSession; class SubmissionTicket; class SubmissionQueue; class GpuWork; }
-    namespace runtime_detail { struct DeferredCompletion; }
-    class OperationContext;
-    class GpuCompletionReservation;
-
     struct RenderServerConfig final
     {
         std::string channel_name;
         bool validation = false;
         std::uint32_t physical_device_index = UINT32_MAX;
         std::uint32_t requests_per_tick = 8;
-        std::size_t max_wire_bytes = 1024 * 1024;
+        std::size_t max_config_bytes = 1024 * 1024;
         std::size_t max_reply_bytes = 16 * 1024 * 1024;
         std::size_t retirement_capacity = 64;
         // Host-owned bounded cold executor. enqueue never executes inline; accepted callbacks run exactly once.
@@ -38,118 +34,10 @@ namespace lux::render
         bool prefer_dedicated_transfer = true;
         TransferOptions uploads{}; // null host callbacks disable texture upload admission
         bool texture_compression_bc = false; // explicitly request BC capability; RGBA-only hosts do not require it
-    };
-
-    // One source-qualified request. Move only for real deferred work; settle before Responder teardown.
-    class RenderRequest final
-    {
-    public:
-        RenderRequest(RenderRequest&&) noexcept = default;
-        RenderRequest& operator=(RenderRequest&&) noexcept = default;
-        RenderRequest(const RenderRequest&) = delete;
-        RenderRequest& operator=(const RenderRequest&) = delete;
-        [[nodiscard]] bool active() const noexcept { return input_.active(); }
-        [[nodiscard]] RequestId id() const noexcept { return request_; }
-        [[nodiscard]] BorrowedWireView payload() const noexcept;
-        [[nodiscard]] const platform::ipc::IpcMessage& message() const noexcept { return input_.message(); }
-        [[nodiscard]] std::size_t replyCapacity() const noexcept { return reply_capacity_; }
-        [[nodiscard]] RenderResult<void>
-        reply(std::span<const std::byte> payload = {}, OwnedWireBytes attachment = {}) noexcept;
-        [[nodiscard]] RenderResult<void> fail(RenderError error) noexcept;
-        [[nodiscard]] RenderResult<void> cancel() noexcept;
-
-        template <BorrowedWireData T>
-        [[nodiscard]] RenderResult<T> decode() const noexcept
-        {
-            // Handler contract: T is its registered static payload type. Cold registration proves metadata;
-            // dispatch validates untrusted values/ranges once before entering the handler.
-            const auto wire = payload();
-            cxx::BinaryReader reader(wire.bytes.first(static_cast<std::size_t>(wire.schema.fixed_size)), wire.bytes.size());
-            auto value = DataSchema<T>::decode(reader, wire);
-            if (!value) return cxx::unexpected(value.error());
-            if (!reader.requireFullyConsumed()) return cxx::unexpected(RenderError{kInvalidWire});
-            return value;
-        }
-
-        template <WireData T>
-        [[nodiscard]] RenderResult<void> reply(const T& value, OwnedWireBytes attachment = {}) noexcept
-        {
-            std::array<std::byte, 128> bytes;
-            auto size = DataSchema<T>::wireSize(value);
-            if (!size) return cxx::unexpected(size.error());
-            if (*size > bytes.size()) return cxx::unexpected(RenderError{kWireLimit});
-            cxx::BinarySpanWriter writer(std::span(bytes).first(*size));
-            if (auto encoded = DataSchema<T>::encode(value, writer); !encoded) return encoded;
-            if (!writer.good() || writer.size() != *size) return cxx::unexpected(RenderError{kInvalidWire});
-            return reply(std::span<const std::byte>(bytes).first(*size), std::move(attachment));
-        }
-    private:
-        friend class RenderServer;
-        friend class OperationContext;
-        friend class GpuCompletionReservation;
-        [[nodiscard]] RenderResult<void>
-        validateReply(std::span<const std::byte> payload, const OwnedWireBytes& attachment) const noexcept;
-        RenderRequest(platform::ipc::ReceivedRequest input, platform::ipc::IpcResponder& responder,
-            SessionIdentity session, RequestId request, std::size_t capacity, const OperationDescriptor* descriptor) noexcept;
-        [[nodiscard]] RenderResult<void> publish(EOperationOutcome outcome, RenderError error,
-            std::span<const std::byte> payload, OwnedWireBytes attachment) noexcept;
-        platform::ipc::ReceivedRequest input_;
-        std::unique_ptr<platform::ipc::IpcMessage> unreplied_; // allocated only on failed publication, cold disposal
-        platform::ipc::IpcResponder* responder_;
-        SessionIdentity session_;
-        RequestId request_;
-        std::size_t reply_capacity_;
-        const OperationDescriptor* descriptor_;
-    };
-
-    // Borrow valid only during this Server Handler invocation; it cannot escape to a worker.
-    class OperationContext final
-    {
-    public:
-        OperationContext(const OperationContext&) = delete;
-        OperationContext& operator=(const OperationContext&) = delete;
-        [[nodiscard]] ResourceRegistry& resources() const noexcept;
-        // Bounded reply bytes and retained attachment are funded before submit.
-        [[nodiscard]] RenderResult<GpuCompletionReservation> reserveGpuCompletion(
-            std::span<const std::byte> reply = {}, OwnedWireBytes attachment = {}) noexcept;
-    private:
-        friend class RenderServer;
-        friend class GpuCompletionReservation;
-        [[nodiscard]] RenderResult<GpuCompletionReservation> reserveGpuCompletion(
-            vulkan::SubmissionQueue& queue, std::span<const std::byte> reply = {},
-            OwnedWireBytes attachment = {}) noexcept;
-
-        OperationContext(vulkan::DeviceSession& native, std::span<runtime_detail::DeferredCompletion> slots,
-            RenderRequest& request) noexcept : native_(&native), slots_(slots), request_(&request) {}
-        vulkan::DeviceSession* native_;
-        std::span<runtime_detail::DeferredCompletion> slots_;
-        RenderRequest* request_;
-        bool reserved_ = false; // at most one qualification issued by this invocation
-    };
-
-    struct OperationHandler final
-    {
-        const OperationDescriptor* descriptor;
-        RenderResult<void> (*invoke)(void*, RenderRequest&, OperationContext&) noexcept;
-        void* user = nullptr; // static/cold owner must outlive run and every deferred request
-        bool gpu_completion = false; // explicit registration opt-in; ordinary reply still cannot assert GPU readiness
-    };
-
-    struct FeatureRegistration final
-    {
-        const FeatureDefinition* definition;
-        RenderResult<std::vector<PassProgram>> (*programs)(const WireView*, std::string_view) noexcept;
-        std::span<const OperationHandler> handlers;
-        // Immutable metadata/code remain loaded through run()/shutdown.
-    };
-
-    struct StorageRegistration final
-    {
-        const StorageDescriptor* description;
-        std::span<const OperationHandler> handlers;
-        StorageFactory factory;
-        bool optional = false;
-        std::shared_ptr<const void> configuration;
+        // Pins the module containing this Server implementation and its builtin reply/destruction code.
+        // Empty explicitly declares process-lifetime code. The host retains its own pin through factory,
+        // run/join and destruction calls; published replies retain theirs independently of the Server.
+        std::shared_ptr<const void> implementation_code_pin;
     };
 
     struct RenderServerStats final
@@ -168,29 +56,48 @@ namespace lux::render
         ~RenderServer() noexcept;
         RenderServer(const RenderServer&) = delete;
         RenderServer& operator=(const RenderServer&) = delete;
-        [[nodiscard]] RenderResult<void> registerFeature(FeatureRegistration feature) noexcept;
-        [[nodiscard]] RenderResult<void> registerStorage(StorageRegistration storage) noexcept;
+        template <RenderCommand... C>
+        [[nodiscard]] RenderResult<void> registerFeature(FeatureRegistration feature) noexcept
+        {
+            const std::array<runtime_detail::CommandTransport, sizeof...(C)> transports{runtime_detail::commandTransport<C>()...};
+            return registerFeatureImpl(std::move(feature), transports);
+        }
+
+        template <RenderCommand... C>
+        [[nodiscard]] RenderResult<void> registerStorage(StorageRegistration storage) noexcept
+        {
+            const std::array<runtime_detail::CommandTransport, sizeof...(C)> transports{runtime_detail::commandTransport<C>()...};
+            return registerStorageImpl(std::move(storage), transports);
+        }
 
         template <class T>
         [[nodiscard]] RenderResult<void> registerStorage(const typename T::Config& config = {}) noexcept
         {
-            auto registration = T::registration();
+            auto registration = nativeStorageBinding<T>();
             if (!registration.description) return cxx::unexpected(RenderError{kStorageContract});
             if (auto valid = compatibleStorage(T::description, *registration.description); !valid) return valid;
             registration.configuration = std::make_shared<const typename T::Config>(config);
-            return registerStorage(std::move(registration));
+            return [&]<typename... C>(std::tuple<C...>*) noexcept {
+                return registerStorage<C...>(std::move(registration));
+            }(static_cast<typename T::Commands*>(nullptr));
         }
 
         template <class T>
         [[nodiscard]] RenderResult<void> registerFeature() noexcept
         {
-            return registerFeature(T::registration());
+            return [&]<typename... C>(std::tuple<C...>*) noexcept {
+                return registerFeature<C...>(nativeFeatureBinding<T>());
+            }(static_cast<typename T::Commands*>(nullptr));
         }
 
         [[nodiscard]] RenderResult<void> run() noexcept;
         void stop() noexcept;
         [[nodiscard]] RenderServerStats stats() const noexcept;
     private:
+        [[nodiscard]] RenderResult<void> registerFeatureImpl(FeatureRegistration,
+            std::span<const runtime_detail::CommandTransport>) noexcept;
+        [[nodiscard]] RenderResult<void> registerStorageImpl(StorageRegistration,
+            std::span<const runtime_detail::CommandTransport>) noexcept;
         struct Impl;
         explicit RenderServer(std::unique_ptr<Impl> state) noexcept;
         std::unique_ptr<Impl> impl_;

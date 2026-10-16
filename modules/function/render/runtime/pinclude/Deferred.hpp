@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/runtime/RenderServer.hpp>
+#include "Request.hpp"
+#include <lux/engine/render/native/vulkan/CommandCompletion.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
 
@@ -11,9 +12,10 @@ namespace lux::render::runtime_detail
         vulkan::SubmissionQueue* queue = nullptr;
         std::uint64_t submitted_before_reserve = 0;
         vulkan::GpuWork work;
-        std::array<std::byte, 128> reply;
-        std::size_t size = 0;
-        OwnedWireBytes attachment;
+        platform::ipc::IpcMessage reply;
+        std::size_t reply_charge = 0;
+        RenderRequest* reserved_request = nullptr;
+        vulkan::DeviceSession* native = nullptr;
     };
 
     // The vector belongs only to RenderServer::Impl. monostate = free, GPU without request = reserved.
@@ -23,6 +25,17 @@ namespace lux::render::runtime_detail
         std::optional<RenderRequest> request;
         VCompletionCondition condition;
     };
+
+    // Valid only while the handler borrows the existing Server and its bounded slots.
+    struct GpuAdmission final
+    {
+        vulkan::DeviceSession& native;
+        std::span<DeferredCompletion> slots;
+        RenderRequest& request;
+        bool reserved = false;
+    };
+
+    extern const vulkan::GpuCompletionFns gpu_completion_functions;
 }
 
 #ifdef LUX_RUNTIME_TEST_SEAM

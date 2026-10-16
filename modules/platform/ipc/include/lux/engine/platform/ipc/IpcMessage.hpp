@@ -82,6 +82,9 @@ namespace lux::platform::ipc
     class IpcBoundType final
     {
     public:
+        // A qualification is an immutable value: moving it must not leave a live table without its pin.
+        IpcBoundType(const IpcBoundType&) = default;
+        IpcBoundType& operator=(const IpcBoundType&) = default;
         [[nodiscard]] const IpcTypeOps& operations() const noexcept { return *operations_; }
 
     private:

@@ -6,6 +6,13 @@
 
 namespace ipc_typed_test
 {
+    // Identical POD layout in both modules. The ABI-negative DLL changes the
+    // actual standard-library configuration, never this type or its TypeToken.
+    struct AbiProbe final
+    {
+        std::uint64_t value = 0;
+    };
+
     struct Batch final
     {
         std::uint64_t scene = 0;

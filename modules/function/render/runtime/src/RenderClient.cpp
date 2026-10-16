@@ -1,6 +1,42 @@
-#include "Wire.hpp"
+#include "TypedProtocol.hpp"
+#include <lux/engine/render/runtime/RenderClient.hpp>
+#include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/platform/ipc/IpcCore.hpp>
 #include <atomic>
+#include <optional>
+
+namespace lux::render::runtime_detail
+{
+    struct BudgetState final
+    {
+        std::atomic<std::size_t> retained{0};
+        std::size_t limit;
+        explicit BudgetState(std::size_t value) noexcept : limit(value) {}
+    };
+
+    BudgetLease::~BudgetLease() noexcept
+    {
+        if (bytes_) state_->retained.fetch_sub(bytes_, std::memory_order_relaxed);
+    }
+
+    BudgetLease::BudgetLease(BudgetLease&& other) noexcept
+        : state_(std::move(other.state_)), bytes_(std::exchange(other.bytes_, 0)) {}
+
+    BudgetLease& BudgetLease::operator=(BudgetLease&& other) noexcept
+    {
+        if (this == &other) return *this;
+        if (bytes_) state_->retained.fetch_sub(bytes_, std::memory_order_relaxed);
+        state_ = std::move(other.state_);
+        bytes_ = std::exchange(other.bytes_, 0);
+        return *this;
+    }
+
+    BudgetLease BudgetLease::split(std::size_t bytes) noexcept
+    {
+        bytes_ -= bytes;
+        return BudgetLease{state_, bytes};
+    }
+}
 
 namespace lux::render
 {
@@ -9,91 +45,87 @@ namespace lux::render
 
     namespace
     {
-        struct Budget final
-        {
-            std::atomic<std::size_t> retained{0};
-            std::size_t limit;
-            explicit Budget(std::size_t value) : limit(value) {}
-        };
-
-        void refund(void* owner, std::size_t bytes) noexcept
-        {
-            static_cast<Budget*>(owner)->retained.fetch_sub(bytes, std::memory_order_relaxed);
-        }
-
-        struct Input final
-        {
-            std::vector<std::byte> header;
-            std::array<RenderPayload, ipc::IpcMessage::attachment_capacity> payloads;
-            std::array<std::span<const std::byte>, ipc::IpcMessage::attachment_capacity> views;
-            std::shared_ptr<Budget> budget;
-            std::size_t charged = 0;
-            ~Input() noexcept
-            {
-                payloads = {};
-                std::vector<std::byte>().swap(header);
-                if (charged) refund(budget.get(), charged);
-            }
-        };
-
         struct Pending final
         {
             RequestId id;
             SessionIdentity session{};
-            std::optional<DataSchemaDescriptor> reply;
-            std::size_t small_charge = 0;
-            bool hello = false, abandoned = false;
+            CommandId command;
+            const ipc::IpcTypeOps* response = nullptr;
+            bool abandoned = false;
         };
+
+        bool addBytes(std::size_t& total, std::size_t amount) noexcept
+        {
+            if (amount > SIZE_MAX - total) return false;
+            total += amount;
+            return true;
+        }
     }
 
     struct RenderClient::Impl final
     {
-        [[nodiscard]] RenderResult<RequestId> hello() noexcept;
-        [[nodiscard]] RenderResult<OperationBinding> bind(const OperationDescriptor& descriptor) const noexcept;
-        [[nodiscard]] RenderResult<RequestId> submitEncoded(const OperationBinding&, std::size_t, const void*,
-            RenderResult<void> (*)(const void*, cxx::BinarySpanWriter&) noexcept,
-            std::span<const RenderPayload>, std::size_t) noexcept;
-        [[nodiscard]] RenderResult<ERenderReceive> tryReceive(RenderCompletion&) noexcept;
-        [[nodiscard]] RenderResult<void> abandon(RequestId) noexcept;
-        [[nodiscard]] std::size_t retainedBytes() const noexcept;
         ipc::IpcRequester requester;
         cxx::SlotMap<Pending, RequestTag> requests;
-        std::shared_ptr<Budget> budget;
-        OwnedWireBytes manifest;
+        std::shared_ptr<BudgetState> budget;
+        std::vector<Capability> manifest;
+        std::optional<ipc::IpcBoundType<ValueEnvelope<RenderError>>> failure_type;
         SessionIdentity session{};
         std::size_t capacity;
         bool bound = false, ready_sent = false, closed = false;
-        Impl(ipc::IpcRequester input, RenderClientConfig config) : requester(std::move(input)),
-            budget(std::make_shared<Budget>(config.retained_byte_limit)), capacity(config.ring_capacity)
+
+        Impl(ipc::IpcRequester input, RenderClientConfig config)
+            : requester(std::move(input)), budget(std::make_shared<BudgetState>(config.retained_byte_limit)),
+              capacity(config.ring_capacity)
         {
             requests.reserve(capacity);
         }
-        ~Impl() noexcept
-        {
-            requester.reset();
-            for (const auto& request : requests) refund(budget.get(), request.small_charge);
-        }
+
+        ~Impl() noexcept { requester.reset(); }
     };
 
-    RenderResult<RenderPayload> RenderPayload::fromVector(
-        std::shared_ptr<const std::vector<std::byte>> owner, std::size_t offset, std::size_t size
-    ) noexcept
+    RenderResult<std::size_t> CommandValueTraits<CreateEffectRequest>::retainedBytes(
+        const CreateEffectRequest& value) noexcept
     {
-        const bool invalid = !owner || !size || offset > owner->size() || size > owner->size() - offset;
-        if (invalid) return cxx::unexpected(RenderError{kInvalidDataReference});
-        RenderPayload result;
-        result.retained_bytes_ = owner->capacity();
-        result.bytes_ = OwnedWireBytes::fromOwner(owner, std::span(*owner).subspan(offset, size));
-        return result;
+        std::size_t bytes = sizeof(value);
+        const bool feature_overflow = value.features.capacity() > SIZE_MAX / sizeof(FeatureSelection);
+        const bool attachment_overflow = value.attachments.capacity() > SIZE_MAX / sizeof(RenderPayload);
+        if (feature_overflow || attachment_overflow)
+            return cxx::unexpected(RenderError{kRuntimeCapacity});
+        if (!addBytes(bytes, value.features.capacity() * sizeof(FeatureSelection)) ||
+            !addBytes(bytes, value.attachments.capacity() * sizeof(RenderPayload)))
+            return cxx::unexpected(RenderError{kRuntimeCapacity});
+        for (const auto& selection : value.features)
+        {
+            // Include the terminating character in heap string backing; SSO is conservatively charged too.
+            if (!addBytes(bytes, selection.type.capacity()) || !addBytes(bytes, 1) ||
+                !addBytes(bytes, selection.instance.capacity()) || !addBytes(bytes, 1) ||
+                !addBytes(bytes, selection.config.retainedBytes()))
+                return cxx::unexpected(RenderError{kRuntimeCapacity});
+        }
+        for (const auto& attachment : value.attachments)
+            if (!addBytes(bytes, attachment.retainedBytes()))
+                return cxx::unexpected(RenderError{kRuntimeCapacity});
+        return bytes;
     }
 
+    std::span<const error::ErrorDescriptor> renderRuntimeErrorDescriptors() noexcept
+    {
+        static constexpr error::ErrorDescriptor descriptors[]{
+            {"lux.render.runtime.state", "Invalid runtime state"},
+            {"lux.render.runtime.capacity", "Runtime capacity exhausted"},
+            {"lux.render.runtime.identity", "Stale or foreign runtime identity"},
+            {"lux.render.runtime.unsupported", "Unsupported runtime command"}
+        };
+        return descriptors;
+    }
 
     RenderClient::RenderClient(std::unique_ptr<Impl> state) noexcept : impl_(std::move(state)) {}
     RenderClient::~RenderClient() noexcept = default;
 
+    void RenderClient::operator delete(void* value) noexcept { ::operator delete(value); }
+
     RenderResult<std::unique_ptr<RenderClient>> RenderClient::create(
-        std::string_view name, RenderClientConfig config
-    ) noexcept
+        std::string_view name, RenderClientConfig config) noexcept
     {
         if (!config.retained_byte_limit) return cxx::unexpected(RenderError{kRuntimeCapacity});
         auto requester = ipc::IpcCore::instance().createRequester(name, {config.ring_capacity, config.ring_capacity});
@@ -103,110 +135,75 @@ namespace lux::render
 
     SessionIdentity RenderClient::session() const noexcept { return impl_->session; }
 
-    RenderResult<OperationBinding> RenderClient::Impl::bind(const OperationDescriptor& descriptor) const noexcept
+    RenderResult<RenderClient::Binding> RenderClient::bindCommand(const CommandDescriptor& descriptor) const noexcept
     {
-        if (!bound) return cxx::unexpected(RenderError{kRuntimeState});
-        if (auto valid = validateOperation(descriptor); !valid) return cxx::unexpected(valid.error());
-        auto id = bindCapability(manifest.view(), descriptor);
-        if (!id) return cxx::unexpected(id.error());
-        return OperationBinding{session, *id, descriptor};
+        if (!impl_->bound) return cxx::unexpected(RenderError{kRuntimeState});
+        if (auto valid = validateCommand(descriptor); !valid) return cxx::unexpected(valid.error());
+        for (const auto& capability : impl_->manifest)
+        {
+            if (capability.name != descriptor.name.name()) continue;
+            if (auto same = compatibleCommands(descriptor, capability.descriptor()); !same)
+                return cxx::unexpected(same.error());
+            return Binding{impl_->session, capability.id, capability.request_ops, capability.response_ops,
+                capability.code_pin};
+        }
+        return cxx::unexpected(RenderError{kRuntimeUnsupported});
     }
 
-    RenderResult<RequestId> RenderClient::Impl::hello() noexcept
+    RenderResult<std::pair<RequestId, BudgetLease>> RenderClient::reserve(
+        SessionIdentity session, CommandId command, const ipc::IpcTypeOps* response,
+        std::size_t request_bytes, std::size_t reply_capacity, std::size_t envelope_bytes) noexcept
     {
-        if (ready_sent) return cxx::unexpected(RenderError{kRuntimeState});
-        auto result = submitEncoded({}, 0, nullptr,
-            [](const void*, cxx::BinarySpanWriter&) noexcept -> RenderResult<void> { return {}; }, {}, 64 * 1024);
-        if (result) ready_sent = true;
-        return result;
-    }
-
-    RenderResult<RequestId> RenderClient::Impl::submitEncoded(const OperationBinding& binding, std::size_t size,
-        const void* value, RenderResult<void> (*encode)(const void*, cxx::BinarySpanWriter&) noexcept,
-        std::span<const RenderPayload> attachments, std::size_t reply_capacity) noexcept
-    {
-        auto& s = *this;
-        const bool hello = binding.operation_.isNull();
-        const bool invalid_state = s.closed || (hello ? s.ready_sent : !s.bound);
-        if (invalid_state) return cxx::unexpected(RenderError{kRuntimeState});
-        const bool invalid_capacity = s.requests.size() == s.capacity ||
-            attachments.size() > ipc::IpcMessage::attachment_capacity ||
-            size > wire_limits.max_wire_bytes - request_size || reply_capacity < reply_size;
-        if (invalid_capacity) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        const auto total = request_size + size;
-        const bool small = total <= ipc::IpcMessage::inline_capacity && attachments.empty() && reply_capacity <= 128;
-        std::size_t charged = total;
-        const auto add = [&](std::size_t bytes) {
-            if (bytes > s.budget->limit || charged > s.budget->limit - bytes) return false;
-            charged += bytes;
-            return true;
-        };
-        if (!add(reply_capacity) || (!small && !add(sizeof(Input))))
+        auto& state = *impl_;
+        const bool hello = command.isNull();
+        const bool is_invalid_state = state.closed || (hello ? state.ready_sent : !state.bound);
+        if (is_invalid_state) return cxx::unexpected(RenderError{kRuntimeState});
+        if (!hello && session != state.session) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        const bool is_full = state.requests.size() >= state.capacity;
+        const bool is_small_reply = reply_capacity < sizeof(RenderError);
+        if (is_full || is_small_reply) return cxx::unexpected(RenderError{kRuntimeCapacity});
+        std::size_t charge = request_bytes;
+        if (!addBytes(charge, reply_capacity) || !addBytes(charge, envelope_bytes) || charge > state.budget->limit)
             return cxx::unexpected(RenderError{kRuntimeCapacity});
-        for (const auto& payload : attachments)
-            if (!add(payload.retainedBytes())) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        auto current = s.budget->retained.load(std::memory_order_relaxed);
+        auto current = state.budget->retained.load(std::memory_order_relaxed);
         do
         {
-            if (current > s.budget->limit - charged) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        } while (!s.budget->retained.compare_exchange_weak(current, current + charged, std::memory_order_relaxed));
+            if (current > state.budget->limit - charge) return cxx::unexpected(RenderError{kRuntimeCapacity});
+        } while (!state.budget->retained.compare_exchange_weak(current, current + charge, std::memory_order_relaxed));
+        const auto id = state.requests.emplace(Pending{{}, session, command, response});
+        state.requests.find(id)->id = id;
+        return std::pair{id, BudgetLease{state.budget, charge}};
+    }
 
-        std::array<std::byte, 128> local;
-        std::unique_ptr<Input> input;
-        std::span<std::byte> storage(local.data(), small ? total : 0);
-        std::array<std::span<const std::byte>, ipc::IpcMessage::attachment_capacity> views;
-        for (std::size_t i = 0; i < attachments.size(); ++i) views[i] = attachments[i].bytes().view();
-        if (!small)
+    RenderResult<void> RenderClient::publish(RequestId request, ipc::IpcMessage& message,
+        SessionIdentity session, CommandId command, std::size_t reply_capacity) noexcept
+    {
+        message.setMetadata(RequestMetadata{session, request, command, reply_capacity});
+        const auto sent = impl_->requester.trySend(message);
+        if (!sent)
         {
-            input = std::make_unique<Input>();
-            input->budget = s.budget;
-            input->charged = charged;
-            input->header.resize(total);
-            storage = input->header;
-            for (std::size_t i = 0; i < attachments.size(); ++i)
-            {
-                input->payloads[i] = attachments[i];
-                input->views[i] = views[i];
-            }
-        }
-        const auto request = s.requests.emplace(Pending{{}, binding.session_, binding.descriptor_.reply,
-            small ? charged : 0, hello});
-        s.requests.find(request)->id = request;
-        const auto rollback = [&] {
-            s.requests.erase(request);
-            if (small) refund(s.budget.get(), charged);
-        };
-        cxx::BinarySpanWriter writer(storage);
-        writeRequest(writer, {binding.session_, request, binding.operation_, reply_capacity}, static_cast<std::uint32_t>(size));
-        auto encoded = encode(value, writer);
-        if (!encoded || !writer.good() || writer.size() != total)
-        {
-            rollback();
-            return cxx::unexpected(encoded ? RenderError{kInvalidWire} : encoded.error());
-        }
-        if (!hello)
-        {
-            auto valid = validateBoundWire(BorrowedWireView{binding.descriptor_.payload, storage.subspan(request_size),
-                std::span(views).first(attachments.size())}, wire_limits);
-            if (!valid) { rollback(); return cxx::unexpected(valid.error()); }
-        }
-        ipc::IpcMessage message;
-        if (small) { if (!message.tryAssignInline(storage)) std::terminate(); }
-        else if (!message.tryAdopt(input, input->header, std::span(input->views).first(attachments.size())))
-            std::terminate();
-        if (auto sent = s.requester.trySend(message); !sent)
-        {
-            rollback();
+            impl_->requests.erase(request);
             return cxx::unexpected(RenderError{sent.error() == ipc::EIpcError::WOULD_BLOCK ?
                 kRuntimeCapacity : kRuntimeState});
         }
-        return request;
+        return {};
     }
 
-    RenderCompletion::~RenderCompletion() noexcept
+    RenderResult<RequestId> RenderClient::hello() noexcept
     {
-        backing_ = {};
-        if (charged_) refund_(budget_.get(), charged_);
+        using Input = ValueEnvelope<HelloRequest>;
+        using Output = ValueEnvelope<HelloResponse>;
+        constexpr std::size_t reply_capacity = 64 * 1024;
+        constexpr auto overhead = sizeof(Input) - sizeof(HelloRequest) + sizeof(Output) - sizeof(HelloResponse);
+        auto reservation = reserve({}, {}, &ipc::IpcMessage::type<Output>(), sizeof(HelloRequest),
+            reply_capacity, overhead);
+        if (!reservation) return cxx::unexpected(reservation.error());
+        ipc::IpcMessage message;
+        message.emplace<Input>(std::move(reservation->second), HelloRequest{});
+        auto sent = publish(reservation->first, message, {}, {}, reply_capacity);
+        if (!sent) return cxx::unexpected(sent.error());
+        impl_->ready_sent = true;
+        return reservation->first;
     }
 
     RenderCompletion::RenderCompletion(RenderCompletion&& other) noexcept { *this = std::move(other); }
@@ -214,128 +211,151 @@ namespace lux::render
     RenderCompletion& RenderCompletion::operator=(RenderCompletion&& other) noexcept
     {
         if (this == &other) return *this;
-        backing_ = {};
-        if (charged_) refund_(budget_.get(), charged_);
+        backing_ = std::move(other.backing_);
         header = std::exchange(other.header, {});
         session = other.session;
-        schema = other.schema;
-        backing_ = std::move(other.backing_);
-        budget_ = std::move(other.budget_);
-        refund_ = other.refund_;
-        charged_ = std::exchange(other.charged_, 0);
-        payload_size_ = std::exchange(other.payload_size_, 0);
+        command_ = std::exchange(other.command_, {});
         return *this;
     }
 
-    std::span<const std::byte> RenderCompletion::bytes() const noexcept
-    {
-        return payload_size_ ? backing_.message.bytes().subspan(reply_size, payload_size_) : std::span<const std::byte>{};
-    }
-
-    std::span<const std::span<const std::byte>> RenderCompletion::attachments() const noexcept
-    {
-        return backing_.message.attachments();
-    }
-
-    RenderResult<ERenderReceive> RenderClient::Impl::tryReceive(RenderCompletion& output) noexcept
+    RenderResult<ERenderReceive> RenderClient::tryReceive(RenderCompletion& output) noexcept
     {
         if (output.active()) return cxx::unexpected(RenderError{kRuntimeState});
-        auto& s = *this;
-        for (unsigned i = 0; i < 8; ++i)
+        auto& state = *impl_;
+        for (unsigned consumed = 0; consumed != 8; ++consumed)
         {
-            const auto status = s.closed ? ipc::EIpcReceive::CLOSED : s.requester.tryReceive(output.backing_);
+            const auto status = state.closed ? ipc::EIpcReceive::CLOSED : state.requester.tryReceive(output.backing_);
             if (status == ipc::EIpcReceive::EMPTY) return ERenderReceive::EMPTY;
-            RequestId id;
-            ReplyFrame frame;
+            ReplyMetadata metadata;
+            RenderError failure;
             if (status == ipc::EIpcReceive::CLOSED)
             {
-                s.closed = true;
-                if (s.requests.empty()) return ERenderReceive::CLOSED;
-                id = s.requests.begin()->id;
-                frame.header = {id, EOperationOutcome::OUTCOME_UNKNOWN, {kRuntimeState}};
+                state.closed = true;
+                if (state.requests.empty()) return ERenderReceive::CLOSED;
+                const auto& pending = *state.requests.begin();
+                metadata = {pending.session, pending.id, ECommandOutcome::OUTCOME_UNKNOWN};
+                failure = {kRuntimeState};
             }
             else if (output.backing_.delivery == ipc::EIpcDelivery::ABORTED)
             {
-                auto original = readRequest(output.backing_.original_request.bytes());
-                if (!original) { output = {}; s.closed = true; return cxx::unexpected(original.error()); }
-                id = original->request;
-                frame.header = {id, EOperationOutcome::OUTCOME_UNKNOWN, {kRuntimeState}};
+                const auto original = output.backing_.original_request.metadata<RequestMetadata>();
+                metadata = {original.session, original.request, ECommandOutcome::OUTCOME_UNKNOWN};
+                failure = {kRuntimeState};
             }
             else
             {
-                auto decoded = readReply(output.backing_.message);
-                if (!decoded) { output = {}; s.closed = true; return cxx::unexpected(decoded.error()); }
-                frame = *decoded;
-                id = frame.header.request;
+                metadata = output.backing_.message.metadata<ReplyMetadata>();
             }
-            auto* found = s.requests.find(id);
-            if (!found) { output = {}; return cxx::unexpected(RenderError{kRuntimeIdentity}); }
-            const auto pending = *found;
-            s.requests.erase(id);
-            output.budget_ = s.budget;
-            output.refund_ = refund;
-            output.charged_ = pending.small_charge;
-            if (pending.abandoned) { output = {}; continue; }
-            output.header = frame.header;
-            output.session = frame.session;
-            output.schema = pending.reply;
-            output.payload_size_ = frame.payload.size();
-            if (frame.header.outcome == EOperationOutcome::SUCCESS)
+            auto* found = state.requests.find(metadata.request);
+            if (!found)
             {
-                if (pending.hello)
+                output = {};
+                return cxx::unexpected(RenderError{kRuntimeIdentity});
+            }
+            const auto pending = *found;
+            state.requests.erase(metadata.request);
+            if (pending.abandoned) { output = {}; continue; }
+            output.header = {metadata.request, metadata.outcome, failure};
+            output.session = metadata.session;
+            output.command_ = pending.command;
+            const bool is_remote_reply = status == ipc::EIpcReceive::RECEIVED &&
+                output.backing_.delivery != ipc::EIpcDelivery::ABORTED;
+            if (is_remote_reply)
+            {
+                const bool is_wrong_session = !pending.command.isNull() && metadata.session != pending.session;
+                const bool is_valid_outcome = metadata.outcome == ECommandOutcome::SUCCESS ||
+                    metadata.outcome == ECommandOutcome::FAILED || metadata.outcome == ECommandOutcome::CANCELLED ||
+                    metadata.outcome == ECommandOutcome::OUTCOME_UNKNOWN;
+                if (is_wrong_session || !is_valid_outcome)
                 {
-                    s.manifest = own(std::vector<std::byte>(frame.payload.begin(), frame.payload.end()));
-                    s.session = frame.session;
-                    s.bound = true;
+                    output.header = {metadata.request, ECommandOutcome::FAILED,
+                        {is_wrong_session ? kRuntimeIdentity : kProtocolContract}};
+                    return ERenderReceive::RECEIVED;
                 }
-                else if (frame.session != pending.session)
-                    output.header = {id, EOperationOutcome::FAILED, {kRuntimeIdentity}};
-                else if (pending.reply)
+            }
+            if (metadata.outcome == ECommandOutcome::SUCCESS)
+            {
+                if (pending.command.isNull())
                 {
-                    auto valid = validateBoundWire(BorrowedWireView{*pending.reply, frame.payload,
-                        output.backing_.message.attachments()}, wire_limits);
-                    if (!valid) output.header = {id, EOperationOutcome::FAILED, valid.error()};
+                    const auto* actual = output.backing_.message.operations();
+                    auto qualified = actual ? ipc::IpcMessage::bindType<ValueEnvelope<HelloResponse>>(*actual) :
+                        ipc::Result<ipc::IpcBoundType<ValueEnvelope<HelloResponse>>>(
+                            cxx::unexpected(ipc::EIpcError::INVALID_ARGUMENT));
+                    if (!qualified)
+                    {
+                        output.header.outcome = ECommandOutcome::FAILED;
+                        output.header.error = {kProtocolContract};
+                        return ERenderReceive::RECEIVED;
+                    }
+                    const auto& hello = output.backing_.message.get<ValueEnvelope<HelloResponse>>().value;
+                    auto failure_type = hello.failure_ops ? ipc::IpcMessage::bindType<ValueEnvelope<RenderError>>(
+                        *hello.failure_ops, hello.failure_code_pin) :
+                        ipc::Result<ipc::IpcBoundType<ValueEnvelope<RenderError>>>(
+                            cxx::unexpected(ipc::EIpcError::INVALID_ARGUMENT));
+                    if (!failure_type)
+                    {
+                        output.header = {metadata.request, ECommandOutcome::FAILED, {kProtocolContract}};
+                        return ERenderReceive::RECEIVED;
+                    }
+                    // One cold copy owns names and module pins; no Request/Response business data is copied.
+                    state.manifest = hello.capabilities;
+                    for (std::size_t index = 0; index != state.manifest.size(); ++index)
+                    {
+                        const auto& capability = state.manifest[index];
+                        const bool is_invalid = capability.id.isNull() || !capability.request_ops ||
+                            !capability.response_ops || !validateCommand(capability.descriptor());
+                        bool is_duplicate = false;
+                        for (std::size_t previous = 0; previous != index; ++previous)
+                        {
+                            const auto& earlier = state.manifest[previous];
+                            if (earlier.id == capability.id || earlier.name == capability.name)
+                            {
+                                is_duplicate = true;
+                                break;
+                            }
+                        }
+                        if (is_invalid || is_duplicate)
+                        {
+                            state.manifest.clear();
+                            output.header.outcome = ECommandOutcome::FAILED;
+                            output.header.error = {kProtocolContract};
+                            return ERenderReceive::RECEIVED;
+                        }
+                    }
+                    state.session = metadata.session;
+                    state.failure_type = *failure_type;
+                    state.bound = true;
                 }
-                else if (!frame.payload.empty()) output.header = {id, EOperationOutcome::FAILED, {kProtocolContract}};
+                else
+                {
+                    const bool is_wrong_type = output.backing_.message.operations() != pending.response;
+                    if (is_wrong_type)
+                        output.header = {metadata.request, ECommandOutcome::FAILED, {kProtocolContract}};
+                }
+            }
+            else if (!failure.type && status == ipc::EIpcReceive::RECEIVED)
+            {
+                const auto* actual = output.backing_.message.operations();
+                const bool qualified = state.failure_type ? actual == &state.failure_type->operations() :
+                    (actual && bool(ipc::IpcMessage::bindType<ValueEnvelope<RenderError>>(*actual)));
+                if (qualified) output.header.error = output.backing_.message.get<ValueEnvelope<RenderError>>().value;
+                else output.header = {metadata.request, ECommandOutcome::FAILED, {kProtocolContract}};
             }
             return ERenderReceive::RECEIVED;
         }
         return ERenderReceive::EMPTY;
     }
 
-    RenderResult<void> RenderClient::Impl::abandon(RequestId request) noexcept
+    RenderResult<void> RenderClient::abandon(RequestId request) noexcept
     {
-        auto* pending = requests.find(request);
+        auto* pending = impl_->requests.find(request);
         if (!pending || pending->abandoned) return cxx::unexpected(RenderError{kRuntimeIdentity});
         pending->abandoned = true;
         return {};
     }
 
-    std::size_t RenderClient::Impl::retainedBytes() const noexcept
+    std::size_t RenderClient::retainedBytes() const noexcept
     {
-        return budget->retained.load(std::memory_order_relaxed);
+        return impl_->budget->retained.load(std::memory_order_relaxed);
     }
-
-    RenderResult<RequestId> RenderClient::hello() noexcept { return impl_->hello(); }
-
-    RenderResult<OperationBinding> RenderClient::bind(const OperationDescriptor& descriptor) const noexcept
-    {
-        return impl_->bind(descriptor);
-    }
-
-    RenderResult<RequestId> RenderClient::submitEncoded(const OperationBinding& operation, std::size_t size,
-        const void* value, RenderResult<void> (*encode)(const void*, cxx::BinarySpanWriter&) noexcept,
-        std::span<const RenderPayload> attachments, std::size_t reply_capacity) noexcept
-    {
-        return impl_->submitEncoded(operation, size, value, encode, attachments, reply_capacity);
-    }
-
-    RenderResult<ERenderReceive> RenderClient::tryReceive(RenderCompletion& output) noexcept
-    {
-        return impl_->tryReceive(output);
-    }
-
-    RenderResult<void> RenderClient::abandon(RequestId request) noexcept { return impl_->abandon(request); }
-
-    std::size_t RenderClient::retainedBytes() const noexcept { return impl_->retainedBytes(); }
 }

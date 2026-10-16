@@ -1,6 +1,7 @@
 #include "TestHooks.hpp"
 #include "Allocation.hpp"
 #include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/render/data/Wire.hpp>
 #include <array>
 #include <barrier>
 #include <chrono>
@@ -26,30 +27,31 @@ extern "C" int ipcDestroyedA() noexcept;
 
 struct Scalar final { std::uint64_t value; };
 
-namespace lux::render
+struct Increment final
 {
-    template <> struct DataSchema<Scalar> final
-    {
-        static const DataSchemaDescriptor& describe() noexcept
-        {
-            static constexpr DataField fields[]{{"value", cxx::EScalarKind::U64}};
-            static constexpr DataSchemaDescriptor value{DataTypeIdView("ipc.scalar"), {1, 0}, {1, 0}, fields, 8, 8};
-            return value;
-        }
-        static RenderResult<std::size_t> wireSize(const Scalar&) noexcept { return 8; }
-        static RenderResult<void> encode(const Scalar& value, cxx::BinarySpanWriter& writer) noexcept
-        {
-            if (!writer.writeUnsigned(value.value)) return cxx::unexpected(RenderError{kInvalidWire});
-            return {};
-        }
-        static RenderResult<Scalar> decode(cxx::BinaryReader& reader, WireView) noexcept
-        {
-            Scalar value{};
-            if (!reader.readUnsigned(value.value)) return cxx::unexpected(RenderError{kInvalidWire});
-            return value;
-        }
-    };
-}
+    static constexpr std::string_view name = "ipc.increment";
+    using Request = Scalar;
+    using Response = Scalar;
+};
+
+struct AssetRequest final
+{
+    Scalar scalar;
+    lux::render::OwnedWireBytes asset;
+};
+
+struct AssetIncrement final
+{
+    static constexpr std::string_view name = "ipc.asset.increment";
+    using Request = AssetRequest;
+    using Response = Scalar;
+};
+
+struct TerminalMeta final
+{
+    lux::render::RequestId request;
+    lux::render::ECommandOutcome outcome;
+};
 
 namespace
 {
@@ -927,31 +929,23 @@ namespace
     void operationCost()
     {
         using namespace lux::render;
-        auto descriptor = operationDescriptor<Scalar, Scalar>("ipc.measured.increment");
-        check(static_cast<bool>(compatibleOperations(descriptor, descriptor)), "cold full operation binding");
-        lux::cxx::SlotMap<OperationDescriptor, OperationTag> routes;
-        const auto operation = routes.emplace(descriptor);
+        const auto& descriptor = commandDescriptor<Increment>();
+        check(static_cast<bool>(compatibleCommands(descriptor, descriptor)), "cold full typed command binding");
+        lux::cxx::SlotMap<CommandDescriptor, CommandTag> routes;
+        const auto command = routes.emplace(descriptor);
+        auto bound = must(IpcMessage::bindType<Scalar>(IpcMessage::type<Scalar>()));
         auto& core = IpcCore::instance();
         auto server = must(core.createResponder("operation.cost"));
         auto client = must(core.createRequester("operation.cost"));
         lux::cxx::SlotMap<int, RequestTag> pending(8);
         auto execute = [&](ReceivedRequest& work) {
-            lux::cxx::BinaryReader reader(work.message().bytes(), 128);
-            RequestId request;
-            OperationId target;
-            std::uint64_t value = 0;
-            check(reader.readUnsigned(request.index) && reader.readUnsigned(request.gen) &&
-                reader.readUnsigned(target.index) && reader.readUnsigned(target.gen) &&
-                reader.readUnsigned(value) && reader.requireFullyConsumed(), "decode complete request envelope");
-            check(routes.find(target) != nullptr, "endpoint-local operation dispatch");
-            std::array<std::byte, 17> bytes{};
-            lux::cxx::BinarySpanWriter writer(bytes);
-            writer.writeUnsigned(request.index);
-            writer.writeUnsigned(request.gen);
-            writer.writeUnsigned(static_cast<std::uint8_t>(EOperationOutcome::SUCCESS));
-            writer.writeUnsigned(value + 1);
+            const auto header = work.message().metadata<RequestHeader>();
+            check(routes.find(header.command) != nullptr, "endpoint-local command dispatch");
+            check(work.message().holds(bound.operations()), "canonical request type at boundary");
+            const auto& value = work.message().get<Scalar>();
             IpcMessage reply;
-            must(reply.tryAssignInline(bytes));
+            reply.emplace(bound, Scalar{value.value + 1});
+            reply.setMetadata(TerminalMeta{header.request, ECommandOutcome::SUCCESS});
             must(server.tryReply(work, reply));
         };
         std::ofstream samples("ipc-operation.csv");
@@ -987,39 +981,27 @@ namespace
                 testing::startAllocations();
                 const auto begin = Clock::now();
                 auto id = pending.emplace(i);
-                std::array<std::byte, 24> bytes{};
-                lux::cxx::BinarySpanWriter writer(bytes);
-                writer.writeUnsigned(id.index);
-                writer.writeUnsigned(id.gen);
-                writer.writeUnsigned(operation.index);
-                writer.writeUnsigned(operation.gen);
-                check(static_cast<bool>(DataSchema<Scalar>::encode(Scalar{static_cast<std::uint64_t>(i)}, writer)),
-                    "actual G2 field encoder");
                 IpcMessage input;
-                must(input.tryAssignInline(bytes));
+                input.emplace(bound, Scalar{static_cast<std::uint64_t>(i)});
+                input.setMetadata(RequestHeader{id, command});
                 must(client.trySend(input));
                 if (!paired) { auto work = receive(server); execute(work); }
                 IpcReply reply;
                 while (client.tryReceive(reply) != EIpcReceive::RECEIVED) {}
-                lux::cxx::BinaryReader reader(reply.message.bytes(), 128);
-                RequestId replied;
-                std::uint8_t outcome = 0;
-                std::uint64_t value = 0;
-                check(reader.readUnsigned(replied.index) && reader.readUnsigned(replied.gen) &&
-                    reader.readUnsigned(outcome) && reader.readUnsigned(value) && reader.requireFullyConsumed(),
-                    "decode complete terminal envelope");
-                check(replied == id && pending.find(replied) &&
-                    outcome == static_cast<std::uint8_t>(EOperationOutcome::SUCCESS) && value == i + 1,
-                    "validate terminal correlation and success");
-                pending.erase(replied);
+                const auto terminal = reply.message.metadata<TerminalMeta>();
+                check(reply.message.holds(bound.operations()), "canonical response type at boundary");
+                check(terminal.request == id && pending.find(terminal.request) &&
+                    terminal.outcome == ECommandOutcome::SUCCESS && reply.message.get<Scalar>().value == i + 1,
+                    "validate typed terminal correlation and success");
+                pending.erase(terminal.request);
                 const auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - begin).count();
                 const auto exe = ipc_allocation::stop(), dll = testing::stopAllocations();
-                check(exe == 0 && dll == 0, "complete small operation zero allocations");
+                check(exe == 0 && dll == 0, "complete small typed command zero allocations");
                 samples << (paired ? "two_core" : "same_thread") << ',' << i << ',' << ns << ',' << exe << ',' << dll << '\n';
             }
             finish = true;
             if (receiver.joinable()) receiver.join();
-            check(worker_allocations == 0, "server operation path zero allocations");
+            check(worker_allocations == 0, "server typed command path zero allocations");
 #ifdef _WIN32
             SetThreadAffinityMask(GetCurrentThread(), old_affinity);
 #endif
@@ -1031,73 +1013,89 @@ namespace
     void protocol()
     {
         using namespace lux::render;
-        auto descriptor = operationDescriptor<Scalar, Scalar>("ipc.increment");
-        check(static_cast<bool>(validateOperation(descriptor)), "original operation contract");
+        const auto& descriptor = commandDescriptor<AssetIncrement>();
+        check(static_cast<bool>(validateCommand(descriptor)), "typed command contract");
         auto conflict = descriptor;
         conflict.version.minor++;
-        check(!compatibleOperations(descriptor, conflict), "version rejected by pure protocol");
+        check(!compatibleCommands(descriptor, conflict), "version rejected by pure protocol");
         conflict = descriptor;
-        conflict.payload.alignment *= 2;
-        check(!compatibleOperations(descriptor, conflict), "layout rejected");
-
-        ipc_allocation::start();
-        auto encoded = encodeWire(Scalar{5}, {}, {8, 0});
-        const auto codec_allocations = ipc_allocation::stop();
-        check(static_cast<bool>(encoded) && codec_allocations > 0, "G2 owned encode allocations reported honestly");
-        std::printf("G2 encodeWire allocations=%zu\n", codec_allocations);
+        conflict.request.alignment *= 2;
+        check(!compatibleCommands(descriptor, conflict), "layout rejected");
+        conflict = descriptor;
+        conflict.request.type = lux::cxx::TypeToken(conflict.request.type.hash(), "collision.other");
+        check(!compatibleCommands(descriptor, conflict), "full type name rejects a hash collision");
+        auto request_type = must(IpcMessage::bindType<AssetRequest>(IpcMessage::type<AssetRequest>()));
+        auto response_type = must(IpcMessage::bindType<Scalar>(IpcMessage::type<Scalar>()));
 
         auto& core = IpcCore::instance();
         auto server = must(core.createResponder("protocol"));
         auto a = must(core.createRequester("protocol"));
         auto b = must(core.createRequester("protocol"));
         lux::cxx::SlotMap<int, RequestTag> pending_a, pending_b;
-        auto id_a = pending_a.emplace(1);
-        auto id_b = pending_b.emplace(1);
+        const auto id_a = pending_a.emplace(1);
+        const auto id_b = pending_b.emplace(1);
         check(id_a == id_b, "real Render RequestId collisions across independent clients");
+        const CommandId command{0, 1};
 
-        struct Holder { OwnedWireBytes bytes; };
         int shared_destroyed = 0;
         auto shared_source = std::make_shared<Owner>(1024 * 1024, &shared_destroyed);
-        std::copy(encoded->view().begin(), encoded->view().end(), shared_source->bytes.begin());
         std::weak_ptr<Owner> weak_source = shared_source;
-        auto source_bytes = OwnedWireBytes::fromOwner(shared_source, std::span(shared_source->bytes).first(8));
-        auto owner = std::make_unique<Holder>(Holder{std::move(source_bytes)});
-        const auto* pointer = owner->bytes.data();
+        auto source = OwnedWireBytes::fromOwner(shared_source, std::span(shared_source->bytes).first(8));
+        const auto* pointer = source.data();
         IpcMessage input;
-            must(input.tryAdopt(owner, owner->bytes.view()));
+        input.emplace(request_type, AssetRequest{{5}, std::move(source)});
+        input.setMetadata(RequestHeader{id_a, command});
         shared_source.reset();
-        check(shared_destroyed == 0, "exclusive holder pins original shared asset");
+        check(shared_destroyed == 0, "typed request pins original shared asset");
         must(a.trySend(input));
-        auto other = encode(101);
+        IpcMessage other;
+        other.emplace(request_type, AssetRequest{{101}, {}});
+        other.setMetadata(RequestHeader{id_b, command});
         must(b.trySend(other));
         auto first = receive(server);
         auto second = receive(server);
-        auto* asset = first.message().bytes().data() == pointer ? &first : &second;
+        check(first.message().holds(request_type.operations()) && second.message().holds(request_type.operations()),
+            "canonical request proof before typed access");
+        auto* asset = first.message().get<AssetRequest>().asset.data() == pointer ? &first : &second;
         auto* other_work = asset == &first ? &second : &first;
-        check(asset->message().bytes().data() == pointer, "SharedBytes holder transferred without copy");
-        std::uint64_t decoded_value = 0;
+        check(asset->message().get<AssetRequest>().asset.data() == pointer, "typed asset transferred without copy");
+        check(!weak_source.expired(), "source retained after original handle destroyed");
+        const auto answer = [&](ReceivedRequest& work) {
+            const auto header = work.message().metadata<RequestHeader>();
+            const auto& request = work.message().get<AssetRequest>();
+            IpcMessage reply;
+            reply.emplace(response_type, Scalar{request.scalar.value + 1});
+            reply.setMetadata(TerminalMeta{header.request, ECommandOutcome::SUCCESS});
+            must(server.tryReply(work, reply));
+        };
+        answer(*other_work);
+        answer(*asset);
         {
-            // Test-only upper-layer access to the pre-existing Asset owner; IPC
-            // transports neither this weak pointer nor any Render/Schema object.
-            auto locked = weak_source.lock();
-            check(static_cast<bool>(locked), "source retained after original handle destroyed");
-            auto retained = OwnedWireBytes::fromOwner(locked, asset->message().bytes());
-            auto decoded = decodeWire<Scalar>({descriptor.payload, retained, {}}, {8, 0});
-            check(decoded && decoded->value == 5, "original G2 decode");
-            decoded_value = decoded->value;
-            auto truncated = retained.subspan(0, 7);
-            check(!decodeWire<Scalar>({descriptor.payload, truncated, {}}, {8, 0}), "malformed G2 wire rejected");
+            auto result_a = receivedReply(a);
+            auto result_b = receivedReply(b);
+            check(result_a.message.holds(response_type.operations()) && result_b.message.holds(response_type.operations()),
+                "canonical response proof before typed access");
+            check(result_a.message.metadata<TerminalMeta>().request == id_a &&
+                result_a.message.get<Scalar>().value == 6, "reply A despite equal Render ID");
+            check(result_b.message.metadata<TerminalMeta>().request == id_b &&
+                result_b.message.get<Scalar>().value == 102, "reply B despite reverse completion");
+            check(result_a.original_request.get<AssetRequest>().asset.data() == pointer && shared_destroyed == 0,
+                "reply retains original asset owner");
         }
-        auto response_b = encode(decode(other_work->message()) + 1);
-        must(server.tryReply(*other_work, response_b));
-        auto response_a = encode(decoded_value + 1);
-        must(server.tryReply(*asset, response_a));
-        check(decode(receivedReply(a).message) == 6, "reply A despite equal Render ID");
-        check(decode(receivedReply(b).message) == 102, "reply B despite reverse completion");
-        check(shared_destroyed == 1 && weak_source.expired(), "shared asset's last release exactly once");
+        check(shared_destroyed == 1 && weak_source.expired(), "shared asset last release exactly once");
+
+        IpcMessage wrong;
+        wrong.emplace<Scalar>(Scalar{7});
+        wrong.setMetadata(RequestHeader{id_a, command});
+        must(a.trySend(wrong));
+        auto rejected = receive(server);
+        check(!rejected.message().holds(request_type.operations()), "wrong C++ request type rejected before access");
+        rejected.reset();
+        check(receivedReply(a).delivery == EIpcDelivery::ABORTED, "rejected raw input still settles IPC credit");
         a.reset(); b.reset(); server.reset();
         empty();
     }
+
 }
 
 int main(int argc, char** argv)

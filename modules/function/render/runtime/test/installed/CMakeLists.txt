@@ -20,6 +20,8 @@ foreach(consumer client_consumer runtime_consumer)
     add_custom_command(TARGET ${consumer} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:lux::engine::platform::platform_ipc>" "$<TARGET_FILE_DIR:${consumer}>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:lux::engine::render::render_client>" "$<TARGET_FILE_DIR:${consumer}>"
     )
     add_test(NAME installed.runtime.${consumer} COMMAND ${consumer})
 endforeach()
@@ -33,6 +35,8 @@ target_link_libraries(extension_consumer PRIVATE lux::engine::render::render_run
 add_custom_command(TARGET extension_consumer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "$<TARGET_FILE:lux::engine::platform::platform_ipc>" "$<TARGET_FILE_DIR:extension_consumer>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:lux::engine::render::render_client>" "$<TARGET_FILE_DIR:extension_consumer>"
 )
 
 add_test(NAME installed.runtime.external_storage COMMAND extension_consumer)

@@ -57,10 +57,10 @@ static TestCompletion call(TestClient& client, const TestCommand& command, bool 
     auto reply = wait(client, take(client.submit(command)));
     if (success)
     {
-        if (reply.header.outcome != EOperationOutcome::SUCCESS)
+        if (reply.header.outcome != ECommandOutcome::SUCCESS)
             std::fprintf(stderr, "operation=%u outcome=%u error=%llu\n", unsigned(command.operation),
                 unsigned(reply.header.outcome), reply.header.error.type);
-        CHECK(reply.header.outcome == EOperationOutcome::SUCCESS);
+        CHECK(reply.header.outcome == ECommandOutcome::SUCCESS);
     }
     return reply;
 }
@@ -96,7 +96,7 @@ int main()
     command.operation = ETestCommand::CREATE_EFFECT;
     command.description = native_fixture::target(config);
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
     const auto effect = call(*client, command).effect;
     command.features.clear();
     std::array<SceneId, 2> scenes;
@@ -124,7 +124,7 @@ int main()
         attached[i].operation = ETestCommand::READBACK;
     }
     CHECK(server->stats().compiled_graphs == 1 && server->stats().scoped_buffers_created == 11);
-    CHECK(call(*client, command, false).header.outcome == EOperationOutcome::FAILED); // duplicate Target writer
+    CHECK(call(*client, command, false).header.outcome == ECommandOutcome::FAILED); // duplicate Target writer
     for (unsigned i = 0; i < 4; ++i)
     {
         auto reply = call(*client, attached[i]);
@@ -164,13 +164,13 @@ int main()
         ++upload_progress;
     }
     CHECK(upload_progress > 10 && server->stats().submissions > before_progress.submissions + 40);
-    for (auto id : paused) CHECK(wait(*client, id).header.outcome == EOperationOutcome::SUCCESS);
+    for (auto id : paused) CHECK(wait(*client, id).header.outcome == ECommandOutcome::SUCCESS);
 
     // All four original groups stay attached while an independent candidate is blocked in cold code.
     auto candidate = command;
     candidate.operation = ETestCommand::CREATE_EFFECT;
     candidate.features.push_back({std::string(native_fixture::type.name()), "candidate", {1, 0},
-        &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
     worker.reject(true);
     CHECK(call(*upload, candidate, false).header.error.type == kRuntimeCapacity);
     worker.reject(false);
@@ -190,7 +190,7 @@ int main()
         CHECK(server->stats().compiled_graphs == 1);
         resume.count_down();
         const auto completed = wait(*upload, pending_compile);
-        CHECK(completed.header.outcome == EOperationOutcome::SUCCESS);
+        CHECK(completed.header.outcome == ECommandOutcome::SUCCESS);
         auto remove = candidate;
         remove.operation = ETestCommand::REMOVE_EFFECT;
         remove.features.clear();
@@ -202,7 +202,7 @@ int main()
     command = attached[0];
     command.operation = ETestCommand::DETACH;
     call(*client, command);
-    CHECK(call(*client, attached[0], false).header.outcome == EOperationOutcome::FAILED);
+    CHECK(call(*client, attached[0], false).header.outcome == ECommandOutcome::FAILED);
     pixel(call(*client, attached[1]), 32, 16, 16, expected[1]);
     command = attached[1];
     command.operation = ETestCommand::RESIZE_TARGET;
@@ -213,13 +213,13 @@ int main()
     CHECK(larger.bytes().size() == 64 * 48 * 4);
     pixel(larger, 64, 32, 24, expected[1]);
     command.description.samples = 4;
-    CHECK(call(*client, command, false).header.outcome == EOperationOutcome::FAILED);
+    CHECK(call(*client, command, false).header.outcome == ECommandOutcome::FAILED);
     CHECK(call(*client, attached[1]).bytes().size() == 64 * 48 * 4);
     CHECK(server->stats().compiled_graphs == 2);
     command.operation = ETestCommand::REMOVE_SCENE;
     command.scene = scenes[0];
     call(*client, command);
-    CHECK(call(*client, attached[1], false).header.outcome == EOperationOutcome::FAILED);
+    CHECK(call(*client, attached[1], false).header.outcome == ECommandOutcome::FAILED);
     pixel(call(*client, attached[2]), 32, 16, 16, expected[2]);
 
     command = {};
@@ -228,7 +228,7 @@ int main()
     config = {32, 32, 0, 0};
     command.description = native_fixture::target(config);
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
     const auto transfer_effect = call(*client, command).effect;
     command.features.clear();
     command = attached[2];
@@ -242,7 +242,7 @@ int main()
     pixel(held, 32, 16, 16, {32, 64, 128, 255});
     pixel(held, 32, 0, 0, {32, 64, 128, 255});
 
-    // Actual typed Client API latency, including encoding, polling, decode and server mutation.
+    // Actual typed Client API latency, including ownership moves, polling and server mutation.
     std::array<double, 100> samples{};
     std::array<std::size_t, 100> allocation_samples{};
     command = {};
@@ -276,7 +276,7 @@ int main()
     block.operation = ETestCommand::CREATE_EFFECT;
     block.description = native_fixture::target(config);
     block.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
     pause_programs.store(true);
     const auto blocked = take(upload->submit(block));
     entered.wait();
@@ -298,7 +298,7 @@ int main()
         CHECK(status == ERenderReceive::RECEIVED);
         if (completion.header.request == stopped)
         {
-            CHECK(!saw_stop && completion.header.outcome == EOperationOutcome::SUCCESS);
+            CHECK(!saw_stop && completion.header.outcome == ECommandOutcome::SUCCESS);
             saw_stop = true;
             resume.count_down();
         }
@@ -306,12 +306,12 @@ int main()
         {
             CHECK(completion.header.request == pending && !saw_readback);
             const auto terminal = completion.header.outcome;
-            CHECK(terminal == EOperationOutcome::CANCELLED || terminal == EOperationOutcome::SUCCESS);
+            CHECK(terminal == ECommandOutcome::CANCELLED || terminal == ECommandOutcome::SUCCESS);
             saw_readback = true;
         }
     }
     CHECK(saw_stop && saw_readback);
-    CHECK(wait(*upload, blocked).header.outcome == EOperationOutcome::CANCELLED);
+    CHECK(wait(*upload, blocked).header.outcome == ECommandOutcome::CANCELLED);
     thread.join();
     CHECK(run_ok && server->stats().validation_errors == 0);
     std::printf("G9 Runtime: 2 Scenes/4 Views/1 code; hot ticks=%llu submissions=%llu engine_new=%zu; "

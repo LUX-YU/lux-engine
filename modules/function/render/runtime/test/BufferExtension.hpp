@@ -2,98 +2,52 @@
 
 #include "../../native/vulkan/test/extension/NativeBuffer.hpp"
 #include "../../native/vulkan/test/extension/Feature.hpp"
-#include <lux/engine/render/runtime/vulkan/GpuCompletion.hpp>
-#include <lux/engine/render/runtime/Operations.hpp>
+#include <lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp>
+#include <lux/engine/render/features/Registration.hpp>
+#include <lux/engine/render/resource/Factory.hpp>
 
 namespace extension_test
 {
-    struct UploadBuffer final { BufferId id; ExternalDataRef source; };
-}
-
-namespace lux::render
-{
-    template <> struct DataSchema<extension_test::UploadBuffer>
+    inline RenderResult<void> setBuffer(void* native, CommandInvocation& invocation) noexcept
     {
-        static inline constexpr DataField fields[]{
-            {"index", cxx::EScalarKind::U32}, {"generation", cxx::EScalarKind::U32},
-            {"source", cxx::EScalarKind::U8, 1, EDataFieldKind::EXTERNAL}
-        };
-        static inline constexpr DataSchemaDescriptor schema{
-            DataTypeIdView("test.extension.UploadBuffer"), {1, 0}, {1, 0}, fields, 28, 4
-        };
-        static const DataSchemaDescriptor& describe() noexcept { return schema; }
-        static RenderResult<std::size_t> wireSize(const extension_test::UploadBuffer&) noexcept { return 28; }
-        static RenderResult<void> encode(const extension_test::UploadBuffer& value, cxx::BinarySpanWriter& out) noexcept
-        {
-            out.writeUnsigned(value.id.index);
-            out.writeUnsigned(value.id.gen);
-            out.writeUnsigned(value.source.attachment_index);
-            out.writeUnsigned(value.source.offset);
-            out.writeUnsigned(value.source.size);
-            return {};
-        }
-        template <class Wire> static RenderResult<extension_test::UploadBuffer> decode(cxx::BinaryReader& in, Wire) noexcept
-        {
-            extension_test::UploadBuffer value;
-            in.readUnsigned(value.id.index);
-            in.readUnsigned(value.id.gen);
-            in.readUnsigned(value.source.attachment_index);
-            in.readUnsigned(value.source.offset);
-            in.readUnsigned(value.source.size);
-            return value;
-        }
-    };
-}
-
-namespace extension_test
-{
-    inline const OperationDescriptor upload_operation = operationDescriptor<UploadBuffer, BufferBinding>(
-        "test.extension.UploadBuffer", {1, 0}, ECompletionContract::RESOURCE_GPU_READY);
-    inline const OperationDescriptor remove_operation = operationDescriptor<BufferBinding>("test.extension.RemoveBuffer");
-    inline const OperationDescriptor read_operation = operationDescriptor<BufferBinding, ReadbackResult>(
-        "test.extension.ReadBuffer", {1, 0}, ECompletionContract::RESOURCE_GPU_READY);
-
-    inline RenderResult<void> uploadBuffer(void*, RenderRequest& request, OperationContext& context) noexcept
-    {
-        auto input = request.decode<UploadBuffer>();
-        if (!input) return lux::cxx::unexpected(input.error());
-        std::array<std::byte, 8> reply{};
-        auto reservation = context.reserveGpuCompletion(reply);
+        CommandContext<SetBuffer> context(invocation);
+        const auto& input = context.request();
+        auto& session = *static_cast<vk::DeviceSession*>(native);
+        BufferBinding response;
+        auto reservation = vk::GpuCompletionReservation::reserve(invocation, session.queue(), &response);
         if (!reservation) return lux::cxx::unexpected(reservation.error());
-        auto& registry = context.resources();
+        auto& registry = session.resources();
         auto instance = registry.getOrCreate(registry.root(), "values", TestBufferStorage::description, nullptr);
         if (!instance) return lux::cxx::unexpected(instance.error());
         auto& storage = *static_cast<NativeBuffer*>(registry.native(*instance));
-        const auto bytes = request.payload().attachments[input->source.attachment_index].subspan(input->source.offset, input->source.size);
-        auto upload = storage.upload(bytes, input->id);
+        auto upload = storage.upload(input.source.bytes().view(), input.id);
         if (!upload) return lux::cxx::unexpected(upload.error());
-        lux::cxx::BinarySpanWriter writer(reply);
-        (void)DataSchema<BufferBinding>::encode({(*upload)->id}, writer);
-        if (auto ready = reservation->setReply(reply); !ready) return ready;
+        response.id = (*upload)->id;
+        if (auto ready = reservation->setReply(&response); !ready) return ready;
         auto work = vk::GpuWork::pending<[](NativeBuffer::Upload& value, vk::DeviceSession&) noexcept {
             return value.publish();
-        }>(GpuCompletionReservation::device(context), *upload);
+        }>(session, *upload);
         if (!work) return lux::cxx::unexpected(work.error());
         return reservation->commitWork(*work);
     }
 
-    inline RenderResult<void> removeBuffer(void*, RenderRequest& request, OperationContext& context) noexcept
+    inline RenderResult<void> removeBuffer(void* native, CommandInvocation& invocation) noexcept
     {
-        auto input = request.decode<BufferBinding>();
-        if (!input) return lux::cxx::unexpected(input.error());
-        auto& registry = context.resources();
+        CommandContext<RemoveBuffer> context(invocation);
+        const auto& input = context.request();
+        auto& registry = static_cast<vk::DeviceSession*>(native)->resources();
         auto id = registry.find(registry.root(), "values", TestBufferStorage::description);
         if (!id) return lux::cxx::unexpected(id.error());
-        auto result = static_cast<NativeBuffer*>(registry.native(*id))->remove(input->id);
-        return result ? request.reply() : result;
+        auto result = static_cast<NativeBuffer*>(registry.native(*id))->remove(input.id);
+        return result ? context.complete(Ack{}) : result;
     }
 
-    inline RenderResult<void> readBuffer(void*, RenderRequest& request, OperationContext& context) noexcept
+    inline RenderResult<void> readBuffer(void* native, CommandInvocation& invocation) noexcept
     {
-        auto input = request.decode<BufferBinding>();
-        if (!input) return lux::cxx::unexpected(input.error());
-        auto& session = GpuCompletionReservation::device(context);
-        auto& registry = context.resources();
+        CommandContext<ReadBuffer> context(invocation);
+        const auto& input = context.request();
+        auto& session = *static_cast<vk::DeviceSession*>(native);
+        auto& registry = session.resources();
         auto id = registry.find(registry.root(), "values", TestBufferStorage::description);
         if (!id) return lux::cxx::unexpected(id.error());
         struct Read final
@@ -103,7 +57,7 @@ namespace extension_test
             vk::PreparedStorageBinding source;
             vk::BufferPermit buffer;
             std::optional<vk::SubmissionTicket> ticket;
-            std::shared_ptr<std::array<std::byte, 16>> output;
+            std::shared_ptr<std::vector<std::byte>> output;
             ~Read() noexcept
             {
                 if (buffer)
@@ -115,18 +69,17 @@ namespace extension_test
                 session.resources().release(storage);
             }
         };
-        auto output = std::make_shared<std::array<std::byte, 16>>();
-        const auto attachment = OwnedWireBytes::fromOwner(output, std::span<const std::byte>(*output));
-        std::array<std::byte, 20> reply{};
-        lux::cxx::BinarySpanWriter writer(reply);
-        (void)DataSchema<ReadbackResult>::encode({{0, 0, 16}}, writer);
-        auto reservation = context.reserveGpuCompletion(reply, attachment);
+        auto output = std::make_shared<std::vector<std::byte>>(16);
+        auto payload = RenderPayload::fromVector(output, 0, output->size());
+        if (!payload) return lux::cxx::unexpected(payload.error());
+        ReadBuffer::Response response{std::move(*payload)};
+        auto reservation = vk::GpuCompletionReservation::reserve(invocation, session.queue(), &response);
         if (!reservation) return lux::cxx::unexpected(reservation.error());
         registry.retain(*id);
         auto owner = std::make_unique<Read>(session, *id, vk::PreparedStorageBinding{}, vk::BufferPermit{},
             std::optional<vk::SubmissionTicket>{}, output);
         vk::ResourcePlan plan{"values", GraphBufferDesc{16}, EGraphOrigin::IMPORTED};
-        auto argument = encodeWire(*input, {}, {8, 0});
+        auto argument = encodeWire(input, {}, {8, 0});
         if (!argument) return lux::cxx::unexpected(argument.error());
         auto prepared = static_cast<NativeBuffer*>(registry.native(*id))->prepare(plan, argument->view(), owner->source);
         if (!prepared) return prepared;
@@ -164,15 +117,23 @@ namespace extension_test
         }>(*ticket, owner);
     }
 
-    inline StorageRegistration TestBufferStorage::registration() noexcept
+}
+
+namespace lux::render
+{
+    template <> inline StorageRegistration nativeStorageBinding<extension_test::TestBufferStorage>() noexcept
     {
+        using namespace extension_test;
         static const std::array handlers{
-            OperationHandler{&upload_operation, uploadBuffer, nullptr, true},
-            OperationHandler{&remove_operation, removeBuffer},
-            OperationHandler{&read_operation, readBuffer, nullptr, true}
+            CommandHandler{&commandDescriptor<SetBuffer>(), setBuffer, nullptr, ECommandOwner::DEVICE_SESSION, true},
+            CommandHandler{&commandDescriptor<RemoveBuffer>(), removeBuffer, nullptr, ECommandOwner::DEVICE_SESSION},
+            CommandHandler{&commandDescriptor<ReadBuffer>(), readBuffer, nullptr, ECommandOwner::DEVICE_SESSION, true}
         };
-        return {&description, handlers, bufferFactory()};
+        return {&TestBufferStorage::description, handlers, bufferFactory()};
     }
 
-    inline FeatureRegistration TestBufferFeature::registration() noexcept { return {&definition, programs}; }
+    template <> inline FeatureRegistration nativeFeatureBinding<extension_test::TestBufferFeature>() noexcept
+    {
+        return {&extension_test::definition, extension_test::programs, {}};
+    }
 }

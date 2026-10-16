@@ -18,11 +18,26 @@ set_target_properties(ipc_typed_plugin PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin"
 )
 
+# A genuine, incompatible STL configuration. Only immutable POD TypeOps metadata
+# crosses this boundary; binding must reject it before constructing any object.
+add_library(ipc_abi_plugin SHARED AbiPlugin.cpp)
+
+target_link_libraries(ipc_abi_plugin PRIVATE platform_ipc)
+
+target_compile_definitions(ipc_abi_plugin PRIVATE
+    "_ITERATOR_DEBUG_LEVEL=$<IF:$<CONFIG:Debug>,0,1>"
+)
+
+set_target_properties(ipc_abi_plugin PROPERTIES
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin"
+)
+
 add_executable(platform_ipc_typed_test TypedMessage.cpp Allocation.cpp)
 
 target_link_libraries(platform_ipc_typed_test PRIVATE platform_ipc)
 target_include_directories(platform_ipc_typed_test PRIVATE ../pinclude)
-add_dependencies(platform_ipc_typed_test ipc_typed_plugin)
+add_dependencies(platform_ipc_typed_test ipc_typed_plugin ipc_abi_plugin)
 set_target_properties(platform_ipc_typed_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 add_test(NAME platform.ipc.typed COMMAND platform_ipc_typed_test)
 set_tests_properties(platform.ipc.typed PROPERTIES TIMEOUT 30)

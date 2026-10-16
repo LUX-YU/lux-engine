@@ -5,7 +5,7 @@ add_component(
     COMPONENT_NAME render_data
     NAMESPACE lux::engine::render
     OUTPUT_NAME lux_engine_render_data
-    SOURCE_FILES src/Schema.cpp src/Wire.cpp
+    SOURCE_FILES src/Schema.cpp src/Wire.cpp src/Payload.cpp
 )
 
 component_include_directories(

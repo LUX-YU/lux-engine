@@ -11,8 +11,8 @@ set(LUX_NATIVE_SOURCES
     src/Error.cpp src/DeviceSession.cpp src/device/Device.cpp src/device/Vma.cpp
     src/memory/Memory.cpp src/transfer/Submission.cpp src/retirement/Retirement.cpp
     src/Compile.cpp src/Shader.cpp src/Execution.cpp
-    src/transfer/TextureUpload.cpp src/transfer/Transfer.cpp src/transfer/GpuWork.cpp
-    src/texture/TextureStorage.cpp
+    src/transfer/TextureUpload.cpp src/transfer/Transfer.cpp src/transfer/GpuWork.cpp src/transfer/GpuCompletion.cpp
+    src/texture/TextureStorage.cpp src/texture/Commands.cpp
 )
 
 add_component(
@@ -26,7 +26,7 @@ add_component(
 component_include_directories(
     render_native_vulkan
     BUILD_TIME_EXPORT "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pinclude" "${LUX_VMA_INCLUDE_DIR}"
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/pinclude" "${CMAKE_CURRENT_SOURCE_DIR}/sinclude" "${LUX_VMA_INCLUDE_DIR}"
     INSTALL_TIME include
 )
 

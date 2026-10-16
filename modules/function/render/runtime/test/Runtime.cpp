@@ -5,11 +5,26 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <source_location>
 
 using namespace lux::render;
 using namespace std::chrono_literals;
-static void check(bool x) { if (!x) std::abort(); }
-template <class T> static T take(RenderResult<T> value) { check(bool(value)); return std::move(*value); }
+static void check(bool value, std::source_location location = std::source_location::current())
+{
+    if (!value)
+    {
+        std::fprintf(stderr, "runtime.control failed at %s:%u\n", location.file_name(), location.line());
+        std::fflush(stderr);
+        std::_Exit(EXIT_FAILURE);
+    }
+}
+
+template <class T> static T take(RenderResult<T> value,
+    std::source_location location = std::source_location::current())
+{
+    check(bool(value), location);
+    return std::move(*value);
+}
 
 static TestCompletion wait(TestClient& client, RequestId id)
 {
@@ -20,7 +35,8 @@ static TestCompletion wait(TestClient& client, RequestId id)
         if (result) return std::move(*result);
         std::this_thread::sleep_for(1ms);
     }
-    std::abort();
+    check(false);
+    return {};
 }
 
 static TestCompletion call(TestClient& client, TestCommand command)
@@ -48,41 +64,43 @@ int main()
     std::thread thread([&] { run_ok = bool(server->run()); });
     auto first = wait(*a, ready_a);
     auto second = wait(*b, ready_b);
-    check(first.header.outcome == EOperationOutcome::SUCCESS && first.session == second.session);
+    check(first.header.outcome == ECommandOutcome::SUCCESS && first.session == second.session);
     TestCompletion moved = std::move(second);
     check(!second.active() && moved.active());
-    const auto data_before = moved.bytes().data();
-    check(!b->tryReceive(moved) && moved.bytes().data() == data_before); // active output cannot be overwritten
+    const auto request_before = moved.header.request;
+    const auto retained_before = b->retainedBytes();
+    check(!b->tryReceive(moved) && moved.header.request == request_before &&
+        b->retainedBytes() == retained_before); // active output and its owner cannot be overwritten
     moved = {};
     TestCommand command;
     command.session = first.session;
     command.operation = ETestCommand::CREATE_SCENE;
     auto scene = call(*a, command);
-    check(scene.header.outcome == EOperationOutcome::SUCCESS);
+    check(scene.header.outcome == ECommandOutcome::SUCCESS);
     command.scene = scene.scene;
     command.operation = ETestCommand::CREATE_VIEW;
     auto view = call(*a, command);
-    check(view.header.outcome == EOperationOutcome::SUCCESS);
+    check(view.header.outcome == ECommandOutcome::SUCCESS);
     command.operation = ETestCommand::REMOVE_VIEW;
     command.view = view.view;
-    check(call(*a, command).header.outcome == EOperationOutcome::SUCCESS);
-    check(call(*a, command).header.outcome == EOperationOutcome::FAILED);
+    check(call(*a, command).header.outcome == ECommandOutcome::SUCCESS);
+    check(call(*a, command).header.outcome == ECommandOutcome::FAILED);
     command.operation = ETestCommand::CREATE_VIEW;
     auto recreated = call(*a, command);
     check(recreated.view.index == view.view.index && recreated.view.gen != view.view.gen);
     command.operation = ETestCommand::REMOVE_VIEW;
-    check(call(*a, command).header.outcome == EOperationOutcome::FAILED);
+    check(call(*a, command).header.outcome == ECommandOutcome::FAILED);
     command.operation = ETestCommand::CREATE_EFFECT;
     native_fixture::Config config;
     command.description = native_fixture::target(config);
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
     auto effect = call(*b, command);
-    check(effect.header.outcome == EOperationOutcome::SUCCESS && server->stats().compiled_graphs == 1);
+    check(effect.header.outcome == ECommandOutcome::SUCCESS && server->stats().compiled_graphs == 1);
     auto wrong_schema = DataSchema<native_fixture::Config>::describe();
     ++wrong_schema.wire_version.minor;
-    command.features[0].config_schema = &wrong_schema;
-    check(call(*b, command).header.outcome == EOperationOutcome::FAILED);
+    command.features[0].config_schema = wrong_schema;
+    check(call(*b, command).header.outcome == ECommandOutcome::FAILED);
     check(server->stats().compiled_graphs == 1);
     command.features.clear();
     command.operation = ETestCommand::CREATE_SCENE;
@@ -95,30 +113,35 @@ int main()
     while (std::chrono::steady_clock::now() < until)
     {
         auto created = call(*b, command);
-        check(created.header.outcome == EOperationOutcome::SUCCESS);
+        check(created.header.outcome == ECommandOutcome::SUCCESS);
         auto remove = command;
         remove.operation = ETestCommand::REMOVE_SCENE;
         remove.scene = created.scene;
-        check(call(*b, remove).header.outcome == EOperationOutcome::SUCCESS);
+        check(call(*b, remove).header.outcome == ECommandOutcome::SUCCESS);
         ++progress;
     }
     check(progress > 10 && server->stats().ticks > before + 10);
-    for (auto id : paused) check(wait(*a, id).header.outcome == EOperationOutcome::SUCCESS);
+    for (auto id : paused) check(wait(*a, id).header.outcome == ECommandOutcome::SUCCESS);
     auto stale = command;
     ++stale.session[0];
-    check(call(*b, stale).header.outcome == EOperationOutcome::FAILED);
+    check(call(*b, stale).header.outcome == ECommandOutcome::FAILED);
     command.operation = ETestCommand::STOP;
-    check(call(*b, command).header.outcome == EOperationOutcome::SUCCESS);
+    check(call(*b, command).header.outcome == ECommandOutcome::SUCCESS);
     thread.join();
     check(run_ok && server->stats().validation_errors == 0);
     std::printf("M3 control: progress=%llu ticks=%llu graphs=1 validation_errors=%llu warnings=%llu\n",
         progress, server->stats().ticks, server->stats().validation_errors, server->stats().validation_warnings);
     server.reset();
-    check(!first.bytes().empty()); // published reply and budget survive server
+    scene = {};
+    view = {};
+    recreated = {};
+    check(first.active() && first.header.request == ready_a && a->retainedBytes() > 0);
+    first = {};
+    check(a->retainedBytes() == 0); // published typed Hello and its budget survive server
 
     auto failure = take(createTestServer({"runtime.failure", true, 0xfffffffe}));
     auto client = take(TestClient::create("runtime.failure"));
     auto request = take(client->submit({}));
     check(!failure->run());
-    check(wait(*client, request).header.outcome == EOperationOutcome::OUTCOME_UNKNOWN);
+    check(wait(*client, request).header.outcome == ECommandOutcome::OUTCOME_UNKNOWN);
 }

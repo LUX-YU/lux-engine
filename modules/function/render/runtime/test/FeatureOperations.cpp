@@ -1,67 +1,92 @@
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "Allocation.hpp"
-#include "Wire.hpp"
+#include "TypedProtocol.hpp"
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <thread>
+#include <lux/cxx/core/CheckedArithmetic.hpp>
 
 using namespace lux::render;
 using namespace std::chrono_literals;
 using Clock = std::chrono::steady_clock;
+namespace cxx = lux::cxx;
 static void check(bool value) { if (!value) std::abort(); }
 template <class T> static T take(RenderResult<T> result) { check(bool(result)); return std::move(*result); }
 
 struct Exposure final { float value = 1; };
-struct UploadCustomData final { ExternalDataRef source; };
+struct SetExposure final
+{
+    static constexpr std::string_view name = "test.setExposure";
+    using Request = Exposure;
+    using Response = Exposure;
+};
+struct AcceptCustomData final
+{
+    static constexpr std::string_view name = "test.acceptCustomData";
+    struct Request final { RenderPayload source; };
+    using Response = Exposure;
+};
+struct OversizedResult final { std::vector<std::byte> bytes; };
+struct InvalidReply final
+{
+    static constexpr std::string_view name = "test.invalidReply";
+    using Request = Exposure;
+    using Response = OversizedResult;
+};
+struct UnqualifiedGpu final
+{
+    static constexpr std::string_view name = "test.unqualifiedGpu";
+    static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
+    using Request = Exposure;
+    using Response = Exposure;
+};
+struct PrematureGpu final
+{
+    static constexpr std::string_view name = "test.prematureGpu";
+    static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
+    using Request = Exposure;
+    using Response = Exposure;
+};
+struct WrongRequest final
+{
+    static constexpr std::string_view name = SetExposure::name;
+    using Request = std::uint64_t;
+    using Response = Exposure;
+};
+struct WrongResponse final
+{
+    static constexpr std::string_view name = SetExposure::name;
+    using Request = Exposure;
+    using Response = std::uint64_t;
+};
+struct WrongVersion final
+{
+    static constexpr std::string_view name = SetExposure::name;
+    static constexpr cxx::SchemaVersion version{1, 1};
+    using Request = Exposure;
+    using Response = Exposure;
+};
 namespace lux::render
 {
-    template <> struct DataSchema<Exposure>
+    template <> struct CommandValueTraits<AcceptCustomData::Request>
     {
-        static const DataSchemaDescriptor& describe() noexcept
+        static RenderResult<std::size_t> retainedBytes(const AcceptCustomData::Request& value) noexcept
         {
-            static constexpr DataField fields[]{{"value", cxx::EScalarKind::F32}};
-            static const DataSchemaDescriptor result{DataTypeIdView("test.exposure"), {1, 0}, {1, 0}, fields, 4, 4};
-            return result;
-        }
-        static RenderResult<std::size_t> wireSize(const Exposure&) noexcept { return 4; }
-        static RenderResult<void> encode(const Exposure& value, cxx::BinarySpanWriter& out) noexcept
-        {
-            out.writeFloat(value.value);
-            return {};
-        }
-        template <class Wire> static RenderResult<Exposure> decode(cxx::BinaryReader& in, Wire) noexcept
-        {
-            Exposure value;
-            in.readFloat(value.value);
-            return value;
+            auto bytes = cxx::checkedAdd(sizeof(value), value.source.retainedBytes());
+            if (!bytes) return cxx::unexpected(RenderError{kProtocolContract});
+            return *bytes;
         }
     };
-    template <> struct DataSchema<UploadCustomData>
+    template <> struct CommandValueTraits<OversizedResult>
     {
-        static const DataSchemaDescriptor& describe() noexcept
+        static RenderResult<std::size_t> retainedBytes(const OversizedResult& value) noexcept
         {
-            static constexpr DataField fields[]{{"source", cxx::EScalarKind::U8, 1, EDataFieldKind::EXTERNAL}};
-            static const DataSchemaDescriptor result{DataTypeIdView("test.custom.data"), {1, 0}, {1, 0}, fields, 20, 4};
-            return result;
-        }
-        static RenderResult<std::size_t> wireSize(const UploadCustomData&) noexcept { return 20; }
-        static RenderResult<void> encode(const UploadCustomData& value, cxx::BinarySpanWriter& out) noexcept
-        {
-            out.writeUnsigned(value.source.attachment_index);
-            out.writeUnsigned(value.source.offset);
-            out.writeUnsigned(value.source.size);
-            return {};
-        }
-        template <class Wire> static RenderResult<UploadCustomData> decode(cxx::BinaryReader& in, Wire) noexcept
-        {
-            UploadCustomData value;
-            in.readUnsigned(value.source.attachment_index);
-            in.readUnsigned(value.source.offset);
-            in.readUnsigned(value.source.size);
-            return value;
+            auto bytes = cxx::checkedAdd(sizeof(value), value.bytes.capacity());
+            if (!bytes) return cxx::unexpected(RenderError{kProtocolContract});
+            return *bytes;
         }
     };
 }
@@ -72,42 +97,42 @@ struct FeatureState final
     std::atomic<const std::byte*> source{};
     std::atomic<std::uint64_t> handler_ns{0};
     std::atomic<int> handler_value{-1};
+    std::atomic<unsigned> premature_rejected{0};
 };
-static const OperationDescriptor exposure = operationDescriptor<Exposure, Exposure>("test.setExposure");
-static const OperationDescriptor upload = operationDescriptor<UploadCustomData, Exposure>("test.uploadCustomData");
-static const OperationDescriptor wrong_reply = operationDescriptor<Exposure, Exposure>("test.invalidReply");
-static const std::array descriptors{exposure, upload, wrong_reply};
+static const std::array descriptors{
+    commandDescriptor<SetExposure>(), commandDescriptor<AcceptCustomData>(), commandDescriptor<InvalidReply>()
+};
 static const FeatureDefinition feature{
     FeatureTypeIdView("test.open.operation"), {1, 0}, nullptr,
     [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
     nullptr, descriptors
 };
-static_assert(!std::is_default_constructible_v<OperationBinding>);
-static_assert(!std::is_default_constructible_v<BoundOperation<Exposure, Exposure>>);
-static_assert(std::is_const_v<std::remove_reference_t<decltype(std::declval<BoundOperation<Exposure, Exposure>>().binding())>>);
+static_assert(!std::is_default_constructible_v<BoundCommand<SetExposure>>);
+static_assert(std::same_as<decltype(std::declval<const BoundCommand<SetExposure>&>().command()), CommandId>);
+template <class T>
+concept CanReplyExposure = requires(CommandContext<SetExposure>& context, T& value) { context.complete(value); };
+static_assert(CanReplyExposure<Exposure> && !CanReplyExposure<std::array<std::byte, 3>>);
 
-static RenderResult<void> setExposure(void* user, RenderRequest& request, OperationContext&) noexcept
+static RenderResult<void> setExposure(void* user, CommandInvocation& invocation) noexcept
 {
     auto& state = *static_cast<FeatureState*>(user);
     const auto start = Clock::now();
-    auto value = request.decode<Exposure>();
-    if (!value) return lux::cxx::unexpected(value.error());
-    state.exposure = value->value;
-    auto result = request.reply(Exposure{state.exposure});
+    CommandContext<SetExposure> context(invocation);
+    state.exposure = context.request().value;
+    auto result = context.complete(Exposure{state.exposure});
     state.handler_ns.store(std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count());
     state.handler_value.store(static_cast<int>(state.exposure), std::memory_order_release);
     return result;
 }
 
-static RenderResult<void> uploadData(void* user, RenderRequest& request, OperationContext&) noexcept
+static RenderResult<void> acceptData(void* user, CommandInvocation& invocation) noexcept
 {
-    auto value = request.decode<UploadCustomData>();
-    if (!value) return lux::cxx::unexpected(value.error());
-    const auto wire = request.payload(); // dispatch validated index and full range
-    const auto source = wire.attachments[value->source.attachment_index].subspan(value->source.offset, value->source.size);
+    CommandContext<AcceptCustomData> context(invocation);
+    const auto source = context.request().source.bytes().view();
+    if (source.empty()) return cxx::unexpected(RenderError{kInvalidDataReference});
     check(source.front() == std::byte{37} && source.back() == std::byte{37});
     static_cast<FeatureState*>(user)->source.store(source.data());
-    return request.reply(Exposure{float(source.size())});
+    return context.complete(Exposure{float(source.size())});
 }
 
 static RenderCompletion wait(RenderClient& client, RequestId id)
@@ -124,88 +149,124 @@ static RenderCompletion wait(RenderClient& client, RequestId id)
     std::abort();
 }
 
+template <RenderCommand C>
+static RequestId submit(RenderClient& client, const BoundCommand<C>& binding, typename C::Request request,
+    std::size_t reply_capacity = 128)
+{
+    return take(client.submit(binding, request, reply_capacity));
+}
+
 int main()
 {
     FeatureState state;
     const std::array handlers{
-        OperationHandler{&exposure, setExposure, &state}, OperationHandler{&upload, uploadData, &state},
-        OperationHandler{&wrong_reply, [](void*, RenderRequest& request, OperationContext&) noexcept {
-            const std::array<std::byte, 3> invalid{};
-            return request.reply(std::span<const std::byte>(invalid));
+        CommandHandler{&commandDescriptor<SetExposure>(), setExposure, &state},
+        CommandHandler{&commandDescriptor<AcceptCustomData>(), acceptData, &state},
+        CommandHandler{&commandDescriptor<InvalidReply>(), [](void*, CommandInvocation& invocation) noexcept {
+            CommandContext<InvalidReply> context(invocation);
+            OversizedResult result{std::vector<std::byte>(4096)};
+            const auto* owner = result.bytes.data();
+            auto status = context.complete(result);
+            check(!status && status.error().type == kRuntimeCapacity && result.bytes.data() == owner);
+            return status;
         }}
     };
     auto server = take(RenderServer::create({"runtime.open", true}));
-    check(bool(server->registerFeature({&feature, nullptr, handlers})));
-    check(!server->registerFeature({&feature, nullptr, handlers}));
-    const auto gpu = operationDescriptor<Exposure>("test.unqualifiedGpu", {1, 0}, ECompletionContract::RESOURCE_GPU_READY);
-    const std::array gpu_ops{gpu};
+    // A type-erased handler cannot be paired with an unrelated typed transport table.
+    check(!server->registerFeature<WrongRequest, AcceptCustomData, InvalidReply>({&feature, nullptr, handlers}));
+    check(!server->registerFeature<WrongResponse, AcceptCustomData, InvalidReply>({&feature, nullptr, handlers}));
+    check(bool(server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, nullptr, handlers})));
+    check(!server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, nullptr, handlers}));
+    const std::array gpu_commands{commandDescriptor<UnqualifiedGpu>()};
     const FeatureDefinition gpu_feature{FeatureTypeIdView("test.unqualified.gpu"), {1, 0}, nullptr,
-        feature.describe, nullptr, gpu_ops};
-    const std::array gpu_handlers{OperationHandler{&gpu, setExposure, &state}};
-    auto rejected = server->registerFeature({&gpu_feature, nullptr, gpu_handlers});
+        feature.describe, nullptr, gpu_commands};
+    const std::array gpu_handlers{CommandHandler{&commandDescriptor<UnqualifiedGpu>(), setExposure, &state}};
+    auto rejected = server->registerFeature<UnqualifiedGpu>({&gpu_feature, nullptr, gpu_handlers});
     check(!rejected && rejected.error().type == kProtocolContract);
+    const std::array premature_commands{commandDescriptor<PrematureGpu>()};
+    const FeatureDefinition premature_feature{FeatureTypeIdView("test.premature.gpu"), {1, 0}, nullptr,
+        feature.describe, nullptr, premature_commands};
+    const std::array premature_handlers{
+        CommandHandler{&commandDescriptor<PrematureGpu>(), [](void* owner, CommandInvocation& invocation) noexcept {
+            CommandContext<PrematureGpu> context(invocation);
+            auto reply = context.complete(Exposure{9});
+            check(!reply && reply.error().type == kProtocolContract && context.active());
+            ++static_cast<FeatureState*>(owner)->premature_rejected;
+            return reply;
+        }, &state, ECommandOwner::PROVIDED, true}
+    };
+    check(bool(server->registerFeature<PrematureGpu>({&premature_feature, nullptr, premature_handlers})));
     auto a = take(RenderClient::create("runtime.open"));
     auto b = take(RenderClient::create("runtime.open"));
     const auto hello_a = take(a->hello()), hello_b = take(b->hello());
     check(hello_a == hello_b);
     bool run_ok = false;
     std::thread worker([&] { render_allocation::participate = true; run_ok = bool(server->run()); });
-    check(wait(*a, hello_a).header.outcome == EOperationOutcome::SUCCESS);
-    check(wait(*b, hello_b).header.outcome == EOperationOutcome::SUCCESS);
-    check(!server->registerFeature({&feature, nullptr, handlers}));
-    check(!a->bind(gpu));
-    auto bound_a = take(a->bind<Exposure, Exposure>(exposure));
-    auto bound_b = take(b->bind<Exposure, Exposure>(exposure));
-    auto invalid = exposure;
-    ++invalid.payload.wire_version.minor;
-    check(!a->bind<Exposure, Exposure>(invalid));
-    invalid = exposure;
-    ++invalid.version.minor;
-    check(!a->bind(invalid));
-    const auto id_a = take(a->submit(bound_a, Exposure{3}));
-    const auto id_b = take(b->submit(bound_b, Exposure{7}));
+    check(wait(*a, hello_a).header.outcome == ECommandOutcome::SUCCESS);
+    check(wait(*b, hello_b).header.outcome == ECommandOutcome::SUCCESS);
+    check(!server->registerFeature<SetExposure, AcceptCustomData, InvalidReply>({&feature, nullptr, handlers}));
+    check(!a->bind<UnqualifiedGpu>());
+    auto bound_a = take(a->bind<SetExposure>());
+    auto bound_b = take(b->bind<SetExposure>());
+    check(!a->bind<WrongRequest>() && !a->bind<WrongResponse>() && !a->bind<WrongVersion>());
+    const auto id_a = submit(*a, bound_a, Exposure{3});
+    const auto id_b = submit(*b, bound_b, Exposure{7});
     check(id_a == id_b);
-    auto reply_b = wait(*b, id_b);
-    auto reply_a = wait(*a, id_a);
-    check(take(decodeWireBytes<Exposure>({*reply_a.schema, reply_a.bytes(), {}}, {128, 0})).value == 3);
-    check(take(decodeWireBytes<Exposure>({*reply_b.schema, reply_b.bytes(), {}}, {128, 0})).value == 7);
-    reply_a = {};
-    reply_b = {};
+    {
+        auto reply_b = take(std::move(wait(*b, id_b)).take(bound_b));
+        auto reply_a = take(std::move(wait(*a, id_a)).take(bound_a));
+        check(reply_a.response().value == 3 && reply_b.response().value == 7);
+    }
 
-    auto bad = take(a->bind<Exposure, Exposure>(wrong_reply));
-    check(wait(*a, take(a->submit(bad, Exposure{}))).header.outcome == EOperationOutcome::FAILED);
+    auto bad = take(a->bind<InvalidReply>());
+    auto failed = wait(*a, submit(*a, bad, Exposure{}));
+    check(failed.header.outcome == ECommandOutcome::FAILED && failed.header.error.type == kRuntimeCapacity);
+    failed = {};
+    auto premature = take(a->bind<PrematureGpu>());
+    failed = wait(*a, submit(*a, premature, Exposure{}));
+    check(failed.header.outcome == ECommandOutcome::FAILED && failed.header.error.type == kProtocolContract);
+    check(state.premature_rejected == 1);
+    failed = {};
 
     std::atomic<unsigned> destroyed{0};
     auto owner = std::shared_ptr<const std::vector<std::byte>>(new std::vector<std::byte>(1024 * 1024, std::byte{37}),
         [&](auto* p) { delete p; ++destroyed; });
     const auto* address = owner->data() + 17;
-    std::array payloads{take(RenderPayload::fromVector(owner, 17, 64))};
-    auto upload_binding = take(b->bind<UploadCustomData, Exposure>(upload));
-    check(!b->submit(upload_binding, UploadCustomData{{1, 0, 64}}, payloads));
-    auto uploaded = wait(*b, take(b->submit(upload_binding, UploadCustomData{{0, 0, 64}}, payloads)));
-    check(state.source.load() == address && b->retainedBytes() >= 1024 * 1024);
-    owner.reset();
-    payloads = {};
-    check(destroyed == 0);
-    uploaded = {};
+    auto data_binding = take(b->bind<AcceptCustomData>());
+    check(!RenderPayload::fromVector(owner, owner->size() - 1, 64));
+    auto invalid_data = wait(*b, submit(*b, data_binding, {}));
+    check(invalid_data.header.outcome == ECommandOutcome::FAILED &&
+        invalid_data.header.error.type == kInvalidDataReference);
+    invalid_data = {};
+    AcceptCustomData::Request data{take(RenderPayload::fromVector(owner, 17, 64))};
+    const auto accepted = take(b->submit(data_binding, data));
+    check(data.source.bytes().empty() && data.source.retainedBytes() == 0);
+    {
+        auto uploaded = take(std::move(wait(*b, accepted)).take(data_binding));
+        check(uploaded.response().value == 64 && uploaded.request().source.bytes().data() == address);
+        check(state.source.load() == address && b->retainedBytes() >= 1024 * 1024);
+        owner.reset();
+        check(destroyed == 0);
+    }
     check(destroyed == 1 && b->retainedBytes() == 0);
 
-    // Real API, bound once: encoding + send + server validation/handler/reply + consume/decode.
-    // Server loop still has its declared 1 ms host idle; report it, do not attribute waiting to IPC.
+    // Actual typed API: construct, submit, dispatch, complete, consume, reclaim.
+    // The Server retains its declared 1 ms idle; waiting is not presented as IPC cost.
     struct Sample { long long submit, wait, consume, handler; std::size_t allocations; };
     std::array<Sample, 1000> samples;
     render_allocation::participate = true;
-    for (unsigned i = 0; i < 20; ++i) wait(*a, take(a->submit(bound_a, Exposure{float(i)})));
+    for (unsigned i = 0; i < 20; ++i) wait(*a, submit(*a, bound_a, Exposure{float(i)}));
     for (unsigned i = 0; i < samples.size(); ++i)
     {
         render_allocation::calls.store(0);
         render_allocation::window.store(true);
         const auto begin = Clock::now();
-        const auto id = take(a->submit(bound_a, Exposure{float(i)}));
+        const auto id = submit(*a, bound_a, Exposure{float(i)});
         const auto submitted = Clock::now();
         RenderCompletion result;
         auto received = submitted;
         long long consume = 0;
+        bool consumed = false;
         while (Clock::now() - submitted < 10s)
         {
             const auto attempt = Clock::now();
@@ -213,17 +274,18 @@ int main()
             if (status == ERenderReceive::RECEIVED)
             {
                 check(result.header.request == id);
-                check(take(decodeWireBytes<Exposure>({*result.schema, result.bytes(), {}}, {128, 0})).value == float(i));
+                auto typed = take(std::move(result).take(bound_a));
+                check(typed.response().value == float(i));
                 received = Clock::now();
                 consume = std::chrono::duration_cast<std::chrono::nanoseconds>(received - attempt).count();
+                consumed = true;
                 break;
             }
             check(status != ERenderReceive::CLOSED);
             std::this_thread::yield();
         }
-        check(result.active());
+        check(consumed);
         while (state.handler_value.load(std::memory_order_acquire) != static_cast<int>(i)) std::this_thread::yield();
-        result = {};
         render_allocation::window.store(false);
         samples[i] = {std::chrono::duration_cast<std::chrono::nanoseconds>(submitted - begin).count(),
             std::chrono::duration_cast<std::chrono::nanoseconds>(received - submitted).count(), consume,
@@ -231,51 +293,54 @@ int main()
         check(samples[i].allocations == 0);
     }
     std::ofstream csv("runtime-open-operation.csv");
-    csv << "sample,submit_encode_ns,wait_and_consume_ns,successful_consume_decode_ns,handler_reply_ns,engine_new_calls\n";
+    csv << "sample,submit_construct_ns,wait_and_consume_ns,successful_consume_typed_ns,handler_reply_ns,engine_new_calls\n";
     for (std::size_t i = 0; i < samples.size(); ++i)
     {
         const auto& s = samples[i];
         csv << i << ',' << s.submit << ',' << s.wait << ',' << s.consume << ',' << s.handler << ',' << s.allocations << '\n';
     }
-    // An untrusted raw peer bypasses Client binding; malformed bytes still fail at the server boundary.
+    // A raw peer bypasses binding. The sole Server boundary rejects bad object type,
+    // insufficient terminal budget, stale generation and wrong Session independently.
     namespace ipc = lux::platform::ipc;
     auto raw_result = ipc::IpcCore::instance().createRequester("runtime.open");
     check(bool(raw_result));
     auto raw = std::move(*raw_result);
     for (unsigned invalid_case = 0; invalid_case < 4; ++invalid_case)
     {
-        std::array<std::byte, 52> storage{};
         const RequestId id{77, 1};
-        lux::cxx::BinarySpanWriter writer(storage);
-        const auto payload_size = invalid_case == 0 ? 3u : 4u;
         auto identity = a->session();
-        auto operation = bound_a.binding().operation();
-        if (invalid_case == 2) ++operation.gen;
+        auto command = bound_a.command();
+        if (invalid_case == 2) ++command.gen;
         if (invalid_case == 3) ++identity[0];
-        runtime_detail::writeRequest(writer, {identity, id, operation,
-            invalid_case == 1 ? 1u : 128u}, payload_size);
         ipc::IpcMessage message;
-        check(message.tryAssignInline(std::span(storage).first(runtime_detail::request_size + payload_size)));
+        if (invalid_case == 0) message.emplace<std::uint64_t>(0);
+        else message.emplace<runtime_detail::ValueEnvelope<Exposure>>(runtime_detail::BudgetLease{}, Exposure{});
+        message.setMetadata(runtime_detail::RequestMetadata{identity, id, command, invalid_case == 1 ? 1u : 128u});
         check(bool(raw.trySend(message)));
         ipc::IpcReply reply;
         const auto deadline = Clock::now() + 10s;
-        while (raw.tryReceive(reply) == ipc::EIpcReceive::EMPTY) check(Clock::now() < deadline);
+        ipc::EIpcReceive status;
+        do { status = raw.tryReceive(reply); check(Clock::now() < deadline); } while (status == ipc::EIpcReceive::EMPTY);
+        check(status == ipc::EIpcReceive::RECEIVED);
         if (invalid_case != 1)
         {
-            auto result = take(runtime_detail::readReply(reply.message));
-            check(result.header.request == id && result.header.outcome == EOperationOutcome::FAILED);
-            if (invalid_case >= 2) check(result.header.error.type == kRuntimeIdentity);
+            const auto terminal = reply.message.metadata<runtime_detail::ReplyMetadata>();
+            check(terminal.request == id && terminal.outcome == ECommandOutcome::FAILED);
+            check(reply.message.holds(ipc::IpcMessage::type<runtime_detail::ValueEnvelope<RenderError>>()));
+            const auto& error = reply.message.get<runtime_detail::ValueEnvelope<RenderError>>().value;
+            check(error.type == (invalid_case >= 2 ? kRuntimeIdentity : kProtocolContract));
         }
         else check(reply.delivery == ipc::EIpcDelivery::ABORTED);
     }
     raw.reset();
-    auto held = wait(*a, take(a->submit(bound_a, Exposure{42})));
+    auto held = take(std::move(wait(*a, submit(*a, bound_a, Exposure{42}))).take(bound_a));
     check(a->retainedBytes() != 0);
     a.reset();
     server->stop();
     worker.join();
     check(run_ok && server->stats().validation_errors == 0);
     server.reset();
-    check(take(decodeWireBytes<Exposure>({*held.schema, held.bytes(), {}}, {128, 0})).value == 42);
-    std::printf("open Feature operations, stale session/generation, exact schemas, pointer ownership; 1000 full API requests zero engine allocations; GPU validation errors=0\n");
+    check(held.response().value == 42);
+    std::printf("Typed zero-Pass Feature, immutable binding, raw type/session/generation rejection, retained owner; "
+        "1000 full API requests zero engine allocations; GPU validation errors=0\n");
 }

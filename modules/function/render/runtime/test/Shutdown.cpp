@@ -61,7 +61,7 @@ static TestCompletion wait(TestClient& client, RequestId id)
 static TestCompletion call(TestClient& client, const TestCommand& command)
 {
     auto result = wait(client, take(client.submit(command)));
-    check(result.header.outcome == EOperationOutcome::SUCCESS);
+    check(result.header.outcome == ECommandOutcome::SUCCESS);
     return result;
 }
 
@@ -86,7 +86,7 @@ static void exercise(bool close_requester)
     command.target = call(*client, command).target;
     command.operation = ETestCommand::CREATE_EFFECT;
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
     command.effect = call(*client, command).effect;
     command.features.clear();
     command.operation = ETestCommand::ATTACH;
@@ -109,7 +109,7 @@ static void exercise(bool close_requester)
     {
         command.operation = ETestCommand::STOP;
         call(*client, command);
-        check(wait(*client, request).header.outcome == EOperationOutcome::CANCELLED);
+        check(wait(*client, request).header.outcome == ECommandOutcome::CANCELLED);
     }
     thread.join();
     check(run_ok && backing == 0 && waited && server->stats().validation_errors == 0);
@@ -140,7 +140,7 @@ static void retirementAtomicity()
     const auto second_target = command.target;
     command.operation = ETestCommand::CREATE_EFFECT;
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        &DataSchema<native_fixture::Config>::describe(), take(encodeWire(config, {}, native_fixture::limits))});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(config, {}, native_fixture::limits)).view())});
     command.effect = call(*client, command).effect;
     command.features.clear();
     command.operation = ETestCommand::ATTACH;
@@ -164,13 +164,13 @@ static void retirementAtomicity()
         command.operation = operation;
         command.description.width = 16;
         auto rejected = wait(*client, take(client->submit(command)));
-        check(rejected.header.outcome == EOperationOutcome::FAILED);
+        check(rejected.header.outcome == ECommandOutcome::FAILED);
         check(rejected.header.error.type == kRuntimeCapacity);
         check(!take(receiveExpected(*client, request)) && backing == 6 && !waited);
     }
     hold.store(false); // observe real fence completion; the untouched readback must still succeed
     const auto pixels = wait(*client, request);
-    check(pixels.header.outcome == EOperationOutcome::SUCCESS);
+    check(pixels.header.outcome == ECommandOutcome::SUCCESS);
     check(pixels.bytes().size() == 32 * 32 * 4);
     const auto center = (16 * 32 + 16) * 4;
     check(pixels.bytes()[center] == std::byte{255} && pixels.bytes()[center + 1] == std::byte{0});

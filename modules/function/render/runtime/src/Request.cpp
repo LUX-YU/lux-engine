@@ -1,6 +1,4 @@
-#include <lux/engine/render/runtime/vulkan/GpuCompletion.hpp>
-#include <lux/engine/render/runtime/RenderServer.hpp>
-#include "Wire.hpp"
+#include "Request.hpp"
 #include "Deferred.hpp"
 
 namespace lux::render
@@ -9,84 +7,73 @@ namespace lux::render
     using namespace runtime_detail;
 
     RenderRequest::RenderRequest(ipc::ReceivedRequest input, ipc::IpcResponder& responder,
-        SessionIdentity session, RequestId request, std::size_t capacity, const OperationDescriptor* descriptor) noexcept
-        : input_(std::move(input)), responder_(&responder), session_(session), request_(request),
-          reply_capacity_(capacity), descriptor_(descriptor) {}
+        SessionIdentity session, RequestId request, std::size_t capacity, const CommandDescriptor* descriptor,
+        const CommandTransport* transport, const ipc::IpcBoundType<ValueEnvelope<RenderError>>& failure_type,
+        std::shared_ptr<const void> code_pin) noexcept
+        : code_pin_(std::move(code_pin)), input_(std::move(input)), responder_(&responder), session_(session),
+          request_(request), reply_capacity_(capacity), descriptor_(descriptor), transport_(transport),
+          failure_type_(&failure_type) {}
 
-    BorrowedWireView RenderRequest::payload() const noexcept
+    BudgetLease RenderRequest::splitBudget(std::size_t bytes) noexcept
     {
-        return {descriptor_->payload, input_.message().bytes().subspan(request_size), input_.message().attachments()};
+        if (!transport_) return {}; // An untrusted raw peer has no Client budget credential.
+        // ReceivedRequest owns a non-const message; only its public inspection interface is const.
+        auto& input = const_cast<ipc::IpcMessage&>(input_.message());
+        return transport_->request_budget(input).split(bytes);
     }
 
-    RenderResult<void> RenderRequest::validateReply(std::span<const std::byte> bytes,
-        const OwnedWireBytes& attachment) const noexcept
+    RenderResult<std::size_t> RenderRequest::prepareResponse(void* response, ipc::IpcMessage& output) noexcept
     {
-        const bool exceeds_budget = bytes.size() > reply_capacity_ - std::min(reply_capacity_, reply_size) ||
-            attachment.size() > reply_capacity_ - std::min(reply_capacity_, reply_size + bytes.size());
-        if (exceeds_budget) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        if (!descriptor_) return {};
-        if (descriptor_->reply)
-        {
-            const std::array views{attachment.view()};
-            return validateBoundWire(BorrowedWireView{*descriptor_->reply, bytes,
-                attachment.empty() ? std::span<const std::span<const std::byte>>{} :
-                    std::span<const std::span<const std::byte>>(views)}, {reply_capacity_, reply_capacity_});
-        }
-        if (!bytes.empty() || !attachment.empty()) return cxx::unexpected(RenderError{kProtocolContract});
-        return {};
+        if (!active() || unreplied_) return cxx::unexpected(RenderError{kRuntimeState});
+        auto bytes = transport_->response_bytes(response);
+        if (!bytes) return cxx::unexpected(bytes.error());
+        if (*bytes > reply_capacity_) return cxx::unexpected(RenderError{kRuntimeCapacity});
+        const auto overhead = transport_->response->size() - descriptor_->response.size;
+        transport_->package_response(output, response, {}, code_pin_);
+        return *bytes + overhead; // Client checked this bounded sum before moving the input.
     }
 
-    RenderResult<void> RenderRequest::reply(std::span<const std::byte> bytes, OwnedWireBytes attachment) noexcept
+    RenderResult<void> RenderRequest::complete(void* response) noexcept
     {
-        if (descriptor_ && descriptor_->completion == ECompletionContract::RESOURCE_GPU_READY)
-            return cxx::unexpected(RenderError{kProtocolContract});
-        if (auto valid = validateReply(bytes, attachment); !valid) return valid;
-        return publish(EOperationOutcome::SUCCESS, {}, bytes, std::move(attachment));
+        if (gpuReady()) return cxx::unexpected(RenderError{kProtocolContract});
+        ipc::IpcMessage output;
+        auto bytes = prepareResponse(response, output);
+        if (!bytes) return cxx::unexpected(bytes.error());
+        return publishPrepared(output, *bytes);
+    }
+
+    RenderResult<void> RenderRequest::publishPrepared(ipc::IpcMessage& message, std::size_t charge) noexcept
+    {
+        transport_->response_budget(message) = splitBudget(charge);
+        return publish(message, ECommandOutcome::SUCCESS);
+    }
+
+    RenderResult<void> RenderRequest::publishError(ECommandOutcome outcome, RenderError error) noexcept
+    {
+        if (!active() || unreplied_) return cxx::unexpected(RenderError{kRuntimeState});
+        ipc::IpcMessage message;
+        message.emplace(*failure_type_, splitBudget(sizeof(ValueEnvelope<RenderError>)), std::move(error));
+        return publish(message, outcome);
     }
 
     RenderResult<void> RenderRequest::fail(RenderError error) noexcept
     {
-        return publish(EOperationOutcome::FAILED, error, {}, {});
+        return publishError(ECommandOutcome::FAILED, error);
     }
 
     RenderResult<void> RenderRequest::cancel() noexcept
     {
-        return publish(EOperationOutcome::CANCELLED, {}, {}, {});
+        return publishError(ECommandOutcome::CANCELLED, {});
     }
 
-    RenderResult<void> RenderRequest::publish(EOperationOutcome outcome, RenderError error,
-        std::span<const std::byte> bytes, OwnedWireBytes attachment) noexcept
+    RenderResult<void> RenderRequest::unknown() noexcept
     {
-        if (!active() || unreplied_) return cxx::unexpected(RenderError{kRuntimeState});
-        const auto total = reply_size + bytes.size();
-        ipc::IpcMessage message;
-        if (total <= ipc::IpcMessage::inline_capacity && attachment.empty())
-        {
-            std::array<std::byte, 128> storage;
-            cxx::BinarySpanWriter writer(storage);
-            writeReply(writer, {session_, {request_, outcome, error}}, static_cast<std::uint32_t>(bytes.size()));
-            writer.writeBytes(bytes);
-            if (!message.tryAssignInline(std::span(storage).first(total))) std::terminate();
-        }
-        else
-        {
-            struct Output final
-            {
-                std::vector<std::byte> header;
-                OwnedWireBytes data;
-                std::array<std::span<const std::byte>, 1> views;
-            };
-            auto owner = std::make_unique<Output>();
-            owner->header.resize(total);
-            owner->data = std::move(attachment);
-            owner->views[0] = owner->data.view();
-            cxx::BinarySpanWriter writer(owner->header);
-            writeReply(writer, {session_, {request_, outcome, error}}, static_cast<std::uint32_t>(bytes.size()));
-            writer.writeBytes(bytes);
-            const auto views = owner->data.empty() ? std::span<const std::span<const std::byte>>{} :
-                std::span<const std::span<const std::byte>>(owner->views);
-            if (!message.tryAdopt(owner, owner->header, views)) std::terminate();
-        }
+        return publishError(ECommandOutcome::OUTCOME_UNKNOWN, {});
+    }
+
+    RenderResult<void> RenderRequest::publish(ipc::IpcMessage& message, ECommandOutcome outcome) noexcept
+    {
+        message.setMetadata(ReplyMetadata{session_, request_, outcome});
         if (!responder_->tryReply(input_, message))
         {
             unreplied_ = std::make_unique<ipc::IpcMessage>(std::move(message));
@@ -95,85 +82,83 @@ namespace lux::render
         return {};
     }
 
-    ResourceRegistry& OperationContext::resources() const noexcept
+    CommandInvocation RenderRequest::invocation(void* extension) noexcept
     {
-        return native_->resources();
+        static constexpr CommandCompletionFns completion{
+            [](void* owner, ECommandOutcome outcome, RenderError error, void* response) noexcept {
+                auto& request = *static_cast<RenderRequest*>(owner);
+                switch (outcome)
+                {
+                case ECommandOutcome::SUCCESS: return request.complete(response);
+                case ECommandOutcome::FAILED: return request.fail(error);
+                case ECommandOutcome::CANCELLED: return request.cancel();
+                default: return request.unknown();
+                }
+            },
+            [](const void* owner) noexcept { return static_cast<const RenderRequest*>(owner)->active(); }
+        };
+        return {transport_->request_value(input_.message()), this, &completion, extension};
     }
+}
 
-    RenderResult<GpuCompletionReservation> OperationContext::reserveGpuCompletion(
-        std::span<const std::byte> reply, OwnedWireBytes attachment) noexcept
-    {
-        return reserveGpuCompletion(native_->queue(), reply, std::move(attachment));
-    }
-
-    RenderResult<GpuCompletionReservation> OperationContext::reserveGpuCompletion(
-        vulkan::SubmissionQueue& queue, std::span<const std::byte> reply, OwnedWireBytes attachment) noexcept
-    {
-        const bool is_session_queue = &queue == &native_->queue(vulkan::EQueueRole::GRAPHICS) ||
-            &queue == &native_->queue(vulkan::EQueueRole::COMPUTE) ||
-            &queue == &native_->queue(vulkan::EQueueRole::TRANSFER);
-        if (!is_session_queue) return cxx::unexpected(RenderError{kProtocolContract});
-        auto& request = *request_;
-        const bool is_invalid_contract = reserved_ || !request.active() || !request.descriptor_ ||
-            request.descriptor_->completion != ECompletionContract::RESOURCE_GPU_READY;
-        if (is_invalid_contract) return cxx::unexpected(RenderError{kProtocolContract});
-        if (reply.size() > 128) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        if (auto valid = request.validateReply(reply, attachment); !valid) return cxx::unexpected(valid.error());
-        for (auto& slot : slots_)
-        {
-            if (!std::holds_alternative<std::monostate>(slot.condition)) continue;
-            auto& gpu = slot.condition.emplace<GpuCompletion>();
-            gpu.queue = &queue;
-            gpu.submitted_before_reserve = queue.submitted();
-            std::copy(reply.begin(), reply.end(), gpu.reply.begin());
-            gpu.size = reply.size();
-            gpu.attachment = std::move(attachment);
-            reserved_ = true;
-            return GpuCompletionReservation{*native_, slot, request};
-        }
-        return cxx::unexpected(RenderError{kRuntimeCapacity});
-    }
-
-    GpuCompletionReservation::~GpuCompletionReservation() noexcept
-    {
-        if (slot_) slot_->condition.emplace<std::monostate>();
-    }
-
-    GpuCompletionReservation::GpuCompletionReservation(GpuCompletionReservation&& other) noexcept
-        : native_(other.native_), slot_(std::exchange(other.slot_, nullptr)), request_(other.request_) {}
-
-    RenderResult<void> GpuCompletionReservation::setReply(std::span<const std::byte> reply) noexcept
-    {
-        if (!slot_ || !request_->active()) return cxx::unexpected(RenderError{kRuntimeState});
-        auto& gpu = std::get<GpuCompletion>(slot_->condition);
-        if (reply.size() != gpu.size) return cxx::unexpected(RenderError{kRuntimeCapacity});
-        if (auto valid = request_->validateReply(reply, gpu.attachment); !valid) return valid;
-        std::copy(reply.begin(), reply.end(), gpu.reply.begin());
-        return {};
-    }
-
-    RenderResult<void> GpuCompletionReservation::commitWork(vulkan::GpuWork& work) noexcept
-    {
-        if (!slot_ || !request_->active()) return cxx::unexpected(RenderError{kRuntimeState});
-        if (!work.unstartedIn(*native_)) return cxx::unexpected(RenderError{kProtocolContract});
-        std::get<GpuCompletion>(slot_->condition).work = std::move(work);
-        slot_->request.emplace(std::move(*request_));
-        slot_ = nullptr;
-        return {};
-    }
-
-    RenderResult<void> GpuCompletionReservation::commitOwned(const vulkan::SubmissionTicket& ticket, void* owner,
-        void (*destroy)(void*) noexcept, RenderResult<void> (*ready)(void*, vulkan::DeviceSession&) noexcept) noexcept
-    {
-        if (!slot_ || !request_->active()) return cxx::unexpected(RenderError{kRuntimeState});
-        auto& gpu = std::get<GpuCompletion>(slot_->condition);
-        const bool is_invalid_ticket = !gpu.queue->owns(ticket) ||
-            ticket.serial() <= gpu.submitted_before_reserve;
-        if (is_invalid_ticket) return cxx::unexpected(RenderError{kProtocolContract});
-        gpu.work = vulkan::GpuWork::accepted(*native_, ticket, owner, destroy, ready);
-        slot_->request.emplace(std::move(*request_));
-        slot_ = nullptr;
-        return {};
-    }
-
+namespace lux::render::runtime_detail
+{
+    const vulkan::GpuCompletionFns gpu_completion_functions{
+        [](void* owner, vulkan::SubmissionQueue& queue, void* response) noexcept -> RenderResult<void*> {
+            auto& admission = *static_cast<GpuAdmission*>(owner);
+            auto& native = admission.native;
+            const bool is_session_queue = &queue == &native.queue(vulkan::EQueueRole::GRAPHICS) ||
+                &queue == &native.queue(vulkan::EQueueRole::COMPUTE) ||
+                &queue == &native.queue(vulkan::EQueueRole::TRANSFER);
+            const bool invalid = !is_session_queue || admission.reserved || !admission.request.gpuReady();
+            if (invalid) return cxx::unexpected(RenderError{kProtocolContract});
+            for (auto& slot : admission.slots)
+            {
+                if (!std::holds_alternative<std::monostate>(slot.condition)) continue;
+                platform::ipc::IpcMessage output;
+                auto charge = admission.request.prepareResponse(response, output);
+                if (!charge) return cxx::unexpected(charge.error());
+                auto& gpu = slot.condition.emplace<GpuCompletion>();
+                gpu.queue = &queue;
+                gpu.submitted_before_reserve = queue.submitted();
+                gpu.reply = std::move(output);
+                gpu.reply_charge = *charge;
+                gpu.reserved_request = &admission.request;
+                gpu.native = &native;
+                admission.reserved = true;
+                return &slot;
+            }
+            return cxx::unexpected(RenderError{kRuntimeCapacity});
+        },
+        [](void* value, void* response) noexcept -> RenderResult<void> {
+            auto& gpu = std::get<GpuCompletion>(static_cast<DeferredCompletion*>(value)->condition);
+            platform::ipc::IpcMessage output;
+            auto charge = gpu.reserved_request->prepareResponse(response, output);
+            if (!charge) return cxx::unexpected(charge.error());
+            gpu.reply = std::move(output);
+            gpu.reply_charge = *charge;
+            return {};
+        },
+        [](void* value, vulkan::GpuWork& work) noexcept -> RenderResult<void> {
+            auto& slot = *static_cast<DeferredCompletion*>(value);
+            auto& gpu = std::get<GpuCompletion>(slot.condition);
+            if (!work.unstartedIn(*gpu.native)) return cxx::unexpected(RenderError{kProtocolContract});
+            gpu.work = std::move(work);
+            slot.request.emplace(std::move(*gpu.reserved_request));
+            gpu.reserved_request = nullptr;
+            return {};
+        },
+        [](void* value, const vulkan::SubmissionTicket& ticket, void* owner, void (*destroy)(void*) noexcept,
+            RenderResult<void> (*ready)(void*, vulkan::DeviceSession&) noexcept) noexcept -> RenderResult<void> {
+            auto& slot = *static_cast<DeferredCompletion*>(value);
+            auto& gpu = std::get<GpuCompletion>(slot.condition);
+            const bool invalid = !gpu.queue->owns(ticket) || ticket.serial() <= gpu.submitted_before_reserve;
+            if (invalid) return cxx::unexpected(RenderError{kProtocolContract});
+            gpu.work = vulkan::GpuWork::accepted(*gpu.native, ticket, owner, destroy, ready);
+            slot.request.emplace(std::move(*gpu.reserved_request));
+            gpu.reserved_request = nullptr;
+            return {};
+        },
+        [](void* value) noexcept { static_cast<DeferredCompletion*>(value)->condition.emplace<std::monostate>(); }
+    };
 }

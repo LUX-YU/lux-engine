@@ -71,21 +71,21 @@ int main()
     command.operation = ETestCommand::CREATE_EFFECT;
     command.description = native_fixture::target({});
     command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        &DataSchema<native_fixture::Config>::describe(), take(encodeWire(native_fixture::Config{}, {},
-            native_fixture::limits))});
+        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeWire(
+            native_fixture::Config{}, {}, native_fixture::limits)).view())});
     command.features.push_back({"test.aaa.foreign", "foreign", {1, 0}});
     // Input order differs from canonical assembly order; provenance is the input index, not a name guess.
-    check(call(*client, command).header.outcome == EOperationOutcome::SUCCESS);
+    check(call(*client, command).header.outcome == ECommandOutcome::SUCCESS);
     const std::array expected{kFeatureOwnership, kFeatureDuplicate, kFeatureContract};
     for (unsigned i = 1; i <= 3; ++i)
     {
         mode = i;
         auto failed = call(*client, command);
-        check(failed.header.outcome == EOperationOutcome::FAILED && failed.header.error.type == expected[i - 1]);
+        check(failed.header.outcome == ECommandOutcome::FAILED && failed.header.error.type == expected[i - 1]);
         check(server->stats().compiled_graphs == 1);
     }
     mode = 0;
-    check(call(*client, command).header.outcome == EOperationOutcome::SUCCESS);
+    check(call(*client, command).header.outcome == ECommandOutcome::SUCCESS);
     check(server->stats().compiled_graphs == 2);
     mode = 4;
     take(client->submit(command));
@@ -112,7 +112,7 @@ int main()
     missing_command.description = native_fixture::target({});
     missing_command.features.push_back(command.features.front());
     auto missing_reply = call(*no_program, missing_command);
-    check(missing_reply.header.outcome == EOperationOutcome::FAILED &&
+    check(missing_reply.header.outcome == ECommandOutcome::FAILED &&
         missing_reply.header.error.type == kFeatureContract && missing->stats().compiled_graphs == 0);
     missing->stop();
     missing_worker.join();

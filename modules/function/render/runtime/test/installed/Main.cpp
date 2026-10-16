@@ -20,7 +20,7 @@ int main()
         if (!status) break;
         if (*status == ERenderReceive::RECEIVED)
         {
-            ready = reply.header.request == *id && reply.header.outcome == EOperationOutcome::SUCCESS;
+            ready = reply.header.request == *id && reply.header.outcome == ECommandOutcome::SUCCESS;
             break;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));

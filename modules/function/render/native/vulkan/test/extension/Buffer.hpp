@@ -1,10 +1,19 @@
 #pragma once
 
+#include <lux/engine/render/protocol/Protocol.hpp>
+
 #include <lux/engine/render/features/Program.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
+#include <lux/engine/render/data/Payload.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
+#include <lux/cxx/core/CheckedArithmetic.hpp>
+#include <tuple>
 
-namespace lux::render { struct StorageRegistration; }
+namespace lux::render
+{
+    struct StorageRegistration;
+    template <typename T> [[nodiscard]] StorageRegistration nativeStorageBinding() noexcept;
+}
 
 namespace extension_test
 {
@@ -12,8 +21,29 @@ namespace extension_test
     struct BufferTag;
     using BufferId = lux::cxx::SlotKey<BufferTag>;
     struct BufferBinding final { BufferId id; };
+    struct SetBuffer final
+    {
+        static constexpr std::string_view name = "test.extension.SetBuffer";
+        static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
+        struct Request final { BufferId id; RenderPayload source; };
+        using Response = BufferBinding;
+    };
+    struct RemoveBuffer final
+    {
+        static constexpr std::string_view name = "test.extension.RemoveBuffer";
+        using Request = BufferBinding;
+        using Response = Ack;
+    };
+    struct ReadBuffer final
+    {
+        static constexpr std::string_view name = "test.extension.ReadBuffer";
+        static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
+        using Request = BufferBinding;
+        struct Response final { RenderPayload pixels; };
+    };
     struct TestBufferStorage final
     {
+        using Commands = std::tuple<SetBuffer, RemoveBuffer, ReadBuffer>;
         struct Config final
         {
             std::uint32_t capacity = 8;
@@ -21,7 +51,6 @@ namespace extension_test
         };
         static inline constexpr ShaderBinding bindings[]{{1, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16}};
         static const StorageDescriptor description;
-        static StorageRegistration registration() noexcept;
         struct Ops final { bool (*exists)(const void*, BufferId) noexcept; };
         class Access final
         {
@@ -38,6 +67,29 @@ namespace extension_test
 
 namespace lux::render
 {
+    template <>
+    [[nodiscard]] StorageRegistration nativeStorageBinding<extension_test::TestBufferStorage>() noexcept;
+
+    template <> struct CommandValueTraits<extension_test::SetBuffer::Request> final
+    {
+        static RenderResult<std::size_t> retainedBytes(const extension_test::SetBuffer::Request& value) noexcept
+        {
+            const auto bytes = cxx::checkedAdd(sizeof(value), value.source.retainedBytes());
+            if (!bytes) return cxx::unexpected(RenderError{kWireLimit});
+            return *bytes;
+        }
+    };
+
+    template <> struct CommandValueTraits<extension_test::ReadBuffer::Response> final
+    {
+        static RenderResult<std::size_t> retainedBytes(const extension_test::ReadBuffer::Response& value) noexcept
+        {
+            const auto bytes = cxx::checkedAdd(sizeof(value), value.pixels.retainedBytes());
+            if (!bytes) return cxx::unexpected(RenderError{kWireLimit});
+            return *bytes;
+        }
+    };
+
     template <> struct DataSchema<extension_test::BufferBinding>
     {
         static inline constexpr DataField fields[]{{"index", cxx::EScalarKind::U32}, {"generation", cxx::EScalarKind::U32}};

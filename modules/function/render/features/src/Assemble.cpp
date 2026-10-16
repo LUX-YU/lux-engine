@@ -104,7 +104,7 @@ namespace lux::render
                 return std::tuple{x.definition->type.name(), x.instance_key} <
                     std::tuple{y.definition->type.name(), y.instance_key};
             });
-            std::vector<const OperationDescriptor*> operations;
+            std::vector<const CommandDescriptor*> commands;
             for (std::size_t i = 0; i < work.size(); ++i)
             {
                 const auto& s = work[i].selected;
@@ -118,16 +118,16 @@ namespace lux::render
                     if (is_duplicate) return cxx::unexpected(failure(kFeatureDuplicate, i, 0, i - 1));
                     continue;
                 }
-                for (const auto& operation : s.definition->operations)
+                for (const auto& command : s.definition->commands)
                 {
-                    if (auto r = validateOperation(operation); !r) return r;
-                    for (const auto* existing : operations)
+                    if (auto r = validateCommand(command); !r) return r;
+                    for (const auto* existing : commands)
                     {
-                        if (existing->type != operation.type) continue;
-                        if (auto r = compatibleOperations(*existing, operation); !r) return r;
+                        if (existing->name != command.name) continue;
+                        if (auto r = compatibleCommands(*existing, command); !r) return r;
                         return cxx::unexpected(failure(kFeatureDuplicate, i));
                     }
-                    operations.push_back(&operation);
+                    commands.push_back(&command);
                 }
             }
             return {};

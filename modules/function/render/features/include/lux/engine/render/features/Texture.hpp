@@ -1,14 +1,16 @@
 #pragma once
 
 #include <lux/engine/description/TextureInfo.hpp>
-#include <lux/engine/render/data/Wire.hpp>
+#include <lux/engine/render/data/Payload.hpp>
+#include <tuple>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <lux/engine/render/features/Feature.hpp>
 
 namespace lux::render
 {
-    struct StorageRegistration;
     class ResourceRegistry;
+    struct StorageRegistration;
+    template <typename T> [[nodiscard]] StorageRegistration nativeStorageBinding() noexcept;
     struct TextureTag;
     using TextureId = cxx::SlotKey<TextureTag>; // Server session-local; not an asset hash or descriptor index.
     inline constexpr StorageTypeIdView kTextureStorageType("lux.render.TextureStorage");
@@ -62,47 +64,57 @@ namespace lux::render
         std::uint64_t row_pitch = 0;
     };
 
-    struct UploadTexture final
+    struct SetTexture final
     {
-        TextureId texture{}; // null creates; non-null replaces only the named current revision
-        std::uint64_t expected_revision = 0;
-        rdesc::TextureInfo info;
-        ExternalDataRef source;
+        static constexpr std::string_view name = "lux.render.SetTexture";
+        static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
+        struct Request final
+        {
+            TextureId texture{}; // null creates; otherwise replace the named current revision
+            std::uint64_t expected_revision = 0;
+            rdesc::TextureInfo info;
+            RenderPayload source;
+        };
+        using Response = TexturePublished;
     };
 
-    struct UploadTextureRegion final
+    struct SetTextureRegion final
     {
-        TextureId texture;
-        std::uint64_t expected_revision = 0;
-        TextureRegion region;
-        ExternalDataRef source;
+        static constexpr std::string_view name = "lux.render.SetTextureRegion";
+        static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
+        struct Request final
+        {
+            TextureId texture;
+            std::uint64_t expected_revision = 0;
+            TextureRegion region;
+            RenderPayload source;
+        };
+        using Response = TexturePublished;
     };
 
-    template <> struct DataSchema<TexturePublished>
+    struct ReleaseTexture final
     {
-        [[nodiscard]] static const DataSchemaDescriptor& describe() noexcept;
-        [[nodiscard]] static RenderResult<std::size_t> wireSize(const TexturePublished&) noexcept { return 16; }
-        [[nodiscard]] static RenderResult<void> encode(const TexturePublished&, cxx::BinarySpanWriter&) noexcept;
-        [[nodiscard]] static RenderResult<TexturePublished> decode(cxx::BinaryReader&, BorrowedWireView) noexcept;
-        [[nodiscard]] static RenderResult<TexturePublished> decode(cxx::BinaryReader&, WireView) noexcept;
+        static constexpr std::string_view name = "lux.render.ReleaseTexture";
+        using Request = TexturePublished;
+        using Response = Ack;
     };
 
-    template <> struct DataSchema<UploadTexture>
+    struct QueryTexture final
     {
-        [[nodiscard]] static const DataSchemaDescriptor& describe() noexcept;
-        [[nodiscard]] static RenderResult<std::size_t> wireSize(const UploadTexture&) noexcept { return 452; }
-        [[nodiscard]] static RenderResult<void> encode(const UploadTexture&, cxx::BinarySpanWriter&) noexcept;
-        [[nodiscard]] static RenderResult<UploadTexture> decode(cxx::BinaryReader&, BorrowedWireView) noexcept;
-        [[nodiscard]] static RenderResult<UploadTexture> decode(cxx::BinaryReader&, WireView) noexcept;
+        static constexpr std::string_view name = "lux.render.QueryTexture";
+        static constexpr auto completion = ECompletionContract::RESULT_AVAILABLE;
+        using Request = TextureId;
+        using Response = TexturePublished;
     };
 
-    template <> struct DataSchema<UploadTextureRegion>
+    template <> struct CommandValueTraits<SetTexture::Request> final
     {
-        [[nodiscard]] static const DataSchemaDescriptor& describe() noexcept;
-        [[nodiscard]] static RenderResult<std::size_t> wireSize(const UploadTextureRegion&) noexcept { return 64; }
-        [[nodiscard]] static RenderResult<void> encode(const UploadTextureRegion&, cxx::BinarySpanWriter&) noexcept;
-        [[nodiscard]] static RenderResult<UploadTextureRegion> decode(cxx::BinaryReader&, BorrowedWireView) noexcept;
-        [[nodiscard]] static RenderResult<UploadTextureRegion> decode(cxx::BinaryReader&, WireView) noexcept;
+        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const SetTexture::Request&) noexcept;
+    };
+
+    template <> struct CommandValueTraits<SetTextureRegion::Request> final
+    {
+        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const SetTextureRegion::Request&) noexcept;
     };
 
     struct TextureStorageConfig final
@@ -116,6 +128,7 @@ namespace lux::render
     {
     public:
         using Config = TextureStorageConfig;
+        using Commands = std::tuple<SetTexture, SetTextureRegion, ReleaseTexture, QueryTexture>;
         static inline constexpr DataField config_fields[]{
             {"capacity", cxx::EScalarKind::U32}, {"byte_limit", cxx::EScalarKind::U64}
         };
@@ -155,11 +168,7 @@ namespace lux::render
             const Ops* ops_;
             bool writable_;
         };
-
-        [[nodiscard]] static StorageRegistration registration() noexcept;
     };
 
-    [[nodiscard]] const OperationDescriptor& uploadTextureOperation() noexcept;
-    [[nodiscard]] const OperationDescriptor& uploadTextureRegionOperation() noexcept;
-    [[nodiscard]] const OperationDescriptor& releaseTextureOperation() noexcept;
+    template <> [[nodiscard]] StorageRegistration nativeStorageBinding<TextureStorage>() noexcept;
 }

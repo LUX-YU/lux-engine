@@ -239,13 +239,43 @@ namespace
         message.reset();
         {
             auto proof = take(IpcMessage::bindType<PinProbe>(*query_probe(), pin));
+            {
+                auto destination(std::move(proof));
+                auto assigned(destination);
+                assigned = std::move(proof);
+                pin.reset();
+            }
+            check(pin_alive, "moving a qualification left its source with an unpinned DLL table");
             message.emplace(proof, destroyed, pin_alive);
         }
-        pin.reset();
         check(pin_alive && destroyed == 0, "proof release unpinned message");
         message.reset();
         check(!pin_alive && destroyed == 1, "thunk must return before final module release");
         check(GetModuleHandleW(L"ipc_typed_plugin.dll") == nullptr, "plugin unexpectedly retained");
+    }
+
+    void incompatibleAbi()
+    {
+        const auto module = LoadLibraryW(L"ipc_abi_plugin.dll");
+        check(module != nullptr, "incompatible ABI plugin failed to load");
+        using Query = const IpcTypeOps* (*)() noexcept;
+        const auto query = reinterpret_cast<Query>(GetProcAddress(module, "ipcIncompatibleAbi"));
+        check(query != nullptr, "incompatible ABI export missing");
+        const auto* foreign = query();
+        const auto& local = IpcMessage::type<AbiProbe>();
+        check(foreign != &local && foreign->token() == local.token(), "ABI negative must keep the same TypeToken");
+        check(foreign->size() == local.size() && foreign->alignment() == local.alignment(),
+            "ABI negative must keep the same POD size and alignment");
+        check(foreign->abi()[0] == local.abi()[0] && foreign->abi()[1] != local.abi()[1],
+            "ABI-negative DLL did not use a genuinely different library configuration");
+        auto rejected = IpcMessage::bindType<AbiProbe>(*foreign);
+        check(!rejected && rejected.error() == EIpcError::INVALID_ARGUMENT,
+            "same-type same-layout incompatible ABI was accepted");
+        std::printf("typed ABI rejected: local=%llu DLL=%llu POD=%zu/%zu; no object crossed the boundary\n",
+            static_cast<unsigned long long>(local.abi()[1]), static_cast<unsigned long long>(foreign->abi()[1]),
+            local.size(), local.alignment());
+        check(FreeLibrary(module) != 0, "incompatible ABI plugin unload failed");
+        check(GetModuleHandleW(L"ipc_abi_plugin.dll") == nullptr, "rejected ABI retained its module");
     }
 
     void concurrent()
@@ -320,6 +350,7 @@ int main()
     objects();
     ownership();
     plugins();
+    incompatibleAbi();
     concurrent();
     std::puts("typed IPC object, canonical DLL proof, failure ownership, ABORTED, late owner: passed");
 }

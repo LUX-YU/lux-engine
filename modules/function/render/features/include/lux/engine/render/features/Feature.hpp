@@ -23,7 +23,7 @@ namespace lux::render
         RenderResult<void> (*build)(
             const WireView*, std::string_view, std::span<const ResolvedResource>, RenderGraphBuilder&
         ) noexcept = nullptr;
-        std::span<const OperationDescriptor> operations;
+        std::span<const CommandDescriptor> commands;
     };
 
     struct SelectedFeature final

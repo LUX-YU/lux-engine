@@ -6,15 +6,15 @@ foreach(test schema roundtrip malformed references ownership contracts)
     add_test(NAME render.data.${test} COMMAND render_data_test ${test})
 endforeach()
 
-foreach(header Schema Wire)
+foreach(header Schema Wire Payload)
     string(CONCAT probe
         "#include <lux/engine/render/data/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
         "#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native header leaked into Data\n#endif\n"
     )
 
-    file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" CONTENT "${probe}")
+    file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${header}.cpp" CONTENT "${probe}")
 
-    add_library(render_data_header_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp")
+    add_library(render_data_header_${header} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/headers/${header}.cpp")
 
     target_link_libraries(render_data_header_${header} PRIVATE render_data)
 endforeach()
@@ -48,3 +48,22 @@ add_executable(render_data_borrowed_test Borrowed.cpp)
 
 target_link_libraries(render_data_borrowed_test PRIVATE render_data)
 add_test(NAME render.data.borrowed COMMAND render_data_borrowed_test)
+
+add_executable(render_data_payload_test "${CMAKE_CURRENT_SOURCE_DIR}/Payload.cpp")
+
+target_link_libraries(render_data_payload_test PRIVATE render_data)
+
+add_library(render_data_payload_plugin SHARED PayloadPlugin.cpp)
+
+target_compile_features(render_data_payload_plugin PRIVATE cxx_std_20)
+
+set_target_properties(render_data_payload_plugin PROPERTIES
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/data/bin"
+)
+
+set_target_properties(render_data_payload_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/data/bin")
+
+add_dependencies(render_data_payload_test render_data_payload_plugin)
+
+add_test(NAME render.data.payload COMMAND render_data_payload_test)

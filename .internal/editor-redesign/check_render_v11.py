@@ -51,6 +51,18 @@ def main():
         assert allowed(path), f"Outside v11 whitelist: {path}"
         if path in baseline and path.endswith((".md", ".py")):
             assert "/test/" in path or path.startswith("cmake/"), f"Historical evidence modified: {path}"
+    # Message representation changes are authorized; the proven physical transport is not.
+    ipc_path = "modules/platform/ipc/src/Ipc.cpp"
+    original_ipc = git(root, "show", f"{BASELINE}:{ipc_path}").replace("\r\n", "\n")
+    current_ipc = (root / ipc_path).read_text(encoding="utf-8").replace("\r\n", "\n")
+    for start, end in (
+        ("    namespace detail\n", "    IpcMessage::~IpcMessage()"),
+        ("    IpcCore& IpcCore::instance()", "    namespace testing\n"),
+    ):
+        def section(text):
+            begin = text.index(start)
+            return text[begin:text.index(end, begin)]
+        assert section(original_ipc) == section(current_ipc), "IPC Channel/Link/SPSC/closeout modified"
     manifest = json.loads((root / "docs/render-v2/LEGACY_SOURCE_MANIFEST.json").read_text())
     frozen = tree(root, manifest["source_sha"])
     assert len(manifest["files"]) == 719
@@ -72,7 +84,8 @@ def main():
         assert git(dependency, "status", "--porcelain") == state["status"], name
     subprocess.run(["git", "-C", str(root), "diff", "--check"], check=True)
     result = {"baseline": BASELINE, "head": git(root, "rev-parse", "HEAD"), "legacy": 719,
-              "changed": sorted(changed), "status": "PASS (protection only)"}
+              "ipc_transport_source": "UNCHANGED", "changed": sorted(changed),
+              "status": "PASS (protection only)"}
     if args.output:
         args.output.write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result))

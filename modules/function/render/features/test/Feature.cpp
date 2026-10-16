@@ -118,7 +118,7 @@ static int identity()
         private_instances->definition.outputs()[1].version.resource);
     instances[1].definition = &saved;
     CHECK(!assembleFeatures(instances, {}));
-    d.operations = {};
+    d.commands = {};
     CHECK(featureKey(FeatureTypeIdView("a:b"), "c", "d") !=
         featureKey(FeatureTypeIdView("a"), "b:c", "d"));
     CHECK(renderFeatureErrorDescriptors().size() == 6);
@@ -191,9 +191,16 @@ static int config()
     return 0;
 }
 
+struct ConfigureFixture final
+{
+    static constexpr std::string_view name = "test.operation";
+    using Request = fixture::Config;
+    using Response = Ack;
+};
+
 static int operations()
 {
-    auto operation = operationDescriptor<fixture::Config>("test.operation");
+    auto operation = commandDescriptor<ConfigureFixture>();
     FeatureDefinition a{FeatureTypeIdView("test.a"), {1, 0}, nullptr, emptyDescribe, nullptr, {&operation, 1}};
     FeatureDefinition b{FeatureTypeIdView("test.b"), {1, 0}, nullptr, emptyDescribe, nullptr, {&operation, 1}};
     SelectedFeature s[]{{&a, nullptr, "one"}, {&a, nullptr, "two"}};
@@ -203,20 +210,20 @@ static int operations()
     CHECK(!duplicate && duplicate.error().type == kFeatureDuplicate);
     auto other = operation;
     ++other.version.minor;
-    b.operations = {&other, 1};
+    b.commands = {&other, 1};
     CHECK(!assembleFeatures(s, {}));
     other = operation;
     other.completion = ECompletionContract::RESOURCE_GPU_READY;
     CHECK(!assembleFeatures(s, {}));
     other = operation;
-    other.reply = other.payload;
+    other.response = other.request;
     CHECK(!assembleFeatures(s, {}));
-    other.type = OperationTypeIdView("test.other");
+    other.name = CommandName("test.other");
     CHECK(assembleFeatures(s, {}));
     other.version = {};
     CHECK(!assembleFeatures(s, {}));
     std::array repeated{operation, operation};
-    a.operations = repeated;
+    a.commands = repeated;
     CHECK(!assembleFeatures({s, 1}, {}));
     return 0;
 }

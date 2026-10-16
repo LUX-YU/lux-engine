@@ -1,5 +1,7 @@
-#include <lux/engine/render/runtime/vulkan/GpuCompletion.hpp>
+#include <lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp>
 #include "CompileWorker.hpp"
+#include "TypedTest.hpp"
+#include <lux/cxx/core/CheckedArithmetic.hpp>
 #include "Support.hpp"
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
 #include <lux/engine/render/native/vulkan/transfer/TextureUpload.hpp>
@@ -11,36 +13,22 @@ using namespace foundation_test;
 using namespace std::chrono_literals;
 using Clock = std::chrono::steady_clock;
 
-struct TextureProbe final { ExternalDataRef source; std::uint32_t dimension; };
+struct TextureProbe final
+{
+    static constexpr std::string_view name = "test.textureProgress";
+    static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
+    struct Request final { RenderPayload source; std::uint32_t dimension; };
+    using Response = Ack;
+};
 namespace lux::render
 {
-    template <> struct DataSchema<TextureProbe>
+    template <> struct CommandValueTraits<TextureProbe::Request>
     {
-        static const DataSchemaDescriptor& describe() noexcept
+        static RenderResult<std::size_t> retainedBytes(const TextureProbe::Request& value) noexcept
         {
-            static constexpr DataField fields[]{
-                {"source", cxx::EScalarKind::U8, 1, EDataFieldKind::EXTERNAL}, {"dimension", cxx::EScalarKind::U32}
-            };
-            static const DataSchemaDescriptor value{DataTypeIdView("test.g11a.progress"), {1, 0}, {1, 0}, fields, 24, 4};
-            return value;
-        }
-        static RenderResult<std::size_t> wireSize(const TextureProbe&) noexcept { return 24; }
-        static RenderResult<void> encode(const TextureProbe& value, cxx::BinarySpanWriter& out) noexcept
-        {
-            out.writeUnsigned(value.source.attachment_index);
-            out.writeUnsigned(value.source.offset);
-            out.writeUnsigned(value.source.size);
-            out.writeUnsigned(value.dimension);
-            return {};
-        }
-        template <class Wire> static RenderResult<TextureProbe> decode(cxx::BinaryReader& in, Wire) noexcept
-        {
-            TextureProbe value;
-            in.readUnsigned(value.source.attachment_index);
-            in.readUnsigned(value.source.offset);
-            in.readUnsigned(value.source.size);
-            in.readUnsigned(value.dimension);
-            return value;
+            const auto bytes = cxx::checkedAdd(sizeof(value), value.source.retainedBytes());
+            if (!bytes) return cxx::unexpected(RenderError{kWireLimit});
+            return *bytes;
         }
     };
 }
@@ -76,8 +64,7 @@ static RenderResult<void> ready(Pin&, TextureUpload& upload, DeviceSession& sess
     return {};
 }
 
-static const auto operation = operationDescriptor<TextureProbe>(
-    "test.textureProgress", {1, 0}, ECompletionContract::RESOURCE_GPU_READY);
+static const auto operation = commandDescriptor<TextureProbe>();
 static const std::array texture_operations{operation};
 static const FeatureDefinition definition{FeatureTypeIdView("test.texture.progress"), {1, 0}, nullptr,
     [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
@@ -93,14 +80,16 @@ struct ProbeWork final
     std::optional<SubmissionTicket> lastUse() const noexcept { return upload->lastUse(); }
 };
 
-static RenderResult<void> invoke(void*, RenderRequest& request, OperationContext& context) noexcept
+static RenderResult<void> invoke(void* native, CommandInvocation& invocation) noexcept
 {
-    CHECK(!request.reply()); // ordinary reply cannot manufacture GPU readiness
-    auto reservation = context.reserveGpuCompletion();
+    CommandContext<TextureProbe> context(invocation);
+    CHECK(!context.complete(Ack{})); // ordinary reply cannot manufacture GPU readiness
+    auto& session = *static_cast<DeviceSession*>(native);
+    Ack response;
+    auto reservation = GpuCompletionReservation::reserve(invocation, session.queue(), &response);
     if (!reservation) return lux::cxx::unexpected(reservation.error());
-    const auto value = take(request.decode<TextureProbe>());
-    const auto source = request.payload().attachments[value.source.attachment_index].subspan(
-        value.source.offset, value.source.size);
+    const auto& value = context.request();
+    const auto source = value.source.bytes().view();
     observed.store(source.data());
     lux::rdesc::TextureInfo info{};
     info.width = info.height = value.dimension;
@@ -109,13 +98,13 @@ static RenderResult<void> invoke(void*, RenderRequest& request, OperationContext
     info.pixel_format = lux::rdesc::ETexturePixelFormat::RGBA8_UNORM;
     info.color_space = lux::rdesc::ETextureColorSpace::DATA;
     info.mip_ranges[0] = {0, source.size(), value.dimension, value.dimension};
-    auto candidate = vulkan::TextureUpload::create(GpuCompletionReservation::device(context), info, source);
+    auto candidate = vulkan::TextureUpload::create(session, info, source);
     if (!candidate) return lux::cxx::unexpected(candidate.error());
     auto probe = std::make_unique<ProbeWork>();
     probe->upload = std::move(*candidate);
     auto work = GpuWork::pending<[](ProbeWork& value, DeviceSession& session) noexcept {
         return ready(value.pin, *value.upload, session);
-    }>(GpuCompletionReservation::device(context), probe);
+    }>(session, probe);
     if (!work) return lux::cxx::unexpected(work.error());
     return reservation->commitWork(*work);
 }
@@ -185,18 +174,18 @@ static void shutdownAndLoss()
         config.transfer_queues = true;
         config.uploads = {1024 * 1024, 1, 32 * 1024 * 1024, &host, Host::enqueue, Host::join};
         auto server = take(RenderServer::create(config));
-        const std::array handlers{OperationHandler{&operation, invoke, nullptr, true}};
-        CHECK(server->registerFeature({&definition, nullptr, handlers}));
+        const std::array handlers{CommandHandler{&operation, invoke, nullptr, ECommandOwner::DEVICE_SESSION, true}};
+        CHECK(server->registerFeature<TextureProbe>({&definition, nullptr, handlers}));
         std::atomic<bool> run_finished{false};
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); run_finished = true; });
         auto client = take(RenderClient::create(config.channel_name));
-        CHECK(wait(*client, take(client->hello())).header.outcome == EOperationOutcome::SUCCESS);
-        auto bound = take(client->bind<TextureProbe>(operation));
+        CHECK(wait(*client, take(client->hello())).header.outcome == ECommandOutcome::SUCCESS);
+        auto bound = take(client->bind<TextureProbe>());
         auto source = asset(2048);
         std::array payload{take(RenderPayload::fromVector(source, 0, source->size()))};
         if (lost) { submit_error = VK_ERROR_DEVICE_LOST; fail_at = submitted + 2; }
-        const auto id = take(client->submit(bound, TextureProbe{{0, 0, source->size()}, 2048}, payload));
+        const auto id = take(submitValue(*client, bound, TextureProbe::Request{payload[0], 2048}));
         source.reset(); payload = {};
         host.entered.wait();
         CHECK(sources == 1 && pins == 1 && !run_finished);
@@ -206,7 +195,7 @@ static void shutdownAndLoss()
         render.join();
         CHECK(run_ok != lost && pins == 0 && sources == 1);
         auto reply = wait(*client, id);
-        CHECK(reply.header.outcome == EOperationOutcome::OUTCOME_UNKNOWN);
+        CHECK(reply.header.outcome == ECommandOutcome::OUTCOME_UNKNOWN);
         reply = {};
         CHECK(sources == 0 && server->stats().validation_errors == 0);
         fail_at = 0;
@@ -229,13 +218,13 @@ int main()
         config.uploads = {1024 * 1024, 1, 128 * 1024 * 1024,
             callbacks.compile_user, callbacks.enqueue_compile, callbacks.join_compile};
         auto server = take(RenderServer::create(config));
-        const std::array handlers{OperationHandler{&operation, invoke, nullptr, true}};
-        CHECK(server->registerFeature({&definition, nullptr, handlers}));
+        const std::array handlers{CommandHandler{&operation, invoke, nullptr, ECommandOwner::DEVICE_SESSION, true}};
+        CHECK(server->registerFeature<TextureProbe>({&definition, nullptr, handlers}));
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); });
         auto client = take(RenderClient::create(config.channel_name, {128 * 1024 * 1024}));
-        CHECK(wait(*client, take(client->hello())).header.outcome == EOperationOutcome::SUCCESS);
-        auto bound = take(client->bind<TextureProbe>(operation));
+        CHECK(wait(*client, take(client->hello())).header.outcome == ECommandOutcome::SUCCESS);
+        auto bound = take(client->bind<TextureProbe>());
         for (unsigned dimension : {512u, 2048u, 4096u})
         {
             auto source = asset(dimension);
@@ -245,10 +234,10 @@ int main()
             const auto begin = Clock::now();
             const auto before = server->stats().ticks;
             const auto submits = submitted.load();
-            auto id = take(client->submit(bound, TextureProbe{{0, 0, size}, dimension}, payload));
+            auto id = take(submitValue(*client, bound, TextureProbe::Request{payload[0], dimension}));
             source.reset(); payload = {};
             auto reply = wait(*client, id);
-            CHECK(reply.header.outcome == EOperationOutcome::SUCCESS);
+            CHECK(reply.header.outcome == ECommandOutcome::SUCCESS);
             CHECK(observed == address && sources == 1 && pins == 0);
             reply = {};
             CHECK(sources == 0 && client->retainedBytes() == 0);
@@ -259,13 +248,13 @@ int main()
         auto source = asset(2048);
         std::array payload{take(RenderPayload::fromVector(source, 0, source->size()))};
         fail_at = submitted + 2;
-        auto id = take(client->submit(bound, TextureProbe{{0, 0, source->size()}, 2048}, payload));
-        CHECK(wait(*client, id).header.outcome == EOperationOutcome::FAILED);
+        auto id = take(submitValue(*client, bound, TextureProbe::Request{payload[0], 2048}));
+        CHECK(wait(*client, id).header.outcome == ECommandOutcome::FAILED);
         CHECK(pins == 0);
         fail_at = 0;
         host.reject(true);
-        id = take(client->submit(bound, TextureProbe{{0, 0, source->size()}, 2048}, payload));
-        CHECK(wait(*client, id).header.outcome == EOperationOutcome::FAILED);
+        id = take(submitValue(*client, bound, TextureProbe::Request{payload[0], 2048}));
+        CHECK(wait(*client, id).header.outcome == ECommandOutcome::FAILED);
         host.reject(false);
         CHECK(pins == 0);
         source.reset(); payload = {};
@@ -275,7 +264,7 @@ int main()
         source = asset(512);
         payload = {take(RenderPayload::fromVector(source, 0, source->size()))};
         const auto before = submitted.load();
-        (void)take(client->submit(bound, TextureProbe{{0, 0, source->size()}, 512}, payload));
+        (void)take(submitValue(*client, bound, TextureProbe::Request{payload[0], 512}));
         source.reset(); payload = {};
         until([&] { return submitted > before; });
         client.reset();

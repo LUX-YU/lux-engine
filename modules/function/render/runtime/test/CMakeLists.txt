@@ -1,5 +1,67 @@
 add_executable(render_runtime_test Runtime.cpp)
 
+add_executable(render_typed_client_test TypedClient.cpp)
+
+target_link_libraries(render_typed_client_test PRIVATE render_client)
+
+set_target_properties(render_typed_client_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.typed_client COMMAND render_typed_client_test)
+
+set_tests_properties(render.runtime.typed_client PROPERTIES TIMEOUT 30)
+
+add_executable(render_typed_batch_test TypedBatch.cpp ../../native/vulkan/test/Allocation.cpp)
+
+target_include_directories(render_typed_batch_test PRIVATE ../../native/vulkan/test)
+
+target_link_libraries(render_typed_batch_test PRIVATE render_runtime)
+
+set_target_properties(render_typed_batch_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.typed_batch COMMAND render_typed_batch_test)
+
+set_tests_properties(render.runtime.typed_batch PROPERTIES TIMEOUT 90)
+
+add_library(render_client_dll_plugin SHARED ClientDllPlugin.cpp)
+
+target_link_libraries(render_client_dll_plugin PRIVATE render_client)
+
+set_target_properties(render_client_dll_plugin PROPERTIES
+    WINDOWS_EXPORT_ALL_SYMBOLS ON
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin"
+)
+
+add_executable(render_client_dll_test ClientDll.cpp)
+
+target_link_libraries(render_client_dll_test PRIVATE render_client)
+
+add_dependencies(render_client_dll_test render_client_dll_plugin)
+
+set_target_properties(render_client_dll_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.client_dll COMMAND render_client_dll_test)
+
+set_tests_properties(render.runtime.client_dll PROPERTIES TIMEOUT 30)
+
+add_library(render_server_dll_plugin SHARED ServerDllPlugin.cpp)
+
+target_link_libraries(render_server_dll_plugin PRIVATE render_runtime)
+
+set_target_properties(render_server_dll_plugin PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_executable(render_server_dll_test ServerDll.cpp)
+
+# Only the plugin links Server/Native. All Server calls cross its explicit exported API.
+target_link_libraries(render_server_dll_test PRIVATE render_client)
+
+add_dependencies(render_server_dll_test render_server_dll_plugin)
+
+set_target_properties(render_server_dll_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.server_dll COMMAND render_server_dll_test)
+
+set_tests_properties(render.runtime.server_dll PROPERTIES TIMEOUT 45)
+
 add_executable(render_storage_registration_test StorageRegistration.cpp)
 
 target_link_libraries(render_storage_registration_test PRIVATE render_runtime)
@@ -34,7 +96,7 @@ set_tests_properties(render.runtime.offscreen PROPERTIES TIMEOUT 90)
 # Identical server source, linked to the existing compile-time Native fault seam.
 # Only completion observation is held; actual GPU submission and final wait are real.
 add_executable(render_runtime_shutdown_test Shutdown.cpp ../src/RenderServer.cpp ../src/Request.cpp)
-target_include_directories(render_runtime_shutdown_test PRIVATE ../pinclude ../../native/vulkan/test)
+target_include_directories(render_runtime_shutdown_test PRIVATE ../pinclude ../../native/vulkan/test ../../native/vulkan/sinclude)
 target_link_libraries(render_runtime_shutdown_test PRIVATE render_client render_features
     render_native_instrumented lux::engine::platform::platform_ipc bcrypt
 )
@@ -56,7 +118,7 @@ add_test(
         -P "${CMAKE_CURRENT_SOURCE_DIR}/../../core/test/Installed.cmake"
 )
 
-foreach(header RenderClient RenderServer Operations)
+foreach(header RenderClient RenderServer Commands CommandValue)
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${header}.cpp" CONTENT
         "#include <lux/engine/render/runtime/${header}.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\nstatic_assert(__cplusplus >= 202002L);\n"
     )
@@ -64,14 +126,6 @@ foreach(header RenderClient RenderServer Operations)
     # Cooked Program bytes have no Vulkan/OS dependency; do not link Native for this header probe.
     target_link_libraries(render_runtime_header_${header} PRIVATE render_client render_features)
 endforeach()
-
-file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/GpuCompletion.cpp" CONTENT
-    "#include <lux/engine/render/runtime/vulkan/GpuCompletion.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
-)
-
-add_library(render_runtime_header_GpuCompletion OBJECT "${CMAKE_CURRENT_BINARY_DIR}/GpuCompletion.cpp")
-
-target_link_libraries(render_runtime_header_GpuCompletion PRIVATE render_runtime)
 
 add_executable(render_runtime_programs_test Programs.cpp)
 
@@ -96,7 +150,7 @@ add_executable(render_runtime_gpu_ready_test GpuReady.cpp ../src/RenderServer.cp
 
 target_compile_definitions(render_runtime_gpu_ready_test PRIVATE LUX_RUNTIME_TEST_SEAM)
 
-target_include_directories(render_runtime_gpu_ready_test PRIVATE ../pinclude ../../native/vulkan/test)
+target_include_directories(render_runtime_gpu_ready_test PRIVATE ../pinclude ../../native/vulkan/test ../../native/vulkan/sinclude)
 
 target_link_libraries(render_runtime_gpu_ready_test PRIVATE render_client render_features
     render_native_instrumented lux::engine::platform::platform_ipc bcrypt
@@ -114,7 +168,7 @@ set_tests_properties(render.runtime.gpu_ready_transfer render.runtime.gpu_ready_
 
 add_executable(render_texture_progress_test TextureProgress.cpp ../src/RenderServer.cpp ../src/Request.cpp)
 
-target_include_directories(render_texture_progress_test PRIVATE ../pinclude ../../native/vulkan/test)
+target_include_directories(render_texture_progress_test PRIVATE ../pinclude ../../native/vulkan/test ../../native/vulkan/sinclude)
 
 target_link_libraries(render_texture_progress_test PRIVATE render_client render_features
     render_native_instrumented lux::engine::platform::platform_ipc bcrypt
@@ -139,10 +193,10 @@ add_test(NAME render.runtime.texture_operations COMMAND render_texture_operation
 set_tests_properties(render.runtime.texture_operations PROPERTIES TIMEOUT 60)
 
 add_executable(render_texture_rendering_test TextureRendering.cpp ../../native/vulkan/test/Allocation.cpp
-    ../src/RenderServer.cpp ../src/Request.cpp ../src/TextureStorage.cpp
+    ../src/RenderServer.cpp ../src/Request.cpp
 )
 
-target_include_directories(render_texture_rendering_test PRIVATE ../../native/vulkan/test ../pinclude)
+target_include_directories(render_texture_rendering_test PRIVATE ../../native/vulkan/test ../pinclude ../../native/vulkan/sinclude)
 
 target_link_libraries(render_texture_rendering_test PRIVATE render_client render_features
     render_native_instrumented lux::engine::platform::platform_ipc bcrypt

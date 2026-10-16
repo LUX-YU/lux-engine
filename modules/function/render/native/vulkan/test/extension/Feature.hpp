@@ -6,16 +6,23 @@
 #include <lux/engine/render/features/Feature.hpp>
 #include <lux/engine/render/features/Texture.hpp>
 
-namespace lux::render { struct FeatureRegistration; }
+namespace lux::render
+{
+    struct FeatureRegistration;
+    template <typename T> [[nodiscard]] FeatureRegistration nativeFeatureBinding() noexcept;
+}
 
 namespace extension_test
 {
-    struct TestBufferFeature final { static FeatureRegistration registration() noexcept; };
+    struct TestBufferFeature final { using Commands = std::tuple<>; };
     struct ViewConfig final { TextureId texture; BufferId buffer; };
 }
 
 namespace lux::render
 {
+    template <>
+    [[nodiscard]] FeatureRegistration nativeFeatureBinding<extension_test::TestBufferFeature>() noexcept;
+
     template <> struct DataSchema<extension_test::ViewConfig>
     {
         static inline constexpr DataField fields[]{

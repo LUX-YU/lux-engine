@@ -1,96 +1,108 @@
 #pragma once
 
-#include <lux/engine/platform/ipc/IpcMessage.hpp>
-
-#include <array>
-#include <memory>
-#include <string>
-#include <lux/engine/render/core/Ids.hpp>
-#include <lux/engine/render/core/Target.hpp>
-#include <lux/engine/render/protocol/Protocol.hpp>
+#include <lux/engine/render/runtime/CommandValue.hpp>
+#include <lux/engine/render/data/Payload.hpp>
 
 namespace lux::render
 {
-    using SessionIdentity = std::array<std::uint64_t, 2>;
-    struct FeatureSelection final
-    {
-        std::string type;
-        std::string instance;
-        cxx::SchemaVersion version{1, 0};
-        const DataSchemaDescriptor* config_schema = nullptr; // synchronous submit borrow
-        OwnedWireBytes config;
-    };
+    class LUX_RENDER_CLIENT_PUBLIC RenderCompletion;
+    template <RenderCommand C> class TypedRenderCompletion;
 
-    // A narrow retained-owner factory. The complete vector capacity is charged,
-    // even when only a small range is exposed. No caller-supplied byte discount.
-    class RenderPayload final
-    {
-    public:
-        [[nodiscard]] static RenderResult<RenderPayload> fromVector(
-            std::shared_ptr<const std::vector<std::byte>> owner, std::size_t offset, std::size_t size
-        ) noexcept;
-        [[nodiscard]] const OwnedWireBytes& bytes() const noexcept { return bytes_; }
-        [[nodiscard]] std::size_t retainedBytes() const noexcept { return retained_bytes_; }
-    private:
-        OwnedWireBytes bytes_;
-        std::size_t retained_bytes_ = 0;
-    };
+    inline constexpr auto kRuntimeState = error::errorId("lux.render.runtime.state");
+    inline constexpr auto kRuntimeCapacity = error::errorId("lux.render.runtime.capacity");
+    inline constexpr auto kRuntimeIdentity = error::errorId("lux.render.runtime.identity");
+    inline constexpr auto kRuntimeUnsupported = error::errorId("lux.render.runtime.unsupported");
+    [[nodiscard]] LUX_RENDER_CLIENT_PUBLIC std::span<const error::ErrorDescriptor>
+    renderRuntimeErrorDescriptors() noexcept;
 
-    // Cold-bound immutable contract; the session belongs to the server, RequestId to this Client.
-    class OperationBinding final
+    template <RenderCommand C>
+    class BoundCommand final
     {
     public:
         [[nodiscard]] SessionIdentity session() const noexcept { return session_; }
-        [[nodiscard]] OperationId operation() const noexcept { return operation_; }
-        [[nodiscard]] const OperationDescriptor& descriptor() const noexcept { return descriptor_; }
-    private:
-        friend class RenderClient;
-        OperationBinding() noexcept = default;
-        OperationBinding(SessionIdentity owner, OperationId id, OperationDescriptor descriptor) noexcept
-            : session_(owner), operation_(id), descriptor_(descriptor) {}
-        SessionIdentity session_{};
-        OperationId operation_;
-        OperationDescriptor descriptor_;
-    };
+        [[nodiscard]] CommandId command() const noexcept { return command_; }
 
-    template <WireData Request, typename Reply = void>
-    class BoundOperation final
-    {
-    public:
-        [[nodiscard]] const OperationBinding& binding() const noexcept { return binding_; }
     private:
         friend class RenderClient;
-        explicit BoundOperation(OperationBinding value) noexcept : binding_(value) {}
-        OperationBinding binding_;
+        friend class RenderCompletion;
+        using Input = runtime_detail::ValueEnvelope<typename C::Request>;
+        using Output = runtime_detail::ValueEnvelope<typename C::Response>;
+        BoundCommand(SessionIdentity session, CommandId command, platform::ipc::IpcBoundType<Input> request,
+            platform::ipc::IpcBoundType<Output> response) noexcept
+            : session_(session), command_(command), request_(std::move(request)), response_(std::move(response)) {}
+        SessionIdentity session_{};
+        CommandId command_;
+        platform::ipc::IpcBoundType<Input> request_;
+        platform::ipc::IpcBoundType<Output> response_;
     };
 
     enum class ERenderReceive { RECEIVED, EMPTY, CLOSED };
 
-    struct RenderCompletion final
+    class LUX_RENDER_CLIENT_PUBLIC RenderCompletion final
     {
+    public:
         ReplyHeader header;
         SessionIdentity session{};
-        std::optional<DataSchemaDescriptor> schema; // metadata borrows the static bound schema fields
         RenderCompletion() noexcept = default;
-        ~RenderCompletion() noexcept;
+        ~RenderCompletion() noexcept = default;
         RenderCompletion(RenderCompletion&& other) noexcept;
         RenderCompletion& operator=(RenderCompletion&& other) noexcept;
         RenderCompletion(const RenderCompletion&) = delete;
         RenderCompletion& operator=(const RenderCompletion&) = delete;
         [[nodiscard]] bool active() const noexcept { return !header.request.isNull(); }
-        // Borrow only while this Completion remains alive. The value owns both reply and returned input.
-        [[nodiscard]] std::span<const std::byte> bytes() const noexcept;
-        [[nodiscard]] std::span<const std::span<const std::byte>> attachments() const noexcept;
+        [[nodiscard]] CommandId command() const noexcept { return command_; }
+
+        template <RenderCommand C>
+        [[nodiscard]] RenderResult<TypedRenderCompletion<C>> take(const BoundCommand<C>& binding) && noexcept;
+
     private:
         friend class RenderClient;
+        template <RenderCommand C> friend class TypedRenderCompletion;
         platform::ipc::IpcReply backing_;
-        std::shared_ptr<void> budget_;
-        void (*refund_)(void*, std::size_t) noexcept = nullptr;
-        std::size_t charged_ = 0;
-        std::size_t payload_size_ = 0;
-
-
+        CommandId command_;
     };
+
+    template <RenderCommand C>
+    class TypedRenderCompletion final
+    {
+    public:
+        TypedRenderCompletion(TypedRenderCompletion&&) noexcept = default;
+        TypedRenderCompletion& operator=(TypedRenderCompletion&&) noexcept = default;
+        TypedRenderCompletion(const TypedRenderCompletion&) = delete;
+        TypedRenderCompletion& operator=(const TypedRenderCompletion&) = delete;
+        [[nodiscard]] bool active() const noexcept { return completion_.active(); }
+        [[nodiscard]] const ReplyHeader& header() const noexcept { return completion_.header; }
+        [[nodiscard]] SessionIdentity session() const noexcept { return completion_.session; }
+        // Borrows end with this completion. Explicitly recovering/copying a business value transfers it
+        // to application ownership; the transport budget is not a whole-process asset memory limit.
+        [[nodiscard]] const typename C::Response& response() const & noexcept
+        {
+            return completion_.backing_.message.template get<runtime_detail::ValueEnvelope<typename C::Response>>().value;
+        }
+
+        [[nodiscard]] typename C::Request& request() & noexcept
+        {
+            return completion_.backing_.original_request.template get<runtime_detail::ValueEnvelope<typename C::Request>>().value;
+        }
+
+    private:
+        friend class RenderCompletion;
+        explicit TypedRenderCompletion(RenderCompletion completion) noexcept : completion_(std::move(completion)) {}
+        RenderCompletion completion_;
+    };
+
+    template <RenderCommand C>
+    RenderResult<TypedRenderCompletion<C>> RenderCompletion::take(const BoundCommand<C>& binding) && noexcept
+    {
+        const bool is_wrong_identity = !active() || session != binding.session_ || command_ != binding.command_;
+        if (is_wrong_identity) return cxx::unexpected(RenderError{kRuntimeIdentity});
+        if (header.outcome != ECommandOutcome::SUCCESS)
+            return cxx::unexpected(header.error.type ? header.error : RenderError{kRuntimeState});
+        const bool is_wrong_type = !backing_.message.holds(binding.response_.operations()) ||
+            !backing_.original_request.holds(binding.request_.operations());
+        if (is_wrong_type) return cxx::unexpected(RenderError{kProtocolContract});
+        return TypedRenderCompletion<C>{std::move(*this)};
+    }
 
     struct RenderClientConfig final
     {
@@ -98,61 +110,84 @@ namespace lux::render
         std::size_t ring_capacity = 64;
     };
 
-    // One long-lived logical SPSC owner; the host creates at most Main + Upload
-    // per server epoch. No worker-per-request connections. No native dependency.
-    class RenderClient final
+    // Main and Upload are long-lived SPSC owners. The host supplies their threads.
+    class LUX_RENDER_CLIENT_PUBLIC RenderClient final
     {
     public:
         [[nodiscard]] static RenderResult<std::unique_ptr<RenderClient>>
         create(std::string_view channel_name, RenderClientConfig config = {}) noexcept;
         ~RenderClient() noexcept;
+        // create() allocates in this DLL; default_delete must release in the same DLL.
+        static void operator delete(void* value) noexcept;
         RenderClient(const RenderClient&) = delete;
         RenderClient& operator=(const RenderClient&) = delete;
         [[nodiscard]] RenderResult<RequestId> hello() noexcept;
         [[nodiscard]] SessionIdentity session() const noexcept;
-        [[nodiscard]] RenderResult<OperationBinding> bind(const OperationDescriptor& descriptor) const noexcept;
 
-        template <WireData Request, typename Reply = void>
-        [[nodiscard]] RenderResult<BoundOperation<Request, Reply>>
-        bind(const OperationDescriptor& descriptor) const noexcept
+        template <RenderCommand C>
+        [[nodiscard]] RenderResult<BoundCommand<C>> bind() const noexcept
         {
-            auto expected = operationDescriptor<Request, Reply>(descriptor.type.name(), descriptor.version,
-                descriptor.completion);
-            if (auto same = compatibleOperations(expected, descriptor); !same) return cxx::unexpected(same.error());
-            auto value = bind(descriptor);
-            if (!value) return cxx::unexpected(value.error());
-            return BoundOperation<Request, Reply>{*value};
+            auto binding = bindCommand(commandDescriptor<C>());
+            if (!binding) return cxx::unexpected(binding.error());
+            auto request = platform::ipc::IpcMessage::bindType<runtime_detail::ValueEnvelope<typename C::Request>>(
+                *binding->request, binding->code_pin);
+            auto response = platform::ipc::IpcMessage::bindType<runtime_detail::ValueEnvelope<typename C::Response>>(
+                *binding->response, binding->code_pin);
+            if (!request || !response) return cxx::unexpected(RenderError{kProtocolContract});
+            return BoundCommand<C>{binding->session, binding->command, std::move(*request), std::move(*response)};
         }
 
-        template <WireData Request, typename Reply>
-        [[nodiscard]] RenderResult<RequestId> submit(const BoundOperation<Request, Reply>& operation,
-            const Request& payload, std::span<const RenderPayload> attachments = {},
-            std::size_t reply_capacity = 128) noexcept
+        template <RenderCommand C>
+        [[nodiscard]] RenderResult<RequestId> submit(const BoundCommand<C>& binding,
+            typename C::Request& request, std::size_t reply_capacity = 128) noexcept
         {
-            auto size = DataSchema<Request>::wireSize(payload);
-            if (!size) return cxx::unexpected(size.error());
-            return submitEncoded(operation.binding_,  *size, &payload,
-                [](const void* value, cxx::BinarySpanWriter& writer) noexcept {
-                    return DataSchema<Request>::encode(*static_cast<const Request*>(value), writer);
-                }, attachments, reply_capacity);
+            using Input = runtime_detail::ValueEnvelope<typename C::Request>;
+            using Output = runtime_detail::ValueEnvelope<typename C::Response>;
+            auto bytes = CommandValueTraits<typename C::Request>::retainedBytes(request);
+            if (!bytes) return cxx::unexpected(bytes.error());
+            constexpr auto response_overhead = sizeof(Output) - sizeof(typename C::Response);
+            constexpr auto error_overhead = sizeof(runtime_detail::ValueEnvelope<RenderError>) - sizeof(RenderError);
+            constexpr auto overhead = sizeof(Input) - sizeof(typename C::Request) +
+                (response_overhead > error_overhead ? response_overhead : error_overhead);
+            auto reservation = reserve(binding.session_, binding.command_, &binding.response_.operations(),
+                *bytes, reply_capacity, overhead);
+            if (!reservation) return cxx::unexpected(reservation.error());
+            platform::ipc::IpcMessage message;
+            message.emplace(binding.request_, std::move(reservation->second), std::move(request));
+            auto published = publish(reservation->first, message, binding.session_, binding.command_, reply_capacity);
+            if (!published)
+            {
+                // No noexcept assignment requirement: restore the same Request object in place.
+                std::destroy_at(std::addressof(request));
+                std::construct_at(std::addressof(request), std::move(message.template get<Input>().value));
+                return cxx::unexpected(published.error());
+            }
+            return reservation->first;
         }
 
-        // output must be inactive. Processes at most eight abandoned records per call.
+        // output must be inactive. At most eight abandoned records are reclaimed per call.
         [[nodiscard]] RenderResult<ERenderReceive> tryReceive(RenderCompletion& output) noexcept;
         [[nodiscard]] RenderResult<void> abandon(RequestId request) noexcept;
         [[nodiscard]] std::size_t retainedBytes() const noexcept;
+
     private:
-        [[nodiscard]] RenderResult<RequestId> submitEncoded(const OperationBinding& operation, std::size_t size,
-            const void* value, RenderResult<void> (*encode)(const void*, cxx::BinarySpanWriter&) noexcept,
-            std::span<const RenderPayload> attachments, std::size_t reply_capacity) noexcept;
+        struct Binding final
+        {
+            SessionIdentity session;
+            CommandId command;
+            const platform::ipc::IpcTypeOps* request;
+            const platform::ipc::IpcTypeOps* response;
+            std::shared_ptr<const void> code_pin;
+        };
+
+        [[nodiscard]] RenderResult<Binding> bindCommand(const CommandDescriptor& descriptor) const noexcept;
+        [[nodiscard]] RenderResult<std::pair<RequestId, runtime_detail::BudgetLease>> reserve(
+            SessionIdentity session, CommandId command, const platform::ipc::IpcTypeOps* response,
+            std::size_t request_bytes, std::size_t reply_capacity, std::size_t envelope_bytes) noexcept;
+        [[nodiscard]] RenderResult<void> publish(RequestId request, platform::ipc::IpcMessage& message,
+            SessionIdentity session, CommandId command, std::size_t reply_capacity) noexcept;
         struct Impl;
         explicit RenderClient(std::unique_ptr<Impl> state) noexcept;
         std::unique_ptr<Impl> impl_;
     };
-
-    inline constexpr auto kRuntimeState = error::errorId("lux.render.runtime.state");
-    inline constexpr auto kRuntimeCapacity = error::errorId("lux.render.runtime.capacity");
-    inline constexpr auto kRuntimeIdentity = error::errorId("lux.render.runtime.identity");
-    inline constexpr auto kRuntimeUnsupported = error::errorId("lux.render.runtime.unsupported");
-    [[nodiscard]] std::span<const error::ErrorDescriptor> renderRuntimeErrorDescriptors() noexcept;
 }

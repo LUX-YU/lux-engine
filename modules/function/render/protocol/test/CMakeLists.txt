@@ -5,6 +5,12 @@ add_library(render_protocol_header OBJECT "${CMAKE_CURRENT_BINARY_DIR}/Protocol.
 
 target_link_libraries(render_protocol_header PRIVATE render_protocol)
 
+add_executable(render_protocol_command_test Command.cpp)
+
+target_link_libraries(render_protocol_command_test PRIVATE render_protocol)
+
+add_test(NAME render.protocol.command COMMAND render_protocol_command_test)
+
 get_target_property(protocol_links render_protocol INTERFACE_LINK_LIBRARIES)
 
 if(NOT protocol_links STREQUAL "lux::engine::render::render_data")

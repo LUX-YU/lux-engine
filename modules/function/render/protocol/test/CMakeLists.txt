@@ -12,7 +12,7 @@ target_link_libraries(render_protocol_command_test PRIVATE render_protocol)
 add_test(NAME render.protocol.command COMMAND render_protocol_command_test)
 
 get_target_property(protocol_links render_protocol INTERFACE_LINK_LIBRARIES)
-set(expected_links lux::engine::render::render_core lux::cxx::core STDEXEC::stdexec)
+set(expected_links lux::engine::render::render_core lux::cxx::core)
 
 if(NOT protocol_links STREQUAL expected_links)
     message(FATAL_ERROR "Unexpected Protocol dependency: ${protocol_links}")
@@ -36,4 +36,10 @@ file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/AsyncCommand.cpp" CONTENT
     "#include <lux/engine/render/protocol/AsyncCommand.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\n")
 
 add_library(render_protocol_async_header OBJECT "${CMAKE_CURRENT_BINARY_DIR}/AsyncCommand.cpp")
-target_link_libraries(render_protocol_async_header PRIVATE render_protocol)
+target_link_libraries(render_protocol_async_header PRIVATE render_protocol_async)
+
+add_executable(render_protocol_binding_test Binding.cpp)
+
+target_link_libraries(render_protocol_binding_test PRIVATE render_protocol)
+
+add_test(NAME render.protocol.binding COMMAND render_protocol_binding_test)

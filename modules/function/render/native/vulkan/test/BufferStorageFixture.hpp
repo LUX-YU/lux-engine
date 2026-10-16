@@ -1,3 +1,4 @@
+#include "../../../resource/test/FactoryAudit.hpp"
 #pragma once
 
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
@@ -42,7 +43,7 @@ namespace buffer_fixture
                 return {};
             }
         };
-        return {
+        return resource_detail::StorageFactoryAudit::make(
             &description, EGraphicsApi::VULKAN, &size,
             [](void* device, const void* config) noexcept -> RenderResult<NativeStorage> {
                 auto& session = *static_cast<native::DeviceSession*>(device);
@@ -59,8 +60,8 @@ namespace buffer_fixture
             },
             [](const void* instance, const void* config) noexcept {
                 return static_cast<const Native*>(instance)->config == *static_cast<const Config*>(config);
-            }, {}, &bindings
-        };
+            }, {}, &bindings, nullptr, storageCppType<Config>(), storageCppType<decltype(size)>()
+        );
     }
 
     inline RenderResult<void> install(native::DeviceSession& session) noexcept

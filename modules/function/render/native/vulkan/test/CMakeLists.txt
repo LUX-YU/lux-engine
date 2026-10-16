@@ -159,3 +159,11 @@ foreach(target render_buffer_transfer_test render_texture_upload_test render_tex
     target_link_libraries(${target} PRIVATE lux::engine::process::process_execution)
     set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 endforeach()
+
+add_executable(render_explicit_factory_test ExplicitFactory.cpp)
+
+target_link_libraries(render_explicit_factory_test PRIVATE render_native_vulkan)
+
+add_test(NAME render.native.explicit_factory COMMAND render_explicit_factory_test)
+
+set_tests_properties(render.native.explicit_factory PROPERTIES TIMEOUT 60)

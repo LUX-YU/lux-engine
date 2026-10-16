@@ -49,13 +49,14 @@ namespace lux::render
     }
 
     RenderResult<void> ResourceRegistry::configureType(
-        const StorageDescriptor& type, std::shared_ptr<const void> configuration
+        const StorageDescriptor& type, std::shared_ptr<const void> configuration, StorageCppType actual
     ) noexcept
     {
         const auto index = typeIndex(type.type);
         if (frozen_ || index == types_.size()) return cxx::unexpected(RenderError{kStorageFactory});
         auto& installed = types_[index];
         if (auto compatible = compatibleStorage(*installed.factory.description, type); !compatible) return compatible;
+        if (installed.factory.config_type != actual) return cxx::unexpected(RenderError{kStorageMismatch});
         if (installed.configuration || (type.config && !configuration))
             return cxx::unexpected(RenderError{kStorageContract});
         installed.configuration = std::move(configuration);
@@ -126,8 +127,8 @@ namespace lux::render
         return cxx::unexpected(RenderError{kStorageDomain});
     }
 
-    RenderResult<StorageInstanceId> ResourceRegistry::getOrCreate(
-        const ResourceDomain& domain, std::string_view key, const StorageDescriptor& type, const void* config
+    RenderResult<StorageInstanceId> ResourceRegistry::getOrCreateImpl(
+        const ResourceDomain& domain, std::string_view key, const StorageDescriptor& type, const void* config, StorageCppType actual
     ) noexcept
     {
         if (!valid(domain)) return cxx::unexpected(RenderError{kStorageDomain});
@@ -141,6 +142,7 @@ namespace lux::render
         if ((type.scopes & scopeMask(scope)) == 0) return cxx::unexpected(RenderError{kStorageDomain});
         if ((type.required_capabilities & ~capabilities_) != 0)
             return cxx::unexpected(RenderError{kStorageCapability});
+        if (config && installed.factory.config_type != actual) return cxx::unexpected(RenderError{kStorageMismatch});
         if (!config) config = installed.configuration.get();
         if (type.config && !config) return cxx::unexpected(RenderError{kStorageContract});
         auto id = local(domain.id_, index, key);

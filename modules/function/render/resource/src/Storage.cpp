@@ -11,7 +11,7 @@ namespace lux::render
     ) noexcept
     {
         const bool invalid_factory = !factory.description || !factory.ops || !factory.create ||
-            !factory.compatible_config || factory.api != api;
+            !factory.compatible_config || factory.api != api || factory.config_type.size == 0 || factory.ops_type.size == 0;
         if (invalid_factory) return cxx::unexpected(RenderError{kStorageFactory});
         if (auto valid = validateStorage(*factory.description); !valid) return valid;
         return compatibleStorage(type, *factory.description);

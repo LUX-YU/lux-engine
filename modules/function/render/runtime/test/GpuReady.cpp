@@ -1,3 +1,5 @@
+#include <lux/engine/render/native/vulkan/Registration.hpp>
+#include "ErasedRegistrationFixture.hpp"
 #include <lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/native/vulkan/DeviceSession.hpp>
@@ -154,10 +156,8 @@ static RenderResult<void> ready(ProbeOwner& owner, vulkan::DeviceSession& sessio
     ++finished; // The test business commit: real copied bytes have been certified, not just a CPU-ready flag.
     return {};
 }
-static RenderResult<void> upload(void* native, CommandInvocation& invocation) noexcept
+static RenderResult<void> upload(vulkan::DeviceSession& session, const UploadProbe::Request& input, CommandContext<UploadProbe>& context) noexcept
 {
-    CommandContext<UploadProbe> context(invocation);
-    const auto& input = context.request();
     if (input.sample >= samples.size() || input.mode > 5) return lux::cxx::unexpected(RenderError{kInvalidWire});
     samples[input.sample].inbound = now();
     if (input.mode == 1) return context.complete(ReadbackResult{}); // mandatory premature SUCCESS negative
@@ -172,7 +172,6 @@ static RenderResult<void> upload(void* native, CommandInvocation& invocation) no
     auto output_pin = RenderPayload::fromVector(output, 0, output->size());
     if (!output_pin) return lux::cxx::unexpected(output_pin.error());
     ReadbackResult response{std::move(*output_pin)};
-    auto& session = *static_cast<vulkan::DeviceSession*>(native);
     auto& queue = session.queue(transfer_mode ? vulkan::EQueueRole::TRANSFER : vulkan::EQueueRole::GRAPHICS);
     if (input.mode == 4)
     {
@@ -185,10 +184,10 @@ static RenderResult<void> upload(void* native, CommandInvocation& invocation) no
             CHECK(std::move(*empty).submit());
         }
     }
-    auto reservation = GpuCompletionReservation::reserve(invocation, queue, &response);
+    auto reservation = GpuCompletionReservation::reserve(context, queue, response);
     if (!reservation) return lux::cxx::unexpected(reservation.error());
     CHECK(context.active());
-    CHECK(!GpuCompletionReservation::reserve(invocation, queue, &response)); // cannot issue two rights for one invocation
+    CHECK(!GpuCompletionReservation::reserve(context, queue, response)); // cannot issue two rights for one invocation
     auto owner = std::make_unique<ProbeOwner>(session, output, source, input.sample, input.mode == 5);
     auto staging = session.createBuffer(source.size(), VK_BUFFER_USAGE_TRANSFER_SRC_BIT, vulkan::EMemoryAccess::UPLOAD);
     if (!staging) return lux::cxx::unexpected(staging.error());
@@ -246,10 +245,10 @@ static const FeatureDefinition feature{FeatureTypeIdView("test.g10.feature"), {1
     [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
     nullptr, operations_list};
 static const std::array handlers{
-    CommandHandler{&probe, upload, nullptr, ECommandOwner::DEVICE_SESSION, true},
-    CommandHandler{&cpu, [](void*, CommandInvocation& invocation) noexcept {
+    vulkan::nativeCommand<UploadProbe, upload>(),
+    test_registration::erased(&cpu, [](void*, CommandInvocation& invocation) noexcept {
         return CommandContext<CpuResult>(invocation).complete(CpuResult::Response{});
-    }}
+    })
 };
 static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std::string_view name) noexcept
 {

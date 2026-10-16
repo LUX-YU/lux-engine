@@ -4,7 +4,8 @@
 #include <lux/engine/render/data/Payload.hpp>
 #include <tuple>
 #include <lux/cxx/container/SlotMap.hpp>
-#include <lux/engine/render/features/Feature.hpp>
+#include <lux/engine/render/resource/Storage.hpp>
+#include <lux/engine/render/protocol/Protocol.hpp>
 
 namespace lux::render
 {
@@ -64,31 +65,35 @@ namespace lux::render
         std::uint64_t row_pitch = 0;
     };
 
+    struct TextureWrite final
+    {
+        TextureId texture{}; // null creates; otherwise replace the named current revision
+        std::uint64_t expected_revision = 0;
+        rdesc::TextureInfo info;
+        RenderPayload source;
+    };
+
     struct SetTexture final
     {
         static constexpr std::string_view name = "lux.render.SetTexture";
         static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
-        struct Request final
-        {
-            TextureId texture{}; // null creates; otherwise replace the named current revision
-            std::uint64_t expected_revision = 0;
-            rdesc::TextureInfo info;
-            RenderPayload source;
-        };
+        using Request = TextureWrite;
         using Response = TexturePublished;
+    };
+
+    struct TextureRegionWrite final
+    {
+        TextureId texture;
+        std::uint64_t expected_revision = 0;
+        TextureRegion region;
+        RenderPayload source;
     };
 
     struct SetTextureRegion final
     {
         static constexpr std::string_view name = "lux.render.SetTextureRegion";
         static constexpr auto completion = ECompletionContract::RESOURCE_GPU_READY;
-        struct Request final
-        {
-            TextureId texture;
-            std::uint64_t expected_revision = 0;
-            TextureRegion region;
-            RenderPayload source;
-        };
+        using Request = TextureRegionWrite;
         using Response = TexturePublished;
     };
 

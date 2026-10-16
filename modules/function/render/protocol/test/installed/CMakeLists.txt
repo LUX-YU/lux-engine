@@ -11,10 +11,12 @@ endif()
 
 enable_testing()
 
+set(CMAKE_DISABLE_FIND_PACKAGE_stdexec TRUE)
+
 find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_protocol)
 
 get_target_property(links lux::engine::render::render_protocol INTERFACE_LINK_LIBRARIES)
-set(expected_links lux::engine::render::render_core lux::cxx::core STDEXEC::stdexec)
+set(expected_links lux::engine::render::render_core lux::cxx::core)
 
 if(NOT links STREQUAL expected_links)
     message(FATAL_ERROR "Protocol dependency leak: ${links}")

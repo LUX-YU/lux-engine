@@ -8,7 +8,7 @@
 #include <lux/engine/render/features/Program.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
 #include <lux/engine/render/resource/CpuSchedule.hpp>
-#include <lux/engine/render/resource/Factory.hpp>
+#include <lux/engine/render/resource/Registration.hpp>
 #include <optional>
 
 namespace lux::render
@@ -75,6 +75,7 @@ namespace lux::render
             auto registration = nativeStorageBinding<T>();
             if (!registration.description) return cxx::unexpected(RenderError{kStorageContract});
             if (auto valid = compatibleStorage(T::description, *registration.description); !valid) return valid;
+            registration.configuration_type = storageCppType<typename T::Config>();
             registration.configuration = std::make_shared<const typename T::Config>(config);
             return [&]<typename... C>(std::tuple<C...>*) noexcept {
                 return registerStorage<C...>(std::move(registration));

@@ -5,7 +5,7 @@
 #include "Allocation.hpp"
 #include <lux/engine/render/runtime/Commands.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <lux/engine/render/features/Texture.hpp>
+#include <lux/engine/render/resource/Texture.hpp>
 #include <fstream>
 #include <latch>
 

@@ -1,3 +1,4 @@
+#include "ErasedRegistrationFixture.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/protocol/AsyncCommand.hpp>
 #include "Deferred.hpp"
@@ -173,12 +174,11 @@ namespace
         struct Response final { unsigned index; std::uint64_t result; };
     };
 
-    RenderResult<void> invoke(void*, CommandInvocation& invocation) noexcept
+    RenderResult<void> invoke(State&, const CpuOperation::Request& input, CommandContext<CpuOperation>& context) noexcept
     {
-        CommandContext<CpuOperation> context(invocation);
         auto* batch = state->active.load(std::memory_order_acquire);
-        check(batch && context.request().index < batch->count);
-        auto& record = batch->records[context.request().index];
+        check(batch && input.index < batch->count);
+        auto& record = batch->records[input.index];
         record.handler_begin = now();
         registering = &record;
         RenderResult<void> result;
@@ -407,7 +407,7 @@ int main()
     const FeatureDefinition feature{FeatureTypeIdView("test.async.cost.feature"), {1, 0}, nullptr,
         [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
         nullptr, descriptors};
-    const std::array handlers{CommandHandler{&descriptors[0], invoke, nullptr}};
+    const std::array handlers{CommandRegistration{bindCommand<CpuOperation, invoke>(*state)}};
     RenderServerConfig config{"runtime.async.cost", true};
     config.requests_per_tick = 128;
     config.cpu = state->cpu;

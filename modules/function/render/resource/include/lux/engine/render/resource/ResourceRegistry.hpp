@@ -41,7 +41,14 @@ namespace lux::render
 
         [[nodiscard]] RenderResult<void> installFactory(StorageFactory factory) noexcept;
         [[nodiscard]] RenderResult<void>
-        configureType(const StorageDescriptor& type, std::shared_ptr<const void> configuration) noexcept;
+        configureType(const StorageDescriptor& type, std::shared_ptr<const void> configuration, StorageCppType actual) noexcept;
+
+        template <class Config>
+        [[nodiscard]] RenderResult<void>
+        configureType(const StorageDescriptor& type, std::shared_ptr<const Config> configuration) noexcept
+        {
+            return configureType(type, std::move(configuration), storageCppType<Config>());
+        }
         void freeze() noexcept { frozen_ = true; }
         [[nodiscard]] bool frozen() const noexcept { return frozen_; }
         [[nodiscard]] const StorageFactory* factory(StorageTypeIdView type) const noexcept;
@@ -60,6 +67,8 @@ namespace lux::render
             auto id = getOrCreate(domain, key, T::description, &config);
             if (!id) return cxx::unexpected(id.error());
             const auto& entry = *entries_.find(*id);
+            if (types_[entry.type].factory.ops_type != storageCppType<typename T::Ops>())
+                return cxx::unexpected(RenderError{kStorageMismatch});
             return typename T::Access(entry.native.get(), *static_cast<const typename T::Ops*>(
                 types_[entry.type].factory.ops), true);
         }
@@ -71,6 +80,8 @@ namespace lux::render
             auto id = getOrCreate(domain, key, T::description, nullptr);
             if (!id) return cxx::unexpected(id.error());
             const auto& entry = *entries_.find(*id);
+            if (types_[entry.type].factory.ops_type != storageCppType<typename T::Ops>())
+                return cxx::unexpected(RenderError{kStorageMismatch});
             return typename T::Access(entry.native.get(), *static_cast<const typename T::Ops*>(
                 types_[entry.type].factory.ops), true);
         }
@@ -82,6 +93,8 @@ namespace lux::render
             auto id = find(domain, key, T::description, false);
             if (!id) return cxx::unexpected(id.error());
             const auto& entry = *entries_.find(*id);
+            if (types_[entry.type].factory.ops_type != storageCppType<typename T::Ops>())
+                return cxx::unexpected(RenderError{kStorageMismatch});
             return typename T::Access(entry.native.get(), *static_cast<const typename T::Ops*>(
                 types_[entry.type].factory.ops), true);
         }
@@ -93,14 +106,29 @@ namespace lux::render
             auto id = find(domain, key, T::description, true);
             if (!id) return cxx::unexpected(id.error());
             const auto& entry = *entries_.find(*id);
+            if (types_[entry.type].factory.ops_type != storageCppType<typename T::Ops>())
+                return cxx::unexpected(RenderError{kStorageMismatch});
             return typename T::Access(entry.native.get(), *static_cast<const typename T::Ops*>(
                 types_[entry.type].factory.ops), false);
         }
 
         // Cold Native preparation uses the same instance table. These local keys never enter the wire.
+        template <class Config>
+            requires (!std::is_void_v<Config>)
         [[nodiscard]] RenderResult<StorageInstanceId> getOrCreate(
-            const ResourceDomain& domain, std::string_view key, const StorageDescriptor& type, const void* config
-        ) noexcept;
+            const ResourceDomain& domain, std::string_view key, const StorageDescriptor& type, const Config* config
+        ) noexcept
+        {
+            return getOrCreateImpl(domain, key, type, config, storageCppType<Config>());
+        }
+
+        [[nodiscard]] RenderResult<StorageInstanceId> getOrCreate(
+            const ResourceDomain& domain, std::string_view key, const StorageDescriptor& type, std::nullptr_t
+        ) noexcept
+        {
+            return getOrCreateImpl(domain, key, type, nullptr, {});
+        }
+
         [[nodiscard]] RenderResult<StorageInstanceId> find(
             const ResourceDomain& domain, std::string_view key, const StorageDescriptor& type, bool ancestors = false
         ) const noexcept;
@@ -114,6 +142,10 @@ namespace lux::render
         [[nodiscard]] std::uint64_t creations() const noexcept { return creations_; }
 
     private:
+        [[nodiscard]] RenderResult<StorageInstanceId> getOrCreateImpl(
+            const ResourceDomain&, std::string_view, const StorageDescriptor&, const void*, StorageCppType
+        ) noexcept;
+
         struct Domain final { DomainId id; DomainId parent; EResourceScope scope; bool closing = false; };
         struct Type final { StorageFactory factory; std::shared_ptr<const void> configuration; };
         struct Entry final

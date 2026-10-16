@@ -1,6 +1,6 @@
 #include "../Scenarios.hpp"
 #include <lux/engine/render/features/Registration.hpp>
-#include <lux/engine/render/features/Texture.hpp>
+#include <lux/engine/render/resource/Texture.hpp>
 #include <cstdlib>
 
 int main(int argc, char** argv)

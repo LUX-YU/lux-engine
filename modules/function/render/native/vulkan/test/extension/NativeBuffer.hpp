@@ -227,17 +227,17 @@ namespace extension_test
                 return static_cast<NativeBuffer*>(object)->prepare(plan, argument, binding);
             }
         };
-        return {&TestBufferStorage::description, EGraphicsApi::VULKAN, &ops,
-            [](void* session, const void* config) noexcept -> RenderResult<NativeStorage> {
-                auto result = std::make_unique<NativeBuffer>(*static_cast<vk::DeviceSession*>(session),
-                    *static_cast<const TestBufferStorage::Config*>(config));
-                if (auto ready = result->initialize(); !ready) return lux::cxx::unexpected(ready.error());
-                return NativeStorage{result.release(), [](void* value) noexcept { delete static_cast<NativeBuffer*>(value); }};
-            },
-            [](const void* object, const void* config) noexcept {
-                return static_cast<const NativeBuffer*>(object)->compatible(*static_cast<const TestBufferStorage::Config*>(config));
-            }, {}, &binding, [](void* object) noexcept { static_cast<NativeBuffer*>(object)->collect(); }
+        static const auto create = +[](vk::DeviceSession& session, const TestBufferStorage::Config& config) noexcept
+            -> RenderResult<std::unique_ptr<NativeBuffer>> {
+            auto result = std::make_unique<NativeBuffer>(session, config);
+            if (auto ready = result->initialize(); !ready) return lux::cxx::unexpected(ready.error());
+            return result;
         };
+        static const auto compatible = +[](const NativeBuffer& value, const TestBufferStorage::Config& config) noexcept {
+            return value.compatible(config);
+        };
+        return makeStorageFactory<TestBufferStorage, NativeBuffer, vk::DeviceSession, create, compatible>(
+            EGraphicsApi::VULKAN, ops, &binding, [](void* object) noexcept { static_cast<NativeBuffer*>(object)->collect(); });
     }
 }
 

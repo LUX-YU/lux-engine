@@ -17,15 +17,25 @@ component_include_directories(
 
 component_add_internal_dependencies(render_protocol lux::engine::render::render_core)
 
-target_link_libraries(render_protocol PUBLIC lux::cxx::core STDEXEC::stdexec)
+target_link_libraries(render_protocol PUBLIC lux::cxx::core)
 
 component_add_transitive_commands(
     render_protocol
     "find_package(lux-cxx CONFIG REQUIRED COMPONENTS core)"
-    "find_package(stdexec CONFIG REQUIRED)"
 )
 
 target_compile_features(render_protocol PUBLIC cxx_std_20)
+
+add_interface_component(
+    COMPONENT_NAME render_protocol_async
+    NAMESPACE lux::engine::render
+)
+
+component_add_internal_dependencies(render_protocol_async lux::engine::render::render_protocol)
+
+target_link_libraries(render_protocol_async INTERFACE STDEXEC::stdexec)
+
+component_add_transitive_commands(render_protocol_async "find_package(stdexec CONFIG REQUIRED)")
 
 if(BUILD_TESTING)
     add_subdirectory(test)

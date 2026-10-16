@@ -14,6 +14,7 @@ endif()
 
 # This configure must succeed without even finding the Server's Native dependency.
 set(CMAKE_DISABLE_FIND_PACKAGE_Vulkan ON)
+set(CMAKE_DISABLE_FIND_PACKAGE_stdexec ON)
 
 find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_client)
 

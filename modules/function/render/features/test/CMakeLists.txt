@@ -17,7 +17,7 @@ add_executable(render_features_cost Cost.cpp)
 
 target_link_libraries(render_features_cost PRIVATE render_features)
 
-foreach(header Feature Resources Texture Program Registration)
+foreach(header Feature Resources Program Registration)
     string(CONCAT probe
         "#include <lux/engine/render/features/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
         "#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native header leaked into Feature\n#endif\n"

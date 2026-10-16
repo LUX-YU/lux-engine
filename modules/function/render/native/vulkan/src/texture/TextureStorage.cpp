@@ -210,21 +210,12 @@ namespace lux::render::vulkan
             }, [](const void* configuration) noexcept {
             return configuration ? static_cast<const TextureStorageConfig*>(configuration)->capacity : 0;
         }};
-        static const StorageFactory factory{
-            &lux::render::TextureStorage::description, EGraphicsApi::VULKAN, &ops,
-            [](void* device, const void* config) noexcept -> RenderResult<NativeStorage> {
-                auto value = vulkan::TextureStorage::create(*static_cast<vulkan::DeviceSession*>(device),
-                    *static_cast<const TextureStorageConfig*>(config));
-                if (!value) return cxx::unexpected(value.error());
-                return NativeStorage{value->release(), [](void* object) noexcept {
-                    delete static_cast<vulkan::TextureStorage*>(object);
-                }};
-            },
-            [](const void* value, const void* config) noexcept {
-                return static_cast<const vulkan::TextureStorage*>(value)->compatibleConfig(
-                    *static_cast<const TextureStorageConfig*>(config));
-            }, {}, &binding_ops, [](void* value) noexcept { static_cast<TextureStorage*>(value)->collect(); }
+        static const auto compatible = +[](const vulkan::TextureStorage& value, const TextureStorageConfig& config) noexcept {
+            return value.compatibleConfig(config);
         };
+        static const auto factory = makeStorageFactory<lux::render::TextureStorage, vulkan::TextureStorage,
+            DeviceSession, &vulkan::TextureStorage::create, compatible>(EGraphicsApi::VULKAN, ops, &binding_ops,
+                [](void* value) noexcept { static_cast<TextureStorage*>(value)->collect(); });
         return factory;
     }
 
@@ -383,7 +374,7 @@ namespace lux::render::vulkan
         candidate.version = nullptr;
     }
 
-    TextureStorage::UploadResult TextureStorage::upload(const SetTexture::Request& input) noexcept
+    TextureStorage::UploadResult TextureStorage::upload(const TextureWrite& input) noexcept
     {
         const auto source = input.source.bytes().view();
         if (auto admitted = admit(source.size(), input.texture.isNull()); !admitted)
@@ -401,7 +392,7 @@ namespace lux::render::vulkan
         return std::pair{result, std::move(*work)};
     }
 
-    TextureStorage::UploadResult TextureStorage::upload(const SetTextureRegion::Request& input) noexcept
+    TextureStorage::UploadResult TextureStorage::upload(const TextureRegionWrite& input) noexcept
     {
         auto* record = textures_.find(input.texture);
         if (!record || !record->current) return cxx::unexpected(RenderError{kWrongOwner});
@@ -486,14 +477,14 @@ namespace lux::render::vulkan
 namespace lux::render
 {
     StorageTraits<vulkan::TextureStorage>::Result
-    StorageTraits<vulkan::TextureStorage>::upload(vulkan::TextureStorage& storage, const SetTexture::Request& input) noexcept
+    StorageTraits<vulkan::TextureStorage>::upload(vulkan::TextureStorage& storage, const TextureWrite& input) noexcept
     {
         return storage.upload(input);
     }
 
     StorageTraits<vulkan::TextureStorage>::Result
     StorageTraits<vulkan::TextureStorage>::upload(vulkan::TextureStorage& storage,
-        const SetTextureRegion::Request& input) noexcept
+        const TextureRegionWrite& input) noexcept
     {
         return storage.upload(input);
     }

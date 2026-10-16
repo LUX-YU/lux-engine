@@ -1,3 +1,4 @@
+#include <lux/engine/render/resource/Registration.hpp>
 #pragma once
 
 #include <lux/engine/render/protocol/Protocol.hpp>

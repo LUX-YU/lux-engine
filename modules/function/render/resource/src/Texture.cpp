@@ -1,11 +1,11 @@
-#include <lux/engine/render/features/Texture.hpp>
+#include <lux/engine/render/resource/Texture.hpp>
 
 #include <lux/cxx/core/CheckedArithmetic.hpp>
 
 namespace lux::render
 {
-    RenderResult<std::size_t> CommandValueTraits<SetTexture::Request>::retainedBytes(
-        const SetTexture::Request& request
+    RenderResult<std::size_t> CommandValueTraits<TextureWrite>::retainedBytes(
+        const TextureWrite& request
     ) noexcept
     {
         const auto bytes = cxx::checkedAdd(sizeof(request), request.source.retainedBytes());
@@ -13,8 +13,8 @@ namespace lux::render
         return *bytes;
     }
 
-    RenderResult<std::size_t> CommandValueTraits<SetTextureRegion::Request>::retainedBytes(
-        const SetTextureRegion::Request& request
+    RenderResult<std::size_t> CommandValueTraits<TextureRegionWrite>::retainedBytes(
+        const TextureRegionWrite& request
     ) noexcept
     {
         const auto bytes = cxx::checkedAdd(sizeof(request), request.source.retainedBytes());

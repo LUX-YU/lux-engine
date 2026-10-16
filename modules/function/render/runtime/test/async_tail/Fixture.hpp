@@ -1,3 +1,4 @@
+#include "../ErasedRegistrationFixture.hpp"
 #pragma once
 
 #include <lux/engine/render/features/Registration.hpp>
@@ -35,7 +36,7 @@ namespace async_tail_test
         lux::render::CpuSchedule cpu;
         std::weak_ptr<const void> module;
         Gate* gate;
-        std::array<lux::render::CommandHandler, 1> handlers;
+        std::array<lux::render::CommandRegistration, 1> handlers;
     };
 
     // The export has a stable symbol name; its parameters still require the

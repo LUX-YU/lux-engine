@@ -1,3 +1,4 @@
+#include "ErasedRegistrationFixture.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "ServerFixture.hpp"
 #include "SceneFixture.hpp"
@@ -94,11 +95,8 @@ namespace batch_fixture
         std::atomic<std::size_t> applied_entries{0};
     };
 
-    static RenderResult<void> set(void* owner, CommandInvocation& invocation) noexcept
+    static RenderResult<void> set(State& state, const SetValues::Request& request, CommandContext<SetValues>& context) noexcept
     {
-        auto& state = *static_cast<State*>(owner);
-        CommandContext<SetValues> context(invocation);
-        const auto& request = context.request();
         ++state.boundaries;
         const bool invalid_scene = request.scene.index >= state.scenes.size() ||
             state.scenes[request.scene.index].scene != request.scene;
@@ -124,11 +122,8 @@ namespace batch_fixture
         return context.complete(SetValues::Response{request.revision, static_cast<std::uint32_t>(request.changes.size())});
     }
 
-    static RenderResult<void> read(void* owner, CommandInvocation& invocation) noexcept
+    static RenderResult<void> read(State& state, const ReadValue::Request& request, CommandContext<ReadValue>& context) noexcept
     {
-        const auto& state = *static_cast<State*>(owner);
-        CommandContext<ReadValue> context(invocation);
-        const auto& request = context.request();
         const bool invalid_scene = request.scene.index >= state.scenes.size() ||
             state.scenes[request.scene.index].scene != request.scene;
         if (invalid_scene) return cxx::unexpected(RenderError{kRuntimeIdentity});
@@ -234,9 +229,9 @@ static RenderResult<std::vector<PassProgram>> programs(const WireView* wire, std
 
 static std::unique_ptr<RenderServer> create(batch_fixture::State& state, CpuFixture& host)
 {
-    static std::array<CommandHandler, 2> handlers;
-    handlers = {CommandHandler{&commandDescriptor<batch_fixture::SetValues>(), batch_fixture::set, &state},
-        CommandHandler{&commandDescriptor<batch_fixture::ReadValue>(), batch_fixture::read, &state}};
+    static std::array<CommandRegistration, 2> handlers;
+    handlers = {CommandRegistration{bindCommand<batch_fixture::SetValues, batch_fixture::set>(state)},
+        CommandRegistration{bindCommand<batch_fixture::ReadValue, batch_fixture::read>(state)}};
     auto server = take(RenderServer::create(withCpu(host, {"runtime.typed.batch", true})));
     CHECK(server->registerFeature<batch_fixture::SetValues, batch_fixture::ReadValue>(
         {&batch_fixture::definition, nullptr, handlers}));

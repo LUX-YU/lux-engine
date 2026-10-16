@@ -1,3 +1,4 @@
+#include "ErasedRegistrationFixture.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "Allocation.hpp"
 #include "ClientAllocation.hpp"
@@ -132,25 +133,22 @@ template <class T>
 concept CanReplyExposure = requires(CommandContext<SetExposure>& context, T& value) { context.complete(value); };
 static_assert(CanReplyExposure<Exposure> && !CanReplyExposure<std::array<std::byte, 3>>);
 
-static RenderResult<void> setExposure(void* user, CommandInvocation& invocation) noexcept
+static RenderResult<void> setExposure(FeatureState& state, const SetExposure::Request& input, CommandContext<SetExposure>& context) noexcept
 {
-    auto& state = *static_cast<FeatureState*>(user);
     const auto start = Clock::now();
-    CommandContext<SetExposure> context(invocation);
-    state.exposure = context.request().value;
+    state.exposure = input.value;
     auto result = context.complete(Exposure{state.exposure});
     state.handler_ns.store(std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - start).count());
     state.handler_value.store(static_cast<int>(state.exposure), std::memory_order_release);
     return result;
 }
 
-static RenderResult<void> acceptData(void* user, CommandInvocation& invocation) noexcept
+static RenderResult<void> acceptData(FeatureState& state, const AcceptCustomData::Request& input, CommandContext<AcceptCustomData>& context) noexcept
 {
-    CommandContext<AcceptCustomData> context(invocation);
-    const auto source = context.request().source.bytes().view();
+    const auto source = input.source.bytes().view();
     if (source.empty()) return cxx::unexpected(RenderError{kInvalidDataReference});
     check(source.front() == std::byte{37} && source.back() == std::byte{37});
-    static_cast<FeatureState*>(user)->source.store(source.data());
+    state.source.store(source.data());
     return context.complete(Exposure{float(source.size())});
 }
 
@@ -179,16 +177,16 @@ int main()
 {
     FeatureState state;
     const std::array handlers{
-        CommandHandler{&commandDescriptor<SetExposure>(), setExposure, &state},
-        CommandHandler{&commandDescriptor<AcceptCustomData>(), acceptData, &state},
-        CommandHandler{&commandDescriptor<InvalidReply>(), [](void*, CommandInvocation& invocation) noexcept {
+        CommandRegistration{bindCommand<SetExposure, setExposure>(state)},
+        CommandRegistration{bindCommand<AcceptCustomData, acceptData>(state)},
+        test_registration::erased(&commandDescriptor<InvalidReply>(), [](void*, CommandInvocation& invocation) noexcept {
             CommandContext<InvalidReply> context(invocation);
             OversizedResult result{std::vector<std::byte>(4096)};
             const auto* owner = result.bytes.data();
             auto status = context.complete(result);
             check(!status && status.error().type == kRuntimeCapacity && result.bytes.data() == owner);
             return status;
-        }}
+        })
     };
     auto server = take(RenderServer::create({"runtime.open", true}));
     // A type-erased handler cannot be paired with an unrelated typed transport table.
@@ -200,33 +198,34 @@ int main()
     const FeatureDefinition collision_feature{FeatureTypeIdView("test.real.hash.collision"), {1, 0}, nullptr,
         feature.describe, nullptr, collision_commands};
     const std::array collision_handlers{
-        CommandHandler{&commandDescriptor<CollidingA>(), [](void*, CommandInvocation& invocation) noexcept {
+        test_registration::erased(&commandDescriptor<CollidingA>(), [](void*, CommandInvocation& invocation) noexcept {
             CommandContext<CollidingA> context(invocation);
             return context.complete(Exposure{context.request().value + 1000});
-        }},
-        CommandHandler{&commandDescriptor<CollidingB>(), [](void*, CommandInvocation& invocation) noexcept {
+        }),
+        test_registration::erased(&commandDescriptor<CollidingB>(), [](void*, CommandInvocation& invocation) noexcept {
             CommandContext<CollidingB> context(invocation);
             return context.complete(Exposure{context.request().value + 2000});
-        }}
+        })
     };
     check(bool(server->registerFeature<CollidingA, CollidingB>({&collision_feature, nullptr, collision_handlers})));
     const std::array gpu_commands{commandDescriptor<UnqualifiedGpu>()};
     const FeatureDefinition gpu_feature{FeatureTypeIdView("test.unqualified.gpu"), {1, 0}, nullptr,
         feature.describe, nullptr, gpu_commands};
-    const std::array gpu_handlers{CommandHandler{&commandDescriptor<UnqualifiedGpu>(), setExposure, &state}};
+    const std::array gpu_handlers{CommandRegistration{bindCommand<UnqualifiedGpu, +[](FeatureState&, const UnqualifiedGpu::Request&,
+        CommandContext<UnqualifiedGpu>&) noexcept -> RenderResult<void> { return {}; }>(state)}};
     auto rejected = server->registerFeature<UnqualifiedGpu>({&gpu_feature, nullptr, gpu_handlers});
     check(!rejected && rejected.error().type == kProtocolContract);
     const std::array premature_commands{commandDescriptor<PrematureGpu>()};
     const FeatureDefinition premature_feature{FeatureTypeIdView("test.premature.gpu"), {1, 0}, nullptr,
         feature.describe, nullptr, premature_commands};
     const std::array premature_handlers{
-        CommandHandler{&commandDescriptor<PrematureGpu>(), [](void* owner, CommandInvocation& invocation) noexcept {
+        test_registration::erased(&commandDescriptor<PrematureGpu>(), [](void* owner, CommandInvocation& invocation) noexcept {
             CommandContext<PrematureGpu> context(invocation);
             auto reply = context.complete(Exposure{9});
             check(!reply && reply.error().type == kProtocolContract && context.active());
             ++static_cast<FeatureState*>(owner)->premature_rejected;
             return reply;
-        }, &state, ECommandOwner::PROVIDED, true}
+        }, &state, test_registration::EOwner::PROVIDED, true)
     };
     check(bool(server->registerFeature<PrematureGpu>({&premature_feature, nullptr, premature_handlers})));
     auto a = take(RenderClient::create("runtime.open"));

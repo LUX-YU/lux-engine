@@ -3,6 +3,16 @@
 #include <lux/engine/render/protocol/Protocol.hpp>
 #include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>
 
+namespace lux::render::protocol_detail
+{
+    // Installed because the Native extension template below has external consumers.
+    struct CommandContextAccess final
+    {
+        template <RenderCommand C>
+        static CommandInvocation& invocation(CommandContext<C>& context) noexcept { return *context.invocation_; }
+    };
+}
+
 namespace lux::render::vulkan
 {
     struct GpuCompletionFns;
@@ -20,6 +30,13 @@ namespace lux::render::vulkan
         reserve(CommandInvocation& invocation, SubmissionQueue& queue, typename C::Response& response) noexcept
         {
             return reserve(invocation, queue, static_cast<void*>(&response));
+        }
+
+        template <RenderCommand C>
+        [[nodiscard]] static RenderResult<GpuCompletionReservation>
+        reserve(CommandContext<C>& context, SubmissionQueue& queue, typename C::Response& response) noexcept
+        {
+            return reserve(protocol_detail::CommandContextAccess::invocation(context), queue, &response);
         }
 
         ~GpuCompletionReservation() noexcept;

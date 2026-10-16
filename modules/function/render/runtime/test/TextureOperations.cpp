@@ -2,7 +2,7 @@
 #include "TypedTest.hpp"
 #include "TextureFixture.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <lux/engine/render/features/Texture.hpp>
+#include <lux/engine/render/resource/Texture.hpp>
 
 using namespace std::chrono_literals;
 

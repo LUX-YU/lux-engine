@@ -1,0 +1,32 @@
+[
+  {
+    "path": "E:\\RenderV2Rebuild\\Layer\\build-console-5.log",
+    "sha256": "5a4b10dc237c2498b6ff4bba74afb5808f8a7e464439402c3d36acb94e43e2f2",
+    "bytes": 14952
+  },
+  {
+    "path": "E:\\RenderV2Rebuild\\Layer\\build-no-work-L1.log",
+    "sha256": "7c53f662ada704a7884c4e63443dfd424d249671c10cbe11ebe4c06d745c499d",
+    "bytes": 410
+  },
+  {
+    "path": "E:\\RenderV2Rebuild\\Layer\\test-console-2.log",
+    "sha256": "be4bdf3e6a9ad2db5b888f1f11f765b790e12ce5d153b4d819b966efdea60713",
+    "bytes": 542394
+  },
+  {
+    "path": "E:\\RenderV2Rebuild\\Layer\\test-console-1.log",
+    "sha256": "e1c65e61b294ac4a0fbdb63439ac14da05f28763521240a0a93e23a716f1e70e",
+    "bytes": 541013
+  },
+  {
+    "path": "E:\\RenderV2Rebuild\\Layer\\evidence\\L1\\protection.json",
+    "sha256": "118061cd62f980392f5b3947454e8773f9bf5ab7faebff4e3a17fe65b16f8625",
+    "bytes": 4958
+  },
+  {
+    "path": "E:\\RenderV2Rebuild\\Layer\\evidence\\L1\\test-names.json",
+    "sha256": "7513ab30e754bcec472bf6333521981c2620f96d0f32d674fa9d574737334668",
+    "bytes": 3100
+  }
+]

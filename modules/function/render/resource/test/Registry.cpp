@@ -1,3 +1,4 @@
+#include "FactoryAudit.hpp"
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 #include <cstdlib>
 
@@ -54,13 +55,25 @@ namespace
         };
     };
 
+    struct WrongOpsStorage final
+    {
+        using Config = unsigned;
+        static inline constexpr auto description = TestStorage::description;
+        struct Ops final { double (*read)(const void*) noexcept; void (*write)(void*, double) noexcept; };
+        struct Access final
+        {
+            Access(void*, const Ops&, bool) noexcept { std::abort(); }
+        };
+    };
+    static_assert(sizeof(WrongOpsStorage::Ops) == sizeof(TestStorage::Ops));
+
     StorageFactory factory() noexcept
     {
         static const TestStorage::Ops ops{
             [](const void* instance) noexcept { return static_cast<const Value*>(instance)->value; },
             [](void* instance, unsigned value) noexcept { static_cast<Value*>(instance)->value = value; }
         };
-        return {
+        return resource_detail::StorageFactoryAudit::make(
             &TestStorage::description, EGraphicsApi::CONTRACT_TEST, &ops,
             [](void* native, const void* config) noexcept -> RenderResult<NativeStorage> {
                 auto* counts = static_cast<Counts*>(native);
@@ -82,8 +95,8 @@ namespace
             },
             [](const void* instance, const void* config) noexcept {
                 return static_cast<const Value*>(instance)->initial == *static_cast<const unsigned*>(config);
-            }, {}
-        };
+            }, {}, nullptr, nullptr, storageCppType<unsigned>(), storageCppType<TestStorage::Ops>()
+        );
     }
 }
 
@@ -107,13 +120,21 @@ int main()
         require(registry.ancestor(*attachment, EResourceScope::SCENE).value() == *scene);
         require(bool(registry.installFactory(factory())));
         require(!registry.installFactory(factory()));
+        // Same schema and same sizeof cannot authorize a different native C++ Config.
+        struct WrongConfig { unsigned value; };
+        static_assert(sizeof(WrongConfig) == sizeof(TestStorage::Config));
+        require(!registry.configureType(TestStorage::description, std::make_shared<const WrongConfig>(WrongConfig{7})));
         require(bool(registry.configureType(TestStorage::description, std::make_shared<const unsigned>(7))));
+        const WrongConfig wrong{7};
+        require(!registry.getOrCreate(root, "wrong", TestStorage::description, &wrong));
+        require(counts.created == 0);
         require(!registry.configureType(TestStorage::description, std::make_shared<const unsigned>(7)));
         registry.freeze();
         require(!registry.installFactory(factory()));
         auto global = registry.getOrCreate<TestStorage>(root, "shared");
         auto repeated = registry.getOrCreate<TestStorage>(root, "shared", 7);
         require(global && repeated && counts.created == 1);
+        require(!registry.tryGet<WrongOpsStorage>(root, "shared"));
         require(bool(global->write(11)) && repeated->read() == 11);
         require(!registry.getOrCreate<TestStorage>(root, "shared", 8));
         auto inherited = registry.findVisible<TestStorage>(*attachment, "shared");

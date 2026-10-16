@@ -1,3 +1,4 @@
+#include <lux/engine/render/resource/Registration.hpp>
 #include "TypedProtocol.hpp"
 #include "Deferred.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
@@ -40,7 +41,7 @@ namespace lux::render
         struct CommandEntry final
         {
             CommandId id;
-            CommandHandler binding;
+            CommandRegistration binding;
             CommandTransport transport;
             std::shared_ptr<const void> code_pin;
             const StorageDescriptor* storage = nullptr;
@@ -116,37 +117,37 @@ namespace lux::render
         template <RenderCommand C, RenderResult<void> (Impl::*Method)(RenderRequest&) noexcept>
         void addBuiltin() noexcept
         {
-            addCommand({&commandDescriptor<C>(), [](void* owner, CommandInvocation& invocation) noexcept {
-                return (static_cast<Impl*>(owner)->*Method)(
-                    static_cast<GpuAdmission*>(invocation.completion_owner)->request);
-            }, this}, commandTransport<C>(), nullptr, config.implementation_code_pin);
+            static constexpr auto handler = +[](Impl& owner, const typename C::Request&, CommandContext<C>& context) noexcept {
+                auto& invocation = protocol_detail::CommandContextAccess::invocation(context);
+                return (owner.*Method)(static_cast<GpuAdmission*>(invocation.completion_owner)->request);
+            };
+            addCommand(bindCommand<C, handler>(*this), commandTransport<C>(), nullptr, config.implementation_code_pin);
         }
 
-        void addCommand(CommandHandler binding, CommandTransport transport,
+        void addCommand(CommandRegistration binding, CommandTransport transport,
             const StorageDescriptor* storage = nullptr, std::shared_ptr<const void> pin = {}) noexcept
         {
             // Full registration comparison proved equivalence; retain the template's static contract.
-            binding.descriptor = transport.descriptor;
             auto id = command_table.emplace(CommandEntry{{}, binding, transport, std::move(pin), storage});
             command_table.find(id)->id = id;
         }
 
-        RenderResult<void> validateHandlers(std::span<const CommandHandler> handlers, std::span<const CommandTransport> transports) const noexcept
+        RenderResult<void> validateHandlers(std::span<const CommandRegistration> handlers, std::span<const CommandTransport> transports) const noexcept
         {
             if (handlers.size() != transports.size()) return cxx::unexpected(RenderError{kFeatureContract});
             for (std::size_t i = 0; i < handlers.size(); ++i)
             {
                 const auto& handler = handlers[i];
-                if (!handler.descriptor || !handler.invoke) return cxx::unexpected(RenderError{kFeatureContract});
-                if (auto valid = validateCommand(*handler.descriptor); !valid) return valid;
-                if (auto valid = compatibleCommands(*handler.descriptor, *transports[i].descriptor); !valid) return valid;
-                if ((handler.descriptor->completion == ECompletionContract::RESOURCE_GPU_READY) != handler.gpu_completion)
+                if (!handler.valid()) return cxx::unexpected(RenderError{kFeatureContract});
+                if (auto valid = validateCommand(*handler.descriptor()); !valid) return valid;
+                if (auto valid = compatibleCommands(*handler.descriptor(), *transports[i].descriptor); !valid) return valid;
+                if ((handler.descriptor()->completion == ECompletionContract::RESOURCE_GPU_READY) != handler.gpuCompletion())
                     return cxx::unexpected(RenderError{kProtocolContract});
                 for (const auto& old : command_table)
-                    if (old.binding.descriptor->name.name() == handler.descriptor->name.name())
+                    if (old.binding.descriptor()->name.name() == handler.descriptor()->name.name())
                         return cxx::unexpected(RenderError{kFeatureDuplicate});
                 for (std::size_t previous = 0; previous < i; ++previous)
-                    if (handlers[previous].descriptor->name.name() == handler.descriptor->name.name())
+                    if (handlers[previous].descriptor()->name.name() == handler.descriptor()->name.name())
                         return cxx::unexpected(RenderError{kFeatureDuplicate});
             }
             return {};
@@ -777,7 +778,7 @@ namespace lux::render
                 actual_type && bool(ipc::IpcMessage::bindType<ValueEnvelope<HelloRequest>>(*actual_type)) :
                 transport && received.message().holds(*transport->request);
             const auto* descriptor = frame.command.isNull() ? &commandDescriptor<Hello>() :
-                (entry ? entry->binding.descriptor : nullptr);
+                (entry ? entry->binding.descriptor() : nullptr);
             const bool valid_identity = frame.command.isNull() ||
                 (entry && entry->available && frame.session == identity);
             const bool valid_capacity = frame.reply_capacity <= config.max_reply_bytes;
@@ -809,8 +810,8 @@ namespace lux::render
                 GpuAdmission admission{*this, request};
                 vulkan::GpuCompletionAccess access{&gpu_completion_functions, &admission};
                 auto invocation = request.invocation(&admission, command_completion_functions,
-                    entry->binding.gpu_completion ? &access : nullptr);
-                result = entry->binding.invoke(entry->binding.user, invocation);
+                    entry->binding.gpuCompletion() ? &access : nullptr);
+                result = entry->binding.invoke(invocation);
             }
             settle(std::move(request), result);
             ++commands;
@@ -1006,7 +1007,7 @@ namespace lux::render
         for (std::size_t i = 0; i < feature.handlers.size(); ++i)
         {
             const auto& handler = feature.handlers[i];
-            if (auto valid = compatibleCommands(feature.definition->commands[i], *handler.descriptor); !valid)
+            if (auto valid = compatibleCommands(feature.definition->commands[i], *handler.descriptor()); !valid)
                 return valid;
         }
         for (std::size_t i = 0; i < feature.handlers.size(); ++i)
@@ -1053,14 +1054,9 @@ namespace lux::render
         auto& resources = s.device->resources();
         for (const auto& type : s.storage_types)
         {
-            if (const auto* factory = resources.factory(type.description->type))
-            {
-                if (auto valid = validateStorageFactory(*type.description, *factory, EGraphicsApi::VULKAN); !valid)
-                { s.shutdown(); return cxx::unexpected(valid.error()); }
-            }
-            else if (auto installed = resources.installFactory(type.factory); !installed)
+            if (auto installed = resources.installFactory(type.factory); !installed)
             { s.shutdown(); return cxx::unexpected(installed.error()); }
-            if (auto configured = resources.configureType(*type.description, type.configuration); !configured)
+            if (auto configured = resources.configureType(*type.description, type.configuration, type.configuration_type); !configured)
             { s.shutdown(); return cxx::unexpected(configured.error()); }
         }
         resources.freeze();
@@ -1069,9 +1065,9 @@ namespace lux::render
         for (auto& entry : s.command_table)
         {
             entry.available = !entry.storage || (entry.storage->required_capabilities & ~capabilities) == 0;
-            if (entry.binding.owner == ECommandOwner::DEVICE_SESSION) entry.binding.user = s.device.get();
+            entry.binding.bindNative(s.device.get());
             if (!entry.available) continue;
-            const auto& descriptor = *entry.binding.descriptor;
+            const auto& descriptor = *entry.binding.descriptor();
             s.manifest.capabilities.push_back({entry.code_pin, std::string(descriptor.name.name()), entry.id,
                 descriptor.version, descriptor.request, descriptor.response, descriptor.completion,
                 entry.transport.request, entry.transport.response});
@@ -1117,6 +1113,8 @@ namespace lux::render
         if (auto valid = validateStorage(*storage.description); !valid) return valid;
         if (auto valid = validateStorageFactory(*storage.description, storage.factory, EGraphicsApi::VULKAN); !valid)
             return valid;
+        if (storage.configuration && storage.configuration_type != storage.factory.config_type)
+            return cxx::unexpected(RenderError{kStorageMismatch});
         for (const auto& existing : storage_types)
         {
             if (existing.description->type != storage.description->type) continue;

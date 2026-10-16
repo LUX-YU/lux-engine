@@ -102,6 +102,7 @@ namespace lux::render
     };
 
     struct CommandAsyncOps;
+    namespace protocol_detail { struct CommandContextAccess; }
 
     struct CommandCompletionFns final
     {
@@ -172,21 +173,51 @@ namespace lux::render
         [[nodiscard]] RenderResult<void> completeWhen(Sender&& sender) noexcept;
 
     private:
+        friend struct protocol_detail::CommandContextAccess;
         CommandInvocation* invocation_;
     };
 
-    enum class ECommandOwner : std::uint8_t { PROVIDED, DEVICE_SESSION };
+    namespace protocol_detail { struct CommandHandlerAudit; }
 
-    // Cold registration: run binds DEVICE_SESSION once to the existing owner.
-    // Dispatch then calls the same fixed function and user without a branch.
-    struct CommandHandler final
+    class CommandHandler
     {
-        const CommandDescriptor* descriptor;
-        RenderResult<void> (*invoke)(void*, CommandInvocation&) noexcept;
-        void* user = nullptr;
-        ECommandOwner owner = ECommandOwner::PROVIDED;
-        bool gpu_completion = false;
+    public:
+        CommandHandler() noexcept = default;
+        [[nodiscard]] const CommandDescriptor* descriptor() const noexcept { return descriptor_; }
+        [[nodiscard]] bool valid() const noexcept { return descriptor_ && invoke_; }
+        [[nodiscard]] RenderResult<void> invoke(CommandInvocation& invocation) const noexcept
+        {
+            return invoke_(user_, invocation);
+        }
+
+        template <RenderCommand C, auto Function, class State>
+            requires std::same_as<decltype(Function),
+                RenderResult<void> (*)(State&, const typename C::Request&, CommandContext<C>&) noexcept>
+        [[nodiscard]] static CommandHandler bind(State* state) noexcept
+        {
+            return {&commandDescriptor<C>(), [](void* owner, CommandInvocation& invocation) noexcept {
+                CommandContext<C> context(invocation);
+                return Function(*static_cast<State*>(owner), context.request(), context);
+            }, state};
+        }
+
+    private:
+        friend struct protocol_detail::CommandHandlerAudit;
+        using Invoke = RenderResult<void> (*)(void*, CommandInvocation&) noexcept;
+        CommandHandler(const CommandDescriptor* descriptor, Invoke invoke, void* user) noexcept
+            : descriptor_(descriptor), invoke_(invoke), user_(user) {}
+        const CommandDescriptor* descriptor_ = nullptr;
+        Invoke invoke_ = nullptr;
+        void* user_ = nullptr;
     };
+
+    template <RenderCommand C, auto Function, class State>
+        requires std::same_as<decltype(Function),
+            RenderResult<void> (*)(State&, const typename C::Request&, CommandContext<C>&) noexcept>
+    [[nodiscard]] CommandHandler bindCommand(State& state) noexcept
+    {
+        return CommandHandler::bind<C, Function>(&state);
+    }
 
     [[nodiscard]] RenderResult<void> validateCommand(const CommandDescriptor& descriptor) noexcept;
     [[nodiscard]] RenderResult<void>

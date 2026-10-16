@@ -95,6 +95,8 @@ static lux::render::vulkan::TextureStorage* textures(DeviceSession& session) noe
 static RenderResult<void> configureTextures(DeviceSession& session, std::uint32_t capacity, std::uint64_t bytes) noexcept
 {
     auto& registry = session.resources();
+    if (!registry.factory(lux::render::TextureStorage::description.type))
+        if (auto installed = registry.installFactory(textureStorageFactory()); !installed) return installed;
     const TextureStorageConfig config{capacity, bytes};
     if (!registry.configuration(lux::render::TextureStorage::description.type))
         if (auto configured = registry.configureType(lux::render::TextureStorage::description,

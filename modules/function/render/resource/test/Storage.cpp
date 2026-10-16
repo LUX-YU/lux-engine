@@ -1,3 +1,4 @@
+#include "FactoryAudit.hpp"
 #include <lux/engine/render/resource/Storage.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 
@@ -63,7 +64,7 @@ int main()
     struct Value final { unsigned value; };
     struct Ops final { unsigned (*read)(const void*) noexcept; };
     const Ops ops{[](const void* value) noexcept { return static_cast<const Value*>(value)->value; }};
-    StorageFactory factory{
+    auto factory = resource_detail::StorageFactoryAudit::make(
         &original, EGraphicsApi::CONTRACT_TEST, &ops,
         [](void*, const void* config) noexcept -> RenderResult<NativeStorage> {
             return NativeStorage{new Value{*static_cast<const unsigned*>(config)}, [](void* value) noexcept {
@@ -72,8 +73,8 @@ int main()
         },
         [](const void* instance, const void* config) noexcept {
             return static_cast<const Value*>(instance)->value == *static_cast<const unsigned*>(config);
-        }, {}
-    };
+        }, {}, nullptr, nullptr, storageCppType<unsigned>(), storageCppType<Ops>()
+    );
     require(bool(validateStorageFactory(original, factory, EGraphicsApi::CONTRACT_TEST)));
     require(!validateStorageFactory(original, factory, EGraphicsApi::VULKAN));
     const unsigned config = 73, other = 19;

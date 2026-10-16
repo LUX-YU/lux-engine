@@ -1,3 +1,4 @@
+#include "../ErasedRegistrationFixture.hpp"
 #include "Fixture.hpp"
 #include <lux/engine/render/protocol/AsyncCommand.hpp>
 
@@ -111,13 +112,10 @@ namespace async_tail_test
         std::uint32_t value_;
     };
 
-    static RenderResult<void> invoke(void* owner, CommandInvocation& invocation) noexcept
+    static RenderResult<void> invoke(Host& host, const Command::Request& value, CommandContext<Command>& context) noexcept
     {
-        auto& host = *static_cast<Host*>(owner);
         auto pin = host.module.lock();
         if (!pin) return lux::cxx::unexpected(RenderError{kProtocolContract});
-        CommandContext<Command> context(invocation);
-        const auto value = context.request();
         // CpuSchedule::bind was instantiated in the EXE. Its real worker
         // trampoline retains both code pins across this provider's callback.
         auto source = host.cpu.schedule([](void*) noexcept {}, nullptr, pin, pin);
@@ -138,6 +136,6 @@ extern "C" __declspec(dllexport) void makeAsyncTailFeature(
         },
         nullptr, commands
     };
-    host.handlers[0] = {&commands[0], async_tail_test::invoke, &host};
+    host.handlers[0] = bindCommand<async_tail_test::Command, async_tail_test::invoke>(host);
     output = {&definition, nullptr, host.handlers, pin};
 }

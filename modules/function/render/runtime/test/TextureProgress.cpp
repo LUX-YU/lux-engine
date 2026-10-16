@@ -1,3 +1,5 @@
+#include <lux/engine/render/native/vulkan/Registration.hpp>
+#include "ErasedRegistrationFixture.hpp"
 #include <lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp>
 #include "ServerFixture.hpp"
 #include "TypedTest.hpp"
@@ -70,15 +72,12 @@ static const FeatureDefinition definition{FeatureTypeIdView("test.texture.progre
     [](const WireView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; },
     nullptr, texture_operations};
 
-static RenderResult<void> invoke(void* native, CommandInvocation& invocation) noexcept
+static RenderResult<void> invoke(DeviceSession& session, const TextureProbe::Request& value, CommandContext<TextureProbe>& context) noexcept
 {
-    CommandContext<TextureProbe> context(invocation);
     CHECK(!context.complete(Ack{})); // ordinary reply cannot manufacture GPU readiness
-    auto& session = *static_cast<DeviceSession*>(native);
     Ack response;
-    auto reservation = GpuCompletionReservation::reserve(invocation, session.queue(), &response);
+    auto reservation = GpuCompletionReservation::reserve(context, session.queue(), response);
     if (!reservation) return lux::cxx::unexpected(reservation.error());
-    const auto& value = context.request();
     const auto source = value.source.bytes().view();
     observed.store(source.data());
     const ImageDescription description{{value.dimension, value.dimension}, VK_FORMAT_R8G8B8A8_UNORM,
@@ -144,7 +143,7 @@ static void shutdownAndLoss()
         config.transfer_queues = true;
         config.uploads = TransferOptions{1024 * 1024, 1, 32 * 1024 * 1024};
         auto server = take(RenderServer::create(withCpu(worker, config)));
-        const std::array handlers{CommandHandler{&operation, invoke, nullptr, ECommandOwner::DEVICE_SESSION, true}};
+        const std::array handlers{nativeCommand<TextureProbe, invoke>()};
         CHECK(server->registerFeature<TextureProbe>({&definition, nullptr, handlers}));
         std::atomic<bool> run_finished{false};
         bool run_ok = false;
@@ -186,7 +185,7 @@ int main()
         config.completion_capacity = 1;
         config.uploads = TransferOptions{1024 * 1024, 1, 128 * 1024 * 1024};
         auto server = take(RenderServer::create(withCpu(host, config)));
-        const std::array handlers{CommandHandler{&operation, invoke, nullptr, ECommandOwner::DEVICE_SESSION, true}};
+        const std::array handlers{nativeCommand<TextureProbe, invoke>()};
         CHECK(server->registerFeature<TextureProbe>({&definition, nullptr, handlers}));
         bool run_ok = false;
         std::thread render([&] { run_ok = bool(server->run()); });

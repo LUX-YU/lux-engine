@@ -10,7 +10,7 @@ target_link_libraries(render_resource_registry_test PRIVATE render_resource)
 
 add_test(NAME render.resource.registry COMMAND render_resource_registry_test)
 
-foreach(header Storage Factory TransferOptions ResourceRegistry CpuSchedule Upload)
+foreach(header Storage Factory Registration Texture TransferOptions ResourceRegistry CpuSchedule Upload)
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${header}.cpp" CONTENT
         "#include <lux/engine/render/resource/${header}.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\nstatic_assert(__cplusplus >= 202002L);\n"
     )

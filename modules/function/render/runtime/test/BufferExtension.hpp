@@ -4,17 +4,15 @@
 #include "../../native/vulkan/test/extension/Feature.hpp"
 #include <lux/engine/render/native/vulkan/transfer/GpuCompletion.hpp>
 #include <lux/engine/render/features/Registration.hpp>
-#include <lux/engine/render/resource/Factory.hpp>
+#include <lux/engine/render/native/vulkan/Registration.hpp>
 
 namespace extension_test
 {
-    inline RenderResult<void> setBuffer(void* native, CommandInvocation& invocation) noexcept
+    inline RenderResult<void> setBuffer(vk::DeviceSession& session, const SetBuffer::Request& input,
+        CommandContext<SetBuffer>& context) noexcept
     {
-        CommandContext<SetBuffer> context(invocation);
-        const auto& input = context.request();
-        auto& session = *static_cast<vk::DeviceSession*>(native);
         BufferBinding response;
-        auto reservation = vk::GpuCompletionReservation::reserve(invocation, session.queue(), &response);
+        auto reservation = vk::GpuCompletionReservation::reserve(context, session.queue(), response);
         if (!reservation) return lux::cxx::unexpected(reservation.error());
         auto& registry = session.resources();
         auto instance = registry.getOrCreate(registry.root(), "values", TestBufferStorage::description, nullptr);
@@ -26,22 +24,19 @@ namespace extension_test
         return reservation->commitWork(upload->second);
     }
 
-    inline RenderResult<void> removeBuffer(void* native, CommandInvocation& invocation) noexcept
+    inline RenderResult<void> removeBuffer(vk::DeviceSession& session, const RemoveBuffer::Request& input,
+        CommandContext<RemoveBuffer>& context) noexcept
     {
-        CommandContext<RemoveBuffer> context(invocation);
-        const auto& input = context.request();
-        auto& registry = static_cast<vk::DeviceSession*>(native)->resources();
+        auto& registry = session.resources();
         auto id = registry.find(registry.root(), "values", TestBufferStorage::description);
         if (!id) return lux::cxx::unexpected(id.error());
         auto result = static_cast<NativeBuffer*>(registry.native(*id))->remove(input.id);
         return result ? context.complete(Ack{}) : result;
     }
 
-    inline RenderResult<void> readBuffer(void* native, CommandInvocation& invocation) noexcept
+    inline RenderResult<void> readBuffer(vk::DeviceSession& session, const ReadBuffer::Request& input,
+        CommandContext<ReadBuffer>& context) noexcept
     {
-        CommandContext<ReadBuffer> context(invocation);
-        const auto& input = context.request();
-        auto& session = *static_cast<vk::DeviceSession*>(native);
         auto& registry = session.resources();
         auto id = registry.find(registry.root(), "values", TestBufferStorage::description);
         if (!id) return lux::cxx::unexpected(id.error());
@@ -68,7 +63,7 @@ namespace extension_test
         auto payload = RenderPayload::fromVector(output, 0, output->size());
         if (!payload) return lux::cxx::unexpected(payload.error());
         ReadBuffer::Response response{std::move(*payload)};
-        auto reservation = vk::GpuCompletionReservation::reserve(invocation, session.queue(), &response);
+        auto reservation = vk::GpuCompletionReservation::reserve(context, session.queue(), response);
         if (!reservation) return lux::cxx::unexpected(reservation.error());
         registry.retain(*id);
         auto owner = std::make_unique<Read>(session, *id, vk::PreparedStorageBinding{}, vk::BufferPermit{},
@@ -120,9 +115,9 @@ namespace lux::render
     {
         using namespace extension_test;
         static const std::array handlers{
-            CommandHandler{&commandDescriptor<SetBuffer>(), setBuffer, nullptr, ECommandOwner::DEVICE_SESSION, true},
-            CommandHandler{&commandDescriptor<RemoveBuffer>(), removeBuffer, nullptr, ECommandOwner::DEVICE_SESSION},
-            CommandHandler{&commandDescriptor<ReadBuffer>(), readBuffer, nullptr, ECommandOwner::DEVICE_SESSION, true}
+            vk::nativeCommand<SetBuffer, setBuffer>(),
+            vk::nativeCommand<RemoveBuffer, removeBuffer>(),
+            vk::nativeCommand<ReadBuffer, readBuffer>()
         };
         return {&TestBufferStorage::description, handlers, bufferFactory()};
     }

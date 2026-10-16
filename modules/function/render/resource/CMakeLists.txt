@@ -5,7 +5,7 @@ add_component(
     COMPONENT_NAME render_resource
     NAMESPACE lux::engine::render
     OUTPUT_NAME lux_engine_render_resource
-    SOURCE_FILES src/Storage.cpp src/ResourceRegistry.cpp
+    SOURCE_FILES src/Storage.cpp src/ResourceRegistry.cpp src/Texture.cpp
 )
 
 component_include_directories(
@@ -14,7 +14,10 @@ component_include_directories(
     INSTALL_TIME include
 )
 
-component_add_internal_dependencies(render_resource lux::engine::render::render_data)
+component_add_internal_dependencies(render_resource
+    lux::engine::render::render_data
+    lux::engine::render::render_protocol
+)
 
 target_link_libraries(render_resource PUBLIC STDEXEC::stdexec)
 

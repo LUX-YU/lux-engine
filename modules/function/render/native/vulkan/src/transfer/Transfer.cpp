@@ -40,7 +40,6 @@ namespace lux::render::vulkan
         const std::uint32_t capabilities = (device_.textureDescriptors() ? 1u : 0u) |
             (device_.textureCompressionBc() ? 2u : 0u);
         resources_ = std::make_unique<ResourceRegistry>(this, EGraphicsApi::VULKAN, capabilities);
-        if (!resources_->installFactory(textureStorageFactory())) std::terminate();
     }
 
     DeviceSession::~DeviceSession() noexcept

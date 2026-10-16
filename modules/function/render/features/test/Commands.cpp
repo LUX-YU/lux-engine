@@ -1,5 +1,5 @@
 #include <lux/engine/render/features/Registration.hpp>
-#include <lux/engine/render/features/Texture.hpp>
+#include <lux/engine/render/resource/Texture.hpp>
 #include <lux/engine/render/resource/Factory.hpp>
 
 #include <cstdio>

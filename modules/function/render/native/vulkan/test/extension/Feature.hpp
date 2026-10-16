@@ -4,7 +4,7 @@
 #include "Shader.hpp"
 #include "../shaders/Texture.hpp"
 #include <lux/engine/render/features/Feature.hpp>
-#include <lux/engine/render/features/Texture.hpp>
+#include <lux/engine/render/resource/Texture.hpp>
 
 namespace lux::render
 {

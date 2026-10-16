@@ -1,3 +1,4 @@
+#include "ErasedRegistrationFixture.hpp"
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include <lux/engine/render/protocol/AsyncCommand.hpp>
 #include "Deferred.hpp"
@@ -194,13 +195,11 @@ struct GateSender final
     }
 };
 
-static RenderResult<void> invoke(void* user, CommandInvocation& invocation) noexcept
+static RenderResult<void> invoke(State& state, const Async::Request& input, CommandContext<Async>& context) noexcept
 {
-    auto& state = *static_cast<State*>(user);
-    CommandContext<Async> context(invocation);
-    const auto mode = context.request().mode;
-    const auto index = context.request().slot;
-    Output result{context.request().value, context.request().owner};
+    const auto mode = input.mode;
+    const auto index = input.slot;
+    Output result{input.value, input.owner};
     if (mode == 0) return context.completeWhen(stdexec::just(std::move(result)));
     if (mode == 1) return context.completeWhen(stdexec::just_error(RenderError{kRuntimeUnsupported}));
     if (mode == 2) return context.completeWhen(stdexec::just_stopped());
@@ -269,14 +268,14 @@ int main()
         nullptr, descriptors
     };
     const std::array handlers{
-        CommandHandler{&commandDescriptor<Async>(), invoke, &state},
-        CommandHandler{&commandDescriptor<InvalidGpuAsync>(), [](void* user, CommandInvocation& invocation) noexcept {
+        CommandRegistration{bindCommand<Async, invoke>(state)},
+        test_registration::erased(&commandDescriptor<InvalidGpuAsync>(), [](void* user, CommandInvocation& invocation) noexcept {
             CommandContext<InvalidGpuAsync> context(invocation);
             auto rejected = context.completeWhen(stdexec::just(Output{}));
             check(!rejected && rejected.error().type == kProtocolContract && context.active());
             ++static_cast<State*>(user)->gpu_rejected;
             return rejected;
-        }, &state, ECommandOwner::PROVIDED, true}
+        }, &state, test_registration::EOwner::PROVIDED, true)
     };
     auto server = take(RenderServer::create({"runtime.async", true}));
     check(bool(server->registerFeature<Async, InvalidGpuAsync>({&definition, nullptr, handlers, {}})));

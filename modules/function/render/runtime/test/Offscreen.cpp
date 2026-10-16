@@ -80,7 +80,7 @@ int main()
     options.compile_capacity = 1;
     auto server = take(RenderServer::create(withCpu(worker, options)));
     CHECK(server->registerStorage({&buffer_fixture::description, {}, buffer_fixture::factory(), false,
-        std::make_shared<const buffer_fixture::Config>()}));
+        std::make_shared<const buffer_fixture::Config>(), storageCppType<buffer_fixture::Config>()}));
     CHECK(server->registerFeature({&native_fixture::definition, programs}));
     auto client = take(TestClient::create("runtime.offscreen"));
     bool run_ok = false;

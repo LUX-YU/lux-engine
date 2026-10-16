@@ -1,5 +1,6 @@
+#include <lux/engine/render/resource/Registration.hpp>
 #include <lux/engine/render/runtime/RenderServer.hpp>
-#include <lux/engine/render/features/Texture.hpp>
+#include <lux/engine/render/resource/Texture.hpp>
 
 #include <cstdio>
 
@@ -28,8 +29,7 @@ int main()
     mismatch.factory.description = &wrong_description;
     CHECK((!server.registerStorage<SetTexture, SetTextureRegion, ReleaseTexture, QueryTexture>(mismatch)));
     auto bad_handler = registration;
-    auto handler = registration.handlers[0];
-    handler.gpu_completion = false;
+    CommandRegistration handler{static_cast<const CommandHandler&>(registration.handlers[0])};
     bad_handler.handlers = {&handler, 1};
     CHECK(!server.registerStorage<SetTexture>(bad_handler));
     CHECK(server.registerStorage<TextureStorage>());

@@ -29,7 +29,7 @@ int main()
     CHECK(session->configureUploads({65536, 2, 131072}, worker.cpu()));
     CHECK(configureTextures(*session, 16, 1024 * 1024));
     CHECK(session->resources().installFactory(extension_test::bufferFactory()));
-    CHECK(session->resources().configureType(TestBufferStorage::description, std::make_shared<const TestBufferStorage::Config>()));
+    CHECK(session->resources().configureType(TestBufferStorage::description, TestBufferStorage::Config{}));
     auto instance_id = take(session->resources().getOrCreate(session->resources().root(), "values", TestBufferStorage::description, nullptr));
     auto& buffer = *static_cast<NativeBuffer*>(session->resources().native(instance_id));
     const std::array<float, 4> half{0.5f, 0.5f, 0.5f, 0.5f};

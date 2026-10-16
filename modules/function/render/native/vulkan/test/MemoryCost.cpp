@@ -55,7 +55,7 @@ namespace lux::render::vulkan
                         return NativeStorage{new std::byte{}, [](void* p) noexcept { delete static_cast<std::byte*>(p); }};
                     }, [](const void*, const void*) noexcept { return true; }, {}, nullptr, nullptr,
                     storageCppType<unsigned>(), storageCppType<unsigned>());
-                if (!registry.installFactory(factory) || !registry.configureType(description, std::make_shared<const unsigned>(0)))
+                if (!registry.installFactory(factory) || !registry.configureType(description, 0u))
                     std::abort();
                 for (unsigned i = 0; i < 1000; ++i)
                 {

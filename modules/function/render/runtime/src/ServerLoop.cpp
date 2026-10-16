@@ -183,7 +183,7 @@ namespace lux::render
                 return cxx::unexpected(installed.error());
             }
             if (auto configured =
-                    resources.configureType(*type.description, type.configuration, type.configuration_type);
+                    resources.configureType(*type.description, type.configuration);
                 !configured)
             {
                 s.shutdown();

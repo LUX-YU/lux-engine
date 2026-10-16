@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/resource/Factory.hpp>
+#include <lux/engine/render/data/ConfigValue.hpp>
 #include <lux/engine/render/protocol/Protocol.hpp>
 
 namespace lux::render
@@ -37,8 +38,7 @@ namespace lux::render
         std::span<const CommandRegistration> handlers;
         StorageFactory factory;
         bool optional = false;
-        std::shared_ptr<const void> configuration;
-        StorageCppType configuration_type;
+        ConfigValue configuration;
     };
 
     // The selected Native module supplies a specialization. A declaration does

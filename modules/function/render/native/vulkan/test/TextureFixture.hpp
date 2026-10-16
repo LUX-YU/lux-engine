@@ -100,7 +100,7 @@ static RenderResult<void> configureTextures(DeviceSession& session, std::uint32_
     const TextureStorageConfig config{capacity, bytes};
     if (!registry.configuration(lux::render::TextureStorage::description.type))
         if (auto configured = registry.configureType(lux::render::TextureStorage::description,
-            std::make_shared<const TextureStorageConfig>(config)); !configured) return configured;
+            config); !configured) return configured;
     auto id = registry.getOrCreate(registry.root(), "default", lux::render::TextureStorage::description, &config);
     if (!id) return lux::cxx::unexpected(id.error());
     return {};

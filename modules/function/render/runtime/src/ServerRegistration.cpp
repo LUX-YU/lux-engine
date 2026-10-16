@@ -77,7 +77,9 @@ namespace lux::render
             return cxx::unexpected(RenderError{kStorageCapability});
         if (auto valid = validateStorageFactory(*storage.description, storage.factory); !valid)
             return valid;
-        if (storage.configuration && storage.configuration_type != storage.factory.config_type)
+        const StorageCppType config_type{storage.configuration.type(),
+            storage.configuration.objectSize(), storage.configuration.objectAlignment()};
+        if (storage.configuration && config_type != storage.factory.config_type)
             return cxx::unexpected(RenderError{kStorageMismatch});
         for (const auto& existing : storage_types)
         {

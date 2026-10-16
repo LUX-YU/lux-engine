@@ -127,7 +127,8 @@ namespace lux::render
             {"lux.render.data.schema_mismatch", "Wire schema does not exactly match", error::ERecovery::PERMANENT},
             {"lux.render.data.invalid_wire", "Invalid wire record", error::ERecovery::PERMANENT},
             {"lux.render.data.wire_limit", "Wire byte limit exceeded", error::ERecovery::PERMANENT},
-            {"lux.render.data.invalid_reference", "Invalid owned byte range", error::ERecovery::PERMANENT}
+            {"lux.render.data.invalid_reference", "Invalid owned byte range", error::ERecovery::PERMANENT},
+            {"lux.render.data.invalid_config", "Invalid immutable configuration", error::ERecovery::PERMANENT}
         };
         return descriptors;
     }

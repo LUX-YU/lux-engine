@@ -68,8 +68,9 @@ namespace lux::render
             auto registration = nativeStorageBinding<T>();
             if (!registration.description) return cxx::unexpected(RenderError{kStorageContract});
             if (auto valid = compatibleStorage(T::description, *registration.description); !valid) return valid;
-            registration.configuration_type = storageCppType<typename T::Config>();
-            registration.configuration = std::make_shared<const typename T::Config>(config);
+            auto configuration = ConfigValue::make(config, registration.factory.code_pin);
+            if (!configuration) return cxx::unexpected(configuration.error());
+            registration.configuration = std::move(*configuration);
             return [&]<typename... C>(std::tuple<C...>*) noexcept {
                 return registerStorage<C...>(std::move(registration));
             }(static_cast<typename T::Commands*>(nullptr));

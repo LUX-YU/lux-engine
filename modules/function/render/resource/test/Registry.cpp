@@ -123,12 +123,12 @@ int main()
         // Same schema and same sizeof cannot authorize a different native C++ Config.
         struct WrongConfig { unsigned value; };
         static_assert(sizeof(WrongConfig) == sizeof(TestStorage::Config));
-        require(!registry.configureType(TestStorage::description, std::make_shared<const WrongConfig>(WrongConfig{7})));
-        require(bool(registry.configureType(TestStorage::description, std::make_shared<const unsigned>(7))));
+        require(!registry.configureType(TestStorage::description, WrongConfig{7}));
+        require(bool(registry.configureType(TestStorage::description, 7u)));
         const WrongConfig wrong{7};
         require(!registry.getOrCreate(root, "wrong", TestStorage::description, &wrong));
         require(counts.created == 0);
-        require(!registry.configureType(TestStorage::description, std::make_shared<const unsigned>(7)));
+        require(!registry.configureType(TestStorage::description, 7u));
         registry.freeze();
         require(!registry.installFactory(factory()));
         auto global = registry.getOrCreate<TestStorage>(root, "shared");

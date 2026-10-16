@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/render/resource/Factory.hpp>
+#include <lux/engine/render/data/ConfigValue.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <string>
 #include <vector>
@@ -41,13 +42,15 @@ namespace lux::render
 
         [[nodiscard]] RenderResult<void> installFactory(StorageFactory factory) noexcept;
         [[nodiscard]] RenderResult<void>
-        configureType(const StorageDescriptor& type, std::shared_ptr<const void> configuration, StorageCppType actual) noexcept;
+        configureType(const StorageDescriptor& type, ConfigValue configuration) noexcept;
 
         template <class Config>
         [[nodiscard]] RenderResult<void>
-        configureType(const StorageDescriptor& type, std::shared_ptr<const Config> configuration) noexcept
+        configureType(const StorageDescriptor& type, Config configuration) noexcept
         {
-            return configureType(type, std::move(configuration), storageCppType<Config>());
+            auto value = ConfigValue::make(std::move(configuration));
+            if (!value) return cxx::unexpected(value.error());
+            return configureType(type, std::move(*value));
         }
         void freeze() noexcept { frozen_ = true; }
         [[nodiscard]] bool frozen() const noexcept { return frozen_; }
@@ -147,7 +150,7 @@ namespace lux::render
         ) noexcept;
 
         struct Domain final { DomainId id; DomainId parent; EResourceScope scope; bool closing = false; };
-        struct Type final { StorageFactory factory; std::shared_ptr<const void> configuration; };
+        struct Type final { StorageFactory factory; ConfigValue configuration; };
         struct Entry final
         {
             StorageInstanceId id;

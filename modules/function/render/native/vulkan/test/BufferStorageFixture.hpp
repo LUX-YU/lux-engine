@@ -67,6 +67,6 @@ namespace buffer_fixture
     inline RenderResult<void> install(native::DeviceSession& session) noexcept
     {
         if (auto result = session.resources().installFactory(factory()); !result) return result;
-        return session.resources().configureType(description, std::make_shared<const Config>());
+        return session.resources().configureType(description, Config{});
     }
 }

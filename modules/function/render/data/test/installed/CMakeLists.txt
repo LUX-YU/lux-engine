@@ -23,7 +23,7 @@ target_link_libraries(data_consumer PRIVATE lux::engine::render::render_data)
 
 add_test(NAME installed.data COMMAND data_consumer)
 
-foreach(header Schema Encoding Payload Shader ShaderInterface)
+foreach(header Schema Encoding Payload ConfigValue Shader ShaderInterface)
     string(CONCAT probe
         "#include <lux/engine/render/data/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
         "#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native header leaked into Data\n#endif\n"

@@ -41,7 +41,7 @@ int main()
         ops);
     CHECK(registry.installFactory(factory));
     CHECK(!registry.installFactory(factory));
-    CHECK(registry.configureType(Declaration::description, std::make_shared<const TextureStorageConfig>()));
+    CHECK(registry.configureType(Declaration::description, TextureStorageConfig{}));
     registry.freeze();
     auto access = take(registry.getOrCreate<Declaration>(registry.root(), "explicit"));
     CHECK(created == 1 && take(access.query(TextureId{2, 3})).revision == 991);

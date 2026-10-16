@@ -1,0 +1,100 @@
+#pragma once
+
+#include <lux/engine/render/core/Error.hpp>
+#include <lux/cxx/compile_time/TypeToken.hpp>
+#include <concepts>
+#include <memory>
+#include <type_traits>
+#include <utility>
+
+namespace lux::render
+{
+    inline constexpr auto kInvalidConfig = error::errorId("lux.render.data.invalid_config");
+
+    // Dynamic configurations specialize this with full retained backing/capacity, not visible ranges.
+    template <class T>
+    struct ConfigValueTraits
+    {
+        [[nodiscard]] static RenderResult<std::size_t> retainedBytes(const T&) noexcept
+            requires std::is_trivially_copyable_v<T>
+        {
+            return sizeof(T);
+        }
+    };
+
+    // One immutable shared configuration. No object dispatch, clone, mutable cast or wire ABI.
+    class ConfigValue final
+    {
+    public:
+        ConfigValue() noexcept = default;
+        ConfigValue(const ConfigValue&) noexcept = default;
+
+        ConfigValue(ConfigValue&& other) noexcept
+            : code_pin_(std::move(other.code_pin_)), value_(std::move(other.value_)),
+              type_(std::exchange(other.type_, {})), retained_bytes_(std::exchange(other.retained_bytes_, 0)) {}
+
+        ConfigValue& operator=(ConfigValue other) noexcept
+        {
+            // Both pins remain live until the corresponding old shared control block is destroyed.
+            using std::swap;
+            swap(code_pin_, other.code_pin_);
+            swap(value_, other.value_);
+            swap(type_, other.type_);
+            swap(retained_bytes_, other.retained_bytes_);
+            return *this;
+        }
+
+        template <class T>
+            requires std::is_nothrow_move_constructible_v<std::remove_cvref_t<T>> &&
+                std::is_nothrow_destructible_v<std::remove_cvref_t<T>> &&
+                requires(const std::remove_cvref_t<T>& value) {
+                    { ConfigValueTraits<std::remove_cvref_t<T>>::retainedBytes(value) } noexcept
+                        -> std::same_as<RenderResult<std::size_t>>;
+                }
+        [[nodiscard]] static RenderResult<ConfigValue>
+        make(T&& value, const std::shared_ptr<const void>& source_code_pin = {}) noexcept
+        {
+            using Value = std::remove_cvref_t<T>;
+            auto bytes = ConfigValueTraits<Value>::retainedBytes(value);
+            if (!bytes) return cxx::unexpected(bytes.error());
+            if (*bytes < sizeof(Value)) return cxx::unexpected(RenderError{kInvalidConfig});
+            ConfigValue result;
+            result.code_pin_ = source_code_pin;
+            result.value_ = std::make_shared<const Value>(std::forward<T>(value));
+            static constexpr Type type{cxx::typeToken<Value>(), sizeof(Value), alignof(Value)};
+            result.type_ = &type;
+            result.retained_bytes_ = *bytes;
+            return result;
+        }
+
+        [[nodiscard]] explicit operator bool() const noexcept { return bool(value_); }
+        [[nodiscard]] cxx::TypeToken type() const noexcept { return type_ ? type_->token : cxx::TypeToken{}; }
+        [[nodiscard]] std::size_t objectSize() const noexcept { return type_ ? type_->size : 0; }
+        [[nodiscard]] std::size_t objectAlignment() const noexcept { return type_ ? type_->alignment : 0; }
+        [[nodiscard]] std::size_t retainedBytes() const noexcept { return retained_bytes_; }
+
+        template <class T>
+        [[nodiscard]] const T* borrow() const noexcept
+        {
+            const bool matches = type() == cxx::typeToken<T>() && objectSize() == sizeof(T) &&
+                objectAlignment() == alignof(T);
+            return matches ? static_cast<const T*>(value_.get()) : nullptr;
+        }
+
+        // Trusted typed Factory/Graph thunk uses this after its single cold TypeToken check.
+        [[nodiscard]] const void* data() const noexcept { return value_.get(); }
+
+    private:
+        struct Type final
+        {
+            cxx::TypeToken token;
+            std::size_t size;
+            std::size_t alignment;
+        };
+
+        std::shared_ptr<const void> code_pin_;
+        std::shared_ptr<const void> value_;
+        const Type* type_ = nullptr;
+        std::size_t retained_bytes_ = 0;
+    };
+}

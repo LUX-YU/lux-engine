@@ -87,7 +87,7 @@ static int schemaTests()
     const std::uint64_t too_large[]{256};
     fields[4].enum_values = too_large;
     CHECK(!validateDataSchema(changed));
-    CHECK(renderDataErrorDescriptors().size() == 5);
+    CHECK(renderDataErrorDescriptors().size() == 6);
     fields.assign(original.fields.begin(), original.fields.end());
     const std::uint64_t different_modes[]{1, 2};
     fields[4].enum_values = different_modes;

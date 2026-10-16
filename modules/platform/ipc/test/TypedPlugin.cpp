@@ -1,4 +1,11 @@
+#define IPC_TEST_EXTERNAL_POLICY
 #include "TypedFixture.hpp"
+
+extern "C" const lux::platform::ipc::IpcTypeOps* ipcTypedExternalPolicy() noexcept
+{
+    return &lux::platform::ipc::IpcMessage::type<ipc_typed_test::StoragePolicyProbe>();
+}
+
 
 extern "C" const lux::platform::ipc::IpcTypeOps* ipcTypedBatch() noexcept
 {

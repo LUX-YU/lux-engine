@@ -75,9 +75,19 @@ namespace lux::render
         [[nodiscard]] SessionIdentity session() const noexcept { return completion_.session; }
         // Borrows end with this completion. Explicitly recovering/copying a business value transfers it
         // to application ownership; the transport budget is not a whole-process asset memory limit.
+        // A failed/cancelled completion still owns its returned Request. Its error is in header().
+        [[nodiscard]] const typename C::Response* tryResponse() const & noexcept
+        {
+            if (header().outcome != ECommandOutcome::SUCCESS) return nullptr;
+            return &completion_.backing_.message.template get<runtime_detail::ValueEnvelope<typename C::Response>>().value;
+        }
+
+        // Precondition: SUCCESS. Never interpret an error object as a Response, including release builds.
         [[nodiscard]] const typename C::Response& response() const & noexcept
         {
-            return completion_.backing_.message.template get<runtime_detail::ValueEnvelope<typename C::Response>>().value;
+            const auto* value = tryResponse();
+            if (!value) std::terminate();
+            return *value;
         }
 
         [[nodiscard]] typename C::Request& request() & noexcept
@@ -96,11 +106,13 @@ namespace lux::render
     {
         const bool is_wrong_identity = !active() || session != binding.session_ || command_ != binding.command_;
         if (is_wrong_identity) return cxx::unexpected(RenderError{kRuntimeIdentity});
-        if (header.outcome != ECommandOutcome::SUCCESS)
+        // Closure may report an unknown outcome without returning the Request. Do not invent recovery.
+        if (backing_.original_request.empty())
             return cxx::unexpected(header.error.type ? header.error : RenderError{kRuntimeState});
-        const bool is_wrong_type = !backing_.message.holds(binding.response_.operations()) ||
-            !backing_.original_request.holds(binding.request_.operations());
-        if (is_wrong_type) return cxx::unexpected(RenderError{kProtocolContract});
+        const bool is_wrong_request = !backing_.original_request.holds(binding.request_.operations());
+        const bool is_wrong_response = header.outcome == ECommandOutcome::SUCCESS &&
+            !backing_.message.holds(binding.response_.operations());
+        if (is_wrong_request || is_wrong_response) return cxx::unexpected(RenderError{kProtocolContract});
         return TypedRenderCompletion<C>{std::move(*this)};
     }
 

@@ -118,7 +118,8 @@ namespace lux::platform::ipc
             const bool is_layout_mismatch = local.size() != canonical.size() ||
                 local.alignment() != canonical.alignment();
             const bool is_abi_mismatch = local.abi() != canonical.abi();
-            if (is_type_mismatch || is_layout_mismatch || is_abi_mismatch)
+            const bool is_storage_mismatch = local.usesInlineStorage() != canonical.usesInlineStorage();
+            if (is_type_mismatch || is_layout_mismatch || is_abi_mismatch || is_storage_mismatch)
                 return cxx::unexpected(EIpcError::INVALID_ARGUMENT);
             return IpcBoundType<T>{canonical, std::move(code_pin)};
         }

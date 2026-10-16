@@ -291,19 +291,47 @@ int main()
     CHECK(call(*b, read_b, {scene_b, 0}).response().value == 7);
 
     SetValues::Request invalid{scene_a, 2, {{0, 99}, {static_cast<std::uint32_t>(slots), 1}}};
+    invalid.changes.reserve(127);
+    const auto* failed_backing = invalid.changes.data();
+    const auto failed_capacity = invalid.changes.capacity();
     const auto applied_before = state->applied_entries.load();
+    CHECK(a->retainedBytes() == 0);
     auto failed = wait(*a, take(a->submit(bound_a, invalid)));
     CHECK(failed.header.outcome == ECommandOutcome::FAILED && failed.header.error.type == kProtocolContract);
-    failed = {};
+    {
+        const auto charged = a->retainedBytes();
+        CHECK(charged > failed_capacity * sizeof(Entry));
+        auto recovered = take(std::move(failed).take(bound_a));
+        CHECK(!failed.active() && recovered.header().outcome == ECommandOutcome::FAILED);
+        CHECK(recovered.header().error.type == kProtocolContract && recovered.tryResponse() == nullptr);
+        CHECK(recovered.request().changes.data() == failed_backing);
+        CHECK(recovered.request().changes.capacity() == failed_capacity);
+        CHECK(a->retainedBytes() == charged);
+        invalid = std::move(recovered.request());
+        CHECK(a->retainedBytes() == charged); // moving the value is not transport acknowledgement
+    }
+    CHECK(a->retainedBytes() == 0);
     CHECK(state->applied_entries == applied_before);
     CHECK(call(*a, read_a, {scene_a, 0}).response().value == 3);
+    // Correct the failed input in-place and retry through the same real Handler.
+    invalid.changes[1].slot = 1;
+    invalid.changes[0].value = 3;
+    {
+        auto retried = take(std::move(wait(*a, take(a->submit(bound_a, invalid)))).take(bound_a));
+        CHECK(retried.header().outcome == ECommandOutcome::SUCCESS && retried.tryResponse());
+        CHECK(retried.response().applied == 2);
+        CHECK(retried.request().changes.data() == failed_backing);
+        CHECK(retried.request().changes.capacity() == failed_capacity);
+        invalid = std::move(retried.request());
+    }
+    CHECK(a->retainedBytes() == 0 && invalid.changes.data() == failed_backing);
     auto stale = scene_a;
     ++stale.gen;
     invalid = {stale, 2, {{0, 99}}};
     failed = wait(*a, take(a->submit(bound_a, invalid)));
     CHECK(failed.header.outcome == ECommandOutcome::FAILED && failed.header.error.type == kRuntimeIdentity);
     failed = {};
-    CHECK(state->applied_entries == applied_before);
+    CHECK(state->applied_entries == applied_before + 2);
     SetValues::Request duplicates{scene_a, 3, {{0, 5}, {0, 9}, {0, 7}}};
     CHECK(call(*a, bound_a, std::move(duplicates)).response().applied == 3);
     CHECK(call(*a, read_a, {scene_a, 0}).response().value == 7);

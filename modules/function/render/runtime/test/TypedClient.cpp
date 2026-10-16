@@ -384,11 +384,49 @@ int main()
         check(client->retainedBytes() == retained, "invalid outcome retained its owner budget");
     }
 
+    // Error delivery retains the same original object, independently of the response type.
+    for (const auto outcome : {ECommandOutcome::FAILED, ECommandOutcome::CANCELLED})
+    {
+        BatchRequest probe;
+        probe.values = {47, 53};
+        probe.values.reserve(89);
+        const auto* data = probe.values.data();
+        const auto capacity = probe.values.capacity();
+        const auto request_id = take(client->submit(binding, probe, 512));
+        const auto charged = client->retainedBytes();
+        auto input = receive(responder);
+        malformedReply(responder, input, session, outcome);
+        {
+            auto completion = consume(*client);
+            auto recovered = take(std::move(completion).take(binding));
+            check(recovered.header().request == request_id && recovered.header().outcome == outcome &&
+                recovered.header().error.type == kRuntimeState && !recovered.tryResponse(),
+                "failed/cancelled typed completion fabricated a successful response");
+            check(recovered.request().values.data() == data && recovered.request().values.capacity() == capacity,
+                "failed/cancelled completion did not return the original vector");
+            check(client->retainedBytes() == charged, "typed recovery prematurely refunded its owner budget");
+        }
+        check(client->retainedBytes() == retained, "terminal recovery did not refund the exact budget");
+    }
+
+    BatchRequest lost;
+    lost.values = {59};
+    const auto lost_id = take(client->submit(binding, lost, 512));
     // Publication itself fails after the Client already owns a valid cold binding. The deleted move
     // assignment forces the restore path to reconstruct the original object at its original address.
-    responder.reset();
+    responder.reset(); // The queued input is reclaimed without returning it to this Client.
+    auto unknown = consume(*client);
+    check(unknown.header.request == lost_id && unknown.header.outcome == ECommandOutcome::OUTCOME_UNKNOWN,
+        "closed connection invented a known business outcome");
+    auto unavailable = std::move(unknown).take(binding);
+    check(!unavailable && unknown.active() && unknown.header.outcome == ECommandOutcome::OUTCOME_UNKNOWN,
+        "closure without a returned Request fabricated typed recovery");
+    unknown = {};
+    // A closed Link may still own queued input until its final participant exits.
+    const auto closed_retained = client->retainedBytes();
+    check(closed_retained > retained, "unknown outcome prematurely refunded queued input ownership");
     check(!client->submit(binding, rejected, 512) && rejected.values.data() == rejected_pointer &&
-        rejected.values.size() == 2 && client->retainedBytes() == retained,
+        rejected.values.size() == 2 && client->retainedBytes() == closed_retained,
         "closed publication did not restore the original Request");
     client.reset();
     check(destroyed == 1 && owned.response().bytes.bytes().view()[0] == std::byte{41},

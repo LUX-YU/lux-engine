@@ -14,6 +14,19 @@ namespace ipc_typed_test
         std::uint64_t value = 0;
     };
 
+    // Deliberately incompatible definitions across the negative-test DLL boundary:
+    // identical token/layout/compiler ABI, but different noexcept move and thus storage policy.
+    // Only TypeOps metadata crosses this boundary; no Probe object may be transferred.
+    struct StoragePolicyProbe final
+    {
+        std::uint64_t value = 0;
+#if defined(IPC_TEST_EXTERNAL_POLICY)
+        StoragePolicyProbe(StoragePolicyProbe&& other) noexcept(false) : value(other.value) {}
+#else
+        StoragePolicyProbe(StoragePolicyProbe&& other) noexcept : value(other.value) {}
+#endif
+    };
+
     struct Batch final
     {
         std::uint64_t scene = 0;

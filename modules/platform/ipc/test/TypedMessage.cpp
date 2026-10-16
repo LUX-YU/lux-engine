@@ -227,7 +227,18 @@ namespace
         using Query = const IpcTypeOps* (*)() noexcept;
         const auto query_batch = reinterpret_cast<Query>(GetProcAddress(module, "ipcTypedBatch"));
         const auto query_probe = reinterpret_cast<Query>(GetProcAddress(module, "ipcTypedPinProbe"));
-        check(query_batch && query_probe, "typed plugin exports missing");
+        const auto query_policy = reinterpret_cast<Query>(GetProcAddress(module, "ipcTypedExternalPolicy"));
+        check(query_batch && query_probe && query_policy, "typed plugin exports missing");
+        const auto& local_policy = IpcMessage::type<StoragePolicyProbe>();
+        const auto& foreign_policy = *query_policy();
+        check(local_policy.token() == foreign_policy.token() && local_policy.abi() == foreign_policy.abi() &&
+            local_policy.size() == foreign_policy.size() && local_policy.alignment() == foreign_policy.alignment(),
+            "storage-policy negative must isolate policy from every existing binding check");
+        check(local_policy.usesInlineStorage() && !foreign_policy.usesInlineStorage(),
+            "storage-policy negative did not produce different representations");
+        const auto policy_binding = IpcMessage::bindType<StoragePolicyProbe>(foreign_policy);
+        check(!policy_binding && policy_binding.error() == EIpcError::INVALID_ARGUMENT,
+            "same-token/layout/ABI with incompatible storage policy was accepted");
         const auto* canonical = query_batch();
         check(canonical != &IpcMessage::type<Batch>(), "test did not get distinct DLL TypeOps");
         auto pin = std::shared_ptr<const void>(module, [&pin_alive](const void* handle) noexcept {

@@ -1,0 +1,211 @@
+{
+  "implementation": "07e51b8f6f3ed550d4112f19835218cd985ad386",
+  "root": "E:\\RenderV2Rebuild\\V12\\evidence\\N2\\initialization-independent",
+  "files": [
+    {
+      "path": "build-20261017-001438.console.log",
+      "bytes": 40790,
+      "sha256": "80eda45f0e61def14b8fadf02c516a2a839a1628191c82ecd6500ec0315390bc"
+    },
+    {
+      "path": "build-20261017-001654.console.log",
+      "bytes": 461,
+      "sha256": "0d62d49c38e4a437e567cf626877b0b84e78ff14fa882f53f45679bde90dc3db"
+    },
+    {
+      "path": "build-RelWithDebInfo-20261017-001439-800.log",
+      "bytes": 40547,
+      "sha256": "ce0653e1f28b0550726182ca49b60f48215b4fdcc629aadd07d89a9771fa85ef"
+    },
+    {
+      "path": "build-RelWithDebInfo-20261017-001656-288.log",
+      "bytes": 218,
+      "sha256": "1a84f59727781fbe53780e5da3e15699fea8aeef5c3ec54ac4fe59b844cc2d2e"
+    },
+    {
+      "path": "configure-20261017-001433.console.log",
+      "bytes": 1892,
+      "sha256": "0608f07a0fefd706c6b068fbbb5e5eca8ea2399eb2bee2f1c4b3ceb1dde706ad"
+    },
+    {
+      "path": "configure-RelWithDebInfo-20261017-001434-908.log",
+      "bytes": 1649,
+      "sha256": "4717d04919a1df61344d29dd42b8c87b11ab60f4e1a4f1ca3976c23a36fb4754"
+    },
+    {
+      "path": "protection.json",
+      "bytes": 9829,
+      "sha256": "a868a46308bf415eefa800bc4491955a57d4f498f80fbda8874b95fbbc6c8d84"
+    },
+    {
+      "path": "snapshot-20261017-001424.console.log",
+      "bytes": 642,
+      "sha256": "80318a1b9a934b730e187e0212e539f85004a2511e03ac726ce1180e12729996"
+    },
+    {
+      "path": "snapshot-RelWithDebInfo-20261017-001425-871.log",
+      "bytes": 399,
+      "sha256": "bbdd278cc06eb1ae23e77ec48e305fb2007057851da19e0b82fd4210da55b444"
+    },
+    {
+      "path": "source-facts.json",
+      "bytes": 163,
+      "sha256": "3bea4ad00bbc17aa8bcc99a26cc55078649e837db0d8784bd2023aa4782593f3"
+    },
+    {
+      "path": "test-20261017-001656.console.log",
+      "bytes": 668657,
+      "sha256": "e7128789ea29430881dd1c713ff5016b4e9dc8cf5029f79a31e328b222d34069"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log",
+      "bytes": 668414,
+      "sha256": "8286487c888ab0ff9f8f662b8f5662020e443a463bdcb3c1cdf34565203e84d7"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.ctest.txt",
+      "bytes": 679933,
+      "sha256": "4da465447cfb6067c728d8b42964694389a31fb4b7dcbac24279afedb43f5c95"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/ipc/test/ipc-cold.csv",
+      "bytes": 1515,
+      "sha256": "2be5dbb89b87708fbd4ded7c20ebef13e14f2031b5859b54cea00570efd725ad"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/ipc/test/ipc-operation.csv",
+      "bytes": 507886,
+      "sha256": "82fecfd9a87fdf4a7c0536f782b33cd9d7125691f129615144b840b76bbda818"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/ipc/test/ipc-queue.csv",
+      "bytes": 99157,
+      "sha256": "3661632eb3e2f8314e8f6f83ddf1b53fcd622668e2c469b1c0152ecd98e23d49"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/ipc/test/ipc-roundtrip.csv",
+      "bytes": 823964,
+      "sha256": "851a11d50852bea31f360b629789d854b8a7ba81dfc3d5e776a1849d107bff10"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/ipc/test/ipc-ticks.csv",
+      "bytes": 514028,
+      "sha256": "6f2c92fc2da62887dd013b077328fcf22322592642204a48749e4ab62b1bf67e"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/ipc/test/ipc-two-core.csv",
+      "bytes": 554766,
+      "sha256": "9a4436334bb9edbe231351bb8efc0aa2af1a5b34f961f1e4f532158ef0f00a00"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/native/vulkan/test/last-use-interleavings.csv",
+      "bytes": 7580,
+      "sha256": "eedb85414e2886591926faec79d9b609d770c8a9b8f7a1ab5e3b6e733c78abce"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/native/vulkan/test/native-binding-plan.csv",
+      "bytes": 197,
+      "sha256": "866b0a9b2ab8f5f65bcadda4ec4e8c8c44b25e6fc832406988d370a8a39dde37"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/native/vulkan/test/native-record-execute.csv",
+      "bytes": 10725,
+      "sha256": "c06673de0ff1ef370f75106c53e172664d66f2ee9be57db6268f5d11021f6967"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/native/vulkan/test/texture-chunks.csv",
+      "bytes": 1124,
+      "sha256": "b46a8e3a25eddad25217da87c7535b561984cdd9562ecb24bd3aff506b028ebb"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/native/vulkan/test/texture-sampling.csv",
+      "bytes": 238,
+      "sha256": "7af6fe87deec2489ee441d61f2bc5ce1693570b8747efecaccbd19e87d56b0de"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/async-cost-drains.csv",
+      "bytes": 83722,
+      "sha256": "31ed9bb0874cb61561dc472dcc2a6a0756d60deace3444f206bf52a8d621484b"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/async-cost-events.csv",
+      "bytes": 12715613,
+      "sha256": "387be8a6a9e358fba0d0e26bca2476f89b00da41657010221a1dd88b6725a4b5"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/async-cost-summary.csv",
+      "bytes": 6756,
+      "sha256": "e468fab346120d39139a0745ed8eb4b63be3d24d833aa980b6b098e8e6fabf76"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/dedicated-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/dedicated-runtime-gpu-ready.csv",
+      "bytes": 82046,
+      "sha256": "66b52ff1270e2631cd31aa6dea4ff780bb0ca946619348f153298cfe665f2bd2"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/runtime-api.csv",
+      "bytes": 1320,
+      "sha256": "260637cfa29d7c3c94a1ce0e654db578e4288d18e385b1e2a7110db3fc010021"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/runtime-gpu-backpressure.csv",
+      "bytes": 904,
+      "sha256": "7d2c89eda879466d359a058fcf88996a6bd27f3bcef94206cc69ab4dbcca8424"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/runtime-gpu-ready.csv",
+      "bytes": 82046,
+      "sha256": "19e6e5564f9c83f8e6da6620237063859c795111da18e13f80285f19476a1b83"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/runtime-open-operation.csv",
+      "bytes": 33826,
+      "sha256": "6b633ceb754cc0811334b6f163324c7ddd2373b520c4c2aee920ef15d4593db9"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/runtime-typed-batch.csv",
+      "bytes": 21614,
+      "sha256": "3623209f85640f063412fc7b8b7fdbb2aab9cd281063bc2b1f2e7d03cad0e36f"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/same-family-runtime-gpu-backpressure.csv",
+      "bytes": 37,
+      "sha256": "8518737cfced1d7590c09444e4ebaf247a6e4aff9b58a4c0740eddceca89416e"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/same-family-runtime-gpu-ready.csv",
+      "bytes": 82046,
+      "sha256": "06711cf4b23b534ec7534191ab8455cbd6c894a2471a1c290bad5a03efa44c02"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/texture-cadence-alias.csv",
+      "bytes": 12342,
+      "sha256": "d8946e8fe24282d051ca473e0ef6cc59604226a0b89ddf5970f6e42bba640adf"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/texture-cadence-dedicated.csv",
+      "bytes": 11907,
+      "sha256": "eb05fae6327c0852571940ed9d4ef0ae527c50c77fd319ef372a368f145a4c86"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/texture-progress.csv",
+      "bytes": 281,
+      "sha256": "10b44d57b03485a8adf33034e2be26fa27fab6fec684af9840a0d6e56f94ae00"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/texture-rendering-alias.csv",
+      "bytes": 1408,
+      "sha256": "def443c81ab0cda598c55e548d5dd6123084ba5108269a7f01df596c6acd2c2f"
+    },
+    {
+      "path": "test-RelWithDebInfo-20261017-001658-175.log.samples/render/runtime/test/texture-rendering-dedicated.csv",
+      "bytes": 1367,
+      "sha256": "8bdfb063554b410b5e8a390a279ce7d7febdd5e5b161bc417b4b507f7894c986"
+    }
+  ]
+}

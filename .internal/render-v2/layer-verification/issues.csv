@@ -1,0 +1,40 @@
+﻿id,issue,status,disposition
+L01,Texture 中立声明错置于 features,FIXED,本轮生产与对应行为/安装测试闭环
+L02,FeatureDefinition 混合元数据与 Graph 贡献调用表,FIXED,本轮生产与对应行为/安装测试闭环
+L03,SelectedFeature / selection_index 命名带有不必要的选择语义,FIXED,本轮生产与对应行为/安装测试闭环
+L04,Feature Assembly 重复审查 Command 注册合同,FIXED,本轮生产与对应行为/安装测试闭环
+L05,Native Compiler 接受整个 FeatureAssembly,FIXED,本轮生产与对应行为/安装测试闭环
+L06,Shader、Pass 执行参数和 Effect Binding 值混入同一 PassProgram,FIXED,本轮生产与对应行为/安装测试闭环
+L07,Protocol 定义 DEVICE_SESSION 绑定政策,FIXED,本轮生产与对应行为/安装测试闭环
+L08,gpu_completion 与语义完成合同并列，桥接含过宽 void*,FIXED,本轮生产与对应行为/安装测试闭环
+L09,StorageRegistration 和 Native 绑定入口混在 Factory.hpp,FIXED,本轮生产与对应行为/安装测试闭环
+L10,Texture Factory 在 DeviceSession 和显式注册中有两个安装入口,FIXED,本轮生产与对应行为/安装测试闭环
+L11,Native TextureStorage 直接接受 SetTexture::Request,FIXED,本轮生产与对应行为/安装测试闭环
+L12,手拼 Descriptor、函数和裸 Ops，编译期资格没有贯穿注册入口,FIXED,本轮生产与对应行为/安装测试闭环
+L13,CpuSchedule / CompletionPost 归属 resource,DEFERRED,E1 执行层归位
+L14,纯 Protocol 使用者被强制传播 stdexec 依赖,FIXED,本轮生产与对应行为/安装测试闭环
+L15,公开头暴露范围和 include 闭包过大,FIXED,本轮生产与对应行为/安装测试闭环
+L16,RenderServer.cpp 编排职责集中，平台调用混入,FIXED,本轮生产与对应行为/安装测试闭环
+L17,DeviceSession 基础头知道 Feature，构造析构藏在 Transfer.cpp,FIXED,本轮生产与对应行为/安装测试闭环
+W01,OwnedWireBytes 把普通拥有型字节命名成传输格式,FIXED,本轮生产与对应行为/安装测试闭环
+W02,WireView 与 BorrowedWireView 的所有权命名不够准确,FIXED,本轮生产与对应行为/安装测试闭环
+W03,同进程配置与Binding仍被强制编码，未区分持久格式需求,DEFERRED,W1 配置对象表示
+W04,配置Schema、C++ ABI、Shader布局与资源参数合同混读风险,FIXED,实际 Config/Ops C++ 资格已补；未迁移编码配置表示
+W05,同一冷态配置存在重复校验和重复解码机会,FIXED,已完成真实消费者盘点；重复解码优化留 W1
+P01,共享物理Queue三槽竞争导致上传期View跳过增加,DEFERRED,P1 Queue 公平性
+P02,每帧全量Storage和Backing退休扫描,DEFERRED,P2 退休收集
+P03,Registry查找为线性，不能把O(1)路由宣传为整个资源命令O(1),DEFERRED,P2 查找规模
+P04,热Command记录偏大，多层擦除与对象移动尚有测量空间,DEFERRED,P3 记录与移动成本
+P05,有限异步分配与物理槽页容量尚未完整量化,DEFERRED,P3 有限异步分配
+P06,execute返回bool混淆多种暂不可执行原因,DEFERRED,P1 执行原因分类
+E01,异步操作寿命与回调代码寿命必须分别审计,PROTECTED,原 DLL/CodePin/尾栈/停止测试回归；不宣称修复未复现 UAF
+E02,Effect编译Worker借用Session的可并发范围需要明确,PROTECTED,冻结注册和原请求保活，Worker 借 Session 编译，Owner 线程采用结果；并发编译/停服回归
+E03,固定1ms sleep和提交容量3是既有调度债务,DEFERRED,S5 帧调度
+E04,借用字节与CodePin的公开接口容易被调用方误用,PROTECTED,两类 Encoding view 均明确借用，结果通过原 Request/Payload/Pin 保活
+F01,Shader/Resource能力仍局限于当前演示子集,DEFERRED,S3/S4 真实能力门禁
+F02,中立资源规划边界不够显式，但不能为名字再建一份IR,FIXED,NativeResourcePlan 明确为后端计划，Compiler 只消费现有 Graph/Analysis；扩展原语另行门禁
+D01,README、示例、错误域与当前实现不一致,FIXED,本轮生产与对应行为/安装测试闭环
+D02,Root TOOLCHAIN仍被旧消费者路径阻塞,OPEN,根 TOOLCHAIN 独立实际配置结果记录；既有产品 BLOCKED 不升级
+D03,平台依赖与未测平台资格边界,FIXED,冷态 OS 熵移入现有 platform_process；仅 Windows 有资格
+D04,原始证据可访问性、长路径与嵌套CTest日志,FIXED,完整 stdout、外部哈希归档与可下载便携证据子集
+D05,P1/P2混用功能缺陷、结构债务和未来需求,FIXED,结构/性能/产品/未测平台资格分列

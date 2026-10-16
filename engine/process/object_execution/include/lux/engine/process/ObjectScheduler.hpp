@@ -2,7 +2,7 @@
 
 #include <atomic>
 #include <lux/engine/object/ObjectTarget.hpp>
-#include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <optional>
 
 namespace lux::process
@@ -37,7 +37,7 @@ namespace lux::process
             using sender_concept = stdexec::sender_t;
             using completion_signatures = stdexec::completion_signatures<
                 stdexec::set_value_t(),
-                stdexec::set_error_t(EExecutionError),
+                stdexec::set_error_t(execution::EExecutionError),
                 stdexec::set_stopped_t()>;
 
             class Env final
@@ -118,7 +118,7 @@ namespace lux::process
                     stop_callback_.reset();
                     if (status == object::EObjectPostStatus::FULL)
                     {
-                        stdexec::set_error(std::move(receiver_), EExecutionError::CAPACITY_EXCEEDED);
+                        stdexec::set_error(std::move(receiver_), execution::EExecutionError::CAPACITY_EXCEEDED);
                     }
                     else
                     {

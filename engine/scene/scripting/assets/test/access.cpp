@@ -69,12 +69,12 @@ namespace
             ));
         }
     };
-    void settle(process::ExecutionRuntime& execution)
+    void settle(execution::ExecutionRuntime& execution)
     {
         assert(execution.waitUntil([&]() noexcept {
             assert(execution.dispatchTaskEvents());
             for (const auto& task : execution.taskInfos())
-                if (task.state == process::ETaskState::QUEUED || task.state == process::ETaskState::RUNNING)
+                if (task.state == execution::ETaskState::QUEUED || task.state == execution::ETaskState::RUNNING)
                     return false;
             return !execution.hasPendingWork();
         }));
@@ -100,9 +100,9 @@ int main()
     assert(encoded);
     auto encoded_owner = std::make_shared<const std::vector<std::byte>>(std::move(*encoded));
     auto image = cxx::SharedBytes<>::fromOwner(encoded_owner, std::span<const std::byte>{*encoded_owner});
-    auto execution = process::ExecutionRuntime::create({1, 64, 64, {32}, process::BlockingSchedulerConfig{1, 64}});
+    auto execution = execution::ExecutionRuntime::create({1, 64, 64, {32}, execution::BlockingSchedulerConfig{1, 64}});
     assert(execution);
-    process::TaskScope file_tasks{*execution};
+    execution::TaskScope file_tasks{*execution};
     asset::AssetVfs vfs;
     auto blocking = execution->blocking();
     assert(blocking);
@@ -291,14 +291,14 @@ int main()
     }
     // Hold the actual blocking scheduler: revoke while the accepted VFS read has not executed.
     {
-        process::TaskScope blocker{*execution};
+        execution::TaskScope blocker{*execution};
         std::binary_semaphore entered{0}, proceed{0};
-        assert(blocker.submit({"Hold IO", "test"}, [&](process::TaskReporter) noexcept {
+        assert(blocker.submit({"Hold IO", "test"}, [&](execution::TaskReporter) noexcept {
             auto work = stdexec::then(stdexec::schedule(*blocking), [&]() noexcept {
                 entered.release();
                 proceed.acquire();
             });
-            return stdexec::upon_error(std::move(work), [](process::EExecutionError) noexcept { std::terminate(); });
+            return stdexec::upon_error(std::move(work), [](execution::EExecutionError) noexcept { std::terminate(); });
         }));
         assert(entered.try_acquire_for(std::chrono::seconds(5)));
         auto access = ScriptAssetAccess::create(*execution, (*endpoint)->port(), {1, 1, 24576, {8192, 16384, 8}});
@@ -314,14 +314,14 @@ int main()
     }
     // The memory endpoint supplies bytes synchronously; CPU decode is still blocked and must not run after revoke.
     {
-        process::TaskScope blocker{*execution};
+        execution::TaskScope blocker{*execution};
         std::binary_semaphore entered{0}, proceed{0};
-        assert(blocker.submit({"Hold decode", "test"}, [&](process::TaskReporter) noexcept {
+        assert(blocker.submit({"Hold decode", "test"}, [&](execution::TaskReporter) noexcept {
             auto work = stdexec::then(stdexec::schedule(execution->cpu()), [&]() noexcept {
                 entered.release();
                 proceed.acquire();
             });
-            return stdexec::upon_error(std::move(work), [](process::EExecutionError) noexcept { std::terminate(); });
+            return stdexec::upon_error(std::move(work), [](execution::EExecutionError) noexcept { std::terminate(); });
         }));
         assert(entered.try_acquire_for(std::chrono::seconds(5)));
         auto access = ScriptAssetAccess::create(*execution, *reads, {1, 1, 24576, {8192, 16384, 8}});

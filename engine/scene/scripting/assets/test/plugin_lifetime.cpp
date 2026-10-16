@@ -52,8 +52,8 @@ namespace
 int main(int argc, char** argv)
 {
     assert(argc == 2);
-    auto execution = take(process::ExecutionRuntime::create({1, 64, 64, {32}, process::BlockingSchedulerConfig{1, 64}}));
-    process::TaskScope files{execution};
+    auto execution = take(execution::ExecutionRuntime::create({1, 64, 64, {32}, execution::BlockingSchedulerConfig{1, 64}}));
+    execution::TaskScope files{execution};
     asset::AssetVfs vfs;
     auto endpoint = take(process::asset_loading::VfsAssetReadEndpoint::create(
         vfs.view().capture(), take(execution.blocking()), files, {4}
@@ -138,7 +138,7 @@ int main(int argc, char** argv)
                 const bool is_prior = std::ranges::any_of(prior_tasks, [&](const auto& prior) {
                     return prior.id == task.id;
                 });
-                if (!is_prior && task.state == process::ETaskState::SUCCEEDED)
+                if (!is_prior && task.state == execution::ETaskState::SUCCEEDED)
                     finished = true;
             }
             std::this_thread::yield();

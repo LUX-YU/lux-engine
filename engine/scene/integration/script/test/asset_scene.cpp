@@ -7,7 +7,7 @@ int main(int argc, char** argv)
     const std::array providers{
         lux::scene::makeSceneCapabilityProvider<lux::scene::ScriptRuntimeHost>(
             "script-runtime", "lux.script.runtime.host", *fixture.host),
-        lux::scene::makeSceneCapabilityProvider<process::TimerClient>("timer", "lux.process.timer", timer)
+        lux::scene::makeSceneCapabilityProvider<execution::TimerClient>("timer", "lux.process.timer", timer)
     };
     auto lease = take(fixture.runtime->builder()
         .setDescription(std::shared_ptr<const lux::scene::SceneDescription>(fixture.package.scene, &fixture.package.scene->data()))

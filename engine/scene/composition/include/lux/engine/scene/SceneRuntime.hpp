@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/process/Timer.hpp>
+#include <lux/engine/core/execution/Timer.hpp>
 #include <lux/engine/scene/Clock.hpp>
 #include <lux/engine/scene/SceneCapabilityProvider.hpp>
 #include <lux/engine/scene/SceneDescription.hpp>
@@ -16,7 +16,7 @@
 #include <functional>
 #include <utility>
 
-namespace lux::process
+namespace lux::execution
 {
     class ExecutionRuntime;
 }
@@ -96,7 +96,7 @@ namespace lux::scene
             SceneDriveFailure,
             EClockError,
             task::TaskExecutorFailure,
-            process::ETimerError>;
+            execution::ETimerError>;
         SceneInstanceId scene;
         VCause cause;
     };
@@ -197,7 +197,7 @@ namespace lux::scene
 
         using CreateResult = SceneRuntimeResult<std::unique_ptr<SceneRuntime>>;
         using DriveResult = SceneRuntimeResult<std::span<const SceneRuntimeFailure>>;
-        [[nodiscard]] static CreateResult create(process::ExecutionRuntime&, task::TaskExecutorConfig) noexcept;
+        [[nodiscard]] static CreateResult create(execution::ExecutionRuntime&, task::TaskExecutorConfig) noexcept;
         ~SceneRuntime() noexcept;
         SceneRuntime(const SceneRuntime&) = delete;
         SceneRuntime& operator=(const SceneRuntime&) = delete;

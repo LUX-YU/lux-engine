@@ -3,7 +3,7 @@
 #include <lux/engine/render/runtime/CommandValue.hpp>
 #include <lux/engine/render/features/Registration.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
-#include <lux/engine/render/resource/CpuSchedule.hpp>
+#include <lux/engine/render/resource/AsyncWork.hpp>
 #include <lux/engine/render/resource/Registration.hpp>
 #include <optional>
 

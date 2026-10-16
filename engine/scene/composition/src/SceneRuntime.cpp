@@ -1,6 +1,6 @@
 #include <lux/cxx/container/SlotMap.hpp>
-#include <lux/engine/process/CompletionWork.hpp>
-#include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/core/execution/CompletionWork.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/scene/SceneError.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/scene/detail/SceneDriver.hpp>
@@ -30,7 +30,7 @@ namespace lux::scene
             std::array<Step, 32> steps;
             std::uint64_t next_step{1};
             SceneInstanceId id;
-            process::CompletionWork::Request wake;
+            execution::CompletionWork::Request wake;
             std::atomic_bool requested{}, completed{};
 
             void request() noexcept
@@ -195,9 +195,9 @@ namespace lux::scene
         {
             using receiver_concept = stdexec::receiver_t;
             stdexec::inplace_stop_token stop;
-            process::CompletionWork::Request wake;
+            execution::CompletionWork::Request wake;
             std::atomic_bool* completed{};
-            std::optional<process::ETimerError>* error{};
+            std::optional<execution::ETimerError>* error{};
 
             struct Environment final
             {
@@ -214,7 +214,7 @@ namespace lux::scene
                 return {stop};
             }
 
-            void finish(std::optional<process::ETimerError> failure) noexcept
+            void finish(std::optional<execution::ETimerError> failure) noexcept
             {
                 // Once completion is published the owner may reclaim this receiver/operation.
                 auto notification = wake;
@@ -233,22 +233,22 @@ namespace lux::scene
                 finish({});
             }
 
-            void set_error(process::ETimerError failure) && noexcept
+            void set_error(execution::ETimerError failure) && noexcept
             {
                 finish(failure);
             }
         };
 
         using ActiveRecords = lux::cxx::SlotMap<std::unique_ptr<ActiveRecord>>;
-        using TimerOperation = stdexec::connect_result_t<process::TimerSender, TimerReceiver>;
+        using TimerOperation = stdexec::connect_result_t<execution::TimerSender, TimerReceiver>;
 
         struct ActiveTimer final
         {
             ActiveTimer(
-                process::ExecutionRuntime& execution,
-                process::CompletionWork::Request wake,
+                execution::ExecutionRuntime& execution,
+                execution::CompletionWork::Request wake,
                 std::atomic_bool& completed,
-                std::optional<process::ETimerError>& error,
+                std::optional<execution::ETimerError>& error,
                 SteadyClock::time_point deadline
             ) noexcept
                 : deadline(deadline), operation(stdexec::connect(
@@ -270,7 +270,7 @@ namespace lux::scene
             TimerOperation operation;
         };
 
-        Impl(process::ExecutionRuntime& execution, task::TaskExecutor executor, std::uint64_t domain)
+        Impl(execution::ExecutionRuntime& execution, task::TaskExecutor executor, std::uint64_t domain)
             : execution_(execution), executor_(std::move(executor)), domain_(domain),
               wake_(execution, this, +[](void*) noexcept {})
         {
@@ -880,7 +880,7 @@ namespace lux::scene
             return std::cref((**record).clock);
         }
 
-        process::ExecutionRuntime& execution_;
+        execution::ExecutionRuntime& execution_;
         task::TaskExecutor executor_;
         std::uint64_t domain_;
         std::thread::id owner_{std::this_thread::get_id()};
@@ -890,9 +890,9 @@ namespace lux::scene
         std::vector<std::shared_ptr<const void>> failure_code_owners_;
         std::vector<SceneRuntimeFailure> failures_;
         bool busy_{}, closing_{};
-        process::CompletionWork wake_;
+        execution::CompletionWork wake_;
         std::atomic_bool timer_completed_{false};
-        std::optional<process::ETimerError> timer_error_;
+        std::optional<execution::ETimerError> timer_error_;
         std::optional<ActiveTimer> timer_;
     };
 
@@ -901,7 +901,7 @@ namespace lux::scene
     SceneRuntime::~SceneRuntime() noexcept = default;
 
     SceneRuntime::CreateResult SceneRuntime::create(
-        process::ExecutionRuntime& execution,
+        execution::ExecutionRuntime& execution,
         task::TaskExecutorConfig config
     ) noexcept
     {
@@ -914,7 +914,7 @@ namespace lux::scene
         }
         if (!execution.timer())
         {
-            return rejected(process::ETimerError::STOPPING);
+            return rejected(execution::ETimerError::STOPPING);
         }
         const auto domain = SceneInstance::allocateDomain();
         if (!domain)

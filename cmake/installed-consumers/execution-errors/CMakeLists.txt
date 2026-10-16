@@ -6,16 +6,16 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)
+find_package(lux-engine-core-execution REQUIRED COMPONENTS core_execution)
 find_package(lux-engine-core REQUIRED COMPONENTS semantic)
 
 enable_testing()
 
 add_executable(
     execution_errors
-    "${CMAKE_CURRENT_LIST_DIR}/../../../engine/process/execution/test/ExecutionErrorTest.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../modules/core/execution/test/ExecutionErrorTest.cpp"
 )
-target_link_libraries(execution_errors PRIVATE lux::engine::process::process_execution)
+target_link_libraries(execution_errors PRIVATE lux::engine::core::core_execution)
 add_test(NAME installed.execution_errors COMMAND execution_errors)
 add_test(NAME installed.execution_errors_collision COMMAND execution_errors --collision)
 
@@ -23,9 +23,9 @@ add_executable(semantic_identity "${CMAKE_CURRENT_LIST_DIR}/../../../modules/cor
 target_link_libraries(semantic_identity PRIVATE lux::engine::core::semantic)
 add_test(NAME installed.semantic_identity COMMAND semantic_identity)
 
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/header.cpp" "#include <lux/engine/process/ExecutionError.hpp>\n")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/header.cpp" "#include <lux/engine/core/execution/ExecutionError.hpp>\n")
 add_library(execution_error_header OBJECT "${CMAKE_CURRENT_BINARY_DIR}/header.cpp")
-target_link_libraries(execution_error_header PRIVATE lux::engine::process::process_execution)
+target_link_libraries(execution_error_header PRIVATE lux::engine::core::core_execution)
 
 if(MSVC)
     foreach(target execution_errors semantic_identity execution_error_header)

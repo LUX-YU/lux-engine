@@ -1,5 +1,5 @@
 #include <lux/engine/error/ErrorRegistry.hpp>
-#include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
@@ -168,7 +168,7 @@ int main()
     };
     assert(lux::error::ErrorRegistry::instance().registerTypes(fixture_errors));
 
-    auto execution = process::ExecutionRuntime::create({1, 32, 32, {16}});
+    auto execution = execution::ExecutionRuntime::create({1, 32, 32, {16}});
     assert(execution);
     auto runtime = SceneRuntime::create(*execution, {0, 1024});
     auto other = SceneRuntime::create(*execution, {1, 1024});

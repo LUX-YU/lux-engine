@@ -95,9 +95,9 @@ namespace
 
     void ownerDeath(bool destroy_in_completion)
     {
-        auto runtime = process::ExecutionRuntime::create({1, 16, 16, {16}, process::BlockingSchedulerConfig{1, 16}});
+        auto runtime = execution::ExecutionRuntime::create({1, 16, 16, {16}, execution::BlockingSchedulerConfig{1, 16}});
         assert(runtime);
-        process::TaskScope tasks{*runtime};
+        execution::TaskScope tasks{*runtime};
         auto blocking = runtime->blocking();
         assert(blocking);
         asset::AssetVfs vfs;
@@ -142,16 +142,16 @@ namespace
 
     void cancelledQueuedRead()
     {
-        auto runtime = process::ExecutionRuntime::create({1, 16, 16, {16}, process::BlockingSchedulerConfig{1, 16}});
+        auto runtime = execution::ExecutionRuntime::create({1, 16, 16, {16}, execution::BlockingSchedulerConfig{1, 16}});
         assert(runtime);
-        process::TaskScope blocker{*runtime};
-        auto scope = std::make_unique<process::TaskScope>(*runtime);
+        execution::TaskScope blocker{*runtime};
+        auto scope = std::make_unique<execution::TaskScope>(*runtime);
         auto blocking = runtime->blocking();
         assert(blocking);
         std::atomic<bool> entered{}, proceed{};
         assert(blocker.submit(
             {"Hold blocking worker", "test"},
-            [&, scheduler = *blocking](process::TaskReporter) noexcept
+            [&, scheduler = *blocking](execution::TaskReporter) noexcept
             {
                 return stdexec::then(
                     stdexec::schedule(scheduler),
@@ -192,9 +192,9 @@ namespace
 
     void cleanupAndCapacity()
     {
-        auto runtime = process::ExecutionRuntime::create({1, 16, 16, {16}, process::BlockingSchedulerConfig{1, 16}});
+        auto runtime = execution::ExecutionRuntime::create({1, 16, 16, {16}, execution::BlockingSchedulerConfig{1, 16}});
         assert(runtime);
-        process::TaskScope tasks{*runtime};
+        execution::TaskScope tasks{*runtime};
         auto blocking = runtime->blocking();
         assert(blocking);
         asset::AssetVfs vfs;
@@ -220,7 +220,7 @@ namespace
         Reply rejected{0, std::this_thread::get_id(), false};
         for (unsigned i = 0; i != 2; ++i)
         {
-            // Failed TaskScope admission releases endpoint capacity, so the next rejection stays STOPPING.
+            // Failed execution::TaskScope admission releases endpoint capacity, so the next rejection stays STOPPING.
             assert(
                 port.submit({Asset, 1024}, &rejected, &Reply::complete, {}).error() == async::ESubmitError::STOPPING
             );
@@ -248,9 +248,9 @@ namespace
 
     void wakeReentry()
     {
-        auto runtime = process::ExecutionRuntime::create({1, 16, 16, {16}, process::BlockingSchedulerConfig{1, 16}});
+        auto runtime = execution::ExecutionRuntime::create({1, 16, 16, {16}, execution::BlockingSchedulerConfig{1, 16}});
         assert(runtime);
-        process::TaskScope tasks{*runtime};
+        execution::TaskScope tasks{*runtime};
         asset::AssetVfs vfs;
         auto provider = std::make_shared<BlockedProvider>();
         provider->proceed.store(true);

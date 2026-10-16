@@ -28,7 +28,7 @@ namespace lux::editor::detail
         const std::filesystem::path& file,
         const std::optional<ProjectManifest>& create,
         std::span<const ProjectPluginLocation> locations,
-        process::TaskReporter reporter
+        execution::TaskReporter reporter
     ) noexcept
     {
         const auto stop = reporter.stopToken();

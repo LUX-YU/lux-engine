@@ -2,7 +2,7 @@
 
 #include "Request.hpp"
 #include <lux/engine/render/protocol/AsyncCommand.hpp>
-#include <lux/engine/render/resource/CpuSchedule.hpp>
+#include <lux/engine/render/resource/AsyncWork.hpp>
 #include <lux/engine/render/native/vulkan/CommandCompletion.hpp>
 #include <lux/engine/render/native/vulkan/ExecutionContext.hpp>
 #include <lux/engine/render/native/vulkan/transfer/GpuWork.hpp>

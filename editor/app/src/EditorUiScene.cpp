@@ -5,7 +5,7 @@
 #include <lux/engine/editor/detail/EditorUiScene.hpp>
 #include <lux/engine/editor/detail/UiFrame.hpp>
 #include <lux/engine/editor/detail/UiRenderSyncStage.hpp>
-#include <lux/engine/process/CompletionWork.hpp>
+#include <lux/engine/core/execution/CompletionWork.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
@@ -28,14 +28,14 @@ namespace lux::editor
     struct EditorUiScene::Impl final
     {
         Impl(
-            process::ExecutionRuntime& execution,
+            execution::ExecutionRuntime& execution,
             lux::scene::SceneRuntime& scenes,
             lux::scene::RenderResources& resources,
             std::optional<scene::ViewConfig> output
         )
             : scenes_(scenes), resources_(resources), output_(std::move(output)),
               work_(execution, this, [](void* value) noexcept { static_cast<Impl*>(value)->collectCompletions(); }),
-              completion_(std::make_shared<process::CompletionWork::Request>(work_.requester()))
+              completion_(std::make_shared<execution::CompletionWork::Request>(work_.requester()))
         {
             for (auto& slot : frames_)
             {
@@ -152,7 +152,7 @@ namespace lux::editor
             }
             const auto bound = runtime.bindProgress(
                 completion_,
-                [](void* value) noexcept { static_cast<process::CompletionWork::Request*>(value)->request(); }
+                [](void* value) noexcept { static_cast<execution::CompletionWork::Request*>(value)->request(); }
             );
             if (!bound)
             {
@@ -319,8 +319,8 @@ namespace lux::editor
         std::optional<scene::ViewConfig> output_;
         render::PixelExtent desired_extent_{};
         bool extent_pending_{};
-        process::CompletionWork work_;
-        std::shared_ptr<process::CompletionWork::Request> completion_;
+        execution::CompletionWork work_;
+        std::shared_ptr<execution::CompletionWork::Request> completion_;
         lux::scene::SceneInstanceLease scene_;
         lux::scene::InstanceRetirement retirement_;
         simulation::ecs::Entity input_{simulation::ecs::NullEntity}, output_request_{simulation::ecs::NullEntity};

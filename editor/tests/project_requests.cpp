@@ -6,7 +6,7 @@
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
-#include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <map>
@@ -74,13 +74,13 @@ namespace
         std::atomic_bool stopped{};
     };
 
-    void hold(process::TaskScope& scope, const std::shared_ptr<Held>& held)
+    void hold(execution::TaskScope& scope, const std::shared_ptr<Held>& held)
     {
         auto scheduler = scope.execution().blocking();
         assert(scheduler);
         assert(scope.submit(
             {"Held operation", "test"},
-            [held, scheduler = *scheduler](process::TaskReporter reporter) noexcept
+            [held, scheduler = *scheduler](execution::TaskReporter reporter) noexcept
             {
                 return stdexec::schedule(scheduler) | stdexec::then(
                                                           [held, reporter]() noexcept -> FrameworkResult<void>
@@ -92,7 +92,7 @@ namespace
                                                           }
                                                       );
             },
-            [held](process::TTaskResult<void, error::Error>&& result) noexcept
+            [held](execution::TTaskResult<void, error::Error>&& result) noexcept
             {
                 assert(result);
                 ++held->delivered;
@@ -208,7 +208,7 @@ int main(int argc, char** argv)
     assert(root.resolvePane(original_handle) && lives["Rejected"].panes == 1 && lives["Rejected"].contexts == 1);
 
     // L05: occupy the real blocking scheduler, admit B then C, and let both accepted requests settle.
-    auto blockers = std::make_unique<process::TaskScope>(engine->engine().execution());
+    auto blockers = std::make_unique<execution::TaskScope>(engine->engine().execution());
     auto held = std::make_shared<Held>();
     hold(*blockers, held);
     hold(*blockers, held);

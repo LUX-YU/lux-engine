@@ -90,7 +90,7 @@ target_link_libraries(
         lux::engine::core::error
         lux::engine::resource::asset
         lux::engine::scene::scene_asset
-        lux::engine::process::process_execution
+        lux::engine::core::core_execution
         lux::engine::engine_context
     PRIVATE
         lux::engine::project::project_plugins
@@ -103,7 +103,7 @@ component_add_transitive_commands(
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object error)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
-    "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
+    "find_package(lux-engine-core-execution REQUIRED COMPONENTS core_execution)"
     "find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)"
     "find_package(lux-engine-context REQUIRED COMPONENTS engine_context)"
     "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)"

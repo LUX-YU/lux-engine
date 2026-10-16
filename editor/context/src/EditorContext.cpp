@@ -67,7 +67,7 @@ namespace lux::editor
         return std::unique_ptr<EditorContext>(new EditorContext(engine, std::move(prepared), std::move(composition)));
     }
 
-    process::TaskScope& EditorContext::tasks() noexcept
+    execution::TaskScope& EditorContext::tasks() noexcept
     {
         if (!object::ObjectRuntime::instance().isCurrent())
         {

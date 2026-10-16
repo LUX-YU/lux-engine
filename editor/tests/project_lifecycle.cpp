@@ -9,7 +9,7 @@
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
 #include <lux/engine/editor/LuxEngine.hpp>
-#include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -132,7 +132,7 @@ int main(int argc, char** argv)
     assert(scheduler);
     assert(old->tasks().submit(
         {"Held project task", "test"},
-        [&](process::TaskReporter reporter) noexcept
+        [&](execution::TaskReporter reporter) noexcept
         {
             return stdexec::then(
                 stdexec::schedule(*scheduler),
@@ -148,7 +148,7 @@ int main(int argc, char** argv)
                 }
             );
         },
-        [&](process::TTaskResult<void, error::Error>&& result) noexcept
+        [&](execution::TTaskResult<void, error::Error>&& result) noexcept
         {
             assert(result && a.destroyed == 1);
             delivered = true;

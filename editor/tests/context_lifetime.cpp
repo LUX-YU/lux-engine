@@ -17,7 +17,7 @@ using namespace std::chrono_literals;
 int main()
 {
     auto& owner = object::ObjectRuntime::instance();
-    auto engine = engine::EngineContext::create({1, 64, 64, {32}, process::BlockingSchedulerConfig{1, 32}}, {0, 64});
+    auto engine = engine::EngineContext::create({1, 64, 64, {32}, execution::BlockingSchedulerConfig{1, 32}}, {0, 64});
     assert(engine && owner.isCurrent());
     uuids::uuid_name_generator ids{*uuids::uuid::from_string("20d09a0e-ac42-4280-be98-6e31f51c0cfe")};
     const ProjectDescription description{"Complete", std::filesystem::current_path()};
@@ -71,7 +71,7 @@ int main()
     assert(scheduler);
     assert((*context)->tasks().submit(
         {"Context destruction", "test"},
-        [work, scheduler = *scheduler](process::TaskReporter reporter) noexcept
+        [work, scheduler = *scheduler](execution::TaskReporter reporter) noexcept
         {
             return stdexec::then(
                 stdexec::schedule(scheduler),
@@ -84,7 +84,7 @@ int main()
                 }
             );
         },
-        [work, thread = std::this_thread::get_id()](process::TTaskResult<void, error::Error>&& result) noexcept
+        [work, thread = std::this_thread::get_id()](execution::TTaskResult<void, error::Error>&& result) noexcept
         {
             assert(result && thread == std::this_thread::get_id() && !work->delivered);
             work->delivered = true;

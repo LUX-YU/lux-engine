@@ -162,9 +162,9 @@ int main(int argc, char** argv)
     assert(encoded);
     auto owner = std::make_shared<const std::vector<std::byte>>(std::move(*encoded));
     auto image = cxx::SharedBytes<>::fromOwner(owner, std::span<const std::byte>{*owner});
-    auto execution = process::ExecutionRuntime::create({1, 64, 64, {32}, process::BlockingSchedulerConfig{1, 64}});
+    auto execution = execution::ExecutionRuntime::create({1, 64, 64, {32}, execution::BlockingSchedulerConfig{1, 64}});
     require(execution, "execution");
-    process::TaskScope files{*execution};
+    execution::TaskScope files{*execution};
     asset::AssetVfs vfs;
     auto blocking = execution->blocking(); assert(blocking);
     auto endpoint = process::asset_loading::VfsAssetReadEndpoint::create(vfs.view().capture(), *blocking, files, {4});
@@ -235,7 +235,7 @@ int main(int argc, char** argv)
                 assert(execution->dispatchTaskEvents());
                 (*access)->deliverCompletions();
                 for (const auto& task : execution->taskInfos())
-                    if (task.state == process::ETaskState::QUEUED || task.state == process::ETaskState::RUNNING)
+                    if (task.state == execution::ETaskState::QUEUED || task.state == execution::ETaskState::RUNNING)
                         return false;
                 return !execution->hasPendingWork();
             }));

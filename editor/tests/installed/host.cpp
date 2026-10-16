@@ -9,7 +9,7 @@
 #include <lux/engine/editor/EditorComposition.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/EditorWindow.hpp>
-#include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/render/RenderRuntime.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -153,21 +153,21 @@ int main(int argc, char** argv)
     ui::PaneHandle global_handle;
     Global* global{};
     std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + 20s;
-    process::TaskScope observation_tasks(engine_identity->execution());
+    execution::TaskScope observation_tasks(engine_identity->execution());
     auto after = [&](auto delay, auto callback) noexcept
     {
         auto& execution = engine_identity->execution();
         auto accepted = observation_tasks.submit(
             {"Public host observation", "test"},
-            [&, delay](process::TaskReporter) noexcept
+            [&, delay](execution::TaskReporter) noexcept
             {
-                using Result = cxx::expected<void, process::ETimerError>;
+                using Result = cxx::expected<void, execution::ETimerError>;
                 return stdexec::upon_error(
                     stdexec::then(execution.timer().after(delay), []() noexcept { return Result{}; }),
-                    [](process::ETimerError error) noexcept -> Result { return cxx::unexpected(error); }
+                    [](execution::ETimerError error) noexcept -> Result { return cxx::unexpected(error); }
                 );
             },
-            [callback = std::move(callback)](process::TTaskResult<void, process::ETimerError>&& result) noexcept
+            [callback = std::move(callback)](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
             {
                 assert(result);
                 callback();
@@ -207,7 +207,7 @@ int main(int argc, char** argv)
                 assert(scheduler);
                 assert(project->tasks().submit(
                     {"Held project task", "test"},
-                    [&, scheduler = *scheduler](process::TaskReporter reporter) noexcept
+                    [&, scheduler = *scheduler](execution::TaskReporter reporter) noexcept
                     {
                         return stdexec::schedule(scheduler) | stdexec::then(
                                                                   [&, reporter]() noexcept -> FrameworkResult<void>
@@ -219,7 +219,7 @@ int main(int argc, char** argv)
                                                                   }
                                                               );
                     },
-                    [&](process::TTaskResult<void, error::Error>&& result) noexcept
+                    [&](execution::TTaskResult<void, error::Error>&& result) noexcept
                     {
                         assert(result && counts["A"].services == 1 && counts["A"].panes == 1);
                         delivered = true;

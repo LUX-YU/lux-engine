@@ -26,7 +26,7 @@ for config in model['configurations']:
             assert not provider.is_relative_to(editor) and not provider.is_relative_to(legacy), 'BRIDGE_EDITOR_EDGE'
             assert not provider.is_relative_to(ui), 'BRIDGE_UI_EDGE'
             if name == 'object':
-                assert target['name'] not in ('process_execution', 'object_execution'), 'OBJECT_REVERSE_PROCESS_EDGE'
+                assert target['name'] not in ('core_execution', 'object_execution'), 'OBJECT_REVERSE_EXECUTION_EDGE'
             for group in target.get('compileGroups', []):
                 for include in group.get('includes', []):
                     path = Path(include['path']).resolve()

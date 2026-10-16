@@ -3,7 +3,7 @@
 #include <lux/engine/partition/PartitionOrdinal.hpp>
 #include <lux/engine/process/world_loading/WorldStorageSource.hpp>
 #include <lux/engine/world/WorldPartitionData.hpp>
-#include <lux/engine/process/Task.hpp>
+#include <lux/engine/core/execution/Task.hpp>
 
 #include <cstddef>
 #include <memory>
@@ -24,7 +24,7 @@ namespace lux::process::world_loading
                 lux::partition::PartitionOrdinal partition,
                 std::size_t max_bytes,
                 std::stop_token stop,
-                process::TaskReporter reporter,
+                execution::TaskReporter reporter,
                 void* receiver,
                 void (*set_value)(void*, lux::world::WorldPartitionData&&) noexcept,
                 void (*set_error)(void*, WorldStorageRuntimeFailure) noexcept,
@@ -91,7 +91,7 @@ namespace lux::process::world_loading
                           partition,
                           max_bytes,
                           stop_.get_token(),
-                          process::detail::getTaskReporter(stdexec::get_env(receiver_)),
+                          execution::detail::getTaskReporter(stdexec::get_env(receiver_)),
                           this,
                           [](void* state, lux::world::WorldPartitionData&& value) noexcept {
                               auto& self = *static_cast<TState*>(state);

@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/process/world_loading/WorldStorageSource.hpp>
 #include <lux/engine/scene/Observer.hpp>
 #include <lux/engine/scene/SceneSystem.hpp>
@@ -42,7 +42,7 @@ namespace lux::scene
             process::world_loading::WorldStorageRuntimeFailure,
             WorldMaterializeFailure,
             WorldResidencyFailure,
-            process::EExecutionError>
+            execution::EExecutionError>
             cause;
     };
     // Compact cross-system classification. status() retains the complete storage/materialization diagnostics.
@@ -58,7 +58,7 @@ namespace lux::scene
     struct WorldLoadingServices final
     {
         process::world_loading::WorldStorageSource source;
-        process::TaskScope& tasks; // Host-owned: closes after all systems have been destroyed.
+        execution::TaskScope& tasks; // Host-owned: closes after all systems have been destroyed.
         WorldLoadingLimits limits;
         std::vector<partition::PartitionOrdinal> bootstrap;
         std::vector<std::shared_ptr<const world::WorldPartitionData>> initial_partitions;

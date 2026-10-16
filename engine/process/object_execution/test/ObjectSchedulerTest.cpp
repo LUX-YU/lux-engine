@@ -15,7 +15,7 @@ namespace
     struct Result final
     {
         unsigned value{}, stopped{}, error{};
-        process::EExecutionError failure{};
+        execution::EExecutionError failure{};
         std::thread::id thread;
         unsigned count() const noexcept
         {
@@ -53,7 +53,7 @@ namespace
             ++result->stopped;
         }
 
-        void set_error(process::EExecutionError error) && noexcept
+        void set_error(execution::EExecutionError error) && noexcept
         {
             assert(result->count() == 0);
             ++result->error;
@@ -158,7 +158,7 @@ namespace
         Result full;
         auto op = stdexec::connect(stdexec::schedule(scheduler), Receiver{&full});
         stdexec::start(op);
-        assert(full.error == 1 && full.failure == process::EExecutionError::CAPACITY_EXCEEDED);
+        assert(full.error == 1 && full.failure == execution::EExecutionError::CAPACITY_EXCEEDED);
         assert(runtime.dispatchPending() == capacity && received == capacity);
     }
 
@@ -211,7 +211,7 @@ namespace
                 destroy(value);
             }
 
-            void set_error(process::EExecutionError) && noexcept
+            void set_error(execution::EExecutionError) && noexcept
             {
                 std::abort();
             }
@@ -233,9 +233,9 @@ namespace
 
     void blockingToOwner()
     {
-        process::ExecutionRuntimeConfig config{1, 16, 16, {16}};
-        config.blocking = process::BlockingSchedulerConfig{1, 16};
-        auto execution = process::ExecutionRuntime::create(config);
+        execution::ExecutionRuntimeConfig config{1, 16, 16, {16}};
+        config.blocking = execution::BlockingSchedulerConfig{1, 16};
+        auto execution = execution::ExecutionRuntime::create(config);
         assert(execution);
         auto blocking = execution->blocking();
         assert(blocking);

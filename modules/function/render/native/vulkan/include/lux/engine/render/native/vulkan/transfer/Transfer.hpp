@@ -2,7 +2,7 @@
 
 #include <lux/engine/render/native/vulkan/memory/Memory.hpp>
 #include <lux/engine/render/native/vulkan/transfer/Submission.hpp>
-#include <lux/engine/render/resource/CpuSchedule.hpp>
+#include <lux/engine/render/resource/AsyncWork.hpp>
 
 namespace lux::render::vulkan
 {

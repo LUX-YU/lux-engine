@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/cxx/concurrent/LatestSpscExchange.hpp>
-#include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/scene/SceneSystem.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
@@ -34,8 +34,8 @@ namespace lux::scene
             lux::cxx::expected<std::unique_ptr<ScriptRealDelayProvider>, EScriptRealDelayProviderError>;
 
         [[nodiscard]] static CreateResult create(
-            process::ExecutionRuntime&,
-            process::TimerClient timer,
+            execution::ExecutionRuntime&,
+            execution::TimerClient timer,
             std::size_t capacity
         ) noexcept;
 
@@ -64,7 +64,7 @@ namespace lux::scene
     {
         using AssetCapabilityFactory =
             simulation::script::ScriptApiCapabilityPublication (*)(script::ScriptAssetAccess&) noexcept;
-        process::ExecutionRuntime& execution;
+        execution::ExecutionRuntime& execution;
         simulation::script::ScriptRuntimeLimits limits;
         scene::script::ScriptSystemCodecLimits codec_limits;
         std::size_t real_delay_capacity{};

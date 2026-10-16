@@ -1,8 +1,8 @@
 #pragma once
 
 #include <lux/engine/core/async/OperationPort.hpp>
-#include <lux/engine/process/PortSender.hpp>
-#include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/core/execution/PortSender.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/resource/asset/Asset.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/AssetStorageError.hpp>
@@ -43,7 +43,7 @@ namespace lux::process::asset_loading
         lux::async::ESubmitError submit_error{lux::async::ESubmitError::UNKNOWN_OPERATION};
         lux::asset::EAssetStorageError storage_error{lux::asset::EAssetStorageError::NOT_FOUND};
         lux::asset::AssetDecodeFailure decode;
-        EExecutionError execution_error{};
+        execution::EExecutionError execution_error{};
     };
 
     namespace detail
@@ -62,7 +62,7 @@ namespace lux::process::asset_loading
                 owner->readError(std::move(failure));
             }
 
-            void set_error(EExecutionError failure) && noexcept
+            void set_error(execution::EExecutionError failure) && noexcept
             {
                 owner->executionError(failure);
             }
@@ -94,7 +94,7 @@ namespace lux::process::asset_loading
 
             TAssetLoadSender(
                 AssetReadPort read,
-                CpuScheduler cpu,
+                execution::CpuScheduler cpu,
                 lux::asset::AssetId id,
                 lux::asset::AssetDecodeLimits limits,
                 std::stop_token stop
@@ -108,14 +108,14 @@ namespace lux::process::asset_loading
                 using operation_state_concept = stdexec::operation_state_t;
                 using ReadReceiver = TAssetReadReceiver<TState, stdexec::env_of_t<Receiver>>;
                 using ReadSender = decltype(stdexec::continues_on(
-                    lux::process::portSender(std::declval<AssetReadPort>(), std::declval<ReadAssetImage>()),
-                    std::declval<CpuScheduler>()
+                    lux::execution::portSender(std::declval<AssetReadPort>(), std::declval<ReadAssetImage>()),
+                    std::declval<execution::CpuScheduler>()
                 ));
                 using ReadState = decltype(stdexec::connect(std::declval<ReadSender>(), std::declval<ReadReceiver>()));
 
                 TState(
                     AssetReadPort read,
-                    CpuScheduler cpu,
+                    execution::CpuScheduler cpu,
                     lux::asset::AssetId id,
                     lux::asset::AssetDecodeLimits limits,
                     std::stop_token stop,
@@ -124,7 +124,7 @@ namespace lux::process::asset_loading
                     : receiver_(std::move(receiver)), id_(id), limits_(limits), stop_(stop),
                       read_state_(stdexec::connect(
                           stdexec::continues_on(
-                              lux::process::portSender(std::move(read), ReadAssetImage{id, limits.max_image_bytes}),
+                              lux::execution::portSender(std::move(read), ReadAssetImage{id, limits.max_image_bytes}),
                               std::move(cpu)
                           ),
                           ReadReceiver{this, stdexec::get_env(receiver_)}
@@ -199,7 +199,7 @@ namespace lux::process::asset_loading
                     stdexec::set_stopped(std::move(receiver_));
                 }
 
-                void executionError(EExecutionError error) noexcept
+                void executionError(execution::EExecutionError error) noexcept
                 {
                     AssetLoadFailure failure{EAssetLoadError::EXECUTION_FAILURE};
                     failure.execution_error = error;
@@ -233,7 +233,7 @@ namespace lux::process::asset_loading
 
         private:
             AssetReadPort read_;
-            CpuScheduler cpu_;
+            execution::CpuScheduler cpu_;
             lux::asset::AssetId id_;
             lux::asset::AssetDecodeLimits limits_;
             std::stop_token stop_;
@@ -243,7 +243,7 @@ namespace lux::process::asset_loading
     template <class ConcreteAsset>
     [[nodiscard]] auto loadAsset(
         AssetReadPort read,
-        CpuScheduler cpu,
+        execution::CpuScheduler cpu,
         lux::asset::AssetId id,
         lux::asset::AssetDecodeLimits limits,
         std::stop_token stop = {}

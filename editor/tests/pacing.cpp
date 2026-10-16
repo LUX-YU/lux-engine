@@ -73,17 +73,17 @@ namespace
     auto timer(editor::LuxEngine& host, Receiver& receiver)
     {
         auto& runtime = host.engine().execution();
-        using Result = cxx::expected<void, process::ETimerError>;
+        using Result = cxx::expected<void, execution::ETimerError>;
         return runtime.submit(
             {"Pacing completion", "qualification"},
-            [&](process::TaskReporter) noexcept
+            [&](execution::TaskReporter) noexcept
             {
                 return stdexec::upon_error(
                     stdexec::then(runtime.timer().after(700ms), []() noexcept { return Result{}; }),
-                    [](process::ETimerError error) noexcept -> Result { return cxx::unexpected(error); }
+                    [](execution::ETimerError error) noexcept -> Result { return cxx::unexpected(error); }
                 );
             },
-            [&](process::TTaskResult<void, process::ETimerError>&& result) noexcept
+            [&](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
             {
                 assert(result);
                 receiver.queue(); // Work from dispatch reaches the existing Object batch.
@@ -120,24 +120,24 @@ namespace
         // frame hook or host-owned profiling state is used by this SDK consumer.
         std::size_t before_updates{}, before_frames{}, before_messages{};
         std::chrono::steady_clock::time_point started;
-        process::Task task;
+        execution::Task task;
         std::jthread close;
         bool warmed{};
         auto& execution = host->engine().execution();
         auto warm = execution.submit(
             {"Pacing warmup", "qualification"},
-            [&](process::TaskReporter) noexcept
+            [&](execution::TaskReporter) noexcept
             {
                 return stdexec::upon_error(
                     stdexec::then(
                         execution.timer().after(250ms),
-                        []() noexcept { return cxx::expected<void, process::ETimerError>{}; }
+                        []() noexcept { return cxx::expected<void, execution::ETimerError>{}; }
                     ),
-                    [](process::ETimerError error) noexcept -> cxx::expected<void, process::ETimerError>
+                    [](execution::ETimerError error) noexcept -> cxx::expected<void, execution::ETimerError>
                     { return cxx::unexpected(error); }
                 );
             },
-            [&](process::TTaskResult<void, process::ETimerError>&& result) noexcept
+            [&](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
             {
                 assert(result && probe->changed);
                 warmed = true;

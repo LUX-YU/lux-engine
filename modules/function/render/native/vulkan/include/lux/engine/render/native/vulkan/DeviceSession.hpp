@@ -5,7 +5,7 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/render/resource/TransferOptions.hpp>
-#include <lux/engine/render/resource/CpuSchedule.hpp>
+#include <lux/engine/render/resource/AsyncWork.hpp>
 #include <lux/engine/render/resource/ResourceRegistry.hpp>
 
 namespace lux::render::vulkan

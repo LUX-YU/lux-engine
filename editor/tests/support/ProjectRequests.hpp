@@ -16,7 +16,7 @@ namespace fixture
             [](const auto& info)
             {
                 const bool active =
-                    info.state == lux::process::ETaskState::QUEUED || info.state == lux::process::ETaskState::RUNNING;
+                    info.state == lux::execution::ETaskState::QUEUED || info.state == lux::execution::ETaskState::RUNNING;
                 return info.category == "editor.project" && active;
             }
         );

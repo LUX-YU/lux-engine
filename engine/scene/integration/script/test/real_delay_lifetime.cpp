@@ -1,4 +1,4 @@
-#include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/scene/ScriptRuntimeSystem.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 
@@ -75,7 +75,7 @@ namespace
         }
     };
 
-    void settle(process::ExecutionRuntime& runtime) noexcept
+    void settle(execution::ExecutionRuntime& runtime) noexcept
     {
         assert(runtime.waitUntil(
             [&]() noexcept
@@ -84,7 +84,7 @@ namespace
                 for (const auto& task : runtime.taskInfos())
                 {
                     const bool pending =
-                        task.state == process::ETaskState::QUEUED || task.state == process::ETaskState::RUNNING;
+                        task.state == execution::ETaskState::QUEUED || task.state == execution::ETaskState::RUNNING;
                     if (pending)
                     {
                         return false;
@@ -98,9 +98,9 @@ namespace
 
 int main()
 {
-    auto runtime = process::ExecutionRuntime::create({1, 64, 64, {16}});
+    auto runtime = execution::ExecutionRuntime::create({1, 64, 64, {16}});
     assert(runtime);
-    process::TaskScope unrelated{*runtime};
+    execution::TaskScope unrelated{*runtime};
 
     // A semantic destructor cannot collect even an already accepted unrelated business completion.
     {
@@ -113,9 +113,9 @@ int main()
         std::size_t deliveries{};
         assert(unrelated.submit(
             {"Unrelated completion", "LR05"},
-            [](process::TaskReporter) noexcept
-            { return stdexec::just(cxx::expected<void, process::EExecutionError>{}); },
-            [&](process::TTaskResult<void, process::EExecutionError>&&) noexcept { ++deliveries; }
+            [](execution::TaskReporter) noexcept
+            { return stdexec::just(cxx::expected<void, execution::EExecutionError>{}); },
+            [&](execution::TTaskResult<void, execution::EExecutionError>&&) noexcept { ++deliveries; }
         ));
         owner->reset();
         assert(deliveries == 0 && !retained.expired());
@@ -131,9 +131,9 @@ int main()
         assert((*owner)->endpoint().invoke(std::chrono::hours(1), reply->completion()));
         assert(unrelated.submit(
             {"Destroy delay owner", "LR05"},
-            [](process::TaskReporter) noexcept
-            { return stdexec::just(cxx::expected<void, process::EExecutionError>{}); },
-            [&](process::TTaskResult<void, process::EExecutionError>&&) noexcept { owner->reset(); }
+            [](execution::TaskReporter) noexcept
+            { return stdexec::just(cxx::expected<void, execution::EExecutionError>{}); },
+            [&](execution::TTaskResult<void, execution::EExecutionError>&&) noexcept { owner->reset(); }
         ));
         settle(*runtime);
         assert(!*owner && reply->calls == 0);
@@ -195,7 +195,7 @@ int main()
 
     // Actual timer capacity and cancellation preserve distinct script-domain outcomes.
     {
-        auto limited = process::ExecutionRuntime::create({1, 8, 8, {1}});
+        auto limited = execution::ExecutionRuntime::create({1, 8, 8, {1}});
         assert(limited);
         auto owner = ScriptRealDelayProvider::create(*limited, limited->timer(), 2);
         assert(owner);

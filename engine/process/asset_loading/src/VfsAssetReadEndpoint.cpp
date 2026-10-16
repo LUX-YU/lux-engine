@@ -10,19 +10,19 @@ namespace lux::process::asset_loading
 {
     namespace
     {
-        [[nodiscard]] lux::async::ESubmitError mapExecutionError(EExecutionError error) noexcept
+        [[nodiscard]] lux::async::ESubmitError mapExecutionError(execution::EExecutionError error) noexcept
         {
-            if (error == EExecutionError::CAPACITY_EXCEEDED)
+            if (error == execution::EExecutionError::CAPACITY_EXCEEDED)
             {
                 return lux::async::ESubmitError::QUEUE_FULL;
             }
             const bool admission_closed =
-                error == EExecutionError::STOPPING || error == EExecutionError::ALREADY_JOINED;
+                error == execution::EExecutionError::STOPPING || error == execution::EExecutionError::ALREADY_JOINED;
             if (admission_closed)
             {
                 return lux::async::ESubmitError::STOPPING;
             }
-            if (error == EExecutionError::ALLOCATION_FAILURE)
+            if (error == execution::EExecutionError::ALLOCATION_FAILURE)
             {
                 return lux::async::ESubmitError::BYTE_BUDGET_EXHAUSTED;
             }
@@ -37,14 +37,14 @@ namespace lux::process::asset_loading
         struct Admission final
         {
             asset::AssetVfsView vfs;
-            BlockingScheduler blocking;
-            TaskScope& tasks;
+            execution::BlockingScheduler blocking;
+            execution::TaskScope& tasks;
         };
 
         struct Request final
         {
             std::shared_ptr<Impl> state;
-            ExecutionRuntime& execution;
+            execution::ExecutionRuntime& execution;
             void* completion_state;
             void (*complete)(void*, Outcome&&) noexcept;
 
@@ -59,7 +59,7 @@ namespace lux::process::asset_loading
             }
         };
 
-        Impl(asset::AssetVfsView view, BlockingScheduler scheduler, TaskScope& scope, std::size_t limit) noexcept
+        Impl(asset::AssetVfsView view, execution::BlockingScheduler scheduler, execution::TaskScope& scope, std::size_t limit) noexcept
             : admission(std::in_place, std::move(view), std::move(scheduler), scope), capacity(limit)
         {
         }
@@ -107,8 +107,8 @@ namespace lux::process::asset_loading
             // The caller's scope covers admission calls. Only owned inputs survive submission;
             // never hold our mutex across Runtime wake callbacks or provider cleanup.
             const auto started = accepted->tasks.submit(
-                {"Read asset image", "asset", correlatedTask(options.correlation)},
-                [scheduler = accepted->blocking, view = accepted->vfs, operation](TaskReporter) noexcept
+                {"Read asset image", "asset", execution::correlatedTask(options.correlation)},
+                [scheduler = accepted->blocking, view = accepted->vfs, operation](execution::TaskReporter) noexcept
                 {
                     return stdexec::then(
                         stdexec::schedule(scheduler),
@@ -155,8 +155,8 @@ namespace lux::process::asset_loading
 
     VfsAssetReadEndpoint::CreateResult VfsAssetReadEndpoint::create(
         asset::AssetVfsView vfs,
-        BlockingScheduler blocking,
-        TaskScope& tasks,
+        execution::BlockingScheduler blocking,
+        execution::TaskScope& tasks,
         VfsAssetReadEndpointConfig config
     ) noexcept
     {

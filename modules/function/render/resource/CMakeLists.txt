@@ -19,9 +19,12 @@ component_add_internal_dependencies(render_resource
     lux::engine::render::render_protocol
 )
 
-target_link_libraries(render_resource PUBLIC STDEXEC::stdexec)
+target_link_libraries(render_resource PUBLIC STDEXEC::stdexec lux::engine::core::core_execution)
 
-component_add_transitive_commands(render_resource "find_package(stdexec CONFIG REQUIRED)")
+component_add_transitive_commands(render_resource
+    "find_package(stdexec CONFIG REQUIRED)"
+    "find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)"
+)
 
 target_compile_features(render_resource PUBLIC cxx_std_20)
 

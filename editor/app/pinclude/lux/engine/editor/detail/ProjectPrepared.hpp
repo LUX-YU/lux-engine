@@ -6,7 +6,7 @@ namespace lux::editor::detail
     struct ProjectPrepared final
     {
         std::uint64_t request_serial{};
-        process::TaskId task;
+        execution::TaskId task;
         std::filesystem::path manifest_file;
         ProjectPreparation result;
     };

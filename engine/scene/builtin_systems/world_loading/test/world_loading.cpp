@@ -1,4 +1,4 @@
-#include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
@@ -167,8 +167,8 @@ namespace
             void (*complete)(void*, Outcome&&) noexcept;
         };
         std::filesystem::path path_;
-        process::BlockingScheduler blocking_;
-        process::TaskScope& tasks_;
+        execution::BlockingScheduler blocking_;
+        execution::TaskScope& tasks_;
         std::mutex mutex_;
         std::vector<Request> pending_;
         bool hold_{};
@@ -197,7 +197,7 @@ namespace
                 }
                 ++self->completed_;
             });
-            auto error = stdexec::upon_error(std::move(work), [request](process::EExecutionError) noexcept {
+            auto error = stdexec::upon_error(std::move(work), [request](execution::EExecutionError) noexcept {
                 request.complete(request.state, cxx::unexpected(Failure::runtime(async::ESubmitError::STOPPING)));
             });
             auto task = stdexec::upon_stopped(std::move(error), [request]() noexcept {
@@ -205,13 +205,13 @@ namespace
             });
             const auto accepted = tasks_.submit(
                 {"Read partition", "test"},
-                [sender = std::move(task)](process::TaskReporter) mutable noexcept { return std::move(sender); }
+                [sender = std::move(task)](execution::TaskReporter) mutable noexcept { return std::move(sender); }
             );
             assert(accepted);
         }
 
     public:
-        Disk(std::filesystem::path path, process::BlockingScheduler scheduler, process::TaskScope& tasks)
+        Disk(std::filesystem::path path, execution::BlockingScheduler scheduler, execution::TaskScope& tasks)
             : path_(std::move(path)), blocking_(scheduler), tasks_(tasks)
         {}
         async::SubmitResult submit(
@@ -341,7 +341,7 @@ namespace
                                                                 }}));
     }
 
-    template <class Poll, class Ready> void until(process::ExecutionRuntime& execution, Poll poll, Ready ready)
+    template <class Poll, class Ready> void until(execution::ExecutionRuntime& execution, Poll poll, Ready ready)
     {
         const auto end = std::chrono::steady_clock::now() + 5s;
         while (std::chrono::steady_clock::now() < end)
@@ -361,7 +361,7 @@ namespace
         const ecs::ComponentSchemaSet& schemas,
         scene::WorldLoadingServices services,
         const Disk& disk,
-        process::ExecutionRuntime& execution
+        execution::ExecutionRuntime& execution
     )
     {
         using Clock = std::chrono::steady_clock;
@@ -497,9 +497,9 @@ int main(int argc, char** argv)
     auto opaque = fixture(root / "opaque.wvol", *schemas, 1, false, true);
     materialization(valid, bad, *schemas);
 
-    auto runtime = process::ExecutionRuntime::create({2, 64, 64, {64}, process::BlockingSchedulerConfig{2, 64}});
+    auto runtime = execution::ExecutionRuntime::create({2, 64, 64, {64}, execution::BlockingSchedulerConfig{2, 64}});
     assert(runtime && runtime->blocking());
-    process::TaskScope tasks{*runtime};
+    execution::TaskScope tasks{*runtime};
     auto disk = std::make_shared<Disk>(valid.path, *runtime->blocking(), tasks);
     auto source =
         loading::WorldStorageSource::create(valid.world, async::TOperationPort<loading::ReadWorldStorageRange>{disk});

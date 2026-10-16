@@ -2,7 +2,7 @@
 #include <lux/engine/editor/FrameworkResult.hpp>
 #include <lux/engine/editor/EditorConfig.hpp>
 #include <lux/engine/editor/detail/PreparedProject.hpp>
-#include <lux/engine/process/Task.hpp>
+#include <lux/engine/core/execution/Task.hpp>
 
 namespace lux::editor::detail
 {
@@ -15,6 +15,6 @@ namespace lux::editor::detail
         const std::filesystem::path&,
         const std::optional<ProjectManifest>& create,
         std::span<const ProjectPluginLocation>,
-        process::TaskReporter
+        execution::TaskReporter
     ) noexcept;
 } // namespace lux::editor::detail

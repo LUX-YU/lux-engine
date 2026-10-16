@@ -2,7 +2,7 @@
 #pragma once
 
 #include <lux/engine/render/features/Registration.hpp>
-#include <lux/engine/render/resource/CpuSchedule.hpp>
+#include <lux/engine/render/resource/AsyncWork.hpp>
 
 #include <array>
 #include <atomic>

@@ -1,5 +1,5 @@
 #include <lux/engine/process/asset_loading/AssetReadOverlay.hpp>
-#include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <atomic>
 #include <cassert>
 #include <iostream>
@@ -95,9 +95,9 @@ namespace
 }
 int main()
 {
-    auto runtime = process::ExecutionRuntime::create({1, 64, 64, {64}});
+    auto runtime = execution::ExecutionRuntime::create({1, 64, 64, {64}});
     assert(runtime);
-    process::TaskScope tasks{*runtime};
+    execution::TaskScope tasks{*runtime};
     auto fallback = std::make_shared<Fallback>();
     auto first = makeAssetReadOverlay({{identity(1), image(std::byte{1})}}, AssetReadPort{fallback});
     assert(first);
@@ -138,7 +138,7 @@ int main()
     assert(no_scheduler && !std::get<0>(*no_scheduler));
     assert(
         failure.code == EAssetLoadError::EXECUTION_FAILURE &&
-        failure.execution_error == process::EExecutionError::STOPPING
+        failure.execution_error == execution::EExecutionError::STOPPING
     );
     assert(asset::DecodeProbe::decodes == before_failure);
     fallback->bytes = image(std::byte{0xFF});
@@ -153,8 +153,8 @@ int main()
         entered.release();
         proceed.acquire();
     });
-    assert(tasks.submit({"Block CPU", "test"}, [sender = std::move(blocker)](process::TaskReporter) mutable noexcept {
-        return stdexec::upon_error(std::move(sender), [](process::EExecutionError) noexcept { std::terminate(); });
+    assert(tasks.submit({"Block CPU", "test"}, [sender = std::move(blocker)](execution::TaskReporter) mutable noexcept {
+        return stdexec::upon_error(std::move(sender), [](execution::EExecutionError) noexcept { std::terminate(); });
     }));
     assert(entered.try_acquire_for(std::chrono::seconds(5)));
     std::stop_source cancel;
@@ -167,7 +167,7 @@ int main()
     auto errors = stdexec::upon_error(std::move(values), [](AssetLoadFailure) noexcept { std::terminate(); });
     assert(tasks.submit(
         {"Decode cancelled", "test"},
-        [&, sender = std::move(errors)](process::TaskReporter) mutable noexcept {
+        [&, sender = std::move(errors)](execution::TaskReporter) mutable noexcept {
             return stdexec::upon_stopped(std::move(sender), [&]() noexcept { stopped = true; });
         }
     ));

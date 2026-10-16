@@ -19,9 +19,9 @@
 #include <lux/engine/editor/detail/ProjectPrepared.hpp>
 #include <lux/engine/editor/detail/ProjectUiMount.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
-#include <lux/engine/process/ExecutionError.hpp>
+#include <lux/engine/core/execution/ExecutionError.hpp>
 #include <lux/engine/process/ObjectScheduler.hpp>
-#include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/scene/SceneError.hpp>
 #include <lux/engine/ui/Command.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -38,9 +38,9 @@ namespace lux::editor
             return std::visit(
                 [](const auto& value) noexcept -> error::Error
                 {
-                    if constexpr (std::is_same_v<std::decay_t<decltype(value)>, process::EExecutionError>)
+                    if constexpr (std::is_same_v<std::decay_t<decltype(value)>, execution::EExecutionError>)
                     {
-                        return process::toError(value);
+                        return execution::toError(value);
                     }
                     else
                     {
@@ -56,9 +56,9 @@ namespace lux::editor
             return std::visit(
                 [](const auto& value) noexcept -> error::Error
                 {
-                    if constexpr (std::is_same_v<std::decay_t<decltype(value)>, process::EExecutionError>)
+                    if constexpr (std::is_same_v<std::decay_t<decltype(value)>, execution::EExecutionError>)
                     {
-                        return process::toError(value);
+                        return execution::toError(value);
                     }
                     else
                     {
@@ -133,10 +133,10 @@ namespace lux::editor
                     const auto tasks = execution.taskInfos(); // Cold final boundary; no duplicate task state.
                     const bool outstanding = std::ranges::any_of(
                         tasks,
-                        [](const process::TaskInfo& task) noexcept
+                        [](const execution::TaskInfo& task) noexcept
                         {
-                            return task.state == process::ETaskState::QUEUED ||
-                                   task.state == process::ETaskState::RUNNING;
+                            return task.state == execution::ETaskState::QUEUED ||
+                                   task.state == execution::ETaskState::RUNNING;
                         }
                     );
                     if (!outstanding)
@@ -181,7 +181,7 @@ namespace lux::editor
             }
 
             auto engine = engine::EngineContext::create(
-                {2, 512, 512, {256}, process::BlockingSchedulerConfig{2, 128}},
+                {2, 512, 512, {256}, execution::BlockingSchedulerConfig{2, 128}},
                 {0, 2048}
             );
             if (!engine)
@@ -310,7 +310,7 @@ namespace lux::editor
             auto scheduler = host_.engine->execution().blocking();
             if (!scheduler)
             {
-                return cxx::unexpected(process::toError(scheduler.error()));
+                return cxx::unexpected(execution::toError(scheduler.error()));
             }
             // An intent triggered by candidate cleanup is later than this request.
             const auto serial = project_request_serial_ + 1;
@@ -327,7 +327,7 @@ namespace lux::editor
                  serial,
                  file = std::move(file),
                  create = std::move(create),
-                 locations = config_.plugin_locations](process::TaskReporter reporter) mutable noexcept
+                 locations = config_.plugin_locations](execution::TaskReporter reporter) mutable noexcept
                 {
                     auto work =
                         stdexec::schedule(scheduler) |
@@ -335,8 +335,8 @@ namespace lux::editor
                                       ) noexcept { return detail::prepareProject(file, create, locations, reporter); }
                         ) |
                         stdexec::upon_error(
-                            [](process::EExecutionError error) noexcept
-                            { return detail::ProjectPreparation{cxx::unexpected(process::toError(error)), false}; }
+                            [](execution::EExecutionError error) noexcept
+                            { return detail::ProjectPreparation{cxx::unexpected(execution::toError(error)), false}; }
                         ) |
                         stdexec::upon_stopped(
                             []() noexcept
@@ -361,7 +361,7 @@ namespace lux::editor
             );
             if (!submitted)
             {
-                return cxx::unexpected(process::toError(submitted.error()));
+                return cxx::unexpected(execution::toError(submitted.error()));
             }
             project_prepare_ = *submitted;
             return {};
@@ -538,12 +538,12 @@ namespace lux::editor
             auto collected = host_.engine->execution().collectCompletions();
             if (!collected)
             {
-                return cxx::unexpected(process::toError(collected.error()));
+                return cxx::unexpected(execution::toError(collected.error()));
             }
             auto dispatched = host_.engine->execution().dispatchTaskEvents();
             if (!dispatched)
             {
-                return cxx::unexpected(process::toError(dispatched.error()));
+                return cxx::unexpected(execution::toError(dispatched.error()));
             }
             static_cast<void>(object::ObjectRuntime::instance().dispatchPending());
             const bool closing = host_.window->shouldClose();
@@ -646,10 +646,10 @@ namespace lux::editor
         HostResources host_;
         EditorConfig config_;
         EditorAssembly assembly_;
-        process::TaskScope project_tasks_;
+        execution::TaskScope project_tasks_;
         std::unique_ptr<OpenProject> project_;
         std::optional<VPendingProjectChange> pending_project_change_;
-        std::optional<process::TaskId> project_prepare_;
+        std::optional<execution::TaskId> project_prepare_;
         std::uint64_t project_request_serial_{};
         std::uint64_t applied_metrics_revision_{};
         std::chrono::steady_clock::time_point last_frame_{std::chrono::steady_clock::now()};
@@ -685,7 +685,7 @@ namespace lux::editor
         {
             return cxx::unexpected(registered.error());
         }
-        if (auto registered = process::registerExecutionErrors(); !registered)
+        if (auto registered = execution::registerExecutionErrors(); !registered)
         {
             return cxx::unexpected(registered.error());
         }

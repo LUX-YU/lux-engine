@@ -12,7 +12,7 @@
 #include <lux/engine/editor/ProjectErrors.hpp>
 #include <lux/engine/editor/detail/LuxEngineTestAccess.hpp>
 #include <lux/engine/error/ErrorRegistry.hpp>
-#include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/project/PluginRendering.hpp>
 #include <lux/engine/render/RenderRuntime.hpp>
 #include <lux/engine/ui/Controls.hpp>
@@ -124,8 +124,8 @@ namespace
                     {
                         assert(context.tasks().submit(
                             {"Rejected candidate completion", "test"},
-                            [](process::TaskReporter) noexcept { return stdexec::just(FrameworkResult<void>{}); },
-                            [&](process::TTaskResult<void, error::Error>&& result) noexcept
+                            [](execution::TaskReporter) noexcept { return stdexec::just(FrameworkResult<void>{}); },
+                            [&](execution::TTaskResult<void, error::Error>&& result) noexcept
                             {
                                 // C's UI and Context are gone. Completion owns its result, not the failed candidate.
                                 assert(result && (deaths == std::vector<int>{1, 1, 2, 1, 2}));
@@ -233,7 +233,7 @@ namespace
         assert(scheduler);
         assert(original->tasks().submit(
             {"Project close negative", "test"},
-            [&](process::TaskReporter reporter) noexcept
+            [&](execution::TaskReporter reporter) noexcept
             {
                 return stdexec::then(
                     stdexec::schedule(*scheduler),
@@ -249,7 +249,7 @@ namespace
                     }
                 );
             },
-            [&](process::TTaskResult<void, error::Error>&& result) noexcept
+            [&](execution::TTaskResult<void, error::Error>&& result) noexcept
             {
                 assert(result && (deaths == std::vector<int>{1, 1, 2}));
                 delivered = true;

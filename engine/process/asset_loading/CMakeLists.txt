@@ -25,12 +25,12 @@ target_compile_definitions(process_asset_loading PRIVATE LUX_PROCESS_ASSET_LOADI
 target_link_libraries(
     process_asset_loading
     PUBLIC
-        lux::engine::process::process_execution
+        lux::engine::core::core_execution
         lux::engine::resource::asset
 )
 component_add_transitive_commands(
     process_asset_loading
-    "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
+    "find_package(lux-engine-core-execution REQUIRED COMPONENTS core_execution)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "add_library(lux::engine::process::asset_loading INTERFACE IMPORTED GLOBAL)"
     "set_property(TARGET lux::engine::process::asset_loading PROPERTY

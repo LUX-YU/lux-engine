@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/ContextExtensions.hpp>
-#include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 
@@ -18,10 +18,10 @@ namespace lux::engine
     class EngineContext final
     {
     public:
-        using VCreateFailure = std::variant<process::EExecutionError, scene::SceneRuntimeFailure>;
+        using VCreateFailure = std::variant<execution::EExecutionError, scene::SceneRuntimeFailure>;
         using CreateResult = lux::cxx::expected<std::unique_ptr<EngineContext>, VCreateFailure>;
         [[nodiscard]] static CreateResult create(
-            process::ExecutionRuntimeConfig,
+            execution::ExecutionRuntimeConfig,
             task::TaskExecutorConfig,
             ContextExtensions::Composition = {}
         ) noexcept;
@@ -29,7 +29,7 @@ namespace lux::engine
         EngineContext(const EngineContext&) = delete;
         EngineContext& operator=(const EngineContext&) = delete;
 
-        [[nodiscard]] process::ExecutionRuntime& execution() noexcept
+        [[nodiscard]] execution::ExecutionRuntime& execution() noexcept
         {
             return execution_;
         }
@@ -66,10 +66,10 @@ namespace lux::engine
 
     private:
         friend struct detail::EngineRenderAccess;
-        EngineContext(process::ExecutionRuntime&&, ContextExtensions::Composition&&);
+        EngineContext(execution::ExecutionRuntime&&, ContextExtensions::Composition&&);
         using RenderOwner = std::unique_ptr<RenderContext, void (*)(RenderContext*) noexcept>;
         asset::AssetVfs assets_;
-        process::ExecutionRuntime execution_;
+        execution::ExecutionRuntime execution_;
         RenderOwner rendering_{nullptr, nullptr};
         std::unique_ptr<scene::SceneRuntime> scenes_;
         ContextExtensions extensions_;

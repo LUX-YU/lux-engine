@@ -1,5 +1,4 @@
 find_package(lux-cxx CONFIG REQUIRED COMPONENTS core)
-find_package(stdexec CONFIG REQUIRED)
 
 add_component(
     STATIC
@@ -26,16 +25,20 @@ component_add_transitive_commands(
 
 target_compile_features(render_protocol PUBLIC cxx_std_20)
 
-add_interface_component(
-    COMPONENT_NAME render_protocol_async
-    NAMESPACE lux::engine::render
-)
+if(NOT LUX_RENDER_CLIENT_ONLY)
+    find_package(stdexec CONFIG REQUIRED)
 
-component_add_internal_dependencies(render_protocol_async lux::engine::render::render_protocol)
+    add_interface_component(
+        COMPONENT_NAME render_protocol_async
+        NAMESPACE lux::engine::render
+    )
 
-target_link_libraries(render_protocol_async INTERFACE STDEXEC::stdexec)
+    component_add_internal_dependencies(render_protocol_async lux::engine::render::render_protocol)
 
-component_add_transitive_commands(render_protocol_async "find_package(stdexec CONFIG REQUIRED)")
+    target_link_libraries(render_protocol_async INTERFACE STDEXEC::stdexec)
+
+    component_add_transitive_commands(render_protocol_async "find_package(stdexec CONFIG REQUIRED)")
+endif()
 
 if(BUILD_TESTING)
     add_subdirectory(test)

@@ -37,7 +37,7 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/client-dependency-closure.txt" "")
 
 foreach(imported IN LISTS imported_targets)
     string(TOLOWER "${imported}" imported_lower)
-    if(imported_lower MATCHES "vulkan|vma|gapi|spirv|shaderc|render_native|render_runtime|render_features|render_graph|process_execution")
+    if(imported_lower MATCHES "vulkan|vma|gapi|spirv|shaderc|render_native|render_runtime|render_features|render_graph|core_execution")
         message(FATAL_ERROR "Native/Server target imported by pure Client: ${imported}")
     endif()
 
@@ -64,7 +64,7 @@ foreach(header
     lux/engine/render/data/Payload.hpp
     lux/engine/render/protocol/AsyncCommand.hpp
     lux/engine/render/features/Registration.hpp
-    lux/engine/render/resource/CpuSchedule.hpp
+    lux/engine/render/resource/AsyncWork.hpp
     lux/engine/render/resource/Upload.hpp
     lux/engine/render/runtime/Commands.hpp
     lux/engine/render/runtime/CommandValue.hpp

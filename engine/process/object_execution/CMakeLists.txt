@@ -14,14 +14,14 @@ component_include_directories(
 target_link_libraries(
     object_execution
     PUBLIC
-        lux::engine::process::process_execution
+        lux::engine::core::core_execution
         lux::engine::core::object
         STDEXEC::stdexec
 )
 
 component_add_transitive_commands(
     object_execution
-    "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
+    "find_package(lux-engine-core-execution REQUIRED COMPONENTS core_execution)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object)"
 )
 

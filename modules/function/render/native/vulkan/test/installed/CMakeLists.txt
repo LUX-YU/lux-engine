@@ -24,7 +24,7 @@ add_test(NAME installed.native.direct_graph COMMAND direct_graph_consumer)
 
 
 find_package(lux-engine-render CONFIG REQUIRED COMPONENTS render_native_vulkan render_native_vulkan_extensions)
-find_package(lux-engine-process-execution CONFIG REQUIRED COMPONENTS process_execution)
+find_package(lux-engine-core-execution CONFIG REQUIRED COMPONENTS core_execution)
 
 add_executable(native_consumer Main.cpp)
 
@@ -35,10 +35,10 @@ add_test(NAME installed.native.compiler COMMAND native_consumer)
 add_executable(texture_consumer Texture.cpp)
 
 target_link_libraries(texture_consumer PRIVATE lux::engine::render::render_native_vulkan_extensions
-    lux::engine::process::process_execution
+    lux::engine::core::core_execution
 )
 
-foreach(target lux::engine::process::process_execution lux::engine::core::error)
+foreach(target lux::engine::core::core_execution lux::engine::core::error)
     add_custom_command(TARGET texture_consumer POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:${target}>" "$<TARGET_FILE_DIR:texture_consumer>"
     )

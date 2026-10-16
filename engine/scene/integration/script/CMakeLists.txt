@@ -25,7 +25,7 @@ target_link_libraries(
         lux::engine::scene::scene_composition
         lux::cxx::concurrent
         lux::engine::scene::scene_script_description
-        lux::engine::process::process_execution
+        lux::engine::core::core_execution
         lux::engine::scene::scene_script_assets
 )
 
@@ -34,7 +34,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
     "find_package(lux-cxx REQUIRED COMPONENTS concurrent)"
     "find_package(lux-engine-scene-script-description REQUIRED COMPONENTS scene_script_description)"
-    "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
+    "find_package(lux-engine-core-execution REQUIRED COMPONENTS core_execution)"
     "find_package(lux-engine-scene-script-assets REQUIRED COMPONENTS scene_script_assets)"
 )
 

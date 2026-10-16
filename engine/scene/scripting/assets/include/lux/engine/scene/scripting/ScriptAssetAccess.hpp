@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/function/script/ScriptAbilityAsync.hpp>
-#include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/process/asset_loading/AssetLoadSender.hpp>
 #include <lux/engine/scene/script_assets/visibility.h>
 #include <lux/engine/scene/scripting/ScriptAssetResult.hpp>
@@ -58,7 +58,7 @@ namespace lux::scene::script
             const auto handle = reserved->handle;
             auto submitted = reserved->tasks.submit(
                 {"Read script CPU asset", "script", {}, code},
-                [&reserved, id](lux::process::TaskReporter reporter) noexcept
+                [&reserved, id](lux::execution::TaskReporter reporter) noexcept
                 {
                     auto sender = lux::process::asset_loading::loadAsset<Asset>(
                         reserved->read,
@@ -83,7 +83,7 @@ namespace lux::scene::script
                     );
                 },
                 [state, handle, completion, code](
-                    lux::process::TTaskResult<std::shared_ptr<const Asset>, LoadFailure>&& result
+                    lux::execution::TTaskResult<std::shared_ptr<const Asset>, LoadFailure>&& result
                 ) noexcept
                 {
                     if (!result)
@@ -151,9 +151,9 @@ namespace lux::scene::script
         struct Reservation final
         {
             ScriptAssetHandle handle;
-            lux::process::TaskScope& tasks;
+            lux::execution::TaskScope& tasks;
             lux::process::asset_loading::AssetReadPort read;
-            lux::process::CpuScheduler cpu;
+            lux::execution::CpuScheduler cpu;
             lux::asset::AssetDecodeLimits limits;
         };
 
@@ -175,13 +175,13 @@ namespace lux::scene::script
         [[nodiscard]] static StartResult finishStart(
             const std::shared_ptr<State>& state,
             ScriptAssetHandle handle,
-            lux::cxx::expected<lux::process::TaskId, lux::process::EExecutionError> submitted
+            lux::cxx::expected<lux::execution::TaskId, lux::execution::EExecutionError> submitted
         ) noexcept;
         static void completeFailure(
             const std::shared_ptr<State>& state,
             ScriptAssetHandle handle,
             Completion completion,
-            lux::process::TTaskError<LoadFailure> failure
+            lux::execution::TTaskError<LoadFailure> failure
         ) noexcept;
         static void completeTyped(
             const std::shared_ptr<State>& state,
@@ -199,7 +199,7 @@ namespace lux::scene::script
     public:
         using CreateResult = lux::cxx::expected<std::unique_ptr<ScriptAssetAccess>, EScriptAssetError>;
         [[nodiscard]] static CreateResult create(
-            lux::process::ExecutionRuntime& execution,
+            lux::execution::ExecutionRuntime& execution,
             lux::process::asset_loading::AssetReadPort read,
             ScriptAssetLimits limits
         ) noexcept;

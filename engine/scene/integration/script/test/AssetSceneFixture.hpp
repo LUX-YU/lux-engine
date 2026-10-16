@@ -124,10 +124,10 @@ namespace
 
     struct Fixture final
     {
-        process::ExecutionRuntime execution{take(process::ExecutionRuntime::create(
-            {1, 64, 64, {32}, process::BlockingSchedulerConfig{1, 64}}
+        execution::ExecutionRuntime execution{take(execution::ExecutionRuntime::create(
+            {1, 64, 64, {32}, execution::BlockingSchedulerConfig{1, 64}}
         ))};
-        process::TaskScope files{execution};
+        execution::TaskScope files{execution};
         asset::AssetVfs vfs;
         asset::MountLease mount;
         std::unique_ptr<process::asset_loading::VfsAssetReadEndpoint> endpoint;
@@ -190,7 +190,7 @@ namespace
                 vfs.view().capture(), take(execution.blocking()), files, {4}
             ));
             auto loading = take(files.submit({"Load runtime script package", "EC2"},
-                [&](process::TaskReporter report) noexcept {
+                [&](execution::TaskReporter report) noexcept {
                     auto read = process::asset_loading::loadAsset<lux::script::ScriptArtifactAsset>(
                         endpoint->port(), execution.cpu(), ScriptId, {65536, 262144, 8}, report.stopToken()
                     );
@@ -200,7 +200,7 @@ namespace
                     return stdexec::upon_error(std::move(value), [](auto failure) noexcept {
                         return Value{cxx::unexpected{std::move(failure)}};
                     });
-                }, [&](process::TTaskResult<std::shared_ptr<const lux::script::ScriptArtifactAsset>,
+                }, [&](execution::TTaskResult<std::shared_ptr<const lux::script::ScriptArtifactAsset>,
                     process::asset_loading::AssetLoadFailure>&& result) noexcept {
                     assert(result);
                     artifact = std::move(*result);

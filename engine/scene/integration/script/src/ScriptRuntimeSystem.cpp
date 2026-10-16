@@ -2,7 +2,7 @@
 #include <lux/engine/scene/ScriptRuntimeSystem.hpp>
 #include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 
-#include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/simulation/abilities/DelayAbility.hpp>
 
@@ -56,39 +56,39 @@ namespace lux::scene
         };
 
         Impl(
-            process::ExecutionRuntime& execution,
-            process::TimerClient timer_value,
+            execution::ExecutionRuntime& execution,
+            execution::TimerClient timer_value,
             std::size_t capacity_value
         ) noexcept
             : timer(std::move(timer_value)), capacity(capacity_value), tasks(execution)
         {
         }
 
-        process::TimerClient timer;
+        execution::TimerClient timer;
         std::mutex mutex;
         std::vector<std::shared_ptr<Request>> requests;
         std::size_t capacity{};
         bool delivering{};
-        process::TaskScope tasks;
+        execution::TaskScope tasks;
     };
 
     namespace
     {
-        [[nodiscard]] std::int32_t timerStatus(process::ETimerError error) noexcept
+        [[nodiscard]] std::int32_t timerStatus(execution::ETimerError error) noexcept
         {
             using simulation::script::EScriptDelayStatus;
             switch (error)
             {
-            case process::ETimerError::INVALID_ARGUMENT:
+            case execution::ETimerError::INVALID_ARGUMENT:
                 return static_cast<std::int32_t>(EScriptDelayStatus::INVALID_DURATION);
-            case process::ETimerError::CAPACITY_EXCEEDED:
+            case execution::ETimerError::CAPACITY_EXCEEDED:
                 return static_cast<std::int32_t>(EScriptDelayStatus::CAPACITY_EXCEEDED);
-            case process::ETimerError::STOPPING:
+            case execution::ETimerError::STOPPING:
                 return static_cast<std::int32_t>(EScriptDelayStatus::STOPPING);
-            case process::ETimerError::ALLOCATION_FAILURE:
+            case execution::ETimerError::ALLOCATION_FAILURE:
                 return static_cast<std::int32_t>(EScriptDelayStatus::ALLOCATION_FAILURE);
-            case process::ETimerError::WORKER_CREATION_FAILURE:
-            case process::ETimerError::BACKEND_FAILURE:
+            case execution::ETimerError::WORKER_CREATION_FAILURE:
+            case execution::ETimerError::BACKEND_FAILURE:
                 return static_cast<std::int32_t>(EScriptDelayStatus::TIMER_FAILURE);
             }
             return static_cast<std::int32_t>(EScriptDelayStatus::TIMER_FAILURE);
@@ -104,7 +104,7 @@ namespace lux::scene
             SceneSystemRequirementSpec{
                 .name = "timer",
                 .capability = "lux.process.timer",
-                .expected_type = lux::cxx::typeToken<process::TimerClient>(),
+                .expected_type = lux::cxx::typeToken<execution::TimerClient>(),
                 .optional = false
             }
         };
@@ -138,7 +138,7 @@ namespace lux::scene
                     failure(ESceneSystemBuildError::MISSING_REQUIREMENT, description.instanceId())
                 );
             }
-            auto* timer = builder.require<process::TimerClient>(description.instanceId(), "timer");
+            auto* timer = builder.require<execution::TimerClient>(description.instanceId(), "timer");
             if (timer == nullptr)
             {
                 return lux::cxx::unexpected(
@@ -332,8 +332,8 @@ namespace lux::scene
     ScriptRealDelayProvider::ScriptRealDelayProvider(std::shared_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
     ScriptRealDelayProvider::CreateResult ScriptRealDelayProvider::create(
-        process::ExecutionRuntime& execution,
-        process::TimerClient timer,
+        execution::ExecutionRuntime& execution,
+        execution::TimerClient timer,
         std::size_t capacity
     ) noexcept
     {
@@ -387,18 +387,18 @@ namespace lux::scene
             impl->requests.push_back(request);
         }
 
-        using TimerResult = lux::cxx::expected<void, process::ETimerError>;
+        using TimerResult = lux::cxx::expected<void, execution::ETimerError>;
         const auto started = impl->tasks.submit(
             {"Script delay", "script"},
-            [timer = impl->timer, duration](process::TaskReporter) noexcept
+            [timer = impl->timer, duration](execution::TaskReporter) noexcept
             {
                 auto elapsed = stdexec::then(timer.after(duration), []() noexcept { return TimerResult{}; });
                 return stdexec::upon_error(
                     std::move(elapsed),
-                    [](process::ETimerError error) noexcept -> TimerResult { return lux::cxx::unexpected(error); }
+                    [](execution::ETimerError error) noexcept -> TimerResult { return lux::cxx::unexpected(error); }
                 );
             },
-            [request](process::TTaskResult<void, process::ETimerError>&& result) noexcept
+            [request](execution::TTaskResult<void, execution::ETimerError>&& result) noexcept
             {
                 if (result)
                 {
@@ -431,7 +431,7 @@ namespace lux::scene
 
         std::lock_guard lock{impl->mutex};
         std::erase(impl->requests, request);
-        const auto status = started.error() == process::EExecutionError::STOPPING
+        const auto status = started.error() == execution::EExecutionError::STOPPING
                                 ? EScriptDelayStatus::STOPPING
                                 : EScriptDelayStatus::CAPACITY_EXCEEDED;
         return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{static_cast<std::int32_t>(status)});

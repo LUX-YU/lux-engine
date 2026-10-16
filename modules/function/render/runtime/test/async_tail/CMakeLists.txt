@@ -8,7 +8,7 @@ set_target_properties(render_async_tail_plugin PROPERTIES
 
 add_executable(render_async_tail_test Main.cpp)
 
-target_link_libraries(render_async_tail_test PRIVATE render_runtime lux::engine::process::process_execution)
+target_link_libraries(render_async_tail_test PRIVATE render_runtime lux::engine::core::core_execution)
 
 add_dependencies(render_async_tail_test render_async_tail_plugin)
 

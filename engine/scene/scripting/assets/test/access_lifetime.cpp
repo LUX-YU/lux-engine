@@ -81,7 +81,7 @@ namespace
         return cxx::SharedBytes<>::copyOf(*encoded);
     }
 
-    void settle(process::ExecutionRuntime& runtime)
+    void settle(execution::ExecutionRuntime& runtime)
     {
         assert(runtime.waitUntil(
             [&]() noexcept
@@ -90,7 +90,7 @@ namespace
                 for (const auto& task : runtime.taskInfos())
                 {
                     const bool pending =
-                        task.state == process::ETaskState::QUEUED || task.state == process::ETaskState::RUNNING;
+                        task.state == execution::ETaskState::QUEUED || task.state == execution::ETaskState::RUNNING;
                     if (pending)
                     {
                         return false;
@@ -140,9 +140,9 @@ namespace
 
     void blockedOwner(bool typed, bool destroy_access, bool source_blocked)
     {
-        auto runtime = process::ExecutionRuntime::create({1, 32, 32, {16}, process::BlockingSchedulerConfig{1, 16}});
+        auto runtime = execution::ExecutionRuntime::create({1, 32, 32, {16}, execution::BlockingSchedulerConfig{1, 16}});
         assert(runtime);
-        process::TaskScope files{*runtime}, blocker{*runtime};
+        execution::TaskScope files{*runtime}, blocker{*runtime};
         asset::AssetVfs vfs;
         auto provider = std::make_shared<BlockedProvider>(image());
         auto mount = vfs.mount({"/Game", provider});
@@ -161,7 +161,7 @@ namespace
         {
             assert(blocker.submit(
                 {"Hold actual CPU decode", "LR05"},
-                [&](process::TaskReporter) noexcept
+                [&](execution::TaskReporter) noexcept
                 {
                     auto work = stdexec::then(
                         stdexec::schedule(runtime->cpu()),
@@ -173,7 +173,7 @@ namespace
                     );
                     return stdexec::upon_error(
                         std::move(work),
-                        [](process::EExecutionError) noexcept { std::terminate(); }
+                        [](execution::EExecutionError) noexcept { std::terminate(); }
                     );
                 }
             ));
@@ -253,7 +253,7 @@ namespace
 
     void callbacks()
     {
-        auto runtime = process::ExecutionRuntime::create({1, 32, 32, {16}});
+        auto runtime = execution::ExecutionRuntime::create({1, 32, 32, {16}});
         assert(runtime);
         auto memory = process::asset_loading::makeAssetReadOverlay({{Id, {image()}}}, {});
         assert(memory);

@@ -32,6 +32,23 @@ component_add_transitive_commands(render_client
         HINTS "${CMAKE_CURRENT_LIST_DIR}/../../lux-engine-platform")]=]
 )
 
+target_compile_features(render_client PUBLIC cxx_std_20)
+
+if(LUX_RENDER_CLIENT_ONLY)
+    if(BUILD_TESTING)
+        add_executable(render_sync_source_consumer test/client_installed/Main.cpp)
+        target_link_libraries(render_sync_source_consumer PRIVATE render_client)
+        add_custom_command(TARGET render_sync_source_consumer POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:render_client>" "$<TARGET_FILE_DIR:render_sync_source_consumer>"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:lux::engine::platform::platform_ipc>" "$<TARGET_FILE_DIR:render_sync_source_consumer>"
+        )
+        add_test(NAME render.client.sync_source COMMAND render_sync_source_consumer)
+    endif()
+    return()
+endif()
+
 set(LUX_RUNTIME_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/RenderServer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ServerRegistration.cpp

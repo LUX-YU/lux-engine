@@ -32,11 +32,13 @@ add_test(
         -P "${CMAKE_CURRENT_SOURCE_DIR}/../../core/test/Installed.cmake"
 )
 
-file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/AsyncCommand.cpp" CONTENT
-    "#include <lux/engine/render/protocol/AsyncCommand.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\n")
+if(TARGET render_protocol_async)
+    file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/AsyncCommand.cpp" CONTENT
+        "#include <lux/engine/render/protocol/AsyncCommand.hpp>\n#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native leak\n#endif\n")
 
-add_library(render_protocol_async_header OBJECT "${CMAKE_CURRENT_BINARY_DIR}/AsyncCommand.cpp")
-target_link_libraries(render_protocol_async_header PRIVATE render_protocol_async)
+    add_library(render_protocol_async_header OBJECT "${CMAKE_CURRENT_BINARY_DIR}/AsyncCommand.cpp")
+    target_link_libraries(render_protocol_async_header PRIVATE render_protocol_async)
+endif()
 
 add_executable(render_protocol_binding_test Binding.cpp)
 

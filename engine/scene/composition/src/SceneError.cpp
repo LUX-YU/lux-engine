@@ -247,7 +247,7 @@ namespace lux::scene
                 }
                 else
                 {
-                    static_assert(std::is_same_v<T, process::ETimerError>);
+                    static_assert(std::is_same_v<T, execution::ETimerError>);
                     return error::Error{Errors::SceneTimer, {static_cast<std::uint64_t>(cause)}};
                 }
             },

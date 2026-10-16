@@ -6,7 +6,7 @@
 #include <lux/engine/editor/ProjectManifest.hpp>
 #include <lux/engine/editor/SceneProfileRegistry.hpp>
 #include <lux/engine/editor/SceneToolRegistry.hpp>
-#include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
 
 namespace lux::engine
@@ -95,7 +95,7 @@ namespace lux::editor
             return extensions_;
         }
 
-        [[nodiscard]] process::TaskScope& tasks() noexcept;
+        [[nodiscard]] execution::TaskScope& tasks() noexcept;
         template <class T> [[nodiscard]] FrameworkResult<std::reference_wrapper<T>> service() noexcept
         {
             return services_.get<T>(*this);
@@ -120,6 +120,6 @@ namespace lux::editor
         // Instances die before factory captures, project paths, VFS and plugin registrations.
         EditorServices services_;
         // Destruction requests cancellation only; accepted tasks own their inputs and code.
-        process::TaskScope tasks_;
+        execution::TaskScope tasks_;
     };
 } // namespace lux::editor

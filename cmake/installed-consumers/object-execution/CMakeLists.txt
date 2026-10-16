@@ -20,7 +20,7 @@ if(CONSUMER_MODE STREQUAL "OBJECT")
 
     set(header object/ObjectTarget)
     set(provider lux::engine::core::object)
-    if(TARGET lux::engine::process::process_execution OR TARGET STDEXEC::stdexec)
+    if(TARGET lux::engine::core::core_execution OR TARGET STDEXEC::stdexec)
         message(FATAL_ERROR "Object-only consumer imported Process/stdexec")
     endif()
 elseif(CONSUMER_MODE STREQUAL "BRIDGE")

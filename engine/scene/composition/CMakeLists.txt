@@ -35,7 +35,7 @@ target_link_libraries(
         lux::engine::scene::scene_system
         lux::engine::simulation::ecs::schema
         lux::engine::resource::identity
-        lux::engine::process::process_execution
+        lux::engine::core::core_execution
 )
 component_add_transitive_commands(
     scene_composition
@@ -45,7 +45,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-scene-system REQUIRED COMPONENTS scene_system)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS schema)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
-    "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
+    "find_package(lux-engine-core-execution REQUIRED COMPONENTS core_execution)"
 )
 
 lux_engine_install_components(

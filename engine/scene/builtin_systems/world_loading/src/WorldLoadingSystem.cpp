@@ -255,7 +255,7 @@ namespace lux::scene
                     cause_index = 3;
                     cause_code = static_cast<std::uint64_t>(cause.code);
                 }
-                else if constexpr (std::is_same_v<T, process::EExecutionError>)
+                else if constexpr (std::is_same_v<T, execution::EExecutionError>)
                 {
                     cause_index = 4;
                     cause_code = static_cast<std::uint64_t>(cause);
@@ -675,7 +675,7 @@ namespace lux::scene
                     );
                     auto accepted = services.tasks.submit(
                         {"Load world partition", "world"},
-                        [sender = std::move(task)](process::TaskReporter) mutable noexcept
+                        [sender = std::move(task)](execution::TaskReporter) mutable noexcept
                         { return std::move(sender); },
                         [read, execution = &services.tasks.execution()](auto&& completed) noexcept
                         {

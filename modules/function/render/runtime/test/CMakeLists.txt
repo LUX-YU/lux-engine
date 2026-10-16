@@ -14,7 +14,7 @@ add_executable(render_typed_batch_test TypedBatch.cpp ../../native/vulkan/test/A
 
 target_include_directories(render_typed_batch_test PRIVATE ../../native/vulkan/test)
 
-target_link_libraries(render_typed_batch_test PRIVATE render_runtime lux::engine::process::process_execution)
+target_link_libraries(render_typed_batch_test PRIVATE render_runtime lux::engine::core::core_execution)
 
 set_target_properties(render_typed_batch_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 
@@ -55,7 +55,7 @@ add_executable(render_server_dll_test ServerDll.cpp)
 target_link_libraries(render_server_dll_test PRIVATE
     render_client
     render_resource
-    lux::engine::process::process_execution
+    lux::engine::core::core_execution
 )
 
 add_dependencies(render_server_dll_test render_server_dll_plugin)
@@ -255,7 +255,7 @@ foreach(target render_runtime_test render_runtime_lifetime_test render_runtime_o
     render_texture_progress_test render_texture_operations_test render_texture_rendering_test
     render_buffer_extension_test
 )
-    target_link_libraries(${target} PRIVATE lux::engine::process::process_execution)
+    target_link_libraries(${target} PRIVATE lux::engine::core::core_execution)
 endforeach()
 
 foreach(target render_runtime_shutdown_test render_runtime_gpu_ready_test
@@ -274,7 +274,7 @@ target_compile_definitions(render_runtime_async_cost_test PRIVATE LUX_RUNTIME_AS
 
 target_link_libraries(render_runtime_async_cost_test PRIVATE
     render_client render_features render_native_vulkan lux::engine::platform::platform_ipc
-    lux::cxx::concurrent lux::engine::process::process_execution lux::engine::platform::platform_process
+    lux::cxx::concurrent lux::engine::core::core_execution lux::engine::platform::platform_process
 )
 
 set_target_properties(render_runtime_async_cost_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")

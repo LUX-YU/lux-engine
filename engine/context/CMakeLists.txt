@@ -14,14 +14,14 @@ component_include_directories(
 target_link_libraries(
     engine_context
     PUBLIC
-        lux::engine::process::process_execution
+        lux::engine::core::core_execution
         lux::engine::resource::asset
         lux::engine::scene::scene_composition
 )
 
 component_add_transitive_commands(
     engine_context
-    "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
+    "find_package(lux-engine-core-execution REQUIRED COMPONENTS core_execution)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-scene REQUIRED COMPONENTS scene_composition)"
 )

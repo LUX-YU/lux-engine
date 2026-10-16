@@ -103,7 +103,7 @@ set_tests_properties(render.native.queue_callbacks PROPERTIES TIMEOUT 90)
 
 add_executable(render_last_use_test LastUse.cpp)
 
-target_link_libraries(render_last_use_test PRIVATE render_native_instrumented lux::engine::process::process_execution)
+target_link_libraries(render_last_use_test PRIVATE render_native_instrumented lux::engine::core::core_execution)
 
 set_target_properties(render_last_use_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 
@@ -160,7 +160,7 @@ set_tests_properties(render.native.storage_bindings PROPERTIES TIMEOUT 60)
 foreach(target render_buffer_transfer_test render_texture_upload_test render_texture_storage_test
     render_texture_sampling_test render_storage_bindings_test
 )
-    target_link_libraries(${target} PRIVATE lux::engine::process::process_execution)
+    target_link_libraries(${target} PRIVATE lux::engine::core::core_execution)
     set_target_properties(${target} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
 endforeach()
 

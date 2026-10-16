@@ -20,11 +20,11 @@ namespace lux::scene::script
     {
         using namespace lux::process::asset_loading;
         using lux::cxx::unexpected;
-        using lux::process::EExecutionError;
+        using lux::execution::EExecutionError;
 
         struct AccessState final
         {
-            lux::process::TaskScope* tasks;
+            lux::execution::TaskScope* tasks;
             AssetReadPort read;
             ScriptAssetLimits limits;
             const std::thread::id owner{std::this_thread::get_id()};
@@ -71,7 +71,7 @@ namespace lux::scene::script
         {
             ScriptAssetHandle handle;
             lux::asset::AssetId id;
-            lux::process::TaskId task;
+            lux::execution::TaskId task;
             std::size_t reserved{};
             VResult result;
             std::optional<Pending> pending;
@@ -221,14 +221,14 @@ namespace lux::scene::script
 
     struct ScriptAssetAccess::Impl final
     {
-        Impl(lux::process::ExecutionRuntime& execution, AssetReadPort read, ScriptAssetLimits limits)
+        Impl(lux::execution::ExecutionRuntime& execution, AssetReadPort read, ScriptAssetLimits limits)
             : tasks(execution), access(std::make_shared<AccessState>(&tasks, std::move(read), limits))
         {
             scopes.reserve(limits.scopes);
             delivery_scopes.reserve(limits.scopes);
         }
 
-        lux::process::TaskScope tasks;
+        lux::execution::TaskScope tasks;
         std::shared_ptr<AccessState> access;
         std::vector<std::weak_ptr<ScriptAssetScope::State>> scopes;
         std::vector<std::weak_ptr<ScriptAssetScope::State>> delivery_scopes;
@@ -236,7 +236,7 @@ namespace lux::scene::script
     };
 
     ScriptAssetAccess::CreateResult ScriptAssetAccess::create(
-        lux::process::ExecutionRuntime& execution,
+        lux::execution::ExecutionRuntime& execution,
         AssetReadPort read,
         ScriptAssetLimits limits
     ) noexcept
@@ -442,7 +442,7 @@ namespace lux::scene::script
     ScriptAssetScope::StartResult ScriptAssetScope::finishStart(
         const std::shared_ptr<State>& state,
         ScriptAssetHandle handle,
-        lux::cxx::expected<lux::process::TaskId, EExecutionError> submitted
+        lux::cxx::expected<lux::execution::TaskId, execution::EExecutionError> submitted
     ) noexcept
     {
         if (!submitted)
@@ -471,10 +471,10 @@ namespace lux::scene::script
         using Result = lux::cxx::expected<lux::asset::AssetBlob, AssetLoadFailure>;
         auto submitted = reserved->tasks.submit(
             {"Read script asset image", "script"},
-            [&reserved, id](lux::process::TaskReporter) noexcept
+            [&reserved, id](lux::execution::TaskReporter) noexcept
             {
                 auto sender = stdexec::continues_on(
-                    lux::process::portSender(reserved->read, ReadAssetImage{id, reserved->limits.max_image_bytes}),
+                    lux::execution::portSender(reserved->read, ReadAssetImage{id, reserved->limits.max_image_bytes}),
                     reserved->cpu
                 );
                 auto values = stdexec::then(
@@ -486,7 +486,7 @@ namespace lux::scene::script
                     [](auto error) noexcept -> Result
                     {
                         AssetLoadFailure failure;
-                        if constexpr (std::is_same_v<decltype(error), EExecutionError>)
+                        if constexpr (std::is_same_v<decltype(error), execution::EExecutionError>)
                         {
                             failure.code = EAssetLoadError::EXECUTION_FAILURE;
                             failure.execution_error = error;
@@ -505,7 +505,7 @@ namespace lux::scene::script
                     }
                 );
             },
-            [state, handle, completion](lux::process::TTaskResult<lux::asset::AssetBlob, AssetLoadFailure>&& result
+            [state, handle, completion](lux::execution::TTaskResult<lux::asset::AssetBlob, AssetLoadFailure>&& result
             ) noexcept
             {
                 if (!result)
@@ -530,7 +530,7 @@ namespace lux::scene::script
         const std::shared_ptr<State>& state,
         ScriptAssetHandle handle,
         Completion completion,
-        lux::process::TTaskError<LoadFailure> failure
+        lux::execution::TTaskError<LoadFailure> failure
     ) noexcept
     {
         if (state->find(handle) == nullptr)

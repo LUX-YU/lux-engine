@@ -1,8 +1,8 @@
 #pragma once
 
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/process/ExecutionRuntime.hpp>
-#include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/core/execution/TaskScope.hpp>
 #include <lux/engine/process/asset_loading/AssetLoadSender.hpp>
 #include <lux/engine/process/asset_loading/visibility.h>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
@@ -30,8 +30,8 @@ namespace lux::process::asset_loading
 
         [[nodiscard]] static CreateResult create(
             asset::AssetVfsView vfs,
-            BlockingScheduler blocking,
-            TaskScope& tasks,
+            execution::BlockingScheduler blocking,
+            execution::TaskScope& tasks,
             VfsAssetReadEndpointConfig config
         ) noexcept;
 

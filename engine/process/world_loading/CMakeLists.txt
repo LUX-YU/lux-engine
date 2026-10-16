@@ -25,14 +25,14 @@ target_compile_definitions(process_world_loading PRIVATE LUX_ENGINE_PROCESS_WORL
 target_link_libraries(
     process_world_loading
     PUBLIC
-        lux::engine::process::process_execution
+        lux::engine::core::core_execution
         lux::engine::world::storage
     PRIVATE lux::cxx::memory
 )
 component_add_transitive_commands(
     process_world_loading
     "find_package(lux-cxx REQUIRED COMPONENTS memory)"
-    "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
+    "find_package(lux-engine-core-execution REQUIRED COMPONENTS core_execution)"
     "find_package(lux-engine-world-storage REQUIRED COMPONENTS world_storage)"
     "add_library(lux::engine::process::world_loading INTERFACE IMPORTED GLOBAL)"
     "set_property(TARGET lux::engine::process::world_loading PROPERTY INTERFACE_LINK_LIBRARIES lux::engine::process::process_world_loading)"

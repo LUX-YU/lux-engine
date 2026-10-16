@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/engine/process/ExecutionRuntime.hpp>
-#include <lux/engine/render/resource/CpuSchedule.hpp>
+#include <lux/engine/core/execution/ExecutionRuntime.hpp>
+#include <lux/engine/render/resource/AsyncWork.hpp>
 #include <exec/variant_sender.hpp>
 
 #include <array>
@@ -103,7 +103,7 @@ namespace lux::render::test
 
         struct Scheduler final
         {
-            process::CpuScheduler real;
+            execution::CpuScheduler real;
             Control* control;
 
             [[nodiscard]] auto schedule() const noexcept
@@ -111,7 +111,7 @@ namespace lux::render::test
                 auto normal = stdexec::then(stdexec::schedule(real), [control = control]() noexcept {
                     if (control->hook) control->hook(control->hook_owner);
                 });
-                auto rejected = stdexec::just_error(process::EExecutionError::CAPACITY_EXCEEDED);
+                auto rejected = stdexec::just_error(execution::EExecutionError::CAPACITY_EXCEEDED);
                 using VSchedule = exec::variant_sender<decltype(normal), decltype(rejected)>;
                 // Controlled rejection is an explicit test branch. Normal work
                 // always uses the actual Engine scheduler, including its genuine
@@ -130,14 +130,14 @@ namespace lux::render::test
             RenderResult<void> result;
         };
 
-        [[nodiscard]] static RenderError mapError(process::EExecutionError error) noexcept
+        [[nodiscard]] static RenderError mapError(execution::EExecutionError error) noexcept
         {
             return {kCpuScheduleFailure, {static_cast<std::uint64_t>(error)}};
         }
 
-        [[nodiscard]] static process::ExecutionRuntime create(std::size_t concurrency, std::size_t capacity) noexcept
+        [[nodiscard]] static execution::ExecutionRuntime create(std::size_t concurrency, std::size_t capacity) noexcept
         {
-            auto created = process::ExecutionRuntime::create({concurrency, capacity, 128, {128}});
+            auto created = execution::ExecutionRuntime::create({concurrency, capacity, 128, {128}});
             if (!created) fail("ExecutionRuntime creation failed");
             return std::move(*created);
         }
@@ -164,7 +164,7 @@ namespace lux::render::test
         }
 
         const std::thread::id owner_thread_;
-        process::ExecutionRuntime runtime_;
+        execution::ExecutionRuntime runtime_;
         Control control_;
         Scheduler scheduler_;
         std::mutex mutex_;

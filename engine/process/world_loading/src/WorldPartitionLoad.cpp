@@ -1,6 +1,6 @@
 #include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
 #include <lux/engine/world/storage/detail/WorldPartitionDecoder.hpp>
-#include <lux/engine/process/PortSender.hpp>
+#include <lux/engine/core/execution/PortSender.hpp>
 
 #include <atomic>
 #include <limits>
@@ -58,7 +58,7 @@ namespace lux::process::world_loading
             partition::PartitionOrdinal partition_value,
             std::size_t max_bytes_value,
             std::stop_token stop_value,
-            process::TaskReporter reporter,
+            execution::TaskReporter reporter,
             void* receiver_value,
             void (*value_fn)(void*, lux::world::WorldPartitionData&&) noexcept,
             void (*error_fn)(void*, WorldStorageRuntimeFailure) noexcept,
@@ -232,7 +232,7 @@ namespace lux::process::world_loading
         partition::PartitionOrdinal partition,
         std::size_t max_bytes,
         std::stop_token stop,
-        process::TaskReporter reporter,
+        execution::TaskReporter reporter,
         void* receiver,
         void (*set_value)(void*, lux::world::WorldPartitionData&&) noexcept,
         void (*set_error)(void*, WorldStorageRuntimeFailure) noexcept,

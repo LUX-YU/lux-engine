@@ -174,7 +174,7 @@ int main()
     worker.reject(true);
     const auto rejected_schedule = call(*upload, candidate, false).header.error;
     CHECK(rejected_schedule.type == kCpuScheduleFailure);
-    CHECK(rejected_schedule.args[0] == static_cast<std::uint64_t>(lux::process::EExecutionError::CAPACITY_EXCEEDED));
+    CHECK(rejected_schedule.args[0] == static_cast<std::uint64_t>(lux::execution::EExecutionError::CAPACITY_EXCEEDED));
     worker.reject(false);
     {
         std::latch entered(1), resume(1);

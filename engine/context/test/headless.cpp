@@ -3,7 +3,7 @@
 #include <cstdio>
 #include <latch>
 #include <lux/engine/EngineContext.hpp>
-#include <lux/engine/process/CompletionWork.hpp>
+#include <lux/engine/core/execution/CompletionWork.hpp>
 #include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
 #include <lux/engine/project/PluginCatalog.hpp>
 #include <lux/engine/project/PluginLibrary.hpp>
@@ -21,9 +21,9 @@
 
 namespace
 {
-    void taskChecks(lux::process::ExecutionRuntime& runtime)
+    void taskChecks(lux::execution::ExecutionRuntime& runtime)
     {
-        using namespace lux::process;
+        using namespace lux::execution;
         enum class EFailure
         {
             REJECTED
@@ -217,9 +217,9 @@ namespace
         assert(!small->taskInfo(first_id) && small->taskInfos().size() == 1);
     }
 
-    void taskMeasurements(lux::process::ExecutionRuntime& runtime)
+    void taskMeasurements(lux::execution::ExecutionRuntime& runtime)
     {
-        using namespace lux::process;
+        using namespace lux::execution;
         using Clock = std::chrono::steady_clock;
         struct Value final
         {
@@ -304,9 +304,9 @@ namespace
         { return (static_cast<unsigned long long>(time.dwHighDateTime) << 32) | time.dwLowDateTime; };
         return value(kernel) + value(user);
     }
-    void taskMemoryAndWait(lux::process::ExecutionRuntime& runtime)
+    void taskMemoryAndWait(lux::execution::ExecutionRuntime& runtime)
     {
-        using namespace lux::process;
+        using namespace lux::execution;
         using Value = lux::cxx::expected<void, EExecutionError>;
         assert(runtime.collectCompletions() && runtime.dispatchTaskEvents());
         const auto before = heapSample();
@@ -368,9 +368,9 @@ namespace
     }
 #endif
 
-    void executionChecks(lux::process::ExecutionRuntime& runtime)
+    void executionChecks(lux::execution::ExecutionRuntime& runtime)
     {
-        using namespace lux::process;
+        using namespace lux::execution;
         struct Owner final
         {
             unsigned calls{};
@@ -486,7 +486,7 @@ int main(int argc, char** argv)
 {
     using namespace lux;
     assert(argc == 3);
-    auto engine = engine::EngineContext::create({1, 32, 32, {16}, process::BlockingSchedulerConfig{1, 32}}, {1, 1024});
+    auto engine = engine::EngineContext::create({1, 32, 32, {16}, execution::BlockingSchedulerConfig{1, 32}}, {1, 1024});
     assert(engine && !(*engine)->renderContext());
     executionChecks((*engine)->execution());
     taskChecks((*engine)->execution());
@@ -550,7 +550,7 @@ int main(int argc, char** argv)
     assert(package);
     auto source = process::world_loading::makeWorldMemoryStorageSource(package->world->sharedData(), package->volumes);
     assert(source);
-    process::TaskScope tasks{(*engine)->execution()};
+    execution::TaskScope tasks{(*engine)->execution()};
     scene::WorldLoadingServices services{*source, tasks};
     const auto provider =
         scene::makeSceneCapabilityProvider<scene::WorldLoadingServices>("storage", "lux.world.loading", services);

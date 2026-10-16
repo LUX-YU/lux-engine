@@ -25,9 +25,9 @@ int main(int argc, char** argv)
     asset::AssetVfs vfs;
     auto mount = vfs.mount({"/Game", *provider});
     assert(mount);
-    auto runtime = process::ExecutionRuntime::create({1, 64, 64, {32}, process::BlockingSchedulerConfig{1, 64}});
+    auto runtime = execution::ExecutionRuntime::create({1, 64, 64, {32}, execution::BlockingSchedulerConfig{1, 64}});
     assert(runtime);
-    process::TaskScope tasks{*runtime};
+    execution::TaskScope tasks{*runtime};
     auto blocking = runtime->blocking();
     assert(blocking);
     auto endpoint = VfsAssetReadEndpoint::create(vfs.view().capture(), *blocking, tasks, {2});
@@ -73,9 +73,9 @@ int main(int argc, char** argv)
     endpoint->reset();
     assert(tasks.join());
     // An accepted endpoint result owns its transport state after its admission scope disappears.
-    // Completion must wake the Runtime directly, never dereference the destroyed TaskScope.
+    // Completion must wake the Runtime directly, never dereference the destroyed execution::TaskScope.
     {
-        auto scope = std::make_unique<process::TaskScope>(*runtime);
+        auto scope = std::make_unique<execution::TaskScope>(*runtime);
         auto late = VfsAssetReadEndpoint::create(vfs.view().capture(), *blocking, *scope, {2});
         assert(late);
         Reply reply;

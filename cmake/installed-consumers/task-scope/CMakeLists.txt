@@ -3,15 +3,15 @@ project(task_scope_consumer LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
-find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)
+find_package(lux-engine-core-execution REQUIRED COMPONENTS core_execution)
 get_filename_component(engine_source "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 configure_file(
-    "${engine_source}/engine/process/execution/test/TaskScopeTest.cpp"
+    "${engine_source}/modules/core/execution/test/TaskScopeTest.cpp"
     "${CMAKE_BINARY_DIR}/TaskScopeTest.cpp" COPYONLY
 )
 
 add_executable(task_scope_consumer "${CMAKE_BINARY_DIR}/TaskScopeTest.cpp")
-target_link_libraries(task_scope_consumer PRIVATE lux::engine::process::process_execution)
+target_link_libraries(task_scope_consumer PRIVATE lux::engine::core::core_execution)
 if(MSVC)
     target_compile_options(task_scope_consumer PRIVATE /UNDEBUG /permissive- /utf-8 /GR- /we4541)
 else()

@@ -70,6 +70,10 @@ namespace lux::render::vulkan
         [[nodiscard]] RenderResult<Backing*> acquire(TextureId) noexcept;
         void releaseLease(Backing& version) noexcept;
         [[nodiscard]] const Backing* find(TextureId) const noexcept;
+        // Professional immutable content reference. Caller holds this Storage's existing StorageLease.
+        // The returned reference does not follow later publications of the same logical TextureId.
+        [[nodiscard]] RenderResult<std::pair<rdesc::TextureInfo, std::uint32_t>>
+        pin(TexturePublished, PreparedStorageBinding&) noexcept;
         [[nodiscard]] VkDescriptorSetLayout layout() const noexcept;
         [[nodiscard]] VkDescriptorSet descriptors() const noexcept;
         [[nodiscard]] std::size_t residentVersions() const noexcept;

@@ -332,3 +332,17 @@ set_target_properties(render_mesh_operations_test PROPERTIES RUNTIME_OUTPUT_DIRE
 add_test(NAME render.runtime.mesh_operations COMMAND render_mesh_operations_test)
 
 set_tests_properties(render.runtime.mesh_operations PROPERTIES TIMEOUT 90)
+
+add_executable(render_material_operations_test MaterialOperations.cpp)
+
+target_link_libraries(render_material_operations_test PRIVATE render_runtime render_native_vulkan_extensions)
+
+set_target_properties(render_material_operations_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_dependencies(render_material_operations_test render_material_assets)
+
+add_test(NAME render.runtime.material_operations COMMAND render_material_operations_test
+    "${CMAKE_BINARY_DIR}/render/native/vulkan/test/assets/Unlit.frag.spv"
+)
+
+set_tests_properties(render.runtime.material_operations PROPERTIES TIMEOUT 90)

@@ -885,6 +885,30 @@
   },
   "N6.1": {
     "title": "Mesh storage",
+    "status": "PASS",
+    "production_paths": [
+      "modules/function/render/resource/",
+      "modules/function/render/features/",
+      "modules/function/render/native/vulkan/",
+      "modules/function/render/examples/basic_mesh/"
+    ],
+    "test_requirements": [
+      "T-RENDER-01",
+      "T-RENDER-02",
+      "T-RENDER-03",
+      "T-RENDER-04",
+      "T-RENDER-05",
+      "T-RENDER-06",
+      "T-CMD-08",
+      "T-OWNER-14"
+    ],
+    "evidence": [
+      "N6-MESH-IMPLEMENTATION.md",
+      "N6-MESH-VERIFICATION.md"
+    ]
+  },
+  "N6.2": {
+    "title": "Cooked material storage",
     "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/resource/",
@@ -902,28 +926,10 @@
       "T-CMD-08",
       "T-OWNER-14"
     ],
-    "evidence": []
-  },
-  "N6.2": {
-    "title": "Cooked material storage",
-    "status": "PLANNED",
-    "production_paths": [
-      "modules/function/render/resource/",
-      "modules/function/render/features/",
-      "modules/function/render/native/vulkan/",
-      "modules/function/render/examples/basic_mesh/"
-    ],
-    "test_requirements": [
-      "T-RENDER-01",
-      "T-RENDER-02",
-      "T-RENDER-03",
-      "T-RENDER-04",
-      "T-RENDER-05",
-      "T-RENDER-06",
-      "T-CMD-08",
-      "T-OWNER-14"
-    ],
-    "evidence": []
+    "evidence": [
+      "N6-MATERIAL-ASSETS-IMPLEMENTATION.md",
+      "N6-MATERIAL-IMPLEMENTATION.md"
+    ]
   },
   "N6.3": {
     "title": "Instance batches and camera",

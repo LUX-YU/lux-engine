@@ -31,6 +31,7 @@ add_test(
     COMMAND "${CMAKE_COMMAND}"
         "-DBUILD_DIR=${CMAKE_BINARY_DIR}"
         "-DCONSUMER_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/installed"
+        "-DCONSUMER_ASSET_DIR=${CMAKE_CURRENT_BINARY_DIR}/assets"
         "-DDEPENDENCY_DIR=${lux-cxx_DIR}"
         "-DCXX_COMPILER=${CMAKE_CXX_COMPILER}"
         "-DMAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
@@ -79,14 +80,14 @@ set_tests_properties(render.native.buffer_transfer PROPERTIES TIMEOUT 60)
 
 foreach(header Error DeviceSession DescriptorArray CompiledGraph ExecutionContext StorageBinding device/Device device/DeviceOptions memory/Memory
     Readback transfer/Submission transfer/Transfer transfer/GpuWork
-    texture/TextureStorage texture/TextureCommands mesh/MeshStorage mesh/MeshCommands retirement/Retirement
+    texture/TextureStorage texture/TextureCommands mesh/MeshStorage mesh/MeshCommands material/MaterialStorage material/MaterialCommands retirement/Retirement
 )
     string(REPLACE "/" "_" target "${header}")
     file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp"
         CONTENT "#include <lux/engine/render/native/vulkan/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
     )
     add_library(render_native_header_${target} OBJECT "${CMAKE_CURRENT_BINARY_DIR}/headers/${target}.cpp")
-    if(header MATCHES "^(texture|mesh)/")
+    if(header MATCHES "^(texture|mesh|material)/")
         target_link_libraries(render_native_header_${target} PRIVATE render_native_vulkan_extensions)
     else()
         target_link_libraries(render_native_header_${target} PRIVATE render_native_vulkan)
@@ -379,8 +380,55 @@ add_custom_command(
         "-DROOT=${render_source_root}" "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/assets/material"
         "-DGENERATED=${render_asset_dir}" "-DOUTPUT=${render_asset_dir}/material-manifest.txt"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/assets/material/Manifest.cmake"
-    DEPENDS "${render_asset_dir}/Unlit.frag.spv" assets/material/Manifest.cmake assets/material/provenance.json
+    DEPENDS "${render_asset_dir}/Unlit.frag.spv" "${render_asset_dir}/Unlit.vert.spv"
+        "${render_asset_dir}/UnlitTexture.frag.spv" assets/material/Manifest.cmake assets/material/provenance.json
     VERBATIM
 )
 
 add_custom_target(render_material_assets ALL DEPENDS "${render_asset_dir}/material-manifest.txt")
+
+add_custom_command(
+    OUTPUT "${render_asset_dir}/Unlit.vert.spv"
+    COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -S vert
+        "${CMAKE_CURRENT_SOURCE_DIR}/assets/material/Unlit.vert" -o "${render_asset_dir}/Unlit.vert.spv"
+    DEPENDS assets/material/Unlit.vert
+    VERBATIM
+)
+
+add_custom_target(render_material_vertex ALL DEPENDS "${render_asset_dir}/Unlit.vert.spv")
+
+add_executable(render_material_storage_test MaterialStorage.cpp Allocation.cpp)
+
+target_link_libraries(render_material_storage_test PRIVATE render_native_instrumented lux::engine::core::core_execution)
+
+set_target_properties(render_material_storage_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_dependencies(render_material_storage_test render_material_assets render_material_vertex)
+
+add_test(NAME render.native.material_storage COMMAND render_material_storage_test
+    "${render_asset_dir}/Unlit.vert.spv" "${render_asset_dir}/Unlit.frag.spv"
+)
+
+set_tests_properties(render.native.material_storage PROPERTIES TIMEOUT 90)
+
+add_custom_command(
+    OUTPUT "${render_asset_dir}/UnlitTexture.frag.spv"
+    BYPRODUCTS "${render_asset_dir}/UnlitTexture.frag"
+    COMMAND render_material_asset_tool "${render_asset_dir}/UnlitTexture.frag" texture
+    COMMAND "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}" -V --target-env vulkan1.3 -S frag
+        "-I${CMAKE_CURRENT_SOURCE_DIR}/assets/material"
+        "${render_asset_dir}/UnlitTexture.frag" -o "${render_asset_dir}/UnlitTexture.frag.spv"
+    DEPENDS render_material_asset_tool assets/material/material_types.glsl
+        assets/material/texture_sampling.glsl assets/material/transition_dither.glsl
+    VERBATIM
+)
+
+add_custom_target(render_textured_material_asset ALL DEPENDS "${render_asset_dir}/UnlitTexture.frag.spv")
+
+add_dependencies(render_material_storage_test render_textured_material_asset)
+
+add_test(NAME render.native.material_textures COMMAND render_material_storage_test
+    "${render_asset_dir}/Unlit.vert.spv" "${render_asset_dir}/UnlitTexture.frag.spv" texture
+)
+
+set_tests_properties(render.native.material_textures PROPERTIES TIMEOUT 90)

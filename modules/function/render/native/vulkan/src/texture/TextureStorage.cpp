@@ -189,6 +189,21 @@ namespace lux::render::vulkan
         }
     };
 
+    RenderResult<std::pair<rdesc::TextureInfo, std::uint32_t>> TextureStorage::pin(
+        TexturePublished expected, PreparedStorageBinding& binding
+    ) noexcept
+    {
+        const auto* record = expected.texture.storage == id_ ? textures_.find(expected.texture.local) : nullptr;
+        if (!record || !record->current || record->current->revision_ != expected.revision)
+            return cxx::unexpected(RenderError{kStorageIdentity});
+        auto& backing = *record->current;
+        auto use = std::make_unique<Use>(this, expected.texture, nullptr, &binding, 0);
+        use->update(backing);
+        binding.descriptors = physical_->descriptors->descriptors();
+        binding.reference = {use.release(), [](void* value) noexcept { delete static_cast<Use*>(value); }};
+        return std::pair{backing.info(), backing.descriptorIndex()};
+    }
+
     RenderResult<void> TextureStorage::prepare(const NativeResourcePlan& plan, const TextureBinding& argument,
         PreparedStorageBinding& binding) noexcept
     {

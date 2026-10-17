@@ -9,6 +9,8 @@ foreach(path IN ITEMS
     "${ROOT}/modules/function/material/src/MaterialLowering.cpp"
     "${ROOT}/engine/toolchain/material/src/ShaderEmitter.cpp"
     "${GENERATED}/Unlit.frag" "${GENERATED}/Unlit.frag.spv"
+    "${INPUT}/Unlit.vert" "${GENERATED}/Unlit.vert.spv"
+    "${GENERATED}/UnlitTexture.frag" "${GENERATED}/UnlitTexture.frag.spv"
 )
     file(SHA256 "${path}" hash)
     file(APPEND "${OUTPUT}" "${hash}  ${path}\n")

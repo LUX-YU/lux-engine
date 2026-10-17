@@ -14,9 +14,9 @@ namespace
     unsigned live_pipelines = 0;
     constexpr FeatureName type("test.native.plan");
 
-    RenderResult<void> describe(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept { return {}; }
+    RenderResult<void> describe(const void*, std::string_view, std::vector<ResourceClaim>&) noexcept { return {}; }
 
-    RenderResult<void> build(const RetainableEncodedDataView*, std::string_view name,
+    RenderResult<void> build(const void*, std::string_view name,
         std::span<const ResolvedResource>, RenderGraphBuilder& builder) noexcept
     {
         const auto key = [&](std::string_view local) { return featureKey(type, name, local); };
@@ -50,14 +50,14 @@ namespace
         return builder.exportOutput({{pixels, 1}});
     }
 
-    const FeatureDescriptor definition{type, {1, 0}, nullptr};
+    const FeatureDescriptor definition{type, {}};
     const FeatureGraphOps definition_graph{describe, build};
 
     FeatureAssembly assembly(ECase value)
     {
         selected_case = value;
         const FeatureInstanceView selected{&definition, &definition_graph, nullptr, "main"};
-        return take(assembleFeatures({&selected, 1}, {4096, 4096}));
+        return take(assembleFeatures({&selected, 1}, 4096));
     }
 
     std::vector<PassProgram> programs(bool different)

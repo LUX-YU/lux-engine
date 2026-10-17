@@ -14,42 +14,13 @@ namespace extension_test
     struct ViewConfig final { TextureId texture; BufferId buffer; };
 }
 
-namespace lux::render
-{
-    template <> struct DataSchema<extension_test::ViewConfig>
-    {
-        static inline constexpr DataField fields[]{
-            {"texture_index", cxx::EScalarKind::U32}, {"texture_generation", cxx::EScalarKind::U32},
-            {"buffer_index", cxx::EScalarKind::U32}, {"buffer_generation", cxx::EScalarKind::U32}
-        };
-        static inline constexpr DataSchemaDescriptor schema{
-            DataTypeIdView("test.extension.ViewConfig"), {1, 0}, {1, 0}, fields, 16, 4
-        };
-        static const DataSchemaDescriptor& describe() noexcept { return schema; }
-        static RenderResult<std::size_t> encodedSize(const extension_test::ViewConfig&) noexcept { return 16; }
-        static RenderResult<void> encode(const extension_test::ViewConfig& value, cxx::BinarySpanWriter& out) noexcept
-        {
-            for (auto field : {value.texture.index, value.texture.gen, value.buffer.index, value.buffer.gen})
-                out.writeUnsigned(field);
-            return {};
-        }
-        static RenderResult<extension_test::ViewConfig> decode(cxx::BinaryReader& in, RetainableEncodedDataView) noexcept
-        {
-            extension_test::ViewConfig value;
-            for (auto* field : {&value.texture.index, &value.texture.gen, &value.buffer.index, &value.buffer.gen})
-                in.readUnsigned(*field);
-            return value;
-        }
-    };
-}
-
 namespace extension_test
 {
     inline constexpr FeatureName feature_type("test.extension.BufferFeature");
     inline constexpr EncodedDataLimits limits{16, 0};
     inline const TargetDesc target{16, 16, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
 
-    inline RenderResult<void> describe(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    inline RenderResult<void> describe(const void*, std::string_view, std::vector<ResourceClaim>& out) noexcept
     {
         out.push_back({"texture", EResourceClaim::PROVIDE, GraphImageDesc{16, 16}, EGraphOrigin::IMPORTED,
             {GraphImageRange{1, 0, 1, 0, 1}},
@@ -62,7 +33,7 @@ namespace extension_test
         return {};
     }
 
-    inline RenderResult<void> build(const RetainableEncodedDataView*, std::string_view name,
+    inline RenderResult<void> build(const void*, std::string_view name,
         std::span<const ResolvedResource> resources, RenderGraphBuilder& graph) noexcept
     {
         const auto texture = findResource(resources, "texture")->version;
@@ -83,13 +54,12 @@ namespace extension_test
         return graph.exportOutput({{*pixels, 1}});
     }
 
-    inline const FeatureDescriptor definition{feature_type, {1, 0}, &DataSchema<ViewConfig>::schema};
+    inline const FeatureDescriptor definition{feature_type, ConfigValue::typeOf<ViewConfig>()};
     inline const FeatureGraphOps definition_graph{describe, build};
 
-    inline RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view name) noexcept
+    inline RenderResult<ProgramContribution> programs(const void* wire, std::string_view name) noexcept
     {
-        auto config = decodeData<ViewConfig>(*wire, limits);
-        if (!config) return lux::cxx::unexpected(config.error());
+        const auto* config = static_cast<const ViewConfig*>(wire);
         ProgramContribution result;
         PassProgram draw{featureKey(feature_type, name, "draw")};
         draw.shader = {{texture_fixture::vert.begin(), texture_fixture::vert.end()}, {fragment.begin(), fragment.end()},

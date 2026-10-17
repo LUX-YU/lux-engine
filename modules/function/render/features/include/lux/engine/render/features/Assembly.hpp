@@ -4,15 +4,14 @@
 #include <lux/engine/render/features/Resources.hpp>
 #include <lux/engine/render/graph/Builder.hpp>
 #include <lux/engine/render/graph/Analysis.hpp>
-#include <lux/engine/render/data/Encoding.hpp>
 
 namespace lux::render
 {
     // Synchronous cold contributions. Callbacks may append, never finish/move/retain the Builder.
     struct FeatureGraphOps final
     {
-        RenderResult<void> (*describe)(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept;
-        RenderResult<void> (*build)(const RetainableEncodedDataView*, std::string_view,
+        RenderResult<void> (*describe)(const void*, std::string_view, std::vector<ResourceClaim>&) noexcept;
+        RenderResult<void> (*build)(const void*, std::string_view,
             std::span<const ResolvedResource>, RenderGraphBuilder&) noexcept = nullptr;
     };
 
@@ -20,7 +19,7 @@ namespace lux::render
     {
         const FeatureDescriptor* descriptor = nullptr;
         const FeatureGraphOps* graph = nullptr;
-        const RetainableEncodedDataView* config = nullptr;
+        const ConfigValue* config = nullptr;
         std::string_view instance_key;
     };
 
@@ -43,7 +42,7 @@ namespace lux::render
     featureKey(FeatureName type, std::string_view instance, std::string_view local) noexcept;
 
     [[nodiscard]] RenderResult<FeatureAssembly>
-    assembleFeatures(std::span<const FeatureInstanceView> instances, EncodedDataLimits config_limits) noexcept;
+    assembleFeatures(std::span<const FeatureInstanceView> instances, std::size_t config_byte_limit) noexcept;
 
     // Arguments: canonical feature index, resource/group index, related index.
     inline constexpr auto kFeatureContract = error::errorId("lux.render.feature.contract");

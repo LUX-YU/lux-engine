@@ -29,11 +29,10 @@ static TestCompletion call(TestClient& client, const TestCommand& command)
     std::abort();
 }
 
-static RenderResult<ProgramContribution> ownPrograms(const RetainableEncodedDataView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> ownPrograms(const void* wire, std::string_view name) noexcept
 {
     if (mode == 4) { entered.count_down(); resume.wait(); }
-    auto config = decodeData<native_fixture::Config>(*wire, native_fixture::limits);
-    if (!config) return lux::cxx::unexpected(config.error());
+    const auto* config = static_cast<const native_fixture::Config*>(wire);
     auto values = native_fixture::programs(*config, name);
     if (mode == 1) values.clear(); // foreign Feature tries to supply these instead
     if (mode == 2) values.push_back(values.front());
@@ -42,28 +41,41 @@ static RenderResult<ProgramContribution> ownPrograms(const RetainableEncodedData
         std::array{std::byte{1}})}}};
 }
 
-static RenderResult<ProgramContribution> foreignPrograms(const RetainableEncodedDataView*, std::string_view) noexcept
+static RenderResult<ProgramContribution> foreignPrograms(const void*, std::string_view) noexcept
 {
     if (mode == 1) return ProgramContribution{native_fixture::programs({}, "main"), {}};
     return ProgramContribution{{}, {{"test.argument", lux::cxx::SharedBytes<>::copyOf(
         std::array{mode == 5 ? std::byte{2} : std::byte{1}})}}};
 }
 
-static RenderResult<void> emptyDescribe(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept
+static std::atomic<unsigned> parameter_calls{0};
+static RenderResult<ProgramContribution> zeroPassParameters(const void* input, std::string_view) noexcept
+{
+    ++parameter_calls;
+    const auto value = *static_cast<const std::uint32_t*>(input);
+    check(value == 1);
+    return ProgramContribution{{}, {{"test.argument", lux::cxx::SharedBytes<>::copyOf(
+        std::array{mode == 6 ? std::byte{2} : std::byte{1}})}}};
+}
+
+static RenderResult<void> emptyDescribe(const void*, std::string_view, std::vector<ResourceClaim>&) noexcept
 {
     return {};
 }
 
 int main()
 {
-    const FeatureDescriptor foreign{FeatureName("test.aaa.foreign"), {1, 0}, nullptr};
-    const FeatureGraphOps foreign_graph{emptyDescribe, [](const RetainableEncodedDataView*, std::string_view name, std::span<const ResolvedResource>, RenderGraphBuilder& builder) noexcept
+    const FeatureDescriptor foreign{FeatureName("test.aaa.foreign"), {}};
+    const FeatureGraphOps foreign_graph{emptyDescribe, [](const void*, std::string_view name, std::span<const ResolvedResource>, RenderGraphBuilder& builder) noexcept
             -> RenderResult<void> {
             auto pass = builder.addPass({featureKey(FeatureName("test.aaa.foreign"), name, "unused"),
                 EGraphPassKind::TRANSFER, {}});
             return pass ? RenderResult<void>{} : lux::cxx::unexpected(pass.error());
         }};
+    const FeatureDescriptor parameters{FeatureName("test.zzz.parameters"), ConfigValue::typeOf<std::uint32_t>()};
+    const FeatureGraphOps parameter_graph{emptyDescribe, nullptr};
     auto server = take(createTestServer({"runtime.program.ownership", true}));
+    check(bool(feature_test::registerGraph(*server, {&parameters, &parameter_graph, zeroPassParameters})));
     check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, ownPrograms})));
     check(bool(feature_test::registerGraph(*server, {&foreign, &foreign_graph, foreignPrograms})));
     auto client = take(TestClient::create("runtime.program.ownership"));
@@ -73,12 +85,12 @@ int main()
     command.session = call(*client, command).session;
     command.operation = ETestCommand::CREATE_EFFECT;
     command.description = native_fixture::target({});
-    command.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(
-            native_fixture::Config{}, {}, native_fixture::limits)).view())});
-    command.features.push_back({"test.aaa.foreign", "foreign", {1, 0}});
+    command.features.push_back({std::string(native_fixture::type.name()), "main", take(ConfigValue::make(native_fixture::Config{}))});
+    command.features.push_back({"test.aaa.foreign", "foreign", {}});
+    command.features.push_back({"test.zzz.parameters", "parameters", take(ConfigValue::make(std::uint32_t{1}))});
     // Input order differs from canonical assembly order; provenance is the input index, not a name guess.
     check(call(*client, command).header.outcome == ECommandOutcome::SUCCESS);
+    check(parameter_calls == 1); // Zero Pass still contributes typed parameters, with no DataSchema.
     const std::array expected{kFeatureOwnership, kFeatureDuplicate, kFeatureContract};
     for (unsigned i = 1; i <= 3; ++i)
     {
@@ -94,6 +106,10 @@ int main()
     auto conflict = call(*client, command);
     check(conflict.header.outcome == ECommandOutcome::FAILED && conflict.header.error.type == kStorageMismatch);
     check(server->stats().compiled_graphs == 2);
+    mode = 6;
+    auto zero_pass_conflict = call(*client, command);
+    check(zero_pass_conflict.header.outcome == ECommandOutcome::FAILED &&
+        zero_pass_conflict.header.error.type == kStorageMismatch && server->stats().compiled_graphs == 2);
     mode = 4;
     take(client->submit(command));
     entered.wait();

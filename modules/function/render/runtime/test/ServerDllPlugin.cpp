@@ -10,10 +10,9 @@ using lux::render::RenderServer;
 using namespace lux::render;
 using namespace std::chrono_literals;
 
-static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view instance) noexcept
+static RenderResult<ProgramContribution> programs(const void* wire, std::string_view instance) noexcept
 {
-    auto config = decodeData<native_fixture::Config>(*wire, native_fixture::limits);
-    if (!config) return lux::cxx::unexpected(config.error());
+    const auto* config = static_cast<const native_fixture::Config*>(wire);
     return ProgramContribution{native_fixture::programs(*config, instance), {}};
 }
 
@@ -71,11 +70,11 @@ extern "C" __declspec(dllexport) bool serverDllReadback(const char* name, Render
     auto view = call<CreateView>(**client, {scene->response().scene, {1, 0, 0, 1}});
     const native_fixture::Config config{32, 32, 0, 0};
     auto target = call<CreateTarget>(**client, {native_fixture::target(config)});
-    auto bytes = encodeData(config, {}, native_fixture::limits);
-    if (!view || !target || !bytes) return false;
+    auto owned_config = ConfigValue::make(config);
+    auto feature = feature_test::find(**client, native_fixture::type.name());
+    if (!view || !target || !owned_config || !feature) return false;
     CreateEffectRequest effect_request{native_fixture::target(config)};
-    effect_request.features.emplace_back(std::string(native_fixture::type.name()), "main", lux::cxx::SchemaVersion{1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(bytes->view()));
+    effect_request.features.push_back({*feature, "main", std::move(*owned_config)});
     auto effect = call<CreateEffect>(**client, std::move(effect_request));
     if (!effect) return false;
     const AttachmentRequest attachment{scene->response().scene, view->response().view,

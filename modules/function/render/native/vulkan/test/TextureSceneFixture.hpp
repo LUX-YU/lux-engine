@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/data/Encoding.hpp>
+
 #include "shaders/Texture.hpp"
 #include <lux/engine/render/features/Assembly.hpp>
 #include <lux/engine/render/graph/Program.hpp>
@@ -20,48 +22,6 @@ namespace texture_fixture
     };
 }
 
-namespace lux::render
-{
-    template <> struct DataSchema<texture_fixture::Config>
-    {
-        static const DataSchemaDescriptor& describe() noexcept
-        {
-            static constexpr DataField fields[]{
-                {"index", cxx::EScalarKind::U32}, {"generation", cxx::EScalarKind::U32},
-                {"width", cxx::EScalarKind::U32}, {"height", cxx::EScalarKind::U32},
-                {"mips", cxx::EScalarKind::U32}, {"format", cxx::EScalarKind::U32},
-                {"lod", cxx::EScalarKind::U32}
-            };
-            static const DataSchemaDescriptor schema{
-                DataTypeIdView("test.sampled_texture.config"), {1, 0}, {1, 0}, fields, 28, 4
-            };
-            return schema;
-        }
-
-        static RenderResult<std::size_t> encodedSize(const texture_fixture::Config&) noexcept { return 28; }
-
-        static RenderResult<void> encode(const texture_fixture::Config& value, cxx::BinarySpanWriter& out) noexcept
-        {
-            for (auto x : {value.texture.index, value.texture.gen, value.width, value.height, value.mips,
-                static_cast<std::uint32_t>(value.format), value.lod}) out.writeUnsigned(x);
-            return {};
-        }
-
-        static RenderResult<texture_fixture::Config> decode(cxx::BinaryReader& in, RetainableEncodedDataView) noexcept
-        {
-            texture_fixture::Config value;
-            std::uint32_t format = 0;
-            for (auto* x : {&value.texture.index, &value.texture.gen, &value.width, &value.height,
-                &value.mips, &format, &value.lod}) in.readUnsigned(*x);
-            value.format = static_cast<rdesc::ETextureFormat>(format);
-            const bool is_invalid = !value.width || !value.height || !value.mips || value.mips > 16 ||
-                value.lod >= value.mips;
-            if (is_invalid) return cxx::unexpected(RenderError{kInvalidEncoding});
-            return value;
-        }
-    };
-}
-
 namespace texture_fixture
 {
     inline TargetDesc target(Config c) noexcept
@@ -70,10 +30,11 @@ namespace texture_fixture
             lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     }
 
-    inline RenderResult<void> describe(const RetainableEncodedDataView* wire, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    inline RenderResult<void> describe(const void* wire, std::string_view, std::vector<ResourceClaim>& out) noexcept
     {
-        auto c = decodeData<Config>(*wire, limits);
-        if (!c) return cxx::unexpected(c.error());
+        const auto* c = static_cast<const Config*>(wire);
+        const bool is_invalid = !c->width || !c->height || !c->mips || c->mips > 16 || c->lod >= c->mips;
+        if (is_invalid) return cxx::unexpected(RenderError{kFeatureContract});
         out.push_back({"texture", EResourceClaim::PROVIDE,
             GraphImageDesc{c->width, c->height, c->mips, 1, c->format}, EGraphOrigin::IMPORTED,
             {GraphImageRange{1, 0, c->mips, 0, 1}},
@@ -83,11 +44,10 @@ namespace texture_fixture
         return {};
     }
 
-    inline RenderResult<void> build(const RetainableEncodedDataView* wire, std::string_view instance,
+    inline RenderResult<void> build(const void* wire, std::string_view instance,
         std::span<const ResolvedResource> resources, RenderGraphBuilder& builder) noexcept
     {
-        auto c = decodeData<Config>(*wire, limits);
-        if (!c) return cxx::unexpected(c.error());
+        const auto* c = static_cast<const Config*>(wire);
         const auto t = target(*c);
         const auto color = findResource(resources, "color")->version;
         const auto texture = findResource(resources, "texture")->version;
@@ -106,7 +66,7 @@ namespace texture_fixture
         return builder.exportOutput({{*pixels, 1}});
     }
 
-    inline const FeatureDescriptor definition{type, {1, 0}, &DataSchema<Config>::describe()};
+    inline const FeatureDescriptor definition{type, ConfigValue::typeOf<Config>()};
     inline const FeatureGraphOps definition_graph{describe, build};
 
     inline std::vector<PassProgram> programs(Config c, std::string_view instance = "main")
@@ -126,10 +86,9 @@ namespace texture_fixture
 
     inline RenderResult<FeatureAssembly> assemble(Config c)
     {
-        auto bytes = encodeData(c, {}, limits);
-        if (!bytes) return cxx::unexpected(bytes.error());
-        const RetainableEncodedDataView wire{DataSchema<Config>::describe(), *bytes};
-        const FeatureInstanceView selected{&definition, &definition_graph, &wire, "main"};
-        return assembleFeatures({&selected, 1}, limits);
+        auto value = ConfigValue::make(c);
+        if (!value) return cxx::unexpected(value.error());
+        const FeatureInstanceView selected{&definition, &definition_graph, &*value, "main"};
+        return assembleFeatures({&selected, 1}, limits.max_encoded_bytes);
     }
 }

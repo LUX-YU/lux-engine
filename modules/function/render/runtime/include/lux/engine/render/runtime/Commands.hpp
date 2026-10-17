@@ -8,7 +8,7 @@
 #include <lux/engine/render/core/Ids.hpp>
 #include <lux/engine/render/core/Target.hpp>
 #include <lux/engine/render/data/Payload.hpp>
-#include <lux/engine/render/data/Schema.hpp>
+#include <lux/engine/render/data/ConfigValue.hpp>
 #include <lux/engine/render/protocol/Protocol.hpp>
 #include <lux/engine/render/runtime/visibility.h>
 
@@ -16,37 +16,11 @@ namespace lux::platform::ipc { class IpcTypeOps; }
 
 namespace lux::render
 {
-    struct FeatureSelection final
+    struct FeatureUse final
     {
-        // Static Schema fields/names and any foreign config deleter remain pinned through destruction.
-        std::shared_ptr<const void> code_pin;
-        std::string type;
+        FeatureId feature;
         std::string instance;
-        cxx::SchemaVersion version{1, 0};
-        std::optional<DataSchemaDescriptor> config_schema;
-        RenderPayload config;
-
-        FeatureSelection(std::string type_name, std::string instance_name, cxx::SchemaVersion input_version = {1, 0},
-            std::optional<DataSchemaDescriptor> schema = {}, RenderPayload input = {},
-            std::shared_ptr<const void> pin = {}) noexcept
-            : code_pin(std::move(pin)), type(std::move(type_name)), instance(std::move(instance_name)),
-              version(input_version), config_schema(schema), config(std::move(input)) {}
-
-        FeatureSelection(const FeatureSelection&) = default;
-        FeatureSelection(FeatureSelection&&) noexcept = default;
-
-        FeatureSelection& operator=(FeatureSelection other) noexcept
-        {
-            // Both module pins stay alive until every dependent config owner has been exchanged.
-            using std::swap;
-            swap(code_pin, other.code_pin);
-            swap(type, other.type);
-            swap(instance, other.instance);
-            swap(version, other.version);
-            swap(config_schema, other.config_schema);
-            swap(config, other.config);
-            return *this;
-        }
+        ConfigValue config;
     };
 
     struct EmptyRequest final {};
@@ -70,8 +44,7 @@ namespace lux::render
     struct CreateEffectRequest final
     {
         TargetDesc description;
-        std::vector<FeatureSelection> features;
-        std::vector<RenderPayload> attachments;
+        std::vector<FeatureUse> features;
     };
 
     struct FeatureInfo final

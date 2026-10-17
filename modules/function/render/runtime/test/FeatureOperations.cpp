@@ -123,8 +123,8 @@ struct FeatureState final
 static const std::array descriptors{
     commandDescriptor<SetExposure>(), commandDescriptor<AcceptCustomData>(), commandDescriptor<InvalidReply>()
 };
-static const FeatureDescriptor feature{FeatureName("test.open.operation"), {1, 0}, nullptr};
-static const FeatureGraphOps feature_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+static const FeatureDescriptor feature{FeatureName("test.open.operation"), {}};
+static const FeatureGraphOps feature_graph{[](const void*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 static_assert(!std::is_default_constructible_v<BoundCommand<SetExposure>>);
 static_assert(std::same_as<decltype(std::declval<const BoundCommand<SetExposure>&>().command()), CommandId>);
 template <class T>
@@ -256,16 +256,16 @@ int main()
     const auto repeated = server->registerFeature<SetExposure>(
         feature_test::Provider<ExposureCommands>{{&feature, &feature_graph, nullptr}}, "", {}, state);
     check(repeated && *repeated == *installed);
-    const FeatureDescriptor collision_feature{FeatureName("test.real.hash.collision"), {1, 0}, nullptr};
+    const FeatureDescriptor collision_feature{FeatureName("test.real.hash.collision"), {}};
     const FeatureGraphOps collision_feature_graph{feature_graph.describe, nullptr};
     check(bool(server->registerFeature<CollidingA>(
         feature_test::Provider<CollisionCommands>{{&collision_feature, &collision_feature_graph, nullptr}})));
-    const FeatureDescriptor unqualified_feature{FeatureName("test.unqualified.type"), {1, 0}, nullptr};
+    const FeatureDescriptor unqualified_feature{FeatureName("test.unqualified.type"), {}};
     const FeatureGraphOps unqualified_graph{feature_graph.describe, nullptr};
     auto rejected = server->registerFeature<UnqualifiedType>(
         feature_test::Provider<CorruptCommands>{{&unqualified_feature, &unqualified_graph, nullptr}});
     check(!rejected && rejected.error().type == kProtocolContract);
-    const FeatureDescriptor premature_feature{FeatureName("test.transferred.reply"), {1, 0}, nullptr};
+    const FeatureDescriptor premature_feature{FeatureName("test.transferred.reply"), {}};
     const FeatureGraphOps premature_feature_graph{feature_graph.describe, nullptr};
     check(bool(server->registerFeature<TransferredReply>(
         feature_test::Provider<TransferredCommands>{{&premature_feature, &premature_feature_graph, nullptr}},

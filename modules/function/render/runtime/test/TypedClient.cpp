@@ -229,6 +229,20 @@ static void directoryRefresh()
         "refresh invalidated an existing canonical binding");
 }
 
+struct AssetConfiguration final { RenderPayload asset; };
+namespace lux::render
+{
+    template <> struct ConfigValueTraits<AssetConfiguration>
+    {
+        static RenderResult<std::size_t> retainedBytes(const AssetConfiguration& value) noexcept
+        {
+            const auto size = value.asset.retainedBytes();
+            if (size > SIZE_MAX - sizeof(value)) return cxx::unexpected(RenderError{kRuntimeCapacity});
+            return sizeof(value) + size;
+        }
+    };
+}
+
 static void selectionAssignmentPinsConfig()
 {
     bool pin_alive = true;
@@ -236,26 +250,26 @@ static void selectionAssignmentPinsConfig()
     auto pin = std::shared_ptr<const void>(&pin_alive, [&pin_alive](const void*) noexcept { pin_alive = false; });
     auto backing = std::shared_ptr<const std::vector<std::byte>>(
         new std::vector<std::byte>(7), [&](auto* value) noexcept {
-            check(pin_alive, "FeatureSelection assignment released CodePin before old Config");
+            check(pin_alive, "FeatureUse assignment released CodePin before old Config");
             ++destroyed;
             delete value;
         });
-    FeatureSelection selection("old", "main", {1, 0}, {}, take(RenderPayload::fromVector(backing, 0, 7)), pin);
+    FeatureUse selection{{0, 1}, "main", take(ConfigValue::make(
+        AssetConfiguration{take(RenderPayload::fromVector(backing, 0, 7))}, pin
+    ))};
     backing.reset();
     pin.reset();
-    selection = FeatureSelection("new", "main");
-    check(!pin_alive && destroyed == 1, "FeatureSelection assignment did not release its old owners exactly once");
+    selection = FeatureUse{{1, 1}, "main", {}};
+    check(!pin_alive && destroyed == 1, "FeatureUse assignment did not release its old owners exactly once");
 }
 
 static void stringBackingBudgets()
 {
     CreateEffect::Request request;
     request.features.reserve(3);
-    request.attachments.reserve(2);
-    request.features.emplace_back(std::string(32768, 't'), std::string(32768, 'i'));
+    request.features.push_back({FeatureId{0, 1}, std::string(65536, 'i'), {}});
     const auto& feature = request.features.front();
-    const auto expected = sizeof(request) + request.features.capacity() * sizeof(FeatureSelection) +
-        request.attachments.capacity() * sizeof(RenderPayload) + feature.type.capacity() + 1 +
+    const auto expected = sizeof(request) + request.features.capacity() * sizeof(FeatureUse) +
         feature.instance.capacity() + 1;
     check(take(CommandValueTraits<CreateEffect::Request>::retainedBytes(request)) == expected,
         "CreateEffect budget omitted string capacity, its terminators, or unused vector capacity");
@@ -277,11 +291,9 @@ static void stringBackingBudgets()
         (response_overhead > error_overhead ? response_overhead : error_overhead);
     constexpr std::size_t reply_capacity = 128;
     const auto charge = expected + reply_capacity + overhead;
-    const auto* type_pointer = feature.type.data();
     const auto* instance_pointer = feature.instance.data();
     const auto* feature_pointer = request.features.data();
     const auto feature_capacity = request.features.capacity();
-    const auto attachment_capacity = request.attachments.capacity();
     for (const bool enough : {false, true})
     {
         const auto name = enough ? "runtime.typed.string.exact" : "runtime.typed.string.short";
@@ -305,12 +317,11 @@ static void stringBackingBudgets()
             check(!submitted && submitted.error().type == kRuntimeCapacity && client->retainedBytes() == 0,
                 "one-byte-short budget admitted a request or leaked its reservation");
             check(request.features.data() == feature_pointer && request.features.size() == 1 &&
-                request.features.capacity() == feature_capacity && request.attachments.capacity() == attachment_capacity,
+                request.features.capacity() == feature_capacity,
                 "budget failure changed the request vector owners");
-            check(request.features.front().type.data() == type_pointer &&
+            check(request.features.front().feature == FeatureId{0, 1} &&
                 request.features.front().instance.data() == instance_pointer &&
-                request.features.front().type == std::string(32768, 't') &&
-                request.features.front().instance == std::string(32768, 'i'),
+                request.features.front().instance == std::string(65536, 'i'),
                 "budget failure consumed or changed a long string");
             ipc::ReceivedRequest unpublished;
             check(responder.tryReceive(unpublished) == ipc::EIpcReceive::EMPTY,
@@ -325,7 +336,7 @@ static void stringBackingBudgets()
         {
             auto completion = consume(*client);
             auto owned = take(std::move(completion).take(binding));
-            check(owned.header().request == *submitted && owned.request().features.front().type.data() == type_pointer &&
+            check(owned.header().request == *submitted && owned.request().features.front().feature == FeatureId{0, 1} &&
                 owned.request().features.front().instance.data() == instance_pointer,
                 "exact-budget string request was copied or lost on return");
             check(client->retainedBytes() == charge, "returned long strings were prematurely unbudgeted");
@@ -341,6 +352,8 @@ int main()
     rejectDuplicateManifest(true);
     rejectDuplicateManifest(false);
     directoryRefresh();
+    std::printf("Feature layout: ConfigValue=%zu FeatureUse=%zu CreateEffectRequest=%zu\n",
+        sizeof(ConfigValue), sizeof(FeatureUse), sizeof(CreateEffectRequest));
     selectionAssignmentPinsConfig();
     stringBackingBudgets();
     auto responder_value = ipc::IpcCore::instance().createResponder("runtime.typed.client");

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/data/Encoding.hpp>
+
 #include "shaders/Triangle.hpp"
 #include <lux/engine/render/features/Assembly.hpp>
 #include <lux/engine/render/graph/Program.hpp>
@@ -16,42 +18,6 @@ namespace native_fixture
     struct Config final { std::uint32_t width = 32, height = 32, graphics = 1, scopes = 0; };
 }
 
-namespace lux::render
-{
-    template <> struct DataSchema<native_fixture::Config>
-    {
-        static const DataSchemaDescriptor& describe() noexcept
-        {
-            static constexpr DataField fields[]{
-                {"width", cxx::EScalarKind::U32}, {"height", cxx::EScalarKind::U32},
-                {"graphics", cxx::EScalarKind::U32}, {"scopes", cxx::EScalarKind::U32}
-            };
-            static const DataSchemaDescriptor schema{
-                DataTypeIdView("test.offscreen.config"), {1, 0}, {1, 0}, fields, 16, 4
-            };
-            return schema;
-        }
-        static RenderResult<std::size_t> encodedSize(const native_fixture::Config&) noexcept { return 16; }
-
-        static RenderResult<void> encode(const native_fixture::Config& value, cxx::BinarySpanWriter& out) noexcept
-        {
-            for (auto x : {value.width, value.height, value.graphics, value.scopes})
-                out.writeUnsigned(x);
-            return {};
-        }
-        static RenderResult<native_fixture::Config> decode(cxx::BinaryReader& in, RetainableEncodedDataView) noexcept
-        {
-            native_fixture::Config value;
-            for (auto* x : {&value.width, &value.height, &value.graphics, &value.scopes})
-            {
-                in.readUnsigned(*x);
-            }
-            if (value.graphics > 1 || value.scopes > 1) return cxx::unexpected(RenderError{kInvalidEncoding});
-            return value;
-        }
-    };
-}
-
 namespace native_fixture
 {
     inline TargetDesc target(Config c) noexcept
@@ -59,11 +25,11 @@ namespace native_fixture
         return {c.width, c.height, lux::rdesc::ETextureFormat::RGBA8_UNORM, 1, ETargetKind::OFFSCREEN};
     }
 
-    inline RenderResult<void> describe(const RetainableEncodedDataView* wire, std::string_view, std::vector<ResourceClaim>& claims) noexcept
+    inline RenderResult<void> describe(const void* wire, std::string_view, std::vector<ResourceClaim>& claims) noexcept
     {
         ++descriptions;
-        auto c = decodeData<Config>(*wire, limits);
-        if (!c) return cxx::unexpected(c.error());
+        const auto* c = static_cast<const Config*>(wire);
+        if (c->graphics > 1 || c->scopes > 1) return cxx::unexpected(RenderError{kFeatureContract});
         claims.push_back({"color", EResourceClaim::PROVIDE, GraphImageDesc{c->width, c->height}});
         if (c->scopes)
             for (unsigned i = 0; i < 4; ++i)
@@ -73,12 +39,11 @@ namespace native_fixture
         return {};
     }
 
-    inline RenderResult<void> build(const RetainableEncodedDataView* wire, std::string_view instance,
+    inline RenderResult<void> build(const void* wire, std::string_view instance,
         std::span<const ResolvedResource> resources, RenderGraphBuilder& builder) noexcept
     {
         ++builds;
-        auto c = decodeData<Config>(*wire, limits);
-        if (!c) return cxx::unexpected(c.error());
+        const auto* c = static_cast<const Config*>(wire);
         const auto color = findResource(resources, "color")->version;
         auto pixels = builder.declareResource({featureKey(type, instance, "pixels"),
             GraphBufferDesc{std::uint64_t(c->width) * c->height * 4}});
@@ -109,7 +74,7 @@ namespace native_fixture
         return {};
     }
 
-    inline const FeatureDescriptor definition{type, {1, 0}, &DataSchema<Config>::describe()};
+    inline const FeatureDescriptor definition{type, ConfigValue::typeOf<Config>()};
     inline const FeatureGraphOps definition_graph{describe, build};
 
     inline std::vector<PassProgram> programs(Config config, std::string_view instance = "main")
@@ -128,10 +93,9 @@ namespace native_fixture
 
     inline RenderResult<FeatureAssembly> assemble(Config config)
     {
-        auto bytes = encodeData(config, {}, limits);
-        if (!bytes) return cxx::unexpected(bytes.error());
-        const RetainableEncodedDataView wire{DataSchema<Config>::describe(), *bytes};
-        const FeatureInstanceView selected{&definition, &definition_graph, &wire, "main"};
-        return assembleFeatures({&selected, 1}, limits);
+        auto value = ConfigValue::make(config);
+        if (!value) return cxx::unexpected(value.error());
+        const FeatureInstanceView selected{&definition, &definition_graph, &*value, "main"};
+        return assembleFeatures({&selected, 1}, limits.max_encoded_bytes);
     }
 }

@@ -26,6 +26,21 @@ namespace lux::render
     class ConfigValue final
     {
     public:
+        struct Type final
+        {
+            cxx::TypeToken token;
+            std::size_t size = 0;
+            std::size_t alignment = 0;
+            bool operator==(const Type&) const noexcept = default;
+        };
+
+        template <class T> [[nodiscard]] static constexpr Type typeOf() noexcept
+        {
+            return {cxx::typeToken<T>(), sizeof(T), alignof(T)};
+        }
+
+        [[nodiscard]] Type typeInfo() const noexcept { return type_ ? *type_ : Type{}; }
+
         ConfigValue() noexcept = default;
         ConfigValue(const ConfigValue&) noexcept = default;
 
@@ -61,7 +76,7 @@ namespace lux::render
             ConfigValue result;
             result.code_pin_ = source_code_pin;
             result.value_ = std::make_shared<const Value>(std::forward<T>(value));
-            static constexpr Type type{cxx::typeToken<Value>(), sizeof(Value), alignof(Value)};
+            static constexpr Type type = typeOf<Value>();
             result.type_ = &type;
             result.retained_bytes_ = *bytes;
             return result;
@@ -85,13 +100,6 @@ namespace lux::render
         [[nodiscard]] const void* data() const noexcept { return value_.get(); }
 
     private:
-        struct Type final
-        {
-            cxx::TypeToken token;
-            std::size_t size;
-            std::size_t alignment;
-        };
-
         std::shared_ptr<const void> code_pin_;
         std::shared_ptr<const void> value_;
         const Type* type_ = nullptr;

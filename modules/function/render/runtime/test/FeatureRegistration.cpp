@@ -21,7 +21,7 @@ struct Second final
     using Request = std::uint32_t;
     using Response = Ack;
 };
-static RenderResult<void> describe(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept
+static RenderResult<void> describe(const void*, std::string_view, std::vector<ResourceClaim>&) noexcept
 {
     return {};
 }
@@ -43,7 +43,7 @@ struct DirectoryInstaller final
     RenderResult<void> install(const unsigned& number, Reply<InstallFeature>& reply) noexcept
     {
         const auto name = "test.feature." + std::to_string(number);
-        const FeatureDescriptor descriptor{FeatureName(name), {1, 0}, nullptr};
+        const FeatureDescriptor descriptor{FeatureName(name), {}};
         const FeatureGraphOps graph{describe, nullptr};
         auto result = feature_test::registerGraph(server, {&descriptor, &graph, nullptr});
         return result ? reply.complete(*result) : reply.fail(result.error());
@@ -88,7 +88,7 @@ static void featureDirectory()
     for (std::size_t i = 0; i < count; ++i)
     {
         names.push_back("test.feature." + std::to_string(i));
-        descriptions.push_back({FeatureName(names.back()), {1, 0}, nullptr});
+        descriptions.push_back({FeatureName(names.back()), {}});
         auto registered = feature_test::registerGraph(*server, {&descriptions.back(), &graph, nullptr});
         check(bool(registered));
         ids.push_back(*registered);
@@ -159,8 +159,8 @@ template <unsigned Fault> struct TestedHandler final
 
 template <unsigned Fault> static void registrationFault()
 {
-    const FeatureDescriptor first{FeatureName("test.registration.a"), {1, 0}, nullptr};
-    const FeatureDescriptor second{FeatureName("test.registration.b"), {1, 0}, nullptr};
+    const FeatureDescriptor first{FeatureName("test.registration.a"), {}};
+    const FeatureDescriptor second{FeatureName("test.registration.b"), {}};
     const FeatureGraphOps graph{describe, nullptr};
     auto created = RenderServer::create({"test.feature.registration", false});
     check(bool(created));
@@ -182,7 +182,7 @@ template <unsigned Fault> static void registrationFault()
 
 int main()
 {
-    const FeatureDescriptor first{FeatureName("test.registration.a"), {1, 0}, nullptr};
+    const FeatureDescriptor first{FeatureName("test.registration.a"), {}};
     const FeatureGraphOps graph{describe, nullptr};
     const FeatureInstanceView instances[]{{&first, &graph, nullptr, "one"}, {&first, &graph, nullptr, "two"}};
     check(bool(assembleFeatures(instances, {})));

@@ -309,8 +309,8 @@ int main()
     eventIdentities();
     State state;
     static const std::array descriptors{commandDescriptor<Async>(), commandDescriptor<TransferredAsync>()};
-    const FeatureDescriptor definition{FeatureName("test.async.feature"), {1, 0}, nullptr};
-    const FeatureGraphOps definition_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+    const FeatureDescriptor definition{FeatureName("test.async.feature"), {}};
+    const FeatureGraphOps definition_graph{[](const void*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
     auto server = take(RenderServer::create({"runtime.async", true}));
     check(bool(server->registerFeature<Async>(feature_test::Provider<AsyncCommands>{{&definition, &definition_graph, nullptr}}, "", {}, state)));
     RenderResult<void> run;

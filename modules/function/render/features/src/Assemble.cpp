@@ -1,3 +1,4 @@
+#include <lux/engine/render/data/Encoding.hpp>
 #include <lux/engine/render/features/Assembly.hpp>
 
 #include <algorithm>
@@ -80,22 +81,23 @@ namespace lux::render
                 a.initial_ranges == b.initial_ranges && a.storage == b.storage;
         }
 
-        RenderResult<void> validateInstances(std::vector<Contribution>& work, EncodedDataLimits limits) noexcept
+        RenderResult<void> validateInstances(std::vector<Contribution>& work, std::size_t config_byte_limit) noexcept
         {
             for (std::size_t i = 0; i < work.size(); ++i)
             {
                 const auto& s = work[i].selected;
                 if (!s.descriptor || !s.graph) return cxx::unexpected(failure(kFeatureContract, i));
                 const auto& d = *s.descriptor;
-                const bool is_invalid_type = !d.type.isValid() || d.version.major == 0 || !s.graph->describe;
+                const bool is_invalid_type = !d.type.isValid() || !s.graph->describe;
                 const bool is_invalid_instance = s.instance_key.empty();
-                const bool is_config_mismatch = (d.config_schema == nullptr) != (s.config == nullptr);
+                const bool is_config_mismatch = d.config.token.name().empty() != (s.config == nullptr || !*s.config);
                 if (is_invalid_type || is_invalid_instance || is_config_mismatch)
                     return cxx::unexpected(failure(kFeatureContract, i));
                 if (s.config)
                 {
-                    if (auto r = compatibleDataSchemas(*d.config_schema, s.config->schema); !r) return r;
-                    if (auto r = validateEncodedData(*s.config, limits); !r) return r;
+                    if (d.config != s.config->typeInfo()) return cxx::unexpected(failure(kInvalidConfig, i));
+                    if (s.config->retainedBytes() > config_byte_limit)
+                        return cxx::unexpected(failure(kEncodingLimit, i));
                 }
             }
             std::sort(work.begin(), work.end(), [](const auto& a, const auto& b) {
@@ -128,7 +130,7 @@ namespace lux::render
             {
                 auto& w = work[i];
                 const auto& s = w.selected;
-                if (auto r = s.graph->describe(s.config, s.instance_key, w.claims); !r) return r;
+                if (auto r = s.graph->describe(s.config ? s.config->data() : nullptr, s.instance_key, w.claims); !r) return r;
                 std::sort(w.claims.begin(), w.claims.end(), [](const auto& a, const auto& b) {
                     return a.key < b.key;
                 });
@@ -294,12 +296,12 @@ namespace lux::render
     }
 
     RenderResult<FeatureAssembly>
-    assembleFeatures(std::span<const FeatureInstanceView> selected, EncodedDataLimits config_limits) noexcept
+    assembleFeatures(std::span<const FeatureInstanceView> selected, std::size_t config_byte_limit) noexcept
     {
         std::vector<Contribution> work;
         work.reserve(selected.size());
         for (std::size_t i = 0; i < selected.size(); ++i) work.push_back({selected[i], i});
-        if (auto r = validateInstances(work, config_limits); !r) return cxx::unexpected(r.error());
+        if (auto r = validateInstances(work, config_byte_limit); !r) return cxx::unexpected(r.error());
         if (auto r = collectClaims(work); !r) return cxx::unexpected(r.error());
         RenderGraphBuilder builder;
         std::vector<SharedPort> ports;
@@ -314,7 +316,7 @@ namespace lux::render
             const auto& s = w.selected;
             if (s.graph->build)
             {
-                auto r = s.graph->build(s.config, s.instance_key, w.bindings, builder);
+                auto r = s.graph->build(s.config ? s.config->data() : nullptr, s.instance_key, w.bindings, builder);
                 if (!r) return cxx::unexpected(r.error());
             }
             w.last_resource = builder.resourceCount();

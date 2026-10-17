@@ -5,13 +5,21 @@
 #include <lux/engine/render/runtime/RenderClient.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
 #include "ServerFixture.hpp"
+#include "FeatureFixture.hpp"
 #include "../pinclude/TypedProtocol.hpp"
 #include <variant>
+#include <algorithm>
 
 // Only migrates existing behavioral fixtures. Production has no command enum or completion cache.
 using namespace lux::render;
 enum class ETestCommand { READY, CREATE_SCENE, REMOVE_SCENE, CREATE_VIEW, REMOVE_VIEW, CREATE_TARGET,
     RESIZE_TARGET, CREATE_EFFECT, REMOVE_EFFECT, ATTACH, DETACH, READBACK, STOP };
+struct FeaturePreset final
+{
+    std::string name, instance;
+    ConfigValue config;
+};
+
 struct TestCommand final
 {
     ETestCommand operation = ETestCommand::READY;
@@ -22,8 +30,7 @@ struct TestCommand final
     EffectId effect;
     TargetDesc description;
     std::array<float, 4> color{1, 0, 0, 1};
-    std::vector<FeatureSelection> features;
-    std::vector<RenderPayload> attachments;
+    std::vector<FeaturePreset> features;
     std::size_t reply_capacity = 64 * 1024;
 };
 
@@ -85,7 +92,23 @@ public:
             return send<Readback>({command.scene, command.view, command.target, command.effect}, command);
         case ETestCommand::STOP: return send<Stop>({}, command);
         case ETestCommand::CREATE_EFFECT:
-            return send<CreateEffect>({command.description, command.features, command.attachments}, command);
+        {
+            if (!feature_directory_)
+            {
+                auto directory = feature_test::list(*client_);
+                if (!directory) return lux::cxx::unexpected(directory.error());
+                feature_directory_.emplace(std::move(*directory));
+            }
+            CreateEffectRequest input{command.description};
+            for (const auto& selected : command.features)
+            {
+                const auto found = std::ranges::find(feature_directory_->features, selected.name, &FeatureInfo::name);
+                if (found == feature_directory_->features.end())
+                    return lux::cxx::unexpected(RenderError{kRuntimeIdentity});
+                input.features.push_back({found->id, selected.instance, selected.config});
+            }
+            return send<CreateEffect>(std::move(input), command);
+        }
         }
         return lux::cxx::unexpected(RenderError{kRuntimeUnsupported});
     }
@@ -178,6 +201,7 @@ private:
         return client_->submit(*binding, payload, command.reply_capacity);
     }
 
+    std::optional<FeatureList> feature_directory_;
     std::unique_ptr<RenderClient> client_;
     std::string name_;
     std::tuple<std::optional<BoundCommand<CreateScene>>, std::optional<BoundCommand<RemoveScene>>,

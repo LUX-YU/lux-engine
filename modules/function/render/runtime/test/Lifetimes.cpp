@@ -3,6 +3,7 @@
 #include <lux/engine/render/runtime/RenderServer.hpp>
 #include "SceneFixture.hpp"
 #include <atomic>
+#include <lux/cxx/core/CheckedArithmetic.hpp>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -14,32 +15,16 @@ using namespace std::chrono_literals;
 static void check(bool value) { if (!value) std::abort(); }
 template <class T> static T take(RenderResult<T> value) { check(bool(value)); return std::move(*value); }
 
-struct AssetConfig final { ExternalDataRef ref; };
+struct AssetConfig final { RenderPayload asset; };
 namespace lux::render
 {
-    template <> struct DataSchema<AssetConfig>
+    template <> struct ConfigValueTraits<AssetConfig>
     {
-        static const DataSchemaDescriptor& describe() noexcept
+        static RenderResult<std::size_t> retainedBytes(const AssetConfig& value) noexcept
         {
-            static constexpr DataField fields[]{{"asset", cxx::EScalarKind::U8, 1, EDataFieldKind::EXTERNAL}};
-            static const DataSchemaDescriptor schema{DataTypeIdView("test.asset.config"), {1, 0}, {1, 0}, fields, 20, 4};
-            return schema;
-        }
-        static RenderResult<std::size_t> encodedSize(const AssetConfig&) noexcept { return 20; }
-        static RenderResult<void> encode(const AssetConfig& value, cxx::BinarySpanWriter& out) noexcept
-        {
-            out.writeUnsigned(value.ref.attachment_index);
-            out.writeUnsigned(value.ref.offset);
-            out.writeUnsigned(value.ref.size);
-            return {};
-        }
-        static RenderResult<AssetConfig> decode(cxx::BinaryReader& in, RetainableEncodedDataView) noexcept
-        {
-            AssetConfig result;
-            in.readUnsigned(result.ref.attachment_index);
-            in.readUnsigned(result.ref.offset);
-            in.readUnsigned(result.ref.size);
-            return result;
+            auto bytes = cxx::checkedAdd(sizeof(value), value.asset.retainedBytes());
+            if (!bytes) return cxx::unexpected(RenderError{kEncodingLimit});
+            return *bytes;
         }
     };
 }
@@ -48,27 +33,24 @@ static std::latch* entered = nullptr;
 static std::latch* resume = nullptr;
 static std::atomic<const std::byte*> observed{};
 
-static RenderResult<void> describeAsset(const RetainableEncodedDataView* wire, std::string_view, std::vector<ResourceClaim>&) noexcept
+static RenderResult<void> describeAsset(const void* wire, std::string_view, std::vector<ResourceClaim>&) noexcept
 {
-    auto config = decodeData<AssetConfig>(*wire, {1024, 1024});
-    if (!config) return lux::cxx::unexpected(config.error());
-    auto asset = resolveExternal(wire->attachments, config->ref, 1024);
-    if (!asset) return lux::cxx::unexpected(asset.error());
-    check(asset->view().front() == std::byte{67} && asset->view().back() == std::byte{67});
-    observed.store(asset->data());
+    const auto* config = static_cast<const AssetConfig*>(wire);
+    const auto asset = config->asset.bytes().view();
+    check(asset.front() == std::byte{67} && asset.back() == std::byte{67});
+    observed.store(asset.data());
     if (entered) { entered->count_down(); resume->wait(); }
     return {};
 }
 
-static const FeatureDescriptor asset_definition{FeatureName("test.asset"), {1, 0}, &DataSchema<AssetConfig>::describe()};
+static const FeatureDescriptor asset_definition{FeatureName("test.asset"), ConfigValue::typeOf<AssetConfig>()};
 static const FeatureGraphOps asset_definition_graph{describeAsset, nullptr};
 
-static RenderResult<ProgramContribution> assetPrograms(const RetainableEncodedDataView*, std::string_view) noexcept { return {}; }
+static RenderResult<ProgramContribution> assetPrograms(const void*, std::string_view) noexcept { return {}; }
 
-static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const void* wire, std::string_view name) noexcept
 {
-    auto config = decodeData<native_fixture::Config>(*wire, native_fixture::limits);
-    if (!config) return lux::cxx::unexpected(config.error());
+    const auto* config = static_cast<const native_fixture::Config*>(wire);
     return ProgramContribution{native_fixture::programs(*config, name), {}};
 }
 
@@ -91,14 +73,15 @@ static TestCommand effect(SessionIdentity identity)
     result.session = identity;
     native_fixture::Config config;
     result.description = native_fixture::target(config);
-    result.features.push_back({std::string(native_fixture::type.name()), "main", {1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(config, {}, native_fixture::limits)).view())});
+    result.features.push_back({std::string(native_fixture::type.name()), "main", take(ConfigValue::make(config))});
     return result;
 }
 
 int main()
 {
-    auto server = take(createTestServer({"runtime.life", true}));
+    RenderServerConfig server_config{"runtime.life", true};
+    server_config.max_config_bytes = 2 * 1024 * 1024;
+    auto server = take(createTestServer(server_config));
     check(bool(feature_test::registerGraph(*server, {&native_fixture::definition, &native_fixture::definition_graph, programs})));
     check(bool(feature_test::registerGraph(*server, {&asset_definition, &asset_definition_graph, assetPrograms})));
     auto main = take(TestClient::create("runtime.life", {1024 * 1024, 64}));
@@ -115,13 +98,11 @@ int main()
         new std::vector<std::byte>(1024 * 1024, std::byte{67}), [&](auto* bytes) { delete bytes; ++destroyed; });
     const auto* pointer = source->data() + 257;
     auto command = effect(identity);
-    command.attachments.push_back(take(RenderPayload::fromVector(source, 257, 64)));
-    std::array attachments{command.attachments[0].bytes()};
-    auto config = take(encodeData(AssetConfig{{0, 0, 64}}, attachments, {1024, 1024}));
-    command.features.push_back({"test.asset", "pin", {1, 0}, DataSchema<AssetConfig>::describe(),
-        RenderPayload::copyOf(config.view())});
-    check(!main->submit(command)); // 64 visible bytes must charge the entire 1 MiB backing
-    check(command.attachments[0].bytes().data() == pointer);
+    command.features.push_back({"test.asset", "pin", take(ConfigValue::make(
+        AssetConfig{take(RenderPayload::fromVector(source, 257, 64))}
+    ))});
+    check(!main->submit(command)); // 64 visible bytes charge the complete 1 MiB backing.
+    check(command.features.back().config.borrow<AssetConfig>()->asset.bytes().data() == pointer);
     auto id = take(upload->submit(command));
     auto reply = wait(*upload, id);
     check(reply.header.outcome == ECommandOutcome::SUCCESS && observed.load() == pointer);
@@ -145,9 +126,8 @@ int main()
     resume = &continue_callback;
     id = take(upload->submit(command));
     in_callback.wait();
-    command.attachments.clear();
+    command.features.clear();
     source.reset();
-    attachments = {};
     upload.reset();
     check(destroyed == 0 && observed.load() == pointer);
     server->stop();

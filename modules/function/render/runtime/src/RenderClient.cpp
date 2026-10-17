@@ -102,24 +102,15 @@ namespace lux::render
         const CreateEffectRequest& value) noexcept
     {
         std::size_t bytes = sizeof(value);
-        const bool feature_overflow = value.features.capacity() > SIZE_MAX / sizeof(FeatureSelection);
-        const bool attachment_overflow = value.attachments.capacity() > SIZE_MAX / sizeof(RenderPayload);
-        if (feature_overflow || attachment_overflow)
+        if (value.features.capacity() > (SIZE_MAX - bytes) / sizeof(FeatureUse))
             return cxx::unexpected(RenderError{kRuntimeCapacity});
-        if (!addBytes(bytes, value.features.capacity() * sizeof(FeatureSelection)) ||
-            !addBytes(bytes, value.attachments.capacity() * sizeof(RenderPayload)))
-            return cxx::unexpected(RenderError{kRuntimeCapacity});
+        bytes += value.features.capacity() * sizeof(FeatureUse);
         for (const auto& selection : value.features)
         {
-            // Include the terminating character in heap string backing; SSO is conservatively charged too.
-            if (!addBytes(bytes, selection.type.capacity()) || !addBytes(bytes, 1) ||
-                !addBytes(bytes, selection.instance.capacity()) || !addBytes(bytes, 1) ||
+            if (!addBytes(bytes, selection.instance.capacity()) || !addBytes(bytes, 1) ||
                 !addBytes(bytes, selection.config.retainedBytes()))
                 return cxx::unexpected(RenderError{kRuntimeCapacity});
         }
-        for (const auto& attachment : value.attachments)
-            if (!addBytes(bytes, attachment.retainedBytes()))
-                return cxx::unexpected(RenderError{kRuntimeCapacity});
         return bytes;
     }
 

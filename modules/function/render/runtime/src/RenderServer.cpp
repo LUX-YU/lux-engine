@@ -90,7 +90,7 @@ namespace lux::render
         const bool invalid_pending_capacity = !pending_capacity || *pending_capacity > 136;
         const bool invalid =
             config.requests_per_tick == 0 || config.requests_per_tick > 128 || config.max_config_bytes == 0 ||
-            config.max_config_bytes > config_limits.max_encoded_bytes || config.max_reply_bytes < sizeof(RenderError) ||
+            config.max_reply_bytes < sizeof(RenderError) ||
             config.max_reply_bytes > 256 * 1024 * 1024 || config.completion_capacity == 0 ||
             config.completion_capacity > 128 || config.retirement_capacity == 0 || config.compile_capacity == 0 ||
             config.compile_capacity > 8 || invalid_pending_capacity;

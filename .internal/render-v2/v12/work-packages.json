@@ -211,7 +211,8 @@
     ],
     "evidence": [
       "N2-CONFIG-VERIFICATION.md",
-      "n2-identity-verification.md"
+      "n2-identity-verification.md",
+      "N2-FEATURE-CONFIG-CHECKPOINT.md"
     ]
   },
   "N2.3": {
@@ -325,7 +326,8 @@
     "evidence": [
       "N2-HANDLERS-CHECKPOINT.md",
       "N2-DIRECTORY-VERIFICATION.md",
-      "N2-STORAGE-INSTALL-CHECKPOINT.md"
+      "N2-STORAGE-INSTALL-CHECKPOINT.md",
+      "N2-FEATURE-CONFIG-CHECKPOINT.md"
     ]
   },
   "N3.1": {
@@ -424,7 +426,8 @@
     "evidence": [
       "n2-identity-verification.md",
       "N3-GENERIC-COMPLETION-VERIFICATION.md",
-      "N2-TYPED-FEATURE-CHECKPOINT.md"
+      "N2-TYPED-FEATURE-CHECKPOINT.md",
+      "N2-FEATURE-CONFIG-CHECKPOINT.md"
     ]
   },
   "N3.4": {

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <lux/engine/render/data/Encoding.hpp>
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -45,7 +47,7 @@ namespace fixture
     }
 
     template <ERole R>
-    RenderResult<void> describe(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    RenderResult<void> describe(const void*, std::string_view, std::vector<ResourceClaim>& out) noexcept
     {
         ++descriptions;
         using enum EResourceClaim;
@@ -76,7 +78,7 @@ namespace fixture
 
     template <ERole R>
     RenderResult<void> build(
-        const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource> resolved,
+        const void*, std::string_view instance, std::span<const ResolvedResource> resolved,
         RenderGraphBuilder& builder
     ) noexcept
     {
@@ -127,7 +129,7 @@ namespace fixture
 
     template <ERole R> const FeatureDescriptor& definition() noexcept
     {
-        static const FeatureDescriptor value{type<R>(), {1, 0}, nullptr};
+        static const FeatureDescriptor value{type<R>(), {}};
 
         return value;
     }
@@ -147,7 +149,7 @@ namespace fixture
                 {&definition<ERole::LIGHTING>(), &graph<ERole::LIGHTING>(), nullptr, "main"},
                 {&definition<ERole::GEOMETRY>(), &graph<ERole::GEOMETRY>(), nullptr, "main"}
             };
-            return assembleFeatures(chosen, limits);
+            return assembleFeatures(chosen, limits.max_encoded_bytes);
         }
         const FeatureInstanceView chosen[]{
             {which == 1 ? &definition<ERole::HISTORY>() : &definition<ERole::MATERIAL>(),
@@ -155,7 +157,7 @@ namespace fixture
             {which == 1 ? &definition<ERole::CULL>() : &definition<ERole::MESH>(),
                 which == 1 ? &graph<ERole::CULL>() : &graph<ERole::MESH>(), nullptr, "main"}
         };
-        return assembleFeatures(chosen, limits);
+        return assembleFeatures(chosen, limits.max_encoded_bytes);
     }
 
     struct Config final

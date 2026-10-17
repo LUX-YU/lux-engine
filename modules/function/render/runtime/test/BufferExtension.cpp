@@ -57,9 +57,8 @@ int main()
     CHECK(take(server->registerFeature<TestBufferFeature>()) == buffer_feature);
     CHECK(BufferCommands::constructed == 1 && BufferCommands::destroyed == 0);
     CHECK(feature_test::registerGraph(*server, {&texture_fixture::definition, &texture_fixture::definition_graph,
-        [](const RetainableEncodedDataView* wire, std::string_view name) noexcept -> RenderResult<ProgramContribution> {
-            auto config = decodeData<texture_fixture::Config>(*wire, texture_fixture::limits);
-            if (!config) return lux::cxx::unexpected(config.error());
+        [](const void* wire, std::string_view name) noexcept -> RenderResult<ProgramContribution> {
+            const auto* config = static_cast<const texture_fixture::Config*>(wire);
             return ProgramContribution{texture_fixture::programs(*config, name), texture_fixture::arguments(*config)};
         }}));
     bool run_ok = false;
@@ -94,8 +93,8 @@ int main()
         std::memcpy(&value, late_read->response().pixels.bytes().view().data() + i * 4, 4);
         CHECK(value == 0.5f);
     }
-    FeatureSelection selected{std::string(feature_type.name()), "combined", {1, 0}, DataSchema<ViewConfig>::schema,
-        RenderPayload::copyOf(take(encodeData(ViewConfig{texture.texture, buffer.id}, {}, limits)).view())};
+    FeatureUse selected{take(feature_test::find(*main, feature_type.name())), "combined",
+        take(ConfigValue::make(ViewConfig{texture.texture, buffer.id}))};
     auto create_effect = take(main->bind<CreateEffect>());
     const auto effect = decoded<EffectCreated>(call(*main, create_effect,
         CreateEffectRequest{target, {selected}})).effect;
@@ -140,8 +139,7 @@ int main()
     pixels(call(*main, read, groups[1]), 64);
     // A second real Feature consumes the SAME Root Texture independently of the Buffer Feature.
     texture_fixture::Config sample{texture.texture};
-    FeatureSelection image_selected{std::string(texture_fixture::type.name()), "image", {1, 0},
-        DataSchema<texture_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(sample, {}, texture_fixture::limits)).view())};
+    FeatureUse image_selected{take(feature_test::find(*main, texture_fixture::type.name())), "image", take(ConfigValue::make(sample))};
     const auto image_effect = decoded<EffectCreated>(call(*main, create_effect,
         CreateEffectRequest{target, {image_selected}})).effect;
     call(*main, detach, groups[3]);

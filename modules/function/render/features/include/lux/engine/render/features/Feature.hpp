@@ -1,6 +1,7 @@
 #pragma once
 
-#include <lux/engine/render/data/Schema.hpp>
+#include <lux/engine/render/data/ConfigValue.hpp>
+#include <lux/cxx/core/Schema.hpp>
 #include <lux/engine/render/core/Ids.hpp>
 
 namespace lux::render
@@ -12,7 +13,6 @@ namespace lux::render
     struct FeatureDescriptor final
     {
         FeatureName type;
-        cxx::SchemaVersion version;
-        const DataSchemaDescriptor* config_schema = nullptr;
+        ConfigValue::Type config;
     };
 }

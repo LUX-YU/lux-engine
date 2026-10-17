@@ -10,7 +10,19 @@ namespace cxx = lux::cxx;
 #define CHECK(...) do { if (!(__VA_ARGS__)) { \
     std::fprintf(stderr, "line %d: %s\n", __LINE__, #__VA_ARGS__); return 1; } } while (false)
 
-static RenderResult<void> emptyDescribe(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept
+struct CountedConfig final { std::shared_ptr<const fixture::Config> value; };
+namespace lux::render
+{
+    template <> struct ConfigValueTraits<CountedConfig>
+    {
+        static RenderResult<std::size_t> retainedBytes(const CountedConfig&) noexcept
+        {
+            return sizeof(CountedConfig) + sizeof(fixture::Config);
+        }
+    };
+}
+
+static RenderResult<void> emptyDescribe(const void*, std::string_view, std::vector<ResourceClaim>&) noexcept
 {
     return {};
 }
@@ -38,7 +50,7 @@ static int composition()
     {
         std::vector<FeatureInstanceView> selected;
         for (auto i : order) selected.push_back({types[i], graphs[i], nullptr, "main"});
-        auto result = assembleFeatures(selected, fixture::limits);
+        auto result = assembleFeatures(selected, fixture::limits.max_encoded_bytes);
         CHECK(result && result->analysis == reference->analysis);
         for (std::size_t i = 0; i < result->definition.resources().size(); ++i)
             CHECK(result->definition.resources()[i].key == reference->definition.resources()[i].key);
@@ -49,12 +61,12 @@ static int composition()
         {types[0], graphs[0], nullptr, "main"}, {&fixture::definition<ALTERNATE>(), &fixture::graph<ALTERNATE>(), nullptr, "main"},
         {types[2], graphs[2], nullptr, "main"}
     };
-    auto alt = assembleFeatures(alternate, fixture::limits);
+    auto alt = assembleFeatures(alternate, fixture::limits.max_encoded_bytes);
     CHECK(alt && alt->analysis.execution_order.size() == 5);
     const FeatureInstanceView conflict[]{
         alternate[0], alternate[1], alternate[2], {types[1], graphs[1], nullptr, "main"}
     };
-    auto duplicate = assembleFeatures(conflict, fixture::limits);
+    auto duplicate = assembleFeatures(conflict, fixture::limits.max_encoded_bytes);
     CHECK(!duplicate && duplicate.error().type == kFeatureDuplicate);
     auto hzb = fixture::scenario(1);
     CHECK(hzb && hzb->external_bindings.size() == 2 && hzb->analysis.execution_order.size() == 1);
@@ -77,7 +89,7 @@ static int identity()
 {
     auto empty = assembleFeatures({}, {});
     CHECK(empty && empty->analysis.execution_order.empty());
-    FeatureDescriptor d{FeatureName("test.type"), {1, 0}, nullptr};
+    FeatureDescriptor d{FeatureName("test.type"), {}};
     FeatureGraphOps d_graph{emptyDescribe, nullptr};
     FeatureInstanceView s{&d, &d_graph, nullptr, "one"};
     CHECK(assembleFeatures({&s, 1}, {}));
@@ -92,7 +104,7 @@ static int identity()
     CHECK(!assembleFeatures({&s, 1}, {}));
     d = saved;
     d_graph = saved_graph;
-    d.version = {};
+    d.config = ConfigValue::typeOf<std::uint32_t>();
     CHECK(!assembleFeatures({&s, 1}, {}));
     d = saved;
     d_graph = saved_graph;
@@ -104,7 +116,7 @@ static int identity()
     CHECK(!assembleFeatures(instances, {}));
     instances[1].instance_key = "two";
     CHECK(assembleFeatures(instances, {}));
-    d_graph.build = +[](const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource>,
+    d_graph.build = +[](const void*, std::string_view instance, std::span<const ResolvedResource>,
         RenderGraphBuilder& b) noexcept -> RenderResult<void> {
         const auto key = [&](std::string_view local) {
             return featureKey(FeatureName("test.type"), instance, local);
@@ -132,21 +144,37 @@ static int identity()
 
 static int config()
 {
+    auto owned = ConfigValue::make(fixture::Config{});
+    CHECK(owned);
+    FeatureDescriptor d{FeatureName("test.configured"), ConfigValue::typeOf<fixture::Config>()};
+    FeatureGraphOps d_graph{emptyDescribe, nullptr};
+    FeatureInstanceView s{&d, &d_graph, &*owned, "one"};
+    CHECK(assembleFeatures({&s, 1}, owned->retainedBytes()));
+    CHECK(!assembleFeatures({&s, 1}, owned->retainedBytes() - 1));
+    s.config = nullptr;
+    CHECK(!assembleFeatures({&s, 1}, fixture::limits.max_encoded_bytes));
+    s.config = &*owned;
+    d.config = {};
+    CHECK(!assembleFeatures({&s, 1}, fixture::limits.max_encoded_bytes));
+    for (unsigned fault = 0; fault < 3; ++fault)
+    {
+        d.config = ConfigValue::typeOf<fixture::Config>();
+        if (fault == 0) d.config.token = cxx::typeToken<std::uint64_t>();
+        if (fault == 1) ++d.config.size;
+        if (fault == 2) d.config.alignment *= 2;
+        CHECK(!assembleFeatures({&s, 1}, fixture::limits.max_encoded_bytes));
+    }
+    d.config = ConfigValue::typeOf<fixture::Config>();
+    auto wrong = ConfigValue::make(std::uint64_t{});
+    CHECK(wrong);
+    s.config = &*wrong;
+    CHECK(!assembleFeatures({&s, 1}, fixture::limits.max_encoded_bytes));
+
+    // Historical byte/Schema negatives remain at the real G2 persistent-data boundary.
+    // Feature configuration itself has no encoding or artificial version contract.
     auto bytes = encodeData(fixture::Config{}, {}, fixture::limits);
     CHECK(bytes);
     const auto& schema = DataSchema<fixture::Config>::describe();
-    RetainableEncodedDataView wire{schema, *bytes, {}};
-    FeatureDescriptor d{FeatureName("test.configured"), {1, 0}, &schema};
-    FeatureGraphOps d_graph{emptyDescribe, nullptr};
-    FeatureInstanceView s{&d, &d_graph, &wire, "one"};
-    CHECK(assembleFeatures({&s, 1}, fixture::limits));
-    CHECK(!assembleFeatures({&s, 1}, {15, 4096}));
-    s.config = nullptr;
-    CHECK(!assembleFeatures({&s, 1}, fixture::limits));
-    s.config = &wire;
-    d.config_schema = nullptr;
-    CHECK(!assembleFeatures({&s, 1}, fixture::limits));
-    d.config_schema = &schema;
     for (unsigned fault = 0; fault < 6; ++fault)
     {
         auto changed = schema;
@@ -158,8 +186,7 @@ static int config()
         if (fault == 4) { fields[0].scalar = cxx::EScalarKind::F32; changed.fields = fields; }
         if (fault == 5) ++changed.fixed_size;
         RetainableEncodedDataView bad{changed, *bytes, {}};
-        s.config = &bad;
-        CHECK(!assembleFeatures({&s, 1}, fixture::limits));
+        CHECK(!decodeData<fixture::Config>(bad, fixture::limits));
     }
     for (unsigned fault = 0; fault < 3; ++fault)
     {
@@ -169,8 +196,7 @@ static int config()
         if (fault == 2) raw[12] = std::byte{2};
         auto b = lux::cxx::SharedBytes<>::copyOf(raw);
         RetainableEncodedDataView bad{schema, b, {}};
-        s.config = &bad;
-        CHECK(!assembleFeatures({&s, 1}, fixture::limits));
+        CHECK(!decodeData<fixture::Config>(bad, fixture::limits));
     }
     // Validate attachment ownership/ranges through the real G2 reference schema.
     static constexpr DataField refs[]{
@@ -179,7 +205,6 @@ static int config()
     static constexpr DataSchemaDescriptor rs{
         DataTypeIdView("test.references"), {1, 0}, {1, 0}, refs, 20, 4
     };
-    d.config_schema = &rs;
     for (unsigned fault = 0; fault < 5; ++fault)
     {
         std::array<std::byte, 20> data{};
@@ -190,8 +215,7 @@ static int config()
         auto b = lux::cxx::SharedBytes<>::copyOf(data);
         const std::array owners{*bytes};
         RetainableEncodedDataView view{rs, b, owners};
-        s.config = &view;
-        auto r = assembleFeatures({&s, 1}, {64, fault == 4 ? 15u : 64u});
+        auto r = validateEncodedData(view, {64, fault == 4 ? 15u : 64u});
         CHECK(static_cast<bool>(r) == (fault == 0));
     }
     return 0;
@@ -203,21 +227,21 @@ namespace negative
     thread_local unsigned mode = 0;
     inline constexpr FeatureName provider_type("test.provider"), consumer_type("test.consumer");
 
-    RenderResult<void> provide(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    RenderResult<void> provide(const void*, std::string_view, std::vector<ResourceClaim>& out) noexcept
     {
         out = provided;
         if (mode == 10) return cxx::unexpected(RenderError{kInvalidEncoding, {101}});
         return {};
     }
 
-    RenderResult<void> require(const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept
+    RenderResult<void> require(const void*, std::string_view, std::vector<ResourceClaim>& out) noexcept
     {
         out = required;
         return {};
     }
 
     RenderResult<void> produce(
-        const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource> bindings, RenderGraphBuilder& b
+        const void*, std::string_view instance, std::span<const ResolvedResource> bindings, RenderGraphBuilder& b
     ) noexcept
     {
         auto* port = findResource(bindings, "r");
@@ -232,7 +256,7 @@ namespace negative
     }
 
     RenderResult<void> consume(
-        const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource> bindings, RenderGraphBuilder& b
+        const void*, std::string_view instance, std::span<const ResolvedResource> bindings, RenderGraphBuilder& b
     ) noexcept
     {
         auto* port = findResource(bindings, "r");
@@ -261,12 +285,12 @@ namespace negative
 
     RenderResult<FeatureAssembly> run()
     {
-        static const FeatureDescriptor p{provider_type, {1, 0}, nullptr};
+        static const FeatureDescriptor p{provider_type, {}};
         static const FeatureGraphOps p_graph{provide, produce};
-        static const FeatureDescriptor c{consumer_type, {1, 0}, nullptr};
+        static const FeatureDescriptor c{consumer_type, {}};
         static const FeatureGraphOps c_graph{require, consume};
         const FeatureInstanceView selected[]{{&p, &p_graph, nullptr, "one"}, {&c, &c_graph, nullptr, "one"}};
-        return assembleFeatures(selected, fixture::limits);
+        return assembleFeatures(selected, fixture::limits.max_encoded_bytes);
     }
 
     void reset()
@@ -343,20 +367,20 @@ static int claims()
 
 static int fallback()
 {
-    static const FeatureDescriptor provider{FeatureName("test.history"), {1, 0}, nullptr};
-    static const FeatureGraphOps provider_graph{+[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
+    static const FeatureDescriptor provider{FeatureName("test.history"), {}};
+    static const FeatureGraphOps provider_graph{+[](const void*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
             auto claim = fixture::history("previous", EResourceClaim::PROVIDE, true);
             claim.initial_ranges.clear();
             out.push_back(std::move(claim));
             return {};
         }, nullptr};
-    static const FeatureDescriptor consumer{FeatureName("test.fallback"), {1, 0}, nullptr};
-    static const FeatureGraphOps consumer_graph{+[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
+    static const FeatureDescriptor consumer{FeatureName("test.fallback"), {}};
+    static const FeatureGraphOps consumer_graph{+[](const void*, std::string_view, std::vector<ResourceClaim>& out) noexcept -> RenderResult<void> {
             auto claim = fixture::history("previous", EResourceClaim::REQUIRE, true);
             claim.initial_ranges.clear();
             out.push_back(std::move(claim));
             return {};
-        }, +[](const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource> bindings,
+        }, +[](const void*, std::string_view instance, std::span<const ResolvedResource> bindings,
             RenderGraphBuilder& b) noexcept -> RenderResult<void> {
             const auto key = [&](std::string_view local) {
                 return featureKey(FeatureName("test.fallback"), instance, local);
@@ -377,8 +401,8 @@ static int fallback()
     auto result = assembleFeatures(selected, {});
     CHECK(result && result->analysis.execution_order.size() == 2);
     CHECK(std::ranges::any_of(result->analysis.versions, [](const GraphVersionUse& u) { return u.fallback; }));
-    const FeatureDescriptor foreign{FeatureName("test.aaa"), {1, 0}, nullptr};
-    const FeatureGraphOps foreign_graph{emptyDescribe, +[](const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource>,
+    const FeatureDescriptor foreign{FeatureName("test.aaa"), {}};
+    const FeatureGraphOps foreign_graph{emptyDescribe, +[](const void*, std::string_view instance, std::span<const ResolvedResource>,
             RenderGraphBuilder& b) noexcept -> RenderResult<void> {
             auto name = featureKey(FeatureName("test.aaa"), instance, "private");
             auto r = b.declareResource({name, GraphImageDesc{64, 64}});
@@ -448,22 +472,17 @@ static int lifetime()
     std::atomic<unsigned> released{0};
     FeatureAssembly configured;
     {
-        struct Owner final
-        {
-            std::atomic<unsigned>* released;
-            std::array<std::byte, 16> data{};
-            ~Owner() { ++*released; }
-        };
-        auto owner = std::make_shared<Owner>();
-        owner->released = &released;
-        auto bytes = lux::cxx::SharedBytes<>::fromOwner(owner, owner->data);
-        RetainableEncodedDataView view{DataSchema<fixture::Config>::describe(), bytes, {}};
+        auto owner = std::shared_ptr<const fixture::Config>(new fixture::Config{}, [&](auto* value) noexcept {
+            delete value;
+            ++released;
+        });
+        auto config = ConfigValue::make(CountedConfig{owner});
+        CHECK(config);
         std::string type_name = "test.temporary";
-        FeatureDescriptor d{FeatureName(type_name), {1, 0}, &view.schema};
-        FeatureGraphOps d_graph{emptyDescribe, +[](const RetainableEncodedDataView* wire, std::string_view instance, std::span<const ResolvedResource>,
+        FeatureDescriptor d{FeatureName(type_name), ConfigValue::typeOf<CountedConfig>()};
+        FeatureGraphOps d_graph{emptyDescribe, +[](const void* wire, std::string_view instance, std::span<const ResolvedResource>,
                 RenderGraphBuilder& b) noexcept -> RenderResult<void> {
-                auto c = decodeData<fixture::Config>(*wire, fixture::limits);
-                if (!c) return cxx::unexpected(c.error());
+                const auto* c = static_cast<const CountedConfig*>(wire)->value.get();
                 auto name = featureKey(FeatureName("test.temporary"), instance, std::to_string(c->first));
                 auto r = b.declareResource({name, GraphBufferDesc{64}});
                 if (!r) return cxx::unexpected(r.error());
@@ -471,8 +490,8 @@ static int lifetime()
                 return b.exportOutput({{*r, 1}});
             }};
         std::string instance = "temporary.instance";
-        FeatureInstanceView s{&d, &d_graph, &view, instance};
-        auto r = assembleFeatures({&s, 1}, fixture::limits);
+        FeatureInstanceView s{&d, &d_graph, &*config, instance};
+        auto r = assembleFeatures({&s, 1}, fixture::limits.max_encoded_bytes);
         CHECK(r && released == 0);
         configured = std::move(*r);
     }
@@ -505,7 +524,7 @@ namespace dependency_test
 {
     thread_local unsigned mode = 0;
 
-    RenderResult<void> first(const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource>,
+    RenderResult<void> first(const void*, std::string_view instance, std::span<const ResolvedResource>,
         RenderGraphBuilder& b) noexcept
     {
         for (unsigned i = 0; i < 2; ++i)
@@ -518,7 +537,7 @@ namespace dependency_test
         return {};
     }
 
-    RenderResult<void> second(const RetainableEncodedDataView*, std::string_view instance, std::span<const ResolvedResource>,
+    RenderResult<void> second(const void*, std::string_view instance, std::span<const ResolvedResource>,
         RenderGraphBuilder& b) noexcept
     {
         for (unsigned i = 0; i < 2; ++i)
@@ -535,15 +554,15 @@ namespace dependency_test
 
 static int dependencies()
 {
-    const FeatureDescriptor a{FeatureName("test.edge.a"), {1, 0}, nullptr};
+    const FeatureDescriptor a{FeatureName("test.edge.a"), {}};
     const FeatureGraphOps a_graph{emptyDescribe, dependency_test::first};
-    const FeatureDescriptor b{FeatureName("test.edge.b"), {1, 0}, nullptr};
+    const FeatureDescriptor b{FeatureName("test.edge.b"), {}};
     const FeatureGraphOps b_graph{emptyDescribe, dependency_test::second};
     const FeatureInstanceView selected[]{{&b, &b_graph, nullptr, "main"}, {&a, &a_graph, nullptr, "main"}};
     for (unsigned mode = 0; mode < 4; ++mode)
     {
         dependency_test::mode = mode;
-        auto result = assembleFeatures(selected, fixture::limits);
+        auto result = assembleFeatures(selected, fixture::limits.max_encoded_bytes);
         if (mode < 2)
         {
             CHECK(!result && result.error().type == kFeatureOwnership);

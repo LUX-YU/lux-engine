@@ -9,40 +9,31 @@ namespace lux::render
     {
         const auto* input = &request;
         const auto count = input->features.size();
-        std::vector<RetainableEncodedDataView> configs;
         std::vector<FeatureInstanceView> selected;
-        std::vector<lux::cxx::SharedBytes<>> attachments;
         std::vector<PassProgram> programs;
         std::vector<StorageArgument> arguments;
-        configs.reserve(count);
         selected.reserve(count);
-        for (const auto& attachment : input->attachments)
-            attachments.push_back(attachment.bytes());
         for (std::size_t i = 0; i < input->features.size(); ++i)
         {
             const auto& selection = input->features[i];
             const auto* registration = registrations[i];
-            const auto& definition = registration->descriptor;
-            const RetainableEncodedDataView* wire = nullptr;
-            if (definition.config_schema)
-            {
-                if (!selection.config_schema) return cxx::unexpected(RenderError{kDataSchemaMismatch});
-                configs.push_back({*selection.config_schema, selection.config.bytes(), attachments});
-                wire = &configs.back(); // assembleFeatures checks the complete author Schema once.
-            }
-            else if (selection.config_schema || !selection.config.bytes().empty())
-                return cxx::unexpected(RenderError{kFeatureContract});
-            selected.push_back({&definition, &registration->graph, wire, selection.instance});
+            selected.push_back({&registration->descriptor, &registration->graph,
+                selection.config ? &selection.config : nullptr, selection.instance});
         }
-        auto assembly = assembleFeatures(selected, {max_config_bytes, SIZE_MAX});
+        auto assembly = assembleFeatures(selected, max_config_bytes);
         if (!assembly) return cxx::unexpected(assembly.error());
         for (const auto& contribution : assembly->contributions)
         {
-            if (contribution.pass_count == 0) continue;
             const auto index = contribution.input_index;
-            if (!registrations[index]->programs) return cxx::unexpected(RenderError{kFeatureContract});
+            if (!registrations[index]->programs)
+            {
+                if (contribution.pass_count != 0) return cxx::unexpected(RenderError{kFeatureContract});
+                continue;
+            }
             const auto& selection = selected[index];
-            auto values = registrations[index]->programs(selection.config, selection.instance_key);
+            auto values = registrations[index]->programs(
+                selection.config ? selection.config->data() : nullptr, selection.instance_key
+            );
             if (!values) return cxx::unexpected(values.error());
             const auto passes = assembly->definition.passes().subspan(contribution.first_pass, contribution.pass_count);
             for (std::size_t p = 0; p < values->programs.size(); ++p)
@@ -160,12 +151,9 @@ namespace lux::render
         selected.reserve(input.features.size());
         for (const auto& selection : input.features)
         {
-            const auto found = std::find_if(features.begin(), features.end(), [&](const auto& entry) {
-                return entry.descriptor.type.name() == selection.type;
-            });
-            if (found == features.end() || found->descriptor.version != selection.version)
-                return cxx::unexpected(RenderError{kFeatureContract});
-            selected.push_back(&*found);
+            const auto* found = features.find(selection.feature);
+            if (!found) return cxx::unexpected(RenderError{kRuntimeIdentity});
+            selected.push_back(found);
         }
         // Resolve the directory once on its owner thread. Stable entries outlive the accepted compile;
         // neither the worker nor its operation state borrows the mutable Impl or its directory.

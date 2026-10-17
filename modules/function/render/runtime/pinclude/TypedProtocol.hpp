@@ -4,12 +4,10 @@
 #include <vector>
 #include <lux/engine/render/runtime/CommandValue.hpp>
 #include <lux/engine/render/runtime/Commands.hpp>
-#include <lux/engine/render/data/Encoding.hpp>
 
 namespace lux::render::runtime_detail
 {
     inline constexpr std::size_t max_features = 32;
-    inline constexpr EncodedDataLimits config_limits{1024 * 1024, 256 * 1024 * 1024};
 
     struct RequestMetadata final
     {

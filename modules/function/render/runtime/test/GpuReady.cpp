@@ -277,8 +277,8 @@ static RenderResult<void> upload(vulkan::DeviceSession& session, const UploadPro
 static const CommandDescriptor probe = commandDescriptor<UploadProbe>();
 static const CommandDescriptor cpu = commandDescriptor<CpuResult>();
 static const std::array operations_list{probe, cpu};
-static const FeatureDescriptor feature{FeatureName("test.g10.feature"), {1, 0}, nullptr};
-static const FeatureGraphOps feature_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+static const FeatureDescriptor feature{FeatureName("test.g10.feature"), {}};
+static const FeatureGraphOps feature_graph{[](const void*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 struct ProbeCommands final
 {
     static constexpr std::string_view name = "test.gpu.probe.commands";
@@ -291,11 +291,10 @@ struct ProbeCommands final
     using Bindings = std::tuple<CommandMethod<UploadProbe, &ProbeCommands::uploadRequest>,
         CommandMethod<CpuResult, &ProbeCommands::cpuResult>>;
 };
-static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view name) noexcept
+static RenderResult<ProgramContribution> programs(const void* wire, std::string_view name) noexcept
 {
     if (block_compile.load()) { compile_entered->count_down(); compile_resume->wait(); }
-    auto config = decodeData<native_fixture::Config>(*wire, native_fixture::limits);
-    if (!config) return lux::cxx::unexpected(config.error());
+    const auto* config = static_cast<const native_fixture::Config*>(wire);
     return ProgramContribution{native_fixture::programs(*config, name), {}};
 }
 static RenderCompletion wait(RenderClient& client, RequestId id)
@@ -438,10 +437,17 @@ int main(int argc, char** argv)
     std::fprintf(stderr, "stage four views\n");
     // One Effect, two Scenes and four real execution groups.
     native_fixture::Config graph_config{32, 32, 1, 0};
-    const FeatureSelection selection{std::string(native_fixture::type.name()), "main", {1, 0},
-        DataSchema<native_fixture::Config>::describe(), RenderPayload::copyOf(take(encodeData(graph_config, {}, native_fixture::limits)).view())};
+    const FeatureUse selection{take(feature_test::find(*a, native_fixture::type.name())), "main", take(ConfigValue::make(graph_config))};
     const CreateEffectRequest effect_request{native_fixture::target(graph_config), {selection}};
     const auto effect = decoded<EffectCreated>(call<CreateEffect>(*a, effect_request)).effect;
+    {
+        auto binding = take(a->bind<CreateEffect>());
+        auto stale = effect_request;
+        ++stale.features.front().feature.gen;
+        auto rejected = wait(*a, take(submitValue(*a, binding, std::move(stale), 256)));
+        CHECK(rejected.header.outcome == ECommandOutcome::FAILED && rejected.header.error.type == kRuntimeIdentity);
+        CHECK(server->stats().compiled_graphs == 1);
+    }
     std::array<AttachmentRequest, 4> groups;
     for (unsigned s = 0; s < 2; ++s)
     {

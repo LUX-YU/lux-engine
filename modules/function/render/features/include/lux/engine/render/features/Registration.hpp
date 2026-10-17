@@ -20,7 +20,7 @@ namespace lux::render
         {
             const FeatureDescriptor* descriptor;
             const FeatureGraphOps* graph;
-            RenderResult<ProgramContribution> (*programs)(const RetainableEncodedDataView*, std::string_view) noexcept;
+            RenderResult<ProgramContribution> (*programs)(const void*, std::string_view) noexcept;
         };
     }
 }

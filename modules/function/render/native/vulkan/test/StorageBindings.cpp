@@ -46,11 +46,10 @@ int main()
     const auto texture = image.first.texture;
     complete(image.second, worker, *session);
     image.second.reset();
-    auto config = take(encodeData(extension_test::ViewConfig{texture, id}, {}, extension_test::limits));
-    const RetainableEncodedDataView wire{DataSchema<extension_test::ViewConfig>::schema, config};
-    const FeatureInstanceView selected{&extension_test::definition, &extension_test::definition_graph, &wire, "combined"};
-    auto assembly = take(assembleFeatures({&selected, 1}, extension_test::limits));
-    auto contribution = take(extension_test::programs(&wire, "combined"));
+    auto config = take(ConfigValue::make(extension_test::ViewConfig{texture, id}));
+    const FeatureInstanceView selected{&extension_test::definition, &extension_test::definition_graph, &config, "combined"};
+    auto assembly = take(assembleFeatures({&selected, 1}, extension_test::limits.max_encoded_bytes));
+    auto contribution = take(extension_test::programs(config.data(), "combined"));
     auto& programs = contribution.programs;
     const auto count_before = session->resources().size();
     auto code = std::make_shared<CompiledGraph>(take(compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, programs, extension_test::target)));

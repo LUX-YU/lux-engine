@@ -136,8 +136,8 @@ namespace batch_fixture
     }
 
     static const std::array commands{commandDescriptor<SetValues>(), commandDescriptor<ReadValue>()};
-    static const FeatureDescriptor definition{FeatureName("test.batch.values"), {1, 0}, nullptr};
-    static const FeatureGraphOps definition_graph{[](const RetainableEncodedDataView*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
+    static const FeatureDescriptor definition{FeatureName("test.batch.values"), {}};
+    static const FeatureGraphOps definition_graph{[](const void*, std::string_view, std::vector<ResourceClaim>&) noexcept -> RenderResult<void> { return {}; }, nullptr};
 }
 
 namespace lux::render
@@ -220,10 +220,9 @@ static TypedRenderCompletion<C> call(RenderClient& client, const BoundCommand<C>
     return take(std::move(wait(client, take(client.submit(binding, request, reply_capacity)))).take(binding));
 }
 
-static RenderResult<ProgramContribution> programs(const RetainableEncodedDataView* wire, std::string_view instance) noexcept
+static RenderResult<ProgramContribution> programs(const void* wire, std::string_view instance) noexcept
 {
-    auto config = decodeData<native_fixture::Config>(*wire, native_fixture::limits);
-    if (!config) return cxx::unexpected(config.error());
+    const auto* config = static_cast<const native_fixture::Config*>(wire);
     return ProgramContribution{native_fixture::programs(*config, instance), {}};
 }
 
@@ -371,9 +370,8 @@ int main()
     const auto target_description = native_fixture::target(gpu_config);
     auto create_effect = take(a->bind<CreateEffect>());
     CreateEffect::Request effect_request{target_description};
-    effect_request.features.emplace_back(std::string(native_fixture::type.name()), "main", cxx::SchemaVersion{1, 0},
-        DataSchema<native_fixture::Config>::describe(),
-        RenderPayload::copyOf(take(encodeData(gpu_config, {}, native_fixture::limits)).view()));
+    effect_request.features.push_back({take(feature_test::find(*a, native_fixture::type.name())), "main",
+        take(ConfigValue::make(gpu_config))});
     const auto effect = call(*a, create_effect, std::move(effect_request)).response().effect;
     auto create_view = take(a->bind<CreateView>());
     auto create_target = take(a->bind<CreateTarget>());

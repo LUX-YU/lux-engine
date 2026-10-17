@@ -259,16 +259,10 @@ namespace lux::render
         for (const auto& entry : state.features)
         {
             if (entry.descriptor.type.name() != definition.descriptor->type.name()) continue;
-            const bool is_different_definition = entry.descriptor.version != definition.descriptor->version ||
+            const bool is_different_definition = entry.descriptor.config != definition.descriptor->config ||
                 entry.graph.describe != definition.graph->describe || entry.graph.build != definition.graph->build ||
                 entry.programs != definition.programs;
             if (is_different_definition) return cxx::unexpected(RenderError{kFeatureDuplicate});
-            const auto* before = entry.descriptor.config_schema;
-            const auto* after = definition.descriptor->config_schema;
-            if (bool(before) != bool(after)) return cxx::unexpected(RenderError{kDataSchemaMismatch});
-            if (before)
-                if (auto valid = compatibleDataSchemas(*before, *after); !valid)
-                    return cxx::unexpected(valid.error());
             id = entry.id;
             break;
         }

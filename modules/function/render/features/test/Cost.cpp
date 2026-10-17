@@ -76,10 +76,9 @@ using namespace lux::render;
 static constexpr FeatureName kType("test.cost");
 
 static RenderResult<void>
-describe(const RetainableEncodedDataView* wire, std::string_view, std::vector<ResourceClaim>& out) noexcept
+describe(const void* wire, std::string_view, std::vector<ResourceClaim>& out) noexcept
 {
-    auto config = decodeData<fixture::Config>(*wire, fixture::limits);
-    if (!config) return lux::cxx::unexpected(config.error());
+    const auto* config = static_cast<const fixture::Config*>(wire);
     const auto& c = *config;
     if (c.first > c.total || c.count > c.total - c.first) return lux::cxx::unexpected(RenderError{kFeatureContract});
     for (std::uint32_t i = c.first; i < c.first + c.count; ++i)
@@ -90,11 +89,10 @@ describe(const RetainableEncodedDataView* wire, std::string_view, std::vector<Re
 }
 
 static RenderResult<void> build(
-    const RetainableEncodedDataView* wire, std::string_view instance, std::span<const ResolvedResource> resolved, RenderGraphBuilder& b
+    const void* wire, std::string_view instance, std::span<const ResolvedResource> resolved, RenderGraphBuilder& b
 ) noexcept
 {
-    auto config = decodeData<fixture::Config>(*wire, fixture::limits);
-    if (!config) return lux::cxx::unexpected(config.error());
+    const auto* config = static_cast<const fixture::Config*>(wire);
     const auto& c = *config;
     for (std::uint32_t i = c.first; i < c.first + c.count; ++i)
     {
@@ -112,7 +110,7 @@ static RenderResult<void> build(
 
 int main()
 {
-    const FeatureDescriptor type{kType, {1, 0}, &DataSchema<fixture::Config>::describe()};
+    const FeatureDescriptor type{kType, ConfigValue::typeOf<fixture::Config>()};
     const FeatureGraphOps type_graph{describe, build};
     std::puts("shape,features,passes,sample,assemble_ns,allocations,allocated_bytes,destroy_ns");
     for (bool chain : {false, true})
@@ -121,31 +119,28 @@ int main()
         {
             for (std::uint32_t passes : {32u, 128u, 512u})
             {
-                std::vector<lux::cxx::SharedBytes<>> bytes;
-                std::vector<RetainableEncodedDataView> views;
+                std::vector<ConfigValue> configs;
                 std::vector<std::string> names;
                 std::vector<FeatureInstanceView> selected;
-                bytes.reserve(count);
-                views.reserve(count);
+                configs.reserve(count);
                 names.reserve(count);
                 selected.reserve(count);
                 for (std::uint32_t i = 0; i < count; ++i)
                 {
                     const auto first = passes * i / count;
                     fixture::Config c{first, passes * (i + 1) / count - first, passes, chain ? 1u : 0u};
-                    auto encoded = encodeData(c, {}, fixture::limits);
-                    if (!encoded) return 1;
-                    bytes.push_back(std::move(*encoded));
-                    views.push_back({DataSchema<fixture::Config>::describe(), bytes.back(), {}});
+                    auto config = ConfigValue::make(c);
+                    if (!config) return 1;
+                    configs.push_back(std::move(*config));
                     names.push_back(std::to_string(i));
-                    selected.push_back({&type, &type_graph, &views.back(), names.back()});
+                    selected.push_back({&type, &type_graph, &configs.back(), names.back()});
                 }
                 for (int sample = -5; sample < 100; ++sample)
                 {
                     allocations = allocated_bytes = 0;
                     counting = true;
                     const auto start = std::chrono::steady_clock::now();
-                    auto result = assembleFeatures(selected, fixture::limits);
+                    auto result = assembleFeatures(selected, fixture::limits.max_encoded_bytes);
                     const auto stop = std::chrono::steady_clock::now();
                     counting = false;
                     if (!result || result->analysis.execution_order.size() != passes) return 2;

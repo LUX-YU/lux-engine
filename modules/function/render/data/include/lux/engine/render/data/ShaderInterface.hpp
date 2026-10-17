@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <lux/engine/render/data/ShaderBlock.hpp>
 #include <string>
 #include <vector>
 
@@ -15,7 +16,7 @@ namespace lux::render
         std::uint32_t set = 0, binding = 0;
         EDescriptorKind kind = EDescriptorKind::SAMPLED_IMAGE_ARRAY;
         std::uint32_t count = 0;
-        std::uint32_t layout_bytes = 0; // current StorageBuffer primitive: one float4 at offset zero (16 bytes)
+        ShaderBlock block; // Full owned member/stride ABI for Buffer resources; empty for opaque descriptors.
         std::string name; // Cooked shader variable name, resolved to a Graph resource only during compilation.
         std::uint32_t stages = 2; // Existing PassContract stage bits: Vertex=1, Fragment=2, Compute=4.
         bool operator==(const ShaderBinding&) const noexcept = default;

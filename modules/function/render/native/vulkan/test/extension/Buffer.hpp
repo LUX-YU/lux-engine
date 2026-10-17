@@ -50,6 +50,7 @@ namespace extension_test
         struct Config final
         {
             std::uint32_t capacity = 8;
+            std::uint32_t bytes = 16;
             bool operator==(const Config&) const noexcept = default;
         };
         static const StorageDescriptor description;

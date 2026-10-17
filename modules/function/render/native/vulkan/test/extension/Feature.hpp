@@ -56,6 +56,14 @@ namespace extension_test
     inline const FeatureDescriptor definition{feature_type, ConfigValue::typeOf<ViewConfig>()};
     inline const FeatureGraphOps definition_graph{describe, build};
 
+    inline ShaderBlock colorBlock() noexcept
+    {
+        static constexpr lux::rdesc::DataGpuField fields[]{
+            {"color", lux::rdesc::EDataScalar::FLOAT, 0, 4, 1, 0, 0}
+        };
+        return ShaderBlock::from({lux::rdesc::EDataLayout::STD430, 16, 16, fields, {}, {}, 0});
+    }
+
     inline RenderResult<ProgramContribution> programs(const void* wire, std::string_view name) noexcept
     {
         const auto* config = static_cast<const ViewConfig*>(wire);
@@ -66,8 +74,8 @@ namespace extension_test
             {lux::rdesc::EShaderType::FRAGMENT, "main", {fragment.begin(), fragment.end()}}
         };
         draw.shader.interface = {
-            {{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, 0, "textures"},
-                {1, 0, EDescriptorKind::STORAGE_BUFFER, 1, 16, "data"}}, 16
+            {{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, {}, "textures"},
+                {1, 0, EDescriptorKind::STORAGE_BUFFER, 1, colorBlock(), "data"}}, 16
         };
         draw.resources = {{"textures", "shared:texture"}, {"data", "shared:values"}};
         result.arguments.push_back({"shared:texture", *ConfigValue::make(TextureBinding{config->texture})});

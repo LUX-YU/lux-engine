@@ -151,7 +151,7 @@ int main()
             auto programs = native_fixture::programs(config);
             PassProgram unused{"dead.pass"};
             unused.shader.stages = {{lux::rdesc::EShaderType::VERTEX, "main", {0}}};
-            unused.shader.interface.bindings = {{999, 999, EDescriptorKind::STORAGE_BUFFER, 99, 99}};
+            unused.shader.interface.bindings = {{999, 999, EDescriptorKind::STORAGE_BUFFER, 99, ShaderBlock{99}}};
             programs.push_back(std::move(unused));
             GraphStorageBindings bindings;
             bindings.global.push_back({history, {StorageName("test.uninstalled.dead")}});

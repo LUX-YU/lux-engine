@@ -6,7 +6,7 @@ foreach(test schema roundtrip malformed references ownership contracts)
     add_test(NAME render.data.${test} COMMAND render_data_test ${test})
 endforeach()
 
-foreach(header Schema Encoding Payload Shader ShaderInterface ConfigValue)
+foreach(header Schema Encoding Payload Shader ShaderInterface ShaderBlock ConfigValue)
     string(CONCAT probe
         "#include <lux/engine/render/data/${header}.hpp>\nstatic_assert(__cplusplus >= 202002L);\n"
         "#if defined(VK_VERSION_1_0) || defined(_WINDOWS_)\n#error Native header leaked into Data\n#endif\n"
@@ -87,3 +87,9 @@ add_dependencies(render_config_test render_config_plugin)
 set_target_properties(render_config_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/data/bin")
 
 add_test(NAME render.data.config COMMAND render_config_test)
+
+add_executable(render_shader_block_test ShaderBlock.cpp)
+
+target_link_libraries(render_shader_block_test PRIVATE render_data)
+
+add_test(NAME render.data.shader_block COMMAND render_shader_block_test)

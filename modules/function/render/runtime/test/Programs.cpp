@@ -50,7 +50,7 @@ static RenderResult<ProgramContribution> foreignPrograms(const void*, std::strin
     if (mode == 8)
     {
         PassProgram dead{featureKey(FeatureName("test.aaa.foreign"), "foreign", "unused")};
-        dead.shader.interface.bindings = {{99, 99, EDescriptorKind::STORAGE_BUFFER, 99, 99}};
+        dead.shader.interface.bindings = {{99, 99, EDescriptorKind::STORAGE_BUFFER, 99, ShaderBlock{99}}};
         dead.shader.stages = {{lux::rdesc::EShaderType::VERTEX, "main", {0}}}; // Pruned by the single G4 analysis.
         result.programs.push_back(std::move(dead));
     }

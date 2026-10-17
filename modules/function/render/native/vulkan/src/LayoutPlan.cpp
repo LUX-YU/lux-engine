@@ -9,7 +9,7 @@ namespace lux::render::vulkan
     const ShaderBinding& sampledImageTableBinding() noexcept
     {
         // Complete shape of the existing device table, not a reflected subset or a Storage decision.
-        static const ShaderBinding shape{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, 0, {}, 7};
+        static const ShaderBinding shape{0, 0, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, {}, {}, 7};
         return shape;
     }
 
@@ -67,7 +67,7 @@ namespace lux::render::vulkan
                 });
                 const bool image = std::holds_alternative<GraphImageDesc>(resource->description);
                 const bool wrong_kind = image != (binding.kind == EDescriptorKind::SAMPLED_IMAGE_ARRAY);
-                const bool invalid_size = !image && binding.layout_bytes > std::get<GraphBufferDesc>(resource->description).size;
+                const bool invalid_size = !image && binding.block.size > std::get<GraphBufferDesc>(resource->description).size;
                 if (!declared || wrong_kind || invalid_size) return cxx::unexpected(RenderError{kStorageContract});
                 output.uses.push_back({index, 0, 0, binding.kind});
                 if (image) has_shared = true;
@@ -106,7 +106,7 @@ namespace lux::render::vulkan
             plan.private_set = unsigned(has_shared);
             plan.private_bindings.resize(private_count);
             for (std::uint32_t slot = 0; slot < private_count; ++slot)
-                plan.private_bindings[slot] = {plan.private_set, slot, EDescriptorKind::STORAGE_BUFFER, 1, 0, {}, 0};
+                plan.private_bindings[slot] = {plan.private_set, slot, EDescriptorKind::STORAGE_BUFFER, 1, {}, {}, 0};
         }
         for (const auto id : analysis.execution_order)
         {

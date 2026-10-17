@@ -5,6 +5,7 @@
 #include <spirv-tools/libspirv.h>
 #include <spirv_cross/spirv_cross_c.h>
 #include <algorithm>
+#include <bit>
 #include <lux/engine/gapi/vk/Descriptor.hpp>
 #include <exception>
 #include <memory>
@@ -24,6 +25,106 @@ namespace lux::render::vulkan
             return spvc_type_get_basetype(type) == SPVC_BASETYPE_FP32 &&
                 spvc_type_get_vector_size(type) == 4 && spvc_type_get_columns(type) == 1 &&
                 spvc_type_get_num_array_dimensions(type) == 0;
+        }
+
+        // Adapted from existing DataValidation.cpp: walk SPIRV-Cross types, not SPIR-V instructions.
+        bool validateFields(
+            spvc_compiler compiler, spvc_type type, std::string path, std::uint64_t base,
+            std::uint32_t inherited_stride, const ShaderBlock& expected, std::size_t& cursor
+        ) noexcept
+        {
+            const auto structure_id = spvc_type_get_base_type_id(type);
+            for (unsigned member_index = 0; member_index < spvc_type_get_num_member_types(type); ++member_index)
+            {
+                const auto member = spvc_compiler_get_type_handle(
+                    compiler, spvc_type_get_member_type(type, member_index)
+                );
+                unsigned member_offset = 0;
+                const auto offset_result = spvc_compiler_type_struct_member_offset(
+                    compiler, type, member_index, &member_offset
+                );
+                if (!check(offset_result)) return false;
+                const auto offset = base + member_offset;
+                if (offset > expected.size) return false;
+                const auto name = path + spvc_compiler_get_member_name(compiler, structure_id, member_index);
+                const auto dimensions = spvc_type_get_num_array_dimensions(member);
+                unsigned count = 1, stride = inherited_stride;
+                if (dimensions)
+                {
+                    if (dimensions != 1 || !spvc_type_array_dimension_is_literal(member, 0)) return false;
+                    count = spvc_type_get_array_dimension(member, 0);
+                    if (!count || count > expected.fields.size()) return false;
+                    if (!check(spvc_compiler_type_struct_member_array_stride(compiler, type, member_index, &stride)))
+                        return false;
+                }
+                for (unsigned item = 0; item < count; ++item)
+                {
+                    const auto at = offset + (dimensions ? std::uint64_t(item) * stride : 0);
+                    if (at > expected.size) return false;
+                    const auto item_name = name + (dimensions ? "[" + std::to_string(item) + "]" : "");
+                    const auto scalar = spvc_type_get_basetype(member);
+                    if (scalar == SPVC_BASETYPE_STRUCT)
+                    {
+                        const bool valid = validateFields(
+                            compiler, member, item_name + ".", at, stride, expected, cursor
+                        );
+                        if (!valid) return false;
+                        continue;
+                    }
+                    const bool numeric = scalar == SPVC_BASETYPE_FP32 || scalar == SPVC_BASETYPE_INT32 ||
+                        scalar == SPVC_BASETYPE_UINT32;
+                    const bool row_major = spvc_compiler_has_member_decoration(
+                        compiler, structure_id, member_index, SpvDecorationRowMajor
+                    );
+                    const bool invalid = !numeric || spvc_type_get_bit_width(member) != 32 || row_major ||
+                        cursor >= expected.fields.size();
+                    if (invalid) return false;
+                    unsigned matrix_stride = 0;
+                    if (spvc_type_get_columns(member) > 1)
+                    {
+                        const auto result = spvc_compiler_type_struct_member_matrix_stride(
+                            compiler, type, member_index, &matrix_stride
+                        );
+                        if (!check(result)) return false;
+                    }
+                    const auto scalar_kind = scalar == SPVC_BASETYPE_FP32 ? rdesc::EDataScalar::FLOAT :
+                        scalar == SPVC_BASETYPE_INT32 ? rdesc::EDataScalar::SINT : rdesc::EDataScalar::UINT;
+                    const auto& field = expected.fields[cursor++];
+                    const bool mismatch = field.path != item_name || field.scalar != scalar_kind ||
+                        field.offset != at || field.rows != spvc_type_get_vector_size(member) ||
+                        field.columns != spvc_type_get_columns(member) ||
+                        field.array_stride != stride || field.matrix_stride != matrix_stride;
+                    if (mismatch) return false;
+                }
+            }
+            return true;
+        }
+
+        bool validateBlock(spvc_compiler compiler, spvc_type block, const ShaderBlock& expected) noexcept
+        {
+            const bool invalid = !expected.size || !std::has_single_bit(expected.alignment) ||
+                expected.fields.empty() ||
+                (expected.storage != rdesc::EDataLayout::STD140 && expected.storage != rdesc::EDataLayout::STD430);
+            if (invalid) return false;
+            auto record = block;
+            if (expected.runtime_records)
+            {
+                if (spvc_type_get_num_member_types(block) != 1) return false;
+                unsigned offset = 0, stride = 0;
+                if (!check(spvc_compiler_type_struct_member_offset(compiler, block, 0, &offset)) || offset != 0 ||
+                    !check(spvc_compiler_type_struct_member_array_stride(compiler, block, 0, &stride)) ||
+                    stride != expected.size) return false;
+                record = spvc_compiler_get_type_handle(compiler, spvc_type_get_member_type(block, 0));
+                const bool wrong_record = spvc_type_get_basetype(record) != SPVC_BASETYPE_STRUCT ||
+                    spvc_type_get_num_array_dimensions(record) != 1 || spvc_type_get_array_dimension(record, 0) != 0;
+                if (wrong_record) return false;
+            }
+            std::size_t size = 0, cursor = 0;
+            if (!check(spvc_compiler_get_declared_struct_size(compiler, record, &size))) return false;
+            const auto rounded = (std::uint64_t(size) + expected.alignment - 1) /
+                expected.alignment * expected.alignment;
+            return rounded == expected.size && validateFields(compiler, record, "", 0, 0, expected, cursor) &&
+                cursor == expected.fields.size();
         }
 
         bool validateStage(const SpirvStage& input, SpvExecutionModel stage, const ShaderInterface& interface) noexcept
@@ -124,18 +225,9 @@ namespace lux::render::vulkan
                         else
                         {
                             const auto structure = spvc_compiler_get_type_handle(compiler, list[i].base_type_id);
-                            std::size_t bytes = 0;
-                            if (!check(spvc_compiler_get_declared_struct_size(compiler, structure, &bytes))) return false;
                             const bool invalid_block = spvc_type_get_num_array_dimensions(type) != 0 ||
-                                expected->count != 1 || bytes != expected->layout_bytes || bytes != 16 ||
-                                spvc_type_get_num_member_types(structure) != 1;
+                                expected->count != 1 || !validateBlock(compiler, structure, expected->block);
                             if (invalid_block) return false;
-                            const auto member = spvc_compiler_get_type_handle(compiler,
-                                spvc_type_get_member_type(structure, 0));
-                            // The first real StorageBuffer primitive is a single float4 block at offset zero.
-                            // Reject equally sized integer/matrix/array layouts; extend for a real later consumer.
-                            if (!float4(member) || spvc_compiler_get_member_decoration(compiler,
-                                list[i].base_type_id, 0, SpvDecorationOffset) != 0) return false;
                         }
                     }
                 }

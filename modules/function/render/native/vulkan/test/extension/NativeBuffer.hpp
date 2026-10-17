@@ -77,7 +77,7 @@ namespace extension_test
 
         RenderResult<void> initialize() noexcept
         {
-            if (!config_.capacity || config_.capacity > 64) return lux::cxx::unexpected(RenderError{kStorageCapacity});
+            if (!config_.capacity || config_.capacity > 64 || !config_.bytes) return lux::cxx::unexpected(RenderError{kStorageCapacity});
             return {};
         }
 
@@ -132,7 +132,7 @@ namespace extension_test
             const auto source = input.source.bytes().view();
             auto id = input.id;
             if (id.storage != id_) return lux::cxx::unexpected(RenderError{kStorageIdentity});
-            if (source.size() != 16) return lux::cxx::unexpected(RenderError{kStorageContract});
+            if (source.size() != config_.bytes) return lux::cxx::unexpected(RenderError{kStorageContract});
             if (auto collected = session_.collect(); !collected) return lux::cxx::unexpected(collected.error());
             if (physical_->resident == config_.capacity * 2 || (id.isNull() && entries_.size() == config_.capacity))
                 return lux::cxx::unexpected(RenderError{kStorageCapacity});
@@ -182,7 +182,7 @@ namespace extension_test
             vk::PreparedStorageBinding& binding) noexcept
         {
             const auto* description = std::get_if<GraphBufferDesc>(&plan.description);
-            if (!description || description->size != 16) return lux::cxx::unexpected(RenderError{kStorageMismatch});
+            if (!description || description->size != config_.bytes) return lux::cxx::unexpected(RenderError{kStorageMismatch});
             if (argument.id.storage != id_) return lux::cxx::unexpected(RenderError{kStorageIdentity});
             auto* entry = entries_.find(argument.id.local);
             if (!entry || !entry->current) return lux::cxx::unexpected(RenderError{kStorageIdentity});

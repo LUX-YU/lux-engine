@@ -119,9 +119,9 @@ int main()
         auto packed = programs;
         packed[0].shader.stages[1].words.assign(extension_test::packed_fragment.begin(), extension_test::packed_fragment.end());
         packed[0].shader.interface.bindings = {
-            {2, 5, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, 0, "textures"},
-            {3, 7, EDescriptorKind::STORAGE_BUFFER, 1, 16, "data"},
-            {6, 11, EDescriptorKind::STORAGE_BUFFER, 1, 16, "other"}
+            {2, 5, EDescriptorKind::SAMPLED_IMAGE_ARRAY, 0, {}, "textures"},
+            {3, 7, EDescriptorKind::STORAGE_BUFFER, 1, extension_test::colorBlock(), "data"},
+            {6, 11, EDescriptorKind::STORAGE_BUFFER, 1, extension_test::colorBlock(), "other"}
         };
         packed[0].resources = {{"textures", "shared:texture"}, {"data", "shared:values"}, {"other", "shared:values"}};
         auto packed_code = std::make_shared<CompiledGraph>(take(compileGraph(*session, assembly.definition,
@@ -204,7 +204,7 @@ int main()
         auto bad = programs;
         auto& binding = bad[0].shader.interface.bindings[1];
         if (fault == 0) binding.kind = EDescriptorKind::SAMPLED_IMAGE_ARRAY;
-        if (fault == 1) binding.layout_bytes = 32;
+        if (fault == 1) binding.block.size = 32;
         if (fault == 2) binding.set = 2;
         if (fault == 3) binding.count = 2;
         CHECK(!compileGraph(*session, (assembly).definition, (assembly).analysis, (assembly).external_bindings, bad, extension_test::target));

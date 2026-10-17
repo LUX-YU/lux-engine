@@ -1,0 +1,7 @@
+{
+  "source": "engine/toolchain/shader/src/DataValidation.cpp",
+  "blob": "22bbcb5b9089606d7de83c4a29541b308cc4fcd1",
+  "sha256": "b9f133b0515ebb4e5344a2687d514cef71ff32750cd28874481bdc2ce8cd4df9",
+  "consumer": "modules/function/render/native/vulkan/src/Shader.cpp",
+  "reuse": "SPIRV-Cross structure/array/matrix field walk adapted to C API; owned DataGpuLayout facts; no new parser"
+}

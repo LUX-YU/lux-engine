@@ -25,6 +25,7 @@ target_link_libraries(render_data PUBLIC $<BUILD_INTERFACE:lux::engine::resource
 
 install(
     FILES "${CMAKE_CURRENT_SOURCE_DIR}/../../../resource/description/include/lux/engine/description/ShaderInfo.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../resource/description/include/lux/engine/description/DataLayout.hpp"
     DESTINATION include/lux/engine/description
 )
 

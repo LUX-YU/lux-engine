@@ -5,6 +5,9 @@
 
 namespace lux::render
 {
+    // Temporary cold installation values; no Native instance or second type catalog.
+    struct StorageFactoryInstall final { StorageFactory factory; ConfigValue configuration; };
+
     class ResourceRegistry final
     {
     public:
@@ -25,6 +28,10 @@ namespace lux::render
             if (!value) return cxx::unexpected(value.error());
             return installFactory(std::move(factory), std::move(*value));
         }
+        // All candidates are qualified before any type is visible. Failure preserves the input values.
+        [[nodiscard]] RenderResult<std::vector<StorageTypeId>>
+        installFactories(std::span<StorageFactoryInstall> candidates) noexcept;
+
         // Cold observation of the sole type directory; the visitor must not mutate it.
         template <class Visitor>
         void forEachType(Visitor&& visitor) const noexcept
@@ -79,6 +86,8 @@ namespace lux::render
             StorageTypeId type;
             void* native = nullptr;
         };
+        [[nodiscard]] RenderResult<void> validateFactory(const StorageFactory&, const ConfigValue&) const noexcept;
+        StorageTypeId publishFactory(StorageFactory, ConfigValue) noexcept;
         void* native_;
         std::uint32_t capabilities_;
         cxx::StableSlotMap<Type, StorageTypeTag> types_;

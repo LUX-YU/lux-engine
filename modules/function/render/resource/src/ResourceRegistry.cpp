@@ -36,9 +36,9 @@ namespace lux::render
         return index.isNull() ? nullptr : types_.find(index)->configuration.data();
     }
 
-    RenderResult<StorageTypeId> ResourceRegistry::installFactory(
-        StorageFactory factory, ConfigValue configuration
-    ) noexcept
+    RenderResult<void> ResourceRegistry::validateFactory(
+        const StorageFactory& factory, const ConfigValue& configuration
+    ) const noexcept
     {
         if (!factory.description) return cxx::unexpected(RenderError{kStorageFactory});
         if (auto valid = validateStorageFactory(*factory.description, factory); !valid)
@@ -51,9 +51,42 @@ namespace lux::render
             return cxx::unexpected(RenderError{kStorageMismatch});
         if (!typeId(factory.description->type).isNull())
             return cxx::unexpected(RenderError{kStorageFactory});
+        return {};
+    }
+
+    StorageTypeId ResourceRegistry::publishFactory(StorageFactory factory, ConfigValue configuration) noexcept
+    {
         const auto id = types_.emplace(Type{{}, std::move(factory), std::move(configuration)});
         types_.find(id)->id = id;
         return id;
+    }
+
+    RenderResult<StorageTypeId> ResourceRegistry::installFactory(
+        StorageFactory factory, ConfigValue configuration
+    ) noexcept
+    {
+        if (auto valid = validateFactory(factory, configuration); !valid) return cxx::unexpected(valid.error());
+        return publishFactory(std::move(factory), std::move(configuration));
+    }
+
+    RenderResult<std::vector<StorageTypeId>> ResourceRegistry::installFactories(
+        std::span<StorageFactoryInstall> candidates
+    ) noexcept
+    {
+        for (std::size_t i = 0; i < candidates.size(); ++i)
+        {
+            const auto& candidate = candidates[i];
+            if (auto valid = validateFactory(candidate.factory, candidate.configuration); !valid)
+                return cxx::unexpected(valid.error());
+            for (std::size_t j = 0; j < i; ++j)
+                if (candidates[j].factory.description->type == candidate.factory.description->type)
+                    return cxx::unexpected(RenderError{kStorageFactory});
+        }
+        std::vector<StorageTypeId> ids;
+        ids.reserve(candidates.size());
+        for (auto& candidate : candidates)
+            ids.push_back(publishFactory(std::move(candidate.factory), std::move(candidate.configuration)));
+        return ids;
     }
 
     void* ResourceRegistry::native(StorageId id) const noexcept

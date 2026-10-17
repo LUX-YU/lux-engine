@@ -2,6 +2,40 @@
 
 namespace lux::render
 {
+    namespace
+    {
+        bool sameOps(const ipc::IpcTypeOps& left, const ipc::IpcTypeOps& right) noexcept
+        {
+            return left.token() == right.token() && left.size() == right.size() &&
+                left.alignment() == right.alignment() && left.abi() == right.abi() &&
+                left.usesInlineStorage() == right.usesInlineStorage();
+        }
+
+        bool sameFactory(const StorageFactory& left, const StorageFactory& right) noexcept
+        {
+            return left.native_type == right.native_type && left.config_type == right.config_type &&
+                left.ops_type == right.ops_type && left.create == right.create && left.ops == right.ops &&
+                left.binding_ops == right.binding_ops && left.compatible_config == right.compatible_config;
+        }
+
+        RenderResult<void> compatibleSupport(std::span<const CommandHandler> left,
+            std::span<const CommandTransport> left_transport, std::span<const CommandHandler> right,
+            std::span<const CommandTransport> right_transport) noexcept
+        {
+            for (std::size_t i = 0; i < left.size(); ++i)
+                for (std::size_t j = 0; j < right.size(); ++j)
+                {
+                    if (left[i].descriptor()->name.name() != right[j].descriptor()->name.name()) continue;
+                    if (auto valid = compatibleCommands(*left[i].descriptor(), *right[j].descriptor()); !valid)
+                        return valid;
+                    const bool incompatible = !sameOps(*left_transport[i].request, *right_transport[j].request) ||
+                        !sameOps(*left_transport[i].response, *right_transport[j].response);
+                    if (incompatible) return cxx::unexpected(RenderError{kProtocolContract});
+                }
+            return {};
+        }
+    }
+
     RenderResult<void> RenderServer::Impl::listFeatures(RenderRequest& request) noexcept
     {
         FeatureList result;
@@ -134,11 +168,6 @@ namespace lux::render
         const bool is_invalid_installation = !owner.object || owner.name.empty() || calls.empty() ||
             calls.size() != transports.size() || state.stop_requested.load();
         if (is_invalid_installation) return cxx::unexpected(RenderError{kFeatureContract});
-        const auto same_ops = [](const ipc::IpcTypeOps& left, const ipc::IpcTypeOps& right) noexcept {
-            return left.token() == right.token() && left.size() == right.size() &&
-                left.alignment() == right.alignment() && left.abi() == right.abi() &&
-                left.usesInlineStorage() == right.usesInlineStorage();
-        };
         std::vector<CommandId> commands(calls.size());
         for (std::size_t i = 0; i < calls.size(); ++i)
         {
@@ -158,8 +187,8 @@ namespace lux::render
                 if (auto valid = compatibleCommands(*old.cold->binding.descriptor(), *call.descriptor()); !valid)
                     return cxx::unexpected(valid.error());
                 const auto& transport = old.cold->transport;
-                if (!same_ops(*transport.request, *transports[i].request) ||
-                    !same_ops(*transport.response, *transports[i].response))
+                if (!sameOps(*transport.request, *transports[i].request) ||
+                    !sameOps(*transport.response, *transports[i].response))
                     return cxx::unexpected(RenderError{kProtocolContract});
                 commands[i] = old.cold->id;
                 break;
@@ -180,6 +209,14 @@ namespace lux::render
         handler->id = id;
         for (std::size_t i = 0; i < calls.size(); ++i)
         {
+            // Another qualified dependency may have published this previously absent command.
+            if (commands[i].isNull())
+                for (const auto& old : state.command_table)
+                    if (old.cold->binding.descriptor()->name.name() == calls[i].descriptor()->name.name())
+                    {
+                        commands[i] = old.cold->id;
+                        break;
+                    }
             const bool first = commands[i].isNull();
             if (first) commands[i] = state.addCommand(calls[i], transports[i], handler->code_pin);
             auto& entry = *state.command_table.find(commands[i]);
@@ -204,52 +241,51 @@ namespace lux::render
         return publishHandler(std::move(owner), calls, transports, std::move(*commands));
     }
 
-    RenderResult<StorageTypeId> RenderServer::installStorage(
-        StorageFactory factory, ConfigValue config, bool (*equal)(const void*, const void*) noexcept,
-        HandlerEntry* handler, std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls,
-        std::span<const CommandTransport> transports
-    ) noexcept
+    RenderResult<StorageTypeId> RenderServer::prepareStorage(const StorageInstall& candidate, bool ensure) const noexcept
     {
-        auto& state = *impl_;
-        if (state.stop_requested.load()) return cxx::unexpected(RenderError{kRuntimeState});
-        std::vector<CommandId> commands;
-        if (handler)
+        const auto& resources = impl_->device->resources();
+        const auto& factory = candidate.factory;
+        const auto id = resources.typeId(factory.description->type);
+        if (id.isNull()) return id;
+        const auto& previous = *resources.factory(id);
+        if (auto valid = compatibleStorage(*previous.description, *factory.description); !valid)
+            return cxx::unexpected(valid.error());
+        if (!sameFactory(previous, factory)) return cxx::unexpected(RenderError{kStorageMismatch});
+        // A Feature dependency honours an explicitly installed compatible configuration.
+        if (!ensure)
         {
-            auto prepared = prepareHandler(*handler, calls, transports);
-            if (!prepared) return cxx::unexpected(prepared.error());
-            commands = std::move(*prepared);
-        }
-        auto& resources = state.device->resources();
-        auto id = resources.typeId(factory.description->type);
-        if (id.isNull())
-        {
-            auto installed = resources.installFactory(std::move(factory), std::move(config));
-            if (!installed) return cxx::unexpected(installed.error());
-            id = *installed;
-        }
-        else
-        {
-            const auto& previous = *resources.factory(id);
-            if (auto valid = compatibleStorage(*previous.description, *factory.description); !valid)
-                return cxx::unexpected(valid.error());
-            const bool is_wrong_implementation = previous.native_type != factory.native_type ||
-                previous.config_type != factory.config_type || previous.ops_type != factory.ops_type ||
-                previous.create != factory.create || previous.ops != factory.ops ||
-                previous.binding_ops != factory.binding_ops ||
-                previous.compatible_config != factory.compatible_config;
-            if (is_wrong_implementation) return cxx::unexpected(RenderError{kStorageMismatch});
             const auto* original = resources.configuration(factory.description->type);
-            if (!original || !equal(original, config.data())) return cxx::unexpected(RenderError{kStorageMismatch});
+            if (!original || !candidate.equal(original, candidate.config.data()))
+                return cxx::unexpected(RenderError{kStorageMismatch});
         }
-        // Registry admission and all Command qualifications succeeded. Only infallible publication remains.
-        if (owner) publishHandler(std::move(owner), calls, transports, std::move(commands));
         return id;
+    }
+
+    RenderResult<StorageTypeId> RenderServer::installStorage(StorageInstall candidate) noexcept
+    {
+        if (impl_->stop_requested.load()) return cxx::unexpected(RenderError{kRuntimeState});
+        if (candidate.handler)
+        {
+            auto commands = prepareHandler(*candidate.handler, candidate.calls, candidate.transports);
+            if (!commands) return cxx::unexpected(commands.error());
+            candidate.commands = std::move(*commands);
+        }
+        auto id = prepareStorage(candidate, false);
+        if (!id) return cxx::unexpected(id.error());
+        if (id->isNull())
+        {
+            id = impl_->device->resources().installFactory(std::move(candidate.factory), std::move(candidate.config));
+            if (!id) return cxx::unexpected(id.error());
+        }
+        if (candidate.owner)
+            publishHandler(std::move(candidate.owner), candidate.calls, candidate.transports, std::move(candidate.commands));
+        return *id;
     }
 
     RenderResult<FeatureId> RenderServer::installFeature(
         feature_detail::Implementation definition, std::shared_ptr<const void> code_pin,
         HandlerEntry* handler, std::unique_ptr<HandlerEntry> owner, std::span<const CommandHandler> calls,
-        std::span<const CommandTransport> transports
+        std::span<const CommandTransport> transports, std::vector<StorageInstall> dependencies
     ) noexcept
     {
         auto& state = *impl_;
@@ -276,6 +312,44 @@ namespace lux::render
             id = entry.id;
             break;
         }
+        std::vector<StorageFactoryInstall> factories;
+        factories.reserve(dependencies.size());
+        for (std::size_t i = 0; i < dependencies.size(); ++i)
+        {
+            auto& candidate = dependencies[i];
+            auto storage = prepareStorage(candidate, true);
+            if (!storage) return cxx::unexpected(storage.error());
+            bool duplicate = false;
+            for (std::size_t j = 0; j < i; ++j)
+            {
+                const auto& previous = dependencies[j];
+                if (previous.factory.description->type != candidate.factory.description->type) continue;
+                if (auto valid = compatibleStorage(*previous.factory.description, *candidate.factory.description); !valid)
+                    return cxx::unexpected(valid.error());
+                if (!sameFactory(previous.factory, candidate.factory))
+                    return cxx::unexpected(RenderError{kStorageMismatch});
+                duplicate = true;
+                break;
+            }
+            if (storage->isNull() && !duplicate)
+                factories.push_back({candidate.factory, candidate.config});
+            if (!candidate.handler) continue;
+            auto prepared = prepareHandler(*candidate.handler, candidate.calls, candidate.transports);
+            if (!prepared) return cxx::unexpected(prepared.error());
+            candidate.commands = std::move(*prepared);
+            if (auto valid = compatibleSupport(calls, transports, candidate.calls, candidate.transports); !valid)
+                return cxx::unexpected(valid.error());
+            for (std::size_t j = 0; j < i; ++j)
+                if (auto valid = compatibleSupport(dependencies[j].calls, dependencies[j].transports,
+                    candidate.calls, candidate.transports); !valid) return cxx::unexpected(valid.error());
+        }
+        // Registry performs its capability/config checks for every factory before any publication.
+        if (auto installed = state.device->resources().installFactories(factories); !installed)
+            return cxx::unexpected(installed.error());
+        for (auto& candidate : dependencies)
+            if (candidate.owner)
+                publishHandler(std::move(candidate.owner), candidate.calls, candidate.transports,
+                    std::move(candidate.commands));
         // All recoverable checks are complete. Stable Feature entries survive later directory growth.
         if (id.isNull())
         {

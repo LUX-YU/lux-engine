@@ -961,7 +961,7 @@
   },
   "N6.4": {
     "title": "Basic mesh and depth features",
-    "status": "PLANNED",
+    "status": "IN_PROGRESS",
     "production_paths": [
       "modules/function/render/resource/",
       "modules/function/render/features/",
@@ -978,7 +978,9 @@
       "T-CMD-08",
       "T-OWNER-14"
     ],
-    "evidence": []
+    "evidence": [
+      "N6-BUNDLE-IMPLEMENTATION.md"
+    ]
   },
   "N6.5": {
     "title": "Two-client two-view integration",

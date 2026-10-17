@@ -370,3 +370,13 @@ set_target_properties(render_camera_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${
 add_test(NAME render.runtime.camera COMMAND render_camera_test)
 
 set_tests_properties(render.runtime.camera PROPERTIES TIMEOUT 60)
+
+add_executable(render_feature_bundle_test FeatureBundle.cpp)
+
+target_link_libraries(render_feature_bundle_test PRIVATE render_runtime render_native_vulkan_extensions)
+
+set_target_properties(render_feature_bundle_test PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/ipc/bin")
+
+add_test(NAME render.runtime.feature_bundle COMMAND render_feature_bundle_test)
+
+set_tests_properties(render.runtime.feature_bundle PROPERTIES TIMEOUT 60)
